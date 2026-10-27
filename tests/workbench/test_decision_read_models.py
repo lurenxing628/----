@@ -4,13 +4,14 @@ from datetime import datetime
 
 import pytest
 
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.decision_read_models import Memberships, analysis_arrangements, decode_model
+from core.shared.strict_json import canonical_json
 
 
 def test_delivery_projections_share_one_static_batch_group_and_reverse_identity_index():
-    from core.services.workbench.facts.candidate_delivery import project_legacy_delivery_detail
+    from core.services.workbench.facts.candidate_delivery import project_delivery_detail
     from core.services.workbench.facts.decision_delivery import project_decision_delivery
 
     scans = []
@@ -42,7 +43,7 @@ def test_delivery_projections_share_one_static_batch_group_and_reverse_identity_
     before = canonical_json(facts.tables)
     delivery = project_decision_delivery(facts, tasks, batch_refs, deferred_ids={2})
     intervals = {"row-a": (datetime(2026, 10, 15, 8), datetime(2026, 10, 15, 9))}
-    detail = project_legacy_delivery_detail(candidate, facts, tasks, settings, intervals=intervals, deferred_ids={2})
+    detail = project_delivery_detail(candidate, facts, tasks, settings, intervals=intervals, deferred_ids={2})
     assert [{key: value for key, value in row.items() if key != "last_operations"} for row in detail] == delivery
     assert [row["completion_state"] for row in delivery] == ["complete", "deferred", "unknown"]
     assert detail[0]["last_operations"] == tasks and detail[1]["last_operations"] == []

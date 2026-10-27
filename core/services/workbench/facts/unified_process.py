@@ -1,9 +1,9 @@
 """Pure views of one saved shared-optimization process and its actual origins."""
 
+from core.models.objective import best_score_schema, comparison_metric_key, objective_choice_labels
 from core.models.workbench_run_candidate import reject
 from core.services.scheduler.run.optimizer.shared_process import UNIFIED_PROCESS_VERSION
 
-from .candidate_process import candidate_objective
 from .candidate_values import corrupt
 
 PROCESS_CANDIDATE_FIELDS = ("candidate_ref", "label", "status", "representative_objectives", "origin",
@@ -14,6 +14,24 @@ _ACTION_COUNTERS = ("evaluation_count", "verified_evaluation_count", "new_decisi
 
 def _candidate(row):
     return {key: row.get(key) for key in PROCESS_CANDIDATE_FIELDS}
+
+
+def _unit(key):
+    return "工序" if key == "failed_ops" else "批次" if key == "overdue_count" else "次" if key == "changeover_count" else "小时" if key.endswith("_hours") else None
+
+
+def _objective(name):
+    """A target direction's business label and its scoring fields; unknown directions are corrupt."""
+    labels = objective_choice_labels()
+    if name not in labels:
+        corrupt()
+    primary = comparison_metric_key(name)
+    fields = [{"index": row["index"], "key": row["key"],
+               "label": "算法工种切换次数" if row["key"] == "changeover_count" else row["label"],
+               "unit": _unit(row["key"]), "direction": "lower"} for row in best_score_schema(name)]
+    field = next(row for row in fields if row["key"] == primary)
+    return {"name": name, "label": "最少算法工种切换次数" if name == "min_changeover" else labels[name],
+            "primary_metric_key": primary, "primary_metric_label": field["label"], "unit": field["unit"], "score_fields": fields}
 
 
 def _stages(actions, phase_seconds):
@@ -36,9 +54,7 @@ def project_unified_process(process, *, objective=None, candidate, candidates=()
     selected = process["primary_objective"] if objective is None else objective
     if selected not in process["target_objectives"]:
         reject("invalid_input", "请选择本次排产的优化方向。", 422)
-    objectives = [candidate_objective({"objective_name": name}, {}, {}) for name in process["target_objectives"]]
-    if any(row["primary_metric_key"] is None for row in objectives):
-        corrupt()
+    objectives = [_objective(name) for name in process["target_objectives"]]
     descriptor = next(row for row in objectives if row["name"] == selected)
     scopes = {scope_ref: {key: scope[key] for key in _SCOPE_FIELDS} for scope_ref, scope in process["scopes"].items()}
     events = {event["event_id"]: event for event in process["events"]}

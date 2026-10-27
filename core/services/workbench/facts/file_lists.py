@@ -1,4 +1,4 @@
-"""Readable, reversible lists of business codes; legacy JSON stays in the codec."""
+"""Readable, reversible lists of business codes."""
 
 from core.errors import ValidationError
 

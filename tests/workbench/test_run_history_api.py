@@ -24,7 +24,6 @@ from core.services.workbench.run.history import WorkbenchRunHistoryQueryService
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 from tests._support.excel_templates import point_env_at_shared
-from tests.workbench.legacy_run_archive_support import install_budget_skipped_archive
 from tests.workbench.run_history_support import BASE, dump, read
 from tests.workbench.run_history_support import history_case as _history_case  # noqa: F401
 from tests.workbench.run_jobs_support import service
@@ -120,26 +119,25 @@ def test_full_flask_app_actual_engine_run_and_only_temporary_sqlite(history_case
     assert dump(case.conn) == before and paths and str(case.path) in paths
 
 
-def test_new_process_reopens_history_without_browser_token_cache(history_case, monkeypatch):
+def test_new_process_reopens_history_without_browser_token_cache(history_case):
     case = history_case
     complete = case.accept(new_run_ref())
     complete_result = WorkbenchRunWorker(case.conn).execute(complete["run_ref"])
     assert complete_result["state"] == "complete"
     refs = [complete["run_ref"]]
-    with monkeypatch.context() as archive_patch:
-        install_budget_skipped_archive(archive_patch)
-        partial = case.accept(new_run_ref())
-        partial_result = WorkbenchRunWorker(case.conn).execute(partial["run_ref"])
+    # A stored skipped operation leaves the real selected candidate short of the admitted scope.
+    skipped = case.operation(seq=2)
+    case.conn.execute("UPDATE BatchOperations SET status='skipped' WHERE id=?", (skipped,))
+    case.conn.commit()
+    partial = case.accept(new_run_ref())
+    partial_result = WorkbenchRunWorker(case.conn).execute(partial["run_ref"])
     assert partial_result["state"] == "partial"
-    completed_candidates = [row for row in partial_result["candidates"] if row["status"] == "completed"]
-    skipped_candidates = [row for row in partial_result["candidates"] if row["status"] == "skipped"]
-    assert len(completed_candidates) == 1 and len(skipped_candidates) == 3
-    assert completed_candidates[0]["task_count"] == 1
+    assert partial_result["candidates"] and all(row["status"] == "completed" for row in partial_result["candidates"])
+    assert partial_result["candidates"][0]["task_count"] == 1
     for candidate in partial_result["candidates"]:
         actual_count = case.conn.execute("SELECT COUNT(*) FROM WorkbenchRunCandidateTasks WHERE candidate_ref=?",
                                         (candidate["candidate_ref"],)).fetchone()[0]
         assert actual_count == candidate["task_count"]
-    assert all(row["task_count"] == 0 for row in skipped_candidates)
     refs.append(partial["run_ref"])
     repo = WorkbenchRunRepository(case.conn)
     for state in ("failed", "interrupted"):

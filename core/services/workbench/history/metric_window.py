@@ -14,7 +14,7 @@ def _fixed_window(anchor, days):
         start = local_time(anchor.replace(" ", "T"))
         return start.isoformat(), (start + timedelta(days=days)).isoformat()
     except (ValueError, OverflowError):
-        # 旧摘要或保存输入里的起点不是工厂本地时间，或加上窗口天数超出可表示的日期。
+        # 保存的起点不是工厂本地时间，或加上窗口天数超出可表示的日期。
         return None, None
 
 
@@ -28,23 +28,18 @@ def history_window(packet, query):
         if packet["kind"] == "run" and packet["capture"] is not None:
             anchor = preflight_window(packet["capture"]["input"])[0]
         elif packet["kind"] == "trial" and packet["saved"] is not None:
-            # 原草稿已不存在时只剩保存场景，起点退回保存的安排。
-            inputs = ()
-            if packet["head"] is not None:
-                admission = packet["head"]["admission"]
-                source = admission["source"]
-                inputs = (admission["input"], (source.get("capture") or {}).get("input") or {},
-                          source.get("material_policy") or {})
+            admission = packet["head"]["admission"]
+            source = admission["source"]
+            inputs = (admission["input"], (source.get("capture") or {}).get("input") or {},
+                      source.get("material_policy") or {})
             explicit = next((values for values in inputs if "start_date" in values), None)
             if explicit is not None:
                 day = explicit["start_date"]
                 anchor = day + "T00:00:00" if type(day) is str else None
             else:
-                tasks = packet["saved"].get("tasks", [])
+                tasks = packet["saved"]["tasks"]
                 starts = [task.get("start") for task in tasks if task.get("start") is not None]
                 anchor = min(starts) if starts else None
-        elif packet["kind"] == "legacy":
-            anchor = (packet["parsed_summary"] or {}).get("start_time")
         start, end = _fixed_window(anchor, days)
     reason = None if start is not None and end is not None else {
         "code": "history_window_start_missing", "message": "保存来源未记录有效排产起点，固定资源窗口未知。"}

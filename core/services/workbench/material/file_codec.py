@@ -1,6 +1,6 @@
 """Bytes-only material CSV/XLSX codec, using the repository's pinned openpyxl.
 
-Defined headers are HEADERS or their COLUMNS aliases; business_code is required.
+Headers are the exported Chinese HEADERS only; business_code is required.
 Missing columns and empty cells mean omission. The literal \\N means null (only
 spec/unit/remark can be cleared). Double an initial backslash for literal text.
 CSV is UTF-8 (optional BOM); exported text has one reversible apostrophe prefix
@@ -70,7 +70,7 @@ def _headers(values):
     if "business_code" not in fields:
         raise _file_error("缺少物料编号列。", field="headers")
     if len(set(fields)) != len(fields):
-        raise _file_error("表头里有重复的列（中文列名和英文列名指同一项也算重复）。", field="headers")
+        raise _file_error("表头里有重复的列。", field="headers")
     return fields
 
 
@@ -91,7 +91,11 @@ def _decode_value(value, field, file_format):
             if NUMBER.fullmatch(value) is None:
                 raise ValidationError("库存数量只填数字，不要带单位、「是/否」或千分位逗号。", field="stock_qty")
             value = float(value)
-    return STATUS_VALUES.get(value, value) if field == "status" and type(value) is str else value
+    if field == "status":
+        if type(value) is not str or value not in STATUS_VALUES:
+            raise ValidationError("状态只能填启用或停用，这一行没有导入。请照下拉选项填写。", field="status")
+        return STATUS_VALUES[value]
+    return value
 
 
 def _parse_row(number, values, cell_errors, fields, file_format):

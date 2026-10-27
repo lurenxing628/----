@@ -66,7 +66,7 @@ def test_operator_calendar_confirmation_reloads_current_operator_rows(schema_con
     conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('OP','旧姓名')")
     conn.commit()
     content = file_bytes([("OP", DAY, "工作日", "09:00", "17:00", "100")],
-                         headers=("operator_code", "date", "day_type", "shift_start", "shift_end", "efficiency"))
+                         headers=("工号", "日期", "类型", "班次开始", "班次结束", "效率（%）"))
     service = WorkbenchOperatorCalendarFileService(conn)
     preview = service.preview_import(content, file_format="csv")
     assert all(not row["errors"] for row in preview.as_dict()["rows"])
@@ -89,8 +89,8 @@ def test_operator_calendar_rest_day_rejects_allow_flags_and_periods(schema_conn)
             ("OP", "2026-10-06", "假期", "09:00", "17:00", "", "否", "否", "1"),
         ],
         headers=(
-            "operator_code", "date", "day_type", "shift_start", "shift_end",
-            "efficiency", "allow_normal", "allow_urgent", "period_count",
+            "工号", "日期", "类型", "班次开始", "班次结束",
+            "效率（%）", "允许普通件", "允许急件", "工作时段数",
         ),
     )
     preview = WorkbenchOperatorCalendarFileService(conn).preview_import(content, file_format="csv").as_dict()

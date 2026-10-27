@@ -8,12 +8,11 @@ from core.models.workbench_run_candidate import local_time
 
 HISTORY_VERSION = "decision-history-v1"
 DEFAULT_METRIC_KEYS = ("overdue_count", "total_tardiness_hours", "makespan_hours", "elapsed_seconds")
-HISTORY_STATES = ("all", "queued", "running", "complete", "partial", "failed", "interrupted",
-                  "committed", "success", "unknown", "available", "current", "historical", "unavailable")
+HISTORY_STATES = ("all", "queued", "running", "complete", "partial", "failed", "interrupted", "committed")
 QUERY_FIELDS = ("timeline", "date_from", "date_to", "metric_keys", "comparison", "reference_run_ref",
                 "selected_entry_ref", "range_start", "range_end", "resource_window_days", "state", "sort", "order",
                 "page", "size", "condition_page", "condition_size", "snapshot_ref")
-_ENTRY = re.compile(r"(?:run:[0-9a-f]{48}|adoption:[0-9a-f]{32}|legacy:[1-9][0-9]*)\Z")
+_ENTRY = re.compile(r"(?:run:[0-9a-f]{48}|adoption:[0-9a-f]{32})\Z")
 
 
 def reject_history(message, code="invalid_input", status=422):

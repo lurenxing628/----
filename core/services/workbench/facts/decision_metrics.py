@@ -95,12 +95,10 @@ def admission_operation_refs(facts, settings):
             if facts.entity_refs.get(("batch", facts.tables["BatchOperations"].get(key, {}).get("batch_id"))) in selected}
 
 
-def admission_operations(facts, settings, disposition: Dict[str, Dict[str, Any]]):
-    refs = admission_operation_refs(facts, settings)
+def admission_deferred_refs(facts, settings, refs, disposition: Dict[str, Dict[str, Any]]):
+    """The admitted operations ``refs`` left pending for material under their dispositions."""
     deferred_ids = material_deferred_ids(disposition.values(), settings)
-    deferred = {ref for ref in refs if facts.operations[ref] in deferred_ids}
-    skipped = {ref for ref in refs if disposition[ref]["status"] == "skipped"} - deferred
-    return refs, deferred, skipped
+    return {ref for ref in refs if facts.operations[ref] in deferred_ids}
 
 
 def delivery_coverage(items):
@@ -122,26 +120,25 @@ def delivery_metric_values(summary):
     return result
 
 
-def candidate_metrics(candidate, tasks, facts, disposition, batch_refs, *, delivery_items, operation_scope):
+def candidate_metrics(candidate, tasks, facts, batch_refs, *, delivery_items, operation_scope):
     refs, deferred, skipped = operation_scope
     expected = refs - deferred
     has_result = candidate["status"] == "completed"
     scheduled = {row["operation_ref"] for row in tasks} & expected
     missing = expected - scheduled
-    input_known = refs == set(disposition)
-    state = "unavailable" if not has_result or not input_known else "partial" if missing or skipped else "complete"
+    state = "unavailable" if not has_result else "partial" if missing or skipped else "complete"
     schedulable = {"state": state, "expected_count": len(expected), "scheduled_count": len(scheduled) if has_result else None,
                    "missing_count": len(missing) if has_result else None, "skipped_count": len(skipped), "deferred_count": len(deferred)}
     coverage, values = delivery_coverage(delivery_items)
     if not has_result:
         coverage["state"] = "unavailable"
-    saved = saved_metrics(candidate["artifact"], [])
+    saved = saved_metrics(candidate["artifact"])
     for definition in metric_definitions():
         key = definition["key"]
         if key in values or key not in saved:
             continue
         item = saved[key]
-        if key == "elapsed_seconds" and candidate["artifact"].get("generation_policy_version") == "unified_search_v1":
+        if key == "elapsed_seconds":
             values[key] = metric_value(None, total=0, state="not_applicable", scope=definition["scope"],
                                        reason=item["reason"])
             continue
@@ -161,7 +158,7 @@ def candidate_metrics(candidate, tasks, facts, disposition, batch_refs, *, deliv
                 values[key]["reason"] = {"code": "algorithm_batch_scope_missing", "message": "排产存档缺少算法交付评价的批次范围。"}
     for key, value in (("expected_operation_count", len(expected)), ("scheduled_operation_count", len(scheduled)),
                        ("unplanned_operation_count", len(missing)), ("deferred_operation_count", len(deferred))):
-        known = input_known and (has_result or key in ("expected_operation_count", "deferred_operation_count"))
+        known = has_result or key in ("expected_operation_count", "deferred_operation_count")
         values[key] = metric_value(value if known else None, total=len(refs), unknown=0 if known else len(refs),
                                    state="complete" if known else "unavailable")
     return {"schedulable": schedulable, "delivery": coverage}, values

@@ -5,7 +5,7 @@
   const { BaseFields } = window.BatchControls;
   // Maintenance and confirmation values keep the accepted numeric precision.
   const ENTERED_HOURS = { exact: true }, ENTERED_DAYS = { exact: true };
-  function BaseEditor({ adapter, entity: original, createContext, source, command, onClose, onCommitted, disabled = false }) {
+  function BaseEditor({ adapter, entity: original, createContext, source, command, onClose, onCommitted }) {
     const [entity, setEntity] = React.useState(original), [value, setValue] = React.useState(() => B.draft(original));
     const [context, setContext] = React.useState(original ? original.write_context : createContext);
     const [review, setReview] = React.useState(null), [error, setError] = React.useState(null), [loading, setLoading] = React.useState(false);
@@ -29,7 +29,7 @@
       try { B.receipt(command.result, action, entity && entity.ref); seen.current = command.result.receipt_ref; onCommitted(command.result); }
       catch (error) { setError(error); }
     }, [command.phase, command.result]);
-    const locked = disabled || command.locked || command.phase === 'done' || loading;
+    const locked = command.locked || command.phase === 'done' || loading;
     async function reload() {
       setLoading(true); setError(null);
       try { setReview(entity ? B.detail(await adapter.detail('batch', entity.ref), entity.ref) : B.list(await adapter.list('batch', { page: 1, size: 20, sort: 'business_code', direction: 'asc' }), { page: 1, size: 20, sort: 'business_code', direction: 'asc' })); }
@@ -88,7 +88,7 @@
         : <p>当前工序没有设备或人员指定，无需清除。</p>}</div>
       <p>确认后，将用上表中的工艺工序替换本批次现有工序。</p></>;
   }
-  function Preview({ preview, command, onClose, onCommitted, disabled }) {
+  function Preview({ preview, command, onClose, onCommitted }) {
     const seen = React.useRef(null), [error, setError] = React.useState(null), [acknowledged, setAcknowledged] = React.useState(false);
     const action = preview.operation.split('.')[1], subject = action === 'bulk_confirm' ? preview.preview_ref : preview.entity_ref;
     React.useEffect(() => {
@@ -108,13 +108,13 @@
     const title = action === 'sync_confirm' ? '确认更新批次工序' : single ? '确认删除批次 ' + single : '确认批量' + ({ update: '修改', delete: '删除', copy: '复制' })[preview.action];
     const reason = deleting && !acknowledged ? '请先核对明细并勾选确认删除。' : '';
     return <Modal title={title} icon={deleting ? 'trash-2' : 'check'} locked={command.locked} onClose={onClose}
-      footer={<><Button onClick={onClose} disabled={command.locked}>{command.phase === 'done' ? '关闭' : '取消'}</Button>{command.phase !== 'done' && <Button icon={deleting ? 'trash-2' : 'check'} className={'btn ' + (deleting ? 'danger' : 'primary')} disabled={disabled || command.locked} reason={reason}
+      footer={<><Button onClick={onClose} disabled={command.locked}>{command.phase === 'done' ? '关闭' : '取消'}</Button>{command.phase !== 'done' && <Button icon={deleting ? 'trash-2' : 'check'} className={'btn ' + (deleting ? 'danger' : 'primary')} disabled={command.locked} reason={reason}
         onClick={() => command.submit('batch', action, subject, preview.write_context, { preview_ref: preview.preview_ref })}>{action === 'sync_confirm' ? '确认更新工序' : deleting ? '确认删除' : '确认变更'}</Button>}</>}>
       <div className="modal-b">{action === 'sync_confirm' ? <SyncPreview preview={preview} /> : <div className="batch-preview wb-table-frame" data-sticky-head><table className="tbl wb-table"><caption className="wb-visually-hidden">批次变更前后对照</caption><thead><tr><th scope="col">原记录</th><th scope="col">确认后</th></tr></thead><tbody>
         {preview.rows.map(row => <tr key={row.entity_ref}><td>{value(row.before)}</td><td>{value(row.after)}</td></tr>)}
       </tbody></table></div>}
         <Issues issues={preview.warnings} /><ErrorBox error={error} />
-        {deleting && command.phase !== 'done' && <label className="batch-check"><input type="checkbox" checked={acknowledged} disabled={disabled || command.locked} onChange={event => setAcknowledged(event.target.checked)} />
+        {deleting && command.phase !== 'done' && <label className="batch-check"><input type="checkbox" checked={acknowledged} disabled={command.locked} onChange={event => setAcknowledged(event.target.checked)} />
           {single ? '已核对明细，确认删除批次 ' + single + '。' : '已核对全部明细，确认删除这 ' + window.WorkbenchFormat.number(preview.rows.length, { digits: 0 }) + ' 个批次。'}</label>}
         <window.ResourceForms.Feedback command={command} action={deleting ? 'delete' : 'save'} /></div>
     </Modal>;

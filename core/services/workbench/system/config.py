@@ -20,20 +20,19 @@ class SystemConfigWorkspace:
         snapshot, raw = self.service.snapshot_with_storage(self.keep_days)
         stored = {key: raw.get(key) for key in CONFIG_FIELDS}
         return {"values": {key: getattr(snapshot, key) for key in CONFIG_FIELDS},
-                "stored_values": stored, "dirty_fields": snapshot.dirty_fields,
-                "dirty_reasons": snapshot.dirty_reasons,
+                "stored_values": stored,
                 "defaulted_fields": [key for key in CONFIG_FIELDS if stored[key] is None]}, content_text(stored)
 
     def save(self, *, request_key, values, guard):
         values = config_input(values)
         def mutate(before):
-            if before["values"] == values and not before["dirty_fields"] and not before["defaulted_fields"]:
+            if before["values"] == values and not before["defaulted_fields"]:
                 return WorkbenchCommandOutcome("unchanged", {"config": before, "audit_persisted": False})
             for key, value in values.items():
                 if before["stored_values"][key] != str(value):
                     self.service.repo.set(key, str(value))
             after = {"values": values, "stored_values": {key: str(value) for key, value in values.items()},
-                     "dirty_fields": [], "dirty_reasons": {}, "defaulted_fields": []}
+                     "defaulted_fields": []}
             OperationLogger(self.conn, self.logger).info(
                 module="system", action="workbench_config_save", target_type="system_config",
                 detail={"before": before["stored_values"], "after": after["stored_values"]}, raise_on_fail=True)

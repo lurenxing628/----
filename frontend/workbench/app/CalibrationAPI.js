@@ -7,7 +7,7 @@
   const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   const count = value => Number.isInteger(value) && value >= 0;
   const number = value => value === null || typeof value === 'number' && Number.isFinite(value);
-  function failure(message, code) { const error = new Error(message); error.committed = false; error.error = { code, message, fields: [] }; return error; }
+  function failure(message, code = null) { const error = new Error(message); error.committed = false; error.code = code; error.fields = []; return error; }
   function input(value = {}) {
     if (!object(value) || Object.keys(value).some(key => !(key in defaults) && key !== 'snapshot_ref')) throw failure('筛选条件不受支持，未切换到其他范围。');
     const result = { ...defaults, ...value };
@@ -18,24 +18,25 @@
       || result.snapshot_ref !== undefined && (typeof result.snapshot_ref !== 'string' || !result.snapshot_ref)) throw failure('筛选或记录编号无效，请核对后重试。');
     result.query = result.query.trim();
     if (!object(result.column_filters) || Object.keys(result.column_filters).some(key => !(key in sorts) || !object(result.column_filters[key]))) throw failure('校准列筛选不完整。');
-    result.column_filters = Object.fromEntries(Object.keys(result.column_filters).sort().map(key => [key, window.ResourceTableFilterModel.rule(result.column_filters[key])]));
+    result.column_filters = window.ResourceTableFilterModel.rules(result.column_filters);
     return result;
   }
-  function restoreInitial(value = {}) {
-    if (!object(value) || Object.keys(value).some(key => !['scope', 'table', 'snapshot_ref', 'selected', 'sample_ref', 'table_widths'].includes(key))) throw failure('无法识别所选完工记录来源。');
+  // 页面上下文只来自本页快照和执行复盘的返回入口，都只写 scope、table、selected、sample_ref、table_widths。
+  function initial(value) {
+    if (!object(value) || Object.keys(value).some(key => !['scope', 'table', 'selected', 'sample_ref', 'table_widths'].includes(key))) throw failure('无法识别所选完工记录来源。');
     if (value.selected != null && !ref(value.selected) || value.sample_ref != null && !ref(value.sample_ref)) throw failure('已选记录编号无效。');
     if (value.table_widths !== undefined && (!object(value.table_widths) || Object.keys(value.table_widths).some(key => !(key in sorts)
       || !Number.isFinite(value.table_widths[key]) || value.table_widths[key] < 56 || value.table_widths[key] > 16384))) throw failure('校准表格列宽记录无效。');
-    const saved = { ...value.scope, ...value.table };
-    delete saved.snapshot_ref;
-    const restored = input(saved), migration = window.ResourceTableFilterModel.restore(restored.column_filters);
-    restored.column_filters = migration.filters;
-    return { input: restored, notice: migration.notice };
+    return input({ ...value.scope, ...value.table });
   }
-  const initial = value => restoreInitial(value).input;
-  async function readView(api, value, signal) {
+  const read = (value, signal) => window.APSWorkbenchTransport.read(base, encode(input(value)), { signal });
+  async function readView(value, signal) {
     const wanted = input(value);
-    return validate(await api.read(wanted, signal), wanted);
+    return validate(await read(wanted, signal), wanted);
+  }
+  function detail(value, query, signal) {
+    if (!ref(value) || !query.snapshot_ref) throw failure('所选记录或数据版本缺失。');
+    return window.APSWorkbenchTransport.read(base + '/' + value, encode(input(query)), { signal });
   }
   function validRow(row, meta) {
     return object(row) && ref(row.suggestion_ref) && row.suggestion_ref === row.template_operation_ref && row.operation_ref === row.suggestion_ref
@@ -75,10 +76,9 @@
         && JSON.stringify(revision.report_revision_refs) === JSON.stringify(sample.report_revision_refs)));
   }
   function validate(result, query, detailRef) {
-    const data = result && result.data, meta = result && result.meta;
-    if (!result || result.ok !== true || result.schema_version !== 1 || !meta || meta.source !== 'production' || meta.time_basis !== 'factory_local'
-      || typeof meta.snapshot_ref !== 'string' || !meta.snapshot_ref || typeof meta.as_of !== 'string' || !Array.isArray(result.warnings)
-      || !data || !object(data.scope) || !object(data.summary) || !object(data.capabilities) || !Array.isArray(data.blocked_reasons)
+    // 信封已由 transport 校验；本页要按快照绑定明细和导出，所以快照必须非空。
+    const data = result.data, meta = result.meta;
+    if (!meta.snapshot_ref || !object(data.scope) || !object(data.summary) || !object(data.capabilities) || !Array.isArray(data.blocked_reasons)
       || !Array.isArray(data.source_constraints) || typeof data.lineage_available !== 'boolean' || !object(data.exports) || data.exports.url !== base + '/export'
       || data.exports.scope !== 'all_filtered_suggestions' || !Array.isArray(data.exports.formats)) throw failure('校准数据不完整，未使用样例或零值替代。');
     const wanted = input(query);
@@ -105,36 +105,17 @@
     const query = input(value), reason = exportReason(result.data, format);
     if (reason) throw failure(reason);
     if (!query.snapshot_ref || query.snapshot_ref !== result.meta.snapshot_ref) throw failure('导出的数据版本缺失或不一致，请刷新后重试。', 'snapshot_stale');
-    const target = new URL(base + '/export', location.origin);
-    Object.entries(transport({ ...query, format })).forEach(([key, item]) => { if (item !== undefined && item !== null && item !== '') target.searchParams.set(key, String(item)); });
-    const controller = new AbortController(), abort = () => controller.abort();
-    if (signal) { signal.addEventListener('abort', abort, { once: true }); if (signal.aborted) abort(); }
-    const timer = setTimeout(abort, 20000);
-    try {
-      const response = await fetch(target.href, { method: 'GET', cache: 'no-store', credentials: 'same-origin', redirect: 'error', signal: controller.signal });
-      const mime = response.headers.get('content-type') || '';
-      if (!response.ok || mime.includes('application/json')) {
-        const payload = mime.includes('application/json') ? await response.json() : null;
-        throw failure(payload && payload.error && payload.error.message || '导出读取失败，请重试。', payload && payload.error && payload.error.code);
-      }
-      if (response.headers.get('X-Workbench-Snapshot') !== query.snapshot_ref || response.headers.get('X-Workbench-As-Of') !== result.meta.as_of
-        || response.headers.get('X-Workbench-Row-Count') !== String(result.data.summary.total)) throw failure('导出的数据版本或总行数不一致，文件没有保存，请刷新后重试。', 'snapshot_stale');
-      const expected = format === 'csv' ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-      if (!mime.toLowerCase().startsWith(expected)) throw failure('导出文件格式不正确，文件未保存。');
-      const blob = await response.blob(), bytes = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
-      if (!blob.size || blob.size > 16 * 1024 * 1024 || (format === 'csv' ? bytes[0] !== 239 || bytes[1] !== 187 || bytes[2] !== 191 : bytes[0] !== 80 || bytes[1] !== 75)) throw failure('导出文件内容不完整，文件未保存。');
-      const disposition = response.headers.get('content-disposition') || '';
-      const match = /filename\*=UTF-8''([^;]+)/i.exec(disposition) || /filename="?([^";]+)/i.exec(disposition);
-      const filename = match ? decodeURIComponent(match[1]) : '';
-      if (!/^工时校准明细-[\wT-]+\.(csv|xlsx)$/.test(filename) || !filename.endsWith('.' + format)) throw failure('导出文件名不正确，文件未保存。');
-      if (controller.signal.aborted) throw failure('导出已取消，文件未保存。');
-      window.APSWorkbenchTransport.saveBlob(filename, blob);
-      return { filename, rows: result.data.summary.total, snapshot_ref: query.snapshot_ref, bytes: blob.size };
-    } finally { clearTimeout(timer); if (signal) signal.removeEventListener('abort', abort); }
+    const file = await window.APSWorkbenchTransport.download(base + '/export', encode({ ...query, format }), { signal, types: [window.APSWorkbenchTransport.types[format]] });
+    if (file.header('X-Workbench-Snapshot-Ref') !== query.snapshot_ref || file.header('X-Workbench-As-Of') !== result.meta.as_of
+      || file.header('X-Workbench-Row-Count') !== String(result.data.summary.total)) throw failure('导出的数据版本或总行数不一致，文件没有保存，请刷新后重试。', 'snapshot_stale');
+    if (signal.aborted) throw failure('导出已取消，文件未保存。');
+    window.APSWorkbenchTransport.saveBlob(file.filename, file.blob);
+    return { rows: result.data.summary.total };
   }
-  function transport(value) {
+  // column_filters 已由 input() 规范成对象；空对象不上送。
+  function encode(value) {
     const result = { ...value };
-    if (result.column_filters && Object.keys(result.column_filters).length) result.column_filters = JSON.stringify(result.column_filters);
+    if (Object.keys(result.column_filters).length) result.column_filters = JSON.stringify(result.column_filters);
     else delete result.column_filters;
     return result;
   }
@@ -144,18 +125,12 @@
     result.column_filters = Object.fromEntries(Object.entries(checked.column_filters).filter(([key]) => key !== column));
     return result;
   }
-  function create(supplied) {
-    const io = supplied || window.APSResourceAPI.create();
-    const parameters = value => transport(input(value));
-    function facet(kind, request, signal, selection) {
-      if (kind !== 'calibration' || !(request.column in sorts)) throw failure('校准列筛选项无效。');
-      const { scope, column, ...query } = request;
-      return io.query('calibration/' + (selection ? 'facet-selection/' : 'facets/') + column, { ...query, scope: JSON.stringify(scope) }, signal);
-    }
-    return { read: (value, signal) => io.query('calibration', parameters(value), signal),
-      detail: (value, query, signal) => { if (!ref(value) || !query.snapshot_ref) throw failure('所选记录或数据版本缺失。'); return io.query('calibration/' + value, parameters(query), signal); }, download,
-      facets: (kind, request, signal) => facet(kind, request, signal, false),
-      facetSelection: (kind, request, signal) => facet(kind, request, signal, true) };
+  function facet(kind, request, signal, selection) {
+    if (kind !== 'calibration' || !(request.column in sorts)) throw failure('校准列筛选项无效。');
+    const { scope, column, ...query } = request;
+    return window.APSWorkbenchTransport.read(base + (selection ? '/facet-selection/' : '/facets/') + column, { ...query, scope: JSON.stringify(scope) }, { signal });
   }
-  window.CalibrationAPI = { create, validate, input, initial, restoreInitial, readView, sorts, exportReason, failure, facetScope };
+  window.CalibrationAPI = { read, readView, detail, download, validate, input, initial, sorts, exportReason, failure, facetScope,
+    facets: (kind, request, signal) => facet(kind, request, signal, false),
+    facetSelection: (kind, request, signal) => facet(kind, request, signal, true) };
 })();

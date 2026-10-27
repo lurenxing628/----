@@ -130,8 +130,7 @@
           style={options.number ? { textAlign: 'right', fontVariantNumeric: 'tabular-nums' } : undefined}
           onChange={event => change(options.top ? null : 'fields', key, event.target.value)} />}</Field>;
     const stateField = () => <Field label="状态" path="fields.status" error={currentError} required><select name="status" value={draft.fields.status} disabled={disabled} onChange={event => change('fields', 'status', event.target.value)}>
-      <option value="" disabled>请选择状态</option>{C.statuses[kind].filter(row => row[0] !== 'unknown').map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-      {!C.statuses[kind].some(row => row[0] === draft.fields.status && row[0] !== 'unknown') && draft.fields.status && <option value={draft.fields.status}>旧状态 / 原因未知（保持原值）</option>}</select></Field>;
+      <option value="" disabled>请选择状态</option>{C.statuses[kind].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>;
     return <Modal title={adjustingStock ? '调整库存' : (action === 'create' ? '新增' : action === 'delete' ? '删除' : '编辑') + C.resourceName(kind, opCategory)} icon={action === 'delete' ? 'trash-2' : icons[kind]} onClose={close} guardOwner={guardOwner} locked={command.locked || catalogBusy || contextBusy} suspended={catalogBusy}
       footer={<><Button onClick={close} reason={command.locked ? '结果还没确认，暂时不能关闭。' : contextBusy ? '正在读取最新资料。' : ''} disabled={catalogBusy}>{done ? '关闭' : '取消'}</Button>
         {!done && <Button form={formId} type="submit" icon={action === 'delete' ? 'trash-2' : 'check'} className={action === 'delete' ? 'btn danger' : 'btn primary'} reason={reason || confirmReason} busy={disabled}>
@@ -149,14 +148,11 @@
               <option value="" disabled>请选择归属</option><option value="internal">自制</option><option value="external">外协</option><option value="both">自制和外协都可</option>
               {opCategory && !['internal', 'external', 'both'].includes(opCategory) && <option value={opCategory}>原归属未识别（保持原值）</option>}</select></Field>}
             {['external', 'both'].includes(opCategory) && <Field label="默认周期规则" path="fields.default_merge_mode" error={currentError} hint="用于新增外协段的默认选择；已有外协段的周期规则保持不变。"><select name="default_merge_mode" value={draft.fields.default_merge_mode} disabled={disabled} onChange={event => change('fields', 'default_merge_mode', event.target.value)}>
-              <option value="">未填写</option><option value="separate">分别设置</option><option value="merged">合并设置</option>
-              {!['', 'separate', 'merged'].includes(draft.fields.default_merge_mode) && <option value={draft.fields.default_merge_mode}>原周期规则未识别（保持原值）</option>}</select></Field>}</>}
+              <option value="">未填写</option><option value="separate">分别设置</option><option value="merged">合并设置</option></select></Field>}</>}
           {C.relations[kind].map(field => <Choice key={field.key} adapter={adapter} field={field} value={draft.relationships[field.key]} original={entity}
             disabled={disabled} error={currentError} onChange={value => change('relationships', field.key, value)} onCatalog={catalog} catalogBusy={catalogBusy} />)}
           {kind === 'supplier' && text('default_days', '默认周期（天）', { number: true, required: true })}
           {C.statuses[kind] && stateField()}
-          {entity && entity.fields.inactive_reason === 'unknown' && <div className="field full"><span className="fhint">当前停用原因未知，没有当成请假或待复核。</span></div>}
-          {entity && C.own(entity.fields, 'legacy_status') && <div className="field full"><label>原始状态（只读）</label><span className="fhint">{entity.fields.legacy_status === 'inactive' ? '原停用状态，原因未登记' : '原状态：' + String(entity.fields.legacy_status)}</span></div>}
           {(kind === 'material' || kind === 'op_type') && text('remark', kind === 'op_type' && opCategory === 'internal' ? '产能备注' : '备注', { full: true, multiline: true })}
           {kind === 'operator' && <MachinePermissionFacts entity={entity} />}
         </div>}

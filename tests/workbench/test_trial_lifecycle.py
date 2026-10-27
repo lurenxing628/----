@@ -109,21 +109,16 @@ def test_complete_create_change_save_and_reopen(trial_case, kind, monkeypatch):
     assert stored_draft["admission_hash"] is None
     assert all(row["original_hash"] is None for row in repo.draft_rows(draft["draft_ref"]))
     if kind == "official":
-        # The original full-snapshot format and its old metadata remain readable.
-        old_header = dict(stored_header, snapshot_json=dump(saved), snapshot_hash="legacy-saved-marker")
         stored_rows = deepcopy(list(repo.iter_scenario_rows(saved["scenario_ref"])))
-        old_repo = SimpleNamespace(conn=None, schema_issues=lambda: [], scenario_header=lambda _ref: old_header,
+
+        def stored(header):
+            return SimpleNamespace(conn=None, schema_issues=lambda: [], scenario_header=lambda _ref: header,
                                    iter_scenario_rows=lambda _ref: stored_rows)
-        assert load_scenario_record(old_repo, saved["scenario_ref"])[1] == saved
-        assert old_header["snapshot_hash"] == "legacy-saved-marker"
-        # Python equality merges True and 1; permanent rows must keep the stored type.
-        altered = load(stored_rows[0]["payload_json"])
-        assert isinstance(altered, dict)
-        assert altered["sequence"] == 1
-        altered["sequence"] = True
-        stored_rows[0]["payload_json"] = dump(altered)
+
+        assert load_scenario_record(stored(stored_header), saved["scenario_ref"])[1] == saved
+        # 整份快照写在头里不是现行写入布局，按损坏存档拒绝。
         with pytest.raises(WorkbenchCommandRejected) as error:
-            load_scenario_record(old_repo, saved["scenario_ref"])
+            load_scenario_record(stored(dict(stored_header, snapshot_json=dump(saved))), saved["scenario_ref"])
         assert error.value.code == "trial_snapshot_invalid"
     if kind == "candidate":
         assert "candidate_ref" in draft["base"] and "plan_ref" not in draft["base"]
@@ -140,7 +135,6 @@ def test_scenario_fragments_share_exact_logical_limit_without_counting_physical_
     from datetime import date
 
     from core.models import workbench_trial_scenario_archive as codec
-    from core.services.workbench.facts import trial_policy
 
     tasks = [{"row_ref": format(index, "048x"), "description": "保存任务正文" * 40, "ordinal": index}
              for index in range(1, 5)]
@@ -153,30 +147,30 @@ def test_scenario_fragments_share_exact_logical_limit_without_counting_physical_
         scenario_header=lambda _ref: {"snapshot_json": encoded.header},
         iter_scenario_rows=lambda _ref: [{"row_ref": row["row_ref"], "payload_json": text}
                                        for row, text in zip(tasks, encoded.tasks)])
-    # Historical pretty-printed wrappers still decode through their own layout.
+    assert load_scenario_record(repo, "saved")[1] == snapshot
+    # 只认 encode_scenario 写出的布局；其他排版（如缩进后的 JSON）按损坏存档拒绝。
     import json
 
-    old_repo = SimpleNamespace(conn=None, schema_issues=lambda: [],
+    pretty_repo = SimpleNamespace(conn=None, schema_issues=lambda: [],
         scenario_header=lambda _ref: {"snapshot_json": json.dumps(json.loads(encoded.header), ensure_ascii=False, indent=2)},
         iter_scenario_rows=lambda _ref: [{"row_ref": row["row_ref"],
                                         "payload_json": json.dumps(json.loads(text), ensure_ascii=False, indent=2)}
                                        for row, text in zip(tasks, encoded.tasks)])
-    assert load_scenario_record(old_repo, "saved")[1] == snapshot
+    with pytest.raises(WorkbenchCommandRejected) as error:
+        load_scenario_record(pretty_repo, "saved")
+    assert error.value.code == "trial_snapshot_invalid"
     monkeypatch.setattr(codec, "MAX_TRIAL_BYTES", expected_bytes)
-    assert load_scenario_record(old_repo, "saved")[1] == snapshot
+    assert load_scenario_record(repo, "saved")[1] == snapshot
 
     def redundant(*args, **kwargs):
         raise AssertionError("Canonical stored fragments already own their text and task bodies")
 
     with monkeypatch.context() as read:
         read.setattr(codec, "encode_trial_text", redundant)
-        read.setattr(trial_policy, "encode_trial_text", redundant)
-        read.setattr(trial_policy, "same", redundant)
         assert load_scenario_record(repo, "saved")[1] == snapshot
     assert codec.encode_scenario(snapshot).logical_bytes == expected_bytes
     monkeypatch.setattr(codec, "MAX_TRIAL_BYTES", expected_bytes - 1)
-    for operation in (lambda: codec.encode_scenario(snapshot), lambda: load_scenario_record(repo, "saved"),
-                      lambda: load_scenario_record(old_repo, "saved")):
+    for operation in (lambda: codec.encode_scenario(snapshot), lambda: load_scenario_record(repo, "saved")):
         with pytest.raises(WorkbenchCommandRejected) as error:
             operation()
         assert (error.value.code, error.value.status) == ("query_too_large", 413)

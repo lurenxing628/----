@@ -62,7 +62,6 @@ def test_batch_preparation_computes_execution_change_once_per_operation(ledger_c
     from core.services.workbench.execution import production_report_prepare, production_report_validation
 
     case = ledger_case
-    case.install()
     second = case.op("OP2", seq=2)
     case.plan(2, [case.op_id, second])
     calls, original = [], production_report_prepare.execution_facts_changed

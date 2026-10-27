@@ -8,7 +8,6 @@ from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.common_completed_delivery import common_completed_delivery
 from core.services.workbench.facts.decision_delivery import project_decision_delivery
 from core.services.workbench.facts.decision_metrics import (
-    METRIC_VERSION,
     delivery_coverage,
     operation_change_metrics,
 )
@@ -21,7 +20,6 @@ from core.services.workbench.run.decision_impact import (
     operation_changes,
     operation_delta,
 )
-from core.services.workbench.run.decision_queries import read_decision_details
 from core.services.workbench.run.decision_resource_engine import DecisionResources
 from core.services.workbench.run.decision_source import DecisionSource, OfficialReading
 from core.services.workbench.run.decision_workspace import _reference_workspace
@@ -30,7 +28,6 @@ from tests.workbench.run_candidate_adoption_support import INTENT, preview, serv
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
 from tests.workbench.run_candidate_support import compute
 from tests.workbench.test_material_stage_release import add_requirement
-from tests.workbench.test_run_candidate_partial_adoption import persisted_partial_run
 
 
 def test_archive_builder_reuses_its_admission_scope_for_candidate_metrics(candidate_case, monkeypatch):
@@ -46,7 +43,8 @@ def test_archive_builder_reuses_its_admission_scope_for_candidate_metrics(candid
     def repeated_admission(*args, **kwargs):
         raise AssertionError("候选摘要重复派生本次已准备的准入集合")
 
-    monkeypatch.setattr(decision_metrics, "admission_operations", repeated_admission)
+    for name in ("admission_operation_refs", "admission_deferred_refs"):
+        monkeypatch.setattr(decision_metrics, name, repeated_admission)
     monkeypatch.setattr(decision_read_model, "project_candidate_summary", prepared_summary)
     _, refs = compute(candidate_case)
     assert len(scopes) == len(refs) > 0
@@ -211,125 +209,6 @@ def test_formal_workspace_preserves_archived_arrangement_with_unknown_time():
     assert data["task_span"] is None and data["candidate_span"] is None
     assert data["gantt_graph"]["state"] == "unavailable"
     assert data["delivery_risks"]["items"][0]["completion_state"] == "unknown"
-
-
-def test_budget_skipped_siblings_keep_complete_schedulable_result(candidate_case, monkeypatch):
-    result = persisted_partial_run(candidate_case, monkeypatch)
-    data, _ = read_run_decision(candidate_case.conn, result["run_ref"])
-    recommended = next(row for row in data["candidates"] if "recommended" in row["selection_role"])
-    assert recommended["coverage"]["search"]["state"] == "partial"
-    assert recommended["coverage"]["schedulable"]["state"] == "complete"
-    skipped = [row for row in data["candidates"] if row["persisted_status"] == "skipped"]
-    assert len(skipped) == 3
-    assert all(row["source"]["reason"]["code"] == "candidate_time_budget_reached" for row in skipped)
-    assert all(row["metrics"]["unplanned_operation_count"]["value"] is None for row in skipped)
-    recommendation = data["recommendation"]
-    assert recommendation["recommendation_type"] == "complete"
-    assert recommendation["axes"]["completion"]["search"]["state"] == "partial"
-    assert recommendation["axes"]["completion"]["schedulable"]["state"] == "complete"
-    assert recommendation["completion_scope"]["remaining_work"]["operation_count"] == 0
-    groups = data["completion_groups"]
-    assert len(groups) == 2
-    unavailable = next(group for group in groups if not group["source_available"])
-    assert set(unavailable["candidate_refs"]) == {row["candidate_ref"] for row in skipped}
-    assert unavailable["complete_batch_count"] == 0
-    complete = next(group for group in groups if group["source_available"])
-    assert complete["candidate_refs"] == [recommended["candidate_ref"]]
-    selected_skip, _ = read_run_decision(candidate_case.conn, result["run_ref"], selected_candidate_ref=skipped[0]["candidate_ref"])
-    assert selected_skip["scope"]["selected_candidate_ref"] == skipped[0]["candidate_ref"]
-    assert all(item["state"] == "unavailable" and item["value"] is None for item in selected_skip["difference_summary"]["items"])
-
-
-def test_failed_algorithm_baseline_requires_explicit_viewing_reference(candidate_case, monkeypatch):
-    from tests.workbench.legacy_run_archive_support import install_failed_baseline_archive
-
-    install_failed_baseline_archive(monkeypatch)
-    candidate_case.config(graph_selection_policy="balanced")
-    run_ref, _ = compute(candidate_case)
-    data, _ = read_run_decision(candidate_case.conn, run_ref)
-    assert len(data["candidates"]) == 4
-    assert data["selection_basis"]["selection_policy"] == "balanced"
-    assert data["selection_basis"]["overdue_tolerance_count"] == 1
-    assert data["selection_basis"]["tardiness_tolerance_ratio"] == 0.10
-    assert data["scope"]["reference_state"] == "selection_required"
-    assert data["scope"]["reference"]["candidate_ref"] is None
-    failed = next(row for row in data["candidates"] if row["kind"] == "baseline")
-    assert failed["persisted_status"] == "failed" and "测试数据" in failed["source"]["reason"]["message"]
-    selected = data["selection_basis"]["selected_candidate_ref"]
-    viewed, _ = read_run_decision(candidate_case.conn, run_ref, reference_candidate_ref=selected)
-    assert viewed["scope"]["reference_state"] == "available"
-    assert viewed["selection_basis"] == data["selection_basis"]
-    assert viewed["recommendation"]["candidate_ref"] == data["recommendation"]["candidate_ref"] == selected
-    assert viewed["recommendation"]["recommendation_type"] == "complete"
-    assert data["recommendation"]["current_comparison"]["reference"]["candidate_ref"] is None
-    assert viewed["recommendation"]["current_comparison"]["reference"]["candidate_ref"] == selected
-    groups = data["completion_groups"]
-    assert any(not group["source_available"] and failed["candidate_ref"] in group["candidate_refs"] for group in groups)
-    evidence = viewed["selection_basis"]["decision_evidence"]
-    assert evidence["selected"]["candidate_ref"] == selected
-    assert evidence["anchors"]["raw_score_best"]["candidate_ref"] != failed["candidate_ref"]
-    failed_view, _ = read_run_decision(candidate_case.conn, run_ref, selected_candidate_ref=failed["candidate_ref"], reference_candidate_ref=selected)
-    card = next(row for row in failed_view["candidates"] if row["candidate_ref"] == failed["candidate_ref"])
-    assert len(failed_view["candidates"]) == len(data["candidates"])
-    assert card["capabilities"]["view"] is True and card["capabilities"]["compare"] is False
-    assert card["capabilities"]["gantt"] is card["capabilities"]["adoption_preview"] is False
-    assert all(delta["state"] == "unavailable" and delta["value"] is None for delta in card["deltas"].values())
-    assert all(item["state"] == "unavailable" and item["selected_value"] is None for item in failed_view["difference_summary"]["items"])
-    batches, _ = read_decision_details(candidate_case.conn, run_ref, "batches", selected_candidate_ref=failed["candidate_ref"],
-        reference_candidate_ref=selected, selected_batch_ref=candidate_case.ref("batch", "B1"))
-    assert batches["candidate"]["status"] == "failed" and batches["candidate"]["result_available"] is False
-    assert batches["summary"]["operation_changes"] == {key: card["metrics"][key] for key in
-        ("changed_operation_count", "machine_change_count")}
-    batch = batches["selected_batch"]
-    assert batch["after"]["completion_state"] == "unknown" and batch["after"]["scheduled_operation_count"] is None
-    assert "candidate_result_unavailable" in batch["after"]["issues"]
-    assert batch["unplanned_operation_refs"] is batch["deferred_operation_refs"] is None
-    assert batch["drill"]["selected"] is None
-    operations, _ = read_decision_details(candidate_case.conn, run_ref, "operations", selected_candidate_ref=failed["candidate_ref"], reference_candidate_ref=selected)
-    assert all(row["after"] is None and row["after_state"]["status"] == "unavailable"
-               and row["status_changed"] is None and row["changed_fields"] == [] for row in operations["items"])
-
-
-def test_partial_worker_results_do_not_claim_shorter_span_for_different_work(candidate_case, monkeypatch):
-    from tests.workbench.legacy_run_archive_support import install_different_work_archive
-
-    install_different_work_archive(monkeypatch)
-    case = candidate_case
-    # Eleven hours of real work compete for the single captured eight-hour shift.
-    case.conn.execute("UPDATE Batches SET quantity=1,due_date='2026-09-09' WHERE batch_id='B1'")
-    case.conn.execute("UPDATE BatchOperations SET unit_hours=5 WHERE id=?", (case.op_id,))
-    case.batch("B2", quantity=1, due_date="2026-09-10")
-    case.operation("B2", unit_hours=6)
-    case.config(dispatch_mode="batch_order", sort_strategy="due_date_first")
-    run_ref, _ = compute(case, case.settings("B1", "B2", end_date="2026-09-09"))
-    initial, _ = read_run_decision(case.conn, run_ref)
-    assert len(initial["candidates"]) == 4
-    baseline = next(row for row in initial["candidates"] if row["kind"] == "baseline")
-    graph = next(row for row in initial["candidates"] if row["kind"] == "critical_chain")
-    compared, state = read_run_decision(case.conn, run_ref, reference_candidate_ref=graph["candidate_ref"])
-    selected = next(row for row in compared["candidates"] if row["candidate_ref"] == baseline["candidate_ref"])
-    assert selected["coverage"]["schedulable"]["missing_count"] == graph["coverage"]["schedulable"]["missing_count"] == 1
-    assert selected["metrics"]["makespan_hours"]["value"] == 5 < graph["metrics"]["makespan_hours"]["value"] == 6
-    for key in ("makespan_hours", "changeover_count"):
-        assert selected["deltas"][key]["state"] == "different_coverage"
-        assert selected["deltas"][key]["value"] is None and selected["deltas"][key]["direction"] == "neutral"
-    recommendation = initial["recommendation"]
-    current = recommendation["current_comparison"]
-    assert recommendation["candidate_ref"] == graph["candidate_ref"]
-    assert current["reference"]["candidate_ref"] == baseline["candidate_ref"]
-    assert recommendation["recommendation_type"] == "partial"
-    assert not {"makespan_hours", "changeover_count"} & {item["metric_key"] for item in current["benefits"]}
-    completion = recommendation["completion_scope"]
-    assert completion["complete_batch_count"] == completion["ordinary_incomplete_batch_count"] == 1
-    assert completion["unplanned_operation_count"] == completion["remaining_work"]["operation_count"] == 1
-    assert completion["deferred_operation_count"] == 0
-    assert len(compared["completion_groups"]) == 2
-    common = current["common_completed_delivery"]
-    assert common["scope"] == "common_completed_batches" and common["batch_count"] == 0
-    assert common["delay_delta_hours"] is common["overdue_delta_count"] is None
-    assert common["state"] == "unavailable"
-    assert initial["candidates"][0]["deltas"]["makespan_hours"]["state"] == "comparable"
-    assert state["metric_version"] == METRIC_VERSION
 
 
 def test_material_ready_after_formal_adoption_compares_delivery_without_equating_work(candidate_case):

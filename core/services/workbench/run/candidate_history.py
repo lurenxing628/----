@@ -27,10 +27,9 @@ def _adoption_evidence(conn, row, plan, candidate_ref, run_ref, context, receipt
         history = histories[0]
         recorded = read_adoption_record(conn, plan_ref=plan["plan_ref"], version=plan["version"], history=history,
                                         receipt=row, receipt_result=receipt_result)
-        if recorded is not None:
-            audit = recorded[1]
-            read_adoption_source(conn, plan_ref=plan["plan_ref"], version=plan["version"],
-                                 history=history, recorded=recorded, context=context)
+        audit = recorded[1]
+        read_adoption_source(conn, plan_ref=plan["plan_ref"], version=plan["version"],
+                             history=history, recorded=recorded, context=context)
     except AdoptionBaselineUnavailable as exc:
         issues.append({"code": exc.code, "message": REASONS[exc.code]})
     except WorkbenchCommandRejected as exc:
@@ -41,12 +40,10 @@ def _adoption_evidence(conn, row, plan, candidate_ref, run_ref, context, receipt
         issues.append({"code": "adoption_reference_invalid", "message": REASONS["adoption_reference_invalid"]})
     except (KeyError, TypeError, ValueError, OverflowError):
         issues.append({"code": "adoption_snapshot_invalid", "message": REASONS["adoption_snapshot_invalid"]})
-    if recorded is not None:
-        if (recorded[0] != "candidate_adoption" or recorded[1]["candidate_ref"] != candidate_ref
-                or recorded[1]["run_ref"] != run_ref or recorded[1]["request_key"] != row["request_key"]
-                or recorded[2]["receipt_ref"] != row["receipt_ref"]):
-            _invalid()
-    elif not issues:
+    # A read that raised before the record was verified is reported as its classified gap.
+    if recorded is not None and (recorded[0] != "candidate_adoption" or recorded[1]["candidate_ref"] != candidate_ref
+                                 or recorded[1]["run_ref"] != run_ref or recorded[1]["request_key"] != row["request_key"]
+                                 or recorded[2]["receipt_ref"] != row["receipt_ref"]):
         _invalid()
     return audit, issues
 

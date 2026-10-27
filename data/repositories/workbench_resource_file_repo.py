@@ -2,7 +2,7 @@
 
 from datetime import date
 
-from core.models.workbench_command import canonical_json
+from core.shared.strict_json import canonical_json
 
 from .base_repo import BaseRepository
 from .workbench_resource_dependencies import DEPENDENCIES, report_revision_rows

@@ -7,11 +7,12 @@ from typing import NoReturn
 
 from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.models.content import unpacked
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_preflight import normalize_preflight_input
 from core.models.workbench_run_candidate import MAX_TASKS, local_time, reference, reject
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.services.scheduler.run.schedule_payload_contract import ValidatedScheduleRow
+from core.shared.strict_json import canonical_json
 
 from .candidate_facts import index_rows
 from .candidate_tasks import task_resource

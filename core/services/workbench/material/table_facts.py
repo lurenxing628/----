@@ -1,5 +1,6 @@
 """Material cells reuse the same canonical cell and index logic as resources."""
 
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.facts.table_cells import number_cell, status_cell, text_cell
 from core.services.workbench.facts.table_index import ResourceTableIndex
 from data.repositories.sqlite_rows import sql_order
@@ -34,10 +35,21 @@ def material_ordered_rows(rows, query):
                   reverse=query.direction == "desc")
 
 
+def damaged_material_status(code):
+    # 写入口只产出启用或停用；其余值只可能是存储被改坏，直接拒绝，不猜是启用还是停用。
+    return WorkbenchCommandRejected("storage_failure", f"物料「{code}」的状态存得不对，系统没有猜是启用还是停用。"
+                                    "请联系维护人员核对资料。", 500)
+
+
+def material_status(row):
+    if row["status"] not in ("active", "inactive"):
+        raise damaged_material_status(row["material_id"])
+    return row["status"]
+
+
 def material_counts(rows):
-    return {"total": len(rows), "active": sum(row["status"] == "active" for row in rows),
-            "inactive": sum(row["status"] == "inactive" for row in rows),
-            "unknown": sum(row["status"] not in ("active", "inactive") for row in rows),
+    statuses = [material_status(row) for row in rows]
+    return {"total": len(rows), "active": statuses.count("active"), "inactive": statuses.count("inactive"),
             "stock_unknown": sum(row["stock_qty"] is None for row in rows)}
 
 

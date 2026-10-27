@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const BASE = '/api/workbench/v1/calibration/', ACTION = 'calibration.adopt', rejected = new WeakSet();
+  const T = window.APSWorkbenchTransport, BASE = '/api/workbench/v1/calibration/', ACTION = 'calibration.adopt';
   const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
   const ref = v => typeof v === 'string' && /^[a-f0-9]{48}$/.test(v);
   const key = v => typeof v === 'string' && /^calibration-[a-f0-9]{48}$/.test(v);
@@ -32,11 +32,9 @@
     return Object.fromEntries(bindingFields.map(k => [k, row[k]]));
   }
   const issues = value => Array.isArray(value) && value.every(v => object(v) && text(v.code) && text(v.message));
-  function preview(value, original, intent) {
+  function previewResult(value, original, intent) {
     const d = value && value.data, m = value && value.meta, c = d && d.write_context, v = d && d.validation;
-    check(value && value.ok === true && value.schema_version === 1 && Array.isArray(value.warnings) && !value.warnings.length
-      && m && m.source === 'production' && m.time_basis === 'factory_local' && text(m.as_of) && object(d)
-      && d.template_operation_ref === original.template_operation_ref && d.generated_at === m.as_of
+    check(!value.warnings.length && object(d) && d.template_operation_ref === original.template_operation_ref && d.generated_at === m.as_of
       && d.effect_scope === 'future_template_use_only' && equal(d.input, input(intent)) && object(v) && typeof v.can_adopt === 'boolean'
       && issues(v.issues) && object(c) && object(c.capabilities) && issues(c.blocked_reasons));
     check(equal(binding(d.suggestion), binding(original)), '模板、原定额或完工记录已变化，请点「刷新所选模板」后重新预检。');
@@ -68,41 +66,20 @@
       && equal(d.sample_revisions, s.sample_revisions) && d.effect_scope === 'future_template_use_only');
     return value;
   }
-  function failure(value, status) {
-    const e = value && value.error;
-    const valid = object(value) && value.ok === false && [false, 'unknown'].includes(value.committed) && object(e) && text(e.code) && text(e.message)
-      && Array.isArray(e.fields) && typeof e.retryable === 'boolean' && typeof e.request_ref === 'string' && /^[a-f0-9]{32}$/.test(e.request_ref);
-    const error = new Error(valid ? e.message : window.WorkbenchTerms.outcomes.pending('采用')); error.code = valid ? e.code : 'invalid_response'; error.status = status;
-    if (valid && value.committed === false && [400, 404, 409, 422, 503].includes(status) && !['request_key_conflict', 'receipt_not_found'].includes(e.code)) rejected.add(error);
-    error.notFound = valid && value.committed === false && status === 404 && e.code === 'receipt_not_found';
-    return error;
+  // 预检、采用和回执查询都按 30 秒等待；回执还没记下时 lookup 返回 null。
+  async function preview(row, values, signal) {
+    const original = binding(row), intent = input(values);
+    return previewResult(await T.preview(BASE + original.template_operation_ref + '/adopt-preview', { input: intent }, { signal, timeout: 30000 }), original, intent);
   }
-  function create(fetcher = window.fetch.bind(window)) {
-    async function request(path, body, signal) {
-      const controller = new AbortController(), abort = () => controller.abort();
-      if (signal) { signal.addEventListener('abort', abort, { once: true }); if (signal.aborted) abort(); }
-      const timer = setTimeout(abort, 30000);
-      try {
-        const response = await fetcher(BASE + path, { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', redirect: 'error', cache: 'no-store', signal: controller.signal,
-          ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
-        if (response.status === 404 && !(response.headers.get('Content-Type') || '').includes('application/json') && path.endsWith('/adopt-preview'))
-          throw new Error(window.WorkbenchTerms.outcomes.unavailable + '仍可以核对完工记录和导出。');
-        check((response.headers.get('Content-Type') || '').split(';')[0].toLowerCase() === 'application/json');
-        const value = await response.json(); if (!response.ok) throw failure(value, response.status);
-        check(response.status === 200); return value;
-      } finally { clearTimeout(timer); if (signal) signal.removeEventListener('abort', abort); }
-    }
-    return {
-      async preview(row, values, signal) { const original = binding(row), intent = input(values);
-        return preview(await request(original.template_operation_ref + '/adopt-preview', { input: intent }, signal), original, intent); },
-      async adopt(intent, token) { check(text(token)); return receipt(await request(intent.baseline.template_operation_ref + '/adopt', {
-        write_token: token, request_key: intent.request_key, input: input(intent.input, true) }), intent); },
-      async lookup(intent, signal) {
-        check(key(intent.request_key) && ref(intent.baseline.template_operation_ref));
-        try { return receipt(await request(intent.baseline.template_operation_ref + '/adopt/receipts/' + intent.request_key, undefined, signal), intent); }
-        catch (e) { if (e.notFound) return null; throw e; }
-      }
-    };
+  async function adopt(intent, token) {
+    check(text(token));
+    return receipt(await T.command(BASE + intent.baseline.template_operation_ref + '/adopt', { write_token: token, request_key: intent.request_key, input: input(intent.input, true) },
+      { timeout: 30000, expect: '/api/workbench/v1/commands/' + intent.request_key }), intent);
   }
-  window.CalibrationAdoptionAPI = { create, preview, receipt, binding, input, check, ref, key, equal, isRejected: e => rejected.has(e) };
+  async function lookup(intent, signal) {
+    check(key(intent.request_key) && ref(intent.baseline.template_operation_ref));
+    const value = await T.lookup(BASE + intent.baseline.template_operation_ref + '/adopt/receipts/' + intent.request_key, { signal, timeout: 30000 });
+    return value === null ? null : receipt(value, intent);
+  }
+  window.CalibrationAdoptionAPI = { preview, adopt, lookup, receipt, binding, input, check, key, equal };
 })();

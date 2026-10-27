@@ -39,14 +39,12 @@ class WorkbenchSupplierService:
             return ResourceChange(action, code, identity, {}, {})
         if action == "create" and preparation.raw("supplier", code) is not None:
             raise WorkbenchCommandRejected("constraint_conflict", "供应商编号已经存在，请改用其他编号。")
-        existing = {row["op_type_id"] for row in supplier.get("op_types", []) if row["explicit"]}
-        legacy = supplier.get("op_type_id")
-        existing_all = existing | ({legacy} if legacy not in (None, "") else set())
+        existing = {row["op_type_id"] for row in supplier.get("op_types", [])}
         if "relationships" in payload:
             selected = set()
             for ref in payload["relationships"]["op_type_refs"]:
                 op_identity = preparation.identity("op_type", ref)
-                if action == "create" or op_identity.entity_key not in existing_all:
+                if action == "create" or op_identity.entity_key not in existing:
                     preparation.selected_record("op_type", op_identity, category="external")
                 selected.add(op_identity.entity_key)
         else:
@@ -63,11 +61,8 @@ class WorkbenchSupplierService:
             effective_reason = None if status != supplier.get("status") else previous_reason
             if reason != effective_reason:
                 related["reason"] = reason, profile is not None
-        desired = existing if selected is None else selected - ({legacy} if legacy not in existing else set())
-        if existing != desired:
-            related["op_types"] = existing, desired
-        if selected is not None and legacy is not None and legacy not in selected:
-            fields["op_type_id"] = None
+        if selected is not None and existing != selected:
+            related["op_types"] = existing, selected
         changes = fields if action == "create" else {key: value for key, value in fields.items() if supplier[key] != value}
         return ResourceChange(action, code, identity, changes, related)
 

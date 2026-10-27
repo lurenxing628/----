@@ -14,7 +14,10 @@ async function contract(h, assert) {
     material_strategy: input.material_strategy, missing_resource_policy: input.missing_resource_policy,
     completed_policy: input.completed_policy, hold_window: input.hold_window, batch_count: input.batch_refs.length,
     operation_count: 0, batches: input.batch_refs.map((batch_ref, index) => ({batch_ref,batch_id:'B'+(index+1),part_no:null,part_label:null})),
-    objective:'min_overdue',objective_label:'减少超期批次',selection:'explicit_batches',basis:'captured_at_run_admission',data_gaps:[] };
+    objective:'min_overdue',objective_label:'减少超期批次',selection:'explicit_batches',basis:'captured_at_run_admission',data_gaps:[],
+    // Every admitted run records its unified run options (core/services/workbench/run/jobs.py).
+    run_options:{generation_policy_version:'unified_search_v1',primary_objective:'min_overdue',target_objectives:['min_overdue','min_tardiness','min_changeover'],
+      time_budget_seconds:17,algo_mode:'improve',graph_analysis_mode:'off'} };
   const timed = { accepted_at:'2026-10-11T08:00:00.000000',started_at:'2026-10-11T08:00:00.100000',finished_at:'2026-10-11T08:00:00.189123' };
   assert.equal(w.RunPresentation.elapsed(timed),'0.089123 秒','Real saved microseconds survive the elapsed display');
   assert.equal(w.RunPresentation.elapsed({...timed,started_at:'2026-10-11T08:00:00',finished_at:'2026-10-11T08:00:01'}),'1 秒','Second-precision history does not invent fractions');
@@ -62,12 +65,15 @@ async function contract(h, assert) {
   route = request => request.method === 'GET' ? preferences(null) : receipt({ ...input, end_date: '2026-10-18' });
   await assert.rejects(api.savePreferences(input), /保存的排产范围与本次选择不一致/);
 
-  function checked(value) {
+  const options = seconds => ({ generation_policy_version: 'unified_search_v1', primary_objective: 'min_overdue',
+    target_objectives: ['min_overdue', 'min_tardiness', 'min_changeover'], time_budget_seconds: seconds, algo_mode: 'improve', graph_analysis_mode: 'off' });
+  function checked(value, seconds = value.time_budget_seconds === undefined ? 17 : value.time_budget_seconds) {
+    const normalized = C.input({ ...value, time_budget_seconds: seconds });
     const counts = Object.fromEntries(['ready_tasks', 'auto_assign_required', 'skipped_tasks', 'blocked_tasks', 'protected_tasks',
       'eligible_tasks', 'selected_batches', 'selected_tasks', 'no_route_batches', 'unready_batches', 'missing_resource_tasks',
       'actual_fact_tasks', 'held_tasks', 'hold_window_tasks'].map(key => [key, 0]));
     counts.selected_batches = value.batch_refs.length;
-    return envelope({ input_ref: inputRef, input_expires_at: '2026-10-11T09:00:00', normalized_input: value, counts, tasks: [],
+    return envelope({ input_ref: inputRef, input_expires_at: '2026-10-11T09:00:00', normalized_input: normalized, run_options: options(seconds), counts, tasks: [],
       blockers: [], warnings: [], run_blocked_reasons: [{ code: 'preview_required', message: '请核对本次排产条件。' }],
       calendar_check: 'not_evaluated', config_scope: 'single_run', run_blocked: true,
       write_context: { write_token: null, capabilities: { 'scheduling.run': false } }, no_route_batches: [], unready_batches: [],
@@ -191,13 +197,24 @@ async function contract(h, assert) {
   const runRef = h.reference(3), dataContext = JSON.stringify({database_scope:'/tmp/aps-context.db',successful_restores:[]}), admitted = { run_ref: runRef, job_ref: runRef, state: 'queued', stage: 'queued', progress: null,
     plans: [], plan_catalog_connected: false, candidates: [], result_persisted: false, accepted_at: '2026-10-11T08:00:00',
     started_at: null, finished_at: null, receipt_ref: null, error: null, recovery_required: false, scope_summary: jobScope };
-  route = request => request.path.endsWith('/runs/preview') ? envelope({ input_ref: inputRef, normalized_input: input, data_context_ref: dataContext,
-    calendar_check: 'not_evaluated', warnings: [], write_context: { write_token: writeToken, expires_at: '2026-10-11T09:00:00', capabilities: { 'scheduling.run': true }, blocked_reasons: [] } }) :
+  // Every preflight and run preview carries run_options with the effective time budget (core/services/workbench/run/preflight.py).
+  let checkNumber = 0;
+  function budgetChecked(value, seconds) {
+    const result = checked(value, seconds);
+    result.data.input_ref = String(++checkNumber).padStart(32, '0');
+    return result;
+  }
+  const previewFor = result => envelope({ input_ref: result.data.input_ref, normalized_input: result.data.normalized_input,
+    run_options: result.data.run_options, data_context_ref: dataContext, calendar_check: 'not_evaluated', warnings: [],
+    write_context: { write_token: result.data.input_ref.replace(/^0/, 'p'), expires_at: '2026-10-11T09:00:00', capabilities: { 'scheduling.run': true }, blocked_reasons: [] } });
+  const runnable = budgetChecked(input), runnablePreview = previewFor(runnable);
+  route = request => request.path.endsWith('/runs/preview') ? runnablePreview :
     { ok: true, result: 'accepted', job_ref: runRef, run_ref: runRef, status_target: '/api/workbench/v1/scheduling/runs/' + runRef,
-      receipt_ref: 'a'.repeat(32), replayed: false, data: admitted, data_context_ref: dataContext };
-  assert(w.RunJobAPI.validIntent({schema_version:2,input_ref:inputRef,request_key:'run-'+ 'b'.repeat(48),run_ref:null,data_context_ref:'d'.repeat(64)}), 'Legacy stored generation IDs remain readable');
+      receipt_ref: 'a'.repeat(32), replayed: false, data: { ...admitted, scope_summary: { ...jobScope, run_options: runnable.data.run_options } }, data_context_ref: dataContext };
+  // D02: a data context is only the JSON form; the removed 64-hex value is a damaged stored intent.
+  assert(!w.RunJobAPI.validIntent({schema_version:2,input_ref:inputRef,request_key:'run-'+ 'b'.repeat(48),run_ref:null,data_context_ref:'d'.repeat(64)}), 'A 64-hex data context is not restored');
   assert(!w.RunJobAPI.validIntent({schema_version:2,input_ref:inputRef,request_key:'run-'+ 'b'.repeat(48),run_ref:null,data_context_ref:JSON.stringify({database_scope:'/tmp/aps-context.db',successful_restores:[true]})}), 'Restore identities keep their actual type');
-  const panel = hooks(), props = { preflight: checked(input).data, onNavigate() {} };
+  const panel = hooks(), props = { preflight: runnable.data, onNavigate() {} };
   requests.length = 0;
   panel.render(w.RunJobPanel, props); panel.flush(); await turns();
   tree = panel.render(w.RunJobPanel, props);
@@ -209,7 +226,7 @@ async function contract(h, assert) {
   assert(confirmation.props.batches.every(row=>row.batch_id==='B1'),'Confirmation receives this preflight business batch names');
   await confirmation.props.onConfirm();
   assert.deepStrictEqual(requests.map(row => row.path), ['/api/workbench/v1/scheduling/runs/preview', '/api/workbench/v1/scheduling/runs']);
-  assert.strictEqual(requests[1].body.input_ref, inputRef); assert.strictEqual(requests[1].body.write_token, writeToken);
+  assert.strictEqual(requests[1].body.input_ref, runnable.data.input_ref); assert.strictEqual(requests[1].body.write_token, runnablePreview.data.write_context.write_token);
   assert(/^run-[0-9a-f]{48}$/.test(requests[1].body.request_key));
   const acceptedRecord = nodes(panel.render(w.RunJobPanel, props)).find(node => node.type === w.RunJobControls.Record).props;
   assert.strictEqual(acceptedRecord.run.run_ref, runRef); assert.strictEqual(acceptedRecord.intent.run_ref, runRef);
@@ -249,17 +266,6 @@ async function contract(h, assert) {
   unattached.unmount();
   w.localStorage = { getItem: key => store.has(key) ? store.get(key) : null, setItem: (key, value) => store.set(key, value), removeItem: key => store.delete(key) };
 
-  const options = seconds => ({ generation_policy_version: 'unified_search_v1', primary_objective: 'min_overdue',
-    target_objectives: ['min_overdue', 'min_tardiness', 'min_changeover'], time_budget_seconds: seconds, algo_mode: 'improve', graph_analysis_mode: 'off' });
-  let checkNumber = 0;
-  function budgetChecked(value, seconds = value.time_budget_seconds === undefined ? 17 : value.time_budget_seconds) {
-    const result = checked(C.input({ ...value, time_budget_seconds: seconds }));
-    result.data.input_ref = String(++checkNumber).padStart(32, '0'); result.data.run_options = options(seconds);
-    return result;
-  }
-  const previewFor = result => envelope({ input_ref: result.data.input_ref, normalized_input: result.data.normalized_input,
-    run_options: result.data.run_options, data_context_ref: dataContext, calendar_check: 'not_evaluated', warnings: [],
-    write_context: { write_token: result.data.input_ref.replace(/^0/, 'p'), expires_at: '2026-10-11T09:00:00', capabilities: { 'scheduling.run': true }, blocked_reasons: [] } });
   const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
   const modern = budgetChecked(input);
   C.result(modern, input);
@@ -272,16 +278,22 @@ async function contract(h, assert) {
   C.result(configBlocked, modern.data.normalized_input);
   const blockedPreview = previewFor(configBlocked);
   blockedPreview.data.write_context = { write_token: null, expires_at: null, capabilities: { 'scheduling.run': false }, blocked_reasons: configBlocked.data.blockers };
-  w.RunJobAPI.preview(blockedPreview, configBlocked.data.input_ref);
+  // The run preview is read through the real RunJobAPI and transport; only the network answer differs.
+  const routedFetch = w.fetch, answer = (value, status) => { w.fetch = async () => ({ ok: status < 400, status, headers: { get: () => 'application/json' }, json: async () => value }); };
+  answer(blockedPreview, 200); await w.RunJobAPI.preview(configBlocked.data.input_ref);
   assert.throws(() => C.result({ ...configBlocked, data: { ...configBlocked.data, blockers: [] } }, modern.data.normalized_input), /排产检查结果/);
-  assert.throws(() => w.RunJobAPI.preview(previewFor(configBlocked), configBlocked.data.input_ref), /排产数据/, '成功preview必须有实际run_options');
-  const usedIntent = { input_ref: modern.data.input_ref, request_key: 'run-' + 'a'.repeat(48), run_ref: null };
-  const used = w.RunJobAPI.create(async () => ({ ok: false, status: 409, headers: { get: () => 'application/json' }, json: async () => ({
-    ok: false, committed: false, error: { code: 'input_already_used', message: '这份排产检查已受理过。', fields: [], retryable: false, request_ref: 'a'.repeat(32) }
-  }) }));
-  await assert.rejects(() => used.accept(usedIntent, writeToken), error => error.code === 'input_already_used' && w.RunJobAPI.isRejected(error), '已消费检查的新请求是确定拒绝，沿已有Panel清理pending路径');
+  answer(previewFor(configBlocked), 200);
+  await assert.rejects(() => w.RunJobAPI.preview(configBlocked.data.input_ref), /排产数据/, '成功preview必须有实际run_options');
+  // Q2-A: every committed:false 400/404/409/422/503 is a definite rejection, not only the codes the run module once listed; 403/500 are not.
+  const usedIntent = { schema_version: 2, input_ref: modern.data.input_ref, request_key: 'run-' + 'a'.repeat(48), run_ref: null, data_context_ref: dataContext };
+  for (const [code, status, definite] of [['input_already_used', 409, true], ['batch_locked', 409, true], ['invalid_input', 400, true], ['entity_not_found', 404, true],
+    ['constraint_conflict', 422, true], ['request_lifecycle_stopping', 503, true], ['permission_denied', 403, false], ['storage_failure', 500, false]]) {
+    answer({ ok: false, committed: false, error: { code, message: '这份排产检查没有受理。', fields: [], retryable: false, request_ref: 'a'.repeat(32) } }, status);
+    await assert.rejects(() => w.RunJobAPI.accept(usedIntent, writeToken), error => error.code === code && w.APSWorkbenchTransport.rejected(error) === definite,
+      code + ' with HTTP ' + status + (definite ? ' is' : ' is not') + ' a definite rejection');
+  }
+  w.fetch = routedFetch;
   assert.equal(w.RunPresentation.stage({ ...admitted, stage: 'computing', scope_summary: { ...jobScope, run_options: options(17) } }), '正在共同优化方案');
-  assert.equal(w.RunPresentation.stage({ ...admitted, stage: 'computing' }), '正在计算', 'Old saved progress keeps its original presentation');
 
   // The actual SchedulingWorkspace callback connects the persistent parent and panel hook frames.
   async function confirmationFlow({ preflightWait, previewWait } = {}) {
@@ -489,7 +501,7 @@ if (process.argv.includes('--source')) {
   Object.assign(runtime, { window: runtime, self: runtime, addEventListener() {}, removeEventListener() {}, dispatchEvent() {}, location: { href: 'http://localhost/workbench' },
     CustomEvent: class { constructor(type, value) { this.type = type; this.detail = value.detail; } } });
   for (const file of ['static/workbench/vendor/react-18.3.1.production.min.js', 'static/workbench/app/main.js']) vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8'), runtime, { filename: file });
-  const files = ['RunGenerationContract.js', 'RunPresentation.js', 'PreflightContract.js', 'PreflightAPI.js', 'PreflightBatchPicker.jsx', 'PreflightWorkspace.jsx', 'RunJobAPI.js', 'RunJobControls.jsx', 'RunJobPanel.jsx', 'SchedulingWorkspace.jsx'];
+  const files = ['transport.js', 'RunGenerationContract.js', 'RunPresentation.js', 'PreflightContract.js', 'PreflightAPI.js', 'PreflightBatchPicker.jsx', 'PreflightWorkspace.jsx', 'RunJobAPI.js', 'RunJobControls.jsx', 'RunJobPanel.jsx', 'SchedulingWorkspace.jsx'];
   for (const output of compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
     sources: files.map(name => ({ path: name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') })) }).outputs) vm.runInContext(output.code, runtime, { filename: output.path });
   const h = { runtime, mode: 'current-source', reference: number => number.toString(16).padStart(48, '0'), clone: value => JSON.parse(JSON.stringify(value)),

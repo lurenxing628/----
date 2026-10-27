@@ -20,7 +20,7 @@ def read_candidate_analysis(conn, candidate_ref):
         source = analysis_source(store, candidate_ref)
         refs = sorted(source.input["batch_refs"])
         before = source.delivery("reference")
-        after = [row for row in source.legacy_delivery(candidate_ref) if row["batch_ref"] in refs]
+        after = [row for row in source.delivery_detail(candidate_ref) if row["batch_ref"] in refs]
         batches = delivery_rows(before, after, refs)
         old_metrics = delivery_metrics(before, delivery_summary(before))
         metrics = delivery_metrics(after, delivery_summary(after))

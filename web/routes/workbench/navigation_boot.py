@@ -9,14 +9,13 @@ from typing import Any, Dict, NoReturn, Optional
 from core.errors import AppError
 from core.models.workbench_batch_query import batch_scope
 from core.models.workbench_calendar import calendar_date
-from core.models.workbench_command import canonical_json
 from core.models.workbench_decision_history import normalize_history_query, validate_history_entry_ref
 from core.models.workbench_plan_scope import PlanReadScope, local_time, plan_reference
 from core.models.workbench_report import TOPICS, ReportScope
 from core.models.workbench_run_candidate import RunCandidateReadScope
 from core.models.workbench_run_job import validate_run_ref
 from core.models.workbench_trial import create_input, reference
-from core.shared.strict_json import load_strict_json
+from core.shared.strict_json import canonical_json, load_strict_json
 
 SUPPORTED_VIEWS = frozenset((
     "dashboard", "process", "batches", "run", "analysis", "gantt", "delay", "field", "fieldgantt",
@@ -89,9 +88,9 @@ def _plan_context(context):
             _invalid("方案比较方式无效，请从本次排产重新选择。")
         if context.get("comparison_mode") == "admission_official" and "reference_candidate_ref" in context:
             _invalid("正式基准使用受理时保存的计划身份，请从方案对比重新选择。")
+        # Exactly the panels RunDecisionComparison writes back: its primary and secondary tabs plus changeovers.
         if "comparison_tab" in context and context["comparison_tab"] not in (
-                "overview", "batches", "operations", "delivery", "differences", "resources", "process",
-                "preparation", "changeovers", "metrics", "completion"):
+                "delivery", "differences", "resources", "process", "preparation", "metrics", "completion", "changeovers"):
             _invalid("方案影响页签无效，请从本次排产重新选择。")
         if "resource_view" in context and context["resource_view"] not in ("selected_batches", "full_candidate"):
             _invalid("资源安排视角无效，请从方案对比重新选择。")

@@ -29,8 +29,7 @@ _CATALOG: Tuple[Tuple[str, Callable[[], Dict[str, Any]]], ...] = (
     ("work_calendar", lambda: workbench_calendar_file.table_descriptor("work_calendar")),
     ("operator_calendar", lambda: workbench_calendar_file.table_descriptor("operator_calendar")),
     ("batch", workbench_batch_file.table_descriptor),
-    ("field_report_v1", lambda: workbench_field_report_file.table_descriptor(1)),
-    ("field_report_v2", lambda: workbench_field_report_file.table_descriptor(2)),
+    ("field_report", workbench_field_report_file.table_descriptor),
 )
 
 

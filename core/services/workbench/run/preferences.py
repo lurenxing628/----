@@ -3,7 +3,7 @@
 from typing import Any, Dict, NoReturn, Tuple
 
 from core.infrastructure.logging import OperationLogger
-from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_preflight import (
     SCHEDULING_PREFERENCES_ACTION,
     SCHEDULING_PREFERENCES_KEY,
@@ -11,7 +11,7 @@ from core.models.workbench_preflight import (
     normalize_preflight_input,
 )
 from core.services.workbench.commands import WorkbenchCommandService
-from core.shared.strict_json import load_strict_json
+from core.shared.strict_json import canonical_json, load_strict_json
 from data.repositories.system_config_repo import SystemConfigRepository
 
 

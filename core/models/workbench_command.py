@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -27,10 +26,6 @@ class WorkbenchCommandUncertain(RuntimeError):
         super().__init__("这次提交结果不确定，可能已经生效。请刷新后核对，不要重复提交。")
         self.request_key = request_key
         self.committed = "unknown"
-
-
-def canonical_json(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
 
 def validate_request_key(value: object) -> str:

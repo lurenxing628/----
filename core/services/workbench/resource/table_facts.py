@@ -16,7 +16,7 @@ from .metrics import READ_FACTS, RESOURCE_KEYS, WorkbenchResourceMetricsService,
 
 OP_TYPE_DEPENDENCIES = {
     "machine_capabilities": "MachineOpTypes.op_type_id", "machines": "Machines.op_type_id",
-    "legacy_suppliers": "Suppliers.op_type_id", "supplier_capabilities": "WorkbenchSupplierOpTypes.op_type_id",
+    "supplier_capabilities": "WorkbenchSupplierOpTypes.op_type_id",
     "skills": "OperatorSkill.op_type_id", "part_operations": "PartOperations.op_type_id",
     "batch_operations": "BatchOperations.op_type_id",
 }
@@ -44,7 +44,7 @@ def _change_relations(repo, roots, machine_authorizations):
 
 def _related_change_codes(data, roots):
     codes = {"op_type": set(), "machine_group": set(), "shift_profile": set()}
-    for name in ("machine", "supplier", "skills", "machine_capabilities", "capabilities"):
+    for name in ("machine", "skills", "machine_capabilities", "capabilities"):
         codes["op_type"].update(row["op_type_id"] for row in data[name] if row["op_type_id"] is not None)
     codes["machine_group"].update(row["group_id"] for row in data["groups"] if row["machine_id"] in roots["machine"])
     codes["shift_profile"].update(row["shift_profile_id"] for row in data["operator_profiles"]
@@ -203,9 +203,7 @@ class ResourceTableFacts:
         return raw
 
     def supplier_types(self, code):
-        legacy = self.metrics.kind_records("supplier")[code]["op_type_id"]
-        explicit = {row["op_type_id"] for row in self.grouped("capabilities", "supplier_id")[code]}
-        return sorted(explicit | ({legacy} if legacy not in (None, "") else set()))
+        return sorted({row["op_type_id"] for row in self.grouped("capabilities", "supplier_id")[code]})
 
     def machine_types(self, code):
         legacy = self.metrics.kind_records("machine")[code]["op_type_id"]

@@ -17,9 +17,9 @@
   function Facts({ facts, before }) { return <dl className="os-facts">{C.fields.map(k => <div key={k}><dt>{C.labels[k]}</dt><dd>
     {before && before[k] !== facts[k] && <del>{k === 'confirmedState' ? C.states[before[k]] : k === 'returned' && before[k] === null ? '未回厂' : when(before[k])}</del>}
     <span>{k === 'confirmedState' ? C.states[facts[k]] : k === 'returned' && facts[k] === null ? '未回厂' : when(facts[k])}</span></dd></div>)}</dl>; }
-  function TargetPicker({ api, mode, selected, onSelect, onMode, disabled, onOpen }) {
+  function TargetPicker({ mode, selected, onSelect, onMode, disabled, onOpen }) {
     const [q, setQuery] = React.useState(() => ({ page: 1, size: 10 }));
-    const read = S.useRead(signal => api.read('targets', q, undefined, signal), [api, q]);
+    const read = S.useRead(signal => C.read('targets', q, undefined, signal), [q]);
     const result = read.result, data = result && result.data;
     function change(patch, paging = false) { const next = { ...q, ...patch, page: paging ? patch.page : 1 }; delete next.snapshot_ref;
       if (paging) next.snapshot_ref = result.meta.snapshot_ref; setQuery(next); }
@@ -63,7 +63,7 @@
       <dl className="os-facts"><div><dt>经办人</dt><dd>{v.input.declared_operator}</dd></div>
         <div><dt>核实原因</dt><dd>{v.input.reason}</dd></div>{done && <><div><dt>记录人</dt><dd>{v.receipt.data.local_operator}</dd></div><div><dt>确认时间</dt><dd>{when(v.receipt.data.confirmed_at)}</dd></div></>}</dl></>;
   }
-  function Editor({ api, item, command, onClose, onFinish, onOpen }) {
+  function Editor({ item, command, onClose, onFinish, onOpen }) {
     const [draft, setDraft] = React.useState(() => ({ kind: 'single', sent: item ? item.sent : '', planned: item ? item.planned : '', returned: item && item.returned || '',
       confirmedState: item ? item.confirmedState : 'in_transit', declared_operator: '', reason: '' }));
     const [selected, setSelected] = React.useState([]), [preview, setPreview] = React.useState(null), [error, setError] = React.useState(null), [busy, setBusy] = React.useState(false);
@@ -78,12 +78,12 @@
       if (error && !focusFirstInvalid(formRef.current) && errorRef.current) errorRef.current.focus();
     }, [error]);
     // 被拒后原预检结果已失效：清掉它，表单回到可编辑状态，改好后重新预检再提交；填写内容不动。
-    React.useEffect(() => { if (!saved && command.error && C.isRejected(command.error)) setPreview(null); }, [saved, command.error]);
+    React.useEffect(() => { if (!saved && command.error && window.APSWorkbenchTransport.rejected(command.error)) setPreview(null); }, [saved, command.error]);
     function update(k, v) { setDraft(d => ({ ...d, [k]: v })); setPreview(null); setError(null); }
     async function review() {
       if (running.current || saved || command.storageError) return;
       running.current = true; setBusy(true); setError(null);
-      try { const p = S.input(draft, selected, item), result = await api.preview(p); if (alive.current) setPreview(result); }
+      try { const p = S.input(draft, selected, item), result = await C.preview(p); if (alive.current) setPreview(result); }
       catch (e) { if (alive.current) setError(e); }
       finally { running.current = false; if (alive.current) setBusy(false); }
     }
@@ -97,7 +97,7 @@
         {saved ? <Pending command={command} /> : preview ? <><Target target={preview.data.target} /><Facts facts={preview.data.after} before={preview.data.before} />
           <dl className="os-facts"><div><dt>经办人</dt><dd>{preview.data.input.declared_operator}</dd></div><div><dt>核实原因</dt><dd>{preview.data.input.reason}</dd></div></dl>
           <div className="os-note">{preview.data.execution.reason}</div><div className="os-muted">核对时点 {when(preview.meta.as_of)}</div></> : <>
-          {item ? <Target target={item.target} /> : <TargetPicker api={api} mode={draft.kind} selected={selected} onSelect={setSelected} onMode={v => update('kind', v)} disabled={locked} onOpen={openExisting} />}
+          {item ? <Target target={item.target} /> : <TargetPicker mode={draft.kind} selected={selected} onSelect={setSelected} onMode={v => update('kind', v)} disabled={locked} onOpen={openExisting} />}
           <FormFields draft={draft} update={update} disabled={locked} error={error} /></>}
         {command.notice && <div className="os-note" role="status">{command.notice}</div>}
       </div></Modal>;

@@ -41,7 +41,7 @@
         key = A.reserve(); patch({ key });
         const result = await A.command(intent, token, key); await confirmed(result, key); return true;
       } catch (error) {
-        if (key && error.rejected) release(key, { error, note: '这次没有写入。填写内容已保留，请点「刷新」后重新确认。' }, '这次没有写入，但本机操作记录还没清掉。请点「查询结果」重试清理。');
+        if (key && window.APSWorkbenchTransport.rejected(error)) release(key, { error, note: '这次没有写入。填写内容已保留，请点「刷新」后重新确认。' }, '这次没有写入，但本机操作记录还没清掉。请点「查询结果」重试清理。');
         else patch({ error, ...(key ? { key, note: window.WorkbenchTerms.outcomes.pending('提交') } : {}) });
         return false;
       } finally { running.current = false; patch({ busy: false }); }

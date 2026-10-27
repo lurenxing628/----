@@ -8,10 +8,10 @@
   const sourceKeys = ['plan_ref', 'batch_ref', 'task_ref', 'operation_ref', 'return_to'];
   // 查看范围读不进来时页面会退回默认范围，提示按“发生了什么 → 哪些没变 → 点哪里”写。
   const refilter = '请点「清除全部筛选」重新查询。', fallbackList = '，已按默认范围显示批次列表。';
+  // 返回入口统一是 {view, context} 信封：排产检查只带 view（回去时恢复排产页自己的状态），值班台带上离开时的 context。
   function validReturnTarget(value) {
-    return ['run', 'dashboard'].includes(value) || C.object(value)
-      && Object.keys(value).every(key => ['view', 'context'].includes(key))
-      && C.own(value, 'view') && value.view === 'dashboard' && C.own(value, 'context') && C.object(value.context);
+    return C.object(value) && Object.keys(value).every(key => ['view', 'context'].includes(key))
+      && (value.view === 'run' && !C.own(value, 'context') || value.view === 'dashboard' && C.object(value.context));
   }
   function sourceContext(value, entityRef) {
     if (value == null) return null;
@@ -61,7 +61,7 @@
     const origin = sourceContext(view ? view.source_context : Object.fromEntries(sourceKeys.filter(key => C.own(context, key)).map(key => [key, context[key]])), opened);
     return { scope, selected, opened, sort, sourceContext: origin };
   }
-  function BatchWorkspace({ adapter, onCommitted, disabled = false, initialContext, onNav }) {
+  function BatchWorkspace({ adapter, initialContext, onNav }) {
     const [initial] = React.useState(() => { try { return readContext(initialContext); } catch (error) { return { ...readContext({}), error }; } });
     const command = S.useCommand(adapter), alive = React.useRef(true), serial = React.useRef(0);
     const [deferred, setDeferred] = React.useState(() => Object.keys(initialContext).length > 0 && command.phase !== 'idle');
@@ -78,7 +78,7 @@
     }, [adapter, scope, revision], !initial.error);
     const data = list.result && list.result.data, snapshot = list.result && list.result.meta.snapshot_ref;
     const entityRefs = React.useMemo(() => data ? new Set(data.entities.map(row => row.ref)) : null, [data]);
-    const blocked = disabled || !!initial.error || command.locked || busy || !!dialog;
+    const blocked = !!initial.error || command.locked || busy || !!dialog;
     const rememberedScope = Object.fromEntries(scopeKeys.filter(key => scope[key] !== undefined).map(key => [key, scope[key]]));
     window.WorkbenchPageContext.useSnapshot({ read_view: { scope: rememberedScope, selected_refs: selected, entity_ref: opened, sort_state: sort,
       source_context: opened === initial.opened ? initial.sourceContext : null } },
@@ -96,10 +96,10 @@
         setSelected(current => current.filter(ref => !deletedSet.has(ref)));
         if (deletedSet.has(opened)) setOpened(null);
       }
-      setRevision(current => current + 1); filter({}); if (onCommitted) onCommitted(receipt);
+      setRevision(current => current + 1); filter({});
     }
     async function preview(action, input, entity, token) {
-      if (disabled || command.locked || busy) return;
+      if (command.locked || busy) return;
       setBusy(true); setError(null); const id = ++serial.current;
       try {
         const result = await adapter.preview(action, entity ? entity.ref : null, input, scope, token || snapshot, new AbortController().signal);
@@ -121,9 +121,7 @@
       setSort(next); filter(next ? { sort: next.key, direction: next.direction } : { sort: 'business_code', direction: 'asc' });
     }
     // 没有来源入口时是从侧栏直接进来的，按钮是去下一步而不是返回。
-    const returnSource = initial.sourceContext !== null && initial.sourceContext.return_to !== undefined ? initial.sourceContext.return_to : null;
-    const returnTarget = returnSource || 'run';
-    const returnView = typeof returnTarget === 'string' ? returnTarget : returnTarget.view;
+    const returnTarget = initial.sourceContext !== null && initial.sourceContext.return_to !== undefined ? initial.sourceContext.return_to : null;
     const openEditor = entity => { command.reset(); setDialog({ type: 'base', entity }); };
     const deletion = entity => preview('bulk', { action: 'delete', refs: [entity.ref], patch: {} });
     const columnFilterCount = Object.keys(scope.column_filters).length;
@@ -148,9 +146,9 @@
           {columnFilterCount > 0 && <span>列筛选 {columnFilterCount} 项</span>}
           {(scope.focus || scope.batch_ids) && <span>已定位{scope.focus === 'gaps' ? '工序缺项' : scope.focus === 'unready' ? '未齐套' : '指定批次'}</span>}
           <Button icon="x" disabled={blocked} onClick={clearFilters}>清除全部筛选</Button>
-          {onNav && <Button icon={returnSource ? 'arrow-left' : 'arrow-right'} disabled={blocked} onClick={() => !returnSource
-            ? onNav(returnTarget, selected.length > 0 ? { scope: { source: 'production', batch_refs: selected } } : {})
-            : typeof returnTarget === 'string' ? onNav(returnTarget) : onNav(returnTarget.view, returnTarget.context)}>{!returnSource ? '下一步 · 去排产' : returnView === 'dashboard' ? '返回值班台' : '返回排产'}</Button>}</div></div>
+          {onNav && <Button icon={returnTarget ? 'arrow-left' : 'arrow-right'} disabled={blocked} onClick={() => returnTarget
+            ? onNav(returnTarget.view, returnTarget.context)
+            : onNav('run', selected.length > 0 ? { scope: { source: 'production', batch_refs: selected } } : {})}>{!returnTarget ? '下一步 · 去排产' : returnTarget.view === 'dashboard' ? '返回值班台' : '返回排产'}</Button>}</div></div>
         <window.BatchTable adapter={adapter} rows={data ? data.entities : []} scope={scope} selected={selected} setSelected={setSelected} onOpen={setOpened} onDelete={deletion}
           onSort={sortBy} onFilter={field => setDialog({ type: 'column', field, scope: { ...scope, snapshot_ref: snapshot } })} onClear={clearFilters} onRetry={() => filter({})} error={list.error} loading={list.loading} disabled={blocked || list.loading} />
         {data && <window.WorkbenchControls.Pager page={data.page} sizes={Array.from(new Set([20, 50, 100, data.page.size])).sort((a, b) => a - b)} unit="个批次" label="" sizeLabel="每页条数" showPageJump disabled={blocked} onSize={size => filter({ size })} onPage={page => setScope(current => ({ ...current, page, snapshot_ref: snapshot }))} />}
@@ -161,11 +159,11 @@
           <Button icon="trash-2" className="btn danger" disabled={blocked || !selected.length} onClick={() => preview('bulk', { action: 'delete', refs: selected, patch: {} })}>删除所选</Button></div>
       </>}
       {dialog && dialog.type === 'base' && <window.BatchForms.BaseEditor adapter={adapter} entity={dialog.entity} createContext={data && data.create_context} source={list.result && list.result.meta.source}
-        command={command} onClose={close} onCommitted={committed} disabled={disabled} />}
-      {dialog && dialog.type === 'operation' && <window.BatchOperationEditor adapter={adapter} entity={dialog.entity} operation={dialog.operation} source="production" command={command} onClose={close} onCommitted={committed} disabled={disabled} />}
-      {dialog && dialog.type === 'materials' && <window.BatchMaterialEditor adapter={adapter} entity={dialog.entity} command={command} onClose={close} onCommitted={committed} disabled={disabled} />}
-      {dialog && dialog.type === 'preview' && <window.BatchForms.Preview preview={dialog.preview} command={command} onClose={close} onCommitted={committed} disabled={disabled} />}
-      {dialog && dialog.type === 'files' && <window.BatchFiles adapter={adapter} mode={dialog.mode} scope={dialog.scope} selected={selected} snapshot={dialog.snapshot} command={command} onClose={close} onCommitted={committed} disabled={disabled} />}
+        command={command} onClose={close} onCommitted={committed} />}
+      {dialog && dialog.type === 'operation' && <window.BatchOperationEditor adapter={adapter} entity={dialog.entity} operation={dialog.operation} source="production" command={command} onClose={close} onCommitted={committed} />}
+      {dialog && dialog.type === 'materials' && <window.BatchMaterialEditor adapter={adapter} entity={dialog.entity} command={command} onClose={close} onCommitted={committed} />}
+      {dialog && dialog.type === 'preview' && <window.BatchForms.Preview preview={dialog.preview} command={command} onClose={close} onCommitted={committed} />}
+      {dialog && dialog.type === 'files' && <window.BatchFiles adapter={adapter} mode={dialog.mode} scope={dialog.scope} selected={selected} snapshot={dialog.snapshot} command={command} onClose={close} onCommitted={committed} />}
       {dialog && dialog.type === 'column' && <window.BatchTable.ColumnFilter adapter={adapter} scope={dialog.scope} field={dialog.field} onClose={close} onApply={values => {
         const filters = { ...scope.column_filters }; if (values === undefined) delete filters[dialog.field]; else filters[dialog.field] = values; filter({ column_filters: filters }); close();
       }} />}

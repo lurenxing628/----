@@ -23,11 +23,10 @@
   }
   function begin(preview, previous) {
     A.check(!previous || previous.phase === 'rejected', '上次操作的结果还没确认，不能开始新的采用。');
-    return save({ version: 1, request_key: 'calibration-' + Array.from(crypto.getRandomValues(new Uint8Array(24)), n => n.toString(16).padStart(2, '0')).join(''),
+    return save({ version: 1, request_key: window.APSWorkbenchTransport.requestKey('calibration'),
       phase: 'pending', baseline: A.binding(preview.suggestion), input: A.input({ ...preview.input, confirm: true }, true) }, previous);
   }
-  function useSession({ detail, stale, adapter }) {
-    const api = React.useMemo(() => adapter || A.create(), [adapter]);
+  function useSession({ detail, stale }) {
     const [initial] = React.useState(() => { try { return { saved: read(), error: '' }; } catch (e) { return { saved: null, error: e.message }; } });
     const [saved, setSaved] = React.useState(initial.saved), [storageError, setStorageError] = React.useState(initial.error);
     const [draft, setDraft] = React.useState(initial.saved ? { reason: initial.saved.input.reason, declared_operator: initial.saved.input.declared_operator } : { reason: '', declared_operator: '' });
@@ -63,13 +62,13 @@
     React.useEffect(() => {
       if (!saved || saved.phase !== 'pending' || storageError || lock.current) return undefined;
       let disposed = false; const controller = new AbortController(); setBusy(true);
-      api.lookup(saved, controller.signal).then(value => {
+      A.lookup(saved, controller.signal).then(value => {
         if (disposed) return;
         if (value) accept(value, saved);
         else setNotice('上次采用结果尚未确认，请稍后再次查询。');
       }).catch(e => { if (!disposed) setError('上次操作的结果还没确认。' + e.message); }).finally(() => { if (!disposed) setBusy(false); });
       return () => { disposed = true; controller.abort(); };
-    }, [saved, api, revision, storageError]);
+    }, [saved, revision, storageError]);
     function change(value) { setDraft(value); setPreview(null); setConsent(false); setError(''); }
     async function inspect() {
       if (lock.current || stale || storageError || !detail || saved && saved.phase !== 'rejected') return;
@@ -77,7 +76,7 @@
       let values; try { values = A.input(draft); } catch (e) { setError(e.message); return; }
       lock.current = true; setBusy(true); setPreview(null); setConsent(false); setError(''); setNotice('');
       const controller = new AbortController(); request.current = controller;
-      try { const value = await api.preview(detail.suggestion, values, controller.signal);
+      try { const value = await A.preview(detail.suggestion, values, controller.signal);
         if (mounted.current && !controller.signal.aborted && A.equal(detail, source.current)) setPreview(value);
       } catch (e) { if (mounted.current && !controller.signal.aborted) setError(e.message); }
       finally { lock.current = false; if (mounted.current) setBusy(false); }
@@ -92,10 +91,11 @@
           if (!acquired) { if (mounted.current) setError('另一个页面正在采用，请先在那边查询结果。'); return; }
           const original = begin(preview, active.current);
           active.current = original; setSaved(original); setPreview(null); setConsent(false);
-          try { accept(await api.adopt(original, preview.write_context.write_token), original); }
+          try { accept(await A.adopt(original, preview.write_context.write_token), original); }
           catch (e) {
-            if (A.isRejected(e)) { const rejected = save({ ...original, phase: 'rejected' }, original); if (mounted.current) setSaved(rejected); }
-            if (mounted.current) setError(A.isRejected(e) ? e.message + ' 本次没有采用；请点「刷新所选模板」后重新预检。' : window.WorkbenchTerms.outcomes.pending('采用'));
+            const rejected = window.APSWorkbenchTransport.rejected(e);
+            if (rejected) { const value = save({ ...original, phase: 'rejected' }, original); if (mounted.current) setSaved(value); }
+            if (mounted.current) setError(rejected ? e.message + ' 本次没有采用；请点「刷新所选模板」后重新预检。' : window.WorkbenchTerms.outcomes.pending('采用'));
           }
         });
       } catch (e) { if (mounted.current) setStorageError(e.message); }
@@ -112,5 +112,5 @@
     return { saved, draft, open, preview, consent, busy, error, notice, storageError, setOpen, setConsent, change, inspect, submit, finish,
       lookup: refresh, sync, close: () => { if (request.current) request.current.abort(); setOpen(false); setPreview(null); setConsent(false); } };
   }
-  window.CalibrationAdoptionState = { KEY, EVENT, read, save, begin, useSession };
+  window.CalibrationAdoptionState = { KEY, read, save, begin, useSession };
 })();

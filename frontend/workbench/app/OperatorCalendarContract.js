@@ -20,7 +20,7 @@
       && (value.remark === null || typeof value.remark === 'string')
       && typeof value.calendar_ref === 'string' && /^[0-9a-f]{48}$/.test(value.calendar_ref);
   }
-  // 信封（ok、schema_version、meta、warnings）已由 resource-api.js 的 production() 校验，这里只校验 data。
+  // 信封（ok、schema_version、meta、warnings）已由 transport.js 的 envelope() 校验，这里只校验 data。
   function month(result, expected) {
     const data = result.data;
     if (data.year !== expected.year || data.month !== expected.month || data.operator_ref !== expected.ref)

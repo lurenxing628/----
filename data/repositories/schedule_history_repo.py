@@ -30,22 +30,9 @@ class ScheduleHistoryRepository(BaseRepository):
         """
         原子分配排产版本号（避免并发下 MAX(version)+1 复用）。
 
-        实现策略：
-        - 使用 `ScheduleVersionSeq` 自增表分配唯一递增版本号（version=PRIMARY KEY AUTOINCREMENT）
-        - 对齐：确保序列表不会落后于 `ScheduleHistory.max(version)`（兼容老库/从旧版本升级）
-        - 允许版本号出现“跳号”（例如落库失败/回滚）；但保证不会复用
+        版本号只由这里从 `ScheduleVersionSeq` 自增表分配（version=PRIMARY KEY AUTOINCREMENT），
+        所以 ScheduleHistory 的版本号不会超过序列表。允许“跳号”（例如落库失败/回滚），但保证不会复用。
         """
-        max_history = int(self.fetchvalue("SELECT COALESCE(MAX(version), 0) FROM ScheduleHistory"))
-        max_seq = int(self.fetchvalue("SELECT COALESCE(MAX(version), 0) FROM ScheduleVersionSeq"))
-
-        baseline = max(max_history, max_seq)
-        if baseline > 0 and baseline > max_seq:
-            # 插入 baseline 作为“对齐锚点”，让下一次 DEFAULT VALUES 返回 baseline+1
-            self.execute(
-                "INSERT OR IGNORE INTO ScheduleVersionSeq(version) VALUES (?)",
-                (baseline,),
-            )
-
         cur = self.execute("INSERT INTO ScheduleVersionSeq DEFAULT VALUES")
         return cast(int, cur.lastrowid)
 

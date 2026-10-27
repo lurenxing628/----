@@ -3,11 +3,11 @@
 from tempfile import SpooledTemporaryFile
 
 from core.models.workbench_action_values import FileDownload
-from core.models.workbench_command import canonical_json
 from core.models.workbench_run_candidate import reject
 from core.services.common.excel_instruction_sheet import close_write_only_sheets
 from core.services.workbench.facts.file_writer import ILLEGAL, XLSX_MAX_CELL_CHARACTERS, check_capacity
 from core.services.workbench.facts.process_file_xml import preserve_carriage_returns
+from core.shared.strict_json import canonical_json
 
 from ..run.decision_export import append_sheet_row as append_excel_row
 from ..run.decision_export import csv_bytes as csv_content
@@ -23,9 +23,9 @@ ENTRY_FIELDS = (
     ("条目名称", "label"), ("条目状态", "state"), ("发生时间", "occurred_at"), ("时间依据", "time_basis"),
     ("运行编号", "identity.run_ref"), ("候选编号", "identity.candidate_ref"), ("试调编号", "identity.scenario_ref"),
     ("调整草案编号", "identity.draft_ref"), ("正式计划编号", "identity.plan_ref"), ("正式版本", "identity.plan_version"),
-    ("旧正式记录编号", "identity.history_id"), ("采用回执编号", "identity.receipt_ref"), ("原始请求编号", "identity.request_key"),
+    ("正式记录编号", "identity.history_id"), ("采用回执编号", "identity.receipt_ref"), ("原始请求编号", "identity.request_key"),
     ("运行受理时间", "times.accepted_at"), ("计算开始时间", "times.started_at"), ("计算结束时间", "times.finished_at"),
-    ("正式采用时间", "times.adopted_at"), ("提交时间（UTC）", "times.committed_at_utc"), ("旧正式记录时间", "times.schedule_time"),
+    ("正式采用时间", "times.adopted_at"), ("提交时间（UTC）", "times.committed_at_utc"), ("正式记录时间", "times.schedule_time"),
     ("原正式基准编号", "baseline.plan_ref"), ("原正式基准版本", "baseline.version"),
     ("结果来源类型", "source.kind"), ("结果来源编号", "source.ref"), ("结果来源状态", "source.state"),
     ("结果来源缺项编码", "source.reason.code"), ("结果来源缺项说明", "source.reason.message"),

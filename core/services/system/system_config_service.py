@@ -1,21 +1,10 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
-from typing import Any, Dict, List
 
-from core.shared.boolean_normalize import normalize_yes_no_wide
+from core.errors import AppError, ErrorCode
 from data.repositories import SystemConfigRepository
-
-
-def _normalize_yes_no(value: Any) -> str:
-    """
-    统一把页面开关规范成系统内部保存值。
-    """
-    return normalize_yes_no_wide(value, default="no", unknown_policy="no")
-
-
-def _switch_value_label(value: str) -> str:
-    return "启用" if value == "yes" else "关闭"
 
 
 @dataclass
@@ -28,8 +17,11 @@ class SystemConfigSnapshot:
     auto_log_cleanup_enabled: str
     auto_log_cleanup_keep_days: int
     auto_log_cleanup_interval_minutes: int
-    dirty_fields: List[str]
-    dirty_reasons: Dict[str, str]
+
+
+def _corrupt(key: str) -> AppError:
+    return AppError(ErrorCode.DB_QUERY_ERROR, "系统配置里保存了无法识别的值，配置已损坏，请联系维护人员核对数据库。",
+                    details={"config_key": key})
 
 
 class SystemConfigService:
@@ -51,44 +43,22 @@ class SystemConfigService:
         self.repo = SystemConfigRepository(conn, logger=logger)
 
     def _read_snapshot(self, backup_keep_days_default: int, stored_values) -> SystemConfigSnapshot:
-        dirty_fields: List[str] = []
-        dirty_reasons: Dict[str, str] = {}
-
-        def _mark_dirty(key: str, reason: str) -> None:
-            dirty_fields.append(key)
-            dirty_reasons[key] = reason
-
+        # 这些值只由维护设置保存，写入口只写 yes/no 和范围内的整数；没保存过的键才用默认值，其他值都是存储损坏。
         def _get_yes_no(key: str, default: str) -> str:
-            raw = stored_values.get(key, default)
-            raw = default if raw is None else raw
-            normalized = _normalize_yes_no(raw)
-            raw_text = str(raw).strip()
-            if raw_text and raw_text.lower() not in {"yes", "no"}:
-                _mark_dirty(key, f"这个开关保存的是旧写法，本次先按“{_switch_value_label(normalized)}”处理。")
-            elif not raw_text:
-                _mark_dirty(key, f"这个开关保存为空，本次先按“{_switch_value_label(normalized)}”处理。")
-            return normalized
+            raw = stored_values.get(key)
+            if raw is None:
+                return default
+            if raw not in ("yes", "no"):
+                raise _corrupt(key)
+            return raw
 
         def _get_int(key: str, default: int, min_v: int, max_v: int) -> int:
             raw = stored_values.get(key)
             if raw is None:
                 return int(default)
-            raw_text = str(raw).strip()
-            if raw_text == "":
-                _mark_dirty(key, f"这个数字保存为空，本次先按 {default} 处理。")
-                return int(default)
-            try:
-                v = int(raw_text)
-            except ValueError:
-                _mark_dirty(key, f"这个数字不是整数，本次先按 {default} 处理。")
-                return int(default)
-            if v < min_v:
-                _mark_dirty(key, f"这个数字小于允许范围，本次先按最小值 {min_v} 处理。")
-                return int(min_v)
-            if v > max_v:
-                _mark_dirty(key, f"这个数字大于允许范围，本次先按最大值 {max_v} 处理。")
-                return int(max_v)
-            return int(v)
+            if re.fullmatch(r"[1-9][0-9]*", raw) is None or not min_v <= int(raw) <= max_v:
+                raise _corrupt(key)
+            return int(raw)
 
         return SystemConfigSnapshot(
             auto_backup_enabled=_get_yes_no("auto_backup_enabled", default="no"),
@@ -105,8 +75,6 @@ class SystemConfigService:
             auto_log_cleanup_interval_minutes=_get_int(
                 "auto_log_cleanup_interval_minutes", default=60, min_v=self.MIN_INTERVAL_MINUTES, max_v=self.MAX_INTERVAL_MINUTES
             ),
-            dirty_fields=dirty_fields,
-            dirty_reasons=dirty_reasons,
         )
 
     def snapshot_with_storage(self, backup_keep_days_default: int):

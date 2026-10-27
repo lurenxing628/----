@@ -83,14 +83,6 @@ class WorkbenchResourceService:
                 group = identity.entity_key
             if group != old_group:
                 related["group"] = group
-        if "op_type_ref" in relations:
-            if relations["op_type_ref"] is None:
-                fields["op_type_id"] = None
-            else:
-                identity = preparation.identity("op_type", relations["op_type_ref"])
-                if identity.entity_key != raw.get("op_type_id"):
-                    preparation.selected_record("op_type", identity, category="internal")
-                fields["op_type_id"] = identity.entity_key
         if "op_type_refs" in relations:
             existing = {row["op_type_id"] for row in preparation.facts.grouped("machine_capabilities", "machine_id")[code]}
             existing_all = existing | ({raw.get("op_type_id")} if raw.get("op_type_id") else set())

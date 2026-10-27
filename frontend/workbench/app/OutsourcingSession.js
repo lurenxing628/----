@@ -28,7 +28,7 @@
     catch (_) { throw new Error('上次操作记录保存不了，不能开始登记。请重新打开页面。'); }
     window.dispatchEvent(new CustomEvent(EVENT, { detail: v })); return v;
   }
-  function useCommand(api) {
+  function useCommand() {
     const [initial] = React.useState(() => { try { return { saved: read() }; } catch (error) { return { saved: null, error }; } });
     const [saved, setSaved] = React.useState(initial.saved), [storageError, setStorageError] = React.useState(initial.error || null);
     const [error, setError] = React.useState(null), [notice, setNotice] = React.useState(''), [busy, setBusy] = React.useState(false);
@@ -40,7 +40,7 @@
       window.addEventListener('storage', changed); window.addEventListener(EVENT, changed);
       return () => { mounted.current = false; window.removeEventListener('storage', changed); window.removeEventListener(EVENT, changed); };
     }, []);
-    // api.command/api.lookup already checked the receipt; a failed local write belongs to storageError.
+    // C.command/C.lookup already checked the receipt; a failed local write belongs to storageError.
     function accept(v, original) {
       try { save({ ...original, phase: 'confirmed', receipt: v }, original); if (mounted.current) { setError(null); setNotice('请点「完成」查看最新登记。'); } }
       catch (e) { if (mounted.current) setStorageError(e); }
@@ -48,7 +48,7 @@
     async function lookup(preserveError = false) {
       if (running.current || !active.current || active.current.phase !== 'pending') return;
       const original = active.current; running.current = true; setBusy(true); if (!preserveError) setError(null);
-      try { const v = await api.lookup(original); if (v) accept(v, original); else if (mounted.current) setNotice('还是没有查到结果。请稍后再点「查询结果」，不要重复提交。'); }
+      try { const v = await C.lookup(original); if (v) accept(v, original); else if (mounted.current) setNotice('还是没有查到结果。请稍后再点「查询结果」，不要重复提交。'); }
       catch (e) { if (mounted.current) setError(e); }
       finally { running.current = false; if (mounted.current) setBusy(false); }
     }
@@ -60,17 +60,18 @@
         if (!navigator.locks || typeof navigator.locks.request !== 'function') { if (mounted.current) setError(new Error('当前浏览器不支持，请用 Chrome 打开。')); return; }
         await navigator.locks.request(KEY, { ifAvailable: true }, async lock => {
           if (!lock) { if (mounted.current) setError(new Error('另一个页面有还没确认的外协登记，请先在那里点「查询结果」。')); return; }
-          // The precheck has not touched localStorage, so its failure is an operation error.
-          let d; try { d = C.preview(preview, preview.data.input).data; } catch (e) { if (mounted.current) setError(e); return; }
-          original = { version: 1, phase: 'pending', request_key: 'outsourcing-' + Array.from(crypto.getRandomValues(new Uint8Array(24)), n => n.toString(16).padStart(2, '0')).join(''),
+          // C.preview 已校验过这份预检结果。
+          const d = preview.data;
+          original = { version: 1, phase: 'pending', request_key: window.APSWorkbenchTransport.requestKey('outsourcing'),
             input: d.input, after: d.after, target: d.target };
           save(original, null);
-          try { accept(await api.command(original, d.write_context.write_token), original); }
+          try { accept(await C.command(original, d.write_context.write_token), original); }
           catch (e) {
             // 明确被拒的登记什么都没写入：直接放弃这条待确认记录，表单回到可编辑状态，改好后重新预检提交。
-            if (C.isRejected(e)) save(null, original); else needLookup = true;
+            const rejected = window.APSWorkbenchTransport.rejected(e);
+            if (rejected) save(null, original); else needLookup = true;
             // Rejection returns to the form; pending outcomes remain in Pending. Keep the reason in the error box.
-            if (mounted.current) { setError(e); setNotice(C.isRejected(e) ? window.WorkbenchTerms.outcomes.rejected('外协登记') : ''); }
+            if (mounted.current) { setError(e); setNotice(rejected ? window.WorkbenchTerms.outcomes.rejected('外协登记') : ''); }
           }
         });
       } catch (e) { if (mounted.current) setStorageError(e); }
@@ -84,7 +85,7 @@
     }
     return { saved, storageError, error, notice, busy, sync, submit, lookup: () => lookup(), finish };
   }
-  function useRead(load, deps, enabled = true) { return window.APSResourceSession.useQuery(load, deps, enabled); }
+  function useRead(load, deps) { return window.APSResourceSession.useQuery(load, deps); }
   function memberConflict(first, row) {
     if (!first) return '';
     if (first.batch_ref !== row.batch_ref) return '不同批次';

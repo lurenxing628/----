@@ -19,17 +19,19 @@ from .piece_adoption import prepare_piece_validation_context, validate_piece_can
 from .preflight_facts import PreflightFacts
 
 
-def compute_candidate_run(conn, normalized_input, execution_projections, *, capture) -> CandidateRunComputation:
+def compute_candidate_run(conn, normalized_input, execution_projections, *, capture, dispositions) -> CandidateRunComputation:
     """Compute actual candidate rows under one read snapshot; worker owns run lock.
 
-    capture is the worker's production facts capture; execution_projections are
-    the already validated projections restored from that run's admission.
+    capture is the worker's production facts capture; execution_projections and
+    dispositions are the already validated projections and the classification
+    archived by that run's admission.
     """
     with candidate_read_snapshot(conn):
         # The private continuation consumes this preparation in the same read snapshot.
         facts = PreflightFacts(conn, capture=capture)
         facts.bind_capture(capture)
-        prepared = prepare_candidate_run_input(conn, normalized_input, execution_projections, facts=facts)
+        prepared = prepare_candidate_run_input(conn, normalized_input, execution_projections, facts=facts,
+                                               admitted_dispositions=dispositions)
         return _compute_in_read_snapshot(conn, prepared, _prepared_version(prepared))
 
 

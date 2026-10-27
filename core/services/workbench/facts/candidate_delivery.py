@@ -103,8 +103,8 @@ def _project_items(candidate, facts, tasks, settings, deferred_ids, *, scope=Non
     return items, missing, uncertain, len(keys)
 
 
-def project_legacy_delivery_detail(candidate, facts, tasks, settings, *, intervals,
-                                   deferred_ids, precomputed_delivery=None):
+def project_delivery_detail(candidate, facts, tasks, settings, *, intervals,
+                            deferred_ids, precomputed_delivery=None):
     """Keep all whole-candidate batch rows and every tied last operation for saved detail."""
     precomputed = (
         {row["batch_ref"]: row for row in precomputed_delivery}

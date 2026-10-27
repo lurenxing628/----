@@ -80,11 +80,6 @@ def test_bad_trial_due_preserves_complete_chain_and_its_specific_reason(trial_ca
     assert row["completion_state"] == "complete" and row["finish"] is not None
     assert "trial_constraints_blocked" not in row["after"]["issues"]
     assert draft["comparison"]["delivery_summary"]["invalid_due_count"] == 1
-    historical = deepcopy(draft["validation"])
-    historical["issues"][0].pop("field")
-    head, rows = load_draft(service(case.conn).repo, draft["draft_ref"])
-    legacy = projection.comparison(draft["tasks"], historical, rows, head["admission"])
-    assert legacy["batches"][0]["after"]["schedule_complete"] is True
 
 
 def test_trial_missing_origin_operation_never_claims_whole_batch_finish(trial_case):
@@ -159,10 +154,6 @@ def test_candidate_trial_retains_explicit_material_deferral_from_run_capture(tri
     assert official_draft["scope_complete"] is False
     official_head, official_rows = load_draft(service(case.conn).repo, official_draft["draft_ref"])
     historical = deepcopy(official_head["admission"])
-    historical["source"].pop("deferred_operation_ids")
-    historical["source"].pop("deferred_operation_issues")
-    legacy = projection.comparison(official_draft["tasks"], official_draft["validation"], official_rows, historical)
-    assert legacy["batches"][0]["completion_state"] == "deferred"
     historical["source"]["operation_effort"] = None
     pairs, unknown = preparation_projection(official_rows, historical, None,
                                             current_evidence={"kind": "trial", "draft_ref": official_draft["draft_ref"]})
@@ -280,43 +271,3 @@ def test_trial_includes_selected_batch_with_only_material_deferred_operations(tr
     blocked = adopter.preview(saved["scenario_ref"])["validation"]
     assert blocked["can_adopt"] is False
     assert [item["code"] for item in blocked["issues"]] == ["snapshot_stale"]
-
-
-def test_saved_legacy_trial_read_reprojects_due_without_rewriting_archive(trial_case, monkeypatch):
-    case = trial_case
-    case.conn.execute("UPDATE Batches SET due_date='9999-12-31'")
-    draft = create(case)
-    shared = projection.comparison
-
-    def legacy_comparison(*args, **kwargs):
-        result = deepcopy(shared(*args, **kwargs))
-        result.pop("delivery_summary")
-        result.pop("before_delivery_summary")
-        for row in result["batches"]:
-            row["risk"], row["late_hours"] = "due_unspecified", 0.0
-        result["late_count"], result["total_delay_hours"] = 0, 0.0
-        return result
-
-    with monkeypatch.context() as patch:
-        patch.setattr(projection, "comparison", legacy_comparison)
-        saved = service(case.conn).save(draft["draft_ref"], {"name": "Historical trial"},
-            draft["write_context"]["write_token"], "trial-save-legacy-due-001")["data"]
-    svc = service(case.conn)
-    changes = case.conn.total_changes
-    current = svc.scenario(saved["scenario_ref"])
-    assert current["comparison"]["batches"][0]["risk"] == "not_applicable"
-    assert current["comparison"]["batches"][0]["late_hours"] is None
-    assert current["comparison"]["delivery_summary"]["excluded_due_count"] == 1
-    assert load_scenario(svc.repo, saved["scenario_ref"])["comparison"] == saved["comparison"]
-    assert case.conn.total_changes == changes
-
-
-def test_missing_saved_trial_source_is_explicit_unknown_from_saved_tasks(trial_case):
-    case = trial_case
-    draft = create(case)
-    summary = projection.scenario_comparison(draft, None)
-    row, = summary["batches"]
-    assert row["completion_state"] == "unknown" and row["risk"] == "unknown"
-    assert "trial_source_unavailable" in row["after"]["issues"]
-    assert row["finish"] is None and row["improvement_hours"] is None
-    assert summary["delivery_summary"]["unknown_due_count"] == 1

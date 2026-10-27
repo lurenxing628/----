@@ -14,7 +14,7 @@ from core.services.workbench.run.decision import CORE_BASELINE_COVERAGE, CORE_CA
 from core.services.workbench.run.decision_export import write_run_decision_export
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from scripts.verify_decision_workbench import _check_export_rows
-from tests.workbench.run_candidate_support import BASE, api, compute
+from tests.workbench.run_candidate_support import BASE, api, compute, compute_two_objectives
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
 from tests.workbench.test_material_stage_release import add_requirement
 from web.routes.workbench.navigation_boot import WorkbenchNavigationInvalid, read_navigation
@@ -82,8 +82,7 @@ def test_all_real_candidates_share_reference_and_preserve_saved_selection(candid
     assert compared["recommendation"]["candidate_ref"] == initial["recommendation"]["candidate_ref"]
     basis = compared["selection_basis"]
     assert basis["generation_policy_version"] == "unified_search_v1"
-    assert basis["selection_policy_version"] == basis["selection_evidence_version"] == "business_objectives_v1"
-    assert basis["decision_evidence"] is basis["health_reference_candidate_ref"] is basis["health_comparison"] is None
+    assert basis["selection_policy_version"] == "business_objectives_v1"
     assert basis["target_objectives"] == ["min_overdue", "min_tardiness", "min_changeover"]
     assert set(basis["objective_winners"]) == set(basis["target_objectives"])
     assert all(winner in refs for winner in basis["objective_winners"].values())
@@ -92,8 +91,8 @@ def test_all_real_candidates_share_reference_and_preserve_saved_selection(candid
         assert row["kind"] == "business_objective"
         assert "algorithm_baseline" not in row["selection_role"]
     for entry in basis["explanation"]["entries"]:
-        assert all(entry[key] is None or type(entry[key]) in (int, float)
-                   for key in ("reference_value", "selected_value", "value", "limit", "tolerance"))
+        assert set(entry) == {"key", "label", "text", "state", "unit", "selected_value", "source", "scope"}
+        assert entry["selected_value"] is None or type(entry["selected_value"]) in (int, float)
     recommendation = compared["recommendation"]
     assert recommendation["recommendation_version"] == "decision-recommendation-v1"
     assert recommendation["recommendation_type"] == "complete"
@@ -132,50 +131,6 @@ def test_all_real_candidates_share_reference_and_preserve_saved_selection(candid
         delta = row["deltas"]["makespan_hours"]
         assert delta["value"] == row["metrics"]["makespan_hours"]["value"] - reference["metrics"]["makespan_hours"]["value"]
         assert row["coverage"]["schedulable"]["missing_count"] == 0
-
-
-def test_legacy_saved_selection_evidence_keeps_permanent_anchors_and_view_identity(candidate_case, monkeypatch):
-    from tests.workbench.legacy_run_archive_support import install_complete_legacy_archive
-
-    # Explicit historical saved evidence, independent of current selection algorithms.
-    baseline = {"candidate_key": "baseline", "score": [0, 0, 0, 0.75, 0],
-        "failed_ops": 0, "primary_score": 0, "overdue_count": 0, "total_tardiness_hours": 0}
-    saved_evidence = {"version": "candidate-selection-evidence-v1", "state": "complete",
-        "selected": deepcopy(baseline),
-        "anchors": {"raw_score_best": deepcopy(baseline), "health_reference": deepcopy(baseline)},
-        "tiebreak": {"rule": "full_score_baseline_sequence_v1", "raw_score_best_candidate_key": "baseline",
-            "runner_up_candidate_key": "graph_w1_of_3", "decisive_step": "baseline_preference", "decisive_score_index": None,
-            "primary_tied_candidate_keys": ["baseline", "graph_w1_of_3", "graph_w2_of_3", "graph_w3_of_3"],
-            "full_score_tied_candidate_keys": ["baseline", "graph_w1_of_3", "graph_w2_of_3", "graph_w3_of_3"]},
-        "balanced_checks": {"eligible": False, "checked": False, "reason_code": "critical_health_not_better",
-            "candidate_key": "graph_w1_of_3", "reference_candidate_key": "baseline", "health_reference_candidate_key": "baseline",
-            "health_state": "same", "checks": [], "accepted": False, "override_applied": False}}
-    frozen = deepcopy(saved_evidence)
-    install_complete_legacy_archive(monkeypatch, selection_snapshot={"decision_evidence": saved_evidence})
-    run_ref, refs = compute(candidate_case)
-    client, _ = api(candidate_case)
-    initial = decision(client, run_ref)["data"]
-    compared = decision(client, run_ref, reference_candidate_ref=refs[-1], selected_candidate_ref=refs[-2])["data"]
-    _assert_summary_matches_full(decision_summary(client, run_ref,
-        reference_candidate_ref=refs[-1], selected_candidate_ref=refs[-2])["data"], compared)
-    assert len(compared["candidates"]) == 4
-    assert compared["scope"]["selected_candidate_ref"] == refs[-2]
-    assert compared["scope"]["reference"]["candidate_ref"] == refs[-1]
-    assert compared["selection_basis"] == initial["selection_basis"]
-    basis, evidence = compared["selection_basis"], compared["selection_basis"]["decision_evidence"]
-    assert basis["selection_evidence_version"] == evidence["version"] == "candidate-selection-evidence-v1"
-    assert evidence["selected"]["candidate_ref"] == basis["selected_candidate_ref"] == refs[0]
-    assert evidence["anchors"]["raw_score_best"]["candidate_ref"] == basis["raw_score_best_candidate_ref"] == refs[0]
-    assert evidence["anchors"]["health_reference"]["candidate_ref"] == basis["health_reference_candidate_ref"] == refs[0]
-    assert evidence["tiebreak"]["rule"] == "full_score_baseline_sequence_v1"
-    assert evidence["tiebreak"]["runner_up_candidate_ref"] == refs[1]
-    assert "candidate_key" not in json.dumps(evidence)
-    assert saved_evidence == frozen
-    assert compared["recommendation"]["candidate_ref"] == initial["recommendation"]["candidate_ref"] == refs[0]
-    assert compared["recommendation"]["viewed_candidate_ref"] == refs[-2]
-    for entry in basis["explanation"]["entries"]:
-        assert all(entry[key] is None or type(entry[key]) in (int, float)
-                   for key in ("reference_value", "selected_value", "value", "limit", "tolerance"))
 
 
 def test_candidate_scope_and_window_errors_are_rejected_before_comparison(candidate_case):
@@ -219,11 +174,9 @@ def test_candidate_scope_and_window_errors_are_rejected_before_comparison(candid
     assert valid["scope"]["range_end"] == "2026-09-12T00:00:00"
 
 
-def test_overview_exports_require_the_screen_reference_snapshot(candidate_case, monkeypatch):
-    # Fixed historical directory preserves distinct viewer/reference export risks.
-    from tests.workbench.legacy_run_archive_support import install_complete_legacy_archive
-    install_complete_legacy_archive(monkeypatch)
-    run_ref, refs = compute(candidate_case)
+def test_overview_exports_require_the_screen_reference_snapshot(candidate_case):
+    # Two real representatives keep the viewer and the screen reference distinct.
+    run_ref, refs = compute_two_objectives(candidate_case)
     client, _ = api(candidate_case)
 
     document = decision(client, run_ref, reference_candidate_ref=refs[-1], selected_candidate_ref=refs[0])
@@ -346,7 +299,7 @@ def test_explicit_comparison_navigation_preserves_identity_and_complete_window()
         assert read_navigation(view, {"nav": json.dumps(navigation)}) == navigation
     formal = {key: value for key, value in context.items() if key != "reference_candidate_ref"}
     formal.update(comparison_mode="admission_official", reference_view=True, plan_ref="d" * 48,
-                  operation_ref="e" * 48, comparison_tab="operations", metric_view="all")
+                  operation_ref="e" * 48, comparison_tab="differences", metric_view="all")
     navigation = {"version": 1, "view": "gantt", "context": formal}
     assert read_navigation("gantt", {"nav": json.dumps(navigation)}) == navigation
     resources = dict(formal, comparison_tab="resources", resource_view="full_candidate", resource_kind="operator", resource_ref="f" * 48)
@@ -366,6 +319,9 @@ def test_explicit_comparison_navigation_preserves_identity_and_complete_window()
                     {key: value for key, value in formal.items() if key != "plan_ref"},
                     {key: value for key, value in formal.items() if key != "candidate_ref"},
                     dict(formal, reference_view="true"), dict(formal, comparison_tab="invalid"),
+                    # 页签白名单与前端实际页签一致；已不存在的旧页签按无效导航拒绝。
+                    dict(formal, comparison_tab="overview"), dict(formal, comparison_tab="batches"),
+                    dict(formal, comparison_tab="operations"),
                     dict(formal, metric_view="unknown"), dict(formal, operation_ref="invalid"), dict(reading, selected_batch_ref="invalid"),
                     dict(resources, resource_view="invalid"), dict(resources, resource_kind="invalid"), dict(resources, resource_ref="invalid")):
         with pytest.raises(WorkbenchNavigationInvalid):
@@ -400,20 +356,20 @@ def test_explicit_comparison_navigation_preserves_identity_and_complete_window()
             read_navigation("analysis", {"nav": json.dumps({"version": 1, "view": "analysis", "context": invalid})})
 
 
-@pytest.mark.parametrize("status", ("queued", "running", "failed", "cancelled"))
-def test_unsaved_recommendation_does_not_invent_missing_saved_selection_evidence(status):
+def test_unsaved_recommendation_does_not_invent_missing_saved_selection_evidence():
+    from core.models.workbench_command import WorkbenchCommandRejected
     from core.services.workbench.facts.decision_selection import selection_basis
 
-    candidate = {"candidate_ref": "a" * 48, "status": status,
-                 "artifact": {"candidate_key": "unfinished", "label": "Candidate"}}
-    basis = selection_basis(None, [candidate])
+    # 排队、计算中、失败的运行没有候选，也没有保存推荐。
+    basis = selection_basis(None, [])
     assert basis["selected_candidate_ref"] is None and basis["evidence_state"] == "unavailable"
     assert basis["explanation"]["headline"] == "本次排产尚未保存推荐方案。"
     assert basis["explanation"]["issues"] == []
-    legacy = selection_basis({"selection": {"selected_candidate_ref": candidate["candidate_ref"]}},
-                             [dict(candidate, status="completed")])["explanation"]
-    assert legacy["headline"] == "推荐方案已保存；这条旧记录未保存具体选择依据。"
-    assert {issue["code"] for issue in legacy["issues"]} == {"selection_detail_missing", "health_detail_missing"}
+    # 有候选的运行（完成或部分完成）必定写了推荐依据；有候选却没有推荐依据是存储损坏。
+    candidate = {"candidate_ref": "a" * 48, "status": "completed", "artifact": {"candidate_key": "business_1", "label": "Candidate"}}
+    with pytest.raises(WorkbenchCommandRejected) as exc:
+        selection_basis(None, [candidate])
+    assert (exc.value.code, exc.value.status) == ("candidate_artifact_invalid", 500)
 
 
 _NAVIGATION_MALFORMED = "页面地址里的定位或范围不对，页面没有打开；系统没有恢复上次选择，也没有换记录或放宽范围。请从侧栏重新进入。"

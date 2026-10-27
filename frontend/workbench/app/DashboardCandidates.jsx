@@ -10,18 +10,17 @@
     const end = new Date(Date.parse(raw + 'Z') + 86400000).toISOString().slice(0, 19);
     C.check(A.time(end) && start < end); return { range_start: start, range_end: end };
   }
-  async function allCandidates(api, runRef, signal) {
-    const first = await api.catalog(runRef, { size: 50 }, signal), rows = first.data.candidates.slice();
+  async function allCandidates(runRef, signal) {
+    const first = await A.catalog(runRef, { size: 50 }, signal), rows = first.data.candidates.slice();
     let page = 1, next = first;
     while (next.data.page.has_more) {
-      next = await api.catalog(runRef, { page: ++page, size: 50, snapshot_ref: first.meta.snapshot_ref }, signal);
+      next = await A.catalog(runRef, { page: ++page, size: 50, snapshot_ref: first.meta.snapshot_ref }, signal);
       C.check(next.data.candidate_count === first.data.candidate_count); rows.push(...next.data.candidates);
     }
     C.check(rows.length === first.data.candidate_count && new Set(rows.map(row => row.candidate_ref)).size === rows.length);
     return { ...first.data, candidates: rows };
   }
-  function Candidates({ catalog, initialContext = {}, onState, selectedBatch, onSelectBatch, issueBatchRef = null }) {
-    const api = React.useMemo(() => A.create(), []), comparisonApi = React.useMemo(() => Q.create(), []);
+  function Candidates({ catalog, initialContext, onState, selectedBatch, onSelectBatch, issueBatchRef }) {
     const [choice, setChoice] = React.useState(() => { const value = Q.context(initialContext); delete value.batch_ref; return value; }), [revision, refresh] = React.useReducer(n => n + 1, 0);
     const context = Q.context({ ...choice, ...(issueBatchRef ? { batch_ref: issueBatchRef } : {}) });
     const [list, setList] = React.useState({ run: null, data: null, error: null, loading: false });
@@ -32,33 +31,33 @@
     React.useEffect(() => {
       const controller = new AbortController(), run = choice.run_ref;
       setList({ run, data: null, error: null, loading: !!run });
-      if (run) allCandidates(api, run, controller.signal).then(data => { if (!controller.signal.aborted) setList({ run, data, error: null, loading: false }); })
+      if (run) allCandidates(run, controller.signal).then(data => { if (!controller.signal.aborted) setList({ run, data, error: null, loading: false }); })
         .catch(error => { if (!controller.signal.aborted) setList({ run, data: null, error, loading: false }); });
       return () => controller.abort();
-    }, [api, choice.run_ref, revision]);
+    }, [choice.run_ref, revision]);
     React.useEffect(() => {
       const controller = new AbortController(); setSummary(false);
       setRead({ signature, data: null, error: null, loading: !!context.candidate_ref });
       if (!context.candidate_ref) return () => controller.abort();
       const load = async () => {
         if (!context.range_start || !context.range_end) {
-          const first = await api.workspace(context.candidate_ref, context.batch_ref ? { batch_ref: context.batch_ref } : {}, controller.signal);
+          const first = await A.workspace(context.candidate_ref, context.batch_ref ? { batch_ref: context.batch_ref } : {}, controller.signal);
           C.check(first.data.candidate.run_ref === context.run_ref, '返回的候选不属于原排产记录，未改指其他记录。');
           if (!controller.signal.aborted) setChoice(previous => C.equal(previous, choice) ? { ...previous, ...rangeFor(first.data.generation.input) } : previous);
           return;
         }
-        const comparison = await comparisonApi.read(context, controller.signal);
+        const comparison = await Q.read(context, controller.signal);
         if (!controller.signal.aborted) setRead({ signature, data: comparison, error: null, loading: false });
       };
       load().catch(error => { if (!controller.signal.aborted) setRead({ signature, data: null, error, loading: false }); });
       return () => controller.abort();
-    }, [api, comparisonApi, signature, revision]);
+    }, [signature, revision]);
     const current = read.signature === signature ? read : null, result = current && current.data;
     const data = result && result.data, options = list.run === choice.run_ref && list.data;
     const caption = data ? { reference: data.candidate.candidate_ref, label: '比较方案', name: data.candidate.label || window.WorkbenchTerms.name_missing,
       status: data.baseline.available ? '已保存候选方案 · 与排产时的正式计划对照' : '已保存候选方案 · 排产时没有正式计划' } : null;
     const captionKey = JSON.stringify(caption);
-    React.useLayoutEffect(() => { if (onState) onState({ context, caption }); }, [onState, signature, captionKey]);
+    React.useLayoutEffect(() => { onState({ context, caption }); }, [onState, signature, captionKey]);
     function changeRun(ref) {
       setRangeError(null);
       if (!ref) { setChoice({}); return; }

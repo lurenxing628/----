@@ -6,7 +6,7 @@ from .decision_preparation_export import EFFORT_FIELDS, effort_values
 COMMON_HEADERS = ("排产编号", "归档编号", "读取编号", "读取时间", "保存推荐候选编号", "当前查看候选编号", "比较模式",
                   "查看基准编号", "查看基准类型", "范围起点（含）", "范围终点（不含）", "资源视角", "推荐版本", "推荐记录格式版本")
 EXPLANATION_FIELDS = ("record_kind", "指标标识", "名称", "范围", "来源", "状态", "变化方向", "单位", "基准值", "比较对象值", "差值",
-                      "实际限制", "容差", "容差单位", "主项类别", "主项顺序", "相关明细类型", "相关明细永久编号", "相关明细候选编号", "相关明细页签",
+                      "主项类别", "主项顺序", "相关明细类型", "相关明细永久编号", "相关明细候选编号", "相关明细页签",
                       "相关明细比较起点", "相关明细比较终点", "相关明细筛选字段", "相关明细筛选值", "说明", "指标版本")
 COMPLETION_FIELDS = ("record_kind", "安排组号", "安排来源类型", "候选永久编号", "候选名称", "来源可用", "批次永久编号", "批次编号",
                      "安排分类", "双方工序都已排齐", "批次工序安排状态", "交付状态", "交期状态", "交期", "预计完工", "已排部分预计结束", "拖期小时",
@@ -36,17 +36,16 @@ def _definition_values(entry):
             "来源": entry["source"], "指标版本": entry.get("metric_version"), "状态": entry["state"], "变化方向": entry.get("direction"), "单位": entry.get("unit"),
             **{label: entry[key] * factor if type(entry.get(key)) in (int, float) else entry.get(key)
                for label, key in (("基准值", "reference_value"), ("比较对象值", "selected_value"), ("差值", "value"))},
-            "实际限制": entry.get("limit"), "容差": (entry["tolerance"] * 100 if entry.get("tolerance_unit") == "%" and entry.get("tolerance") is not None else entry.get("tolerance")),
-            "容差单位": entry.get("tolerance_unit"), "说明": entry["text"]}
+            "说明": entry["text"]}
 
 
 def _explanations(data):
     recommendation, basis = data["recommendation"], data["selection_basis"]
     yield {"record_kind": "conclusion", "指标标识": "recommendation_type", "名称": "推荐结论", "范围": "full_admission",
            "状态": recommendation["state"], "比较对象值": recommendation["recommendation_type"], "说明": recommendation["headline"]}
-    for field in ("selected_candidate_ref", "raw_score_best_candidate_ref", "health_reference_candidate_ref", "selection_policy",
-                  "selection_policy_version", "reason_code", "objective_name", "objective_field_order", "selected_score",
-                  "overdue_tolerance_count", "tardiness_tolerance_ratio"):
+    for field in ("generation_policy_version", "selection_policy_version", "primary_objective", "target_objectives",
+                  "selected_candidate_ref", "objective_winners", "objective_winner_reasons", "objective_field_order",
+                  "selected_score", "reason_code"):
         for key, value in _scalars(basis[field], field):
             yield {"record_kind": "fixed_selection", "指标标识": key, "名称": field, "范围": "fixed_algorithm_selection",
                    "来源": "saved_selection", "状态": "complete" if value is not None else "unavailable", "比较对象值": value}
@@ -54,14 +53,6 @@ def _explanations(data):
         yield {"record_kind": "selection_explanation", **_definition_values(entry)}
     for issue in basis["explanation"]["issues"]:
         yield {"record_kind": "missing_evidence", "指标标识": issue["code"], "名称": "推荐依据缺少资料", "状态": "unavailable", "说明": issue["message"]}
-    for root, value in (("selection", basis["decision_evidence"]), ("health", basis["health_decision_evidence"])):
-        if value is None:
-            continue
-        for key, scalar in _scalars(value, root):
-            kind = "health" if root == "health" else "tiebreak" if ".tiebreak." in key else "tolerance" if ".balanced_checks." in key else "selection_evidence"
-            yield {"record_kind": kind, "指标标识": key, "名称": key, "范围": "fixed_health_reference" if root == "health" else "fixed_algorithm_selection",
-                   "来源": "saved_health_calculation" if root == "health" else "saved_selection",
-                   "状态": "complete" if scalar is not None else "unavailable", "比较对象值": scalar}
     main = {row["metric_key"]: (kind, index + 1) for kind in ("benefits", "costs")
             for index, row in enumerate(recommendation["current_comparison"][kind])}
     for entry in recommendation["current_comparison"]["all_differences"]:
@@ -123,7 +114,7 @@ def common_export_columns(data, snapshot):
             data["recommendation"]["candidate_ref"], scope["selected_candidate_ref"], scope["comparison_mode"],
             baseline.get("candidate_ref") if baseline["kind"] == "candidate" else baseline.get("baseline_ref"), baseline["kind"],
             scope["range_start"], scope["range_end"], scope["resource_view"], data["recommendation"]["recommendation_version"],
-            basis["selection_evidence_version"]]
+            basis["selection_policy_version"]]
 
 
 def recommendation_export_tables(data, snapshot):

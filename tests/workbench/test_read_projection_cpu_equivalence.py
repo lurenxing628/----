@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.capacity.plan_calendar_intervals import instant
 from core.services.workbench.dashboard.facts import typed
 from core.services.workbench.facts.candidate_archive import load_adoption_candidate
@@ -23,6 +23,7 @@ from core.services.workbench.facts.decision_delivery import project_decision_del
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
 from core.services.workbench.facts.resource_projection import resource_cohort
 from core.services.workbench.run.decision_source import DecisionSource
+from core.shared.strict_json import canonical_json
 from data.repositories.schedule_time_sql import parse_dt_for_sql
 from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
 from tests.workbench.execution_ledger_support import all_rows
@@ -50,7 +51,6 @@ def _task_reads(monkeypatch):
 
 def test_same_plan_load_keeps_partial_report_and_shared_current_comparison_rows(ledger_case, monkeypatch):
     case = ledger_case
-    case.install()
     plan_ref = case.plan_ref(1)
     case.command("create", case.task(1, case.op_id), case.values(4))
     calls = _task_reads(monkeypatch)
@@ -71,7 +71,6 @@ def test_same_plan_load_keeps_partial_report_and_shared_current_comparison_rows(
 
 def test_different_plan_load_keeps_both_historical_task_mappings(ledger_case, monkeypatch):
     case = ledger_case
-    case.install()
     old = case.plan_ref(1)
     case.plan(2, [case.op_id], start="2026-09-10T08:00:00", end="2026-09-10T10:00:00")
     current = case.plan_ref(2)
@@ -89,7 +88,6 @@ def test_different_plan_load_keeps_both_historical_task_mappings(ledger_case, mo
 
 def test_current_plan_owner_rejects_inactive_permanent_identity_before_task_read(ledger_case, monkeypatch):
     case = ledger_case
-    case.install()
     plan_ref = case.plan_ref(1)
     corrupt_update(case.conn, "WorkbenchPlanSourceRefs", "UPDATE WorkbenchPlanSourceRefs SET active=0 WHERE ref=?", (plan_ref,))
     calls = _task_reads(monkeypatch)
@@ -104,7 +102,6 @@ def test_current_plan_owner_rejects_inactive_permanent_identity_before_task_read
 
 def test_same_plan_duplicate_operation_mapping_is_still_rejected_without_writes(ledger_case):
     case = ledger_case
-    case.install()
     other = case.op("OP2", seq=2)
     case.conn.execute("""INSERT INTO Schedule(version,op_id,machine_id,operator_id,start_time,end_time)
         VALUES (1,?,'M1','O1','2026-09-09T11:00:00','2026-09-09T12:00:00')""", (other,))
@@ -169,56 +166,8 @@ def test_cross_layer_schema_checks_share_leaf_contracts_in_one_snapshot(candidat
             assert calibration.schema_installed()
             candidate_archive.require_adoption_schema(conn)
             identities.read_revision()
-            projections, reasons = preflight_execution.execution_projections(PreflightFacts(conn), [])
-            assert projections == {} and reasons == []
+            assert preflight_execution.execution_projections(PreflightFacts(conn), []) == {}
         assert calls == {name: 1 for name, _, _ in checks}
-
-
-def test_schema_checks_refresh_after_explicit_ledger_installation(ledger_case):
-    from core.infrastructure.connection_guards import schema_contract_scope
-
-    repo = WorkbenchExecutionRepository(ledger_case.conn)
-    with schema_contract_scope(ledger_case.conn):
-        assert repo.schema_issues()
-    ledger_case.install()
-    with schema_contract_scope(ledger_case.conn):
-        assert repo.schema_issues() == []
-
-
-@pytest.mark.parametrize("version,has_receipt,allowed", [(24, False, True), (25, False, False), (24, True, False)])
-def test_batch_execution_uses_captured_version_and_receipts_for_legacy_boundary(ledger_case, version, has_receipt, allowed):
-    from core.infrastructure.migration_state import set_schema_version
-    from core.infrastructure.transaction import TransactionManager
-    from core.services.workbench.batch.execution import load_execution
-    from data.repositories.workbench_batch_facts_repo import WorkbenchBatchFactsRepository
-
-    conn = ledger_case.conn
-    set_schema_version(conn, version)
-    if has_receipt:
-        conn.execute("""INSERT INTO WorkbenchCommandReceipts
-            (request_key,receipt_ref,action,context_ref,input_hash,outcome_json)
-            VALUES (?,?,'execution.report_create',?,NULL,'{}')""",
-                     ("legacy-execution-receipt", "e" * 32, "o" * 48))
-    conn.commit()
-    trace = []
-    conn.set_trace_callback(trace.append)
-    try:
-        with TransactionManager(conn).transaction():
-            state = WorkbenchBatchFactsRepository(conn).versioned_facts()
-            if allowed:
-                result = load_execution(conn, [], schema_version=state["version"],
-                                        has_execution_commands=state["has_execution_commands"])
-                assert not result["available"] and result["snapshot_facts"] == {"schema_version": 24}
-                assert result["issues"][0]["code"] == "execution_ledger_not_installed"
-            else:
-                with pytest.raises(WorkbenchCommandRejected) as error:
-                    load_execution(conn, [], schema_version=state["version"],
-                                   has_execution_commands=state["has_execution_commands"])
-                assert error.value.code == "execution_ledger_unavailable"
-    finally:
-        conn.set_trace_callback(None)
-    assert sum("FROM SCHEMAVERSION " in sql.upper() for sql in trace) == 1
-    assert sum("FROM WORKBENCHCOMMANDRECEIPTS " in sql.upper() for sql in trace) == 1
 
 
 def _admission(case):

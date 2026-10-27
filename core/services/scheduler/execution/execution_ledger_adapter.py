@@ -4,16 +4,13 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import replace
 
 from core.errors import AppError, ErrorCode
-from core.infrastructure.connection_guards import schema_contract_memo
 from core.infrastructure.transaction import TransactionManager
-from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_objects
 from core.models.content import same
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution import ExecutionProjection
 from core.services.execution.ledger_reader import ExecutionLedgerReader
 from core.services.execution.projection import projection_resource_refs
-from data.repositories.execution_ledger_scope_repo import ExecutionLedgerScopeRepository
 
 from .execution_ledger_guard import ledger_fact_changes
 from .execution_plan_identity import current_execution_plan
@@ -28,30 +25,11 @@ def _unavailable(reason, *, op_id=None):
                     details=details)
 
 
-def _ledger_required(conn):
-    names = set(schema_contract_memo(conn).structure.objects)
-    if "SchemaVersion" not in names:
-        raise _unavailable("execution_ledger_schema_version_missing")
-    repo = ExecutionLedgerScopeRepository(conn)
-    version = repo.schema_version_value()
-    if type(version) is not int or version < 0:
-        raise _unavailable("execution_ledger_schema_version_invalid")
-    if version >= 25 or names.intersection(execution_ledger_objects()):
-        return True
-    if "WorkbenchCommandReceipts" in names and repo.has_execution_command_receipts():
-        raise _unavailable("execution_ledger_missing_with_receipts")
-    # Only a pre-v25 database with no ledger objects or receipts uses legacy reads.
-    return False
-
-
 @contextmanager
 def ledger_read_snapshot(conn, *, ledger=None):
     with TransactionManager(conn).transaction():
         if ledger is not None and ledger.conn is not conn:
             raise ValueError("Execution ledger must belong to the current connection")
-        if ledger is None and not _ledger_required(conn):
-            yield None
-            return
         ledger = ledger if ledger is not None else ExecutionLedgerReader(conn, current_plan_provider=current_execution_plan)
         with ExitStack() as stack:
             try:

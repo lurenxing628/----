@@ -5,6 +5,8 @@ rejected before any caller sees a value; bytes are decoded as UTF-8 only. Every 
 to the caller: storage readers raise their own corrupt/inconsistent errors and routes raise their
 own ``WorkbenchCommandRejected`` texts. Hooks escape the decoder through a private exception that is
 not a ``ValueError``, so a caller's rejection is never mistaken for, or absorbed by, a syntax error.
+``canonical_json`` is the one writer: sorted keys, compact separators, non-ASCII kept, non-finite
+numbers refused.
 """
 
 from __future__ import annotations
@@ -20,6 +22,10 @@ class _Rejected(Exception):
     def __init__(self, reject: Reject):
         super().__init__()
         self.reject = reject
+
+
+def canonical_json(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
 
 def load_strict_json(

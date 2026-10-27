@@ -105,8 +105,6 @@ class WorkbenchRunService:
 
     def _reasons(self, data):
         reasons = list(data["blockers"])
-        if data["execution_projection_source"] != "execution_ledger":
-            reasons.append({"code": "execution_ledger_unavailable", "message": "报工记录还没有准备好，这次排产不能开始。请刷新重试；仍不行请联系维护人员。"})
         if not self.integration_enabled:
             reasons.append({"code": "run_worker_not_connected", "message": "排产功能尚未开通，这次排产不能开始。请联系维护人员。"})
         return reasons

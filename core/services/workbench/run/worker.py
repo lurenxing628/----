@@ -96,7 +96,8 @@ class WorkbenchRunWorker:
             raw_execution = stored_json(row["execution_json"], list)
             normalized_input = stored_json(row["normalized_input_json"])
             projections = restore_execution_projections(raw_execution)
-            computation = compute_candidate_run(snapshot, normalized_input, projections, capture=current_capture)
+            computation = compute_candidate_run(snapshot, normalized_input, projections, capture=current_capture,
+                                                dispositions=admission["dispositions"])
             capture = {"input": normalized_input, "execution": raw_execution,
                        "baseline": stored_json(row["baseline_json"]), "facts_text": row["facts_json"],
                        "facts_hash": row["facts_hash"]}

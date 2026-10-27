@@ -35,7 +35,7 @@
     const optional = ['hold_window', 'time_budget_seconds'].filter(key => object(value) && own(value, key)), keys = fields.concat(optional);
     if (!object(value) || Object.keys(value).length !== keys.length || !keys.every(key => own(value, key))
         || !refs(value.batch_refs) || !date(value.start_date) || !date(value.end_date) || value.start_date > value.end_date
-        || !['strict', 'stage', 'split'].includes(value.material_strategy) || value.material_strategy !== 'strict' && !value.ready_check
+        || !['strict', 'stage'].includes(value.material_strategy) || value.material_strategy === 'stage' && !value.ready_check
         || typeof value.ready_check !== 'boolean' || !['auto_assign', 'exclude'].includes(value.missing_resource_policy) || value.completed_policy !== 'preserve_actuals'
         || own(value, 'time_budget_seconds') && !window.RunGenerationContract.budget(value.time_budget_seconds))
       throw fail('请核对已选批次、排产日期范围和本次排产规则。');
@@ -72,11 +72,10 @@
       if (!ref(context.entity_ref) || context.batch_refs !== undefined) throw fail('这个批次已失效，请点「选择批次」重新选。');
       value.batch_refs = [context.entity_ref];
     }
-    // 来源入口既可以是旧的视图名字符串，也可以是值班台用的 {view, context} 信封；本页不使用它，只做形状校验。
-    if (context.return_to !== undefined && !['batches', 'dashboard', 'run'].includes(object(context.return_to) ? context.return_to.view : context.return_to)) throw fail('返回入口无效。');
-    const normalized = input(value);
-    // 旧 split 只是拆批入口，实际放行与 strict 相同；新的可编辑规则只保留真实的两种齐套方式。
-    return normalized.material_strategy === 'split' ? { ...normalized, material_strategy: 'strict' } : normalized;
+    // 只有值班台带 {view: 'dashboard', context} 返回入口进入本页；本页不使用它，只做形状校验。
+    if (context.return_to !== undefined && !(object(context.return_to) && Object.keys(context.return_to).every(key => ['view', 'context'].includes(key))
+        && context.return_to.view === 'dashboard' && object(context.return_to.context))) throw fail('返回入口无效。');
+    return input(value);
   }
   const issues = rows => Array.isArray(rows) && rows.every(row => object(row) && typeof row.code === 'string' && typeof row.message === 'string');
   const nullableCount = value => value === null || count(value);
@@ -119,7 +118,7 @@
     });
     if (!object(d) || !token(d.input_ref) || !date(String(d.input_expires_at).slice(0, 10)) || !object(d.counts) || !countKeys.every(key => count(d.counts[key]))
         || JSON.stringify(actual) !== JSON.stringify(normalized)
-        || own(d, 'run_options') && (d.run_options === null ? !Array.isArray(d.blockers) || !d.blockers.some(row => row.code === 'config_error') : !window.RunGenerationContract.runOptions(d.run_options) || actual.time_budget_seconds !== d.run_options.time_budget_seconds)
+        || !own(d, 'run_options') || (d.run_options === null ? !Array.isArray(d.blockers) || !d.blockers.some(row => row.code === 'config_error') : !window.RunGenerationContract.runOptions(d.run_options) || actual.time_budget_seconds !== d.run_options.time_budget_seconds)
         || !validTasks
         || !issues(d.blockers) || !issues(d.warnings) || !issues(d.run_blocked_reasons) || !d.run_blocked_reasons.length
         || d.calendar_check !== 'not_evaluated' || d.config_scope !== 'single_run' || d.run_blocked !== true

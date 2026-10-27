@@ -153,8 +153,6 @@ class DowntimeScopeType(str, Enum):
 class SkillLevel(str, Enum):
     BEGINNER = "beginner"
     NORMAL = "normal"
-    # 历史兼容别名：新写入与对外展示均不再使用该值。
-    SKILLED = "skilled"
     EXPERT = "expert"
 
 

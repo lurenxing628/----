@@ -10,15 +10,18 @@ _TABLES = {**RESOURCE_KEYS, "supplier": ("Suppliers", "supplier_id")}
 
 
 def _public_status(kind):
-    """Project the shared status vocabulary inside a SQL filtering scope."""
+    """Project the shared status vocabulary inside a SQL filtering scope.
+
+    A damaged stored status matches no public status (NULL); projecting that row rejects it loudly.
+    """
     if kind == "op_type":
         return "NULL"
     if kind in SPECIAL_INACTIVE_REASONS:
         special = SPECIAL_INACTIVE_REASONS[kind]
         return ("CASE WHEN source.status='active' THEN 'active' WHEN source.status='inactive' AND profile.inactive_reason='" + special
-                + "' THEN '" + special + "' WHEN source.status='inactive' AND profile.inactive_reason='disabled' THEN 'inactive' ELSE 'unknown' END")
+                + "' THEN '" + special + "' WHEN source.status='inactive' AND profile.inactive_reason='disabled' THEN 'inactive' END")
     options = ",".join("'" + status + "'" for status in RAW_RESOURCE_STATUSES.get(kind, ("active", "inactive")))
-    return f"CASE WHEN source.status IN ({options}) THEN source.status ELSE 'unknown' END"
+    return f"CASE WHEN source.status IN ({options}) THEN source.status END"
 
 
 class WorkbenchResourceQueryRepository(BaseRepository):

@@ -2,7 +2,7 @@
   'use strict';
   const { Button } = window.ResourceControls;
   function ErrorBox({ error }) { return error ? <div className="rc-notice rc-error" role="alert">{error.message || '候选方案读取失败，请刷新后重试。'}</div> : null; }
-  function Reasons({ rows = [] }) {
+  function Reasons({ rows }) {
     const groups = new Map();
     rows.forEach(r => { const key = [r.field, r.code, r.message].join('\n'); if (!groups.has(key)) groups.set(key, { ...r, count: 0 }); groups.get(key).count++; });
     const [page, setPage] = React.useState(1), values = Array.from(groups.values()), pages = Math.max(1, Math.ceil(values.length / 20)), current = Math.min(page, pages);
@@ -14,11 +14,10 @@
   function Pager({ page, pages, onPage, disabled, label }) {
     return <window.WorkbenchListControls.Pager page={page} pages={pages} onPage={onPage} disabled={disabled} label={label} />;
   }
-  function Metric({ metric, suffix = '', kind }) {
-    if (metric.state === 'not_applicable' && metric.reason && metric.reason.code === 'shared_run_time')
-      return <details className="rc-metric rc-muted" data-metric-state="not_applicable"><summary title={metric.reason.message}>N/A</summary><small>{metric.reason.message}</small></details>;
-    return metric.value === null ? <details className="rc-metric rc-muted"><summary title={metric.reason.message}>未知</summary><small>{metric.reason.message}</small></details> :
-      <span>{['machine_util_avg', 'operator_util_avg'].includes(kind) ? window.RunCandidateModel.percent(metric.value) : window.RunCandidateModel.number(metric.value)}{suffix}</span>;
+  // 只在候选目录的交付三项（超期数、拖期小时、完工跨度）上使用；这三项按 {value, reason} 校验，没有 not_applicable 状态。
+  function Metric({ metric }) {
+    return metric.value === null ? <details className="rc-metric rc-muted"><summary title={metric.reason.message}>未知</summary><small>{metric.reason.message}</small></details>
+      : <span>{window.RunCandidateModel.number(metric.value)}</span>;
   }
   function ScoringScope({ value }) {
     const labels = { all_batches: '本次参与计算的全部批次', completed_batches_only: '本次计算范围内工序已排齐的批次', unknown: '评分范围待确认' };
@@ -75,19 +74,19 @@
     </section></details>;
   }
   function Generation({ data, analysis, meta }) {
-    const g = data.generation, input = g.input, M = window.RunCandidateModel, unified = window.RunGenerationContract.unified(g.algorithm);
+    const g = data.generation, input = g.input, M = window.RunCandidateModel;
     return <div className="rc-source-summary" aria-label="全方案资料"><details className="rc-reasons rc-generation wb-ref"><summary>全方案资料与记录编号</summary><dl className="rc-meta">
         <div><dt>全方案排产日期</dt><dd>{input.start_date || '未记录'} 至 {input.end_date || '未记录'}</dd></div>
         <div><dt>提交 / 结束时间</dt><dd>{M.timeLabel(g.accepted_at)}<small>{M.timeLabel(g.finished_at)}</small></dd></div>
         <div><dt>计算状态</dt><dd data-candidate-persisted-status={data.candidate.persisted_status}>{window.WorkbenchTerms.candidate_statuses[data.candidate.persisted_status] || '未记录'}</dd></div>
         {meta && <div><dt>本次刷新时间</dt><dd>{M.timeLabel(meta.as_of)}</dd></div>}
         <div><dt>计算方式</dt><dd>{[g.algorithm.mode_label, g.algorithm.strategy_label].filter(Boolean).join(' · ') || '未记录'}</dd></div>
-        {unified && <><div><dt>主目标</dt><dd>{window.RunGenerationContract.objectiveLabel(g.algorithm.primary_objective)}</dd></div>
-          <div><dt>同时探索</dt><dd>{g.algorithm.target_objectives.map(window.RunGenerationContract.objectiveLabel).join(' · ')}</dd></div>
-          {input.time_budget_seconds !== undefined && <div><dt>总计算预算</dt><dd>{M.number(input.time_budget_seconds)} 秒</dd></div>}</>}
+        <div><dt>主目标</dt><dd>{window.RunGenerationContract.objectiveLabel(g.algorithm.primary_objective)}</dd></div>
+        <div><dt>同时探索</dt><dd>{g.algorithm.target_objectives.map(window.RunGenerationContract.objectiveLabel).join(' · ')}</dd></div>
+        {input.time_budget_seconds !== undefined && <div><dt>总计算预算</dt><dd>{M.number(input.time_budget_seconds)} 秒</dd></div>}
         <div><dt>物料齐套规则</dt><dd>{window.WorkbenchTerms.material_strategy(input.material_strategy, input.ready_check)}</dd></div><div><dt>不重排时段</dt><dd data-hold-window>{window.WorkbenchTerms.hold_window(input.hold_window, g.data_gaps.some(gap => gap.field === 'input.hold_window'))}</dd></div><div><dt>齐套检查 / 缺资源</dt><dd>{input.ready_check === null ? '未记录' : input.ready_check ? '开启' : '关闭'} / {{ auto_assign: '自动分配', exclude: '暂不排' }[input.missing_resource_policy] || '未记录'}</dd></div>
         <div><dt>{'已有执行 / ' + window.WorkbenchTerms.baseline_plan}</dt><dd>{input.completed_policy === 'preserve_actuals' ? '保留已有开工和完工记录' : '执行规则未记录'}<small>{g.baseline.captured_task_count === null ? '正式计划安排数未记录' : '已保留 ' + g.baseline.captured_task_count + ' 道正式计划安排'}</small></dd></div></dl>
-      {unified && <GenerationMetadata value={g.algorithm} runRef={g.run_ref} />}
+      <GenerationMetadata value={g.algorithm} runRef={g.run_ref} />
       <div>原安排：{g.baseline.version === null ? '提交试排时没有正式计划' : '提交试排时保存的正式 v' + M.number(g.baseline.version) + ' · ' + M.timeLabel(g.baseline.captured_at)}</div>
       <div className="rc-muted">生成资料：提交试排时保存。{analysis && analysis.baseline.reason && analysis.baseline.reason.message}</div>
       <div className="rc-muted">{analysis ? '全方案选批：' + analysis.batches.map(row => row.batch_id).join(' / ') : '全方案的批次清单暂不可用。'}</div>

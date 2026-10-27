@@ -22,7 +22,6 @@ def test_bounded_cohort_matches_single_load_with_revisions_voids_and_legacy(ledg
     case = ledger_case
     ids = three_operations(case)
     case.event(ids[2], "start", version=2)
-    case.install()
     case.command("create", case.task(2, ids[0]), case.values(3))
     second = case.command("create", case.task(2, ids[1]), case.values(1))["data"]["rows"][0]
     case.command("correct", second["report_ref"], {"original_revision_ref": second["revision_ref"],
@@ -75,7 +74,6 @@ def test_large_cohort_reads_task_plan_once_and_keeps_requested_duplicate_guard(l
     ids = three_operations(case)
     other = case.op("UNSELECTED", seq=4)
     case.plan(3, list(ids) + [other])
-    case.install()
     tasks = [case.task(3, op) for op in list(ids) + [other]]
     headers = case.ledger.repo.task_headers(tasks)
     refs = [headers[task]["operation_ref"] for task in tasks[:-1]]
@@ -130,7 +128,6 @@ def test_field_visible_finish_dates_narrow_before_ledger_and_keep_inclusive_days
     for op, day in zip(ids, (1, 2, 3)):
         case.conn.execute("UPDATE Schedule SET start_time=?,end_time=? WHERE version=2 AND op_id=?",
                           (f"2026-01-{day:02d}T08:00:00", f"2026-01-{day:02d}T10:00:00", op))
-    case.install()
     reads, original = [], WorkbenchExecutionRepository.reports
 
     def reports(repo, refs, limit):

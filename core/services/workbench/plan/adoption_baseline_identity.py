@@ -137,10 +137,7 @@ def baseline_tasks(conn, baseline, tables, facts, *, point_annotator, context):
         fail("adoption_baseline_drift", "Schedule.complete_original_values_and_types")
     task_refs, operations = _task_bindings(conn, baseline, tables, context=context)
     resources = _resources(captured, tables, context=context)
-    source = context.adopted_source(ref)
-    if source is None:
-        fail("adoption_evidence_missing", "baseline.original_adoption")
-    origins = read_adoption_operation_facts(conn, source)
+    origins = read_adoption_operation_facts(conn, context.adopted_source(ref))
     ops, batches = indexed(tables["BatchOperations"], "id"), indexed(tables["Batches"], "batch_id")
     detail = []
     for row in captured:

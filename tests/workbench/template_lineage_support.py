@@ -1,19 +1,11 @@
 """Real batch/template/ledger fixtures, restricted to pytest temporary databases."""
 
-import sqlite3
 from datetime import datetime, timedelta
-from pathlib import Path
 
 import pytest
 
-from core.infrastructure.calendar_periods_schema import install as install_calendar_periods
-from core.infrastructure.machine_capabilities_schema import install as install_machine_capabilities
-from core.infrastructure.material_stages_schema import install as install_material_stages
 from core.infrastructure.transaction import TransactionManager
-from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_objects
-from core.infrastructure.workbench_metadata_schema import install_metadata
-from core.infrastructure.workbench_plan_identity_schema import install_plan_identity
-from core.infrastructure.workbench_template_lineage_schema import install_template_lineage, template_lineage_objects
+from core.infrastructure.workbench_template_lineage_schema import install_template_lineage
 from core.models.workbench_batch import normalize_operation_input
 from core.models.workbench_calibration import CalibrationQuery
 from core.services.scheduler.template_lineage import TemplateLineageWriter
@@ -23,7 +15,7 @@ from core.services.workbench.batch.operations import WorkbenchBatchOperationServ
 from core.services.workbench.calibration.service import WorkbenchCalibrationService
 from core.services.workbench.commands import WorkbenchCommandService
 from data.repositories.workbench_template_lineage_repo import WorkbenchTemplateLineageRepository
-from tests.workbench.execution_ledger_support import NOW, LedgerCase, install_current_content_storage
+from tests.workbench.execution_ledger_support import NOW, LedgerCase, current_database
 
 
 class TemplateLineageCase(LedgerCase):
@@ -32,23 +24,8 @@ class TemplateLineageCase(LedgerCase):
 
 @pytest.fixture(name="ledger_case")
 def ledger_fixture(tmp_path):
-    conn = sqlite3.connect(str(tmp_path / "template-lineage.sqlite"))
-    conn.row_factory = sqlite3.Row
-    conn.executescript((Path(__file__).resolve().parent / "fixtures" / "schema-v26.sql").read_text(encoding="utf-8"))
-    install_current_content_storage(conn)
-    # Main owns this frozen v26 fixture; unrelated current DDL cannot change the oracle.
-    for name in reversed({**execution_ledger_objects(), **template_lineage_objects()}):
-        row = conn.execute("SELECT type FROM sqlite_master WHERE name=?", (name,)).fetchone()
-        if row is not None:
-            if row[0] == "table":
-                assert not conn.execute('SELECT 1 FROM "' + name + '" LIMIT 1').fetchone() or name == "WorkbenchExecutionLedgerClock"
-            conn.execute('DROP ' + row[0].upper() + ' "' + name + '"')
+    conn = current_database(tmp_path / "template-lineage.sqlite")
     with TransactionManager(conn).transaction():
-        install_metadata(conn)
-        install_calendar_periods(conn)
-        install_machine_capabilities(conn)
-        install_material_stages(conn)
-        install_plan_identity(conn)
         conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T1','Turning')")
         conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M1','Lathe','T1')")
         conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('O1','Operator')")
@@ -67,7 +44,6 @@ def ledger_fixture(tmp_path):
 @pytest.fixture(name="lineage_case")
 def lineage_case(ledger_case):
     case = ledger_case
-    case.install()
     case.conn.execute("INSERT INTO PartOperations(part_no,seq,op_type_id,op_type_name,source,setup_hours,unit_hours) VALUES ('P1',1,'T1','Turning','internal',0,1)")
     case.conn.commit()
     with TransactionManager(case.conn).transaction():

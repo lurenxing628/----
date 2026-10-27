@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const P = window.PointContract;
+  const P = window.PointContract, T = window.APSWorkbenchTransport;
   const BASE = '/api/workbench/v1/scheduling';
   const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
   const text = v => typeof v === 'string', count = v => Number.isSafeInteger(v) && v >= 0;
@@ -18,46 +18,38 @@
   const timeKey = value => value.slice(0, 19) + '.' + (value.split('.')[1] || '').padEnd(6, '0');
   const gap = v => shape(v, ['field', 'code', 'message']) && [v.field, v.code, v.message].every(text);
   const gaps = v => Array.isArray(v) && v.every(gap);
-  // 生成时的不重排时段：旧记录不带这一项；null 是“不设”（存的值读不出来时也是 null，并附 input.hold_window 资料缺项）。
+  // 生成时的不重排时段：没带这一项表示按交付设置推算；null 是“不设”（存的值读不出来时也是 null，并附 input.hold_window 资料缺项）。
   const minute = v => text(v) && /^(?!0000)\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d$/.test(v) && time(v + ':00');
   const holdWindow = v => v === undefined || v === null || shape(v, ['start', 'end']) && minute(v.start) && minute(v.end) && v.start < v.end;
   const nullableText = v => v === null || text(v);
   const number = v => typeof v === 'number' && Number.isFinite(v) && v >= 0 || text(v) && /^[1-9]\d{15,}$/.test(v) && (v.length > 16 || v > '9007199254740991');
   const nullableNumber = v => v === null || number(v);
   const version = v => v === null || (typeof v === 'string' ? number(v) : Number.isSafeInteger(v) && v > 0);
-  const caps = v => shape(v, ['view', 'export', 'edit_draft', 'adopt', 'report_actual'], ['trial']) && typeof v.view === 'boolean' && typeof v.export === 'boolean'
-    && v.edit_draft === false && v.adopt === false && v.report_actual === false && (v.trial === undefined || v.trial === false);
+  const caps = v => shape(v, ['view', 'export', 'edit_draft', 'adopt', 'report_actual']) && typeof v.view === 'boolean' && typeof v.export === 'boolean'
+    && v.edit_draft === false && v.adopt === false && v.report_actual === false;
   const blocked = v => Array.isArray(v) && v.every(r => shape(r, ['capability', 'code', 'message']) && [r.capability, r.code, r.message].every(text));
   const metricKeys = ['overdue_count', 'total_tardiness_hours', 'makespan_hours', 'changeover_count', 'weighted_tardiness_hours', 'machine_used_count',
     'operator_used_count', 'machine_busy_hours_total', 'operator_busy_hours_total', 'machine_util_avg', 'operator_util_avg', 'elapsed_seconds'];
   function metric(v) { return shape(v, ['value', 'reason']) && (v.value === null ? gap(v.reason) : number(v.value) && v.reason === null); }
+  // 候选只由共同优化生成（unified_search_v1），保存时恒为计算完成。
   function summary(v, runRef) {
-    const unified = v && v.generation_policy_version === 'unified_search_v1', G = window.RunGenerationContract;
-    check(shape(v, ['candidate_ref', 'run_ref', 'label', 'status', 'persisted_status', 'task_count', 'completeness', 'metrics', 'metric_scopes', 'capabilities', 'blocked_reasons', 'data_gaps'].concat(unified ? G.metadataKeys : []))
+    const G = window.RunGenerationContract;
+    check(shape(v, ['candidate_ref', 'run_ref', 'label', 'status', 'persisted_status', 'task_count', 'completeness', 'metrics', 'metric_scopes', 'capabilities', 'blocked_reasons', 'data_gaps'].concat(G.metadataKeys))
       && ref(v.candidate_ref) && ref(v.run_ref) && (!runRef || v.run_ref === runRef) && nullableText(v.label) && count(v.task_count) && v.task_count <= 20000
-      && ['completed', 'failed', 'skipped'].includes(v.persisted_status) && ['complete', 'partial', 'unknown', 'no_result'].includes(v.completeness)
-      && v.status === (v.persisted_status === 'completed' && v.completeness === 'partial' ? 'partial' : v.persisted_status)
-      && (v.persisted_status === 'completed' ? v.completeness !== 'no_result' : v.completeness === 'no_result' && v.task_count === 0)
-      && shape(v.metrics, metricKeys) && metricKeys.every(k => unified && k === 'elapsed_seconds' ? G.catalogElapsed(v.metrics[k]) : metric(v.metrics[k]))
+      && v.persisted_status === 'completed' && ['complete', 'partial', 'unknown'].includes(v.completeness)
+      && v.status === (v.completeness === 'partial' ? 'partial' : 'completed')
+      && shape(v.metrics, metricKeys) && metricKeys.every(k => k === 'elapsed_seconds' ? G.catalogElapsed(v.metrics[k]) : metric(v.metrics[k]))
       && shape(v.metric_scopes, ['delivery', 'resources']) && v.metric_scopes.delivery === 'completed_batches_only' && v.metric_scopes.resources === 'scheduled_results_only'
-      && caps(v.capabilities) && blocked(v.blocked_reasons) && gaps(v.data_gaps)
-      && (!unified || v.persisted_status === 'completed' && G.metadata(v, v.run_ref)));
+      && caps(v.capabilities) && blocked(v.blocked_reasons) && gaps(v.data_gaps) && G.metadata(v, v.run_ref));
     return v;
   }
-  function envelope(v) {
-    check(shape(v, ['ok', 'schema_version', 'data', 'meta', 'warnings']) && v.ok === true && v.schema_version === 1
-      && shape(v.meta, ['request_ref', 'source', 'time_basis', 'snapshot_ref', 'as_of']) && /^[a-f0-9]{32}$/.test(v.meta.request_ref)
-      && v.meta.source === 'production' && v.meta.time_basis === 'factory_local' && token(v.meta.snapshot_ref) && time(v.meta.as_of)
-      && Array.isArray(v.warnings) && v.warnings.every(r => object(r) && text(r.code) && text(r.message)));
-    return v.data;
-  }
-  function identity(v, candidateRef) {
-    const data = envelope(v);
+  function validateIdentity(v, candidateRef) {
+    const data = v.data;
     check(shape(data, ['candidate_ref', 'run_ref', 'label', 'status']) && ref(candidateRef) && data.candidate_ref === candidateRef
       && ref(data.run_ref) && nullableText(data.label) && ['completed', 'failed', 'skipped'].includes(data.status), '候选身份与所选方案不一致，请重新打开。');
     return data;
   }
-  function catalogScope(query = {}) {
+  function catalogScope(query) {
     check(shape(query, [], ['page', 'size', 'status', 'sort', 'order', 'snapshot_ref']));
     const q = { page: 1, size: 20, status: 'all', sort: 'sequence', order: 'asc', ...query };
     check(Number.isInteger(q.page) && q.page >= 1 && q.page <= 256 && Number.isInteger(q.size) && q.size >= 1 && q.size <= 50
@@ -66,20 +58,20 @@
     if (q.snapshot_ref === undefined) delete q.snapshot_ref;
     return q;
   }
-  function catalog(v, runRef, query) {
-    const d = envelope(v), q = catalogScope(query);
+  function validateCatalog(v, runRef, query) {
+    const d = v.data, q = catalogScope(query);
     check(ref(runRef) && shape(d, ['run_ref', 'run_state', 'candidates', 'page', 'candidate_count', 'catalog_complete', 'capabilities', 'blocked_reasons'])
       && d.run_ref === runRef && ['queued', 'running', 'complete', 'partial', 'failed', 'interrupted'].includes(d.run_state)
       && count(d.candidate_count) && d.candidate_count <= 256 && d.catalog_complete === !['queued', 'running'].includes(d.run_state)
       && caps(d.capabilities) && blocked(d.blocked_reasons) && shape(d.page, ['number', 'size', 'total', 'has_more'])
       && d.page.number === q.page && d.page.size === q.size && count(d.page.total) && d.page.total <= d.candidate_count
       && (q.status !== 'all' || d.page.total === d.candidate_count) && d.page.has_more === (q.page * q.size < d.page.total)
-      && (!q.snapshot_ref || v.meta.snapshot_ref === q.snapshot_ref) && Array.isArray(d.candidates)
+      && token(v.meta.snapshot_ref) && (!q.snapshot_ref || v.meta.snapshot_ref === q.snapshot_ref) && Array.isArray(d.candidates)
       && d.candidates.length === Math.min(q.size, Math.max(0, d.page.total - (q.page - 1) * q.size)));
     d.candidates.forEach(c => { summary(c, runRef); check(q.status === 'all' || c.status === q.status); });
     check(new Set(d.candidates.map(c => c.candidate_ref)).size === d.candidates.length); return d;
   }
-  function workspaceScope(candidateRef, query = {}) {
+  function workspaceScope(candidateRef, query) {
     check(ref(candidateRef), '请选择有效的候选方案。');
     check(shape(query, [], ['range_start', 'range_end', 'batch_ref', 'sort', 'order', 'snapshot_ref']));
     const q = { sort: 'sequence', order: 'asc', ...query };
@@ -104,12 +96,11 @@
     return v.quantity === (proven ? e.target_quantity : null);
   }
   function operation(v, planned) {
-    check(shape(v, operationKeys.concat(planned ? ['row_ref', 'start', 'end', 'source', 'locked', 'machine', 'operator', 'supplier', ...(P.isPoint(v) ? P.fields : [])] : ['row_ref', 'status', 'reason']), ['operation_effort', 'process_type_ref', 'process_type_label'])
-      && ref(v.operation_ref) && (v.batch_ref === null || ref(v.batch_ref)) && ['batch_label', 'part_label', 'process_label', 'due_date'].every(k => nullableText(v[k]))
+    check(shape(v, operationKeys.concat(['operation_effort', 'process_type_ref', 'process_type_label'], planned ? ['row_ref', 'start', 'end', 'source', 'locked', 'machine', 'operator', 'supplier', ...(P.isPoint(v) ? P.fields : [])] : ['row_ref', 'status', 'reason']))
+      && ref(v.operation_ref) && (v.batch_ref === null || ref(v.batch_ref)) && ['batch_label', 'part_label', 'process_label', 'process_type_label', 'due_date'].every(k => nullableText(v[k]))
       && nullableNumber(v.sequence) && quantityContext(v)
-      && (v.process_type_ref === undefined || v.process_type_ref === null || ref(v.process_type_ref))
-      && (v.process_type_label === undefined || nullableText(v.process_type_label))
-      && (v.operation_effort === undefined || window.EffortProjectionContract.compact(v.operation_effort)));
+      && (v.process_type_ref === null || ref(v.process_type_ref))
+      && window.EffortProjectionContract.compact(v.operation_effort));
     if (planned) {
       check(ref(v.row_ref) && time(v.start) && time(v.end) && (P.isPoint(v) || timeKey(v.start) < timeKey(v.end))
         && ['internal', 'external'].includes(v.source) && typeof v.locked === 'boolean');
@@ -175,11 +166,11 @@
       && ['overdue_count', 'total_tardiness_hours', 'known_tardiness_hours'].every(k => nullableNumber(s[k]))
       && s.batch_count === v.batch_count && Array.isArray(s.known_batch_refs) && s.known_batch_refs.every(ref));
   }
-  function workspace(v, candidateRef, query = {}, runRef) {
-    const d = envelope(v), q = workspaceScope(candidateRef, query);
+  function validateWorkspace(v, candidateRef, query) {
+    const d = v.data, q = workspaceScope(candidateRef, query);
     check(shape(d, ['candidate', 'generation', 'tasks', 'task_count', 'tasks_complete', 'candidate_task_count', 'candidate_span', 'task_span',
       'unplanned_operations', 'unplanned_operation_count', 'time_scope', 'batch_ref', 'capabilities', 'blocked_reasons', 'data_gaps', 'delivery_risks', 'gantt_graph']));
-    summary(d.candidate, runRef); check(d.candidate.candidate_ref === candidateRef);
+    summary(d.candidate); check(d.candidate.candidate_ref === candidateRef);
     check(Array.isArray(d.tasks) && count(d.task_count) && d.task_count === d.tasks.length && d.tasks_complete === true
       && d.candidate_task_count === d.candidate.task_count && d.task_count <= d.candidate_task_count && span(d.candidate_span) && span(d.task_span)
       && (d.task_count === 0) === (d.task_span === null) && (d.candidate_task_count === 0) === (d.candidate_span === null)
@@ -216,7 +207,7 @@
       && g.current_entities_consulted === false && g.formal_version_allocated === false && gaps(g.data_gaps)
       && shape(g.input, ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'], ['material_strategy', 'hold_window', 'time_budget_seconds'])
       && (g.input.time_budget_seconds === undefined || G.budget(g.input.time_budget_seconds))
-      && (g.input.material_strategy === undefined || ['strict', 'stage', 'split'].includes(g.input.material_strategy)
+      && (g.input.material_strategy === undefined || ['strict', 'stage'].includes(g.input.material_strategy)
         || g.input.material_strategy === null && g.data_gaps.some(gap => gap.field === 'input.material_strategy'))
       && holdWindow(g.input.hold_window) && (g.input.hold_window === null || !g.data_gaps.some(gap => gap.field === 'input.hold_window'))
       && ['start_date', 'end_date', 'missing_resource_policy', 'completed_policy'].every(k => nullableText(g.input[k]))
@@ -231,58 +222,34 @@
       sequence: nullableNumber, processLabel: nullableText, completeCount: d.candidate_task_count }));
     return d;
   }
-  function failure(payload, status) {
-    const e = payload && payload.error;
-    const error = new Error(e && text(e.message) ? e.message : '候选方案数据无效，请刷新后重试。');
-    error.code = e && e.code || 'invalid_response'; error.status = status; return error;
-  }
-  function download(value, result, fmt) {
+  // 文件名非空与后缀由传输层按 Content-Type 断言；这里只核对本领域业务头与当前读取范围。
+  function download(value, result) {
     const d = result.data;
-    check(value && value.blob instanceof Blob && value.blob.size > 0 && value.candidate_ref === d.candidate.candidate_ref
-      && value.snapshot_ref === result.meta.snapshot_ref && value.task_count === d.task_count
-      && value.row_count === Math.max(1, d.task_count + d.unplanned_operation_count)
-      && text(value.filename) && !/[\\/\r\n]/.test(value.filename) && value.filename.endsWith('.' + fmt), '下载结果与当前完整范围不一致，没有保存文件。');
+    check(value.candidate_ref === d.candidate.candidate_ref && value.snapshot_ref === result.meta.snapshot_ref && value.task_count === d.task_count
+      && value.row_count === Math.max(1, d.task_count + d.unplanned_operation_count), '下载结果与当前完整范围不一致，没有保存文件。');
     return value;
   }
-  function create(fetcher = window.fetch.bind(window)) {
-    async function request(path, signal, binary) {
-      const controller = new AbortController(), abort = () => controller.abort();
-      if (signal) { if (signal.aborted) abort(); else signal.addEventListener('abort', abort, { once: true }); }
-      const timer = setTimeout(abort, 60000);
-      try {
-        const response = await fetcher(BASE + path, { method: 'GET', credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: controller.signal });
-        const mime = (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
-        if (!response.ok) throw failure(mime === 'application/json' ? await response.json() : null, response.status);
-        check(response.status === 200);
-        if (!binary) { check(mime === 'application/json'); return await response.json(); }
-        check(mime === (binary === 'csv' ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'), '下载格式不符，未保存文件。');
-        const blob = await response.blob(), bytes = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
-        check(binary === 'xlsx' ? bytes[0] === 80 && bytes[1] === 75 : bytes[0] === 239 && bytes[1] === 187 && bytes[2] === 191, '下载文件内容无效。');
-        check(/^attachment;/i.test(response.headers.get('Content-Disposition') || ''));
-        const headerCount = key => { const raw = response.headers.get(key); check(raw !== null && /^\d+$/.test(raw) && count(Number(raw))); return Number(raw); };
-        return { blob, filename: '候选范围导出.' + binary, candidate_ref: response.headers.get('X-Workbench-Candidate-Ref'),
-          snapshot_ref: response.headers.get('X-Workbench-Snapshot-Ref'), task_count: headerCount('X-Workbench-Task-Count'), row_count: headerCount('X-Workbench-Row-Count') };
-      } finally { clearTimeout(timer); if (signal) signal.removeEventListener('abort', abort); }
-    }
-    return window.APSReadBoundary.verified({
-      async identity(candidateRef, signal) { check(ref(candidateRef)); const value = await request('/candidates/' + candidateRef + '/identity', signal);
-        identity(value, candidateRef); return value; },
-      async catalog(runRef, query = {}, signal) { check(ref(runRef)); const q = catalogScope(query);
-        const v = await request('/runs/' + runRef + '/candidates?' + new URLSearchParams(q), signal); catalog(v, runRef, q); return v; },
-      async workspace(candidateRef, query = {}, signal) { const q = workspaceScope(candidateRef, query);
-        const v = await request('/candidates/' + candidateRef + '/workspace?' + new URLSearchParams(q), signal); workspace(v, candidateRef, q); return v; },
-      async export(candidateRef, query, snapshotRef, fmt, signal) {
-        check(token(snapshotRef) && ['csv', 'xlsx'].includes(fmt)); const q = workspaceScope(candidateRef, { ...query, snapshot_ref: snapshotRef });
-        return request('/candidates/' + candidateRef + '/export?' + new URLSearchParams({ ...q, format: fmt }), signal, fmt);
-      }
-    }, ['identity', 'catalog', 'workspace']);
+  const read = (path, query, signal) => T.read(BASE + path, query, { signal, timeout: 60000 });
+  async function identity(candidateRef, signal) {
+    check(ref(candidateRef)); const value = await read('/candidates/' + candidateRef + '/identity', {}, signal);
+    validateIdentity(value, candidateRef); return value;
   }
-  function adapter(value) {
-    return window.APSReadBoundary.checked(value, {
-      identity: (result, candidateRef) => identity(result, candidateRef),
-      catalog: (result, runRef, query) => catalog(result, runRef, query),
-      workspace: (result, candidateRef, query) => workspace(result, candidateRef, query)
-    });
+  async function catalog(runRef, query, signal) {
+    check(ref(runRef)); const q = catalogScope(query), value = await read('/runs/' + runRef + '/candidates', q, signal);
+    validateCatalog(value, runRef, q); return value;
   }
-  window.RunCandidateAPI = { create, adapter, check, ref, time, timeKey, version, shape, envelope, summary, identity, catalog, catalogScope, workspace, workspaceScope, download, metricKeys, operationKeys, executionKeys, quantityContext };
+  async function workspace(candidateRef, query, signal) {
+    const q = workspaceScope(candidateRef, query), value = await read('/candidates/' + candidateRef + '/workspace', q, signal);
+    validateWorkspace(value, candidateRef, q); return value;
+  }
+  // 传输层已校验附件、文件名与后缀、格式、魔数与非空；这里只取文件与本领域的四个响应头，与当前读取范围的核对在 download() 里做。
+  async function exportFile(candidateRef, query, snapshotRef, fmt, signal) {
+    check(token(snapshotRef) && ['csv', 'xlsx'].includes(fmt)); const q = workspaceScope(candidateRef, { ...query, snapshot_ref: snapshotRef });
+    const file = await T.download(BASE + '/candidates/' + candidateRef + '/export', { ...q, format: fmt }, { signal, timeout: 60000, types: [T.types[fmt]] });
+    const headerCount = key => { const raw = file.header(key); check(raw !== null && /^\d+$/.test(raw) && count(Number(raw))); return Number(raw); };
+    return { blob: file.blob, filename: file.filename, candidate_ref: file.header('X-Workbench-Candidate-Ref'),
+      snapshot_ref: file.header('X-Workbench-Snapshot-Ref'), task_count: headerCount('X-Workbench-Task-Count'), row_count: headerCount('X-Workbench-Row-Count') };
+  }
+  window.RunCandidateAPI = { identity, catalog, workspace, export: exportFile, check, ref, time, timeKey, version, shape, summary, validateIdentity, validateCatalog, catalogScope,
+    validateWorkspace, workspaceScope, download, metricKeys, operationKeys, executionKeys, quantityContext };
 })();

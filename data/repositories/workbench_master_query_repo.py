@@ -1,11 +1,11 @@
-"""基础资料只读事实：资料总览整表快照、旧导航按业务键取单条实体。
+"""基础资料只读事实：资料总览整表快照。
 
-整表读取只展开本模块的白名单常量；旧导航实体查询按 kind 选固定 SQL，不拼接调用方传入的表名或列名。
+整表读取只展开本模块的白名单常量，不拼接调用方传入的表名或列名。
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
 from core.infrastructure.connection_guards import schema_contract_memo
 
@@ -20,16 +20,6 @@ MASTER_OVERVIEW_TABLES = (
     "WorkbenchProcessWorkflow", "WorkbenchProcessOperationConfirmations",
     "WorkbenchEntityRefs",
 )
-
-_LEGACY_ENTITY_SQL = {
-    "machine": "SELECT * FROM Machines WHERE machine_id = ?",
-    "operator": "SELECT * FROM Operators WHERE operator_id = ?",
-    "op_type": "SELECT * FROM OpTypes WHERE op_type_id = ?",
-    "part": "SELECT * FROM Parts WHERE part_no = ?",
-    "supplier": "SELECT * FROM Suppliers WHERE supplier_id = ?",
-    "batch": "SELECT * FROM Batches WHERE batch_id = ?",
-}
-LEGACY_ENTITY_KINDS = tuple(_LEGACY_ENTITY_SQL)
 
 
 class WorkbenchMasterQueryRepository(BaseRepository):
@@ -48,7 +38,3 @@ class WorkbenchMasterQueryRepository(BaseRepository):
             keys = [column[0] for column in cursor.description]
             tables[name] = [dict(zip(keys, row)) for row in cursor]
         return tables, present
-
-    def legacy_entity_row(self, kind: str, business_key: str) -> Optional[Dict[str, Any]]:
-        """按业务键取旧导航实体原始行；kind 只能是 LEGACY_ENTITY_KINDS 之一。"""
-        return self.fetchone(_LEGACY_ENTITY_SQL[kind], (business_key,))

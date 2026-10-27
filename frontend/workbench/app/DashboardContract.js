@@ -1,8 +1,9 @@
 (function () {
   'use strict';
-  const BASE = '/api/workbench/v1/dashboard', RECEIPTS = '/api/workbench/v1/commands/';
+  const T = window.APSWorkbenchTransport, BASE = '/api/workbench/v1/dashboard', RECEIPTS = '/api/workbench/v1/commands/';
   const READ_TIMEOUT_MS = 60000;
-  const laneId = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+  // 同一页面的列表读取共用一条读取通道：新的筛选会让后端放弃这条通道上还没读完的旧请求。
+  const LANE = 'dashboard-list:' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
   const categories = { all: '全部风险', delivery: '交期风险', actual: '执行偏差', external: '外协回厂', downtime: '停机影响', material: '齐套缺口', candidate: '候选方案待确认' };
   const statuses = { new: '待分析', following: '跟进中', awaiting_verification: '待验证', closed: '已关闭' };
   const states = { loaded: '已读取', no_data: '无数据', no_official_plan: '无正式计划', unavailable: '暂无数据', not_applicable: '未指定交期' };
@@ -13,10 +14,9 @@
   const text = v => typeof v === 'string' && v.length > 0;
   const count = v => Number.isSafeInteger(v) && v >= 0;
   const equal = (a, b) => canonical(a) === canonical(b);
-  const rejected = new WeakSet();
   function canonical(v) { return JSON.stringify(v, (_, value) => object(value) ? Object.keys(value).sort().reduce((out, k) => { out[k] = value[k]; return out; }, {}) : value); }
   function check(ok, message = '值班台读到的数据不完整，请刷新后重试。') { if (!ok) throw new Error(message); }
-  function scope(value = {}) {
+  function scope(value) {
     const q = { category: 'all', status: 'all', query: '', sort: 'subject', direction: 'asc', page: 1, size: 20, source: 'production', ...value };
     check(object(value) && Object.keys(q).every(k => ['category', 'status', 'query', 'sort', 'direction', 'page', 'size', 'source', 'snapshot_ref'].includes(k))
       && Object.prototype.hasOwnProperty.call(categories, q.category) && ['all', 'open', ...Object.keys(statuses)].includes(q.status)
@@ -47,9 +47,9 @@
       && Object.keys(n.context).every(k => ['plan_ref', 'batch_ref', 'task_ref', 'operation_ref'].includes(k) && ref(n.context[k]))));
     return row;
   }
+  // 信封已由 transport 校验；值班台翻页和详情都钉在这次读取的数据版本上，所以数据版本不能为空。
   function envelope(v, s) {
-    check(object(v) && v.ok === true && v.schema_version === 1 && object(v.meta) && v.meta.source === 'production'
-      && v.meta.time_basis === 'factory_local' && text(v.meta.snapshot_ref) && text(v.meta.as_of) && Array.isArray(v.warnings) && object(v.data));
+    check(text(v.meta.snapshot_ref));
     if (s) {
       check(!s.snapshot_ref || s.snapshot_ref === v.meta.snapshot_ref, '数据已更新，请刷新后重试。刚才的选择已保留。');
       const expected = { kind: 'dashboard', ...s }; delete expected.page; delete expected.snapshot_ref;
@@ -103,7 +103,7 @@
     c.runs.forEach(r => check(ref(r.run_ref) && text(r.accepted_at) && count(r.candidate_count)));
     return v;
   }
-  function detail(v, q, selected, historyPage) {
+  function detailResult(v, q, selected, historyPage) {
     const s = scope(q), d = envelope(v, s); item(d.item); check(d.item.item_ref === selected, '详情内容和所选条目不一致，页面没有切换。请刷新后重试。');
     if (historyPage !== undefined) {
       check(object(d.history) && Array.isArray(d.history.items)); pagination(d.history.page, { page: historyPage, size: s.size });
@@ -125,52 +125,37 @@
       && equal(d.handling, expected(intent)) && equal(d.source, intent.source) && equal(d.risk, intent.risk)
       && (v.result === 'committed' ? ref(d.history_ref) : d.history_ref === null), '保存结果和这条处置对不上，结果还不确定。请点「查询结果」，不要重复提交。'); return v;
   }
-  function resultTarget(intent) { return RECEIPTS + intent.request_key; }
-  function failure(v, status, intent) {
-    const e = v && v.error, valid = v && v.ok === false && [false, 'unknown'].includes(v.committed) && object(e) && text(e.code) && text(e.message) && Array.isArray(e.fields);
-    const error = new Error(valid ? e.message : '读到的结果无法确认，上次提交可能已经生效。请点「查询结果」，不要重复提交。'); error.code = valid ? e.code : 'invalid_response'; error.fields = valid ? e.fields : [];
-    if (valid && v.committed === false && [400, 404, 409, 422, 503].includes(status) && e.code !== 'request_key_conflict') rejected.add(error);
-    if (valid && v.committed === 'unknown' && intent && e.result_target !== undefined) check(e.request_key === intent.request_key && e.result_target === resultTarget(intent), '返回的结果编号和上次提交对不上，这里没有读取其他结果。请点「查询结果」。');
-    return error;
+  // 值班台读取（含回执查询）按 60 秒等待，超时说清楚是值班台读取；写入按 30 秒等待。
+  async function wait(load) {
+    try { return await load(); }
+    catch (error) { if (error.code === 'timeout') error.message = '值班台读取超时（超过 60 秒），请重试或缩小筛选范围。'; throw error; }
   }
-  function create(fetcher = window.fetch.bind(window)) {
-    async function request(url, body, signal, intent, listRead = false) {
-      const controller = new AbortController(), abort = () => controller.abort();
-      let timedOut = false;
-      const timer = setTimeout(() => { timedOut = body === undefined; abort(); }, body === undefined ? READ_TIMEOUT_MS : 30000);
-      if (signal) { signal.addEventListener('abort', abort, { once: true }); if (signal.aborted) abort(); }
-      try {
-        const r = await fetcher(url, { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: controller.signal,
-          ...(body === undefined ? listRead ? { headers: { 'X-Workbench-Read-Lane': 'dashboard-list:' + laneId } } : {}
-            : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
-        check((r.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() === 'application/json', '值班台读到的数据不完整，请刷新后重试。');
-        const v = await r.json();
-        if (r.status === 499 && v.error && v.error.code === 'request_superseded') throw new DOMException('读取已被更新请求替代', 'AbortError');
-        if (!r.ok || v.ok === false) throw failure(v, r.status, intent); check(r.status === 200); return v;
-      } catch (error) {
-        if (timedOut) throw new Error('值班台读取超时（超过 60 秒），请重试或缩小筛选范围。');
-        throw error;
-      } finally { clearTimeout(timer); if (signal) signal.removeEventListener('abort', abort); }
+  function read(path, query, signal, lane) { return wait(() => T.read(path, query, { signal, timeout: READ_TIMEOUT_MS, lane })); }
+  async function list(q, signal) {
+    const value = catalog(await read(BASE, q, signal, LANE), q);
+    try {
+      if (value.data.analysis_error !== null) check(text(value.data.analysis_error) && value.data.analysis === null);
+      else window.DashboardAnalysisAPI.validate({ ...value, data: value.data.analysis }, value.data.plan && value.data.plan.plan_ref, { section: 'overview', page: 1, size: 20 });
+    } catch (error) {
+      value.data.analysis = null;
+      value.data.analysis_error = '影响分析读取失败：' + error.message;
     }
-    return {
-      async list(q, signal) {
-        const value = catalog(await request(BASE + '?' + new URLSearchParams(q), undefined, signal, undefined, true), q);
-        try {
-          if (value.data.analysis_error !== null) check(text(value.data.analysis_error) && value.data.analysis === null);
-          else window.DashboardAnalysisAPI.validate({ ...value, data: value.data.analysis }, value.data.plan && value.data.plan.plan_ref, { section: 'overview', page: 1, size: 20 });
-        } catch (error) {
-          value.data.analysis = null;
-          value.data.analysis_error = '影响分析读取失败：' + error.message;
-        }
-        return value;
-      },
-      async detail(selected, q, historyPage, signal) { check(ref(selected)); const args = { ...q }; if (historyPage !== undefined) args.history_page = historyPage;
-        return detail(await request(BASE + '/items/' + selected + (historyPage === undefined ? '' : '/history') + '?' + new URLSearchParams(args), undefined, signal), q, selected, historyPage); },
-      async command(intent, token) { return receipt(await request(BASE + '/items/' + intent.item_ref + '/' + intent.action, { request_key: intent.request_key, write_token: token, input: intent.input }, undefined, intent), intent); },
-      async lookup(intent, signal) { const v = await request(resultTarget(intent), undefined, signal, intent);
-        if (v.state === 'not_recorded') { check(v.ok === true && v.receipt === null && v.may_be_in_flight === true); return null; }
-        return receipt(v, intent); }
-    };
+    return value;
   }
-  window.DashboardContract = { READ_TIMEOUT_MS, categories, statuses, states, fields, labels, object, ref, text, equal, check, scope, baseHandling, catalog, expected, receipt, create, isRejected: e => rejected.has(e) };
+  async function detail(selected, q, historyPage, signal) {
+    check(ref(selected)); const args = { ...q }; if (historyPage !== undefined) args.history_page = historyPage;
+    return detailResult(await read(BASE + '/items/' + selected + (historyPage === undefined ? '' : '/history'), args, signal), q, selected, historyPage);
+  }
+  async function command(intent, token) {
+    return receipt(await T.command(BASE + '/items/' + intent.item_ref + '/' + intent.action, { request_key: intent.request_key, write_token: token, input: intent.input },
+      { timeout: 30000, expect: RECEIPTS + intent.request_key }), intent);
+  }
+  async function lookup(intent) {
+    const v = await wait(() => T.lookup(RECEIPTS + intent.request_key, { timeout: READ_TIMEOUT_MS }));
+    if (v === null) return null;
+    if (v.state === 'not_recorded') { check(v.ok === true && v.receipt === null && v.may_be_in_flight === true); return null; }
+    return receipt(v, intent);
+  }
+  window.DashboardContract = { categories, statuses, states, fields, labels, object, ref, text, equal, check, scope, baseHandling, catalog, expected, receipt,
+    read, list, detail, command, lookup };
 })();

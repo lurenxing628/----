@@ -14,8 +14,12 @@
           if (!file || !/\.xlsx$/i.test(file.name) || file.size > 8 * 1024 * 1024) throw window.APSResourceContract.failure('请选择不超过 8 MB 的 XLSX 文件。');
           const value = C.query(await adapter.previewFile(file, scope, snapshot, controller.current.signal), 'preview').data;
           if (active.current) setPreview(value);
-        } else if (action === 'errors') C.saveFile(await adapter.downloadErrors(preview.preview_ref, controller.current.signal), '报工导入问题.xlsx');
-        else C.saveFile(await adapter.download(action, scope, snapshot, controller.current.signal), action === 'template' ? '现场分次报工模板.xlsx' : '现场报工导出.xlsx');
+        } else {
+          // 类型、魔数和带 .xlsx 后缀的文件名都由 transport 校验，这里按后端文件名存盘。
+          const download = action === 'errors' ? await adapter.downloadErrors(preview.preview_ref, controller.current.signal)
+            : await adapter.download(action, scope, snapshot, controller.current.signal);
+          window.APSWorkbenchTransport.saveBlob(download.filename, download.blob);
+        }
       } catch (error) { if (active.current) setError(error); }
       finally { if (active.current) setBusy(false); }
     }
@@ -26,7 +30,7 @@
         reason={command.phase === 'rejected' ? '本次未导入，请重新预检后再确认。' : preview.can_confirm ? C.blocked(preview.write_context, 'import_confirm') : '文件存在问题，未写入任何报工。'}
         onClick={() => command.submit('execution', 'import_confirm', preview.preview_ref, preview.write_context, { preview_ref: preview.preview_ref })}>确认导入</Button>}</>}>
       <div className="modal-b"><div className="field-toolbar" style={{ padding: '0 0 14px' }}><Button transfer="template" disabled={locked} onClick={() => run('template')}>下载模板</Button><Button transfer="export" disabled={locked} onClick={() => run('export')}>导出当前范围</Button></div>
-        <div className="field-note">XLSX · 13 列 · 任务编号、工序范围、单件编号已预填，不可修改 · 兼容旧 10 列</div>
+        <div className="field-note">XLSX · 13 列 · 任务编号、工序范围、单件编号已预填，不可修改</div>
         <div className="field-upload"><Button icon="folder-open" disabled={locked} onClick={() => input.current.click()}>选择文件</Button><span>{file ? file.name : '尚未选择文件'}</span>
           <input ref={input} hidden type="file" accept=".xlsx" aria-label="报工 XLSX 文件" disabled={locked} onChange={event => { setFile(event.target.files[0] || null); setPreview(null); setError(null); command.clearRejection({ includeStale: true }); }} /></div>
         {busy && <p role="status">正在核对文件和现场记录…</p>}

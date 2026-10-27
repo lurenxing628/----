@@ -42,7 +42,7 @@ def process_readiness(conn, total, logger=None):
 def _metric_item(group):
     counts, issues = dict(group["counts"]), list(group["issues"])
     unavailable = any(issue["code"] in ("resource_metrics_unavailable", "resource_availability_unavailable") for issue in issues)
-    status = "unavailable" if unavailable else "unknown" if counts.get("unknown") else "zero" if counts.get("total") == 0 else "recorded"
+    status = "unavailable" if unavailable else "zero" if counts.get("total") == 0 else "recorded"
     return {"status": status, "counts": counts, "issues": issues, "basis": group["basis"]}
 
 

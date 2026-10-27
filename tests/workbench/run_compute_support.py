@@ -83,10 +83,21 @@ def run_case(schema_conn):
     yield case
 
 
-def compute_run(conn, settings, projections):
-    """Worker form: one production capture and its projections in one read snapshot."""
+def admitted_dispositions(conn, settings, projections):
+    """The operation dispositions an admission classifies and archives for these settings."""
+    return prepare_run_input(conn, settings, projections).dispositions
+
+
+def compute_admitted(conn, settings, projections, dispositions):
+    """Worker form: one production capture, its projections and the admission's dispositions in one read snapshot."""
     with candidate_read_snapshot(conn):
-        return compute_candidate_run(conn, settings, projections, capture=ProductionFactsCapture(conn))
+        return compute_candidate_run(conn, settings, projections, capture=ProductionFactsCapture(conn),
+                                     dispositions=dispositions)
+
+
+def compute_run(conn, settings, projections):
+    """Admit, then compute as the worker does."""
+    return compute_admitted(conn, settings, projections, admitted_dispositions(conn, settings, projections))
 
 
 def prepare_run_input(conn, settings, projections, **kwargs):

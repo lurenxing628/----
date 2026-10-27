@@ -11,6 +11,7 @@ from .candidate_facts import GenerationFacts
 from .candidate_projection import completed_dispositions, validate_manifest
 from .candidate_tasks import tasks_projection_with_intervals, unplanned_projection
 from .candidate_values import corrupt
+from .decision_metrics import admission_operation_refs
 from .gantt_graph import candidate_gantt_graph
 
 
@@ -67,9 +68,9 @@ def read_candidate_source(store, candidate_ref, *, prepared=None):
         candidate = next((row for row in rows if row["candidate_ref"] == candidate_ref), None)
         if candidate is None:
             corrupt()
-        disposition = completed_dispositions(receipt)
         capture = store.capture(run_ref)
         facts = GenerationFacts(capture)
+        disposition = completed_dispositions(receipt, expected_refs=admission_operation_refs(facts, capture["input"]))
         raw_tasks = store.tasks(candidate_ref)
         tasks = None
     else:

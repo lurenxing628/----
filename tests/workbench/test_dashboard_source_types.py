@@ -18,15 +18,18 @@ ROOT = "/api/workbench/v1/dashboard"
 FRONTEND_READ = r"""
 const fs = require('node:fs'), vm = require('node:vm');
 const {payload, query} = JSON.parse(fs.readFileSync(0, 'utf8'));
-const window = {}, context = vm.createContext({window, AbortController, URLSearchParams, setTimeout, clearTimeout});
-for (const name of ['DashboardContract.js', 'RunCandidateAPI.js', 'ResourceProjectionContract.js', 'DashboardAnalysisAPI.js']) {
-  vm.runInContext(fs.readFileSync('frontend/workbench/app/' + name, 'utf8'), context);
-}
-const fetcher = async () => ({
+// 在 fetch 层打桩：真实后端响应经共享传输层和领域合约的同一条读取链校验。
+const fetch = async () => ({
   ok: true, status: 200, headers: {get: () => 'application/json'}, json: async () => payload
 });
-const reading = query === null ? window.DashboardContract.create(fetcher).list({})
-  : window.DashboardAnalysisAPI.create(fetcher).read(payload.data.plan.plan_ref, undefined, query);
+const window = {}, context = vm.createContext({window, fetch, location: {origin: 'http://127.0.0.1'}, URL, DOMException,
+  AbortController, URLSearchParams, setTimeout, clearTimeout});
+for (const name of ['WorkbenchTerms.js', 'transport.js', 'DashboardContract.js', 'RunCandidateAPI.js',
+                    'ResourceProjectionContract.js', 'DashboardAnalysisAPI.js']) {
+  vm.runInContext(fs.readFileSync('frontend/workbench/app/' + name, 'utf8'), context);
+}
+const reading = query === null ? window.DashboardContract.list({})
+  : window.DashboardAnalysisAPI.read(payload.data.plan.plan_ref, undefined, query);
 reading.then(value => process.stdout.write(JSON.stringify(value.data)))
   .catch(error => { console.error(error); process.exitCode = 1; });
 """

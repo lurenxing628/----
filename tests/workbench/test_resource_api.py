@@ -227,7 +227,7 @@ def test_resource_import_captures_one_batch_and_applies_without_current_row_rere
     extra = {'default_days': 2.0} if kind == 'supplier' else {}
     insert_row(conn, table, {key: other, 'name': other, **extra})
     conn.commit()
-    content = file_bytes([(code, 'prepared-first'), (other, 'prepared-second')], headers=('business_code', 'label'))
+    content = file_bytes([(code, 'prepared-first'), (other, 'prepared-second')], headers=('编号', '名称'))
     service = WorkbenchResourceFileService(conn, kind)
     scope = {'category': 'internal'} if kind == 'op_type' else {}
     preview = service.preview_import(content, file_format='csv', scope=scope)
@@ -461,3 +461,27 @@ def test_unexpected_table_read_failure_logs_the_request_ref_shown_to_the_user(ap
     assert record.getMessage() == "工作台请求失败 code=storage_failure request_ref=" + error["request_ref"]
     assert isinstance(record.exc_info[1], WorkbenchCommandRejected)
     assert isinstance(record.exc_info[1].__cause__, RuntimeError)
+
+
+@pytest.mark.parametrize('kind,code,corruption', [
+    ('operator', 'O1', "UPDATE Operators SET status='inactive' WHERE operator_id='O1'"),
+    ('operator', 'O1', "UPDATE Operators SET status='leave' WHERE operator_id='O1'"),
+    ('supplier', 'S1', "UPDATE WorkbenchSupplierProfiles SET inactive_reason=NULL WHERE supplier_id='S1'"),
+    ('supplier', 'S1', "UPDATE Suppliers SET status='pending_review' WHERE supplier_id='S1'"),
+    ('machine', 'M1', "UPDATE Machines SET status='broken' WHERE machine_id='M1'"),
+    ('machine', 'M1', "UPDATE Machines SET status=NULL WHERE machine_id='M1'"),
+])
+def test_stored_resource_status_outside_written_forms_fails_loud(resource_conn, kind, code, corruption):
+    """写入口只写“启用”或“带登记原因的停用”；停用缺原因、状态越界都按存储损坏拒绝，不猜成启用或停用。"""
+    conn = resource_conn
+    ref = identity_for(conn, kind, code).ref
+    reader = WorkbenchResourceQueryService(conn, kind)
+    with reader.read_snapshot():
+        assert reader.detail(ref).entity["status"] in ("active", "maintain", "inactive")
+    conn.execute(corruption)
+    conn.commit()
+    for read in (lambda: reader.detail(ref), lambda: reader.page(ResourcePageRequest(kind, size=20))):
+        with reader.read_snapshot():
+            with pytest.raises(WorkbenchCommandRejected) as caught:
+                read()
+        assert (caught.value.code, caught.value.status) == ("storage_failure", 500)

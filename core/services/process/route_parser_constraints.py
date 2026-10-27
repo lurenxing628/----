@@ -22,7 +22,7 @@ class SupplierConstraintResolver:
     def build_supplier_map(self) -> Dict[str, str]:
         """
         构建 工种名 -> supplier_id 映射。
-        规则：使用旧单工种与显式补充关系的有效能力并集；
+        规则：使用供应商单独设置的工种关系（WorkbenchSupplierOpTypes）；
         若同一工种存在多条供应商记录，则按 supplier_id 字典序取最后一条
         （即 supplier_id 最大者）作为有效供应商，与预览基线保持一致。
         """
@@ -54,8 +54,8 @@ class SupplierConstraintResolver:
             self.global_issues.append(SupplierGlobalIssue(op_type_id=op_type_id))
             safe_log(self.logger, "warning", message)
             return None
-        if row["explicit"] and not supports_source(op_type.category, "external"):
-            message = f"供应商“{supplier_id}”工种映射加载失败（op_type_id={op_type_id!r}），显式关系不是外协工种。"
+        if not supports_source(op_type.category, "external"):
+            message = f"供应商“{supplier_id}”工种映射加载失败（op_type_id={op_type_id!r}），关联的工种不是外协工种。"
             self.global_issues.append(SupplierGlobalIssue(op_type_id=op_type_id))
             safe_log(self.logger, "warning", message)
             return None

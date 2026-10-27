@@ -46,10 +46,10 @@ class WorkbenchRunCandidateAdoptionService(AdoptionCommandHost):
         validate_run_ref(candidate_ref)
         return self._lookup(candidate_ref, request_key)
 
-    def resolve_command(self, candidate_ref, request_key, *, run_ref=None, data_context_ref=None):
+    def resolve_command(self, candidate_ref, request_key, *, data_context_ref, run_ref=None):
         if run_ref is not None:
             validate_run_ref(run_ref)
-        if data_context_ref is not None and not valid_data_context_ref(data_context_ref):
+        if not valid_data_context_ref(data_context_ref):
             raise WorkbenchCommandRejected("invalid_input", "这条待确认采用记录的数据来源编号无效，请核对本机保存的记录。", 400)
         receipt = self.lookup(candidate_ref, request_key)
         if receipt is not None:
@@ -59,7 +59,7 @@ class WorkbenchRunCandidateAdoptionService(AdoptionCommandHost):
             saved_run_ref = store.repo.candidate_run_ref(candidate_ref)
             current_context = self.data_context.ref()
         replaced = (saved_run_ref is None or (run_ref is not None and saved_run_ref != run_ref)
-                    or (data_context_ref is not None and data_context_ref != current_context))
+                    or data_context_ref != current_context)
         return "not_recorded", {
             "ok": True, "result": "not_recorded", "request_key": request_key,
             "may_be_in_flight": not replaced,

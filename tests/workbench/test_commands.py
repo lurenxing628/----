@@ -37,7 +37,7 @@ def run(conn, **overrides):
     return WorkbenchCommandService(conn).execute(**arguments)
 
 
-def test_one_intent_replays_exact_result_before_expired_guard(schema_conn, monkeypatch):
+def test_one_intent_replays_exact_result_before_expired_guard(schema_conn):
     seen = []
     first = run(schema_conn, mutate=create(schema_conn, seen))
 
@@ -70,21 +70,13 @@ def test_one_intent_replays_exact_result_before_expired_guard(schema_conn, monke
     with pytest.raises(WorkbenchCommandRejected) as changed:
         run(schema_conn, guard=expired, normalized_input={**INPUT, "name": "Another name"})
     assert changed.value.code == "request_key_conflict"
-    # A real old hash-only receipt retains its result; missing intent stops before guard.
-    schema_conn.execute("UPDATE WorkbenchCommandReceipts SET input_json=NULL,input_hash=? WHERE request_key=?",
-                        ("a" * 64, KEY))
+    # Every receipt stores its original intent; a missing one is a damaged archive and nothing is re-run.
+    schema_conn.execute("UPDATE WorkbenchCommandReceipts SET input_json=NULL WHERE request_key=?", (KEY,))
     schema_conn.commit()
-    legacy = WorkbenchCommandService(schema_conn)
-    assert legacy.lookup(KEY) == second
     before = schema_conn.total_changes
-    with pytest.raises(WorkbenchCommandRejected) as missing:
+    with pytest.raises(WorkbenchCommandUncertain):
         run(schema_conn, guard=expired)
-    assert missing.value.code == "command_original_input_missing"
     assert schema_conn.total_changes == before
-    # A malformed outer document is a stored-format error, not a missing intent.
-    monkeypatch.setattr(legacy.repo, "fetchone", lambda _sql, _params: {"admission_json": "[]"})
-    with pytest.raises(ValueError, match="已保存的试调受理资料结构不完整"):
-        legacy.repo.input_content({"input_json": None, "action": "trial.create", "request_key": KEY})
 
 
 def test_receipt_failure_rolls_back_nested_domain_and_identity(schema_conn, monkeypatch):

@@ -30,7 +30,7 @@ def run(case, key):
     return result["run_ref"], result["candidates"][0]["candidate_ref"]
 
 
-def test_partial_formal_version_current_analysis_dashboard_and_decision_share_whole_batches(candidate_case):
+def test_formal_versions_current_analysis_dashboard_and_decision_share_whole_batches(candidate_case):
     case = candidate_case
     case.conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T2','Milling')")
     case.conn.execute("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES ('M1','T2')")
@@ -67,18 +67,17 @@ def test_partial_formal_version_current_analysis_dashboard_and_decision_share_wh
     entry = next(row for row in selected_dashboard["tradeoffs"]["all_differences"] if row["metric_key"] == "type_changeover_count")
     assert entry["reference_value"] == 1 and entry["selected_value"] == 0
     assert entry["value"] == -1 and entry["state"] == "comparable" and entry["direction"] == "better"
-    # A legacy partial version preserves B2's most recent formal arrangement in v1.
-    case.conn.execute("INSERT INTO Schedule(op_id,machine_id,operator_id,start_time,end_time,lock_status,version) "
-                      "SELECT op_id,machine_id,operator_id,start_time,end_time,lock_status,2 FROM Schedule WHERE op_id=?", (case.op_id,))
-    case.conn.execute("INSERT INTO ScheduleHistory(version,strategy,batch_count,op_count,result_status,result_summary) "
-                      "VALUES(2,'manual',1,1,'success','{}')")
-    case.conn.commit()
+    # 第二次采用覆盖 B1、B2（每次采用都覆盖已有正式安排的完整工序范围）。
+    _, second = run(case, "second-adoption")
+    preview = adopter.preview(second)
+    assert preview["validation"]["can_adopt"], preview
+    adopter.adopt(second, preview["write_context"]["write_token"], "shared-formal-adoption-2", INTENT)
     run_ref, candidate = run(case, "comparison")
     source = read_candidate_source(CandidateStore(case.conn), candidate)
     captured = deepcopy(source.capture)
-    legacy, _ = WorkbenchRunCandidateBaselineQueryService(case.conn).baseline(RunCandidateBaselineScope(candidate))
-    assert legacy["baseline"]["captured_task_count"] == 1
-    assert next(row for row in legacy["comparisons"] if row["batch_label"] == "B2")["baseline_segments"] == []
+    baseline_view, _ = WorkbenchRunCandidateBaselineQueryService(case.conn).baseline(RunCandidateBaselineScope(candidate))
+    assert baseline_view["baseline"]["captured_task_count"] == 2
+    assert all(row["baseline_segments"] for row in baseline_view["comparisons"])
     analysis, _ = read_candidate_analysis(case.conn, candidate)
     dashboard, _ = read_candidate_comparison(case.conn, RunCandidateReadScope(
         candidate, "2026-09-09T00:00:00", "2026-09-26T00:00:00"))
@@ -90,7 +89,7 @@ def test_partial_formal_version_current_analysis_dashboard_and_decision_share_wh
     for data in (analysis, dashboard):
         assert {row["batch_ref"]: row["before"] for row in data["batches"]} == expected
         assert data["baseline"]["captured_task_count"] == 2
-        assert data["baseline"]["version"] == legacy["baseline"]["version"] == 2
+        assert data["baseline"]["version"] == baseline_view["baseline"]["version"] == 2
     assert all(row["schedule_complete"] and row["risk"] == "on_time" for row in expected.values())
     assert dashboard["summary"]["before"]["known_due_count"] == 2
     assert dashboard["summary"]["before"]["unknown_due_count"] == 0

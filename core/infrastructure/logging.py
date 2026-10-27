@@ -7,7 +7,7 @@ import sys
 from typing import Any, Callable, Dict, Optional, Tuple
 
 from core.infrastructure.transaction import in_transaction_context
-from core.models.workbench_command import canonical_json
+from core.shared.strict_json import canonical_json
 
 
 def _invoke_safely(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> bool:

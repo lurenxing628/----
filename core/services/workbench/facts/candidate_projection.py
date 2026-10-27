@@ -14,17 +14,15 @@ UNIFIED_GENERATION_VERSION = "unified_search_v1"
 
 
 def business_candidate_fields(artifact):
-    """New saved business facts are exposed only under their recorded policy."""
-    if artifact.get("generation_policy_version") != UNIFIED_GENERATION_VERSION:
-        return {}
+    """Business facts every candidate of the unified search records; any other artifact is corrupt."""
     fields = ("generation_policy_version", "representative_objectives", "evaluations", "origin",
               "first_found_elapsed_ms", "search_evidence_ref")
-    if any(field not in artifact for field in fields):
+    if any(field not in artifact for field in fields) or artifact["generation_policy_version"] != UNIFIED_GENERATION_VERSION:
         corrupt()
     return {field: artifact[field] for field in fields}
 
 
-def dispositions(receipt):
+def dispositions(receipt, *, expected_refs):
     """A run's admitted operation dispositions, or None when it saved no candidate results.
 
     Queued/running runs have no receipt yet and failed/interrupted receipts save
@@ -32,11 +30,15 @@ def dispositions(receipt):
     """
     if receipt is None or receipt.get("result_persisted") is False:
         return None
-    return completed_dispositions(receipt)
+    return completed_dispositions(receipt, expected_refs=expected_refs)
 
 
-def completed_dispositions(receipt) -> Dict[str, Dict[str, Any]]:
-    """Dispositions saved with a run's candidate results (or built at admission); absence is a corrupt archive."""
+def completed_dispositions(receipt, *, expected_refs) -> Dict[str, Dict[str, Any]]:
+    """Dispositions saved with a run's candidate results (or built at admission).
+
+    They cover exactly the run's admitted operations ``expected_refs``; absence or
+    any other scope is a corrupt archive.
+    """
     value = receipt.get("dispositions")
     if type(value) is not list:
         corrupt()
@@ -51,6 +53,8 @@ def completed_dispositions(receipt) -> Dict[str, Dict[str, Any]]:
             corrupt()
         result[ref] = row
         ids.add(op)
+    if set(result) != set(expected_refs):
+        corrupt()
     return result
 
 
@@ -96,36 +100,23 @@ def _check_scheduled_rows(scheduled, values):
         corrupt()
 
 
-def uses_task_rows(artifact):
-    source = artifact.get("task_payload_source")
-    if source is None:
-        return False
-    if source != "candidate_tasks_v1":
-        corrupt()
-    return True
-
-
 def scheduled_ids(row):
-    payload = row["artifact"].get("validated_payload")
-    if payload is None:
-        return None
-    if type(payload) is not dict:
+    """Operations validated for the candidate's permanent task rows, the only arrangement record."""
+    artifact = row["artifact"]
+    payload = artifact.get("validated_payload")
+    if artifact.get("task_payload_source") != "candidate_tasks_v1" or type(payload) is not dict:
         corrupt()
     values = _scheduled_values(payload, row)
-    scheduled = row["artifact"].get("results") if uses_task_rows(row["artifact"]) else payload.get("schedule_rows")
-    _check_scheduled_rows(scheduled, values)
+    _check_scheduled_rows(artifact.get("results"), values)
     return set(values)
 
 
-def completion(row, disposition, gaps, scheduled_op_ids):
+def completion(row, disposition, scheduled_op_ids):
     if row["status"] in ("failed", "skipped"):
         if row["task_count"]:
             corrupt()
         return "no_result"
     ids = scheduled_op_ids
-    if ids is None:
-        gaps.append(gap("completeness"))
-        return "unknown"
     expected = {item["op_id"] for item in disposition.values() if item["status"] != "skipped"}
     # Protected baseline rows outside the selected batches may legitimately be retained.
     missing = expected - ids
@@ -137,7 +128,7 @@ def completion(row, disposition, gaps, scheduled_op_ids):
     return "partial" if missing or incomplete or any(item["status"] == "skipped" for item in disposition.values()) else "complete"
 
 
-def metrics(artifact, gaps):
+def metrics(artifact):
     raw = artifact.get("metrics")
     if raw is not None and type(raw) is not dict:
         corrupt()
@@ -152,13 +143,8 @@ def metrics(artifact, gaps):
         else:
             value = number(raw.get(key), "metrics." + key, issues, integer=key.endswith("_count"))
         result[key] = {"value": value, "reason": issues[0] if issues else None}
-    if artifact.get("generation_policy_version") == UNIFIED_GENERATION_VERSION:
-        result["elapsed_seconds"] = {"value": None, "state": "not_applicable",
-            "reason": {"field": "elapsed_seconds", "code": "shared_run_time", "message": "计算用时属于本轮共同优化。"}}
-    else:
-        result["elapsed_seconds"] = {"value": number(artifact.get("elapsed_seconds"), "elapsed_seconds", gaps), "reason": None}
-        if result["elapsed_seconds"]["value"] is None:
-            result["elapsed_seconds"]["reason"] = gaps[-1]
+    result["elapsed_seconds"] = {"value": None, "state": "not_applicable",
+        "reason": {"field": "elapsed_seconds", "code": "shared_run_time", "message": "计算用时属于本轮共同优化。"}}
     return result
 
 
@@ -167,7 +153,7 @@ def candidate_summary(row, disposition, *, scheduled_op_ids):
     if artifact.get("status") != row["status"] or artifact.get("sequence") != row["sequence"]:
         corrupt()
     label = text(artifact.get("label"), "label", gaps)
-    completeness = completion(row, disposition, gaps, scheduled_op_ids)
+    completeness = completion(row, disposition, scheduled_op_ids)
     status = "partial" if row["status"] == "completed" and completeness == "partial" else row["status"]
     reasons = blocked_reasons()
     if row["status"] != "completed":
@@ -175,7 +161,7 @@ def candidate_summary(row, disposition, *, scheduled_op_ids):
                         "message": "该候选未生成任务安排；可查看记录和导出空范围，未包装成完整方案。"})
     return {"candidate_ref": row["candidate_ref"], "run_ref": row["run_ref"], "label": label,
             "status": status, "persisted_status": row["status"], "task_count": row["task_count"],
-            "completeness": completeness, "metrics": metrics(artifact, gaps),
+            "completeness": completeness, "metrics": metrics(artifact),
             "metric_scopes": {"delivery": "completed_batches_only", "resources": "scheduled_results_only"},
             "capabilities": read_capabilities(), "blocked_reasons": reasons, "data_gaps": gaps,
             **business_candidate_fields(artifact)}
@@ -184,12 +170,10 @@ def candidate_summary(row, disposition, *, scheduled_op_ids):
 def algorithm_facts(artifact):
     mode = text(artifact.get("algo_mode"), "algo_mode", [])
     strategy = text(artifact.get("used_strategy"), "used_strategy", [])
-    result = {"mode": mode, "mode_label": choice_label_map_for("algo_mode").get(mode) if mode is not None else None,
+    return {"mode": mode, "mode_label": choice_label_map_for("algo_mode").get(mode) if mode is not None else None,
             "strategy": strategy, "strategy_label": choice_label_map_for("sort_strategy").get(strategy) if strategy is not None else None,
-            **business_candidate_fields(artifact)}
-    if artifact.get("generation_policy_version") == UNIFIED_GENERATION_VERSION:
-        result.update(primary_objective=artifact["objective_name"], target_objectives=list(artifact["target_objectives"]))
-    return result
+            **business_candidate_fields(artifact),
+            "primary_objective": artifact["objective_name"], "target_objectives": list(artifact["target_objectives"])}
 
 
 def baseline_capture(baseline, captured_at, *, kind="admission_official"):

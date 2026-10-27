@@ -57,26 +57,14 @@ def test_unreported_null_zero_partial_finish_and_readonly(field_api):
     assert all_rows(api.case.conn) == before
 
 
-def test_missing_schema_is_unavailable_and_never_installed(request):
-    case = request.getfixturevalue('ledger_case')
-    api = FieldAPI(case)
-    before = all_rows(case.conn)
-    response = api.client.get(BASE + '/tasks')
-    assert response.status_code == 409 and response.get_json()['error']['code'] == 'execution_ledger_unavailable'
-    assert all_rows(case.conn) == before
-
-
 def test_legacy_supplement_keeps_known_facts_through_correction(ledger_case):
     case = ledger_case
-    case.event(case.op_id, "start", time="2026-09-09  08:00")
-    case.event(case.op_id, "finish", quantity=10, time="2026-09-09  10:00")
-    case.conn.execute("UPDATE OperationExecutionEvents SET actual_operator_id=NULL")
-    case.conn.commit()
+    case.event(case.op_id, "start", time="2026-09-09  08:00", operator=None)
+    case.event(case.op_id, "finish", quantity=10, time="2026-09-09  10:00", operator=None)
     case.conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M2','New planned machine','T1')")
     case.plan(2, [case.op_id])
     case.conn.execute("UPDATE Schedule SET machine_id='M2' WHERE version=2")
     case.conn.commit()
-    case.install()
     case.conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T2','New craft')")
     case.conn.execute("UPDATE Machines SET op_type_id='T2' WHERE machine_id='M1'")
     OperatorMachineRepository(case.conn).remove("O1", "M1")

@@ -103,8 +103,7 @@ def _baseline_origins(conn, baseline):
             return {}, None, None
         history = WorkbenchPlanBaselineRepository(conn).get_history_result_summary(baseline["version"])
         evidence = read_adoption_source(conn, plan_ref=baseline["plan_ref"], version=baseline["version"], history=history)
-        origins = read_adoption_operation_facts(conn, evidence) if evidence is not None else {}
-        return origins, evidence, None
+        return read_adoption_operation_facts(conn, evidence), evidence, None
     except AdoptionBaselineUnavailable as exc:
         return {}, None, {"code": exc.code, "message": REASONS[exc.code]}
     except WorkbenchCommandRejected as exc:
@@ -159,9 +158,7 @@ class WorkbenchRunCandidateBaselineQueryService:
         return {"candidate": candidate, "generation": {
                     "run_ref": run["run_ref"], "accepted_at": run["accepted_at"], "finished_at": run["finished_at"],
                     "metadata_basis": "captured_at_run_admission", "execution_basis": "captured_at_run_admission",
-                    "current_entities_consulted": False, "formal_version_allocated": False, "input": admission.settings,
-                    "source_verification": {"facts_content_verified": True, "baseline_matches_archived_schedule": True,
-                                            "execution_verified_at": "run_admission", "input_source_verified": True, "candidate_content_verified": True}},
+                    "current_entities_consulted": False, "formal_version_allocated": False, "input": admission.settings},
                 "baseline": {**baseline_capture(admission.baseline, run["accepted_at"]), "available": captured,
                              "comparison_available": available, "reason": reason},
                 "comparisons": rows, "operation_count": len(rows), "full_operation_count": count, "rows_complete": True,

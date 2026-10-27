@@ -17,7 +17,7 @@ _FIELDS = {
     "machine_group": {"status", "remark"},
     "shift_profile": {"status", "remark", "anchor_date", "cycle_days", "pattern"},
 }
-_RELATIONS = {"op_type": set(), "machine": {"op_type_ref", "op_type_refs", "group_ref"},
+_RELATIONS = {"op_type": set(), "machine": {"op_type_refs", "group_ref"},
               "operator": {"skill_refs", "shift_profile_ref"}, "machine_group": set(), "shift_profile": set()}
 _STATUS = {"machine": ("active", "maintain", "inactive"), "operator": ("active", "leave", "inactive"),
            "machine_group": ("active", "inactive"), "shift_profile": ("active", "inactive")}
@@ -156,8 +156,6 @@ def normalize_resource_input(kind, action, payload):
 
 def _normalize_relations(kind, value):
     relations = resource_object(value, _RELATIONS[kind], "relationships")
-    if "op_type_ref" in relations and "op_type_refs" in relations:
-        raise ValidationError("设备工种请使用同一份选择列表，不能同时提交两种设置。", field="relationships.op_type_refs")
     normalized = {}
     for key, value in relations.items():
         if key in ("skill_refs", "op_type_refs"):

@@ -3,7 +3,7 @@
 from typing import Union
 
 from core.infrastructure.read_evidence import read_evidence_scope
-from core.models.workbench_run_candidate import reference, reject
+from core.models.workbench_run_candidate import reject
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.decision_candidate import candidate_reason
 from core.services.workbench.facts.decision_metrics import METRIC_VERSION
@@ -24,13 +24,10 @@ COMPLETION_FILTERS = {
 }
 
 
-def normalize_completion_filters(*, completion_candidate_ref=None, completion_filter="all", sort="batch_id", order="asc"):
+def normalize_completion_filters(*, completion_filter="all", sort="batch_id", order="asc"):
     if completion_filter not in COMPLETION_FILTERS or sort != "batch_id" or order not in ("asc", "desc"):
         reject("invalid_input", "工序安排的筛选类别或排序条件无效，请重新选择。", 422)
-    if completion_candidate_ref is not None:
-        reference(completion_candidate_ref)
-    return {"section": "completion-batches", "completion_candidate_ref": completion_candidate_ref,
-            "completion_filter": completion_filter, "sort": sort, "order": order}
+    return {"section": "completion-batches", "completion_filter": completion_filter, "sort": sort, "order": order}
 
 
 def _remaining_drill(source, key, available, rows, *, batch_ref=None):
@@ -65,11 +62,10 @@ def _batch_row(source, key, item, scope, reason):
 
 
 def completion_batches(source, filters, *, page: Union[int, str] = 1, size: Union[int, str] = 20):
-    key = filters["completion_candidate_ref"] or source.selected_ref
+    key = source.selected_ref
     if key is None:
         reject("invalid_input", "请选择本次排产中的候选后查看工序安排。", 422)
     candidate = source._candidate_reference(key, require_result=False)
-    filters = {**filters, "completion_candidate_ref": key}
     scope = source.completion.scope(key)
     available = scope["source_available"]
     reason = candidate_reason(candidate)
@@ -95,10 +91,9 @@ def completion_batches(source, filters, *, page: Union[int, str] = 1, size: Unio
             "metric_version": METRIC_VERSION}
 
 
-def read_completion_batches(conn, run_ref, *, completion_candidate_ref=None, completion_filter="all", sort="batch_id", order="asc",
+def read_completion_batches(conn, run_ref, *, completion_filter="all", sort="batch_id", order="asc",
                             page: Union[int, str] = 1, size: Union[int, str] = 20, **query):
-    filters = normalize_completion_filters(completion_candidate_ref=completion_candidate_ref, completion_filter=completion_filter,
-                                          sort=sort, order=order)
+    filters = normalize_completion_filters(completion_filter=completion_filter, sort=sort, order=order)
     store = CandidateStore(conn)
     with store.snapshot(), read_evidence_scope(conn):
         source = DecisionSource(store, run_ref, **query)

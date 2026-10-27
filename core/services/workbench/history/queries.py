@@ -111,7 +111,7 @@ def _read(conn, values, *, all_rows):
             "metric_definitions": definitions, "selection": {"entry": selected, "reference": reference},
             "comparison": comparison, "trend": trend, "resource_window": policy}
         # Immutable archives bind permanent source identities and known gaps;
-        # the directory's existing identity clock covers mutable legacy history.
+        # the directory's existing identity clock covers its mutable official bindings.
         state["source_anchors"] = [reader.source_state(descriptor) for descriptor in (selected_descriptor, reference_descriptor)
                                    if descriptor is not None]
         return data, history_snapshot_scope(query), state

@@ -5,7 +5,6 @@ from typing import Tuple, Union
 
 from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.infrastructure.read_evidence import verified_read
-from core.infrastructure.schema_probe import table_exists
 from core.models.content import same
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.facts.candidate_archive import load_adoption_candidate
@@ -36,12 +35,6 @@ def _source_exists(conn, table, field, ref):
         fail("adoption_source_archived", table + "." + field)
 
 
-def _tables_exist(conn, names):
-    for name in names:
-        if not table_exists(conn, name):
-            fail("adoption_evidence_missing", name)
-
-
 def _decode_rows(rows):
     require(type(rows) is list, "archived_table_rows")
     return [{key: unpack_blob(value) for key, value in row.items()} for row in rows]
@@ -58,14 +51,11 @@ def candidate_source_evidence(conn, audit):
             raise
         fail(gap="candidate_source:" + exc.code)
     require(candidate["run_ref"] == audit["run_ref"], "candidate.run_ref")
+    # The recorded proof's version and field set were already checked with the audit.
     proof = audit["proof"]
     values = [("run_ref", audit["run_ref"]), ("candidate_ref", audit["candidate_ref"]),
               ("baseline_ref", capture["baseline"]["plan_ref"]),
               ("baseline_version", capture["baseline"]["version"])]
-    if proof.get("proof_version") is None:
-        values.append(("facts_hash", capture["facts_hash"]))
-    else:
-        require(proof.get("proof_version") == "content_refs_v1", "candidate.proof_version")
     for name, value in values:
         require(same(proof[name], value), "candidate.proof." + name)
     return evidence
@@ -73,7 +63,6 @@ def candidate_source_evidence(conn, audit):
 
 def _candidate_source(conn, audit):
     candidate_ref, run_ref = audit["candidate_ref"], audit["run_ref"]
-    _tables_exist(conn, ("WorkbenchRunJobs", "WorkbenchRunCandidates", "WorkbenchRunReceipts", "WorkbenchRunCandidateTasks"))
     _source_exists(conn, "WorkbenchRunJobs", "run_ref", run_ref)
     _source_exists(conn, "WorkbenchRunCandidates", "candidate_ref", candidate_ref)
     run, candidate, scope, tasks, capture, _ = load_adoption_candidate(conn, candidate_ref)
@@ -111,14 +100,10 @@ def trial_source_evidence(conn, audit):
     head = prepared.source[1]
     admission, proof = head["admission"], audit["proof"]
     require(head["draft_ref"] == audit["draft_ref"], "trial.draft_ref")
-    values = [("scenario_ref", audit["scenario_ref"]), ("draft_ref", audit["draft_ref"])]
-    if proof.get("proof_version") is None:
-        values.append(("admission_hash", head["admission_hash"]))
-    else:
-        require(proof.get("proof_version") == "content_refs_v1", "trial.proof_version")
-        values.extend((("scenario_revision", head["scenario_revision"]),
-                       ("baseline_ref", admission["baseline"]["plan_ref"]),
-                       ("baseline_version", admission["baseline"]["version"])))
+    values = [("scenario_ref", audit["scenario_ref"]), ("draft_ref", audit["draft_ref"]),
+              ("scenario_revision", head["scenario_revision"]),
+              ("baseline_ref", admission["baseline"]["plan_ref"]),
+              ("baseline_version", admission["baseline"]["version"])]
     for name, value in values:
         require(same(proof[name], value), "trial.proof." + name)
     return evidence, prepared
@@ -126,7 +111,6 @@ def trial_source_evidence(conn, audit):
 
 def _trial_source(conn, audit):
     scenario_ref, draft_ref = audit["scenario_ref"], audit["draft_ref"]
-    _tables_exist(conn, ("WorkbenchTrialScenarios", "WorkbenchTrialDrafts", "WorkbenchTrialRows", "WorkbenchTrialScenarioRows"))
     _source_exists(conn, "WorkbenchTrialScenarios", "scenario_ref", scenario_ref)
     _source_exists(conn, "WorkbenchTrialDrafts", "draft_ref", draft_ref)
     prepared = trial_adoption_facts(conn, scenario_ref)

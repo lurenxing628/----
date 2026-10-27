@@ -1,83 +1,28 @@
-"""Consume the unique ledger; only an explicit unavailable ledger uses old guards."""
-
-from collections import defaultdict
-from datetime import datetime
-
-from core.infrastructure.connection_guards import schema_contract_memo
-from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_contract_issues
-from core.models.operation_execution_event import (
-    OperationExecutionEvent,
-    parse_operation_event_time,
-    validate_operation_execution_event_sequence,
-)
-from core.models.workbench_preflight import issue
-
-
-def legacy_times(op, rows):
-    parsed = [OperationExecutionEvent.from_row(row) for row in sorted(rows, key=lambda row: row["id"])]
-    validate_operation_execution_event_sequence(parsed)
-    if any(row.batch_id != op["batch_id"] for row in parsed):
-        raise ValueError("wrong batch identity")
-    timed = [(row, parse_operation_event_time(row.event_time)) for row in parsed]
-    now = datetime.now()
-    if any(when > now for _, when in timed):
-        raise ValueError("future legacy event")
-    return ([when.isoformat() for row, when in timed if row.event_type == "start"],
-            [when.isoformat() for row, when in timed if row.event_type == "finish"])
-
-
-def legacy_guard(op, events):
-    groups = defaultdict(list)
-    for event in events:
-        groups[(event["schedule_version"], event["schedule_id"], event["source_table"],
-                event["effective_plan_role"], event["scenario_id"])].append(event)
-    starts, finishes, gaps = [], [], []
-    for rows in groups.values():
-        try:
-            actual_starts, actual_finishes = legacy_times(op, rows)
-            starts.extend(actual_starts)
-            finishes.extend(actual_finishes)
-        except ValueError:
-            gaps.append(issue("legacy_execution_invalid", "旧报工记录的编号或先后顺序不完整，这道工序先保持保护，等人工复核。"))
-    complete = bool(finishes)
-    protected = bool(events or op["status"] in ("processing", "completed"))
-    return {"execution_state": "complete" if complete else "started" if starts else "unreported",
-            "completion_basis": "legacy_finish_event" if complete else None,
-            "first_actual_start": min(starts) if starts else None, "confirmed_finish": max(finishes) if finishes else None,
-            "remaining_quantity": None, "remaining_plan": None,
-            "data_quality": "invalid" if gaps else "legacy_incomplete" if protected else "incomplete",
-            "data_gaps": gaps, "protected": protected, "reports": [], "legacy_facts": events}
+"""Consume the unique execution ledger for the preflight operation scope."""
 
 
 def execution_projections(facts, operations, *, prepared=None):
-    installed = not schema_contract_memo(facts.conn).get_schema(execution_ledger_contract_issues)
-    if installed:
-        from core.services.workbench.execution.ledger import ExecutionLedgerService
-        from core.services.workbench.facts.run_input_codec import validate_projection_dto
+    from core.services.workbench.execution.ledger import ExecutionLedgerService
+    from core.services.workbench.facts.run_input_codec import validate_projection_dto
 
-        refs = [facts.operation_ref(op) for op in operations]
-        service = facts.execution_service or ExecutionLedgerService(facts.conn)
-        facts.execution_service = service
-        projections = []
-        for offset in range(0, len(refs), 10000):
-            projections.extend(service.project_operations(refs[offset:offset + 10000]))
-        facts.execution_projections.update((row.operation_ref, row) for row in projections)
-        result = {row.operation_ref: row.to_dict() for row in projections}
-        if set(result) != set(refs) or len(projections) != len(refs):
-            raise ValueError("ExecutionProjection did not cover the exact preflight operation scope")
-        if prepared is not None:
-            for projection in projections:
-                validate_projection_dto(projection)
-            prepared.extend(projections)
-        return result, []
-    events = defaultdict(list)
-    for row in facts.tables["OperationExecutionEvents"]:
-        events[row["op_id"]].append(row)
-    result = {facts.operation_ref(op): legacy_guard(op, events[op["id"]]) for op in operations}
-    return result, [issue("execution_ledger_unavailable", "新的报工记录功能尚未开通；旧报工保护已经读到，但这次排产不能提交。")]
+    refs = [facts.operation_ref(op) for op in operations]
+    service = facts.execution_service or ExecutionLedgerService(facts.conn)
+    facts.execution_service = service
+    projections = []
+    for offset in range(0, len(refs), 10000):
+        projections.extend(service.project_operations(refs[offset:offset + 10000]))
+    facts.execution_projections.update((row.operation_ref, row) for row in projections)
+    result = {row.operation_ref: row.to_dict() for row in projections}
+    if set(result) != set(refs) or len(projections) != len(refs):
+        raise ValueError("ExecutionProjection did not cover the exact preflight operation scope")
+    if prepared is not None:
+        for projection in projections:
+            validate_projection_dto(projection)
+        prepared.extend(projections)
+    return result
 
 
 def is_protected(projection, op):
-    return bool(projection.get("protected") or projection.get("reports") or projection.get("legacy_facts")
+    return bool(projection["reports"] or projection["legacy_facts"]
                 or projection["first_actual_start"] or projection["confirmed_finish"]
                 or projection["execution_state"] != "unreported" or op["status"] in ("processing", "completed"))

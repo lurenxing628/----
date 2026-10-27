@@ -99,37 +99,29 @@ def gap(code, message):
     return {"code": code, "message": message}
 
 
-def _audit_lineage(audit, row, plan, saved, header, draft):
+def _audit_lineage(audit, row, plan, saved, header):
     expected = {"source": "workbench_trial_adoption", "request_key": row["request_key"],
                 "scenario_ref": saved["scenario_ref"], "draft_ref": saved["draft_ref"],
                 "version": plan["version"], "row_count": plan["row_count"], "is_simulation": False,
                 "baseline_ref": saved["baseline"]["plan_ref"], "baseline_version": saved["baseline"]["version"]}
-    proof = {"scenario_ref": saved["scenario_ref"], "draft_ref": saved["draft_ref"]}
-    version = audit["proof"].get("proof_version")
-    if version == "content_refs_v1":
-        proof.update(proof_version=version, scenario_revision=header["revision"],
-                     baseline_ref=saved["baseline"]["plan_ref"], baseline_version=saved["baseline"]["version"])
-    elif version is None:
-        # Historical digest values are source metadata, compared as saved, without recalculation.
-        proof.update(scenario_hash=header["snapshot_hash"], admission_hash=draft["admission_hash"])
-    else:
-        raise ValueError("Unknown audit source version")
+    proof = {"proof_version": "content_refs_v1", "scenario_ref": saved["scenario_ref"], "draft_ref": saved["draft_ref"],
+             "scenario_revision": header["revision"], "baseline_ref": saved["baseline"]["plan_ref"],
+             "baseline_version": saved["baseline"]["version"]}
     if not matches(audit, expected) or not matches(audit["proof"], proof):
         raise ValueError("Audit lineage mismatch")
 
 
-def audit_fields(row, plan, saved, header, draft, *, history, command_repo, adoption_inputs):
+def audit_fields(row, plan, saved, header, *, history, command_repo):
     empty = {"reason": None, "declared_operator": None, "application_operator": None, "adopted_at": None}
     if history is None:
         return empty, [gap("audit_missing", "找不到对应的正式计划历史，或同一版本有多条记录，采用信息暂时无法确认。")]
     try:
         audit = json_object(history["result_summary"])
-        _audit_lineage(audit, row, plan, saved, header, draft)
+        _audit_lineage(audit, row, plan, saved, header)
         if history["result_status"] != "success":
             raise ValueError("Not a successful history record")
         intent = {"confirm": True, "reason": audit["reason"], "declared_operator": audit["declared_operator"]}
-        original_input = (adoption_inputs[row["request_key"]] if row["input_json"] is None else command_repo.input_content(row))
-        if content_text(intent) != original_input:
+        if content_text(intent) != command_repo.input_content(row):
             raise ValueError("Audit intent does not match immutable receipt")
         fields = {key: audit[key] for key in empty}
         if any(type(value) is not str or not value.strip() for value in fields.values()):

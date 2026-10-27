@@ -29,23 +29,14 @@ _OPERATORS = """
       ON r.kind='operator' AND r.entity_key=selected.operator_id AND r.active=1
 """
 _SUPPLIERS = """
-    WITH selected AS (
-        SELECT supplier_id,1 AS legacy,0 AS explicit FROM Suppliers WHERE op_type_id=:op_type
-        UNION ALL
-        SELECT supplier_id,0,1 FROM WorkbenchSupplierOpTypes WHERE op_type_id=:op_type
-    ), sources AS (
-        SELECT supplier_id,max(legacy) AS legacy,max(explicit) AS explicit
-        FROM selected GROUP BY supplier_id
-    )
-    SELECT sources.supplier_id AS business_code,s.name,s.status,s.remark,s.default_days,
-           s.op_type_id AS legacy_type,t.category AS legacy_category,
-           sources.legacy,sources.explicit,p.inactive_reason,r.ref,r.revision
-    FROM sources
-    LEFT JOIN Suppliers AS s ON s.supplier_id=sources.supplier_id
-    LEFT JOIN OpTypes AS t ON t.op_type_id=s.op_type_id
-    LEFT JOIN WorkbenchSupplierProfiles AS p ON p.supplier_id=sources.supplier_id
+    SELECT c.supplier_id AS business_code,s.name,s.status,s.remark,s.default_days,
+           p.inactive_reason,r.ref,r.revision
+    FROM WorkbenchSupplierOpTypes AS c
+    LEFT JOIN Suppliers AS s ON s.supplier_id=c.supplier_id
+    LEFT JOIN WorkbenchSupplierProfiles AS p ON p.supplier_id=c.supplier_id
     LEFT JOIN WorkbenchEntityRefs AS r
-      ON r.kind='supplier' AND r.entity_key=sources.supplier_id AND r.active=1
+      ON r.kind='supplier' AND r.entity_key=c.supplier_id AND r.active=1
+    WHERE c.op_type_id=:op_type
 """
 _QUERIES = {"machines": _MACHINES, "operators": _OPERATORS, "suppliers": _SUPPLIERS}
 _OPERATOR_FACTS = {

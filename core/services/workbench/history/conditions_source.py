@@ -31,7 +31,7 @@ class ConditionSource:
     def __init__(self, packet):
         self.kind, self.ref, self.entry_ref = packet["kind"], packet["ref"], packet["entry_ref"]
         self.issue = packet.get("source_issue")
-        self.available = self.kind != "legacy"
+        self.available = self.kind != "empty"
         self.archive = self.input = self.execution = self.baseline = None
         self.artifact = self.raw_tasks = self.trial_rows = self.saved = self.calendar = None
         self.original_archive = self._original_calendar = None
@@ -42,28 +42,24 @@ class ConditionSource:
         if self.kind == "run":
             self._origins = {"environment": "capture.facts_text", "original": "capture.facts_text",
                              "input": "capture.input", "execution": "capture.execution", "tasks": "raw_tasks"}
-            if self._missing_source(packet, ("capture", "facts")):
+            if self._missing_source():
                 return
             self._run(packet)
         elif self.kind == "trial":
             self._origins = {"environment": "head.admission.facts", "input": "head.admission.input",
                              "original": "head.admission.source.capture.facts_text",
                              "execution": "head.admission.execution", "tasks": "rows", "saved": "saved"}
-            if self._missing_source(packet, ("head", "saved")):
+            if self._missing_source():
                 return
             self._trial(packet)
-        elif self.kind == "legacy":
-            self.saved = packet.get("parsed_summary")
-            self._origins["environment"] = "parsed_summary"
-        else:
+        elif self.kind != "empty":
             raise ValueError("Unknown saved condition source")
 
-    def _missing_source(self, packet, required):
-        if self.issue is None and all(packet.get(key) is not None for key in required):
+    def _missing_source(self):
+        # Only an unproven adoption audit leaves a packet unread; every read source is complete.
+        if self.issue is None:
             return False
         self.available = False
-        if self.issue is None:
-            self.issue = {"code": "source_missing", "message": "这份历史记录的保存来源缺失，生产条件未知。"}
         return True
 
     def _run(self, packet):
@@ -181,9 +177,10 @@ class ConditionSource:
 
     def source(self, path, origin="environment"):
         """Locate saved fields, including original work indexed by permanent ref."""
-        if self.kind == "legacy":
-            saved_path = path if path.startswith("parsed_summary") else _join_path("parsed_summary", path)
-        elif origin == "input" and path in self._input_paths:
+        if self.kind == "empty":
+            # 没有选中历史条目的一侧没有保存来源可指。
+            return {"kind": self.kind, "ref": None, "path": None}
+        if origin == "input" and path in self._input_paths:
             saved_path = self._input_paths[path]
         elif origin == "original" and path.startswith(("operations.", "batches.")):
             kind, ref, *tail = path.split(".")
@@ -193,7 +190,7 @@ class ConditionSource:
                 saved_path = _join_path(self._origins["original"], path)
             elif tail:
                 saved_path += "." + ".".join(tail)
-        elif path.startswith(("capture.", "candidate.", "receipt.", "head.", "rows[", "saved.", "parsed_summary")):
+        elif path.startswith(("capture.", "candidate.", "receipt.", "head.", "rows[", "saved.")):
             saved_path = path
         else:
             prefix = self._origins.get(origin)

@@ -31,7 +31,7 @@
         <tbody>{data.batches.slice((current - 1) * 20, current * 20).map(row => <tr key={row.batch_ref} data-analysis-batch={row.batch_ref}>
           <td>{row.batch_id}<small>{row.part_label || '名称未填写'}</small></td><td>{T.due_date(row.after.due_date, row.after.due_state, row.after.due_issue)}</td>
           <td>{data.baseline.available ? <Finish row={row.before} /> : '无原安排'}</td><td><Finish row={row.after} /></td><td>{!data.baseline.available || row.after.due_state === 'unspecified' ? '不适用' : row.delay_delta_hours === null ? '交付待确认' : M.signedChange(row.delay_delta_hours)}</td>
-          <td><C.Button icon="chart-gantt" disabled={!onBatch} aria-label={'查看批次甘特 ' + row.batch_id} onClick={() => onBatch(row)}>批次甘特</C.Button>
+          <td><C.Button icon="chart-gantt" aria-label={'查看批次甘特 ' + row.batch_id} onClick={() => onBatch(row)}>批次甘特</C.Button>
             {row.after.last_operations.map(task => <C.Button key={task.row_ref} icon="search" className="mini" aria-label={'定位末端工序 ' + row.batch_id + ' ' + task.sequence + (task.piece_id ? ' ' + task.piece_id : '')}
               onClick={() => onLast(task)}>{M.number(task.sequence)} {task.process_label || '工序未记录'}{task.piece_id && ' · ' + task.piece_id}</C.Button>)}</td>
         </tr>)}</tbody></table></div><C.Pager page={current} pages={pages} onPage={setPage} label="批次交付对照" /></section>;
@@ -44,7 +44,7 @@
           <td>{row.official_plan.label}<small>{row.row_count} 道安排</small></td><td title={row.adoption ? M.timeLabel(row.adoption.adopted_at) : undefined}>{row.adoption ? window.WorkbenchFormat.dateTime(row.adoption.adopted_at) : '暂无数据'}<small title={window.WorkbenchFormat.instant(row.committed_at_utc, { seconds: true })}>结果保存时间：{window.WorkbenchFormat.instant(row.committed_at_utc)}</small></td>
           <td>{row.adoption ? <>{row.adoption.declared_operator}<small>{row.adoption.application_operator}</small></> : '暂无数据'}</td><td>{row.adoption ? row.adoption.reason : '暂无数据'}</td>
           <td><window.WorkbenchReference value={row.receipt_ref} label="结果编号" /><C.Reasons rows={row.evidence_gaps} /></td>
-          <td><C.Button icon="chart-gantt" disabled={!row.can_open || !onPlan} title={row.evidence_gaps.map(gap => gap.message).join(' ')}
+          <td><C.Button icon="chart-gantt" disabled={!row.can_open} title={row.evidence_gaps.map(gap => gap.message).join(' ')}
             aria-label={'打开原采用计划 v' + row.official_plan.version} onClick={() => onPlan(row.official_plan)}>打开原计划</C.Button></td>
         </tr>)}</tbody></table></div>}<C.Pager page={current} pages={pages} onPage={setPage} label="候选采用记录" /></section>;
   }

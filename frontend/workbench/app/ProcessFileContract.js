@@ -9,7 +9,7 @@
     && (value.length < 19 || value.length === 19 && value <= '9223372036854775807');
   function kind(value) { if (!['route', 'hours'].includes(value)) throw C.failure('文件类型必须是工艺路线或工时定额。'); return value; }
   function operation(value) { return 'process_' + kind(value) + '_import.confirm'; }
-  // 信封（ok、schema_version、meta、warnings）已由 resource-api.js 的 production() 校验，这里只校验 data。
+  // 信封（ok、schema_version、meta、warnings）已由 transport.js 的 envelope() 校验，这里只校验 data。
   function columns(value) {
     return Array.isArray(value) && value.length > 0 && value.every(row => C.object(row) && text(row.key) && /^[a-z][a-z0-9_]*$/.test(row.key)
       && !['id', 'entity_key', 'entity_ref', 'write_token', 'revision'].includes(row.key) && text(row.label) && row.label.trim() && row.label !== row.key)

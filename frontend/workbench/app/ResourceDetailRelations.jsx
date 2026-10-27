@@ -6,7 +6,7 @@
   const names = { machines: '关联设备', operators: '关联人员', suppliers: '关联供应商' };
   const ref = value => typeof value === 'string' && /^[0-9a-f]{48}$/.test(value);
   const count = value => Number.isSafeInteger(value) && value >= 0;
-  // 信封（ok、schema_version、meta、warnings）已由 resource-api.js 的 production() 校验，这里只校验关联记录与翻页。
+  // 信封（ok、schema_version、meta、warnings）已由 transport.js 的 envelope() 校验，这里只校验关联记录与翻页。
   function query(result, parent, scope) {
     const meta = result.meta, data = result.data, page = data.page;
     if (!C.object(data.basis)

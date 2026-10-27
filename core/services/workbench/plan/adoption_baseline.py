@@ -1,9 +1,8 @@
 """Resolve a new official baseline from its recorded adoption, never version - 1."""
 
 from core.infrastructure.read_evidence import verified_read
-from core.infrastructure.schema_probe import table_exists
 from core.models.content import content_text, same
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
 from core.services.workbench.facts.adoption_baseline_sources import (
     candidate_source_evidence,
@@ -15,6 +14,7 @@ from core.services.workbench.facts.adoption_baseline_values import (
     require,
     stored,
 )
+from core.shared.strict_json import canonical_json
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 
 from .adoption_baseline_identity import baseline_tasks, verify_arranged, verify_capture
@@ -31,15 +31,13 @@ def read_adoption_record(conn, *, plan_ref, version, history, receipt=None, rece
 
 
 def _read_adoption_record(conn, plan_ref, version, raw, *, receipt, receipt_result):
+    # Every official version is written by a candidate or trial adoption together with its audit.
     if raw is None:
-        return None
+        fail("adoption_evidence_missing", "ScheduleHistory")
     audit = stored(raw)
     source = audit.get("source")
-    require(source is None or type(source) is str, "adoption.source_shape")
-    if source not in _SOURCES:
-        if "proof" in audit or "baseline_ref" in audit:
-            fail("adoption_evidence_missing", "ScheduleHistory.adoption_source")
-        return None
+    if type(source) is not str or source not in _SOURCES:
+        fail("adoption_evidence_missing", "ScheduleHistory.adoption_source")
     required = {"request_key", "baseline_ref", "baseline_version", "version", "proof", "row_count",
                 "validation", "is_simulation", "reason", "declared_operator"}
     if not required <= set(audit):
@@ -61,17 +59,11 @@ def _read_adoption_record(conn, plan_ref, version, raw, *, receipt, receipt_resu
 
 def _proof_fields(audit, basis):
     require(type(audit["proof"]) is dict, "adoption.proof_shape")
-    version = audit["proof"].get("proof_version")
-    if version == "content_refs_v1":
-        names = ({"proof_version", "candidate_ref", "run_ref", "baseline_ref", "baseline_version"}
-                 if basis == "candidate_adoption" else
-                 {"proof_version", "scenario_ref", "draft_ref", "scenario_revision", "baseline_ref", "baseline_version"})
-    elif version is None:
-        names = ({"candidate_ref", "run_ref", "facts_hash", "baseline_ref", "baseline_version", "baseline_hash", "candidate_hash"}
-             if basis == "candidate_adoption" else
-             {"scenario_ref", "draft_ref", "scenario_hash", "admission_hash", "execution_hash", "baseline_hash", "rows_hash"})
-    else:
+    if audit["proof"].get("proof_version") != "content_refs_v1":
         fail("adoption_snapshot_invalid", "adoption.proof_version")
+    names = ({"proof_version", "candidate_ref", "run_ref", "baseline_ref", "baseline_version"}
+             if basis == "candidate_adoption" else
+             {"proof_version", "scenario_ref", "draft_ref", "scenario_revision", "baseline_ref", "baseline_version"})
     missing = names - set(audit["proof"])
     if missing:
         fail("adoption_evidence_missing", "adoption.proof." + ",".join(sorted(missing)))
@@ -79,9 +71,8 @@ def _proof_fields(audit, basis):
 
 def _receipt(conn, plan_ref, version, audit, *, receipt, result):
     _, action, context, parent = _SOURCES[audit["source"]]
-    if not table_exists(conn, "WorkbenchCommandReceipts"):
-        fail("adoption_evidence_missing", "WorkbenchCommandReceipts")
-    receipt = WorkbenchCommandRepository(conn).get(audit["request_key"]) if receipt is None else dict(receipt)
+    repo = WorkbenchCommandRepository(conn)
+    receipt = repo.get(audit["request_key"]) if receipt is None else receipt
     if receipt is None:
         fail("adoption_evidence_missing", "adoption.command_receipt")
     require(receipt["request_key"] == audit["request_key"], "adoption.receipt_request")
@@ -98,9 +89,7 @@ def _receipt(conn, plan_ref, version, audit, *, receipt, result):
     require(same({key: official[key] for key in expected}, expected), "adoption.receipt_official_identity")
     require((receipt["action"], receipt["context_ref"]) == (action, audit[context]), "adoption.receipt_source")
     intent = {"confirm": True, "reason": audit["reason"], "declared_operator": audit["declared_operator"]}
-    original = WorkbenchCommandRepository(conn).input_content(receipt)
-    require(original is None or original == content_text(intent), "adoption.receipt_intent")
-    receipt["input_source_verified"] = original is not None
+    require(repo.input_content(receipt) == content_text(intent), "adoption.receipt_intent")
     require(data[context] == audit[context] and data[parent] == audit[parent]
             and same(data["row_count"], audit["row_count"]), "adoption.receipt_scope")
     require(all(official[key] == audit[key[len("source_"):]] for key in fields), "adoption.receipt_provenance")
@@ -120,8 +109,6 @@ def read_adoption_source(conn, *, plan_ref, version, history, recorded=None, con
 
 def load_adoption_source(conn, *, plan_ref, version, history, recorded, context=None):
     recorded = read_adoption_record(conn, plan_ref=plan_ref, version=version, history=history) if recorded is None else recorded
-    if recorded is None:
-        return None
     key = ("adoption_source", plan_ref, version, canonical_json(recorded[1]))
     return verified_read(conn, key, lambda: _read_adoption_source(
         conn, plan_ref=plan_ref, version=version, recorded=recorded, context=context,
@@ -156,8 +143,6 @@ def read_adoption_baseline(conn, *, plan_ref, version, history, facts, point_ann
     """Return captured tasks and locator, or raise a classified evidence gap."""
     try:
         evidence = context.adoption_source(plan_ref, version, history, recorded=None)
-        if evidence is None:
-            return None
         basis, audit, receipt = (evidence[key] for key in ("basis", "audit", "receipt"))
         facts["adoption"] = {"basis": basis, "audit": audit, "receipt": receipt}
         baseline, tables, current = evidence["baseline"], evidence["tables"], evidence["selected"]

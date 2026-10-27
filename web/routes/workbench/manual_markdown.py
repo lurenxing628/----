@@ -1,4 +1,4 @@
-"""Rendered manual blocks and anchors for the restyled manual page; never dump arbitrary row data."""
+"""Rendered manual blocks and anchors for the manual page; never dump arbitrary row data."""
 
 import html
 import re
@@ -186,11 +186,3 @@ def manual_blocks(text, *, render_html=True):
     if source:
         blocks.append(_closed_block(title, anchor, level, body, source, render_html=render_html))
     return blocks
-
-
-def install_legacy_presentation(app):
-    filters = {"legacy_manual_blocks": manual_blocks,
-               "legacy_manual_outline": manual_outline, "legacy_manual_markdown": render_manual_markdown}
-    if any(name in app.jinja_env.filters and app.jinja_env.filters[name] is not fn for name, fn in filters.items()):
-        raise RuntimeError("Legacy presentation filter is already bound to another implementation.")
-    app.jinja_env.filters.update(filters)

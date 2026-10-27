@@ -1,4 +1,4 @@
-"""Four saved sources, with original event identities and no metric calculation."""
+"""Three saved sources, with original event identities and no metric calculation."""
 
 import re
 from collections import defaultdict
@@ -55,17 +55,16 @@ def _local_time(value, field, gaps):
         return None
 
 
-def _utc_to_factory(value, field, gaps, *, legacy=False):
+def _utc_to_factory(value, field, gaps):
     if value is None:
         gaps.append(_gap(field))
         return None
     try:
-        if type(value) is not str or (not legacy and not value.endswith("Z")):
+        if type(value) is not str or not value.endswith("Z"):
             raise ValueError("Expected recorded UTC time")
-        stamp = value[:-1] if value.endswith("Z") else value
-        stamp = stamp.replace(" ", "T")
+        stamp = value[:-1]
         point = local_datetime(stamp).replace(tzinfo=timezone.utc).astimezone().replace(tzinfo=None)
-        # Keep the saved precision after timezone conversion, including old seconds.
+        # Keep the saved precision after timezone conversion.
         digits = len(stamp.split(".", 1)[1]) if "." in stamp else 0
         return point.isoformat(timespec="seconds") + (("." + format(point.microsecond, "06d")[:digits]) if digits else "")
     except (ValueError, TypeError, OverflowError):
@@ -87,23 +86,21 @@ def _run(row):
     result = (read_model_json(row, "header_json")
               if row["header_version"] is not None or row["header_json"] is not None else None)
     public_run_head(row, admission, result)
-    candidate_keys = {candidate["candidate_key"]: candidate["candidate_ref"]
-                      for candidate in (result or {}).get("candidates", [])}
+    candidate_refs = {candidate["candidate_ref"] for candidate in (result or {}).get("candidates", [])}
     selection = (result or {}).get("selection") or {}
     if type(selection) is not dict:
         _invalid()
     gaps = []
-    saved_key = selection.get("selected_candidate_key")
-    selected = selection.get("selected_candidate_ref") if "selected_candidate_ref" in selection else candidate_keys.get(saved_key) if type(saved_key) is str else None
+    selected = selection.get("selected_candidate_ref")
     if selected is not None:
         _reference(selected)
-        if selected not in candidate_keys.values():
+        if selected not in candidate_refs:
             gaps.append(_gap("selected_candidate_ref", "selection_candidate_unavailable"))
     elif row["state"] in ("complete", "partial"):
         gaps.append(_gap("selected_candidate_ref"))
     source = {"run_ref": run_ref, "candidate_ref": selected, "receipt_ref": row["receipt_ref"], "request_key": row["request_key"]}
     entry = _descriptor("run:" + run_ref, "run", row["state"], source, row,
-                        {"job": row, "admission": admission, "run_header": result, "candidate_keys": candidate_keys}, gaps)
+                        {"job": row, "admission": admission, "run_header": result}, gaps)
     occurred = _local_time(row["accepted_at"], "accepted_at", gaps)
     entry.update(selected_candidate_ref=selected, selection=selection,
                  occurred_at=occurred, time_basis="accepted_at_factory_local" if occurred is not None else None)
@@ -176,26 +173,6 @@ def _adoption(row, histories, bindings):
     return entry
 
 
-def _legacy(row, bindings):
-    parsed = parse_result_summary_payload(row["result_summary"])
-    summary, gaps = parsed.payload, []
-    if summary is not None and summary.get("is_simulation") is True:
-        return None
-    if summary is None:
-        gaps.append(_gap("summary", "invalid_stored_value" if parsed.parse_failed else "not_recorded"))
-    binding = bindings.get(row["version"])
-    if binding is None:
-        gaps.append(_gap("official_plan", "official_identity_unavailable"))
-    if summary is not None and summary.get("source") in _AUDIT_SOURCES.values():
-        gaps.append(_gap("adoption", "adoption_receipt_missing"))
-    source = {"history_id": row["id"], "version": row["version"], "plan_ref": binding["ref"] if binding else None}
-    entry = _descriptor("legacy:" + str(row["id"]), "legacy_official", row["result_status"] or "unknown", source,
-                        {"schedule_time": row["schedule_time"]}, {"history": row, "summary": summary}, gaps)
-    entry["occurred_at"] = _utc_to_factory(row["schedule_time"], "schedule_time", gaps, legacy=True)
-    entry["time_basis"] = "schedule_time_utc_to_factory_local" if entry["occurred_at"] is not None else None
-    return entry
-
-
 def _labels(entries):
     """Display order comes from the whole run directory, before any query filtering."""
     runs = sorted((entry for entry in entries if entry["source_kind"] == "run"),
@@ -204,7 +181,7 @@ def _labels(entries):
                       entry["source"]["run_ref"]))
     for number, entry in enumerate(runs, 1):
         entry["label"] = "第" + str(number) + "次运行"
-    names = {"candidate_adoption": "候选正式采用", "trial_adoption": "试调正式采用", "legacy_official": "旧正式版本"}
+    names = {"candidate_adoption": "候选正式采用", "trial_adoption": "试调正式采用"}
     for entry in entries:
         if entry["source_kind"] != "run":
             entry["label"] = names[entry["source_kind"]] + " · 正式计划 v" + str(entry["source"]["version"])
@@ -254,9 +231,10 @@ def read_history_catalog(conn):
             official[row["version"]] = row
     entries = [_run(row) for row in jobs]
     adopted = [entry for entry in (_adoption(row, by_version, official) for row in receipts) if entry is not None]
-    covered = {entry["source"]["version"] for entry in adopted}
+    # 每个正式版本都由采用事务连同回执一起写下；没有回执的版本说明历史来源不一致。
+    if set(by_version) - {entry["source"]["version"] for entry in adopted}:
+        _invalid()
     entries.extend(adopted)
-    entries.extend(entry for entry in (_legacy(row, official) for row in histories if row["version"] not in covered) if entry is not None)
     _labels(entries)
     # Permanent source/receipt identities and the existing clock own freshness.
     state = {"entries": [{key: entry[key] for key in

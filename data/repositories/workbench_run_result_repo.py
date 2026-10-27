@@ -1,6 +1,6 @@
 """Persist full candidate sets independently from formal Schedule."""
 
-from core.models.workbench_command import canonical_json
+from core.shared.strict_json import canonical_json
 
 
 def encode_candidate_rows(candidates):

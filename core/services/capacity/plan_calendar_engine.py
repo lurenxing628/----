@@ -61,7 +61,6 @@ class SnapshotCalendarEngine(CalendarEngine):
         # 人员 -> 班次档案（含轮换日范围）；投影按它分组共享同一班次的人员。
         self.shift_profiles = shifts.profiles
         self._default_rows = tuple(facts.get("defaults", ()))
-        self.legacy_defaults = facts.get("legacy_defaults", False)
         # 坏日历表的错误留给真正读它的策略抛出：个人日历表坏了不连累全局与设备日历，
         # 全局表坏了也不连累当天已有个人日历的人员。
         self.global_rows, self._global_error = _deferred_index(facts["global"])
@@ -69,20 +68,11 @@ class SnapshotCalendarEngine(CalendarEngine):
 
     def default_periods(self):
         if self._default_periods is None:
-            if self.legacy_defaults:
-                periods = [{"start": "08:00", "end": "16:00", "day_offset": 0}]
-            else:
-                periods = default_periods_from_row(next(iter(self._default_rows), None))
+            periods = default_periods_from_row(next(iter(self._default_rows), None))
             self._default_periods = periods
             self._default_periods_json = encode_periods(periods)
             _, self._default_period_hours = self._period_facts_for_json(self._default_periods_json, periods)
         return self._default_periods
-
-    def _default_for_date(self, date_str):
-        row = super()._default_for_date(date_str)
-        if self.legacy_defaults and row.day_type == "workday":
-            row.shift_start, row.shift_end, row.shift_hours, row.periods_json = "08:00", "16:00", 8.0, None
-        return row
 
     def _resolve_calendar_row(self, date_str, op_id):
         # 重抛同一个错误对象前清掉旧 traceback，逐日重抛才不会越叠越长、拖住已结束的调用帧。

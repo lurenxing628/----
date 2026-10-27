@@ -257,8 +257,8 @@ def test_source_diagnostics_reject_supplier_and_group_drift(stage_api, change, e
     api = stage_api
     api.prepare()
     api.confirm("hours_confirm", api.hours())
-    api.execute("INSERT INTO Suppliers(supplier_id,name,op_type_id,default_days,status) "
-                "VALUES ('PROC-S2','另一个供应商','PROC-EX',3.25,'active')")
+    api.execute("INSERT INTO Suppliers(supplier_id,name,default_days,status) VALUES ('PROC-S2','另一个供应商',3.25,'active')")
+    api.execute("INSERT INTO WorkbenchSupplierOpTypes(supplier_id,op_type_id) VALUES ('PROC-S2','PROC-EX')")
     api.execute(change)
     with api.database() as conn:
         overview = MasterOverviewService(conn)
@@ -276,8 +276,8 @@ def test_source_diagnostics_reject_supplier_and_group_drift(stage_api, change, e
 def test_group_preview_command_and_receipt_roundtrip(stage_api):
     api = stage_api
     with api.database() as conn:
-        conn.execute("INSERT INTO Suppliers(supplier_id,name,op_type_id,default_days,status) "
-                     "VALUES ('PROC-S2','另一热处理厂','PROC-EX',3.25,'active')")
+        conn.execute("INSERT INTO Suppliers(supplier_id,name,default_days,status) VALUES ('PROC-S2','另一热处理厂',3.25,'active')")
+        conn.execute("INSERT INTO WorkbenchSupplierOpTypes(supplier_id,op_type_id) VALUES ('PROC-S2','PROC-EX')")
         conn.execute("UPDATE ExternalGroups SET end_seq=21,supplier_id=NULL WHERE group_id='PROC-G'")
         conn.execute("INSERT INTO PartOperations(part_no,seq,op_type_id,op_type_name,source,supplier_id,ext_days,"
                      "ext_group_id,setup_hours,unit_hours) VALUES ('PROC-001',21,'PROC-EX','热处理','external','PROC-S2',3.25,'PROC-G',0,0)")

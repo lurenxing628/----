@@ -1,6 +1,6 @@
 """Saved scenario adoption has its own identity, never a candidate alias."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict
 
 from core.models.workbench_command import WorkbenchCommandRejected
@@ -25,7 +25,7 @@ class TrialAdoptionEvidence:
     snapshot: Dict[str, Any]
     prepared: Any
     payload: Any
-    # The source run's recorded dates ({} when never recorded); the new plan repeats them.
-    run_window: Dict[str, Any] = field(default_factory=dict)
+    # The source run's recorded start/end dates (and hold window when set); the new plan repeats them.
+    run_window: Dict[str, Any]
     # Persistent audit stores source references; complete content stays in the original archives.
-    proof: Dict[str, Any] = field(default_factory=dict)
+    proof: Dict[str, Any]

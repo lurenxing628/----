@@ -68,7 +68,7 @@
         : <div>原安排：{baseline.reason}</div>}
     </div>;
   }
-  function PlanGantt({ data, prepared: facts, asOf, selected, onSelect, query, onQuery, disabled = false, toolbarActions, initialMode, initialBaseline = false }) {
+  function PlanGantt({ data, prepared: facts, asOf, selected, onSelect, query, onQuery, toolbarActions, initialMode, initialBaseline }) {
     const [mode, setMode] = React.useState(initialMode === 'operator' ? 'operator' : 'machine'), [baseline, setBaseline] = React.useState(initialBaseline), [zoom, setZoom] = React.useState(1);
     const [changedOnly, setChangedOnly] = React.useState(false), { expanded, toggle } = window.GanttPresentationUI.useExpanded();
     const [position, setPosition] = React.useState({ left: 0, top: 0, width: 1000, height: 440 }), [hover, setHover] = React.useState(null);
@@ -165,7 +165,7 @@
       if (next) { onSelect(next, false); locate(next.task_ref, false); }
     }
     return <div className={'plan-gantt' + (expanded ? ' plan-expanded' : '')} data-plan-gantt data-printing={printing || undefined} onKeyDown={event => {
-      if (disabled || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.target.closest('input,textarea,select,[role=dialog]')) return;
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.target.closest('input,textarea,select,[role=dialog]')) return;
       if (event.key === '/') { event.preventDefault(); search.current.focus(); }
       const zoomAction = timelineZoomKey(event);
       if (zoomAction === 'in') { event.preventDefault(); changeZoom(zoom * 2); }
@@ -174,22 +174,22 @@
       if (event.key.toLowerCase() === 'l') { event.preventDefault(); locate(); }
     }}>
       <div className="plan-toolbar">
-        <Segment value={mode} options={Object.entries(M.kindLabels)} onChange={setMode} label="甘特分组" disabled={disabled} />
-        {showBaseline && <label className="plan-check" title="显示保存的原安排"><input type="checkbox" aria-label="显示原安排" checked={displayBaseline} disabled={disabled}
+        <Segment value={mode} options={Object.entries(M.kindLabels)} onChange={setMode} label="甘特分组" />
+        {showBaseline && <label className="plan-check" title="显示保存的原安排"><input type="checkbox" aria-label="显示原安排" checked={displayBaseline}
           onChange={event => setBaseline(event.target.checked)} />显示原安排</label>}
-        {showBaseline && <label className="plan-check" title="筛选起止时间、设备或人员发生变化，以及新增、移除的工序"><input type="checkbox" aria-label="只看有变化的工序" checked={displayChangedOnly} disabled={disabled}
+        {showBaseline && <label className="plan-check" title="筛选起止时间、设备或人员发生变化，以及新增、移除的工序"><input type="checkbox" aria-label="只看有变化的工序" checked={displayChangedOnly}
           onChange={event => setChangedOnly(event.target.checked)} />只看有变化的工序</label>}
         <label className="search plan-search"><span className="ic"><Icon name="search" /></span><input ref={search} type="search" aria-label="搜索批次、工序、设备、人员" placeholder="批次、工序、资源" value={query}
           onChange={event => onQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); move(event.shiftKey ? -1 : 1); } if (event.key === 'Escape') onQuery(''); }} /></label>
         <div className="plan-actions">
-          <TimelineZoom zoom={zoom} max={ZOOM_MAX} onZoom={changeZoom} onFit={fit} disabled={disabled} className="btn plan-icon" />
+          <TimelineZoom zoom={zoom} max={ZOOM_MAX} onZoom={changeZoom} onFit={fit} className="btn plan-icon" />
           <Button icon="search" className="btn plan-icon" aria-label="定位选中任务" title="定位选中任务 (L)" disabled={!(selected && selected.before ? model.baselineLocations : model.locations).has(selectedRef)} onClick={() => locate()} />
           <Button icon={expanded ? 'x' : 'chart-gantt'} className="btn" aria-label={expanded ? '收起甘特' : '展开甘特'} title={expanded ? '返回完整工作区' : '展开甘特工作区'}
-            aria-expanded={expanded} disabled={disabled} onClick={toggle}>{expanded ? '收起' : '展开'}</Button>
+            aria-expanded={expanded} onClick={toggle}>{expanded ? '收起' : '展开'}</Button>
           {toolbarActions}
         </div>
       </div>
-      <window.GanttGraphLayer.Controls graph={data.gantt_graph} enabled={chainEnabled} onChange={setChainEnabled} active={active} geometry={geometry} onClear={() => { setHover(null); onSelect(null); }} disabled={disabled} />
+      <window.GanttGraphLayer.Controls graph={data.gantt_graph} enabled={chainEnabled} onChange={setChainEnabled} active={active} geometry={geometry} onClear={() => { setHover(null); onSelect(null); }} />
       <div className="plan-board-frame">
         {!printing && width > viewport && <Overview model={model} tasks={data.tasks} prepared={facts} cache={overviewCache} width={width} viewport={renderViewport} left={renderLeft} onPan={left => { board.current.scrollLeft = Math.max(0, left); measure(); }} />}
         <div ref={board} className="plan-board" data-plan-scroll data-wb-scroll-key="plan-board" tabIndex={0} aria-label={M.kindLabels[mode] + '甘特时间轴'} onScroll={() => {

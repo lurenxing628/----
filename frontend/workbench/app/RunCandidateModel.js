@@ -5,7 +5,6 @@
   // The candidate DTO preserves integers above MAX_SAFE_INTEGER as exact decimal text.
   // Comparison metrics keep up to three decimals; a one-decimal summary would make distinct candidates look identical.
   const number = value => typeof value === 'string' ? window.WorkbenchFormat.integerText(value) : window.WorkbenchFormat.number(value, { digits: 3, trim: true });
-  const percent = value => typeof value === 'string' ? window.WorkbenchFormat.integerText(value + '00') + '%' : window.WorkbenchFormat.percent(value);
   // A real change below the three shown decimals must not read as "增加 0".
   const tiny = value => typeof value === 'number' && Number(Math.abs(value).toFixed(3)) === 0;
   const signedChange = value => value === 0 ? '不变' : (value > 0 ? '增加' : '减少') + (tiny(value) ? '不到 0.001' : ' ' + number(Math.abs(value)));
@@ -41,7 +40,7 @@
   function matches(item, needle, operationRefs, focus) {
     return (!needle || item.search.includes(needle)) && (!operationRefs || operationRefs.has(item.task.operation_ref)) && resourceMatches(item.task, focus);
   }
-  function matching(prepared, query, focus = null, unplanned = false) {
+  function matching(prepared, query, focus, unplanned) {
     const needle = query.trim().toLocaleLowerCase();
     return (unplanned ? prepared.unplanned : prepared.items).filter(item => matches(item, needle, null, focus)).map(item => item.task);
   }
@@ -130,7 +129,7 @@
     }
     return { ...prepared, groups };
   }
-  function selectPrepared(prepared, query = '', operationRefs = null, focus = null) {
+  function selectPrepared(prepared, query, operationRefs, focus) {
     const needle = query.trim().toLocaleLowerCase(), groups = new Map(), tasks = [], unplottableTasks = [], shownRefs = new Set(), taskOrder = new Map();
     for (const fact of prepared.items) if (matches(fact, needle, operationRefs, focus)) {
       if (fact.plottable) { taskOrder.set(fact.task.row_ref, tasks.length); tasks.push(fact.task); shownRefs.add(fact.task.row_ref); }
@@ -144,16 +143,16 @@
     }
     return { ...prepared, groups, tasks, shownRefs, taskOrder, unplottableTasks, groupCount: groups.size };
   }
-  function groupRows(group, start, end, width, pointRows = false) {
+  // 唯一调用方（RunBaselineModel.layoutPrepared）把点状工序单独成行：点状行自带 lane 与 laneCount。
+  function groupRows(group, start, end, width) {
     const points = group.points.length ? window.PointGanttModel.layoutTracks(group.points, start, end, width).map(lane => lane.filter(item => group.shown.has(item))) : [];
     const laneCount = group.normal.length + points.length, rows = [];
     group.normal.forEach((items, lane) => { if (items.length) rows.push({ id: group.id, key: group.id + ':' + lane, label: group.label,
       items, height: 56, lane, laneCount, normalLaneCount: group.normal.length, point: false }); });
     points.forEach((items, lane) => { if (items.length) rows.push({ id: group.id,
-      key: group.id + (pointRows ? ':point:' + lane : ':' + (group.normal.length + lane)), label: group.label,
-      items, height: 56, lane: pointRows ? lane : group.normal.length + lane,
-      laneCount: pointRows ? points.length : laneCount, normalLaneCount: group.normal.length, point: true }); });
+      key: group.id + ':point:' + lane, label: group.label,
+      items, height: 56, lane, laneCount: points.length, normalLaneCount: group.normal.length, point: true }); });
     return rows;
   }
-  window.RunCandidateModel = { instant, timeLabel, number, percent, signedChange, visibleItems, visibleRows, matching, prepare, groupPrepared, selectPrepared, groupRows, title, laneLabel, pieceLabel, quantityLabel, resourceLabel, resourceMatches, kindLabels, executionLabels, executionValue, executionField };
+  window.RunCandidateModel = { instant, timeLabel, number, signedChange, visibleItems, visibleRows, matching, prepare, groupPrepared, selectPrepared, groupRows, title, laneLabel, pieceLabel, quantityLabel, resourceLabel, resourceMatches, kindLabels, executionLabels, executionValue, executionField };
 })();

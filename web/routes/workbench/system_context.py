@@ -92,4 +92,4 @@ def journal():
 
 
 def query_payload(data):
-    return query_success(data, {"as_of": datetime.now().strftime("%Y-%m-%dT%H:%M:%S")})
+    return query_success(data, {"as_of": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"), "snapshot_ref": None})

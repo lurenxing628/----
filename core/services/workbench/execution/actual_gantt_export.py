@@ -3,13 +3,14 @@
 import csv
 from io import StringIO
 
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.facts.execution_projection import (
     COMPLETION_BASIS_TEXT,
     DATA_QUALITY_TEXT,
     EXECUTION_STATE_TEXT,
 )
 from core.services.workbench.facts.table_cells import number_text
+from core.shared.strict_json import canonical_json
 
 from .actual_gantt_scope import view_items
 

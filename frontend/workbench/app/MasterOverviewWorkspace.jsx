@@ -4,7 +4,7 @@
   const { Table, Tabs, Pager } = window.MasterOverviewTable;
   const { useState, useEffect, useMemo, useRef } = React;
   function readContext(context) {
-    const empty = { scope: C.scope({}), page: 1, selected: null, section: 'issues', detailPage: 1, notice: '' };
+    const empty = { scope: C.scope({}), page: 1, selected: null, section: 'issues', detailPage: 1 };
     // 侧栏直接进入时 main.jsx 传空对象，按“无定位”处理。
     if (!Object.keys(context).length) return empty;
     if (Object.keys(context).some(key => !['domain', 'entity_ref', 'read_view'].includes(key))) C.fail('跳转到基础资料的条件不支持，页面没有跳转。请刷新后重试。');
@@ -19,12 +19,11 @@
     const scope = C.scope(view.scope);
     if (!Number.isSafeInteger(view.page) || view.page < 1 || !Number.isSafeInteger(view.detail_page) || view.detail_page < 1
         || !['issues', 'relations', 'fields'].includes(view.section)) C.fail('上次操作记录里的页码或页签不正确，页面没有恢复。请刷新后重试。');
-    const selected = view.selected, legacyIssue = selected && typeof selected.issue_ref === 'string' && /^[0-9a-f]{48}$/.test(selected.issue_ref);
+    const selected = view.selected;
     if (selected !== null && (!selected || typeof selected !== 'object' || Array.isArray(selected)
         || Object.keys(selected).some(key => !['domain', 'entity_ref', 'issue_ref'].includes(key)) || !C.ref(selected.entity_ref)
         || !C.domains.some(row => row[0] === selected.domain) || selected.issue_ref !== undefined && !C.issueKey(selected.issue_ref))) C.fail('上次操作记录里的资料编号不正确，页面没有恢复。请刷新后重试。');
-    return { scope, page: view.page, selected: legacyIssue ? null : selected, section: view.section, detailPage: view.detail_page,
-      restoreSelection: !!legacyIssue, notice: legacyIssue ? '旧版待维护项选择已清除，筛选范围和页码已保留。请重新选择条目。' : '' };
+    return { scope, page: view.page, selected, section: view.section, detailPage: view.detail_page };
   }
   function Statistics({ overview, pending, error, scope, domainsId, onDomain }) {
     const metrics = overview && overview.stats, loading = !overview && pending, failure = !overview && error;
@@ -39,7 +38,7 @@
     return <Tabs label="清单类型" value={scope.view} onChange={onChange} values={[["issues", "待维护项", count('issues')], ["entities", "资料清单", count('entities')]]} />;
   }
   function MasterOverviewWorkspace({ onNavigate, initialContext }) {
-    const api = useMemo(() => window.APSMasterOverviewAPI.create(), []);
+    const api = window.APSMasterOverviewAPI;
     const contextKey = C.canonical(initialContext);
     const initial = useMemo(() => { try { return readContext(initialContext); } catch (error) { return { ...readContext({}), error }; } }, [contextKey]);
     const contextSeen = useRef(contextKey);
@@ -50,7 +49,7 @@
     const { selected, section, page: detailPage } = detailRequest;
     const [detail, setDetail] = useState(null), [completedDetail, setCompletedDetail] = useState(null), [detailLoading, setDetailLoading] = useState(false), [detailError, setDetailError] = useState(null);
     const [search, setSearch] = useState(initial.scope.query), [column, setColumn] = useState(null), [columnText, setColumnText] = useState('');
-    const [message, setMessage] = useState(initial.notice), [actionError, setActionError] = useState(null), [exporting, setExporting] = useState(false), [stale, setStale] = useState(false);
+    const [message, setMessage] = useState(''), [actionError, setActionError] = useState(null), [exporting, setExporting] = useState(false), [stale, setStale] = useState(false);
     const opener = useRef(null), listRef = useRef(null), listHeight = useRef(0), exportController = useRef(null), alive = useRef(true);
     const domainsId = React.useId();
     const detailFocus = useRef(!!(initial.initial || initial.selected));
@@ -79,11 +78,10 @@
       contextSeen.current = contextKey;
       detailFocus.current = !!(initial.initial || initial.selected); opener.current = null;
       setRequest({ scope: initial.scope, page: initial.page, initial: initial.initial, restore: initial }); setSearch(initial.scope.query); setColumn(null);
-      setMessage(initial.notice);
     }, [contextKey, initial]);
     useEffect(() => {
       const controller = new AbortController(); let active = true;
-      setLoading(true); setError(null); setStale(false); setActionError(null); setMessage(request.restore === undefined ? '' : request.restore.notice);
+      setLoading(true); setError(null); setStale(false); setActionError(null); setMessage('');
       if (!request.keep) { setResult(null); setDetailRequest({ selected: null, section: 'issues', page: 1, captured: null }); setDetail(null); setCompletedDetail(null); }
       if (exportController.current) exportController.current.abort();
       async function read() {
@@ -102,7 +100,7 @@
           if (restored && !restoredRow) C.fail('原来选中的资料已不在当前范围，这里没有自动换成其他记录。请刷新后重试。');
           const defaultRow = restored ? restoredRow
             : focus ? next.data.rows.find(item => item.ref === focus.entity_ref && item.domain === focus.domain)
-            : request.restore && request.restore.restoreSelection && request.restore.selected === null ? null : next.data.rows[0];
+            : next.data.rows[0];
           const capturedRow = focus || next.data.rows[0], capturedSelection = capturedRow ? selection(capturedRow) : null;
           const captured = capturedSelection ? C.detail({ ...next, data: next.data.selected_detail }, next.data.scope,
             capturedSelection, 'issues', next.meta.snapshot_ref) : null;

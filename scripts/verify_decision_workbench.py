@@ -208,7 +208,7 @@ CHANGEOVER_EXPORT_FIELDS = {
 RECOMMENDATION_EXPORT_COMMON = ("排产编号", "归档编号", "读取编号", "读取时间", "保存推荐候选编号", "当前查看候选编号", "比较模式",
     "查看基准编号", "查看基准类型", "范围起点（含）", "范围终点（不含）", "资源视角", "推荐版本", "推荐记录格式版本")
 RECOMMENDATION_EXPORT_EXPLANATION_FIELDS = ("record_kind", "字段key", "名称", "范围", "来源", "状态", "变化方向", "单位",
-    "基准值", "比较对象值", "差值", "实际限制", "容差", "容差单位", "主项类别", "主项顺序", "支撑类型", "支撑永久编号",
+    "基准值", "比较对象值", "差值", "主项类别", "主项顺序", "支撑类型", "支撑永久编号",
     "支撑候选编号", "支撑页签", "支撑比较起点", "支撑比较终点", "支撑筛选字段", "支撑筛选值", "说明")
 RECOMMENDATION_EXPORT_COMPLETION_FIELDS = {
     "record_kind": None, "完成组号": None, "完成来源类型": None, "候选永久编号": None, "候选名称": None,
@@ -231,9 +231,9 @@ RECOMMENDATION_EXPORT_HEADERS = {
     "剩余需求": RECOMMENDATION_EXPORT_COMMON + tuple(RECOMMENDATION_EXPORT_REMAINING_FIELDS),
 }
 RECOMMENDATION_EXPORT_CSV_HEADERS = tuple(dict.fromkeys(header for headers in RECOMMENDATION_EXPORT_HEADERS.values() for header in headers))
-RECOMMENDATION_EXPORT_FIXED_FIELDS = ("selected_candidate_ref", "raw_score_best_candidate_ref", "health_reference_candidate_ref",
-    "selection_policy", "selection_policy_version", "reason_code", "objective_name", "objective_field_order", "selected_score",
-    "overdue_tolerance_count", "tardiness_tolerance_ratio")
+RECOMMENDATION_EXPORT_FIXED_FIELDS = ("generation_policy_version", "selection_policy_version", "primary_objective",
+    "target_objectives", "selected_candidate_ref", "objective_winners", "objective_winner_reasons",
+    "objective_field_order", "selected_score", "reason_code")
 
 
 def _save(path, value):
@@ -2508,7 +2508,7 @@ def recommendation_export_common(document):
         data["recommendation"]["candidate_ref"], scope["selected_candidate_ref"], scope["comparison_mode"],
         baseline["candidate_ref"] if baseline["kind"] == "candidate" else baseline["baseline_ref"], baseline["kind"],
         scope["range_start"], scope["range_end"], scope["resource_view"], data["recommendation"]["recommendation_version"],
-        data["selection_basis"]["selection_evidence_version"]]))
+        data["selection_basis"]["selection_policy_version"]]))
 
 
 def recommendation_export_scalar_leaves(value, path):
@@ -2528,12 +2528,10 @@ def recommendation_export_scalar_leaves(value, path):
 def recommendation_export_definition(entry):
     values = {"字段key": entry.get("metric_key") or entry.get("key"), "名称": entry["label"], "范围": entry["scope"],
         "来源": entry["source"], "状态": entry["state"], "变化方向": entry.get("direction"), "单位": entry.get("unit"),
-        "实际限制": entry.get("limit"), "容差": entry.get("tolerance"), "容差单位": entry.get("tolerance_unit"), "说明": entry["text"]}
+        "说明": entry["text"]}
     for header, key in (("基准值", "reference_value"), ("比较对象值", "selected_value"), ("差值", "value")):
         value = entry.get(key)
         values[header] = value * 100 if type(value) in (int, float) and entry.get("unit") == "%" else value
-    if values["容差"] is not None and values["容差单位"] == "%":
-        values["容差"] *= 100
     return values
 
 
@@ -2551,16 +2549,6 @@ def recommendation_export_explanations(document):
     for issue in basis["explanation"]["issues"]:
         rows.append({"record_kind": "missing_evidence", "字段key": issue["code"], "名称": "保存证据缺项",
                      "状态": "unavailable", "说明": issue["message"]})
-    for name, value in (("selection", basis["decision_evidence"]), ("health", basis["health_decision_evidence"])):
-        if value is None:
-            continue
-        for path, scalar in recommendation_export_scalar_leaves(value, name).items():
-            kind = ("health" if name == "health" else "tiebreak" if ".tiebreak." in path else
-                    "tolerance" if ".balanced_checks." in path else "selection_evidence")
-            rows.append({"record_kind": kind, "字段key": path, "名称": path,
-                "范围": "fixed_health_reference" if name == "health" else "fixed_algorithm_selection",
-                "来源": "saved_health_calculation" if name == "health" else "saved_selection",
-                "状态": "unavailable" if scalar is None else "complete", "比较对象值": scalar})
     main = {row["metric_key"]: (kind, index + 1) for kind in ("benefits", "costs")
             for index, row in enumerate(recommendation["current_comparison"][kind])}
     for entry in recommendation["current_comparison"]["all_differences"]:
@@ -2725,7 +2713,7 @@ def recommendation_export_check_scope(workbook, document):
         "查看基准编号": baseline["candidate_ref"] if baseline["kind"] == "candidate" else baseline["baseline_ref"],
         "所选方案编号": scope["selected_candidate_ref"], "推荐方案编号": data["recommendation"]["candidate_ref"],
         "推荐版本": data["recommendation"]["recommendation_version"],
-        "选择证据版本": data["selection_basis"]["selection_evidence_version"],
+        "选择证据版本": data["selection_basis"]["selection_policy_version"],
         "范围起点（含）": scope["range_start"], "范围终点（不含）": scope["range_end"],
         "批次数": len(scope["batch_refs"]), "工序数": len(scope["operation_refs"]),
         "资源视角": "本次选批贡献" if scope["resource_view"] == "selected_batches" else "完整候选压力",
@@ -2913,7 +2901,7 @@ def recommendation_export_case(client, fixture, query, target, cache, dispositio
         "viewed_candidate_ref": data["scope"]["selected_candidate_ref"], "reference_candidate_ref": data["baseline"].get("candidate_ref"),
         "comparison_mode": data["scope"]["comparison_mode"], "formal_reference_version": data["baseline"].get("version"),
         "recommendation_type": data["recommendation"]["recommendation_type"], "selection_reason": data["selection_basis"]["reason_code"],
-        "selection_evidence_version": data["selection_basis"]["selection_evidence_version"],
+        "selection_policy_version": data["selection_basis"]["selection_policy_version"],
         "business_row_count": count, "recommendation_table_counts": {name: len(rows) for name, rows in expected.items()},
         "source_refs": source_refs, "candidate_source_count": len(candidates), "pages_20_50_same_snapshot": True,
         "formats": formats, "adoption_performed": False, "actual_engine_rerun": False}
@@ -3461,7 +3449,7 @@ def _current_all_check_scope(workbook, expected_document, filter_section, active
         ("推荐方案编号", data["recommendation"]["candidate_ref"]),
         ("范围起点（含）", scope["range_start"]),
         ("推荐版本", data["recommendation"]["recommendation_version"]),
-        ("推荐记录格式版本", data["selection_basis"]["selection_evidence_version"]),
+        ("推荐记录格式版本", data["selection_basis"]["selection_policy_version"]),
         ("范围终点（不含）", scope["range_end"]),
         ("批次数", len(scope["batch_refs"])),
         ("工序数", len(scope["operation_refs"])),

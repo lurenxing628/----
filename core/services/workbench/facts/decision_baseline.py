@@ -9,10 +9,11 @@ archived plan identities, never by a current business-entity lookup.
 from collections import defaultdict
 
 from core.models.scheduler_history_parser import parse_result_summary_payload
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_candidate import MAX_TASKS, local_time, reference
 from core.services.workbench.facts.adoption_baseline_values import REASONS, AdoptionBaselineUnavailable
 from core.services.workbench.facts.material_deferral_evidence import archived_deferred_payload_evidence
+from core.shared.strict_json import canonical_json
 
 from .candidate_baseline import AdmissionBaseline, ArchivedAdmissionPlan, baseline_interval, invalid_baseline
 from .candidate_facts import index_rows
@@ -57,19 +58,15 @@ def _official_sources(admission, versions):
 
 
 def _adoption_identity(source):
-    parsed = parse_result_summary_payload(source["history_record"]["result_summary"])
-    audit, gaps = parsed.payload, []
+    """Every official version is written by a candidate or trial adoption together with its audit."""
+    audit = parse_result_summary_payload(source["history_record"]["result_summary"]).payload
+    if audit is None or audit.get("source") not in ("workbench_candidate_adoption", "workbench_trial_adoption"):
+        invalid_baseline()
     candidate, run = None, None
-    if parsed.parse_failed:
-        gaps.append({"field": "history_record.result_summary", "code": "completion_summary_invalid",
-                     "message": "此正式版本的结果摘要格式无效。"})
-    elif audit is None:
-        gaps.append({"field": "history_record.result_summary", "code": "completion_summary_missing",
-                     "message": "此正式版本没有保存结果摘要。"})
-    elif audit.get("source") == "workbench_candidate_adoption":
+    if audit["source"] == "workbench_candidate_adoption":
         candidate = reference(audit.get("candidate_ref"), stored=True)
         run = reference(audit.get("run_ref"), stored=True)
-    return {**source, "source_candidate_ref": candidate, "source_run_ref": run, "data_gaps": gaps}, audit
+    return {**source, "source_candidate_ref": candidate, "source_run_ref": run, "data_gaps": []}, audit
 
 
 def _saved_arrangement(row):
@@ -117,7 +114,6 @@ def _resolved_source(source, audit, resolver, saved):
                 "issue": {"code": "adoption_plan_drift", "message": REASONS["adoption_plan_drift"]}}
     return {"available": evidence is not None, "origins": value.get("origins", {}) if evidence is not None else {},
             "point_work": value.get("point_work") if evidence is not None else None,
-            "deferred_operation_ids": value.get("deferred_operation_ids") if evidence is not None else None,
             "deferred_issues": value.get("deferred_issues", []) if evidence is not None else [],
             "operation_effort": value.get("operation_effort") if evidence is not None else None,
             "operation_types": value.get("operation_types", {}) if evidence is not None else {},
@@ -126,21 +122,13 @@ def _resolved_source(source, audit, resolver, saved):
 
 
 def _deferred_source(source, audit, resolved):
+    """The audit's recorded pending operations; the resolved source only confirms or refutes them."""
     ids, issues = archived_deferred_payload_evidence(audit)
-    original, source_issues = resolved.get("deferred_operation_ids"), resolved.get("deferred_issues", [])
-    if "deferred_operation_evidence_invalid" in issues + source_issues:
+    if issues or resolved.get("deferred_issues"):
         ids, issues = set(), ["deferred_operation_evidence_invalid"]
-    elif original is not None:
-        if type(original) not in (list, set, tuple) or any(type(value) is not int or value < 1 for value in original):
-            invalid_baseline()
-        ids |= set(original)
-        issues = [code for code in issues if code != "deferred_operation_evidence_missing"] + source_issues
-    messages = {"deferred_operation_evidence_invalid": "此正式版本的待料工序编号与原采用资料不一致或格式无效。",
-                "deferred_operation_evidence_missing": "此正式版本声明分段待料，但缺少原采用时的待排工序编号。",
-                "deferred_operation_evidence_unavailable": "此正式版本的原待料工序资料读取失败。"}
     source["deferred_operation_ids"] = sorted(ids)
-    source["data_gaps"].extend({"field": "deferred_operation_ids", "code": code, "message": messages[code]}
-                               for code in sorted(set(issues)))
+    source["data_gaps"].extend({"field": "deferred_operation_ids", "code": code,
+                                "message": "此正式版本的待料工序编号与原采用资料不一致或格式无效。"} for code in issues)
     return ids
 
 
@@ -215,11 +203,9 @@ def _task(admission, row, operation_type):
 
 def _effort_source(source, audit):
     value = {"plan_ref": source["plan_ref"], "version": source["version"]}
-    if audit is not None and audit.get("source") == "workbench_candidate_adoption":
+    if audit["source"] == "workbench_candidate_adoption":
         return {**value, "kind": "run", "run_ref": source["source_run_ref"], "candidate_ref": source["source_candidate_ref"]}
-    if audit is not None and audit.get("source") == "workbench_trial_adoption":
-        return {**value, "kind": "trial", "scenario_ref": audit.get("scenario_ref")}
-    return {**value, "kind": "admission_official"}
+    return {**value, "kind": "trial", "scenario_ref": audit.get("scenario_ref")}
 
 
 def _official_identity(admission):
@@ -287,10 +273,9 @@ def read_decision_baseline(capture, facts, disposition, *, source_resolver):
         saved = saved_by_version[selected_version]
         resolved = _resolved_source(source, audit, source_resolver, saved)
         source_states.append({"plan_ref": source["plan_ref"], "version": selected_version,
-            "source_kind": audit.get("source") if audit is not None else "legacy_official",
+            "source_kind": audit["source"],
             "source_candidate_ref": source.get("source_candidate_ref"), "source_run_ref": source.get("source_run_ref"),
-            "source_scenario_ref": audit.get("scenario_ref") if audit is not None else None,
-            "source_draft_ref": audit.get("draft_ref") if audit is not None else None,
+            "source_scenario_ref": audit.get("scenario_ref"), "source_draft_ref": audit.get("draft_ref"),
             "available": resolved["available"], "issue_code": None if resolved["available"] else resolved["issue"]["code"]})
         deferred_ids.update(_deferred_source(source, audit, resolved))
         admission.bind_origin(resolved["origins"], resolved["issue"], resolved["point_work"])

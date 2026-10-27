@@ -279,15 +279,15 @@ def test_batch_qualification_uses_captured_skills_authorizations_and_supplier_bi
     assert '授权' in next(row for row in choices['operators'] if row['business_code'] == 'O1')['unavailable_reason']
     conn.execute("UPDATE BatchOperations SET source='external',machine_id=NULL,operator_id=NULL,supplier_id='S1',ext_days=1 WHERE batch_id='FREE-001'")
     conn.commit()
-    for index, use_primary in enumerate((True, False)):
-        if not use_primary:
-            conn.execute("UPDATE Suppliers SET op_type_id=NULL WHERE supplier_id='S1'")
-            conn.execute("INSERT INTO WorkbenchSupplierOpTypes(supplier_id,op_type_id) VALUES ('S1','OT1')")
-            conn.commit()
-        choices = client.get(BASE + '/choices', query_string={'batch_ref': ref_for(client), 'operation_ref': operation_ref}).get_json()['data']
-        assert next(row for row in choices['suppliers'] if row['business_code'] == 'S1')['eligible']
-        response = post(client, 'operation_update', {'operation_ref': operation_ref, 'fields': {'external_days': index + 2}}, key='captured-supplier-update-00' + str(index))
-        assert response.status_code == 200, response.get_json()
+    # 供应商能力只认 WorkbenchSupplierOpTypes；种子里的 Suppliers.op_type_id 不算能力。
+    choices = client.get(BASE + '/choices', query_string={'batch_ref': ref_for(client), 'operation_ref': operation_ref}).get_json()['data']
+    assert not next(row for row in choices['suppliers'] if row['business_code'] == 'S1')['eligible']
+    conn.execute("INSERT INTO WorkbenchSupplierOpTypes(supplier_id,op_type_id) VALUES ('S1','OT1')")
+    conn.commit()
+    choices = client.get(BASE + '/choices', query_string={'batch_ref': ref_for(client), 'operation_ref': operation_ref}).get_json()['data']
+    assert next(row for row in choices['suppliers'] if row['business_code'] == 'S1')['eligible']
+    response = post(client, 'operation_update', {'operation_ref': operation_ref, 'fields': {'external_days': 3}}, key='captured-supplier-update-001')
+    assert response.status_code == 200, response.get_json()
     conn.execute("UPDATE BatchExternalContexts SET merge_mode='merged',total_days=NULL")
     conn.commit()
     rejected = assert_error(post(client, 'operation_update', {'operation_ref': operation_ref, 'fields': {'external_days': 5}},
@@ -381,7 +381,8 @@ def test_legacy_batch_sync_rejects_cross_part_external_group(batch_client):
     client, conn = batch_client, batch_client.batch_conn
     conn.execute("DELETE FROM WorkbenchProcessWorkflow")
     conn.execute("UPDATE OpTypes SET category='external' WHERE op_type_id='OT1'")
-    conn.execute("UPDATE Suppliers SET op_type_id='OT1', status='active' WHERE supplier_id='S1'")
+    conn.execute("UPDATE Suppliers SET status='active' WHERE supplier_id='S1'")
+    conn.execute("INSERT INTO WorkbenchSupplierOpTypes(supplier_id,op_type_id) VALUES ('S1','OT1')")
     conn.execute("UPDATE PartOperations SET source='external', supplier_id='S1', ext_days=2, ext_group_id='EG1' WHERE part_no='P1'")
     conn.execute("UPDATE ExternalGroups SET part_no='P1', start_seq=1, end_seq=1, merge_mode='separate', supplier_id='S1' WHERE group_id='EG1'")
     insert_row(conn, "Parts", dict(part_no="P-CROSS", part_name="cross-part"))

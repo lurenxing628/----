@@ -82,7 +82,7 @@
       try {
         const response = await adapter.fileDownload(kind, template, template ? { format } : { export_ref: data.export_ref }, controller.signal);
         if (!controller.signal.aborted && alive.current) {
-          const name = await M.saveDownload(response, format, controller.signal);
+          const name = M.saveDownload(response, format);
           if (alive.current) setDownload({ busy: false, name });
         }
       } catch (failure) { if (alive.current && !controller.signal.aborted) { setError(failure); setDownload({ busy: false }); } }

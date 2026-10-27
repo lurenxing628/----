@@ -56,7 +56,7 @@
       <span className="fg-muted">当前显示 {shownCount} / {graph.critical_task_refs.length} 道关键工序 · 与图中的金色标记一致</span>
     </div>;
   }
-  function Range({ scope, resources = null, onApply, busy }) {
+  function Range({ scope, resources, onApply, busy }) {
     const [draft, setDraft] = React.useState(scope), [batches, setBatches] = React.useState((scope.batch_ids || []).join(','));
     React.useEffect(() => { setDraft(scope); setBatches((scope.batch_ids || []).join(',')); }, [scope]);
     const patch = value => setDraft(previous => ({ ...previous, ...value }));

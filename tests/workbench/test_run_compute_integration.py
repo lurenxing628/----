@@ -7,7 +7,7 @@ import pytest
 
 from core.services.scheduler.calendar.service import CalendarService
 from tests.workbench.identity_metadata_support import insert_row
-from tests.workbench.run_compute_support import compute_run, unchanged
+from tests.workbench.run_compute_support import admitted_dispositions, compute_admitted, compute_run, unchanged
 from tests.workbench.run_compute_support import run_case as _run_case  # noqa: F401
 
 
@@ -56,7 +56,8 @@ def test_night_operator_calendar_efficiency_and_downtime_are_real(run_case, quan
 def test_complex_merged_external_chain_and_shared_resource_competition(run_case):
     case = run_case
     case.conn.execute("INSERT INTO OpTypes(op_type_id,name,category) VALUES ('EXT','Heat treatment','external')")
-    case.conn.execute("INSERT INTO Suppliers(supplier_id,name,op_type_id) VALUES ('S1','Supplier','EXT')")
+    case.conn.execute("INSERT INTO Suppliers(supplier_id,name) VALUES ('S1','Supplier')")
+    case.conn.execute("INSERT INTO WorkbenchSupplierOpTypes(supplier_id,op_type_id) VALUES ('S1','EXT')")
     insert_row(case.conn, "ExternalGroups", dict(group_id="EG", part_no="P1", start_seq=2, end_seq=3,
                merge_mode="merged", total_days=0.25, supplier_id="S1"))
     external_ids = []
@@ -102,10 +103,11 @@ def test_compute_consumes_captured_calendar_rows_once_and_next_run_sees_changes(
 
     def run():
         projections = case.projections()
+        dispositions = admitted_dispositions(conn, case.settings(), projections)
         statements = []
         conn.set_trace_callback(statements.append)
         try:
-            result = compute_run(conn, case.settings(), projections)
+            result = compute_admitted(conn, case.settings(), projections, dispositions)
             signature = result.schedule_input.cal_svc.certified_decode_checkpoint_snapshot()
         finally:
             conn.set_trace_callback(None)

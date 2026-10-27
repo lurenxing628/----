@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const C = window.APSResourceContract;
+  const C = window.APSResourceContract, T = window.APSWorkbenchTransport;
   // Keep uncertain intent across workspace remounts using the same adapter identity.
   // Never persist write tokens or guesses about completion to browser storage.
   const sessions = new WeakMap();
@@ -8,9 +8,9 @@
     if (!sessions.has(adapter)) {
       let state = { phase: 'idle' };
       try {
-        const intent = typeof adapter.readPending === 'function' && adapter.readPending();
+        const intent = adapter.readPending();
         if (intent) state = { phase: 'pending', intent, restored: true };
-      } catch (error) { state = { phase: 'pending', error, ...(error.intent ? { intent: error.intent, restored: true } : {}) }; }
+      } catch (error) { state = { phase: 'pending', error }; }
       sessions.set(adapter, { state, listeners: new Set(), running: false });
     }
     return sessions.get(adapter);
@@ -67,10 +67,10 @@
       const intent = store.state.intent;
       store.running = true; publish(store, { ...store.state, phase: 'checking', error: null });
       try {
-        const result = await adapter.lookup(intent.request_key, new AbortController().signal);
+        const result = await adapter.lookup(intent.request_key);
         const status = C.receipt(result);
         publish(store, { intent, result, phase: status === 'terminal' ? 'done' : 'pending',
-          error: status === 'terminal' ? null : C.failure(result && result.message || window.WorkbenchTerms.outcomes.pending('操作')) });
+          error: status === 'terminal' ? null : C.failure(result.message || window.WorkbenchTerms.outcomes.pending('操作')) });
       } catch (error) { publish(store, { intent, phase: 'pending', error }); }
       finally { store.running = false; }
     }
@@ -79,20 +79,16 @@
       let intent;
       try {
         // category keeps the source list; the entity's category belongs to input.fields.
-        intent = { kind, action, ref, request_key: C.requestKey(), input, category: listCategory };
+        intent = { kind, action, ref, request_key: T.requestKey('resource'), input, category: listCategory };
         adapter.savePending(intent);
       }
       catch (error) { publish(store, { phase: 'rejected', error }); return; }
       store.running = true; publish(store, { phase: 'sending', intent, error: null });
       try {
-        const result = await adapter.command(kind, action, ref, {
-          request_key: intent.request_key, write_token: context.write_token, input
-        }, new AbortController().signal);
-        const status = C.receipt(result);
-        publish(store, { intent, result, phase: status === 'terminal' ? 'done' : status === 'rejected' ? 'rejected' : 'pending',
-          error: status === 'rejected' ? result : null });
+        const result = await adapter.command(kind, action, ref, { request_key: intent.request_key, write_token: context.write_token, input });
+        publish(store, { intent, result, phase: C.receipt(result) === 'terminal' ? 'done' : 'pending', error: null });
       } catch (error) {
-        publish(store, { intent, phase: error && error.committed === false ? 'rejected' : 'pending', error });
+        publish(store, { intent, phase: T.rejected(error) ? 'rejected' : 'pending', error });
       } finally { store.running = false; }
       if (store.state.phase === 'rejected') {
         // 服务端已明确拒绝，没有回执可查；记录清不掉时保留拒绝态和意图，由 reset() 再清。

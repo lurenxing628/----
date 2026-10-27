@@ -1,7 +1,12 @@
 'use strict';
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
+const { routeFetch, browser, loadTransport } = require('./route_fetch.cjs');
 const app = path.resolve(__dirname, '../../frontend/workbench/app'), window = {};
-const context = vm.createContext({ window, AbortController, URLSearchParams, setTimeout, clearTimeout });
+// Only the network answer is stubbed: reads run through the real DashboardAnalysisAPI, transport and validators.
+let answer = () => { throw new Error('Unexpected request'); };
+const network = routeFetch({ 'GET /api/workbench/v1/dashboard/analysis': call => answer(call) });
+const context = vm.createContext({ window }); browser(context, network);
+vm.runInContext(fs.readFileSync(path.join(app, 'WorkbenchTerms.js'), 'utf8'), context); loadTransport(context);
 for (const name of ['DashboardContract.js', 'RunCandidateAPI.js', 'ResourceProjectionContract.js', 'DashboardAnalysisAPI.js'])
   vm.runInContext(fs.readFileSync(path.join(app, name), 'utf8'), context);
 const A = window.DashboardAnalysisAPI, ref = n => String(n).padStart(48, '0'), clone = value => JSON.parse(JSON.stringify(value));
@@ -52,9 +57,8 @@ function payload(input = {}) {
     if (q.section === 'timeline') d.tasks.push({ ...task(), task_ref: ref(100 + i) });
   }
   if (q.section === 'timeline' && length) d.deliveries.push({ batch_ref: ref(5), batch_id: 'B-1', risk: 'on_time' });
-  if (q.section === 'resource_days') d.resources.push(resource(Array.from({ length }, () => ({ date: start.slice(0, 10), start, end,
-    available_hours: 8, occupied_hours: 2, inside_available_hours: 2, outside_available_hours: 0, overlap_hours: 0, utilization: 0.25,
-    window_metrics: metricWindow() }))));
+  // 逐日行就是规范窗口行本身，只多带所属日期与起止时刻。
+  if (q.section === 'resource_days') d.resources.push(resource(Array.from({ length }, () => ({ ...metricWindow(), date: start.slice(0, 10), start, end }))));
   return { ok: true, schema_version: 1, data: d, meta: { request_ref: 'a'.repeat(32), source: 'production',
     time_basis: 'factory_local', snapshot_ref: q.snapshot_ref || snapshot, as_of: start }, warnings: [] };
 }
@@ -113,29 +117,25 @@ function catalogSummary() {
   assert.throws(() => C.catalog(bundled, query), '主清单拒绝重新捆绑资源明细');
 }
 async function transport() {
-  const calls = [], api = A.create(async (url, options) => {
-    calls.push({ url, options }); const params = new URL(url, 'http://localhost').searchParams;
-    const query = Object.fromEntries(params); delete query.plan_ref; query.page = Number(query.page); query.size = Number(query.size);
-    return { status: 200, ok: true, headers: { get: () => 'application/json' }, json: async () => payload(query) };
-  });
+  const calls = network.calls;
+  answer = call => { const query = { ...call.query }; delete query.plan_ref; query.page = Number(query.page); query.size = Number(query.size); return payload(query); };
   const query = { section: 'resource_days', page: 2, size: 1, snapshot_ref: snapshot, resource_ref: resourceRef };
-  await api.read(planRef, new AbortController().signal, query);
-  const url = new URL(calls[0].url, 'http://localhost');
+  await A.read(planRef, new AbortController().signal, query);
+  const url = calls[0].url;
   assert.equal(url.pathname, '/api/workbench/v1/dashboard/analysis'); assert.equal(url.searchParams.get('plan_ref'), planRef);
   for (const [key, value] of Object.entries(query)) assert.equal(url.searchParams.get(key), String(value));
-  assert.equal(calls[0].options.method, 'GET');
-  await api.read(planRef); assert.equal(new URL(calls[1].url, 'http://localhost').searchParams.get('section'), 'delivery');
-  await api.read(planRef, undefined, { section: 'timeline', locate_batch_ref: ref(5) });
-  assert.equal(new URL(calls[2].url, 'http://localhost').searchParams.get('locate_batch_ref'), ref(5));
+  assert.equal(calls[0].method, 'GET');
+  await A.read(planRef, undefined, {}); assert.equal(calls[1].url.searchParams.get('section'), 'delivery');
+  await A.read(planRef, undefined, { section: 'timeline', locate_batch_ref: ref(5) });
+  assert.equal(calls[2].url.searchParams.get('locate_batch_ref'), ref(5));
   const before = calls.length;
   for (const invalid of [{ section: 'unknown' }, { page: 0 }, { size: 101 }, { extra: true },
     { snapshot_ref: 'stale' }, { section: 'resource_days' }, { resource_ref: resourceRef },
     { locate_batch_ref: ref(5) }, { section: 'timeline', locate_batch_ref: 'invalid' }])
-    await assert.rejects(() => api.read(planRef, undefined, invalid));
+    await assert.rejects(() => A.read(planRef, undefined, invalid));
   assert.equal(calls.length, before, '无效分页与资源范围在发送请求前拒绝');
-  const mismatched = A.create(async () => ({ status: 200, ok: true, headers: { get: () => 'application/json' },
-    json: async () => payload({ section: 'delivery', page: 1, size: 1, snapshot_ref: 'b'.repeat(32) }) }));
-  await assert.rejects(() => mismatched.read(planRef, undefined, { section: 'delivery', page: 1, size: 1, snapshot_ref: snapshot }), /已更新/);
+  answer = () => payload({ section: 'delivery', page: 1, size: 1, snapshot_ref: 'b'.repeat(32) });
+  await assert.rejects(() => A.read(planRef, undefined, { section: 'delivery', page: 1, size: 1, snapshot_ref: snapshot }), /已更新/);
 }
 (async () => { pagesAndTotals(); catalogSummary(); await transport(); console.log('Dashboard analysis pagination, complete totals, section and snapshot contracts passed.'); })()
   .catch(error => { console.error(error); process.exitCode = 1; });

@@ -115,8 +115,6 @@ class _BaselineReader:
             point_annotator=lambda rows: self.context.attach_points(rows, version=rows[0]["version"],
                 source_table="schedule", candidate_id=None, scenario_id=None) if rows else rows,
             context=self.context)
-        if evidence is None:
-            return _unavailable("not_recorded", self.facts)
         base = evidence["baseline"]
         base_entry = self._base_entry(WorkbenchPlanLocator(base["version"], "adopted"))
         if base_entry is None or not base_entry.can_view:

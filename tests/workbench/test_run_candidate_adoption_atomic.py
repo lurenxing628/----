@@ -6,6 +6,7 @@ from threading import Barrier
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
+from core.services.workbench.facts.run_data_context import restored_context_ref
 from tests.workbench.run_candidate_adoption_support import BASE, INTENT, KEY, api, candidate, preview, service, snapshot
 from tests.workbench.run_candidate_adoption_support import candidate_case as _case  # noqa: F401
 from tests.workbench.run_candidate_support import connect
@@ -110,24 +111,24 @@ def test_adoption_command_resolution_keeps_live_pending_and_identifies_replaced_
     assert pending["may_be_in_flight"] is True and pending["resolution"] == "unresolved"
     assert pending["request_key"] == KEY and pending["data_context_ref"] == current
     assert reads == [True]
-    state, legacy_pending = adopter.resolve_command(ref, KEY)
-    assert state == "not_recorded" and legacy_pending["resolution"] == "unresolved"
-    assert legacy_pending["may_be_in_flight"] is True
+    other = restored_context_ref("another-database", [])
     for candidate_ref, options in (
-        ("f" * 48, {}),
-        (ref, {"run_ref": "e" * 48}),
-        (ref, {"data_context_ref": "a" * 64}),
+        ("f" * 48, {"data_context_ref": current}),
+        (ref, {"run_ref": "e" * 48, "data_context_ref": current}),
+        (ref, {"data_context_ref": other}),
     ):
         state, replaced = adopter.resolve_command(candidate_ref, KEY, **options)
         assert state == "not_recorded" and replaced["result"] == "not_recorded"
         assert replaced["may_be_in_flight"] is False and replaced["resolution"] == "context_replaced"
         assert replaced["data_context_ref"] == current
     assert not case.conn.in_transaction
-    for options in ({"run_ref": "invalid"}, {"data_context_ref": "f" * 48}):
+    # A bare 64-hex digest is not a data generation that production ever issued.
+    for options in ({"run_ref": "invalid", "data_context_ref": current}, {"data_context_ref": "f" * 48},
+                    {"data_context_ref": "a" * 64}):
         with pytest.raises(WorkbenchCommandRejected) as exc:
             adopter.resolve_command(ref, KEY, **options)
         assert exc.value.code == "invalid_input" and exc.value.status == 400
-    assert reads == [True] * 5
+    assert reads == [True] * 4
 
 
 def test_candidate_preview_does_not_read_data_context_for_missing_candidate(candidate_case, monkeypatch):
@@ -169,15 +170,16 @@ def test_recorded_adoption_replays_before_reading_the_data_context(candidate_cas
 
     monkeypatch.setattr(adopter.data_context, "ref", unavailable_context)
     adopted = adopter.adopt(ref, checked["write_context"]["write_token"], KEY, INTENT)
-    state, replayed = adopter.resolve_command(ref, KEY, run_ref="e" * 48, data_context_ref="a" * 64)
+    other = restored_context_ref("another-database", [])
+    state, replayed = adopter.resolve_command(ref, KEY, run_ref="e" * 48, data_context_ref=other)
     assert state == "recorded" and replayed["replayed"] is True
     assert replayed["receipt_ref"] == adopted["receipt_ref"]
     assert adopter.adopt(ref, "", KEY, INTENT)["receipt_ref"] == adopted["receipt_ref"]
     with pytest.raises(WorkbenchCommandRejected) as exc:
-        adopter.resolve_command("f" * 48, KEY)
+        adopter.resolve_command("f" * 48, KEY, data_context_ref=other)
     assert exc.value.code == "request_key_conflict"
     with pytest.raises(RuntimeError, match="maintenance journal unavailable"):
-        adopter.resolve_command(ref, "candidate-adoption-not-recorded")
+        adopter.resolve_command(ref, "candidate-adoption-not-recorded", data_context_ref=other)
 
 
 def test_candidate_adoption_resolution_route_is_read_only_and_not_cached(candidate_case):
@@ -197,8 +199,12 @@ def test_candidate_adoption_resolution_route_is_read_only_and_not_cached(candida
     assert response.status_code == 200, response.get_data(as_text=True)
     assert response.headers["Cache-Control"] == "no-store"
     assert response.get_json()["resolution"] == "unresolved"
-    replaced = client.get(BASE + "f" * 48 + "/adoption-commands/" + KEY)
+    replaced = client.get(BASE + "f" * 48 + "/adoption-commands/" + KEY,
+                          query_string={"data_context_ref": checked["data_context_ref"]})
     assert replaced.status_code == 200 and replaced.get_json()["resolution"] == "context_replaced"
+    for query in ({}, {"run_ref": checked["run_ref"]}, {"data_context_ref": "a" * 64}):
+        rejected = client.get(BASE + ref + "/adoption-commands/" + KEY, query_string=query)
+        assert rejected.status_code == 400 and rejected.get_json()["error"]["code"] == "invalid_input"
     assert snapshot(case.conn) == before
 
 

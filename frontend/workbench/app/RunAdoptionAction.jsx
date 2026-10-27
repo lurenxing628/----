@@ -3,8 +3,7 @@
   const A = window.RunAdoptionAPI, U = window.RunAdoptionControls;
   // A fresh draft starts with the last handler typed on this machine; it is a typing convenience, never an identity.
   const empty = () => ({ reason: '', declared_operator: window.WorkbenchHandlerMemory.read().value });
-  function Session({ candidateRef, candidateDisplay, candidateCatalog = [], onNavigate, adapter }) {
-    const api = React.useMemo(() => adapter || A.create(), [adapter]);
+  function Session({ candidateRef, candidateDisplay, candidateCatalog, onNavigate }) {
     const [initial] = React.useState(() => { try { return { intent: A.pending().read(), error: '' }; } catch (e) { return { intent: null, error: e.message }; } });
     const [intent, setIntent] = React.useState(initial.intent), [storageError, setStorageError] = React.useState(initial.error);
     const [draft, setDraft] = React.useState(() => initial.intent ? initial.intent.input : empty()), [consent, setConsent] = React.useState(false);
@@ -43,7 +42,7 @@
         if (lock.current) return;
         setChecking(true);
         try {
-          const found = A.lookup(await api.lookup(intent, controller.signal), intent);
+          const found = await A.lookup(intent, controller.signal);
           if (disposed) return;
           if (found && found.resolution === 'context_replaced') { setReplacedInfo(found); setError(''); setNotice(found.message); }
           else if (found) acceptResult(found, intent);
@@ -52,14 +51,14 @@
         finally { if (!disposed) setChecking(false); }
       }
       query(); return () => { disposed = true; controller.abort(); setChecking(false); };
-    }, [api, intent, revision, storageError, result]);
+    }, [intent, revision, storageError, result]);
     async function inspect() {
       const target = active.current ? active.current.candidate_ref : candidateRef;
       if (lock.current || storageError || !A.ref(target) || active.current && active.current.phase === 'pending') return;
       lock.current = true; setBusy(true); setOpen(true); setPreview(null); setConsent(false); setError(''); setNotice('');
       const controller = new AbortController(); previewRequest.current = controller;
       try {
-        const value = A.preview(await api.preview(target, controller.signal), target);
+        const value = await A.preview(target, controller.signal);
         if (alive.current && !controller.signal.aborted) setPreview(value);
       } catch (e) { if (alive.current && !controller.signal.aborted) setError(e.message); }
       finally { lock.current = false; if (alive.current) setBusy(false); }
@@ -77,9 +76,9 @@
           if (!alive.current) return;
           const original = A.pending().begin(preview, values, active.current);
           active.current = original; setIntent(original); setDraft(values); setPreview(null); setConsent(false);
-          try { acceptResult(await api.adopt(original, preview.write_context.write_token), original); }
+          try { acceptResult(await A.adopt(original, preview.write_context.write_token), original); }
           catch (e) {
-            if (A.isRejected(e)) {
+            if (window.APSWorkbenchTransport.rejected(e)) {
               // Only an authentic, definitive non-commit permits a new preview. Unknown responses keep the original key.
               const rejected = A.pending().reject(original, e);
               if (alive.current) { active.current = rejected; setIntent(rejected); setError(e.message + ' 填写内容已保留，请重新预检并确认。'); }

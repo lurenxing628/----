@@ -16,32 +16,28 @@
   }
   function importOnlyAdapter(kind) {
     const adapter = window.APSResourceAPI.create(kind + '_files');
-    adapter.command = (commandKind, action, ref, body, signal) => {
+    adapter.command = (commandKind, action, ref, body) => {
       if (commandKind !== kind + '_import' || action !== 'confirm' || !body || !body.input || body.input.preview_ref !== ref)
         throw window.APSResourceContract.failure('确认操作与当前预检结果不一致。');
-      return adapter.execute(importOnlyBase[kind] + '/' + kind + '/confirm', body, signal);
+      return adapter.execute(importOnlyBase[kind] + '/' + kind + '/confirm', body);
     };
     return adapter;
   }
   function fileAdapter(kind) {
     const adapter = window.APSResourceAPI.create(kind + '_files');
-    adapter.command = (commandKind, action, ref, body, signal) => {
+    adapter.command = (commandKind, action, ref, body) => {
       if (![kind + '_import', kind + '_bulk'].includes(commandKind) || action !== 'confirm'
           || !body || !body.input || body.input.preview_ref !== ref)
         throw window.APSResourceContract.failure('确认操作与当前预检结果不一致。');
-      return adapter.execute(commandKind === kind + '_import' ? 'imports/' + kind + '/confirm' : 'entities/' + kind + '/bulk-confirm', body, signal);
+      return adapter.execute(commandKind === kind + '_import' ? 'imports/' + kind + '/confirm' : 'entities/' + kind + '/bulk-confirm', body);
     };
     return adapter;
   }
   function recovery(adapters) {
-    function readPending(adapter) {
-      try { return adapter.readPending(); }
-      catch (error) { if (error.intent) return error.intent; throw error; }
-    }
     const pending = [{ type: 'base', adapter: adapters.base }, ...fileKinds.map(kind => ({ type: 'file', kind, adapter: adapters.files[kind] })),
       ...importOnlyKinds.map(kind => ({ type: 'file_only', kind, adapter: adapters.imports[kind] })),
       { type: 'catalog', adapter: adapters.catalog }, { type: 'calendar', adapter: adapters.calendar }, { type: 'process', adapter: adapters.process }]
-      .map(item => ({ ...item, intent: readPending(item.adapter) })).find(item => item.intent);
+      .map(item => ({ ...item, intent: item.adapter.readPending() })).find(item => item.intent);
     if (!pending) return null;
     const intent = pending.intent, kind = pending.kind || intent.kind;
     const node = pending.type === 'process' ? 'process' : pending.type === 'calendar' ? 'calendar'
@@ -60,9 +56,9 @@
       const base = window.APSResourceAPI.create(), calendar = window.APSResourceAPI.create('calendar');
       const files = Object.fromEntries(fileKinds.map(kind => [kind, fileAdapter(kind)])), catalog = window.APSResourceAPI.create('catalog');
       const imports = Object.fromEntries(importOnlyKinds.map(kind => [kind, importOnlyAdapter(kind)]));
-      calendar.command = (kind, action, ref, body, signal) => {
+      calendar.command = (kind, action, ref, body) => {
         if (kind !== 'calendar' || !['upsert', 'delete', 'confirm', 'defaults'].includes(action)) throw window.APSResourceContract.failure('工作日历操作不正确。');
-        return calendar.execute('calendar/' + (action === 'confirm' ? 'range/confirm' : action), body, signal);
+        return calendar.execute('calendar/' + (action === 'confirm' ? 'range/confirm' : action), body);
       };
       const open = (type, kind, request) => { setHostError(null); setAuxiliary({ type, kind, request }); return { state: 'opened' }; };
       base.supports = (name, kind) => name === 'openCatalog' ? ['machine_group', 'shift_profile'].includes(kind)

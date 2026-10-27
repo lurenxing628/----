@@ -5,11 +5,12 @@ import io
 
 from core.models.report_export import ReportExport
 from core.models.workbench_calibration import MAX_EXPORT_BYTES
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.common.excel_templates import sanitize_export_cell
 from core.services.report.exporters.xlsx import _append_write_only_row
 from core.services.workbench.facts.export_names import export_stamp
 from core.services.workbench.facts.table_cells import number_text
+from core.shared.strict_json import canonical_json
 
 COLUMNS = (("part_no", "图号"), ("part_name", "零件名称"), ("sequence", "工序号"),
            ("operation_label", "工序名称"), ("source", "工序来源"), ("template_operation_ref", "模板工序编号"),

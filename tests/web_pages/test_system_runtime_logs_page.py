@@ -8,7 +8,7 @@ import sqlite3
 from contextlib import closing
 from pathlib import Path
 
-from tests._support.gantt_retirement import _Boot
+from tests._support.workbench_web_contract import _Boot
 
 _API = "/api/workbench/v1/system/logs"
 
@@ -38,10 +38,8 @@ def _source(data, name):
 
 def _retired(client, path="/system/runtime-logs"):
     response = client.get(path)
-    assert response.status_code == 410 and "Location" not in response.headers
-    html = response.get_data(as_text=True)
-    assert "旧入口已退役" in html and "/static/js/" not in html and "/static/css/" not in html
-    return html
+    assert response.status_code == 404 and "Location" not in response.headers
+    return response.get_data(as_text=True)
 
 
 def test_default_file_shows_error_log_newest_first(app_client):
@@ -163,7 +161,7 @@ def test_readonly_discipline_no_post_routes_no_delete_button(app_client, repo_ro
     assert rules, "运行日志路由未注册"
     for rule in rules:
         assert "POST" not in (rule.methods or set()), str(rule)
-    assert app_client.post("/system/runtime-logs").status_code == 405
+    assert app_client.post("/system/runtime-logs").status_code == 404
     assert app_client.post(_API).status_code == 405
     assert not (Path(repo_root) / "templates/system/runtime_logs.html").exists()
     html = _retired(app_client)

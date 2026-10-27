@@ -3,8 +3,8 @@
 import uuid
 
 from core.models.content import content_text
-from core.models.workbench_command import canonical_json
 from core.models.workbench_dashboard import MAX_BYTES, bounded
+from core.shared.strict_json import canonical_json
 from data.repositories.workbench_dashboard_source_repo import rows
 
 

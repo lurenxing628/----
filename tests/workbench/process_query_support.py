@@ -10,7 +10,7 @@ from tests.workbench.identity_metadata_support import business_snapshot, schema_
 def seed_process(conn):
     conn.executemany("INSERT INTO OpTypes(op_type_id,name,category) VALUES (?,?,?)", [
         ("PROC-IN", "车削", "internal"), ("PROC-Q", "检验", "internal"), ("PROC-EX", "热处理", "external")])
-    conn.execute("INSERT INTO Suppliers(supplier_id,name,op_type_id,default_days,status) VALUES ('PROC-S','热处理厂','PROC-EX',3.25,'active')")
+    conn.execute("INSERT INTO Suppliers(supplier_id,name,default_days,status) VALUES ('PROC-S','热处理厂',3.25,'active')")
     conn.execute("INSERT INTO WorkbenchSupplierOpTypes(supplier_id,op_type_id) VALUES ('PROC-S','PROC-EX')")
     conn.executemany("INSERT INTO Parts(part_no,part_name,route_raw,route_parsed,remark) VALUES (?,?,?,?,?)", [
         ("PROC-001", "轴套", "10车削20热处理30检验", "yes", "旧备注必须保留"),

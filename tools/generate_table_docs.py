@@ -68,25 +68,15 @@ def table_section(descriptor: Dict[str, object]) -> List[str]:
     return lines
 
 
-def _overview_name(descriptor: Dict[str, object], seen: List[str]) -> str:
-    """报工的两个格式版本同名同表，只有列数不同；同名时把列数标出来，用户才知道拿到的是哪一版。"""
-    name = str(descriptor["display_name"])
-    if seen.count(name) > 1:
-        return name + "（" + str(len(writable_columns(descriptor))) + " 列）"
-    return name
-
-
 def overview_section() -> List[str]:
     """总表：有哪些表、各有多少列、一次最多多少行。"""
     lines = [_HINT, "",
              "| 表 | 工作表名 | 可填列 | 只读参考列 | 一次最多 | 文件上限 | 写入方式 |",
              "|---|---|---:|---:|---:|---:|---|"]
-    descriptors = all_descriptors()
-    names = [str(descriptor["display_name"]) for descriptor in descriptors]
-    for descriptor in descriptors:
+    for descriptor in all_descriptors():
         writable = len(writable_columns(descriptor))
         lines.append("| " + " | ".join([
-            _cell(_overview_name(descriptor, names)), _cell(descriptor["sheet_name"]),
+            _cell(descriptor["display_name"]), _cell(descriptor["sheet_name"]),
             str(writable), str(len(descriptor["columns"]) - writable), str(descriptor["row_limit"]),
             _megabytes(descriptor["byte_limit"]), _cell(" / ".join(descriptor["modes"])),
         ]) + " |")

@@ -60,8 +60,13 @@
             "value": 3
           },
           "elapsed_seconds": {
-            "reason": null,
-            "value": 0.07445500000000038
+            "reason": {
+              "code": "shared_run_time",
+              "field": "elapsed_seconds",
+              "message": "计算用时属于本轮共同优化。"
+            },
+            "state": "not_applicable",
+            "value": null
           },
           "machine_busy_hours_total": {
             "reason": null,
@@ -107,7 +112,52 @@
         "persisted_status": "completed",
         "run_ref": "85c1b9b12f46a4ca6fa0cb88d6ffab94b858cab54f338ddb",
         "status": "partial",
-        "task_count": 30
+        "task_count": 30,
+        "generation_policy_version": "unified_search_v1",
+        "representative_objectives": [
+          "min_overdue"
+        ],
+        "evaluations": {
+          "min_overdue": {
+            "field_order": [
+              "failed_ops",
+              "overdue_count",
+              "weighted_tardiness_hours",
+              "total_tardiness_hours",
+              "makespan_hours",
+              "changeover_count"
+            ],
+            "score": [
+              0,
+              0,
+              0.0,
+              0.0,
+              12.5,
+              0
+            ],
+            "scoring_scope": {
+              "scheduled_operation_refs": [],
+              "complete_batch_refs": [],
+              "objective_scope": "all_batches",
+              "components_known": true,
+              "is_complete": true
+            }
+          }
+        },
+        "origin": {
+          "search_objective": "min_overdue",
+          "phase": "construct",
+          "origin": "seed",
+          "dispatch_mode": null,
+          "dispatch_rule": null,
+          "strategy": "greedy",
+          "repair_decision": null
+        },
+        "first_found_elapsed_ms": 12,
+        "search_evidence_ref": {
+          "run_ref": "85c1b9b12f46a4ca6fa0cb88d6ffab94b858cab54f338ddb",
+          "source_event_id": null
+        }
       },
       "candidate_span": {
         "end": "2026-10-16T14:15:00",
@@ -637,7 +687,58 @@
           "mode": "greedy",
           "mode_label": "快速计算",
           "strategy": "priority_first",
-          "strategy_label": "优先级优先"
+          "strategy_label": "优先级优先",
+          "generation_policy_version": "unified_search_v1",
+          "representative_objectives": [
+            "min_overdue"
+          ],
+          "evaluations": {
+            "min_overdue": {
+              "field_order": [
+                "failed_ops",
+                "overdue_count",
+                "weighted_tardiness_hours",
+                "total_tardiness_hours",
+                "makespan_hours",
+                "changeover_count"
+              ],
+              "score": [
+                0,
+                0,
+                0.0,
+                0.0,
+                12.5,
+                0
+              ],
+              "scoring_scope": {
+                "scheduled_operation_refs": [],
+                "complete_batch_refs": [],
+                "objective_scope": "all_batches",
+                "components_known": true,
+                "is_complete": true
+              }
+            }
+          },
+          "origin": {
+            "search_objective": "min_overdue",
+            "phase": "construct",
+            "origin": "seed",
+            "dispatch_mode": null,
+            "dispatch_rule": null,
+            "strategy": "greedy",
+            "repair_decision": null
+          },
+          "first_found_elapsed_ms": 12,
+          "search_evidence_ref": {
+            "run_ref": "85c1b9b12f46a4ca6fa0cb88d6ffab94b858cab54f338ddb",
+            "source_event_id": null
+          },
+          "primary_objective": "min_overdue",
+          "target_objectives": [
+            "min_overdue",
+            "min_tardiness",
+            "min_changeover"
+          ]
         },
         "baseline": {
           "baseline_ref": "0d7a9dad1ccd4513a883c1f2173b7de53affc7fad74bf901",

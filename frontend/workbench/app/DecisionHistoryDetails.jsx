@@ -1,20 +1,18 @@
 (function () {
   'use strict';
   const A = window.DecisionHistoryAPI, C = window.RunHistoryControls, F = window.WorkbenchFormat;
-  const savedSourceLabels = { run: '排产归档', trial: '试调归档', legacy: '旧正式摘要' };
-  const stateLabels = { ...window.WorkbenchTerms.run_statuses, complete: '完整', partial: '部分资料', committed: '已正式采用', success: '成功',
-    available: '可读取', current: '当前版本', historical: '历史版本', unavailable: '资料未保存', unknown: '待确认', not_applicable: '不适用' };
+  const savedSourceLabels = { run: '排产归档', trial: '试调归档' };
+  // 运行条目的状态用 run_statuses；采用条目的状态恒为 committed（history/catalog.py）。
+  const stateLabels = { committed: '已正式采用' };
   const pairLabels = { equal: '相同', different: '有变化', unknown: '待确认' };
   const gateLabels = { comparable: '可按相同口径对照', different_conditions: '生产条件有变化', different_objective: '优化目标有变化',
     different_coverage: '统计范围或容量分母有变化', different_version: '指标版本或单位有变化', unavailable: '必要资料缺项' };
   const directionLabels = { better: '改善', worse: '变差', equal: '持平', neutral: '观测差值' };
   const timeBasisLabels = { accepted_at_factory_local: '排产受理时间（工厂本地）', adopted_at_factory_local: '采用时间（工厂本地）',
-    committed_at_utc_to_factory_local: '回执提交时间（UTC 转工厂本地）', schedule_time_utc_to_factory_local: '旧记录时间（UTC 转工厂本地）' };
+    committed_at_utc_to_factory_local: '回执提交时间（UTC 转工厂本地）' };
   const scopeLabels = { full_admission: '整次排产范围', full_candidate: '整份保存候选', saved_algorithm_batches: '保存算法批次',
     saved_schedule_resources: '保存安排的资源', candidate_search: '本候选搜索', fixed_resource_window: '固定资源窗口', fixed_changeover_window: '固定换型窗口',
-    selected_batches: '选中批次范围', complete_trial: '整份保存试调', legacy_saved_algorithm_batches: '旧摘要算法批次',
-    legacy_saved_schedule: '旧摘要保存安排', legacy_summary_counts: '旧摘要计数范围', legacy_completed_batches_only: '旧摘要已完成批次',
-    legacy_input_to_summary: '旧记录受理至摘要', legacy_not_recorded: '旧摘要原范围' };
+    selected_batches: '选中批次范围', complete_trial: '整份保存试调' };
   const fieldLabels = { members: '成员集合', batch_refs: '选中批次', operation_refs: '工序成员', frozen_operation_refs: '不重排工序成员',
     start_date: '排产起日', end_date: '排产止日', ready_check: '齐套检查', material_strategy: '物料齐套规则', hold_window: '不重排时段',
     missing_resource_policy: '缺设备人员规则', completed_policy: '执行记录规则', quantity: '数量', due_date: '交期', priority: '优先级',
@@ -56,9 +54,9 @@
       : Array.isArray(saved) ? saved.length + ' 项' : typeof saved === 'object' ? '字段记录' : saved === '' ? '空文本' : String(saved);
     return <div data-history-saved-state={value.state} data-history-value-present={value.present}><span>{value.present ? preview : '未保存'}</span>{value.state !== 'known' && <Reason value={value.reason} />}</div>;
   }
-  function Navigation({ entry, onOpen, canNavigate, busy }) {
+  function Navigation({ entry, onOpen, busy }) {
     return <div className="dh-actions">{entry.navigation.map((target, index) => <div key={target.view + ':' + index}>
-      <C.Button icon="arrow-right" disabled={busy || !canNavigate || !target.enabled} title={target.reason || undefined}
+      <C.Button icon="arrow-right" disabled={busy || !target.enabled} title={target.reason || undefined}
         onClick={() => onOpen(target)}>{target.label}</C.Button>{!target.enabled && target.reason && <p className="dh-note">{target.reason}</p>}
     </div>)}</div>;
   }
@@ -100,12 +98,12 @@
         })}</tbody></table></div>}
     </div>;
   }
-  function PairRows({ rows, categories, label, compare = true }) {
+  function PairRows({ rows, categories, label }) {
     const names = Object.fromEntries(categories.map(category => [category.key, category.label]));
     return rows.length ? <div className="wb-table-frame dh-condition-table" tabIndex={0} aria-label={label + '表格滚动区域'}><table className="wb-table" aria-label={label}>
-      <caption className="wb-visually-hidden">{label}保存值</caption><thead><tr><th scope="col">对象</th><th scope="col">条件</th>{compare && <th scope="col">对照记录</th>}<th scope="col">{compare ? '当前记录' : '保存值'}</th>{compare && <th scope="col">结果</th>}</tr></thead>
+      <caption className="wb-visually-hidden">{label}保存值</caption><thead><tr><th scope="col">对象</th><th scope="col">条件</th><th scope="col">对照记录</th><th scope="col">当前记录</th><th scope="col">结果</th></tr></thead>
       <tbody>{rows.map((row, index) => <tr key={row.category + ':' + row.entity.key + ':' + row.field + ':' + index} data-history-condition-state={row.state}><td>{row.entity.label}<small className="dh-note">{names[row.category] || row.category}</small></td><th scope="row">{fieldLabel(row)}</th>
-        {compare && <td><SavedSide value={row.before} field={row.field} /></td>}<td><SavedSide value={row.after} field={row.field} /></td>{compare && <td>{pairLabels[row.state]}</td>}</tr>)}</tbody></table></div> : <p className="dh-note">本页没有{label}。</p>;
+        <td><SavedSide value={row.before} field={row.field} /></td><td><SavedSide value={row.after} field={row.field} /></td><td>{pairLabels[row.state]}</td></tr>)}</tbody></table></div> : <p className="dh-note">本页没有{label}。</p>;
   }
   function ConditionSummary({ value }) {
     const attention = value.summary.different + value.summary.unknown;
@@ -126,13 +124,13 @@
     const entry = data.selection.entry, reference = data.selection.reference;
     return <details className="dh-source-details"><summary>数据来源</summary><div>历次排产 {data.totals.run} 次 · 已采用方案 {data.totals.official} 次</div><div>刷新时间：{F.dateTime(result.meta.as_of, { seconds: true, fractions: true })}</div><window.WorkbenchReference value={result.meta.snapshot_ref} label="历史快照" />
       {entry && <><dl className="dh-detail-meta"><div><dt>原正式基准</dt><dd>{entry.baseline.version === null ? '版本未记录' : entry.baseline.version === 0 ? '当时无正式计划' : '第 ' + entry.baseline.version + ' 版'}</dd></div>
-        <div><dt>应排需求</dt><dd>{number(entry.scope.demand_hours, '小时', 3)}<Reason value={entry.scope.reason} /></dd></div><div><dt>时间来源</dt><dd>{timeBasisLabels[entry.time_basis] || plain(entry.time_basis)}</dd></div><div><dt>保存来源</dt><dd>{savedSourceLabels[entry.source.kind] || A.sourceLabel(entry)}</dd></div></dl>
+        <div><dt>应排需求</dt><dd>{number(entry.scope.demand_hours, '小时', 3)}<Reason value={entry.scope.reason} /></dd></div><div><dt>时间来源</dt><dd>{timeBasisLabels[entry.time_basis] || plain(entry.time_basis)}</dd></div><div><dt>保存来源</dt><dd>{savedSourceLabels[entry.source.kind]}</dd></div></dl>
         <Raw value={{ identity: entry.identity, times: entry.times, baseline: entry.baseline, source: entry.source, scope: entry.scope, reading_context: entry.reading_context, metrics: entry.metrics, issues: entry.issues }} /></>}
       {reference && <><h4>对照记录来源</h4><Raw value={{ identity: reference.identity, times: reference.times, source: reference.source, scope: reference.scope, reading_context: reference.reading_context, metrics: reference.metrics }} /></>}
       {entry && reference && <><h4>条件与指标依据</h4><Raw value={data.comparison} /></>}
     </details>;
   }
-  function Details({ data, onQuery, onOpen, canNavigate, busy, onEndComparison, conditionsOpen = false, onConditionsToggle }) {
+  function Details({ data, onQuery, onOpen, busy, onEndComparison, conditionsOpen, onConditionsToggle }) {
     const entry = data.selection.entry, reference = data.selection.reference;
     if (!entry || reference && reference.entry_ref === entry.entry_ref) return <div className="dh-selection-prompt" data-history-detail-title tabIndex={-1} aria-label="记录详情">{reference ? <><span>对照：{reference.label}，请选择另一条记录。</span><C.Button disabled={busy} onClick={onEndComparison}>结束对照</C.Button></> : '选择记录查看结果'}</div>;
     const definitions = data.metric_definitions.filter(definition => data.filters.metric_keys.includes(definition.key) && Object.prototype.hasOwnProperty.call(entry.metrics, definition.key)), compare = reference !== null;
@@ -141,8 +139,8 @@
       <EntryIdentity entry={entry} reference={reference} onEndComparison={onEndComparison} busy={busy} />
       {compare && <Conclusion comparison={data.comparison} definitions={definitions} />}
       <MetricTable entry={entry} reference={reference} definitions={definitions} comparison={data.comparison} compare={compare} />
-      <div className="dh-next-step"><h4>下一步</h4><Navigation entry={entry} onOpen={onOpen} canNavigate={canNavigate} busy={busy} /></div>
-      {compare && <><details className="dh-condition-details" open={conditionsOpen} onToggle={event => onConditionsToggle && onConditionsToggle(event.currentTarget.open)}><summary>生产条件详情 · {data.comparison.conditions.page.total} 项</summary><Conditions value={data.comparison.conditions} onQuery={onQuery} busy={busy} /></details>
+      <div className="dh-next-step"><h4>下一步</h4><Navigation entry={entry} onOpen={onOpen} busy={busy} /></div>
+      {compare && <><details className="dh-condition-details" open={conditionsOpen} onToggle={event => onConditionsToggle(event.currentTarget.open)}><summary>生产条件详情 · {data.comparison.conditions.page.total} 项</summary><Conditions value={data.comparison.conditions} onQuery={onQuery} busy={busy} /></details>
         {data.comparison.objective && data.comparison.objective.state !== 'equal' && <details className="dh-condition-details"><summary>优化目标详情</summary><PairRows rows={[data.comparison.objective]} categories={data.comparison.configurations.categories} label="优化目标" /></details>}
         {configurations.rows.length > 0 && <details className="dh-condition-details"><summary>{configurationChanged ? <>算法设置变化 {configurations.summary.different} 项 · 待确认 {configurations.summary.unknown} 项</> : <>相同算法设置 · {configurations.summary.equal} 项</>}</summary>
           <PairRows rows={configurations.rows.filter(row => configurationChanged ? row.state !== 'equal' : row.state === 'equal')} categories={configurations.categories} label={configurationChanged ? '算法设置变化' : '相同设置'} />{configurationChanged && configurations.summary.equal > 0 && <details><summary>相同设置 · {configurations.summary.equal} 项</summary><PairRows rows={configurations.rows.filter(row => row.state === 'equal')} categories={configurations.categories} label="相同设置" /></details>}</details>}

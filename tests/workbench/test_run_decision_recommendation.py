@@ -20,12 +20,10 @@ from core.services.workbench.run.decision_recommendation_export import (
     RECOMMENDATION_CSV_HEADERS,
     RECOMMENDATION_HEADERS,
     REMAINING_HEADERS,
-    _definition_values,
     _explanations,
 )
 from core.services.workbench.run.decision_tradeoffs import aggregate_tradeoffs, tradeoff_entry
-from tests.workbench.legacy_run_archive_support import install_complete_legacy_archive
-from tests.workbench.run_candidate_support import BASE, api, compute, corrupt_update, edit_artifact
+from tests.workbench.run_candidate_support import BASE, api, compute
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
 from tests.workbench.test_run_decision_api import _assert_summary_matches_full, decision, decision_summary
 from tests.workbench.test_run_decision_impact_api import operation_ref
@@ -79,92 +77,28 @@ def test_tradeoffs_prioritize_business_groups_and_keep_all_differences_and_neutr
                               scope=catalog[key]["scope"], source=catalog[key]["source"], metric_version="decision-preparation-v4")
         assert item["value"] == value and wording in item["text"]
         assert "相同" not in item["text"]
-    basis = {
-        "decision_evidence": {"selected": {"score": [0, 1, 5]},
-            "anchors": {"raw_score_best": {"score": [0, 1, 5]}},
-            "tiebreak": {"primary_tied_candidate_refs": [candidate_ref, "c" * 48],
-                         "full_score_tied_candidate_refs": [candidate_ref], "decisive_step": "secondary_score",
-                         "decisive_score_index": 2, "runner_up_candidate_ref": "c" * 48,
-                         "raw_score_best_candidate_ref": candidate_ref},
-            "balanced_checks": {"checked": False, "reason_code": "score_only"}},
-        "health_decision_evidence": {"state": "unavailable", "reason_code": "critical_path_unavailable", "components": []},
-        "reason_code": "score_only_raw_score_best", "selection_policy": "score_only", "objective_name": "min_changeover",
-        "objective_field_order": ["failed_ops", "changeover_count", "makespan_hours"],
-        "selected_candidate_ref": candidate_ref, "raw_score_best_candidate_ref": candidate_ref,
-    }
-    explanation = selection_explanation(basis, {}, [])
-    explanation_rows = {item["key"]: item for item in explanation["entries"]}
-    assert explanation_rows["score_1"]["label"] == "换型次数"
-    assert explanation_rows["score_1"]["selected_value"] == 1
-    assert explanation_rows["score_1"]["unit"] == "次"
-    assert "推荐方案的换型次数 1 次" in explanation["headline"]
-    assert "继续比较“安排总时长”" in explanation["headline"]
-    assert "主要指标相同的方案有 2 份" in explanation_rows["tiebreak"]["text"]
-    assert "各项目标指标都相同" not in explanation_rows["tiebreak"]["text"]
-    assert explanation_rows["health_unavailable"]["state"] == "unavailable"
-    assert "未保存关键工序列表" in explanation_rows["health_unavailable"]["text"]
-    checked_basis = deepcopy(basis)
-    checked_basis.update(selection_policy="balanced", reason_code="balanced_raw_score_best")
-    checked_basis["decision_evidence"]["balanced_checks"] = {
-        "checked": True, "candidate_ref": "c" * 48, "reference_candidate_ref": candidate_ref,
-        "accepted": False, "override_applied": False,
-        "checks": [{"key": "total_tardiness_hours", "reference_value": 10, "candidate_value": 12,
-                    "limit": 11, "tolerance": 0.1, "passed": False}],
-    }
-    recorded = deepcopy(checked_basis["decision_evidence"])
-    checked = selection_explanation(checked_basis, {}, [
-        {"candidate_ref": "c" * 48, "artifact": {"label": "实际检查候选"}},
-        {"candidate_ref": candidate_ref, "artifact": {"label": "目标评分最优候选"}},
-    ])
-    tolerance = next(item for item in checked["entries"] if item["key"] == "tolerance_total_tardiness_hours")
-    assert tolerance["unit"] == "小时" and tolerance["tolerance_unit"] == "%" and tolerance["tolerance"] == 0.1
-    assert tolerance["reference_value"] == 10 and tolerance["selected_value"] == 12 and tolerance["limit"] == 11
-    assert "实际检查候选" in tolerance["text"] and "目标评分最优候选" in tolerance["text"]
-    assert "c" * 48 in tolerance["text"] and candidate_ref in tolerance["text"]
-    exported = _definition_values(tolerance)
-    assert exported["容差"] == 10 and exported["容差单位"] == "%" and exported["单位"] == "小时"
-    assert exported["基准值"] == 10 and exported["比较对象值"] == 12 and exported["实际限制"] == 11
-    assert checked_basis["decision_evidence"] == recorded
-    assert "总拖期 12 小时" in checked["headline"] and "允许上限 11 小时" in checked["headline"]
-    tied = deepcopy(basis)
-    tied.update(objective_name="min_overdue", objective_field_order=["failed_ops", "overdue_count", "total_tardiness_hours"],
-                selection_policy="balanced", reason_code="balanced_raw_score_best")
-    tied["decision_evidence"]["selected"].update(score=[0, 2, 5], overdue_count=2, total_tardiness_hours=5)
-    tied["decision_evidence"]["tiebreak"].update(full_score_tied_candidate_refs=[candidate_ref, "c" * 48],
-                                               decisive_step="baseline_preference", decisive_score_index=None)
-    tied["decision_evidence"]["balanced_checks"] = {"checked": False, "reason_code": "critical_health_not_better"}
-    tied_rows = [{"candidate_ref": ref, "status": "completed", "artifact": {"label": "原算法方案" if ref == candidate_ref else "优化方案"}}
-                 for ref in (candidate_ref, "c" * 48)]
-    tied_explanation = selection_explanation(tied, {}, tied_rows)
-    assert tied_explanation["headline"] == "本次优化未减少超期批次和累计超期时长，推荐原算法方案；本次计算范围内：预计超期批次 2 批、总拖期 5 小时。"
-    cost_basis = deepcopy(checked_basis)
-    cost_basis["reason_code"] = "balanced_critical_health_better"
-    cost_basis["decision_evidence"]["selected"]["score"][1] = 3
-    cost_basis["decision_evidence"]["balanced_checks"].update(accepted=True, override_applied=True)
-    check = cost_basis["decision_evidence"]["balanced_checks"]["checks"][0]
-    check.update(reference_value=284.61, candidate_value=301.85, limit=313.071, passed=True)
-    raw_delta = check["candidate_value"] - check["reference_value"]
-    assert raw_delta != 17.24
-    cost_basis.update(health_reference_candidate_ref="c" * 48, raw_score_best_candidate_ref="c" * 48)
-    cost_basis["decision_evidence"]["balanced_checks"].update(candidate_ref=candidate_ref, reference_candidate_ref="c" * 48)
-    cost_basis["health_decision_evidence"] = {"state": "complete", "components": [
-        {"key": key, "state": "complete", "contribution": 1, "improvement": "lower",
-         "reference_value": before, "candidate_value": after, "delta_hours": delta, "tolerance_hours": tolerance}
-        for key, before, after, delta, tolerance in (
-            ("critical_chain_finish_hours_delta", 76.235, 30.33, -45.905, 3.81175),
-            ("critical_chain_wait_hours_delta", 46.735, 0.83, -45.905, 2.33675),
-            ("top_impact_ops_avg_start_hours_delta", 18.04842105263158, 16.462105263157895, -1.5863157894736843, 0.01))]}
-    cost_candidates = [{"candidate_ref": "c" * 48, "artifact": {"label": "原算法"}}]
-    recorded_cost = deepcopy(cost_basis)
-    cost_explanation = selection_explanation(cost_basis, {"health": {"state": "better", "score": 3}}, cost_candidates)
-    assert "本次计算范围内" in cost_explanation["headline"]
-    assert "相对原算法，关键工序总时长减少 45.905 小时" in cost_explanation["headline"]
-    assert "关键工序间等待减少 45.905 小时" in cost_explanation["headline"]
-    assert "总拖期增加 17.24 小时" in cost_explanation["headline"]
-    assert str(raw_delta) not in cost_explanation["headline"]
-    cost = next(item for item in cost_explanation["entries"] if item["key"] == "tolerance_total_tardiness_hours")
-    assert cost["reference_value"] == 284.61 and cost["selected_value"] == 301.85 and cost["value"] == raw_delta
-    assert _definition_values(cost)["差值"] == raw_delta and cost_basis == recorded_cost
+
+
+def test_selection_explanation_reads_the_saved_business_selection():
+    basis = {"primary_objective": "min_changeover",
+             "objective_field_order": {"min_changeover": ["failed_ops", "changeover_count", "makespan_hours"],
+                                       "min_overdue": ["failed_ops", "overdue_count"]},
+             "selected_score": [0, 1, None], "scoring_scope": {"is_complete": True, "components_known": True}}
+    recorded = deepcopy(basis)
+    explanation = selection_explanation(basis)
+    assert explanation["headline"] == "按“最少换型次数”推荐本次找到的最佳完整方案。"
+    rows = {item["key"]: item for item in explanation["entries"]}
+    assert list(rows) == ["shared_objectives", "score_failed_ops", "score_changeover_count", "score_makespan_hours"]
+    assert rows["shared_objectives"]["scope"] == "shared_search"
+    assert (rows["score_changeover_count"]["label"], rows["score_changeover_count"]["selected_value"],
+            rows["score_changeover_count"]["unit"]) == ("换型次数", 1, "次")
+    assert rows["score_makespan_hours"]["state"] == "unavailable" and rows["score_makespan_hours"]["selected_value"] is None
+    assert explanation["issues"] == [] and basis == recorded
+    partial = selection_explanation(dict(basis, scoring_scope={"is_complete": False, "components_known": True}))
+    assert partial["headline"] == "在本次已安排工序和完整批次范围内，按“最少换型次数”推荐最佳方案。" and partial["issues"] == []
+    unknown = selection_explanation(dict(basis, scoring_scope={"is_complete": False, "components_known": False}))
+    assert unknown["headline"] == "已保存算法选中的部分安排；所选范围缺少完整评分依据。"
+    assert unknown["issues"] == [{"code": "score_components_unavailable", "message": "所选范围缺少完整评分分量。"}]
 
 
 def test_operation_supports_keep_known_changes_and_removed_reference_arrangements():
@@ -232,11 +166,12 @@ def test_operation_supports_keep_known_changes_and_removed_reference_arrangement
     assert metrics["changed_operation_count"]["known_subtotal"] == 3 and metrics["changed_operation_count"]["unknown_count"] == 4
     assert metrics["machine_change_count"]["value"] is None
     assert metrics["machine_change_count"]["known_subtotal"] == 1 and metrics["machine_change_count"]["unknown_count"] == 2
-    basis = {"selected_candidate_ref": fixed_ref, "raw_score_best_candidate_ref": fixed_ref,
-             "health_reference_candidate_ref": reference_ref, "selection_policy": "score_only", "selection_policy_version": "candidate-selection-v1",
-             "reason_code": "score_only_raw_score_best", "objective_name": "min_changeover", "objective_field_order": [],
-             "selected_score": [], "overdue_tolerance_count": None, "tardiness_tolerance_ratio": None,
-             "decision_evidence": None, "health_decision_evidence": None, "explanation": {"entries": [], "issues": []}}
+    basis = {"generation_policy_version": "unified_search_v1", "selection_policy_version": "business_objectives_v1",
+             "primary_objective": "min_changeover", "target_objectives": ["min_changeover"],
+             "selected_candidate_ref": fixed_ref, "objective_winners": {"min_changeover": fixed_ref},
+             "objective_winner_reasons": {"min_changeover": None}, "objective_field_order": {"min_changeover": []},
+             "selected_score": [], "reason_code": "primary_objective_best_found",
+             "scoring_scope": None, "evidence_state": "complete", "explanation": {"entries": [], "issues": []}}
     definition = next(row for row in metric_definitions() if row["key"] == "changed_operation_count")
 
     def export_supports(items):
@@ -308,36 +243,19 @@ def test_operation_supports_keep_known_changes_and_removed_reference_arrangement
     }, ensure_ascii=False), encoding="utf-8")
 
 
-def test_legacy_missing_decision_evidence_keeps_saved_selection_and_unspecified_due(candidate_case, monkeypatch):
+def test_unspecified_due_is_excluded_from_common_completed_delivery(candidate_case):
     case = candidate_case
-    install_complete_legacy_archive(monkeypatch)
     case.conn.execute("UPDATE Batches SET due_date='9999-12-31' WHERE batch_id='B1'")
     case.conn.commit()
     run_ref, refs = compute(case)
     client, _ = api(case)
-    original = decision(client, run_ref)["data"]
-    receipt = json.loads(case.conn.execute(
-        "SELECT result_json FROM WorkbenchRunReceipts WHERE run_ref=?", (run_ref,)).fetchone()[0])
-    receipt["selection"].pop("decision_evidence", None)
-    corrupt_update(case.conn, "WorkbenchRunReceipts", "UPDATE WorkbenchRunReceipts SET result_json=? WHERE run_ref=?",
-                   (json.dumps(receipt, ensure_ascii=False), run_ref))
-    for ref in refs:
-        edit_artifact(case, ref, lambda artifact: (artifact.get("health") or {}).pop("decision_evidence", None))
-    legacy = decision(client, run_ref, reference_candidate_ref=refs[-1], selected_candidate_ref=refs[1])["data"]
+    data = decision(client, run_ref, reference_candidate_ref=refs[-1], selected_candidate_ref=refs[0])["data"]
     _assert_summary_matches_full(decision_summary(client, run_ref,
-        reference_candidate_ref=refs[-1], selected_candidate_ref=refs[1])["data"], legacy)
-    before, after = original["selection_basis"], legacy["selection_basis"]
-    for key in ("selected_candidate_ref", "raw_score_best_candidate_ref", "health_reference_candidate_ref",
-                "selection_policy", "selection_policy_version", "reason_code", "objective_name", "selected_score",
-                "overdue_tolerance_count", "tardiness_tolerance_ratio"):
-        assert after[key] == before[key]
-    assert after["evidence_state"] == "partial"
-    assert after["decision_evidence"] is after["health_decision_evidence"] is None
-    assert after["explanation"]["issues"]
-    recommendation = legacy["recommendation"]
-    assert recommendation["candidate_ref"] == before["selected_candidate_ref"]
+        reference_candidate_ref=refs[-1], selected_candidate_ref=refs[0])["data"], data)
+    recommendation = data["recommendation"]
+    assert recommendation["candidate_ref"] == data["selection_basis"]["selected_candidate_ref"]
     assert recommendation["recommendation_type"] == "complete"
-    assert recommendation["viewed_candidate_ref"] == refs[1]
+    assert recommendation["viewed_candidate_ref"] == refs[0]
     common = recommendation["current_comparison"]["common_completed_delivery"]
     assert common["batch_count"] == 1 and common["state"] == "not_applicable"
     assert common["delay_delta_hours"] is common["overdue_delta_count"] is None
@@ -388,7 +306,7 @@ def test_recommendation_exports_include_complete_remaining_work_and_preserve_vie
     csv_response = client.get(path, query_string=dict(query, section="recommendation", format="csv"))
     assert csv_response.status_code == 200, csv_response.get_data(as_text=True)
     rows = list(csv.DictReader(io.StringIO(csv_response.data.decode("utf-8-sig"))))
-    assert rows and tuple(rows[0]) == RECOMMENDATION_CSV_HEADERS and len(rows[0]) == 97
+    assert rows and tuple(rows[0]) == RECOMMENDATION_CSV_HEADERS and len(rows[0]) == 94
     identity = {"排产编号": run_ref, "归档编号": data["capture_ref"], "读取编号": snapshot,
                 "保存推荐候选编号": recommendation["candidate_ref"], "当前查看候选编号": viewed_ref,
                 "查看基准编号": reference_ref, "比较模式": "candidates", "查看基准类型": "candidate",
@@ -444,7 +362,7 @@ def test_recommendation_exports_include_complete_remaining_work_and_preserve_vie
     try:
         assert book.sheetnames == ["推荐说明", "工序安排", "剩余需求", "指标计算方式", "比较范围"]
         header_lists = {"推荐说明": RECOMMENDATION_HEADERS, "工序安排": COMPLETION_HEADERS, "剩余需求": REMAINING_HEADERS}
-        assert [len(headers) for headers in header_lists.values()] == [40, 36, 59]
+        assert [len(headers) for headers in header_lists.values()] == [37, 36, 59]
         explanation_rows = book["推荐说明"].iter_rows(min_row=2)
         index = {field: i for i, field in enumerate(RECOMMENDATION_HEADERS)}
         for values in explanation_rows:

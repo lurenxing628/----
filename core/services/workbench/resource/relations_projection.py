@@ -5,11 +5,10 @@ from core.models.workbench_resource_status import public_resource_status
 
 RELATION_KINDS = {"machines": "machine", "operators": "operator", "suppliers": "supplier"}
 RELATION_BASIS = {
-    "machines": {"code": "machine_op_type_binding", "message": "与此工种关联的全部设备，含停机、停用及状态未知的设备。"},
+    "machines": {"code": "machine_op_type_binding", "message": "与此工种关联的全部设备，含停机和停用的设备。"},
     "operators": {"code": "recorded_skills_and_machine_authorizations", "message": "与此工种关联的技能人员及设备授权人员，包含停用和资格待核对的人员。"},
-    "suppliers": {"code": "legacy_and_explicit_capabilities", "message": "关联供应商按供应商计数（同一供应商只计一次），包含停用和状态未知的供应商。"},
+    "suppliers": {"code": "supplier_op_type_bindings", "message": "关联供应商按供应商计数（同一供应商只计一次），包含停用的供应商。"},
 }
-_SOURCE_LABELS = {"op_type_binding": "设备实际工种绑定", "legacy": "旧单工种", "explicit": "单独设置的多工种", "mixed": "旧单工种和单独设置的多工种"}
 _PERSON_SOURCES = {"skill": "工种技能记录", "machine_authorization": "匹配设备的操作授权", "mixed": "工种技能记录及匹配设备授权"}
 
 
@@ -23,9 +22,6 @@ def _base_entity(kind, identity, row):
         entity["fields"]["category"] = row["category"]
     if kind == "supplier":
         entity["fields"]["default_days"] = row["default_days"]
-    if status == "unknown":
-        entity["fields"]["legacy_status"] = row["status"]
-        entity["issues"].append({"code": "legacy_status_unknown", "message": "这条资料的状态或停用原因看不懂，原值照样保留，系统不猜是启用还是停用。"})
     return entity
 
 
@@ -33,10 +29,9 @@ def relation_entity(identity, row, relation, parent_code, qualifications, author
     entity = _base_entity(RELATION_KINDS[relation], identity, row)
     if relation == "operators":
         _person_fields(entity, row, parent_code, qualifications[row["business_code"]], authorizations)
-    else:
-        source = "op_type_binding" if relation == "machines" else "mixed" if row["legacy"] and row["explicit"] else "legacy" if row["legacy"] else "explicit"
-        entity["fields"].update({"relation_source": source, "relation_source_label": _SOURCE_LABELS[source]})
-    if entity["status"] not in ("active", "unknown"):
+    elif relation == "machines":
+        entity["fields"].update({"relation_source": "op_type_binding", "relation_source_label": "设备实际工种绑定"})
+    if entity["status"] != "active":
         entity["issues"].append({"code": "resource_not_enabled", "message": "这个资源没有启用，关联关系照样保留，但不算当前可用。"})
     return entity
 
@@ -58,7 +53,7 @@ def _person_fields(entity, row, parent_code, skills, authorizations):
                    "qualification_basis": qualification,
                    "qualification_matches": skills is None or parent_code in skills})
     issues = entity["issues"]
-    issues.append({"code": "qualification_scope", "message": "匹配授权数包含停机、停用及状态未知的设备。"})
+    issues.append({"code": "qualification_scope", "message": "匹配授权数包含停机和停用的设备。"})
     if qualification in ("explicit_empty", "explicit_mismatch"):
         issues.append({"code": "operator_skill_not_qualified", "message": "请为该人员登记此工种的技能。"})
     if skills is None:

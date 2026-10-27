@@ -13,33 +13,33 @@ IMPORT_ROW_LIMIT = 2000
 TEMPLATE_VERSION = 1
 WRITABLE = {
     "op_type": ("business_code", "label", "category", "default_merge_mode", "remark"),
-    "machine": ("business_code", "label", "status", "op_type_code", "group_code", "op_type_codes"),
+    "machine": ("business_code", "label", "status", "group_code", "op_type_codes"),
     "operator": ("business_code", "label", "status", "skill_codes", "shift_profile_code"),
     "supplier": ("business_code", "label", "status", "default_days", "op_type_codes"),
 }
 READONLY = {
     "op_type": ("default_hours", "created_at"),
-    "machine": ("category", "remark", "legacy_status", "team_code", "machine_authorizations", "created_at", "updated_at"),
-    "operator": ("remark", "legacy_status", "inactive_reason", "team_code", "skills_declared", "skill_details",
+    "machine": ("category", "remark", "team_code", "machine_authorizations", "created_at", "updated_at"),
+    "operator": ("remark", "inactive_reason", "team_code", "skills_declared", "skill_details",
                  "machine_authorizations", "created_at", "updated_at"),
-    "supplier": ("remark", "legacy_status", "inactive_reason", "legacy_op_type_code", "explicit_op_type_codes", "created_at"),
+    "supplier": ("remark", "inactive_reason", "created_at"),
 }
 LABELS = {
     "business_code": "编号", "label": "名称", "status": "状态", "category": "归属或设备类别",
-    "default_merge_mode": "外协周期策略", "remark": "备注", "op_type_code": "自制工种编号",
+    "default_merge_mode": "外协周期策略", "remark": "备注",
     "group_code": "设备组编号", "skill_codes": "技能工种编号", "shift_profile_code": "班次编号",
     "default_days": "默认周期", "op_type_codes": "外协工种编号", "default_hours": "原默认工时（只读）",
-    "legacy_status": "原始状态（只读）", "inactive_reason": "停用原因（只读）", "team_code": "原班组编号（只读）",
+    "inactive_reason": "停用原因（只读）", "team_code": "原班组编号（只读）",
     "skills_declared": "技能已声明（只读）", "skill_details": "原技能明细（只读）",
-    "machine_authorizations": "原设备授权（只读）", "legacy_op_type_code": "原单工种编号（只读）",
-    "explicit_op_type_codes": "显式工种编号数组（只读）", "created_at": "创建时间（只读）", "updated_at": "更新时间（只读）",
+    "machine_authorizations": "原设备授权（只读）", "created_at": "创建时间（只读）", "updated_at": "更新时间（只读）",
 }
-MULTI_CODES = {"skill_codes", "op_type_codes", "explicit_op_type_codes"}
-JSON_FIELDS = MULTI_CODES | {"skill_details", "machine_authorizations", "skills_declared"}
+MULTI_CODES = {"skill_codes", "op_type_codes"}
+#: 只读的明细列按 JSON 写出，仅供参考，导入时不读。
+JSON_FIELDS = {"skill_details", "machine_authorizations", "skills_declared"}
 NUMERIC_FIELDS = {"default_days", "default_hours"}
-NULLABLE = {"remark", "default_merge_mode", "op_type_code", "group_code", "shift_profile_code"}
+NULLABLE = {"remark", "default_merge_mode", "group_code", "shift_profile_code"}
 RELATIONS = {
-    "machine": {"op_type_code": ("op_type_ref", "op_type", "internal"), "op_type_codes": ("op_type_refs", "op_type", "internal"), "group_code": ("group_ref", "machine_group", None)},
+    "machine": {"op_type_codes": ("op_type_refs", "op_type", "internal"), "group_code": ("group_ref", "machine_group", None)},
     "operator": {"skill_codes": ("skill_refs", "op_type", "internal"), "shift_profile_code": ("shift_profile_ref", "shift_profile", None)},
     "supplier": {"op_type_codes": ("op_type_refs", "op_type", "external")},
     "op_type": {},
@@ -65,17 +65,13 @@ ENUMS = {kind: {field: tuple(ENUM_LABELS[field][code] for code in codes)
 PAGE_STATUS_LABELS = {"operator": {"在岗": "active"}, "supplier": {"启用": "active"}}
 
 
-def file_status(kind, value):
-    """文件里填的状态：页面叫法换成代号，其余原样交给后面判断。"""
-    return PAGE_STATUS_LABELS.get(kind, {}).get(value, value) if type(value) is str else value
-
-
 def status_words(kind):
     """提示里列出本表能填的状态，用中文业务词，页面叫法不同的括号注明，不给英文代号。"""
     page = {code: label for label, code in PAGE_STATUS_LABELS.get(kind, {}).items()}
     words = [ENUM_LABELS["status"][code] + ("（" + page[code] + "）" if code in page else "") for code in ENUM_CODES[kind]["status"]]
     return "、".join(words[:-1]) + "或" + words[-1]
-LEGACY_LABELS = {"技能工种编号数组": "skill_codes", "外协工种编号数组": "op_type_codes"}
+
+
 DISPLAY_NAMES = {"op_type": "工种", "machine": "设备", "operator": "人员", "supplier": "供应商"}
 SHEET_NAME = "资源"
 _VALUE_HINTS = {
@@ -85,7 +81,6 @@ _VALUE_HINTS = {
     "category": "填写自制、外协或自制和外协都可，与页面上的适用归属相同",
     "default_merge_mode": "填写分别设置或合并设置；要清除请填 \\N（大写）",
     "remark": "随便写；要清除请填 \\N（大写）",
-    "op_type_code": "这台设备绑的自制工种编号；要清除请填 \\N（大写）",
     "group_code": "设备组编号；要清除请填 \\N（大写）",
     "skill_codes": "多个工种编号用顿号分开，例如 OT1、OT2；留空保持，填清除表示移除全部技能",
     "shift_profile_code": "班次编号；要清除请填 \\N（大写）",
@@ -100,14 +95,11 @@ _READONLY_HINTS = {
     "remark": "导出时带出的备注，导入时不看这一列",
     "category": "导出时带出的设备类别，导入时不看这一列",
     "default_hours": "导出时带出的原默认工时，导入时不看这一列",
-    "legacy_status": "导出时带出的原始状态，导入时不看这一列",
     "inactive_reason": "导出时带出的停用原因，导入时不看这一列",
     "team_code": "导出时带出的原班组编号，导入时不看这一列",
     "skills_declared": "导出时带出的技能声明标记，导入时不看这一列",
     "skill_details": "导出时带出的原技能明细，导入时不看这一列",
     "machine_authorizations": "导出时带出的原设备授权，导入时不看这一列；设备授权要到人员详情里改",
-    "legacy_op_type_code": "导出时带出的原单工种编号，导入时不看这一列",
-    "explicit_op_type_codes": "导出时带出的单独设置的工种编号，导入时不看这一列",
     "created_at": "导出时带出的创建时间，导入时不看这一列",
     "updated_at": "导出时带出的更新时间，导入时不看这一列",
 }
@@ -115,10 +107,9 @@ _ERROR_HINTS = {
     "business_code": "留空、有首尾空格、或同一份文件里出现了两次",
     "label": "新增时留空，或填了系统不接受的字符",
     "status": "新增时留空，或填了固定状态值以外的文字",
-    "category": "填了" + "、".join(ENUM_LABELS["category"].values()) + "及其旧英文代号以外的词",
-    "default_merge_mode": "填了分别设置、合并设置及其旧英文代号以外的词",
+    "category": "填了" + "、".join(ENUM_LABELS["category"].values()) + "这三种以外的词",
+    "default_merge_mode": "填了分别设置、合并设置以外的词",
     "remark": "填了 \\N 以外的清除写法",
-    "op_type_code": "这个工种编号在系统里找不到",
     "group_code": "这个设备组编号在系统里找不到",
     "skill_codes": "列表里有空项、重复编号、引号不配对，或者工种编号找不到",
     "shift_profile_code": "这个班次编号在系统里找不到",
@@ -126,14 +117,14 @@ _ERROR_HINTS = {
     "op_type_codes": "列表有空项或重复编号、引号不配对，或者工种编号找不到",
 }
 #: 四类资源的规则大同小异，但不能共用一份：工种表没有状态列也没有多值列，
-#: 把"状态填英文代号""多值列要写 JSON 数组"贴到工种的填写说明上，用户会去找根本不存在的列。
+#: 把"状态怎么填""多值列怎么分隔"贴到工种的填写说明上，用户会去找根本不存在的列。
 _CODE_RULES = {
-    "op_type": "归属和外协周期策略使用与页面相同的中文；旧文件的英文代号仍可导入。",
-    "machine": "状态填写可用、停机或停用；旧文件的英文代号仍可导入。",
-    "operator": "状态填写可用、请假或停用；旧文件的英文代号仍可导入。",
-    "supplier": "状态填写可用、待复核或停用；旧文件的英文代号仍可导入。",
+    "op_type": "归属和外协周期策略只填与页面相同的中文。",
+    "machine": "状态只填可用、停机或停用。",
+    "operator": "状态只填可用（在岗）、请假或停用。",
+    "supplier": "状态只填可用（启用）、待复核或停用。",
 }
-_MULTI_RULE = "多个工种编号可用顿号、逗号、分号或换行分开，例如 OT1、OT2；留空保持，填清除表示移除全部。编号本身含分隔符时用双引号括起；旧数组格式仍兼容。"
+_MULTI_RULE = "多个工种编号可用顿号、逗号、分号或换行分开，例如 OT1、OT2；留空保持，填清除表示移除全部。编号本身含分隔符时用双引号括起。"
 _READONLY_RULES = {
     "op_type": "只读列仅供参考，不导入。",
     "machine": "只读列仅供参考，不导入；设备授权要到人员详情里改。",
@@ -153,14 +144,14 @@ def _general_rules(kind):
     if MULTI_CODES & set(WRITABLE[kind]):
         rules.append(_MULTI_RULE)
     if kind == "machine":
-        rules.append("设备仍是一台一行。新增或维护多个工种使用可做工种编号；自制工种编号只兼容旧单工种文件，不要同时修改两列。")
+        rules.append("设备仍是一台一行，可做的工种都填在可做工种编号这一列。")
     rules.append(_READONLY_RULES[kind])
     return tuple(rules)
 _SAMPLE_ROWS = {
     "op_type": (("OT1", "车削", "自制", "", "常用工种"),
                 ("OT9", "热处理", "外协", "合并设置", "外协")),
-    "machine": (("M001", "车床 1 号", "可用", "", "G1", "OT1、OT2"),
-                ("M002", "车床 2 号", "停机", "OT1", "", "")),
+    "machine": (("M001", "车床 1 号", "可用", "G1", "OT1、OT2"),
+                ("M002", "车床 2 号", "停机", "", "OT1")),
     "operator": (("OP001", "张三", "可用", "OT1", "SHIFT1"),
                  ("OP002", "李四", "请假", "OT1、OT2", "")),
     "supplier": (("S001", "某热处理厂", "可用", "2.5", "OT9"),

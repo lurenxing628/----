@@ -182,7 +182,7 @@ def test_operation_log_detail_is_strict_json_and_rejects_non_finite_numbers(sche
     import logging
 
     from core.infrastructure.logging import OperationLogger
-    from core.models.workbench_command import canonical_json
+    from core.shared.strict_json import canonical_json
 
     logger = logging.getLogger("tests.operation_log_detail")
     op_logger = OperationLogger(schema_conn, logger=logger)

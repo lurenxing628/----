@@ -2,10 +2,8 @@
 
 from collections import defaultdict
 
-from core.models.workbench_command import canonical_json
 from core.models.workbench_trial import reject
 from core.services.workbench.facts.candidate_facts import GenerationFacts
-from core.services.workbench.facts.material_deferral_evidence import archived_deferred_operation_evidence
 from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
 
 
@@ -23,14 +21,8 @@ def delivery_origin(admission, rows, facts=None):
     else:
         batches = {row["original"]["batch_ref"]: row["original"]["batch"] for row in rows}
         operations = admission["facts"]["tables"]["BatchOperations"]
-        if "deferred_operation_ids" in source:
-            deferred, deferred_issues = set(source["deferred_operation_ids"]), source["deferred_operation_issues"]
-        else:
-            version = source.get("identity", {}).get("version")
-            history = [row for row in admission["facts"]["tables"].get("ScheduleHistory", []) if row["version"] == version]
-            summary = (history[0]["result_summary"] if len(history) == 1
-                       else canonical_json({"material_policy": source.get("material_policy", {})}))
-            deferred, deferred_issues = archived_deferred_operation_evidence({"summary": summary})
+        # 正式计划来源在创建试调时就记下了原计划的待料工序编号与缺口。
+        deferred, deferred_issues = set(source["deferred_operation_ids"]), source["deferred_operation_issues"]
         selected = {batch["batch_id"] for batch in batches.values()}
         pending = {operation["batch_id"] for operation in operations if operation["id"] in deferred} - selected
         if pending:

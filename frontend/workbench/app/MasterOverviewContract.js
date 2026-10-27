@@ -60,11 +60,9 @@
       || typeof value.summary !== 'string' || value.relations_complete && value.relation_count !== value.known_relation_count) fail();
     return value;
   }
-  function envelope(result) {
-    if (!object(result) || result.ok !== true || result.schema_version !== 1 || !object(result.data) || !object(result.meta)
-      || result.meta.source !== 'production' || result.meta.time_basis !== 'factory_local' || !result.meta.snapshot_ref
-      || typeof result.meta.as_of !== 'string' || !Array.isArray(result.warnings)) fail();
-    return result;
+  // 信封已由 transport.js 的 envelope() 校验；基础资料的翻页、详情与导出都绑定快照，这里只断言快照非空。
+  function bound(result) {
+    if (!result.meta.snapshot_ref) fail();
   }
   function page(value, rows, size) {
     if (!object(value) || !count(value.total) || !Number.isSafeInteger(value.number) || value.number < 1 || !Number.isSafeInteger(value.pages)
@@ -72,7 +70,7 @@
       || rows.length !== Math.min(size, Math.max(0, value.total - (value.number - 1) * size))) fail('基础资料的分页数量对不上，请刷新后重试。');
   }
   function list(result, expected, snapshot) {
-    envelope(result);
+    bound(result);
     const data = result.data, actual = scope(data.scope), overview = data.overview;
     if (expected && canonical(actual) !== canonical(scope(expected))) fail('读到的数据和当前筛选不一致，请刷新后重试。');
     if (snapshot && result.meta.snapshot_ref !== snapshot) fail('数据已更新，请刷新后重试。刚才的选择已保留。');
@@ -95,8 +93,10 @@
     return result;
   }
   function detail(result, expected, selection, section, snapshot) {
-    envelope(result);
+    bound(result);
+    // 列表里内嵌的 selected_detail 也走这里，所以 data 仍要自己校验是对象。
     const data = result.data;
+    if (!object(data)) fail('详情和所选资料对不上，页面没有切换。请刷新后重试。');
     if (canonical(scope(data.scope)) !== canonical(scope(expected)) || result.meta.snapshot_ref !== snapshot
       || data.section !== section || !object(data.entity) || data.entity.ref !== selection.entity_ref || data.entity.domain !== selection.domain
       || !Array.isArray(data.rows) || !object(data.counts) || ['issues', 'relations', 'fields'].some(key => !count(data.counts[key]))) fail('详情和所选资料对不上，页面没有切换。请刷新后重试。');

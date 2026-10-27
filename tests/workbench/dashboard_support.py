@@ -1,6 +1,5 @@
 """CR-owned temporary real SQLite support. Does not start the production app."""
 
-import json
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -18,6 +17,7 @@ from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.dashboard.commands import WorkbenchDashboardCommandService
 from core.services.workbench.dashboard.service import WorkbenchDashboardService
 from core.services.workbench.execution.production_report import WorkbenchProductionReportService
+from tests.workbench.execution_ledger_support import publish_official_plan
 from web.routes.workbench.dashboard import register_dashboard_routes
 from web.routes.workbench.write_context import issue_write_context, validate_write_context
 
@@ -59,10 +59,9 @@ class DashboardCase:
             return reader.history(ref, 1, 100)["items"]
 
     def plan(self, version):
-        self.conn.execute("INSERT INTO ScheduleHistory(version,strategy,result_status,result_summary,schedule_time) "
-                          "VALUES (?,'dashboard-fixture','success',?,'2026-09-08T12:00:00')", (version, json.dumps({"scheduled_ops": 1})))
-        self.conn.execute("INSERT INTO Schedule(version,op_id,machine_id,operator_id,start_time,end_time) "
-                          "VALUES (?,?,'DM1','DO1','2026-09-09T08:00:00','2026-09-09T10:00:00')", (version, self.op))
+        publish_official_plan(self.conn, version, [{"op_id": self.op, "machine_id": "DM1", "operator_id": "DO1",
+                                                    "start_time": "2026-09-09T08:00:00", "end_time": "2026-09-09T10:00:00"}],
+                              adopted_at="2026-09-08T12:00:00")
 
     def report(self, quantity=2, **patch):
         task = self.conn.execute("SELECT t.ref FROM WorkbenchTaskRefs t JOIN WorkbenchPlanSourceRefs p ON p.ref=t.plan_ref "

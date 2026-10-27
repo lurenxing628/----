@@ -2,7 +2,7 @@
 
 import uuid
 
-from core.models.workbench_command import canonical_json
+from core.shared.strict_json import canonical_json
 
 
 def new_ref():

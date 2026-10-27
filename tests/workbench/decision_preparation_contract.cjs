@@ -1,6 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const { compile } = require('../../scripts/workbench/compile.cjs');
+const { routeFetch, file, browser, loadTransport } = require('./route_fetch.cjs');
 const root = path.resolve(__dirname, '../..'), app = path.join(root, 'frontend/workbench/app');
 const ref = n => n.toString(16).padStart(48, '0'), run = ref(1), chosen = ref(2), baseline = ref(3), plan = ref(4), batch = ref(5), machine = ref(6), token = 's'.repeat(32);
 const start = '2026-12-01T08:00:00', end = '2026-12-08T08:00:00', clone = value => JSON.parse(JSON.stringify(value));
@@ -21,9 +22,12 @@ function hooks() {
 }
 const sources = ['resource-contract.js', 'resource-session.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'RunGenerationContract.js', 'EffortProjectionContract.js', 'PointContract.js', 'GanttGraph.js', 'PlanGanttModel.js', 'RunCandidateModel.js', 'RunCandidateAPI.js', 'RunOperationEffort.jsx', 'RecommendationContract.js', 'RunDecisionAPI.js', 'RunDecisionRecommendation.jsx', 'RunDecisionComparison.jsx', 'RunDecisionPreparation.jsx'];
 const built = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources: sources.map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })) }).outputs;
+// Requests run through the real APIs and APSWorkbenchTransport; only the network answer comes from these routes.
+const routes = {}, network = routeFetch(routes);
 function runtime(state = hooks()) {
   const window = { ResourceControls: { Button: 'button', Modal: 'modal' }, WorkbenchReference: 'reference', PointContract: {},
     RunCandidateControls: { Button: 'button', Pager: 'pager', Status: 'candidate-status', ErrorBox: 'error-box', Reasons: 'reasons' } };
+  const transport = vm.createContext({ window }); browser(transport, network); loadTransport(transport);
   for (const output of built) vm.runInNewContext(output.code, { React: state.React, window, AbortController, DOMException, Blob, setTimeout, clearTimeout, URLSearchParams });
   return { window, state };
 }
@@ -62,13 +66,15 @@ function fixture(query = {}, section = 'preparation') {
 }
 function identities() {
   const archive = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/decision_preparation_workspace.json'), 'utf8'));
-  assert.strictEqual(window.RunCandidateAPI.workspace(archive.payload, archive.candidate_ref, { batch_ref: archive.batch_ref }), archive.payload.data, '实际已排和待料workspace保留永久工种与compact需求');
+  assert.strictEqual(window.RunCandidateAPI.validateWorkspace(archive.payload, archive.candidate_ref, { batch_ref: archive.batch_ref }), archive.payload.data, '实际已排和待料workspace保留永久工种与compact需求');
   for (const section of ['tasks', 'unplanned_operations']) {
     const wrong = clone(archive.payload); wrong.data[section][0].process_type_ref = 'current-live-id';
-    assert.throws(() => window.RunCandidateAPI.workspace(wrong, archive.candidate_ref, { batch_ref: archive.batch_ref }));
+    assert.throws(() => window.RunCandidateAPI.validateWorkspace(wrong, archive.candidate_ref, { batch_ref: archive.batch_ref }));
+    for (const key of ['operation_effort', 'process_type_ref', 'process_type_label']) {
+      const missing = clone(archive.payload); delete missing.data[section][0][key];
+      assert.throws(() => window.RunCandidateAPI.validateWorkspace(missing, archive.candidate_ref, { batch_ref: archive.batch_ref }));
+    }
   }
-  const legacy = clone(archive.payload); [...legacy.data.tasks, ...legacy.data.unplanned_operations].forEach(row => { delete row.process_type_ref; delete row.process_type_label; delete row.operation_effort; });
-  assert.strictEqual(window.RunCandidateAPI.workspace(legacy, archive.candidate_ref, { batch_ref: archive.batch_ref }), legacy.data, '旧workspace可继续缺少新增工种及需求字段');
   const compact = value => Object.fromEntries(Object.entries(value).filter(([key]) => !['machine', 'machines', 'arrangements'].includes(key)));
   const operationPayload = fixture(); operationPayload.data.filters = { section: 'operations', sort: 'sequence', order: 'asc', change_kind: 'all', batch_ref: null, resource_ref: null };
   operationPayload.data.items.forEach(row => { row.runtime_effort = { before: compact(row.before), after: compact(row.after) }; });
@@ -183,42 +189,68 @@ function identities() {
   const segments = nodes(inspector).filter(node => node.props.className === 'rc-saved-segment'); assert.equal(segments.length, 2, '需求来源接入保留全部分段安排');
   nodes(segments.find(node => node.props.key === second.row_ref)).find(node => node.type === 'button').props.onClick(); assert.equal(target[0], second.row_ref);
   const full = fixture({ comparison_mode: 'admission_official' });
-  const candidate = { candidate_ref: chosen, label: '所选候选', kind: 'candidate', status: 'completed', persisted_status: 'completed', completeness: 'complete', task_count: 23,
+  // Candidates come only from the unified search by business objective, carrying its generation metadata (RunGenerationContract.metadataKeys).
+  const generation = { generation_policy_version: 'unified_search_v1', representative_objectives: ['min_overdue'],
+    evaluations: { min_overdue: { field_order: ['failed_ops', 'overdue_count', 'weighted_tardiness_hours', 'total_tardiness_hours', 'makespan_hours', 'changeover_count'],
+      score: [0, 2, 2, 2, 2, 2], scoring_scope: { scheduled_operation_refs: [], complete_batch_refs: [batch], objective_scope: 'all_batches', components_known: true, is_complete: true } } },
+    origin: { search_objective: 'min_overdue', phase: 'construct', origin: 'seed', dispatch_mode: null, dispatch_rule: null, strategy: 'greedy', repair_decision: null },
+    first_found_elapsed_ms: 12, search_evidence_ref: { run_ref: run, source_event_id: null } };
+  const candidate = { candidate_ref: chosen, label: '所选候选', kind: 'business_objective', status: 'completed', persisted_status: 'completed', completeness: 'complete', task_count: 23, ...generation,
     selection_role: [], equivalent_source_ref: null, metrics: {}, deltas: {},
     coverage: { search: { state: 'complete', completed_count: 1, failed_count: 0, skipped_count: 0, total_count: 1 },
       schedulable: { state: 'complete', expected_count: 23, scheduled_count: 23, missing_count: 0, deferred_count: 0 },
       delivery: { complete_batch_count: 1, batch_count: 1, deferred_batch_count: 0 } },
     capabilities: { view: true, compare: true, gantt: true, adoption_preview: true, adopt: false }, source: { reason: null } };
-  const basis = { selected_candidate_ref: null, raw_score_best_candidate_ref: null, health_reference_candidate_ref: null, evidence_state: 'unavailable', reason_code: 'selection_not_recorded',
-    decision_evidence: null, health_decision_evidence: null, selection_evidence_version: null,
-    explanation: { headline: '排产时未保存选择记录。', entries: [], issues: [] } };
+  // 推荐只按业务方向选择（business_objectives_v1）：选择依据带统一搜索的目标、胜者与评分，旧健康证据位恒为 null。
+  const targets = ['min_overdue', 'min_tardiness', 'min_changeover'], fieldOrders = window.RunGenerationContract.fieldOrders;
+  const scoring = generation.evaluations.min_overdue.scoring_scope;
+  const basis = { generation_policy_version: 'unified_search_v1', selection_policy_version: 'business_objectives_v1', primary_objective: 'min_overdue', target_objectives: targets,
+    selected_candidate_ref: chosen, objective_winners: Object.fromEntries(targets.map(name => [name, chosen])), objective_winner_reasons: Object.fromEntries(targets.map(name => [name, null])),
+    objective_field_order: Object.fromEntries(targets.map(name => [name, fieldOrders[name]])), selected_score: [0, 2, 2, 2, 2, 2], reason_code: 'primary_objective_best_found',
+    scoring_scope: scoring, evidence_state: 'complete',
+    explanation: { headline: '按交期优先选出所选候选。', entries: [], issues: [] } };
   const coreDefinitions = ['expected_operation_count', 'scheduled_operation_count', 'unplanned_operation_count', 'deferred_operation_count',
     'overdue_count', 'total_tardiness_hours', 'makespan_hours', 'weighted_tardiness_hours', 'elapsed_seconds', 'changeover_count',
     'machine_used_count', 'operator_used_count', 'machine_busy_hours_total', 'operator_busy_hours_total', 'machine_util_avg', 'operator_util_avg']
-    .map(key => ({ key, label: key, metric_version: 'decision-preparation-v4', precision: 2,
+    .map(key => ({ key, label: key, unit: '', metric_version: 'decision-preparation-v4', precision: 2,
       scope: ['makespan_hours', 'changeover_count'].includes(key) ? 'full_candidate' : key === 'weighted_tardiness_hours' ? 'saved_algorithm_batches'
         : key === 'elapsed_seconds' ? 'candidate_search' : key.startsWith('machine_') || key.startsWith('operator_') ? 'saved_schedule_resources' : 'full_admission',
       source: ['overdue_count', 'total_tardiness_hours'].includes(key) ? 'archived_delivery' : ['expected_operation_count', 'deferred_operation_count'].includes(key) ? 'admission'
         : ['scheduled_operation_count', 'unplanned_operation_count'].includes(key) ? 'candidate_tasks' : 'saved_algorithm' }));
   candidate.metrics = Object.fromEntries(coreDefinitions.map(definition => [definition.key, { ...metric(2), scope: definition.scope, metric_version: definition.metric_version }]));
   candidate.deltas = Object.fromEntries(coreDefinitions.map(definition => [definition.key, delta(0)]));
-  const overview = { ...full, data: { run: { run_ref: run, accepted_at: start, finished_at: end }, scope: full.data.scope, baseline: full.data.baseline,
+  const runOptions = { generation_policy_version: 'unified_search_v1', primary_objective: 'min_overdue', target_objectives: ['min_overdue', 'min_tardiness', 'min_changeover'],
+    time_budget_seconds: 10, algo_mode: 'improve', graph_analysis_mode: 'off' };
+  // 推荐方案是所选候选：完成范围与工序安排各自带回跳位置，指标对比逐项覆盖指标目录。
+  const completionScope = { scope: 'full_admission', state: 'complete', source_available: true, complete_batch_count: 1, incomplete_batch_count: 0, ordinary_incomplete_batch_count: 0,
+    deferred_batch_count: 0, unknown_batch_count: 0, unplanned_operation_count: 0, deferred_operation_count: 0,
+    sample_batch_refs: { complete: [batch], incomplete: [], deferred: [], unknown: [] },
+    remaining_work: { metrics: Object.fromEntries(prepKeys.map(key => [key, metric(0)])), operation_count: 0, unplanned_operation_count: 0, deferred_operation_count: 0 },
+    drill: { run_ref: run, candidate_ref: chosen, selected_candidate_ref: chosen, comparison_mode: 'admission_official', resource_view: 'selected_batches',
+      range_start: start, range_end: end, comparison_tab: 'preparation', detail_query: {} } };
+  const differences = coreDefinitions.map(definition => ({ metric_key: definition.key, label: definition.label, unit: definition.unit, scope: definition.scope, source: definition.source,
+    metric_version: definition.metric_version, precision: definition.precision, text: '持平', value: 0, reference_value: 2, selected_value: 2, state: 'comparable', direction: 'equal',
+    reason: null, compared_batch_count: null, sample_compared_batch_refs: [], supporting_refs: [] }));
+  const recommendation = { recommendation_version: 'decision-recommendation-v1', state: 'available', candidate_ref: chosen, viewed_candidate_ref: chosen,
+    recommendation_type: 'complete', headline: '推荐所选候选。', completion_scope: completionScope,
+    axes: { algorithm: { state: 'selected', reason_code: basis.reason_code, evidence_state: basis.evidence_state },
+      completion: { search: candidate.coverage.search, schedulable: candidate.coverage.schedulable, delivery: completionScope },
+      preflight: { state: 'not_checked', source: 'existing_adoption_preview' } },
+    current_comparison: { state: 'available', candidate_ref: chosen, viewed_candidate_ref: chosen, reference: clone(full.data.scope.reference),
+      benefits: [], costs: [], all_differences: differences, common_completed_delivery: null } };
+  const overview = { ...full, data: { run: { run_ref: run, accepted_at: start, finished_at: end }, scope: { ...full.data.scope, run_options: runOptions }, baseline: full.data.baseline,
     candidates: [candidate], metric_definitions: coreDefinitions, catalog_complete: true, selection_basis: basis,
     completion_groups: [{ group_index: 1, source_available: true, candidate_refs: [chosen], complete_batch_count: 1, sample_complete_batch_refs: [batch] }],
-    recommendation: { recommendation_version: 'decision-recommendation-v1', state: 'unavailable', candidate_ref: null, viewed_candidate_ref: chosen,
-      recommendation_type: null, headline: '本次排产尚未保存推荐方案。', completion_scope: null,
-      axes: { algorithm: { state: 'unavailable', reason_code: basis.reason_code, evidence_state: basis.evidence_state },
-        completion: { search: null, schedulable: null, delivery: null }, preflight: { state: 'not_checked', source: 'existing_adoption_preview' } },
-      current_comparison: { state: 'unavailable', candidate_ref: null, viewed_candidate_ref: chosen, reference: full.data.scope.reference,
-        benefits: [], costs: [], all_differences: [], common_completed_delivery: null } } } };
-  assert.strictEqual(A.decision(overview, run, { comparison_mode: 'admission_official', selected_candidate_ref: chosen, range_start: start, range_end: end }), overview.data,
+    recommendation } };
+  assert.strictEqual(A.validateDecision(overview, run, { comparison_mode: 'admission_official', selected_candidate_ref: chosen, range_start: start, range_end: end }), overview.data,
     '准备需求回跳的总览夹具先通过真实比较DTO校验');
   const recalled = [], navigation = [], detailQueries = { preparation: { page: 2, size: 20, machine_ref: machine, batch_ref: batch, allocation_state: 'unplanned', work_scope: 'remaining', snapshot_ref: token }, changeovers: { event_side: 'reference', sort: 'machine_label', order: 'desc' } };
   const mainRuntime = runtime(), mainWindow = mainRuntime.window;
   mainWindow.WorkbenchPageContext = { useSnapshot: value => recalled.push(value) }; mainWindow.WorkbenchCaption = { useCaption: () => {} };
   mainWindow.APSResourceSession = { useQuery: (load, deps, enabled = true) => ({ result: enabled ? overview : null, loading: false, error: null }) };
   mainWindow.RunDecisionPreparation.Pane = 'preparation-pane';
-  const comparison = mainRuntime.state.render(() => expand(h(mainWindow.RunDecisionComparison.Workspace, { adapter: {}, initialContext: { run_ref: run, candidate_ref: chosen, comparison_mode: 'admission_official', comparison_tab: 'preparation', resource_kind: 'machine', resource_ref: machine, detail_queries: detailQueries }, onNavigate: (page, context) => navigation.push({ page, context }) })));
+  const comparison = mainRuntime.state.render(() => expand(h(mainWindow.RunDecisionComparison.Workspace, { initialContext: { run_ref: run, candidate_ref: chosen, comparison_mode: 'admission_official', comparison_tab: 'preparation', resource_kind: 'machine', resource_ref: machine, detail_queries: detailQueries }, onNavigate: (page, context) => navigation.push({ page, context }),
+    renderAdoption: () => null, renderTrial: () => null, runHistoryReturn: { view: 'analysis', context: {} } })));
   const pane = nodes(comparison).find(node => node.type === 'preparation-pane'); assert.equal(pane.props.query.page, 2); assert.equal(pane.props.query.snapshot_ref, token); assert.equal(pane.props.query.work_scope, 'remaining');
   pane.props.onDrill(full.data.items[0].drill.reference); assert.equal(navigation[0].context.plan_ref, plan); assert.equal(navigation[0].context.resource_view, 'selected_batches');
   const returned = navigation[0].context.return_decision_context;
@@ -229,7 +261,9 @@ const turns = () => new Promise(resolve => setImmediate(resolve));
 async function session() {
   for (const section of ['preparation', 'changeovers']) {
     const state = hooks(), { window: local } = runtime(state), calls = [], signals = [], overview = { data: { run: { run_ref: run }, scope: fixture().data.scope, metric_definitions: [] }, meta: { snapshot_ref: token } };
-    const props = { result: overview, section, query: {}, onQuery: q => { props.query = q; }, adapter: { [section]: async (run, q, signal) => { calls.push(clone(q)); signals.push(signal); if (calls.length === 1) throw new Error('首读失败'); return fixture(q, section); } } };
+    // Pane-ownership check: the section read's own validation is covered by transport() below; here only its answers are counted.
+    local.RunDecisionAPI[section] = async (run, q, signal) => { calls.push(clone(q)); signals.push(signal); if (calls.length === 1) throw new Error('首读失败'); return fixture(q, section); };
+    const props = { result: overview, section, query: {}, onQuery: q => { props.query = q; }, enabled: true };
     let tree; async function render() { for (let i = 0; i < 3; i++) { tree = state.render(() => local.RunDecisionPreparation.Pane(props)); state.flush(); await turns(); } }
     await render(); assert.equal(calls.length, 1); assert(nodes(tree).some(node => node.type === 'error-box' && node.props.error));
     nodes(tree).find(node => node.props['aria-label'] === '刷新准备与切换明细').props.onClick(); await render(); assert.equal(calls.length, 2);
@@ -251,22 +285,25 @@ async function session() {
       assert.equal(calls.at(-1).machine_ref, machine); assert.equal(calls.at(-1).allocation_state, 'unplanned', '剩余需求范围保留当前设备与归属筛选');
       assert.equal(props.query.work_scope, 'remaining', '剩余需求筛选回写独立查询快照');
     }
-    props.adapter[section] = (run, q, signal) => { calls.push(clone(q)); signals.push(signal); return new Promise(() => {}); };
+    local.RunDecisionAPI[section] = (run, q, signal) => { calls.push(clone(q)); signals.push(signal); return new Promise(() => {}); };
     nodes(tree).find(node => node.props['aria-label'] === '刷新准备与切换明细').props.onClick(); await render(); nodes(tree).find(node => node.type === 'button' && text(node) === '取消读取').props.onClick(); await render(); assert(signals.at(-1).aborted);
   }
 }
 async function transport() {
-  const calls = [], responses = [], adapter = A.create(async (url, options) => { calls.push({ url: new URL(url, 'http://localhost'), options }); return responses.shift(); });
-  const json = value => ({ ok: true, headers: { get: key => key === 'Content-Type' ? 'application/json' : null }, json: async () => value });
-  const download = { ok: true, headers: { get: key => ({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename=decision.xlsx', 'X-Workbench-Run-Ref': run, 'X-Workbench-Snapshot-Ref': token, 'X-Workbench-Row-Count': '23' })[key] || null }, blob: async () => new Blob(['fixture']) };
+  const responses = [], exportName = '排产方案对比.xlsx';
+  routes['GET /api/workbench/v1/scheduling/runs/**'] = () => responses.shift();
+  // Backend export (core/services/workbench/run/decision_export.py): attachment with its own filename, XLSX magic bytes and three business headers.
+  const download = () => file(Uint8Array.from([0x50, 0x4b, 0x03, 0x04, 0x00]), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    { 'Content-Disposition': "attachment; filename*=UTF-8''" + encodeURIComponent(exportName), 'X-Workbench-Run-Ref': run, 'X-Workbench-Snapshot-Ref': token, 'X-Workbench-Row-Count': '23' });
   for (const section of ['preparation', 'changeovers']) {
     const q = { ...common, machine_ref: machine, page: 2, size: 20, snapshot_ref: token, ...(section === 'preparation' ? { allocation_state: 'unplanned', batch_ref: batch, work_scope: 'remaining' } : { event_side: 'reference' }) };
-    responses.push(json(fixture(q, section))); await adapter[section](run, q); assert(calls.at(-1).url.pathname.endsWith('/' + section));
-    responses.push(download); await adapter.decisionExport(run, { ...q, filter_section: section }, token, 'xlsx', undefined, 'all'); const params = calls.at(-1).url.searchParams;
+    responses.push(fixture(q, section)); await A[section](run, q); assert(network.calls.at(-1).url.pathname.endsWith('/' + section));
+    responses.push(download()); const exported = await A.decisionExport(run, { ...q, filter_section: section }, token, 'xlsx', undefined, 'all'); const params = network.calls.at(-1).url.searchParams;
+    assert.equal(exported.filename, exportName); assert.equal(exported.row_count, 23);
     assert.equal(params.get('machine_ref'), machine); assert.equal(params.get('filter_section'), section); assert.equal(params.get('snapshot_ref'), token); assert.equal(params.has('page'), false); assert.equal(params.has('size'), false);
     assert.equal(params.get(section === 'preparation' ? 'allocation_state' : 'event_side'), section === 'preparation' ? 'unplanned' : 'reference');
     assert.equal(params.get('work_scope'), section === 'preparation' ? 'remaining' : null); assert.equal(params.get('batch_ref'), section === 'preparation' ? batch : null);
   }
 }
-async function main() { identities(); await session(); await transport(); console.log('decision preparation contract: saved target/effort vs AJ execution facts, legacy nulls, neutral coverage, exact remaining row/drill, work scope paging/filters/export, retry/cancellation passed'); }
+async function main() { identities(); await session(); await transport(); console.log('decision preparation contract: saved target/effort vs AJ execution facts, neutral coverage, exact remaining row/drill, work scope paging/filters/export, retry/cancellation passed'); }
 main().catch(error => { console.error(error); process.exitCode = 1; });

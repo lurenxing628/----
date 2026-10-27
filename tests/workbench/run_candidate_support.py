@@ -3,6 +3,7 @@
 import json
 import sqlite3
 from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -61,6 +62,59 @@ def compute(case, settings=None):
     accepted = case.accept(settings=settings)
     result = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
     return result["run_ref"], [row["candidate_ref"] for row in result["candidates"]]
+
+
+_OBJECTIVE_LABELS = {"min_overdue": "交期优先", "min_tardiness": "拖期更轻", "min_changeover": "切换更少"}
+
+
+def install_representatives(monkeypatch, count):
+    """Publish the real search winner as ``count`` per-objective representatives.
+
+    The unified generator publishes one representative per distinct winning
+    archive entry; tiny fixtures converge on one entry. This keeps the real
+    search, validation, persistence and read models, and only splits the
+    objective winners so a run carries several current-shape representatives.
+    Tests then give the representatives different saved arrangements.
+    """
+    from core.services.workbench.run import compute as compute_module
+
+    real = compute_module.run_candidate_comparison
+
+    def representatives(**kwargs):
+        outcome = real(**kwargs)
+        (plan,) = outcome.candidates
+        targets = list(outcome.target_objectives)
+        groups = [targets[:len(targets) - count + 1]] + [[target] for target in targets[len(targets) - count + 1:]]
+        plans = [replace(plan, sequence=index, candidate_key="business_" + str(index + 1), representative_objectives=group,
+                         label=" · ".join(_OBJECTIVE_LABELS[target] for target in group))
+                 for index, group in enumerate(groups)]
+        winners = {target: plans[index].candidate_key for index, group in enumerate(groups) for target in group}
+        selection = replace(outcome.selection, selected_candidate_key=plans[0].candidate_key, selected_plan=plans[0],
+                            objective_winners=winners)
+        return replace(outcome, candidates=plans, selection=selection, planned_count=count, completed_count=count)
+
+    monkeypatch.setattr(compute_module, "run_candidate_comparison", representatives)
+
+
+def compute_two_objectives(case):
+    """Real unified search with two business representatives in the current saved shape.
+
+    One machine runs two operation types in an eight-hour shift. Keeping the two
+    09-09 batches on time costs two type changes; grouping the types saves one
+    change but finishes B2 late. ``min_overdue``/``min_tardiness`` and
+    ``min_changeover`` therefore select different archive entries.
+    """
+    case.conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T2','Milling')")
+    case.conn.executemany("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES ('M1',?)", [("T1",), ("T2",)])
+    case.conn.execute("UPDATE Batches SET quantity=1,due_date='2026-09-09' WHERE batch_id='B1'")
+    case.conn.execute("UPDATE BatchOperations SET unit_hours=3 WHERE id=?", (case.op_id,))
+    for code, kind, due in (("B2", "T2", "2026-09-09"), ("B3", "T1", "2026-09-10"), ("B4", "T2", "2026-09-10")):
+        case.batch(code, quantity=1, due_date=due)
+        case.operation(code, unit_hours=3, op_type_id=kind, op_type_name=kind)
+    case.config(algo_mode="improve", time_budget_seconds=1)
+    run_ref, refs = compute(case, case.settings("B1", "B2", "B3", "B4"))
+    assert len(refs) == 2
+    return run_ref, refs
 
 
 def api(case):
@@ -139,12 +193,11 @@ def edit_artifact(case, ref, edit):
 
 def candidate_artifact_view(artifact, tasks):
     """Test/oracle view of arrangements; never rewrite the immutable archive."""
-    if artifact.get("task_payload_source") == "candidate_tasks_v1":
-        rows = [{key: value for key, value in task.items() if key != "locked"} for task in tasks]
-        artifact["validated_payload"] = {**artifact["validated_payload"], "schedule_rows": rows,
-            "assigned_by_op_id": {str(row["op_id"]): {key: row[key] for key in ("machine_id", "operator_id")}
-                                  for row in rows if row["source"] == "internal"}}
-        artifact["results"] = [{**metadata, **row} for metadata, row in zip(artifact["results"], rows)]
+    rows = [{key: value for key, value in task.items() if key != "locked"} for task in tasks]
+    artifact["validated_payload"] = {**artifact["validated_payload"], "schedule_rows": rows,
+        "assigned_by_op_id": {str(row["op_id"]): {key: row[key] for key in ("machine_id", "operator_id")}
+                              for row in rows if row["source"] == "internal"}}
+    artifact["results"] = [{**metadata, **row} for metadata, row in zip(artifact["results"], rows)]
     return artifact
 
 

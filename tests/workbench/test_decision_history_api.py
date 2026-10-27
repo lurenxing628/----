@@ -23,7 +23,7 @@ from tests.workbench.decision_history_support import (
     read,
 )
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
-from tests.workbench.run_candidate_support import compute, retained
+from tests.workbench.run_candidate_support import compute_two_objectives, retained
 
 
 @pytest.fixture(scope="module")
@@ -47,12 +47,9 @@ def test_history_event_keeps_all_metrics_but_enriches_only_its_candidate(candida
     from core.services.workbench.run.decision import decision_overview
     from core.services.workbench.run.decision_resource_engine import DecisionResources
     from core.services.workbench.run.decision_source import DecisionSource
-    from tests.workbench.legacy_run_archive_support import install_complete_legacy_archive
 
     case = candidate_case
-    install_complete_legacy_archive(monkeypatch)
-    run_ref, candidates = compute(case)
-    assert len(candidates) == 4
+    run_ref, candidates = compute_two_objectives(case)
     candidate_ref = candidates[-1]
     start, end = "2026-09-09T00:00:00", "2026-09-10T00:00:00"
     with TransactionManager(case.conn).transaction():
@@ -74,7 +71,7 @@ def test_history_event_keeps_all_metrics_but_enriches_only_its_candidate(candida
         assert calls == [candidate_ref]
 
 
-def test_four_saved_sources_preserve_events_and_result_identity_on_two_timelines(history_case):
+def test_three_saved_sources_preserve_events_and_result_identity_on_two_timelines(history_case):
     from core.infrastructure.transaction import TransactionManager
     from core.models.workbench_run_job import new_run_ref
     from core.services.workbench.facts.decision_read_model import build_failure_read_models
@@ -98,8 +95,8 @@ def test_four_saved_sources_preserve_events_and_result_identity_on_two_timelines
     with retained(case.conn):
         runs = read(client, timeline="run", state="complete")["data"]
         official = read(client, timeline="official", order="asc")["data"]
-        assert runs["totals"] == {"run": 3, "official": 4, "filtered": 1}
-        assert official["totals"] == {"run": 3, "official": 4, "filtered": 4}
+        assert runs["totals"] == {"run": 3, "official": 3, "filtered": 1}
+        assert official["totals"] == {"run": 3, "official": 3, "filtered": 3}
         assert len(runs["entries"]) == 1 and runs["entries"][0]["identity"]["run_ref"] == refs["run_ref"]
         assert runs["entries"][0]["identity"]["candidate_ref"] == refs["candidate_ref"]
         by_ref = {row["entry_ref"]: row for row in official["entries"]}
@@ -116,10 +113,8 @@ def test_four_saved_sources_preserve_events_and_result_identity_on_two_timelines
         assert trial["identity"]["draft_ref"] == refs["draft_ref"]
         assert trial["identity"]["run_ref"] is None and trial["identity"]["candidate_ref"] is None
         assert trial["identity"]["plan_ref"] == refs["trial_plan_ref"]
-        legacy = by_ref["legacy:" + str(refs["legacy_history_id"])]
-        assert legacy["source_kind"] == "legacy_official" and legacy["identity"]["plan_ref"] == refs["legacy_plan_ref"]
-        legacy_gantt = next(row for row in legacy["navigation"] if row["view"] == "gantt")
-        assert legacy_gantt["enabled"] and legacy_gantt["context"] == {"plan_ref": refs["legacy_plan_ref"]}
+        trial_gantt = next(row for row in trial["navigation"] if row["view"] == "gantt")
+        assert trial_gantt["enabled"] and trial_gantt["context"] == {"plan_ref": refs["trial_plan_ref"]}
         unfinished = read(client, timeline="run", state="queued", selected_entry_ref="run:" + queued)["data"]["selection"]["entry"]
         assert unfinished["identity"]["run_ref"] == queued and unfinished["source"]["state"] == "unavailable"
         run_link = next(row for row in unfinished["navigation"] if row["view"] == "run")
@@ -133,7 +128,7 @@ def test_four_saved_sources_preserve_events_and_result_identity_on_two_timelines
             assert expected["covered_operation_refs"] == entry["scope"]["operation_refs"]
             assert entry["metrics"]["scheduled_operation_count"]["value"] is None
             assert entry["metrics"]["machine_available_hours"]["value"] is None
-        assert set(by_ref) == {"adoption:" + refs[key] for key in ("candidate_receipt_ref", "second_candidate_receipt_ref", "trial_receipt_ref")} | {legacy["entry_ref"]}
+        assert set(by_ref) == {"adoption:" + refs[key] for key in ("candidate_receipt_ref", "second_candidate_receipt_ref", "trial_receipt_ref")}
         for row in runs["entries"] + official["entries"]:
             assert set(row["times"]) == {"accepted_at", "started_at", "finished_at", "adopted_at", "committed_at_utc", "schedule_time"}
         assert client.get(BASE, query_string={"timeline": "invalid"}).status_code == 422
@@ -161,7 +156,6 @@ def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments
     from core.infrastructure.read_evidence import read_evidence_scope
     from core.infrastructure.snapshot_connection import ddl_columns
     from core.infrastructure.transaction import TransactionManager
-    from core.models.workbench_command import canonical_json
     from core.services.workbench.facts.candidate_facts import GenerationFacts
     from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
     from core.services.workbench.history import conditions as condition_module
@@ -176,6 +170,7 @@ def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments
     from core.services.workbench.history.metric_gate import gate_history_metric
     from core.services.workbench.history.projection import missing_packet
     from core.services.workbench.history.reading import HistoryReader
+    from core.shared.strict_json import canonical_json
 
     case, refs = history_case, history_case.history_refs
     experiment, _ = clone_run(case, "2026-09-11T12:00:00", change_artifact=lambda value: value.update(time_budget_seconds=30))
@@ -240,9 +235,6 @@ def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments
         assert states[0] == "different"
         assert states == sorted(states, key={"different": 0, "unknown": 1, "equal": 2}.__getitem__)
         assert different["comparison"]["conclusion"]["state"] == "different_conditions"
-        old = read(client, **dict(query, timeline="official", selected_entry_ref="legacy:" + str(refs["legacy_history_id"])))["data"]
-        assert old["comparison"]["conditions"]["state"] == "unknown"
-        assert old["comparison"]["conclusion"]["state"] == "unavailable"
         before = equal["selection"]["reference"]["metrics"]["makespan_hours"]
         after = equal["selection"]["entry"]["metrics"]["makespan_hours"]
         definition = next(row for row in equal["metric_definitions"] if row["key"] == "makespan_hours")
@@ -315,12 +307,12 @@ def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments
                 missing = compare_conditions(hours, hours, window)
                 assert all(row["state"] == "unknown" for row in missing["conditions"]["rows"]
                            if row["category"] == "requirements" and row["field"] in ("setup_hours", "unit_hours"))
-        saved_selection = packet["receipt"].get("selection") or {}
-        if saved_selection.get("selection_policy_version") == "business_objectives_v1":
-            primary = saved_selection["primary_objective"]
-            saved_objective = compare_conditions(packet, packet, window)["objective"]["before"]
-            assert saved_objective["source"]["path"] == "receipt.selection"
-            assert saved_objective["value"] == {"name": primary, "field_order": saved_selection["objective_field_order"][primary]}
+        saved_selection = packet["receipt"]["selection"]
+        assert saved_selection["selection_policy_version"] == "business_objectives_v1"
+        primary = saved_selection["primary_objective"]
+        saved_objective = compare_conditions(packet, packet, window)["objective"]["before"]
+        assert saved_objective["source"]["path"] == "receipt.selection"
+        assert saved_objective["value"] == {"name": primary, "field_order": saved_selection["objective_field_order"][primary]}
         old_objective = deepcopy(packet)
         old_objective["receipt"].pop("selection", None)
         old_objective["candidate"]["artifact"]["summary"] = {}
@@ -440,29 +432,6 @@ def test_shared_resource_window_uses_saved_capacity_and_keeps_missing_capacity_u
             assert ratio["numerator_hours"] == 3 and ratio["denominator_hours"] == count * 4
             assert ratio["value"] == pytest.approx(3 / (count * 4))
             assert ratio["source"]["path"].startswith("head.admission.facts")
-        legacy_ref = "legacy:" + str(refs["legacy_history_id"])
-        legacy_query = dict(query, timeline="official", selected_entry_ref=legacy_ref)
-        old_document = read(client, **legacy_query)
-        old = old_document["data"]["selection"]["entry"]
-        for kind in ("machine", "operator"):
-            metric = old["metrics"][kind + "_utilization_ratio"]
-            assert metric["value"] is None and metric["denominator_hours"] is None
-        export_query = dict(legacy_query, snapshot_ref=old_document["meta"]["snapshot_ref"],
-                            metric_keys=",".join(query["metric_keys"]), format="xlsx", section="entries")
-        response = client.get(BASE + "/export", query_string=export_query)
-        assert response.status_code == 200, response.get_data(as_text=True)
-        workbook = load_workbook(io.BytesIO(response.data), read_only=True, data_only=True)
-        try:
-            native = list(workbook["历史条目"].values)
-            columns = {label: index for index, label in enumerate(native[0])}
-            legacy_metrics = {row[columns["指标键"]]: row for row in native[1:]
-                              if row[columns["历史条目编号"]] == legacy_ref and row[columns["记录类型"]] == "指标值"}
-            for kind in ("machine", "operator"):
-                row = legacy_metrics[kind + "_utilization_ratio"]
-                assert row[columns["数值"]] is None and row[columns["分母工时（小时）"]] is None
-                assert row[columns["覆盖状态"]] == "unavailable"
-        finally:
-            workbook.close()
 
     case.conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T2','Drilling')")
     for machine in ("M1", "M2"):
@@ -480,9 +449,10 @@ def test_shared_resource_window_uses_saved_capacity_and_keeps_missing_capacity_u
     saved, head, rows = load_saved_scenario(case.conn, saved["scenario_ref"])
     packet: Dict[str, Any] = {"kind": "trial", "ref": saved["scenario_ref"], "entry_ref": "scenario:" + saved["scenario_ref"],
               "saved": saved, "head": head, "rows": rows}
+    reader = SimpleNamespace(condition_source=ConditionSource)
     for start, end, expected in (("2026-09-09T08:00:00", "2026-09-09T10:00:00", 1),
                                  ("2026-09-10T00:00:00", "2026-09-11T00:00:00", 0)):
-        metrics, _, _ = _trial(packet, {"start": start, "end": end, "cohort": {}})
+        metrics, _, _ = _trial(packet, {"start": start, "end": end, "cohort": {}}, reader=reader)
         count = metrics["type_changeover_count"]
         assert count["value"] == expected and count["state"] == "complete"
         assert count["scope"] == "fixed_changeover_window"
@@ -505,7 +475,8 @@ def test_shared_resource_window_uses_saved_capacity_and_keeps_missing_capacity_u
             ledger["items"] = [row for row in ledger["items"] if row["operation_ref"] != missing_ref]
         partial["saved"]["comparison"] = trial_comparison(partial["saved"]["tasks"], partial["saved"]["validation"],
             partial["rows"], partial["head"]["admission"])
-        metrics, _, _ = _trial(partial, {"start": "2026-09-09T08:00:00", "end": "2026-09-09T10:00:00", "cohort": {}})
+        metrics, _, _ = _trial(partial, {"start": "2026-09-09T08:00:00", "end": "2026-09-09T10:00:00", "cohort": {}},
+                               reader=reader)
         assert metrics["deferred_operation_count"]["value"] == deferred_count
         assert metrics["unplanned_operation_count"]["value"] == ordinary_count
         assert metrics["expected_operation_count"]["value"] == expected_count
@@ -526,28 +497,6 @@ def test_shared_resource_window_uses_saved_capacity_and_keeps_missing_capacity_u
             demand = metrics["unplanned_setup_hours"]
             assert demand["value"] is None and demand["state"] == "unavailable"
             assert demand["unknown_count"] == demand["total_count"] == 1
-        no_head = deepcopy(partial)
-        no_head.update(head=None, rows=[])
-        no_head["saved"]["unplanned_operations"] = []
-        archived, _, _ = _trial(no_head, {"start": "2026-09-09T08:00:00", "end": "2026-09-09T10:00:00", "cohort": {}})
-        assert all(archived[key]["value"] is None for key in
-            ("expected_operation_count", "deferred_operation_count", "unplanned_operation_count"))
-        assert archived["scheduled_operation_count"]["value"] == archived["makespan_hours"]["value"] == 1
-    complete_no_head = dict(deepcopy(packet), head=None, rows=[])
-    archived, _, _ = _trial(complete_no_head, {"start": "2026-09-09T08:00:00", "end": "2026-09-09T10:00:00", "cohort": {}})
-    assert archived["deferred_operation_count"]["value"] == archived["unplanned_operation_count"]["value"] == 0
-    assert archived["expected_operation_count"]["value"] == archived["scheduled_operation_count"]["value"] == 2
-    empty_no_head = dict(deepcopy(packet), head=None, rows=[])
-    empty_no_head["saved"].update(tasks=[], unplanned_operations=[])
-    empty_no_head["saved"]["comparison"].pop("batches")
-    window = {"start": "2026-09-09T08:00:00", "end": "2026-09-09T10:00:00", "cohort": {}}
-    archived, _, _ = _trial(empty_no_head, window)
-    assert all(archived[key]["value"] is None for key in
-        ("expected_operation_count", "deferred_operation_count", "unplanned_operation_count"))
-    empty_no_head["saved"]["comparison"]["batches"] = []
-    archived, _, _ = _trial(empty_no_head, window)
-    assert all(archived[key]["value"] == 0 for key in
-        ("expected_operation_count", "deferred_operation_count", "unplanned_operation_count"))
 
 
 def test_filtered_twenty_and_fifty_pages_export_all_native_rows_and_reject_stale_snapshot(history_case):
@@ -650,47 +599,6 @@ def test_filtered_twenty_and_fifty_pages_export_all_native_rows_and_reject_stale
                         assert float(csv_row[header.index("数值")]) == pytest.approx(displayed)
         finally:
             workbook.close()
-        legacy_ref = "legacy:" + str(case.history_refs["legacy_history_id"])
-        legacy_query = {"timeline": "official", "selected_entry_ref": legacy_ref, "metric_keys": ["makespan_hours"]}
-        document = read(client, **legacy_query)
-        quantity = document["data"]["selection"]["entry"]["scope"]["batch_quantity"]
-        assert quantity["value"] is None and quantity["known_subtotal"] is None
-        legacy_export = dict(legacy_query, metric_keys="makespan_hours", snapshot_ref=document["meta"]["snapshot_ref"])
-        old_csv = client.get(BASE + "/export", query_string=dict(legacy_export, format="csv", section="entries"))
-        old_xlsx = client.get(BASE + "/export", query_string=dict(legacy_export, format="xlsx", section="all"))
-        assert old_csv.status_code == old_xlsx.status_code == 200
-        csv_rows = list(csv.reader(io.StringIO(old_csv.data.decode("utf-8-sig"))))
-        columns = {label: index for index, label in enumerate(csv_rows[0])}
-        csv_row = next(row for row in csv_rows[1:] if row[columns["历史条目编号"]] == legacy_ref)
-        book = load_workbook(io.BytesIO(old_xlsx.data), read_only=True, data_only=True)
-        try:
-            native_row = next(row for row in book["历史条目"].iter_rows(max_col=len(columns), values_only=True)
-                              if row[columns["历史条目编号"]] == legacy_ref)
-            for label in ("批次总量", "批次总量已知小计"):
-                assert native_row[columns[label]] is None and csv_row[columns[label]] == ""
-            csv_references = exported_history_references(csv_rows[0], csv_rows[1:])
-            native_rows = list(book["历史条目"].iter_rows(max_col=len(columns), values_only=True))
-            native_references = exported_history_references(native_rows[0], native_rows[1:])
-            assert csv_references == native_references
-            assert csv_references[legacy_ref, None, "scope.batch_quantity.covered_batch_refs"] is None
-            for label, field in (("批次总量已知批次数", "known_count"), ("批次总量未知批次数", "unknown_count"),
-                                 ("批次总量总批次数", "total_count")):
-                assert type(native_row[columns[label]]) is int and native_row[columns[label]] == quantity[field]
-                assert int(csv_row[columns[label]]) == quantity[field]
-            for label, value in (("批次总量覆盖状态", quantity["state"]), ("批次总量来源类型", quantity["source"]["kind"]),
-                                 ("批次总量来源编号", quantity["source"]["ref"]), ("批次总量来源字段", quantity["source"]["path"]),
-                                 ("批次总量缺项编码", quantity["reason"]["code"]), ("批次总量缺项说明", quantity["reason"]["message"])):
-                assert native_row[columns[label]] == value
-                # Legacy history ids stay text in CSV when opened directly in Excel.
-                csv_expected = "'" + value if label == "批次总量来源编号" else value
-                assert csv_row[columns[label]] == csv_expected
-            missing = list(book["数据缺项"].values)
-            labels = {label: index for index, label in enumerate(missing[0])}
-            issue = next(row for row in missing[1:] if row[labels["条目编号"]] == legacy_ref
-                         and row[labels["缺项类别"]] == "batch_quantity")
-            assert issue[labels["来源类型"]] == "legacy" and issue[labels["来源字段"]] == "Batches.quantity"
-        finally:
-            book.close()
     clone_run(case, "2026-09-13T09:00:00")
     stale = client.get(BASE + "/export", query_string=dict(export_query, format="csv", section="entries"))
     assert stale.status_code == 409 and stale.get_json()["error"]["code"] == "snapshot_stale"

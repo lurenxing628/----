@@ -26,7 +26,8 @@
     const entries = {}, messages = [];
     if (message && technical(message)) entries['原始错误信息'] = message;
     if (!hideMessage) messages.push(message && !technical(message) ? message : fallback);
-    const labels = { code: '错误编号', status: '状态码', request_key: '操作编号', request_ref: '结果编号', request_id: '操作标记', trace_id: '诊断编号' };
+    // 统一错误对象（transport.js）的编号字段。
+    const labels = { code: '错误编号', status: '状态码', requestKey: '操作编号', requestRef: '结果编号' };
     Object.entries(labels).forEach(([key, label]) => { if (present(error[key])) entries[label] = error[key]; });
     if (error.name && error.name !== 'Error') entries['错误类型'] = error.name;
     fields.forEach((field, index) => {

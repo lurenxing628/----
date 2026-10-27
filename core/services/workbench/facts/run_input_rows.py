@@ -14,6 +14,7 @@ from .preflight_checks import number, stored_date
 from .preflight_dependencies import link_predecessors
 
 _BATCH_STATES = {"pending", "scheduled", "processing", "completed", "cancelled"}
+_SCHEDULED = ("eligible", "auto_assign_required")
 OPERATION_STATES = {"pending", "scheduled", "processing", "completed", "skipped"}
 
 
@@ -82,28 +83,46 @@ def classify_rows(facts, settings, raw_batches, operations, projections, guarded
     batches = {row["batch_id"]: row for row in raw_batches}
     cycles = external_cycles
     rows = []
-    releases = {}
     for op in operations:
         raw, batch = raw_by_id[op.id], batches[op.batch_id]
         ref = facts.operation_ref(raw)
         projection = projections[ref]
         status, reasons, release = _classification(checks, batch, raw, projection, settings, guarded_ids, cycles)
-        if status in ("eligible", "auto_assign_required"):
-            releases[op.id] = release
         rows.append({"operation_ref": ref, "op_id": op.id, "batch_ref": batch["ref"], "batch_id": op.batch_id,
                      "piece_id": op.piece_id, "sequence": op.seq, "status": status, "issues": reasons,
-                     "predecessor_refs": [], "execution": projection.to_dict()})
+                     "material_ready_date": release, "predecessor_refs": [], "execution": projection.to_dict()})
         if op.id in cycles:
             rows[-1]["external_execution_cycle"] = cycles[op.id]
     _link_dispositions(rows, batches, piece_scope)
     blocked = [row for row in rows if row["status"] == "blocked"]
     if blocked:
         raise CandidateRunInputError("input_blocked", "排产资料还有缺项，不能开始。请先补齐下方列出的项。", issues=blocked)
-    eligible = {row["op_id"]: row["issues"] for row in rows if row["status"] in ("eligible", "auto_assign_required")}
-    if not eligible and not cycles:
+    if not any(row["status"] in _SCHEDULED for row in rows) and not cycles:
         raise CandidateRunInputError("no_eligible_operations", "选定范围内没有可排的工序。请调整范围后重试。", issues=rows)
-    mutable = [_assignable_operation(op, eligible[op.id]) for op in operations if op.id in eligible]
+    mutable, releases = _mutable_scope(operations, rows)
     return rows, mutable, releases
+
+
+def admitted_classification(operations, admitted, protected_ids):
+    """The admission's archived classification is the run's only disposition source.
+
+    Facts are unchanged since admission (the worker checks this), so the worker
+    never reclassifies: date-dependent material readiness cannot drift overnight.
+    """
+    if (type(admitted) is not list
+            or any(type(row) is not dict or type(row.get("op_id")) is not int or type(row.get("status")) is not str
+                   for row in admitted)
+            or sorted(row["op_id"] for row in admitted) != sorted(op.id for op in operations)
+            or {row["op_id"] for row in admitted if row["status"] == "protected"} != set(protected_ids)):
+        fail("admission_disposition_mismatch", "受理时保存的工序处置和这次排产读到的工序对不上，这次排产没有计算。请重新做排产检查。")
+    mutable, releases = _mutable_scope(operations, admitted)
+    return admitted, mutable, releases
+
+
+def _mutable_scope(operations, rows):
+    scheduled = {row["op_id"]: row for row in rows if row["status"] in _SCHEDULED}
+    mutable = [_assignable_operation(op, scheduled[op.id]["issues"]) for op in operations if op.id in scheduled]
+    return mutable, {op_id: row["material_ready_date"] for op_id, row in scheduled.items()}
 
 
 def _link_dispositions(rows, batches, piece_scope):

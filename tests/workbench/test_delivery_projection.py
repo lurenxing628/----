@@ -203,11 +203,11 @@ def test_stage_adoption_keeps_deferred_operation_evidence(candidate_case):
     assert data["categories"]["delivery"]["unknown_count"] == 2
     assert {row["source_ref"] for row in data["categories"]["delivery"]["evaluation_gaps"]} == {
         batch["batch_ref"] for batch in items}
-    # Older stage adoptions carry source identities, before explicit pending IDs.
+    # Without explicit deferred_operation_ids in the saved summary, delivery does not consult the adoption source.
     audit.pop("deferred_operation_ids")
     case.conn.execute("UPDATE ScheduleHistory SET result_summary=? WHERE version=?", (json.dumps(audit), plan["version"]))
     case.conn.commit()
     with reader.read_snapshot():
         data, _ = reader.workspace(PlanReadScope(plan["plan_ref"]))
-    assert len(data["projections"]["delivery_risks"]["items"]) == 2
-    assert all(batch["completion_state"] == "deferred" for batch in data["projections"]["delivery_risks"]["items"])
+    assert [batch["batch_id"] for batch in data["projections"]["delivery_risks"]["items"]] == ["B1"]
+    assert data["projections"]["delivery_risks"]["items"][0]["completion_state"] == "incomplete"

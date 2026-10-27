@@ -23,11 +23,11 @@
         </details>)}</>}
     </details>;
   }
-  function Detail({ api, operationRef, input, onClose, onOpenOperation, initialView, onView }) {
+  function Detail({ operationRef, input, onClose, onOpenOperation, initialView, onView }) {
     const { useRead, Button, ErrorBox } = window.ReportControls;
     const { text, time, hoursText, Table } = window.ReportTable;
     const identity = operationRef + JSON.stringify(input);
-    const request = useRead(signal => api.detail(operationRef, input, signal), identity);
+    const request = useRead(signal => window.ReportAPI.detail(operationRef, input, signal), identity);
     const detail = request.result && request.result.data.detail;
     const [page, setPage] = React.useState(initialView ? initialView.page : 1), [size, setSize] = React.useState(initialView ? initialView.size : 10);
     const prevRef = React.useRef({ operationRef, snapshotRef: input.snapshot_ref });

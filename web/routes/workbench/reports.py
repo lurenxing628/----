@@ -47,7 +47,7 @@ def arguments(export=False, detail=False):
 def download_response(file, snapshot):
     response = send_file(file.data, mimetype=file.content_type, as_attachment=True, download_name=file.filename, max_age=0)
     response.headers["Cache-Control"] = "no-store"
-    response.headers["X-Workbench-Snapshot"] = snapshot["snapshot_ref"]
+    response.headers["X-Workbench-Snapshot-Ref"] = snapshot["snapshot_ref"]
     response.headers["X-Workbench-As-Of"] = snapshot["as_of"]
     response.headers["X-Workbench-Row-Count"] = str(file.estimated_rows)
     return response

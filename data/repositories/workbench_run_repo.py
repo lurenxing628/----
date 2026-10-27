@@ -2,8 +2,8 @@
 
 from core.infrastructure.connection_guards import schema_contract_memo
 from core.infrastructure.workbench_run_schema import workbench_run_contract_issues
-from core.models.workbench_command import canonical_json
 from core.models.workbench_run_job import PROJECTION_VERSION, new_run_ref
+from core.shared.strict_json import canonical_json
 
 _HEAD_COLUMNS = ("run_ref,request_key,input_ref,accepted_at,state,stage,executor_ref,"
                  "started_at,finished_at,error_json")

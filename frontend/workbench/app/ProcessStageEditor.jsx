@@ -140,7 +140,7 @@
     const dirty = React.useMemo(() => !same(draft, baseline), [draft, baseline]);
     const seenSaved = React.useRef(saved), request = React.useRef(null);
     React.useEffect(() => () => { if (request.current) request.current.abort(); }, []);
-    React.useEffect(() => { if (onDirty) onDirty(stage, dirty); }, [dirty, stage, onDirty]);
+    React.useEffect(() => { onDirty(stage, dirty); }, [dirty, stage, onDirty]);
     React.useLayoutEffect(() => {
       if (base === result) return;
       if (seenSaved.current !== saved || !dirty) { setBase(result); setDraft(build(result.data)); setReview(null); setError(null); }
@@ -169,10 +169,10 @@
   }
   // Unconfirmed operations are reported with the page they sit on (unfiltered order, current page size),
   // so a 120-operation part can be fixed without paging blind; the first offending page rides on the error.
-  function reason(model, adapter, stage) {
+  function reason(model, stage) {
     const entity = model.base.data;
     return model.review ? '请先核对最新资料。' : model.busy ? '正在读取最新资料。' :
-      P.reason(entity.capabilities, 'stage_confirm', typeof adapter.command === 'function') ||
+      P.reason(entity.capabilities, 'stage_confirm') ||
       (entity.workflow[stage === 'source' ? 'route' : 'source'].state !== 'confirmed' ? stage === 'source' ? '请先确认路线。' : '请先确认归属。' : '') ||
       (stage === 'source' ? model.base.meta.source !== 'production' ? '当前不是生产数据，不能保存。' : '' : C.blocked(entity.write_context, 'process', stage + '_confirm', model.base.meta.source));
   }

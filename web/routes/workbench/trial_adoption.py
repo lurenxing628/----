@@ -19,8 +19,7 @@ def _service():
         integration_enabled=current_app.config.get("WORKBENCH_CANDIDATE_ADOPTION_ENABLED") is True,
         point_rendering_enabled=current_app.config.get("WORKBENCH_POINT_RENDERING_ENABLED") is True,
         context_factory=issue_write_context, context_validator=validate_write_context,
-        data_context=RunDataContext(g.db, current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR"),
-                                   current_app.config.get("BACKUP_DIR")))
+        data_context=RunDataContext(g.db, current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR")))
 
 
 def _body(required):
@@ -56,9 +55,9 @@ def trial_adopt(scenario_ref):
 
 @api_endpoint
 def trial_adoption_receipt(scenario_ref, request_key):
-    if set(request.args) - {"data_context_ref"} or any(len(values) != 1 for _, values in request.args.lists()):
-        reject("invalid_input", "查询采用结果的条件有多余项或重复项，请重新查询。", 400)
-    result = _service().resolve_command(scenario_ref, request_key, data_context_ref=request.args.get("data_context_ref"))
+    if set(request.args) != {"data_context_ref"} or any(len(values) != 1 for _, values in request.args.lists()):
+        reject("invalid_input", "查询采用结果的条件不完整、有多余项或重复项，请重新查询。", 400)
+    result = _service().resolve_command(scenario_ref, request_key, data_context_ref=request.args["data_context_ref"])
     return _query(result,
                   {"scenario_ref": scenario_ref, "request_key": request_key})
 

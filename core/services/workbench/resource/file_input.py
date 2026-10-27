@@ -7,21 +7,18 @@ from typing import Any, Dict
 from core.errors import ValidationError
 from core.models.resource_capabilities import supports_source
 from core.models.workbench_resource_file import (
-    ENUM_CODES,
     MULTI_CODES,
     NULLABLE,
     NUMERIC_FIELDS,
     RELATIONS,
     WRITABLE,
     column_label,
-    file_status,
-    status_words,
 )
 
 
 def _column(kind, field):
-    """提示里按“列 英文名（中文说明）”称呼文件里的列，英文名是文件格式的一部分，必须留。"""
-    return "列 " + field + "（" + column_label(kind, field) + "）"
+    """提示里按文件表头上的中文列名称呼这一列。"""
+    return "「" + column_label(kind, field) + "」这一列"
 
 
 def same_value(left, right, field):
@@ -43,7 +40,6 @@ class ResourceFileInput:
     def normalize(self, action, code, values, before, scope):
         changes = self._changes(values, before, scope)
         self._clear_fields(changes)
-        self._status_choice(changes)
         payload: Dict[str, Any] = {"fields": {}}
         related = {}
         if action == "create":
@@ -64,26 +60,12 @@ class ResourceFileInput:
     def _changes(self, values, before, scope):
         if self.kind == "op_type" and "category" in values and not supports_source(values["category"], scope["category"]):
             raise ValidationError("文件里的归属和这次导入选的归属不一样，这一行没有导入。请分开导入自制和外协工种。", field="category")
-        if "status" in values:
-            # 按页面叫法填的「在岗」「启用」先换成代号再比，和原值一样就是没改。
-            values = dict(values, status=file_status(self.kind, values["status"]))
+        # 状态在解码时已换成代号（页面叫法「在岗」「启用」也一样），和原值一样就是没改。
         changes = {key: value for key, value in values.items() if key in WRITABLE[self.kind]
                    and key != "business_code" and (before is None or not _same_column(key, value, before[key]))}
-        if self.kind == "machine" and "op_type_codes" in values:
-            self._machine_columns(values, before, changes)
         if self._declares_empty_skills(values, before):
             changes["skill_codes"] = []
         return changes
-
-    @staticmethod
-    def _machine_columns(values, before, changes):
-        legacy = values.get("op_type_code")
-        changed = before is not None and "op_type_code" in changes
-        # 新列填 \N 时留给 _clear_fields 报标准的行级错误，这里不拿 None 做成员判断。
-        if changed or (before is None and legacy is not None and values["op_type_codes"] is not None
-                       and legacy not in values["op_type_codes"]):
-            raise ValidationError("请只修改可做工种编号，不要同时修改旧单工种列。", field="op_type_codes")
-        changes.pop("op_type_code", None)
 
     def _declares_empty_skills(self, values, before):
         # An exported provenance column keeps an unchanged empty skill list unchanged.
@@ -96,13 +78,6 @@ class ResourceFileInput:
             changes.setdefault("category", scope["category"])
         elif "status" not in changes:
             raise ValidationError("新增的记录必须填状态，这一行没有导入。请在" + _column(self.kind, "status") + "里填好状态。", field="status")
-
-    def _status_choice(self, changes):
-        """要改的状态不在本表选项里时，用中文业务词说清能填什么，不把英文代号甩给用户。"""
-        allowed = ENUM_CODES[self.kind].get("status")
-        status = changes.get("status")
-        if allowed and type(status) is str and status.strip() and status not in allowed:
-            raise ValidationError(_column(self.kind, "status") + "只能填" + status_words(self.kind) + "，这一行没有导入。请照下拉选项填写。", field="status")
 
     def _clear_fields(self, changes):
         for key, value in changes.items():
@@ -143,22 +118,13 @@ def proposed_fields(kind, code, before, payload, related):
             after[field] = facts["identity"]["entity_key"] if facts else None
     if kind == "op_type" and not supports_source(after.get("category"), "external") and "default_merge_mode" not in payload["fields"]:
         after["default_merge_mode"] = None
-    if kind == "machine" and "op_type_codes" in related:
-        after.pop("op_type_code", None)
     if before is not None:
         # Server-generated timestamp and changed relation provenance are not known until commit.
         after.pop("updated_at", None)
         if "skill_codes" in related:
             after["skills_declared"] = True
             after.pop("skill_details", None)
-        if "op_type_codes" in related:
-            after.pop("legacy_op_type_code", None)
-            after.pop("explicit_op_type_codes", None)
-        if "status" in payload["fields"]:
+        if "status" in payload["fields"] and kind in ("operator", "supplier"):
             status = payload["fields"]["status"]
-            if kind in ("operator", "supplier"):
-                after["legacy_status"] = "active" if status == "active" else "inactive"
-                after["inactive_reason"] = {"active": None, "inactive": "disabled"}.get(status, status)
-            else:
-                after["legacy_status"] = status
+            after["inactive_reason"] = {"active": None, "inactive": "disabled"}.get(status, status)
     return after

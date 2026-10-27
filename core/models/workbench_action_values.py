@@ -4,7 +4,8 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, ClassVar, Dict, Optional
 
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
+from core.shared.strict_json import canonical_json
 
 
 @dataclass(frozen=True)

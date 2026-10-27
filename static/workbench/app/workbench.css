@@ -6923,7 +6923,6 @@ body.aps-workbench .rd-workspace .rd-recommendation :is(.rd-supports,.rd-recomme
 .rd-workspace .rd-selection-facts dd{margin:var(--space-1) 0;overflow-wrap:anywhere}
 .rd-workspace .rd-evidence-values{display:flex;gap:var(--space-2);flex-wrap:wrap;margin-top:var(--space-1);color:var(--ui-info-muted)}
 .rd-workspace .rd-recommendation .rd-recommend-cause{display:block;color:var(--ui-text);font-size:var(--font-size-2);line-height:1.65;margin:0}
-.rd-workspace .rd-recommend-coverage{display:block;color:var(--ui-info-muted);font-size:var(--font-size-2);line-height:1.65;margin:0}
 .rd-workspace .rd-remaining-work{--wb-table-min:480px}
 .rd-workspace .rd-remaining-work small{display:block;margin-top:var(--space-1);color:var(--ui-info-muted)}
 .rd-workspace .rd-adoption-status{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}

@@ -14,7 +14,6 @@ from core.services.workbench.run.decision_queries import read_decision_details
 from core.services.workbench.run.decision_source import DecisionSource
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.decision_history_support import clone_run
-from tests.workbench.legacy_run_archive_support import install_different_work_archive
 from tests.workbench.run_candidate_adoption_support import INTENT, service
 from tests.workbench.run_candidate_support import BASE, api, compute, corrupt_update
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
@@ -126,30 +125,24 @@ def test_mixed_due_values_keep_nulls_last_and_permanent_ties_across_pages(candid
 
 
 @pytest.mark.parametrize("mode", ["stage", "ordinary_missing"])
-def test_operation_filters_preserve_identity_and_distinguish_material_deferral(candidate_case, mode, monkeypatch):
+def test_operation_filters_preserve_identity_and_distinguish_material_deferral(candidate_case, mode):
     case = candidate_case
     if mode == "stage":
         second_id = case.operation(seq=2)
         add_requirement(case, second_id, [])
         run_ref, refs = compute(case, case.settings(material_strategy="stage"))
-        selected, reference = refs[0], refs[0]
         batch = "B1"
     else:
+        # Eleven hours of real work in one eight-hour shift: the candidate leaves B2 unplanned.
         case.conn.execute("UPDATE Batches SET quantity=1,due_date='2026-09-09' WHERE batch_id='B1'")
         case.conn.execute("UPDATE BatchOperations SET unit_hours=5 WHERE id=?", (case.op_id,))
         case.batch("B2", quantity=1, due_date="2026-09-10")
         second_id = case.operation("B2", unit_hours=6)
         case.config(dispatch_mode="batch_order", sort_strategy="due_date_first")
-        with monkeypatch.context() as archive_patch:
-            install_different_work_archive(archive_patch)
-            run_ref, refs = compute(case, case.settings("B1", "B2", end_date="2026-09-09"))
-        selected = refs[0]
-        client, _ = api(case)
-        catalog = decision(client, run_ref)["data"]["candidates"]
-        reference = next(row["candidate_ref"] for row in catalog if row["kind"] == "critical_chain")
+        run_ref, refs = compute(case, case.settings("B1", "B2", end_date="2026-09-09"))
         batch = "B2"
-    if mode == "stage":
-        client, _ = api(case)
+    selected = reference = refs[0]
+    client, _ = api(case)
     query = {"selected_candidate_ref": selected, "reference_candidate_ref": reference}
     batch_ref, second_ref = case.ref("batch", batch), operation_ref(case, second_id)
     batches = detail(client, run_ref, "batches", **dict(query, batch_ref=batch_ref))["data"]
@@ -166,7 +159,7 @@ def test_operation_filters_preserve_identity_and_distinguish_material_deferral(c
     missing = next(row for row in operations["items"] if row["operation_ref"] == second_ref)
     assert missing["after"] is None
     assert missing["after_state"]["status"] == ("deferred" if mode == "stage" else "missing")
-    assert missing["status_changed"] is (mode != "stage")
+    assert missing["status_changed"] is False
     assert missing["drill"]["selected"]["operation_ref"] == second_ref
     assert missing["drill"]["selected"]["candidate_ref"] == selected
     assert missing["effort"]["target_quantity"] == (3 if mode == "stage" else 1)
@@ -189,11 +182,11 @@ def test_operation_filters_preserve_identity_and_distinguish_material_deferral(c
         assert current["items"][0]["operation_unknown_count"] == 1
         assert missing["after_state"]["reason"]["message"].startswith("缺料未安排")
     else:
-        assert {row["operation_ref"] for row in filtered["items"]} == {operation_ref(case, case.op_id), second_ref}
+        # The unplanned operation has no machine in either saved arrangement.
+        assert {row["operation_ref"] for row in filtered["items"]} == {operation_ref(case, case.op_id)}
+        assert missing["before_state"]["status"] == "missing" and missing["changed_fields"] == []
         changed = detail(client, run_ref, "operations", **dict(query, change_kind="changed"))["data"]
-        assert {row["operation_ref"] for row in changed["items"]} == {operation_ref(case, case.op_id), second_ref}
-        assert {kind for row in changed["items"] for kind in row["change_kinds"]} == {"added", "removed", "status_changed"}
-        assert missing["before_state"]["status"] == "arranged" and "status" in missing["changed_fields"]
+        assert changed["items"] == []
 
 
 def test_admission_official_details_and_gantt_keep_archived_facts_after_live_changes(candidate_case):

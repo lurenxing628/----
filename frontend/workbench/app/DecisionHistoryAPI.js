@@ -2,15 +2,15 @@
   'use strict';
   const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   // 返回位置与条件明细只读，并随 onNavigate 经 history.pushState 结构化克隆，不另做深拷贝。
-  const states = ['all', 'queued', 'running', 'complete', 'partial', 'failed', 'interrupted', 'committed', 'success', 'unknown', 'available', 'current', 'historical', 'unavailable'];
+  const states = ['all', 'queued', 'running', 'complete', 'partial', 'failed', 'interrupted', 'committed'];
   const queryKeys = ['timeline', 'date_from', 'date_to', 'metric_keys', 'comparison', 'reference_run_ref', 'selected_entry_ref', 'range_start', 'range_end', 'resource_window_days', 'state', 'sort', 'order', 'page', 'size', 'condition_page', 'condition_size', 'snapshot_ref'];
   // 默认指标列表直接放进每份默认查询，冻结后谁也不能原地改它；切换指标一律生成新数组。
   const defaultMetrics = Object.freeze(['overdue_count', 'total_tardiness_hours', 'makespan_hours', 'elapsed_seconds']);
-  const sourceLabels = { run: '排产运行', candidate_adoption: '候选方案采用', trial_adoption: '试调方案采用', legacy_official: '旧正式计划' };
+  const sourceLabels = { run: '排产运行', candidate_adoption: '候选方案采用', trial_adoption: '试调方案采用' };
   const sourceLabel = value => sourceLabels[typeof value === 'string' ? value : value.source_kind];
   const windowMetric = definition => ['fixed_resource_window', 'fixed_changeover_window'].includes(definition.scope);
   const sameMetricDefinition = (a, b) => a.unit === b.unit && a.metric_version === b.metric_version && a.scope === b.scope;
-  const entryRef = value => typeof value === 'string' && /^(?:run:[a-f0-9]{48}|adoption:[a-f0-9]{32}|legacy:[1-9][0-9]*)$/.test(value);
+  const entryRef = value => typeof value === 'string' && /^(?:run:[a-f0-9]{48}|adoption:[a-f0-9]{32})$/.test(value);
   const runRef = value => typeof value === 'string' && /^[a-f0-9]{48}$/.test(value);
   const timeKey = value => value.slice(0, 19) + '.' + (value.split('.')[1] || '').padEnd(6, '0');
   const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
@@ -44,16 +44,16 @@
   }
   function entry(value, metricKeys) {
     check(shape(value, ['entry_ref', 'timeline', 'source_kind', 'label', 'occurred_at', 'time_basis', 'state', 'identity', 'times', 'baseline', 'source', 'scope', 'reading_context', 'metrics', 'navigation', 'issues'])
-      && entryRef(value.entry_ref) && ['run', 'official'].includes(value.timeline) && ['run', 'candidate_adoption', 'trial_adoption', 'legacy_official'].includes(value.source_kind)
+      && entryRef(value.entry_ref) && ['run', 'official'].includes(value.timeline) && ['run', 'candidate_adoption', 'trial_adoption'].includes(value.source_kind)
       && ['label', 'state'].every(key => text(value[key])) && (value.occurred_at === null || window.RunHistoryAPI.time(value.occurred_at)) && nullableText(value.time_basis));
     check(shape(value.identity, ['run_ref', 'candidate_ref', 'scenario_ref', 'draft_ref', 'plan_ref', 'plan_version', 'history_id', 'receipt_ref', 'request_key'])
       && ['run_ref', 'candidate_ref', 'scenario_ref', 'draft_ref', 'plan_ref'].every(key => value.identity[key] === null || runRef(value.identity[key]))
       && ['plan_version', 'history_id'].every(key => value.identity[key] === null || count(value.identity[key])) && nullableText(value.identity.receipt_ref) && nullableText(value.identity.request_key));
     check(value.source_kind === 'run' ? value.timeline === 'run' && value.entry_ref === 'run:' + value.identity.run_ref
-      : value.timeline === 'official' && (value.source_kind === 'legacy_official' ? value.entry_ref === 'legacy:' + value.identity.history_id : value.entry_ref === 'adoption:' + value.identity.receipt_ref));
+      : value.timeline === 'official' && value.entry_ref === 'adoption:' + value.identity.receipt_ref);
     check(shape(value.times, ['accepted_at', 'started_at', 'finished_at', 'adopted_at', 'committed_at_utc', 'schedule_time']) && Object.values(value.times).every(nullableText)
       && shape(value.baseline, ['plan_ref', 'version']) && (value.baseline.plan_ref === null || runRef(value.baseline.plan_ref)) && (value.baseline.version === null || count(value.baseline.version))
-      && shape(value.source, ['kind', 'ref', 'state', 'reason']) && text(value.source.kind) && ['available', 'partial', 'unavailable'].includes(value.source.state) && nullableText(value.source.ref) && reason(value.source.reason));
+      && shape(value.source, ['kind', 'ref', 'state', 'reason']) && ['run', 'trial'].includes(value.source.kind) && ['available', 'partial', 'unavailable'].includes(value.source.state) && nullableText(value.source.ref) && reason(value.source.reason));
     check(admission(value.scope) && shape(value.reading_context, ['resource_window', 'metric_basis']) && resourceWindow(value.reading_context.resource_window) && text(value.reading_context.metric_basis));
     check(object(value.metrics) && metricKeys.every(key => own(value.metrics, key)) && Object.values(value.metrics).every(metric));
     check(Array.isArray(value.navigation) && value.navigation.every(target => shape(target, ['label', 'view', 'context', 'enabled', 'reason']) && text(target.label)
@@ -134,11 +134,9 @@
     return new URLSearchParams(Object.fromEntries(Object.entries(query).filter(([, value]) => value !== null && value !== undefined).map(([key, value]) => [key, key === 'metric_keys' ? value.join(',') : value])));
   }
   function history(payload, query = {}) {
+    // 成功信封（meta 五键、warnings 形状、as_of）已由 transport.read 校验；历史分页与导出要钉住同一份快照。
     const q = scope(query);
-    check(shape(payload, ['ok', 'schema_version', 'data', 'meta', 'warnings']) && payload.ok === true && payload.schema_version === 1
-      && object(payload.meta) && text(payload.meta.request_ref) && payload.meta.source === 'production' && payload.meta.time_basis === 'factory_local'
-      && text(payload.meta.snapshot_ref) && payload.meta.snapshot_ref.length > 0 && window.RunHistoryAPI.time(payload.meta.as_of)
-      && Array.isArray(payload.warnings) && payload.warnings.every(value => value !== null && reason(value)));
+    check(payload.meta.snapshot_ref !== null);
     if (q.snapshot_ref && payload.meta.snapshot_ref !== q.snapshot_ref) throw Object.assign(new Error('历史资料已更新，请刷新当前条件后继续查看。'), { code: 'snapshot_stale' });
     const d = payload.data;
     const filterKeys = queryKeys.filter(key => key !== 'snapshot_ref');
@@ -198,42 +196,21 @@
   function metricText(value, definition) {
     return value.value === null ? value.state === 'not_applicable' ? '不适用' : '未知' : numberText(value.value, value.unit, definition.precision);
   }
-  function create(fetcher = window.fetch.bind(window)) {
-    async function request(query, signal, format, section) {
-      const controller = new AbortController(), abort = () => controller.abort();
-      if (signal) { if (signal.aborted) abort(); else signal.addEventListener('abort', abort, { once: true }); }
-      const timer = setTimeout(abort, 60000);
-      try {
-        const q = { ...query };
-        if (format) { ['page', 'size', 'condition_page', 'condition_size'].forEach(key => delete q[key]); q.format = format; q.section = section; }
-        const response = await fetcher('/api/workbench/v1/scheduling/decision-history' + (format ? '/export' : '') + '?' + serialized(q),
-          { method: 'GET', credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: controller.signal });
-        const mime = (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
-        if (!response.ok) {
-          const value = mime === 'application/json' ? await response.json() : null, detail = value && value.error;
-          throw Object.assign(new Error(detail && typeof detail.message === 'string' ? detail.message : '历史资料读取失败，请重新查询。'), { code: detail && detail.code || 'invalid_response', status: response.status });
-        }
-        check(response.status === 200, '历史接口的响应状态无效，请重新查询。');
-        if (!format) { check(mime === 'application/json', '历史接口返回的文件类型无效。'); return await response.json(); }
-        check(mime === (format === 'csv' ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-          && /^attachment;/i.test(response.headers.get('Content-Disposition') || ''), '历史导出文件格式无效，请重新下载。');
-        check(response.headers.get('X-Workbench-Snapshot-Ref') === q.snapshot_ref, '历史快照已变化，请刷新后重新导出。');
-        const count = response.headers.get('X-Workbench-Row-Count'), blob = await response.blob();
-        check(count !== null && /^[0-9]+$/.test(count) && Number.isSafeInteger(Number(count)) && blob.size > 0, '历史导出文件内容不完整，请重新下载。');
-        return { filename: '排产历史趋势.' + format, blob, row_count: Number(count) };
-      } catch (error) {
-        if (controller.signal.aborted && !(signal && signal.aborted)) throw Object.assign(new Error('历史资料读取超时，请刷新重试。'), { code: 'timeout' });
-        throw error;
-      } finally { clearTimeout(timer); if (signal) signal.removeEventListener('abort', abort); }
-    }
-    return window.APSReadBoundary.verified({ async history(query = {}, signal) {
-      const q = scope(query), result = await request(q, signal); history(result, q); return result;
-    }, async historyExport(query, snapshotRef, format, signal, section = 'entries') {
-      check(['csv', 'xlsx'].includes(format) && ['entries', 'conditions', 'configurations', 'all'].includes(section) && (section !== 'all' || format === 'xlsx'), '请选择有效的历史导出格式和内容。');
-      const q = scope({ ...query, snapshot_ref: snapshotRef }); check(typeof q.snapshot_ref === 'string', '请读取历史资料后再导出。');
-      return request(q, signal, format, section);
-    } }, ['history']);
+  async function read(query = {}, signal) {
+    const q = scope(query), result = await window.APSWorkbenchTransport.read('/api/workbench/v1/scheduling/decision-history', Object.fromEntries(serialized(q)), { signal, timeout: 60000 });
+    history(result, q); return result;
   }
-  function adapter(value) { return window.APSReadBoundary.checked(value, { history }); }
-  window.DecisionHistoryAPI = { check, returnState, historyContext, scope, context, serialized, states, sourceLabel, windowMetric, sameMetricDefinition, create, adapter, history, entry, numberText, metricText };
+  // 附件、文件类型与魔数、文件名及其后缀由 transport.download 核对；这里只核对快照与行数两个业务头。
+  async function historyExport(query, snapshotRef, format, signal, section = 'entries') {
+    check(['csv', 'xlsx'].includes(format) && ['entries', 'conditions', 'configurations', 'all'].includes(section) && (section !== 'all' || format === 'xlsx'), '请选择有效的历史导出格式和内容。');
+    const q = scope({ ...query, snapshot_ref: snapshotRef }); check(typeof q.snapshot_ref === 'string', '请读取历史资料后再导出。');
+    const params = { ...q, format, section };
+    ['page', 'size', 'condition_page', 'condition_size'].forEach(key => delete params[key]);
+    const T = window.APSWorkbenchTransport, file = await T.download('/api/workbench/v1/scheduling/decision-history/export', Object.fromEntries(serialized(params)), { signal, timeout: 60000, types: [T.types[format]] });
+    check(file.header('X-Workbench-Snapshot-Ref') === q.snapshot_ref, '历史快照已变化，请刷新后重新导出。');
+    const rows = file.header('X-Workbench-Row-Count');
+    check(rows !== null && /^[0-9]+$/.test(rows) && Number.isSafeInteger(Number(rows)), '历史导出文件内容不完整，请重新下载。');
+    return { filename: file.filename, blob: file.blob, row_count: Number(rows) };
+  }
+  window.DecisionHistoryAPI = { check, returnState, historyContext, scope, context, serialized, states, sourceLabel, windowMetric, sameMetricDefinition, read, historyExport, history, entry, numberText, metricText };
 })();

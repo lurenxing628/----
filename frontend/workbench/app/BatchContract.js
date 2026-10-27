@@ -61,8 +61,8 @@
         || !issueRows(d.template.diagnostics)) throw C.failure('读到的批次详情不完整或不是这个批次，请刷新后重试。');
     return result;
   }
+  // result 来自 resource-api 的 execute，已由 terminal() 确认是完成回执；这里只核对批次编号与逐项结果。
   function receipt(result, action, expected) {
-    if (C.receipt(result) !== 'terminal') throw C.failure(window.WorkbenchTerms.outcomes.pending('保存'));
     const data = result.data;
     const valid = ['bulk_confirm', 'import_confirm'].includes(action) ? Array.isArray(data.items) && data.items.length === data.count && data.items.every(row => ref(row.entity_ref) && ['committed', 'unchanged', 'skipped'].includes(row.result))
       : ref(data.entity_ref) && (action === 'create' || data.entity_ref === expected);
@@ -70,9 +70,9 @@
     return result;
   }
   function preview(result, action, expectedRef, input) {
-    const data = result && result.data, name = 'batch.' + action + '_confirm';
-    let valid = object(result) && result.ok === true && result.schema_version === 1 && object(result.meta) && result.meta.source === 'production'
-      && object(data) && data.operation === name && text(data.preview_ref) && /^[A-Za-z0-9_-]{32}$/.test(data.preview_ref)
+    // 信封已由 transport.js 的 envelope() 校验，这里只核对预检 data 与所选批次、操作一致。
+    const data = result.data, name = 'batch.' + action + '_confirm';
+    let valid = data.operation === name && text(data.preview_ref) && /^[A-Za-z0-9_-]{32}$/.test(data.preview_ref)
       && context(data.write_context) && data.write_context && data.write_context.capabilities[name] === true && data.commit_policy === 'atomic';
     if (valid && action === 'bulk') {
       const selected = new Set(input.refs);

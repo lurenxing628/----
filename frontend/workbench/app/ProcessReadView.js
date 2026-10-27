@@ -3,7 +3,7 @@
   const C = window.APSResourceContract, P = window.APSProcessContract, filters = window.ResourceTableFilterModel;
   const scopeKeys = ['query', 'page', 'size', 'sort', 'stage', 'column_filters'];
   const ref = value => typeof value === 'string' && /^[0-9a-f]{48}$/.test(value);
-  function restore(view) {
+  function read(view) {
     if (!C.object(view) || Object.keys(view).some(key => !['scope', 'selected_refs', 'entity_ref'].includes(key))) throw C.failure('上次的查看状态无法恢复，已按默认范围显示工艺列表。');
     const scope = view.scope;
     if (!C.object(scope) || Object.keys(scope).some(key => !scopeKeys.includes(key)) || typeof scope.query !== 'string'
@@ -14,10 +14,9 @@
     P.ordering(scope);
     if (!Array.isArray(view.selected_refs) || !view.selected_refs.every(ref) || new Set(view.selected_refs).size !== view.selected_refs.length
         || view.entity_ref !== null && !ref(view.entity_ref)) throw C.failure('上次打开或勾选的零件已失效，已按默认范围显示工艺列表。');
-    const migration = filters.restore(scope.column_filters), restored = JSON.parse(JSON.stringify(view));
-    restored.scope.column_filters = migration.filters;
-    return { view: restored, notice: migration.notice };
+    const restored = JSON.parse(JSON.stringify(view));
+    restored.scope.column_filters = filters.rules(scope.column_filters);
+    return restored;
   }
-  const read = view => restore(view).view;
-  window.APSProcessReadView = { read, restore, scopeKeys };
+  window.APSProcessReadView = { read, scopeKeys };
 })();

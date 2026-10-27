@@ -16,7 +16,14 @@ from core.shared.strict_parse import is_exact_non_negative_number
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_material_query_repo import WorkbenchMaterialQueryRepository
 
-from .table_facts import material_counts, material_ordered_rows, material_table_index, material_toolbar_rows
+from .table_facts import (
+    damaged_material_status,
+    material_counts,
+    material_ordered_rows,
+    material_status,
+    material_table_index,
+    material_toolbar_rows,
+)
 
 
 @dataclass(frozen=True)
@@ -43,11 +50,10 @@ def _project(row):
     issues = [{"code": "stock_level_unknown", "scope": "collection", "message": "还没有设置低库存的判断标准。"}]
     if stock is None:
         issues.append({"code": "stock_unknown", "message": "库存数量还没填写。"})
-    if row["status"] not in ("active", "inactive"):
-        issues.append({"code": "status_unknown", "message": "这个物料的状态不在已知的几种里，系统保留原值。"})
+    status = material_status(row)
     identity = WorkbenchEntityIdentity(row["ref"], "material", row["material_id"], int(row["revision"]), True)
     entity = {"ref": identity.ref, "business_code": row["material_id"], "label": row["name"],
-              "status": row["status"], "fields": {key: row[key] for key in ("spec", "unit", "stock_qty", "remark")},
+              "status": status, "fields": {key: row[key] for key in ("spec", "unit", "stock_qty", "remark")},
               "relationships": {"batch_requirement_count": int(row["requirement_count"])}, "issues": issues}
     return MaterialReadRecord(identity, entity, {"identity": asdict(identity), "material": row})
 
@@ -115,7 +121,11 @@ class WorkbenchMaterialQueryService:
             raise WorkbenchCommandRejected("invalid_input", "列筛选统计请使用物料查询服务的统一入口。", 400)
         if self._snapshot is not None and self._snapshot["fingerprint"] is not None:
             return material_counts(self._toolbar_rows(query))
-        return self.repo.metrics(query.query, query.status)
+        counts = self.repo.metrics(query.query, query.status)
+        damaged = counts.pop("damaged_code")
+        if damaged is not None:
+            raise damaged_material_status(damaged)
+        return counts
 
     def resolve(self, ref):
         _validate_ref(ref)

@@ -14,7 +14,7 @@ from core.services.workbench.facts.execution_projection import (
 from data.repositories.workbench_field_query_repo import WorkbenchFieldQueryRepository
 
 from .field_report_files_codec import encode_reports
-from .field_report_files_identity import identity_values, matched_task, task_indexes
+from .field_report_files_identity import identity_values, matched_task, task_index
 
 
 def _report_values(report):
@@ -61,7 +61,7 @@ class FieldReportFileService:
         return next(iter(options))
 
     def _items(self, tasks, rows, *, source_ref):
-        by_scope, by_ref = task_indexes(tasks)
+        by_ref = task_index(tasks)
         resources, items, positions, indexes = self._resource_index(), [], [], {}
         for row in rows:
             value = row['values']
@@ -72,7 +72,7 @@ class FieldReportFileService:
                 row['result'] = 'blank'
                 continue
             try:
-                task = matched_task(row, by_scope, by_ref)
+                task = matched_task(row, by_ref)
                 task_ref = task['task_ref']
                 if task_ref not in indexes:
                     indexes[task_ref] = report_index(task['execution']['reports'])

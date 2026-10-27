@@ -6,13 +6,8 @@ from contextlib import contextmanager
 import pytest
 from flask import Blueprint, Flask, g
 
-from core.infrastructure.migration_state import set_schema_version
-from core.infrastructure.workbench_execution_ledger_schema import (
-    execution_ledger_contract_issues,
-    execution_ledger_objects,
-)
+from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_contract_issues
 from tests.workbench.identity_metadata_support import insert_row, seed_resources
-from tests.workbench.plan_identity_support import load_v24_schema
 from web.routes.workbench.preflight import register_preflight_routes
 
 BASE = "/api/workbench/v1/scheduling/preflight"
@@ -61,19 +56,6 @@ def pf(schema_conn):
     return client
 
 
-@pytest.fixture(name="pf_legacy_schema")
-def pf_legacy_schema(mem_conn):
-    conn = load_v24_schema(mem_conn)
-    set_schema_version(conn, 24)
-    conn.commit()
-    seed(conn)
-    assert not set(execution_ledger_objects()) & {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
-    assert execution_ledger_contract_issues(conn)
-    client = create_app(conn).test_client()
-    client.conn = conn
-    return client
-
-
 def ref_for(conn, code="PF-0000"):
     return conn.execute("SELECT ref FROM WorkbenchEntityRefs WHERE kind='batch' AND entity_key=? AND active=1", (code,)).fetchone()[0]
 
@@ -116,25 +98,6 @@ def add_op(conn, seq=2, **patch):
     insert_row(conn, "BatchOperations", dict(op_code=f"PF-0000-{seq}", batch_id="PF-0000", seq=seq,
                op_type_id="OT1", op_type_name="后序", source="internal", setup_hours=0, unit_hours=0.5,
                machine_id="M1", operator_id="O1", **patch))
-    conn.commit()
-
-
-def legacy_events(conn, finish=True, *, history=True):
-    op_id = conn.execute("SELECT id FROM BatchOperations WHERE op_code='PF-0000-1'").fetchone()[0]
-    if history:
-        insert_row(conn, "ScheduleHistory", dict(version=7, strategy="preflight-test", result_status="success",
-                   result_summary="{}", schedule_time="2026-09-08 20:00:00"))
-    insert_row(conn, "Schedule", dict(id=42, op_id=op_id, version=7, machine_id="M1", operator_id="O1",
-               start_time="2026-09-08 22:30:00", end_time="2026-09-09 06:30:00"))
-    previous = f"{op_id}:0:0"
-    for index, (event, status, time) in enumerate(([("start", "processing", "2026-09-08 22:30:00")]
-             + ([("finish", "completed", "2026-09-09 06:30:00")] if finish else [])), 1):
-        insert_row(conn, "OperationExecutionEvents", dict(id=index, schedule_id=42, schedule_version=7,
-                   op_id=op_id, batch_id="PF-0000", source_table="schedule", effective_plan_role="adopted",
-                   event_type=event, reported_status=status, event_time=time, actual_machine_id="M1", actual_operator_id="O1",
-                   quantity_done=None, created_by="test", idempotency_key=f"pf-legacy-{index}",
-                   request_fingerprint="test", previous_state_revision=previous))
-        previous = f"{op_id}:{index}:{index}"
     conn.commit()
 
 

@@ -6,43 +6,18 @@
   const shape = (value, required, optional = []) => C.object(value) && required.every(key => Object.prototype.hasOwnProperty.call(value, key))
     && Object.keys(value).every(key => required.includes(key) || optional.includes(key));
   const issue = value => C.object(value) && C.text(value.code) && C.text(value.message);
-  function envelope(value) {
-    C.check(shape(value, ['ok', 'schema_version', 'data', 'meta', 'warnings']) && value.ok === true && value.schema_version === 1
-      && C.object(value.data) && shape(value.meta, ['request_ref', 'source', 'time_basis', 'snapshot_ref', 'as_of'])
-      && /^[a-f0-9]{32}$/.test(value.meta.request_ref) && value.meta.source === 'production' && value.meta.time_basis === 'factory_local'
-      && typeof value.meta.snapshot_ref === 'string' && /^[A-Za-z0-9_-]{32}$/.test(value.meta.snapshot_ref) && time(value.meta.as_of)
-      && Array.isArray(value.warnings) && value.warnings.every(issue));
-    return value.data;
-  }
-  async function request(url, fetcher, signal) {
-    const controller = new AbortController(), abort = () => controller.abort();
-    if (signal) { signal.addEventListener('abort', abort, { once: true }); if (signal.aborted) abort(); }
-    let timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; abort(); }, C.READ_TIMEOUT_MS);
-    try {
-      const response = await fetcher(url, { method: 'GET', credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: controller.signal });
-      C.check((response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() === 'application/json', '读到的数据不完整，请刷新后重试。');
-      const payload = await response.json();
-      if (!response.ok || payload.ok !== true) throw new Error(payload && payload.error && C.text(payload.error.message) ? payload.error.message : '影响分析读取失败，请刷新后重试。');
-      C.check(response.status === 200); return payload;
-    } catch (error) {
-      if (timedOut) throw new Error('值班台读取超时（超过 60 秒），请重试或缩小筛选范围。');
-      throw error;
-    } finally { clearTimeout(timer); if (signal) signal.removeEventListener('abort', abort); }
-  }
   function pressure(value) {
     const R = window.ResourceProjectionContract;
     C.check(C.object(value) && ['available', 'partial', 'unavailable'].includes(value.state) && Array.isArray(value.days)
       && nullable(number)(value.peak_utilization) && count(value.zero_capacity_days) && count(value.unknown_days)
       && R.window(value.window_metrics));
-    value.days.forEach(day => C.check(C.object(day) && time(day.start) && time(day.end) && day.start <= day.end
-      && day.date === day.start.slice(0, 10) && R.window(day.window_metrics)
-      && ['available_hours', 'occupied_hours', 'inside_available_hours', 'outside_available_hours', 'overlap_hours', 'utilization']
-        .every(key => nullable(number)(day[key]))));
+    // 每个逐日行就是共同口径的窗口行本身（后端不再套 window_metrics、不再给旧别名）。
+    value.days.forEach(day => C.check(R.window(day) && time(day.start) && time(day.end) && day.start <= day.end
+      && day.date === day.start.slice(0, 10)));
   }
   const sections = ['overview', 'delivery', 'actual', 'downtime', 'material', 'pressure', 'resource_days', 'timeline'];
   const totals = ['tasks', 'resources', 'downtimes', 'overlaps', 'deliveries', 'execution', 'pending', 'resource_days'];
-  function scope(value = {}) {
+  function scope(value) {
     const q = { section: 'delivery', page: 1, size: 20, ...value };
     C.check(C.object(value) && Object.keys(q).every(key => ['section', 'page', 'size', 'snapshot_ref', 'resource_ref', 'locate_batch_ref'].includes(key))
       && sections.includes(q.section) && count(q.page) && q.page >= 1 && q.page <= 100000 && count(q.size) && q.size >= 1 && q.size <= 100
@@ -56,19 +31,17 @@
       && count(value.number) && value.number > 0 && count(value.size) && value.size >= 1 && value.size <= 100
       && count(value.total) && value.pages === Math.max(1, Math.ceil(value.total / value.size))
       && shape(value.totals, totals) && totals.every(key => count(value.totals[key])), '影响分析的分页资料不完整，请刷新分析。');
-    if (q) {
-      C.check(value.section === q.section && value.size === q.size && (q.locate_batch_ref ? value.number <= value.pages : value.number === q.page), '影响分析返回的页码或范围和当前选择不一致，请刷新分析。');
-      C.check(!q.snapshot_ref || payload.meta.snapshot_ref === q.snapshot_ref, '分析资料已更新，请刷新分析后继续翻页。');
-    }
+    C.check(value.section === q.section && value.size === q.size && (q.locate_batch_ref ? value.number <= value.pages : value.number === q.page), '影响分析返回的页码或范围和当前选择不一致，请刷新分析。');
+    C.check(!q.snapshot_ref || payload.meta.snapshot_ref === q.snapshot_ref, '分析资料已更新，请刷新分析后继续翻页。');
     const key = { delivery: 'deliveries', actual: 'execution', material: 'pending', pressure: 'resources', timeline: 'tasks', resource_days: 'resource_days' }[value.section];
     C.check(value.total === (key ? value.totals[key] : value.section === 'downtime' ? Math.max(value.totals.downtimes, value.totals.overlaps) : 0));
     return value;
   }
   function validate(payload, planRef, query) {
-    return _validate(payload, planRef, query ? scope(query) : null);
+    return _validate(payload, planRef, scope(query));
   }
   function _validate(payload, planRef, q) {
-    const d = envelope(payload);
+    const d = payload.data;
     C.check(shape(d, ['plan', 'state', 'time_scope', 'tasks', 'resources', 'downtimes', 'overlaps', 'deliveries', 'execution', 'pending', 'pressure', 'issues', 'as_of', 'capabilities', 'basis', 'resource_common', 'pagination'])
       && d.basis === 'current_official_plan_and_readiness_sources' && C.equal(d.capabilities, { view: true, adopt: false })
       && time(d.as_of) && ['tasks', 'resources', 'downtimes', 'overlaps', 'deliveries', 'execution', 'issues'].every(k => Array.isArray(d[k])) && d.issues.every(issue));
@@ -84,7 +57,7 @@
       && Math.abs(task.span_hours - (Date.parse(task.end + 'Z') - Date.parse(task.start + 'Z')) / 3600000) < 0.000001
       && (task.start !== task.end || task.event_kind === 'point' && task.duration_seconds === 0 && task.occupies_resources === false)));
     C.check(new Set(d.tasks.map(task => task.task_ref)).size === d.tasks.length);
-    if (q && q.locate_batch_ref) C.check(d.tasks.some(task => task.batch_ref === q.locate_batch_ref
+    if (q.locate_batch_ref) C.check(d.tasks.some(task => task.batch_ref === q.locate_batch_ref
       && task.source === 'internal' && task.machine_ref), '影响分析返回的工序和所选批次不一致，请刷新分析。');
     const tasks = new Map(d.tasks.map(task => [task.task_ref, task]));
     d.resources.forEach(resource => { pressure(resource); C.check(C.ref(resource.resource_ref) && ['machine', 'operator'].includes(resource.kind)
@@ -113,18 +86,16 @@
     if (primary) C.check(d[primary].length === pageLength(page.total));
     if (section === 'downtime') ['downtimes', 'overlaps'].forEach(key => C.check(d[key].length === pageLength(page.totals[key])));
     if (section === 'resource_days' && d.plan) C.check(d.resources.length === 1 && d.resources[0].days.length === pageLength(page.total)
-      && (!q || d.resources[0].resource_ref === q.resource_ref));
+      && d.resources[0].resource_ref === q.resource_ref);
     if (section === 'pressure') C.check(d.resources.every(resource => resource.days.length === 0));
     C.check(d.plan === null ? d.resource_common === null : window.ResourceProjectionContract.common(d.resource_common, 'current_transaction_snapshot'));
     return d;
   }
-  function create(fetcher = window.fetch.bind(window)) {
-    return { async read(planRef, signal, query = {}) {
-      C.check(planRef === null || planRef === undefined || C.ref(planRef));
-      const q = scope(query), args = { ...q, ...(planRef ? { plan_ref: planRef } : {}) };
-      const value = await request('/api/workbench/v1/dashboard/analysis?' + new URLSearchParams(args), fetcher, signal);
-      _validate(value, planRef, q); return value;
-    } };
+  async function read(planRef, signal, query) {
+    C.check(planRef === null || planRef === undefined || C.ref(planRef));
+    const q = scope(query), args = { ...q, ...(planRef ? { plan_ref: planRef } : {}) };
+    const value = await C.read('/api/workbench/v1/dashboard/analysis', args, signal);
+    _validate(value, planRef, q); return value;
   }
-  window.DashboardAnalysisAPI = { create, validate, scope, envelope, request, pressure, shape, number, count, nullable };
+  window.DashboardAnalysisAPI = { read, validate, scope, pressure, shape, number, count, nullable };
 })();

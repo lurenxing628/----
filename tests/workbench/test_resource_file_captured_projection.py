@@ -28,7 +28,7 @@ def file_resource_conn(resource_conn):
     resource_conn.execute("UPDATE Operators SET status='inactive' WHERE operator_id='O1'")
     resource_conn.execute("INSERT INTO WorkbenchOperatorProfiles(operator_id,shift_profile_id,skills_declared,inactive_reason) "
                           "VALUES ('O1','SHIFT1',1,'leave')")
-    resource_conn.execute("INSERT INTO WorkbenchSupplierProfiles(supplier_id,inactive_reason) VALUES ('S1','pending_review')")
+    resource_conn.execute("UPDATE WorkbenchSupplierProfiles SET inactive_reason='pending_review' WHERE supplier_id='S1'")
     resource_conn.execute("INSERT INTO WorkbenchSupplierOpTypes(supplier_id,op_type_id) VALUES ('S1','EXT')")
     resource_conn.execute("INSERT INTO WorkbenchOpTypePolicies(op_type_id,default_merge_mode) VALUES ('EXT','merged')")
     resource_conn.commit()
@@ -37,12 +37,10 @@ def file_resource_conn(resource_conn):
 
 @pytest.mark.parametrize("kind,code,expected", (
     ("op_type", "EXT", {"category": "external", "default_merge_mode": "merged"}),
-    ("machine", "M1", {"status": "maintain", "legacy_status": "maintain", "team_code": "T1",
-                       "op_type_code": "OT1", "op_type_codes": ["OT1", "OT2"], "group_code": "G1"}),
-    ("operator", "O1", {"status": "leave", "legacy_status": "inactive", "team_code": "T1", "skills_declared": True,
+    ("machine", "M1", {"status": "maintain", "team_code": "T1", "op_type_codes": ["OT1", "OT2"], "group_code": "G1"}),
+    ("operator", "O1", {"status": "leave", "team_code": "T1", "skills_declared": True,
                         "skill_codes": ["OT1"], "shift_profile_code": "SHIFT1", "inactive_reason": "leave"}),
-    ("supplier", "S1", {"status": "pending_review", "legacy_status": "inactive", "default_days": 3.25,
-                        "op_type_codes": ["EXT", "OT1"], "explicit_op_type_codes": ["EXT"], "legacy_op_type_code": "OT1"}),
+    ("supplier", "S1", {"status": "pending_review", "default_days": 3.25, "op_type_codes": ["EXT"]}),
 ))
 def test_captured_file_projection_preserves_columns_without_dependency_reads(file_resource_conn, kind, code, expected):
     conn = file_resource_conn
@@ -56,6 +54,8 @@ def test_captured_file_projection_preserves_columns_without_dependency_reads(fil
     finally:
         conn.set_trace_callback(None)
     assert {field: row[field] for field in expected} == expected
+    # 旧单工种列与旧状态别名已删除；供应商能力只来自 WorkbenchSupplierOpTypes（种子里的 Suppliers.op_type_id 不参与）。
+    assert not {"legacy_status", "op_type_code", "explicit_op_type_codes", "legacy_op_type_code"} & set(row)
     if kind in ("machine", "operator", "supplier"):
         assert row["created_at"] == "2020-02-03 12:05:06"
     if kind in ("machine", "operator"):

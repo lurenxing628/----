@@ -9,8 +9,6 @@ from core.models.workbench_run_history import STATES, TERMINAL_STATES, inconsist
 from core.shared.strict_json import load_strict_json
 
 COMPUTATION_FAILED = "本次候选计算失败。请联系维护人员，再重新做排产检查。"
-# 旧版本把真实原因只记在诊断里，给用户的都是这一句。
-_LEGACY_FAILURE = "候选排产没有完成。请到「排产记录」查看原因，改好后重新做排产检查。"
 # 原话指着检查页列出的缺项，排产记录里没有这份清单，改成能照做的说法。
 _FAILURE_GUIDES = {
     "input_blocked": "排产资料还有缺项，这次排产没有开始。请重新做排产检查，按检查结果补齐后再排产。",
@@ -107,15 +105,7 @@ def _stored_error(row, result):
 def failure_reason(row, result):
     """失败或中断的排产给出原因；读不出原因时不编造，留空。"""
     error = _stored_error(row, result)
-    if error is None:
-        return None
-    message = error["message"]
-    if message == _LEGACY_FAILURE:
-        # 旧记录：只取当时本来就写给用户看的业务原因，其他异常原文不外露。
-        diagnostic = result.get("diagnostic") if type(result.get("diagnostic")) is dict else {}
-        written = diagnostic.get("exception_type") in ("CandidateRunInputError", "WorkbenchCommandRejected")
-        message = failure_message(error["code"], diagnostic.get("message") if written else None)
-    return {"code": error["code"], "message": message}
+    return None if error is None else {"code": error["code"], "message": error["message"]}
 
 
 def _gap(field, value):
@@ -126,7 +116,7 @@ def _gap(field, value):
 def _scope_value_valid(key, value):
     if key == "hold_window":
         return stored_hold_window_valid(value)
-    domains = {"missing_resource_policy": ("auto_assign", "exclude"), "completed_policy": ("preserve_actuals",), "material_strategy": ("strict", "stage", "split")}
+    domains = {"missing_resource_policy": ("auto_assign", "exclude"), "completed_policy": ("preserve_actuals",), "material_strategy": ("strict", "stage")}
     if key in domains:
         return type(value) is str and value in domains[key]
     if key == "ready_check":

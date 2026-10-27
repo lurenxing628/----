@@ -74,7 +74,7 @@
     const excluded = new Set(excludePaths.map(fieldPath));
     const all = uniqueFieldErrors(error), fields = all.filter(row => !excluded.has(fieldPath(row.path)));
     const message = C.message(error), hideMessage = all.some(row => excluded.has(fieldPath(row.path)) && row.message === message);
-    return <window.WorkbenchError error={error.error ? { ...error, ...error.error } : error} fields={fields} hideMessage={hideMessage} />;
+    return <window.WorkbenchError error={error} fields={fields} hideMessage={hideMessage} />;
   }
   function Field({ label, path, error, errors, required, full, hint, children }) {
     const generated = React.useId(), child = React.Children.only(children), id = child.props.id || generated;
@@ -114,8 +114,8 @@
       {rows.map(row => <div key={row.text}>{row.text}{row.count > 1 && <span className="wb-issue-count">（{row.count} 条）</span>}</div>)}</div> : null;
   }
   function Status({ kind, entity }) {
-    const value = entity.status, tone = value === 'active' ? 'ok' : value === 'inactive' && entity.fields.inactive_reason !== 'unknown' ? 'off' : 'warn';
-    return <span className={'pill wb-status ' + tone}><span className="dot" />{C.statusLabel(kind, value, entity.fields)}</span>;
+    const value = entity.status, tone = value === 'active' ? 'ok' : value === 'inactive' ? 'off' : 'warn';
+    return <span className={'pill wb-status ' + tone}><span className="dot" />{C.statusLabel(kind, value)}</span>;
   }
   const ModalFocusParent = React.createContext(null), modalStack = [];
   const modalSelector = 'button,input,select,textarea,a[href],[tabindex]';

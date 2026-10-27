@@ -5,11 +5,11 @@
   const toRows = entity => entity.materials.requirements.map(row => ({ ...row,
     required_quantity: row.required_quantity == null ? '' : String(row.required_quantity),
     available_quantity: row.available_quantity == null ? '' : String(row.available_quantity) }));
-  function BatchMaterialEditor({ adapter, entity: initial, command, onCommitted, onClose, disabled }) {
+  function BatchMaterialEditor({ adapter, entity: initial, command, onCommitted, onClose }) {
     const [entity, setEntity] = React.useState(initial), [rows, setRows] = React.useState(() => toRows(initial));
     const [removed, setRemoved] = React.useState([]), [error, setError] = React.useState(null), [review, setReview] = React.useState(null);
     const [scope, setScope] = React.useState({ query: '', page: 1 }), [selected, setSelected] = React.useState('');
-    const form = React.useId(), done = command.phase === 'done', locked = disabled || command.locked || done;
+    const form = React.useId(), done = command.phase === 'done', locked = command.locked || done;
     const baseRows = React.useMemo(() => JSON.stringify(toRows(entity)), [entity]);
     const seen = React.useRef(null), changed = JSON.stringify(rows) !== baseRows || removed.length > 0;
     const owner = window.WorkbenchGuards.useDirtyGuard({ dirty: !done && changed, locked: command.locked, message: '物料需求有尚未保存的修改。' });

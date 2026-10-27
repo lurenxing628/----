@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from typing import Any, Dict, NoReturn, Optional
 
@@ -16,7 +15,6 @@ class ResultSummaryParseResult:
     payload: Optional[Dict[str, Any]]
     parse_failed: bool
     reason: str
-    raw_type: str
 
 
 def _unreadable_summary() -> NoReturn:
@@ -27,51 +25,13 @@ def _non_finite_summary() -> NoReturn:
     raise NonFiniteSummaryNumber("排产摘要包含非有限数字。")
 
 
-def _has_non_finite_number(value: Any) -> bool:
-    # 只给已解码的 dict 用：unpacked 会把无损保存的 {"$sqlite_real": "inf"} 还原成真正的非有限数。
-    if isinstance(value, float):
-        return not math.isfinite(value)
-    if isinstance(value, dict):
-        return any(_has_non_finite_number(child) for child in value.values())
-    if isinstance(value, (list, tuple)):
-        return any(_has_non_finite_number(child) for child in value)
-    return False
-
-
-def _non_finite_result(raw_type: str) -> ResultSummaryParseResult:
-    return ResultSummaryParseResult(
-        payload=None,
-        parse_failed=True,
-        reason="non_finite_number",
-        raw_type=raw_type,
-    )
-
-
 def parse_result_summary_payload(raw_summary: Any) -> ResultSummaryParseResult:
+    """Parse one stored ``result_summary`` column value (TEXT, or NULL when absent)."""
     if raw_summary is None or raw_summary == "":
         return ResultSummaryParseResult(
             payload=None,
             parse_failed=False,
             reason="missing",
-            raw_type=type(raw_summary).__name__,
-        )
-
-    if isinstance(raw_summary, dict):
-        if _has_non_finite_number(raw_summary):
-            return _non_finite_result("dict")
-        return ResultSummaryParseResult(
-            payload=raw_summary,
-            parse_failed=False,
-            reason="dict",
-            raw_type="dict",
-        )
-
-    if isinstance(raw_summary, list):
-        return ResultSummaryParseResult(
-            payload=None,
-            parse_failed=True,
-            reason="invalid_structure",
-            raw_type="list",
         )
 
     if not isinstance(raw_summary, str):
@@ -79,20 +39,22 @@ def parse_result_summary_payload(raw_summary: Any) -> ResultSummaryParseResult:
             payload=None,
             parse_failed=True,
             reason="invalid_structure",
-            raw_type=type(raw_summary).__name__,
         )
 
     try:
         # 重复键按解析失败计；非有限数字（含溢出成无穷的数字）单独记原因。
         parsed = load_strict_json(raw_summary, on_malformed=_unreadable_summary, on_nonfinite=_non_finite_summary)
     except NonFiniteSummaryNumber:
-        return _non_finite_result("str")
+        return ResultSummaryParseResult(
+            payload=None,
+            parse_failed=True,
+            reason="non_finite_number",
+        )
     except ValueError:
         return ResultSummaryParseResult(
             payload=None,
             parse_failed=True,
             reason="json_decode_error",
-            raw_type="str",
         )
 
     if type(parsed) is not dict:
@@ -100,14 +62,12 @@ def parse_result_summary_payload(raw_summary: Any) -> ResultSummaryParseResult:
             payload=None,
             parse_failed=True,
             reason="invalid_structure",
-            raw_type=type(parsed).__name__,
         )
 
     return ResultSummaryParseResult(
         payload=parsed,
         parse_failed=False,
         reason="json",
-        raw_type="str",
     )
 
 

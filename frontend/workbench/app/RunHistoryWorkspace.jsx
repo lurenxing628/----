@@ -1,13 +1,9 @@
 (function () {
   'use strict';
   const A = window.RunHistoryAPI, C = window.RunHistoryControls;
-  const adapterIds = new WeakMap(); let nextAdapter = 0;
   let focusTopic = null;
-  function useRead(adapter, query, revision) {
-    const api = React.useMemo(() => A.adapter(adapter), [adapter]);
-    const read = window.APSResourceSession.useQuery(async signal => {
-      return api.catalog(query, signal);
-    }, [adapter, query, revision]);
+  function useRead(query, revision) {
+    const read = window.APSResourceSession.useQuery(signal => A.catalog(query, signal), [query, revision]);
     return { ...read, busy: read.loading };
   }
   function TopicTabs({ value, onChange }) {
@@ -19,9 +15,9 @@
       if (next !== null) { event.preventDefault(); change(choices[next][0]); }
     }}>{choices.map(([key, label]) => <C.Button key={key} role="tab" id={'dh-topic-' + key} aria-selected={value === key} aria-controls="dh-history-content" tabIndex={value === key ? 0 : -1} onClick={() => change(key)}>{label}</C.Button>)}</div>;
   }
-  function Session({ adapter, start, onNavigate, navigation, pageContext }) {
+  function Session({ start, onNavigate, navigation, pageContext }) {
     const [query, setQuery] = React.useState(start.query), [revision, refresh] = React.useReducer(v => v + 1, 0);
-    const read = useRead(adapter, query, revision), result = read.result, data = result && result.data;
+    const read = useRead(query, revision), result = read.result, data = result && result.data;
     const remembered = { ...pageContext, source: 'run_history', history_topic: 'run_catalog', history_query: { ...A.returnContext(query, start.returnPlan), ...(result ? { snapshot_ref: result.meta.snapshot_ref } : {}) } };
     window.WorkbenchPageContext.useSnapshot(remembered);
     function reload() { setQuery(q => { const next = { ...q, page: 1 }; delete next.snapshot_ref; return next; }); refresh(); }
@@ -56,15 +52,13 @@
         <C.Pager page={data.page} busy={read.busy} onChange={change} /></>}</div>
     </div>;
   }
-  function RunHistoryWorkspace({ initialContext = {}, pageContext = {}, onNavigate, adapter, navigation }) {
-    const fallback = React.useMemo(() => A.create(), []), active = adapter || fallback;
+  function RunHistoryWorkspace({ initialContext, pageContext, onNavigate, navigation }) {
     if (pageContext.history_topic === 'decision_history') return <window.DecisionHistoryWorkspace initialContext={pageContext.decision_history_context || {}} pageContext={pageContext}
       onNavigate={onNavigate} navigation={navigation} renderTopics={context => <TopicTabs value="decision_history" onChange={topic => onNavigate('analysis', { ...context, history_topic: topic })} />} />;
     let start;
     try { start = A.context(initialContext); }
     catch (error) { return <div className="plana run-history-workspace" data-run-history-workspace><h2 className="wb-page-title">排产记录</h2><C.ErrorBox error={error} /></div>; }
-    if (!adapterIds.has(active)) adapterIds.set(active, ++nextAdapter);
-    return <Session key={adapterIds.get(active) + ':' + JSON.stringify(start)} adapter={active} start={start} pageContext={pageContext} onNavigate={onNavigate} navigation={navigation} />;
+    return <Session key={JSON.stringify(start)} start={start} pageContext={pageContext} onNavigate={onNavigate} navigation={navigation} />;
   }
   window.RunHistoryWorkspace = RunHistoryWorkspace;
 })();

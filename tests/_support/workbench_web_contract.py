@@ -1,9 +1,25 @@
-"""Real boot/retirement assertions shared by migrated web entry tests."""
+"""Real boot assertions shared by migrated web entry tests."""
 
 import json
-from urllib.parse import parse_qs, urlsplit
+from html.parser import HTMLParser
 
-from tests._support.gantt_retirement import _Boot
+
+class _Boot(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.active, self.parts = False, []
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "script" and dict(attrs).get("id") == "workbench-boot":
+            self.active = True
+
+    def handle_data(self, value):
+        if self.active:
+            self.parts.append(value)
+
+    def handle_endtag(self, tag):
+        if tag == "script":
+            self.active = False
 
 
 def boot_payload(response):
@@ -19,33 +35,3 @@ def boot_payload(response):
     payload = json.loads("".join(parser.parts))
     assert payload["schema_version"] == 1
     return payload
-
-
-def canonical_boot(client, path, view, context):
-    """Check the complete redirect and refresh without changing explicit scope."""
-    response = client.get(path)
-    assert response.status_code == 302, response.get_data(as_text=True)
-    assert response.headers["Cache-Control"] == "no-store"
-    target = urlsplit(response.headers["Location"])
-    assert not target.scheme and not target.netloc and not target.fragment
-    assert target.path == ("/workbench/trial" if view == "trial" else "/workbench")
-    query = parse_qs(target.query, strict_parsing=True)
-    expected = {"version": 1, "view": view, "context": context}
-    assert set(query) == {"view", "nav"} and query["view"] == [view]
-    assert len(query["nav"]) == 1 and json.loads(query["nav"][0]) == expected
-    boot = boot_payload(client.get(response.headers["Location"]))
-    assert boot["view"] == view and boot["navigation"] == expected
-    assert boot_payload(client.get(response.headers["Location"]))["navigation"] == expected
-    return boot
-
-
-def retired_response(response):
-    """Assert explicit no-context retirement of a legacy page."""
-    body = response.get_data(as_text=True)
-    assert response.status_code == 410, body
-    assert response.headers["Cache-Control"] == "no-store"
-    assert "Location" not in response.headers
-    assert 'data-workbench-legacy-response="true"' in body
-    assert "旧入口已退役" in body and "原业务数据、保存的配置和历史记录仍保留" in body
-    assert "这个旧页面已退役，页面没有打开。原来的数据都还在" in body
-    return body

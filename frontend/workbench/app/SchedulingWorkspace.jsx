@@ -19,7 +19,7 @@
       ...(historyOrigin ? { return_decision_history_context: historyOrigin } : {}),
     })}>{label}</U.Button>;
   }
-  function ReadRun({ runRef, api, onNavigate, initialContext, runHistoryReturn }) {
+  function ReadRun({ runRef, onNavigate, initialContext, runHistoryReturn }) {
     const validRef = A.ref(runRef);
     const [record, setRecord] = React.useState(null), [error, setError] = React.useState('');
     const [checking, setChecking] = React.useState(false), [verified, setVerified] = React.useState(false), [retryPaused, setRetryPaused] = React.useState(false);
@@ -38,7 +38,7 @@
         if (disposed || querying || document.hidden || done) return;
         querying = true; const localController = new AbortController(); controller = localController; setChecking(true); setVerified(false); const started = Date.now();
         try {
-          const value = A.run(A.envelope(await api.get(runRef, localController.signal)), runRef);
+          const value = await A.get(runRef, localController.signal);
           if (disposed || localController.signal.aborted) return;
           if (!value.recovery_required) attempt = 0;
           setRecord(value); setVerified(true); setError(''); unsettledSince = null; done = A.terminal(value);
@@ -62,13 +62,13 @@
       }
       document.addEventListener('visibilitychange', visibility); visibility();
       return () => { disposed = true; clearTimeout(timer); if (controller) controller.abort(); document.removeEventListener('visibilitychange', visibility); };
-    }, [runRef, api, revision]);
+    }, [runRef, revision]);
     const historyReturn = <HistoryReturn context={initialContext} onNavigate={onNavigate} />;
     const newRun = <U.Button icon="plus" onClick={() => onNavigate('run', {})}>新排产</U.Button>;
     const navigation = <Navigation>{historyReturn}<U.Button icon="history" onClick={() => onNavigate(runHistoryReturn.view, runHistoryReturn.context)}>排产记录</U.Button>{newRun}</Navigation>;
     if (record && verified && record.result_persisted && record.candidates.some(row => row.status === 'completed')) return <window.RunCandidateWorkspace view="analysis"
       initialContext={{ ...initialContext, run_ref: runRef }} onNavigate={onNavigate} runHistoryReturn={runHistoryReturn} navigation={<Navigation>{historyReturn}{newRun}</Navigation>} headerTitle="本次排产结果" runStatus={record.state} runTiming={record}
-      renderAdoption={(candidateRef, metadata = {}) => <window.RunAdoptionAction candidateRef={candidateRef} {...metadata} onNavigate={onNavigate} />}
+      renderAdoption={(candidateRef, metadata) => <window.RunAdoptionAction candidateRef={candidateRef} {...metadata} onNavigate={onNavigate} />}
       renderTrial={value => trialAction(onNavigate, value)} />;
     return <section className="plana run-job-panel rj-status-workspace" aria-label="本次排产">
       {!validRef ? <><div className="rj-heading rj-business-heading"><h2>本次排产</h2>{navigation}</div><p role="alert">这条排产记录已失效，请点「排产记录」重新选择。</p></> : <>
@@ -86,12 +86,12 @@
     return window.DecisionHistoryAPI.returnState(context) ? <U.Button icon="chevron-left" onClick={() => onNavigate('analysis', window.DecisionHistoryAPI.historyContext(context))}>返回历史走势</U.Button> : null;
   }
   function RunWorkspace({ onNavigate, initialContext }) {
-    const api = React.useMemo(() => A.create(), []), specified = Object.prototype.hasOwnProperty.call(initialContext, 'run_ref');
+    const specified = Object.prototype.hasOwnProperty.call(initialContext, 'run_ref');
     const runHistoryReturn = runHistoryDestination(initialContext);
     const history = <><HistoryReturn context={initialContext} onNavigate={onNavigate} /><U.Button icon="history" onClick={() => onNavigate(runHistoryReturn.view, runHistoryReturn.context)}>排产记录</U.Button></>;
-    return specified ? <ReadRun key={initialContext.run_ref} runRef={initialContext.run_ref} api={api} initialContext={initialContext} onNavigate={onNavigate} runHistoryReturn={runHistoryReturn} /> :
+    return specified ? <ReadRun key={initialContext.run_ref} runRef={initialContext.run_ref} initialContext={initialContext} onNavigate={onNavigate} runHistoryReturn={runHistoryReturn} /> :
       <window.PreflightWorkspace initialContext={initialContext} onNavigate={onNavigate} actions={history}
-        renderRunPanel={(data, continuation) => <window.RunJobPanel preflight={data} adapter={api} onNavigate={onNavigate} onRecheck={continuation.onRecheck} preflightOwner={continuation.confirmationOwner} />} />;
+        renderRunPanel={(data, continuation) => <window.RunJobPanel preflight={data} onNavigate={onNavigate} onRecheck={continuation.onRecheck} preflightOwner={continuation.confirmationOwner} />} />;
   }
   function PlanCenterWorkspace({ view, onNavigate, initialContext }) {
     const context = initialContext, candidate = Object.prototype.hasOwnProperty.call(context, 'run_ref') || Object.prototype.hasOwnProperty.call(context, 'candidate_ref');
@@ -104,7 +104,7 @@
       {!candidate && <U.Button icon="history" aria-pressed={history} onClick={() => onNavigate(runHistoryReturn.view, runHistoryReturn.context)}>排产记录</U.Button>}
     </Navigation>;
     return candidate ? <window.RunCandidateWorkspace view={view} initialContext={initialContext} onNavigate={onNavigate} runHistoryReturn={runHistoryReturn} navigation={navigation}
-      renderAdoption={(candidateRef, metadata = {}) => <window.RunAdoptionAction candidateRef={candidateRef} {...metadata} onNavigate={onNavigate} />} renderTrial={renderTrial} /> : history ?
+      renderAdoption={(candidateRef, metadata) => <window.RunAdoptionAction candidateRef={candidateRef} {...metadata} onNavigate={onNavigate} />} renderTrial={renderTrial} /> : history ?
       <window.RunHistoryWorkspace initialContext={context.history_query} pageContext={context} onNavigate={onNavigate} navigation={navigation} /> :
       <window.PlanWorkspace view={view} initialContext={initialContext} onNavigate={onNavigate} renderTrial={renderTrial} navigation={navigation} />;
   }

@@ -29,18 +29,15 @@ def machine_type_index(machines, capabilities):
 
 
 def supplier_capability_rows(suppliers, bindings, status=None):
-    """Effective supplier bindings from the current operation's original rows."""
+    """Supplier work-type bindings (WorkbenchSupplierOpTypes) joined with the current supplier rows."""
     by_id = {row["supplier_id"]: row for row in suppliers}
-    effective = {(row["supplier_id"], row["op_type_id"]): 0 for row in suppliers
-                 if row["op_type_id"] is not None and row["op_type_id"] != ""}
-    effective.update({(row["supplier_id"], row["op_type_id"]): 1 for row in bindings})
     result = []
-    for (supplier_id, op_type_id), explicit in sorted(effective.items()):
+    for supplier_id, op_type_id in sorted({(row["supplier_id"], row["op_type_id"]) for row in bindings}):
         supplier = by_id.get(supplier_id)
         if status is not None and supplier is not None and supplier["status"] != status:
             continue
         result.append({"supplier_id": supplier_id, "op_type_id": op_type_id,
                        "default_days": supplier["default_days"] if supplier else None,
                        "status": supplier["status"] if supplier else None,
-                       "explicit": explicit, "missing_supplier": supplier is None})
+                       "missing_supplier": supplier is None})
     return result

@@ -187,7 +187,7 @@ class BatchProjection:
 
     def _entity(self, row, *, include_operations):
         facts = self.relations[row["batch_id"]]
-        issues = list(self.facts["execution"]["issues"])
+        issues = []
         part = self.parts.get(row["part_no"])
         if part is None:
             raise WorkbenchCommandRejected("storage_failure", "这个批次对应的零件已经不在了。请刷新重试；仍不行请联系维护人员。", 500)
@@ -212,7 +212,7 @@ class BatchProjection:
         if row["status"] == "completed" and (not ops or done != len(ops)):
             issues.append(issue("批次标着完成，但工序状态对不上，不能认定整批已完成。", "completion_inconsistent"))
         entity = {"ref": self.ref("batch", row["batch_id"]), "business_code": row["batch_id"], "label": part["part_name"],
-                "status": status, "stored_status": row["status"], "execution_available": self.facts["execution"]["available"],
+                "status": status, "stored_status": row["status"],
                 "fields": fields, "display_ready_status": display_ready, "relationships": {"part_ref": self.ref("part", row["part_no"]),
                     "part_no": row["part_no"], "part_name": part["part_name"], "operation_count": len(ops), "completed_count": done,
                     "gap_count": sum(bool(op["issues"]) for op in ops), "plan_reference_count": facts["plan_reference_count"],

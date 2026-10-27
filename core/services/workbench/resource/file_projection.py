@@ -54,12 +54,8 @@ def resource_export_state(facts, kind, code):
 
 
 def _supplier_export_state(facts, code, raw):
-    explicit = {row["op_type_id"] for row in facts.grouped("capabilities", "supplier_id")[code]}
-    legacy = raw["op_type_id"]
-    types = []
-    for key in sorted(explicit | ({legacy} if legacy not in (None, "") else set())):
-        related = facts.raw_related("op_type", key)
-        types.append({"op_type_id": related["identity"]["entity_key"], "explicit": int(key in explicit)})
+    types = [{"op_type_id": facts.raw_related("op_type", key)["identity"]["entity_key"]}
+             for key in sorted({row["op_type_id"] for row in facts.grouped("capabilities", "supplier_id")[code]})]
     supplier = dict(raw, profile=facts.raw_lookup("supplier_profiles", "supplier_id").get(code), op_types=types)
     return {"supplier": supplier}
 
@@ -83,12 +79,12 @@ def flat_resource(kind, identity, state, authorizations=()):
         result["default_merge_mode"] = state["profile"]["default_merge_mode"] if state["profile"] else None
     else:
         profile = raw["profile"] if kind == "supplier" else state.get("profile")
-        result.update(status=public_resource_status(kind, raw["status"], profile), legacy_status=raw["status"])
+        result["status"] = public_resource_status(kind, raw["status"], profile)
     if kind in ("machine", "operator"):
         result["team_code"] = raw["team_id"]
         result["machine_authorizations"] = [_authorization(row) for row in authorizations]
     if kind == "machine":
-        result.update(op_type_code=raw["op_type_id"], group_code=_related_code(state["group"]),
+        result.update(group_code=_related_code(state["group"]),
                       op_type_codes=[item["identity"]["entity_key"] for item in state["op_types"]])
     if kind == "operator":
         result.update(_operator_fields(state))
@@ -109,8 +105,6 @@ def _operator_fields(state):
 
 def _supplier_fields(raw):
     return {"op_type_codes": [row["op_type_id"] for row in raw["op_types"]],
-            "explicit_op_type_codes": [row["op_type_id"] for row in raw["op_types"] if row["explicit"]],
-            "legacy_op_type_code": raw["op_type_id"],
             "inactive_reason": raw["profile"]["inactive_reason"] if raw["profile"] else None}
 
 

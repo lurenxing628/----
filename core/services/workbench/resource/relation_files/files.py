@@ -32,9 +32,7 @@ from core.models.workbench_resource_file_source import PreparedImportSource
 from core.models.workbench_resource_input import resource_text
 from core.models.workbench_resource_table_query import table_query_required
 from core.services.personnel.operator_machine_normalizers import (
-    normalize_skill_level_optional,
     normalize_skill_level_stored,
-    normalize_yes_no_optional,
     normalize_yes_no_stored,
 )
 from core.services.personnel.operator_machine_service import OperatorMachineService
@@ -45,6 +43,8 @@ from ..queries import WorkbenchResourceQueryService
 from .file_codec import read_relation_file
 from .file_writer import check_capacity, write_relation_file
 
+#: 导入只认导出写出的中文，反查同一张表。
+_IMPORT_CODES = {key: {label: code for code, label in labels.items()} for key, labels in EXPORT_LABELS.items()}
 _ENTITY_OF = {"operator_code": "operator", "machine_code": "machine"}
 
 
@@ -143,22 +143,15 @@ class WorkbenchRelationFileService:
             except ValidationError as exc:
                 reject_action_row(row, exc.message, field=exc.field or key)
         # 文件里只有填了 \N 才会带上值为 None 的列；这两列在库里不能为空，留空才表示保持原样。
-        if "skill_level" in values:
-            if values["skill_level"] is None:
-                reject_action_row(row, "技能等级不能为空，不能用 \\N 清除；留空表示保持原样。", field="skill_level")
+        for key, label in (("skill_level", "技能等级"), ("is_primary", "主操设备")):
+            if key not in values:
+                continue
+            if values[key] is None:
+                reject_action_row(row, label + "不能为空，不能用 \\N 清除；留空表示保持原样。", field=key)
+            elif values[key] not in _IMPORT_CODES[key]:
+                reject_action_row(row, "“" + label + "”只能填：" + " / ".join(EXPORT_LABELS[key].values()) + "。", field=key)
             else:
-                try:
-                    parsed["skill_level"] = normalize_skill_level_optional(values["skill_level"])
-                except ValidationError as exc:
-                    reject_action_row(row, exc.message, field="skill_level")
-        if "is_primary" in values:
-            if values["is_primary"] is None:
-                reject_action_row(row, "主操设备不能为空，不能用 \\N 清除；留空表示保持原样。", field="is_primary")
-            else:
-                try:
-                    parsed["is_primary"] = normalize_yes_no_optional(values["is_primary"], "is_primary")
-                except ValidationError as exc:
-                    reject_action_row(row, exc.message, field="is_primary")
+                parsed[key] = _IMPORT_CODES[key][values[key]]
         row["business_code"] = row_identity(parsed)
         row["values"] = parsed
         return row

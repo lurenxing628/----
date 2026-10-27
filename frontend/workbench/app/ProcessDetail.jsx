@@ -37,8 +37,8 @@
           {!paging.rows.length && <tr><td colSpan={hours ? 8 : 5}>{entity.operations.length ? '没有匹配的工序。' : '尚无工序记录。'}</td></tr>}</tbody></table></div><E.Pager paging={paging} />
     </div>;
   }
-  function RouteView({ entity, disabled, onEntry, onFileAction, previewAvailable }) {
-    return <section className="process-route-section"><div className="toolbar"><h3>工艺路线</h3><span className="tb-spacer" /><Button icon="square-pen" className="btn primary" disabled={disabled} reason={P.reason(entity.capabilities, 'route_preview', previewAvailable)} onClick={onEntry}>录入路线</Button><window.ProcessFileButtons capabilities={entity.capabilities} disabled={disabled} routeOnly onAction={onFileAction} /></div>
+  function RouteView({ entity, disabled, onEntry, onFileAction }) {
+    return <section className="process-route-section"><div className="toolbar"><h3>工艺路线</h3><span className="tb-spacer" /><Button icon="square-pen" className="btn primary" disabled={disabled} reason={P.reason(entity.capabilities, 'route_preview')} onClick={onEntry}>录入路线</Button><window.ProcessFileButtons capabilities={entity.capabilities} disabled={disabled} routeOnly onAction={onFileAction} /></div>
       <Operations entity={entity} hours={false} />
       <details className="process-original"><summary>原始导入资料与保存记录</summary><dl className="process-fields">{[['route_raw', '原始路线'], ['route_parsed', '解析状态'], ['remark', '零件备注']].map(([key, label]) => <div key={key}><dt>{label}</dt><dd>{key === 'route_parsed' ? entity.fields[key] === 'yes' ? '已解析' : entity.fields[key] === 'no' ? '未解析' : '解析状态未知' : E.value(entity.fields[key])}</dd></div>)}</dl><E.Confirmation record={entity.workflow.route} /><E.Groups rows={entity.external_groups} /></details></section>;
   }
@@ -105,7 +105,7 @@
       setDirty({}); setEntry(false); setEntryStarted(false);
     }
     function openFile(kind, mode, abandon = false) {
-      if (editingBlocked || !current || !['route', 'hours'].includes(kind) || !['import', 'export'].includes(mode) || P.reason(current.data.capabilities, mode, true)) return;
+      if (editingBlocked || !current || !['route', 'hours'].includes(kind) || !['import', 'export'].includes(mode) || P.reason(current.data.capabilities, mode)) return;
       if (!abandon) fileFocus.current = document.activeElement;
       if (hasDraft && !abandon) { setDiscard({ kind, mode }); return; }
       if (!command.reset()) return;
@@ -177,7 +177,7 @@
               <E.Groups key={'groups-' + selected} rows={entity.external_groups} focusRef={target.groupRef} />
             </section>}
             {!browsing && <>{entity.workflow.ready && <div className="toolbar"><span className="pill ok">三阶段已确认 · 已就绪</span><Button icon="check" onClick={() => setStage('ready')} disabled={editingBlocked}>查看汇总</Button></div>}
-            <div hidden={selected !== 'route'} role="tabpanel" id={panelId + '-route'} aria-labelledby={panelId + '-tab-route'}><RouteView entity={entity} disabled={editingBlocked} onFileAction={openFile} previewAvailable={typeof adapter.routePreview === 'function'} onEntry={() => { setEntryStarted(true); setEntry(true); }} /></div>
+            <div hidden={selected !== 'route'} role="tabpanel" id={panelId + '-route'} aria-labelledby={panelId + '-tab-route'}><RouteView entity={entity} disabled={editingBlocked} onFileAction={openFile} onEntry={() => { setEntryStarted(true); setEntry(true); }} /></div>
             <div hidden={selected !== 'source'} role="tabpanel" id={panelId + '-source'} aria-labelledby={panelId + '-tab-source'}><window.ProcessSourceEditor key={saved.source} adapter={adapter} result={result} command={visibleCommand} disabled={editorDisabled} saved={saved.source} onDirty={onDirty} onOverlay={setOverlay} onResourceCommitted={onCommitted} /></div>
             <div hidden={selected !== 'hours'} role="tabpanel" id={panelId + '-hours'} aria-labelledby={panelId + '-tab-hours'}><window.ProcessHoursEditor key={saved.hours} adapter={adapter} result={result} command={visibleCommand} disabled={editorDisabled} saved={saved.hours} groupSaved={saved.groups} onDirty={onDirty} onOverlay={setOverlay} onFileAction={openFile} /></div>
             {entity.workflow.ready && <div hidden={selected !== 'ready'} role="tabpanel" id={panelId + '-ready'} aria-labelledby={panelId + '-tab-ready'}><Operations entity={entity} hours /><E.Groups rows={entity.external_groups} /><p><E.Confirmation record={entity.workflow.hours} /></p></div>}</>}

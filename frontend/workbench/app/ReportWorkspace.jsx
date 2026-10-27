@@ -1,10 +1,9 @@
 (function () {
   'use strict';
   let pendingViewFocus = null;
-  function Workspace({ adapter, mode = 'reports', initialContext, onNav }) {
+  function Workspace({ mode = 'reports', initialContext, onNav }) {
     const { Scope, Tabs, Sort, Page, Button, ErrorBox, useRead } = window.ReportControls;
     const { Table, Metrics } = window.ReportTable;
-    const api = React.useMemo(() => adapter || window.ReportAPI.create(), [adapter]);
     const initialTopic = mode === 'review' ? 'delivery' : window.ReportAPI.topics.includes(initialContext.topic) ? initialContext.topic : 'delivery';
     const [scope, setScope] = React.useState(() => window.ReportAPI.scope(initialContext.scope));
     const [state, setState] = React.useState(() => window.ReportAPI.table(initialContext.table, initialTopic));
@@ -17,7 +16,7 @@
     const [detailView, setDetailView] = React.useState(initialContext.detailView || { page: 1, size: 10 });
     const [lastChoices, setLastChoices] = React.useState({});
     const input = { ...scope, ...state };
-    const request = useRead(signal => window.ReportAPI.readView(api, input, signal), JSON.stringify(input) + revision);
+    const request = useRead(signal => window.ReportAPI.readView(input, signal), JSON.stringify(input) + revision);
     const response = request.result, data = response && response.data;
     const captionPlan = !request.busy && !request.error && data && data.plan;
     const captionStatus = captionPlan && ({ official: captionPlan.is_current_official ? window.WorkbenchTerms.current_official : window.WorkbenchTerms.historical_official, candidate: window.WorkbenchTerms.candidate, scenario: window.WorkbenchTerms.trial_scenario })[captionPlan.kind];
@@ -70,7 +69,7 @@
     async function download() {
       setDownloading(true); setError(null); setNotice('');
       try {
-        const result = await api.download(data.exports.url, { ...window.ReportAPI.scope(data.scope), ...window.ReportAPI.table(state, data.topic), snapshot_ref: response.meta.snapshot_ref, format });
+        const result = await window.ReportAPI.download(data.exports.url, { ...window.ReportAPI.scope(data.scope), ...window.ReportAPI.table(state, data.topic), snapshot_ref: response.meta.snapshot_ref, format });
         setNotice(window.WorkbenchTerms.download_started(result.filename) + '（当前筛选全部 ' + data.page.total + ' 项）。');
       }
       catch (failure) { setError(failure); } finally { setDownloading(false); }
@@ -141,7 +140,7 @@
             <Button transfer="export" busy={downloading} disabled={request.busy} reasonDisplay="inline" reason={!data.page.total ? '当前范围没有可导出的结果。' : ''} onClick={download}>导出范围</Button></>}</div></div>
         <div className={'rw-result-content' + (selected ? ' wb-detail-layout' : '')}><div className="rw-list-pane">
         <Table data={data} onDetail={ref => { setSelected(ref); setDetailView({ page: 1, size: 10 }); }} busy={request.busy} primary /><Page page={data.page} onChange={changePage} busy={request.busy} /></div>
-        {selected && <window.ReportDetail api={api} operationRef={selected} input={{ ...window.ReportAPI.scope(data.scope), ...window.ReportAPI.table(state, data.topic), snapshot_ref: response.meta.snapshot_ref }} onClose={() => setSelected(null)}
+        {selected && <window.ReportDetail operationRef={selected} input={{ ...window.ReportAPI.scope(data.scope), ...window.ReportAPI.table(state, data.topic), snapshot_ref: response.meta.snapshot_ref }} onClose={() => setSelected(null)}
           initialView={detailView} onView={setDetailView} onOpenOperation={navigateOperation} />}</div>
       </div>}
       </div>
@@ -149,7 +148,7 @@
         {!review && <window.ReviewCharts data={data} open={chartsOpen} onChange={setChartsOpen} resourceView={resourceView} onResourceView={setResourceView} onDrill={drill} />}
         <div className="rw-support"><details className="rw-limitations"><summary>统计说明与待补资料</summary><ul>{data.data_gaps.map(text => <li key={text}>{text}</li>)}</ul></details>
         <details className="rw-catalog" open={catalog} onToggle={event => setCatalog(event.currentTarget.open)}><summary>其他报表</summary>
-          {catalog && <window.ReportCatalog api={api} scope={data.scope} snapshot={response.meta.snapshot_ref} />}</details></div>
+          {catalog && <window.ReportCatalog scope={data.scope} snapshot={response.meta.snapshot_ref} />}</details></div>
       </>}
       </div>
     </section>;

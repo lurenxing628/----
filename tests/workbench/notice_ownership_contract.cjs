@@ -76,7 +76,7 @@ async function contract(h, assert) {
   const day = { date: '2026-10-10', explicit: false, stored: null, fields: { type: 'work', hours: 8, eff: 100, allowNormal: 'yes', allowUrgent: 'yes', note: '', periods: null },
     effective: { is_working: true, window_start: '2026-10-10T08:00:00', window_end: '2026-10-10T16:00:00', periods: null } };
   once(h.render(w.CalendarDayDialog, { adapter: {}, day, source: 'production', command: idle }), missingContext, 1);
-  const groupProps = { adapter: { command() {}, stagePreview() {} }, command: idle,
+  const groupProps = { adapter: { command() {}, stagePreview() {} }, command: idle, onDirty() {},
     result: { data: { operations: [], external_groups: [], workflow: { route: { state: 'confirmed' } }, capabilities: { stage_confirm: true } }, meta: { source: 'production' } } };
   once(h.render(w.ProcessGroupEditor, groupProps), '请先新增、修改或解除外协段。', 2);
   // A retained leave prompt follows the draft. useState slots: useDraft 0-4 (draft 1), usePage 5-7, editing 8, picker 9, discard 10.
@@ -91,22 +91,26 @@ async function contract(h, assert) {
   const maintenance = { capabilities: { create: false, delete: false, restore: false, blocked_reason: sharedReason, restore_reason: restoreReason },
     rows: [file], sources: [], page: { number: 1, page_size: 10, total: 1, pages: 1 } };
   w.SystemMaintenanceControls.useRead = () => ({ data: { data: maintenance, meta: { as_of: '2026-10-10T08:00:00' } }, loading: false, error: null });
-  const backupTree = h.render(w.SystemMaintenanceRecords, { api: {}, kind: 'backups', pageSize: 10, revision: 0, command: idle },
+  const backupTree = h.render(w.SystemMaintenanceRecords, { kind: 'backups', pageSize: 10, revision: 0, command: idle, active: true, onReadContext() {} },
     { Records: { 5: { key: file.key, record_kind: file.record_kind, backup_ref: file.backup_ref } } });
   once(backupTree, sharedReason, 2); once(backupTree, restoreReason, 1);
   w.SystemMaintenanceControls.useRead = () => ({ data: { data: { rows: [], sources: [], page: { number: 1, size: 10, total: 0, pages: 1 } },
     meta: { as_of: '2026-10-10T08:00:00' } }, loading: false, error: null });
-  assert(visible(h.render(w.SystemMaintenanceRecords, { api: {}, kind: 'logs', pageSize: 10, revision: 0, command: idle })).includes('运行日志与操作记录'),
+  assert(visible(h.render(w.SystemMaintenanceRecords, { kind: 'logs', pageSize: 10, revision: 0, command: idle, active: true, onReadContext() {} })).includes('运行日志与操作记录'),
     'The logs collection does not carry backup capabilities');
   w.SystemMaintenanceControls.useRead = readMaintenance;
 
   // A failed status read stays in system management; only a real stop or pending restore takes over the page.
   const readyHost = { state: 'ready', request_key: null, restart_required: false, automatic_resume: false,
     operations_available: true, result_source: 'external_maintenance_journal', references: 'reload_from_database_after_process_restart' };
+  // The workspace calls window.SystemMaintenanceAPI directly; each check replaces only the module methods it observes and restores them.
+  // Production mounts always pass revision, record contexts and the change/suspension callbacks.
   let hostReads = 0;
-  const maintenanceAPI = { host: async () => { hostReads++; return readyHost; } };
+  const M = w.SystemMaintenanceAPI, maintenanceOriginal = { host: M.host, lookup: M.lookup, command: M.command };
+  const workspaceProps = { theme: 'light', onSetTheme: () => {}, pageSize: 10, revision: 0, recordContexts: {}, onChanged() {}, onReadSuspendedChange() {}, onRecordContext() {} };
+  M.host = async () => { hostReads++; return readyHost; };
   const maintenanceTree = (states, tab = 'overview') => h.render(w.SystemMaintenanceWorkspace,
-    { api: maintenanceAPI, tab, theme: 'light', onSetTheme: () => {}, pageSize: 10, children: '系统概况内容' },
+    { ...workspaceProps, tab, children: '系统概况内容' },
     { Workspace: { 6: readyHost, 8: false, ...states } });
   const restoreScreen = tree => h.walk(tree).find(node => node.props['data-restore-maintenance'] === 'warm');
   const statusFailure = new Error('维护状态接口未连接，请重新查询。');
@@ -165,13 +169,14 @@ async function contract(h, assert) {
   const originalEffect = w.React.useEffect, originalAdd = w.addEventListener, originalRemove = w.removeEventListener;
   let lastDeps, dispose, online;
   w.React.useEffect = (effect, deps) => {
-    if (!deps || !deps.includes(maintenanceAPI) || lastDeps && deps.length === lastDeps.length && deps.every((value, index) => value === lastDeps[index])) return;
+    // Only the host-recheck effect is keyed by the page revision alone.
+    if (!deps || deps.length !== 1 || typeof deps[0] !== 'number' || lastDeps && deps.length === lastDeps.length && deps.every((value, index) => value === lastDeps[index])) return;
     if (dispose) dispose(); lastDeps = deps; dispose = effect();
   };
   w.addEventListener = (type, handler) => { if (type === 'online') online = handler; };
   w.removeEventListener = () => {};
   const refreshWorkspace = revision => h.render(w.SystemMaintenanceWorkspace,
-    { api: maintenanceAPI, tab: 'overview', theme: 'light', pageSize: 10, revision }, { Workspace: { 6: readyHost, 8: false } });
+    { ...workspaceProps, tab: 'overview', revision }, { Workspace: { 6: readyHost, 8: false } });
   const beforeRefresh = hostReads;
   refreshWorkspace(0); refreshWorkspace(0); refreshWorkspace(1);
   assert.strictEqual(hostReads - beforeRefresh, 2, 'A page refresh must requery maintenance status, while an unchanged render must not');
@@ -180,8 +185,8 @@ async function contract(h, assert) {
   if (dispose) dispose();
   w.React.useEffect = originalEffect; w.addEventListener = originalAdd; w.removeEventListener = originalRemove;
 
-  const hostRequests = [], racingAPI = { host: () => new Promise((resolve, reject) => hostRequests.push({ resolve, reject })) };
-  const racingTree = h.render(w.SystemMaintenanceWorkspace, { api: racingAPI, tab: 'overview', theme: 'light', pageSize: 10 },
+  const hostRequests = []; M.host = () => new Promise((resolve, reject) => hostRequests.push({ resolve, reject }));
+  const racingTree = h.render(w.SystemMaintenanceWorkspace, { ...workspaceProps, tab: 'overview' },
     { Workspace: { 6: null, 7: statusFailure, 8: false } });
   const retryRacing = h.walk(racingTree).find(node => node.type === 'button' && visible(node) === '重新查询');
   const olderRead = retryRacing.props.onClick({ currentTarget: {} }), newerRead = retryRacing.props.onClick({ currentTarget: {} });
@@ -192,21 +197,22 @@ async function contract(h, assert) {
   assert.strictEqual(latestHostState[7], null, 'An earlier failed host query must not overwrite a later successful refresh');
   assert.strictEqual(latestHostState[8], false);
 
-  // Trust the server's explicit non-commit result, including admission failures reported as HTTP 503.
-  const responseFor = committed => ({ ok: false, status: 503, headers: { get: () => 'application/json' },
-    json: async () => ({ ok: false, committed, error: { code: 'maintenance_active', message: '当前维护窗口忙，恢复没有执行。' } }) });
-  for (const committed of [false, 'unknown', undefined]) {
-    const rejectedAPI = w.SystemMaintenanceAPI.create(async () => responseFor(committed));
-    await assert.rejects(rejectedAPI.command(restoreIntent, 'write-context', {}), error => error.rejected === (committed === false));
+  // Trust the server's explicit non-commit result (Q2-A: committed:false with 400/404/409/422/503), including admission failures
+  // reported as HTTP 503. Only fetch is stubbed: the real SystemMaintenanceAPI and transport decide. A committed:false 500 no longer counts.
+  const answerWith = (committed, status = 503) => { w.fetch = async () => new Response(JSON.stringify({ ok: false, committed,
+    error: { code: 'maintenance_active', message: '当前维护窗口忙，恢复没有执行。', fields: [], retryable: status >= 500 && committed !== 'unknown', request_ref: '1'.repeat(32) } }), { status, headers: { 'Content-Type': 'application/json' } }); };
+  for (const [committed, status, definite] of [[false, 503, true], [false, 409, true], [false, 500, false], ['unknown', 503, false], [undefined, 503, false]]) {
+    answerWith(committed, status);
+    await assert.rejects(M.command(restoreIntent, 'write-context', {}), error => w.APSWorkbenchTransport.rejected(error) === definite,
+      'committed ' + committed + ' with HTTP ' + status + (definite ? ' is' : ' is not') + ' a definite rejection');
   }
   const originalStorage = w.localStorage, originalCrypto = w.crypto, originalOutcome = w.SystemMaintenanceControls.Outcome;
   const savedMaintenance = new Map(); let rejectedCommand, rejectedLookups = 0;
   w.localStorage = { getItem: key => savedMaintenance.get(key) || null, setItem: (key, value) => savedMaintenance.set(key, value), removeItem: key => savedMaintenance.delete(key) };
   w.crypto = { getRandomValues: bytes => bytes.fill(34) };
   w.SystemMaintenanceControls.Outcome = ({ command }) => { rejectedCommand = command; return null; };
-  const deniedAPI = { host: async () => readyHost, command: w.SystemMaintenanceAPI.create(async () => responseFor(false)).command,
-    lookup: async () => { rejectedLookups++; return { kind: 'not_recorded', terminal: false }; } };
-  h.render(w.SystemMaintenanceWorkspace, { api: deniedAPI, tab: 'overview', theme: 'light', pageSize: 10 }, { Workspace: { 6: readyHost, 8: false } });
+  M.host = async () => readyHost; M.lookup = async () => { rejectedLookups++; return { kind: 'not_recorded', terminal: false }; }; answerWith(false);
+  h.render(w.SystemMaintenanceWorkspace, { ...workspaceProps, tab: 'overview' }, { Workspace: { 6: readyHost, 8: false } });
   await rejectedCommand.execute('restore', 'write-context', {});
   await rejectedCommand.lookup();
   assert.strictEqual(rejectedLookups, 0, 'Reconnection must not replace a confirmed rejection with an absent journal record');
@@ -220,8 +226,8 @@ async function contract(h, assert) {
   assert(!h.walk(deniedTree).some(node => node.type === 'button' && visible(node) === '确认结果'));
   assert(!restoreScreen(maintenanceTree({})), 'A full reload after a rejected restore must not recreate pending maintenance');
   w.SystemMaintenanceControls.Outcome = ({ command }) => { rejectedCommand = command; return null; };
-  const uncertainAPI = { ...deniedAPI, command: w.SystemMaintenanceAPI.create(async () => responseFor('unknown')).command };
-  h.render(w.SystemMaintenanceWorkspace, { api: uncertainAPI, tab: 'overview', theme: 'light', pageSize: 10 }, { Workspace: { 6: readyHost, 8: false } });
+  answerWith('unknown');
+  h.render(w.SystemMaintenanceWorkspace, { ...workspaceProps, tab: 'overview' }, { Workspace: { 6: readyHost, 8: false } });
   await rejectedCommand.execute('restore', 'write-context', {});
   assert.strictEqual(w.SystemMaintenanceAPI.pending().read().request_key, restoreIntent.request_key, 'An unknown submission result must retain its original pending intent');
   w.SystemMaintenanceControls.Outcome = originalOutcome;
@@ -233,6 +239,7 @@ async function contract(h, assert) {
   assert.throws(() => w.SystemMaintenanceAPI.pending().finish(restoreIntent), /上次操作记录已变化/);
   assert.strictEqual(w.SystemMaintenanceAPI.pending().read().request_key, otherIntent.request_key, 'A different pending operation must be retained');
   w.localStorage = originalStorage; w.crypto = originalCrypto;
+  Object.assign(M, maintenanceOriginal); w.fetch = () => { throw new Error('Unexpected network request'); };
 
   const dashboardRead = w.DashboardSession.useRead, dashboardCommand = w.DashboardSession.useCommand;
   w.DashboardSession.useCommand = () => ({ busy: false, saved: null, storageError: null });
@@ -243,7 +250,7 @@ async function contract(h, assert) {
   w.CalibrationControls.useRead = () => ({ result: null, busy: false, error: null });
   w.CalibrationAdoptionAction = () => null;
   // Restored read state occupies slot 1; the selected record, error and stale flag follow it.
-  const staleTree = h.render(w.CalibrationWorkspace, { initialContext: {} }, { Workspace: { 4: h.reference(1), 8: new Error(stale), 10: true } });
+  const staleTree = h.render(w.CalibrationWorkspace, { initialContext: {} }, { Workspace: { 3: h.reference(1), 7: new Error(stale), 9: true } });
   once(staleTree, stale);
   assert(visible(staleTree).includes('刷新所选记录'), 'The detail must retain its recovery action');
   once(h.render(w.CalibrationDetail, { selected: h.reference(1), error: new Error('历史报工与归档不一致，请核对来源后刷新。'), stale: true }),
@@ -259,8 +266,9 @@ async function contract(h, assert) {
     return command;
   }
   w.crypto = { getRandomValues: values => { values.fill(1); return values; } };
-  const staleResult = { ok: false, committed: false, error: { code: 'stale_write', message: stale, fields: [] } };
-  const staleCommand = await resourceCommand({ command: async () => staleResult, savePending() {}, clearPending() {} },
+  // The resource adapter throws the transport's unified error; a committed:false 409 is a definite rejection.
+  const staleResult = w.APSWorkbenchTransport.failure({ ok: false, committed: false, error: { code: 'stale_write', message: stale, fields: [], retryable: false, request_ref: '1'.repeat(32) } }, 409);
+  const staleCommand = await resourceCommand({ readPending: () => null, command: async () => { throw staleResult; }, savePending() {}, clearPending() {} },
     command => command.submit('calendar', 'upsert', day.date, { write_token: 'fixture' }, { date: day.date }));
   assert.strictEqual(staleCommand.phase, 'rejected');
   const staleCalendar = h.render(w.CalendarDayDialog, { adapter: {}, day, source: 'production', command: staleCommand });
@@ -331,7 +339,9 @@ async function contract(h, assert) {
     const q = w.DashboardContract.scope({ category }), scope = { kind: 'dashboard', ...q }; delete scope.page;
     const input = JSON.parse(JSON.stringify(payload)), detailAnalysis = input.data.analysis;
     input.data.scope = scope; input.data.analysis = analysisPage(detailAnalysis, 'overview');
-    const result = await w.DashboardContract.create(async () => ({ ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => input })).list(q);
+    // Fetch-level answer: the real DashboardContract.list, transport and analysis validator check the DTO.
+    w.fetch = async () => new Response(JSON.stringify(input), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    let result; try { result = await w.DashboardContract.list(q); } finally { w.fetch = () => { throw new Error('Unexpected network request'); }; }
     assert.strictEqual(result.data.analysis_error, null, 'The representative analysis DTO must pass the actual API contract');
     result.detailAnalysis = detailAnalysis;
     return result;
@@ -340,7 +350,7 @@ async function contract(h, assert) {
     let readIndex = 0;
     w.DashboardSession.useCommand = () => command;
     w.DashboardSession.useRead = (_load, dependencies, enabled = true) => {
-      const query = dependencies && dependencies[2];
+      const query = dependencies && dependencies[1];
       if (query && query.section) return { result: enabled ? { ...result, data: analysisPage(result.detailAnalysis, query.section, query.resource_ref) } : null, loading: false, error: null };
       return { result: ++readIndex === 1 ? result : readIndex === 3 ? detail : null, loading: false, error: null };
     };
@@ -421,16 +431,15 @@ async function contract(h, assert) {
     "issues": [{"code": "resource_identity_unknown", "message": "保存任务缺少永久资源身份，资源汇总保留覆盖缺口。", "field": "operator"}]
   };
   a.resource_common = {
-    "metric_version": "decision-resource-v3", "source": "current_transaction_snapshot", "start": "2026-10-09T08:00:00",
+    "metric_version": "decision-resource-v4", "source": "current_transaction_snapshot", "start": "2026-10-09T08:00:00",
     "end": "2026-10-09T10:00:00", "time_basis": "factory_local", "cohort_basis": "current_official_plan",
     "cohort": [{"ref": "000000000000000000000000000000000000000000000018", "kind": "machine", "label": "Lathe"}],
     machine: machineResourceSummary, operator: operatorResourceSummary
   };
   a.resources = [{ resource_ref: analysisTask.machine_ref, label: 'Lathe', kind: 'machine', state: 'partial', window_metrics: resourceWindow, issues: [resourceIssue],
     peak_utilization: null, unknown_days: 1, zero_capacity_days: 0, task_refs: [analysisTask.task_ref],
-    days: [{ date: '2026-10-09', start: timeScope.range_start, end: timeScope.range_end, occupied_hours: 2, overlap_hours: 0,
-      available_hours: null, inside_available_hours: null, outside_available_hours: null, utilization: null,
-      window_metrics: { ...resourceWindow, date: '2026-10-09', start: timeScope.range_start, end: timeScope.range_end } }] }];
+    // Each day row is the shared window row itself, with only its date and bounds.
+    days: [{ ...resourceWindow, date: '2026-10-09', start: timeScope.range_start, end: timeScope.range_end }] }];
   a.downtimes = [{ downtime_ref: h.reference(25), machine_ref: analysisTask.machine_ref, start: '2026-10-09T09:00:00', end: '2026-10-09T09:00:00',
     recorded_at: '2026-10-09T07:00:00', recorded_at_basis: 'local_time', valid: false }];
   a.pressure.resource_count = 1; a.pressure.unknown_resources = 1;
@@ -451,7 +460,8 @@ async function contract(h, assert) {
   once({ ...resourceDetails, props: { ...resourceDetails.props, open: true } }, resourceIssue.message);
   const evidence = h.walk(independentTree).find(node => node.props['data-gap-source'] === gap.source_ref);
   assert(evidence && h.text(evidence).includes(gap.subject), 'Analysis ownership must retain category evaluation-gap evidence');
-  once(h.render(w.DashboardPanels.Pressure, { data: d }), pressureIssue.message);
+  // The pressure cause is owned once by the analysis area above; the pressure panel itself no longer repeats it.
+  assert(!h.text(h.render(w.DashboardPanels.Pressure, { data: d })).includes(pressureIssue.message), 'The pressure panel does not duplicate the analysis-owned pressure cause');
   // A loaded run catalog renders each run's open action (a removed navigation flag must not stay referenced in the row).
   const runRef = h.reference(24), runNavigations = [];
   const candidatesTree = h.render(w.DashboardPanels.Candidates, { navigate: target => runNavigations.push(target), data: { candidate_catalog: {
@@ -471,11 +481,12 @@ async function contract(h, assert) {
   const materialIndependentTree = dashboardTree(await dashboardResult(independent, 'material'), 'material');
   once(materialIndependentTree, pendingIssue.message);
   assert(h.walk(materialIndependentTree).some(node => node.props['data-gap-source'] === materialGap.source_ref), 'The material evaluation gap must remain available');
-  once(h.render(w.DashboardAnalysisPanels.Material, { data: a }), pendingIssue.message);
+  // The pending-batch panel shows rows only; the material tab above is the single owner of the pool issue.
+  assert(!visible(h.render(w.DashboardAnalysisPanels.Material, { data: a })).includes(pendingIssue.message));
   w.DashboardSession.useRead = dashboardRead; w.DashboardSession.useCommand = dashboardCommand;
 
   // Drive the actual command hooks through a rejected response, using in-memory storage only.
-  async function rejection(useCommand, api, submit) {
+  async function rejection(useCommand, submit) {
     const originalReact = w.React, slots = [], effects = [], listeners = new Map(), storage = new Map();
     let cursor = 0;
     w.React = { ...originalReact,
@@ -490,21 +501,23 @@ async function contract(h, assert) {
     w.dispatchEvent = event => { if (listeners.has(event.type)) listeners.get(event.type)(event); };
     w.crypto = { getRandomValues: values => { values.fill(1); return values; } };
     w.navigator = { locks: { request: async (_key, _options, callback) => callback({}) } };
+    w.fetch = rejectedResponse;
     try {
-      let command = useCommand(api);
+      let command = useCommand();
       const cleanups = effects.map(effect => effect());
-      await submit(command); cursor = 0; command = useCommand(api);
+      await submit(command); cursor = 0; command = useCommand();
       cleanups.forEach(cleanup => { if (typeof cleanup === 'function') cleanup(); });
       assert.strictEqual(command.storageError, null);
       return command;
-    } finally { w.React = originalReact; }
+    } finally { w.React = originalReact; w.fetch = () => { throw new Error('Unexpected network request'); }; }
   }
   const failure = '来源资料已变化，请刷新后重试。';
-  const rejectedResponse = async () => ({ ok: false, status: 409, headers: { get: () => 'application/json' },
-    json: async () => ({ ok: false, committed: false, error: { code: 'stale_write', message: failure, fields: [] } }) });
+  // Only the network answer is stubbed: the real contracts send the command and the transport's Q2-A verdict rejects it.
+  const rejectedResponse = async () => new Response(JSON.stringify({ ok: false, committed: false, error: { code: 'stale_write', message: failure, fields: [], retryable: false, request_ref: '1'.repeat(32) } }),
+    { status: 409, headers: { 'Content-Type': 'application/json' } });
   const handling = { status: 'new', ...Object.fromEntries(w.DashboardContract.fields.map(key => [key, null])) };
   const item = { item_ref: h.reference(6), subject: '测试风险', handling, source: {}, risk: {}, write_context: { write_token: 'fixture', capabilities: { transition: true } } };
-  const dashboardRejected = await rejection(w.DashboardSession.useCommand, w.DashboardContract.create(rejectedResponse),
+  const dashboardRejected = await rejection(w.DashboardSession.useCommand,
     command => command.submit(item, 'transition', { target_status: 'following', owner: '经办人', deadline: '2026-10-11', action: '核对', remark: '说明' }));
   assert.strictEqual(dashboardRejected.saved.phase, 'rejected');
   const dashboardOutcome = h.render(w.DashboardHandling, { command: dashboardRejected });
@@ -518,15 +531,15 @@ async function contract(h, assert) {
   const target = { kind: 'single', batch_ref: h.reference(7), supplier_ref: h.reference(8), operation_refs: [h.reference(9)], grouping_basis: 'explicit_receipt_membership',
     batch: { ref: h.reference(7), business_code: 'B1', label: '批次' }, supplier: { ref: h.reference(8), label: '供应商' }, operations: [{ operation_ref: h.reference(9), business_code: 'OP1', label: '工序' }] };
   const input = { ...after, target: w.OutsourcingContract.target(target), declared_operator: '经办人', reason: '登记说明' };
-  const preview = { ok: true, schema_version: 1, warnings: [], meta: { source: 'production', time_basis: 'factory_local', snapshot_ref: null, as_of: '2026-10-10T08:00:00' },
+  const preview = { ok: true, schema_version: 1, warnings: [], meta: { request_ref: '1'.repeat(32), source: 'production', time_basis: 'factory_local', snapshot_ref: null, as_of: '2026-10-10T08:00:00' },
     data: { input, target, before: null, after, outsourcing_ref: null, can_confirm: true, write_context: { write_token: 'fixture', capabilities: { confirm: true } },
       execution: { automatically_reported: false, operation_refs: target.operation_refs, service: 'WorkbenchProductionReportService', reason: '回厂仍需报工' } } };
-  const outsourcingRejected = await rejection(w.OutsourcingSession.useCommand, w.OutsourcingContract.create(rejectedResponse), command => command.submit(preview));
+  const outsourcingRejected = await rejection(w.OutsourcingSession.useCommand, command => command.submit(preview));
   assert.strictEqual(outsourcingRejected.saved, null);
-  const outsourcingOutcome = h.render(w.OutsourcingControls.Editor, { api: {}, command: outsourcingRejected });
+  const outsourcingOutcome = h.render(w.OutsourcingControls.Editor, { command: outsourcingRejected });
   once(outsourcingOutcome, failure); once(outsourcingOutcome, '上次外协登记没有生效');
   assert(visible(outsourcingOutcome).includes('预检核对'), 'A rejected registration must return to the editable form');
-  const outsourcingPending = h.render(w.OutsourcingControls.Editor, { api: {}, command: { ...outsourcingRejected, error: null, notice: '',
+  const outsourcingPending = h.render(w.OutsourcingControls.Editor, { command: { ...outsourcingRejected, error: null, notice: '',
     saved: { phase: 'pending', target, after, input, request_key: 'outsourcing-' + '1'.repeat(48) } } });
   once(outsourcingPending, w.WorkbenchTerms.outcomes.pending('外协登记'));
   assert(visible(outsourcingPending).includes('查询结果'));
@@ -535,7 +548,8 @@ async function contract(h, assert) {
   function storageCommand(useCommand) {
     let command, serverCalls = 0;
     w.localStorage = { getItem() { throw new Error('Storage unavailable'); } };
-    function InitialCommand() { command = useCommand({ command() { serverCalls++; } }); return null; }
+    w.fetch = async () => { serverCalls++; throw new Error('Unexpected network request'); };
+    function InitialCommand() { command = useCommand(); return null; }
     h.render(InitialCommand, {});
     assert(command.storageError && !command.saved);
     return { command, calls: () => serverCalls };

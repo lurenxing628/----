@@ -2,7 +2,6 @@
 
 import math
 from collections import defaultdict
-from typing import Optional
 
 from data.repositories.calendar_facts_repo import CalendarFactsRepository
 from data.repositories.schedule_time_sql import parse_dt_for_sql
@@ -19,20 +18,11 @@ class CapturedCalendarInputs:
     """Current dashboard source rows plus SQL-prepared downtime facts; no connection."""
 
     def __init__(self, *, machines, downtimes, schema_version, downtime_machine_ids):
+        # schema_rows 只作日历来源说明（source.schema_version）原样带出，不参与日历计算。
         self.machine_rows, self.downtime_rows, self.schema_rows = machines, downtimes, schema_version
         # Downtimes were prepared only for these machines; other machines' calendars are unavailable.
         self.downtime_machine_ids = frozenset(downtime_machine_ids)
         self._machines, self._downtimes, self._downtime_order = None, None, {}
-        self._version: Optional[int] = None
-
-    def schema_version(self):
-        if self._version is not None:
-            return self._version
-        value = next((row["version"] for row in self.schema_rows if row["id"] == 1), None)
-        if type(value) is not int:
-            raise ValueError("Calendar schema version is missing or invalid")
-        self._version = value
-        return value
 
     def _machine_rows(self, machine_ids, fields, limit):
         if self._machines is None:
@@ -118,9 +108,6 @@ class CalendarFacts:
         return result
 
     def calendar(self, first, last, operators):
-        if self.captured is not None:
-            self.repo._read_schema_version = self.captured.schema_version()
-        self.rows["legacy_defaults"] = self.repo.schema_version() < 34
         self.select("defaults", self.repo.defaults)
         self.select("global", self.repo.global_calendar, first, last)
         self.keyed("personal", self.repo.personal_calendar, operators, (first, last))

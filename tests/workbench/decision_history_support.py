@@ -1,27 +1,30 @@
 """P7 histories in a controlled SQLite file, reusing the existing one-operation case."""
 
 import json
-from collections import OrderedDict
 from contextlib import contextmanager
 from copy import deepcopy
 
 from flask import Blueprint, Flask, g
 
-from core.infrastructure.migrations.v41 import _candidate_provider, _prepare_candidate, _read_packet
-from core.models.workbench_command import WorkbenchCommandOutcome, canonical_json
+from core.models.workbench_command import WorkbenchCommandOutcome
 from core.models.workbench_run_job import new_run_ref
+from core.services.workbench.facts.candidate_facts import GenerationFacts
+from core.services.workbench.facts.candidate_projection import dispositions
 from core.services.workbench.facts.candidate_store import CandidateStore
+from core.services.workbench.facts.candidate_tasks import validate_saved_tasks
 from core.services.workbench.facts.decision_baseline import read_decision_baseline
 from core.services.workbench.facts.decision_baseline_source import decision_baseline_source_resolver
+from core.services.workbench.facts.decision_metrics import admission_operation_refs
 from core.services.workbench.facts.decision_read_model import build_decision_read_models, prepare_admission_read_models
+from core.services.workbench.facts.decision_read_models import decode_model
 from core.services.workbench.history.conditions import (
     compare_prepared_history_conditions,
     prepare_history_condition_side,
     prepare_history_condition_source,
 )
+from core.shared.strict_json import canonical_json
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
-from tests.workbench.plan_catalog_support import history as legacy_history
 from tests.workbench.run_candidate_adoption_support import INTENT as CANDIDATE_INTENT
 from tests.workbench.run_candidate_adoption_support import preview as candidate_preview
 from tests.workbench.run_candidate_adoption_support import service as candidate_service
@@ -113,13 +116,6 @@ def four_source_case(directory):
             "trial_plan_ref": trial["data"]["official_plan"]["plan_ref"],
             "trial_version": trial["data"]["official_plan"]["version"]}
         append_candidate_adoption(case)
-        legacy_version = case.history_refs["second_candidate_version"] + 1
-        legacy_summary = dict(selected["summary"], version=legacy_version, is_simulation=False)
-        legacy_history(case.conn, legacy_version, summary=canonical_json(legacy_summary), op_id=case.op_id,
-                       time="2026-09-12T08:00:00")
-        case.conn.commit()
-        case.history_refs.update(legacy_version=legacy_version, legacy_plan_ref=case.plan_ref(legacy_version),
-            legacy_history_id=case.conn.execute("SELECT id FROM ScheduleHistory WHERE version=?", (legacy_version,)).fetchone()[0])
         yield case
     finally:
         try:
@@ -138,6 +134,8 @@ def append_candidate_adoption(case):
                                      (refs["candidate_version"],)).fetchone()[0])
     request_key, receipt_ref = "history-candidate-adopt-0002", new_run_ref()[:32]
     summary.update(version=version, request_key=request_key, adopted_at="2026-09-11T10:00:00")
+    # 采用事务先从 ScheduleVersionSeq 分配版本号，再写审计、安排与回执。
+    conn.execute("INSERT INTO ScheduleVersionSeq(version) VALUES (?)", (version,))
     conn.execute("INSERT INTO ScheduleHistory(version,strategy,batch_count,op_count,result_status,result_summary,schedule_time) "
                  "VALUES (?,'manual',1,1,'success',?,'2026-09-11T10:00:00')", (version, canonical_json(summary)))
     conn.execute("INSERT INTO Schedule(version,op_id,machine_id,operator_id,start_time,end_time,lock_status) "
@@ -147,7 +145,7 @@ def append_candidate_adoption(case):
     outcome = json.loads(original["outcome_json"])
     outcome["data"]["official_plan"].update(version=version, plan_ref=plan_ref)
     WorkbenchCommandRepository(conn).insert(request_key=request_key, receipt_ref=receipt_ref,
-        action=original["action"], context_ref=original["context_ref"], input_hash=original["input_hash"],
+        action=original["action"], context_ref=original["context_ref"], input_json=original["input_json"],
         outcome=WorkbenchCommandOutcome(**outcome))
     conn.commit()
     refs.update(second_candidate_receipt_ref=receipt_ref, second_candidate_plan_ref=plan_ref,
@@ -211,34 +209,42 @@ def clone_run(case, accepted, *, change_input=None, change_artifact=None, change
     original = conn.execute("SELECT * FROM WorkbenchCommandReceipts WHERE request_key=(SELECT request_key FROM WorkbenchRunJobs WHERE run_ref=?)",
                             (original_ref,)).fetchone()
     WorkbenchCommandRepository(conn).insert(request_key=key, receipt_ref=new_run_ref()[:32], action=original["action"],
-        context_ref=source["input_ref"], input_hash=original["input_hash"],
+        context_ref=source["input_ref"], input_json=original["input_json"],
         outcome=WorkbenchCommandOutcome("committed", {"run_ref": ref}))
-    _save_cloned_read_models(conn, ref)
+    _save_cloned_read_models(conn, ref, original_ref)
     conn.commit()
     return ref, mapping[case.history_refs["candidate_ref"]]
 
 
-def _save_cloned_read_models(conn, run_ref):
-    """A fixture archive uses the same verified preparation and pure builder as migration."""
+def _save_cloned_read_models(conn, run_ref, source_run_ref):
+    """A copied archive gets read models from the same verified sources and pure builders as a worker run.
+
+    The worker builds them from a capture that carries the run's options; a copied
+    archive takes them from its source run's admission read model.
+    """
     store, repo = CandidateStore(conn), WorkbenchRunRepository(conn)
     run = repo.head(run_ref)
-    packet = _read_packet(store, run)
-    for candidate in packet["rows"]:
-        _prepare_candidate(store, packet, candidate)
-    resolver = decision_baseline_source_resolver(
-        conn, candidate_provider=_candidate_provider(store, repo, packet, source_cache=OrderedDict()))
-    official = read_decision_baseline(packet["capture"], packet["facts"], packet["disposition"],
-                                      source_resolver=resolver)
+    receipt, rows, capture = store.receipt(run), store.candidates(run_ref), store.capture(run_ref)
+    facts = GenerationFacts(capture)
+    source_scope = decode_model(repo.admission_read_model(source_run_ref, ("scope",)), ("scope",))["scope"]
+    capture["run_options"] = source_scope["run_options"]
+    disposition = dispositions(receipt, expected_refs=admission_operation_refs(facts, capture["input"]))
+    prepared = {}
+    for candidate in rows:
+        prepared_tasks = {}
+        raw_tasks, intervals, scheduled = validate_saved_tasks(store.tasks(candidate["candidate_ref"]), candidate, facts,
+                                                               prepared_tasks=prepared_tasks)
+        prepared[candidate["candidate_ref"]] = {"raw_tasks": raw_tasks, "intervals": intervals,
+                                                "prepared_tasks": prepared_tasks, "scheduled_op_ids": scheduled}
+    official = read_decision_baseline(capture, facts, disposition, source_resolver=decision_baseline_source_resolver(conn))
     states = official["source_states"]
     dependencies = repo.dependency_heads(
         sorted({row["source_candidate_ref"] for row in states if row.get("source_candidate_ref") is not None}),
         sorted({row["source_scenario_ref"] for row in states if row.get("source_scenario_ref") is not None}))
-    admission = prepare_admission_read_models(run, packet["capture"], official, facts=packet["facts"],
-                                               receipt=packet["receipt"], dependencies=dependencies)
+    admission = prepare_admission_read_models(run, capture, official, facts=facts, receipt=receipt, dependencies=dependencies)
     repo.insert_admission_read_model(run_ref, admission["scope"], admission["decision"])
-    models = build_decision_read_models(run, packet["capture"], packet["receipt"], packet["rows"],
-        packet["prepared_candidates"], facts=packet["facts"],
-        process=(packet["receipt"] or {}).get("unified_process"), admission=admission["decision"])
+    models = build_decision_read_models(run, capture, receipt, rows, prepared, facts=facts,
+                                        process=receipt["unified_process"], admission=admission["decision"])
     repo.insert_decision_read_models(run_ref, models["run_model"], models["candidate_models"])
 
 

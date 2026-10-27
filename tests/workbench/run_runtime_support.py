@@ -88,11 +88,11 @@ def paused_compute(monkeypatch):
     calls = []
     original = run_worker.compute_candidate_run
 
-    def compute(conn, settings, projections, *, capture):
+    def compute(conn, settings, projections, *, capture, dispositions):
         calls.append(threading.get_ident())
         entered.set()
         assert release.wait(timeout=20), "test did not release compute"
-        return original(conn, settings, projections, capture=capture)
+        return original(conn, settings, projections, capture=capture, dispositions=dispositions)
 
     monkeypatch.setattr(run_worker, "compute_candidate_run", compute)
     try:

@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   const A = window.SystemMaintenanceAPI, C = window.SystemMaintenanceControls;
-  function useCommand(api, onChanged, revision) {
+  function useCommand(onChanged, revision) {
     const [initial] = React.useState(A.inspectPending), [intent, setIntent] = React.useState(initial.intent), [storageError, setStorageError] = React.useState(initial.storageError);
     const [result, setResult] = React.useState(null), [error, setError] = React.useState(null), [busy, setBusy] = React.useState(false);
     const [host, setHost] = React.useState(null), [hostError, setHostError] = React.useState(null), [hostBusy, setHostBusy] = React.useState(true);
@@ -13,7 +13,7 @@
     async function inspectHost() {
       const sequence = ++hostSequence.current;
       if (mounted.current) setHostBusy(true);
-      try { const value = await api.host(); if (mounted.current && sequence === hostSequence.current) { setHost(value); setHostError(null); } return value; }
+      try { const value = await A.host(); if (mounted.current && sequence === hostSequence.current) { setHost(value); setHostError(null); } return value; }
       catch (problem) { if (mounted.current && sequence === hostSequence.current) setHostError(problem); return null; }
       finally { if (mounted.current && sequence === hostSequence.current) setHostBusy(false); }
     }
@@ -21,7 +21,7 @@
       const original = current.current; if (!original || running.current) return;
       if (found.current && found.current.kind === 'rejected') return inspectHost();
       running.current = true; setBusy(true); setError(null);
-      try { settle(await api.lookup(original)); }
+      try { settle(await A.lookup(original)); }
       catch (problem) { if (mounted.current) setError(problem); }
       finally { await inspectHost(); running.current = false; if (mounted.current) setBusy(false); }
     }
@@ -43,7 +43,7 @@
       reload();
       window.addEventListener('online', reload); window.addEventListener('storage', reload);
       return () => { mounted.current = false; window.removeEventListener('online', reload); window.removeEventListener('storage', reload); };
-    }, [api, revision]);
+    }, [revision]);
     async function execute(action, token, input, selected = null) {
       if (running.current || current.current || storageError || !host || hostError || host.state !== 'ready' || !host.operations_available) return;
       let original;
@@ -51,10 +51,10 @@
       startedHere.current = action === 'restore';
       setSelection(selected);
       current.current = original; setIntent(original); settle(null); setError(null); setBusy(true); running.current = true;
-      try { settle(await api.command(original, token, input)); }
+      try { settle(await A.command(original, token, input)); }
       catch (problem) {
         if (mounted.current) setError(problem);
-        if (problem.rejected) {
+        if (window.APSWorkbenchTransport.rejected(problem)) {
           settle({ kind: 'rejected', terminal: true, intent: original });
           try {
             A.pending().finish(original); current.current = null;
@@ -82,18 +82,17 @@
   }
   // Keep this component mounted across tab changes: it owns the system-only original request.
   // 系统管理只读本机数据，没有别的数据来源可切换。
-  function Workspace({ tab, theme, onSetTheme, pageSize, onPageSize, compact, onCompact, revision = 0, onChanged, onReadSuspendedChange, recordContexts = {}, onRecordContext, api: supplied, children }) {
-    const api = React.useMemo(() => supplied || A.create(), [supplied]);
+  function Workspace({ tab, theme, onSetTheme, pageSize, onPageSize, compact, onCompact, revision, onChanged, onReadSuspendedChange, recordContexts, onRecordContext, children }) {
     const [version, refresh] = React.useReducer(value => value + 1, 0);
-    const command = useCommand(api, (intent, result) => { refresh(); if (onChanged) onChanged(intent, result); }, revision);
+    const command = useCommand((intent, result) => { refresh(); onChanged(intent, result); }, revision);
     const suspended = command.suspended;
-    React.useLayoutEffect(() => { if (onReadSuspendedChange) onReadSuspendedChange(suspended, command.readReason); }, [suspended, command.readReason, onReadSuspendedChange]);
+    React.useLayoutEffect(() => { onReadSuspendedChange(suspended, command.readReason); }, [suspended, command.readReason, onReadSuspendedChange]);
     const enabled = !suspended, serial = revision + ':' + version;
     const [visited, setVisited] = React.useState({});
     React.useEffect(() => { if (enabled && ['backups', 'logs', 'config'].includes(tab)) setVisited(value => ({ ...value, [tab]: true })); }, [enabled, tab]);
     return <div className="sm-maintenance-workspace sm-maintenance-workspace-flush plana" data-system-maintenance="v1">
 
-      {command.maintenanceRequired ? <window.SystemRestorePanel command={command} api={api} theme={theme} onSetTheme={onSetTheme} /> : <>
+      {command.maintenanceRequired ? <window.SystemRestorePanel command={command} theme={theme} onSetTheme={onSetTheme} /> : <>
         {command.hostError && <section className="sm-section sm-notice sm-tone-danger" role="alert" data-system-status-error>
           <h3>维护状态查询失败</h3><p>{command.hostError.message}</p>
           <div className="sm-actions"><C.Button icon="refresh-cw" busy={command.hostBusy} onClick={command.inspectHost}>重新查询</C.Button>
@@ -107,10 +106,10 @@
       {!command.maintenanceRequired && command.hostBusy && <p className="sm-note" role="status">正在查询维护状态…</p>}
       {tab === 'overview' && !suspended && children}
       {['backups', 'logs'].map(kind => visited[kind] || enabled && tab === kind ? <div key={kind} hidden={!enabled || tab !== kind}>
-        <window.SystemMaintenanceRecords api={api} kind={kind} pageSize={pageSize} onPageSize={onPageSize} revision={serial} command={command} active={enabled && tab === kind}
+        <window.SystemMaintenanceRecords kind={kind} pageSize={pageSize} onPageSize={onPageSize} revision={serial} command={command} active={enabled && tab === kind}
           initialContext={recordContexts[kind]} onReadContext={onRecordContext} />
       </div> : null)}
-      {(visited.config || enabled && tab === 'config') && <div hidden={!enabled || tab !== 'config'}><window.SystemMaintenanceConfig api={api} revision={serial} command={command} active={enabled && tab === 'config'}
+      {(visited.config || enabled && tab === 'config') && <div hidden={!enabled || tab !== 'config'}><window.SystemMaintenanceConfig revision={serial} command={command} active={enabled && tab === 'config'}
         theme={theme} onSetTheme={onSetTheme} pageSize={pageSize} onPageSize={onPageSize} compact={compact} onCompact={onCompact} /></div>}
     </div>;
   }

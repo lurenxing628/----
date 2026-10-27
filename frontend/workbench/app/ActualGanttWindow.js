@@ -4,18 +4,16 @@
     const labelWidth = width < 550 ? 160 : 292;
     return { labelWidth, viewport: Math.max(80, width - labelWidth) };
   }
+  // 记住的查看位置只存时间窗口（中心时刻与跨度）和纵向滚动；横向像素随当时宽度变化，恢复时按当前宽度换算。
   function capture(position, viewport, model, zoom) {
     const windowSpan = (model.end - model.start) / zoom;
-    return { left: position.left, top: position.top, viewport, windowSpan,
-      centerAt: model.start + (position.left / viewport + .5) * windowSpan };
+    return { top: position.top, windowSpan, centerAt: model.start + (position.left / viewport + .5) * windowSpan };
   }
-  function restoreZoom(position, model, zoom) {
-    return position.windowSpan === undefined ? zoom : Math.max(1, Math.min(1024, (model.end - model.start) / position.windowSpan));
+  function restoreZoom(position, model) {
+    return Math.max(1, Math.min(1024, (model.end - model.start) / position.windowSpan));
   }
   function restoreLeft(position, viewport, model, zoom) {
-    if (position.centerAt !== undefined)
-      return ((position.centerAt - model.start) / (model.end - model.start) * zoom - .5) * viewport;
-    return position.viewport === undefined ? position.left : position.left * viewport / position.viewport;
+    return ((position.centerAt - model.start) / (model.end - model.start) * zoom - .5) * viewport;
   }
   // The default window follows the data but never opens beyond 64x: a few hours inside a months-long axis otherwise
   // started at 1024x with a board hundreds of thousands of pixels wide and a scrollbar thumb too small to grab.

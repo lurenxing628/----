@@ -3,9 +3,9 @@
 from datetime import datetime
 
 from core.infrastructure.logging import OperationLogger
-from core.models.workbench_command import canonical_json
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
+from core.shared.strict_json import canonical_json
 from data.repositories.schedule_history_repo import ScheduleHistoryRepository
 from data.repositories.schedule_repo import ScheduleRepository
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
@@ -16,7 +16,7 @@ def persist_official_plan_in_tx(conn, *, prepared, payload, baseline, audit, app
     """``run_window`` holds the dates of the run that left stage work pending.
 
     None means ``prepared`` is that run's own input (candidate adoption). A trial
-    passes its source's recorded dates, or {} so an older plan never gains invented ones.
+    passes its source's recorded dates.
     """
     if not conn.in_transaction:
         raise RuntimeError("Official plan persistence requires the caller's write transaction")
@@ -42,8 +42,7 @@ def persist_official_plan_in_tx(conn, *, prepared, payload, baseline, audit, app
                  adopted_at=datetime.now().isoformat(timespec="seconds"), is_simulation=False)
     audit["material_policy"] = _material_policy(prepared.normalized_input, run_window)
     audit["deferred_operation_ids"] = sorted(material_deferred_ids(prepared.dispositions, prepared.normalized_input))
-    # Legacy publishers own transactions or update master status. Only their
-    # append repositories are composable with the caller's durable receipt.
+    # Append-only repositories compose with the caller's durable receipt transaction.
     history.create({"version": version, "strategy": "manual", "batch_count": len(prepared.batches),
                     "op_count": len(rows), "result_status": "success", "result_summary": canonical_json(audit),
                     "created_by": application_operator})
@@ -68,6 +67,8 @@ def persist_official_plan_in_tx(conn, *, prepared, payload, baseline, audit, app
 def _material_policy(settings, run_window):
     # 排产起止日和不重排时段一起记下，从这份正式计划发起的试调按同一时段判断哪些原安排不能改。
     if run_window is None:
-        run_window = {key: settings[key] for key in ("start_date", "end_date", "hold_window") if key in settings}
+        # hold_window is optional in a run input; the run dates never are.
+        run_window = {"start_date": settings["start_date"], "end_date": settings["end_date"],
+                      **({"hold_window": settings["hold_window"]} if "hold_window" in settings else {})}
     return {"ready_check": settings["ready_check"], "material_strategy": settings.get("material_strategy", "strict"),
             **run_window}

@@ -16,6 +16,7 @@ from core.services.scheduler.run.schedule_input_builder import build_algo_operat
 from core.services.scheduler.run.schedule_input_contracts import ScheduleRunInput
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.facts.run_input_rows import (
+    admitted_classification,
     batch_model,
     classify_rows,
     fail,
@@ -29,6 +30,8 @@ from .input_execution import execution_guards
 from .input_external import external_execution_cycles, verified_external_contexts
 from .input_piece import input_piece_scope
 from .input_runtime import build_runtime
+
+_CLASSIFY_CURRENT = object()
 
 
 @dataclass
@@ -59,7 +62,8 @@ def _projection_map(execution_projections, selected_refs):
 def prepare_candidate_run_input(conn, normalized_input: Dict[str, Any],
                                 execution_projections: Sequence[ExecutionProjection], *,
                                 facts, config_snapshot=None, baseline=None,
-                                for_adoption: bool = False, held=None) -> CandidateRunInput:
+                                for_adoption: bool = False, held=None,
+                                admitted_dispositions: Any = _CLASSIFY_CURRENT) -> CandidateRunInput:
     """Read-only. Caller supplies AJ selected + all last-official execution scope.
 
     facts is the caller's PreflightFacts bound to this transaction's capture;
@@ -67,6 +71,8 @@ def prepare_candidate_run_input(conn, normalized_input: Dict[str, Any],
     The worker owns the existing run lock and its admission/final revalidation.
     This function neither acquires that lock nor accepts/publishes a run.
     Adoption keeps input and seed validation but does not prepare solver resources.
+    The worker passes the admission's archived ``admitted_dispositions`` and never
+    reclassifies; admission and adoption classify the current facts.
     """
     settings = normalize_preflight_input(normalized_input)
     if not settings["batch_refs"]:
@@ -75,12 +81,12 @@ def prepare_candidate_run_input(conn, normalized_input: Dict[str, Any],
         if facts.conn is not conn or not conn.in_transaction:
             raise RuntimeError("Prepared input requires this transaction's own production facts")
         with facts.execution_snapshot():
-            return _prepare_facts(conn, settings, facts, execution_projections,
-                                  config_snapshot, baseline, for_adoption=for_adoption, held=held)
+            return _prepare_facts(conn, settings, facts, execution_projections, config_snapshot, baseline,
+                                  for_adoption=for_adoption, held=held, admitted=admitted_dispositions)
 
 
 def _prepare_facts(conn, settings, facts, execution_projections,
-                   config_snapshot, baseline, *, for_adoption: bool, held):
+                   config_snapshot, baseline, *, for_adoption: bool, held, admitted=_CLASSIFY_CURRENT):
     raw_batches = facts.selected(settings["batch_refs"])
     batches = {row["batch_id"]: batch_model(row) for row in raw_batches}
     raw_ops = [row for row in facts.tables["BatchOperations"] if row["batch_id"] in batches]
@@ -88,11 +94,12 @@ def _prepare_facts(conn, settings, facts, execution_projections,
     projections = _projection_map(execution_projections, [facts.operation_ref(row) for row in raw_ops])
     facts.execution_projections.update(projections)
     return _prepare(conn, settings, facts, raw_batches, batches, operations, projections,
-                    config_snapshot=config_snapshot, baseline=baseline, for_adoption=for_adoption, held=held)
+                    config_snapshot=config_snapshot, baseline=baseline, for_adoption=for_adoption, held=held,
+                    admitted=admitted)
 
 
 def _prepare(conn, settings, facts, raw_batches, batches, operations, projections, *,
-             config_snapshot, baseline, for_adoption: bool, held):
+             config_snapshot, baseline, for_adoption: bool, held, admitted):
     piece_scope = input_piece_scope(operations, batches)
     if piece_scope is None:
         validate_single_chain(operations)
@@ -106,11 +113,11 @@ def _prepare(conn, settings, facts, raw_batches, batches, operations, projection
     guards = execution_guards(conn, facts, operations, batches, projections, prev_version, piece_scope=piece_scope)
     execution_facts, fixed, completed, execution_seeds, snapshot = guards
     cycles = external_execution_cycles(facts, batches, operations, execution_seeds, set(fixed) | set(completed))
-    dispositions, mutable, releases = classify_rows(
-        facts, settings, raw_batches, operations, projections,
-        set(fixed) | set(completed), piece_scope=piece_scope, external_cycles=cycles,
-    )
     guarded_ids = set(fixed) | set(completed) | set(cycles)
+    dispositions, mutable, releases = (
+        classify_rows(facts, settings, raw_batches, operations, projections,
+                      set(fixed) | set(completed), piece_scope=piece_scope, external_cycles=cycles)
+        if admitted is _CLASSIFY_CURRENT else admitted_classification(operations, admitted, guarded_ids))
     algo_ops, runtime_mutable = _algorithm_scope(facts, batches, operations, mutable, guarded_ids, cycles, releases)
     reservations = build_execution_resource_reservations(
         facts=execution_facts, selected_op_ids={op.id for op in operations}, start_dt=start, capture=facts.capture,

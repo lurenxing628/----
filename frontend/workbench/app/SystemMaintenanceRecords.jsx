@@ -56,17 +56,15 @@
       </div></>}
     </section>;
   }
-  function Records({ api, kind, pageSize, onPageSize, revision, command, active = true, initialContext, onReadContext }) {
+  function Records({ kind, pageSize, onPageSize, revision, command, active, initialContext, onReadContext }) {
     const [start] = React.useState(() => A.recordContext(initialContext, kind));
     const [draft, setDraft] = React.useState(start.filters), [filters, setFilters] = React.useState(start.filters);
     const [page, setPage] = React.useState(start.page), [snapshot, setSnapshot] = React.useState(''), [refresh, reload] = React.useReducer(value => value + 1, 0);
     const [selection, setSelection] = React.useState(start.selection), [confirm, setConfirm] = React.useState(null), [downloadBusy, setDownloadBusy] = React.useState(false);
-    const [error, setError] = React.useState(null), [notice, setNotice] = React.useState(start.migration_notice || '');
-    const request = C.useRead(api, kind, { ...filters, page, page_size: pageSize, snapshot_ref: snapshot }, revision + ':' + refresh, active);
+    const [error, setError] = React.useState(null), [notice, setNotice] = React.useState('');
+    const request = C.useRead(kind, { ...filters, page, page_size: pageSize, snapshot_ref: snapshot }, revision + ':' + refresh, active);
     const payload = request.data, data = payload && payload.data;
-    const stableSelection = selection && (kind !== 'backups' || typeof selection.key === 'string' && selection.key.length > 0
-      && ['backup_file', 'restore_event', 'cleanup_event'].includes(selection.record_kind));
-    const matches = stableSelection && data ? data.rows.filter(row => row.key === selection.key && (kind !== 'backups'
+    const matches = selection && data ? data.rows.filter(row => row.key === selection.key && (kind !== 'backups'
       || row.record_kind === selection.record_kind && (row.record_kind !== 'backup_file' || !selection.backup_ref || row.backup_ref === selection.backup_ref))) : [];
     const selected = matches.length === 1 ? matches[0] : null;
     function setSelected(row) { setSelection(row ? { key: row.key, ...(kind === 'backups' ? { record_kind: row.record_kind,
@@ -79,10 +77,10 @@
       const next = revision + ':' + pageSize; if (previousVersion.current === next) return;
       previousVersion.current = next; setPage(1); setSnapshot(''); setSelected(null); setConfirm(null);
     }, [revision, pageSize]);
-    const savedSelection = selection ? { ...(selection.key !== undefined ? { key: selection.key } : {}), ...(selection.record_kind ? { record_kind: selection.record_kind } : {}) } : null;
+    const savedSelection = selection ? { key: selection.key, ...(selection.record_kind ? { record_kind: selection.record_kind } : {}) } : null;
     const savedScope = JSON.stringify({ filters, page, selection: savedSelection });
     React.useLayoutEffect(() => {
-      if (onReadContext && active && data) onReadContext(kind, { filters: { ...filters }, page, selection: savedSelection });
+      if (active && data) onReadContext(kind, { filters: { ...filters }, page, selection: savedSelection });
     }, [onReadContext, kind, active, !!data, savedScope]);
     React.useEffect(() => { if (!active || command.locked) setConfirm(null); }, [active, command.locked]);
     function apply(value) {
@@ -92,13 +90,13 @@
     function changePage(next) { setPage(next); setSnapshot(payload.meta.snapshot_ref); setSelected(null); setError(null); setNotice(''); }
     async function download(format) {
       setError(null); setNotice(''); setDownloadBusy(true);
-      try { const file = await api.download(format, { ...filters, page: 1, page_size: pageSize, snapshot_ref: payload.meta.snapshot_ref }); setNotice('已生成并交给浏览器下载：' + file.filename + '（' + file.bytes + ' 字节）。'); }
+      try { const file = await A.download(format, { ...filters, page: 1, page_size: pageSize, snapshot_ref: payload.meta.snapshot_ref }); setNotice('已生成并交给浏览器下载：' + file.filename + '（' + file.bytes + ' 字节）。'); }
       catch (problem) { setError(problem); } finally { setDownloadBusy(false); }
     }
     async function downloadBackup(row) {
       setError(null); setNotice(''); setDownloadBusy(true);
       try {
-        const file = await api.downloadBackup(row, { ...filters, page: 1, page_size: pageSize, snapshot_ref: payload.meta.snapshot_ref });
+        const file = await A.downloadBackup(row, { ...filters, page: 1, page_size: pageSize, snapshot_ref: payload.meta.snapshot_ref });
         setNotice('已生成并交给浏览器下载：' + file.filename + '（' + file.bytes + ' 字节）。');
       } catch (problem) { setError(problem); } finally { setDownloadBusy(false); }
     }
@@ -117,9 +115,7 @@
           <C.Button transfer="export" disabled={!data} busy={downloadBusy} onClick={() => download('zip')}>导出诊断包</C.Button></>}</div>
       </div>
       <C.ErrorBox error={request.error || error} />{notice && <p className="sm-notice" role="status">{notice}</p>}
-      {selection && data && !selected && <p className="sm-notice" role="status">{!stableSelection
-        ? '原先选中的记录编号不完整，没有按同名文件或第一条记录乱猜。请重新选择。'
-        : '这一页里找不到原先选中的记录，没有自动换成别的记录。请重新选择。'}<C.Button icon="x" onClick={() => setSelected(null)}>清除原选择</C.Button></p>}
+      {selection && data && !selected && <p className="sm-notice" role="status">这一页里找不到原先选中的记录，没有自动换成别的记录。请重新选择。<C.Button icon="x" onClick={() => setSelected(null)}>清除原选择</C.Button></p>}
       {kind === 'backups' && sharedReason && !command.storageError && <p className="sm-note" role="status">{sharedReason}</p>}
       {request.loading && <p className="sm-note" role="status">正在读取{kind === 'logs' ? '日志' : '备份清单'}…</p>}
       {data && <><Sources data={data} kind={kind} /><div className="sm-meta">{window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(payload.meta.as_of))}</div>

@@ -1,18 +1,17 @@
 (function () {
   'use strict';
-  const BASE = '/api/workbench/v1/', ACTION = 'scheduling.candidate.adopt';
+  const T = window.APSWorkbenchTransport, BASE = '/api/workbench/v1/', ACTION = 'scheduling.candidate.adopt';
   const PENDING_KEY = 'aps_workbench_candidate_adoption_pending_v1', EVENT = PENDING_KEY + '_changed';
   const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
   const text = v => typeof v === 'string', count = v => Number.isSafeInteger(v) && v >= 0;
   const ref = v => text(v) && /^[a-f0-9]{48}$/.test(v), token = v => text(v) && /^[A-Za-z0-9_-]{32}$/.test(v);
-  const key = v => text(v) && /^adoption-[a-f0-9]{48}$/.test(v), rejections = new WeakSet(), replacedProofs = new WeakMap();
+  const key = v => text(v) && /^adoption-[a-f0-9]{48}$/.test(v), replacedProofs = new WeakMap();
   function check(valid, message = '读到的采用数据不完整，请刷新重试。') { if (!valid) throw new Error(message); }
   function shape(v, required, optional = []) {
     return object(v) && required.every(k => Object.prototype.hasOwnProperty.call(v, k)) && Object.keys(v).every(k => required.includes(k) || optional.includes(k));
   }
   function contextRef(v) {
     if (!text(v)) return false;
-    if (/^[a-f0-9]{64}$/.test(v)) return true;
     try {
       const data = JSON.parse(v);
       return shape(data, ['database_scope', 'successful_restores']) && text(data.database_scope) && data.database_scope.length > 0
@@ -35,20 +34,18 @@
     const result = { candidate_ref: v.candidate_ref, run_ref: v.run_ref, baseline: v.baseline, task_count: v.task_count, scope_complete: v.scope_complete };
     check(summary(result)); return result;
   }
-  function preview(v, candidateRef) {
-    check(shape(v, ['ok', 'schema_version', 'data', 'meta', 'warnings']) && v.ok === true && v.schema_version === 1 && Array.isArray(v.warnings) && v.warnings.length === 0
-      && shape(v.meta, ['request_ref', 'source', 'time_basis', 'snapshot_ref', 'as_of']) && /^[a-f0-9]{32}$/.test(v.meta.request_ref)
-      && v.meta.source === 'production' && v.meta.time_basis === 'factory_local' && token(v.meta.snapshot_ref) && time(v.meta.as_of));
+  function previewResult(v, candidateRef) {
+    check(v.warnings.length === 0);
     const d = v.data, c = d && d.write_context, validation = d && d.validation;
     check(ref(candidateRef) && object(d) && d.candidate_ref === candidateRef && shape(validation, ['status', 'can_adopt', 'issues']) && issues(validation.issues)
-      && shape(c, ['write_token', 'expires_at', 'capabilities', 'blocked_reasons']) && shape(c.capabilities, [ACTION]) && issues(c.blocked_reasons));
-    check(d.data_context_ref === undefined || contextRef(d.data_context_ref));
+      && shape(c, ['write_token', 'expires_at', 'capabilities', 'blocked_reasons']) && shape(c.capabilities, [ACTION]) && issues(c.blocked_reasons)
+      && contextRef(d.data_context_ref));
     if (validation.can_adopt === true) {
-      check(shape(d, ['candidate_ref', 'run_ref', 'baseline', 'task_count', 'scope_complete', 'validation', 'write_context'], ['data_context_ref'])
+      check(shape(d, ['candidate_ref', 'run_ref', 'baseline', 'task_count', 'scope_complete', 'validation', 'write_context', 'data_context_ref'])
         && summary({ candidate_ref: d.candidate_ref, run_ref: d.run_ref, baseline: d.baseline, task_count: d.task_count, scope_complete: d.scope_complete })
         && validation.status === 'valid' && validation.issues.length === 0 && c.capabilities[ACTION] === true && token(c.write_token)
         && time(c.expires_at) && c.expires_at > v.meta.as_of && c.blocked_reasons.length === 0);
-    } else check(shape(d, ['candidate_ref', 'validation', 'write_context'], ['data_context_ref']) && validation.can_adopt === false && validation.status === 'blocked'
+    } else check(shape(d, ['candidate_ref', 'validation', 'write_context', 'data_context_ref']) && validation.can_adopt === false && validation.status === 'blocked'
       && validation.issues.length > 0 && c.capabilities[ACTION] === false && c.write_token === null && c.expires_at === null && c.blocked_reasons.length > 0);
     return d;
   }
@@ -72,7 +69,7 @@
       && Array.isArray(p.blocked_reasons) && p.blocked_reasons.length === 0);
     return v;
   }
-  function lookup(v, intent) {
+  function lookupResult(v, intent) {
     if (v && v.result === 'not_recorded') {
       check(validIntent(intent) && shape(v, ['ok', 'result', 'request_key', 'may_be_in_flight', 'resolution', 'data_context_ref', 'message'])
         && v.ok === true && v.request_key === intent.request_key && contextRef(v.data_context_ref) && text(v.message)
@@ -83,20 +80,9 @@
     }
     return receipt(v, intent);
   }
-  function failure(v, status, requestKey) {
-    const e = v && v.error, valid = shape(v, ['ok', 'committed', 'error']) && v.ok === false && [false, 'unknown'].includes(v.committed)
-      && shape(e, ['code', 'message', 'fields', 'retryable', 'request_ref'], ['request_key', 'result_target']) && text(e.code) && text(e.message)
-      && Array.isArray(e.fields) && e.fields.every(f => shape(f, ['path', 'message']) && text(f.path) && text(f.message))
-      && typeof e.retryable === 'boolean' && text(e.request_ref) && /^[a-f0-9]{32}$/.test(e.request_ref)
-      && (e.request_key === undefined && e.result_target === undefined || key(requestKey) && e.request_key === requestKey && e.result_target === BASE + 'commands/' + requestKey);
-    const error = new Error(valid ? e.message : window.WorkbenchTerms.outcomes.pending('采用')); error.code = valid ? e.code : 'invalid_response';
-    if (valid && v.committed === false && [400, 404, 409, 422, 503].includes(status) && e.code !== 'request_key_conflict') rejections.add(error);
-    return error;
-  }
   function validIntent(v) {
-    if (!shape(v, ['schema_version', 'candidate_ref', 'request_key', 'input', 'preview', 'phase'], ['data_context_ref']) || ![1, 2].includes(v.schema_version) || !ref(v.candidate_ref)
-      || (v.schema_version === 2 || v.data_context_ref !== undefined) && !contextRef(v.data_context_ref)
-      || !key(v.request_key) || !summary(v.preview) || v.preview.candidate_ref !== v.candidate_ref || !['pending', 'rejected'].includes(v.phase)) return false;
+    if (!shape(v, ['schema_version', 'candidate_ref', 'request_key', 'input', 'preview', 'phase', 'data_context_ref']) || v.schema_version !== 2 || !ref(v.candidate_ref)
+      || !contextRef(v.data_context_ref) || !key(v.request_key) || !summary(v.preview) || v.preview.candidate_ref !== v.candidate_ref || !['pending', 'rejected'].includes(v.phase)) return false;
     try { return JSON.stringify(input(v.input)) === JSON.stringify(v.input); } catch (_) { return false; }
   }
   function pending(storage) {
@@ -116,15 +102,12 @@
       window.dispatchEvent(new CustomEvent(EVENT, { detail: value })); return value;
     }
     return { read,
-      begin(value, values, previous = null) {
+      begin(value, values, previous) {
         check(!previous || validIntent(previous) && previous.phase === 'rejected' && previous.candidate_ref === value.candidate_ref, '上次采用还没确认结果，不能重新提交。');
-        const bytes = new Uint8Array(24); window.crypto.getRandomValues(bytes);
-        return save({ schema_version: value.data_context_ref === undefined ? 1 : 2, candidate_ref: value.candidate_ref,
-          request_key: previous ? previous.request_key : 'adoption-' + Array.from(bytes, n => n.toString(16).padStart(2, '0')).join(''),
-          input: input(values), preview: overview(value), phase: 'pending',
-          ...(value.data_context_ref === undefined ? {} : { data_context_ref: value.data_context_ref }) }, previous);
+        return save({ schema_version: 2, candidate_ref: value.candidate_ref, request_key: previous ? previous.request_key : T.requestKey('adoption'),
+          input: input(values), preview: overview(value), phase: 'pending', data_context_ref: value.data_context_ref }, previous);
       },
-      reject(intent, error) { check(rejections.has(error), '没有确认拒绝结果，已保留上次操作。'); return save({ ...intent, phase: 'rejected' }, intent); },
+      reject(intent, error) { check(T.rejected(error), '没有确认拒绝结果，已保留上次操作。'); return save({ ...intent, phase: 'rejected' }, intent); },
       cancelRejected(intent) { check(validIntent(intent) && intent.phase === 'rejected', '结果还没确认，不能丢弃上次操作。'); return save(null, intent); },
       dismissReplaced(intent, info) {
         check(validIntent(intent) && intent.phase === 'pending' && replacedProofs.get(info) === JSON.stringify(intent), '结果还没确认，不能丢弃上次操作。');
@@ -133,33 +116,20 @@
       finish(intent, result) { receipt(result, intent); return save(null, intent); }
     };
   }
-  function create(fetcher = window.fetch.bind(window)) {
-    async function request(path, body, signal, requestKey) {
-      const controller = new AbortController(), abort = () => controller.abort();
-      if (signal) { if (signal.aborted) abort(); else signal.addEventListener('abort', abort, { once: true }); }
-      const timer = setTimeout(abort, 30000);
-      try {
-        const response = await fetcher(BASE + path, { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: controller.signal,
-          ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
-        check((response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() === 'application/json');
-        const value = await response.json(); if (!response.ok) throw failure(value, response.status, requestKey);
-        check(response.status === 200); return value;
-      } finally { clearTimeout(timer); if (signal) signal.removeEventListener('abort', abort); }
-    }
-    return {
-      async preview(candidateRef, signal) { check(ref(candidateRef)); const v = await request('scheduling/candidates/' + candidateRef + '/adopt-preview', {}, signal); preview(v, candidateRef); return v; },
-      async adopt(intent, writeToken) {
-        check(validIntent(intent) && intent.phase === 'pending' && token(writeToken));
-        const v = await request('scheduling/candidates/' + intent.candidate_ref + '/adopt', { write_token: writeToken, request_key: intent.request_key, input: intent.input }, undefined, intent.request_key);
-        receipt(v, intent); return v;
-      },
-      async lookup(intent, signal) {
-        check(validIntent(intent));
-        const query = new URLSearchParams({ run_ref: intent.preview.run_ref,
-          ...(intent.data_context_ref === undefined ? {} : { data_context_ref: intent.data_context_ref }) });
-        return request('scheduling/candidates/' + intent.candidate_ref + '/adoption-commands/' + intent.request_key + '?' + query, undefined, signal, intent.request_key);
-      }
-    };
+  const candidatePath = candidateRef => BASE + 'scheduling/candidates/' + candidateRef;
+  async function preview(candidateRef, signal) {
+    check(ref(candidateRef));
+    return previewResult(await T.preview(candidatePath(candidateRef) + '/adopt-preview', {}, { signal, timeout: 30000 }), candidateRef);
   }
-  window.RunAdoptionAPI = { create, preview, receipt, lookup, input, pending, ref, overview, validIntent, contextRef, PENDING_KEY, EVENT, isRejected: e => rejections.has(e) };
+  async function adopt(intent, writeToken) {
+    check(validIntent(intent) && intent.phase === 'pending' && token(writeToken));
+    return receipt(await T.command(candidatePath(intent.candidate_ref) + '/adopt', { write_token: writeToken, request_key: intent.request_key, input: intent.input },
+      { timeout: 30000, expect: BASE + 'commands/' + intent.request_key }), intent);
+  }
+  async function lookup(intent, signal) {
+    check(validIntent(intent));
+    const query = new URLSearchParams({ run_ref: intent.preview.run_ref, data_context_ref: intent.data_context_ref });
+    return lookupResult(await T.lookup(candidatePath(intent.candidate_ref) + '/adoption-commands/' + intent.request_key + '?' + query, { signal, timeout: 30000 }), intent);
+  }
+  window.RunAdoptionAPI = { preview, adopt, lookup, receipt, input, pending, ref, overview, validIntent, contextRef, PENDING_KEY, EVENT };
 })();

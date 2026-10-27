@@ -65,7 +65,7 @@ def effective_config(settings, hold):
     return {**{key: settings[key] for key in keys}, "hold_window": window_text(hold[0]), "hold_window_source": hold[1]}
 
 
-def summarize(settings, batches, rows, no_route, unready, ledger_reasons, dependency_reasons, notes, hold):
+def summarize(settings, batches, rows, no_route, unready, dependency_reasons, notes, hold):
     """hold 是本次不重排时段 ((开始, 结束) 或 None, 来源 explicit/default)，原样写进 effective_config。"""
     counts = result_counts(batches, rows, no_route, unready)
     blockers = result_blockers(rows, no_route, counts)
@@ -87,6 +87,5 @@ def summarize(settings, batches, rows, no_route, unready, ledger_reasons, depend
             "no_route_batches": [{"batch_ref": row["ref"], "batch_id": row["batch_id"]} for row in no_route],
             "unready_batches": unready, "effective_config": effective_config(settings, hold), "config_scope": "single_run",
             "effective_start": start, "effective_end_exclusive": end, "effective_start_basis": "window_lower_bound_not_calendar_slot",
-            "calendar_check": "not_evaluated", "execution_projection_source": "legacy_guard_only" if ledger_reasons else "execution_ledger",
-            "run_blocked": True, "run_blocked_reasons": [issue("schedule_not_computed", "尚未生成排产结果。")]
-            + ledger_reasons + blockers}
+            "calendar_check": "not_evaluated",
+            "run_blocked": True, "run_blocked_reasons": [issue("schedule_not_computed", "尚未生成排产结果。")] + blockers}

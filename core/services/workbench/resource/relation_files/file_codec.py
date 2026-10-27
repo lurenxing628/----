@@ -7,7 +7,6 @@ from core.models.workbench_relation_file import (
     IMPORT_ROW_LIMIT,
     READONLY,
     REQUIRED,
-    file_columns,
     public_columns,
     relation_kind,
 )
@@ -21,7 +20,6 @@ def file_error(message, row=1, field="file"):
 
 def _headers(kind, values):
     names = {column["label"]: column["key"] for column in public_columns(kind)}
-    names.update({key: key for key in file_columns(kind)})
     fields = []
     for value in values:
         if type(value) is not str or value not in names:
@@ -29,7 +27,7 @@ def _headers(kind, values):
         fields.append(names[value])
     missing = [key for key in REQUIRED[kind] if key not in fields]
     if missing or len(fields) != len(set(fields)):
-        raise file_error("表头必须有工号和设备编号这两列，而且不能有重复的列（中文名和英文名指同一列也算重复），"
+        raise file_error("表头必须有工号和设备编号这两列，而且不能有重复的列，"
                          "没有导入。请照模板改好后重新上传。", field="headers")
     return fields
 

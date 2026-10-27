@@ -86,7 +86,7 @@
     const preview = preflightResult && preflightResult.base === model.base && preflightResult.draft === draft ? preflightResult : null;
     const request = React.useRef(null);
     const blocked = disabled || command.locked || command.phase === 'done';
-    const stageReason = E.reason(model, adapter, 'source'), editBlocked = blocked || entity.workflow.route.state !== 'confirmed' || entity.capabilities.stage_confirm !== true;
+    const stageReason = E.reason(model, 'source'), editBlocked = blocked || entity.workflow.route.state !== 'confirmed' || entity.capabilities.stage_confirm !== true;
     function invalidate() { if (request.current) request.current.abort(); request.current = null; setChecking(false); setPreview(null); setDiscarded([]); }
     React.useEffect(() => { invalidate(); }, [model.draft, model.base, model.review, disabled, command.error]);
     React.useEffect(() => () => { if (request.current) request.current.abort(); }, []);
@@ -146,7 +146,7 @@
     return <section data-process-source-editor>
       {active.some(row => draft[row.ref] && row.op_type_ref !== draft[row.ref].op_type_ref) && <p role="status">更换实际工种后，将清除原换型工时、单件工时和本序外协周期，请重新填写并确认。</p>}
       <div className="toolbar"><E.Search paging={paging} disabled={blocked} /><span>共 {active.length} 道有效工序</span><span className="tb-spacer" />
-      <Button icon="plus" disabled={editBlocked} reason={!adapter.resourceAdapter || !window.ProcessOpTypeCreate ? window.WorkbenchTerms.outcomes.unavailable : ''}
+      <Button icon="plus" disabled={editBlocked}
         onClick={() => { invalidate(); setCreate({}); }}>新增工种</Button></div>
       <div className="wb-table-frame"><table className="tbl wb-table wb-table--editable" aria-label="归属明细" style={{ minWidth: 950, tableLayout: 'fixed' }}><caption className="wb-visually-hidden">{"归属明细"}</caption>
         <thead><tr><th scope="col" style={{ width: 150 }}>工序</th><th scope="col" style={{ width: 160 }}>工种</th><th scope="col" style={{ width: 160 }}>归属</th><th scope="col" style={{ width: 190 }}>供应商</th><th scope="col">保存记录</th></tr></thead><tbody>{paging.rows.map(row => {

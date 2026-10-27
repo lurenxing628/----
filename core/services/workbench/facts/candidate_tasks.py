@@ -3,7 +3,7 @@
 from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.models.workbench_run_candidate import local_time
 
-from .candidate_projection import scheduled_ids, uses_task_rows
+from .candidate_projection import scheduled_ids
 from .candidate_values import corrupt, gap, text
 from .zero_duration import PointEventError, point_event_dto
 from .zero_duration_evidence import CandidatePointReader, overlaps
@@ -34,24 +34,6 @@ def operation_labels(facts, ref, payload=None, *, prepared=None):
     return result, op
 
 
-def _expected_task_rows(rows, candidate, scheduled_op_ids):
-    if uses_task_rows(candidate["artifact"]):
-        ids = scheduled_op_ids
-        if ids is None or len(ids) != len(rows):
-            corrupt()
-        return dict.fromkeys(ids)
-    validated = candidate["artifact"].get("validated_payload")
-    expected = None
-    if validated is not None:
-        source = validated.get("schedule_rows")
-        if type(source) is not list or any(type(row) is not dict for row in source):
-            corrupt()
-        expected = {row.get("op_id"): row for row in source}
-        if len(expected) != len(source) or len(expected) != len(rows):
-            corrupt()
-    return expected
-
-
 def validate_task_payload(payload, *, seen, expected=None):
     if set(payload) != {"op_id", "machine_id", "operator_id", "start_time", "end_time", "source", "locked"}:
         corrupt()
@@ -59,10 +41,8 @@ def validate_task_payload(payload, *, seen, expected=None):
     if type(op) is not int or op <= 0 or op in seen:
         corrupt()
     seen.add(op)
-    if expected is not None:
-        if op not in expected or (expected[op] is not None and
-                {key: value for key, value in payload.items() if key != "locked"} != expected[op]):
-            corrupt()
+    if expected is not None and op not in expected:
+        corrupt()
     try:
         start, end = local_time(payload.get("start_time")), local_time(payload.get("end_time"))
     except (ValueError, TypeError):
@@ -96,11 +76,12 @@ def tasks_projection_with_intervals(rows, candidate, facts):
 
 def validate_saved_tasks(rows, candidate, facts, *, prepared_tasks):
     ids = scheduled_ids(candidate)
-    expected = _expected_task_rows(rows, candidate, ids)
+    if len(ids) != len(rows):
+        corrupt()
     intervals, seen, point_reader = {}, set(), None
     for row in rows:
         ref, payload = row["operation_ref"], row["payload"]
-        _op, start, end = validate_task_payload(payload, seen=seen, expected=expected)
+        _op, start, end = validate_task_payload(payload, seen=seen, expected=ids)
         operation_gaps = []
         point_work = None
         if start == end:

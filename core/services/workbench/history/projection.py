@@ -2,8 +2,6 @@
 
 from datetime import datetime
 
-from core.models.workbench_command import WorkbenchCommandRejected
-
 from .conditions import compare_prepared_history_conditions
 from .metric_gate import gate_history_metric
 from .metrics import project_history_metrics
@@ -33,13 +31,8 @@ def _navigation(reader, descriptor):
                        "reason": None if enabled else "原记录缺少可打开的来源资料。"})
 
     if kind in ("run", "candidate_adoption"):
-        try:
-            run_available = reader.store.run(refs["run_ref"]) is not None
-        except WorkbenchCommandRejected as exc:
-            if exc.status != 404:
-                raise
-            run_available = False
-        add("打开原运行", "run", {"run_ref": refs["run_ref"]}, run_available)
+        # Runs are permanent; a run reference in a verified catalog entry always opens.
+        add("打开原运行", "run", {"run_ref": refs["run_ref"]}, True)
         add("打开原候选分析", "analysis", {"run_ref": refs["run_ref"], "candidate_ref": refs["candidate_ref"]},
             refs["run_ref"] and refs["candidate_ref"] and packet.get("candidate") is not None)
     elif kind == "trial_adoption":
@@ -103,8 +96,8 @@ def range_changed(before, after, capacity_before, capacity_after):
 
 
 def missing_packet(code="reference_required", message="请选择明确基准运行。"):
-    return {"kind": "legacy", "ref": None, "entry_ref": None, "parsed_summary": None,
-            "source_issue": reason(code, message)}
+    """A comparison side without a chosen history entry; it carries no saved conditions."""
+    return {"kind": "empty", "ref": None, "entry_ref": None, "source_issue": reason(code, message)}
 
 
 def _shared_window(entry, query):

@@ -22,10 +22,9 @@
     [data-preference-error="true"] .preference-error { display: block; }
   </style>
   <script>
-  // 与 theme.js 同一优先级：只有合法的 aps_theme 才优先，否则再看 aps_kit_theme。
-  try { var preferred = localStorage.getItem('aps_theme'); var legacy = localStorage.getItem('aps_kit_theme');
-    var theme = preferred === 'dark' || preferred === 'light' ? preferred : legacy === 'dark' || legacy === 'light' ? legacy : null;
-    if (theme) document.documentElement.dataset.theme = theme;
+  // 与 theme.js 同一口径：只认合法的 aps_theme；没有时沿用服务端按 cookie 给出的主题。
+  try { var theme = localStorage.getItem('aps_theme');
+    if (theme === 'dark' || theme === 'light') document.documentElement.dataset.theme = theme;
   } catch (error) { document.documentElement.dataset.preferenceError = 'true'; }
   </script>
 </head>

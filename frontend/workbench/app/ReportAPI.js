@@ -1,5 +1,6 @@
 (function () {
   'use strict';
+  const T = window.APSWorkbenchTransport, ROOT = '/api/workbench/v1/';
   const topics = ['delivery', 'records', 'machines', 'people', 'quality'];
   const scopeKeys = ['source', 'plan_ref', 'plan_finish_date_from', 'plan_finish_date_to', 'batch_ref', 'resource_type', 'resource_ref', 'query', 'focus'];
   const sorts = { delivery: ['batch_label', 'planned_end', 'finish_deviation_minutes', 'effective_processing_hours'],
@@ -22,9 +23,9 @@
       throw new Error('报表专题、排序或分页无效，未改到其他查看状态。');
     return result;
   }
-  async function readView(api, input, signal) {
-    if (input.snapshot_ref) return api.read(input, signal);
-    const result = await api.read(input, signal);
+  async function readView(input, signal) {
+    if (input.snapshot_ref) return read(input, signal);
+    const result = await read(input, signal);
     if (input.plan_ref && result.data.plan.plan_ref !== input.plan_ref || result.data.topic !== input.topic)
       throw new Error('刷新后的计划或专题与原查看状态不一致，没有改用其他来源。');
     if (result.data.page.number !== input.page || result.data.page.size !== input.size)
@@ -46,10 +47,10 @@
       || !data.rows.every(data.topic === 'records' ? record : ['machines', 'people'].includes(data.topic) ? totals : operation))
       throw new Error('报工数据缺项或计数不一致，请刷新重试。');
   }
+  // 信封已由 transport.js 的 envelope() 校验；报表的翻页、详情与导出都绑定快照，这里断言快照非空。
   function validate(result) {
-    const data = result && result.data;
-    if (!result || result.ok !== true || !result.meta || result.meta.source !== 'production' || !result.meta.snapshot_ref
-      || !data || !data.plan || !data.plan.is_current_official || !data.scope || !Array.isArray(data.rows) || !data.page || !data.summary || !Array.isArray(data.data_gaps)
+    const data = result.data;
+    if (!result.meta.snapshot_ref || !data.plan || !data.plan.is_current_official || !data.scope || !Array.isArray(data.rows) || !data.page || !data.summary || !Array.isArray(data.data_gaps)
       || !Number.isInteger(data.page.total) || data.page.total < 0 || !Number.isInteger(data.page.number) || !Number.isInteger(data.page.pages))
       throw new Error('读到的报表数据不完整，请刷新重试。');
     if (topics.includes(data.topic)) {
@@ -61,41 +62,32 @@
     return result;
   }
   function validateDetail(result) {
-    const data = result && result.data;
-    if (!result || result.ok !== true || !result.meta || result.meta.source !== 'production' || !result.meta.snapshot_ref
-      || !data || !data.plan || !data.plan.is_current_official || !data.detail || !data.detail.operation
+    const data = result.data;
+    if (!result.meta.snapshot_ref || !data.plan || !data.plan.is_current_official || !data.detail || !data.detail.operation
       || !operation(data.detail.operation) || !Array.isArray(data.detail.records) || !data.detail.records.every(record))
       throw new Error('读到的工序详情不完整，请刷新重试。');
     return result;
   }
-  function create(transport) {
-    const io = transport || window.APSResourceAPI.create();
-    return {
-      async read(input, signal) { return validate(await io.query('analytics', input, signal)); },
-      async detail(ref, input, signal) {
-        if (!/^[0-9a-f]{48}$/.test(ref)) throw new Error('工序编号无效，没有定位其他工序。');
-        const result = validateDetail(await io.query('analytics/operations/' + ref, input, signal));
-        if (result.data.detail.operation.operation_ref !== ref
-          || result.data.detail.records.some(row => row.operation_ref !== ref) || result.meta.snapshot_ref !== input.snapshot_ref
-          || input.plan_ref && result.data.plan.plan_ref !== input.plan_ref)
-          throw new Error('工序详情与原工序、计划或当前数据版本不一致，没有改指其他工序。');
-        return result;
-      },
-      async catalog(kind, input, signal) {
-        if (!['overdue', 'utilization', 'downtime', 'official-review'].includes(kind)) throw new Error('报表不存在。');
-        return validate(await io.query('reports/' + kind, input, signal));
-      },
-      async download(path, input, signal) {
-        if (!/^\/api\/workbench\/v1\/(analytics|reports\/(overdue|utilization|downtime|official-review))\/export$/.test(path) || !input.snapshot_ref)
-          throw new Error('导出地址或数据版本无效，请刷新后重试。');
-        const result = await io.download(path, input, signal);
-        const filename = /filename\*=UTF-8''([^;]+)/i.exec(result.disposition) || /filename="?([^";]+)/i.exec(result.disposition);
-        let name = 'workbench-report.' + input.format;
-        if (filename) { try { name = decodeURIComponent(filename[1]); } catch (_) { throw new Error('下载文件名无效。'); } }
-        window.APSWorkbenchTransport.saveBlob(name, result.blob);
-        return { filename: name, bytes: result.blob.size };
-      }
-    };
+  async function read(input, signal) { return validate(await T.read(ROOT + 'analytics', input, { signal, timeout: 20000 })); }
+  async function detail(ref, input, signal) {
+    if (!/^[0-9a-f]{48}$/.test(ref)) throw new Error('工序编号无效，没有定位其他工序。');
+    const result = validateDetail(await T.read(ROOT + 'analytics/operations/' + ref, input, { signal, timeout: 20000 }));
+    if (result.data.detail.operation.operation_ref !== ref
+      || result.data.detail.records.some(row => row.operation_ref !== ref) || result.meta.snapshot_ref !== input.snapshot_ref
+      || input.plan_ref && result.data.plan.plan_ref !== input.plan_ref)
+      throw new Error('工序详情与原工序、计划或当前数据版本不一致，没有改指其他工序。');
+    return result;
   }
-  window.ReportAPI = { create, scope, table, readView, validate, validateDetail, topics, sorts };
+  async function catalog(kind, input, signal) {
+    if (!['overdue', 'utilization', 'downtime', 'official-review'].includes(kind)) throw new Error('报表不存在。');
+    return validate(await T.read(ROOT + 'reports/' + kind, input, { signal, timeout: 20000 }));
+  }
+  async function download(path, input, signal) {
+    if (!/^\/api\/workbench\/v1\/(analytics|reports\/(overdue|utilization|downtime|official-review))\/export$/.test(path) || !input.snapshot_ref)
+      throw new Error('导出地址或数据版本无效，请刷新后重试。');
+    const file = await T.download(path, input, { signal, timeout: 20000, types: [T.types[input.format]] });
+    T.saveBlob(file.filename, file.blob);
+    return { filename: file.filename, bytes: file.blob.size };
+  }
+  window.ReportAPI = { read, detail, catalog, download, scope, table, readView, validate, validateDetail, topics, sorts };
 })();

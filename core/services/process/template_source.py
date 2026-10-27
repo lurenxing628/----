@@ -59,7 +59,7 @@ class TemplateSourceFacts:
         self.groups = {row["group_id"]: row for row in groups}
         self.suppliers = {row["supplier_id"]: row for row in suppliers}
         self.profiles = {row["supplier_id"]: row for row in profiles}
-        self.capabilities = {row["supplier_id"]: {row["op_type_id"]} for row in suppliers}
+        self.capabilities = {row["supplier_id"]: set() for row in suppliers}
         for row in capabilities:
             if row["supplier_id"] in self.capabilities:
                 self.capabilities[row["supplier_id"]].add(row["op_type_id"])

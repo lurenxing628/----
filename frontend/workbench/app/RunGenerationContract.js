@@ -65,24 +65,25 @@
       && value.reason.code === 'shared_run_time' && text(value.reason.message);
   }
   function algorithm(value, runRef) {
-    const fields = ['mode', 'mode_label', 'strategy', 'strategy_label'], current = unified(value);
-    return shape(value, fields.concat(current ? metadataKeys.concat(['primary_objective', 'target_objectives']) : []))
-      && fields.every(key => value[key] === null || text(value[key]))
-      && (!current || metadata(value, runRef) && objective(value.primary_objective) && sameArray(value.target_objectives, targets(value.primary_objective)));
+    const fields = ['mode', 'mode_label', 'strategy', 'strategy_label'];
+    return shape(value, fields.concat(metadataKeys, ['primary_objective', 'target_objectives'])) && fields.every(key => value[key] === null || text(value[key]))
+      && metadata(value, runRef) && objective(value.primary_objective) && sameArray(value.target_objectives, targets(value.primary_objective));
   }
   function selectionBasis(value, candidates) {
     const fields = ['generation_policy_version', 'selection_policy_version', 'primary_objective', 'target_objectives', 'selected_candidate_ref',
-      'objective_winners', 'objective_winner_reasons', 'objective_field_order', 'selected_score', 'reason_code', 'scoring_scope', 'evidence_state',
-      'objective_name', 'raw_score_best_candidate_ref', 'health_reference_candidate_ref', 'selection_policy', 'overdue_tolerance_count',
-      'tardiness_tolerance_ratio', 'raw_score_comparison', 'health_comparison', 'selection_evidence_version', 'decision_evidence', 'health_decision_evidence', 'explanation'];
-    if (!shape(value, fields) || !unified(value) || value.selection_policy_version !== 'business_objectives_v1'
+      'objective_winners', 'objective_winner_reasons', 'objective_field_order', 'selected_score', 'reason_code', 'scoring_scope', 'evidence_state', 'explanation'];
+    if (!shape(value, fields) || !object(value.explanation)) return false;
+    if (!candidates.length) {
+      return value.generation_policy_version === null && value.selection_policy_version === null && value.primary_objective === null
+        && sameArray(value.target_objectives, []) && value.selected_candidate_ref === null
+        && shape(value.objective_winners, []) && shape(value.objective_winner_reasons, []) && shape(value.objective_field_order, [])
+        && sameArray(value.selected_score, []) && value.reason_code === null && value.scoring_scope === null && value.evidence_state === 'unavailable';
+    }
+    if (!unified(value) || value.selection_policy_version !== 'business_objectives_v1'
       || !objective(value.primary_objective) || !sameArray(value.target_objectives, targets(value.primary_objective))
-      || !ref(value.selected_candidate_ref) || value.objective_name !== value.primary_objective
-      || value.raw_score_best_candidate_ref !== value.selected_candidate_ref || value.selection_policy !== 'business_objectives_v1'
-      || value.selection_evidence_version !== 'business_objectives_v1' || !['complete', 'partial'].includes(value.evidence_state)
+      || !ref(value.selected_candidate_ref) || !['complete', 'partial'].includes(value.evidence_state)
       || !['primary_objective_best_found', 'primary_objective_best_in_completed_scope', 'partial_scope_score_unavailable'].includes(value.reason_code)
-      || !scoringScope(value.scoring_scope) || !score(value.selected_score) || !object(value.explanation)
-      || !['health_reference_candidate_ref', 'overdue_tolerance_count', 'tardiness_tolerance_ratio', 'raw_score_comparison', 'health_comparison', 'decision_evidence', 'health_decision_evidence'].every(key => value[key] === null)
+      || !scoringScope(value.scoring_scope) || !score(value.selected_score)
       || !shape(value.objective_winners, value.target_objectives) || !shape(value.objective_winner_reasons, value.target_objectives)
       || !shape(value.objective_field_order, value.target_objectives)) return false;
     const known = new Set(candidates.map(candidate => candidate.candidate_ref));
@@ -92,6 +93,6 @@
         && sameArray(value.objective_field_order[name], fieldOrders[name]);
     }) && value.selected_score.length === value.objective_field_order[value.primary_objective].length;
   }
-  window.RunGenerationContract = { metadataKeys, unified, budget, objective, objectives, objectiveLabel, targets, fieldOrders, sameArray,
+  window.RunGenerationContract = { metadataKeys, budget, objective, objectives, objectiveLabel, fieldOrders, sameArray,
     score, runOptions, scoringScope, evaluations, origin, evidence, metadata, catalogElapsed, algorithm, selectionBasis };
 })();

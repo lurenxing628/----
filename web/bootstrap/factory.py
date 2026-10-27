@@ -19,9 +19,9 @@ from web.error_boundary import (
     wants_json_error_response,
 )
 from web.error_handlers import register_error_handlers
-from web.routes.workbench.legacy_blueprints import register_legacy_blueprints
-from web.routes.workbench.legacy_dispatch import install_legacy_retirement
+from web.routes.workbench.manual_page import bp as manual_bp
 from web.routes.workbench.registration import bp as workbench_bp
+from web.routes.workbench.system_runtime import bp as runtime_bp
 from web.runtime_host import install_runtime_host
 
 from .app_config import config as _config_map
@@ -175,11 +175,10 @@ def _ensure_runtime_dirs(app: Flask) -> None:
 
 
 def _register_all_blueprints(app: Flask) -> None:
-    # 旧 HTML 页面层已删除：旧命名空间只剩策略页占位规则、说明书页与运行时健康接口，
-    # 由 install_legacy_retirement 在启动期换成跳转/410 适配器；工作台是唯一的业务入口。
-    register_legacy_blueprints(app)
+    # 工作台是唯一的业务入口；另有说明书页与启动器依赖的运行时健康/关停接口。
+    app.register_blueprint(manual_bp)
+    app.register_blueprint(runtime_bp)
     app.register_blueprint(workbench_bp)
-    install_legacy_retirement(app)
 
 
 def _register_exit_backup(app: Flask) -> None:

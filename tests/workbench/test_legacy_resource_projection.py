@@ -112,13 +112,14 @@ assert.throws(() => w.DashboardCandidateComparisonAPI.validate(wrongVersion, sco
 assert.throws(() => w.DashboardCandidateComparisonAPI.validate(payload, {...scope, candidate_ref:'0'.repeat(48)}));
 assert.throws(() => w.DashboardCandidateComparisonAPI.validate(payload, {...scope, run_ref:'0'.repeat(48)}));
 return (async () => {
+  // 在 fetch 层打桩：读取经共享传输层与值班台合约的同一条读取链。
   const requests = [];
-  const api = w.DashboardCandidateComparisonAPI.create(async (url, options) => {
+  w.fetch = async (url, options) => {
     requests.push({url, options});
     return {status:200, ok:true, headers:{get:() => 'application/json'}, json:async () => payload};
-  });
-  const response = await api.read(scope, new AbortController().signal);
-  assert.strictEqual(response, payload);
+  };
+  const response = await w.DashboardCandidateComparisonAPI.read(scope, new AbortController().signal);
+  assert.equal(JSON.stringify(response), JSON.stringify(payload));
   assert.equal(requests.length, 1);
   const request = new URL(requests[0].url, 'http://localhost');
   assert.equal(request.pathname, '/api/workbench/v1/dashboard/candidates/' + scope.candidate_ref + '/comparison');
@@ -190,10 +191,11 @@ const w = {}, context = vm.createContext({window:w, AbortController, URLSearchPa
 for (const file of ['DashboardContract.js', 'RunCandidateAPI.js', 'ResourceProjectionContract.js', 'DashboardAnalysisAPI.js'])
   vm.runInContext(fs.readFileSync(path.join(process.cwd(), 'frontend/workbench/app', file), 'utf8'), context);
 const payload = JSON.parse(fs.readFileSync(0, 'utf8'));
-w.DashboardAnalysisAPI.validate(payload);
+const planRef = payload.data.plan.plan_ref, query = {section: 'pressure'};
+w.DashboardAnalysisAPI.validate(payload, planRef, query);
 // A missing canonical fact is a transport error, not a computed default.
 delete payload.data.resources[0].window_metrics.summed_load_hours;
-let rejected = false; try { w.DashboardAnalysisAPI.validate(payload); } catch (_) { rejected = true; }
+let rejected = false; try { w.DashboardAnalysisAPI.validate(payload, planRef, query); } catch (_) { rejected = true; }
 if (!rejected) throw new Error('missing canonical resource field was accepted');
 process.stdout.write('common-contract-ok');
 """

@@ -8,7 +8,7 @@ from datetime import datetime
 
 import pytest
 
-from core.models.workbench_command import WorkbenchCommandUncertain, canonical_json
+from core.models.workbench_command import WorkbenchCommandUncertain
 from core.services.workbench.facts.admission_scope import project_admitted_scope
 from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.decision_read_models import public_job_status
@@ -17,6 +17,7 @@ from core.services.workbench.facts.run_history_projection import scope_summary
 from core.services.workbench.run import result_preparation
 from core.services.workbench.run import worker as worker_module
 from core.services.workbench.run.worker import WorkbenchRunWorker
+from core.shared.strict_json import canonical_json
 from data.repositories import workbench_run_repo as run_repo_module
 from data.repositories import workbench_run_result_repo as result_repo_module
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
@@ -25,6 +26,55 @@ from data.repositories.workbench_run_result_repo import WorkbenchRunResultReposi
 from tests.workbench.execution_ledger_support import all_rows
 from tests.workbench.run_jobs_support import job_case as _job_case  # noqa: F401
 from tests.workbench.run_jobs_support import service
+
+
+def test_worker_reuses_the_admission_dispositions_without_reclassifying(job_case, monkeypatch):
+    from core.models.workbench_run_compute import CandidateRunInputError
+    from core.services.workbench.facts.decision_read_models import decode_model
+    from core.services.workbench.run import input as run_input
+    from tests.workbench.run_candidate_support import corrupt_update
+
+    case = job_case
+    accepted = case.accept(key="worker-reuses-admitted-dispositions")
+    corrupted = case.accept(key="worker-rejects-null-admitted-dispositions")
+    admission = decode_model(WorkbenchRunRepository(case.conn).admission_read_model(accepted["run_ref"], ("decision",)),
+                             ("decision",))["decision"]
+    assert admission["dispositions"]
+
+    def reclassify(*_args, **_kwargs):
+        raise AssertionError("worker 只读受理时存档的处置，不再重新分类")
+
+    monkeypatch.setattr(run_input, "classify_rows", reclassify)
+    result = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+    assert result["state"] == "complete", result
+    receipt = json.loads(case.conn.execute("SELECT result_json FROM WorkbenchRunReceipts WHERE run_ref=?",
+                                           (accepted["run_ref"],)).fetchone()[0])
+    assert receipt["dispositions"] == admission["dispositions"]
+
+    corrupt_update(case.conn, "WorkbenchRunAdmissionReadModels",
+                   "UPDATE WorkbenchRunAdmissionReadModels SET decision_json=? WHERE run_ref=?",
+                   (canonical_json(dict(admission, dispositions=None)), corrupted["run_ref"]))
+    with pytest.raises(CandidateRunInputError) as error:
+        WorkbenchRunWorker(case.conn).execute(corrupted["run_ref"])
+    assert error.value.reason == "admission_disposition_mismatch"
+    assert public_job_status(WorkbenchRunRepository(case.conn).status(corrupted["run_ref"]))["state"] == "failed"
+
+
+def test_admitted_classification_rejects_dispositions_for_other_operations():
+    from types import SimpleNamespace
+
+    from core.models.workbench_run_compute import CandidateRunInputError
+    from core.services.workbench.facts.run_input_rows import admitted_classification
+
+    operations = [SimpleNamespace(id=1)]
+    admitted = [{"op_id": 1, "status": "skipped", "issues": []}, {"op_id": 2, "status": "skipped", "issues": []}]
+    for invalid in (None, [None], [{"op_id": "1", "status": "skipped"}], admitted):
+        with pytest.raises(CandidateRunInputError) as error:
+            admitted_classification(operations, invalid, set())
+        assert error.value.reason == "admission_disposition_mismatch"
+    with pytest.raises(CandidateRunInputError) as error:
+        admitted_classification(operations, admitted[:1], {1})
+    assert error.value.reason == "admission_disposition_mismatch"
 
 
 def test_spawned_compute_consumes_the_parent_admission_and_returns_actual_status(job_case):
@@ -67,8 +117,10 @@ def test_owned_file_compute_matches_thread_snapshot_types_and_payload(tmp_path, 
                 "input": normalized_input, "execution": projections}
 
     monkeypatch.setattr(worker_module, "compute_candidate_run", compute)
+    # worker 只从受理决策读模型取存档的处置交给计算；这里的假计算不读它。
+    admission = {"dispositions": []}
     try:
-        thread_payload = worker._compute(row, {})
+        thread_payload = worker._compute(row, admission)
         path = str(tmp_path / "owned.sqlite")
         backup_to_file(source, path)
 
@@ -79,7 +131,7 @@ def test_owned_file_compute_matches_thread_snapshot_types_and_payload(tmp_path, 
         with open_readonly_immutable(path, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
                                      row_factory=sqlite3.Row) as owned:
             owned.execute("PRAGMA foreign_keys=ON")
-            process_payload = worker.compute_owned_snapshot(owned, row, {})
+            process_payload = worker.compute_owned_snapshot(owned, row, admission)
             assert process_payload == thread_payload
             with pytest.raises(sqlite3.OperationalError):
                 owned.execute("INSERT INTO Facts VALUES (NULL,NULL,'write')")

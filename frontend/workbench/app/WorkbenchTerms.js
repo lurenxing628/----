@@ -17,12 +17,10 @@
     if (scope.state === 'not_applicable') return '本次没有需要安排的批次';
     if (scope.source_available === false) return '工序安排记录未保存，请查看原因';
     const items = [];
-    if (scope.complete_batch_count == null) items.push('工序已排齐的批次数待确认');
-    else if (scope.complete_batch_count > 0) items.push(countText(scope.complete_batch_count) + ' 批工序已排齐');
+    if (scope.complete_batch_count > 0) items.push(countText(scope.complete_batch_count) + ' 批工序已排齐');
     const missing = missingArrangements(scope.unplanned_operation_count, scope.deferred_operation_count);
     if (missing) items.push(missing);
-    if (scope.unknown_batch_count == null) items.push('尚待确认工序安排的批次数未记录');
-    else if (scope.unknown_batch_count > 0) items.push(countText(scope.unknown_batch_count) + ' 批工序安排待确认，请查看原因');
+    if (scope.unknown_batch_count > 0) items.push(countText(scope.unknown_batch_count) + ' 批工序安排待确认，请查看原因');
     return items.join('；');
   }
   window.WorkbenchTerms = Object.freeze({
@@ -55,12 +53,11 @@
     // 排产记录状态与候选方案状态：值班台、执行排产、排产记录、试调列表共用同一套叫法。
     run_statuses: Object.freeze({ queued: '等待计算', running: '正在计算', complete: '计算完成', partial: '已产出部分结果', failed: '计算失败', interrupted: '已中断' }),
     candidate_statuses: Object.freeze({ completed: '计算完成', partial: '工序未排齐', failed: '计算失败', skipped: '未计算' }),
-    // 齐套规则与拆批操作分开。旧 split 记录实际按整批齐套执行，不能据此声称已经拆批。
-    material_strategies: Object.freeze({ strict: '等整批物料齐套', stage: '按工序物料齐套', split: '等整批物料齐套（原分批开工入口）' }),
+    material_strategies: Object.freeze({ strict: '等整批物料齐套', stage: '按工序物料齐套' }),
     material_descriptions: Object.freeze({ strict: '这批全部用料到齐后，再安排工序开工。', stage: '每道工序只等本序和前序用料，不等后续用料。' }),
     material_strategy: (value, readyCheck) => readyCheck === false ? '未启用（齐套检查已关闭）'
       : value === null || readyCheck === null ? '未记录' : window.WorkbenchTerms.material_strategies[value || 'strict'] || '记录无效',
-    // 不重排时段：排产检查、排产任务、排产记录、候选方案的回显用同一套说法。没有这一项的是旧记录，当时按交付设置。
+    // 不重排时段：排产检查、排产任务、排产记录、候选方案的回显用同一套说法。没带这一项表示按当时的交付设置推算。
     hold_window: (value, invalid) => value === undefined ? '未记录（按当时的交付设置）' : invalid ? '记录无效' : value === null ? '不设'
       : value.start.replace('T', ' ') + ' 至 ' + value.end.replace('T', ' '),
     // 报工执行状态：现场记录、实际甘特、报表、校准、排产候选、试调和值班台共用；与后端导出的“排产时报工状态”一致。

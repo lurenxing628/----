@@ -42,14 +42,14 @@
     const [mode, setMode] = React.useState('text'), [routeRaw, setRouteRaw] = React.useState(() => openingText(entity, initialRows.current));
     const [rows, setRows] = React.useState(() => openingRows(initialRows.current).map(row => ({ ...row, key: ++sequence.current })));
     const draftText = mode === 'text' ? routeRaw : D.serialize(rows), baselineDraft = React.useRef(draftText);
-    React.useLayoutEffect(() => { if (onDirty) onDirty('route', draftText !== baselineDraft.current); }, [draftText, onDirty]);
+    React.useLayoutEffect(() => { onDirty('route', draftText !== baselineDraft.current); }, [draftText, onDirty]);
     const [state, setState] = React.useState({ busy: false, result: null, error: null });
     const [discarded, setDiscarded] = React.useState([]), [review, setReview] = React.useState(null);
     const [mergeReview, setMergeReview] = React.useState(null), [mergeChoices, setMergeChoices] = React.useState({});
     const paging = E.usePage(rows), locked = command.locked || command.phase === 'done';
     const blocked = disabled || locked;
     // 只有带完整工艺接口的工艺详情才能打开路线录入（校准页的只读详情禁用了入口），这里的能力只看后端 capabilities。
-    const previewReason = P.reason(entity.capabilities, 'route_preview', true);
+    const previewReason = P.reason(entity.capabilities, 'route_preview');
     // Read the op_type catalog once on entry so the row inputs can suggest real names. Free text stays allowed and
     // the server route preflight remains the only authority on what is recognized.
     const opTypeListId = React.useId();
@@ -146,7 +146,7 @@
       } finally { if (request.current === controller) request.current = null; }
     }
     const affected = state.result ? state.result.data.affected_groups : [];
-    const saveReason = P.reason(entity.capabilities, 'stage_confirm', true) ||
+    const saveReason = P.reason(entity.capabilities, 'stage_confirm') ||
       (review ? '请先核对最新资料。' : !state.result || !state.result.data.can_confirm_route ? '请先完成当前路线预检。' :
         !affected.every(row => discarded.includes(row.ref)) ? '请明确勾选解除所有受影响的外协组。' : C.blocked(state.result.data.write_context, 'process', 'route_confirm', state.result.meta.source));
     async function save() {

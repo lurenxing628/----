@@ -1,24 +1,20 @@
 (function () {
   'use strict';
   const B = window.APSBatchContract, C = window.APSResourceContract, T = window.WorkbenchTerms, { Button, Modal, ErrorBox, Issues, Icon } = window.ResourceControls;
-  const TEMPLATE_NAME = '批次导入模板.xlsx', EXPORT_NAME = '批次清单.xlsx';
-  function saveDownload(download, filename) {
-    if (!download || !download.blob || !download.blob.size) throw C.failure('未收到有效下载文件。');
-    const url = URL.createObjectURL(download.blob), link = document.createElement('a');
-    link.href = url; link.download = filename; document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000);
-  }
+  // 类型、魔数与带正确后缀的文件名都已由 transport.download 校验（BatchAPI 只收 XLSX），这里直接按后端文件名存盘。
+  const save = download => { window.APSWorkbenchTransport.saveBlob(download.filename, download.blob); return download.filename; };
   function PreviewRow({ row }) {
     const names = { quantity: '数量', due_date: '交期', priority: '优先级', ready_status: '齐套', ready_date: '齐套日期', remark: '备注' };
     return <tr><td>{row.row} · {row.business_code}</td><td>{({ create: '新增', update: '更新', unchanged: '不变', skipped: '跳过', rejected: '拒绝' })[row.action]}</td>
       <td>{row.errors.length ? row.errors.join('；') : row.input && <div>{B.fields.filter(key => key in row.input.fields).map(key =>
         <div key={key}>{names[key]}：{window.BatchControls.display(key, row.before && row.before.fields[key])} → {window.BatchControls.display(key, row.input.fields[key])}</div>)}</div>}</td></tr>;
   }
-  function BatchFiles({ adapter, mode: operation, scope, selected, snapshot, command, onClose, onCommitted, disabled }) {
+  function BatchFiles({ adapter, mode: operation, scope, selected, snapshot, command, onClose, onCommitted }) {
     const [mode, setMode] = React.useState('overwrite'), [file, setFile] = React.useState(null), [preview, setPreview] = React.useState(null), [acknowledged, setAcknowledged] = React.useState(false);
     const [selection, setSelection] = React.useState(selected.length ? 'selected' : 'filtered');
     const [busy, setBusy] = React.useState(false), [error, setError] = React.useState(null), [notice, setNotice] = React.useState('');
     const serial = React.useRef(0), alive = React.useRef(true), seen = React.useRef(null), form = React.useId();
-    const importing = operation === 'import', done = command.phase === 'done', locked = disabled || command.locked || busy || done;
+    const importing = operation === 'import', done = command.phase === 'done', locked = command.locked || busy || done;
     // 已选文件或已有预检结果就算没做完：关闭前先确认，避免误关丢掉文件和预检。
     const guardOwner = window.WorkbenchGuards.useDirtyGuard({ dirty: importing && !done && (!!file || !!preview), locked: command.locked || busy,
       message: '批次导入还没有完成，离开会放弃已选文件和预检结果。' });
@@ -39,7 +35,7 @@
       if (locked) return;
       const id = ++serial.current; setBusy(true); setError(null); setNotice('');
       try {
-        if (action === 'template') { saveDownload(await adapter.downloadTemplate(), TEMPLATE_NAME); if (alive.current && id === serial.current) setNotice(T.download_started(TEMPLATE_NAME)); }
+        if (action === 'template') { const name = save(await adapter.downloadTemplate()); if (alive.current && id === serial.current) setNotice(T.download_started(name)); }
         else if (action === 'preview') {
           const result = await adapter.importPreview(file, mode, scope, snapshot);
           const data = result.data;
@@ -49,8 +45,8 @@
         } else {
           const result = await adapter.exportPreview(selection, { ...scope, snapshot_ref: snapshot }, selected);
           if (!result.data || typeof result.data.export_ref !== 'string' || !Number.isSafeInteger(result.data.count)) throw C.failure('导出范围没有确认，文件没有生成。请刷新批次列表后重试。');
-          const downloaded = await adapter.downloadExport(result.data.export_ref); saveDownload(downloaded, EXPORT_NAME);
-          if (alive.current && id === serial.current) setNotice(T.download_started(EXPORT_NAME) + '（共 ' + window.WorkbenchFormat.number(result.data.count, { digits: 0 }) + ' 个批次）');
+          const name = save(await adapter.downloadExport(result.data.export_ref));
+          if (alive.current && id === serial.current) setNotice(T.download_started(name) + '（共 ' + window.WorkbenchFormat.number(result.data.count, { digits: 0 }) + ' 个批次）');
         }
       } catch (error) { if (alive.current && id === serial.current) setError(error); }
       finally { if (alive.current && id === serial.current) setBusy(false); }
@@ -66,7 +62,7 @@
           : <Button transfer="export" disabled={locked || selection === 'selected' && !selected.length} onClick={() => work('export')}>下载批次清单</Button>}
       </>}><div className="modal-b form"><ErrorBox error={error} />{notice && <p role="status">{notice}</p>}
         {importing ? <>
-          <div className="tmpl-row"><span className="tmpl-ico"><Icon name="file-input" /></span><div><div className="tmpl-t">{TEMPLATE_NAME}</div><div className="tmpl-s">空白表头模板，不含示例批次</div></div><Button className="mini" transfer="template" disabled={locked} onClick={() => work('template')}>下载模板</Button></div>
+          <div className="tmpl-row"><span className="tmpl-ico"><Icon name="file-input" /></span><div><div className="tmpl-t">批次导入模板</div><div className="tmpl-s">空白表头模板，不含示例批次</div></div><Button className="mini" transfer="template" disabled={locked} onClick={() => work('template')}>下载模板</Button></div>
           <div className="batch-fields" style={{ marginTop: 16 }}><window.BatchControls.Field label="导入模式"><select value={mode} disabled={locked} onChange={event => changeMode(event.target.value)}>
             <option value="overwrite">已有批次就更新，没有的就新增</option><option value="append">只新增没有的批次（已有的跳过）</option><option value="replace">先清除全部批次，再按表格重导</option>
           </select></window.BatchControls.Field></div>
@@ -74,7 +70,7 @@
             <div className="di"><Icon name="file-input" /></div><div className="dt">{file ? file.name : '选择 XLSX 文件'}</div>
             <div className="ds">{file ? window.WorkbenchFormat.number(file.size, { digits: 0 }) + ' 字节 · 只接受 .xlsx 文件' : '只接受 .xlsx 文件，也可以把文件拖到这里'}</div>
             <input type="file" aria-label="选择文件" accept=".xlsx" disabled={locked} onChange={event => { chooseFile(event.target.files); event.target.value = ''; }} /></div>}
-          <p className="iohint">新批次导入后需生成工序；更新时空白单元格保留原值。维护齐套标记兼容旧“齐套”列；状态和当前有效齐套只供核对，不导入。</p>
+          <p className="iohint">新批次导入后需生成工序；更新时空白单元格保留原值。状态和当前有效齐套只供核对，不导入。</p>
           {preview && <><div className="tmpl-row"><span className="tmpl-ico"><Icon name="file-input" /></span><div><div className="tmpl-t">{file && file.name}</div>
               <div className="tmpl-s">{window.WorkbenchFormat.number(preview.count, { digits: 0 })} 行 · {preview.can_confirm ? '全部核对通过，一起保存' : '存在未通过检查的行，请修正'}</div></div>
             <Button icon="file-input" onClick={invalidate} disabled={locked}>更换文件</Button></div>

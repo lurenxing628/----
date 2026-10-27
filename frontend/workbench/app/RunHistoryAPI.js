@@ -1,5 +1,6 @@
 (function () {
   'use strict';
+  const T = window.APSWorkbenchTransport;
   const states = ['queued', 'running', 'complete', 'partial', 'failed', 'interrupted'];
   const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
   const text = v => typeof v === 'string', count = v => Number.isSafeInteger(v) && v >= 0;
@@ -17,7 +18,7 @@
   const timeKey = v => v.slice(0, 19) + '.' + (v.split('.')[1] || '').padEnd(6, '0');
   const gap = v => shape(v, ['field', 'code', 'message']) && [v.field, v.code, v.message].every(text);
   const queryKeys = ['page', 'size', 'state', 'accepted_from', 'accepted_to', 'sort', 'order', 'snapshot_ref'];
-  function scope(query = {}) {
+  function scope(query) {
     check(shape(query, [], queryKeys), '查询条件里有不认识的项，没有自动忽略。请从侧栏重新打开排产记录。');
     const q = { page: 1, size: 20, state: 'all', sort: 'accepted_at', order: 'desc', ...query };
     check(count(q.page) && q.page >= 1 && q.page <= 1000000 && count(q.size) && q.size >= 1 && q.size <= 50
@@ -44,23 +45,23 @@
     if (Object.keys(returnPlan).length) result.return_plan_context = returnPlan;
     return result;
   }
-  // 不重排时段：旧记录不带这一项；null 是“不设”，存的值读不出来时也是 null，并附一条资料缺项。
+  // 不重排时段：没带这一项表示按交付设置推算；null 是“不设”，存的值读不出来时也是 null，并附一条资料缺项。
   const minute = v => text(v) && date(v.slice(0, 10)) && /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d$/.test(v);
   const holdWindow = v => v === undefined || v === null || shape(v, ['start', 'end']) && minute(v.start) && minute(v.end) && v.start < v.end;
   function admission(s) {
     const keys = ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy', 'batch_count'].concat(s.material_strategy === undefined ? [] : ['material_strategy']);
     const recorded = keys.concat(s.hold_window === undefined ? [] : ['hold_window']);
-    check(shape(s, recorded.concat(['selection', 'basis', 'data_gaps'], s.run_options === undefined ? [] : ['run_options'])) && s.selection === 'explicit_batches' && s.basis === 'captured_at_run_admission'
+    check(shape(s, recorded.concat(['selection', 'basis', 'data_gaps', 'run_options'])) && s.selection === 'explicit_batches' && s.basis === 'captured_at_run_admission'
       && Array.isArray(s.data_gaps) && s.data_gaps.every(gap) && s.data_gaps.every(g => recorded.includes(g.field) && ['not_recorded', 'invalid_stored_value'].includes(g.code))
       && holdWindow(s.hold_window));
     const gapFields = new Set(s.data_gaps.map(g => g.field));
     check(['start_date', 'end_date'].every(k => s[k] === null || date(s[k])) && (s.start_date === null || s.end_date === null || s.start_date <= s.end_date)
       && (s.ready_check === null || typeof s.ready_check === 'boolean') && [null, 'auto_assign', 'exclude'].includes(s.missing_resource_policy)
-      && (s.material_strategy === undefined || [null, 'strict', 'stage', 'split'].includes(s.material_strategy))
+      && (s.material_strategy === undefined || [null, 'strict', 'stage'].includes(s.material_strategy))
       && [null, 'preserve_actuals'].includes(s.completed_policy) && (s.batch_count === null || count(s.batch_count) && s.batch_count > 0)
       && gapFields.size === s.data_gaps.length && (s.hold_window === null || !gapFields.has('hold_window')));
     check(keys.every(k => gapFields.has(k) === (s[k] === null)));
-    check(s.run_options === undefined || window.RunGenerationContract.runOptions(s.run_options));
+    check(window.RunGenerationContract.runOptions(s.run_options));
   }
   function run(v) {
     check(shape(v, ['run_ref', 'state', 'stage', 'accepted_at', 'started_at', 'finished_at', 'candidate_count', 'task_count', 'task_count_basis', 'counts_final',
@@ -89,12 +90,10 @@
     const x = left === null ? '' : timeKey(left), y = right === null ? '' : timeKey(right);
     return direction * (x < y ? -1 : x > y ? 1 : a.run_ref < b.run_ref ? -1 : a.run_ref > b.run_ref ? 1 : 0);
   }
-  function catalog(v, query = {}) {
+  function validateCatalog(v, query) {
+    // 翻页和页面记忆都要用本次快照，不能为空。
     const q = scope(query);
-    check(shape(v, ['ok', 'schema_version', 'data', 'meta', 'warnings']) && v.ok === true && v.schema_version === 1
-      && shape(v.meta, ['request_ref', 'source', 'time_basis', 'snapshot_ref', 'as_of']) && /^[a-f0-9]{32}$/.test(v.meta.request_ref)
-      && v.meta.source === 'production' && v.meta.time_basis === 'factory_local' && token(v.meta.snapshot_ref) && time(v.meta.as_of)
-      && Array.isArray(v.warnings) && v.warnings.every(w => object(w) && text(w.code) && text(w.message)));
+    check(token(v.meta.snapshot_ref));
     if (q.snapshot_ref && q.snapshot_ref !== v.meta.snapshot_ref) {
       const error = new Error(window.WorkbenchTerms.outcomes.stale); error.code = 'snapshot_stale'; throw error;
     }
@@ -113,29 +112,9 @@
       && (!i || compare(d.runs[i - 1], r, q) <= 0)); });
     check(new Set(d.runs.map(r => r.run_ref)).size === d.runs.length); return d;
   }
-  function create(fetcher = window.fetch.bind(window)) {
-    return window.APSReadBoundary.verified({ async catalog(query = {}, signal) {
-      const q = scope(query), controller = new AbortController(), abort = () => controller.abort();
-      if (signal) { if (signal.aborted) abort(); else signal.addEventListener('abort', abort, { once: true }); }
-      const timer = setTimeout(abort, 60000);
-      try {
-        const response = await fetcher('/api/workbench/v1/scheduling/runs?' + new URLSearchParams(q),
-          { method: 'GET', credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: controller.signal });
-        const json = (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() === 'application/json';
-        if (!response.ok) {
-          const value = json ? await response.json() : null, e = value && value.error;
-          const error = new Error(e && text(e.message) ? e.message : '排产记录读取失败，请重新查询。');
-          error.code = e && text(e.code) ? e.code : 'invalid_response'; error.status = response.status; throw error;
-        }
-        check(response.status === 200 && json); const value = await response.json(); catalog(value, q); return value;
-      } catch (error) {
-        if (controller.signal.aborted && !(signal && signal.aborted)) { const timeout = new Error('排产记录读取超时，请刷新重试。'); timeout.code = 'timeout'; throw timeout; }
-        throw error;
-      } finally { clearTimeout(timer); if (signal) signal.removeEventListener('abort', abort); }
-    } }, ['catalog']);
+  async function catalog(query, signal) {
+    const q = scope(query), value = await T.read('/api/workbench/v1/scheduling/runs', q, { signal, timeout: 60000 });
+    validateCatalog(value, q); return value;
   }
-  function adapter(value) {
-    return window.APSReadBoundary.checked(value, { catalog: (result, query) => catalog(result, query) });
-  }
-  window.RunHistoryAPI = { create, adapter, check, scope, context, returnContext, catalog, ref, date, time, states };
+  window.RunHistoryAPI = { catalog, validateCatalog, check, scope, context, returnContext, ref, date, time, states };
 })();

@@ -1,24 +1,23 @@
 (function () {
   'use strict';
-  function Workspace({ initialContext, onNavigate, adapter }) {
+  function Workspace({ initialContext, onNavigate }) {
     const A = window.CalibrationAPI, C = window.CalibrationControls;
     const { Button, ErrorBox, useRead } = C;
-    const api = React.useMemo(() => adapter || A.create(), [adapter]);
-    const partAdapter = React.useMemo(() => ({ detail: (...args) => window.APSProcessAPI.create().detail(...args) }), []);
+    // 本页只读查看零件工艺：没有写入会话，不读取也不接续工艺页留下的待确认操作。
+    const partAdapter = React.useMemo(() => ({ detail: window.APSProcessAPI.create().detail, readPending: () => null }), []);
     const [part, setPart] = React.useState(null);
-    const [restored] = React.useState(() => A.restoreInitial(initialContext));
-    const [input, setInput] = React.useState(restored.input);
+    const [input, setInput] = React.useState(() => A.initial(initialContext));
     const [widths, setWidths] = React.useState(initialContext.table_widths || {});
     const [selected, setSelected] = React.useState(initialContext.selected || null), [sampleRef, setSample] = React.useState(initialContext.sample_ref || null);
     const [revision, refresh] = React.useReducer(value => value + 1, 0), [format, setFormat] = React.useState('csv');
-    const [notice, setNotice] = React.useState(restored.notice), [error, setError] = React.useState(null), [downloading, setDownloading] = React.useState(false);
+    const [notice, setNotice] = React.useState(''), [error, setError] = React.useState(null), [downloading, setDownloading] = React.useState(false);
     const [stale, setStale] = React.useState(false), downloadAbort = React.useRef(null);
     const identity = JSON.stringify(input) + ':' + revision;
-    const request = useRead(signal => A.readView(api, input, signal), identity, api);
+    const request = useRead(signal => A.readView(input, signal), identity, A);
     const result = request.result, data = result && result.data;
     const bound = { ...input, snapshot_ref: result ? result.meta.snapshot_ref : input.snapshot_ref };
-    const detail = useRead(async signal => A.validate(await api.detail(selected, bound, signal), bound, selected),
-      selected + ':' + JSON.stringify(bound) + ':' + revision, api, !!(selected && result && data.capabilities.view === true && !stale));
+    const detail = useRead(async signal => A.validate(await A.detail(selected, bound, signal), bound, selected),
+      selected + ':' + JSON.stringify(bound) + ':' + revision, A, !!(selected && result && data.capabilities.view === true && !stale));
     const isStale = failure => window.APSResourceContract.stale(failure, ['calibration_source_changed']);
     window.WorkbenchPageContext.useSnapshot(data ? {
       scope: Object.fromEntries(Object.entries(input).filter(([key]) => !['page', 'size', 'sort', 'direction', 'snapshot_ref'].includes(key))),
@@ -26,7 +25,7 @@
       selected, sample_ref: sampleRef, table_widths: widths
     } : null, !!data && !request.busy && !request.error && !stale && (!selected || !!detail.result && !detail.busy && !detail.error));
     React.useEffect(() => { if (isStale(request.error) || isStale(detail.error)) setStale(true); }, [request.error, detail.error]);
-    React.useEffect(() => () => { if (downloadAbort.current) downloadAbort.current.abort(); }, [api]);
+    React.useEffect(() => () => { if (downloadAbort.current) downloadAbort.current.abort(); }, []);
     function reload() {
       if (downloadAbort.current) downloadAbort.current.abort();
       setInput(old => ({ ...old, snapshot_ref: undefined })); setError(null); setNotice(''); setStale(false); refresh();
@@ -43,11 +42,8 @@
       const controller = new AbortController(); downloadAbort.current = controller;
       setDownloading(true); setNotice(''); setError(null);
       try {
-        const receipt = await api.download(result, bound, format, controller.signal);
-        if (!controller.signal.aborted) {
-          if (!receipt || receipt.rows !== data.summary.total || receipt.snapshot_ref !== result.meta.snapshot_ref) throw A.failure('导出结果不完整，请重新导出。');
-          setNotice('已导出 ' + receipt.rows + ' 项。');
-        }
+        const receipt = await A.download(result, bound, format, controller.signal);
+        if (!controller.signal.aborted) setNotice('已导出 ' + receipt.rows + ' 项。');
       } catch (failure) { if (!controller.signal.aborted) { setError(failure); if (isStale(failure)) setStale(true); } }
       finally { if (downloadAbort.current === controller) { downloadAbort.current = null; setDownloading(false); } }
     }
@@ -81,7 +77,7 @@
           <div className="ca-actions ca-actions-end"><label>格式<select aria-label="导出格式" value={format} disabled={disabled} onChange={event => setFormat(event.target.value)}><option value="csv">CSV</option><option value="xlsx">XLSX</option></select></label>
             <Button transfer="export" busy={downloading} disabled={disabled} reasonDisplay="tooltip" reason={A.exportReason(data, format)} onClick={download}>导出全部筛选</Button></div></div>
         <C.Table rows={data.items} selected={selected} disabled={disabled} canView={data.capabilities.view === true} onPart={setPart} onSelect={value => { setSelected(value); setSample(null); }}
-          scope={bound} adapter={api} widths={widths} total={data.summary.total} onResize={(key, value) => setWidths(old => ({ ...old, [key]: value }))}
+          scope={bound} adapter={A} widths={widths} total={data.summary.total} onResize={(key, value) => setWidths(old => ({ ...old, [key]: value }))}
           onSort={(sort, direction) => change({ sort: direction ? sort : 'part_no', direction: direction || 'asc' })}
           onFilter={(key, rule) => { const filters = { ...input.column_filters }; if (rule === null) delete filters[key]; else filters[key] = rule; change({ column_filters: filters }); }} />
         <C.Page page={data.page} onChange={page} disabled={disabled} />

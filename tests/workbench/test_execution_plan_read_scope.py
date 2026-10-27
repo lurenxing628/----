@@ -11,7 +11,7 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.workbench.plan import queries
 from tests._support.gantt_current_js import run_current_js
-from tests.workbench.execution_ledger_support import all_rows
+from tests.workbench.execution_ledger_support import all_rows, publish_official_plan
 from tests.workbench.field_workspace_support import FieldAPI, _ledger_fixture  # noqa: F401
 from tests.workbench.point_downstream_support import ACTUAL, FIELD, app_for, read
 
@@ -24,7 +24,6 @@ def _three_tasks(case):
         case.conn.execute('UPDATE Schedule SET start_time=?,end_time=? WHERE version=2 AND op_id=?',
                           ('2026-09-09T' + start, '2026-09-09T' + end, op_id))
     case.conn.commit()
-    case.install()
     case.path = case.conn.execute('PRAGMA database_list').fetchone()[2]
     return case.plan_ref(2), [case.task(2, op_id) for op_id in (case.op_id, second, third)]
 
@@ -187,7 +186,6 @@ def test_field_files_reuse_one_ledger_for_cohort_and_import_preparation(ledger_c
 
     # Choosing an old plan does not make its tasks the current writable tasks.
     case.plan(3, [case.op_id])
-    case.install()
     current_task = case.task(3, case.op_id)
     calls.update(ledgers=0, reports=0, current_plans=0)
     old = api.read(plan_ref=plan_ref)["data"]["tasks"][0]
@@ -242,13 +240,10 @@ def test_actual_large_plan_applies_finish_batch_and_overlap_before_ledger(ledger
     schedule = []
     for index, row in enumerate(rows):
         low = start + timedelta(days=index // 200, minutes=index % 200)
-        schedule.append((row['id'], low.isoformat(), (low + timedelta(minutes=1)).isoformat()))
-    case.conn.execute("INSERT INTO ScheduleHistory(version,strategy,result_status,result_summary,schedule_time) "
-                      "VALUES (2,'actual-range','success','{}','2026-09-09T08:00:00')")
-    case.conn.executemany("INSERT INTO Schedule(version,op_id,machine_id,operator_id,start_time,end_time) "
-                          "VALUES (2,?,'M1','O1',?,?)", schedule)
+        schedule.append({"op_id": row['id'], "machine_id": "M1", "operator_id": "O1",
+                         "start_time": low.isoformat(), "end_time": (low + timedelta(minutes=1)).isoformat()})
+    publish_official_plan(case.conn, 2, schedule)
     case.conn.commit()
-    case.install()
     case.path = case.conn.execute('PRAGMA database_list').fetchone()[2]
     plan_ref, projected, statements = case.plan_ref(2), [], []
     enriched, enrich_rows = [], actual_gantt.PlanReadContext._enrich_rows

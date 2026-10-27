@@ -64,11 +64,8 @@ class WorkbenchTrialAdoptionHistoryService:
         refs.role_rows(versions)
         histories = [history_audit_row(catalog.history_rows(version)) for version in versions]
         command_repo = WorkbenchCommandRepository(self.conn)
-        adoption_inputs = command_repo.adoption_input_contents([row for row, history in zip(rows, histories)
-            if row["input_json"] is None and history is not None])
         for row, plan, history in zip(rows, plans, histories):
-            audit, audit_gaps = audit_fields(row, plan, saved, header, draft,
-                history=history, command_repo=command_repo, adoption_inputs=adoption_inputs)
+            audit, audit_gaps = audit_fields(row, plan, saved, header, history=history, command_repo=command_repo)
             identity, issues = self._identity(context, reader, query, plan)
             state = "unavailable" if identity is None or not identity["capabilities"]["view"] else (
                 "current" if identity["is_current_official"] else "historical")

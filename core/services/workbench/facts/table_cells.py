@@ -4,7 +4,8 @@ import unicodedata
 from dataclasses import dataclass
 from decimal import Decimal
 
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
+from core.shared.strict_json import canonical_json
 from core.shared.strict_parse import is_exact_finite_number
 
 
@@ -52,6 +53,4 @@ def relation_cell(labels):
 def status_cell(kind, status):
     labels = {"active": "启用", "inactive": "停用", "maintain": "停机", "leave": "请假", "pending_review": "待复核"}
     labels["active"] = {"machine": "可用", "operator": "在岗"}.get(kind, "启用")
-    # All unidentified old values have the same visible business status, without rewriting them.
-    label = labels.get(status, "旧状态 / 原因未知")
-    return text_cell(label)
+    return text_cell(labels[status])

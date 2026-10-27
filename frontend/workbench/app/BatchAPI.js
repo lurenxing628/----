@@ -1,6 +1,7 @@
 (function () {
   'use strict';
-  const root = 'entities/batch';
+  const root = 'entities/batch', xlsx = { types: [window.APSWorkbenchTransport.types.xlsx] };
+  // 每次 create() 都是新的 adapter：resource-session 以 adapter 对象区分会话，批次页与分批面板各有自己的待确认状态。
   function create() {
     const api = window.APSResourceAPI.create('batches'), C = window.APSBatchContract;
     const entity = ref => { if (!C.ref(ref)) throw window.APSResourceContract.failure('这个批次已失效，请返回批次列表重新选择。'); return root + '/' + ref; };
@@ -18,14 +19,14 @@
         return api.preview(root + '/import-preview', body, signal);
       },
       exportPreview(selection, scope, refs, signal) { return api.preview(root + '/export-preview', { selection, scope, ...(selection === 'selected' ? { refs } : {}) }, signal); },
-      downloadTemplate(signal) { return api.download(root + '/template', {}, signal); },
-      downloadExport(exportRef, signal) { return api.download(root + '/export', { export_ref: exportRef }, signal); },
+      downloadTemplate(signal) { return api.download(root + '/template', {}, signal, xlsx); },
+      downloadExport(exportRef, signal) { return api.download(root + '/export', { export_ref: exportRef }, signal, xlsx); },
       preview(action, ref, input, scope, snapshot, signal) {
         if (action === 'bulk') return api.preview(root + '/bulk-preview', { input, scope, snapshot_ref: snapshot }, signal);
         if (['sync', 'split'].includes(action)) return api.preview(entity(ref) + '/' + action + '-preview', { input, snapshot_ref: snapshot }, signal);
         throw window.APSResourceContract.failure('批次预检操作不正确。');
       },
-      async command(kind, action, ref, body, signal) {
+      async command(kind, action, ref, body) {
         if (kind !== 'batch' || !C.actions.includes(action)) throw window.APSResourceContract.failure('批次操作不正确。');
         let path;
         if (action === 'create') {
@@ -35,7 +36,7 @@
           if (ref !== body.input.preview_ref) throw window.APSResourceContract.failure('批量确认与预检结果不一致。');
           path = root + (action === 'bulk_confirm' ? '/bulk-confirm' : '/import-confirm');
         } else path = entity(ref) + '/' + (['sync_confirm', 'split_confirm'].includes(action) ? action.replace('_', '-') : action);
-        const result = await api.execute(path, body, signal);
+        const result = await api.execute(path, body);
         C.receipt(result, action, ref);
         return result;
       }

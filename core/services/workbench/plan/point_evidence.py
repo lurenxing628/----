@@ -19,8 +19,6 @@ def official_point_work(conn, version, *, evidence=None, context=None):
             plan_ref = refs.get_plan_ref(WorkbenchPlanLocator(version, "adopted"))
             history = context.history(version) if context is not None else WorkbenchPlanBaselineRepository(conn).get_history_result_summary(version)
             evidence = read_adoption_source(conn, plan_ref=plan_ref, version=version, history=history, context=context)
-        if evidence is None or evidence["audit"]["version"] != version:
-            raise PointEventError("point_evidence_missing", "这一版正式计划没有可核对的采用记录，证明不了这道零工时工序。")
         basis = evidence["basis"]
         if basis == "candidate_adoption":
             source = evidence["candidate_source"]

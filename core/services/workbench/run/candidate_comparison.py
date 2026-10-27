@@ -42,7 +42,7 @@ def _comparison_interval(task):
 
 
 def comparison_rows(source):
-    """Use the legacy comparison rule on compact permanent-identity rows."""
+    """Apply the candidate baseline comparison rule (RunBaselineComparison) on compact permanent-identity rows."""
     old = source.analysis_groups("reference")
     new = {row["operation_ref"]: row for row in source.analysis_tasks(source.selected_ref)}
     selected = source.operation_refs
@@ -72,10 +72,7 @@ def comparison_metadata(source, rows, scope=None):
     run = source.run
     generation = {"run_ref": run["run_ref"], "accepted_at": run["accepted_at"], "finished_at": run["finished_at"],
                   "metadata_basis": "captured_at_run_admission", "execution_basis": "captured_at_run_admission",
-                  "current_entities_consulted": False, "formal_version_allocated": False, "input": source.input,
-                  "source_verification": {"facts_content_verified": True, "baseline_matches_archived_schedule": True,
-                                          "execution_verified_at": "run_admission", "input_source_verified": True,
-                                          "candidate_content_verified": True}}
+                  "current_entities_consulted": False, "formal_version_allocated": False, "input": source.input}
     baseline = {"baseline_ref": source.baseline["plan_ref"], "version": source.baseline["version"],
                 "kind": "admission_official", "captured_at": run["accepted_at"],
                 "captured_task_count": len(source.analysis_tasks("reference")), "available": captured,
@@ -114,7 +111,7 @@ def _machine_changes(rows, refs):
 def _projection(source, scope):
     refs = _common_batches(source.input, scope.batch_ref)
     before_delivery = [row for row in source.delivery("reference") if row["batch_ref"] in refs]
-    after_delivery = [row for row in source.legacy_delivery(source.selected_ref) if row["batch_ref"] in refs]
+    after_delivery = [row for row in source.delivery_detail(source.selected_ref) if row["batch_ref"] in refs]
     batches = delivery_rows(before_delivery, after_delivery, refs)
     before_tasks, after_tasks = source.analysis_tasks("reference"), source.analysis_tasks(source.selected_ref)
     before, after = ([row for row in tasks if row["batch_ref"] in refs] for tasks in (before_tasks, after_tasks))

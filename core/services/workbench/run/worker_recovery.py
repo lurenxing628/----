@@ -3,13 +3,13 @@
 from datetime import datetime
 
 from core.infrastructure.transaction import TransactionManager
-from core.models.workbench_command import canonical_json
 from core.models.workbench_run_job import PROCESS_EXECUTOR_REF
 from core.services.scheduler.schedule_lock import RUN_SCHEDULE_LOCK
 from core.services.workbench.facts.candidate_values import stored_json
 from core.services.workbench.facts.decision_read_model import build_failure_read_models
 from core.services.workbench.facts.decision_read_models import decode_model
 from core.services.workbench.facts.run_policy import require_admission, require_run_schema
+from core.shared.strict_json import canonical_json
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 from data.repositories.workbench_run_result_repo import WorkbenchRunResultRepository
 

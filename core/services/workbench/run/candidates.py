@@ -87,7 +87,7 @@ class WorkbenchRunCandidateQueryService:
 def _generation(run, capture, candidate):
     settings = capture["input"]
     values, gaps = {}, []
-    domains = {"missing_resource_policy": ("auto_assign", "exclude"), "completed_policy": ("preserve_actuals",), "material_strategy": ("strict", "stage", "split")}
+    domains = {"missing_resource_policy": ("auto_assign", "exclude"), "completed_policy": ("preserve_actuals",), "material_strategy": ("strict", "stage")}
     optional = tuple(key for key in ("material_strategy", "hold_window") if key in settings)
     for key in ("start_date", "end_date", "ready_check", "missing_resource_policy", "completed_policy") + optional:
         value = settings.get(key)
@@ -106,8 +106,7 @@ def _generation(run, capture, candidate):
         values[key] = value if valid else None
         if not valid:
             gaps.append(gap("input." + key, "not_recorded" if value is None else "invalid_stored_value"))
-    if candidate["artifact"].get("generation_policy_version") == "unified_search_v1":
-        values["time_budget_seconds"] = settings["time_budget_seconds"]
+    values["time_budget_seconds"] = settings["time_budget_seconds"]
     return {"run_ref": run["run_ref"], "accepted_at": run["accepted_at"], "finished_at": run["finished_at"],
             "metadata_basis": "captured_at_run_admission", "execution_basis": "captured_at_run_admission",
             "current_entities_consulted": False, "formal_version_allocated": False,

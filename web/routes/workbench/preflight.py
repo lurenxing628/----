@@ -10,13 +10,14 @@ from werkzeug.exceptions import HTTPException
 
 from core.errors import AppError, ValidationError
 from core.infrastructure.transaction import TransactionManager
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json, validate_request_key
+from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.models.workbench_preflight import (
     SCHEDULING_PREFERENCES_ACTION,
     SCHEDULING_PREFERENCES_SUBJECT,
 )
 from core.models.workbench_run_job import new_run_ref
 from core.services.workbench.run.preferences import SchedulingPreferencesService
+from core.shared.strict_json import canonical_json
 from web.api_responses import failure, json_response, query_success
 from web.public_token_registry import issue_public_token_with_expiry, resolve_public_token
 

@@ -12,9 +12,9 @@
   function ErrorBox({ error }) {
     return error ? <window.WorkbenchError error={error} /> : null;
   }
-  function useRead(api, kind, input, revision, enabled = true) {
+  function useRead(kind, input, revision, enabled) {
     const signature = JSON.stringify(input);
-    const query = window.APSResourceSession.useQuery(signal => api.read(kind, input, signal), [api, kind, signature, revision], enabled);
+    const query = window.APSResourceSession.useQuery(signal => A.read(kind, input, signal), [kind, signature, revision], enabled);
     return { data: query.result, error: query.error, loading: query.loading };
   }
   function Confirm({ action, row, reason, onClose, onConfirm }) {

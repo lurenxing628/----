@@ -5,8 +5,7 @@
     const store = A.pending(), pending = store.read(), recent = pending ? null : store.recent();
     return { intent: pending || recent && recent.intent, pending: !!pending, resolution: recent && recent.resolution, error: '' };
   }
-  function RunJobPanel({ preflight, preflightOwner, onRecheck, onNavigate, adapter }) {
-    const api = React.useMemo(() => adapter || A.create(), [adapter]);
+  function RunJobPanel({ preflight, preflightOwner, onRecheck, onNavigate }) {
     const [initial] = React.useState(() => { try { return savedRecord(); } catch (e) { return { intent: null, pending: false, error: e.message }; } });
     const [intent, setIntent] = React.useState(initial.intent), [storageError, setStorageError] = React.useState(initial.error);
     const [pendingActive, setPendingActive] = React.useState(initial.pending), [resolution, setResolution] = React.useState(initial.resolution || 'unresolved');
@@ -36,11 +35,11 @@
     React.useEffect(() => {
       // A budget check continues the same confirmation even while the parent clears its old result.
       // Its owner also prevents a closed confirmation from reopening when a check has already finished.
-      if (preflightOwner) { if (confirmationSession.current !== preflightOwner || preflightOwner.api !== api) closeConfirmation(); return; }
+      if (preflightOwner) { if (confirmationSession.current !== preflightOwner) closeConfirmation(); return; }
       if (!inputRef && confirmationSession.current && confirmationSession.current.rechecking) return;
       closeConfirmation(); setUnavailable('');
       if (inputRef && !storageError && !pendingActive) inspect();
-    }, [inputRef, preflightOwner, api]);
+    }, [inputRef, preflightOwner]);
     React.useEffect(() => {
       function changed(event) {
         if (![A.PENDING_KEY, A.RECENT_KEY, null].includes(event.key)) return;
@@ -65,7 +64,7 @@
         if (!current() || querying || document.hidden || done) return;
         querying = true; const localController = new AbortController(); controller = localController; setChecking(true); const started = Date.now();
         try {
-          const found = A.lookup(await api.lookup(intent.request_key, localController.signal, intent.data_context_ref), intent.run_ref);
+          const found = await A.lookup(intent, localController.signal);
           if (!current() || localController.signal.aborted) return;
           setLastChecked(Date.now()); setResolution(found.resolution); clearError(); setNotice('');
           if (!found.found) {
@@ -111,7 +110,7 @@
       }
       document.addEventListener('visibilitychange', visibility); visibility();
       return () => { disposed = true; clearTimeout(timer); if (controller) controller.abort(); document.removeEventListener('visibilitychange', visibility); };
-    }, [api, intent && intent.request_key, revision, storageError]);
+    }, [intent && intent.request_key, revision, storageError]);
     function beginPreviewRequest() {
       if (previewRequest.current) previewRequest.current.abort();
       const controller = new AbortController(); previewRequest.current = controller; currentPreview.current = null;
@@ -119,13 +118,14 @@
       return controller;
     }
     function ownsPreview(owner, controller) {
-      return alive.current && confirmationSession.current === owner && owner.api === api && previewRequest.current === controller && !controller.signal.aborted;
+      return alive.current && confirmationSession.current === owner && previewRequest.current === controller && !controller.signal.aborted;
     }
     async function readPreview(checked, owner, controller) {
-      const value = A.preview(await api.preview(checked.input_ref, controller.signal), checked.input_ref);
+      const value = await A.preview(checked.input_ref, controller.signal);
       if (!ownsPreview(owner, controller)) return;
       if (JSON.stringify(window.PreflightContract.input(value.normalized_input)) !== JSON.stringify(window.PreflightContract.input(checked.normalized_input))
-          || checked.run_options && (!value.run_options || Object.keys(checked.run_options).some(key => JSON.stringify(checked.run_options[key]) !== JSON.stringify(value.run_options[key]))))
+          || (checked.run_options === null) !== (value.run_options === null)
+          || checked.run_options !== null && Object.keys(checked.run_options).some(key => JSON.stringify(checked.run_options[key]) !== JSON.stringify(value.run_options[key])))
         throw window.PreflightContract.fail('核对结果与本次排产检查不一致，请重新检查。');
       currentPreview.current = value; setPreview(value); setConfirming(value.write_context.capabilities['scheduling.run']);
       if (!value.write_context.capabilities['scheduling.run']) setUnavailable(value.write_context.blocked_reasons[0].message || A.message(value.write_context.blocked_reasons[0]));
@@ -142,8 +142,8 @@
     }
     async function inspect() {
       if (locked.current || previewRequest.current || storageError || !inputRef || pendingActive) return;
-      const owner = { preflight, api, rechecking: false }; confirmationSession.current = owner;
-      setConfirmationData(preflight); setTimeBudget(preflight.run_options ? preflight.run_options.time_budget_seconds : null); setConfirming(false);
+      const owner = { preflight, rechecking: false }; confirmationSession.current = owner;
+      setConfirmationData(preflight); setTimeBudget(preflight.run_options === null ? null : preflight.run_options.time_budget_seconds); setConfirming(false);
       const controller = beginPreviewRequest();
       try {
         await readPreview(preflight, owner, controller);
@@ -179,7 +179,7 @@
           confirmationSession.current = null; currentPreview.current = null;
           activeIntent.current = original; setIntent(original); setPendingActive(true); setResolution('unresolved'); setRun(null); setVerified(false); setConfirming(false);
           try {
-            const receipt = A.accepted(await api.accept(original, preview.write_context.write_token));
+            const receipt = await A.accept(original, preview.write_context.write_token);
             const owned = alive.current && activeIntent.current && activeIntent.current.request_key === original.request_key;
             // 服务端已受理：先发布这次排产，本机记录写入失败只报存储问题，不当成结果没查到。
             if (owned) {
@@ -189,7 +189,7 @@
             try { const saved = A.pending().attach(original, receipt.run_ref); if (owned) { activeIntent.current = saved; setIntent(saved); } }
             catch (_) { if (alive.current) setStorageError('排产已接收，但本机没能保存这次排产的编号。请不要重新提交，到排产记录页查看结果。'); }
           } catch (e) {
-            if (A.isRejected(e)) {
+            if (window.APSWorkbenchTransport.rejected(e)) {
               A.pending().reject(original);
               if (alive.current) { activeIntent.current = null; setIntent(null); setPendingActive(false); setRun(null); fail(e); }
             } else if (alive.current) fail(null, window.WorkbenchTerms.outcomes.pending('排产'));

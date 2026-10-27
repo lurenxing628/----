@@ -18,8 +18,7 @@ def _service():
         integration_enabled=current_app.config.get("WORKBENCH_CANDIDATE_ADOPTION_ENABLED") is True,
         point_rendering_enabled=current_app.config.get("WORKBENCH_POINT_RENDERING_ENABLED") is True,
         context_factory=issue_write_context, context_validator=validate_write_context,
-        data_context=RunDataContext(g.db, current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR"),
-                                   current_app.config.get("BACKUP_DIR")))
+        data_context=RunDataContext(g.db, current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR")))
 
 
 def _body(fields):
@@ -52,10 +51,11 @@ def run_candidate_adopt(candidate_ref):
 
 @api_endpoint
 def run_candidate_adoption_command(candidate_ref, request_key):
-    if set(request.args) - {"run_ref", "data_context_ref"} or any(len(values) != 1 for _, values in request.args.lists()):
-        raise WorkbenchCommandRejected("invalid_input", "查询采用结果的条件有多余项或重复项，请重新查询。", 400)
+    if ("data_context_ref" not in request.args or set(request.args) - {"run_ref", "data_context_ref"}
+            or any(len(values) != 1 for _, values in request.args.lists())):
+        raise WorkbenchCommandRejected("invalid_input", "查询采用结果的条件不完整、有多余项或重复项，请重新查询。", 400)
     _, result = _service().resolve_command(candidate_ref, request_key, run_ref=request.args.get("run_ref"),
-                                          data_context_ref=request.args.get("data_context_ref"))
+                                          data_context_ref=request.args["data_context_ref"])
     response = json_response(result)
     response.headers["Cache-Control"] = "no-store"
     return response

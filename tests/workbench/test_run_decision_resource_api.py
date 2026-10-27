@@ -18,7 +18,7 @@ from core.services.workbench.run.decision_resource_export import coverage_operat
 from core.services.workbench.run.decision_source import DecisionSource
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.run_candidate_adoption_support import INTENT, rewrite_candidate, service
-from tests.workbench.run_candidate_support import BASE, api, compute
+from tests.workbench.run_candidate_support import BASE, api, compute, install_representatives
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
 from tests.workbench.test_run_decision_api import decision
 from tests.workbench.test_run_decision_impact_api import operation_ref
@@ -40,24 +40,28 @@ def add_pair(case, machine="M2", operator="O2", label=r"备用'甲\N"):
     case.conn.execute("INSERT INTO OperatorMachine(operator_id,machine_id) VALUES (?,?)", (operator, machine))
 
 
-def legacy_resource_archive(case, monkeypatch, settings=None, *, edits=None):
-    """Create a named legacy reading fixture before deriving its immutable models."""
+def summary_part(data):
+    """The combined workspace data is the decision summary plus its resource result and query."""
+    return {key: value for key, value in data.items() if key not in ("resource_result", "resource_query")}
+
+
+def representative_archive(case, monkeypatch, settings=None, *, count=1, edits=None):
+    """Save a real current run with ``count`` representatives, then give chosen ones explicit arrangements."""
     from tests.workbench import decision_history_support
-    from tests.workbench.legacy_run_archive_support import install_complete_legacy_archive
 
     with monkeypatch.context() as archived:
-        install_complete_legacy_archive(archived)
+        install_representatives(archived, count)
         original_run, original_refs = compute(case, settings)
     existing_history = getattr(case, "history_refs", None)
     case.history_refs = {"run_ref": original_run, "candidate_ref": original_refs[0]}
     derive = decision_history_support._save_cloned_read_models
 
-    def derive_fixture(conn, run_ref):
+    def derive_fixture(conn, run_ref, source_run_ref):
         refs = [row[0] for row in conn.execute(
             "SELECT candidate_ref FROM WorkbenchRunCandidates WHERE run_ref=? ORDER BY sequence", (run_ref,))]
         for index, edit in (edits or {}).items():
             rewrite_candidate(case, refs[index], edit)
-        derive(conn, run_ref)
+        derive(conn, run_ref, source_run_ref)
 
     try:
         with monkeypatch.context() as cloned:
@@ -76,7 +80,7 @@ def legacy_resource_archive(case, monkeypatch, settings=None, *, edits=None):
 def reassigned_run(case, monkeypatch):
     add_pair(case)
     case.conn.commit()
-    return legacy_resource_archive(case, monkeypatch,
+    return representative_archive(case, monkeypatch, count=2,
         edits={-1: lambda row: row.update(machine_id="M2", operator_id="O2")})
 
 
@@ -200,7 +204,7 @@ def test_partial_night_window_splits_days_and_preserves_overlap_identity(candida
     times = {case.op_id: ("2026-09-09T23:00:00", "2026-09-10T01:00:00"),
              second: ("2026-09-10T00:00:00", "2026-09-10T02:00:00"),
              boundary: ("2026-09-10T01:30:00", "2026-09-10T02:30:00")}
-    run_ref, refs = legacy_resource_archive(case, monkeypatch, case.settings(end_date="2026-09-10"),
+    run_ref, refs = representative_archive(case, monkeypatch, case.settings(end_date="2026-09-10"), count=2,
         edits={0: lambda row: row.update(start_time=times[row["op_id"]][0], end_time=times[row["op_id"]][1])})
     client, _ = api(case)
     query = {"selected_candidate_ref": refs[0], "reference_candidate_ref": refs[0],
@@ -329,7 +333,7 @@ def test_unknown_operator_capacity_and_known_zero_capacity_remain_distinct(candi
     ])
     case.conn.execute("UPDATE OperatorCalendar SET efficiency=NULL WHERE operator_id IN ('O1','O3') AND date=?", (DAY,))
     case.conn.commit()
-    run_ref, refs = legacy_resource_archive(case, monkeypatch,
+    run_ref, refs = representative_archive(case, monkeypatch, count=3,
         edits={-1: lambda row: row.update(machine_id="M2", operator_id="O2"),
                -2: lambda row: row.update(machine_id="M3", operator_id="O3")})
     client, _ = api(case)
@@ -514,7 +518,7 @@ def test_resource_paging_heatmap_snapshot_and_full_filtered_exports(candidate_ca
         case.operation(batch, machine_id=machine, operator_id=operator)
         batch_codes.append(batch)
     case.conn.commit()
-    run_ref, refs = legacy_resource_archive(case, monkeypatch, case.settings(*batch_codes))
+    run_ref, refs = representative_archive(case, monkeypatch, case.settings(*batch_codes), count=3)
     client, _ = api(case)
     query = {"selected_candidate_ref": refs[0], "reference_candidate_ref": refs[0], "resource_kind": "machine",
              "resource_view": "selected_batches", "range_start": DAY + "T00:00:00", "range_end": "2026-10-04T00:00:00",
@@ -687,7 +691,8 @@ def test_resource_paging_heatmap_snapshot_and_full_filtered_exports(candidate_ca
     book = load_workbook(io.BytesIO(combined.data), read_only=True, data_only=True)
     try:
         assert book.sheetnames == ["方案总览", "批次影响", "工序变化", "资源影响", "覆盖工序", "准备需求", "工种切换",
-                                  "推荐说明", "工序安排", "剩余需求", "候选计算", "进步事件", "搜索阶段", "代表尝试", "指标计算方式", "比较范围"]
+                                  "推荐说明", "工序安排", "剩余需求", "共同计算", "目标预算", "进步事件", "搜索动作", "搜索阶段",
+                                  "评价范围", "范围成员", "真实桥接", "指标计算方式", "比较范围"]
         assert len(list(book["资源影响"].iter_rows(values_only=True))) - 1 == 25
     finally:
         book.close()
@@ -850,7 +855,8 @@ def test_resource_paging_heatmap_snapshot_and_full_filtered_exports(candidate_ca
     book = load_workbook(io.BytesIO(combined_days.data), read_only=True, data_only=True)
     try:
         assert book.sheetnames == ["方案总览", "批次影响", "工序变化", "资源影响", "资源逐日", "资源冲突", "覆盖工序", "准备需求", "工种切换",
-                                  "推荐说明", "工序安排", "剩余需求", "候选计算", "进步事件", "搜索阶段", "代表尝试", "指标计算方式", "比较范围"]
+                                  "推荐说明", "工序安排", "剩余需求", "共同计算", "目标预算", "进步事件", "搜索动作", "搜索阶段",
+                                  "评价范围", "范围成员", "真实桥接", "指标计算方式", "比较范围"]
         assert len(list(book["资源影响"].iter_rows(values_only=True))) - 1 == 1
         iterator = book["资源逐日"].iter_rows(values_only=True)
         headers = next(iterator)
@@ -899,33 +905,34 @@ def test_resource_workspace_shares_source_restores_view_and_keeps_resource_failu
     assert combined.status_code == 200 and combined.headers["Cache-Control"] == "no-store"
     result = combined.get_json()
     assert constructed == summary_sources == resource_sources and len(constructed) == 1
-    resource = result["resource_result"]
+    assert set(result) == {"ok", "schema_version", "data", "meta", "warnings"}
+    resource = result["data"]["resource_result"]
     assert result["ok"] is resource["ok"] is True
     assert result["meta"]["as_of"] == resource["meta"]["as_of"]
     assert result["meta"]["snapshot_ref"] != resource["meta"]["snapshot_ref"]
-    assert "snapshot_ref" not in result["resource_query"]
+    assert "snapshot_ref" not in result["data"]["resource_query"]
     independent_summary = decision_summary(client, run_ref, **query)
     independent_resources = resource_document(client, run_ref, **query, heatmap_size=7)
-    assert result["data"] == independent_summary["data"]
+    assert summary_part(result["data"]) == independent_summary["data"]
     assert resource["data"] == independent_resources["data"]
     assert resource["schema_version"] == independent_resources["schema_version"]
     assert resource["warnings"] == independent_resources["warnings"]
     threshold = client.get(path, query_string={**query, "pressure_threshold": 0.5}).get_json()
-    assert threshold["data"] == independent_summary["data"]
-    assert threshold["resource_result"]["data"] == resource_document(
+    assert summary_part(threshold["data"]) == independent_summary["data"]
+    assert threshold["data"]["resource_result"]["data"] == resource_document(
         client, run_ref, **query, pressure_threshold=0.5, heatmap_size=7)["data"]
 
     no_selected = client.get(path, query_string={**WINDOW, "reference_candidate_ref": refs[0]}).get_json()
     initial_summary = decision_summary(client, run_ref, **WINDOW, reference_candidate_ref=refs[0])["data"]
-    assert no_selected["data"] == initial_summary
-    assert no_selected["resource_result"]["data"]["candidate"]["candidate_ref"] == initial_summary["scope"]["selected_candidate_ref"]
+    assert summary_part(no_selected["data"]) == initial_summary
+    assert no_selected["data"]["resource_result"]["data"]["candidate"]["candidate_ref"] == initial_summary["scope"]["selected_candidate_ref"]
     token = resource["meta"]["snapshot_ref"]
     paging = client.get(path, query_string={**query, "resource_snapshot_ref": token, "page": 2}).get_json()
-    assert paging["ok"] and paging["resource_result"]["ok"]
-    assert paging["resource_query"]["snapshot_ref"] == token
-    assert paging["resource_result"]["meta"]["snapshot_ref"] == token
-    assert paging["resource_result"]["data"]["page"]["number"] == 2
-    assert paging["meta"]["as_of"] == paging["resource_result"]["meta"]["as_of"]
+    assert paging["ok"] and paging["data"]["resource_result"]["ok"]
+    assert paging["data"]["resource_query"]["snapshot_ref"] == token
+    assert paging["data"]["resource_result"]["meta"]["snapshot_ref"] == token
+    assert paging["data"]["resource_result"]["data"]["page"]["number"] == 2
+    assert paging["meta"]["as_of"] == paging["data"]["resource_result"]["meta"]["as_of"]
     store = CandidateStore(case.conn)
     with store.snapshot(), read_evidence_scope(case.conn):
         source = original_source(store, run_ref, **query)
@@ -933,15 +940,15 @@ def test_resource_workspace_shares_source_restores_view_and_keeps_resource_failu
     old_summary = bind_read_snapshot(scope, state, as_of=DAY + "T08:01:00")
     old_resource = bind_read_snapshot({**scope, "filters": resource["data"]["filters"]}, state, as_of=DAY + "T08:02:00")
     only_summary = client.get(path, query_string={**query, "snapshot_ref": old_summary["snapshot_ref"]}).get_json()
-    assert only_summary["ok"] and only_summary["resource_result"]["ok"]
-    assert only_summary["meta"]["as_of"] == only_summary["resource_result"]["meta"]["as_of"] == old_summary["as_of"]
+    assert only_summary["ok"] and only_summary["data"]["resource_result"]["ok"]
+    assert only_summary["meta"]["as_of"] == only_summary["data"]["resource_result"]["meta"]["as_of"] == old_summary["as_of"]
     both_old = client.get(path, query_string={**query, "snapshot_ref": old_summary["snapshot_ref"],
                                              "resource_snapshot_ref": old_resource["snapshot_ref"]}).get_json()
-    assert both_old["ok"] and both_old["resource_result"]["ok"]
+    assert both_old["ok"] and both_old["data"]["resource_result"]["ok"]
     assert both_old["meta"]["snapshot_ref"] == old_summary["snapshot_ref"]
-    assert both_old["resource_result"]["meta"]["snapshot_ref"] == old_resource["snapshot_ref"]
+    assert both_old["data"]["resource_result"]["meta"]["snapshot_ref"] == old_resource["snapshot_ref"]
     assert both_old["meta"]["as_of"] == old_summary["as_of"]
-    assert both_old["resource_result"]["meta"]["as_of"] == old_resource["as_of"]
+    assert both_old["data"]["resource_result"]["meta"]["as_of"] == old_resource["as_of"]
     export = client.get(BASE + "/runs/" + run_ref + "/decision/export",
         query_string={**query, "snapshot_ref": token, "heatmap_size": 7, "section": "resources", "format": "csv"})
     assert export.status_code == 200, export.get_json()
@@ -953,16 +960,16 @@ def test_resource_workspace_shares_source_restores_view_and_keeps_resource_failu
     restored = client.get(path, query_string={**query, "resource_ref": invalid_ref, "resource_snapshot_ref": "expired-view", "page": 9})
     assert restored.status_code == 200
     restored = restored.get_json()
-    assert restored["resource_result"]["ok"]
-    assert "resource_ref" not in restored["resource_query"] and "snapshot_ref" not in restored["resource_query"]
-    assert restored["resource_query"]["page"] == 1
+    assert restored["data"]["resource_result"]["ok"]
+    assert "resource_ref" not in restored["data"]["resource_query"] and "snapshot_ref" not in restored["data"]["resource_query"]
+    assert restored["data"]["resource_query"]["page"] == 1
     assert client.get(BASE + "/runs/" + run_ref + "/decision/resources", query_string={**query, "resource_ref": invalid_ref}).status_code == 404
     display = {"grain": "hour", "display_start": DAY + "T07:00:00", "display_end": DAY + "T17:00:00",
                "resource_snapshot_ref": "expired-view", "heatmap_page": 9}
     restored = client.get(path, query_string={**query, **display}).get_json()
-    assert restored["resource_result"]["ok"] and restored["resource_query"]["grain"] == "hour"
-    assert not {"display_start", "display_end", "snapshot_ref"}.intersection(restored["resource_query"])
-    assert restored["resource_query"]["heatmap_page"] == 1
+    assert restored["data"]["resource_result"]["ok"] and restored["data"]["resource_query"]["grain"] == "hour"
+    assert not {"display_start", "display_end", "snapshot_ref"}.intersection(restored["data"]["resource_query"])
+    assert restored["data"]["resource_query"]["heatmap_page"] == 1
     ordinary_display = {key: value for key, value in display.items() if key != "resource_snapshot_ref"}
     assert client.get(BASE + "/runs/" + run_ref + "/decision/resources", query_string={**query, **ordinary_display}).status_code == 422
     for invalid in ({"pressure_threshold": 0}, {"resource_ref": "malformed"}, {"page": "01"},
@@ -976,9 +983,9 @@ def test_resource_workspace_shares_source_restores_view_and_keeps_resource_failu
     duplicate = client.get(path, query_string=list(query.items()) + [("grain", "day"), ("grain", "week")])
     assert duplicate.status_code == 422
     stale = client.get(path, query_string={**query, "resource_snapshot_ref": "expired-view"}).get_json()
-    assert stale["ok"] and stale["data"] == result["data"]
-    assert not stale["resource_result"]["ok"]
-    assert stale["resource_result"]["status"] == 409 and stale["resource_result"]["error"]["code"] == "snapshot_stale"
+    assert stale["ok"] and summary_part(stale["data"]) == summary_part(result["data"])
+    assert not stale["data"]["resource_result"]["ok"]
+    assert stale["data"]["resource_result"]["status"] == 409 and stale["data"]["resource_result"]["error"]["code"] == "snapshot_stale"
     stale_summary = client.get(path, query_string={**query, "snapshot_ref": "expired-summary"})
     assert stale_summary.status_code == 409 and not stale_summary.get_json()["ok"]
 
@@ -988,8 +995,8 @@ def test_resource_workspace_shares_source_restores_view_and_keeps_resource_failu
     with monkeypatch.context() as scoped:
         scoped.setattr(workspace, "resource_details", known_failure)
         known = client.get(path, query_string=query)
-    assert known.status_code == 200 and known.get_json()["data"] == result["data"]
-    failure = known.get_json()["resource_result"]
+    assert known.status_code == 200 and summary_part(known.get_json()["data"]) == summary_part(result["data"])
+    failure = known.get_json()["data"]["resource_result"]
     assert failure["status"] == 500 and failure["error"]["code"] == "resource_evidence_invalid"
     assert failure["error"]["message"] == "原资源读取失败" and failure["error"]["retryable"] is True
 
@@ -1000,11 +1007,11 @@ def test_resource_workspace_shares_source_restores_view_and_keeps_resource_failu
         scoped.setattr(workspace, "resource_details", unexpected)
         unknown = client.get(path, query_string=query)
     assert unknown.status_code == 500 and unknown.get_json()["error"]["code"] == "storage_failure"
-    assert not unknown.get_json()["ok"] and "resource_result" not in unknown.get_json()
+    assert not unknown.get_json()["ok"] and "data" not in unknown.get_json()
     pending = case.accept(key="resource-workspace-pending")
     no_result = client.get(BASE + "/runs/" + pending["run_ref"] + "/decision/resource-workspace").get_json()
-    assert no_result["ok"] and no_result["data"]["candidates"] == [] and no_result["resource_result"] is None
-    assert no_result["resource_query"]["page"] == 1
+    assert no_result["ok"] and no_result["data"]["candidates"] == [] and no_result["data"]["resource_result"] is None
+    assert no_result["data"]["resource_query"]["page"] == 1
     # All client connections were query_only; writes above belong to the test's
     # explicit saved arrangement and pending-run setup, never to these readers.
     assert not any(sql.lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE", "REPLACE")) for sql in statements)

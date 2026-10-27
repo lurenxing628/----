@@ -31,7 +31,7 @@
         && C.object(value.entity) && value.entity.ref === value.calendar_ref
       : value.calendar_ref === null && value.entity === null);
   }
-  // 信封（ok、schema_version、meta、warnings）已由 resource-api.js 的 production() 校验，这里只校验 data。
+  // 信封（ok、schema_version、meta、warnings）已由 transport.js 的 envelope() 校验，这里只校验 data。
   function month(result, year, number) {
     const data = result.data;
     const prefix = monthKey(year, number) + '-';

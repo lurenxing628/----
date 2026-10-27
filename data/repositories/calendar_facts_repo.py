@@ -6,7 +6,7 @@ count, decides when a projection is over budget, and chunks keyed lookups.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Sequence
 
 from .base_repo import BaseRepository
 from .schedule_time_sql import overlap_or_bad_time_sql, parse_dt_for_sql, register_schedule_time_sql_functions
@@ -22,14 +22,6 @@ class CalendarFactsRepository(BaseRepository):
     def __init__(self, conn, logger=None):
         super().__init__(conn, logger=logger)
         register_schedule_time_sql_functions(conn)
-        self._read_schema_version: Optional[int] = None
-
-    def schema_version(self) -> int:
-        if self._read_schema_version is None:
-            self._read_schema_version = self.fetchvalue("SELECT version FROM SchemaVersion WHERE id=1")
-            if type(self._read_schema_version) is not int:
-                raise ValueError("Calendar schema version is missing or invalid")
-        return self._read_schema_version
 
     def _bounded(self, sql: str, params: Sequence[Any], limit: int) -> List[Dict[str, Any]]:
         return self.fetchall(sql + " LIMIT ?", list(params) + [limit])
@@ -39,8 +31,6 @@ class CalendarFactsRepository(BaseRepository):
         return self._bounded(sql.format(marks=marks), list(keys) + list(extra), limit)
 
     def defaults(self, *, limit: int) -> List[Dict[str, Any]]:
-        if self.schema_version() < 34:
-            return []
         return self._bounded("SELECT * FROM WorkbenchCalendarDefaults ORDER BY singleton", (), limit)
 
     def global_calendar(self, first: str, last: str, *, limit: int) -> List[Dict[str, Any]]:
@@ -57,8 +47,6 @@ class CalendarFactsRepository(BaseRepository):
                            operator_ids, (), limit)
 
     def shift_patterns(self, profile_ids: Sequence[str], *, limit: int) -> List[Dict[str, Any]]:
-        if self.schema_version() < 34:
-            return self._keyed("SELECT d.*,NULL AS periods_json FROM WorkbenchShiftPatternDays d WHERE d.profile_id IN ({marks}) ORDER BY d.profile_id,d.day_offset", profile_ids, (), limit)
         return self._keyed("SELECT d.*,p.periods_json FROM WorkbenchShiftPatternDays d LEFT JOIN WorkbenchShiftDayPeriods p "
                            "ON p.profile_id=d.profile_id AND p.day_offset=d.day_offset WHERE d.profile_id IN ({marks}) "
                            "ORDER BY d.profile_id,d.day_offset", profile_ids, (), limit)
@@ -68,8 +56,6 @@ class CalendarFactsRepository(BaseRepository):
                            "WHERE machine_id IN ({marks}) ORDER BY machine_id", machine_ids, (), limit)
 
     def machine_capabilities(self, machine_ids: Sequence[str], *, limit: int) -> List[Dict[str, Any]]:
-        if self.schema_version() < 35:
-            return []
         return self._keyed("SELECT machine_id,op_type_id FROM MachineOpTypes WHERE machine_id IN ({marks}) "
                            "ORDER BY machine_id,op_type_id", machine_ids, (), limit)
 

@@ -89,5 +89,4 @@ class FieldAPI:
 
 @pytest.fixture(name='field_api')
 def field_api(ledger_case):
-    ledger_case.install()
     return FieldAPI(ledger_case)

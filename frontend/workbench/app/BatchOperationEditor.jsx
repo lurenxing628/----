@@ -2,12 +2,12 @@
   'use strict';
   const B = window.APSBatchContract, C = window.APSResourceContract, S = window.APSResourceSession;
   const { Button, Modal, ErrorBox } = window.ResourceControls, { Field } = window.BatchControls;
-  function BatchOperationEditor({ adapter, entity, operation, source, command, onCommitted, onClose, disabled }) {
+  function BatchOperationEditor({ adapter, entity, operation, source, command, onCommitted, onClose }) {
     const internal = operation.source === 'internal', merged = operation.external_group && operation.external_group.merge_mode === 'merged';
     const keys = internal ? ['machine_ref', 'operator_ref', 'setup_hours', 'unit_hours'] : ['supplier_ref'].concat(merged ? [] : ['external_days']);
     const original = Object.fromEntries(keys.map(key => [key, operation[key] == null ? '' : String(operation[key])]));
     const [draft, setDraft] = React.useState(original), [error, setError] = React.useState(null), seen = React.useRef(null);
-    const form = React.useId(), done = command.phase === 'done', locked = disabled || command.locked || done;
+    const form = React.useId(), done = command.phase === 'done', locked = command.locked || done;
     const formElement = React.useRef(null), paths = keys.map(key => 'fields.' + key), currentError = error || command.error;
     const guardOwner = window.WorkbenchGuards.useDirtyGuard({ dirty: !done && keys.some(key => draft[key] !== original[key]), locked: command.locked,
       message: '批次工序补充资料尚未保存，离开会丢失本次填写。' });

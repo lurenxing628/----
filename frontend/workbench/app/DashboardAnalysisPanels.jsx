@@ -33,9 +33,9 @@
       <div><dt>开始 / 结束</dt><dd>{M.timeLabel(row.start)} / {M.timeLabel(row.end)}</dd></div><div><dt>登记时间</dt><dd>{M.timeLabel(row.recorded_at)}</dd></div>
     </dl>)}</section>
   </>; }
-  function Material({ data, showIssues = true }) {
+  function Material({ data }) {
     const p = data.pending;
-    return <section aria-label="待排批次与齐套日期"><h3>待排批次与齐套日期</h3><div className="dy-context">待排 {value(p.count)} 批 · 本页 {p.items.length} 批 · 已确认待排 {p.known_count} 批</div>{showIssues && <Issues issues={p.issues} />}
+    return <section aria-label="待排批次与齐套日期"><h3>待排批次与齐套日期</h3><div className="dy-context">待排 {value(p.count)} 批 · 本页 {p.items.length} 批 · 已确认待排 {p.known_count} 批</div>
       <div className="dy-scroll"><table className="dy-analysis-table"><caption className="wb-sr-only">待排批次与齐套日期</caption><thead><tr><th scope="col">批次 / 零件</th><th scope="col">数量</th><th scope="col">交期</th><th scope="col">齐套状态</th><th scope="col">齐套日期</th></tr></thead><tbody>{p.items.map(row => <tr key={row.batch_ref} data-pending-batch={row.batch_ref}>
         <td><b>{row.batch_id}</b><small>{value(row.part_label)}</small></td><td>{value(row.quantity)}</td><td>{value(row.due_date)}</td>
         <td>{({ yes: '齐套', no: '未齐套', partial: '部分齐套' })[row.ready_status] || '未知'}</td><td>{value(row.ready_date)}</td></tr>)}</tbody></table></div>
@@ -54,7 +54,6 @@
     })}</tbody></table></div></section>;
   }
   function Section({ section, planRef, resourceRef, locateBatchRef, enabled = true, label, render }) {
-    const api = React.useMemo(() => window.DashboardAnalysisAPI.create(), []);
     const loadedPage = React.useRef(null);
     const base = React.useMemo(() => ({ section, page: 1, size: 20, ...(resourceRef ? { resource_ref: resourceRef } : {}),
       ...(locateBatchRef ? { locate_batch_ref: locateBatchRef } : {}) }), [section, planRef, resourceRef, locateBatchRef]);
@@ -66,7 +65,7 @@
       if (section === 'timeline' && loaded && loaded.planRef === planRef && loaded.query.size === paging.query.size && loaded.batches.has(locateBatchRef)) return loaded.query;
       return { ...base, size: paging.query.size };
     }, [base, paging]);
-    const read = window.DashboardSession.useRead(signal => api.read(planRef, signal, query), [api, planRef, query], enabled);
+    const read = window.DashboardSession.useRead(signal => window.DashboardAnalysisAPI.read(planRef, signal, query), [planRef, query], enabled);
     const result = read.result, data = result && result.data;
     React.useEffect(() => {
       if (data && section === 'timeline') loadedPage.current = { planRef, query,
@@ -91,8 +90,8 @@
     return <Section section="resource_days" planRef={planRef} resourceRef={resourceRef} enabled={enabled} label="资源逐日明细" render={data => <>
       <div className="dy-scroll"><table className="dy-analysis-table"><caption className="wb-sr-only">资源逐日明细</caption><thead><tr><th scope="col">日期 / 范围</th><th scope="col">可排时长（小时）</th><th scope="col">班内已占（小时）</th><th scope="col">占用比例</th><th scope="col">班外占用（小时）</th><th scope="col">资料状态</th></tr></thead>
         <tbody>{data.resources.flatMap(resource => resource.days.map(day => <tr key={day.date} data-resource-day={day.date}>
-          <td>{day.date}<small>{M.timeLabel(day.start)} / {M.timeLabel(day.end)}</small></td><td>{value(day.available_hours)}</td><td>{value(day.inside_available_hours)}</td>
-          <td>{window.WorkbenchFormat.percent(day.utilization)}</td><td>{value(day.outside_available_hours)}</td><td>{T.resource_states[day.window_metrics.state]}<Issues issues={day.window_metrics.issues} /></td>
+          <td>{day.date}<small>{M.timeLabel(day.start)} / {M.timeLabel(day.end)}</small></td><td>{value(day.available_hours)}</td><td>{value(day.occupied_hours)}</td>
+          <td>{window.WorkbenchFormat.percent(day.utilization_ratio)}</td><td>{value(day.outside_calendar_hours)}</td><td>{T.resource_states[day.state]}<Issues issues={day.issues} /></td>
         </tr>))}</tbody></table></div>{data.pagination.total === 0 && <window.WorkbenchListControls.EmptyState kind="empty" title="当前资源没有逐日资料。" />}
     </>} />;
   }
@@ -100,15 +99,15 @@
     const planRef = data.plan && data.plan.plan_ref, section = ['actual', 'downtime', 'material'].includes(category) ? category : 'delivery';
     const labels = { delivery: '批次交付明细', actual: '工序执行明细', downtime: '停机影响明细', material: '待排齐套明细' };
     return <>
-      <Section section={section} planRef={planRef} label={labels[section]} render={analysis => section === 'material' ? <Material data={analysis} showIssues={false} />
+      <Section section={section} planRef={planRef} label={labels[section]} render={analysis => section === 'material' ? <Material data={analysis} />
         : !analysis.plan ? <window.WorkbenchListControls.EmptyState kind="empty" title="当前没有可分析的正式计划。" />
         : section === 'actual' ? <Actual data={analysis} navigate={navigate} /> : section === 'downtime' ? <Downtime data={analysis} selected={selected} onSelect={onSelect} />
         : <Delivery data={analysis} selected={selected} onSelect={onSelect} onCompare={onCompare} />} />
       {section === 'delivery' && data.plan && <Section section="timeline" planRef={planRef} locateBatchRef={selected} label="计划时间轴工序" render={analysis =>
         <window.DashboardTimeline data={analysis} selectedBatch={selected} onSelect={onSelect} />} />}
       {!['material', 'actual'].includes(section) && <Section section="pressure" planRef={planRef} label="资源压力明细" render={analysis =>
-        <window.DashboardPanels.Pressure data={{ ...data, analysis }} showIssues={false} navigate={navigate} />} />}
+        <window.DashboardPanels.Pressure data={{ ...data, analysis }} navigate={navigate} />} />}
     </>;
   }
-  window.DashboardAnalysisPanels = { Delivery, Downtime, Material, Actual, Section, ResourceDays, Workspace, value, risk };
+  window.DashboardAnalysisPanels = { Material, Actual, Section, ResourceDays, Workspace, value, risk };
 })();

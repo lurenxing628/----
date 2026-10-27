@@ -9,7 +9,6 @@
   const origins = { selected_backup: '来自所选备份', protection_backup: '已还原到恢复前的保护副本', unchanged: '原数据库未被替换', unconfirmed: '维护记录尚未确认数据库来源' };
   const fileStates = { captured: '已读取原文件内容', verified: '与原文件内容一致', not_checked: '尚未核对', unavailable: '原内容核对资料缺失' };
   const sqliteStates = { passed: '完整性检查通过', not_checked: '尚未检查', unavailable: '完整性检查资料缺失' };
-  const historicalDigests = [['历史所选备份 SHA-256', 'target_sha256'], ['历史保护副本 SHA-256', 'protection_sha256'], ['历史维护结束数据库 SHA-256', 'database_after_sha256']];
   function check(ok) { if (!ok) throw new Error('维护状态数据不完整或存在冲突，请重新查询并核对维护记录。'); }
   function validateHost(host) {
     check(object(host) && ['ready', 'draining', 'restoring', 'restart_required', 'recovery_required'].includes(host.state)
@@ -30,12 +29,9 @@
     check(op.result_source === source && typeof op.restart_required === 'boolean'
       && Object.prototype.hasOwnProperty.call(origins, op.database_origin));
     const value = op.source_verification;
-    check(object(value) && ['original_file_content_and_sqlite', 'legacy_record'].includes(value.basis)
+    check(object(value) && value.basis === 'original_file_content_and_sqlite'
       && ['target', 'protection'].every(key => Object.prototype.hasOwnProperty.call(fileStates, value[key]))
       && Object.prototype.hasOwnProperty.call(sqliteStates, value.sqlite_integrity));
-    check(historicalDigests.every(([, key]) => value.basis === 'legacy_record'
-      ? !Object.prototype.hasOwnProperty.call(op, key) || op[key] === null || typeof op[key] === 'string' && /^[a-f0-9]{64}$/.test(op[key])
-      : !Object.prototype.hasOwnProperty.call(op, key)));
     if (op.action === 'restore') {
       check(op.restart_scope === 'restoring_process' && op.references_require_reload === true);
       const expected = { succeeded: 'selected_backup', rolled_back: 'protection_backup', failed: 'unchanged' };
@@ -47,10 +43,7 @@
     const value = op.source_verification;
     return [['所选备份内容', fileStates[value.target]], ['保护副本内容', fileStates[value.protection]], ['SQLite 完整性', sqliteStates[value.sqlite_integrity]]];
   }
-  function legacyDigests(op) {
-    return op.source_verification.basis === 'legacy_record' ? historicalDigests.filter(([, key]) => op[key]).map(([label, key]) => [label, op[key]]) : [];
-  }
-  function referencePath(reference, kind = 'request') {
+  function referencePath(reference, kind) {
     check(['request', 'job'].includes(kind) && typeof reference === 'string'
       && (kind === 'job' ? /^[a-f0-9]{32}$/ : /^[A-Za-z0-9_-]{16,128}$/).test(reference));
     return (kind === 'job' ? '/jobs/' : '/results/') + reference;
@@ -70,7 +63,7 @@
       uncertain
     };
   }
-  // 三种诊断文件各有一个名字：诊断包（日志 ZIP）、页面诊断（系统管理页）、维护诊断（恢复维护页）。
+  // 三种诊断文件：日志 ZIP 的名字由后端附件头给出；页面诊断（系统管理页）和维护诊断（恢复维护页）是本页生成的 JSON，名字在本地。
   const DIAGNOSTIC_FILENAME = '维护诊断.json';
   function download(host, result, error) {
     const payload = { scope: 'read_only_maintenance', result_source: source, host, result,
@@ -78,5 +71,5 @@
       note: '导出当前维护状态。' };
     window.APSWorkbenchTransport.downloadJSON(DIAGNOSTIC_FILENAME, payload);
   }
-  window.SystemRestoreStatus = { validateHost, envelope, host, operation, sourceFacts, legacyDigests, referencePath, describe, download, labels, hostLabels, DIAGNOSTIC_FILENAME };
+  window.SystemRestoreStatus = { validateHost, envelope, host, operation, sourceFacts, referencePath, describe, download, labels, hostLabels, DIAGNOSTIC_FILENAME };
 })();

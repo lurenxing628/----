@@ -1,7 +1,6 @@
 """Read-only lookups binding legacy execution scopes to permanent ledger identities.
 
-Raw values and tuples are returned; the caller decides whether a schema version,
-receipt trace or scope binding makes the ledger required, ambiguous or missing.
+Raw tuples are returned; the caller decides whether a scope binding is ambiguous or missing.
 """
 
 from __future__ import annotations
@@ -13,15 +12,6 @@ from .workbench_execution_repo import chunks
 
 
 class ExecutionLedgerScopeRepository(BaseRepository):
-    def schema_version_value(self) -> Any:
-        """Stored SchemaVersion value as-is, or None without the singleton row."""
-        row = self.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()
-        return None if row is None else row[0]
-
-    def has_execution_command_receipts(self) -> bool:
-        row = self.execute("SELECT 1 FROM WorkbenchCommandReceipts WHERE action GLOB 'execution.*' LIMIT 1").fetchone()
-        return row is not None
-
     def scope_task_rows(self, schedule_ids: Sequence[int]) -> List[Tuple[Any, ...]]:
         """Schedule identity, permanent refs and the operation's actual internal/external source."""
         rows: List[Tuple[Any, ...]] = []

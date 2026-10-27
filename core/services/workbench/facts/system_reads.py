@@ -6,10 +6,10 @@ from datetime import datetime
 from core.infrastructure.safe_files import stat_regular_file
 from core.models.operation_log_labels import operation_log_summary
 from core.models.operation_log_public_projection import public_operation_log_detail_text
-from core.models.workbench_command import canonical_json
 from core.models.workbench_system import normalize_log_level
 from core.services.system.runtime_log_reader import LOG_FILE_CHOICES, NO_ANCHOR_HEAD, read_log_entries_tail
 from core.services.workbench.messages import stored_utc_text
+from core.shared.strict_json import canonical_json
 from data.repositories.operation_log_repo import OperationLogRepository
 
 from .system_redaction import public_system_text

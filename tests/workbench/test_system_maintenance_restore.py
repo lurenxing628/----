@@ -16,12 +16,13 @@ from werkzeug.test import EnvironBuilder
 
 from core.infrastructure.backup import BackupManager
 from core.models.content import same
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench import messages
-from core.services.workbench.facts.run_data_context import RunDataContext
+from core.services.workbench.facts.run_data_context import RunDataContext, restored_context_ref
 from core.services.workbench.facts.system_journal import SystemMaintenanceJournal, assert_system_maintenance_ready
 from core.services.workbench.facts.system_reads import backup_signature
 from core.services.workbench.system.files import SystemFileWorkspace
+from core.shared.strict_json import canonical_json
 from tests.workbench.run_jobs_support import job_case as _job_case_fixture  # noqa: F401
 from tests.workbench.system_maintenance_support import SystemTestAPI
 from tests.workbench.system_restore_entrypoint_legacy_support import (
@@ -211,8 +212,7 @@ def test_verified_restore_uses_protection_external_result_and_new_connection(sys
     with closing(system_api.connect()) as conn:
         context = RunDataContext(conn, str(system_api.journal_dir))
         assert context.ref() != before_context
-        assert context.resolve_missing("run-before-restored-data", before_context,
-                                       records=context.capture()) == "context_replaced"
+        assert context.resolve_missing(before_context, records=context.capture()) == "context_replaced"
     from core.models.workbench_system import query_input
     from web.routes.workbench.system_log_snapshots import resolve_log_snapshot
     scope = {"kind": "system.logs", **{key: value for key, value in query_input({}, "logs").items()
@@ -268,7 +268,7 @@ def test_empty_backup_restore_preserves_database_and_protection(system_api, empt
             assert tuple(conn.iterdump()) == original
 
 
-def test_legacy_journal_lookup_and_new_intent_replay_preserve_original_files(tmp_path, monkeypatch):
+def test_journal_admission_and_new_intent_replay_preserve_saved_files(tmp_path, monkeypatch):
     reads, records = [], SystemMaintenanceJournal.records
     def capture(journal, **kwargs):
         reads.append(journal.directory)
@@ -290,44 +290,20 @@ def test_legacy_journal_lookup_and_new_intent_replay_preserve_original_files(tmp
     database = tmp_path / "portable.db"
     directory = tmp_path / "portable.db.system-journal"
     directory.mkdir()
-    old = {"version": 1, "database_scope": "a" * 64, "job_ref": "b" * 32,
-           "request_key": "old-maintenance-request-01", "input_hash": "c" * 64, "record_hash": "d" * 64,
-           "action": "create", "state": "succeeded", "code": "backup_verified", "message": "old saved result",
-           "history": [{"state": "succeeded", "time": "2026-10-01T12:00:00"}], "updated_at": "2026-10-01T12:00:00",
-           "target": {"filename": "aps_backup_saved.db", "sha256": "e" * 64}, "protection": None, "audit_persisted": True}
-    original_path = directory / ("f" * 64 + ".json")
-    original_path.write_text(json.dumps(old), encoding="utf-8")
-    original = original_path.read_bytes()
     journal = SystemMaintenanceJournal(str(directory), str(database))
-    assert journal.lookup(old["request_key"]) == old and journal.database_scope == old["database_scope"]
-    assert SystemMaintenanceJournal(str(directory), str(database)).lookup_job(old["job_ref"]) == old
-    public = journal.public(journal.lookup(old["request_key"]))
-    assert public["job_ref"] == old["job_ref"] and public["target_sha256"] == old["target"]["sha256"]
-    with pytest.raises(WorkbenchCommandRejected) as error:
-        journal.begin(old["request_key"], "create", {})
-    assert error.value.code == "original_intent_unavailable"
-    assert original_path.read_bytes() == original
-    external = SystemMaintenanceJournal(str(directory), str(tmp_path / "another.db"))
-    assert external.lookup(old["request_key"]) == old
-    with pytest.raises(WorkbenchCommandRejected) as error:
-        external.assert_ready()
-    assert error.value.code == "maintenance_origin_unavailable"
-
-    captured = journal.records()
     reads.clear()
-    assert journal.scope_from_records(captured) == old["database_scope"]
     assert journal.scope_from_records([]) == str(database) and reads == []
     row, replayed = journal.begin("new-maintenance-request-01", "create", {})
     assert reads == [str(directory)]
     assert replayed is False and row["version"] == 2 and row["intent"] == {"action": "create", "input": {}}
-    assert row["database_scope"] == old["database_scope"]
+    assert row["database_scope"] == str(database)
     journal.record(row, "succeeded", code="backup_verified")
     new_path = directory / (row["job_ref"] + ".json")
     saved = new_path.read_bytes()
     replayed_row, replayed = journal.begin(row["request_key"], "create", {})
     assert replayed is True and same(replayed_row, row)
-    assert new_path.read_bytes() == saved and original_path.read_bytes() == original
-    assert len(list(directory.glob("*.json"))) == 2
+    assert new_path.read_bytes() == saved
+    assert len(list(directory.glob("*.json"))) == 1
     with pytest.raises(WorkbenchCommandRejected) as error:
         journal.begin(row["request_key"], "delete", {"backup_ref": "another-original-reference"})
     assert error.value.code == "request_key_conflict"
@@ -360,7 +336,6 @@ def test_legacy_journal_lookup_and_new_intent_replay_preserve_original_files(tmp
         cause = error.value.__cause__
         assert error.value.code == "maintenance_unconfirmed" and str(cause) == "维护记录不是严格的 UTF-8 JSON，须人工核查。"
         assert origin is None or isinstance(cause.__context__, origin)
-    assert original_path.read_bytes() == original
 
 
 def test_system_captures_once_and_tokens_keep_relocated_journal_scope(tmp_path, monkeypatch):
@@ -431,7 +406,7 @@ def test_system_captures_once_and_tokens_keep_relocated_journal_scope(tmp_path, 
     with closing(api.connect()) as conn:
         context = RunDataContext(conn, str(api.journal_dir))
         assert counted("relocated_run_context", context.ref, 3) == empty_context
-        assert counted("recorded_missing_run", lambda: context.resolve_missing("missing-run-request", records=context.capture()),
+        assert counted("recorded_missing_run", lambda: context.resolve_missing(empty_context, records=context.capture()),
                        0, enumerations=0) == "unresolved"
     admitted = counted("recorded_admission", lambda: api.journal().admission("captured-journal-request-0"), 3)
     assert admitted is not None
@@ -554,81 +529,47 @@ def test_job_result_reads_v2_file_over_collection_capacity_and_checks_database(t
     assert invalid.status_code == 400
 
 
-def test_old_scheduling_requests_capture_once_and_query_registered_protection(job_case, tmp_path, monkeypatch):
+def test_scheduling_request_lookup_requires_the_submitted_data_context(job_case, tmp_path):
     from flask import Blueprint, g
 
-    from core.services.workbench.facts import run_data_context as context_module
-    from core.services.workbench.facts import system_journal as journal_module
     from tests.workbench.run_jobs_support import connection
     from web.routes.workbench.scheduling_jobs import register_scheduling_job_routes
 
     case = job_case
-    journal_dir, backups = Path(str(case.path) + ".system-journal"), tmp_path / "protected-backups"
+    journal_dir = Path(str(case.path) + ".system-journal")
     journal_dir.mkdir()
-    backups.mkdir()
     case.app.config.update(DATABASE_PATH=str(case.path), WORKBENCH_SYSTEM_JOURNAL_DIR=str(journal_dir),
-                           BACKUP_DIR=str(backups))
-    current_key, old_key = "current-scheduling-request-001", "protected-scheduling-request-001"
-    queued = case.accept(current_key)
-    assert queued["data"]["state"] == "queued"
-    protected = backups / "aps_backup_r07_before_restore.db"
-    with closing(sqlite3.connect(str(protected))) as conn, conn:
-        conn.execute("CREATE TABLE WorkbenchRunJobs (request_key TEXT)")
-        conn.execute("CREATE TABLE WorkbenchCommandReceipts (request_key TEXT,action TEXT)")
-        conn.execute("INSERT INTO WorkbenchRunJobs VALUES (?)", (old_key,))
-        conn.execute("INSERT INTO WorkbenchCommandReceipts VALUES (?, 'scheduling.run')", (old_key,))
-    signature = backup_signature(str(protected))
-    journal = SystemMaintenanceJournal(str(journal_dir), str(case.path))
-    row, _ = journal.begin("registered-restore-request-001", "restore", {})
-    journal.record(row, "succeeded", code="verified", protection={"filename": protected.name, "signature": signature})
-    bp = Blueprint("r07_scheduling_requests", __name__)
+                           BACKUP_DIR=str(tmp_path / "backups"))
+    queued = case.accept("current-scheduling-request-001")
+    bp = Blueprint("scheduling_request_lookup", __name__)
     register_scheduling_job_routes(bp)
     case.app.register_blueprint(bp)
+
     @case.app.before_request
     def bind():
         g.db = connection(case.path)
+
     @case.app.teardown_request
     def close(_error):
         g.pop("db").close()
-    counts = {"records": 0, "full_binary_reads": 0, "protected_stat": 0}
-    records, opened, stat = SystemMaintenanceJournal.records, journal_module.open_fixed_file_for_read_binary, context_module.backup_signature
-    def capture(journal, **kwargs):
-        counts["records"] += 1
-        return records(journal, **kwargs)
-    def binary_open(path):
-        if os.fspath(path) == str(protected):
-            counts["full_binary_reads"] += 1
-        return opened(path)
-    def first_stat(path):
-        counts["protected_stat"] += 1
-        return stat(path)
-    monkeypatch.setattr(SystemMaintenanceJournal, "records", capture)
-    monkeypatch.setattr(journal_module, "open_fixed_file_for_read_binary", binary_open)
-    monkeypatch.setattr(context_module, "backup_signature", first_stat)
-    client, observed = case.app.test_client(), {}
-    def status(name, request_key, resolution, *, found=False):
-        counts.update(records=0, full_binary_reads=0, protected_stat=0)
-        response = client.get("/api/workbench/v1/scheduling/requests/" + request_key)
-        assert response.status_code == 200, response.get_json()
-        data = response.get_json()["data"]
-        observed[name] = dict(counts)
-        assert data["found"] is found and data["resolution"] == resolution and data["data_context_ref"]
-        assert counts == {"records": 1, "full_binary_reads": 0, "protected_stat": 0 if found else 1}
-        return data
 
-    assert status("current_found", current_key, "found", found=True)["run"]["run_ref"] == queued["run_ref"]
-    status("protected_found", old_key, "context_replaced")
-    status("protected_not_found", "unknown-scheduling-request", "unresolved")
-    os.utime(str(protected), ns=(protected.stat().st_atime_ns, signature["mtime_ns"] + 1_000_000_000))
-    status("registered_identity_changed", old_key, "unresolved")
-    with protected.open("r+b") as stream:
-        stream.write(b"not-a-database!!!")
-    os.utime(str(protected), ns=(protected.stat().st_atime_ns, signature["mtime_ns"]))
-    assert backup_signature(str(protected)) == signature
-    status("sqlite_unreadable", old_key, "unresolved")
-    protected.unlink()
-    status("protected_missing", old_key, "unresolved")
-    print("R07 query counts: " + json.dumps(observed, sort_keys=True))
+    client = case.app.test_client()
+    with closing(connection(case.path)) as conn:
+        current = RunDataContext(conn, str(journal_dir)).ref()
+    other = restored_context_ref("another-database", [])
+
+    def lookup(request_key, query):
+        return client.get("/api/workbench/v1/scheduling/requests/" + request_key, query_string=query)
+
+    # The browser always sends the data generation it submitted under; anything else is rejected.
+    for query in ({}, {"data_context_ref": "a" * 64}, {"data_context_ref": current, "extra": "1"}):
+        response = lookup("current-scheduling-request-001", query)
+        assert response.status_code == 400 and response.get_json()["error"]["code"] == "invalid_input"
+    found = lookup("current-scheduling-request-001", {"data_context_ref": current}).get_json()["data"]
+    assert found["found"] is True and found["resolution"] == "found" and found["run"]["run_ref"] == queued["run_ref"]
+    for previous in (current, other):
+        missing = lookup("unknown-scheduling-request", {"data_context_ref": previous}).get_json()["data"]
+        assert missing["found"] is False and missing["resolution"] == "unresolved" and missing["data_context_ref"] == current
 
 
 def test_restore_preflight_detects_changed_original_bytes_with_same_file_metadata(tmp_path):
@@ -773,3 +714,41 @@ def test_unexpected_failure_after_command_registered_keeps_result_unknown(tmp_pa
     assert (error["code"], error["message"]) == ("storage_failure", messages.unknown("这次维护操作"))
     assert error["request_key"] == "system-test-request-0009"
     assert error["result_target"] == "/api/workbench/v1/system/results/system-test-request-0009"
+
+
+@pytest.mark.parametrize(("key", "raw"), [
+    ("auto_backup_enabled", "YES"), ("auto_backup_enabled", ""), ("auto_log_cleanup_enabled", "1"),
+    ("auto_backup_interval_minutes", "0"), ("auto_backup_interval_minutes", "1441"),
+    ("auto_backup_keep_days", "01"), ("auto_backup_keep_days", " 60"), ("auto_log_cleanup_keep_days", "abc"),
+    ("auto_backup_cleanup_interval_minutes", "60.0"),
+])
+def test_corrupt_system_config_value_fails_loud_instead_of_using_default(tmp_path, key, raw):
+    """维护设置只写 yes/no 和范围内整数；库里其他写法是存储损坏，不能悄悄换成默认值。"""
+    from core.errors import AppError, ErrorCode
+    from core.services.system.system_config_service import SystemConfigService
+    from data.repositories.system_config_repo import SystemConfigRepository
+
+    api = SystemTestAPI(tmp_path)
+    with closing(api.connect()) as conn:
+        with conn:
+            SystemConfigRepository(conn).set(key, raw)
+        with pytest.raises(AppError) as caught:
+            SystemConfigService(conn).get_snapshot_readonly(7)
+    assert caught.value.code == ErrorCode.DB_QUERY_ERROR
+    assert caught.value.details == {"config_key": key}
+    response = api.get("/config")
+    assert response.status_code == 500, response.get_data(as_text=True)
+    assert response.get_json()["error"]["code"] == "storage_failure"
+
+
+def test_unsaved_system_config_keys_use_conservative_defaults(tmp_path):
+    from core.services.system.system_config_service import SystemConfigService
+
+    api = SystemTestAPI(tmp_path)
+    with closing(api.connect()) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM SystemConfig").fetchone()[0] == 0
+        snapshot = SystemConfigService(conn).get_snapshot_readonly(9)
+    assert (snapshot.auto_backup_enabled, snapshot.auto_backup_cleanup_enabled, snapshot.auto_log_cleanup_enabled) == ("no", "no", "no")
+    assert (snapshot.auto_backup_interval_minutes, snapshot.auto_backup_keep_days,
+            snapshot.auto_backup_cleanup_interval_minutes, snapshot.auto_log_cleanup_keep_days,
+            snapshot.auto_log_cleanup_interval_minutes) == (60, 9, 1440, 30, 60)

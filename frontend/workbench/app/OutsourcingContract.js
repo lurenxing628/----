@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const BASE = '/api/workbench/v1/outsourcing', COMMANDS = '/api/workbench/v1/commands/';
+  const T = window.APSWorkbenchTransport, BASE = '/api/workbench/v1/outsourcing', COMMANDS = '/api/workbench/v1/commands/';
   const states = { in_transit: '在途', returned: '已回厂', awaiting_confirmation: '待确认' };
   const fields = ['sent', 'planned', 'returned', 'confirmedState'];
   const labels = { sent: '实际发出', planned: '计划回厂', returned: '实际回厂', confirmedState: '确认状态' };
@@ -8,7 +8,6 @@
   const ref = v => typeof v === 'string' && /^[a-f0-9]{48}$/.test(v);
   const text = v => typeof v === 'string' && v.length > 0;
   const count = v => Number.isSafeInteger(v) && v >= 0;
-  const rejected = new WeakSet();
   function check(ok, message = '外协读到的数据不完整，请刷新后重试。') { if (!ok) throw new Error(message); }
   function canonical(v) { return JSON.stringify(v, (_, x) => object(x) ? Object.keys(x).sort().reduce((r, k) => { r[k] = x[k]; return r; }, {}) : x); }
   const equal = (a, b) => canonical(a) === canonical(b);
@@ -53,7 +52,7 @@
     facts(v); target(v.target, true); boundary(v.execution, v.target);
     check(v.awaiting_return === (v.returned === null) && typeof v.overdue === 'boolean'); return v;
   }
-  function query(kind, value = {}) {
+  function query(kind, value) {
     const allowed = ['page', 'size', 'snapshot_ref'].concat(kind === 'receipts' ? ['status'] : []);
     if (kind === 'targets') allowed.push('query');
     const q = { page: 1, size: 10, ...value };
@@ -63,10 +62,10 @@
       && (q.query === undefined || typeof q.query === 'string' && q.query.length <= 200 && !q.query.includes('\0'))
       && (q.page === 1 || text(q.snapshot_ref)), '外协的筛选或翻页条件无效，当前范围没有变化。请重新选择。'); return q;
   }
-  function envelope(v, q, preview = false) {
-    check(object(v) && v.ok === true && v.schema_version === 1 && object(v.meta) && v.meta.source === 'production' && v.meta.time_basis === 'factory_local'
-      && time(v.meta.as_of) && (preview ? v.meta.snapshot_ref === null : text(v.meta.snapshot_ref)) && Array.isArray(v.warnings) && object(v.data));
-    if (q && q.snapshot_ref) check(q.snapshot_ref === v.meta.snapshot_ref, '数据已更新，请刷新后重试。刚才的选择已保留。'); return v.data;
+  // 信封已由 transport 校验；外协列表翻页钉在这次读取的数据版本上，所以列表读取的数据版本不能为空。
+  function envelope(v, q) {
+    check(text(v.meta.snapshot_ref));
+    if (q.snapshot_ref) check(q.snapshot_ref === v.meta.snapshot_ref, '数据已更新，请刷新后重试。刚才的选择已保留。'); return v.data;
   }
   function page(p, rows, q) { check(object(p) && p.number === q.page && p.size === q.size && count(p.total) && p.pages === Math.ceil(p.total / p.size)
     && Array.isArray(rows) && rows.length === Math.min(p.size, Math.max(0, p.total - (p.number - 1) * p.size)), '读到的页码和数量与当前范围不一致，请刷新后重试。'); }
@@ -99,8 +98,8 @@
     }
     return v;
   }
-  function preview(v, input) {
-    const d = envelope(v, null, true); target(d.target, true); facts(d.after, v.meta.as_of); boundary(d.execution, d.target);
+  function previewResult(v, input) {
+    const d = v.data; target(d.target, true); facts(d.after, v.meta.as_of); boundary(d.execution, d.target);
     // 新登记的 input 只有 target、没有 outsourcing_ref，后端回显 null。
     check(equal(d.input, input) && d.outsourcing_ref === (input.outsourcing_ref ?? null) && d.can_confirm === true
       && object(d.write_context) && text(d.write_context.write_token) && d.write_context.capabilities.confirm === true);
@@ -115,34 +114,23 @@
       && text(d.local_operator) && time(d.confirmed_at) && d.refresh_required === true, '保存结果和这条外协登记对不上，结果还不确定。请点「查询结果」，不要重复提交。');
     boundary(d.execution, d.target); return v;
   }
-  function failure(v, status, intent) {
-    const e = v && v.error, valid = v && v.ok === false && [false, 'unknown'].includes(v.committed) && object(e) && text(e.code) && text(e.message) && Array.isArray(e.fields);
-    const error = new Error(valid ? e.message : '读到的结果无法确认，上次提交可能已经生效。请点「查询结果」，不要重复提交。'); error.code = valid ? e.code : 'invalid_response'; error.fields = valid ? e.fields : [];
-    if (valid && v.committed === false && [400, 404, 409, 422, 503].includes(status) && e.code !== 'request_key_conflict') rejected.add(error);
-    if (valid && v.committed === 'unknown' && intent && e.result_target !== undefined) check(e.request_key === intent.request_key && e.result_target === COMMANDS + intent.request_key, '返回的结果编号和上次提交对不上，这里没有读取其他结果。请点「查询结果」。');
-    return error;
+  // 外协读取、预检、提交和回执查询都按 30 秒等待；提交失败的结果编号指向通用命令回执。
+  async function read(kind, args, selected, signal) {
+    const q = query(kind, args); check(['targets', 'receipts', 'detail', 'history'].includes(kind));
+    if (['detail', 'history'].includes(kind)) check(ref(selected));
+    const path = ['targets', 'receipts'].includes(kind) ? '/' + kind : '/receipts/' + selected + (kind === 'history' ? '/history' : '');
+    return catalog(await T.read(BASE + path, q, { signal, timeout: 30000 }), kind, q, selected);
   }
-  function create(fetcher = window.fetch.bind(window)) {
-    async function request(url, body, signal, intent) {
-      const controller = new AbortController(), abort = () => controller.abort(), timer = setTimeout(abort, 30000);
-      if (signal) { signal.addEventListener('abort', abort, { once: true }); if (signal.aborted) abort(); }
-      try {
-        const r = await fetcher(url, { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: controller.signal,
-          ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
-        check((r.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() === 'application/json', '外协读到的数据不完整，请刷新后重试。');
-        const v = await r.json(); if (!r.ok || v.ok === false) throw failure(v, r.status, intent); check(r.status === 200); return v;
-      } finally { clearTimeout(timer); if (signal) signal.removeEventListener('abort', abort); }
-    }
-    return {
-      async read(kind, args = {}, selected, signal) { const q = query(kind, args); check(['targets', 'receipts', 'detail', 'history'].includes(kind));
-        if (['detail', 'history'].includes(kind)) check(ref(selected));
-        const path = ['targets', 'receipts'].includes(kind) ? '/' + kind : '/receipts/' + selected + (kind === 'history' ? '/history' : '');
-        return catalog(await request(BASE + path + '?' + new URLSearchParams(q), undefined, signal), kind, q, selected); },
-      async preview(input, signal) { return preview(await request(BASE + '/receipts/preview', { input }, signal), input); },
-      async command(intent, token) { return receipt(await request(BASE + '/receipts', { input: intent.input, request_key: intent.request_key, write_token: token }, undefined, intent), intent); },
-      async lookup(intent) { const v = await request(COMMANDS + intent.request_key, undefined, undefined, intent);
-        if (v.state === 'not_recorded') { check(v.ok === true && v.receipt === null && v.may_be_in_flight === true); return null; } return receipt(v, intent); }
-    };
+  async function preview(input) { return previewResult(await T.preview(BASE + '/receipts/preview', { input }, { timeout: 30000 }), input); }
+  async function command(intent, token) {
+    return receipt(await T.command(BASE + '/receipts', { input: intent.input, request_key: intent.request_key, write_token: token },
+      { timeout: 30000, expect: COMMANDS + intent.request_key }), intent);
   }
-  window.OutsourcingContract = { states, fields, labels, object, ref, text, check, equal, stamp, facts, target, preview, receipt, create, isRejected: e => rejected.has(e) };
+  async function lookup(intent) {
+    const v = await T.lookup(COMMANDS + intent.request_key, { timeout: 30000 });
+    if (v === null) return null;
+    if (v.state === 'not_recorded') { check(v.ok === true && v.receipt === null && v.may_be_in_flight === true); return null; }
+    return receipt(v, intent);
+  }
+  window.OutsourcingContract = { states, fields, labels, object, ref, text, check, equal, stamp, facts, target, receipt, read, preview, command, lookup };
 })();

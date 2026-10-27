@@ -15,7 +15,7 @@
     }
     return execution.legacy_facts.length ? '仅有历史现场记录' : '暂无实际报工';
   }
-  function Bar({ mark, row, visibleMarks, model, width, selected, active, onSelect, onHover, canvasPainted = false }) {
+  function Bar({ mark, row, visibleMarks, model, width, selected, active, onSelect, onHover, canvasPainted }) {
     const box = window.ActualGanttWindow.markBox(mark, model, width), { x, size } = box;
     const kind = { actual: 'act', legacy: 'act', plan: 'plan', remaining: 'remaining' }[mark.kind];
     const title = M.markTitle(mark, row.item, model.labels);

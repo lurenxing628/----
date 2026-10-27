@@ -132,7 +132,6 @@ def test_captured_calendar_preserves_sql_status_time_types_order_and_budget(monk
     expected = CalendarFactsRepository(conn).downtimes(["M1"], "2026-09-10T11:00:00", "2026-09-10T09:00:00", limit=100)
     assert captured.downtimes(["M1"], "2026-09-10T11:00:00", "2026-09-10T09:00:00", limit=100) == expected
     assert [tuple(row[key] for key in ("machine_id", "start_time", "end_time", "status")) for row in raw] == rows
-    assert captured.schema_version() == 35
     limited = CalendarFacts(conn, captured=captured)
     limited.count = 49999
     with pytest.raises(ProjectionLimit, match="calendar_fact_limit"):

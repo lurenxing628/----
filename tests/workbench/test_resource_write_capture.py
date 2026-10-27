@@ -94,6 +94,8 @@ def test_selected_relationships_keep_category_and_deleted_identity_rejections(re
 
 def test_unchanged_relations_allow_remark_updates_and_preserve_undeclared_operator_skills(resource_conn):
     conn = resource_conn
+    insert_row(conn, "WorkbenchSupplierOpTypes", {"supplier_id": "S1", "op_type_id": "OT1"})
+    conn.commit()
     ot1 = identity_for(conn, "op_type", "OT1")
     ot2 = identity_for(conn, "op_type", "OT2")
     machine = identity_for(conn, "machine", "M1")
@@ -109,8 +111,8 @@ def test_unchanged_relations_allow_remark_updates_and_preserve_undeclared_operat
         and supplier is not None
     )
 
-    # M1, O1 and S1 all reference OT1 in seed data; flip OT1 to external so it is legacy-mismatched for M1/O1,
-    # while S1's legacy OT1 is tested by flipping OT1 back to internal.
+    # M1 and O1 reference OT1 in seed data and S1 is bound to it in WorkbenchSupplierOpTypes; flip OT1 to external
+    # so the existing binding is mismatched for M1/O1, and back to internal so it is mismatched for S1.
     conn.execute("UPDATE OpTypes SET category='external' WHERE op_type_id='OT1'")
     conn.commit()
     for kind, target, relations in (

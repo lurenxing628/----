@@ -34,7 +34,7 @@ assert.deepEqual(JSON.parse(JSON.stringify(T)), {
   current_official: '当前正式', historical_official: '历史正式', baseline_plan: '排产时的正式计划', initial_plan: '初始计划',
   run_statuses: { queued: '等待计算', running: '正在计算', complete: '计算完成', partial: '已产出部分结果', failed: '计算失败', interrupted: '已中断' },
   candidate_statuses: { completed: '计算完成', partial: '工序未排齐', failed: '计算失败', skipped: '未计算' },
-  material_strategies: { strict: '等整批物料齐套', stage: '按工序物料齐套', split: '等整批物料齐套（原分批开工入口）' },
+  material_strategies: { strict: '等整批物料齐套', stage: '按工序物料齐套' },
   material_descriptions: { strict: '这批全部用料到齐后，再安排工序开工。', stage: '每道工序只等本序和前序用料，不等后续用料。' },
   execution_states: { unreported: '待报工', started: '已开工', partial: '部分完成', paused: '已暂停', exception: '异常', complete: '已完工' },
   data_quality: { complete: '完整', incomplete: '不完整', legacy_incomplete: '历史资料不完整', invalid: '需复核' },
@@ -94,7 +94,7 @@ assert(text(Ref({ value: 0 })).includes('0'));
 assert(text(Ref({ value: '<script>bad()</script>' })).includes('<script>bad()</script>'));
 assert.equal(Ref({ value: 'r1' }).props.dangerouslySetInnerHTML, undefined);
 assert.equal(ErrorBox({ error: null }), null);
-const original = Object.freeze({ message: '请先填写批次数量。', code: 'quantity.required', request_key: hash });
+const original = Object.freeze({ message: '请先填写批次数量。', code: 'quantity.required', requestKey: hash });
 const business = ErrorBox({ error: original, fields: [{ path: 'quantity', message: original.message }] });
 assert.equal(text(business, true).match(/请先填写批次数量。/g).length, 1);
 assert(!text(business, true).includes(hash));
@@ -122,8 +122,8 @@ assert.equal(text(filtered, true).match(/请选择交期。/g).length, 1);
 const diagnosticOnly = ErrorBox({ error: original, hideMessage: true });
 assert.equal(text(diagnosticOnly, true).trim(), '');
 assert(text(diagnosticOnly).includes(hash));
-// 旧 split 是准备拆批的入口，保存的规则不能当成已拆批事实；关闭检查时也不能回显成正在生效。
-assert.equal(T.material_strategy('split', true), '等整批物料齐套（原分批开工入口）');
+// 齐套规则只有 strict 和 stage；值域外的 split 按记录无效显示，关闭检查时也不能回显成正在生效。
+assert.equal(T.material_strategy('split', true), '记录无效');
 assert.equal(T.material_strategy('stage', false), '未启用（齐套检查已关闭）');
 assert.equal(T.material_strategy(null, true), '未记录');
 assert.equal(T.material_strategy('stage', null), '未记录');
@@ -144,10 +144,9 @@ context.window.ResourceControls = { ErrorBox, Button: props => React.createEleme
 load('PreflightContract.js'); load('PreflightControls.jsx');
 const C = context.window.PreflightContract, refA = 'a'.repeat(48), refB = 'b'.repeat(48);
 const input = { ...C.defaults(), batch_refs: [refA], start_date: '2026-10-08', end_date: '2026-10-14', material_strategy: 'stage' };
-const legacy = Object.freeze({ ...input, material_strategy: 'split' });
-assert.equal(C.initial(legacy).material_strategy, 'strict');
-assert.equal(C.input(legacy).material_strategy, 'split', 'Historical input validation preserves the recorded strategy');
-assert.equal(legacy.material_strategy, 'split');
+const removed = Object.freeze({ ...input, material_strategy: 'split' });
+assert.throws(() => C.initial(removed), /请核对已选批次/, 'A split entry is rejected, never rewritten to strict');
+assert.throws(() => C.input(removed), /请核对已选批次/, 'Saved input outside strict/stage is rejected');
 const patches = [], props = { value: input, onChange: value => patches.push(JSON.parse(JSON.stringify(value))), onInspectMaterials() {}, disabled: false };
 const ruleTree = context.window.PreflightControls.Rules(props);
 const materialGroup = nodes(ruleTree, node => node.type === 'fieldset')[0];
@@ -199,7 +198,7 @@ nodes(disabledPanel, node => node.type === 'button' && text(node) === '查看可
 assert.equal(reads, 0);
 
 // Report rejections, withdrawal preview and import rows share complete, readable conflict facts.
-context.window.ResourceControls.ErrorBox = props => ErrorBox({ ...props, error: props.error && (props.error.error || props.error) });
+context.window.ResourceControls.ErrorBox = ErrorBox;
 load('WorkbenchFormat.js'); load('FieldContract.js'); load('FieldControls.jsx');
 const conflicts = [
   { code: 'downstream_requires_completion', operation_ref: 'c'.repeat(48), operation_code: 'STRESS-B-001_20',
@@ -211,8 +210,9 @@ const conflicts = [
     message: '后道工序的执行或正式安排依赖本工序完工',
     plan: { plan_ref: 'd'.repeat(48), task_ref: '1'.repeat(48), version: 5, start: '2026-10-26T10:44:00', end: '2026-10-26T13:44:00' } }
 ];
-const rejected = { phase: 'idle', locked: false, error: { message: '请先处理下面列出的影响。', committed: false,
-  error: { message: '请先处理下面列出的影响。', code: 'constraint_conflict', conflicts } } };
+// The transport's unified error is flat: conflicts sit beside message and code.
+const rejected = { phase: 'idle', locked: false, error: { message: '请先处理下面列出的影响。', code: 'constraint_conflict', fields: [], conflicts,
+  committed: false, status: 409, requestRef: null, requestKey: null, resultTarget: null } };
 const failureTree = context.window.FieldControls.Feedback({ command: rejected }), visibleFailure = text(failureTree, true);
 for (const label of ['20 热处理', '30 检验', '分件 A']) assert(visibleFailure.includes(label));
 assert.equal((visibleFailure.match(/后道工序的执行或正式安排依赖本工序完工/g) || []).length, 2);

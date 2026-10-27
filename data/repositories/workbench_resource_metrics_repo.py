@@ -34,7 +34,7 @@ class WorkbenchResourceMetricsRepository(BaseRepository):
     def op_type_dependencies(self, codes):
         if not codes:
             return {}
-        tables = {"machine_capabilities": "MachineOpTypes", "machines": "Machines", "legacy_suppliers": "Suppliers",
+        tables = {"machine_capabilities": "MachineOpTypes", "machines": "Machines",
                   "supplier_capabilities": "WorkbenchSupplierOpTypes", "skills": "OperatorSkill",
                   "part_operations": "PartOperations", "batch_operations": "BatchOperations"}
         result = {code: dict.fromkeys(tables, 0) for code in codes}

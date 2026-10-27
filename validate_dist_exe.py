@@ -9,7 +9,7 @@
   - 运行时 host/port 文件可生成并可解析
   - 健康检查接口可访问（GET /system/health）
   - 当前工作台入口、各视图的 HTML 引导与本地脚本/样式引用正确
-  - 无条件的旧页面入口保持明确的 410 退役响应
+  - 已下线的旧页面入口返回 404（不再挂载旧路由）
   - static 关键载荷已打进包且可通过 HTTP 取到非空内容
     （static 缺失时运行时只降级警告、页面照常 200，必须在验收层直接断言）
 
@@ -95,8 +95,6 @@ class _PageMarkup(HTMLParser):
         self.assets = set()
         self.script_assets = set()
         self.style_assets = set()
-        self.legacy_response = False
-        self.text_parts = []
 
     def handle_starttag(self, tag, attrs):
         values = dict(attrs)
@@ -113,11 +111,8 @@ class _PageMarkup(HTMLParser):
         if tag == "link" and values.get("rel") == "stylesheet" and values.get("href"):
             self.assets.add(values["href"])
             self.style_assets.add(values["href"])
-        if tag == "main" and values.get("data-workbench-legacy-response") == "true":
-            self.legacy_response = True
 
     def handle_data(self, data):
-        self.text_parts.append(data)
         if self.in_boot:
             self.boot_parts.append(data)
 
@@ -158,15 +153,10 @@ def _assert_workbench_page(base_url: str, path: str, view: str) -> None:
 
 
 def _assert_retired_page(base_url: str, path: str) -> None:
-    status, body, final_url = _http_get_page(base_url + path)
-    print(f"[validate] GET {path} -> {status} (expected retired)")
-    markup = _PageMarkup()
-    markup.feed(body)
-    markup.close()
-    text = "".join(markup.text_parts)
-    if (status != 410 or final_url != base_url + path or not markup.legacy_response
-            or "旧入口已退役" not in text or "原业务数据、保存的配置和历史记录仍保留" not in text):
-        raise RuntimeError(f"旧入口未返回明确的 410 退役页：{path}")
+    status, _body, final_url = _http_get_page(base_url + path)
+    print(f"[validate] GET {path} -> {status} (expected 404)")
+    if status != 404 or final_url != base_url + path:
+        raise RuntimeError(f"已下线旧入口未返回 404：{path}")
 
 
 def _normalize_db_path(path: str) -> str:

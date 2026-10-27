@@ -15,13 +15,14 @@ from typing import Any, Dict, Tuple
 from core.models.schedule_plan_identity import PlanIdentity
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_scope import PlanReadScope
-from core.services.workbench.facts.delivery_completeness import completion_evidence, deferred_operation_evidence
+from core.services.workbench.facts.delivery_completeness import completion_evidence
 from core.services.workbench.facts.delivery_projection import (
     delivery_summary,
     project_delivery_batch,
     selected_batch_keys,
     task_intervals,
 )
+from core.services.workbench.facts.material_deferral_evidence import archived_deferred_operation_evidence
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 
 from .delivery_repository import PlanDeliveryRepository
@@ -53,7 +54,7 @@ def _read_plan_delivery(conn, *, scope, identity, logger, context):
     intervals = task_intervals(rows)
     keys = selected_batch_keys(rows, intervals, scope)
     record = repo.completion_record(identity, scenario, context=context)
-    deferred, deferred_issues = deferred_operation_evidence(conn, record)
+    deferred, deferred_issues = archived_deferred_operation_evidence(record)
     if scope.range_start is None and deferred:
         pending_keys, pending_issues = repo.deferred_batch_keys(deferred)
         keys = sorted(set(keys) | pending_keys)

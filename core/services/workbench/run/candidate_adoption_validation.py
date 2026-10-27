@@ -14,7 +14,6 @@ from core.services.workbench.facts.candidate_archive import (
     load_adoption_candidate,
     require_adoption_schema,
 )
-from core.services.workbench.facts.candidate_projection import uses_task_rows
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_tasks import validate_task_payload
 from core.services.workbench.facts.official_scope_coverage import official_scope_coverage
@@ -28,25 +27,19 @@ from .piece_adoption import validate_piece_adoption
 from .preflight_facts import PreflightFacts
 
 
-def _rows(tasks, candidate, prepared, expected_ids):
-    from_tasks = uses_task_rows(candidate["artifact"])
-    if expected_ids is None:
-        raise CandidateAdoptionBlocked("candidate_artifact_invalid", "候选验证范围缺失，不能采用。请重新排产后再试。")
-    legacy_rows = None if from_tasks else {row["op_id"]: row for row in candidate["artifact"]["validated_payload"]["schedule_rows"]}
+def _rows(tasks, prepared, expected_ids):
     refs = {row["op_id"]: row["operation_ref"] for row in prepared.dispositions}
     seen = set()
-    return [_row_from_task(task, refs, prepared.frozen_op_ids, expected_ids, legacy_rows, seen) for task in tasks]
+    return [_row_from_task(task, refs, prepared.frozen_op_ids, expected_ids, seen) for task in tasks]
 
 
-def _row_from_task(task, refs, frozen_op_ids, expected_ids, legacy_rows, seen):
-    """Validate one permanent task against its admission and old-format arrangement witness."""
+def _row_from_task(task, refs, frozen_op_ids, expected_ids, seen):
+    """Validate one permanent task against its admission identity and lock."""
     value = task["payload"]
     op_id, start, end = validate_task_payload(value, seen=seen)
-    legacy_matches = legacy_rows is None or same(
-        {key: item for key, item in value.items() if key != "locked"}, legacy_rows.get(op_id))
     if (task["operation_ref"] != refs.get(op_id)
             or value["locked"] != (op_id in frozen_op_ids)
-            or op_id not in expected_ids or not legacy_matches):
+            or op_id not in expected_ids):
         raise CandidateAdoptionBlocked("candidate_artifact_invalid", "候选行、原始工序身份或锁定记录不一致。")
     return ValidatedScheduleRow(
         op_id=op_id,
@@ -71,7 +64,7 @@ def validate_adoption(conn, candidate_ref):
                                                        for_adoption=True)
                 if not same({row["operation_ref"]: row for row in prepared.dispositions}, scope):
                     raise CandidateAdoptionBlocked("candidate_disposition_mismatch", "排产时的工序范围或前后顺序和现在的记录对不上，不能采用。请重新做排产检查。")
-                rows = _rows(tasks, candidate, prepared, ids)
+                rows = _rows(tasks, prepared, ids)
                 payload = validate_candidate(prepared, rows, [])
                 _check_artifact_payload(candidate, payload)
                 if payload.scheduled_op_ids != prepared.schedule_output_allowed_op_ids:
@@ -111,21 +104,8 @@ def validate_adoption_payload(conn, prepared, payload):
 
 
 def _check_artifact_payload(candidate, payload):
-    artifact = candidate["artifact"]
-    if uses_task_rows(artifact):
-        # 新格式候选的安排明细在任务账本里逐行核对过，这里只转换并核对其余验证记录。
-        summary = {item.name: getattr(payload, item.name) for item in fields(payload)
-                   if item.name not in ("schedule_rows", "assigned_by_op_id")}
-        if not same(artifact["validated_payload"], durable_value(summary)):
-            raise CandidateAdoptionBlocked("candidate_artifact_invalid", "候选验证记录与明细不一致。")
-        return
-    expected = durable_value(payload)
-    if not same(artifact["validated_payload"], expected):
+    # 安排明细已在任务账本里逐行核对，这里只转换并核对其余验证记录。
+    summary = {item.name: getattr(payload, item.name) for item in fields(payload)
+               if item.name not in ("schedule_rows", "assigned_by_op_id")}
+    if not same(candidate["artifact"]["validated_payload"], durable_value(summary)):
         raise CandidateAdoptionBlocked("candidate_artifact_invalid", "候选验证记录与明细不一致。")
-    results = artifact.get("results")
-    if type(results) is not list or len(results) != len(payload.schedule_rows):
-        raise CandidateAdoptionBlocked("candidate_artifact_invalid", "候选原始引擎结果不完整。")
-    columns = ("op_id", "machine_id", "operator_id", "start_time", "end_time", "source")
-    original = [{key: row[key] for key in columns} for row in results]
-    if not same(original, expected["schedule_rows"]):
-        raise CandidateAdoptionBlocked("candidate_artifact_invalid", "候选原始引擎结果与保存安排不一致。")

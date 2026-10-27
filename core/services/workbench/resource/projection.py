@@ -25,10 +25,6 @@ def project_resource(kind, identity, state, *, availability=None, availability_i
     if kind == "op_type" and supports_source(raw["category"], "internal") and availability is not None:
         entity["availability"] = availability
     entity["issues"].extend(availability_issues)
-    if entity["status"] == "unknown":
-        entity["fields"]["legacy_status"] = raw.get("status")
-        message = "这条记录停用了，但没登记停用原因，原值照样保留。" if raw.get("status") == "inactive" else "这条记录的状态看不懂，原值照样保留，系统不猜是启用还是停用。"
-        entity["issues"].append({"code": "legacy_status_unknown", "message": message})
     return entity
 
 
@@ -86,16 +82,11 @@ def _supplier(entity, raw):
     entity["fields"]["default_days"] = raw["default_days"]
     refs = []
     for row in raw["op_types"]:
-        refs.append({"ref": row["ref"], "business_code": row["op_type_id"], "label": row["name"],
-                     "legacy": bool(row["legacy"]), "explicit": bool(row["explicit"])})
+        refs.append({"ref": row["ref"], "business_code": row["op_type_id"], "label": row["name"]})
         if not supports_source(row["category"], "external"):
             entity["issues"].append({"code": "supplier_capability_invalid", "message": "这家供应商关联的工种不是外协工种，没有算成外协能力。请重新选一个外协工种。"})
     entity["relationships"] = {"op_types": refs, "op_type_refs": [row["ref"] for row in refs],
                                 "counts": {key: len(rows) for key, rows in raw["references"].items()}}
-    if entity["status"] == "unknown":
-        entity["fields"]["legacy_status"] = raw["status"]
-        message = "这家供应商停用了，但没登记停用原因，没有按待复核处理。" if raw["status"] == "inactive" else "这家供应商的状态看不懂，原值照样保留，系统不猜是启用还是停用。"
-        entity["issues"].append({"code": "legacy_status_unknown", "message": message})
     return entity
 
 

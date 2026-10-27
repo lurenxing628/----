@@ -3,7 +3,8 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict
 
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
+from core.shared.strict_json import canonical_json
 
 ADOPT_ACTION = "calibration.adopt"
 MAX_EVIDENCE_BYTES = 8 * 1024 * 1024

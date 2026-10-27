@@ -12,7 +12,7 @@ from core.services.capacity.plan_calendar_limits import MAX_CALENDAR_DATES
 from core.services.capacity.plan_calendar_windows import policy_projection
 from core.services.workbench.facts.current_resource_calendar import calendar_from_sources
 from core.services.workbench.facts.resource_intervals import resource_identity_issues, task_interval
-from core.services.workbench.facts.resource_pressure import legacy_day, pressure_from_index
+from core.services.workbench.facts.resource_pressure import pressure_from_index
 from core.services.workbench.facts.resource_projection import ResourceTaskIndex, resource_cohort
 from core.services.workbench.plan.calendar import range_days
 from core.services.workbench.plan.calendar_context import public_resource, resource_ids
@@ -120,7 +120,7 @@ class ResourcePressureMetrics:
                 if resource["ref"] != days_ref:
                     summaries[key] = pressure_from_index(index, resource, calendar, include_days=False)
                 elif key in summaries:
-                    detailed[key] = dict(summaries[key], days=[legacy_day(day) for day in index.days(resource, calendar)])
+                    detailed[key] = dict(summaries[key], days=index.days(resource, calendar))
                 else:
                     detailed[key] = pressure_from_index(index, resource, calendar)
                     summaries[key] = dict(detailed[key], days=[])

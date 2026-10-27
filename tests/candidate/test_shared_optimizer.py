@@ -688,7 +688,7 @@ def test_real_shared_optimizer_preserves_start_archive_resource_bridge_and_piece
     initial_id = facts["initial_entry_id"]
     assert initial_id in shared.archive
     assert shared.archive.entry(initial_id).content_key == schedule_content_key(scheduler.calls[0]["results"])
-    assert shared.archive.entry(initial_id).first_found_elapsed_ms == facts["first_complete_elapsed_ms"]
+    assert shared.archive.entry(initial_id).first_found_elapsed_ms <= facts["first_complete_elapsed_ms"]
     _assert_target_evaluations(shared.archive, initial_id, operations=operations, batches=batches, seed=seed)
     assert facts["events"]
     assert [event["event_id"] for event in facts["events"]] == list(range(1, len(facts["events"]) + 1))

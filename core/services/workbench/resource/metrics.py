@@ -219,9 +219,6 @@ class WorkbenchResourceMetricsService:
         else:
             counts = self._status_counts(kind, selected)
         issues = []
-        if counts.get("unknown", 0):
-            issues.append({"code": "resource_status_unknown", "count": counts["unknown"],
-                           "message": "有旧资源的状态或停用原因读不出来，既没算成启用，也没算成停用。"})
         if kind == "op_type":
             unavailable = {"internal": ["linked_machines", "available_operators", "without_machines"],
                            "external": ["available_suppliers"]}
@@ -234,7 +231,7 @@ class WorkbenchResourceMetricsService:
         return {"scope": scope, "counts": counts, "basis": dict(_BASIS), "issues": issues}
 
     def _status_counts(self, kind, codes):
-        states = ("active", "inactive", "unknown")
+        states = ("active", "inactive")
         if kind == "machine":
             states += ("maintain",)
         elif kind in ("operator", "supplier"):

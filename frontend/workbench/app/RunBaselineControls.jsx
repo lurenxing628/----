@@ -5,9 +5,7 @@
   function useBaseline(data, available) {
     const [enabled, setEnabled] = React.useState(false);
     const active = enabled && available;
-    const read = window.APSResourceSession.useQuery(signal => window.RunBaselineAPI.create().read(data, signal).catch(error => {
-      throw new Error(error.name === 'AbortError' ? '原安排读取超时，请刷新原安排。' : error.message);
-    }), [data], active);
+    const read = window.APSResourceSession.useQuery(signal => window.RunBaselineAPI.read(data, signal), [data], active);
     return { ...read, retainedResult: read.result, result: active ? read.result : null, error: active ? read.error : null,
       busy: active && read.loading, enabled: active, toggle: setEnabled, retry: read.reload };
   }
@@ -89,7 +87,7 @@
           <Button icon="search" className="mini" aria-label={'原安排对照 ' + (r.batch_label || '批次未记录') + ' ' + M.number(r.sequence) + ' ' + (r.process_label || '工序未记录')} onClick={() => onChoose({ comparison: r, segment: null })} /></div>)}</div>
       {!rows.length && <div className="rc-empty">当前范围没有匹配对照。</div>}</div>;
   }
-  function Panel({ state, rows, chosen, onChoose, workspace, inspecting = false, onShowAll }) {
+  function Panel({ state, rows, chosen, onChoose, workspace, inspecting, onShowAll }) {
     const [open, setOpen] = React.useState(false), d = state.result && state.result.data;
     React.useEffect(() => { if (chosen || inspecting) setOpen(true); }, [chosen, inspecting]);
     return <>{state.enabled && <>

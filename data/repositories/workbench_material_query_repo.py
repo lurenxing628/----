@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, Dict, cast
+
 from .base_repo import BaseRepository
 
 _FROM = """FROM Materials AS m LEFT JOIN WorkbenchEntityRefs AS r
@@ -60,12 +62,14 @@ class WorkbenchMaterialQueryRepository(BaseRepository):
         return self.fetchall("""SELECT material_id, COUNT(*) AS amount FROM BatchMaterials
             GROUP BY material_id ORDER BY material_id""")
 
-    def metrics(self, query, status):
-        """Status and stock counts over the toolbar scope (text query + status) only."""
+    def metrics(self, query, status) -> Dict[str, Any]:
+        """Status and stock counts over the toolbar scope (text query + status) only.
+
+        damaged_code names one row whose stored status is neither active nor inactive; the service rejects it."""
         where, params = self._where(query, status)
-        return self.fetchone("""SELECT COUNT(*) AS total,
+        return cast(Dict[str, Any], self.fetchone("""SELECT COUNT(*) AS total,
             COALESCE(SUM(CASE WHEN m.status='active' THEN 1 ELSE 0 END),0) AS active,
             COALESCE(SUM(CASE WHEN m.status='inactive' THEN 1 ELSE 0 END),0) AS inactive,
-            COALESCE(SUM(CASE WHEN m.status IS NULL OR m.status NOT IN ('active','inactive') THEN 1 ELSE 0 END),0) AS unknown,
+            MIN(CASE WHEN m.status IS NULL OR m.status NOT IN ('active','inactive') THEN m.material_id END) AS damaged_code,
             COALESCE(SUM(CASE WHEN m.stock_qty IS NULL THEN 1 ELSE 0 END),0) AS stock_unknown
-            FROM Materials AS m""" + where, params)
+            FROM Materials AS m""" + where, params))

@@ -58,7 +58,7 @@ def test_real_create_read_update_clear_delete_and_replay_keep_hidden_fields(app_
     for fmt in ("csv", "xlsx"):
         response = app_client.post("/api/workbench/v1/imports/material/preview", data={
             "file": (BytesIO(file_bytes([("M / %001", "   ", "   ", "   ")], fmt,
-                                       ("business_code", "spec", "unit", "remark"))), "input." + fmt),
+                                       ("物料编号", "规格", "单位", "备注"))), "input." + fmt),
             "format": fmt, "mode": "upsert"}, content_type="multipart/form-data")
         assert response.status_code == 200, response.get_data(as_text=True)
         preview = response.get_json()["data"]
@@ -67,7 +67,7 @@ def test_real_create_read_update_clear_delete_and_replay_keep_hidden_fields(app_
         assert _detail(app_client, ref)["fields"] == detail["fields"]
     response = app_client.post("/api/workbench/v1/imports/material/preview", data={
         "file": (BytesIO(file_bytes([("M / %001", "'", "'", "'")], "csv",
-                                   ("business_code", "spec", "unit", "remark"))), "input.csv"),
+                                   ("物料编号", "规格", "单位", "备注"))), "input.csv"),
         "format": "csv", "mode": "upsert"}, content_type="multipart/form-data")
     assert response.status_code == 200, response.get_data(as_text=True)
     preview = response.get_json()["data"]
@@ -81,7 +81,7 @@ def test_real_create_read_update_clear_delete_and_replay_keep_hidden_fields(app_
         with _database(app_client) as conn:
             conn.execute("UPDATE Materials SET stock_qty=? WHERE material_id=?", (numeric, "M / %001"))
         response = app_client.post("/api/workbench/v1/imports/material/preview", data={
-            "file": (BytesIO(file_bytes([("M / %001", flag)], "xlsx", ("business_code", "stock_qty"))), "input.xlsx"),
+            "file": (BytesIO(file_bytes([("M / %001", flag)], "xlsx", ("物料编号", "库存数量"))), "input.xlsx"),
             "format": "xlsx", "mode": "upsert"}, content_type="multipart/form-data")
         assert response.status_code == 200, response.get_data(as_text=True)
         bool_preview = response.get_json()["data"]
@@ -143,7 +143,7 @@ def test_material_file_holds_one_batch_preparation_and_export_skips_write_snapsh
         conn.executemany("INSERT INTO Materials(material_id,name,stock_qty) VALUES (?, ?, ?)",
                          [("M1", "first", 1), ("M2", "second", 2)])
         conn.commit()
-        content = file_bytes([("M1", 10), ("M2", 20)], "csv", ("business_code", "stock_qty"))
+        content = file_bytes([("M1", 10), ("M2", 20)], "csv", ("物料编号", "库存数量"))
         service = WorkbenchMaterialFileService(conn)
         preview = service.preview_import(content, file_format="csv", scope={})
         monkeypatch.setattr(WorkbenchMaterialFileRepository, "capture", captured)

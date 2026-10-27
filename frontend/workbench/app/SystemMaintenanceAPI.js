@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const BASE = '/api/workbench/v1/system', PENDING_KEY = 'aps_workbench_system_pending_v1';
+  const T = window.APSWorkbenchTransport, BASE = '/api/workbench/v1/system', PENDING_KEY = 'aps_workbench_system_pending_v1';
   const actions = { create: '新增备份', delete: '删除所选备份', restore: '恢复所选备份', config: '保存八项维护配置' };
   const states = ['accepted', 'checking', 'protecting', 'restoring', 'verifying', 'rolling_back', 'succeeded', 'failed', 'rolled_back', 'rollback_failed', 'recovery_required'];
   const terminalStates = ['succeeded', 'failed', 'rolled_back'];
@@ -15,20 +15,11 @@
   const count = value => Number.isSafeInteger(value) && value >= 0;
   const context = value => object(value) && nonempty(value.write_token);
   function check(valid, message = '读到的维护数据不完整，页面没有改动。请刷新后重试。') { if (!valid) throw new Error(message); }
-  function envelope(value, snapshot = true) {
-    check(object(value) && value.ok === true && value.schema_version === 1 && object(value.data) && object(value.meta)
-      && value.meta.source === 'production' && value.meta.time_basis === 'factory_local'
-      && (snapshot ? nonempty(value.meta.snapshot_ref) : /^[a-f0-9]{32}$/.test(value.meta.request_ref))
-      && nonempty(value.meta.as_of) && Array.isArray(value.warnings));
-    return value.data;
-  }
+  // 存储值损坏时后端直接拒绝读取，这里只会读到八项有效值和尚未保存的默认项。
   function config(value, writable = true) {
-    check(object(value) && object(value.values) && object(value.stored_values) && object(value.dirty_reasons)
-      && Array.isArray(value.dirty_fields) && Array.isArray(value.defaulted_fields) && (!writable || context(value.write_context)));
+    check(object(value) && object(value.values) && Array.isArray(value.defaulted_fields) && (!writable || context(value.write_context)));
     check(fields.every(field => field.switch ? ['yes', 'no'].includes(value.values[field.key]) : count(value.values[field.key])));
-    check(value.dirty_fields.concat(value.defaulted_fields).every(key => fields.some(field => field.key === key))
-      && value.dirty_fields.every(key => text(value.dirty_reasons[key]))
-      && fields.every(field => value.stored_values[field.key] === null || text(value.stored_values[field.key])));
+    check(value.defaulted_fields.every(key => fields.some(field => field.key === key)));
     return value;
   }
   function backupFile(row) {
@@ -46,9 +37,10 @@
         && row.event_source === 'external_maintenance_journal' && /^[a-f0-9]{32}$/.test(row.event_ref)
         : row.type === 'cleanup' && ['succeeded', 'failed', 'unknown'].includes(row.status) && ['operation_audit', 'latest_job_state_only'].includes(row.event_source));
   }
+  // 清单读取已由 transport 校验过信封；翻页和导出还要用这次读取的数据版本。
   function collection(value, kind) {
-    const data = envelope(value), page = data.page;
-    check(object(page) && ['number', 'size', 'total', 'pages'].every(key => count(page[key])) && page.number >= 1
+    const data = value.data, page = data.page;
+    check(nonempty(value.meta.snapshot_ref) && object(page) && ['number', 'size', 'total', 'pages'].every(key => count(page[key])) && page.number >= 1
       && [10, 25, 50].includes(page.size) && page.pages === Math.max(1, Math.ceil(page.total / page.size)) && page.number <= page.pages
       && Array.isArray(data.rows) && data.rows.length === Math.min(page.size, Math.max(0, page.total - (page.number - 1) * page.size))
       && Array.isArray(data.sources) && data.scope === (kind === 'backups' ? 'backup-files-and-maintenance-events' : 'bounded-log-windows'));
@@ -73,8 +65,10 @@
     return { kind: 'config', command: value, terminal: true };
   }
   function result(value, intent) {
+    // 回执查询拿到的是原始 JSON：维护期间由维护日志服务器作答，平时是标准信封。
     const external = object(value) && object(value.meta) && value.meta.result_source === 'external_maintenance_journal';
-    const data = external ? window.SystemRestoreStatus.envelope(value) : envelope(value, false);
+    if (!external) T.envelope(value);
+    const data = external ? window.SystemRestoreStatus.envelope(value) : value.data;
     if (!external && data.host) window.SystemRestoreStatus.validateHost(data.host);
     if (data.kind === 'not_recorded') { check(text(data.message)); return { ...data, terminal: false }; }
     if (data.kind === 'config') { check(intent.action === 'config'); return receipt(data.command); }
@@ -120,8 +114,7 @@
       begin(action) {
         check(Object.prototype.hasOwnProperty.call(actions, action), '未知维护动作。');
         check(!this.read(), '还有一次操作没有确认结果，不能重新发起。请先点「查询结果」。');
-        const bytes = new Uint8Array(24); window.crypto.getRandomValues(bytes);
-        const value = { request_key: 'system-' + Array.from(bytes, n => n.toString(16).padStart(2, '0')).join(''), action, summary: actions[action] };
+        const value = { request_key: T.requestKey('system'), action, summary: actions[action] };
         storage.setItem(PENDING_KEY, JSON.stringify(value));
         return value;
       },
@@ -131,158 +124,90 @@
       }
     };
   }
-  function errorResponse(value, status) {
-    const valid = object(value) && value.ok === false && object(value.error) && text(value.error.message) && text(value.error.code);
-    const problem = new Error(valid ? value.error.message : '维护接口返回的数据格式无效，请重新查询。');
-    problem.code = valid ? value.error.code : 'invalid_response'; problem.status = status;
-    problem.rejected = valid && value.committed === false && status >= 400;
-    return problem;
-  }
   function inspectPending() {
     try { return { intent: pending().read(), storageError: null }; }
     catch (storageError) { return { intent: null, storageError }; }
   }
-  function parameters(input) {
-    const params = new URLSearchParams();
-    Object.entries(input).forEach(([key, value]) => { if (value !== '' && value !== undefined && value !== null) params.set(key, value); });
-    return params.toString() ? '?' + params : '';
-  }
   function recordSelection(selection, kind) {
     if (selection === undefined || selection === null) return null;
-    check(object(selection) && Object.keys(selection).every(key => ['key', 'backup_ref', 'record_kind'].includes(key))
-      && (selection.key === undefined || nonempty(selection.key))
-      && (selection.record_kind === undefined || ['backup_file', 'restore_event', 'cleanup_event'].includes(selection.record_kind))
-      && (selection.backup_ref === undefined || nonempty(selection.backup_ref) && (selection.record_kind === undefined || selection.record_kind === 'backup_file')), '原先选中的记录已失效，请重新选择。');
-    check(kind !== 'logs' || nonempty(selection.key) && selection.backup_ref === undefined && selection.record_kind === undefined, '原先选中的日志记录编号不对，请重新选择。');
-    const recordKind = selection.record_kind || (kind === 'backups' && selection.backup_ref ? 'backup_file' : undefined);
-    return { ...(selection.key !== undefined ? { key: selection.key } : {}), ...(recordKind ? { record_kind: recordKind } : {}) };
+    // 唯一写方 SystemMaintenanceRecords 只存 { key, record_kind }（日志只存 key）。
+    check(object(selection) && Object.keys(selection).every(key => ['key', 'record_kind'].includes(key)) && nonempty(selection.key)
+      && (kind === 'logs' || ['backup_file', 'restore_event', 'cleanup_event'].includes(selection.record_kind)), '原先选中的记录已失效，请重新选择。');
+    check(kind !== 'logs' || selection.record_kind === undefined, '原先选中的日志记录编号不对，请重新选择。');
+    return { key: selection.key, ...(kind === 'logs' ? {} : { record_kind: selection.record_kind }) };
   }
   function recordContext(value = {}, kind) {
-    const migrationNotice = '原记录编号已更新，已清除上次的记录选择，请重新选择。';
-    check(object(value) && Object.keys(value).every(key => ['filters', 'page', 'snapshot_ref', 'selection', 'migration_notice'].includes(key))
-      && (value.migration_notice === undefined || value.migration_notice === migrationNotice), '上次的筛选和翻页状态无法恢复。请刷新后重新筛选。');
+    check(object(value) && Object.keys(value).every(key => ['filters', 'page', 'selection'].includes(key)), '上次的筛选和翻页状态无法恢复。请刷新后重新筛选。');
     const filters = { query: '', type: '', status: '', level: '', file: '', start: '', end: '', ...value.filters };
     check((value.filters === undefined || object(value.filters)) && Object.keys(filters).every(key => ['query', 'type', 'status', 'level', 'file', 'start', 'end'].includes(key)
       && text(filters[key]) && filters[key].length <= 200), '上次的筛选条件无法恢复。请刷新后重新筛选。');
-    const page = value.page === undefined ? 1 : value.page, snapshot = value.snapshot_ref === undefined ? '' : value.snapshot_ref;
-    check(count(page) && page >= 1 && page <= 100000 && text(snapshot), '上次的页码或数据版本无法恢复。请刷新后重新翻页。');
-    const selection = recordSelection(value.selection, kind), legacy = selection && /^[a-f0-9]{64}$/.test(selection.key);
-    return { filters, page, selection: legacy ? null : selection, ...((legacy || value.migration_notice) ? { migration_notice: migrationNotice } : {}) };
+    const page = value.page === undefined ? 1 : value.page;
+    check(count(page) && page >= 1 && page <= 100000, '上次的页码无法恢复。请刷新后重新翻页。');
+    return { filters, page, selection: recordSelection(value.selection, kind) };
   }
   function pageContext(value) {
-    check(object(value) && Object.keys(value).every(key => ['source', 'tab', 'page_size', 'records'].includes(key)), '上次的页面状态无法恢复。请从侧栏重新打开系统管理。');
-    // `sample` 是下线前唯一发布过的旧来源。只迁移这个精确值，并清空其样例记录状态；未知来源仍 fail closed。
-    const legacySample = value.source === 'sample';
+    check(object(value) && Object.keys(value).every(key => ['tab', 'page_size', 'records'].includes(key)), '上次的页面状态无法恢复。请从侧栏重新打开系统管理。');
     const tab = value.tab === undefined ? 'overview' : value.tab;
     const size = value.page_size === undefined ? 10 : value.page_size;
-    const records = (legacySample || value.records === undefined) ? {} : value.records;
-    check((value.source === undefined || value.source === 'current' || legacySample) && ['overview', 'backups', 'logs', 'config'].includes(tab) && [10, 25, 50].includes(size)
+    const records = value.records === undefined ? {} : value.records;
+    check(['overview', 'backups', 'logs', 'config'].includes(tab) && [10, 25, 50].includes(size)
       && object(records) && Object.keys(records).every(key => ['backups', 'logs'].includes(key)), '上次的页面状态不完整，无法恢复。请从侧栏重新打开系统管理。');
     return { tab, page_size: size, records: Object.fromEntries(Object.entries(records).map(([kind, item]) => [kind, recordContext(item, kind)])) };
   }
-  function create(fetcher = window.fetch.bind(window)) {
-    async function exchange(path, options, consume) {
-      const controller = new AbortController(), external = options.signal;
-      const abort = () => controller.abort(); let expired = false;
-      if (external) { if (external.aborted) abort(); else external.addEventListener('abort', abort, { once: true }); }
-      const timer = setTimeout(() => { expired = true; abort(); }, 30000);
-      try {
-        const response = await fetcher(BASE + path, { credentials: 'same-origin', cache: 'no-store', redirect: 'error', ...options, signal: controller.signal });
-        return await consume(response);
-      } catch (problem) {
-        if (expired) throw new Error(options.method === 'POST' ? window.WorkbenchTerms.outcomes.pending('维护操作') : '维护查询超时，请重新查询。');
-        throw problem;
-      } finally { clearTimeout(timer); if (external) external.removeEventListener('abort', abort); }
+  // 维护读取、提交和下载都按 30 秒等待。维护状态与回执查询是原始 JSON，交给 result / SystemRestoreStatus 校验。
+  const TIMEOUT = 30000;
+  async function host() {
+    try { return window.SystemRestoreStatus.host(await T.lookup(BASE + '/restore-host', { timeout: TIMEOUT })); }
+    catch (problem) {
+      const message = problem.status === 404 ? '维护状态接口未注册（HTTP 404），请检查服务启动配置。'
+        : '维护状态查询失败' + (problem.status ? '（HTTP ' + problem.status + '）' : '') + '：' + problem.message;
+      const error = new Error(message); error.code = problem.code; error.status = problem.status; throw error;
     }
-    async function request(path, options = {}) {
-      return exchange(path, options, async response => {
-        const mime = (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
-        if (mime !== 'application/json') throw errorResponse(null, response.status);
-        const payload = await response.json(); if (!response.ok || payload.ok !== true) throw errorResponse(payload, response.status);
-        return payload;
-      });
-    }
-    return {
-      async host(signal) {
-        try { return window.SystemRestoreStatus.host(await request('/restore-host', { signal })); }
-        catch (problem) {
-          if (problem.name === 'AbortError') throw problem;
-          const message = problem.status === 404 ? '维护状态接口未注册（HTTP 404），请检查服务启动配置。'
-            : problem.name === 'TypeError' ? '维护状态服务连接失败，请检查软件服务后重新查询。'
-            : '维护状态查询失败' + (problem.status ? '（HTTP ' + problem.status + '）' : '') + '：' + problem.message;
-          const error = new Error(message); error.code = problem.code; error.status = problem.status; throw error;
-        }
-      },
-      // input 是页面按当前筛选组装的查询对象（配置页传 {}），不会缺省。
-      async read(kind, input, signal) {
-        check(['backups', 'logs', 'config'].includes(kind));
-        const value = await request('/' + kind + parameters(input), { signal });
-        if (kind === 'config') config(envelope(value, false)); else {
-          collection(value, kind);
-          check(value.data.page.number === (input.page === undefined ? 1 : input.page)
-            && value.data.page.size === (input.page_size === undefined ? 10 : input.page_size)
-            && (!input.snapshot_ref || value.meta.snapshot_ref === input.snapshot_ref), '读到的维护记录和刚才的筛选不一致，页面没有改动。请刷新后重试。');
-        }
-        return value;
-      },
-      async command(intent, token, input) {
-        check(validIntent(intent) && nonempty(token));
-        const payload = await request(intent.action === 'config' ? '/config/save' : '/backups/' + intent.action,
-          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_key: intent.request_key, write_token: token, input }) });
-        return intent.action === 'config' ? receipt(payload) : result(payload, intent);
-      },
-      async lookup(intent, signal) {
-        check(validIntent(intent));
-        return result(await request('/results/' + intent.request_key, { signal }), intent);
-      },
-      async lookupReference(reference, kind = 'request', signal) {
-        const path = window.SystemRestoreStatus.referencePath(reference, kind);
-        const value = await request(path, { signal }), op = value.data && value.data.operation;
-        if (op && path.startsWith('/jobs/')) check(op.job_ref === reference, '返回的维护记录不是所查询的记录。');
-        return result(value, { action: op && op.action, request_key: path.startsWith('/jobs/') ? op && op.request_key : reference });
-      },
-      async download(format, input, signal) {
-        check(['csv', 'zip'].includes(format) && nonempty(input.snapshot_ref), '还没有读到日志，不能导出。请先点「查询」。');
-        return exchange('/logs/export/' + format + parameters(input), { signal }, async response => {
-          const blob = await response.blob(), mime = (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
-          check(blob instanceof Blob && blob.size > 0, '下载内容为空，没有保存文件。请刷新后重试。');
-          const prefix = await blob.slice(0, 8192).text();
-          if (mime === 'application/json' || /^[\s\ufeff]*[\[{]/.test(prefix)) {
-            let payload; try { payload = JSON.parse(prefix); } catch (_) { throw new Error('下载返回的不是日志文件，没有保存。请刷新后重试。'); }
-            throw errorResponse(payload, response.status);
-          }
-          const expected = format === 'csv' ? 'text/csv' : 'application/zip';
-          check(response.ok && mime === expected && blob.type.split(';')[0].trim().toLowerCase() === expected, '下载的文件类型不对，没有保存。请刷新后重试。');
-          const magic = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
-          check(format === 'zip' ? magic[0] === 80 && magic[1] === 75 && magic[2] === 3 && magic[3] === 4
-            : magic[0] === 239 && magic[1] === 187 && magic[2] === 191 && prefix.startsWith('来源,时间,'), '下载内容与日志文件格式不符。');
-          const filename = format === 'csv' ? '系统日志片段.csv' : '诊断包.zip';
-          window.APSWorkbenchTransport.saveBlob(filename, blob);
-          return { filename, bytes: blob.size };
-        });
-      },
-      async downloadBackup(row, input, signal) {
-        check(object(row) && row.record_kind === 'backup_file' && !['event_ref', 'event_source'].some(key => Object.prototype.hasOwnProperty.call(row, key))
-          && nonempty(row.backup_ref) && nonempty(row.filename) && count(row.size_bytes)
-          && object(input) && nonempty(input.snapshot_ref), '请先读取备份清单再选择文件。');
-        return exchange('/backups/' + encodeURIComponent(row.backup_ref) + '/download' + parameters(input), { signal }, async response => {
-          const blob = await response.blob(), mime = (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
-          const prefix = await blob.slice(0, 8192).text();
-          if (mime === 'application/json' || /^[\s\ufeff]*[\[{]/.test(prefix)) {
-            let payload; try { payload = JSON.parse(prefix); } catch (_) { throw new Error('备份下载返回的不是备份文件，没有保存。请刷新后重试。'); }
-            throw errorResponse(payload, response.status);
-          }
-          check(response.ok && mime === 'application/vnd.sqlite3' && blob.size > 0
-            && blob.size === row.size_bytes && Number(response.headers.get('Content-Length')) === blob.size, '备份下载状态、类型或大小与原清单不一致。');
-          const disposition = response.headers.get('Content-Disposition') || '', match = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
-          check(/^attachment;/i.test(disposition) && match && decodeURIComponent(match[1]) === row.filename
-            && response.headers.get('X-APS-Backup-Ref') === row.backup_ref, '下载到的不是刚才选中的备份文件，没有保存。');
-          check((await blob.slice(0, 16).text()) === 'SQLite format 3\u0000', '下载内容不是备份数据库文件，没有保存。');
-          window.APSWorkbenchTransport.saveBlob(row.filename, blob);
-          return { filename: row.filename, bytes: blob.size };
-        });
-      }
-    };
   }
-  window.SystemMaintenanceAPI = { create, pending, inspectPending, PENDING_KEY, fields, actions, collection, blocked, normalize, recordContext, pageContext };
+  // input 是页面按当前筛选组装的查询对象（配置页传 {}），不会缺省。
+  async function read(kind, input, signal) {
+    check(['backups', 'logs', 'config'].includes(kind));
+    const value = await T.read(BASE + '/' + kind, input, { signal, timeout: TIMEOUT });
+    if (kind === 'config') config(value.data); else {
+      collection(value, kind);
+      check(value.data.page.number === (input.page === undefined ? 1 : input.page)
+        && value.data.page.size === (input.page_size === undefined ? 10 : input.page_size)
+        && (!input.snapshot_ref || value.meta.snapshot_ref === input.snapshot_ref), '读到的维护记录和刚才的筛选不一致，页面没有改动。请刷新后重试。');
+    }
+    return value;
+  }
+  async function command(intent, token, input) {
+    check(validIntent(intent) && nonempty(token));
+    const payload = await T.command(BASE + (intent.action === 'config' ? '/config/save' : '/backups/' + intent.action),
+      { request_key: intent.request_key, write_token: token, input }, { timeout: TIMEOUT, expect: BASE + '/results/' + intent.request_key });
+    return intent.action === 'config' ? receipt(payload) : result(payload, intent);
+  }
+  async function lookup(intent) {
+    check(validIntent(intent));
+    return result(await T.lookup(BASE + '/results/' + intent.request_key, { timeout: TIMEOUT }), intent);
+  }
+  async function lookupReference(reference, kind, signal) {
+    const path = window.SystemRestoreStatus.referencePath(reference, kind);
+    const value = await T.lookup(BASE + path, { signal, timeout: TIMEOUT }), op = value.data && value.data.operation;
+    if (op && path.startsWith('/jobs/')) check(op.job_ref === reference, '返回的维护记录不是所查询的记录。');
+    return result(value, { action: op && op.action, request_key: path.startsWith('/jobs/') ? op && op.request_key : reference });
+  }
+  // 文件名只认后端附件头给的名字，非空与后缀由 transport 校验；这里只核对本领域的内容与业务头。
+  // format 只会是 csv / zip，input 带着已读日志的数据版本，都由 SystemMaintenanceRecords 传入。
+  async function download(format, input) {
+    const file = await T.download(BASE + '/logs/export/' + format, input, { timeout: TIMEOUT, types: [T.types[format]] });
+    if (format === 'csv') check((await file.blob.slice(0, 8192).text()).startsWith('来源,时间,'), '下载内容与日志文件格式不符。');
+    T.saveBlob(file.filename, file.blob);
+    return { filename: file.filename, bytes: file.blob.size };
+  }
+  // row 是已校验清单里的备份文件行，input 带着这次清单的数据版本，都由 SystemMaintenanceRecords 传入。
+  async function downloadBackup(row, input) {
+    const file = await T.download(BASE + '/backups/' + encodeURIComponent(row.backup_ref) + '/download', input, { timeout: TIMEOUT, types: [T.types.sqlite] });
+    check(file.blob.size === row.size_bytes && Number(file.header('Content-Length')) === file.blob.size, '备份下载状态、类型或大小与原清单不一致。');
+    check(file.header('X-APS-Backup-Ref') === row.backup_ref, '下载到的不是刚才选中的备份文件，没有保存。');
+    T.saveBlob(file.filename, file.blob);
+    return { filename: file.filename, bytes: file.blob.size };
+  }
+  window.SystemMaintenanceAPI = { host, read, command, lookup, lookupReference, download, downloadBackup,
+    pending, inspectPending, PENDING_KEY, fields, actions, collection, blocked, normalize, recordContext, pageContext };
 })();

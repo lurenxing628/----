@@ -21,7 +21,7 @@
     catch (_) { throw new Error('上次操作记录保存不了，不能开始处置。请重新打开页面。'); }
     window.dispatchEvent(new CustomEvent(EVENT, { detail: value })); return value;
   }
-  function useCommand(api) {
+  function useCommand() {
     const [initial] = React.useState(() => { try { return { saved: read(), error: null }; } catch (error) { return { saved: null, error }; } });
     const [saved, setSaved] = React.useState(initial.saved), [storageError, setStorageError] = React.useState(initial.error);
     const [error, setError] = React.useState(null), [busy, setBusy] = React.useState(false), [notice, setNotice] = React.useState('');
@@ -33,7 +33,7 @@
       window.addEventListener('storage', changed); window.addEventListener(EVENT, changed);
       return () => { mounted.current = false; window.removeEventListener('storage', changed); window.removeEventListener(EVENT, changed); };
     }, []);
-    // api.command/api.lookup already checked the receipt; a failed local write belongs to storageError.
+    // C.command/C.lookup already checked the receipt; a failed local write belongs to storageError.
     function accept(v, original) {
       try { save({ ...original, phase: 'confirmed', receipt: v }, original); if (mounted.current) { setError(null); setNotice('请点「完成」查看最新风险。'); } }
       catch (e) { if (mounted.current) setStorageError(e); }
@@ -41,7 +41,7 @@
     async function lookup(preserveError = false) {
       if (running.current || !active.current || active.current.phase !== 'pending') return;
       const original = active.current; running.current = true; setBusy(true); if (!preserveError) setError(null);
-      try { const v = await api.lookup(original); if (v) accept(v, original); else if (mounted.current) setNotice('还是没有查到结果。请稍后再点「查询结果」，不要重复提交。'); }
+      try { const v = await C.lookup(original); if (v) accept(v, original); else if (mounted.current) setNotice('还是没有查到结果。请稍后再点「查询结果」，不要重复提交。'); }
       catch (e) { if (mounted.current) setError(e); }
       finally { running.current = false; if (mounted.current) setBusy(false); }
     }
@@ -55,12 +55,12 @@
         await navigator.locks.request(KEY, { ifAvailable: true }, async acquired => {
           if (!acquired) { if (mounted.current) setError(new Error('另一个页面正在处置，这里没有开始新的处置。请先完成那边的处置。')); return; }
           if (!item.write_context || item.write_context.capabilities[action] !== true) { if (mounted.current) setError(new Error('这条记录现在不能处置，请刷新后重试。')); return; }
-          original = { version: 1, request_key: 'dashboard-' + Array.from(crypto.getRandomValues(new Uint8Array(24)), n => n.toString(16).padStart(2, '0')).join(''),
+          original = { version: 1, request_key: window.APSWorkbenchTransport.requestKey('dashboard'),
             phase: 'pending', item_ref: item.item_ref, subject: item.subject, action, input, before: C.baseHandling(item.handling), source: item.source, risk: item.risk };
           save(original, null);
-          try { accept(await api.command(original, item.write_context.write_token), original); }
+          try { accept(await C.command(original, item.write_context.write_token), original); }
           catch (e) {
-            if (C.isRejected(e)) save({ ...original, phase: 'rejected' }, original); else needLookup = true;
+            if (window.APSWorkbenchTransport.rejected(e)) save({ ...original, phase: 'rejected' }, original); else needLookup = true;
             // Receipt owns the rejected/pending outcome; the error box owns the failure reason.
             if (mounted.current) setError(e);
           }
@@ -79,7 +79,7 @@
   }
   function useRead(load, dependencies, enabled = true) { return window.APSResourceSession.useQuery(load, dependencies, enabled); }
   const tabs = { items: '处置清单', analysis: '影响分析', compare: '方案对比', records: '处置历史' };
-  function context(value = {}) {
+  function context(value) {
     C.check(C.object(value) && Object.keys(value).every(k => ['scope', 'tab', 'item_ref', 'history_page', 'source'].includes(k)) && (value.source === undefined || value.source === 'production'), '本页数据已过期，请刷新后重试。');
     const q = C.scope(value.scope === undefined ? {} : value.scope), tab = value.tab === undefined ? 'items' : value.tab;
     const selected = value.item_ref === undefined ? null : value.item_ref, historyPage = value.history_page === undefined ? 1 : value.history_page;

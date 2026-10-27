@@ -113,7 +113,7 @@
         <Facts items={[
           ['班内已占', row.available_occupied_hours === null ? '暂无数据' : F.hours(row.available_occupied_hours, 2)], ['可排总时长', row.available_hours === null ? '暂无数据' : F.hours(row.available_hours, 2)],
           ['占用比例', row.utilization === null ? issueText(row.issues) : F.percent(row.utilization, 2)],
-          ['班表内重叠', row.metric_version !== 'decision-resource-v4' ? '旧资料未记录' : row.available_overlap_hours === null ? '待确认'
+          ['班表内重叠', row.available_overlap_hours === null ? '待确认'
             : <span className={row.has_overlap ? 'plan-danger' : ''}>{F.hours(row.available_overlap_hours, 2)}</span>]
         ]} />
         <OccupancyDetails row={row} />
@@ -124,7 +124,7 @@
   function conflictRows(data) {
     const projection = data.projections.occupancy;
     // The read contract validates identities and interval boundaries; the source supplies calendar-bound conflict segments.
-    const rows = projection.resources.filter(resource => resource.metric_version === 'decision-resource-v4' && resource.has_overlap === true)
+    const rows = projection.resources.filter(resource => resource.has_overlap === true)
       .flatMap(resource => resource.conflict_segments.map(segment => ({ kind: resource.kind, resource_ref: resource.resource_ref, label: resource.label, ...segment })));
     return { rows, projection };
   }
@@ -141,12 +141,11 @@
       });
     }, [rows, prepared, current]);
     const labels = prepared.labels;
-    const legacy = projection.resources.some(resource => resource.metric_version !== 'decision-resource-v4');
-    const known = projection.state === 'available' && !legacy;
+    const known = projection.state === 'available';
     const empty = !known ? '班表内重叠资料未记录，暂无法完整核对。'
       : !projection.resources.length ? '当前读取范围没有资源占用记录。' : '当前读取范围未发现班表内资源安排重叠。';
     return <section className="plan-projections" aria-label="资源重叠明细"><h3>班表内资源重叠明细</h3>
-      {!known && <div className="plan-note">{legacy ? '旧资料未保存班表内重叠时段，预留跨度保留在资源负荷详情。' : '部分班表资料缺失，以下为已确认的班表内重叠时段。'}</div>}
+      {!known && <div className="plan-note">部分班表资料缺失，以下为已确认的班表内重叠时段。</div>}
       <Issues issues={projection.issues} />
       {rows.length ? <><div className="plan-projection-table wb-table-frame" data-wb-scroll-key="plan-conflict-table" data-sticky-head data-sticky-actions><table className="wb-table" aria-label="资源重叠明细"><caption className="wb-visually-hidden">资源重叠明细</caption><thead><tr>
         {['资源', '同时安排的工序', '重叠时段'].map((label, index) => <th scope="col" className={index === 0 ? 'wb-col-key' : undefined} key={label}>{label}</th>)}
@@ -157,7 +156,7 @@
       </tr>)}</tbody></table></div><window.WorkbenchControls.Pager label="重叠明细" page={current + 1} pages={Math.ceil(rows.length / 20)} total={rows.length} size={20} sizes={[20]} unit="段" onPage={next => setPage(next - 1)} /></> : <window.WorkbenchControls.EmptyState kind="empty" title={empty} />}
     </section>;
   }
-  function ProjectionTables({ data, prepared, onBatch, onResource, tab = 'risk', onTab, page = 0, onPage }) {
+  function ProjectionTables({ data, prepared, onBatch, onResource, tab, onTab, page, onPage }) {
     const projections = data.projections, labels = prepared.labels;
     const rows = tab === 'risk' ? projections.delivery_risks.items : tab === 'load' ? projections.occupancy.resources : projections.calendar.resources || [];
     const pages = Math.max(1, Math.ceil(rows.length / 20)), current = Math.min(page, pages - 1);
@@ -187,8 +186,7 @@
         </tr> : <tr key={row.resource_ref}><td className="wb-col-key"><Button className="linkbtn" onClick={() => onResource(row)}>{row.label || labels.get(row.resource_ref) || '名称未填写'}</Button><div className="plan-muted">{M.kindLabels[row.kind]}</div></td>
           {tab === 'load' ? <><td>{M.number(row.available_hours)}</td><td>{M.number(row.available_occupied_hours)}</td>
             <td>{row.utilization === null ? '待确认' : <>{F.percent(row.utilization, 2)}<span className="plan-meter"><i style={{ width: row.utilization * 100 + '%' }} /></span></>}</td>
-            <td>{row.metric_version !== 'decision-resource-v4' ? <div className="plan-muted">班表内重叠未记录</div>
-              : row.has_overlap === true && <div className="plan-danger">班表内重叠 {F.hours(row.available_overlap_hours, 2)}</div>}{row.issues.length > 0 && <div className="plan-muted">{issueText(row.issues)}</div>}</td>
+            <td>{row.has_overlap === true && <div className="plan-danger">班表内重叠 {F.hours(row.available_overlap_hours, 2)}</div>}{row.issues.length > 0 && <div className="plan-muted">{issueText(row.issues)}</div>}</td>
             <td><OccupancyDetails row={row} /></td></> :
             <><td>{M.number(row.available_hours)}</td><td><CalendarWindows windows={row.windows} /></td>
               <td><details className="plan-row-details"><summary>折算标准工时</summary><Facts items={[

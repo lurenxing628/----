@@ -54,7 +54,7 @@
     const model = E.useDraft({ result, adapter, stage: 'hours', build, reconcile, saved, onDirty });
     const entity = model.base.data, draft = model.draft, paging = E.usePage(entity.operations), [zero, setZero] = React.useState(null), [groupsOpen, setGroupsOpen] = React.useState(false);
     const groups = React.useMemo(() => P.groupIndex(entity.external_groups), [entity.external_groups]);
-    const blocked = disabled || command.locked || command.phase === 'done', stageReason = E.reason(model, adapter, 'hours');
+    const blocked = disabled || command.locked || command.phase === 'done', stageReason = E.reason(model, 'hours');
     const editBlocked = blocked || entity.workflow.source.state !== 'confirmed' || entity.capabilities.stage_confirm !== true;
     const originalTypes = new Map(entity.operations.map(row => [row.ref, row]));
     const changedTypes = model.review ? E.active(model.review.data).filter(row => {

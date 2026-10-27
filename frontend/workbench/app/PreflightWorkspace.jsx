@@ -116,7 +116,7 @@
         : data.tasks.filter(row => row.status === 'blocked').concat(data.no_route_batches);
       const ids = Array.from(new Set(rows.map(row => row.batch_id)));
       invalidate();
-      onNavigate('batches', { focus: kind === 'unready' ? 'unready' : 'gaps', batchIds: ids, return_to: 'run' });
+      onNavigate('batches', { focus: kind === 'unready' ? 'unready' : 'gaps', batchIds: ids, return_to: { view: 'run' } });
     }
     const checks = [
       ['设备 / 人员', counts ? counts.missing_resource_tasks + ' 道缺资源；' + (value.missing_resource_policy === 'auto_assign' ? counts.auto_assign_required + ' 道待自动分配。' : '按本次规则暂不排入。') : '尚未检查设备与人员。', 'resources', '去补齐'],

@@ -48,21 +48,18 @@ def encode_scenario(snapshot):
     return EncodedScenario(header, tuple(tasks), logical_bytes)
 
 
-def scenario_read_size_basis(raw, archive, header_bytes):
-    """Return metadata bytes and whether this older layout needs canonical task sizes."""
-    if type(archive.get("snapshot")) is not dict:
-        reject("trial_snapshot_invalid", "试调方案任务的永久行或原始顺序不完整。请刷新后重试。")
+def scenario_metadata_bytes(raw, archive, header_bytes):
+    """Metadata bytes of the header written by ``encode_scenario``; any other layout is damaged storage."""
     boundary = raw.rfind(_HEADER_ROWS)
-    if raw.startswith(_HEADER_PREFIX) and boundary >= len(_HEADER_PREFIX) and raw.endswith("}"):
-        refs_bytes = len(raw[boundary + len(_HEADER_ROWS):-1].encode("utf-8"))
-        return header_bytes - len(_HEADER_PREFIX) - len(_HEADER_ROWS) - refs_bytes - 1, False
-    return len(encode_trial_text(archive["snapshot"])[1]), True
+    if (type(archive.get("snapshot")) is not dict or not raw.startswith(_HEADER_PREFIX)
+            or boundary < len(_HEADER_PREFIX) or not raw.endswith("}")):
+        reject("trial_snapshot_invalid", "试调方案任务的永久行或原始顺序不完整。请刷新后重试。")
+    refs_bytes = len(raw[boundary + len(_HEADER_ROWS):-1].encode("utf-8"))
+    return header_bytes - len(_HEADER_PREFIX) - len(_HEADER_ROWS) - refs_bytes - 1
 
 
 def scenario_snapshot(archive, stored) -> Dict[str, Any]:
-    """Reconstruct ordered permanent rows; legacy duplicates remain independent evidence."""
-    if "tasks" in archive:
-        return archive
+    """Reconstruct the saved document from its header metadata and ordered permanent rows."""
     refs = archive.get("task_row_refs")
     metadata = archive.get("snapshot")
     if (set(archive) != {"format", "snapshot", "task_row_refs"}

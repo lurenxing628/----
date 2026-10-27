@@ -1,10 +1,10 @@
 (function () {
   'use strict';
   const A = window.SystemMaintenanceAPI, C = window.SystemMaintenanceControls;
-  function Config({ api, revision, command, active = true, ...preferences }) {
+  function Config({ revision, command, active, ...preferences }) {
     const [refresh, reload] = React.useReducer(value => value + 1, 0), [draft, setDraft] = React.useState(null), [validated, setValidated] = React.useState(false);
     const [base, setBase] = React.useState(null), [replace, setReplace] = React.useState(false);
-    const request = C.useRead(api, 'config', {}, revision + ':' + refresh, active), incoming = request.data && request.data.data;
+    const request = C.useRead('config', {}, revision + ':' + refresh, active), incoming = request.data && request.data.data;
     const validation = A.normalize(draft || {}), changed = base && draft && A.fields.some(field => String(draft[field.key]) !== String(base.values[field.key]));
     React.useEffect(() => {
       // A receipt or revision alone cannot settle a draft; all eight read-back values must match.
@@ -20,7 +20,7 @@
         onClick={() => changed ? setReplace(true) : refreshNow()} /></div>
         <C.ErrorBox error={request.error} />{request.loading && <p className="sm-note" role="status">正在读取八项维护配置…</p>}
         {incoming && base && incoming !== base && changed && <div className="sm-notice" role="status">已读到新的配置数据，你填的内容没有被覆盖。请核对变化后再保存。
-          <details><summary>最新已存配置</summary>{A.fields.map(field => <p key={field.key}>{field.label}：{String(incoming.values[field.key])}{incoming.dirty_fields.includes(field.key) ? ' · ' + incoming.dirty_reasons[field.key] : ''}</p>)}</details>
+          <details><summary>最新已存配置</summary>{A.fields.map(field => <p key={field.key}>{field.label}：{String(incoming.values[field.key])}</p>)}</details>
           <C.Button icon="check" disabled={command.locked} onClick={() => setBase(incoming)}>核对后沿用草稿</C.Button></div>}
         {draft && base && <form className="sm-config-form" noValidate onSubmit={event => { event.preventDefault(); setValidated(true);
           if (validation.valid && !reason) command.execute('config', base.write_context.write_token, validation.values);
@@ -32,12 +32,11 @@
                 <input id={'sm-maintenance-' + field.key} type="number" min={1} max={field.max} step={1} value={draft[field.key]} disabled={!!reason} aria-invalid={validated && !!validation.errors[field.key]}
                   aria-describedby={'sm-maintenance-help-' + field.key} onChange={event => setDraft({ ...draft, [field.key]: event.target.value })} /><span>{field.unit}</span></div>}
               <small id={'sm-maintenance-help-' + field.key} className={validated && validation.errors[field.key] ? 'sm-error' : 'sm-meta'}>{validated && validation.errors[field.key] || (field.switch ? '正式配置' : '1 至 ' + field.max + ' ' + field.unit)}</small>
-              {base.dirty_fields.includes(field.key) ? <small className="sm-error">旧配置异常：{base.dirty_reasons[field.key]}{base.stored_values[field.key] !== null ? ' · 原值：' + base.stored_values[field.key] : ''}</small>
-                : base.defaulted_fields.includes(field.key) ? <small className="sm-meta">默认值，尚未保存</small> : <small className="sm-meta">已存值：{field.switch ? base.values[field.key] === 'yes' ? '已开启' : '已关闭' : base.values[field.key]}</small>}
+              {base.defaulted_fields.includes(field.key) ? <small className="sm-meta">默认值，尚未保存</small> : <small className="sm-meta">已存值：{field.switch ? base.values[field.key] === 'yes' ? '已开启' : '已关闭' : base.values[field.key]}</small>}
             </div>
           </div>)}
         </fieldset>)}</div>
-          <div className="sm-form-footer"><span className="sm-meta">{changed ? '有未保存修改' : base.dirty_fields.length || base.defaulted_fields.length ? '含异常或默认项，还需核对后保存' : '当前值已读取'}</span><div className="sm-actions">
+          <div className="sm-form-footer"><span className="sm-meta">{changed ? '有未保存修改' : base.defaulted_fields.length ? '含默认项，还需核对后保存' : '当前值已读取'}</span><div className="sm-actions">
             <C.Button icon="rotate-ccw" disabled={!!reason || !changed} onClick={() => setReplace(true)}>放弃草稿</C.Button><C.Button icon="save" type="submit" className="btn primary" reason={reason}>保存维护配置</C.Button>
           </div></div>{validated && !validation.valid && <p className="sm-error" role="alert">有几项填得不对，配置没有保存。请修正标红的项。</p>}
         </form>}

@@ -24,7 +24,8 @@ from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_tasks import validate_saved_tasks
 from core.services.workbench.facts.decision_baseline import same_saved_arrangements
 from core.services.workbench.facts.decision_baseline_source import decision_baseline_source_resolver
-from core.services.workbench.facts.delivery_completeness import deferred_operation_evidence
+from core.services.workbench.facts.decision_metrics import admission_operation_refs
+from core.services.workbench.facts.material_deferral_evidence import archived_deferred_operation_evidence
 from core.services.workbench.facts.preflight_checks import stored_date
 from core.services.workbench.facts.zero_duration_evidence import point_basis
 from core.services.workbench.plan.projection import project_plan
@@ -138,7 +139,7 @@ def _plan_capture(conn, ref, capture):
         history = context.history(locator.version) if source == SOURCE_SCHEDULE else None
         delivery_record = ({"source": source, "summary": history["result_summary"], "result_status": history["result_status"]}
                            if history is not None else {"source": source})
-        deferred, deferred_issues = deferred_operation_evidence(conn, delivery_record)
+        deferred, deferred_issues = archived_deferred_operation_evidence(delivery_record)
         runtime = _formal_effort_source(conn, ref, locator.version, delivery_record, list(raw.values()))
         slot_types = operation_types(result, refs, capture.index("OpTypes", "op_type_id"))
         types = runtime.get("operation_types")
@@ -200,7 +201,7 @@ def _candidate(conn, ref):
             if result[-1]["current"]["start"] == result[-1]["current"]["end"]:
                 _attach_point_work(result[-1], prepared["point_work"])
             result[-1]["original"]["part"] = facts.tables["Parts"].get(batch["part_no"])
-        scope = completed_dispositions(receipt)
+        scope = completed_dispositions(receipt, expected_refs=admission_operation_refs(facts, capture["input"]))
         summary = candidate_summary(candidate, scope, scheduled_op_ids=scheduled_op_ids)
         issues = []
         try:
@@ -212,7 +213,7 @@ def _candidate(conn, ref):
         work_types = facts.tables["OpTypes"]
         extra = {"identity": {"candidate_ref": ref, "run_ref": run_ref, "kind": "candidate",
                                "display_name": summary["label"], "completeness": summary["completeness"]},
-                 "capture": capture, "dispositions": scope, "operation_effort": receipt.get("operation_effort"),
+                 "capture": capture, "dispositions": scope, "operation_effort": receipt["operation_effort"],
                  "trial_operation_types": operation_types(result, facts.entity_refs, work_types),
                  "operation_types": operation_types(result, facts.entity_refs, work_types,
                       candidate["artifact"].get("results", []))}

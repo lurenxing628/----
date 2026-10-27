@@ -15,13 +15,13 @@ def plan_material_policy(conn, version, *, history=None):
         raw = stored.result_summary if stored else None
     else:
         raw = history["result_summary"]
+    # Every official plan's adoption audit records the run's material policy and dates.
     summary = parse_result_summary_payload(raw).payload
     if summary is None or "material_policy" not in summary:
-        # Legacy history summaries were plain display text, with no run settings.
-        return {}
+        reject("material_policy_invalid", "原计划没有记录物料放行方式和排产起止日期，请核对排产记录。")
     policy = summary["material_policy"]
     if (not isinstance(policy, dict) or type(policy.get("ready_check")) is not bool
-            or policy.get("material_strategy") not in ("strict", "stage", "split")):
+            or policy.get("material_strategy") not in ("strict", "stage")):
         reject("material_policy_invalid", "原计划的物料放行方式无效，请核对排产记录。")
     if not _window_valid(policy):
         reject("material_policy_invalid", "原计划记录的排产起止日期无效，请核对排产记录。")
@@ -31,36 +31,31 @@ def plan_material_policy(conn, version, *, history=None):
 
 
 def _window_valid(policy):
-    # Plans adopted before the run window was recorded carry neither date.
     days = [policy.get(key) for key in ("start_date", "end_date")]
-    if days == [None, None]:
-        return True
     return all(type(day) is str and stored_date(day) == day for day in days) and days[0] <= days[1]
 
 
 def _run_settings(admission):
-    source = admission.get("source", {})
-    return source.get("capture", {}).get("input", source.get("material_policy", {}))
+    """A candidate source keeps its run input; an official plan source keeps its validated material policy."""
+    source = admission["source"]
+    return source["capture"]["input"] if "capture" in source else source["material_policy"]
 
 
 def run_policy(admission):
     settings = _run_settings(admission)
-    return {"ready_check": settings.get("ready_check", True),
-            "material_strategy": settings.get("material_strategy", "strict")}
+    # material_strategy is optional in a run input and means whole-batch readiness when omitted.
+    return {"ready_check": settings["ready_check"], "material_strategy": settings.get("material_strategy", "strict")}
 
 
 def run_window(admission):
-    """The run dates that left stage work pending; {} when the source never recorded them.
+    """The run dates that left stage work pending, as the source recorded them.
 
-    A candidate keeps its run input. Official plans record it when adopted;
-    older plans have none, and their trials keep the saved span as before.
+    A candidate keeps its run input. Official plans record it when adopted.
     """
     settings = _run_settings(admission)
-    start, end = stored_date(settings.get("start_date")), stored_date(settings.get("end_date"))
-    if start is None or end is None:
-        return {}
-    # 来源记下的不重排时段随起止日一起带给正式计划；没记的旧来源不补，按交付设置推算。
-    return {"start_date": start, "end_date": end, **({"hold_window": settings["hold_window"]} if "hold_window" in settings else {})}
+    # 来源记下的不重排时段随起止日一起带给正式计划；来源没设的不补，按交付设置推算。
+    return {"start_date": settings["start_date"], "end_date": settings["end_date"],
+            **({"hold_window": settings["hold_window"]} if "hold_window" in settings else {})}
 
 
 def deferral_policy(admission, rows, checks, execution):
@@ -71,14 +66,14 @@ def deferral_policy(admission, rows, checks, execution):
     judge it. The end only moves later for a material or ready day that a saved,
     still unreported row waits for, so such a row is not turned into pending
     work. Rows with actual production keep their arrangement whatever the window
-    and add no day. Without a recorded window the saved span is used as before.
+    and add no day. Without stage deferral the saved span is used.
     """
     policy = run_policy(admission)
     first = min(row["current"]["start"][:10] for row in rows)
     last = max(row["current"]["end"][:10] for row in rows)
-    recorded = run_window(admission).get("end_date")
-    if recorded is None or policy["material_strategy"] != "stage" or policy["ready_check"] is not True:
+    if policy["material_strategy"] != "stage" or policy["ready_check"] is not True:
         return dict(policy, start_date=first, end_date=last)
+    recorded = run_window(admission)["end_date"]
     waits = [recorded]
     for row in rows:
         if not _window_classified(row, execution):
@@ -108,11 +103,9 @@ def adoption_settings(admission, rows, checks, execution):
 
 def hold_settings(admission, settings):
     """判断哪些原安排保留时用的排产输入：冻结从来源排产的起日起算，默认时段也从那天推算，
-    与来源排产同一口径，不随试调各行最早的日子挪动；来源没记起止日的旧方案仍按试调起日。"""
+    与来源排产同一口径，不随试调各行最早的日子挪动。"""
     window = run_window(admission)
-    start = window.get("start_date")
-    if start is None:
-        return settings
+    start = window["start_date"]
     out = dict(settings, start_date=start)
     if "hold_window" in window:
         out["hold_window"] = _within(window["hold_window"], start, max(window["end_date"], settings["end_date"]))

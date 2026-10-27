@@ -29,7 +29,8 @@ def _body(fields):
 def calibration_adoption_preview(suggestion_ref):
     value = _body(("input",))
     data = _service().preview(suggestion_ref, value["input"])
-    response = query_success(data, {"as_of": data["generated_at"]}, byte_limit=MAX_RESPONSE_BYTES,
+    # 采用预览靠写入凭据防并发，没有可回绑的读取快照。
+    response = query_success(data, {"as_of": data["generated_at"], "snapshot_ref": None}, byte_limit=MAX_RESPONSE_BYTES,
         too_large_message="这次要读的采用明细超过 8 MB，还没有采用。请缩小范围后重试。")
     response.headers["Cache-Control"] = "no-store"
     return response

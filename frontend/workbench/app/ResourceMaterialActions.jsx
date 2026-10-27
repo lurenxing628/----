@@ -115,7 +115,7 @@
         if (template && M.kind === 'op_type') scope.category = M.category(original);
         const response = await adapter.download(template ? M.paths.template : M.paths.download, scope, controller.signal);
         if (controller.signal.aborted || !alive.current) return;
-        const name = await M.saveDownload(response, format, controller.signal);
+        const name = M.saveDownload(response, format);
         if (alive.current) setDownload({ busy: false, name });
       } catch (failure) { if (alive.current && !controller.signal.aborted) { setDownload({ busy: false, name: null }); setError(failure); } }
       finally { if (downloadAbort.current === controller) downloadAbort.current = null; }

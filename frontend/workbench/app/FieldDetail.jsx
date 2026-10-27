@@ -74,7 +74,7 @@
       if (box.top < 0 || box.top > window.innerHeight - 120) detail.current.scrollIntoView({ block: 'start', inline: 'nearest' });
     }, [task, editor, nextDraft]);
     if (request.loading) return <div className="field-note" role="status">正在读取逐次报工…</div>;
-    if (!task) return <div className="field-error"><ErrorBox error={request.error} /><Button icon="refresh-cw" onClick={() => request.error && (request.error.error && request.error.error.code || request.error.code) === 'snapshot_stale' && onRefresh ? onRefresh() : request.reload()} disabled={command.locked}>刷新详情</Button>
+    if (!task) return <div className="field-error"><ErrorBox error={request.error} /><Button icon="refresh-cw" onClick={() => request.error && request.error.code === 'snapshot_stale' && onRefresh ? onRefresh() : request.reload()} disabled={command.locked}>刷新详情</Button>
       {editor && <Button onClick={onCloseEditor} disabled={command.locked}>取消暂存编辑</Button>}</div>;
     const report = editor && p.reports.find(row => row.report_ref === editor.reportRef);
     const legacy = editor && p.legacy_facts.find(row => row.legacy_fact_ref === editor.legacyRef);

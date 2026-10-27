@@ -44,18 +44,11 @@ def project(saved, start="2026-10-12T00:00:00", end="2026-10-13T00:00:00", resou
     return dict(ArchivedCalendar(saved, source_ref="saved-calendar-ref", **kwargs).iter_resources(resources, start, end))
 
 
-def test_saved_schema_defaults_keep_old_hours_and_modern_periods():
-    legacy, modern = archive(33), archive(35)
-    del legacy["tables"]["WorkbenchCalendarDefaults"]
-    del legacy["tables"]["WorkbenchShiftDayPeriods"]
-    old = project(legacy)[MACHINE]
+def test_saved_calendar_defaults_and_domain_default_periods():
+    modern = archive()
     new = project(modern)[MACHINE]
-    assert old["available_hours"] == 8
-    assert [(row["start"], row["end"]) for row in old["windows"]] == [
-        ("2026-10-12T08:00:00", "2026-10-12T16:00:00")]
     assert new["available_hours"] == pytest.approx(22 / 3, abs=1e-6)
     assert len(new["windows"]) == 2
-    assert old["source"]["schema_version"] == 33 and new["source"]["schema_version"] == 35
     resources = project(modern)
     assert resources[OPERATOR]["windows"] == resources[MACHINE]["windows"]
     assert resources[OPERATOR]["basis"] == "personal_or_operator_shift_calendar"
@@ -65,25 +58,6 @@ def test_saved_schema_defaults_keep_old_hours_and_modern_periods():
     modern["tables"]["WorkbenchCalendarDefaults"] = [{"singleton": 1, "periods_json":
         '[{"start":"09:00","end":"12:00","day_offset":0},{"start":"14:00","end":"18:00","day_offset":0}]'}]
     assert project(modern)[MACHINE]["available_hours"] == 7
-
-
-def test_saved_v33_calendar_rows_without_periods_column_keep_their_single_shift():
-    legacy = archive(33)
-    del legacy["tables"]["WorkbenchCalendarDefaults"]
-    del legacy["tables"]["WorkbenchShiftDayPeriods"]
-    # v33 的日历表还没有 periods_json 列，真实归档行里根本没有这个键。
-    legacy["tables"]["WorkCalendar"] = [
-        {key: value for key, value in day("2026-10-12", "06:00", "10:00", hours=4).items() if key != "periods_json"}]
-    legacy["tables"]["OperatorCalendar"] = [
-        {key: value for key, value in day("2026-10-12", "09:00", "12:00", hours=3, operator="O1").items()
-         if key != "periods_json"}]
-    resources = project(legacy)
-    assert resources[MACHINE]["available_hours"] == 4
-    assert [(row["start"], row["end"]) for row in resources[MACHINE]["windows"]] == [
-        ("2026-10-12T06:00:00", "2026-10-12T10:00:00")]
-    assert resources[OPERATOR]["available_hours"] == 3
-    assert [(row["start"], row["end"], row["provenance"]) for row in resources[OPERATOR]["windows"]] == [
-        ("2026-10-12T09:00:00", "2026-10-12T12:00:00", "personal_calendar")]
 
 
 def test_night_tail_priority_overlay_and_downtime_use_exact_half_open_window():

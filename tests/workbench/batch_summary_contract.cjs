@@ -276,7 +276,8 @@ async function main() {
   find(nextTree, 'button', props => text(props.children) === '下一步 · 去排产').props.onClick();
   assert.deepEqual(clone(links.at(-1)), ['run', {}], 'An unselected next step opens a fresh form rather than resuming an old run result');
   nextWorkspace.h.unmount();
-  for (const returnTarget of ['run', 'dashboard', { view: 'dashboard', context: { tab: 'analysis' } }]) {
+  // A return entry is always { view, context? }; the removed bare-string form is not restored.
+  for (const returnTarget of [{ view: 'run' }, { view: 'dashboard', context: { tab: 'analysis' } }]) {
     const returning = environment();
     returning.window.APSResourceSession.useCommand = () => ({ phase: 'idle', locked: false });
     returning.window.APSResourceSession.useQuery = () => ({ result: listPayload(summary), loading: false, error: null });
@@ -285,7 +286,7 @@ async function main() {
     find(returned, returning.window.BatchTable).props.setSelected([hiddenRef]);
     returned = returning.h.render(() => returning.window.BatchWorkspace(returnProps));
     find(returned, 'button', props => ['返回排产', '返回值班台'].includes(text(props.children))).props.onClick();
-    assert.deepEqual(clone(links.at(-1)), typeof returnTarget === 'string' ? [returnTarget] : [returnTarget.view, returnTarget.context],
+    assert.deepEqual(clone(links.at(-1)), clone([returnTarget.view, returnTarget.context]),
       'Returning to a source preserves its original navigation protocol'); returning.h.unmount();
   }
 

@@ -5,7 +5,7 @@ from datetime import datetime
 from core.algorithm_contracts.schedule_point_evidence import SchedulePointEvidence
 from core.services.scheduler.run.schedule_payload_contract import ValidatedScheduleRow
 
-from .candidate_projection import scheduled_ids, uses_task_rows
+from .candidate_projection import scheduled_ids
 from .zero_duration import PointEventError, internal_duration_hours, point_event_dto, point_work_quantity
 
 
@@ -32,27 +32,10 @@ def work_point_evidence(operation, batch, execution, payload, *, operation_ref):
 class CandidatePointReader:
     def __init__(self, candidate, facts, *, ids=None):
         self.facts = facts
-        artifact = candidate["artifact"]
-        self.from_task_rows = uses_task_rows(artifact)
-        if self.from_task_rows:
-            self.ids = scheduled_ids(candidate) if ids is None else ids
-            return
-        fields = ("op_id", "machine_id", "operator_id", "start_time", "end_time", "source")
-        validated = artifact.get("validated_payload", {}).get("schedule_rows", [])
-        engine = [{key: row.get(key) for key in fields} for row in artifact.get("results", [])]
-        self.validated = {row["op_id"]: row for row in validated}
-        self.engine = {row["op_id"]: row for row in engine}
-        if len(self.validated) != len(validated) or len(self.engine) != len(engine):
-            raise PointEventError("point_evidence_invalid", "零工时工序的来源记录里有重复工序。")
+        self.ids = scheduled_ids(candidate) if ids is None else ids
 
     def work(self, operation_ref, payload):
-        op_id = payload.get("op_id")
-        if self.from_task_rows:
-            matches = op_id in (self.ids or set())
-        else:
-            expected = {key: value for key, value in payload.items() if key != "locked"}
-            matches = self.validated.get(op_id) == expected and self.engine.get(op_id) == expected
-        if not matches:
+        if payload.get("op_id") not in self.ids:
             raise PointEventError("point_evidence_missing", "零工时工序在本次排产结果里没有完全一致的记录。")
         gaps = []
         operation = self.facts.operation(operation_ref, payload, gaps)

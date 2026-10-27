@@ -13,7 +13,7 @@ def test_workspace_real_night_interval_and_real_full_projections(plan_api):
     assert data["task_count"] == len(data["tasks"]) == 1 and data["tasks_complete"] is True
     assert data["tasks"][0]["start"] == NIGHT_START and data["tasks"][0]["end"] == NIGHT_END
     assert data["projections"]["baseline"]["state"] == "unavailable"
-    assert data["projections"]["baseline"]["reason_code"] == "not_recorded"
+    assert data["projections"]["baseline"]["reason_code"] == "adoption_evidence_missing"
     assert data["projections"]["calendar"]["state"] == "available"
     assert data["projections"]["occupancy"]["state"] == "available"
     for resource in data["projections"]["occupancy"]["resources"]:

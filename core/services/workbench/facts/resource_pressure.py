@@ -3,20 +3,11 @@
 from .resource_projection import resource_summary
 
 
-def legacy_day(row):
-    """Keep wall-clock aliases; the namespace exposes the canonical capacity fields."""
-    return {"date": row["date"], "start": row["start"], "end": row["end"],
-            "available_hours": row["available_hours"], "occupied_hours": row["span_occupied_hours"],
-            "inside_available_hours": row["occupied_hours"], "outside_available_hours": row["outside_calendar_hours"],
-            "overlap_hours": row["overlap_span_hours"], "utilization": row["utilization_ratio"],
-            "reason": row["issues"][0]["code"] if row["issues"] else None, "window_metrics": row}
-
-
 def pressure_from_index(index, resource, calendar, *, include_days=True):
-    """Adapt the common result to the established daily-pressure read protocol."""
+    """Adapt the common result to the daily-pressure read protocol; each day is the canonical window row."""
     window, days = index.window_with_days(resource, calendar) if include_days else (index.window(resource, calendar), [])
     state = {"complete": "available", "not_applicable": "available", "partial": "partial", "unavailable": "unavailable"}[window["state"]]
-    return {"state": state, "days": [legacy_day(row) for row in days],
+    return {"state": state, "days": days,
             "peak_utilization": window["peak_utilization"],
             "reason": window["issues"][0]["code"] if window["issues"] else None,
             "zero_capacity_days": window["zero_capacity_days"], "unknown_days": window["unknown_days"],

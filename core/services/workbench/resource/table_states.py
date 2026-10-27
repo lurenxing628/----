@@ -62,14 +62,10 @@ def _supplier_state(facts, code, references):
     identity = facts.identity("supplier", code)
     supplier = dict(facts.raw_record("supplier", code), ref=identity.ref, revision=identity.revision)
     supplier["profile"] = facts.raw_lookup("supplier_profiles", "supplier_id").get(code)
-    explicit = {row["op_type_id"] for row in facts.grouped("capabilities", "supplier_id")[code]}
     types = []
-    legacy = supplier["op_type_id"]
-    for key in sorted(explicit | ({legacy} if legacy not in (None, "") else set())):
+    for key in sorted({row["op_type_id"] for row in facts.grouped("capabilities", "supplier_id")[code]}):
         related = facts.raw_related("op_type", key)
-        row = dict(related["record"], ref=related["identity"]["ref"], revision=related["identity"]["revision"])
-        row.update({"legacy": int(key == supplier["op_type_id"]), "explicit": int(key in explicit)})
-        types.append(row)
+        types.append(dict(related["record"], ref=related["identity"]["ref"], revision=related["identity"]["revision"]))
     supplier["op_types"] = types
     supplier["references"] = {name: rows.get(code, []) for name, rows in references.items()}
     return supplier_write_state(identity, supplier)

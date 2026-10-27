@@ -19,6 +19,7 @@ def _read_packet(store, run):
     from core.services.workbench.facts.candidate_facts import GenerationFacts
     from core.services.workbench.facts.candidate_projection import dispositions, validate_manifest
     from core.services.workbench.facts.candidate_values import corrupt
+    from core.services.workbench.facts.decision_metrics import admission_operation_refs
 
     receipt = store.receipt(run)
     candidates = store.candidates(run["run_ref"])
@@ -26,8 +27,10 @@ def _read_packet(store, run):
     if run["state"] in ("failed", "interrupted") and candidates:
         corrupt()
     capture = store.capture(run["run_ref"])
-    return {"run": run, "receipt": receipt, "rows": candidates, "capture": capture,
-            "facts": GenerationFacts(capture), "disposition": dispositions(receipt), "prepared_candidates": {}}
+    facts = GenerationFacts(capture)
+    return {"run": run, "receipt": receipt, "rows": candidates, "capture": capture, "facts": facts,
+            "disposition": dispositions(receipt, expected_refs=admission_operation_refs(facts, capture["input"])),
+            "prepared_candidates": {}}
 
 
 def _prepare_candidate(store, packet, candidate):

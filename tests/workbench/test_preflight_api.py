@@ -6,13 +6,11 @@ import pytest
 from core.models.workbench_command import WorkbenchCommandRejected
 from tests.workbench.preflight_support import checked, payload
 from tests.workbench.preflight_support import pf as pf_fixture  # noqa: F401
-from tests.workbench.preflight_support import pf_legacy_schema as pf_legacy_fixture  # noqa: F401
 from tests.workbench.run_candidate_support import candidate_case as candidate_fixture  # noqa: F401
 from web.routes.workbench.preflight import evaluate_preflight_input_prepared
 
 
-@pytest.mark.parametrize("fixture_name,source", [("pf", "execution_ledger"), ("pf_legacy_schema", "legacy_guard_only")])
-def test_read_only_zero_hours_and_unavailable_worker(request, fixture_name, source, monkeypatch):
+def test_read_only_zero_hours_and_unavailable_worker(pf, monkeypatch):
     import json
     import sqlite3
     from collections import Counter
@@ -22,7 +20,6 @@ def test_read_only_zero_hours_and_unavailable_worker(request, fixture_name, sour
     from web.public_token_registry import resolve_public_token
     from web.routes.workbench.preflight import INPUT_SCOPE
 
-    pf = request.getfixturevalue(fixture_name)
     pf.conn.execute("UPDATE Batches SET due_date='2026-9-9',ready_date='' WHERE batch_id='PF-0000'")
     pf.conn.commit()
     from core.infrastructure.database import get_connection
@@ -112,8 +109,7 @@ def test_read_only_zero_hours_and_unavailable_worker(request, fixture_name, sour
     assert data["write_context"]["write_token"] is None
     reasons = {row["code"] for row in data["run_blocked_reasons"]}
     assert data["run_blocked"] is True and "schedule_not_computed" in reasons
-    assert data["execution_projection_source"] == source
-    assert ("execution_ledger_unavailable" in reasons) == (source == "legacy_guard_only")
+    assert "execution_projection_source" not in data and "execution_ledger_unavailable" not in reasons
 
 
 _RECEIPT = ("INSERT INTO WorkbenchCommandReceipts(request_key,receipt_ref,action,context_ref,input_hash,outcome_json) "
@@ -180,11 +176,8 @@ def test_corrupt_official_schedule_time_in_hold_window_blocks_strict_freeze(cand
     from tests.workbench.run_compute_support import prepare_run_input
 
     case = candidate_case
-    case.conn.execute("INSERT INTO ScheduleHistory(version,strategy) VALUES (1,'greedy')")
-    case.conn.execute(
-        "INSERT INTO Schedule(op_id,machine_id,operator_id,start_time,end_time,version) VALUES (?,'M1','O1','bad','2026-09-09 09:00:00',1)",
-        (case.op_id,),
-    )
+    case.plan(1, [case.op_id], start="2026-09-09 08:00:00", end="2026-09-09 09:00:00")
+    case.conn.execute("UPDATE Schedule SET start_time='bad' WHERE version=1")
     case.conn.commit()
     settings = case.settings(hold_window={"start": "2026-09-09T08:00", "end": "2026-09-09T12:00"})
     data, _fingerprint = PreflightService(case.conn).evaluate(settings)

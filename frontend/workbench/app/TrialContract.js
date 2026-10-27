@@ -58,10 +58,9 @@
       && ['blocked', 'warning', 'valid'].includes(v.constraints_status) && ['blocked', 'warning', 'valid'].includes(v.status) && typeof v.can_adopt === 'boolean');
     issues(v.issues); check(object(v.adoption) && typeof v.adoption.available === 'boolean'); issues(v.adoption.blocked_reasons);
   }
+  // 信封已由 transport 校验；试调列表翻页和采用记录都钉在这次读取的数据版本上，所以数据版本不能为空。
   function envelope(v, q = {}) {
-    check(v && v.ok === true && v.schema_version === 1 && object(v.data) && v.meta && v.meta.source === 'production'
-      && v.meta.time_basis === 'factory_local' && time(v.meta.as_of) && /^[A-Za-z0-9_-]{32}$/.test(v.meta.snapshot_ref) && /^[a-f0-9]{32}$/.test(v.meta.request_ref));
-    issues(v.warnings); if (q.snapshot_ref) check(v.meta.snapshot_ref === q.snapshot_ref, window.WorkbenchTerms.outcomes.stale);
+    check(v.meta.snapshot_ref !== null); if (q.snapshot_ref) check(v.meta.snapshot_ref === q.snapshot_ref, window.WorkbenchTerms.outcomes.stale);
     return v.data;
   }
   function arrangement(v, owner) { check(fields(v, ['machine_ref', 'operator_ref', 'start', 'end']) && time(v.start) && time(v.end) && window.PointContract.arrangement(v, owner)

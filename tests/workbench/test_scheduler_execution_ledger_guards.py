@@ -137,7 +137,8 @@ def test_normal_old_finish_can_be_supplemented_and_used_by_real_replan(candidate
 def _merged_reports_in_two_parts(case):
     """合并外协组第 2、3 道各报两次：先报一段 0 件的开工，再报全部 3 件到完工；两道的实际开工、完工都相同。"""
     case.conn.execute("UPDATE OpTypes SET category='both' WHERE op_type_id='T1'")
-    case.conn.execute("INSERT INTO Suppliers(supplier_id,name,op_type_id) VALUES ('S1','供应商','T1')")
+    case.conn.execute("INSERT INTO Suppliers(supplier_id,name) VALUES ('S1','供应商')")
+    case.conn.execute("INSERT INTO WorkbenchSupplierOpTypes(supplier_id,op_type_id) VALUES ('S1','T1')")
     case.conn.execute("INSERT INTO ExternalGroups(group_id,part_no,start_seq,end_seq,merge_mode,total_days,supplier_id) "
                       "VALUES ('G','P1',2,3,'merged',1,'S1')")
     copied = []

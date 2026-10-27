@@ -7,6 +7,6 @@ from dataclasses import dataclass
 class OperatorMachine:
     operator_id: str
     machine_id: str
-    skill_level: str  # 正式写入口径：beginner/normal/expert；skilled 仅历史兼容别名
+    skill_level: str  # beginner/normal/expert
     is_primary: str  # yes/no（预留）
 

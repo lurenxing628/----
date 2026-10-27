@@ -12,7 +12,7 @@
       <label className="search"><input type="search" aria-label="搜索编号或名称" value={search} disabled={disabled} onChange={event => setSearch(event.target.value)} /></label>
       <Button icon="search" type="submit" aria-label="搜索" disabled={disabled} />
       <div className="field"><select aria-label="状态筛选" value={scope.status} disabled={disabled} onChange={event => filter({ status: event.target.value })}>
-        <option value="">全部状态</option><option value="active">启用</option><option value="inactive">停用</option><option value="unknown">旧状态 / 原因未知</option></select></div>
+        <option value="">全部状态</option><option value="active">启用</option><option value="inactive">停用</option></select></div>
       <Button icon="refresh-cw" aria-label="刷新列表" disabled={disabled} busy={list.loading} onClick={() => { if (scope.page === 1 && scope.snapshot_ref === undefined) list.reload(); else filter({}); }} />
       <span className="tb-spacer" /><Button icon="plus" className="btn primary" disabled={disabled} reason={C.blocked(data && data.create_context, kind, 'create', list.result && list.result.meta.source)} onClick={() => onOpen('create')}>新增{M.names[kind]}</Button>
     </form><ErrorBox error={list.error} />{list.loading && <EmptyState kind="loading" title="正在读取列表" />}
@@ -21,7 +21,7 @@
         {data.entities.map(entity => {
           const count = M.memberCount(kind, entity);
           return <tr key={entity.ref}><td className="rc-wrap wb-col-key"><b>{entity.business_code}</b><div>{entity.label}</div></td>
-          <td><span className={'pill ' + (entity.status === 'active' ? 'ok' : entity.status === 'inactive' ? 'off' : 'warn')}><span className="dot" />{entity.status === 'active' ? '启用' : entity.status === 'inactive' ? '停用' : '旧状态 / 原因未知'}</span></td>
+          <td><span className={'pill ' + (entity.status === 'active' ? 'ok' : 'off')}><span className="dot" />{entity.status === 'active' ? '启用' : '停用'}</span></td>
           <td>{count === null ? '未读取' : count}</td>{kind === 'shift_profile' && <td>{entity.fields.cycle_days}</td>}
           <td className="wb-col-actions"><div className="rowact"><Button className="mini rc-icon-button" icon="square-pen" aria-label={'编辑 ' + entity.business_code} disabled={disabled} reasonDisplay="tooltip" reason={C.blocked(entity.write_context, kind, 'update', list.result.meta.source)} onClick={() => onOpen('update', entity.ref)} />
             <Button className="mini danger" icon="trash-2" aria-label={'删除 ' + entity.business_code} disabled={disabled} reasonDisplay="tooltip" reason={C.blocked(entity.write_context, kind, 'delete', list.result.meta.source)} onClick={() => onOpen('delete', entity.ref)}>删除</Button></div></td></tr>;

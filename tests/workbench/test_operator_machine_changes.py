@@ -147,17 +147,6 @@ def test_relation_import_applies_implicit_primary_change_once_and_keeps_untouche
     assert sum(statement.startswith("SELECT * FROM OperatorMachine WHERE operator_id IN") for statement in sql) == 1
     assert not any(statement == "SELECT * FROM OperatorMachine ORDER BY operator_id,machine_id" for statement in sql)
 
-    # An imported no-op preserves historical aliases and even multiple legacy primaries.
-    conn.execute("UPDATE OperatorMachine SET skill_level='skilled',is_primary='是' WHERE machine_id='M1'")
-    conn.commit()
-    content = file_bytes([("O1", "M1", "熟练", "是"), ("O1", "M3", "普通", "是")],
-                         headers=("工号", "设备编号", "技能等级", "主操设备"))
-    preview = service.preview_import(content, file_format="csv")
-    written.clear()
-    with TransactionManager(conn).transaction():
-        service.confirm_import(preview, content, file_format="csv")
-    assert written == [] and _rows(conn)[0] == ("M1", "skilled", "是")
-
     conn.execute("UPDATE OperatorMachine SET skill_level='mystery',is_primary='no' WHERE machine_id='M2'")
     conn.commit()
     content = file_bytes([("O1", "M2", "", "是")],

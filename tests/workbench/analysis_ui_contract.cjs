@@ -1,6 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const { compile } = require('../../scripts/workbench/compile.cjs');
+const { routeFetch, file, browser, loadTransport } = require('./route_fetch.cjs');
 const root = path.resolve(__dirname, '../..'), app = path.join(root, 'frontend/workbench/app');
 const h = (type, props, ...children) => ({ type, props: props || {}, children: children.flat(Infinity).filter(x => x !== null && x !== false && x !== undefined) });
 const react = { createElement: h, Fragment: 'fragment', createContext: () => ({}) };
@@ -192,16 +193,17 @@ assert.equal(JSON.stringify(timelineData), timelineBefore, '展示和选择不�
 console.log('analysis UI source evidence contracts passed');
 
 async function currentMasterDownloadCount() {
+  // Fetch-level answer: the real MasterOverviewAPI and transport check the attachment, CSV bytes, backend filename and the two business headers.
   let headerCount = '3';
-  const token = 'scope-token', transport = { saveBlob() {} };
-  const downloadWindow = { APSMasterOverviewContract: window.APSMasterOverviewContract, APSWorkbenchTransport: transport };
-  const response = { ok: true, headers: { get: name => ({ 'content-type': 'text/csv; charset=utf-8',
-    'X-Workbench-Snapshot-Ref': token, 'X-Workbench-Row-Count': headerCount })[name] || null }, blob: async () => ({ csv: true }) };
-  vm.runInNewContext(fs.readFileSync(path.join(app, 'MasterOverviewAPI.js'), 'utf8'), {
-    window: downloadWindow, AbortController, URLSearchParams, setTimeout, clearTimeout, fetch: async () => response
-  });
-  const api = downloadWindow.APSMasterOverviewAPI.create();
-  assert.equal((await api.export({}, token)).count, 3, '下载条数采用本次响应，不再依赖上次列表数量');
+  const token = 'S'.repeat(32), filename = '基础资料待维护项.csv';
+  const downloadWindow = { APSMasterOverviewContract: window.APSMasterOverviewContract, WorkbenchTerms: window.WorkbenchTerms };
+  const fetch = routeFetch({ 'GET /api/workbench/v1/master-overview/export': () => file(Uint8Array.from([0xef, 0xbb, 0xbf, 0x61]), 'text/csv; charset=utf-8',
+    { 'Content-Disposition': "attachment; filename*=UTF-8''" + encodeURIComponent(filename), 'X-Workbench-Snapshot-Ref': token, 'X-Workbench-Row-Count': headerCount }) });
+  const downloadContext = vm.createContext({ window: downloadWindow }); browser(downloadContext, fetch); loadTransport(downloadContext);
+  vm.runInContext(fs.readFileSync(path.join(app, 'MasterOverviewAPI.js'), 'utf8'), downloadContext);
+  const api = downloadWindow.APSMasterOverviewAPI, first = await api.export({}, token);
+  assert.equal(first.count, 3, '下载条数采用本次响应，不再依赖上次列表数量'); assert.equal(first.filename, filename, '文件名取后端附件头');
+  assert.equal(fetch.calls.at(-1).query.snapshot_ref, token);
   headerCount = '0';
   assert.equal((await api.export({}, token)).count, 0, '当前筛选允许下载空清单');
   headerCount = '-1';

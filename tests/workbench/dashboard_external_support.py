@@ -46,7 +46,8 @@ def external_case(dashboard_case):
     install_workbench_outsourcing_schema(conn)
     install_sources(conn)
     conn.execute("INSERT INTO OpTypes(op_type_id,name,category) VALUES ('XT1','Heat treatment','external')")
-    conn.execute("INSERT INTO Suppliers(supplier_id,name,op_type_id,default_days) VALUES ('XS1','Supplier','XT1',2)")
+    conn.execute("INSERT INTO Suppliers(supplier_id,name,default_days) VALUES ('XS1','Supplier',2)")
+    conn.execute("INSERT INTO WorkbenchSupplierOpTypes(supplier_id,op_type_id) VALUES ('XS1','XT1')")
     conn.execute("INSERT INTO Parts(part_no,part_name,remark) VALUES ('XP1','Part',?)", (b"original\x00\xff",))
     conn.execute("INSERT INTO Batches(batch_id,part_no,part_name,quantity,due_date,ready_date,ready_status) "
                  "VALUES ('XB1','XP1','Part',10,'2026-09-11','2026-09-01','yes')")

@@ -60,19 +60,9 @@
     const {format, ...read} = query;
     return {format, ...workspaceScope(planRef, read)};
   }
-  function download(value, format) {
-    const expected = format === 'csv' ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-    if (!exact(value, ['blob', 'contentType', 'disposition']) || !value.blob || !(value.blob.size > 0)
-        || typeof value.contentType !== 'string' || value.contentType.split(';')[0] !== expected
-        || !/^attachment;/i.test(value.disposition)) throw C.failure('导出的文件和所选格式不一致，没有保存。请重新点「导出」。');
-    return value;
-  }
+  // 成功信封（meta 五键、warnings 形状、as_of）已由 transport.read 校验；计划翻页与导出要钉住同一份快照。
   function envelope(result, query) {
-    if (!exact(result, ['ok', 'schema_version', 'data', 'meta', 'warnings']) || result.ok !== true || result.schema_version !== 1
-        || !exact(result.meta, ['request_ref', 'source', 'time_basis', 'snapshot_ref', 'as_of'])
-        || result.meta.source !== 'production' || result.meta.time_basis !== 'factory_local'
-        || !token(result.meta.snapshot_ref) || !token(result.meta.request_ref) || !localTime(result.meta.as_of) || !issues(result.warnings))
-      throw C.failure('计划数据不完整或数据源无效，请刷新后重试。');
+    if (result.meta.snapshot_ref === null) throw C.failure('计划数据不完整或数据源无效，请刷新后重试。');
     if (own(query, 'snapshot_ref') && result.meta.snapshot_ref !== query.snapshot_ref)
       throw C.failure(window.WorkbenchTerms.outcomes.stale);
   }
@@ -246,29 +236,26 @@
   function occupancyRow(row, data, calendars) {
     const known = ['arranged_hours', 'occupied_hours', 'overlap_hours', 'excess_arranged_hours'];
     const capacity = ['available_hours', 'available_occupied_hours', 'outside_available_hours', 'capacity_shortfall_hours'];
-    const current = row && row.metric_version === 'decision-resource-v4';
-    const versioned = row && own(row, 'metric_version');
-    const extra = current ? ['metric_version', 'available_overlap_hours', 'outside_calendar_basis', 'conflict_basis', 'conflict_segments'] : versioned ? ['metric_version'] : [];
     if (!exact(row, ['kind', 'resource_ref', 'label', ...known, ...capacity, 'state', 'operation_count', 'capacity_basis',
-        'utilization', 'has_overlap', 'capacity_insufficient', 'issues', 'segments', ...extra]) || !['machine', 'operator'].includes(row.kind)
+        'utilization', 'has_overlap', 'capacity_insufficient', 'issues', 'segments', 'metric_version', 'available_overlap_hours',
+        'outside_calendar_basis', 'conflict_basis', 'conflict_segments']) || !['machine', 'operator'].includes(row.kind)
         || !['available', 'unavailable'].includes(row.state) || !known.every(key => number(row[key])) || !count(row.operation_count) || row.operation_count === 0
         || !projectionIssues(row.issues)
-        || !intervals(row.segments, data.time_scope, ['concurrent_operations'], segment => count(segment.concurrent_operations) && segment.concurrent_operations > 0)) return false;
-    if (current) {
-      if (row.outside_calendar_basis !== 'reservation_span_outside_work_calendar' || row.conflict_basis !== 'work_calendar_reservation_overlap') return false;
-      if (row.available_overlap_hours === null) {
-        if (row.has_overlap !== null || row.conflict_segments !== null) return false;
-      } else if (!number(row.available_overlap_hours) || row.has_overlap !== (row.available_overlap_hours > 1e-9)
-          || !intervals(row.conflict_segments, data.time_scope, ['concurrent_operations'], segment => count(segment.concurrent_operations) && segment.concurrent_operations > 1)) return false;
-    } else if (versioned && row.metric_version !== 'decision-resource-v3' || typeof row.has_overlap !== 'boolean' || row.has_overlap !== (row.overlap_hours > 0)) return false;
+        || !intervals(row.segments, data.time_scope, ['concurrent_operations'], segment => count(segment.concurrent_operations) && segment.concurrent_operations > 0)
+        || row.metric_version !== 'decision-resource-v4' || row.outside_calendar_basis !== 'reservation_span_outside_work_calendar'
+        || row.conflict_basis !== 'work_calendar_reservation_overlap') return false;
+    if (row.available_overlap_hours === null) {
+      if (row.has_overlap !== null || row.conflict_segments !== null) return false;
+    } else if (!number(row.available_overlap_hours) || row.has_overlap !== (row.available_overlap_hours > 1e-9)
+        || !intervals(row.conflict_segments, data.time_scope, ['concurrent_operations'], segment => count(segment.concurrent_operations) && segment.concurrent_operations > 1)) return false;
     const expected = row.kind === 'machine' ? 'global_calendar_machine_availability' : 'personal_or_operator_shift_calendar';
     const source = calendars.get(row.resource_ref);
     if (row.capacity_basis !== (source ? expected : 'unknown')) return false;
     if (row.state === 'unavailable') return (!source || source.state === 'unavailable') && capacity.every(key => row[key] === null)
-      && (!current || row.available_overlap_hours === null)
+      && row.available_overlap_hours === null
       && row.utilization === null && row.capacity_insufficient === null && row.issues.length > 0;
     return source && source.state === 'available' && capacity.every(key => number(row[key])) && row.available_hours === source.available_hours
-      && (!current || number(row.available_overlap_hours))
+      && number(row.available_overlap_hours)
       && typeof row.capacity_insufficient === 'boolean'
       && (row.available_hours === 0 ? row.utilization === null : number(row.utilization) && row.utilization <= 1);
   }
@@ -378,5 +365,5 @@
       throw C.failure('工序安排、时间范围或分析数据与所选计划不一致，请刷新。');
     return result;
   }
-  window.APSPlanContract = { catalogScope, workspaceScope, exportScope, catalog, workspace, download };
+  window.APSPlanContract = { catalogScope, workspaceScope, exportScope, catalog, workspace };
 })();

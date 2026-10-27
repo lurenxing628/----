@@ -32,11 +32,9 @@ def _not_data_context() -> NoReturn:
 
 
 def valid_data_context_ref(value):
-    """Read old generation IDs and the current recorded restore-source content."""
+    """The recorded restore-source content that RunDataContext.ref produces."""
     if type(value) is not str:
         return False
-    if re.fullmatch(r"[0-9a-f]{64}", value):
-        return True
     try:
         data = load_strict_json(value, on_malformed=_not_data_context)
     except ValueError:

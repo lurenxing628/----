@@ -131,7 +131,7 @@ const candidateData = { gantt_graph: { ...graph, scope: 'full_candidate' }, task
 // Same chain as RunCandidateGantt without a loaded baseline.
 const candidateLayout = (value, mode, query, width = 1000, operationRefs = null) => {
   const M = window.RunCandidateModel, B = window.RunBaselineModel;
-  const candidate = M.selectPrepared(M.groupPrepared(M.prepare(value), mode), query, operationRefs);
+  const candidate = M.selectPrepared(M.groupPrepared(M.prepare(value), mode), query, operationRefs, null);
   return B.layoutPrepared(B.selectPrepared(candidate, B.groupPrepared(B.prepare(null), mode), query, operationRefs, false), width);
 };
 const width = 1000;
@@ -252,14 +252,14 @@ const pointTask = { ...candidateData.tasks[2], row_ref: ref(900), task_ref: ref(
   start: '2026-10-12T10:05:00', end: '2026-10-12T10:05:00' };
 const candidateFacts = window.RunCandidateModel.prepare({ ...candidateData, tasks: [...candidateData.tasks, pointTask] });
 const candidateGroups = window.RunCandidateModel.groupPrepared(candidateFacts, 'machine');
-const preparedCandidate = window.RunCandidateModel.selectPrepared(candidateGroups);
+const preparedCandidate = window.RunCandidateModel.selectPrepared(candidateGroups, '', null, null);
 const baseline = { comparisons: [{ operation_ref: candidateData.tasks[2].operation_ref, baseline_segments: [
   { ...candidateData.tasks[2], row_ref: ref(902), interval_comparable: true, start: at(0), end: at(0) },
   { ...pointTask, row_ref: ref(903), interval_comparable: true, start: '2026-10-12T00:05:00', end: '2026-10-12T00:05:00' },
   { ...candidateData.tasks[3], row_ref: ref(904), interval_comparable: true, start: at(1), end: at(2) }
 ] }] };
 const baselineGroups = window.RunBaselineModel.groupPrepared(window.RunBaselineModel.prepare(baseline), 'machine');
-const prepared = window.RunBaselineModel.selectPrepared(preparedCandidate, baselineGroups);
+const prepared = window.RunBaselineModel.selectPrepared(preparedCandidate, baselineGroups, '', null, true);
 const sorts = [context.__normalSorts, context.__baselineSorts, context.__pointSorts], pointCalls = [], layoutTracks = window.PointGanttModel.layoutTracks;
 window.PointGanttModel.layoutTracks = (...args) => { pointCalls.push({ start: args[1], end: args[2], width: args[3] }); return layoutTracks(...args); };
 const compact = window.RunBaselineModel.layoutPrepared(prepared, 640), wide = window.RunBaselineModel.layoutPrepared(prepared, 10000);

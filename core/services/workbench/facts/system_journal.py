@@ -14,11 +14,10 @@ from core.infrastructure.safe_files import (
 from core.models.content import same
 from core.models.workbench_command import (
     WorkbenchCommandRejected,
-    canonical_json,
     validate_request_key,
 )
 from core.models.workbench_system import JOB_STATES, TERMINAL_STATES
-from core.shared.strict_json import load_strict_json
+from core.shared.strict_json import canonical_json, load_strict_json
 
 _RESTORE_TERMINALS = {
     "succeeded": ("verified",),
@@ -81,19 +80,20 @@ class SystemMaintenanceJournal:
         if len(content) > limit:
             raise RuntimeError("维护记录超过允许大小，须人工核查。")
         row = self._record_content(load_strict_json(content, on_malformed=_unreadable_record))
-        name = os.path.basename(path)
-        if (row["version"] == 2 and os.path.abspath(path) != os.path.abspath(self._path(row["job_ref"]))
-                or row["version"] == 1 and re.fullmatch(r"[a-f0-9]{64}\.json", name) is None):
+        if os.path.abspath(path) != os.path.abspath(self._path(row["job_ref"])):
             raise RuntimeError("维护请求记录与文件身份不符，须人工核查。")
         if (row["action"] == "restore" and row["state"] in TERMINAL_STATES
                 and row.get("code") not in _RESTORE_TERMINALS[row["state"]]):
             raise RuntimeError("恢复记录没有可确认的终态，须人工核查。")
+        if row["action"] == "restore" and row["state"] == "succeeded" and not isinstance(row.get("data_context_before"), str):
+            # Every successful restore records the data generation it replaced.
+            raise RuntimeError("恢复成功的记录缺少恢复前的数据来源，须人工核查。")
         if self._database_scope is None:
             self._database_scope = row["database_scope"]
         return row
 
     def _record_content(self, row):
-        if (not isinstance(row, dict) or row.get("version") not in (1, 2)
+        if (not isinstance(row, dict) or row.get("version") != 2
                 or not isinstance(row.get("database_scope"), str) or not row["database_scope"]
                 or (self._database_scope is not None and not same(row["database_scope"], self._database_scope))
                 or row.get("state") not in JOB_STATES or not isinstance(row.get("history"), list)
@@ -101,13 +101,10 @@ class SystemMaintenanceJournal:
                 or not re.fullmatch(r"[a-f0-9]{32}", str(row.get("job_ref", "")))):
             raise RuntimeError("维护记录不完整或不属于当前数据库，须人工核查。")
         validate_request_key(row.get("request_key"))
-        if row["version"] == 1:
-            if re.fullmatch(r"[a-f0-9]{64}", row["database_scope"]) is None:
-                raise RuntimeError("旧维护记录的数据库来源不完整，须人工核查。")
-        elif (not isinstance(row.get("database_path"), str) or not os.path.isabs(row["database_path"])
-              or not self._follows_database and not same(row["database_path"], self._path_scope)
-              or not isinstance(row.get("intent"), dict) or set(row["intent"]) != {"action", "input"}
-              or row["intent"]["action"] != row["action"]):
+        if (not isinstance(row.get("database_path"), str) or not os.path.isabs(row["database_path"])
+                or not self._follows_database and not same(row["database_path"], self._path_scope)
+                or not isinstance(row.get("intent"), dict) or set(row["intent"]) != {"action", "input"}
+                or row["intent"]["action"] != row["action"]):
             raise RuntimeError("维护记录不完整或不属于当前数据库，须人工核查。")
         return row
 
@@ -180,8 +177,6 @@ class SystemMaintenanceJournal:
         captured = self.records() if records is None else records
         if self.pending(captured):
             raise WorkbenchCommandRejected("maintenance_active", "上一次维护还没有确认结果，这次没有执行。请先用操作编号查询上次维护的结果。", 503)
-        if not self._follows_database and any(row["version"] == 1 for row in captured):
-            raise WorkbenchCommandRejected("maintenance_origin_unavailable", "旧维护记录缺少原数据库路径。历史结果已保留，请先核对维护目录归属。", 503)
 
     def admission(self, request_key):
         """Capture readiness before guards; the caller owns the maintenance window."""
@@ -205,8 +200,6 @@ class SystemMaintenanceJournal:
         if previous:
             if previous["action"] != action:
                 raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号对应的是另一次维护，这次没有执行。请重新提交。")
-            if previous.get("version") == 1 or not isinstance(previous.get("intent"), dict):
-                raise WorkbenchCommandRejected("original_intent_unavailable", "这条旧维护记录缺少原始提交内容。原操作结果已保留，请按原操作编号查询；本次没有重复执行。")
             if not same(previous["intent"], original):
                 raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号对应的是另一次维护，这次没有执行。请重新提交。")
             return previous, True
@@ -222,8 +215,6 @@ class SystemMaintenanceJournal:
     def record(self, row, state, **values):
         if state not in JOB_STATES:
             raise ValueError("未知维护状态。")
-        if row.get("version") != 2:
-            raise WorkbenchCommandRejected("original_intent_unavailable", "旧维护记录保持原件，只提供历史结果查询。")
         updated = {**row, **values, "state": state, "updated_at": datetime.now().strftime("%Y-%m-%dT%H:%M:%S")}
         updated["history"] = row["history"] + [{"state": state, "time": updated["updated_at"]}]
         path = self._path(row["job_ref"])
@@ -256,27 +247,18 @@ class SystemMaintenanceJournal:
 
     @staticmethod
     def public(row, replayed=False):
-        legacy = row.get("version") == 1
-        verification = (dict(row["source_verification"]) if not legacy else
-                        {"basis": "legacy_record", "target": "unavailable" if row["target"] else "not_checked",
-                         "protection": "unavailable" if row["protection"] else "not_checked", "sqlite_integrity": "unavailable"})
-        result = {"job_ref": row["job_ref"], "request_key": row["request_key"], "action": row["action"],
+        return {"job_ref": row["job_ref"], "request_key": row["request_key"], "action": row["action"],
                 "state": row["state"], "terminal": row["state"] in TERMINAL_STATES, "code": row["code"],
                 "message": row["message"], "updated_at": row["updated_at"], "replayed": replayed,
                 "protection_filename": row["protection"]["filename"] if row["protection"] else None,
                 "filename": row["target"]["filename"] if row["target"] else None,
                 "audit_persisted": row["audit_persisted"], "history": row["history"],
                 "result_source": "external_maintenance_journal",
-                "source_verification": verification,
+                "source_verification": dict(row["source_verification"]),
                 "database_origin": row.get("database_origin", "unconfirmed"),
                 "restart_required": row.get("restart_required", False),
                 "restart_scope": "restoring_process" if row["action"] == "restore" else None,
                 "references_require_reload": row["action"] == "restore"}
-        if legacy:
-            result.update(target_sha256=(row["target"] or {}).get("sha256"),
-                          protection_sha256=(row["protection"] or {}).get("sha256"),
-                          database_after_sha256=row.get("database_after_sha256"))
-        return result
 
 
 def assert_system_maintenance_ready(database_path, journal_dir):

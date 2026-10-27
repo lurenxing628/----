@@ -9,21 +9,11 @@ from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.services.process.workflow_state import load_workflow_snapshot, project_workflow_snapshot
-from data.repositories.workbench_batch_facts_repo import (
-    BATCH_FACT_TABLES,
-    VERSIONED_FACT_TABLES,
-    WorkbenchBatchFactsRepository,
-)
+from data.repositories.workbench_batch_facts_repo import BATCH_FACT_TABLES, WorkbenchBatchFactsRepository
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
-from .execution import (
-    execution_content,
-    load_execution,
-    old_event_bindings,
-    project_execution_snapshot,
-    protects_execution,
-)
+from .execution import execution_content, load_execution, project_execution_snapshot, protects_execution
 from .snapshot_content import record_content
 
 
@@ -62,15 +52,10 @@ class BatchFacts:
             return facts
         with TransactionManager(self.conn).transaction():
             tables: Dict[str, Any] = self.repo.whole_tables()
-            versioned = self.repo.versioned_facts()
-            tables.update(self._versioned_tables(versioned))
             tables["plan_reference_counts"] = self.repo.plan_reference_counts()
             workflow = load_workflow_snapshot(self.conn, tables=tables)
             operation_refs = self.plan_refs.get_operation_refs(row["id"] for row in tables["BatchOperations"])
-            execution = load_execution(self.conn, operation_refs.values(), schema_version=versioned["version"],
-                                       has_execution_commands=versioned["has_execution_commands"])
-            if not execution["available"]:
-                tables.update(self.repo.legacy_execution_facts())
+            execution = load_execution(self.conn, operation_refs.values())
         facts = {**tables, "workflow": project_workflow_snapshot(workflow), "operation_refs": operation_refs,
                  "execution": project_execution_snapshot(execution)}
         if self._command and self.conn.in_transaction:
@@ -88,27 +73,13 @@ class BatchFacts:
             self._lookups = {}
         return self._facts
 
-    def _versioned_tables(self, state):
-        version = state["version"]
-        result = {}
-        for name, since in (("WorkbenchOutsourcingReceipts", 30), ("BatchExternalContexts", 33)):
-            rows = state["tables"][name]
-            if rows is None:
-                if (type(version) is not int or version >= since or
-                        name == "WorkbenchOutsourcingReceipts" and state["has_outsourcing_commands"]):
-                    raise WorkbenchCommandRejected("batch_facts_unavailable", "批次外协资料结构不完整，不能继续维护，请联系维护人员核对。", 503)
-                # An explicitly older schema has never supplied this table; no current records are inferred.
-                rows = []
-            result[name] = rows
-        return result
-
     def fingerprint(self):
         # Every read/write/preview guard uses this same complete fact domain.
         # Only its private representation changes: column names and shared
         # execution values are encoded once rather than once per operation.
         facts = self.load()
         compact = dict(facts, execution=execution_content(facts["execution"]))
-        for name in BATCH_FACT_TABLES + VERSIONED_FACT_TABLES:
+        for name in BATCH_FACT_TABLES:
             compact[name] = record_content(facts[name])
         return content_text(["batch-facts-v2", compact])
 
@@ -230,20 +201,15 @@ def index_relations(facts):
         for owner in {row["source_batch_id"], row["child_batch_id"]}:
             if owner in result:
                 result[owner]["quantity_splits"].append(row)
-    execution = facts["execution"]
-    legacy = {} if execution["available"] else old_event_bindings(facts)
+    projections = facts["execution"]["projections"]
     for row in facts["BatchOperations"]:
         group = result[row["batch_id"]]
         group["operations"].append(row)
         group["plan_reference_count"] += facts["plan_reference_counts"].get(row["id"], 0)
-        ref = facts["operation_refs"][row["id"]]
-        if execution["available"]:
-            projected = execution["projections"][ref]
-            group["events"].extend(projected.legacy_facts)
-            group["reports"].extend(projected.reports)
-            group["execution_protected"] |= protects_execution(projected)
-        else:
-            group["events"].extend(legacy.get(ref, []))
+        projected = projections[facts["operation_refs"][row["id"]]]
+        group["events"].extend(projected.legacy_facts)
+        group["reports"].extend(projected.reports)
+        group["execution_protected"] |= protects_execution(projected)
     for row in facts["BatchMaterials"]:
         if row["batch_id"] in result:
             result[row["batch_id"]]["materials"].append(row)

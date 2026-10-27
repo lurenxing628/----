@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   const C = window.RunCandidateControls, M = window.RunCandidateModel, T = window.WorkbenchTerms;
-  const queryKeys = ['completion_candidate_ref', 'completion_filter', 'sort', 'order', 'page', 'size', 'snapshot_ref'];
+  const queryKeys = ['completion_filter', 'sort', 'order', 'page', 'size', 'snapshot_ref'];
   const filters = [['all', '全部批次'], ['complete', '工序已排齐'], ['unfinished', '工序未排齐'], ['ordinary', '其他未排齐'], ['deferred', '仅因缺料未排齐'], ['unknown', '工序安排待确认']];
   const issueLabels = { material_deferred: '工序因缺料暂未安排', operations_unscheduled: '尚有工序未安排', operations_missing: '排产时工序资料未记录',
     schedule_time_invalid: '安排时间无效', saved_plan_incomplete: '候选方案的工序安排记录不完整', due_date_missing: '交期未记录',
@@ -23,7 +23,7 @@
     </details>;
   }
   function Support({ data, work, drill, batchRef, label, onSupport }) {
-    return data.source.available && hasRemaining(work) && drill && onSupport ? <C.Button icon="search" className="btn link" aria-label={label}
+    return data.source.available && hasRemaining(work) && drill ? <C.Button icon="search" className="btn link" aria-label={label}
       onClick={() => onSupport({ kind: 'preparation', label, ref: batchRef || null, candidate_ref: data.candidate.candidate_ref, drill })}>{label}</C.Button> : null;
   }
   function Summary({ data, definitions, onSupport }) {
@@ -54,24 +54,22 @@
       </table>
     </div>;
   }
-  function Pane({ adapter, result, query = {}, onQuery, onSupport, enabled = false }) {
+  function Pane({ result, query, onQuery, onSupport, enabled }) {
     const overview = result.data, scope = overview.scope, runRef = overview.run.run_ref;
     const shared = { comparison_mode: scope.comparison_mode, resource_view: scope.resource_view, selected_candidate_ref: scope.selected_candidate_ref,
       range_start: scope.range_start, range_end: scope.range_end, ...(scope.comparison_mode === 'candidates' ? { reference_candidate_ref: scope.reference.candidate_ref } : {}) };
     const stored = Object.fromEntries(Object.entries(query).filter(([key]) => queryKeys.includes(key)));
-    if (stored.completion_candidate_ref && stored.completion_candidate_ref !== scope.selected_candidate_ref) { stored.page = 1; delete stored.snapshot_ref; }
-    delete stored.completion_candidate_ref;
-    const q = window.RunDecisionAPI.completionScope(runRef, { ...stored, ...shared, completion_candidate_ref: scope.selected_candidate_ref }), key = JSON.stringify(q);
-    const read = window.APSResourceSession.useQuery(signal => adapter.completionBatches(runRef, q, signal), [adapter, runRef, key, result.meta.snapshot_ref], enabled);
-    const detail = read.result && read.result.data.candidate.candidate_ref === q.completion_candidate_ref ? read.result : null, data = detail && detail.data;
+    const q = window.RunDecisionAPI.completionScope(runRef, { ...stored, ...shared }), key = JSON.stringify(q);
+    const read = window.APSResourceSession.useQuery(signal => window.RunDecisionAPI.completionBatches(runRef, q, signal), [runRef, key, result.meta.snapshot_ref], enabled);
+    const detail = read.result && read.result.data.candidate.candidate_ref === q.selected_candidate_ref ? read.result : null, data = detail && detail.data;
     function update(change, paging = false) {
-      const next = { ...q, ...change, page: paging ? change.page : 1 }; delete next.snapshot_ref; delete next.completion_candidate_ref;
+      const next = { ...q, ...change, page: paging ? change.page : 1 }; delete next.snapshot_ref;
       if (paging && detail) next.snapshot_ref = detail.meta.snapshot_ref;
       onQuery(Object.fromEntries(Object.entries(next).filter(([name]) => queryKeys.includes(name))));
     }
     function reload() { update({}); read.reload(); }
     if (!enabled) return null;
-    return <section className="rd-completion" aria-label="候选方案批次工序安排" data-completion-anchor={q.completion_candidate_ref}>
+    return <section className="rd-completion" aria-label="候选方案批次工序安排" data-completion-anchor={q.selected_candidate_ref}>
       <div className="rd-detail-filters">
         <label>工序安排<select aria-label="批次工序安排筛选" value={q.completion_filter} onChange={event => update({ completion_filter: event.target.value })}>{filters.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <label>批次顺序<select aria-label="工序安排批次顺序" value={q.order} onChange={event => update({ order: event.target.value })}><option value="asc">编号升序</option><option value="desc">编号降序</option></select></label>

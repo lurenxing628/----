@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   const A = window.DecisionHistoryAPI, C = window.ResourceControls, L = window.WorkbenchListControls, F = window.WorkbenchFormat;
-  const stateLabels = { all: '全部状态', ...window.WorkbenchTerms.run_statuses, committed: '已提交采用', success: '采用成功', unknown: '状态未知', available: '来源可读', current: '当前版本', historical: '历史版本', unavailable: '来源缺失' };
+  const stateLabels = { all: '全部状态', ...window.WorkbenchTerms.run_statuses, committed: '已提交采用' };
   const clearEventFilters = { date_from: null, date_to: null, state: 'all', page: 1 };
   function ErrorBox({ error }) {
     return error ? <div className="dh-notice dh-error" role="alert">{error.code === 'snapshot_stale' && <strong>历史资料已更新。 </strong>}{error.message || '历史资料读取失败，请重新查询。'}</div> : null;
@@ -60,10 +60,10 @@
         <td>{F.number(entry.scope.batch_count, { digits: 0 })} 批 / {F.number(entry.scope.operation_count, { digits: 0 })} 道{marked.includes(entry.entry_ref) && <small className="dh-range-change">统计范围有变化</small>}</td>
         {definitions.map(definition => { const metric = entry.metrics[definition.key]; return <td key={definition.key} className="dh-number" data-metric-key={definition.key} data-metric-value={metric.value === null ? '' : metric.value} data-value-state={metric.state} title={metric.reason ? metric.reason.message : undefined}>
           {A.metricText(metric, definition)}{metric.value === null && metric.known_count > 0 && metric.known_subtotal !== null && <small>已知小计 {A.numberText(metric.known_subtotal, metric.unit, definition.precision)}</small>}{metric.unknown_count > 0 && <small>{metric.unknown_count} 项待确认</small>}</td>; })}
-        <td className="wb-col-actions">{entry.identity.run_ref ? <><C.Button disabled={busy} aria-label={'将 ' + entry.label + ' 用作对照'} title={entry.source_kind === 'candidate_adoption' ? '对照其来源排产：' + entry.label : undefined} onClick={() => onReference(entry)}>{data.selection.reference && data.selection.reference.identity.run_ref === entry.identity.run_ref ? '当前对照' : '用作对照'}</C.Button>{entry.source_kind === 'candidate_adoption' && <small>对照其来源排产{data.selection.reference && data.selection.reference.identity.run_ref === entry.identity.run_ref ? '：' + data.selection.reference.label : ''}</small>}</> : <span className="dh-muted">{entry.source_kind === 'trial_adoption' ? '试调来源' : '旧正式计划来源'}</span>}</td>
+        <td className="wb-col-actions">{entry.identity.run_ref ? <><C.Button disabled={busy} aria-label={'将 ' + entry.label + ' 用作对照'} title={entry.source_kind === 'candidate_adoption' ? '对照其来源排产：' + entry.label : undefined} onClick={() => onReference(entry)}>{data.selection.reference && data.selection.reference.identity.run_ref === entry.identity.run_ref ? '当前对照' : '用作对照'}</C.Button>{entry.source_kind === 'candidate_adoption' && <small>对照其来源排产{data.selection.reference && data.selection.reference.identity.run_ref === entry.identity.run_ref ? '：' + data.selection.reference.label : ''}</small>}</> : <span className="dh-muted">试调来源</span>}</td>
       </tr>)}</tbody></table></div>;
   }
-  function Export({ adapter, result, query, busy: reading }) {
+  function Export({ result, query, busy: reading }) {
     const [format, setFormat] = React.useState(null), [section, setSection] = React.useState('entries'), [busy, setBusy] = React.useState(false), [error, setError] = React.useState(null), [done, setDone] = React.useState(''), active = React.useRef(null);
     React.useEffect(() => () => { if (active.current) active.current.abort(); }, []);
     function cancel() { if (active.current) active.current.abort(); active.current = null; setBusy(false); setFormat(null); }
@@ -71,7 +71,7 @@
       if (active.current || !format) return;
       const controller = new AbortController(); active.current = controller; setBusy(true); setError(null);
       try {
-        const file = await adapter.historyExport(query, result.meta.snapshot_ref, format, controller.signal, section);
+        const file = await A.historyExport(query, result.meta.snapshot_ref, format, controller.signal, section);
         if (controller.signal.aborted) return;
         window.APSWorkbenchTransport.saveBlob(file.filename, file.blob); setDone(window.WorkbenchTerms.download_started(file.filename) + ' · ' + file.row_count + ' 条记录'); setFormat(null);
       } catch (problem) { if (!controller.signal.aborted) setError(problem); }
@@ -83,12 +83,11 @@
         <label>导出内容<select aria-label="历史导出内容" value={section} disabled={busy} onChange={event => setSection(event.target.value)}><option value="entries">当前筛选的全部历史条目</option><option value="conditions">选中条目与基准的生产条件</option><option value="configurations">选中条目与基准的算法配置</option>{format === 'xlsx' && <option value="all">全部分区及指标口径、范围和缺项</option>}</select></label>
         <p>条目文件包含当前筛选的全部页面；记录含指标值、范围引用和指标覆盖引用，永久编号按明细行完整保留。生产条件与算法配置对应当前选中条目和明确基准。</p><ErrorBox error={error} /></div></C.Modal>}</>;
   }
-  const adapters = new WeakMap(); let nextAdapter = 0;
-  function Session({ adapter, start, pageContext, navigation, onNavigate, renderTopics }) {
+  function Session({ start, pageContext, navigation, onNavigate, renderTopics }) {
     const [query, setQuery] = React.useState(start.query), [metricKey, setMetricKey] = React.useState(start.metric_key), [revision, refresh] = React.useReducer(value => value + 1, 0), [paused, setPaused] = React.useState(false), [conditionsOpen, setConditionsOpen] = React.useState(false), [missingOpen, setMissingOpen] = React.useState(false);
     const workspace = React.useRef(null), pendingFocus = React.useRef(null), readingHeight = React.useRef(null);
-    const api = React.useMemo(() => A.adapter(adapter), [adapter]), serialized = JSON.stringify(query);
-    const read = window.APSResourceSession.useQuery(signal => api.history(query, signal), [api, serialized, revision, paused], !paused), result = read.result, data = result && result.data;
+    const serialized = JSON.stringify(query);
+    const read = window.APSResourceSession.useQuery(signal => A.read(query, signal), [serialized, revision, paused], !paused), result = read.result, data = result && result.data;
     const remembered = { query: { ...query, ...(result ? { snapshot_ref: result.meta.snapshot_ref } : {}) }, selected_entry_ref: query.selected_entry_ref, reference_entry_ref: query.reference_run_ref && 'run:' + query.reference_run_ref, metric_key: metricKey, detail_queries: { ...start.detail_queries, conditions: { page: query.condition_page, size: query.condition_size } } };
     const historyContext = { ...pageContext, source: 'run_history', history_topic: 'decision_history', decision_history_context: remembered };
     window.WorkbenchPageContext.useSnapshot(historyContext);
@@ -116,27 +115,25 @@
     function endComparison() { setConditionsOpen(false); pendingFocus.current = { source: 'detail', reveal: false }; change({ reference_run_ref: null, comparison: 'observed' }); }
     function open(target) { if (target.enabled) onNavigate(target.view, { ...target.context, return_decision_history_context: remembered }); }
     return <div ref={workspace} className="plana run-history-workspace decision-history-workspace" data-decision-history-workspace aria-busy={read.loading} style={read.loading && readingHeight.current !== null ? { minHeight: readingHeight.current } : undefined}><h2 className="wb-page-title">排产记录</h2><header className="dh-heading scheduling-page-tools">{navigation}<div className="dh-actions">
-      {result && <Export key={result.meta.snapshot_ref} adapter={api} result={result} query={query} busy={read.loading} />}<C.Button icon="refresh-cw" busy={read.loading} aria-label="刷新历史走势" onClick={reload} />{read.loading && <C.Button onClick={() => { readingHeight.current = null; setPaused(true); }}>取消读取</C.Button>}</div></header>
-      {renderTopics && renderTopics(historyContext)}<div id="dh-history-content" role="tabpanel" aria-labelledby="dh-topic-decision_history">
+      {result && <Export key={result.meta.snapshot_ref} result={result} query={query} busy={read.loading} />}<C.Button icon="refresh-cw" busy={read.loading} aria-label="刷新历史走势" onClick={reload} />{read.loading && <C.Button onClick={() => { readingHeight.current = null; setPaused(true); }}>取消读取</C.Button>}</div></header>
+      {renderTopics(historyContext)}<div id="dh-history-content" role="tabpanel" aria-labelledby="dh-topic-decision_history">
       <Filters query={query} busy={read.loading} onApply={apply} />
       <ErrorBox error={read.error} />{read.error && <C.Button icon="refresh-cw" onClick={reload}>刷新当前条件</C.Button>}{paused && <div className="dh-notice" role="status">读取已取消。<C.Button onClick={reload}>继续读取</C.Button></div>}
       {data && <>
         {result.warnings.map((warning, index) => <div key={index} className="dh-notice" role="status">{warning.message}</div>)}
         <MetricControls query={query} definitions={data.metric_definitions} metricKey={metricKey} page={{ count: data.entries.length, total: data.page.total }} busy={read.loading} onMetric={key => { if (key !== metricKey) { setMissingOpen(false); if (pendingFocus.current && pendingFocus.current.source === 'chart') pendingFocus.current = null; } setMetricKey(key); }} onQuery={change} />
         {data.entries.length ? <window.DecisionHistoryChart.Chart data={data} metricKey={metricKey} selectedEntryRef={query.selected_entry_ref} onSelect={(entry, reveal) => select(entry, 'chart', reveal)} busy={read.loading} missingOpen={missingOpen} onMissingToggle={setMissingOpen} /> : <L.EmptyState kind={data.totals[query.timeline] === 0 ? 'empty' : 'filtered'} title={data.totals[query.timeline] === 0 ? '这条时间线尚无记录' : data.page.total === 0 ? '当前筛选没有历史条目' : '当前页没有历史条目'} hint="历史走势读取已经保存的来源。" action={data.page.total > 0 ? <C.Button onClick={() => change({ page: 1 }, true)}>返回第 1 页</C.Button> : data.totals[query.timeline] > 0 ? <C.Button icon="x" onClick={() => change(clearEventFilters)}>清除日期与状态筛选</C.Button> : null} />}
-        <window.DecisionHistoryDetails.Details data={data} onQuery={change} onOpen={open} canNavigate busy={read.loading} conditionsOpen={conditionsOpen} onConditionsToggle={setConditionsOpen}
+        <window.DecisionHistoryDetails.Details data={data} onQuery={change} onOpen={open} busy={read.loading} conditionsOpen={conditionsOpen} onConditionsToggle={setConditionsOpen}
           onEndComparison={endComparison} />
         {data.entries.length > 0 && <><h3 className="dh-list-title">历史记录</h3><Table data={data} metricKey={metricKey} selectedEntryRef={query.selected_entry_ref} onSelect={(entry, reveal) => select(entry, 'table', reveal)} onReference={reference} busy={read.loading} /></>}
         <div className="dh-page"><L.Pager page={data.page} sizes={[20, 50]} unit="条" label="历史条目" sizeLabel="历史每页条数" busy={read.loading} onPage={number => change({ page: number }, true)} onSize={size => change({ page: 1, size }, true)} /></div>
         <window.DecisionHistoryDetails.Sources data={data} result={result} />
       </>}{read.loading && !data && <L.EmptyState kind="loading" title="正在读取历史走势" hint="正在读取保存的历史记录。" />}</div></div>;
   }
-  function Workspace({ initialContext = {}, pageContext = {}, adapter, navigation, onNavigate, renderTopics }) {
-    const fallback = React.useMemo(() => A.create(), []), active = adapter || fallback;
+  function Workspace({ initialContext, pageContext, navigation, onNavigate, renderTopics }) {
     let start; try { start = A.context(initialContext); }
     catch (error) { return <div className="plana run-history-workspace decision-history-workspace"><h2 className="wb-page-title">排产记录</h2>{navigation}<ErrorBox error={error} /></div>; }
-    if (!adapters.has(active)) adapters.set(active, ++nextAdapter);
-    return <Session key={adapters.get(active) + ':' + JSON.stringify(start)} adapter={active} start={start} pageContext={pageContext} navigation={navigation} onNavigate={onNavigate} renderTopics={renderTopics} />;
+    return <Session key={JSON.stringify(start)} start={start} pageContext={pageContext} navigation={navigation} onNavigate={onNavigate} renderTopics={renderTopics} />;
   }
   window.DecisionHistoryWorkspace = Workspace;
   window.DecisionHistoryViews = { ErrorBox, Filters, MetricControls, Table, Export, Session };

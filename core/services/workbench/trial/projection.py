@@ -14,7 +14,6 @@ from core.services.workbench.facts.delivery_projection import (
 )
 from core.services.workbench.facts.operation_effort_evidence import saved_operation_efforts
 from core.services.workbench.facts.preflight_checks import stored_date
-from core.services.workbench.facts.resource_projection import RESOURCE_METRIC_VERSION
 from core.services.workbench.facts.trial_origin import delivery_origin, operation_contexts
 from core.services.workbench.facts.zero_duration import point_event_dto
 from core.services.workbench.facts.zero_duration_evidence import trial_point_evidence
@@ -112,11 +111,8 @@ def _delivery_arrangements(rows, field):
                      "batch_id": original["batch"]["batch_id"], "start_time": arrangement["start"],
                      "end_time": arrangement["end"]}
         if arrangement["start"] == arrangement["end"]:
-            if row.get("_delivery_source_unknown"):
-                projected["point_evidence_issue"] = "trial_source_unavailable"
-            else:
-                trial_point_evidence(original, arrangement)
-                projected["_point_work"] = True
+            trial_point_evidence(original, arrangement)
+            projected["_point_work"] = True
         by_batch[projected["batch_id"]].append(projected)
     return by_batch
 
@@ -156,15 +152,14 @@ def _blocked_delivery_batches(checked, rows):
     return blocked
 
 
-def comparison(tasks, checked, rows, admission, origin_issues=(), facts=None, *, origin=None):
+def comparison(tasks, checked, rows, admission, facts=None, *, origin=None):
     groups = defaultdict(list)
     for task in tasks:
         groups[task["batch_ref"]].append(task)
     batches, operations, deferred, deferred_issues = delivery_origin(admission, rows, facts) if origin is None else origin
-    origin_issues = list(origin_issues) + list(deferred_issues)
-    before = _delivery_side(batches, operations, _delivery_arrangements(rows, "original"), deferred, origin_issues)
+    before = _delivery_side(batches, operations, _delivery_arrangements(rows, "original"), deferred, deferred_issues)
     blocked = _blocked_delivery_batches(checked, rows)
-    after = _delivery_side(batches, operations, _delivery_arrangements(rows, "current"), deferred, origin_issues, blocked)
+    after = _delivery_side(batches, operations, _delivery_arrangements(rows, "current"), deferred, deferred_issues, blocked)
     deliveries = []
     for batch_ref, batch in batches.items():
         group, previous, current = groups[batch_ref], before[batch_ref], after[batch_ref]
@@ -187,22 +182,6 @@ def comparison(tasks, checked, rows, admission, origin_issues=(), facts=None, *,
             "changeovers": None, "changeover_reason": "原试调来源的工种资料缺失。"}
 
 
-def scenario_comparison(saved, head, *, projected=None, facts=None, origin=None):
-    """Reproject a historical saved view from its immutable source, without writing it."""
-    if head is None:
-        projected = []
-        for task in saved["tasks"]:
-            batch = {"batch_id": task["batch_id"], "part_no": task["part_no"], "part_name": task["part_name"],
-                     "quantity": task["batch_quantity"], "priority": task["priority"], "due_date": task["due_date"]}
-            projected.append({"row_ref": task["row_ref"], "task_ref": task["task_ref"], "current": task,
-                              "original": {"batch": batch, "batch_ref": task["batch_ref"],
-                                           "operation": {"id": task["operation_ref"]}, "arrangement": task["original"]},
-                              "_delivery_source_unknown": True})
-        admission = {"source": {}, "facts": {"tables": {"BatchOperations": []}}}
-        return comparison(saved["tasks"], saved["validation"], projected, admission, ["trial_source_unavailable"])
-    return comparison(saved["tasks"], saved["validation"], projected, head["admission"], facts=facts, origin=origin)
-
-
 def scenario_rows(saved, rows):
     originals = {row["row_ref"]: row for row in rows}
     if {task["source_row_ref"] for task in saved["tasks"]} != set(originals):
@@ -214,15 +193,6 @@ def scenario_rows(saved, rows):
                                    **{key: task[key] for key in ("start", "end", "machine_ref", "operator_ref")}))
                  for task in saved["tasks"]]
     return projected
-
-
-def scenario_capacity(saved, head, *, projected, archive):
-    if head is None:
-        return dict(saved["capacity"], state="unavailable", source="archived_resource_calendar",
-                    metric_version=RESOURCE_METRIC_VERSION, resource_common=None,
-                    reason="原草稿保存的日历来源缺失，资源容量未知。", resources=[])
-    admission = head["admission"]
-    return trial_capacity(projected, archive, source_ref=admission["source"]["identity"])
 
 
 def _public_value(value):

@@ -2,7 +2,6 @@
   'use strict';
   const C = window.APSResourceContract;
   const key = value => typeof value === 'string' && value.length > 0;
-  const legacyKey = value => /^[0-9a-f]{64}$/.test(value);
   const count = value => Number.isSafeInteger(value) && value >= 0;
   function rule(value) {
     if (value === null || value === undefined) return { mode: 'exclude', values: [] };
@@ -13,15 +12,9 @@
     if (values.length > 50000) throw C.failure('本列筛选超过 50000 个值，请先清除或减少原条件。');
     return { mode: value.mode, values };
   }
-  function restore(value) {
-    if (!C.object(value)) throw C.failure('上次的列筛选格式不正确，请重新选择。');
-    const filters = {}; let removed = 0;
-    Object.keys(value).sort().forEach(column => {
-      const selected = rule(value[column]);
-      if (selected.values.some(legacyKey)) removed++;
-      else filters[column] = selected;
-    });
-    return { filters, notice: removed ? '已清除 ' + removed + ' 项旧版列筛选，其余筛选和已选记录已保留。请重新选择这些列的筛选值。' : '' };
+  // 整组列筛选逐列规范（去重、排序）；外层对象和列名由调用方按各自的列清单先校验。
+  function rules(value) {
+    return Object.fromEntries(Object.keys(value).sort().map(column => [column, rule(value[column])]));
   }
   function toggle(value, key, enabled) {
     return toggleKeys(value, [key], enabled);
@@ -52,16 +45,11 @@
     if (C.object(value)) return '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + signature(value[key])).join(',') + '}';
     return JSON.stringify(value);
   }
+  // 信封（ok、schema_version、meta、warnings）已由 transport 校验，这里只核对列值本身。
   function envelope(raw, request) {
-    if (raw && raw.ok === false) throw raw;
-    const meta = raw && raw.meta, data = raw && raw.data;
-    const invalid = !C.object(raw) || raw.ok !== true || raw.schema_version !== 1 || !C.object(meta)
-      || !['production', 'demo'].includes(meta.source) || meta.time_basis !== 'factory_local'
-      || !['snapshot_ref', 'request_ref', 'as_of'].every(key => typeof meta[key] === 'string' && meta[key])
-      || !Array.isArray(raw.warnings) || !raw.warnings.every(row => C.object(row) && typeof row.message === 'string')
-      || !C.object(data) || data.column !== request.column || data.basis !== 'toolbar_scope';
-    if (invalid) throw C.failure('读到的列值不完整，没有当成空列表。请回到第 1 页重新查询。');
-    if (request.snapshot_ref && meta.snapshot_ref !== request.snapshot_ref)
+    const data = raw.data;
+    if (data.column !== request.column || data.basis !== 'toolbar_scope') throw C.failure('读到的列值不完整，没有当成空列表。请回到第 1 页重新查询。');
+    if (request.snapshot_ref && raw.meta.snapshot_ref !== request.snapshot_ref)
       throw C.failure('数据已更新，请回到第 1 页重新查询。');
     return data;
   }
@@ -88,5 +76,5 @@
       throw C.failure('全部匹配值不完整或超过 50000 个，筛选没有改动。请回到第 1 页重新查询。');
     return raw;
   }
-  window.ResourceTableFilterModel = { rule, restore, toggle, toggleKeys, groupState, toolbarScope, active, signature, facets, selection };
+  window.ResourceTableFilterModel = { rule, rules, toggle, toggleKeys, groupState, toolbarScope, active, signature, facets, selection };
 })();

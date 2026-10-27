@@ -13,7 +13,6 @@ from core.infrastructure.workbench_metadata_schema import install_metadata
 from core.infrastructure.workbench_plan_identity_schema import install_plan_identity
 from core.infrastructure.workbench_run_schema import install_workbench_run_schema
 from core.models.schedule_config_runtime_fields import default_snapshot_values
-from core.models.workbench_command import canonical_json
 from core.models.workbench_run_job import new_run_ref
 from core.services.workbench.run.jobs import WorkbenchRunService
 from core.services.workbench.run.preflight import PreflightService

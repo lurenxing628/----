@@ -1,38 +1,20 @@
-"""Shared-run HTTP processes and legacy selectors preserve saved evidence."""
+"""Shared-run HTTP processes and public search summaries preserve saved evidence."""
 
 import csv
 import io
 import json
 import sys
 from copy import deepcopy
-from types import SimpleNamespace
 
 import pytest
 from openpyxl import load_workbook
 
-from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.scheduler.contracts.optimizer_public_safety import project_attempt_metrics, project_public_metrics
 from core.services.scheduler.run.optimizer.shared_process import UNIFIED_PROCESS_VERSION
 from core.services.scheduler.summary.optimizer_public_attempts import COMPARISON_METRIC_KEYS, project_attempts
 from core.services.scheduler.summary.optimizer_public_summary import project_public_algo_summary
-from core.services.workbench.facts.candidate_process import COUNT_KEYS, candidate_process, index_saved_processes
-from core.services.workbench.run.decision_process import (
-    normalize_process_filters,
-    process_details,
-    process_export_records,
-)
-from core.services.workbench.run.decision_process_export import (
-    ATTEMPT_HEADERS,
-    CANDIDATE_HEADERS,
-    PROCESS_CSV_HEADERS,
-    PROGRESS_HEADERS,
-    STAGE_HEADERS,
-    UNIFIED_PROCESS_CSV_HEADERS,
-    process_csv,
-    process_export_tables,
-)
-from tests.workbench.legacy_run_archive_support import load_legacy_process_evidence
-from tests.workbench.run_candidate_support import BASE, api, compute, public, retained
+from core.services.workbench.run.decision_process_export import UNIFIED_PROCESS_CSV_HEADERS
+from tests.workbench.run_candidate_support import BASE, api, compute, retained
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
 from tests.workbench.test_run_decision_api import decision_summary
 from tests.workbench.test_run_decision_impact_api import detail
@@ -44,18 +26,6 @@ def expect_error(client, path, query, status, code):
     response = client.get(path, query_string=query)
     assert response.status_code == status, response.get_json()
     assert response.get_json()["error"]["code"] == code
-
-
-def process_source(rows, selected=None):
-    run_ref = "a" * 48
-    saved = {"version": "decision-process-v1", "candidates": [candidate_process(row, rows) for row in rows]}
-    source = SimpleNamespace(run={"run_ref": run_ref}, rows=rows, selected_ref=selected,
-        saved_process=saved, candidate_processes=index_saved_processes(saved, rows),
-        scope={"run_ref": run_ref, "selected_candidate_ref": selected,
-               "comparison_mode": "candidates", "reference": {"kind": "candidate", "candidate_ref": None}},
-        baseline={"kind": "candidate", "candidate_ref": None, "state": "selection_required"})
-    source._candidate_reference = lambda ref, require_result=True: next(row for row in rows if row["candidate_ref"] == ref)
-    return source
 
 
 def process_download(client, run_ref, query, token, *, fmt, section="process"):
@@ -279,18 +249,6 @@ def test_real_shared_process_queries_and_exports_preserve_one_snapshot(candidate
         assert decision_summary(client, run_ref, **query)["data"]["selection_basis"] == overview["data"]["selection_basis"]
 
 
-@pytest.mark.parametrize("count", ["1", 1.5, True, -1, None])
-def test_saved_rejection_summary_with_a_non_integer_count_is_a_corrupt_record(count):
-    ref = "1" * 48
-    row = {"candidate_ref": ref, "status": "completed", "artifact": {
-        "label": "旧候选", "objective_name": "min_overdue",
-        "search_report": {"objective_name": "min_overdue", "rejection_summary": {"same_score": 1, "duplicate": count}},
-    }}
-    with pytest.raises(WorkbenchCommandRejected) as caught:
-        candidate_process(row, [row])
-    assert (caught.value.code, caught.value.status) == ("candidate_artifact_invalid", 500)
-
-
 def test_public_attempt_projection_drops_numbers_beyond_the_float_range_without_raising():
     huge = 10 ** 400
     completion = {"objective_scope": "all_batches", "incomplete_work_weight": huge}
@@ -300,46 +258,8 @@ def test_public_attempt_projection_drops_numbers_beyond_the_float_range_without_
     assert public_attempts == [{"score": [None, 1.5], "elapsed_ms": None, "metrics": {"completion": {"objective_scope": "all_batches"}}}]
 
 
-def test_legacy_attempts_keep_saved_indices_nulls_and_safe_public_fields():
-    ref = "1" * 48
-    row = {"candidate_ref": ref, "status": "completed", "artifact": {
-        "label": "旧候选", "objective_name": "min_overdue", "elapsed_seconds": 0.25,
-        "attempts": [
-            {"tag": "start:0", "strategy": "due_date_first", "dispatch_mode": "sgs", "dispatch_rule": "slack",
-             "score": [0, 3, 1.25], "failed_ops": 0, "metrics": {"overdue_count": 3, "makespan_hours": 1.25}},
-            {"source": "candidate_rejected", "origin": {"type": "guard", "message": "内部拒绝"}, "score": [0, 0]},
-            {"tag": "local:swap", "score": [0, 1, 1.5], "failed_ops": 0,
-             "metrics": {"overdue_count": 1, "makespan_hours": 1.5, "machine_id": "PRIVATE", "fingerprint": "SECRET"}},
-            {"tag": "local:swap2", "score": [0, None, 1.5], "metrics": {"makespan_hours": 1.5}},
-            {"tag": "multi_start_efficiency", "candidate_status": "phase_summary", "multi_start_efficiency": {"decoded_candidates": 900}},
-        ], "search_report": {"objective_name": "min_overdue", "best_improved_candidates": 1,
-                             "rejection_summary": {"same_score": 1},
-                             "candidate_profile": {"profile": "sgs", "acceptance": "improve_only", "configured_time_budget_seconds": 3}},
-        "metrics": {"overdue_count": 1},
-    }}
-    source = process_source([row], ref)
-    result = process_details(source, normalize_process_filters())
-    public(result)
-    assert result["filters"]["process_candidate_ref"] == ref and result["page"]["total"] == 3
-    assert [item["saved_index"] for item in result["items"]] == [3, 1, 4]
-    assert [item["rank"] for item in result["items"]] == [1, 2, None]
-    assert result["items"][-1]["score"] == [0, None, 1.5] and result["items"][-1]["primary_value"] is None
-    assert all(item["elapsed_ms"] is None and item["accepted"] is None for item in result["items"])
-    assert set(result["summary"]["solver_counts"].values()) == {None}
-    assert result["summary"]["solver_counts"]["strict_improvements"] is None
-    assert result["summary"]["legacy_best_updates"] == result["candidate"]["legacy_best_updates"] == 1
-    assert result["source"]["rejection_summary"] == result["summary"]["rejection_summary"] == {"same_score": 1}
-    assert result["source"]["profile"] == {"profile": "sgs", "acceptance": "improve_only", "configured_time_budget_seconds": 3}
-    assert result["summary"]["own_elapsed_ms"] == 250 and result["summary"]["source_solver_elapsed_ms"] is None
-    assert result["progress"]["mode"] == "none" and result["progress"]["points"] == []
-    assert result["source"]["evidence_state"] == "partial" and result["source"]["reason"]["code"] == "legacy_process_coverage"
-    assert "PRIVATE" not in json.dumps(result) and "SECRET" not in json.dumps(result)
-    assert result["candidate"]["final_metrics"]["overdue_count"] == 1
-    assert result["candidate"]["final_metrics"]["makespan_hours"] is None
-
+def test_public_algo_summary_keeps_sentinels_graph_origins_and_comparisons_idempotent():
     # Explicit unknown components are ordering sentinels; completed-subset zero is real.
-    scoped = deepcopy(row)
-    scoped["artifact"]["objective_name"] = "min_tardiness"
     sentinel = sys.float_info.max
     attempts = [
         {"tag": "local:unknown_scope", "score": [2, sentinel, sentinel],
@@ -355,42 +275,16 @@ def test_legacy_attempts_keep_saved_indices_nulls_and_safe_public_fields():
          "completion": {"objective_scope": "all_batches", "expected_operation_count": 31, "missing_operation_count": 0,
                         "unexpected_result_count": 0, "complete_batch_count": 11, "incomplete_batch_count": 0}}},
     ]
-    scoped["artifact"]["attempts"] = attempts
-    scoped["artifact"]["improvement_trace"] = [{"elapsed_ms": index, **deepcopy(attempt)} for index, attempt in enumerate(attempts, 1)]
-    scoped["artifact"]["metrics"] = {"total_tardiness_hours": 0, "completion": {"objective_scope": "unknown"}}
-    projected = process_details(process_source([scoped], ref), normalize_process_filters())
-    public(projected)
-    assert projected["objective"]["unit"] == "小时"
-    assert [item["saved_index"] for item in projected["items"]] == [4, 3, 1, 2]
-    by_index = {item["saved_index"]: item for item in projected["items"]}
-    for index, failed in ((1, 2), (2, 1)):
-        assert by_index[index]["primary_value"] is None
-        assert by_index[index]["score"] == [failed, None, None] and by_index[index]["rank"] is None
-    assert by_index[1]["objective_scope"] == "unknown" and by_index[2]["objective_scope"] is None
-    assert by_index[3]["primary_value"] == 0 and by_index[3]["score"] == [1, 0, 0]
-    assert by_index[3]["objective_scope"] == "completed_batches_only"
-    assert by_index[4]["primary_value"] == 5.5 and by_index[4]["score"] == [0, 5.5, 1.25]
-    points = projected["progress"]["points"]
-    assert [point["primary_value"] for point in points] == [None, None, 0, 5.5]
-    assert [point["score"] for point in points] == [[2, None, None], [1, None, None], [1, 0, 0], [0, 5.5, 1.25]]
-    assert [point["evaluation_scope"] for point in points] == [None, None, None, {"incomplete_batch_ids": []}]
-    assert projected["candidate"]["final_metrics"]["total_tardiness_hours"] == 0
-    ordinary, _diagnostics = project_public_algo_summary({"attempts": attempts, "improvement_trace": scoped["artifact"]["improvement_trace"]})
-    assert [item["score"] for item in ordinary["attempts"]] == [point["score"] for point in points]
-    assert [item["score"] for item in ordinary["improvement_trace"]] == [point["score"] for point in points]
+    trace = [{"elapsed_ms": index, **deepcopy(attempt)} for index, attempt in enumerate(attempts, 1)]
+    ordinary, _diagnostics = project_public_algo_summary({"attempts": attempts, "improvement_trace": trace})
+    expected = [[2, None, None], [1, None, None], [1, 0, 0], [0, 5.5, 1.25]]
+    assert [item["score"] for item in ordinary["attempts"]] == expected
+    assert [item["score"] for item in ordinary["improvement_trace"]] == expected
 
-    graph = deepcopy(row)
     origins = ("graph_ready_v2_generated", "graph_ready_v2_repaired", "graph_ready_v2_iterated_greedy")
-    labels = ("按规则生成排法", "局部调整排法", "继续调整工序顺序")
     graph_attempts = [{"candidate_origin": origin, "weight_profile_slug": "profile-" + str(index),
                        "tag": "graph_ready:profile|sgs:slack", "score": [0, 1, 1.5], "metrics": {"overdue_count": 1}}
                       for index, origin in enumerate(origins, 1)]
-    graph["artifact"]["attempts"] = graph_attempts
-    graph_projection = candidate_process(graph, [graph])
-    assert [item["source_label"] for item in graph_projection["attempts"]] == list(labels)
-    assert [item["candidate_origin"] for item in graph_projection["attempts"]] == list(origins)
-    assert [item["weight_profile_slug"] for item in graph_projection["attempts"]] == ["profile-1", "profile-2", "profile-3"]
-    assert all(item[key] is None for item in graph_projection["attempts"] for key in ("elapsed_ms", "event_index", "accepted", "verified", "strict_improved", "comparison"))
     public_attempts, _diagnostics = project_attempts(graph_attempts)
     assert project_attempts(public_attempts)[0] == public_attempts
     summary, _diagnostics = project_public_algo_summary({"attempts": public_attempts})
@@ -418,102 +312,10 @@ def test_legacy_attempts_keep_saved_indices_nulls_and_safe_public_fields():
     graph_attempts[2]["comparison"]["reference_metrics"]["total_tardiness_hours"] = 2.5
     graph_attempts[2]["comparison"]["reference_score"][3] = 2.5
     graph_attempts[2]["comparison"]["metric_deltas"]["total_tardiness_hours"] = -1.0
-    facts = candidate_process(graph, [graph])["attempts"]
-    assert facts[0]["comparison"] == first and facts[0]["strict_improved"] is None
-    assert facts[1]["accepted"] is True and facts[1]["strict_improved"] is False
-    assert facts[1]["elapsed_ms"] == 32 and facts[2]["elapsed_ms"] == 19
-    assert facts[1]["comparison"] == comparator
-    assert facts[2]["comparison"]["metric_deltas"]["total_tardiness_hours"] == -1.0
-    assert "PRIVATE" not in json.dumps(facts)
-    public(facts)
     ordinary, _diagnostics = project_public_algo_summary({"attempts": graph_attempts})
     repeated, _diagnostics = project_public_algo_summary(ordinary)
     assert ordinary == repeated
+    assert ordinary["attempts"][0]["comparison"] == first
     assert ordinary["attempts"][1]["comparison"] == comparator
-
-
-    # Old archives keep 27 actual saved events; their immutable projection is the reader input.
-    legacy = deepcopy(row)
-    legacy["artifact"]["improvement_trace"] = [{"elapsed_ms": index * 10, "tag": "local:swap", "strategy": "due_date_first",
-        "dispatch_mode": "sgs", "dispatch_rule": "slack", "score": [0, 28 - index, 0.75],
-        "metrics": {"overdue_count": 28 - index, "makespan_hours": 0.75}} for index in range(1, 28)]
-    legacy["artifact"]["improvement_trace"][7]["metrics"].pop("overdue_count")
-    source = process_source([legacy], ref)
-    filters = normalize_process_filters(process_candidate_ref=ref, record_kind="progress", sort="elapsed_ms")
-    first = process_details(source, filters)
-    second = process_details(source, filters, page=2)
-    wide = process_details(source, filters, size=50)
-    assert first["items"] + second["items"] == wide["items"] == first["progress"]["points"]
-    assert first["attempts"] == second["attempts"] == wide["attempts"]
-    assert first["page"] == {"number": 1, "size": 20, "total": 27, "has_more": True}
-    assert second["page"] == {"number": 2, "size": 20, "total": 27, "has_more": False}
-    assert len(second["items"]) == 7 and [point["event_index"] for point in wide["items"]] == list(range(1, 28))
-    assert [point["elapsed_ms"] for point in wide["items"]] == list(range(10, 280, 10))
-    assert first["scope"] == source.scope and first["candidate"]["candidate_ref"] == ref
-    assert first["progress"]["mode"] == "discrete" and first["source"]["evidence_state"] == "partial"
-    assert set(first["progress"]["coverage"]["endpoint_coverage"].values()) == {None}
-    assert all(point["flags"] == [] and point["verified"] is None and point["evaluation_scope"] is None for point in wide["items"])
-    assert set(first["summary"]["solver_counts"].values()) == {None}
-    assert first["summary"]["sampling"]["event_total_count"] is None
-    assert first["items"][7]["primary_value"] is None and first["items"][7]["score"] == [0, 20, 0.75]
-    empty = process_details(source, filters, page=3)
-    assert empty["items"] == [] and empty["page"]["total"] == 27 and empty["page"]["has_more"] is False
-    for order in ("asc", "desc"):
-        result = process_details(source, {**filters, "sort": "primary_value", "order": order}, size=50)
-        assert result["items"][-1]["event_index"] == 8
-        values = [point["primary_value"] for point in result["items"][:-1]]
-        assert values == sorted(values, reverse=order == "desc")
-    export = {"run": source.run, "capture_ref": source.run["run_ref"], "baseline": source.baseline,
-        "scope": {**source.scope, "range_start": None, "range_end": None, "resource_view": "selected_batches"},
-        "selection_basis": {"selection_evidence_version": None},
-        "recommendation": {"candidate_ref": ref, "recommendation_version": "decision-recommendation-v1"},
-        "export_process": process_export_records(source, filters)}
-    snapshot = {"snapshot_ref": "s" * 32, "as_of": "2026-10-15T01:30:00"}
-    tables = process_export_tables(export, snapshot)
-    assert {title: table[0] for title, table in tables.items()} == {
-        "候选计算": CANDIDATE_HEADERS, "进步事件": PROGRESS_HEADERS, "搜索阶段": STAGE_HEADERS, "代表尝试": ATTEMPT_HEADERS}
-    assert len(tables["进步事件"][1]) == 27 and process_csv(export, snapshot)[0] == PROCESS_CSV_HEADERS
-    rows = [dict(zip(PROGRESS_HEADERS, item)) for item in tables["进步事件"][1]]
-    assert [point["事件序号"] for point in rows] == list(range(1, 28))
-    assert rows[7]["业务主值"] is None and rows[7]["评分分量1"] == 20
-
-
-def test_failed_not_started_and_missing_reuse_sources_keep_availability_explicit():
-    failed, skipped, reused, old_skipped, budget_skipped = (format(index, "048x") for index in range(1, 6))
-    rows = [
-        {"candidate_ref": failed, "status": "failed", "artifact": {"label": "失败候选", "failure_reason": "测试失败原因"}},
-        {"candidate_ref": skipped, "status": "skipped", "artifact": {"label": "未启动候选",
-            "failure_reason": "candidate_time_budget_reached", "process_evidence": load_legacy_process_evidence("min_overdue_not_started")}},
-        {"candidate_ref": reused, "status": "completed", "artifact": {"label": "缺来源复用候选",
-            "reused_from_candidate_key": "old-missing-source", "elapsed_seconds": 0.001}},
-        {"candidate_ref": old_skipped, "status": "skipped", "artifact": {"label": "旧跳过候选", "failure_reason": "历史预算结束"}},
-        {"candidate_ref": budget_skipped, "status": "skipped", "artifact": {"label": "预算中断候选",
-            "failure_reason": "candidate_time_budget_reached", "process_evidence": load_legacy_process_evidence("min_overdue_budget_skipped")}},
-    ]
-    source = process_source(rows[:2])
-    result = process_details(source, normalize_process_filters())
-    assert result["candidate"]["candidate_ref"] == failed and result["scope"]["selected_candidate_ref"] is None
-    assert result["source"]["kind"] == "failed" and result["source"]["available"] is False
-    assert result["candidate"]["stop_reason"]["message"] == "测试失败原因"
-    assert result["items"] == [] and result["progress"]["mode"] == "none"
-    assert set(result["summary"]["own_counts"].values()) == {None}
-    not_started = candidate_process(rows[1], rows)
-    assert not_started["source"]["kind"] == "not_started" and not_started["source"]["available"] is True
-    assert not_started["source"]["evidence_state"] == "complete" and not_started["progress"]["mode"] == "none"
-    assert not_started["summary"]["own_counts"] == dict.fromkeys(COUNT_KEYS, 0)
-    assert not_started["candidate"]["stop_reason"]["code"] == "candidate_time_budget_reached"
-    missing = candidate_process(rows[2], rows)
-    assert missing["source"]["kind"] == "reused" and missing["source"]["available"] is False
-    assert missing["source"]["source_candidate_ref"] is None
-    assert missing["summary"]["own_counts"] == dict.fromkeys(COUNT_KEYS, 0)
-    assert set(missing["summary"]["solver_counts"].values()) == {None}
-    assert missing["progress"]["points"] == missing["attempts"] == []
-    legacy_skip = candidate_process(rows[3], rows)
-    assert legacy_skip["source"]["available"] is False and legacy_skip["source"]["evidence_state"] == "unavailable"
-    assert set(legacy_skip["summary"]["own_counts"].values()) == {None}
-    interrupted = candidate_process(rows[4], rows)
-    assert interrupted["source"]["kind"] == "budget_skipped" and interrupted["source"]["available"] is False
-    assert interrupted["source"]["evidence_state"] == "unavailable" and interrupted["progress"]["points"] == []
-    assert interrupted["candidate"]["stop_reason"]["message"] == "本轮计算时间预算已用完"
-    assert set(interrupted["summary"]["own_counts"].values()) == {None}
-    assert interrupted["summary"]["source_solver_elapsed_ms"] is None
+    assert ordinary["attempts"][2]["comparison"]["metric_deltas"]["total_tardiness_hours"] == -1.0
+    assert "PRIVATE" not in json.dumps(ordinary)

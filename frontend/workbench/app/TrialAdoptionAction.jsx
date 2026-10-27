@@ -15,5 +15,5 @@
       {s.open && <U.Dialog session={s} scenarioRef={props.scenarioRef} onNavigate={props.onNavigate} name={props.data && props.data.name} />}
     </span>;
   }
-  window.TrialAdoptionAction = function TrialAdoptionAction(props) { return <Session key={props.scenarioRef || 'missing'} {...props} />; };
+  window.TrialAdoptionAction = function TrialAdoptionAction(props) { return <Session key={props.scenarioRef} {...props} />; };
 })();

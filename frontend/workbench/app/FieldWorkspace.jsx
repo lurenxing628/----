@@ -1,11 +1,9 @@
 (function () {
   'use strict';
-  const S = window.APSResourceSession, { Button, ErrorBox, Feedback } = window.FieldControls;
-  let productionAdapter;
-  function FieldWorkspace({ adapter, onNavigate, initialContext }) {
-    const api = React.useMemo(() => adapter || (productionAdapter || (productionAdapter = window.FieldAPI.create())), [adapter]);
-    const [scope, setScope] = React.useState(() => window.FieldAPI.initial(initialContext));
-    const [opened, setOpened] = React.useState(initialContext.task_ref || initialContext.entity_ref || null), [editor, setEditor] = React.useState(null), [files, setFiles] = React.useState(false), [revision, setRevision] = React.useState(0);
+  const S = window.APSResourceSession, { Button, ErrorBox, Feedback } = window.FieldControls, api = window.FieldAPI;
+  function FieldWorkspace({ onNavigate, initialContext }) {
+    const [scope, setScope] = React.useState(() => api.initial(initialContext));
+    const [opened, setOpened] = React.useState(initialContext.task_ref || null), [editor, setEditor] = React.useState(null), [files, setFiles] = React.useState(false), [revision, setRevision] = React.useState(0);
     const drafts = React.useRef(new Map());
     const [, renderDrafts] = React.useReducer(value => value + 1, 0);
     const [nextDraft, setNextDraft] = React.useState(null), [notice, setNotice] = React.useState('');
@@ -20,7 +18,7 @@
       drafts.current.set(editor.taskRef, { editor, retained });
       renderDrafts();
     }, [editor]);
-    const read = S.useQuery(signal => window.FieldAPI.readView(api, scope, signal), [api, scope, revision]);
+    const read = S.useQuery(signal => api.readView(scope, signal), [scope, revision]);
     const data = read.result && read.result.data, snapshot = read.result && read.result.meta.snapshot_ref;
     const readPlan = React.useRef(scope.plan_ref);
     if (data && !read.loading && !read.error) readPlan.current = data.scope.plan_ref;
@@ -88,12 +86,12 @@
     }, [nextDraft, read.loading, read.error, data, selectedTask]);
     const effectiveScope = data ? data.scope : scope;
     const filtered = !!(scope.query || scope.state && scope.state !== 'all' || scope.plan_finish_date_from || scope.plan_finish_date_to || scope.range_start || scope.batch_ids || scope.resource_ref);
+    // 返回入口统一是 {view, context} 信封：值班台、现场实际甘特、报表 / 复盘带过来的都是这种。
     const returnTarget = initialContext.return_to;
-    const returnView = typeof returnTarget === 'string' ? returnTarget : returnTarget && returnTarget.view;
-    const canReturn = ['analysis', 'gantt', 'fieldgantt', 'reports', 'review', 'dashboard'].includes(returnView);
+    const canReturn = !!returnTarget && ['analysis', 'gantt', 'fieldgantt', 'reports', 'review', 'dashboard'].includes(returnTarget.view);
     return <section className="plana field-workspace" data-field-workspace aria-label="现场记录">
       <div className="field-toolbar"><h2 className="wb-page-title">现场记录</h2><span className="field-note wb-page-context">{data ? data.plan ? data.plan.display_name : '暂无正式计划' : read.loading ? '正在读取计划' : '计划未读取'}</span><span className="field-space" />
-        {canReturn && onNavigate && <Button icon="arrow-left" disabled={blocked} onClick={() => onNavigate(returnView, typeof returnTarget === 'object' ? returnTarget.context || {} : { plan_ref: effectiveScope.plan_ref })}>返回</Button>}
+        {canReturn && onNavigate && <Button icon="arrow-left" disabled={blocked} onClick={() => onNavigate(returnTarget.view, returnTarget.context)}>返回</Button>}
         <Button icon="refresh-cw" aria-label="刷新现场记录" disabled={blocked || read.loading} onClick={refresh} />
         <Button transfer="import" disabled={blocked || !data} onClick={() => { command.reset(); setFiles(true); }}>报工文件</Button>
       </div>

@@ -4,10 +4,11 @@ import sqlite3
 from typing import Any, Dict, Optional, Tuple, cast
 
 from core.infrastructure.transaction import TransactionManager
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_job import PROCESS_EXECUTOR_REF
 from core.services.workbench.facts.decision_read_models import public_job_status
 from core.services.workbench.facts.run_policy import require_admission, require_run_schema
+from core.shared.strict_json import canonical_json
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 

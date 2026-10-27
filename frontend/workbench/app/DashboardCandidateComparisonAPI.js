@@ -2,7 +2,7 @@
   'use strict';
   const C = window.DashboardContract, A = window.RunCandidateAPI, D = window.DashboardAnalysisAPI;
   const { shape, number, count, nullable } = D;
-  function context(value = {}) {
+  function context(value) {
     C.check(shape(value, [], ['run_ref', 'candidate_ref', 'range_start', 'range_end', 'batch_ref']), '候选方案比较条件无效，本页内容没有变化。请重新选择排产记录和候选方案。');
     for (const key of ['run_ref', 'candidate_ref', 'batch_ref']) if (value[key] !== undefined) C.check(C.ref(value[key]));
     C.check(!value.candidate_ref || value.run_ref);
@@ -46,24 +46,22 @@
       item.direction === (index ? 'worse' : 'better') && value.all_differences.some(entry => C.equal(entry, item))), '主要取舍与完整差值不一致，请刷新。'));
   }
   function validate(payload, scope) {
-    const d = D.envelope(payload);
+    const d = payload.data;
     C.check(shape(d, ['candidate', 'generation', 'baseline', 'time_scope', 'batch_ref', 'batch_refs', 'batches', 'resources', 'summary',
       'resource_common', 'machine_changes', 'resource_scope_complete', 'resource_scope_unknown_rows', 'basis', 'capabilities', 'tradeoffs']));
     A.summary(d.candidate, scope.run_ref);
     C.check(d.candidate.candidate_ref === scope.candidate_ref, '返回的候选与所选方案不一致，请重新选择。');
     const g = d.generation;
-    C.check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated', 'input', 'source_verification'])
+    C.check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated', 'input'])
       && g.run_ref === d.candidate.run_ref && A.time(g.accepted_at) && (g.finished_at === null || A.time(g.finished_at))
       && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission'
-      && g.current_entities_consulted === false && g.formal_version_allocated === false
-      && C.equal(g.source_verification, { facts_content_verified: true, baseline_matches_archived_schedule: true,
-        execution_verified_at: 'run_admission', input_source_verified: true, candidate_content_verified: true }));
+      && g.current_entities_consulted === false && g.formal_version_allocated === false);
     const input = g.input;
     C.check(shape(input, ['batch_refs', 'start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'], ['material_strategy', 'hold_window', 'time_budget_seconds'])
       && Array.isArray(input.batch_refs) && input.batch_refs.every(C.ref) && new Set(input.batch_refs).size === input.batch_refs.length
       && ['start_date', 'end_date'].every(key => A.time(input[key] + 'T00:00:00')) && input.start_date <= input.end_date
       && typeof input.ready_check === 'boolean' && ['auto_assign', 'exclude'].includes(input.missing_resource_policy) && input.completed_policy === 'preserve_actuals'
-      && (input.material_strategy === undefined || ['strict', 'stage', 'split'].includes(input.material_strategy))
+      && (input.material_strategy === undefined || ['strict', 'stage'].includes(input.material_strategy))
       && (input.time_budget_seconds === undefined || window.RunGenerationContract.budget(input.time_budget_seconds)));
     const hold = input.hold_window;
     C.check(hold === undefined || hold === null || shape(hold, ['start', 'end'])
@@ -97,14 +95,12 @@
     tradeoffs(d.tradeoffs, d);
     return d;
   }
-  function create(fetcher = window.fetch.bind(window)) {
-    return { async read(value, signal) {
-      const scope = context(value);
-      C.check(scope.candidate_ref && scope.range_start && scope.range_end, '请先选择候选并填写两个方案共同的开始和结束时间。');
-      const query = { range_start: scope.range_start, range_end: scope.range_end, ...(scope.batch_ref ? { batch_ref: scope.batch_ref } : {}) };
-      const payload = await D.request('/api/workbench/v1/dashboard/candidates/' + scope.candidate_ref + '/comparison?' + new URLSearchParams(query), fetcher, signal);
-      validate(payload, scope); return payload;
-    } };
+  async function read(value, signal) {
+    const scope = context(value);
+    C.check(scope.candidate_ref && scope.range_start && scope.range_end, '请先选择候选并填写两个方案共同的开始和结束时间。');
+    const query = { range_start: scope.range_start, range_end: scope.range_end, ...(scope.batch_ref ? { batch_ref: scope.batch_ref } : {}) };
+    const payload = await C.read('/api/workbench/v1/dashboard/candidates/' + scope.candidate_ref + '/comparison', query, signal);
+    validate(payload, scope); return payload;
   }
-  window.DashboardCandidateComparisonAPI = { create, validate, context };
+  window.DashboardCandidateComparisonAPI = { read, validate, context };
 })();

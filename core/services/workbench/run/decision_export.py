@@ -276,7 +276,7 @@ def _export_context(source):
 def write_run_decision_export(data, snapshot, fmt, section="overview"):
     if fmt == "csv" and section in ("recommendation", "process"):
         csv_table = recommendation_csv(data, snapshot) if section == "recommendation" else process_csv(data, snapshot)
-        return FileDownload("排产方案比较.csv", "text/csv; charset=utf-8", csv_bytes(*csv_table), len(csv_table[1]))
+        return FileDownload("排产方案对比.csv", "text/csv; charset=utf-8", csv_bytes(*csv_table), len(csv_table[1]))
     tables = {}
     if section in ("overview", "all"):
         tables["方案总览"] = (HEADERS, list(overview_rows(data)))
@@ -304,7 +304,7 @@ def write_run_decision_export(data, snapshot, fmt, section="overview"):
         tables.update(process_export_tables(data, snapshot))
     content = csv_bytes(*next(iter(tables.values()))) if fmt == "csv" else _xlsx(data, snapshot, tables)
     mime = "text/csv; charset=utf-8" if fmt == "csv" else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    return FileDownload("排产方案比较." + fmt, mime, content, sum(len(rows) for _, rows in tables.values()))
+    return FileDownload("排产方案对比." + fmt, mime, content, sum(len(rows) for _, rows in tables.values()))
 
 
 def csv_bytes(headers, rows):
@@ -371,7 +371,7 @@ def _xlsx(data, snapshot, tables):
                    ("正式基准版本", data["baseline"].get("version")), ("正式来源候选编号", data["baseline"].get("source_candidate_ref")),
                    ("所选方案编号", scope["selected_candidate_ref"]),
                    ("推荐方案编号", data["recommendation"]["candidate_ref"]), ("范围起点（含）", scope["range_start"]),
-                   ("推荐版本", data["recommendation"]["recommendation_version"]), ("推荐记录格式版本", data["selection_basis"]["selection_evidence_version"]),
+                   ("推荐版本", data["recommendation"]["recommendation_version"]), ("推荐记录格式版本", data["selection_basis"]["selection_policy_version"]),
                    ("范围终点（不含）", scope["range_end"]), ("批次数", len(scope["batch_refs"])),
                    ("工序数", len(scope["operation_refs"])), ("差值方向", "候选减查看基准"),
                    ("资源视角", "本次所选批次" if scope["resource_view"] == "selected_batches" else "方案全部安排"),

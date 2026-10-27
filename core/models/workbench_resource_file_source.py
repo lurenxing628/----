@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from core.errors import ValidationError
 from core.models.content import same
 from core.models.workbench_action_values import AtomicActionPreview
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
+from core.shared.strict_json import canonical_json
 
 
 @dataclass(frozen=True)

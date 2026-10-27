@@ -1,6 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const { compile } = require('../../scripts/workbench/compile.cjs');
+const { routeFetch, envelope: success, browser, loadTransport } = require('./route_fetch.cjs');
 const root = path.resolve(__dirname, '../..'), ref = 'a'.repeat(48), part = 'b'.repeat(48), sample = 'c'.repeat(48);
 const React = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
   useState: value => [value, () => {}], useEffect() {}, Fragment: 'fragment' };
@@ -11,6 +12,7 @@ const window = { ResourceControls: { Button: 'button', Modal: 'modal' }, Calibra
     failure: message => new Error(message), receipt: () => 'terminal' }, APSProcessActions: { ref: value => /^[a-f0-9]{48}$/.test(value), token: value => typeof value === 'string' && !!value },
   APSProcessContract: { externalGroup: () => true } };
 const context = vm.createContext({ window, React, setTimeout, clearTimeout, AbortController });
+const routes = {}, fetch = routeFetch(routes); browser(context, fetch); loadTransport(context);
 const names = ['CalibrationAdoptionAPI.js', 'CalibrationAdoptionControls.jsx', 'ProcessFileContract.js', 'ProcessFilePreview.jsx'];
 const built = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
   sources: names.map(name => ({ path: name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') })), check_combined: true });
@@ -27,18 +29,19 @@ const samples = suggestion.sample_revisions.map(row => ({ ...row, execution_oper
 const preview = { template_operation_ref: ref, suggestion, generated_at: generated, input, effect_scope: 'future_template_use_only', samples,
   latest_adoption: { template_operation_ref: ref, adoption_ref: 'd'.repeat(48), new_unit_hours: 3, adopted_at: generated },
   validation: { can_adopt: true, issues: [] }, write_context: { write_token: 'token', expires_at: '2026-10-09T09:15:00', capabilities: { 'calibration.adopt': true }, blocked_reasons: [] } };
-const envelope = { ok: true, schema_version: 1, warnings: [], meta: { source: 'production', time_basis: 'factory_local', as_of: generated }, data: preview };
+const envelope = success(preview, { as_of: generated, snapshot_ref: null });
 const receipt = { ok: true, result: 'committed', receipt_ref: 'e'.repeat(32), replayed: false, warnings: [], data: {
   adoption_ref: 'f'.repeat(48), template_operation_ref: ref, request_key: 'calibration-' + ref, ...input, confirmed: true, application_operator: 'local',
   adopted_at: generated, generated_at: generated, old_unit_hours: 3, new_unit_hours: 6, template_revision_before: 3, template_revision_after: 4,
   method_version: suggestion.method_version, sample_count: 5, sample_refs: suggestion.sample_refs, sample_revisions: suggestion.sample_revisions,
   effect_scope: 'future_template_use_only' } };
 const intent = { request_key: receipt.data.request_key, baseline: suggestion, input: { ...input, confirm: true } };
-const fetcher = async (url) => ({ status: 200, ok: true, headers: new Map([['Content-Type', 'application/json']]), json: async () => url.endsWith('/adopt-preview') ? envelope : receipt });
+Object.assign(routes, { ['POST /api/workbench/v1/calibration/' + ref + '/adopt-preview']: () => envelope, ['POST /api/workbench/v1/calibration/' + ref + '/adopt']: () => receipt,
+  ['GET /api/workbench/v1/calibration/' + ref + '/adopt/receipts/' + intent.request_key]: () => receipt });
 function text(node) { if (node == null || typeof node === 'boolean') return ''; if (typeof node !== 'object') return String(node);
   if (Array.isArray(node)) return node.map(text).join(''); if (typeof node.type === 'function') return text(node.type(node.props)); return text(node.props && node.props.children) + (node.type === 'modal' ? text(node.props.footer) : ''); }
 (async () => {
-  const api = window.CalibrationAdoptionAPI.create(fetcher);
+  const api = window.CalibrationAdoptionAPI;
   assert.equal((await api.preview(suggestion, input)).validation.can_adopt, true);
   assert.equal((await api.adopt(intent, 'token')).data.new_unit_hours, 6);
   // Previously saved receipts still render and can be queried after the upgrade.

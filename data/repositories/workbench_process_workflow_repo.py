@@ -104,7 +104,7 @@ class WorkbenchProcessWorkflowRepository(BaseRepository):
 
     def supplier_facts(self, supplier_ids: Optional[Sequence[Any]]) -> List[Dict[str, Any]]:
         return self._supplier_rows("""
-        SELECT s.supplier_id, s.op_type_id, s.status, r.ref, p.inactive_reason FROM Suppliers s
+        SELECT s.supplier_id, s.status, r.ref, p.inactive_reason FROM Suppliers s
         LEFT JOIN WorkbenchEntityRefs r ON r.kind='supplier' AND r.active=1 AND r.entity_key=s.supplier_id
         LEFT JOIN WorkbenchSupplierProfiles p ON p.supplier_id=s.supplier_id""", supplier_ids)
 

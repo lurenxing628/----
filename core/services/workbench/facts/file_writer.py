@@ -6,7 +6,6 @@ import re
 from tempfile import SpooledTemporaryFile
 
 from core.models.workbench_action_values import FileDownload
-from core.models.workbench_command import canonical_json
 from core.models.workbench_resource_file import (
     ENUM_CODES,
     ENUM_LABELS,
@@ -21,6 +20,7 @@ from core.services.common.excel_instruction_sheet import (
     append_instruction_sheet,
     close_write_only_sheets,
 )
+from core.shared.strict_json import canonical_json
 from core.shared.strict_parse import is_exact_finite_number
 
 from .file_codec import file_error

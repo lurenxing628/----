@@ -32,7 +32,6 @@ def test_stored_json_preserves_types_and_rejects_nested_duplicates_and_nonfinite
 
 def test_saved_execution_requires_exact_projection_and_report_fields(ledger_case):
     case = ledger_case
-    case.install()
     task_ref = case.task(1, case.op_id)
     case.command("create", task_ref, case.values(2))
     original = case.task_projection(task_ref).to_dict()
@@ -69,7 +68,6 @@ def test_saved_execution_requires_exact_projection_and_report_fields(ledger_case
 
 def test_prepared_execution_retains_all_fields_without_materializing_public_dtos(ledger_case, monkeypatch):
     case = ledger_case
-    case.install()
     task_ref = case.task(1, case.op_id)
     created = case.command("create", task_ref, case.values(2))["data"]["rows"][0]
     case.command("correct", created["report_ref"], {"original_revision_ref": created["revision_ref"],

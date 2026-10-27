@@ -9,7 +9,7 @@ from core.infrastructure.backup import MIN_KEEP_BACKUPS, protected_recent_backup
 from core.infrastructure.logging import safe_log
 from core.infrastructure.safe_files import UnsafeFixedFileError, remove_fixed_file, stat_regular_file
 from core.infrastructure.transaction import TransactionManager
-from core.models.workbench_command import canonical_json
+from core.shared.strict_json import canonical_json
 from data.repositories.operation_log_repo import OperationLogRepository
 
 from .telemetry import write_job_state, write_oplog

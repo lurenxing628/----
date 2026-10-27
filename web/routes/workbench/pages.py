@@ -5,10 +5,10 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from flask import Blueprint, current_app, g, get_flashed_messages, render_template, request, url_for
+from flask import Blueprint, current_app, g, get_flashed_messages, redirect, render_template, request, url_for
 
 from core.services.workbench import messages
-from web.api_responses import json_response
+from web.api_responses import json_response, query_success
 
 from .assets import WorkbenchAssetsUnavailable, read_asset_manifest
 from .navigation_boot import WorkbenchNavigationInvalid, read_navigation
@@ -85,6 +85,12 @@ def _host(view: str):
     return response
 
 
+@bp.get("/")
+def root():
+    """启动器打开的站点根地址：直接进入工作台首页。"""
+    return redirect(url_for("workbench.index"))
+
+
 @bp.get("/workbench")
 def index():
     return _host(request.args.get("view", "dashboard"))
@@ -118,10 +124,7 @@ def system_overview():
         }})
         response.status_code = 500
     else:
-        response = json_response({"ok": True, "schema_version": 1, "data": data, "meta": {
-            "request_ref": request_ref, "source": "production",
-            "as_of": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-            "time_basis": "factory_local", "snapshot_ref": uuid.uuid4().hex,
-        }, "warnings": []})
+        # 概况是一次性的本机检查，没有可回绑的读取快照。
+        response = query_success(data, {"as_of": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"), "snapshot_ref": None})
     response.headers["Cache-Control"] = "no-store"
     return response

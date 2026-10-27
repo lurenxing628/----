@@ -47,7 +47,7 @@
       && typeof p.quantity_complete === 'boolean' && Number.isInteger(p.unknown_record_count) && Array.isArray(p.data_gaps)
       && Array.isArray(p.reports) && p.reports.every(row => report(row) && row.operation_ref === p.operation_ref) && Array.isArray(p.legacy_facts) && Array.isArray(p.voided_reports) && C.object(p.write_context);
   }
-  // 信封（ok、schema_version、meta、data 对象）已由 resource-api.js 的 production() 校验，这里只校验 data。
+  // 信封（ok、schema_version、meta、data 对象）已由 transport.js 的 envelope() 校验，这里只校验 data。
   function query(result, mode, expected) {
     const d = result.data;
     if (mode === 'list' && (!Array.isArray(d.tasks) || !d.tasks.every(task) || !C.object(d.page) || !Number.isInteger(d.page.total) || !C.object(d.summary))) throw C.failure('读到的现场任务列表不完整，请刷新重试。');
@@ -96,18 +96,10 @@
     result.declared_operator = value.declared_operator.trim();
     return result;
   }
-  function saveFile(file, fallback) {
-    // resource-api.js 的二进制下载只在服务端回 JSON 成功信封时不带 blob；带 blob 时恒非空且 disposition 恒为字符串。
-    if (!(file.blob instanceof Blob) || !file.contentType.includes('spreadsheetml')) throw C.failure('下载不是有效 XLSX 文件。');
-    const match = /filename\*=UTF-8''([^;]+)/i.exec(file.disposition);
-    const url = URL.createObjectURL(file.blob), link = document.createElement('a');
-    link.href = url; link.download = match ? decodeURIComponent(match[1]) : fallback;
-    document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
   const display = value => value === null || value === undefined || value === '' ? '未知' : String(value);
   // Report times are second-precision (see the time pattern and step="1" inputs): seconds stay visible whenever they are
   // not :00, so nothing is lost while whole-minute times read as minutes. WorkbenchFormat has no auto option yet.
   const hasSeconds = value => typeof value === 'string' && /:\d\d:(?!00(?:\.0+)?$)\d\d(?:\.\d+)?$/.test(value);
   const date = value => window.WorkbenchFormat.dateTime(value, { seconds: hasSeconds(value), fractions: true });
-  window.FieldContract = { states, reportActions, fields, ref, task, report, query, blocked, draft, input, saveFile, display, date, quantity, hours, pieceLabel, planQuantity, quantityReasons, validTime };
+  window.FieldContract = { states, reportActions, fields, ref, task, report, query, blocked, draft, input, display, date, quantity, hours, pieceLabel, planQuantity, quantityReasons, validTime };
 })();

@@ -5,8 +5,8 @@ import sqlite3
 
 from flask import Blueprint, g
 
-from core.models.workbench_command import canonical_json
 from core.services.workbench.run.candidate_adoption import WorkbenchRunCandidateAdoptionService
+from core.shared.strict_json import canonical_json
 from tests.workbench.run_candidate_support import candidate_case as candidate_case  # noqa: F401
 from tests.workbench.run_candidate_support import compute, connect, corrupt_update
 from tests.workbench.trial_adoption_support import assert_dashboard_task_appends
@@ -61,25 +61,12 @@ def assert_retained(before, after):
 
 
 def rewrite_candidate(case, ref, change):
-    row = case.conn.execute("SELECT artifact_json FROM WorkbenchRunCandidates WHERE candidate_ref=?", (ref,)).fetchone()
-    artifact = json.loads(row[0])
     tasks = [(row[0], json.loads(row[1])) for row in case.conn.execute(
         "SELECT row_ref,payload_json FROM WorkbenchRunCandidateTasks WHERE candidate_ref=? ORDER BY ordinal", (ref,))]
     for row_ref, payload in tasks:
         change(payload)
         corrupt_update(case.conn, "WorkbenchRunCandidateTasks", "UPDATE WorkbenchRunCandidateTasks SET payload_json=? WHERE row_ref=?",
                        (canonical_json(payload), row_ref))
-    if artifact.get("task_payload_source") == "candidate_tasks_v1":
-        return
-    artifact["validated_payload"]["schedule_rows"] = [{k: v for k, v in payload.items() if k != "locked"} for _, payload in tasks]
-    by_id = {payload["op_id"]: payload for _, payload in tasks}
-    for row in artifact["results"]:
-        row.update({k: v for k, v in by_id[row["op_id"]].items() if k != "locked"})
-    artifact["validated_payload"]["assigned_by_op_id"] = {
-        str(payload["op_id"]): {key: payload[key] for key in ("machine_id", "operator_id")}
-        for _, payload in tasks if payload["source"] == "internal"}
-    corrupt_update(case.conn, "WorkbenchRunCandidates", "UPDATE WorkbenchRunCandidates SET artifact_json=? WHERE candidate_ref=?",
-                   (canonical_json(artifact), ref))
 
 
 def api(case, enabled=True, connection_factory=connect):

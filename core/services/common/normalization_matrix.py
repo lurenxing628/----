@@ -42,7 +42,6 @@ _SKILL_LEVEL_ALIAS_MAP: Dict[str, str] = {
     SkillLevel.BEGINNER.value: SkillLevel.BEGINNER.value,
     SkillLevel.NORMAL.value: SkillLevel.NORMAL.value,
     SkillLevel.EXPERT.value: SkillLevel.EXPERT.value,
-    SkillLevel.SKILLED.value: SkillLevel.EXPERT.value,
     "low": SkillLevel.BEGINNER.value,
     "high": SkillLevel.EXPERT.value,
     "初级": SkillLevel.BEGINNER.value,
@@ -143,12 +142,11 @@ def normalize_yes_no_narrow_value(
 def normalize_skill_level_value(
     value: Any,
     *,
-    allow_none: bool,
     unknown_policy: str,
-) -> Optional[str]:
+) -> str:
     text = _text(value)
     if not text:
-        return None if allow_none else SkillLevel.NORMAL.value
+        return SkillLevel.NORMAL.value
     return _enum_alias_lookup(
         text,
         alias_map=_SKILL_LEVEL_ALIAS_MAP,

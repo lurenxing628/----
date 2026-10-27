@@ -3,13 +3,11 @@
 from copy import deepcopy
 from typing import Any, Dict, List, Optional, overload
 
-from core.models.workbench_command import canonical_json
 from core.models.workbench_preflight import preflight_window
-from core.shared.strict_parse import finite_float
+from core.shared.strict_json import canonical_json
 
 from .admission_scope import project_admitted_scope
-from .candidate_delivery import project_legacy_delivery_detail
-from .candidate_process import PROCESS_VERSION, candidate_process
+from .candidate_delivery import project_delivery_detail
 from .candidate_projection import candidate_summary, completed_dispositions, dispositions
 from .candidate_tasks import project_validated_tasks
 from .candidate_values import text
@@ -17,7 +15,7 @@ from .completion_scope import project_completion_summary
 from .decision_baseline import read_decision_baseline_members
 from .decision_candidate import project_candidate_summary
 from .decision_delivery import project_decision_delivery
-from .decision_metrics import admission_operation_refs, admission_operations, project_official_core_metrics
+from .decision_metrics import admission_deferred_refs, admission_operation_refs, project_official_core_metrics
 from .decision_preparation import (
     admission_operation_standards,
     preparation_work_items,
@@ -107,41 +105,10 @@ class _Members:
         return result
 
 
-def _configuration(facts, receipt):
-    saved = ((receipt or {}).get("summary") or {}).get("algo", {}).get("config_snapshot")
-    if type(saved) is dict:
-        return saved
-    return {row["config_key"]: row.get("config_value") for row in facts.table("ScheduleConfig") or []}
-
-
-def _stored_number(value):
-    if type(value) is int:
-        return value
-    if type(value) is str:
-        try:
-            return int(value)
-        except ValueError:
-            return finite_float(value)
-    return finite_float(value) if type(value) is float else None
-
-
-def _run_options(capture, facts, receipt):
-    if type(capture.get("run_options")) is dict:
-        return dict(capture["run_options"])
-    config, selection = _configuration(facts, receipt), (receipt or {}).get("selection") or {}
-    return {"generation_policy_version": selection.get("generation_policy_version"),
-            "primary_objective": selection.get("primary_objective") or selection.get("objective_name") or config.get("objective"),
-            "target_objectives": selection.get("target_objectives"),
-            "time_budget_seconds": _stored_number(capture["input"].get("time_budget_seconds", config.get("time_budget_seconds"))),
-            "algo_mode": config.get("algo_mode"), "graph_analysis_mode": config.get("graph_analysis_mode")}
-
-
 def build_admission_read_model(capture, *, facts):
     """Small history/status scope; the decision block lives in its separate column."""
-    options = _run_options(capture, facts, None)
-    summary = scope_summary(canonical_json(capture["input"]))
-    if options["generation_policy_version"] is not None:
-        summary = dict(summary, run_options=options)
+    options = dict(capture["run_options"])
+    summary = dict(scope_summary(canonical_json(capture["input"])), run_options=options)
     workload = project_admitted_scope(capture["input"], facts, summary=summary)
     return {"scope_summary": summary, "input": capture["input"], "run_options": options,
             **{field: workload[field] for field in ("batches", "operation_count", "objective", "objective_label")},
@@ -248,11 +215,10 @@ def _official_projection(run, facts, disposition, official, refs, batch_refs, de
         "resource_views": _resource_views(tasks, refs, intervals)}
 
 
-def _missing_candidate_reference(run, facts, refs, deferred, batch_refs, receipt, standards=None):
-    efforts = saved_operation_efforts((receipt or {}).get("operation_effort"), identities=facts.operations)
-    preparation = project_decision_preparation(facts, refs, efforts, [], run_ref=run["run_ref"],
-        available=False, deferred_refs=deferred, standards=standards,
-        requirements_available=(receipt or {}).get("operation_effort") is not None)
+def _missing_candidate_reference(run, facts, refs, deferred, batch_refs):
+    """Admission placeholder while a run has no selected candidate to compare against."""
+    preparation = project_decision_preparation(facts, refs, {}, [], run_ref=run["run_ref"],
+        available=False, deferred_refs=deferred, requirements_available=False)
     delivery = project_decision_delivery(facts, [], batch_refs, available=False,
         deferred_ids={facts.operations[ref] for ref in deferred}, candidate=None)
     return {"preparation": preparation["summary"], "delivery": delivery,
@@ -265,9 +231,9 @@ def build_admission_decision_read_model(run, capture, official, *, facts, receip
     ``official`` and the receipt's dispositions are None only when the v41
     migration backfills a run that saved no candidate results.
     """
-    disposition = dispositions(receipt)
-    refs, deferred, _ = (admission_operations(facts, capture["input"], disposition) if disposition is not None
-                         else (admission_operation_refs(facts, capture["input"]), set(), set()))
+    refs = admission_operation_refs(facts, capture["input"])
+    disposition = dispositions(receipt, expected_refs=refs)
+    deferred = admission_deferred_refs(facts, capture["input"], refs, disposition) if disposition is not None else set()
     refs, batch_refs = sorted(refs), sorted(capture["input"]["batch_refs"])
     members = _Members()
     for ref in refs:
@@ -278,18 +244,19 @@ def build_admission_decision_read_model(run, capture, official, *, facts, receip
                       if official is None else
                       _official_projection(run, facts, disposition, official, refs, batch_refs, dependencies))
     range_start, range_end = preflight_window(capture["input"])
-    context = {"input": capture["input"], "run_options": _run_options(capture, facts, receipt),
+    context = {"input": capture["input"], "run_options": dict(capture["run_options"]),
         "range_start": range_start, "range_end": range_end,
         "admission_operation_refs": refs, "expected_operation_refs": sorted(set(refs) - deferred),
         "deferred_operation_refs": sorted(deferred), "official_members": {
             "identity": dict(saved_official["identity"]), "operation_refs": saved_official["operation_refs"]},
         "resources": _resources(facts, ()) if official is None else saved_official["resources"],
         # Guard facts own actual deferrals; the public pending run has no result receipt.
-        "missing_candidate_reference": _missing_candidate_reference(
-            run, facts, refs, deferred, batch_refs, None)}
+        "missing_candidate_reference": _missing_candidate_reference(run, facts, refs, deferred, batch_refs)}
     encoded_official, encoded_context = members.encode(saved_official), members.encode(context)
     encoded_context["operation_batch_indices"] = _operation_batches(facts, members)
-    return {"context": encoded_context, "memberships": members.value, "calendar": _calendar(facts), "official": encoded_official}
+    # The worker computes from exactly this archived classification and never reclassifies.
+    return {"context": encoded_context, "memberships": members.value, "calendar": _calendar(facts), "official": encoded_official,
+            "dispositions": None if disposition is None else list(disposition.values())}
 
 
 def prepare_admission_read_models(run, capture, official, *, facts, receipt, dependencies=None):
@@ -337,23 +304,16 @@ def build_decision_read_models(run, capture, receipt, candidates, prepared_candi
     expanded = Memberships(admission["memberships"])
     refs = expanded.refs(context["admission_operation_refs"], "operation")
     deferred = set(expanded.refs(context["deferred_operation_refs"], "operation"))
-    batch_refs, disposition = sorted(capture["input"]["batch_refs"]), completed_dispositions(receipt)
+    batch_refs, disposition = sorted(capture["input"]["batch_refs"]), completed_dispositions(receipt, expected_refs=refs)
     skipped = {ref for ref in refs if disposition[ref]["status"] == "skipped"} - deferred
     operation_scope = set(refs), deferred, skipped
     deferred_ids = {facts.operations[ref] for ref in deferred}
-    legacy_deferred_ids = material_deferred_ids(disposition.values(), capture["input"])
-    efforts = saved_operation_efforts(receipt.get("operation_effort"), identities=facts.operations)
+    receipt_deferred_ids = material_deferred_ids(disposition.values(), capture["input"])
+    efforts = saved_operation_efforts(receipt["operation_effort"], identities=facts.operations)
     standards = admission_operation_standards(facts, refs, run["run_ref"])
     basis, candidate_models = selection_basis(receipt, candidates), []
-    unified = (receipt.get("selection") or {}).get("generation_policy_version") == "unified_search_v1"
-    default_reference = (next((row for row in candidates if row["candidate_ref"] == basis["selected_candidate_ref"]
-                              and row["status"] == "completed"), None) if unified else
-                         next((row for row in candidates if row["status"] == "completed" and row["artifact"].get("kind") == "baseline"), None))
-    if default_reference is None:
-        context["missing_candidate_reference"] = members.encode(_missing_candidate_reference(
-            run, facts, refs, deferred, batch_refs, receipt, standards))
-    else:
-        context.pop("missing_candidate_reference", None)
+    # The saved selection is every completed run's default reference; the admission placeholder retires.
+    del context["missing_candidate_reference"]
     for candidate in candidates:
         ref = candidate["candidate_ref"]
         packet = prepared_candidates[ref]
@@ -365,21 +325,20 @@ def build_decision_read_models(run, capture, receipt, candidates, prepared_candi
         available = candidate["status"] == "completed"
         delivery = project_decision_delivery(facts, tasks, batch_refs, candidate=candidate, available=available,
             deferred_ids=deferred_ids, intervals=intervals)
-        summary = project_candidate_summary(candidate, tasks, facts, disposition, batch_refs, basis, candidates, delivery,
+        summary = project_candidate_summary(candidate, tasks, facts, batch_refs, basis, candidates, delivery,
                                             operation_scope=operation_scope)
         summary.update(run_ref=run["run_ref"],
                        catalog=candidate_summary(candidate, disposition, scheduled_op_ids=packet["scheduled_op_ids"]),
                        scheduled_operation_refs=sorted({row["operation_ref"] for row in tasks}),
                        resource_views=_resource_views(tasks, refs, intervals))
         prepared = project_decision_preparation(facts, refs, efforts, tasks, run_ref=run["run_ref"], available=available,
-            deferred_refs=deferred, standards=standards,
-            requirements_available=receipt.get("operation_effort") is not None or available)
+            deferred_refs=deferred, standards=standards, requirements_available=True)
         work = preparation_work_items(facts, prepared["rows"], disposition, available=available)
         completion = project_completion_summary(delivery, work, available=available, schedulable_coverage=summary["coverage"]["schedulable"])
-        detail = project_legacy_delivery_detail(
+        detail = project_delivery_detail(
             candidate, facts, tasks, capture["input"], intervals=intervals,
-            deferred_ids=legacy_deferred_ids,
-            precomputed_delivery=delivery if available and deferred_ids == legacy_deferred_ids else None,
+            deferred_ids=receipt_deferred_ids,
+            precomputed_delivery=delivery if available and deferred_ids == receipt_deferred_ids else None,
         )
         candidate_models.append({"candidate_ref": ref, "run_ref": run["run_ref"], "projection_version": PROJECTION_VERSION,
             "summary": members.encode(summary), "preparation": members.encode(prepared["summary"]),
@@ -389,5 +348,4 @@ def build_decision_read_models(run, capture, receipt, candidates, prepared_candi
     context["operation_batch_indices"] = _operation_batches(facts, members)
     return {"run_model": {"projection_version": PROJECTION_VERSION, "header": header,
         "context": context, "memberships": members.value, "calendar": admission["calendar"], "official": admission["official"],
-        "process": process if process is not None else {"version": PROCESS_VERSION,
-            "candidates": [candidate_process(candidate, candidates) for candidate in candidates]}}, "candidate_models": candidate_models}
+        "process": process}, "candidate_models": candidate_models}

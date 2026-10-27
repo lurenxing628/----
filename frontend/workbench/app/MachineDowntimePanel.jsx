@@ -4,7 +4,7 @@
   const { Button, Modal, Field, ErrorBox } = window.ResourceControls;
   const blank = () => ({ start_time: '', end_time: '', reason_code: 'maintenance', reason_detail: '' });
   function MachineDowntimePanel({ adapter, entity, source, onClose, onCommitted }) {
-    const commandAdapter = React.useMemo(() => ({ ...adapter, readPending: undefined }), [adapter]);
+    const commandAdapter = React.useMemo(() => ({ ...adapter, readPending: () => null }), [adapter]);
     const command = S.useCommand(commandAdapter), [selection, setSelection] = React.useState(null);
     const [draft, setDraft] = React.useState(blank), [original, setOriginal] = React.useState(blank), [error, setError] = React.useState(null);
     const [confirmCancel, setConfirmCancel] = React.useState(false), [review, setReview] = React.useState(null), [lastReceipt, setLastReceipt] = React.useState(null), seen = React.useRef(null);

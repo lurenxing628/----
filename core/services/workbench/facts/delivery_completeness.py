@@ -3,52 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, cast
+from typing import Dict
 
 from core.models.schedule_plan_role import SOURCE_ADJUSTMENT_SCENARIO_ROWS, SOURCE_CANDIDATE_ROWS
 from core.models.scheduler_history_parser import parse_result_summary_payload
-from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.scheduler.summary.due_risk_items import incomplete_batch_ids_from_failure_details
-from core.services.workbench.facts.candidate_projection import completed_dispositions
-from core.services.workbench.facts.candidate_store import CandidateStore
-from core.services.workbench.facts.material_deferral_evidence import archived_deferred_payload_evidence
-from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
-from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
-
-
-def deferred_operation_evidence(conn, record):
-    """Saved adoption claims, or the immutable source of an older stage adoption."""
-    parsed = parse_result_summary_payload(record.get("summary"))
-    payload = parsed.payload if not parsed.parse_failed else None
-    ids, issues = archived_deferred_payload_evidence(payload)
-    if issues != ["deferred_operation_evidence_missing"]:
-        return ids, issues
-    # archived_deferred_payload_evidence 仅对已确认的 dict 和 stage 策略产生此缺项标记。
-    payload = cast(Dict[str, Any], payload)
-    try:
-        if payload.get("source") == "workbench_candidate_adoption":
-            if not isinstance(payload.get("candidate_ref"), str):
-                return set(), issues
-            store = CandidateStore(conn)
-            run_ref = store.candidate_run(payload["candidate_ref"])
-            scope = completed_dispositions(store.receipt(store.run(run_ref)))
-            settings = store.capture(run_ref)["input"]
-        elif payload.get("source") == "workbench_trial_adoption":
-            if not isinstance(payload.get("scenario_ref"), str):
-                return set(), issues
-            _, head, _ = load_saved_scenario(conn, payload["scenario_ref"])
-            source = head["admission"]["source"]
-            if "capture" not in source:
-                # 只有以候选为基础的试调来源带着候选运行的 capture 与工序处置。
-                return set(), issues
-            scope, settings = source["dispositions"], source["capture"]["input"]
-        else:
-            return set(), issues
-        return material_deferred_ids(scope.values(), settings), []
-    except WorkbenchCommandRejected as exc:
-        if exc.status == 413:
-            raise
-        return set(), ["deferred_operation_evidence_unavailable"]
 
 
 def _counter(value):

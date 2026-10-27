@@ -5,18 +5,19 @@ from datetime import date, datetime
 from typing import Any, Callable, Optional, Tuple
 
 from core.errors import ValidationError
-from core.models.enums import (
-    BATCH_PRIORITY_VALUES,
-    READY_STATUS_VALUES,
-    BatchPriority,
-    ReadyStatus,
-)
-from core.services.common.normalization_matrix import (
-    normalize_batch_priority_value,
-    normalize_ready_status_value,
-)
+from core.models.enums import BatchPriority, ReadyStatus
 from core.services.common.normalize import normalize_text
 from core.shared.strict_parse import parse_required_int
+
+# 导入只认导出和模板下拉写出的中文；空格子按默认值处理。
+_PRIORITY_LABELS = {"普通": BatchPriority.NORMAL.value, "急件": BatchPriority.URGENT.value,
+                    "特急": BatchPriority.CRITICAL.value}
+_READY_LABELS = {"齐套": ReadyStatus.YES.value, "未齐套": ReadyStatus.NO.value, "部分齐套": ReadyStatus.PARTIAL.value}
+
+
+def _label_code(value: Any, labels: dict, default: str) -> Optional[str]:
+    text = normalize_text(value)
+    return default if text is None else labels.get(text)
 
 
 def _normalize_batch_date_cell(value: Any, field_label: str) -> Tuple[Optional[str], Optional[str]]:
@@ -71,13 +72,13 @@ def get_batch_row_validate_and_normalize(
         except ValidationError as e:
             return e.message
 
-        row["优先级"] = normalize_batch_priority_value(row.get("优先级"), default=BatchPriority.NORMAL.value)
-        if row["优先级"] not in BATCH_PRIORITY_VALUES:
-            return "“优先级”不合法，可填写：普通 / 急件 / 特急。以前的 Excel 如果写过英文，系统会尽量按中文意思读取；新文件请直接填中文。"
+        row["优先级"] = _label_code(row.get("优先级"), _PRIORITY_LABELS, BatchPriority.NORMAL.value)
+        if row["优先级"] is None:
+            return "“优先级”不合法，只能填写：普通 / 急件 / 特急。"
 
-        row["齐套"] = normalize_ready_status_value(row.get("齐套"), default=ReadyStatus.YES.value)
-        if row["齐套"] not in READY_STATUS_VALUES:
-            return "“齐套”不合法，新文件请填写：齐套 / 未齐套 / 部分齐套。以前的 Excel 如果写过 是 / 否 或英文，系统会尽量按中文意思读取；新文件请直接填中文推荐值。"
+        row["维护齐套标记"] = _label_code(row.get("维护齐套标记"), _READY_LABELS, ReadyStatus.YES.value)
+        if row["维护齐套标记"] is None:
+            return "“维护齐套标记”不合法，只能填写：齐套 / 未齐套 / 部分齐套。"
 
         ready_value, error = _normalize_batch_date_cell(row.get("齐套日期"), field_label="齐套日期")
         if error:

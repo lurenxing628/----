@@ -71,7 +71,7 @@ def run_decision_operations(run_ref):
 
 @api_endpoint
 def run_decision_completion_batches(run_ref):
-    values = _query(_QUERY + ("completion_candidate_ref", "completion_filter", "sort", "order", "page", "size", "snapshot_ref"))
+    values = _query(_QUERY + ("completion_filter", "sort", "order", "page", "size", "snapshot_ref"))
     token = values.pop("snapshot_ref", None)
     with PLAN_READ_SLOTS.slot():
         data, state = read_completion_batches(g.db, run_ref, **values)
@@ -190,7 +190,7 @@ def run_decision_resource_workspace(run_ref):
             resource_result = _resource_error(exc)
     if snapshot is None:
         snapshot = bind_read_snapshot(scope, state)
-    response = json_response({**query_payload(data, snapshot), "resource_result": resource_result, "resource_query": resource_query},
+    response = json_response(query_payload({**data, "resource_result": resource_result, "resource_query": resource_query}, snapshot),
         byte_limit=MAX_RESPONSE_BYTES, too_large_code="candidate_capacity_exceeded")
     response.headers["Cache-Control"] = "no-store"
     return response

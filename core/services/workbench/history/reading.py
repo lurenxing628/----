@@ -9,11 +9,10 @@ from core.services.workbench.facts.candidate_read_source import read_candidate_s
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_values import corrupt
 from core.services.workbench.facts.decision_baseline_source import candidate_evidence, trial_evidence
-from core.services.workbench.facts.trial_policy import load_scenario_record
+from core.services.workbench.facts.decision_metrics import admission_operation_refs
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
 from core.services.workbench.run.decision import decision_history_candidate
 from core.services.workbench.run.decision_source import DecisionSource
-from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 
 from .conditions import prepare_history_condition_side, prepare_history_condition_source
 
@@ -74,8 +73,6 @@ def _packet(kind, ref, entry_ref):
         data.update(capture=None, facts=None, candidate=None, receipt=None, raw_tasks=None)
     elif kind == "trial":
         data.update(saved=None, head=None, rows=[])
-    elif kind == "legacy":
-        data["parsed_summary"] = None
     else:
         raise ValueError("Unknown saved history source")
     return data
@@ -145,8 +142,10 @@ class HistoryReader:
             rows = self.store.candidates(run_ref)
             validate_manifest(run, rows, receipt)
             capture = self.store.capture(run_ref)
+            facts = GenerationFacts(capture)
+            disposition = dispositions(receipt, expected_refs=admission_operation_refs(facts, capture["input"]))
             return {**prepared, "run": run, "receipt": receipt, "rows": rows, "capture": capture,
-                    "facts": GenerationFacts(capture), "disposition": dispositions(receipt), "candidate_sources": {}}
+                    "facts": facts, "disposition": disposition, "candidate_sources": {}}
 
         return _cached(self._runs, run_ref, load)
 
@@ -175,26 +174,24 @@ class HistoryReader:
 
     def _read(self, descriptor):
         source_kind, refs = descriptor["source_kind"], descriptor["source"]
-        kinds = {"run": "run", "candidate_adoption": "run", "trial_adoption": "trial", "legacy_official": "legacy"}
-        kind = kinds[source_kind]
-        ref = refs["run_ref"] if kind == "run" else refs["scenario_ref"] if kind == "trial" else str(refs["history_id"])
+        kind = "trial" if source_kind == "trial_adoption" else "run"
+        ref = refs["run_ref"] if kind == "run" else refs["scenario_ref"]
         packet = _packet(kind, ref, descriptor["entry_ref"])
         if source_kind in ("candidate_adoption", "trial_adoption") and descriptor["record"]["audit"] is None:
             gap = next((row for row in descriptor["evidence_gaps"] if row["code"] in ("audit_missing", "audit_unproven")), None)
             packet["source_issue"] = {"code": gap["code"], "message": gap["message"]} if gap else {
                 "code": "audit_missing", "message": "原采用审计缺失，结果来源无法确认。"}
             return packet
+        # Runs, candidates, drafts and scenarios are permanent; a missing source is damaged storage.
         try:
             if kind == "run":
                 self._read_run(packet, refs, descriptor)
-            elif kind == "trial":
-                self._read_trial(packet, refs, descriptor)
             else:
-                packet["parsed_summary"] = descriptor["record"]["summary"]
+                self._read_trial(packet, refs, descriptor)
         except WorkbenchCommandRejected as exc:
             if exc.status != 404:
                 raise
-            packet["source_issue"] = {"code": "source_missing", "message": "原候选、排产、试调场景或草稿已不存在。"}
+            raise WorkbenchCommandRejected("history_source_invalid", "历史记录的保存来源缺失，请联系维护人员核对。", 500) from exc
         return packet
 
     def _read_run(self, packet, refs, descriptor):
@@ -216,32 +213,13 @@ class HistoryReader:
         packet.update(candidate=source.candidate, raw_tasks=source.raw_tasks)
 
     def _read_trial(self, packet, refs, descriptor):
-        source = _cached(self._scenarios, refs["scenario_ref"], lambda: self._trial(refs["scenario_ref"]))
+        source = _cached(self._scenarios, refs["scenario_ref"], lambda: load_saved_scenario(self.conn, refs["scenario_ref"]))
         saved, head, rows = source
         audit = descriptor["record"]["audit"]
-        if head is None:
-            if (saved["scenario_ref"] != refs["scenario_ref"] or saved["draft_ref"] != refs["draft_ref"]
-                    or saved["baseline"] != {"plan_ref": audit["baseline_ref"], "version": audit["baseline_version"]}
-                    or saved["task_count"] != audit["row_count"]):
-                raise WorkbenchCommandRejected("history_source_invalid", "采用记录与原保存试调场景不一致。", 500)
-            packet.update(saved=saved, head=None, rows=[], source_issue={"code": "source_missing",
-                "message": "原试调草稿已不存在；保留原保存场景和原口径指标。"})
-            return
         trial_evidence(source, audit)
         if len(rows) != audit["row_count"]:
             raise WorkbenchCommandRejected("history_source_invalid", "采用记录与原试调安排条数不一致。", 500)
         packet.update(saved=saved, head=head, rows=rows)
-
-    def _trial(self, scenario_ref):
-        try:
-            return load_saved_scenario(self.conn, scenario_ref)
-        except WorkbenchCommandRejected as exc:
-            if exc.status != 404:
-                raise
-            # A saved scene can outlive its draft. Keep only its verified saved
-            # values; current projection still requires the missing admission.
-            _header, saved = load_scenario_record(WorkbenchTrialRepository(self.conn), scenario_ref)
-            return saved, None, []
 
     def source_state(self, descriptor):
         """Saved sources bind their permanent references, state and known gaps."""

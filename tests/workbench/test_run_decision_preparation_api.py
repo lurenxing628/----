@@ -15,7 +15,6 @@ from core.services.workbench.facts.resource_intervals import task_interval
 from core.services.workbench.run.decision_source import DecisionSource
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.decision_history_support import clone_run
-from tests.workbench.legacy_run_archive_support import install_different_work_archive
 from tests.workbench.run_candidate_adoption_support import INTENT, service
 from tests.workbench.run_candidate_support import BASE, api, compute
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
@@ -106,20 +105,17 @@ def test_real_worker_saves_one_requirement_used_by_all_candidates_and_workspaces
     assert reread["data"] == preparation["data"]
 
 
-def test_unplanned_and_material_deferred_work_remain_neutral_and_old_runtime_stays_missing(candidate_case, monkeypatch):
+def test_unplanned_and_material_deferred_work_remain_neutral(candidate_case):
     case = candidate_case
     case.conn.execute("UPDATE Batches SET quantity=1,due_date=? WHERE batch_id='B1'", (DAY,))
     case.conn.execute("UPDATE BatchOperations SET setup_hours=2,unit_hours=3 WHERE id=?", (case.op_id,))
     case.batch("B2", quantity=1, due_date="2026-09-10")
     missing_id = case.operation("B2", setup_hours=3, unit_hours=4)
     case.config(dispatch_mode="batch_order", sort_strategy="due_date_first")
-    with monkeypatch.context() as archive_patch:
-        install_different_work_archive(archive_patch)
-        run_ref, refs = compute(case, case.settings("B1", "B2", end_date=DAY))
+    # Twelve hours of work in one eight-hour shift: the real candidate leaves B2 unplanned.
+    run_ref, refs = compute(case, case.settings("B1", "B2", end_date=DAY))
     client, _ = api(case)
-    catalog = decision(client, run_ref)["data"]["candidates"]
-    reference = next(row["candidate_ref"] for row in catalog if row["kind"] == "critical_chain")
-    query = dict(WINDOW, selected_candidate_ref=refs[0], reference_candidate_ref=reference)
+    query = dict(WINDOW, selected_candidate_ref=refs[0])
     document = detail(client, run_ref, "preparation", **query)
     row = by_operation(document)[operation_ref(case, missing_id)]
     assert row["after"]["allocation_state"] == "unplanned"
@@ -128,24 +124,7 @@ def test_unplanned_and_material_deferred_work_remain_neutral_and_old_runtime_sta
     assert summary["after"]["pending_setup_hours"]["value"] == 5
     assert summary["after"]["scheduled_setup_hours"]["value"] == 2
     assert summary["after"]["unplanned_setup_hours"]["value"] == 3
-    delta = summary["deltas"]["scheduled_setup_hours"]
-    assert delta["value"] == -1 and delta["state"] == "different_coverage" and delta["direction"] == "neutral"
     assert row["drill"]["selected"]["operation_ref"] == operation_ref(case, missing_id)
-    # A historical run without the ledger retains independently saved standards.
-    case.history_refs = {"run_ref": run_ref, "candidate_ref": refs[0]}
-    accepted = case.conn.execute("SELECT accepted_at FROM WorkbenchRunJobs WHERE run_ref=?", (run_ref,)).fetchone()[0]
-    historical_run, _ = clone_run(case, accepted,
-        change_artifact=lambda artifact: artifact.update(analysis_contract_version="decision-resource-v3"),
-        change_receipt=lambda result: result.pop("operation_effort"))
-    historical_refs = [row[0] for row in case.conn.execute(
-        "SELECT candidate_ref FROM WorkbenchRunCandidates WHERE run_ref=? ORDER BY sequence", (historical_run,))]
-    historical_query = dict(query, selected_candidate_ref=historical_refs[refs.index(query["selected_candidate_ref"])],
-                            reference_candidate_ref=historical_refs[refs.index(reference)])
-    historical = detail(client, historical_run, "preparation", **historical_query)
-    legacy = by_operation(historical)[operation_ref(case, case.op_id)]["after"]
-    assert legacy["required_standard_hours"] is legacy["setup_standard_hours"] is None
-    assert legacy["standard"]["setup_standard_hours"] == 2 and legacy["standard"]["standard_total_hours"] == 5
-    assert legacy["execution_target_quantity"] == 1 and legacy["data_gaps"]
     stage_id = case.operation(seq=2, setup_hours=1, unit_hours=0.25)
     case.conn.commit()
     _stage_original_run, stage_original_refs = run(case, "prep-stage-before-material-run")
@@ -160,63 +139,6 @@ def test_unplanned_and_material_deferred_work_remain_neutral_and_old_runtime_sta
     assert deferred["standard"]["setup_standard_hours"] == 1
     stage_delta = staged["data"]["summary"]["deltas"]["scheduled_setup_hours"]
     assert stage_delta["value"] == -1 and stage_delta["state"] == "different_coverage" and stage_delta["direction"] == "neutral"
-
-
-def test_formal_requirements_keep_last_source_missingness_and_retained_targets(candidate_case):
-    case = candidate_case
-    case.conn.execute("UPDATE Batches SET quantity=6 WHERE batch_id='B1'")
-    case.conn.execute("UPDATE BatchOperations SET setup_hours=2,unit_hours=0.5 WHERE id=?", (case.op_id,))
-    case.batch("B2", quantity=6)
-    second_id = case.operation("B2", setup_hours=1, unit_hours=0.5)
-    case.conn.commit()
-    original_run, original_refs = compute(case, case.settings("B1", "B2"))
-    old_plan = adopt(case, original_refs[0], "prep-original-real-adopt")
-    # This authentic legacy partial-version shape leaves B2 at its actual v1
-    # adoption. B1's newer manual source contains no saved runtime or standard.
-    legacy_version = old_plan["version"] + 1
-    case.conn.execute("INSERT INTO Schedule(op_id,machine_id,operator_id,start_time,end_time,lock_status,version) "
-                      "SELECT op_id,machine_id,operator_id,start_time,end_time,lock_status,? FROM Schedule WHERE version=? AND op_id=?",
-                      (legacy_version, old_plan["version"], case.op_id))
-    case.conn.execute("INSERT INTO ScheduleHistory(version,strategy,batch_count,op_count,result_status,result_summary) "
-                      "VALUES(?,'manual',1,1,'success','{}')", (legacy_version,))
-    case.conn.execute("UPDATE Batches SET quantity=20 WHERE batch_id='B2'")
-    case.conn.execute("UPDATE BatchOperations SET unit_hours=0.15 WHERE id=?", (second_id,))
-    case.config(freeze_window_enabled="yes", freeze_window_days=5)
-    final_run, final_refs = run(case, "prep-last-source-frozen-run", case.settings("B1", "B2"))
-    client, _ = api(case)
-    query = {**WINDOW, "range_end": "2026-09-12T16:00:00", "comparison_mode": "admission_official", "selected_candidate_ref": final_refs[0]}
-    document = detail(client, final_run, "preparation", **query)
-    rows = by_operation(document)
-    first, second = rows[operation_ref(case, case.op_id)], rows[operation_ref(case, second_id)]
-    assert document["data"]["baseline"]["version"] == legacy_version
-    assert first["before"]["required_standard_hours"] is first["before"]["setup_standard_hours"] is None
-    assert first["before"]["standard"]["standard_total_hours"] is None
-    assert first["before"]["standard"]["state"] == "unavailable"
-    assert second["before"]["required_standard_hours"] == 4
-    assert second["before"]["target_quantity"] == 6
-    assert second["before"]["execution_target_quantity"] == second["before"]["remaining_quantity"] == 20
-    assert second["before"]["standard"]["unit_standard_hours"] == 0.5
-    assert second["before"]["evidence_source"]["run_ref"] == original_run
-    assert second["before"]["evidence_source"]["plan_ref"] == old_plan["plan_ref"]
-    assert first["after"]["allocation_state"] == "retained" and second["after"]["allocation_state"] == "new_schedule"
-    assert first["after"]["required_standard_hours"] is first["after"]["setup_standard_hours"] is None
-    assert first["after"]["target_quantity"] is None and first["after"]["execution_target_quantity"] == 6
-    assert first["after"]["data_gaps"]
-    assert second["after"]["required_standard_hours"] == 4 and second["after"]["target_quantity"] == 20
-    assert second["after"]["execution_target_quantity"] == second["after"]["remaining_quantity"] == 20
-    assert second["after"]["standard"]["unit_standard_hours"] == 0.15 and second["after"]["standard"]["standard_total_hours"] == 4
-    assert document["data"]["summary"]["role_totals"]["after"]["retained"]["count"] == 1
-    artifact = json.loads(case.conn.execute("SELECT artifact_json FROM WorkbenchRunCandidates WHERE candidate_ref=?", (final_refs[0],)).fetchone()[0])
-    trace = next(row for row in artifact["results"] if row["op_id"] == case.op_id)
-    if "op_type_id" in trace and trace["op_type_id"] is None:
-        response = client.get(BASE + "/candidates/" + final_refs[0] + "/workspace")
-        assert response.status_code == 200, response.get_json()
-        task = next(row for row in response.get_json()["data"]["tasks"] if row["operation_ref"] == first["operation_ref"])
-        assert task["process_type_ref"] is task["process_type_label"] is None
-    workspace = detail(client, final_run, "reference-workspace", **query)
-    work = {row["operation_ref"]: row["operation_effort"] for row in workspace["data"]["tasks"]}
-    assert work[second["operation_ref"]]["required_standard_hours"] == 4
-    assert work[first["operation_ref"]]["required_standard_hours"] is None
 
 
 def test_preparation_pages_filters_snapshot_and_all_filtered_exports(candidate_case):

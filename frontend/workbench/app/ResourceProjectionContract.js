@@ -34,7 +34,7 @@
   }
   function common(value, source) {
     return fields(value, ['metric_version', 'source', 'start', 'end', 'time_basis', 'cohort_basis', 'cohort'])
-      && ['decision-resource-v3', 'decision-resource-v4'].includes(value.metric_version) && sources.includes(value.source)
+      && value.metric_version === 'decision-resource-v4' && sources.includes(value.source)
       && (!source || value.source === source) && value.time_basis === 'factory_local'
       && typeof value.start === 'string' && typeof value.end === 'string' && value.start <= value.end
       && typeof value.cohort_basis === 'string' && Array.isArray(value.cohort)

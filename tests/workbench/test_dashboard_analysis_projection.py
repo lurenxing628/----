@@ -85,7 +85,7 @@ def test_shipped_react_analysis_uses_task_identity_for_both_navigation_handlers(
     client = api(dashboard_case, monkeypatch)
     document = client.get(BASE + "/analysis", query_string={"section": "actual"}).get_json()
     program = r"""
-const w = h.runtime, data = w.DashboardAnalysisAPI.validate(sourceData);
+const w = h.runtime, data = w.DashboardAnalysisAPI.validate(sourceData, sourceData.data.plan.plan_ref, {section: 'actual'});
 const tasks = new Map(data.tasks.map(task => [task.task_ref, task]));
 const calls = [];
 function check(value) {
@@ -106,14 +106,10 @@ function check(value) {
   });
 }
 check(data);
-// Old, richer analysis DTOs use the same authoritative task mapping.
-const rich = {...data, execution: data.execution.map(row => ({...row, subject: 'legacy label',
-  source: {...row.source, plan_ref: data.plan.plan_ref, operation_ref: tasks.get(row.source.task_ref).operation_ref}}))};
-check(rich);
 return {navigation_clicks: calls.length, shipped_react: true};
 """
     result = subprocess.run([node_runtime(), str(ROOT / "tests/_support/gantt_current_runtime.cjs")],
         input=json.dumps({"root": str(ROOT), "program": program, "data": document}),
         text=True, encoding="utf-8", capture_output=True, timeout=30)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert json.loads(result.stdout)["result"]["navigation_clicks"] == 4
+    assert json.loads(result.stdout)["result"]["navigation_clicks"] == 2

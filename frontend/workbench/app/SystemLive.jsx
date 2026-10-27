@@ -25,7 +25,7 @@ function SystemLive({ boot, theme, initialContext }) {
   React.useEffect(() => {
     if (readSuspended) { setLoading(false); setPayload(null); setError(''); return; }
     const controller = new AbortController(); setLoading(true); setError('');
-    window.APSWorkbenchTransport.read(boot.overview_url, controller.signal).then(result => {
+    window.APSWorkbenchTransport.read(boot.overview_url, {}, { signal: controller.signal, timeout: 20000 }).then(result => {
       if (!window.APSWorkbenchSystemContract.validate(result.data))
         throw new Error('读到的本机系统信息不完整，页面没有改动。请点「重新检查」重试。');
       setPayload(result);
@@ -53,7 +53,7 @@ function SystemLive({ boot, theme, initialContext }) {
     <div className="sm-source-bar"><span className="sm-source-note">{boot.instance_label + (payload ? ' · ' + window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(payload.meta.as_of)) : ' · 尚未完成读取')}</span></div>
     <MetricStrip columns={4} className="sm-metrics"><Metric label="当前页面检查" value={ready + ' / ' + local.checks.length} helper="仅页面依赖与资源" />
       <Metric label="本机数据读取" value={readSuspended ? '读取已暂停' : loading ? '读取中' : error ? '读取失败' : payload ? '已连接' : '未读取'} helper={readSuspended ? readState.reason : '来自本机数据'} tone={error ? 'danger' : undefined} />
-      <Metric label="数据库状态" value={data ? stateLabel(data.database.state) : '待读取'} helper="尚未执行完整性检查" tone={data && data.database.state === 'error' ? 'danger' : undefined} />
+      <Metric label="数据库状态" value={data ? stateLabel(data.database.state) : '未读取'} helper="尚未执行完整性检查" tone={data && data.database.state === 'error' ? 'danger' : undefined} />
       <Metric label="备份校验" value="未校验" helper={data && data.backups.count != null ? data.backups.count + ' 个备份文件' : '尚未校验'} />
     </MetricStrip>
     {notice && <p className="sm-notice" role="status">{notice}</p>}

@@ -1,4 +1,4 @@
-"""A complete persisted candidate remains usable when comparison siblings time out."""
+"""A real partial run (stage material deferral) keeps its schedulable candidate adoptable and guarded."""
 import json
 from datetime import datetime
 
@@ -19,38 +19,33 @@ def _case(tmp_path):
     yield from _trial_case.__wrapped__(tmp_path)
 
 
-def persisted_partial_run(case, monkeypatch, *, setup=None, settings=None, expected_tasks=2):
-    """Real current arrangement and worker, saved in an explicit legacy partial archive."""
-    from tests.workbench.legacy_run_archive_support import install_budget_skipped_archive
-
-    install_budget_skipped_archive(monkeypatch)
+def persisted_partial_run(case):
+    """Real worker run whose second operation waits for material under stage release."""
     second = case.operation(seq=2)
-    if setup is not None:
-        setup(case, second)
+    add_requirement(case, second, [])
     case.conn.commit()
-    accepted = case.accept(settings=settings)
+    accepted = case.accept(settings=case.settings(material_strategy="stage"))
     result = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
     assert result["state"] == "partial" and result["result_persisted"] is True
-    assert result["candidates"][0]["status"] == "completed"
-    assert result["candidates"][0]["task_count"] == expected_tasks
-    assert all(row["status"] == "skipped" and row["task_count"] == 0 for row in result["candidates"][1:])
+    assert result["candidates"] and all(row["status"] == "completed" and row["task_count"] == 1
+                                        for row in result["candidates"])
     return result
 
 
-def test_partial_run_complete_candidate_http_preview_and_real_adoption(trial_case, monkeypatch):
+def test_partial_run_candidate_http_preview_and_real_adoption(trial_case):
     case = trial_case
-    result = persisted_partial_run(case, monkeypatch)
+    result = persisted_partial_run(case)
     ref = result["candidates"][0]["candidate_ref"]
     client = api(case)
     before = snapshot(case.conn)
     preview = client.post(BASE + ref + "/adopt-preview", json={}).get_json()["data"]
     assert preview["validation"]["can_adopt"] is True, preview
-    assert preview["scope_complete"] is True and preview["task_count"] == 2
+    assert preview["task_count"] == 1
     assert snapshot(case.conn) == before
     response = client.post(BASE + ref + "/adopt", json={"write_token": preview["write_context"]["write_token"],
                            "request_key": "partial-candidate-real-adopt", "input": INTENT})
     assert response.status_code == 200, response.get_json()
-    assert case.conn.execute("SELECT COUNT(*) FROM Schedule").fetchone()[0] == 2
+    assert [row[0] for row in case.conn.execute("SELECT op_id FROM Schedule")] == [case.op_id]
     assert case.conn.execute("SELECT state FROM WorkbenchRunJobs WHERE run_ref=?", (result["run_ref"],)).fetchone()[0] == "partial"
     actual = list(case.conn.execute("SELECT op_id,machine_id,operator_id,start_time,end_time FROM Schedule ORDER BY op_id"))
     expected = [json.loads(row[0]) for row in case.conn.execute(
@@ -60,26 +55,22 @@ def test_partial_run_complete_candidate_http_preview_and_real_adoption(trial_cas
         "op_id", "machine_id", "operator_id", "start_time", "end_time")) for item in sorted(expected, key=lambda item: item["op_id"])]
 
 
-def test_partial_run_complete_candidate_creates_trial_without_false_scope_issue(trial_case, monkeypatch):
+def test_partial_run_candidate_creates_trial_without_false_scope_issue(trial_case):
     case = trial_case
-    ref = persisted_partial_run(case, monkeypatch)["candidates"][0]["candidate_ref"]
+    ref = persisted_partial_run(case)["candidates"][0]["candidate_ref"]
     svc = trial_service(case.conn)
     intent = {"base": {"candidate_ref": ref}}
     preview = svc.preview_create(intent)
     assert not any(row["code"] == "trial_base_incomplete" for row in preview["validation"]["issues"]), preview
     draft = svc.create(intent, preview["write_context"]["write_token"], "partial-candidate-real-trial")["data"]
-    assert draft["tasks_complete"] is True and len(draft["tasks"]) == 2
+    assert draft["tasks_complete"] is True and len(draft["tasks"]) == 1
     assert not any(row["code"] == "trial_base_incomplete" for row in draft["validation"]["issues"])
     assert case.conn.execute("SELECT COUNT(*) FROM Schedule").fetchone()[0] == 0
 
 
-def test_skipped_sibling_and_incomplete_engine_summary_still_cannot_be_adopted(trial_case, monkeypatch):
+def test_incomplete_engine_summary_cannot_be_adopted(trial_case):
     case = trial_case
-    result = persisted_partial_run(case, monkeypatch)
-    skipped = service(case.conn).preview(result["candidates"][1]["candidate_ref"])
-    assert skipped["validation"]["can_adopt"] is False
-    assert skipped["validation"]["issues"][0]["code"] == "candidate_incomplete"
-    ref = result["candidates"][0]["candidate_ref"]
+    ref = persisted_partial_run(case)["candidates"][0]["candidate_ref"]
     edit_artifact(case, ref, lambda artifact: artifact["summary"].update(failed_ops=1, success=False))
     blocked = service(case.conn).preview(ref)
     assert blocked["validation"]["can_adopt"] is False
@@ -87,9 +78,9 @@ def test_skipped_sibling_and_incomplete_engine_summary_still_cannot_be_adopted(t
     assert case.conn.execute("SELECT COUNT(*) FROM Schedule").fetchone()[0] == 0
 
 
-def test_partial_run_does_not_bypass_post_preview_drift_from_another_connection(trial_case, monkeypatch):
+def test_partial_run_does_not_bypass_post_preview_drift_from_another_connection(trial_case):
     case = trial_case
-    ref = persisted_partial_run(case, monkeypatch)["candidates"][0]["candidate_ref"]
+    ref = persisted_partial_run(case)["candidates"][0]["candidate_ref"]
     svc = service(case.conn)
     preview = svc.preview(ref)
     assert preview["validation"]["can_adopt"] is True
@@ -105,16 +96,3 @@ def test_partial_run_does_not_bypass_post_preview_drift_from_another_connection(
     assert exc.value.code == "snapshot_stale"
     assert snapshot(case.conn) == before
     assert case.conn.execute("SELECT COUNT(*) FROM Schedule").fetchone()[0] == 0
-
-
-def test_partial_comparison_keeps_explicit_material_stage_adoption(trial_case, monkeypatch):
-    case = trial_case
-    result = persisted_partial_run(case, monkeypatch, setup=lambda value, second: add_requirement(value, second, []),
-                                   settings=case.settings(material_strategy="stage"), expected_tasks=1)
-    ref = result["candidates"][0]["candidate_ref"]
-    svc = service(case.conn)
-    preview = svc.preview(ref)
-    assert preview["validation"]["can_adopt"] is True, preview
-    assert preview["task_count"] == 1
-    svc.adopt(ref, preview["write_context"]["write_token"], "partial-stage-real-adopt", INTENT)
-    assert [row[0] for row in case.conn.execute("SELECT op_id FROM Schedule")] == [case.op_id]

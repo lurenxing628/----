@@ -93,39 +93,30 @@ def test_absent_official_baseline_keeps_original_capture(candidate_case):
     assert source.capture == original
 
 
-def test_partial_latest_version_preserves_other_operations_last_official_version(candidate_case):
+def test_latest_adopted_version_keeps_saved_identities_and_rejects_damaged_bindings(candidate_case):
     case = candidate_case
     case.batch("B2")
     case.operation("B2")
     case.conn.commit()
-    first, original_first = _adopt(case, "first", "B1", "B2")
-    # A historical partial formal version predates the full-coverage adopt gate.
-    # Current candidate adoption correctly rejects publishing this partial scope.
-    case.conn.execute("INSERT INTO Schedule(op_id,machine_id,operator_id,start_time,end_time,lock_status,version) "
-                      "SELECT op_id,machine_id,operator_id,start_time,end_time,lock_status,2 FROM Schedule WHERE op_id=?",
-                      (case.op_id,))
-    case.conn.execute("INSERT INTO ScheduleHistory(version,strategy,batch_count,op_count,result_status,result_summary) "
-                      "VALUES(2,'manual',1,1,'success','{}')")
-    case.conn.commit()
-    second_ref = case.conn.execute("SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='official' AND version=2").fetchone()[0]
+    first, _original_first = _adopt(case, "first", "B1", "B2")
+    # 每次采用都覆盖已有正式安排的完整工序范围，所以全部工序的最后正式安排都在第二版。
+    second, original_second = _adopt(case, "second", "B1", "B2")
+    assert second["version"] == first["version"] + 1
     current = _run(case, "compare", "B1", "B2")
-    assert len(current.capture["baseline"]["rows"]) == 1
+    assert len(current.capture["baseline"]["rows"]) == 2
     before, calls = deepcopy(current.capture), []
-    data = _read(current, _resolver({1: original_first}, calls))
+    data = _read(current, _resolver({second["version"]: original_second}, calls))
     tasks = {row["batch_label"]: row for row in data["tasks"]}
     assert set(tasks) == {"B1", "B2"}
-    assert tasks["B1"]["official_version"] == 2
-    assert tasks["B1"]["plan_ref"] == second_ref
-    assert tasks["B2"]["official_version"] == first["version"]
-    assert tasks["B2"]["plan_ref"] == first["plan_ref"]
+    assert {row["official_version"] for row in tasks.values()} == {second["version"]}
+    assert {row["plan_ref"] for row in tasks.values()} == {second["plan_ref"]}
     assert len({row["task_ref"] for row in tasks.values()}) == 2
-    assert data["identity"]["source_candidate_ref"] is None
-    assert data["source_refs"][0]["source_candidate_ref"] == original_first.candidate["candidate_ref"]
-    assert data["source_refs"][0]["source_run_ref"] == original_first.run["run_ref"]
-    assert calls == [(first["plan_ref"], 1), (second_ref, 2)]
-    assert {row["version"] for row in data["source_refs"]} == {1, 2}
-    assert source_history(data, 1)["result_status"] == "success"
-    assert tasks["B2"]["source"] == "internal" and tasks["B1"]["source"] is None
+    assert data["identity"]["source_candidate_ref"] == original_second.candidate["candidate_ref"]
+    assert data["identity"]["source_run_ref"] == original_second.run["run_ref"]
+    assert calls == [(second["plan_ref"], second["version"])]
+    assert [row["version"] for row in data["source_refs"]] == [second["version"]]
+    assert source_history(data, second["version"])["result_status"] == "success"
+    assert {row["source"] for row in tasks.values()} == {"internal"}
     assert all(row["locked"] is False for row in tasks.values())
     assert read_decision_baseline_members(current.capture, current.facts) == {
         "identity": data["identity"],
@@ -136,7 +127,7 @@ def test_partial_latest_version_preserves_other_operations_last_official_version
     columns = ddl_columns(ddl, "WorkbenchTaskRefs", restricted=True)
     retained_task = next(row for row in damaged_archive["tables"]["WorkbenchTaskRefs"]
                          if row[columns.index("ref")] == tasks["B2"]["task_ref"])
-    retained_task[columns.index("plan_ref")] = second_ref
+    retained_task[columns.index("plan_ref")] = first["plan_ref"]
     from core.services.workbench.facts.candidate_facts import GenerationFacts
     damaged_capture["facts_text"] = json.dumps(damaged_archive)
     damaged_facts = GenerationFacts(damaged_capture)
@@ -162,7 +153,7 @@ def test_last_version_selection_keeps_segments_and_excludes_superseded_and_futur
 def test_saved_summary_is_read_as_strict_json(raw, reason):
     assert parse_result_summary_payload('{"source":"a"}').payload == {"source": "a"}
     parsed = parse_result_summary_payload(raw)
-    assert (parsed.payload, parsed.parse_failed, parsed.reason, parsed.raw_type) == (None, True, reason, "str")
+    assert (parsed.payload, parsed.parse_failed, parsed.reason) == (None, True, reason)
 
 
 def test_immutable_zero_point_work_survives_current_operation_edits(candidate_case):
@@ -281,13 +272,12 @@ def test_formal_deferred_ids_use_original_stage_source_independently_of_current_
     audit.pop("deferred_operation_ids")
     case.conn.execute("UPDATE ScheduleHistory SET result_summary=? WHERE version=?", (json.dumps(audit), official["version"]))
     case.conn.commit()
-    legacy = _run(case, "legacy-stage-current", ready_check=False, material_strategy="strict")
-    restored = _read(legacy, decision_baseline_source_resolver(case.conn))
-    assert restored["deferred_operation_ids"] == [second]
-    assert not any(row["field"] == "deferred_operation_ids" for row in restored["source_refs"][0]["data_gaps"])
-    missing = _read(legacy)
-    assert missing["deferred_operation_ids"] == []
-    assert any(row["code"] == "deferred_operation_evidence_missing" for row in missing["source_refs"][0]["data_gaps"])
+    damaged = _run(case, "unrecorded-stage-current", ready_check=False, material_strategy="strict")
+    for resolver in (decision_baseline_source_resolver(case.conn), None):
+        unrecorded = _read(damaged, resolver)
+        assert unrecorded["deferred_operation_ids"] == []
+        assert [row["code"] for row in unrecorded["source_refs"][0]["data_gaps"]
+                if row["field"] == "deferred_operation_ids"] == ["deferred_operation_evidence_invalid"]
     audit["deferred_operation_ids"] = [case.op_id]
     case.conn.execute("UPDATE ScheduleHistory SET result_summary=? WHERE version=?", (json.dumps(audit), official["version"]))
     case.conn.commit()
@@ -361,9 +351,9 @@ def test_trial_resolver_prepares_each_scenario_once_and_keeps_original_resource_
 
     original = sources._TrialResourceFacts(archive("original"))
     saved = {"scenario_ref": scenario_ref, "baseline": {"plan_ref": baseline_ref, "version": 1}}
-    source = {"deferred_operation_ids": [], "deferred_operation_issues": []}
-    if captured:
-        source["capture"] = {"original": True}
+    # 以候选为基础的试调来源保存 capture 与全部处置；以正式计划为基础的保存待料编号与缺口。
+    source = ({"capture": {"original": True, "input": {}}, "dispositions": {}} if captured
+              else {"deferred_operation_ids": [], "deferred_operation_issues": []})
     head = {"draft_ref": draft_ref, "scenario_revision": 2,
             "admission": {"source": source, "facts": archive("assigned")}}
     rows = [{"operation_ref": operation_ref,
@@ -399,7 +389,7 @@ def test_trial_resolver_prepares_each_scenario_once_and_keeps_original_resource_
                      "proof": {"proof_version": "content_refs_v1", "scenario_ref": scenario_ref,
                                "draft_ref": draft_ref, "scenario_revision": 2,
                                "baseline_ref": baseline_ref, "baseline_version": 1}}
-            from core.models.workbench_command import canonical_json
+            from core.shared.strict_json import canonical_json
 
             value = resolve(plan_ref="8" * 48, version=version,
                             history={"version": version, "result_summary": canonical_json(audit)})

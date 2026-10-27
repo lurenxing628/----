@@ -21,10 +21,10 @@ from tests.workbench.dashboard_support import dashboard_case as dashboard_case  
 
 
 @pytest.fixture(autouse=True)
-def legacy_calendar_schema(dashboard_case):
-    # This fixture installs current metadata directly on schema.sql's version-0
-    # seed. A valid saved/current legacy calendar declares its real version.
-    dashboard_case.conn.execute("UPDATE SchemaVersion SET version=33 WHERE id=1")
+def factory_shift(dashboard_case):
+    # These plans are read against an explicitly saved 08:00-16:00 factory shift.
+    dashboard_case.conn.execute("INSERT INTO WorkbenchCalendarDefaults(singleton,periods_json) VALUES (1,?)",
+                                ('[{"start":"08:00","end":"16:00","day_offset":0}]',))
     dashboard_case.conn.commit()
 
 

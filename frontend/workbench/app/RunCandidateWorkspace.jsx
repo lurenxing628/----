@@ -1,7 +1,6 @@
 (function () {
   'use strict';
-  const A = window.RunCandidateAPI, C = window.RunCandidateControls;
-  const adapterIds = new WeakMap(); let nextAdapter = 0;
+  const A = window.RunCandidateAPI, N = window.RunCandidateAnalysisAPI, D = window.RunDecisionAPI, C = window.RunCandidateControls;
   function useRead(load, deps, enabled) {
     const read = window.APSResourceSession.useQuery(load, deps, enabled);
     return { ...read, busy: read.loading };
@@ -13,7 +12,7 @@
     return result;
   }
   // One 导出 button opens the format dialog, the same walk as the plan, trial and actual-gantt exports.
-  function Export({ adapter, result, scope, query }) {
+  function Export({ result, scope, query }) {
     const [busy, setBusy] = React.useState(false), [error, setError] = React.useState(null), [done, setDone] = React.useState(''), [format, setFormat] = React.useState(null);
     const active = React.useRef(null);
     React.useEffect(() => () => { if (active.current) active.current.abort(); }, []);
@@ -23,7 +22,7 @@
       if (!allowed || active.current || !format) return;
       const fmt = format, controller = new AbortController(); active.current = controller; setBusy(true); setError(null); setDone('');
       try {
-        const file = A.download(await adapter.export(d.candidate.candidate_ref, scope, result.meta.snapshot_ref, fmt, controller.signal), result, fmt);
+        const file = A.download(await A.export(d.candidate.candidate_ref, scope, result.meta.snapshot_ref, fmt, controller.signal), result);
         if (controller.signal.aborted) return;
         window.APSWorkbenchTransport.saveBlob(file.filename, file.blob);
         setDone(window.WorkbenchTerms.download_started(file.filename) + '，共 ' + file.row_count + ' 条记录（安排 ' + d.task_count + '，未安排 ' + d.unplanned_operation_count + '）。');
@@ -42,7 +41,7 @@
           <C.ErrorBox error={error} /></div></window.ResourceControls.Modal>}
     </div>;
   }
-  function Session({ adapter, view = 'analysis', initialContext = {}, onNavigate, renderAdoption, renderTrial, navigation, runHistoryReturn }) {
+  function Session({ view, initialContext, onNavigate, renderAdoption, renderTrial, navigation, runHistoryReturn }) {
     const M = window.RunCandidateModel, F = window.WorkbenchFormat, Analysis = window.RunCandidateAnalysis;
     const historyReturn = initialContext.return_decision_history_context || initialContext.return_decision_context && initialContext.return_decision_context.return_decision_history_context;
     const historyOrigin = historyReturn ? { return_decision_history_context: historyReturn } : {};
@@ -60,20 +59,18 @@
     const [analysisPaused, setAnalysisPaused] = React.useState(false), [historyPaused, setHistoryPaused] = React.useState(false);
     const [detailsOpen, setDetailsOpen] = React.useState(view === 'gantt' && (A.ref(initialContext.operation_ref) || A.ref(initialContext.selected_row_ref)));
     const detailsToggle = React.useRef(null);
-    const directory = useRead(signal => adapter.catalog(runRef, catalogQuery, signal),
-      [adapter, runRef, catalogQuery, revision], !!runRef && !invalid && !isReference);
-    const read = useRead(async signal => { const v = isReference ? await adapter.referenceWorkspace(runRef, { ...scope, selected_candidate_ref: candidateRef, comparison_mode: 'admission_official', resource_view: initialContext.resource_view, plan_ref: initialContext.plan_ref }, signal) : await adapter.workspace(candidateRef, scope, signal);
+    const directory = useRead(signal => A.catalog(runRef, catalogQuery, signal),
+      [runRef, catalogQuery, revision], !!runRef && !invalid && !isReference);
+    const read = useRead(async signal => { const v = isReference ? await D.referenceWorkspace(runRef, { ...scope, selected_candidate_ref: candidateRef, comparison_mode: 'admission_official', resource_view: initialContext.resource_view, plan_ref: initialContext.plan_ref }, signal) : await A.workspace(candidateRef, scope, signal);
       A.check(!initialContext.run_ref || v.data.candidate.run_ref === initialContext.run_ref, '候选方案不属于所选排产记录。'); return v; },
-      [adapter, candidateRef, scope, revision, isReference, isReference ? runRef : null], !!candidateRef && !invalid);
+      [candidateRef, scope, revision, isReference, isReference ? runRef : null], !!candidateRef && !invalid);
     const result = read.result, data = result && result.data;
     React.useEffect(() => { if (data && !runRef) setRunRef(data.candidate.run_ref); }, [data, runRef]);
     const shown = data && data.capabilities.view === true && data.candidate.capabilities.view === true ? data : null;
-    const analysisRead = useRead(async signal => {
-      return adapter.analysis(candidateRef, runRef, signal);
-    }, [adapter, candidateRef, revision, analysisPaused], !!candidateRef && !invalid && !analysisPaused && !isReference);
-    const historyRead = useRead(async signal => {
-      return adapter.adoptions(candidateRef, runRef, signal);
-    }, [adapter, candidateRef, revision, result && result.meta.snapshot_ref], !!shown && tab === 'history' && !historyPaused && !isReference);
+    const analysisRead = useRead(signal => N.analysis(candidateRef, runRef, signal),
+      [candidateRef, revision, analysisPaused], !!candidateRef && !invalid && !analysisPaused && !isReference);
+    const historyRead = useRead(signal => N.adoptions(candidateRef, runRef, signal),
+      [candidateRef, revision, result && result.meta.snapshot_ref], !!shown && tab === 'history' && !historyPaused && !isReference);
     const analysis = shown && !analysisPaused && analysisRead.result && analysisRead.result.data.run_ref === shown.candidate.run_ref ? analysisRead.result.data : null;
     const ownershipError = readState => shown && readState.result && readState.result.data.run_ref !== shown.candidate.run_ref
       ? new Error('读到的数据不属于所选候选方案的排产记录。') : readState.error;
@@ -127,9 +124,9 @@
       <h2 className="wb-page-title">{isReference ? '排产时的正式计划甘特' : view === 'delay' ? '候选交付风险' : view === 'gantt' ? '候选甘特' : '候选排产结果'}</h2>
       <div className="rc-heading scheduling-page-tools">{navigation}<div className="rc-tools">
         <div className="rc-nav">
-          {onNavigate && (initialContext.return_decision_context || initialContext.reference_candidate_ref || initialContext.comparison_mode) && <C.Button icon="chevron-left" className="btn link" onClick={() => onNavigate('analysis', initialContext.return_decision_context || { run_ref: runRef, candidate_ref: candidateRef, reference_candidate_ref: initialContext.reference_candidate_ref, comparison_mode: initialContext.comparison_mode || 'candidates', ...scope })}>返回方案对比</C.Button>}
-          {onNavigate && runHistoryReturn && <C.Button icon="chevron-left" className="btn link" onClick={() => onNavigate(runHistoryReturn.view, runHistoryReturn.context)}>返回排产记录</C.Button>}
-          {onNavigate && initialContext.return_plan_context && A.ref(initialContext.return_plan_context.plan_ref) && <C.Button icon="chevron-left" className="btn link" onClick={() => onNavigate('analysis', returnContext(initialContext.return_plan_context))}>返回正式计划</C.Button>}</div>
+          {(initialContext.return_decision_context || initialContext.reference_candidate_ref || initialContext.comparison_mode) && <C.Button icon="chevron-left" className="btn link" onClick={() => onNavigate('analysis', initialContext.return_decision_context || { run_ref: runRef, candidate_ref: candidateRef, reference_candidate_ref: initialContext.reference_candidate_ref, comparison_mode: initialContext.comparison_mode || 'candidates', ...scope })}>返回方案对比</C.Button>}
+          <C.Button icon="chevron-left" className="btn link" onClick={() => onNavigate(runHistoryReturn.view, runHistoryReturn.context)}>返回排产记录</C.Button>
+          {initialContext.return_plan_context && A.ref(initialContext.return_plan_context.plan_ref) && <C.Button icon="chevron-left" className="btn link" onClick={() => onNavigate('analysis', returnContext(initialContext.return_plan_context))}>返回正式计划</C.Button>}</div>
         <div className="rc-actions">
           {!isReference && renderAdoption(candidateRef, { candidateDisplay: shown && shown.candidate.candidate_ref === candidateRef ? { candidate_ref: candidateRef, label: shown.candidate.label || '候选名称未填写' } : undefined, candidateCatalog: directory.result ? directory.result.data.candidates : [] })}
           {!isReference && renderTrial({ candidateRef, scope, query, disabled: !shown || read.busy || invalid })}
@@ -152,7 +149,7 @@
         <div className="rc-heading"><span><span title={scope.range_start ? M.timeLabel(scope.range_start) + ' 至 ' + M.timeLabel(scope.range_end) + '（不含结束时刻）' : '全部保存时间'}>查看范围：{scope.range_start ? F.compactRange(scope.range_start, scope.range_end) : '全部时间'}{scope.batch_ref && ' · 指定批次'}</span>
           {shown && ' · 当前显示 ' + tasks.length + ' 道安排'}</span>
         <div className="rc-tools"><C.Button icon="calendar-days" aria-expanded={rangeOpen} onClick={() => setRangeOpen(!rangeOpen)}>读取范围</C.Button>
-          {shown && !isReference && <Export key={result.meta.snapshot_ref} adapter={adapter} result={result} scope={scope} query={query} />}</div></div>
+          {shown && !isReference && <Export key={result.meta.snapshot_ref} result={result} scope={scope} query={query} />}</div></div>
         {rangeOpen && <form className="rc-range" onSubmit={rangeSubmit}><label>开始（包含）<input type="text" data-picker-type="factory-local" placeholder="2026-10-12 08:30" spellCheck={false} aria-label="候选读取开始" value={range.start} onChange={e => setRange({ ...range, start: e.target.value })} /></label>
           <label>结束（不含）<input type="text" data-picker-type="factory-local" placeholder="2026-10-14 18:00" spellCheck={false} aria-label="候选读取结束" value={range.end} onChange={e => setRange({ ...range, end: e.target.value })} /></label>
           <C.Button icon="check" type="submit">应用范围</C.Button><C.Button icon="chart-gantt" onClick={() => { setScope({}); setRange({ start: '', end: '' }); setRangeError(null); }}>完整候选</C.Button></form>}
@@ -175,9 +172,9 @@
           }}>
             {['tasks', 'unplanned', ...(view === 'delay' || isReference ? [] : ['delivery', 'history'])].map(t => <C.Button key={t} role="tab" id={'rc-detail-tab-' + t} aria-controls="rc-detail-panel" tabIndex={tab === t ? 0 : -1} icon={t === 'tasks' ? 'chart-gantt' : t === 'history' ? 'history' : 'circle-alert'} aria-selected={tab === t} onClick={() => setTab(t)}>{t === 'tasks' ? '任务安排' : t === 'delivery' ? '交付风险' : t === 'history' ? '采用记录' : '未安排明细'}</C.Button>)}</div></div>
             <div role="tabpanel" id="rc-detail-panel" aria-labelledby={'rc-detail-tab-' + tab}>{tab === 'history' ? <><C.ErrorBox error={historyError} />{!historyPaused && historyRead.result && !historyError && <Analysis.History data={historyRead.result.data}
-              onPlan={onNavigate && (plan => onNavigate('analysis', { ...historyOrigin, plan_ref: plan.plan_ref }))} />}</> :
+              onPlan={plan => onNavigate('analysis', { ...historyOrigin, plan_ref: plan.plan_ref })} />}</> :
               tab === 'delivery' ? analysis && <Analysis.Batches key={analysis.candidate_ref} data={analysis} onLast={task => { lastOperation(task); setTab('tasks'); }}
-                onBatch={onNavigate && (row => onNavigate('gantt', { ...historyOrigin, run_ref: analysis.run_ref, candidate_ref: analysis.candidate_ref, batch_ref: row.batch_ref, candidate_tab: 'tasks' }))} /> : tab === 'unplanned' && shown.unplanned_operations === null ? <div className="rc-notice">未记录排产时的未排工序明细。</div> :
+                onBatch={row => onNavigate('gantt', { ...historyOrigin, run_ref: analysis.run_ref, candidate_ref: analysis.candidate_ref, batch_ref: row.batch_ref, candidate_tab: 'tasks' })} /> : tab === 'unplanned' && shown.unplanned_operations === null ? <div className="rc-notice">未记录排产时的未排工序明细。</div> :
               <window.RunCandidateGantt.TaskList key={tab + ':' + query + ':' + result.meta.snapshot_ref} tasks={tab === 'tasks' ? tasks : unplanned} selected={chosen}
                 onDetails={task => { setSelected({ task, result }); setDetailsOpen(true); }} planned={tab === 'tasks'} />}</div></section>
         </div>{!['delivery', 'history'].includes(tab) && (view !== 'gantt' || detailsOpen) && <C.Detail task={chosen} data={shown} prepared={prepared} onRelated={taskRef => lastOperation({ row_ref: taskRef })}
@@ -186,11 +183,9 @@
     </div>;
   }
   function RunCandidateWorkspace(props) {
-    const adapter = React.useMemo(() => window.RunDecisionAPI.adapter(window.RunCandidateAnalysisAPI.adapter(props.adapter || { ...window.RunCandidateAnalysisAPI.create(), ...window.RunDecisionAPI.create() })), [props.adapter]);
-    if (!adapterIds.has(adapter)) adapterIds.set(adapter, ++nextAdapter);
     const context = props.initialContext, identity = [context.run_ref, context.candidate_ref, context.range_start, context.range_end, context.batch_ref, context.operation_ref, context.selected_row_ref, context.reference_view, context.plan_ref, context.comparison_mode, context.resource_view, context.resource_kind, context.resource_ref];
-    return props.view === 'analysis' ? <window.RunDecisionComparison.Workspace key={adapterIds.get(adapter) + ':' + JSON.stringify(identity)} {...props} adapter={adapter} />
-      : <Session key={adapterIds.get(adapter) + ':' + JSON.stringify(identity)} {...props} adapter={adapter} />;
+    return props.view === 'analysis' ? <window.RunDecisionComparison.Workspace key={JSON.stringify(identity)} {...props} />
+      : <Session key={JSON.stringify(identity)} {...props} />;
   }
   window.RunCandidateWorkspace = RunCandidateWorkspace;
 })();

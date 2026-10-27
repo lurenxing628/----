@@ -1,6 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const { compile } = require('../../scripts/workbench/compile.cjs');
+const { routeFetch, file, browser, loadTransport } = require('./route_fetch.cjs');
 const root = path.resolve(__dirname, '../..'), app = path.join(root, 'frontend/workbench/app');
 const names = ['resource-contract.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'PlanGanttModel.js', 'ResourceControls.jsx', 'RunGenerationContract.js', 'RunHistoryAPI.js', 'RunDecisionComparison.jsx', 'DecisionHistoryAPI.js', 'DeliveryProjectionContract.js', 'TrialContract.js', 'DecisionHistoryChart.jsx', 'DecisionHistoryDetails.jsx', 'DecisionHistoryWorkspace.jsx', 'RunHistoryWorkspace.jsx', 'SchedulingWorkspace.jsx', 'RunHistoryControls.jsx'];
 const built = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources: names.map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })), check_combined: true }).outputs;
@@ -22,7 +23,7 @@ function hooks() {
 function runtime(state = hooks()) {
   const snapshots = [], document = { hidden: false, activeElement: null }, window = { document, ResourceControls: { Button: 'button', Modal: 'modal', Icon: 'icon' }, RunHistoryControls: { Button: 'button', ErrorBox: 'error', Filters: 'catalog-filters', Table: 'catalog-table', Pager: 'catalog-pager' },
     WorkbenchListControls: { Pager: 'pager', EmptyState: 'empty-state' }, WorkbenchReference: 'reference', WorkbenchPageContext: { useSnapshot: value => snapshots.push(clone(value)) },
-    RunJobAPI: { create: () => ({}) }, RunJobControls: { Button: 'button' }, RunCandidateWorkspace: 'candidate-workspace', PlanWorkspace: 'plan-workspace',
+    RunJobAPI: {}, RunJobControls: { Button: 'button' }, RunCandidateWorkspace: 'candidate-workspace', PlanWorkspace: 'plan-workspace',
     WorkbenchDatePickerModel: { factoryTime: value => value.replace(' ', 'T') }, fetch: () => { throw new Error('Unexpected live fetch'); } };
   const stubHistoryControls = window.RunHistoryControls;
   for (const output of built) vm.runInNewContext(output.code, { React: state.React, window, AbortController, DOMException, URLSearchParams, setTimeout, clearTimeout, document });
@@ -78,7 +79,8 @@ function queryAndResponse() {
   reject(changed => { changed.meta.snapshot_ref = 'new-snapshot'; changed.data.filters.page = 2; });
   const bound = A.scope({ ...q, snapshot_ref: token }); assert.throws(() => A.history({ ...value, meta: { ...value.meta, snapshot_ref: 'new-snapshot' } }, bound), error => error.code === 'snapshot_stale');
   const official = clone(value.data.entries[0]); official.timeline = 'official'; official.source_kind = 'candidate_adoption'; official.identity.receipt_ref = 'a'.repeat(32); official.entry_ref = 'adoption:' + official.identity.receipt_ref; A.entry(official, keys); official.source_kind = 'trial_adoption'; A.entry(official, keys);
-  official.source_kind = 'legacy_official'; official.identity.history_id = 7; official.entry_ref = 'legacy:7'; A.entry(official, keys);
+  assert.throws(() => A.scope({ metric_keys: keys, state: 'success' }), error => error.code === 'invalid_response', '已删除的历史状态值不再被接受');
+  const outsideSource = clone(value.data.entries[0]); outsideSource.source.kind = 'legacy'; assert.throws(() => A.entry(outsideSource, keys), error => error.code === 'invalid_response', '来源类型只认 run 与 trial');
   assert.equal(A.metricText(metric(0, '小时'), { precision: 2 }), '0 小时'); assert.equal(A.metricText(metric(null, '小时'), { precision: 2 }), '未知'); assert.equal(A.metricText(metric(0.125, '%'), { precision: 1 }), '12.5%');
   const savedOptions = { generation_policy_version: 'unified_search_v1', primary_objective: 'min_weighted_tardiness',
     target_objectives: ['min_weighted_tardiness', 'min_overdue', 'min_changeover'], time_budget_seconds: 10, algo_mode: 'improve', graph_analysis_mode: 'report' };
@@ -86,8 +88,6 @@ function queryAndResponse() {
     completed_policy: 'preserve_actuals', batch_count: 1, selection: 'explicit_batches', basis: 'captured_at_run_admission', data_gaps: [] };
   const run = { run_ref: ref(1), state: 'complete', recovery_required: false, error: null, accepted_at: '2026-10-01T08:00:00',
     started_at: '2026-10-01T08:00:01', finished_at: '2026-10-01T08:00:11', candidate_count: 2, task_count: 1, counts_final: true, scope_summary: scope };
-  const oldScope = text(expand(h(historyControls.Table, { runs: [run], onOpen() {} })));
-  assert(!oldScope.includes('主目标：') && !oldScope.includes('同时探索：') && !oldScope.includes('总计算预算：'), '旧范围不追加未保存的优化选项');
   for (const seconds of [10, 30]) {
     const options = { ...savedOptions, time_budget_seconds: seconds }, current = { ...run, scope_summary: { ...scope, run_options: options } }, saved = JSON.stringify(current);
     assert(window.RunGenerationContract.runOptions(options));
@@ -168,7 +168,7 @@ function chartAndDetails() {
   assert.strictEqual(memoSelected[0], value.data.entries[1]);
   assert.equal(JSON.stringify(value), before);
   const selectedData = payload({ selected_entry_ref: 'run:' + ref(2) }).data, opened = [], changes = [];
-  let detail = expand(h(window.DecisionHistoryDetails.Details, { data: selectedData, query: selectedData.filters, onOpen: target => opened.push(target), onQuery: (...args) => changes.push(args), canNavigate: true }));
+  let detail = expand(h(window.DecisionHistoryDetails.Details, { data: selectedData, query: selectedData.filters, onOpen: target => opened.push(target), onQuery: (...args) => changes.push(args) }));
   const source = expand(h(window.DecisionHistoryDetails.Sources, { data: selectedData, result: payload() })); assert(text(source).includes('当时无正式计划')); assert(!text(source).includes('第 0 版')); assert(text(detail).replace(/\s+/g, ' ').includes('批次原数量合计 12 件'));
   assert(!nodes(detail).some(node => node.props['aria-label'] === '八类生产条件判断'), '无基准业务走势不铺未知对照');
   assert.equal(nodes(detail).filter(node => node.type === 'p' && text(node).startsWith('已知小计')).length, 0, '完整已知值默认只呈现一次');
@@ -176,11 +176,11 @@ function chartAndDetails() {
   const capacity = clone(selectedData), availableKey = 'machine_available_hours', cvKey = 'machine_balance_cv';
   capacity.metric_definitions.push({ ...definitions[1], key: availableKey, label: '设备可排总时长', unit: '小时' }, { ...definitions[1], key: cvKey, label: '设备占用分布差异', unit: '比值' });
   capacity.selection.entry.metrics[availableKey] = metric(8, '小时'); capacity.selection.entry.metrics[cvKey] = metric(0.2, '比值', { numerator_hours: 1, denominator_hours: 8 });
-  let capacityDetail = expand(h(window.DecisionHistoryDetails.Details, { data: capacity, query: capacity.filters, onQuery() {}, onOpen() {}, canNavigate: true }));
+  let capacityDetail = expand(h(window.DecisionHistoryDetails.Details, { data: capacity, query: capacity.filters, onQuery() {}, onOpen() {} }));
   const capacityTable = nodes(capacityDetail).find(node => node.type === 'table' && node.props['aria-label'] === '所选资源容量与分母');
   assert.equal(nodes(capacityTable).filter(node => node.type === 'tr').length, 2, '同类比值依据只呈现一份共享窗口容量'); assert(text(capacityTable).includes('窗口班内已占') && text(capacityTable).includes('窗口可排总时长'));
   capacity.metric_definitions = capacity.metric_definitions.filter(row => row.key === availableKey); capacity.selection.entry.metrics = { [availableKey]: capacity.selection.entry.metrics[availableKey] };
-  capacityDetail = expand(h(window.DecisionHistoryDetails.Details, { data: capacity, query: capacity.filters, onQuery() {}, onOpen() {}, canNavigate: true }));
+  capacityDetail = expand(h(window.DecisionHistoryDetails.Details, { data: capacity, query: capacity.filters, onQuery() {}, onOpen() {} }));
   assert(!nodes(capacityDetail).some(node => node.type === 'table' && node.props['aria-label'] === '所选资源容量与分母'), '已知绝对工时不冒充未知比值容量依据');
   const side = value => ({ present: true, state: 'known', value, source: { kind: 'run_archive', ref: ref(2), path: 'saved.production' }, reason: null });
   selectedData.comparison.mode = 'same_conditions'; selectedData.selection.reference = selectedData.entries[0];
@@ -188,7 +188,7 @@ function chartAndDetails() {
   const values = [0, false, [], null], rows = values.map((value, index) => ({ category: 'batches', entity: { key: ref(101), label: '保存批次' }, field: 'field_' + index, state: 'different', before: side(value), after: side(value) }));
   rows.push({ ...rows[0], field: 'unknown', state: 'unknown', after: { ...side(null), present: false, state: 'unknown' } }); selectedData.comparison.conditions = conditionGroup(rows);
   selectedData.selection.entry.scope.batch_quantity = metric(null, '件', { known_count: 1, unknown_count: 1, total_count: 2, known_subtotal: 12, state: 'partial' });
-  detail = expand(h(window.DecisionHistoryDetails.Details, { data: selectedData, query: selectedData.filters, onOpen: target => opened.push(target), onQuery: (...args) => changes.push(args), canNavigate: true }));
+  detail = expand(h(window.DecisionHistoryDetails.Details, { data: selectedData, query: selectedData.filters, onOpen: target => opened.push(target), onQuery: (...args) => changes.push(args) }));
   const visible = text(detail).replace(/\s+/g, ' '), savedSides = nodes(detail).filter(node => node.props['data-history-saved-state']);
   for (const preview of ['0', '否', '0 项', '空值']) assert(savedSides.some(node => node.props['data-history-saved-state'] === 'known' && node.props['data-history-value-present'] === true && text(node) === preview), '真实0/false/空集合/null保持已知原含义：' + preview);
   assert(visible.includes('未保存') && visible.includes('已知小计 12 件'));
@@ -196,7 +196,7 @@ function chartAndDetails() {
   const conditionDetails = nodes(detail).find(node => node.type === 'details' && text(node).startsWith('生产条件详情')); assert(conditionDetails && conditionDetails.props.open !== true, '完整条件和分页默认收起');
   const pager = nodes(conditionDetails).find(node => node.type === 'pager'); pager.props.onPage(2); pager.props.onSize(50); assert.deepEqual(clone(changes), [[{ condition_page: 2 }, true], [{ condition_page: 1, condition_size: 50 }, true]]);
   const equalData = clone(selectedData); equalData.comparison.conditions.summary = { equal: 533, different: 0, unknown: 0 }; equalData.comparison.conditions.categories = [];
-  detail = expand(h(window.DecisionHistoryDetails.Details, { data: equalData, query: equalData.filters, onOpen() {}, onQuery() {}, canNavigate: true })); assert(text(detail).replace(/\s+/g, ' ').includes('生产条件相同，共 533 项'), '相同条件总数使用全量summary');
+  detail = expand(h(window.DecisionHistoryDetails.Details, { data: equalData, query: equalData.filters, onOpen() {}, onQuery() {} })); assert(text(detail).replace(/\s+/g, ' ').includes('生产条件相同，共 533 项'), '相同条件总数使用全量summary');
   const strategyFields = [
     ['generation_policy_version', null, 'unified_search_v1', '候选生成策略版本'],
     ['selection_policy_version', null, 'business_objectives_v1', '推荐选择策略版本'],
@@ -214,7 +214,7 @@ function chartAndDetails() {
   const optionsData = clone(selectedData), summary = { equal: historicalRows.length, different: optionRows.length, unknown: 0 };
   optionsData.comparison.configurations = { ...conditionGroup([...optionRows, ...historicalRows], optionRows.length + historicalRows.length), summary,
     categories: [{ key: 'algorithm', label: '算法实验设置', state: 'different', summary }] };
-  const optionDetail = expand(h(window.DecisionHistoryDetails.Details, { data: optionsData, onOpen() {}, onQuery() {}, canNavigate: true }));
+  const optionDetail = expand(h(window.DecisionHistoryDetails.Details, { data: optionsData, onOpen() {}, onQuery() {} }));
   const changedTable = nodes(optionDetail).find(node => node.type === 'table' && node.props['aria-label'] === '算法设置变化');
   const changedRows = nodes(changedTable).filter(node => node.props['data-history-condition-state']);
   assert.deepEqual(changedRows.map(row => text(row.children[1])), strategyFields.map(row => row[3]), '新策略、主目标、目标集合和总预算各自保留独立条件项');
@@ -233,10 +233,10 @@ function navigationAndSession() {
   const trial = { scenario_ref: ref(9), return_decision_history_context: start }; assert.deepEqual(clone(window.TrialContract.target(trial)), clone(trial));
   assert.throws(() => window.TrialContract.target({ ...trial, return_decision_history_context: { query: { size: 7 } } }));
   assert.deepEqual(clone(A.historyContext({ return_decision_context: origin })), clone(returned)); assert.deepEqual(clone(A.historyContext({})), { source: 'run_history' });
-  const { window: local, state, snapshots } = runtime(), links = [], requests = [], api = { history: () => {}, historyExport: () => {} }; let readLoading = false, readError = null;
-  local.APSResourceSession = { useQuery: (load, deps, enabled = true) => { const query = JSON.parse(deps[1]); requests.push(query); const result = payload(query); result.data.comparison.conditions.page.number = query.condition_page; return { loading: enabled && readLoading, error: readError, result: !enabled || readLoading || readError ? null : result }; } };
+  const { window: local, state, snapshots } = runtime(), links = [], requests = []; let readLoading = false, readError = null;
+  local.APSResourceSession = { useQuery: (load, deps, enabled = true) => { const query = JSON.parse(deps[0]); requests.push(query); const result = payload(query); result.data.comparison.conditions.page.number = query.condition_page; return { loading: enabled && readLoading, error: readError, result: !enabled || readLoading || readError ? null : result }; } };
   const sessionStart = A.context({ query: A.scope({ metric_keys: keys, selected_entry_ref: 'run:' + ref(2), reference_run_ref: ref(1), comparison: 'same_conditions', snapshot_ref: token }), metric_key: keys[1] });
-  const props = { adapter: api, start: sessionStart, pageContext: { history_query: { page: 3 } }, onNavigate: (...args) => links.push(args) };
+  const props = { start: sessionStart, pageContext: { history_query: { page: 3 } }, onNavigate: (...args) => links.push(args), renderTopics: () => null };
   let tree = state.render(() => local.DecisionHistoryViews.Session(props));
   const details = nodes(tree).find(node => node.type === local.DecisionHistoryDetails.Details); details.props.onOpen(details.props.data.selection.entry.navigation[0]);
   assert.equal(links[0][0], 'analysis'); assert.deepEqual(clone(links[0][1].return_decision_history_context.query), clone(requests.at(-1))); assert.equal(links[0][1].return_decision_history_context.metric_key, keys[1]);
@@ -327,16 +327,25 @@ function navigationAndSession() {
   assert.equal(links.at(-1)[0], 'trial'); assert.deepEqual(clone(links.at(-1)[1].return_decision_history_context), clone(start)); assert.deepEqual(clone(links.at(-1)[1].base), { candidate_ref: ref(12) });
   const tableState = hooks(), selections = [], table = tableState.render(() => local.DecisionHistoryViews.Table({ data: payload().data, metricKey: keys[0], selectedEntryRef: null, onSelect: row => selections.push(row), onReference() {} }));
   const rows = nodes(table).filter(node => node.props['data-dh-row-choice']); assert.equal(rows.filter(node => node.props.tabIndex === 0).length, 1); nodes(table).find(node => node.props.ref).props.ref.current = { querySelector: () => ({ focus() {} }) }; rows[0].props.onKeyDown({ key: 'End', preventDefault() {} }); assert.equal(selections[0].entry_ref, 'run:' + ref(5));
-  const emptyRuntime = runtime(), emptyQueries = [], filteredQuery = A.scope({ metric_keys: keys, timeline: 'official', date_from: '2026-10-12', date_to: '2026-10-12', state: 'success', comparison: 'same_conditions', reference_run_ref: ref(1), range_start: windowScope.start, range_end: windowScope.end, snapshot_ref: token });
-  emptyRuntime.window.APSResourceSession = { useQuery: (load, deps) => { const query = JSON.parse(deps[1]); emptyQueries.push(query); const result = payload(query); if (query.date_from) { result.data.entries = []; result.data.trend.points = []; result.data.page.total = 0; result.data.page.has_more = false; result.data.totals = { run: 5, official: 4, filtered: 0 }; } return { loading: false, error: null, result }; } };
-  const emptyProps = { adapter: api, start: A.context({ query: filteredQuery, metric_key: keys[1] }), pageContext: {}, onNavigate() {} };
+  // 试调采用条目没有排产编号：只显示“试调来源”，不给“用作对照”入口。
+  const trialEntry = clone(payload().data.entries[0]), receiptRef = 'b'.repeat(32);
+  Object.assign(trialEntry, { timeline: 'official', source_kind: 'trial_adoption', entry_ref: 'adoption:' + receiptRef, label: '试调采用 1', navigation: [] });
+  Object.assign(trialEntry.identity, { run_ref: null, candidate_ref: null, scenario_ref: ref(70), draft_ref: ref(71), receipt_ref: receiptRef });
+  trialEntry.source = { kind: 'trial', ref: ref(70), state: 'available', reason: null }; A.entry(trialEntry, keys);
+  const trialRows = payload().data; trialRows.entries = [trialEntry, ...trialRows.entries.slice(1)];
+  const trialTable = tableState.render(() => local.DecisionHistoryViews.Table({ data: trialRows, metricKey: keys[0], selectedEntryRef: null, onSelect() {}, onReference() {} }));
+  assert(text(trialTable).includes('试调来源')); assert(!nodes(trialTable).some(node => node.props['aria-label'] === '将 ' + trialEntry.label + ' 用作对照'));
+  assert(nodes(trialTable).some(node => node.props['aria-label'] === '将 ' + trialRows.entries[1].label + ' 用作对照'), '排产条目仍可用作对照');
+  const emptyRuntime = runtime(), emptyQueries = [], filteredQuery = A.scope({ metric_keys: keys, timeline: 'official', date_from: '2026-10-12', date_to: '2026-10-12', state: 'committed', comparison: 'same_conditions', reference_run_ref: ref(1), range_start: windowScope.start, range_end: windowScope.end, snapshot_ref: token });
+  emptyRuntime.window.APSResourceSession = { useQuery: (load, deps) => { const query = JSON.parse(deps[0]); emptyQueries.push(query); const result = payload(query); if (query.date_from) { result.data.entries = []; result.data.trend.points = []; result.data.page.total = 0; result.data.page.has_more = false; result.data.totals = { run: 5, official: 4, filtered: 0 }; } return { loading: false, error: null, result }; } };
+  const emptyProps = { start: A.context({ query: filteredQuery, metric_key: keys[1] }), pageContext: {}, onNavigate() {}, renderTopics: () => null };
   let emptyTree = emptyRuntime.state.render(() => emptyRuntime.window.DecisionHistoryViews.Session(emptyProps));
   const empty = nodes(emptyTree).find(node => node.type === emptyRuntime.window.ResourceControls.EmptyState && node.props.kind === 'filtered'); assert(empty.props.action, '真实公共filtered必须提供恢复入口'); assert.doesNotThrow(() => expand(empty));
   empty.props.action.props.onClick(); emptyTree = emptyRuntime.state.render(() => emptyRuntime.window.DecisionHistoryViews.Session(emptyProps));
   const restored = emptyQueries.at(-1); assert.equal(restored.date_from, null); assert.equal(restored.date_to, null); assert.equal(restored.state, 'all'); assert.equal(restored.page, 1); assert.equal(restored.snapshot_ref, null);
   for (const key of ['timeline', 'metric_keys', 'range_start', 'range_end', 'reference_run_ref', 'comparison']) assert.deepEqual(clone(restored[key]), clone(filteredQuery[key]), '恢复事件筛选保留 ' + key);
   const outRuntime = runtime(), outQueries = [], outProps = { ...emptyProps, start: A.context({ query: A.scope({ metric_keys: keys, page: 3, snapshot_ref: token }) }) };
-  outRuntime.window.APSResourceSession = { useQuery: (load, deps) => { const query = JSON.parse(deps[1]); outQueries.push(query); return { loading: false, error: null, result: payload(query) }; } };
+  outRuntime.window.APSResourceSession = { useQuery: (load, deps) => { const query = JSON.parse(deps[0]); outQueries.push(query); return { loading: false, error: null, result: payload(query) }; } };
   let outTree = outRuntime.state.render(() => outRuntime.window.DecisionHistoryViews.Session(outProps));
   const out = nodes(outTree).find(node => node.type === outRuntime.window.ResourceControls.EmptyState && node.props.kind === 'filtered'); assert.doesNotThrow(() => expand(out)); assert.equal(text(out.props.action), '返回第 1 页'); out.props.action.props.onClick();
   outTree = outRuntime.state.render(() => outRuntime.window.DecisionHistoryViews.Session(outProps)); assert.equal(outQueries.at(-1).page, 1); assert.equal(outQueries.at(-1).snapshot_ref, token, '超页恢复沿原稳定快照');
@@ -358,12 +367,30 @@ function navigationAndSession() {
 
 }
 async function transport() {
-  const calls = [], q = A.scope({ metric_keys: keys }), file = { size: 2 }, response = { status: 200, ok: true, headers: { get: key => ({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename=history.xlsx', 'X-Workbench-Snapshot-Ref': token, 'X-Workbench-Row-Count': '5' }[key] || null) }, blob: async () => file };
-  const api = A.create(async (url, options) => { calls.push({ url, options }); return response; }); const downloaded = await api.historyExport(q, token, 'xlsx', new AbortController().signal, 'all'); assert.equal(downloaded.filename, '排产历史趋势.xlsx'); assert.strictEqual(downloaded.blob, file); assert.equal(downloaded.row_count, 5);
-  const url = new URL(calls[0].url, 'http://localhost'); for (const key of ['page', 'size', 'condition_page', 'condition_size']) assert.equal(url.searchParams.has(key), false); assert.equal(url.searchParams.get('snapshot_ref'), token); assert.equal(url.searchParams.get('metric_keys'), keys.join(',')); assert.equal(calls[0].options.method, 'GET');
-  await assert.rejects(() => api.historyExport(q, token, 'csv', new AbortController().signal, 'all'));
-  const changed = A.create(async () => ({ ...response, headers: { get: key => key === 'X-Workbench-Snapshot-Ref' ? 'changed' : response.headers.get(key) } })); await assert.rejects(() => changed.historyExport(q, token, 'xlsx', new AbortController().signal));
-  assert.deepEqual(['run', 'candidate_adoption', 'trial_adoption', 'legacy_official'].map(A.sourceLabel), ['排产运行', '候选方案采用', '试调方案采用', '旧正式计划']);
-
+  const q = A.scope({ metric_keys: keys }), bytes = Uint8Array.from([0x50, 0x4b, 0x03, 0x04]), headers = { 'Content-Disposition': "attachment; filename*=UTF-8''%E6%8E%92%E4%BA%A7%E5%8E%86%E5%8F%B2%E8%B6%8B%E5%8A%BF.xlsx", 'X-Workbench-Snapshot-Ref': token, 'X-Workbench-Row-Count': '5' };
+  // 文件名只认后端 Content-Disposition（core/services/workbench/history/export.py 的“排产历史趋势.<format>”），前端不再自拟。
+  const routes = { 'GET /api/workbench/v1/scheduling/decision-history/export': () => file(bytes, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', headers) }, fetch = routeFetch(routes);
+  const network = vm.createContext({ window }); browser(network, fetch); loadTransport(network);
+  const downloaded = await A.historyExport(q, token, 'xlsx', new AbortController().signal, 'all'); assert.equal(downloaded.filename, '排产历史趋势.xlsx'); assert.deepEqual([...new Uint8Array(await downloaded.blob.arrayBuffer())], [...bytes]); assert.equal(downloaded.row_count, 5);
+  const call = fetch.calls[0]; for (const key of ['page', 'size', 'condition_page', 'condition_size']) assert.equal(call.url.searchParams.has(key), false); assert.equal(call.url.searchParams.get('snapshot_ref'), token); assert.equal(call.url.searchParams.get('metric_keys'), keys.join(',')); assert.equal(call.method, 'GET');
+  assert.equal(call.url.searchParams.get('format'), 'xlsx'); assert.equal(call.url.searchParams.get('section'), 'all');
+  await assert.rejects(() => A.historyExport(q, token, 'csv', new AbortController().signal, 'all')); assert.equal(fetch.calls.length, 1, '无效导出组合在发送请求前拒绝');
+  routes['GET /api/workbench/v1/scheduling/decision-history/export'] = () => file(bytes, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', { ...headers, 'X-Workbench-Snapshot-Ref': 'changed' });
+  await assert.rejects(() => A.historyExport(q, token, 'xlsx', new AbortController().signal), /历史快照已变化/);
+  routes['GET /api/workbench/v1/scheduling/decision-history/export'] = () => file(bytes, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', { ...headers, 'Content-Disposition': 'attachment; filename=h.csv' });
+  await assert.rejects(() => A.historyExport(q, token, 'xlsx', new AbortController().signal), /后缀与文件类型不一致/, '后端文件名后缀与所选格式不符时不保存');
+  routes['GET /api/workbench/v1/scheduling/decision-history/export'] = () => file(bytes, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', { ...headers, 'Content-Disposition': 'attachment' });
+  await assert.rejects(() => A.historyExport(q, token, 'xlsx', new AbortController().signal), /缺少文件名/, '缺少后端文件名时不自拟文件名');
+  assert.deepEqual(['run', 'candidate_adoption', 'trial_adoption'].map(A.sourceLabel), ['排产运行', '候选方案采用', '试调方案采用']);
+  // 导出弹窗：下载后用后端给的文件名交给浏览器保存，并报告行数。
+  const exportRuntime = runtime(), E = exportRuntime.window, exportNetwork = vm.createContext({ window: E }), saved = browser(exportNetwork, fetch); loadTransport(exportNetwork);
+  routes['GET /api/workbench/v1/scheduling/decision-history/export'] = () => file(bytes, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', headers);
+  const exportProps = { result: { meta: { snapshot_ref: token } }, query: q, busy: false }, renderExport = () => exportRuntime.state.render(() => E.DecisionHistoryViews.Export(exportProps));
+  nodes(renderExport()).find(node => node.type === 'button' && text(node) === '导出历史').props.onClick();
+  const modal = nodes(renderExport()).find(node => node.type === 'modal'), download = nodes(modal.props.footer).find(node => node.type === 'button' && node.props.transfer === 'export');
+  await download.props.onClick();
+  assert.deepEqual(saved.downloads.map(item => item.filename), ['排产历史趋势.xlsx']); assert.equal(fetch.calls.at(-1).query.section, 'entries');
+  const finished = renderExport(); assert(!nodes(finished).some(node => node.type === 'modal'), '保存后关闭弹窗');
+  assert.equal(text(nodes(finished).find(node => node.props.role === 'status')), '已交给浏览器下载：排产历史趋势.xlsx · 5 条记录');
 }
 (async () => { queryAndResponse(); chartAndDetails(); navigationAndSession(); await transport(); console.log('Decision history query, chart, saved fields, navigation, snapshot and export contracts passed.'); })().catch(error => { console.error(error); process.exitCode = 1; });

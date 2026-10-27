@@ -437,7 +437,7 @@ def test_operator_calendar_identity_binding_readonly_formula_and_xlsx_crlf_round
     xlsx_with_readonly_formula = file_bytes(
         [("OP-REF", "=1+1", DAY, "工作日", "08:00", "16:00", "=1+1", "多行\r\n备注")],
         fmt="xlsx",
-        headers=("operator_code", "operator_label", "date", "day_type", "shift_start", "shift_end", "shift_hours", "remark"),
+        headers=("工号", "人员姓名（只读）", "日期", "类型", "班次开始", "班次结束", "可排工时（小时）（只读）", "备注"),
     )
     formula_prev_resp = client.post(
         BASE + "/operator_calendar/preview",

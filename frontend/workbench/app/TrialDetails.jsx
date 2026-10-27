@@ -26,7 +26,7 @@
     const dirty = editing && (form.machine_ref !== initial.current.machine_ref || form.operator_ref !== initial.current.operator_ref || form.start !== initial.current.start);
     window.WorkbenchGuards.useDirtyGuard({ owner: guardOwner, dirty, message: '试调工序的设备、人员或开工调整尚未保存。' });
     function close() { setEditing(false); onEditing(false); setError(null); }
-    async function cancel() { if (!commands.busy && !commands.key && await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) { if (commands.clearError) commands.clearError(); close(); } }
+    async function cancel() { if (!commands.busy && !commands.key && await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) { commands.clearError(); close(); } }
     function open() { const value = { machine_ref: external ? null : task.machine_ref, operator_ref: external ? null : task.operator_ref, start: task.start }; initial.current = value; setForm(value); setEditing(true); onEditing(true); setReviewed(true); }
     React.useEffect(() => { if (editing) setReviewed(false); }, [data]);
     React.useEffect(() => () => onEditing(false), []);

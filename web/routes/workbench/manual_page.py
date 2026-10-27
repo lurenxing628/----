@@ -1,7 +1,7 @@
-"""系统使用说明页：旧 ``/scheduler/config/manual`` 入口在工作台里继续作为帮助页使用。
+"""系统使用说明页：工作台顶栏「帮助」打开的 ``/scheduler/config/manual`` 帮助页与原文下载。
 
-2026-09-18 旧排产配置页随旧路由层删除，说明书页与原文下载从 scheduler_config 抽到这里，
-端点名保持 ``scheduler.config_manual_page`` / ``scheduler.config_manual_download``。
+端点名为 ``scheduler.config_manual_page`` / ``scheduler.config_manual_download``，工作台引导配置的
+``help_url`` 由此生成；本模块自带同名蓝图，由应用工厂直接注册。
 
 2026-09-21 “本页说明”通道改为按工作台视图 id 工作：顶栏「帮助」带 ``page=<视图 id>`` 和
 ``src=<返回地址>`` 打开本页时，先按 ``page_manuals_registry`` 登记的标题在说明书原文里截取对应
@@ -15,14 +15,15 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from flask import current_app, flash, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, current_app, flash, redirect, render_template, request, send_file, url_for
 
 from core.services.workbench.messages import BEIJING
 from web.manual_src_security import normalize_manual_src_context
 from web.viewmodels.page_manuals_registry import VIEW_MANUALS
 
-from .legacy_blueprints import scheduler_bp as bp
-from .legacy_presentation import manual_blocks
+from .manual_markdown import manual_blocks, manual_outline
+
+bp = Blueprint("scheduler", __name__)
 
 PAGE_NOT_REGISTERED_WARNING = "这一页还没有单独的说明，已经打开整本说明书。"
 PAGE_SECTION_MISSING_WARNING = "这一页的说明章节暂时读不到，已经打开整本说明书。"
@@ -238,7 +239,7 @@ def _build_manual_page_view_state(
 def config_manual_page():
     """
     系统使用说明（面向计划/工艺新手）。
-    - 页内把 Markdown 转成 HTML 后展示（转换器在 legacy_presentation，不新增依赖）
+    - 页内把 Markdown 转成 HTML 后展示（转换器在 manual_markdown，不新增依赖）
     - ``page=<视图 id>`` 时先显示该视图的章节，并给整本说明书的锚点
     - 提供下载原始 md
     """
@@ -260,13 +261,15 @@ def config_manual_page():
         if warning:
             flash(warning, "warning")
 
-    return render_template(
+    # 整本模式下 fallback_text 就是整本原文；本页模式下是截取的章节。
+    blocks = manual_blocks(view_state["fallback_text"])
+    response = current_app.make_response(render_template(
         'workbench/manual.html',
         title=view_state["page_title"],
         manual_mode=view_state["manual_mode"],
-        manual_text=manual_text,
         manual_available=manual_available,
-        fallback_text=view_state["fallback_text"],
+        blocks=blocks,
+        outline=manual_outline(blocks),
         manual_mtime=manual_mtime,
         download_url=download_url,
         back_url=view_state["back_url"],
@@ -275,7 +278,9 @@ def config_manual_page():
         full_manual_section_url=view_state["full_manual_section_url"],
         download_button_label=view_state["download_button_label"],
         back_button_label=view_state["back_button_label"],
-    )
+    ))
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @bp.get("/scheduler/config/manual/download")

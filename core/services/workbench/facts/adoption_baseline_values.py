@@ -8,7 +8,7 @@ from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaseline
 
 REASONS = {
     "no_adoption_baseline": "这是首版正式计划，没有上一版可供对比。",
-    "adoption_evidence_missing": "旧数据或采用记录缺少必要的原始凭据，认不出采用时的正式计划是第几版，这里不显示对比。",
+    "adoption_evidence_missing": "采用记录缺少必要的原始凭据，认不出采用时的正式计划是第几版，这里不显示对比。",
     "adoption_source_archived": "采用时那次排产、试调方案或试调草稿已归档或删除，原始数据核对不全，这里不显示对比。",
     "adoption_snapshot_invalid": "采用记录与归档数据不一致，无法对比。",
     "adoption_baseline_archived": "采用时那一版正式计划或它的工序安排已归档或删除，对不全，这里不显示对比。",

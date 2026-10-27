@@ -1,12 +1,11 @@
 """Draft and scenario rulings over WorkbenchTrialRepository facts; the repository itself never rejects."""
 
 from core.infrastructure.read_evidence import verified_read
-from core.models.content import same
 from core.models.workbench_trial import MAX_TRIAL_TASKS, reject
-from core.models.workbench_trial_codec import encode_trial_text, load_object, load_object_with_size
+from core.models.workbench_trial_codec import load_object, load_object_with_size
 from core.models.workbench_trial_scenario_archive import (
     logical_snapshot_bytes,
-    scenario_read_size_basis,
+    scenario_metadata_bytes,
     scenario_snapshot,
 )
 
@@ -77,28 +76,18 @@ def _load_scenario_record(repo, scenario_ref, row_limit, byte_limit, size_check)
     archive, header_bytes = load_object_with_size(raw)
     sizes = {"header": header_bytes, "rows": 0, "bodies": 0}
     _scenario_limits(sizes, row_limit, byte_limit, size_check)
-    legacy, stored = "tasks" in archive, {}
-    metadata_bytes, normalize_task_bytes = (None, False) if legacy else scenario_read_size_basis(raw, archive, header_bytes)
-    logical_bodies = 0
+    metadata_bytes, stored = scenario_metadata_bytes(raw, archive, header_bytes), {}
+    has_metadata = bool(archive["snapshot"])
     for row in repo.iter_scenario_rows(scenario_ref):
-        raw = row["payload_json"]
-        task, task_bytes = load_object_with_size(raw)
+        task, task_bytes = load_object_with_size(row["payload_json"])
         sizes["rows"] += 1
         sizes["bodies"] += task_bytes
         _scenario_limits(sizes, row_limit, byte_limit, size_check)
-        if metadata_bytes is not None:
-            logical_bodies += len(encode_trial_text(task)[1]) if normalize_task_bytes else task_bytes
-            logical_snapshot_bytes(metadata_bytes, logical_bodies, sizes["rows"], has_metadata=bool(archive["snapshot"]))
+        logical_snapshot_bytes(metadata_bytes, sizes["bodies"], sizes["rows"], has_metadata=has_metadata)
         stored[row["row_ref"]] = task
-    if metadata_bytes is not None and not sizes["rows"]:
-        logical_snapshot_bytes(metadata_bytes, logical_bodies, sizes["rows"], has_metadata=bool(archive["snapshot"]))
-    result = scenario_snapshot(archive, stored)
-    tasks = result.get("tasks")
-    if type(tasks) is not list or any(type(task) is not dict or type(task.get("row_ref")) is not str for task in tasks):
-        reject("trial_snapshot_invalid", "场景任务明细必须为带永久行引用的对象列表。")
-    if legacy and (len(stored) != len(tasks) or not same(stored, {row["row_ref"]: row for row in tasks})):
-        reject("trial_snapshot_invalid", "场景快照与永久明细不一致。")
-    return header, result, sizes
+    if not sizes["rows"]:
+        logical_snapshot_bytes(metadata_bytes, 0, 0, has_metadata=has_metadata)
+    return header, scenario_snapshot(archive, stored), sizes
 
 
 def require_advanced(advanced):

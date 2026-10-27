@@ -31,12 +31,11 @@ from core.services.workbench.facts.trial_policy import (
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository, new_ref
 
 from .base import prepare_base
+from .capacity import trial_capacity
 from .facts import live_context
 from .preparation import apply_changeovers, apply_preparation, preparation_projection, trial_changeovers
 from .projection import (
     draft_projection,
-    scenario_capacity,
-    scenario_comparison,
     scenario_rows,
     source_projection,
     unplanned_operations,
@@ -206,26 +205,22 @@ class WorkbenchTrialService:
                 saved = load_scenario(self.repo, reference(scenario_ref))
                 header = self.repo.draft_header(saved["draft_ref"])
                 if header is None:
-                    head, rows, projected, facts, archive, origin = None, [], None, None, None, None
-                else:
-                    head, rows = load_draft(self.repo, saved["draft_ref"], header=header)
-                    projected = scenario_rows(saved, rows)
-                    facts, archive, origin, contexts = source_projection(projected, head["admission"])
+                    # Trial drafts are permanent; every saved scenario keeps its draft.
+                    reject("trial_snapshot_invalid", "试调方案的原草稿缺失，请联系维护人员核对。")
+                head, rows = load_draft(self.repo, saved["draft_ref"], header=header)
+                admission = head["admission"]
+                projected = scenario_rows(saved, rows)
+                _, archive, _, contexts = source_projection(projected, admission)
+                # A saved comparison already holds its delivery summary and changeovers.
                 result = {**saved, "tasks": [dict(task) for task in saved["tasks"]],
-                          "comparison": dict(saved["comparison"])}
-                result["comparison"] = (result["comparison"] if "delivery_summary" in result["comparison"]
-                                        else scenario_comparison(saved, head, projected=projected,
-                                                                 facts=facts, origin=origin))
-                result["capacity"] = scenario_capacity(saved, head, projected=projected, archive=archive)
-                if head is not None:
-                    pairs, preparation = preparation_projection(projected, head["admission"], saved.get("operation_effort"),
-                        current_evidence={"kind": "scenario", "scenario_ref": saved["scenario_ref"]}, contexts=contexts)
-                    result["unplanned_operations"] = unplanned_operations(contexts)
-                    result["scope_complete"] = not result["unplanned_operations"]
-                    apply_preparation(result["tasks"], result["unplanned_operations"], pairs)
-                    result["comparison"]["preparation_common"] = preparation
-                    if "changeover_common" not in result["comparison"]:
-                        apply_changeovers(result["comparison"], trial_changeovers(projected, head["admission"], facts=facts))
+                          "comparison": dict(saved["comparison"]),
+                          "capacity": trial_capacity(projected, archive, source_ref=admission["source"]["identity"])}
+                pairs, preparation = preparation_projection(projected, admission, saved.get("operation_effort"),
+                    current_evidence={"kind": "scenario", "scenario_ref": saved["scenario_ref"]}, contexts=contexts)
+                result["unplanned_operations"] = unplanned_operations(contexts)
+                result["scope_complete"] = not result["unplanned_operations"]
+                apply_preparation(result["tasks"], result["unplanned_operations"], pairs)
+                result["comparison"]["preparation_common"] = preparation
                 return result
 
     def lookup(self, request_key):

@@ -14,22 +14,13 @@ from core.services.scheduler.run.optimizer.shared_process import (
     numeric_score,
 )
 from core.services.scheduler.run.schedule_shared_search import SharedSearch
-from core.services.workbench.facts.candidate_process import candidate_process
 from core.services.workbench.facts.unified_process import project_unified_process
 from core.services.workbench.run.decision_process import (
     normalize_process_filters,
     process_details,
     process_export_records,
 )
-from core.services.workbench.run.decision_process_export import (
-    ATTEMPT_HEADERS,
-    CANDIDATE_HEADERS,
-    PROCESS_CSV_HEADERS,
-    PROGRESS_HEADERS,
-    STAGE_HEADERS,
-    process_csv,
-    process_export_tables,
-)
+from core.services.workbench.run.decision_process_export import process_csv, process_export_tables
 from tests._support.shared_schedule_archive import _archive, _candidate, _failure, _observe_decoded, _result
 
 
@@ -153,10 +144,10 @@ def test_shared_process_projection_and_export_keep_actual_objectives_and_one_run
     assert progress["selected_objective"]["unit"] == "小时" and progress["items"][0]["primary_value"] == 5.5
     assert progress["actions"] == [] and progress["page"]["total"] == 3
     assert source.scope == initial_scope and progress["scope"] == details["scope"]
-    for filters in (normalize_process_filters(objective="min_weighted_tardiness"),
-                    normalize_process_filters(record_kind="attempts", sort="primary_value")):
+    for read in (lambda: process_details(source, normalize_process_filters(objective="min_weighted_tardiness")),
+                 lambda: normalize_process_filters(record_kind="attempts", sort="primary_value")):
         with pytest.raises(WorkbenchCommandRejected) as caught:
-            process_details(source, filters)
+            read()
         assert caught.value.code == "invalid_input" and caught.value.status == 422
     exports = process_export_records(source)
     assert len(exports) == 1 and exports[0]["process"] is process and exports[0]["export_objectives"] == targets
@@ -177,7 +168,7 @@ def test_shared_process_projection_and_export_keep_actual_objectives_and_one_run
     data = {"run": {"run_ref": run_ref}, "capture_ref": run_ref,
         "scope": {"selected_candidate_ref": first_ref, "comparison_mode": "candidates", "range_start": None, "range_end": None,
                   "resource_view": "selected_batches"}, "baseline": {"kind": "candidate", "candidate_ref": viewer_ref},
-        "selection_basis": {"selection_evidence_version": "business_objectives_v1"},
+        "selection_basis": {"selection_policy_version": "business_objectives_v1"},
         "recommendation": {"candidate_ref": first_ref, "recommendation_version": "decision-recommendation-v1"},
         "export_process": [{"process_version": UNIFIED_PROCESS_VERSION, "process": process,
                             "export_objectives": targets, "projected": projected}]}
@@ -222,17 +213,6 @@ def test_shared_process_projection_and_export_keep_actual_objectives_and_one_run
     filtered = process_export_tables(data, snapshot)
     assert len(filtered["目标预算"][1]) == 1 and len(filtered["共同计算"][1]) == 1 and len(filtered["范围成员"][1]) == len(members)
     assert process == original
-
-    legacy = {"candidate_ref": first_ref, "status": "completed", "artifact": {"label": "旧候选", "kind": "baseline",
-        "objective_name": "min_overdue", "elapsed_seconds": 0.25, "metrics": {"overdue_count": 1},
-        "attempts": [{"tag": "start:0", "score": [0, 1, 2], "metrics": {"overdue_count": 1, "makespan_hours": 2}}]}}
-    data["export_process"] = [candidate_process(legacy, [legacy])]
-    legacy_tables = process_export_tables(data, snapshot)
-    assert {title: table[0] for title, table in legacy_tables.items()} == {
-        "候选计算": CANDIDATE_HEADERS, "进步事件": PROGRESS_HEADERS, "搜索阶段": STAGE_HEADERS, "代表尝试": ATTEMPT_HEADERS}
-    assert process_csv(data, snapshot)[0] == PROCESS_CSV_HEADERS
-    legacy_row = dict(zip(ATTEMPT_HEADERS, legacy_tables["代表尝试"][1][0]))
-    assert legacy_row["业务主值"] == 1 and legacy_row["评分分量1单位"] == "批次" and legacy_row["评分分量5"] is None
 
 
     # Actual arrangements and metric computation feed the collector; finding an initial best is not improvement.

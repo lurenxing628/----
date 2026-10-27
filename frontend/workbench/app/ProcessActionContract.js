@@ -7,7 +7,7 @@
   function filters(value) {
     if (value === undefined) return {};
     if (!C.object(value) || Object.keys(value).some(key => !P.columns.some(column => column.key === key) || !C.object(value[key]))) throw C.failure('工艺列筛选不完整，未改为全量范围。');
-    return Object.fromEntries(Object.keys(value).map(key => [key, M.rule(value[key])]));
+    return M.rules(value);
   }
   function scope(value = {}) {
     if (!C.object(value) || value.query !== undefined && typeof value.query !== 'string'

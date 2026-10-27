@@ -70,7 +70,10 @@ def test_range_assembly_keeps_point_overlap_rows_and_individual_snapshots():
     client = BoundedClient()
     result = _formal(client, PLAN, client.expected)
     assembly = result["assembly"]
-    assert result["meta"]["snapshot_ref"] is result["meta"]["as_of"] is None
+    # 拼装件没有整体快照；成功信封仍是同一个生产者，as_of 记拼装完成的工厂本地秒级时间。
+    assert set(result["meta"]) == {"request_ref", "source", "time_basis", "as_of", "snapshot_ref"}
+    assert result["meta"]["snapshot_ref"] is None
+    assert datetime.strptime(result["meta"]["as_of"], "%Y-%m-%dT%H:%M:%S").isoformat() == result["meta"]["as_of"]
     assert result["data"]["task_count"] == assembly["unique_task_count"] == 4
     assert assembly["segment_count"] == 2 and assembly["duplicate_overlap_count"] == 1
     assert len({row["operation_ref"] for row in result["data"]["tasks"]}) == 4

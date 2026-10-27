@@ -61,8 +61,10 @@ def test_cross_page_catalog_workspace_and_strict_dto(trial_case, tmp_path, sourc
 def test_formal_supplier_identity_and_baseline_resource_names_follow_their_adoptions(trial_case, tmp_path):
     case = trial_case
     case.conn.execute("INSERT INTO OpTypes(op_type_id,name,category) VALUES ('XT','Heat treatment','external')")
-    case.conn.executemany("INSERT INTO Suppliers(supplier_id,name,op_type_id,default_days) VALUES (?,?,'XT',2)",
+    case.conn.executemany("INSERT INTO Suppliers(supplier_id,name,default_days) VALUES (?,?,2)",
                          (("XS1", "First supplier"), ("XS2", "Second supplier"), ("XS3", "Current replacement")))
+    case.conn.executemany("INSERT INTO WorkbenchSupplierOpTypes(supplier_id,op_type_id) VALUES (?,'XT')",
+                         (("XS1",), ("XS2",), ("XS3",)))
     case.conn.execute("INSERT INTO PartOperations(part_no,seq,op_type_id,op_type_name,source,supplier_id,ext_days) "
                       "VALUES ('P1',2,'XT','Heat treatment','external','XS1',2)")
     external = case.operation(seq=2, op_type_id="XT", op_type_name="Heat treatment", source="external",

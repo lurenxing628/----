@@ -8,7 +8,6 @@ from types import SimpleNamespace
 import pytest
 
 from core.models.workbench_calibration import normalize_calibration_filters
-from core.models.workbench_command import canonical_json
 from core.models.workbench_master_overview import MasterOverviewScope
 from core.models.workbench_process_table_query import normalize_process_column_filters
 from core.models.workbench_resource_table_query import normalize_column_filters
@@ -19,6 +18,7 @@ from core.services.workbench.facts.table_index import ResourceTableIndex
 from core.services.workbench.master.overview import MasterOverviewService
 from core.services.workbench.master.overview_graph import MasterOverviewGraph
 from core.services.workbench.system.maintenance_records import _event
+from core.shared.strict_json import canonical_json
 from tests.workbench.node_runtime_support import node_runtime
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -29,7 +29,7 @@ def browser(data, program):
 const assert=require('node:assert/strict'), fs=require('node:fs'), path=require('node:path'), vm=require('node:vm');
 const data=JSON.parse(fs.readFileSync(0,'utf8')), window={ResourceControls:{},MasterOverviewTable:{}}, React={};
 const plain=value=>JSON.parse(JSON.stringify(value)), app='frontend/workbench/app/';
-for(const file of ['resource-contract.js','ResourceTableFilterModel.js','ProcessContract.js','ProcessReadView.js',
+for(const file of ['transport.js','resource-contract.js','ResourceTableFilterModel.js','ProcessContract.js','ProcessReadView.js',
   'CalibrationAPI.js','MasterOverviewContract.js','SystemMaintenanceAPI.js'])
   vm.runInNewContext(fs.readFileSync(app+file,'utf8'),{window,React});
 const {compile}=require('./scripts/workbench/compile.cjs');
@@ -79,38 +79,37 @@ def test_exact_issue_and_cell_keys_filter_and_restore_the_same_business_values()
     assert normalize_calibration_filters({"part_no": condition["label"]})["part_no"]["values"] == [cell.key]
     browser({"master": master, "facets": index.facets(query, "label", size=2),
              "selection": index.facet_selection(query, "label", size=2), "key": cell.key, "ref": ref}, r"""
-const C=window.APSMasterOverviewContract, M=window.ResourceTableFilterModel, old='a'.repeat(64), ref=data.ref, fresh=data.key;
+const C=window.APSMasterOverviewContract, M=window.ResourceTableFilterModel, ref=data.ref, fresh=data.key;
 C.list(raw(data.master), data.master.scope);
 const broken=plain(data.master); broken.rows[0].entity_ref='display-only'; assert.throws(()=>C.list(raw(broken)));
 M.facets(raw(data.facets),{column:'label',page:1,size:2});
 M.selection(raw(data.selection),{column:'label',expected_total:data.selection.total});
-const filters={label:{mode:'include',values:[old]},spec:{mode:'exclude',values:[fresh]}};
-assert.deepEqual(plain(M.restore(filters).filters),{spec:filters.spec});
-assert.deepEqual(plain(M.restore({label:{mode:'exclude',values:[old]},spec:filters.spec}).filters),{spec:filters.spec});
+const filters={spec:{mode:'exclude',values:[fresh]}}, label={mode:'include',values:[fresh]};
+assert.deepEqual(plain(M.rules({spec:{mode:'exclude',values:[fresh,fresh]},label})),{label,spec:filters.spec});
 assert.throws(()=>M.rule({mode:'include',values:['']}));
 const resourceView={scope:{query:'保留范围',status:'active',page:3,size:20,sort:'business_code',direction:'asc',column_filters:filters},
   selected_refs:[ref],sort_active:true,detail:null};
 const resource=window.ResourceWorkspace.navigation({source:'production',kind:'material',read_view:resourceView});
-assert(!resource.error&&resource.notice); assert.equal(resource.context.read_view.scope.page,3);
+assert(!resource.error); assert.equal(resource.context.read_view.scope.page,3);
+assert.deepEqual(plain(resource.context.read_view.scope.column_filters),filters);
 assert.deepEqual(plain(resource.context.read_view.selected_refs),[ref]); assert.equal(resource.context.read_view.scope.query,'保留范围');
-const processView={scope:{query:'保留工艺',page:5,size:20,sort:[],stage:'route',column_filters:{label:filters.label}},selected_refs:[ref],entity_ref:ref};
+const processView={scope:{query:'保留工艺',page:5,size:20,sort:[],stage:'route',column_filters:{label}},selected_refs:[ref],entity_ref:ref};
 const process=window.ResourceWorkspace.navigation({source:'production',kind:'part',read_view:processView});
-assert(!process.error&&process.notice); assert.equal(process.context.read_view.scope.page,5);
+assert(!process.error); assert.equal(process.context.read_view.scope.page,5);
 assert.deepEqual(plain(process.context.read_view.selected_refs),[ref]); assert.equal(process.context.read_view.entity_ref,ref);
-const calibration=window.CalibrationAPI.restoreInitial({scope:{query:'保留校准',part_ref:ref,column_filters:{part_no:filters.label}},
+const calibration=window.CalibrationAPI.initial({scope:{query:'保留校准',part_ref:ref,column_filters:{part_no:label}},
   table:{page:4,size:20,sort:'part_no',direction:'asc'},selected:ref});
-assert(calibration.notice); assert.equal(calibration.input.page,4); assert.equal(calibration.input.part_ref,ref);
-assert.deepEqual(plain(calibration.input.column_filters),{});
+assert.equal(calibration.page,4); assert.equal(calibration.part_ref,ref);
+assert.deepEqual(plain(calibration.column_filters),{part_no:label});
 const saved={scope:plain(C.scope({view:'issues',domain:'part',query:'保留资料'})),page:6,detail_page:3,section:'relations',
   selected:{domain:'part',entity_ref:ref,issue_ref:'e'.repeat(48)}};
 const restored=window.MasterOverviewWorkspace.readContext({read_view:saved});
-assert.equal(restored.selected,null); assert(restored.notice&&restored.restoreSelection); assert.equal(restored.page,6);
+assert.deepEqual(plain(restored.selected),saved.selected); assert.equal(restored.page,6);
 assert.equal(restored.detailPage,3); assert.deepEqual(plain(restored.scope),saved.scope);
 const current=window.MasterOverviewWorkspace.readContext({read_view:{...saved,selected:{...saved.selected,issue_ref:data.master.rows[0].issue_ref}}});
-assert.equal(current.selected.entity_ref,ref); assert.equal(current.notice,'');
-assert.equal(current.restoreSelection,false);
+assert.equal(current.selected.entity_ref,ref); assert.equal(current.selected.issue_ref,data.master.rows[0].issue_ref);
 const empty=window.MasterOverviewWorkspace.readContext({read_view:{...saved,selected:null}});
-assert.equal(empty.selected,null); assert.equal(empty.restoreSelection,false); assert.equal(empty.notice,'');
+assert.equal(empty.selected,null);
 """)
 
 
@@ -147,7 +146,7 @@ def test_runtime_file_origins_distinguish_duplicates_and_survive_append_and_trun
     assert unanchored[0]["_origin"]["offset"] == 1000 - 128 // 2
 
 
-def test_system_display_keys_use_file_metadata_and_event_identity_with_read_state_migration(tmp_path):
+def test_system_display_keys_use_file_metadata_and_event_identity_and_restore_saved_selection(tmp_path):
     path = tmp_path / "aps_backup_manual.db"
     path.write_bytes(b"metadata-only")
     before, issues = backup_records(str(tmp_path))
@@ -168,14 +167,15 @@ const A=window.SystemMaintenanceAPI, rows=[data.file,data.event], filters={query
 A.collection(raw({rows,page:{number:1,size:10,total:2,pages:1},sources:[],scope:'backup-files-and-maintenance-events',
   capabilities:{create:true,delete:true,restore:false,blocked_reason:'',restore_reason:'预检'},create_context:{write_token:'create'}}),'backups');
 for(const kind of ['logs','backups']) {
-  const saved={filters,page:3,selection:{key:'a'.repeat(64),...(kind==='backups'?{record_kind:'backup_file',backup_ref:'old-token'}:{})}};
+  const saved={filters,page:3,selection:{key:data.file.key,...(kind==='backups'?{record_kind:'backup_file'}:{})}};
   const result=A.pageContext({tab:kind,records:{[kind]:saved}}).records[kind];
-  assert.equal(result.selection,null); assert(result.migration_notice); assert.equal(result.page,3);
+  assert.deepEqual(plain(result.selection),saved.selection); assert.equal(result.page,3);
   assert.equal(result.filters.query,'保留'); assert.equal(result.filters.file,'aps.log');
-  assert(A.recordContext(result,kind).migration_notice);
 }
+// The only writer (SystemMaintenanceRecords) saves { key, record_kind }; a selection carrying anything else is refused.
+assert.throws(()=>A.recordContext({filters,page:3,selection:{key:data.file.key,record_kind:'backup_file',backup_ref:'old-token'}},'backups'),/失效/);
 const selected=A.recordContext({filters,page:3,selection:{key:data.file.key,record_kind:'backup_file'}},'backups');
-assert.equal(selected.selection.key,data.file.key); assert.equal(selected.migration_notice,undefined);
+assert.equal(selected.selection.key,data.file.key);
 """)
 
 

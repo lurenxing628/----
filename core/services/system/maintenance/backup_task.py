@@ -8,7 +8,7 @@ from typing import Callable, Tuple
 
 from core.infrastructure.backup import BackupManager
 from core.infrastructure.logging import safe_log
-from core.models.workbench_command import canonical_json
+from core.shared.strict_json import canonical_json
 
 from .telemetry import write_job_state, write_oplog
 

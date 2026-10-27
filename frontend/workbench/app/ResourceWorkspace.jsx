@@ -10,7 +10,7 @@
         operator: ['skill_refs', 'shift_profile_ref'], supplier: ['op_type_refs', 'default_days'] }[config.kind];
     return ['business_code', 'label', ...fields, ...(config.kind === 'op_type' ? [] : ['status'])];
   }
-  function restoreResourceReadView(view, node) {
+  function resourceReadView(view, node) {
     if (!C.object(view) || Object.keys(view).some(key => !['scope', 'selected_refs', 'sort_active', 'detail'].includes(key))) throw C.failure('上次浏览位置只能包含查看状态。');
     const config = C.nodes[node], scope = view.scope;
     if (!C.object(scope) || Object.keys(scope).some(key => !readScopeKeys.includes(key)) || typeof scope.query !== 'string'
@@ -31,11 +31,10 @@
       const checked = navigation({ source: 'production', ...view.detail });
       if (checked.error || !checked.context || ['part', 'calendar'].includes(checked.context.kind)) throw C.failure('上次打开的详情对不上，已取消定位。');
     }
-    const migration = window.ResourceTableFilterModel.restore(scope.column_filters === undefined ? {} : scope.column_filters), restored = JSON.parse(JSON.stringify(view));
-    restored.scope.column_filters = migration.filters;
-    return { view: restored, notice: migration.notice };
+    const restored = JSON.parse(JSON.stringify(view));
+    restored.scope.column_filters = window.ResourceTableFilterModel.rules(scope.column_filters === undefined ? {} : scope.column_filters);
+    return restored;
   }
-  const resourceReadView = (view, node) => restoreResourceReadView(view, node).view;
   function navigation(context) {
     // 侧栏直接进入时 main.jsx 传空对象；资料页内部没有定位目标时传 undefined 或 null。
     if (context === undefined || context === null || !Object.keys(context).length) return { context: null };
@@ -59,8 +58,8 @@
           || ['template_operation_ref', 'template_external_group_ref'].some(key => C.own(context, key) && !ref(context[key]))))
         throw C.failure('工艺阶段或模板记录编号不正确。');
       const node = kind === 'part' ? 'process' : kind === 'op_type' ? context.category === 'internal' ? 'op_int' : 'op_ext' : kind;
-      const restored = C.own(context, 'read_view') ? kind === 'part' ? window.APSProcessReadView.restore(context.read_view) : restoreResourceReadView(context.read_view, node) : undefined;
-      return { context: { ...context, ...(restored ? { read_view: restored.view } : {}) }, node, notice: restored ? restored.notice : '' };
+      const restored = C.own(context, 'read_view') ? kind === 'part' ? window.APSProcessReadView.read(context.read_view) : resourceReadView(context.read_view, node) : undefined;
+      return { context: { ...context, ...(restored ? { read_view: restored } : {}) }, node };
     } catch (error) { return { context: null, error }; }
   }
   function navigationDialog(context) {
@@ -126,7 +125,7 @@
     const config = C.nodes[node], basic = !!config && !['part', 'calendar'].includes(config.kind);
     const blocked = command.locked || external.busy;
     React.useEffect(() => {
-      if (basic && onNavigationReady) onNavigationReady(!dialog && command.phase === 'idle' && !external.busy);
+      if (basic) onNavigationReady(!dialog && command.phase === 'idle' && !external.busy);
     }, [basic, dialog, command.phase, external.busy, onNavigationReady]);
     // External writes restart from the latest committed view of this request.
     const lastScope = React.useRef(null);
@@ -275,7 +274,6 @@
       <Rail node={node} counts={counts} onNode={navigate} onNavigate={onNavigate} disabled={blocked || !!dialog} />
       <section className="content">
         <ErrorBox error={navigationError} />
-        {target.notice && <p role="status">{target.notice}</p>}
         {deferred && <div role="status"><p>上次操作还没处理完，暂时没有跳转到指定记录。刚才的提交没有被覆盖。</p><Button icon="arrow-right" onClick={continueNavigation}>继续跳转</Button></div>}
         {!config ? <ErrorBox error={C.failure('未知的基础资料入口，请在上方产能链里选一项。')} /> : <>
           {node !== 'calendar' && <><div className="crumb"><span>产能链</span><span className="sep">/</span><span>{({ input: '输入', internal: '自制链', external: '外协链', global: '全局' })[config.chain]}</span><span className="sep">/</span><span className="cur">{config.label}</span></div>

@@ -18,7 +18,8 @@ def _external_plan(case, with_execution):
     conn = case.conn
     conn.executescript("""
         INSERT INTO OpTypes(op_type_id,name,category) VALUES ('EXT','External','external');
-        INSERT INTO Suppliers(supplier_id,name,op_type_id) VALUES ('S1','Supplier','EXT');
+        INSERT INTO Suppliers(supplier_id,name) VALUES ('S1','Supplier');
+        INSERT INTO WorkbenchSupplierOpTypes(supplier_id,op_type_id) VALUES ('S1','EXT');
         INSERT INTO Parts(part_no,part_name,route_parsed) VALUES ('P_EXT','External Part','yes');
         INSERT INTO ExternalGroups(group_id,part_no,start_seq,end_seq,merge_mode,total_days,supplier_id)
         VALUES ('G1','P_EXT',10,20,'separate',2,'S1');

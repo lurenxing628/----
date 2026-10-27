@@ -5,11 +5,11 @@ const input = JSON.parse(fs.readFileSync(0, 'utf8'));
 const root = path.resolve(input.root), loaded = [];
 const document = {body: {style: {}}, documentElement: {setAttribute() {}}, addEventListener() {}, removeEventListener() {}, elementFromPoint: () => null};
 const runtime = vm.createContext({console, document, URL, URLSearchParams, Map, Set, Date,
-  setTimeout, clearTimeout, AbortController, FormData, innerWidth: 1280, innerHeight: 800});
+  setTimeout, clearTimeout, AbortController, DOMException, FormData, Blob, Headers, Response, TextEncoder, TextDecoder, innerWidth: 1280, innerHeight: 800});
 runtime.window = runtime; runtime.self = runtime;
 runtime.addEventListener = () => {}; runtime.removeEventListener = () => {};
 runtime.dispatchEvent = () => {}; runtime.CustomEvent = class { constructor(type, options) { this.type = type; this.detail = options.detail; } };
-runtime.location = {href: 'http://localhost/workbench'};
+runtime.location = {origin: 'http://localhost', href: 'http://localhost/workbench'};
 function load(relative) {
   const absolute = path.resolve(root, relative);
   assert(absolute.startsWith(root + path.sep));
@@ -126,7 +126,7 @@ function gantt(data, options = {}) {
   // The product receives meta.as_of from its workspace response. Synthetic fixtures use a fixed local clock.
   const asOf = options.asOf === undefined ? input.data && input.data.meta && input.data.meta.as_of || fixtureAsOf : options.asOf;
   const tree = render(runtime.PlanGantt, {data,prepared:prepare(runtime.PlanGanttModel,data),asOf,query:options.query || '',selected:options.selected || null,
-    onSelect:(task,before) => selections.push({task,before}),onQuery:value => queries.push(value),disabled:!!options.disabled}, states);
+    onSelect:(task,before) => selections.push({task,before}),onQuery:value => queries.push(value)}, states);
   return {tree, nodes:walk(tree), selections, queries};
 }
 function processFixture() {

@@ -2,7 +2,7 @@
 
 import json
 
-from core.models.workbench_command import canonical_json
+from core.shared.strict_json import canonical_json
 
 from .overview_facts import plain
 

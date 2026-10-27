@@ -31,8 +31,12 @@ def client(db_env):
 
 
 def upload(client, kind, rows, *, category=None, fmt="csv", headers=None, extra=None):
-    headers = headers or (("business_code", "label", "category") if kind == "op_type" else ("business_code", "label", "status"))
-    fields = {"file": (BytesIO(file_bytes(rows, fmt, headers)), "input." + fmt), "format": fmt, "mode": "upsert"}
+    from core.models.workbench_resource_file import column_label
+
+    # 用例按列键描述文件；文件里写导出、模板用的中文列名（导入只认中文列名）。
+    keys = headers or (("business_code", "label", "category") if kind == "op_type" else ("business_code", "label", "status"))
+    labels = tuple(column_label(kind, key) for key in keys)
+    fields = {"file": (BytesIO(file_bytes(rows, fmt, labels)), "input." + fmt), "format": fmt, "mode": "upsert"}
     if category is not None:
         fields["category"] = category
     fields.update(extra or {})
@@ -46,9 +50,14 @@ def command(client, kind, preview, *, key="resource-api-request-00001", operatio
     return client.post(BASE + path, json=body)
 
 
+CATEGORY_LABELS = {"internal": "自制", "external": "外协"}
+
+
 def new_preview(client, kind, category=None):
+    # 导入文件只认导出写出的中文；范围参数 category 仍是接口代号。
     headers = ["business_code", "label", "category" if kind == "op_type" else "status"]
-    rows = [["R1", "Resource 1", category or "active"], ["R2", "Resource 2", category or "active"]]
+    cell = CATEGORY_LABELS[category] if category else "可用"
+    rows = [["R1", "Resource 1", cell], ["R2", "Resource 2", cell]]
     if kind == "supplier":
         headers.append("default_days")
         rows = [row + [2.5] for row in rows]
@@ -100,6 +109,20 @@ def test_real_registration_public_preview_and_committed_restart_replay(client, k
     replay = command(restarted, kind, preview)
     assert replay.get_json() == {**first.get_json(), "replayed": True}
     assert without_startup_logs(snapshot(restarted)) == before
+
+
+@pytest.mark.parametrize("kind", ("op_type", "machine", "operator", "supplier"))
+def test_resource_import_rejects_english_column_names(client, kind):
+    # 导入只认导出、模板写出的中文列名；英文列键不再作为别名被接受。
+    english = ("business_code", "label", "category" if kind == "op_type" else "status")
+    fields = {"file": (BytesIO(file_bytes([("R9", "Resource 9", "外协" if kind == "op_type" else "可用")], "csv", english)),
+                       "input.csv"), "format": "csv", "mode": "upsert", **({"category": "external"} if kind == "op_type" else {})}
+    before = snapshot(client)
+    response = client.post(BASE + "/imports/" + kind + "/preview", data=fields, content_type="multipart/form-data")
+    assert response.status_code == 422, response.get_json()
+    error = response.get_json()["error"]
+    assert error["code"] == "invalid_input" and error["fields"][0]["path"] == "headers"
+    assert snapshot(client) == before
 
 
 @pytest.mark.parametrize("fmt", ("csv", "xlsx"))
@@ -197,8 +220,9 @@ def test_resource_export_shares_captured_facts_for_preview_and_csv(client, monke
     expected = ["EXPORT-M1", "EXPORT-M2"] if selection == "all" else ["EXPORT-M1"]
     assert [row["编号"] for row in data] == expected
     assert int(result.headers["X-Workbench-Row-Count"]) == approved.get_json()["data"]["row_count"] == len(expected)
-    assert {key: data[0][key] for key in ("名称", "自制工种编号", "设备组编号", "可做工种编号")} == {
-        "名称": "Lathe", "自制工种编号": "EXPORT-T1", "设备组编号": "EXPORT-G1", "可做工种编号": "EXPORT-T1、EXPORT-T2"}
+    assert "自制工种编号" not in headers
+    assert {key: data[0][key] for key in ("名称", "设备组编号", "可做工种编号")} == {
+        "名称": "Lathe", "设备组编号": "EXPORT-G1", "可做工种编号": "EXPORT-T1、EXPORT-T2"}
 
 
 @pytest.mark.parametrize(
@@ -275,7 +299,7 @@ def test_resource_work_type_errors_use_the_same_kind_specific_column_label(clien
     assert column_label("operator", "shift_profile_code") == "班次编号"
     assert column_label("machine", "remark") == "备注（只读）"
     headers = ["business_code", "label", "status", "op_type_codes"]
-    values = ["T20-MISSING", "Missing work type", "active", "T20-UNKNOWN-TYPE"]
+    values = ["T20-MISSING", "Missing work type", "可用", "T20-UNKNOWN-TYPE"]
     if kind == "supplier":
         headers.append("default_days")
         values.append("2.5")
@@ -294,9 +318,9 @@ def test_op_type_import_marks_in_file_duplicate_labels_across_existing_and_confl
         client,
         "op_type",
         [
-            ("R1", "", "external", "keep existing label"),
-            ("R2", "Resource 1", "external", "rename to R1 label"),
-            ("R3", "Resource 1", "external", "new with R1 label"),
+            ("R1", "", "外协", "keep existing label"),
+            ("R2", "Resource 1", "外协", "rename to R1 label"),
+            ("R3", "Resource 1", "外协", "new with R1 label"),
         ],
         category="external",
         headers=("business_code", "label", "category", "remark"),
@@ -316,7 +340,7 @@ def test_op_type_import_marks_in_file_duplicate_labels_across_existing_and_confl
 def test_op_type_import_rejects_label_owned_by_another_saved_code_as_row_duplicate(client):
     # 名称已被库里另一个编号占用：新增行和改名行都按行级重复报错，不让整份文件变成 409。
     assert command(client, "op_type", new_preview(client, "op_type", "external")).status_code == 200
-    response = upload(client, "op_type", [("R2", "Resource 1", "external"), ("R3", "Resource 2", "external")],
+    response = upload(client, "op_type", [("R2", "Resource 1", "外协"), ("R3", "Resource 2", "外协")],
                       category="external")
     assert response.status_code == 200, response.get_json()
     data = response.get_json()["data"]
@@ -327,7 +351,7 @@ def test_op_type_import_rejects_label_owned_by_another_saved_code_as_row_duplica
 
 
 def test_internal_op_type_import_with_merge_mode_is_a_row_conflict(client):
-    response = upload(client, "op_type", [("T-INT", "Internal type", "internal", "separate")], category="internal",
+    response = upload(client, "op_type", [("T-INT", "Internal type", "自制", "分别设置")], category="internal",
                       headers=("business_code", "label", "category", "default_merge_mode"))
     assert response.status_code == 200, response.get_json()
     data = response.get_json()["data"]
@@ -372,7 +396,7 @@ def test_resource_import_allows_keeping_existing_bound_work_type_when_pruning_li
             "INSERT INTO WorkbenchOperatorProfiles(operator_id,skills_declared) VALUES ('R-LEGACY',1)"
         )
         conn.execute(
-            "INSERT INTO Suppliers(supplier_id,name,op_type_id,default_days,status) VALUES ('R-LEGACY','Supplier','LEGACY-INT',2.0,'active')"
+            "INSERT INTO Suppliers(supplier_id,name,default_days,status) VALUES ('R-LEGACY','Supplier',2.0,'active')"
         )
         conn.executemany(
             "INSERT INTO WorkbenchSupplierOpTypes(supplier_id,op_type_id) VALUES ('R-LEGACY',?)",
@@ -390,24 +414,3 @@ def test_resource_import_allows_keeping_existing_bound_work_type_when_pruning_li
     confirmed = command(client, kind, preview, key=f"keep-existing-{kind}")
     assert confirmed.status_code == 200, confirmed.get_json()
     assert confirmed.get_json()["result"] == "committed"
-
-
-def test_new_machine_with_legacy_work_type_and_cleared_list_is_a_row_error(client):
-    # 新增设备同时填旧单工种和 \N：交给行级清除规则报错，不拿 None 做成员判断。
-    response = upload(client, "machine", [("T20-NEW-MACHINE", "New machine", "active", "OT1", r"\N")],
-                      headers=("business_code", "label", "status", "op_type_code", "op_type_codes"))
-    assert response.status_code == 200, response.get_json()
-    data = response.get_json()["data"]
-    assert data["can_confirm"] is False
-    error, = data["rows"][0]["errors"]
-    assert error["field"] == "op_type_codes" and r"\N" in error["message"]
-
-
-@pytest.mark.parametrize("cell", ('[{"code":"A","code":"B"}]', '[NaN]', '[1e999]', '["A"'))
-def test_resource_file_json_cell_rejects_duplicate_keys_and_nonfinite_numbers_as_one_row_error(cell):
-    from core.services.workbench.facts.file_codec import read_resource_file
-
-    rows, _ = read_resource_file("machine", file_bytes([("M-JSON", cell)], "csv", ("business_code", "op_type_codes")), "csv")
-    assert rows == [{"row": 2, "values": {"business_code": "M-JSON"}, "errors": [{
-        "row": 2, "field": "op_type_codes", "code": "invalid_input",
-        "message": "这个格子里的 JSON 写得不对或者有重复的键，没有导入。多个编号请按 [\"A\",\"B\"] 这样填，不要只用逗号隔开。"}]}]

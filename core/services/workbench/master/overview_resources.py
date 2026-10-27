@@ -114,8 +114,6 @@ def resource_links(graph):
                 graph.issue(entity, "machine.category", "设备能力不支持自制", "请核对设备所选工种的适用归属。")
     _explicit_links(graph, "OperatorSkill", "personnel", "operator_id", "opType", "op_type_id", "登记技能", "技能人员")
     _explicit_links(graph, "OperatorMachine", "personnel", "operator_id", "equipment", "machine_id", "设备操作授权", "获授权人员")
-    for row in facts.rows("Suppliers"):
-        graph.related(graph.by_key[("supplier", row["supplier_id"])], "opType", row["op_type_id"], "具备外协能力", "Suppliers.op_type_id", "关联供应商")
     _explicit_links(graph, "WorkbenchSupplierOpTypes", "supplier", "supplier_id", "opType", "op_type_id", "具备外协能力", "关联供应商")
     _qualification_fields(graph)
     _op_resources(graph)

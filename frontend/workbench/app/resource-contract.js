@@ -1,28 +1,5 @@
 (function () {
   'use strict';
-  const verifiedReader = Symbol('verified workbench response reader');
-  // Factories validate responses once. Injected readers enter that same boundary.
-  function verified(adapter, names) {
-    names.forEach(name => Object.defineProperty(adapter[name], verifiedReader, { value: true }));
-    return adapter;
-  }
-  // 注入的 adapter（测试或组合用）可以只提供部分读取方法：没提供的方法保持缺省，由调用方按能力判断，不在这里补空实现。
-  function checked(adapter, validators) {
-    const result = { ...adapter };
-    Object.entries(validators).forEach(([name, validate]) => {
-      const method = adapter[name];
-      if (typeof method === 'function' && !method[verifiedReader]) {
-        result[name] = async (...args) => {
-          const value = await method.apply(adapter, args);
-          validate(value, ...args);
-          return value;
-        };
-        verified(result, [name]);
-      }
-    });
-    return result;
-  }
-  window.APSReadBoundary = { verified, checked };
   // Plan integers keep safe values as numbers and larger SQLite int64 values as decimal text.
   function nonnegativeInt64(value) {
     if (typeof value === 'number') return Number.isSafeInteger(value) && value >= 0;
@@ -53,9 +30,9 @@
   };
   const statuses = {
     material: [['active', '启用'], ['inactive', '停用']],
-    machine: [['active', '可用'], ['maintain', '停机'], ['inactive', '停用'], ['unknown', '旧状态 / 原因未知']],
-    operator: [['active', '在岗'], ['leave', '请假'], ['inactive', '停用'], ['unknown', '旧状态 / 原因未知']],
-    supplier: [['active', '启用'], ['pending_review', '待复核'], ['inactive', '停用'], ['unknown', '旧状态 / 原因未知']]
+    machine: [['active', '可用'], ['maintain', '停机'], ['inactive', '停用']],
+    operator: [['active', '在岗'], ['leave', '请假'], ['inactive', '停用']],
+    supplier: [['active', '启用'], ['pending_review', '待复核'], ['inactive', '停用']]
   };
   const textFields = {
     material: ['spec', 'unit', 'remark'], op_type: ['category', 'default_merge_mode', 'remark'],
@@ -78,22 +55,18 @@
   const text = value => typeof value === 'string';
   const count = value => Number.isSafeInteger(value) && value >= 0;
   const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
+  // 本地校验失败：请求没有发出（status 为 null），与 transport 的统一错误对象同一形状，transport.rejected 判为确定没有生效。
   function failure(message, fields = []) {
-    const error = new Error(message); error.fields = fields; error.committed = false; return error;
+    return Object.assign(new Error(message), { code: null, fields, conflicts: [], committed: false, status: null,
+      requestRef: null, requestKey: null, resultTarget: null });
   }
-  function message(error) {
-    return error && error.error && error.error.message || error && error.message || '读取失败，请刷新后重试。';
-  }
+  // 统一错误对象只有一种形状（transport.js 与上面的 failure）。
+  const message = error => error.message || '读取失败，请刷新后重试。';
   // 服务端说这次操作依据的资料已过期：需要用户刷新，不能静默复位后照旧重提。页面专属的过期码由调用方追加。
   const staleCodes = ['stale_write', 'snapshot_stale'];
-  function stale(error, extraCodes = []) {
-    const code = error && (error.code || error.error && error.error.code);
-    return staleCodes.includes(code) || extraCodes.includes(code);
-  }
-  function fieldErrors(error) {
-    const list = error && error.error && error.error.fields || error && error.fields || [];
-    return Array.isArray(list) ? list.filter(row => row && text(row.path) && text(row.message)) : [];
-  }
+  // stale / fieldErrors 的调用方在还没有错误时会传 null；字段行的形状已在 transport.failure 校验。
+  const stale = (error, extraCodes = []) => !!error && (staleCodes.includes(error.code) || extraCodes.includes(error.code));
+  const fieldErrors = error => error && Array.isArray(error.fields) ? error.fields : [];
   function entity(value) {
     return object(value) && text(value.ref) && !!value.ref && text(value.business_code) && text(value.label)
       && (text(value.status) || value.status === null) && object(value.fields) && object(value.relationships) && Array.isArray(value.issues)
@@ -103,7 +76,7 @@
   function availability(value) {
     return object(value) && value.basis === 'enabled_authorized_matching' && count(value.machines) && count(value.operators);
   }
-  // 信封（ok、schema_version、meta、warnings）已由 resource-api.js 的 production() 校验，这里只校验 data 形状。
+  // 信封（ok、schema_version、meta、warnings）已由 transport.js 的 envelope() 校验，这里只校验 data 形状。
   function query(result, shape) {
     if (shape === 'entity') {
       if (!entity(result.data)) throw failure('读到的详情不完整，请刷新后重试。');
@@ -132,15 +105,9 @@
     }
     return '';
   }
-  function requestKey() {
-    const bytes = new Uint8Array(24); window.crypto.getRandomValues(bytes);
-    return 'resource-' + Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
-  }
-  function statusLabel(kind, status, fields = {}) {
-    const match = own(statuses, kind) ? statuses[kind].find(row => row[0] === status) : undefined;
-    let label = match ? match[1] : status === 'active' ? '启用' : '旧状态 / 原因未知';
-    if (fields.inactive_reason === 'unknown' && status !== 'active' && status !== 'unknown') label += '（旧原因未知）';
-    return label;
+  // 后端只产出各类资料自己的固定状态（core/models/workbench_resource_status.py，其余值直接报存储损坏）。
+  function statusLabel(kind, status) {
+    return statuses[kind].find(row => row[0] === status)[1];
   }
   function resourceName(kind, category) {
     const opNames = { internal: '自制工种', external: '外协工种' };
@@ -153,7 +120,7 @@
   function nameLabel(kind) { return kind === 'operator' ? '姓名' : kind === 'supplier' ? '供应商' : '名称'; }
   function fieldLabels(kind, category) {
     const labels = { spec: '规格', unit: '单位', stock_qty: '库存数量', remark: '备注', category: '归属',
-      status: '原状态', legacy_status: '原始状态（只读）', inactive_reason: '停用原因', default_days: '默认周期（天）' };
+      status: '原状态', inactive_reason: '停用原因', default_days: '默认周期（天）' };
     if (kind === 'op_type' && category === 'internal') labels.remark = '产能备注';
     if (kind === 'op_type' && ['external', 'both'].includes(category)) labels.default_merge_mode = '默认周期规则';
     if (kind === 'machine') labels.category = '设备分类（只读）';
@@ -163,8 +130,7 @@
     if (value == null || value === '') return '未填写';
     const values = {
       category: { internal: '自制', external: '外协', both: '自制和外协都可' }, default_merge_mode: { separate: '分别设置', merged: '合并设置' },
-      inactive_reason: { unknown: '未知', disabled: '停用', leave: '请假', pending_review: '待复核' },
-      legacy_status: { inactive: '原停用状态，原因未登记' }
+      inactive_reason: { disabled: '停用', leave: '请假', pending_review: '待复核' }
     };
     if (key === 'status') return statusLabel(kind, value);
     if (key === 'category' && kind !== 'op_type') return String(value);
@@ -176,7 +142,7 @@
     const result = { business_code: current ? current.business_code : '', label: current ? current.label : '', fields: {}, relationships: {} };
     textFields[kind].forEach(key => { result.fields[key] = fields[key] == null ? '' : fields[key]; });
     if (kind === 'op_type' && !current) result.fields.category = category;
-    if (statuses[kind]) result.fields.status = current ? current.status || 'unknown' : '';
+    if (statuses[kind]) result.fields.status = current ? current.status : '';
     if (kind === 'material') result.fields.stock_qty = fields.stock_qty == null ? '' : String(fields.stock_qty);
     if (kind === 'supplier') result.fields.default_days = fields.default_days == null ? '' : String(fields.default_days);
     // 已有记录的多选关系恒为编号数组、单选关系为编号或 null（core/services/workbench/resource/projection.py）。
@@ -226,7 +192,7 @@
         if (!Number.isFinite(n) || n < 0 || (key === 'default_days' && n === 0)) bad('fields.' + key, key === 'stock_qty' ? '请填写有效的库存数量，不能小于 0。' : '请填写有效的周期天数，要大于 0。');
         else fields[key] = n;
       } else if (key === 'status') {
-        if (!statuses[kind].some(item => item[0] === v && v !== 'unknown')) bad('fields.status', '请明确选择状态。');
+        if (!statuses[kind].some(item => item[0] === v)) bad('fields.status', '请明确选择状态。');
         else fields.status = v;
       } else if (key === 'category') {
         if (!['internal', 'external', 'both'].includes(v)) bad('fields.category', '请明确选择自制或外协。');
@@ -250,18 +216,16 @@
     if (errors.length) throw failure('请核对标红的项。', errors);
     return result;
   }
+  // 失败已由 transport 抛出统一错误，这里只区分已完成的回执与仍待确认的结果。
   function receipt(result) {
-    if (result && result.state === 'not_recorded') return 'pending';
-    if (result && result.ok === false) return result.committed === false ? 'rejected' : 'pending';
-    if (!result || result.ok !== true) return 'pending';
+    if (!result || result.ok !== true || result.state === 'not_recorded') return 'pending';
     // 命令结果已由 resource-api.js 的 terminal() 校验回执编号、data 与 warnings。
     return ['committed', 'unchanged', 'partial'].includes(result.result) ? 'terminal' : 'pending';
   }
-  // 只在命令已完成（receipt() 判为 terminal，data 已校验为对象）后调用。
+  // 只在命令已完成（receipt() 判为 terminal，data 已校验为对象）后调用；个人日历等命令不回 entity_ref，沿用意图里的记录编号。
   function resultRef(result, fallback) {
-    const data = result.data;
-    return data.entity_ref || data.ref || data.entity && data.entity.ref || fallback;
+    return result.data.entity_ref || fallback;
   }
-  window.APSResourceContract = { nodes, statuses, relations, object, own, entity, query, blocked, requestKey, nonnegativeInt64, positiveInt64,
+  window.APSResourceContract = { nodes, statuses, relations, object, own, entity, query, blocked, nonnegativeInt64, positiveInt64,
     message, stale, fieldErrors, failure, statusLabel, resourceName, codeLabel, nameLabel, fieldLabels, fieldValue, availability, draft, rebaseDraft, input, receipt, resultRef };
 })();

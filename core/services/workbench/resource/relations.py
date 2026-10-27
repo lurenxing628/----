@@ -102,9 +102,6 @@ class WorkbenchResourceRelationService:
 
     def _validate_facts(self, relation, rows, facts):
         if relation == "suppliers":
-            for row in rows:
-                if row["legacy_type"] is not None and not supports_source(row["legacy_category"], "external"):
-                    _invalid_facts("供应商的旧单工种不存在，或者不是外协工种")
             if any(not supports_source(row["category"], "external") for row in facts["capabilities"]):
                 _invalid_facts("供应商单独设置的能力工种不存在，或者不是外协工种")
         elif relation == "operators":

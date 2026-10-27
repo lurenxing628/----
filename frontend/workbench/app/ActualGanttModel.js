@@ -6,7 +6,6 @@
   // Same label rule as the field records: minute precision, seconds shown only when they are not :00.
   const time = value => window.FieldContract.date(value);
   // Readable file stamp for downloads: 2026-09-21_1646 instead of the raw wire time.
-  const fileStamp = value => value.slice(0, 10) + '_' + value.slice(11, 16).replace(':', '');
   const number = value => window.WorkbenchFormat.number(value, { digits: 2 });
   const hours = value => window.WorkbenchFormat.hours(value, { digits: 2 });
   const pieceLabel = task => task.piece_id === null ? '共同工序' : '分件 ' + task.piece_id;
@@ -252,5 +251,5 @@
     const value = data.execution_summary;
     return { complete: value.complete, reported: value.reported, pending: value.pending, average: value.average_finish_deviation_minutes };
   }
-  window.ActualGanttModel = { instant, wire, time, fileStamp, number, hours, pieceLabel, taskLabel, states, views, lateLabels, names, finishDeviation, deadlines, fieldSearchText, searchText, filter, tracks, prepare, groupPrepared, selectPrepared, layoutPrepared, visibleRows, graphLocations, tickStep, tickLabel, ticks, describe, markTitle, metrics };
+  window.ActualGanttModel = { instant, wire, time, number, hours, pieceLabel, taskLabel, states, views, lateLabels, names, finishDeviation, deadlines, fieldSearchText, searchText, filter, tracks, prepare, groupPrepared, selectPrepared, layoutPrepared, visibleRows, graphLocations, tickStep, tickLabel, ticks, describe, markTitle, metrics };
 })();

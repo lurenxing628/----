@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const root = path.resolve(__dirname, '../..');
-const files = ['resource-contract.js', 'resource-api.js', 'WorkbenchTerms.js', 'RunGenerationContract.js', 'PointContract.js', 'GanttGraph.js', 'DeliveryProjectionContract.js', 'PlanContract.js', 'PlanAPI.js'];
+const files = ['resource-contract.js', 'transport.js', 'WorkbenchTerms.js', 'RunGenerationContract.js', 'PointContract.js', 'GanttGraph.js', 'DeliveryProjectionContract.js', 'PlanContract.js', 'PlanAPI.js'];
 const scripts = files.map(name => ({name, source: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8')}));
 const input = JSON.parse(fs.readFileSync(0, 'utf8') || '{}');
 const P = 'a'.repeat(48), OTHER = 'b'.repeat(48), TASK = 'c'.repeat(48), OP = 'd'.repeat(48);
@@ -16,7 +16,7 @@ const issue = () => ({code: 'identity_missing', message: 'Identity unavailable'}
 const header = () => ({plan_ref: P, version: 3, kind: 'official', is_current_official: true,
   display_name: 'Night plan', completeness: 'complete', capabilities: {view: true, export: true, edit_draft: false, adopt: false, report_actual: false}, blocked_reasons: []});
 const envelope = data => ({ok: true, schema_version: 1, data, meta: {source: 'production', time_basis: 'factory_local',
-  request_ref: 'request opaque', snapshot_ref: 'snapshot opaque', as_of: '2026-09-09T20:00:00'}, warnings: []});
+  request_ref: 'a'.repeat(32), snapshot_ref: 'Snapshot_token-0'.repeat(2), as_of: '2026-09-09T20:00:00'}, warnings: []});
 const catalog = () => envelope({plans: [header()], page: {collection: 'history', size: 20, unit: 'version', has_more: false, next_cursor: null}});
 const workspace = () => align(envelope({plan: header(), scope: {source: 'production', kind: 'plan_workspace', plan_ref: P, range_start: null, range_end: null},
   time_scope: {range_start: START, range_end: END, selection: 'overlap', boundary: 'half_open', time_basis: 'factory_local'},
@@ -54,15 +54,16 @@ function align(payload) {
   return payload;
 }
 function response(payload, status = 200, type = 'application/json') {
-  return {ok: status >= 200 && status < 300, status, headers: {get: () => type}, json: async () => clone(payload)};
+  return new Response(JSON.stringify(payload), {status, headers: {'Content-Type': type}});
 }
 function runtime(fetcher, timeout = 20000) {
-  let timers = 0, listeners = 0;
-  const context = vm.createContext({URL, AbortController, FormData, location: {origin, href: origin + '/workbench'},
+  let timers = 0; const listeners = new Set();
+  const context = vm.createContext({URL, URLSearchParams, AbortController, DOMException, FormData, Blob, location: {origin, href: origin + '/workbench'},
     sessionStorage: {getItem() { assert.fail('GET must not read pending writes'); }, setItem() { assert.fail('GET must not write storage'); }, removeItem() { assert.fail('GET must not clear storage'); }},
     fetch: async (url, options) => {
       calls.push(url); assert.equal(options.method, 'GET'); assert.equal(options.body, undefined);
-      assert.equal(options.headers.Accept, new URL(url).pathname.endsWith('/export') ? 'application/octet-stream,application/json' : 'application/json');
+      const format = new URL(url).searchParams.get('format');
+      assert.equal(options.headers.Accept, new URL(url).pathname.endsWith('/export') ? (format === 'csv' ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') + ',application/json' : 'application/json');
       assert.equal(options.credentials, 'same-origin');
       assert.equal(options.redirect, 'error'); assert.equal(options.cache, 'no-store');
       assert.equal(new URL(url).origin, origin); return fetcher(url, options);
@@ -70,12 +71,12 @@ function runtime(fetcher, timeout = 20000) {
     clearTimeout: timer => { timers--; clearTimeout(timer); }});
   context.window = context;
   for (const script of scripts) vm.runInContext(script.source, context, {filename: script.name});
-  return {api: context.APSPlanAPI.create(), C: context.APSPlanContract, D: context.DeliveryProjectionContract, idle: () => assert.equal(timers, 0),
+  return {api: context.APSPlanAPI, C: context.APSPlanContract, D: context.DeliveryProjectionContract, idle: () => assert.equal(timers, 0),
     signal(controller) {
       return {get aborted() { return controller.signal.aborted; },
-        addEventListener(...args) { listeners++; controller.signal.addEventListener(...args); },
-        removeEventListener(...args) { listeners--; controller.signal.removeEventListener(...args); }};
-    }, detached: () => assert.equal(listeners, 0)};
+        addEventListener(type, listener, options) { listeners.add(listener); controller.signal.addEventListener(type, listener, options); },
+        removeEventListener(type, listener) { listeners.delete(listener); controller.signal.removeEventListener(type, listener); }};
+    }, detached: () => assert.equal(listeners.size, 0)};
 }
 async function check(name, action) { await action(); cases.push(name); }
 const rejected = error => error && error.committed === false && typeof error.message === 'string' && error.message.length > 0;
@@ -89,24 +90,24 @@ async function requests() {
   const normal = runtime(async url => { assert.equal(url, endpoint + '?collection=history&size=20'); return response(catalog()); });
   await check('catalog exact default path and GET', async () => { assert.deepEqual(await normal.api.catalog(), catalog()); normal.idle(); });
   await check('read-only public surface', () => assert.deepEqual(Object.keys(normal.api).sort(), ['catalog', 'export', 'workspace']));
-  const opaque = ' cursor:/+?&= % unicode \u6d4b\u8bd5 ';
+  const opaque = ' cursor:/+?&= % unicode \u6d4b\u8bd5 ', token = 'Az09_-'.repeat(6).slice(0, 32);
   await check('opaque cursor and snapshot query escaping', async () => {
     const payload = catalog(); payload.data.page = {collection: 'scenario', size: 1, unit: 'scenario', has_more: false, next_cursor: null};
-    payload.data.plans[0].kind = 'scenario'; payload.data.plans[0].is_current_official = false; payload.meta.snapshot_ref = opaque;
+    payload.data.plans[0].kind = 'scenario'; payload.data.plans[0].is_current_official = false; payload.meta.snapshot_ref = token;
     const client = runtime(async url => {
-      assert.equal(url, endpoint + '?' + new URLSearchParams({collection: 'scenario', size: '1', cursor: opaque, snapshot_ref: opaque}));
+      assert.equal(url, endpoint + '?' + new URLSearchParams({collection: 'scenario', size: '1', cursor: opaque, snapshot_ref: token}));
       return response(payload);
     });
-    assert.deepEqual(await client.api.catalog({collection: 'scenario', size: 1, cursor: opaque, snapshot_ref: opaque}), payload); client.idle();
+    assert.deepEqual(await client.api.catalog({collection: 'scenario', size: 1, cursor: opaque, snapshot_ref: token}), payload); client.idle();
   });
   await check('workspace exact path and unbounded scope', async () => {
     const client = runtime(async url => { assert.equal(url, endpoint + '/' + P + '/workspace'); return response(workspace()); });
     assert.deepEqual(await client.api.workspace(P), workspace()); client.idle();
   });
   await check('workspace overlap not clipped with escaped query', async () => {
-    const scope = {range_start: '2026-09-10T00:00:00', range_end: '2026-09-10T01:00:00', snapshot_ref: opaque};
+    const scope = {range_start: '2026-09-10T00:00:00', range_end: '2026-09-10T01:00:00', snapshot_ref: token};
     const payload = workspace(); Object.assign(payload.data.scope, scope); delete payload.data.scope.snapshot_ref;
-    Object.assign(payload.data.time_scope, {range_start: scope.range_start, range_end: scope.range_end}); payload.meta.snapshot_ref = opaque;
+    Object.assign(payload.data.time_scope, {range_start: scope.range_start, range_end: scope.range_end}); payload.meta.snapshot_ref = token;
     align(payload);
     const client = runtime(async url => { assert.equal(url, endpoint + '/' + P + '/workspace?' + new URLSearchParams(scope)); return response(payload); });
     assert.deepEqual(await client.api.workspace(P, scope), payload); client.idle();
@@ -195,11 +196,14 @@ async function contracts() {
   }
   for (const kind of ['catalog', 'workspace']) {
     const valid = kind === 'catalog' ? catalog : workspace;
-    const validate = payload => kind === 'catalog' ? C.catalog(payload) : C.workspace(payload, P);
-    for (const mutate of [p => { p.meta.source = 'demo'; }, p => { p.meta.snapshot_ref = ''; }, p => { p.meta.request_ref = ''; },
+    // The envelope is validated once, in APSWorkbenchTransport; read it through the real API path.
+    for (const mutate of [p => { p.meta.source = 'demo'; }, p => { p.meta.snapshot_ref = ''; }, p => { p.meta.snapshot_ref = null; }, p => { p.meta.request_ref = ''; },
       p => { p.meta.as_of = '2026-02-30T00:00:00'; }, p => { p.meta.time_basis = 'UTC'; }, p => { p.schema_version = 2; },
       p => { p.warnings = null; }, p => { p.ok = false; }, p => { p.data = []; }, p => { p.meta.seek = 3; }, p => { p.extra = 'private'; }]) {
-      await check(kind + ' malformed envelope ' + cases.length, () => { const p = valid(); mutate(p); assert.throws(() => validate(p), rejected); });
+      await check(kind + ' malformed envelope ' + cases.length, async () => {
+        const p = valid(); mutate(p); const client = runtime(async () => response(p));
+        await assert.rejects(kind === 'catalog' ? client.api.catalog() : client.api.workspace(P), rejected); client.idle();
+      });
     }
   }
   for (const mutate of [p => { p.plan_ref = 'legacy'; }, p => { p.plan_ref = null; }, p => { p.version = null; }, p => { p.version = 9007199254740992; },
@@ -267,7 +271,7 @@ async function contracts() {
     row.has_overlap=true; assert.throws(()=>C.workspace(p,P),rejected); row.has_overlap=false;
     const legacy=clone(p), old=legacy.data.projections.occupancy.resources[0];
     for(const key of ['metric_version','available_overlap_hours','conflict_segments','outside_calendar_basis','conflict_basis']) delete old[key];
-    old.has_overlap=true; assert.strictEqual(C.workspace(legacy,P),legacy,'Legacy span evidence remains explicitly readable');
+    old.has_overlap=true; assert.throws(()=>C.workspace(legacy,P),rejected,'Occupancy rows without the current resource metric version are rejected');
     calendar.state='partial'; Object.assign(calendar.resources[0],{state:'unavailable',windows:null,issues:[{code:'calendar_unavailable',message:'Calendar unavailable'}]});
     for(const key of Object.keys(capacity)) calendar.resources[0][key]=null;
     for(const key of ['downtime_scope_hours','downtime_available_hours','downtime_windows']) delete calendar.resources[0][key];
@@ -296,14 +300,15 @@ async function contracts() {
 async function failures() {
   for (const [status, code] of [[404, 'entity_not_found'], [409, 'snapshot_stale'], [409, 'plan_binding_invalid'], [413, 'query_too_large'], [500, 'storage_failure']]) {
     await check('server failure preserved ' + code, async () => {
-      const payload = {ok: false, committed: false, error: {code, message: code + ' visible', fields: [], retryable: status >= 500, request_ref: 'failure-ref'}};
+      const ref = 'f'.repeat(32);
+      const payload = {ok: false, committed: false, error: {code, message: code + ' visible', fields: [], retryable: status >= 500, request_ref: ref}};
       const client = runtime(async () => response(payload, status)); const before = calls.length;
-      await assert.rejects(client.api.workspace(P), error => rejected(error) && error.error.code === code && error.error.request_ref === 'failure-ref');
+      await assert.rejects(client.api.workspace(P), error => rejected(error) && error.code === code && error.status === status && error.requestRef === ref);
       assert.equal(calls.length, before + 1); client.idle();
     });
   }
   for (const fetcher of [async () => { throw new TypeError('offline'); }, async () => response({}, 200, 'text/html'),
-    async () => ({...response(null), json: async () => { throw new SyntaxError('bad json'); }}), async () => response({ok: false}, 500),
+    async () => new Response('{bad json', {status: 200, headers: {'Content-Type': 'application/json'}}), async () => response({ok: false}, 500),
     async () => response({ok: true, schema_version: 1, data: {}}), async () => response(catalog(), 503)]) {
     await check('transport malformed or offline ' + cases.length, async () => { const client = runtime(fetcher); const before = calls.length;
       await assert.rejects(client.api.catalog(), rejected); assert.equal(calls.length, before + 1); client.idle(); });
@@ -312,11 +317,12 @@ async function failures() {
     await check('cancel in flight and already cancelled ' + method, async () => {
       const client = runtime(async (_, options) => aborting(options.signal)), controller = new AbortController(), signal = client.signal(controller);
       const read = () => method === 'catalog' ? client.api.catalog({}, signal) : client.api.workspace(P, {}, signal);
-      const pending = read(); controller.abort(); await assert.rejects(pending, rejected); client.idle(); client.detached();
-      const before = calls.length; await assert.rejects(read(), rejected); assert.equal(calls.length, before); client.idle(); client.detached();
+      const cancelled = error => error.name === 'AbortError';
+      const pending = read(); controller.abort(); await assert.rejects(pending, cancelled); client.idle(); client.detached();
+      await assert.rejects(read(), cancelled); client.idle(); client.detached();
     });
   }
-  for (const fetcher of [async (_, options) => aborting(options.signal), async (_, options) => ({...response(null), json: () => aborting(options.signal)})]) {
+  for (const fetcher of [async (_, options) => aborting(options.signal), async (_, options) => ({ok: true, status: 200, headers: new Headers({'Content-Type': 'application/json'}), json: () => aborting(options.signal), text: () => aborting(options.signal)})]) {
     await check('bounded timeout including body read ' + cases.length, async () => { const client = runtime(fetcher, 5);
       await assert.rejects(client.api.catalog(), error => rejected(error) && /超时/.test(error.message)); client.idle(); });
   }
@@ -330,7 +336,7 @@ async function backendFixtures() {
       });
       const read = () => fixture.kind === 'catalog' ? client.api.catalog(fixture.scope || {}) : client.api.workspace(fixture.plan_ref, fixture.scope || {});
       if (fixture.contract_error) await assert.rejects(read(), rejected);
-      else if (fixture.error) await assert.rejects(read(), error => rejected(error) && error.error.code === fixture.error);
+      else if (fixture.error) await assert.rejects(read(), error => rejected(error) && error.code === fixture.error);
       else assert.deepEqual(await read(), fixture.payload);
       client.idle();
     });
@@ -345,26 +351,27 @@ async function exports() {
   }
   for (const format of ['csv', 'xlsx']) {
     const type = format === 'csv' ? 'text/csv; charset=utf-8' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-    const blob = {size: 12}, disposition = 'attachment; filename="plan.' + format + '"';
+    const bytes = format === 'csv' ? new TextEncoder().encode('\ufeffplan,task\n') : Uint8Array.from([0x50, 0x4b, 0x03, 0x04]);
+    const disposition = 'attachment; filename="plan.' + format + '"';
     const client = runtime(async url => {
       assert.equal(url, endpoint + '/' + P + '/export?' + new URLSearchParams({...scope, format}));
-      return {ok: true, status: 200, headers: {get: key => key === 'content-type' ? type : disposition}, blob: async () => blob};
+      return new Response(bytes, {status: 200, headers: {'Content-Type': type, 'Content-Disposition': disposition}});
     });
     await check('binary export exact GET and scope ' + format, async () => {
       const value = await client.api.export(P, {...scope, format});
-      assert.strictEqual(value.blob, blob); assert.equal(value.disposition, disposition); client.idle();
+      assert.deepEqual([...new Uint8Array(await value.blob.arrayBuffer())], [...bytes]); assert.equal(value.filename, 'plan.' + format); client.idle();
     });
   }
   for (const type of ['text/html', 'application/json', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']) {
     await check('export wrong bytes or JSON success ' + type, async () => {
-      const client = runtime(async () => ({...response(workspace(), 200, type), blob: async () => ({size: 10})}));
+      const client = runtime(async () => response(workspace(), 200, type));
       await assert.rejects(client.api.export(P, scope), rejected); client.idle();
     });
   }
   await check('export stale does not retry or refresh snapshot', async () => {
-    const payload = {ok: false, committed: false, error: {code: 'snapshot_stale', message: 'Stale', fields: []}};
+    const payload = {ok: false, committed: false, error: {code: 'snapshot_stale', message: 'Stale', fields: [], retryable: false, request_ref: 'f'.repeat(32)}};
     const client = runtime(async () => response(payload, 409)), before = calls.length;
-    await assert.rejects(client.api.export(P, scope), error => rejected(error) && error.error.code === 'snapshot_stale');
+    await assert.rejects(client.api.export(P, scope), error => rejected(error) && error.code === 'snapshot_stale');
     assert.equal(calls.length, before + 1); client.idle();
   });
 }

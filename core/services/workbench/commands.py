@@ -95,10 +95,7 @@ class WorkbenchCommandService:
     def _check_replay(self, row, action: str, context_ref: str, input_text: str) -> None:
         if (row["action"], row["context_ref"]) != (action, context_ref):
             raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号对应的内容和上次提交的不一样，请先核对上次的结果。")
-        original = self.repo.input_content(row)
-        if original is None:
-            raise WorkbenchCommandRejected("command_original_input_missing", "此操作已有保存结果，原提交内容未保存。请先读取该操作的回执结果。")
-        if original != input_text:
+        if self.repo.input_content(row) != input_text:
             raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号对应的内容和上次提交的不一样，请先核对上次的结果。")
 
     def _apply(self, request_key, action, context_ref, input_text, guard, mutate):

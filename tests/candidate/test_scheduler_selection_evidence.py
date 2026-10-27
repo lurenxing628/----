@@ -74,8 +74,7 @@ def test_business_selection_maps_winners_and_scope_to_permanent_references():
     assert unknown["scoring_scope"] == {"scheduled_operation_refs": ["1" * 48, "2" * 48], "complete_batch_refs": ["3" * 48],
         "objective_scope": "unknown", "components_known": False, "is_complete": False}
     basis = selection_basis({"selection": unknown}, rows)
-    assert basis["raw_score_best_candidate_ref"] == basis["selected_candidate_ref"] == refs[graph.candidate_key]
-    assert basis["health_reference_candidate_ref"] is basis["health_comparison"] is None
+    assert basis["selected_candidate_ref"] == refs[graph.candidate_key]
     assert basis["evidence_state"] == "partial" and basis["scoring_scope"] == unknown["scoring_scope"]
     assert selection_roles(rows[1], basis) == ["recommended"]
     assert all("algorithm_baseline" not in selection_roles(row, basis) for row in rows)

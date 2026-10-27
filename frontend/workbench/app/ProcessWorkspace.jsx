@@ -78,18 +78,14 @@
       if (previousAdapter.current === adapter) return;
       previousAdapter.current = adapter; setSelected([]); setDialog(null); setScope(current => ({ ...current, page: 1, snapshot_ref: undefined }));
     }, [adapter]);
-    React.useEffect(() => { if (onNavigationReady) onNavigationReady(!dialog && command.phase === 'idle' && !recoveryError); }, [dialog, command.phase, recoveryError, onNavigationReady]);
+    React.useEffect(() => { onNavigationReady(!dialog && command.phase === 'idle' && !recoveryError); }, [dialog, command.phase, recoveryError, onNavigationReady]);
     React.useEffect(() => {
       try {
         const intent = adapter.readPending();
         const restored = A.restored(intent);
         if (restored) setDialog({ ...restored, adapter });
         setRecoveryError(null);
-      } catch (error) {
-        const restored = A.restored(error.intent);
-        if (restored) setDialog({ ...restored, adapter });
-        setRecoveryError(error);
-      }
+      } catch (error) { setRecoveryError(error); }
     }, [adapter]);
     React.useEffect(() => {
       const restored = A.restored(command.intent);
@@ -122,14 +118,14 @@
       if (Number.isSafeInteger(receipt.data.deleted_count) && Array.isArray(receipt.data.rows)) {
         const removed = new Set(receipt.data.rows.map(row => row.entity_ref)); setSelected(current => current.filter(ref => !removed.has(ref)));
       }
-      if (onCommitted) onCommitted(receipt);
+      onCommitted(receipt);
     }
     function action(mode, refs = selected, fileKind) {
       if (!data || blocked || list.loading) return;
       setDialog({ mode, fileKind, refs, scope: A.scope(scope), snapshot_ref: list.result.meta.snapshot_ref, page_size: data.page.size,
         source: list.result.meta.source, create_context: data.create_context, adapter });
     }
-    const deleteReason = P.reason(data && data.capabilities, 'delete', true);
+    const deleteReason = P.reason(data && data.capabilities, 'delete');
     const activeStage = scope.stage === undefined ? '' : scope.stage;
     const blocked = disabled || !!dialog || command.locked || !!recoveryError;
     function continueNavigation() {
@@ -138,7 +134,6 @@
     }
     return <div className="process-workspace wb-fill-viewport" data-process-workspace>
       <ErrorBox error={navigationError} />{deferred && <div role="status"><p>上次操作还没处理完，暂时没有跳转到指定零件。</p><Button icon="arrow-right" onClick={continueNavigation}>继续跳转</Button></div>}
-      {target.notice && <p role="status">{target.notice}</p>}
       <div className="statline wb-metrics" style={{ '--wb-columns': 4 }}>
         {[['total', '零件总数', 'primary'], ['source', '待定归属', 'warn'], ['hours', '待填工时', 'warn'], ['ready', '已就绪', 'ok']].map(([key, label, tone]) =>
           <div key={key} className="stat wb-metric" data-tone={tone}><span className="sl wb-metric-label">{label}</span><span className="sv wb-metric-value">{counts ? counts[key] : '未读取'}</span></div>)}
@@ -151,7 +146,7 @@
         <span className="tb-spacer" /><div className="wb-actions" style={{ flexWrap: 'wrap' }}>
           <FileButtons capabilities={data && data.capabilities} disabled={blocked || list.loading}
             onAction={(kind, mode) => action(mode, selected, kind)} />
-          <Button icon="plus" className="btn primary" disabled={blocked || list.loading} reason={P.reason(data && data.capabilities, 'create', true) || A.createReason(data && data.create_context, list.result && list.result.meta.source)} onClick={() => action('create')}>新增零件</Button>
+          <Button icon="plus" className="btn primary" disabled={blocked || list.loading} reason={P.reason(data && data.capabilities, 'create') || A.createReason(data && data.create_context, list.result && list.result.meta.source)} onClick={() => action('create')}>新增零件</Button>
         </div>
       </form>
       <div className="toolbar"><span className="muted" aria-live="polite">已选 <b data-process-selection-count>{selected.length}</b> 项{selected.some(ref => !data || !data.entities.some(row => row.ref === ref)) ? ' · 含非当前页记录' : ''}</span>

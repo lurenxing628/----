@@ -147,8 +147,7 @@ def _logs(conn, path: str) -> Dict[str, Any]:
 
 
 def _config(conn, backup_keep_days_default: int) -> Dict[str, Any]:
-    result = {"status": "not_read", "values": None, "stored_values": None,
-              "defaulted_fields": None, "dirty_fields": None, "dirty_reasons": None,
+    result = {"status": "not_read", "values": None, "stored_values": None, "defaulted_fields": None,
               "stored_count": None, "writes_performed": False, "error": None}
     if conn is None:
         return result
@@ -160,11 +159,10 @@ def _config(conn, backup_keep_days_default: int) -> Dict[str, Any]:
         return result
     stored_values = {key: raw[key] for key in _CONFIG_FIELDS if key in raw}
     result.update(
-        status="partial" if snapshot.dirty_fields else ("available" if stored_values else "empty"),
+        status="available" if stored_values else "empty",
         values={key: getattr(snapshot, key) for key in _CONFIG_FIELDS},
         stored_values=stored_values, stored_count=len(stored_values),
         defaulted_fields=[key for key in _CONFIG_FIELDS if key not in raw],
-        dirty_fields=list(snapshot.dirty_fields), dirty_reasons=dict(snapshot.dirty_reasons),
     )
     return result
 

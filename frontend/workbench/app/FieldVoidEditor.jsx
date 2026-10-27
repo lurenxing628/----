@@ -8,7 +8,7 @@
     const form = React.useRef(null), inputRef = React.useRef(null), request = React.useRef(null);
     const changed = baseline.report_ref !== record.report_ref || baseline.revision_ref !== record.revision_ref;
     const locked = command.locked || command.phase === 'done' || reading || changed;
-    React.useLayoutEffect(() => { if (onDraft) onDraft({ draft, baseline, dirty: !!(draft.reason || draft.declared_operator) }); }, [draft, baseline, onDraft]);
+    React.useLayoutEffect(() => { onDraft({ draft, baseline, dirty: !!(draft.reason || draft.declared_operator) }); }, [draft, baseline, onDraft]);
     React.useEffect(() => { form.current.scrollIntoView({ block: 'start', inline: 'nearest' }); inputRef.current.focus({ preventScroll: true }); return () => { if (request.current) request.current.abort(); }; }, []);
     React.useEffect(() => {
       if (command.phase !== 'done' || !['committed', 'unchanged'].includes(command.result.result)) return undefined;

@@ -8,12 +8,12 @@ import pytest
 from flask import Blueprint
 
 from core.infrastructure.transaction import TransactionManager
-from core.models.content import content_text
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.plan.read_context import PlanReadContext
 from core.services.workbench.trial.adoption_history import WorkbenchTrialAdoptionHistoryService
 from core.services.workbench.trial.adoption_history_evidence import audit_fields, json_object
+from core.shared.strict_json import canonical_json
 from data.repositories import workbench_plan_identity_repo
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_trial_repo import HISTORY_REFERENCE_FORMAT, WorkbenchTrialRepository
@@ -100,7 +100,7 @@ def test_repeated_historical_validation_is_decoded_once_per_read(trial_case, mon
     assert decoded[texts[0]] == 2  # Request-local reuse never masks later reads.
 
 
-def test_real_adoptions_batch_history_and_legacy_intent_reads(trial_case, monkeypatch):
+def test_real_adoptions_batch_history_reads(trial_case, monkeypatch):
     case = trial_case
     first_saved = saved_scenario(case)
     first = adoption_service(case.conn).adopt(first_saved["scenario_ref"], preview(case, first_saved),
@@ -115,15 +115,6 @@ def test_real_adoptions_batch_history_and_legacy_intent_reads(trial_case, monkey
     versions = [result["data"]["official_plan"]["version"] for result in (first, second)]
     plan_refs = [result["data"]["official_plan"]["plan_ref"] for result in (first, second)]
     keys = ["trial-batch-history-adopt-01", "trial-batch-history-adopt-02"]
-    # Legacy receipts omit input_json; recover both intents from their stored audits.
-    case.conn.executemany("UPDATE WorkbenchCommandReceipts SET input_json=NULL WHERE request_key=?", [(key,) for key in keys])
-    case.conn.commit()
-    repo = WorkbenchCommandRepository(case.conn)
-    receipts = []
-    for key in keys:
-        row = repo.get(key)
-        assert row is not None
-        receipts.append(row)
     statements, schema_checks = [], []
     check_schema = workbench_plan_identity_repo.workbench_plan_identity_contract_issues
 
@@ -147,18 +138,14 @@ def test_real_adoptions_batch_history_and_legacy_intent_reads(trial_case, monkey
                     assert identity is not None and identity["version"] == version
                     assert context.resolve(plan_ref).version == version
                     assert context.repo.list_plan_role_options(version) == context.references.read_role_options(version)
-                inputs = repo.adoption_input_contents(receipts)
     finally:
         case.conn.set_trace_callback(None)
     histories = [sql.upper() for sql in statements if "FROM SCHEDULEHISTORY" in sql.upper() and "RESULT_SUMMARY" in sql.upper()]
-    assert len(histories) == 2
-    assert sum("VERSION IN (" in sql for sql in histories) == 1
-    assert histories.count("SELECT RESULT_SUMMARY FROM SCHEDULEHISTORY") == 1
+    assert len(histories) == 1 and "VERSION IN (" in histories[0]
     role_queries = [sql.upper() for sql in statements if "FROM SCHEDULECANDIDATESELECTION S" in sql.upper()]
     assert len(role_queries) == 1 and "S.VERSION IN (" in role_queries[0]
     assert schema_checks == [case.conn]
     assert not any("PRAGMA_SCHEMA_VERSION" in sql.upper() for sql in statements)
-    assert inputs == dict.fromkeys(keys, content_text(INTENT))
 
     statements.clear()
     case.conn.set_trace_callback(statements.append)
@@ -171,7 +158,8 @@ def test_real_adoptions_batch_history_and_legacy_intent_reads(trial_case, monkey
     assert entry["committed_plan"]["plan_ref"] == plan_refs[0]
     assert entry["current_state"] == "historical" and entry["adoption"]["reason"] == INTENT["reason"]
     assert not any(issue["code"].startswith("audit_") for issue in entry["evidence_gaps"])
-    assert sum(sql.upper() == "SELECT RESULT_SUMMARY FROM SCHEDULEHISTORY" for sql in statements) == 1
+    # Every receipt keeps its original intent, so the reader never scans the whole history table.
+    assert not any(sql.upper() == "SELECT RESULT_SUMMARY FROM SCHEDULEHISTORY" for sql in statements)
     assert schema_checks == [case.conn, case.conn]
     assert adoption_service(case.conn).adopt(first_saved["scenario_ref"], "expired-token", keys[0], INTENT) == dict(first, replayed=True)
 
@@ -184,7 +172,7 @@ def test_stored_adoption_bodies_reject_duplicate_keys_nonfinite_numbers_and_non_
         json_object(raw)
     assert (error.value.code, error.value.status, str(error.value)) == (
         "adoption_history_invalid", 409, "采用记录里的试调方案、草稿和结果对不上，这里没有改动原记录。请刷新后重试。")
-    audit, gaps = audit_fields({}, {}, {}, {}, {}, history={"result_summary": raw}, command_repo=None, adoption_inputs={})
+    audit, gaps = audit_fields({}, {}, {}, {}, history={"result_summary": raw}, command_repo=None)
     assert audit == dict.fromkeys(("reason", "declared_operator", "application_operator", "adopted_at"))
     assert gaps == [{"code": "audit_unproven", "message": "正式计划历史与保存结果对不上，经办人、原因和采用时间暂时不采信。"}]
 

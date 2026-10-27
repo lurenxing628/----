@@ -2,9 +2,9 @@
   'use strict';
   const C = window.OutsourcingContract, S = window.OutsourcingSession, P = window.OutsourcingControls, { Button, ErrorBox, Issues } = window.ResourceControls;
   const { EmptyState } = window.WorkbenchListControls;
-  function Records({ api, selected, revision, onEdit, onClose, blocked }) {
+  function Records({ selected, revision, onEdit, onClose, blocked }) {
     const [q, setQuery] = React.useState({ page: 1, size: 10 });
-    const read = S.useRead(signal => api.read('history', q, selected, signal), [api, q, selected, revision]);
+    const read = S.useRead(signal => C.read('history', q, selected, signal), [q, selected, revision]);
     const result = read.result, data = result && result.data, item = data && data.item;
     function reload() { const next = { ...q, page: 1 }; delete next.snapshot_ref; setQuery(next); }
     function change(patch, paging = false) { const next = { ...q, ...patch, page: paging ? patch.page : 1 }; delete next.snapshot_ref;
@@ -24,10 +24,10 @@
     </section>;
   }
   function Content({ outsourcingRef, onUpdated }) {
-    const api = React.useMemo(() => C.create(), []), command = S.useCommand(api);
+    const command = S.useCommand();
     const [q, setQuery] = React.useState(() => ({ page: 1, size: 10, status: 'all' }));
     const [selected, setSelected] = React.useState(outsourcingRef || null), [dialog, setDialog] = React.useState(null), [revision, refresh] = React.useReducer(n => n + 1, 0);
-    const read = S.useRead(signal => api.read('receipts', q, undefined, signal), [api, q, revision]);
+    const read = S.useRead(signal => C.read('receipts', q, undefined, signal), [q, revision]);
     const result = read.result, blocked = command.busy || !!command.saved || !!command.storageError;
     // 刷新期间继续显示上一次读到的列表，只标 aria-busy，不把整块清空。
     const last = React.useRef(null); if (result) last.current = result;
@@ -64,8 +64,8 @@
           hint={q.status === 'all' ? '有可登记的外协工序时，点「新增外协登记」开始登记。' : '可以切换筛选查看其他登记。'}
           action={q.status !== 'all' ? <Button disabled={read.loading} onClick={() => change({ status: 'all' })}>查看全部登记</Button> : undefined} />}
         <P.Pager page={data.page} label="外协登记" busy={read.loading} onPage={page => change({ page }, true)} onSize={size => change({ size })} /></>}
-      {selected && <Records key={selected + ':' + revision} api={api} selected={selected} revision={revision} onEdit={item => setDialog({ item })} onClose={() => setSelected(null)} blocked={blocked} />}
-      {dialog && <P.Editor key={dialog.item ? dialog.item.latest_fact_ref : 'create'} api={api} item={dialog.item}
+      {selected && <Records key={selected + ':' + revision} selected={selected} revision={revision} onEdit={item => setDialog({ item })} onClose={() => setSelected(null)} blocked={blocked} />}
+      {dialog && <P.Editor key={dialog.item ? dialog.item.latest_fact_ref : 'create'} item={dialog.item}
         command={command} onClose={() => setDialog(null)} onFinish={finish} onOpen={open} />}
     </section>;
   }

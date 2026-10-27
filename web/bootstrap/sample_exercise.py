@@ -176,7 +176,7 @@ def _blocked_replan_request(client, seed, batch_codes, expected_code):
         rejection = rejected.body
     else:
         raise RuntimeError("已知不可排的范围仍创建了新排产任务。")
-    lookup = client.get(BASE + "/scheduling/requests/" + key)
+    lookup = client.get(_query(BASE + "/scheduling/requests/" + key, {"data_context_ref": preview["data_context_ref"]}))
     require(lookup["found"] is False and lookup["run"] is None, "被拒绝的排产创建了新job或受理receipt。")
     return {"blockers": context["blocked_reasons"], "admission_error": rejection["error"]}
 

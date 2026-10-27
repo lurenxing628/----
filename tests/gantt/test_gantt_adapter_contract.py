@@ -50,11 +50,18 @@ const zeroTask={...task,quantity:0,batch_quantity:3,quantity_reason:null,quantit
 const zeroData={...data,tasks:data.tasks.map(row=>row.task_ref===zeroTask.task_ref?zeroTask:row)};
 const zeroDetail=h.render(h.runtime.PlanDetailsUI.TaskDetail,{data:zeroData,prepared:h.prepare(h.runtime.PlanGanttModel,zeroData),selected:{task:zeroTask,before:false},onSelect:()=>{},renderTrial:()=>null,onCollapse:()=>{}});
 assert(h.text(zeroDetail).includes('本工序目标量0.00'),'A recorded zero must remain a quantity');
+const G=h.runtime.RunGenerationContract, candidateAlgorithm={mode:'greedy',mode_label:'候选计算',strategy:null,strategy_label:null,
+  generation_policy_version:'unified_search_v1',primary_objective:'min_overdue',target_objectives:['min_overdue','min_tardiness','min_changeover'],
+  representative_objectives:['min_overdue'],evaluations:{min_overdue:{field_order:G.fieldOrders.min_overdue,score:G.fieldOrders.min_overdue.map(()=>0),
+    scoring_scope:{scheduled_operation_refs:[],complete_batch_refs:[],objective_scope:'all_batches',components_known:true,is_complete:true}}},
+  origin:{search_objective:'min_overdue',phase:'construct',origin:'greedy',dispatch_mode:null,dispatch_rule:null,strategy:'priority_first',repair_decision:null},
+  first_found_elapsed_ms:1,search_evidence_ref:{run_ref:h.reference(302),source_event_id:null}};
+assert(G.algorithm(candidateAlgorithm,h.reference(302)),'The candidate workspace fixture uses the saved unified algorithm shape');
 const generation=h.render(h.runtime.RunCandidateControls.Generation,{data:{
   candidate:{label:'候选A',status:'completed',completeness:'complete',candidate_ref:h.reference(301),data_gaps:[],blocked_reasons:[],
     metrics:Object.fromEntries(h.runtime.RunCandidateAPI.metricKeys.map(key=>[key,{value:0,reason:null}]))},
   generation:{run_ref:h.reference(302),accepted_at:'2026-05-11T07:00:00',finished_at:'2026-05-11T07:01:00',
-    algorithm:{mode_label:'候选计算',strategy_label:null},
+    algorithm:candidateAlgorithm,
     input:{start_date:'2026-05-11',end_date:'2026-05-12',material_strategy:'strict',ready_check:false,hold_window:null,missing_resource_policy:'exclude',completed_policy:'preserve_actuals'},
     baseline:{captured_task_count:0},data_gaps:[]},data_gaps:[],blocked_reasons:[]
 }});
@@ -68,7 +75,7 @@ for (const label of ['设备名称未记录：排产时设备目录已不存在�
 }
 for (const ref of [missingNames.machine.ref,missingNames.operator.ref])
   assert(h.walk(resourcePanel).some(node=>node.type==='code'&&h.text(node)===ref),'Known resource identity remains inspectable in the existing reference section');
-const candidateLayout=value=>{const M=h.runtime.RunCandidateModel,B=h.runtime.RunBaselineModel,candidate=M.selectPrepared(M.groupPrepared(M.prepare(value),'machine'));
+const candidateLayout=value=>{const M=h.runtime.RunCandidateModel,B=h.runtime.RunBaselineModel,candidate=M.selectPrepared(M.groupPrepared(M.prepare(value),'machine'),'',null,null);
   return B.layoutPrepared(B.selectPrepared(candidate,B.groupPrepared(B.prepare(null),'machine'),'',null,false));};
 const resourceLayout=candidateLayout({...candidateResourceData,task_span:{start:missingNames.start,end:missingNames.end}});
 assert(resourceLayout.rows[0].label.includes('设备名称未记录'));
@@ -129,11 +136,13 @@ Object.assign(resourceData.plan,{display_name:'Formal plan 5',is_current_officia
 Object.assign(resourceData.scope,{range_start:initial.range_start,range_end:initial.range_end});
 Object.assign(resourceData.time_scope,{range_start:initial.range_start,range_end:initial.range_end});
 const selectedResource={kind:'operator',resource_ref:resourceData.tasks[0].operator_ref,label:'Operator 1',
+  state:'available',operation_count:resourceData.tasks.length,capacity_basis:'personal_or_operator_shift_calendar',
   available_hours:4,available_occupied_hours:2,utilization:.5,arranged_hours:2,occupied_hours:2,
-  overlap_hours:0,outside_available_hours:0,has_overlap:false,issues:[],
+  overlap_hours:0,excess_arranged_hours:0,outside_available_hours:0,capacity_shortfall_hours:0,capacity_insufficient:false,
+  metric_version:'decision-resource-v4',available_overlap_hours:0,has_overlap:false,conflict_segments:[],
+  outside_calendar_basis:'reservation_span_outside_work_calendar',conflict_basis:'work_calendar_reservation_overlap',issues:[],
   segments:resourceData.tasks.map(task=>({start:task.start,end:task.end,concurrent_operations:1}))};
-const conflictData=h.fixture(), conflictResource={...selectedResource,metric_version:'decision-resource-v4',
-  has_overlap:false,available_overlap_hours:0,overlap_hours:1,conflict_segments:[],
+const conflictData=h.fixture(), conflictResource={...selectedResource,overlap_hours:1,
   segments:[{start:conflictData.tasks[0].start,end:conflictData.tasks[0].end,concurrent_operations:2}]};
 conflictData.projections.occupancy={state:'available',plan_ref:conflictData.plan.plan_ref,basis:'selected_plan_only',
   time_scope:conflictData.time_scope,resources:[conflictResource],issues:[]};
@@ -150,9 +159,9 @@ const resourceBefore=JSON.stringify(resourceData), oldQuery=h.runtime.APSResourc
 const resourceResult={data:resourceData,meta:{as_of:'2026-05-11T12:00:00',snapshot_ref:'resource-read'},warnings:[]};
 try {
   h.runtime.APSResourceSession.useQuery=(_read,dependencies)=>({loading:false,error:null,reload:()=>{},
-    result:dependencies.length===3?resourceResult:{data:{plans:[resourceData.plan],page:{has_more:false}},warnings:[]}});
+    result:dependencies[0]===resourceData.plan.plan_ref?resourceResult:{data:{plans:[resourceData.plan],page:{has_more:false}},warnings:[]}});
   h.runtime.WorkbenchPageContext.useSnapshot=value=>remembered.push(JSON.parse(JSON.stringify(value)));
-  const props={view:'analysis',adapter:{catalog:async()=>{},workspace:async()=>{},export:async()=>{}},
+  const props={view:'analysis',
     initialContext:initial,onNavigate:(target,context)=>navigated.push({target,context}),renderTrial:()=>null};
   const resourcePage=h.render(h.runtime.PlanWorkspace,props), resourceButton=h.walk(resourcePage)
     .find(node=>node.type==='button'&&h.text(node)==='Operator 1');
@@ -187,9 +196,9 @@ const returnResult={data:returnData,meta:{as_of:'2026-05-11T12:00:00',snapshot_r
   returnedContexts=[], restoreEffects=[], oldEffect=h.runtime.React.useEffect;
 try {
   h.runtime.APSResourceSession.useQuery=(_read,dependencies)=>({loading:false,error:null,reload:()=>{},
-    result:dependencies.length===3?returnResult:{data:{plans:[returnData.plan],page:{has_more:false}},warnings:[]}});
+    result:dependencies[0]===returnData.plan.plan_ref?returnResult:{data:{plans:[returnData.plan],page:{has_more:false}},warnings:[]}});
   h.runtime.WorkbenchPageContext.useSnapshot=value=>returnedContexts.push(JSON.parse(JSON.stringify(value)));
-  const props={view:'gantt',adapter:{catalog:async()=>{},workspace:async()=>{},export:async()=>{}},
+  const props={view:'gantt',
     initialContext:{plan_ref:returnData.plan.plan_ref},onNavigate:()=>{},renderTrial:()=>null};
   const originalView=h.gantt(returnData,{states:{PlanGantt:{1:true}}});
   originalView.nodes.find(node=>node.type==='button'&&node.props['data-plan-task']===originalTask.task_ref).props.onClick();
@@ -197,7 +206,7 @@ try {
   h.render(h.runtime.PlanWorkspace,props,{WorkspaceSession:{7:{task:originalTask,before:true,result:returnResult}},PlanGantt:{1:true}});
   const saved=returnedContexts.pop();
   assert.equal(saved.selected_task_ref,originalTask.task_ref); assert.equal(saved.selected_task_side,'before');
-  h.runtime.React.useEffect=(callback,dependencies)=>{if(dependencies&&dependencies.length===4&&dependencies[1]===returnResult)restoreEffects.push(callback);};
+  h.runtime.React.useEffect=(callback,dependencies)=>{if(dependencies&&dependencies[1]===returnResult)restoreEffects.push(callback);};
   const restore=context=>{
     restoreEffects.length=0;
     const page=h.render(h.runtime.PlanWorkspace,{...props,initialContext:context});

@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from tests._support.workbench_web_contract import canonical_boot, retired_response
+from tests._support.workbench_web_contract import boot_payload
 
 
 def test_app_new_ui_create_app_smoke(db_env, monkeypatch) -> None:
@@ -30,11 +30,13 @@ def test_app_new_ui_create_app_smoke(db_env, monkeypatch) -> None:
         raise RuntimeError("app_new_ui 模块级 app 为 None")
 
     client = app.test_client()
-    boot = canonical_boot(client, "/", "dashboard", {})
-    assert "dashboard" in boot["enabled_views"]
+    root = client.get("/")
+    assert root.status_code == 302 and root.headers["Location"] == "/workbench"
+    boot = boot_payload(client.get(root.headers["Location"]))
+    assert boot["view"] == "dashboard" and "dashboard" in boot["enabled_views"]
 
     r2 = client.get("/excel-demo/")
-    retired_response(r2)
+    assert r2.status_code == 404
 
 
 @pytest.mark.parametrize(("configured", "expected"), [(None, 43200), (0, 0)])

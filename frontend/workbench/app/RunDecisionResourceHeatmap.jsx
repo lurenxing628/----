@@ -6,7 +6,7 @@
   function exactRange(value) { return F.dateTime(value.start, { seconds: true, fractions: true }) + ' 至 ' + F.dateTime(value.end, { seconds: true, fractions: true }); }
   function cellValue(cell, mode) { return mode === 'delta' ? cell.deltas.utilization_ratio : cell[mode].utilization_ratio; }
   function knownRest(value) { return value.calendar_state === 'complete' && value.available_hours === 0 && value.zero_capacity_task !== true && value.conflict !== true; }
-  function cellText(cell, mode, baselineState = 'available') {
+  function cellText(cell, mode, baselineState) {
     if (mode === 'delta') return cell.deltas.utilization_ratio === null ? '待确认' : R.deltaText(cell.deltas.utilization_ratio, 'utilization_ratio');
     if (mode === 'before' && baselineState !== 'available') return '对照未记录';
     const value = cell[mode];
@@ -14,7 +14,7 @@
     if (value.utilization_ratio === null) return '待确认';
     return R.metricText(value, 'utilization_ratio');
   }
-  function cellPresentation(row, cell, mode, pressureLabel = '高负荷', baselineState = 'available') {
+  function cellPresentation(row, cell, mode, pressureLabel, baselineState) {
     const missing = mode === 'before' && baselineState !== 'available', value = missing ? null : cellValue(cell, mode), text = cellText(cell, mode, baselineState), side = mode === 'delta' || missing ? null : cell[mode];
     const sides = (mode === 'delta' ? ['after', 'before'] : [mode]).map(key => ({ key, label: key === 'before' ? '固定对照' : '当前方案', value: cell[key] }));
     const warningFields = [
@@ -38,7 +38,7 @@
         + '，' + facts.join('；') + (signals.length ? '；' + signals.map(item => item.text).join('，') : '') + '。按 Enter 查看时段安排。' };
   }
   function cursor(row, cell) { return { resource_ref: row.resource_ref, bucket_key: cell.bucket_key, date: cell.date, start: cell.start, end: cell.end }; }
-  function Heatmap({ data, definitions, mode = 'after', focus, onMode, onCursor, onFocus, onPage, onSize }) {
+  function Heatmap({ data, definitions, mode, focus, onMode, onCursor, onFocus, onPage, onSize }) {
     const heatmap = data.heatmap, host = React.useRef(null), grain = heatmap.grain;
     const pressureLabel = R.metricDefinition('high_pressure_count', data.filters.resource_kind, definitions).label;
     const prepared = React.useMemo(() => {

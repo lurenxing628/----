@@ -4,7 +4,8 @@ import re
 from datetime import date, datetime
 from typing import NoReturn
 
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
+from core.shared.strict_json import canonical_json
 from core.shared.strict_parse import is_exact_finite_number
 
 FACT_FIELDS = ("sent", "planned", "returned", "confirmedState")

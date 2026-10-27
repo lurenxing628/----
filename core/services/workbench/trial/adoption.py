@@ -49,14 +49,14 @@ class WorkbenchTrialAdoptionService(AdoptionCommandHost):
         reference(scenario_ref)
         return self._lookup(scenario_ref, request_key)
 
-    def resolve_command(self, scenario_ref, request_key, *, data_context_ref=None):
-        if data_context_ref is not None and not valid_data_context_ref(data_context_ref):
+    def resolve_command(self, scenario_ref, request_key, *, data_context_ref):
+        if not valid_data_context_ref(data_context_ref):
             raise WorkbenchCommandRejected("invalid_input", "这条待确认采用记录的数据来源编号无效，请核对本机保存的记录。", 400)
         found = self.lookup(scenario_ref, request_key)
         if found is not None:
             return {"state": "committed", "receipt": found}
         with candidate_read_snapshot(self.conn):
             exists = WorkbenchTrialRepository(self.conn).scenario_header(scenario_ref) is not None
-            may_be_in_flight = exists and (data_context_ref is None or self.data_context.ref() == data_context_ref)
+            may_be_in_flight = exists and self.data_context.ref() == data_context_ref
         return {"state": "not_observed", "receipt": None, "may_be_in_flight": may_be_in_flight,
                 "can_retry_automatically": False}

@@ -1,26 +1,21 @@
-"""DI fixtures load frozen v29 DDL, then explicitly install the DI extension."""
+"""Outsourcing fixtures use a database built exactly as production creates a new one."""
 
 from datetime import datetime
-from pathlib import Path
 
 import pytest
 from flask import Blueprint, Flask, g, jsonify
 
-from core.infrastructure.database import get_connection
-from core.infrastructure.migration_state import get_schema_version, set_schema_version
-from core.infrastructure.workbench_outsourcing_schema import install_workbench_outsourcing_schema
-from core.infrastructure.workbench_outsourcing_source_schema import install as install_sources
+from core.infrastructure.database import ensure_schema, get_connection
 from core.models.workbench_outsourcing import raw_facts
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.outsourcing.commands import WorkbenchOutsourcingCommandService
 from core.services.workbench.outsourcing.service import WorkbenchOutsourcingService
-from tests.workbench.execution_ledger_support import install_current_content_storage
+from tests._support.paths import REPO_ROOT
 from web.routes.workbench.outsourcing import register_outsourcing_routes
 from web.routes.workbench.write_context import issue_write_context, validate_write_context
 
 NOW = datetime(2026, 9, 10, 12)
 ROOT = "/api/workbench/v1/outsourcing"
-FROZEN_V29 = Path(__file__).parent / "fixtures" / "schema-v29.sql"
 
 
 def original_rows(conn):
@@ -74,32 +69,17 @@ class OutsourcingCase:
 @pytest.fixture(name="outsourcing_case")
 def outsourcing_case(tmp_path):
     path = tmp_path / "outsourcing.sqlite"
-    ddl = FROZEN_V29.read_bytes()
+    ensure_schema(str(path), schema_path=str(REPO_ROOT / "schema.sql"), backup_dir=None)
     conn = get_connection(str(path))
-    assert not conn.execute("SELECT name FROM sqlite_master").fetchall()
-    conn.executescript(ddl.decode("utf-8"))
-    set_schema_version(conn, 29)
-    conn.commit()
-    assert get_schema_version(conn) == 29
-    assert not conn.execute("SELECT 1 FROM sqlite_master WHERE name LIKE 'WorkbenchOutsourcing%'").fetchone()
-    assert not conn.execute("SELECT 1 FROM sqlite_master WHERE name IN "
-                            "('wb_plan_source_ref_insert_guard','wb_plan_task_ref_insert_guard')").fetchone()
-    install_current_content_storage(conn)
     conn.execute("INSERT INTO OpTypes(op_type_id,name,category) VALUES ('XT1','Heat treatment','external')")
-    conn.execute("INSERT INTO Suppliers(supplier_id,name,op_type_id,default_days) VALUES ('XS1','Supplier','XT1',2)")
+    conn.execute("INSERT INTO Suppliers(supplier_id,name,default_days) VALUES ('XS1','Supplier',2)")
+    conn.execute("INSERT INTO WorkbenchSupplierOpTypes(supplier_id,op_type_id) VALUES ('XS1','XT1')")
     conn.execute("INSERT INTO Parts(part_no,part_name,remark) VALUES ('XP1','Part',?)", (b"original\x00\xff",))
     conn.execute("INSERT INTO Batches(batch_id,part_no,part_name,quantity,due_date,ready_date) VALUES ('XB1','XP1','Part',10,'2026-09-11','2026-09-01')")
     for index in range(1, 4):
         conn.execute("INSERT INTO BatchOperations(op_code,batch_id,seq,op_type_id,op_type_name,source,supplier_id,ext_days) "
                      "VALUES (?,'XB1',?,'XT1','Heat treatment','external','XS1',2)", ("XO" + str(index), index))
     conn.commit()
-    before = original_rows(conn)
-    conn.execute("BEGIN")
-    install_workbench_outsourcing_schema(conn)
-    install_sources(conn)
-    conn.commit()
-    assert original_rows(conn) == before
-    assert get_schema_version(conn) == 29
     with Flask(__name__).app_context():
         yield OutsourcingCase(path, conn)
     conn.close()

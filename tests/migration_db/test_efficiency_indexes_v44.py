@@ -11,6 +11,7 @@ from core.infrastructure import database
 from core.infrastructure.efficiency_indexes_schema import ADDED, contract_issues
 from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION, current_schema_contract_issues
 from core.infrastructure.schema_declaration import load_schema_sql
+from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandOutcome
 from core.models.workbench_run_history import RunHistoryScope
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
@@ -39,8 +40,9 @@ def _run(conn, number, accepted, *, time=None, archive='{"synthetic":"saved inpu
     """Use real journal writers; timestamps deliberately retain their original precision."""
     ref, request_key = f"{number:048x}", f"efficiency-run-{number:04d}"
     WorkbenchCommandRepository(conn).insert(
-        request_key=request_key, receipt_ref=f"{number:032x}", action="scheduling.run",
-        context_ref="input-" + ref, outcome=WorkbenchCommandOutcome("committed", {"run_ref": ref}))
+        request_key=request_key, receipt_ref=f"{number:032x}", action="scheduling.run", context_ref="input-" + ref,
+        input_json=content_text({"input_ref": "input-" + ref}, json_input=True),
+        outcome=WorkbenchCommandOutcome("committed", {"run_ref": ref}))
     repo = WorkbenchRunRepository(conn)
     repo.insert(request_key=request_key, input_ref="input-" + ref, settings={"saved": number},
                 facts_hash=None, facts_json=archive, projections=[], baseline={}, now=accepted, run_ref=ref)

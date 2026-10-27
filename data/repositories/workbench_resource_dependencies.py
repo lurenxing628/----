@@ -5,7 +5,7 @@ from collections import defaultdict
 from .workbench_execution_repo import stored_report_values
 
 DEPENDENCIES = {
-    "op_type": (("Machines", "op_type_id"), ("MachineOpTypes", "op_type_id"), ("Suppliers", "op_type_id"), ("OperatorSkill", "op_type_id"),
+    "op_type": (("Machines", "op_type_id"), ("MachineOpTypes", "op_type_id"), ("OperatorSkill", "op_type_id"),
                 ("WorkbenchSupplierOpTypes", "op_type_id"), ("PartOperations", "op_type_id"), ("BatchOperations", "op_type_id")),
     "machine": (("BatchOperations", "machine_id"), ("Schedule", "machine_id"), ("OperatorMachine", "machine_id"),
                 ("MachineDowntimes", "machine_id"), ("OperationExecutionEvents", "actual_machine_id"),

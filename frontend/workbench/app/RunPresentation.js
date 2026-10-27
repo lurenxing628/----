@@ -1,6 +1,7 @@
 (function () {
   'use strict';
-  const stages = { queued: '等待计算', computing: '正在计算', awaiting_reconciliation: '核对排产记录', finished: '排产已结束' };
+  // 排产任务一律走共同优化（run_options 由 RunJobAPI 校验为 unified_search_v1），计算阶段直接按共同优化表述。
+  const stages = { queued: '等待计算', computing: '正在共同优化方案', awaiting_reconciliation: '核对排产记录', finished: '排产已结束' };
   function step(input, checked) { return !input || !input.batch_refs.length ? 1 : checked ? 3 : 2; }
   function elapsed(run, now = Date.now()) {
     const start = run.started_at || run.accepted_at, finish = run.finished_at;
@@ -28,8 +29,7 @@
       + window.WorkbenchFormat.number(seconds - hours * 3600 - minutes * 60, { digits: precision, trim: true }) + ' 秒';
   }
   function stage(run) {
-    if (run.stage === 'computing' && window.RunGenerationContract.unified(run.scope_summary && run.scope_summary.run_options)) return '正在共同优化方案';
-    return stages[run.stage] || '排产阶段未知';
+    return stages[run.stage];
   }
   window.RunPresentation = { step, stage, elapsed };
 })();

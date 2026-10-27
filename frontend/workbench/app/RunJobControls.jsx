@@ -9,13 +9,11 @@
       const timer = setInterval(() => { if (!document.hidden) setNow(Date.now()); }, 1000);
       return () => clearInterval(timer);
     }, [run.run_ref, run.finished_at]);
-    const progress = window.RunGenerationContract.unified(run.scope_summary.run_options) ? null : run.progress, computing = !A.terminal(run) && !run.recovery_required;
-    const percent = progress && progress.total > 0 ? Math.round(progress.done / progress.total * 100) : null;
-    return <div className="rj-progress" data-run-progress><p><strong>{window.RunPresentation.stage(run)}</strong><span>{run.started_at ? '处理用时' : run.finished_at ? '提交后用时' : '已等待'} {window.RunPresentation.elapsed(run, now)}</span>
-      {progress && <span data-run-progress-count>已算完 {progress.done} / {progress.total} 个候选方案</span>}</p>
-      {computing && <div className={'rj-bar' + (percent === null ? ' rj-bar-indeterminate' : '')} role="progressbar" aria-label="排产计算进度"
-        aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent === null ? undefined : percent} aria-valuetext={percent === null ? '正在计算，进度未知' : '已算完 ' + progress.done + ' / ' + progress.total + ' 个候选方案'}>
-        <i className="rj-bar-fill" style={percent === null ? undefined : { width: percent + '%' }} /></div>}
+    // 统一搜索不报告候选计数进度，计算中只显示不确定进度条。
+    const computing = !A.terminal(run) && !run.recovery_required;
+    return <div className="rj-progress" data-run-progress><p><strong>{window.RunPresentation.stage(run)}</strong><span>{run.started_at ? '处理用时' : run.finished_at ? '提交后用时' : '已等待'} {window.RunPresentation.elapsed(run, now)}</span></p>
+      {computing && <div className="rj-bar rj-bar-indeterminate" role="progressbar" aria-label="排产计算进度" aria-valuemin={0} aria-valuemax={100} aria-valuetext="正在计算，进度未知">
+        <i className="rj-bar-fill" /></div>}
     </div>;
   }
   function Status({ run }) {
@@ -106,13 +104,13 @@
   function Record({ run, paused, retryPaused, retryHint = '可点「查询结果」再次核对原记录。', lastChecked, resolution, checking, verified, actions, navigation, title = '本次排产', onNavigate }) {
     const replaced = resolution === 'context_replaced';
     const queryLabel = checking ? '正在查询结果' : replaced ? '数据库已恢复' : resolution === 'lookup_failed' ? '查询失败' : '暂未查到这次排产记录';
-    const saved = run && run.result_persisted && run.candidates.some(row => row.status === 'completed');
+    const saved = run && run.result_persisted;
     return <section aria-label="本次排产记录" className="rj-record"><div className="rj-heading rj-business-heading"><h2>{title}</h2>{run ? <Status run={run} /> : <span role="status" data-query-state={checking ? 'querying' : resolution}>{queryLabel}</span>}
       <div className="rj-business-actions">{navigation}{actions}</div></div>
       {replaced && <p className="rj-muted" role="status">数据库已恢复，上次排产结果不在当前数据中。请重新检查当前批次后开始排产。</p>}
       {run && !verified && <p className="rj-muted">下面是上次查到的结果，这次查询还没确认。</p>}
       {run && <><BusinessScope value={run.scope_summary} /><Progress run={run} />
-        {saved && window.RunGenerationContract.unified(run.scope_summary.run_options) && <p className="rj-muted">本次保存 {run.candidates.length} 份方案。</p>}
+        {saved && <p className="rj-muted">本次保存 {run.candidates.length} 份方案。</p>}
         {run.recovery_required && <p className="rj-notice">正在核对上次的排产记录，结果还没确认，没有重新计算。</p>}
         {run.error && <div className="rj-notice" role="alert">{A.failure(run.error)}</div>}
         <div className="rj-tools">{saved && <Button icon="chart" disabled={!verified} onClick={() => onNavigate('run', { run_ref: run.run_ref })}>查看本次排产结果</Button>}

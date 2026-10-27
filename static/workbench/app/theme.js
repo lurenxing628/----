@@ -9,12 +9,12 @@
   };
   function read() {
     try {
-      var workbench = localStorage.getItem('aps_kit_theme');
-      var legacy = localStorage.getItem('aps_theme');
+      // 本机偏好只有 aps_theme 一个键；没有时用服务端模板也在读的同名 cookie。
+      var stored = localStorage.getItem('aps_theme');
       var cookie = document.cookie.match(/(?:^|;\s*)aps_theme=(light|dark)(?:;|$)/);
       return {
-        theme: valid(legacy) ? legacy : valid(workbench) ? workbench : cookie ? cookie[1] : 'light',
-        error: legacy && !valid(legacy) || workbench && !valid(workbench) ? '已忽略无效的主题设置。' : ''
+        theme: valid(stored) ? stored : cookie ? cookie[1] : 'light',
+        error: stored && !valid(stored) ? '已忽略无效的主题设置。' : ''
       };
     } catch (_) {
       return {
@@ -47,7 +47,6 @@
     document.documentElement.setAttribute('data-theme', value);
     try {
       localStorage.setItem('aps_theme', value);
-      localStorage.setItem('aps_kit_theme', value);
       document.cookie = 'aps_theme=' + value + '; Path=/; Max-Age=31536000; SameSite=Lax';
     } catch (_) {
       error = '主题已切换，但本机偏好未保存。';
@@ -76,7 +75,7 @@
     }
   };
   window.addEventListener('storage', function (event) {
-    if (event.key === 'aps_kit_theme' || event.key === 'aps_theme' || event.key === null) refresh();
+    if (event.key === 'aps_theme' || event.key === null) refresh();
   });
   window.addEventListener('pageshow', refresh);
   window.addEventListener('focus', refresh);

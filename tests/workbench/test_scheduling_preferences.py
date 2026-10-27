@@ -8,12 +8,13 @@ import pytest
 from flask import Blueprint, g
 
 from core.infrastructure.transaction import TransactionManager
-from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
 from core.models.workbench_preflight import SCHEDULING_PREFERENCES_KEY, normalize_preflight_input
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
 from core.services.workbench.run.jobs_facts import production_facts_match
 from core.services.workbench.run.preferences import SchedulingPreferencesService
 from core.services.workbench.run.worker import WorkbenchRunWorker
+from core.shared.strict_json import canonical_json
 from data.repositories.system_config_repo import SystemConfigRepository
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from tests.workbench.node_runtime_support import node_runtime
@@ -24,6 +25,7 @@ from web.routes.workbench.preflight import register_preflight_routes
 from web.routes.workbench.scheduling_jobs import register_scheduling_job_routes
 
 ROOT = "/api/workbench/v1/scheduling/preferences"
+RUN_KEY = "run-" + "a" * 48  # The browser's request key shape.
 
 
 def read(pf):
@@ -38,8 +40,8 @@ def save(pf, value, token, key="scheduling-preferences-0001"):
     return pf.post(ROOT, json={"request_key": key, "write_token": token, "input": value})
 
 
-def assert_frontend_run_queries(preview, run, lookup, *, input_ref, run_ref):
-    documents = {"input_ref": input_ref, "run_ref": run_ref}
+def assert_frontend_run_queries(preview, run, lookup, *, input_ref, run_ref, request_key):
+    documents = {"input_ref": input_ref, "run_ref": run_ref, "request_key": request_key}
     for name, response in (("preview", preview), ("run", run), ("lookup", lookup)):
         assert response.status_code == 200, response.get_json()
         assert response.headers["Cache-Control"] == "no-store"
@@ -47,15 +49,26 @@ def assert_frontend_run_queries(preview, run, lookup, *, input_ref, run_ref):
     script = r"""
 const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict');
 const input = JSON.parse(fs.readFileSync(0, 'utf8')), window = {}, context = vm.createContext({window});
-for (const name of ['WorkbenchTerms.js', 'RunGenerationContract.js', 'RunJobAPI.js', 'RunAdoptionAPI.js']) {
+for (const name of ['transport.js', 'WorkbenchTerms.js', 'RunGenerationContract.js', 'RunJobAPI.js', 'RunAdoptionAPI.js']) {
   vm.runInContext(fs.readFileSync('frontend/workbench/app/' + name, 'utf8'), context, {filename: name});
 }
-window.RunJobAPI.preview(input.preview, input.input_ref);
-window.RunJobAPI.run(window.RunJobAPI.envelope(input.run), input.run_ref);
-const found = window.RunJobAPI.lookup(input.lookup, input.run_ref);
-assert.equal(found.found, true);
-assert.equal(found.run.state, input.run.data.state);
-assert.equal(new Set([input.preview, input.run, input.lookup].map(value => value.meta.snapshot_ref)).size, 3);
+// The real transport envelope check runs on each actual backend document; only the network is replaced.
+const T = window.APSWorkbenchTransport, base = '/api/workbench/v1/scheduling';
+T.preview = async (path, body) => { assert.equal(path, base + '/runs/preview'); assert.equal(JSON.stringify(body), JSON.stringify({input_ref: input.input_ref})); return T.envelope(input.preview); };
+T.read = async (path, query) => {
+  if (path === base + '/runs/' + input.run_ref) return T.envelope(input.run);
+  assert.equal(path, base + '/requests/' + input.request_key);
+  assert.equal(JSON.stringify(query), JSON.stringify({data_context_ref: input.preview.data.data_context_ref}));
+  return T.envelope(input.lookup);
+};
+(async () => {
+  const preview = await window.RunJobAPI.preview(input.input_ref);
+  const run = await window.RunJobAPI.get(input.run_ref);
+  const found = await window.RunJobAPI.lookup({schema_version: 2, input_ref: input.input_ref, request_key: input.request_key,
+    run_ref: input.run_ref, data_context_ref: preview.data_context_ref});
+  assert.equal(found.found, true);
+  assert.equal(found.run.state, run.state);
+})().catch(error => { console.error(error); process.exitCode = 1; });
 """
     result = subprocess.run([node_runtime(), "-e", script], input=json.dumps(documents),
         text=True, encoding="utf-8", capture_output=True, cwd=str(Path(__file__).resolve().parents[2]), timeout=30)
@@ -120,6 +133,17 @@ def test_saved_document_with_duplicate_key_is_an_explicit_failure(pf):
     pf.conn.commit()
     response = pf.get(ROOT)
     assert response.status_code == 409 and response.get_json()["error"]["code"] == "scheduling_preferences_invalid"
+
+
+@pytest.mark.parametrize(("patch", "message"), [
+    ({"material_strategy": "split"}, "请选择整批齐套或按工序齐套。"),
+    ({"material_strategy": "stage", "ready_check": False}, "按工序齐套需要开启齐套检查。"),
+])
+def test_material_strategy_accepts_only_whole_batch_or_stage_release(pf, patch, message):
+    assert normalize_preflight_input(payload(pf, material_strategy="strict", ready_check=False))["material_strategy"] == "strict"
+    with pytest.raises(WorkbenchCommandRejected) as error:
+        normalize_preflight_input(payload(pf, **patch))
+    assert (error.value.code, error.value.status, str(error.value)) == ("invalid_input", 422, message)
 
 
 def _facts_content(conn):
@@ -200,7 +224,7 @@ def test_public_preferences_during_real_worker_keep_admitted_scope_and_business_
     context = preview.get_json()["data"]["write_context"]
     assert context["capabilities"]["scheduling.run"] is True
     accepted = client.post("/api/workbench/v1/scheduling/runs", json={"input_ref": input_ref,
-        "write_token": context["write_token"], "request_key": "preferences-real-worker-run"})
+        "write_token": context["write_token"], "request_key": RUN_KEY})
     assert accepted.status_code == 202, accepted.get_json()
     ref = accepted.get_json()["run_ref"]
     assert dispatched == [ref]
@@ -237,8 +261,9 @@ def test_public_preferences_during_real_worker_keep_admitted_scope_and_business_
     stored_input = case.conn.execute("SELECT normalized_input_json FROM WorkbenchRunJobs WHERE run_ref=?", (ref,)).fetchone()[0]
     assert json.loads(stored_input) == admitted_input
     final_response = client.get("/api/workbench/v1/scheduling/runs/" + ref)
-    lookup = client.get("/api/workbench/v1/scheduling/requests/preferences-real-worker-run")
-    assert_frontend_run_queries(preview, final_response, lookup, input_ref=input_ref, run_ref=ref)
+    lookup = client.get("/api/workbench/v1/scheduling/requests/" + RUN_KEY,
+                        query_string={"data_context_ref": preview.get_json()["data"]["data_context_ref"]})
+    assert_frontend_run_queries(preview, final_response, lookup, input_ref=input_ref, run_ref=ref, request_key=RUN_KEY)
     final = final_response.get_json()["data"]
     if business_change:
         assert final["state"] == "failed" and final["error"]["code"] == "snapshot_stale"

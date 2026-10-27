@@ -2,7 +2,6 @@
 
 from typing import NoReturn
 
-from core.infrastructure.schema_probe import table_exists
 from core.models.workbench_execution_input import MAX_REPORT_BYTES, reject
 from core.shared.strict_json import load_strict_json
 from data.repositories.workbench_report_validation_repo import WorkbenchReportValidationRepository
@@ -13,10 +12,6 @@ def _corrupt_evidence() -> NoReturn:
 
 
 def adopted_quota_impacts(conn, report_ref, operation_ref):
-    # Pre-adoption isolated ledgers have no quota adoption capability. Production
-    # startup separately requires the complete current migration contract.
-    if not table_exists(conn, "WorkbenchCalibrationAdoptions"):
-        return []
     rows = WorkbenchReportValidationRepository(conn).calibration_adoptions_mentioning(report_ref)
     if len(rows) > 10000:
         reject("关联的定额采用记录超过读取上限，未执行撤销。", "query_too_large", 413)

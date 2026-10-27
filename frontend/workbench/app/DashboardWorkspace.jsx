@@ -3,7 +3,7 @@
   const C = window.DashboardContract, S = window.DashboardSession, P = window.DashboardPanels, { Button, ErrorBox } = window.ResourceControls;
   function durableScope(query) { const result = { ...query }; delete result.snapshot_ref; return result; }
   function Content({ start, onNavigate }) {
-    const api = React.useMemo(() => C.create(), []), command = S.useCommand(api);
+    const command = S.useCommand();
     const [q, setQuery] = React.useState(start.q), [tab, setTab] = React.useState(start.tab), [selected, setSelected] = React.useState(start.selected);
     const [historyPage, setHistoryPage] = React.useState(start.historyPage), [revision, refresh] = React.useReducer(n => n + 1, 0);
     const [dialog, setDialog] = React.useState(false), [navError, setNavError] = React.useState(null);
@@ -12,14 +12,14 @@
     const [analysisBatch, setAnalysisBatch] = React.useState(start.analysisBatch);
     const [comparisonState, setComparisonState] = React.useState({ context: start.comparison, caption: null });
     const onComparisonState = React.useCallback(value => setComparisonState(previous => C.equal(previous, value) ? previous : value), []);
-    const list = S.useRead(signal => api.list(q, signal), [api, q, revision]);
+    const list = S.useRead(signal => C.list(q, signal), [q, revision]);
     const result = list.result, data = result && result.data, snapshot = result && result.meta.snapshot_ref;
     const analysisData = data && data.analysis;
     const analysisRead = { loading: list.loading, error: data && data.analysis_error ? new Error(data.analysis_error) : null };
     const detailQuery = React.useMemo(() => ({ ...q, snapshot_ref: snapshot }), [q, snapshot]);
     const handlingAvailable = q.category !== 'external' || !!data;
-    const history = S.useRead(signal => api.detail(selected, detailQuery, historyPage, signal), [api, selected, detailQuery, historyPage], handlingAvailable && tab === 'records' && !!selected && !!snapshot);
-    const detail = S.useRead(signal => api.detail(selected, detailQuery, undefined, signal), [api, selected, detailQuery], handlingAvailable && tab !== 'records' && !!selected && !!snapshot && !history.result);
+    const history = S.useRead(signal => C.detail(selected, detailQuery, historyPage, signal), [selected, detailQuery, historyPage], handlingAvailable && tab === 'records' && !!selected && !!snapshot);
+    const detail = S.useRead(signal => C.detail(selected, detailQuery, undefined, signal), [selected, detailQuery], handlingAvailable && tab !== 'records' && !!selected && !!snapshot && !history.result);
     const item = history.result ? history.result.data.item : detail.result && detail.result.data.item;
     const handlingOpen = !!(dialog && (command.saved || item));
     function choose(ref) { setSelected(ref); setHistoryPage(1); }

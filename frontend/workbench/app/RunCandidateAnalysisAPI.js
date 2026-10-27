@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const A = window.RunCandidateAPI, { check, ref, time, shape, envelope } = A;
+  const A = window.RunCandidateAPI, T = window.APSWorkbenchTransport, { check, ref, time, shape } = A;
   const count = v => Number.isSafeInteger(v) && v >= 0;
   const number = v => typeof v === 'number' && Number.isFinite(v);
   const text = v => typeof v === 'string' && v.length > 0;
@@ -27,8 +27,8 @@
   function delivery(row, batch, available = true) {
     check(window.DeliveryProjectionContract.row(row, !available) && row.batch_ref === batch.batch_ref && row.batch_id === batch.batch_id);
   }
-  function analysis(payload, candidateRef, runRef) {
-    const d = envelope(payload);
+  function validateAnalysis(payload, candidateRef, runRef) {
+    const d = payload.data;
     check(shape(d, ['candidate_ref', 'run_ref', 'baseline', 'batch_refs', 'batches', 'metrics', 'before_metrics', 'delivery_deltas', 'operations', 'basis', 'capabilities'])
       && d.candidate_ref === candidateRef && ref(d.run_ref) && (!runRef || d.run_ref === runRef)
       && refs(d.batch_refs) && Array.isArray(d.batches)
@@ -63,8 +63,8 @@
     keys.slice(2).forEach(key => metric(d.metrics[key], key));
     return d;
   }
-  function history(payload, candidateRef, runRef) {
-    const d = envelope(payload);
+  function validateAdoptions(payload, candidateRef, runRef) {
+    const d = payload.data;
     check(shape(d, ['candidate_ref', 'run_ref', 'items', 'total', 'state', 'basis']) && d.candidate_ref === candidateRef
       && ref(d.run_ref) && (!runRef || d.run_ref === runRef) && Array.isArray(d.items) && d.total === d.items.length
       && d.state === (d.total ? 'available' : 'empty') && d.basis === 'original_candidate_receipts_and_official_adoption_audits');
@@ -83,29 +83,14 @@
     check(new Set(d.items.map(row => row.receipt_ref)).size === d.total && new Set(d.items.map(row => row.official_plan.plan_ref)).size === d.total);
     return d;
   }
-  function create(fetcher = window.fetch.bind(window)) {
-    async function read(candidateRef, runRef, leaf, validate, signal) {
-      check(ref(candidateRef) && (!runRef || ref(runRef)));
-      const controller = new AbortController(), abort = () => controller.abort();
-      if (signal) { if (signal.aborted) abort(); else signal.addEventListener('abort', abort, { once: true }); }
-      const timer = setTimeout(abort, 60000);
-      try {
-        const response = await fetcher('/api/workbench/v1/scheduling/candidates/' + candidateRef + '/' + leaf,
-          { method: 'GET', credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: controller.signal });
-        const json = (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() === 'application/json';
-        const value = json ? await response.json() : null;
-        if (!response.ok) {
-          const error = value && value.error;
-          throw Object.assign(new Error(error && text(error.message) ? error.message : '候选方案资料读取失败，请刷新后重试。'), { code: error && error.code || 'invalid_response', status: response.status });
-        }
-        check(response.status === 200 && json); validate(value, candidateRef, runRef); return value;
-      } finally { clearTimeout(timer); if (signal) signal.removeEventListener('abort', abort); }
-    }
-    return window.APSReadBoundary.verified({ ...A.create(fetcher), analysis: (candidateRef, runRef, signal) => read(candidateRef, runRef, 'analysis', analysis, signal),
-      adoptions: (candidateRef, runRef, signal) => read(candidateRef, runRef, 'adoptions', history, signal) }, ['analysis', 'adoptions']);
+  async function read(candidateRef, runRef, leaf, validate, signal) {
+    check(ref(candidateRef) && (!runRef || ref(runRef)));
+    const value = await T.read('/api/workbench/v1/scheduling/candidates/' + candidateRef + '/' + leaf, {}, { signal, timeout: 60000 });
+    validate(value, candidateRef, runRef); return value;
   }
-  function adapter(value) {
-    return window.APSReadBoundary.checked(A.adapter(value), { analysis, adoptions: history });
-  }
-  window.RunCandidateAnalysisAPI = { create, adapter, analysis, history };
+  window.RunCandidateAnalysisAPI = {
+    analysis: (candidateRef, runRef, signal) => read(candidateRef, runRef, 'analysis', validateAnalysis, signal),
+    adoptions: (candidateRef, runRef, signal) => read(candidateRef, runRef, 'adoptions', validateAdoptions, signal),
+    validateAnalysis, validateAdoptions
+  };
 })();

@@ -13,7 +13,6 @@ from core.infrastructure import read_evidence
 from core.infrastructure.connection_guards import query_only
 from core.infrastructure.read_evidence import read_evidence_scope, verified_read
 from core.models.content import same
-from core.models.workbench_command import canonical_json
 from core.models.workbench_dashboard import DashboardAnalysisQuery
 from core.models.workbench_plan_scope import MAX_PLAN_RESPONSE_BYTES, PlanReadScope
 from core.services.workbench.dashboard.analysis import read_dashboard_analysis
@@ -24,6 +23,7 @@ from core.services.workbench.plan.point_evidence import official_point_work
 from core.services.workbench.plan.process_order import project_process_order
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from core.services.workbench.plan.read_context import PlanReadContext
+from core.shared.strict_json import canonical_json
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 from tests.workbench.plan_adoption_baseline_support import adopt_candidate, mutate_json
 from tests.workbench.plan_read_support import make_api

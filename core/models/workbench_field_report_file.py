@@ -1,17 +1,15 @@
-"""报工记录文件的列目录。两种格式版本：旧的 10 列，带任务编号的 13 列。
+"""报工记录文件的列目录：带任务编号、工序范围、单件编号的 13 列。
 
 和其余 11 张表一样，列目录放在 models 里，字节层只管读写。
 """
 
-from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_table_descriptor import UPSERT_ONLY
 
 HEADERS = ('报工编号', '批次号', '工序', '本次完成数量', '实际开工', '本次实际完工',
-           '有效加工工时(h)', '实际设备', '实际人员', '备注')
+           '有效加工工时(h)', '实际设备', '实际人员', '备注', '任务编号', '工序范围', '单件编号')
 FIELDS = ('report_no', 'batch_id', 'operation_label', 'completed_quantity', 'actual_start', 'actual_end',
-          'effective_processing_hours', 'machine_label', 'operator_label', 'remark')
-TASK_HEADERS = HEADERS + ('任务编号', '工序范围', '单件编号')
-TASK_FIELDS = FIELDS + ('task_ref', 'operation_scope', 'piece_id')
+          'effective_processing_hours', 'machine_label', 'operator_label', 'remark',
+          'task_ref', 'operation_scope', 'piece_id')
 ROW_LIMIT = 5000
 #: 报工文件的上传上限。定在这里而不是读取器里：说明书的规格表从表描述取，
 #: 读取器和路由也从这里取，一个数只有一处定义。
@@ -51,7 +49,6 @@ _GENERAL_RULES = (
     '本次完成数量和有效加工工时都没填的行不算报工；确实是零请填 0，不要留空。',
     '报工编号请保留；任务编号、工序范围和单件编号由当前范围预填，不要改，也不用手抄。',
     '工序范围是单件时，单件编号必须和预填值一致；共同工序的单件编号必须留空。',
-    '原来的 10 列格式只支持批次和工序都唯一的情况，重名分不清会被拒绝。',
     '实际设备和人员要按现场核对后填，不能拿计划里的当实际。',
     '实际设备和人员导出时使用编号；导入先按编号查找，也接受唯一名称，重名时请填编号。',
     '重复导入只补空着的项；要改已经填过的内容请走更正并写明原因。',
@@ -59,24 +56,17 @@ _GENERAL_RULES = (
     '实际甘特里的目标数量按报工统计；计划应做数量、计划批次数量和依据另外列出，不知道就留空。',
 )
 _SAMPLE_ROWS = (
-    ('R-0001', 'B001', '10 车削', '20', '2026-09-13 08:30', '2026-09-13 12:00', '3.5', 'M001', 'OP001', ''),
-    ('R-0002', 'B001', '20 钻孔', '0', '', '', '', '', '', '当天未开工'),
+    ('R-0001', 'B001', '10 车削', '20', '2026-09-13 08:30', '2026-09-13 12:00', '3.5', 'M001', 'OP001', '',
+     'T-0001', '单件', 'P-0001'),
+    ('R-0002', 'B001', '20 钻孔', '0', '', '', '', '', '', '当天未开工', 'T-0002', '共同', ''),
 )
-_TASK_SAMPLE_EXTRA = (('T-0001', '单件', 'P-0001'), ('T-0002', '共同', ''))
 
 
-def table_descriptor(format_version=1):
-    """模板与填写说明生成器的唯一入口，12 张表统一形状。
-
-    两个版本同名同表，只是列数不同；文件名和说明表标题都按「报工记录」走，
-    要分清是哪一版看列数，总表会在同名时自动把列数标出来。
-    """
-    if format_version not in (1, 2):
-        raise WorkbenchCommandRejected('invalid_input', '这个报工文件的格式版本不支持。', 422)
-    headers, fields = (HEADERS, FIELDS) if format_version == 1 else (TASK_HEADERS, TASK_FIELDS)
+def table_descriptor():
+    """模板与填写说明生成器的唯一入口，12 张表统一形状。"""
     columns = [{
         'key': field,
-        'label': headers[index],
+        'label': HEADERS[index],
         # 一行至少要有一项实际数据，单看某一列都不是必填，所以这里不给必填标记。
         'required': False,
         'readonly': False,
@@ -84,17 +74,15 @@ def table_descriptor(format_version=1):
         'error_hint': _ERROR_HINTS[field],
         'enum': None,
         'nullable': False,
-    } for index, field in enumerate(fields)]
-    samples = _SAMPLE_ROWS if format_version == 1 else tuple(
-        row + extra for row, extra in zip(_SAMPLE_ROWS, _TASK_SAMPLE_EXTRA))
+    } for index, field in enumerate(FIELDS)]
     return {
-        'table_id': 'field_report_v' + str(format_version),
+        'table_id': 'field_report',
         'display_name': '报工记录',
         'sheet_name': '报工记录',
         'file_stem': '报工记录',
         'columns': columns,
         'general_rules': _GENERAL_RULES,
-        'sample_rows': samples,
+        'sample_rows': _SAMPLE_ROWS,
         'row_limit': ROW_LIMIT,
         'byte_limit': BYTE_LIMIT,
         'modes': UPSERT_ONLY,

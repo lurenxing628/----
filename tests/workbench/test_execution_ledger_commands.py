@@ -10,7 +10,6 @@ from tests.workbench.execution_ledger_support import ledger_case as ledger_fixtu
 
 def test_correct_keeps_stable_number_and_every_original_value(ledger_case):
     case = ledger_case
-    case.install()
     task = case.task(1, case.op_id)
     saved = case.command("create", task, case.values(4, remark="original"))["data"]["rows"][0]
     original = case.report_projection(saved["report_ref"])
@@ -31,7 +30,6 @@ def test_correct_keeps_stable_number_and_every_original_value(ledger_case):
 
 def test_mid_mutation_exception_rolls_back_report_revision_clock_and_receipt(ledger_case, monkeypatch):
     case = ledger_case
-    case.install()
     before = all_rows(case.conn)
     original = WorkbenchExecutionReportRepository.append
 
@@ -50,7 +48,6 @@ def test_report_preparation_batches_relatives_and_shares_unchanged_facts(ledger_
     from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
 
     case = ledger_case
-    case.install()
     middle, last = case.op("OP2", seq=2), case.op("OP3", seq=3)
     case.plan(2, [case.op_id, middle, last])
     task = case.task(2, middle)
@@ -98,7 +95,6 @@ def test_ledger_snapshot_reuses_loaded_facts_and_next_snapshot_refreshes(ledger_
     from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
 
     case = ledger_case
-    case.install()
     saved = case.command("create", case.task(1, case.op_id), case.values(1))["data"]["rows"][0]
     reads, original = [], WorkbenchExecutionRepository.reports
 
@@ -122,7 +118,6 @@ def test_report_preparation_chunks_dependencies_across_valid_batch_routes(ledger
     from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
 
     case = ledger_case
-    case.install()
     case.conn.execute("INSERT INTO Batches(batch_id,part_no,quantity) VALUES ('B2','P1',10)")
     second = case.op("B2-OP1", batch="B2")
     case.conn.executemany("""INSERT INTO BatchOperations
@@ -162,7 +157,6 @@ def test_execution_adapter_consumes_one_ledger_plan_task_and_resource_scope(ledg
     from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
 
     case = ledger_case
-    case.install()
     saved = case.command('create', case.task(1, case.op_id), case.values(1))['data']['rows'][0]
     schedule_id = case.conn.execute('SELECT id FROM Schedule WHERE version=1 AND op_id=?', (case.op_id,)).fetchone()[0]
     scope = OperationExecutionScope.from_values(schedule_version=1, schedule_id=schedule_id, op_id=case.op_id,
@@ -203,7 +197,6 @@ def test_execution_adapter_translates_ledger_read_rejection(ledger_case, monkeyp
     from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
     case = ledger_case
-    case.install()
     schedule_id = case.conn.execute("SELECT id FROM Schedule WHERE op_id=?", (case.op_id,)).fetchone()[0]
     scope = OperationExecutionScope.from_values(schedule_version=1, schedule_id=schedule_id, op_id=case.op_id,
         batch_id="B1", source_table="schedule", effective_plan_role="adopted")

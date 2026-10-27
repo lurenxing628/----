@@ -26,8 +26,7 @@
     if (value.values === null) return true;
     return object(value.values) && switches.every(function (key) { return ['yes', 'no'].includes(value.values[key]); })
       && numbers.every(function (key) { return count(value.values[key]); })
-      && fields(value.defaulted_fields) && fields(value.dirty_fields) && object(value.dirty_reasons)
-      && value.dirty_fields.every(function (key) { return text(value.dirty_reasons[key]); });
+      && fields(value.defaulted_fields);
   }
   function maintenance(value) {
     return Array.isArray(value.jobs) && value.jobs.length === jobs.length && jobs.every(function (kind) {

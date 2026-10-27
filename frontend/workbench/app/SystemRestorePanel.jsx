@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   const C = window.SystemMaintenanceControls, R = window.SystemRestoreStatus;
-  function Panel({ command, api, theme, onSetTheme }) {
+  function Panel({ command, theme, onSetTheme }) {
     const { host, intent } = command;
     const original = intent && intent.request_key || host && host.request_key || '';
     const [reference, setReference] = React.useState(original), [kind, setKind] = React.useState('request');
@@ -25,7 +25,7 @@
       event.preventDefault(); if (waiting) return;
       setBusy(true); setError(null); setNotice(''); setQuery({ reference, kind, result: null });
       controller.current = new AbortController();
-      try { const value = await api.lookupReference(reference.trim(), kind, controller.current.signal); setQuery({ reference: reference.trim(), kind, result: value }); }
+      try { const value = await window.SystemMaintenanceAPI.lookupReference(reference.trim(), kind, controller.current.signal); setQuery({ reference: reference.trim(), kind, result: value }); }
       catch (problem) { if (problem.name !== 'AbortError') setError(problem); }
       finally { await command.inspectHost(); setBusy(false); }
     }
@@ -64,7 +64,6 @@
         {op && <details className="sm-rules"><summary>维护阶段与核对信息</summary><p>维护记录编号：<code>{op.job_ref}</code> · 结果代码：<code>{op.code}</code></p>
           {op.history.map((step, index) => <p key={index}>{window.WorkbenchFormat.dateTime(step.time)} · {R.labels[step.state]}</p>)}
           {R.sourceFacts(op).map(([label, value]) => <p key={label}>{label}：{value}</p>)}
-          {R.legacyDigests(op).map(([label, value]) => <p key={label}>{label}：<code>{value}</code>（原记录）</p>)}
           <p>内容与完整性状态来自对应维护任务。</p></details>}
       </main>
     </div>, document.body);

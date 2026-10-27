@@ -47,7 +47,6 @@ def test_workbench_report_bounds_finish_cohort_before_detail_admission(ledger_ca
     from web.routes.workbench.reports import register_report_routes
 
     case = ledger_case
-    case.install()
     case.conn.execute("INSERT INTO Batches(batch_id,part_no,quantity) VALUES ('B2','P1',10)")
     case.conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M3','Other batch lathe','T1')")
     others = [case.op('CROSS-' + str(index), batch='B2', seq=index) for index in (1, 2)]
@@ -180,7 +179,6 @@ def test_workbench_report_restores_second_page_once_and_keeps_export_binding(led
     from web.routes.workbench.reports import register_report_routes
 
     case = ledger_case
-    case.install()
     others = [case.op('R18-' + str(index), seq=index) for index in range(2, 12)]
     case.plan(2, [case.op_id] + others)
     app = Flask('direct-report-page')

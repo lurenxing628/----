@@ -4,7 +4,7 @@
     const scope = { ...(value.scope || {}) };
     delete scope.snapshot_ref;
     return { ...scope, ...(value.plan_ref ? { plan_ref: value.plan_ref } : {}),
-      task_ref: value.task_ref || value.entity_ref, operation_ref: value.operation_ref,
+      task_ref: value.task_ref, operation_ref: value.operation_ref,
       page: value.table ? value.table.page : undefined, size: value.table ? value.table.size : 20 };
   }
   function checked(result, input) {
@@ -35,8 +35,8 @@
     return JSON.stringify(keys) === JSON.stringify(Object.keys(actual).sort())
       && keys.every(key => JSON.stringify(expected[key]) === JSON.stringify(actual[key]));
   }
-  async function readView(api, input, signal) {
-    if (input.snapshot_ref) return checked(await api.list(input, signal), input);
+  async function readView(input, signal) {
+    if (input.snapshot_ref) return checked(await list(input, signal), input);
     if (input.operation_ref && !input.task_ref) throw window.APSResourceContract.failure('核对原工序时缺少明确任务，没有改选其他任务。');
     if (input.page !== undefined && (!Number.isInteger(input.page) || input.page < 1 || input.page > 100000))
       throw window.APSResourceContract.failure('现场原页码无效，未切换到其他页。');
@@ -44,7 +44,7 @@
       // The backend locates the task within this one freshly captured scope.
       const query = { ...input, page: 1 };
       delete query.snapshot_ref;
-      const result = checked(await api.list(query, signal), input);
+      const result = checked(await list(query, signal), input);
       const original = result.data.tasks.find(task => task.task_ref === input.task_ref);
       if (input.page !== undefined && result.data.page.number !== input.page || !original
         || input.operation_ref && original.operation_ref !== input.operation_ref || !taskScopeMatches(result.data.scope, input))
@@ -53,34 +53,32 @@
     }
     const query = { ...input };
     delete query.snapshot_ref; delete query.task_ref; delete query.operation_ref;
-    const result = checked(await api.list(query, signal), input);
+    const result = checked(await list(query, signal), input);
     if (!taskScopeMatches(result.data.scope, input))
       throw window.APSResourceContract.failure('原现场任务、页码或筛选范围已不匹配，没有切换到其他任务。');
     return result;
   }
-  function create() {
-    const api = window.APSResourceAPI.create('execution'), C = window.FieldContract;
-    const queryScope = scope => ({ ...scope, ...(Array.isArray(scope.batch_ids) ? { batch_ids: JSON.stringify(scope.batch_ids) } : {}) });
-    function target(group, ref) { if (!C.ref(ref)) throw window.APSResourceContract.failure('报工或任务编号无效。'); return 'execution/' + group + '/' + ref; }
-    return {
-      readPending: api.readPending, savePending: api.savePending, clearPending: api.clearPending, lookup: api.lookup,
-      list(scope, signal) { return api.query('execution/tasks', queryScope(scope), signal); },
-      detail(ref, scope, signal) { return api.query(target('tasks', ref), queryScope(scope), signal); },
-      choices(kind, scope, signal) { return api.choices(kind, scope, signal); },
-      previewVoid(ref, input, signal) { return api.preview(target('reports', ref) + '/void-preview', { input }, signal); },
-      previewFile(file, scope, snapshot, signal) {
-        const body = new FormData(); body.set('file', file); body.set('scope', JSON.stringify(scope)); body.set('snapshot_ref', snapshot);
-        return api.preview('execution/files/preview', body, signal);
-      },
-      download(mode, scope, snapshot, signal) { return api.download('execution/files/' + mode, { ...queryScope(scope), snapshot_ref: snapshot }, signal); },
-      downloadErrors(previewRef, signal) { return api.download('execution/files/errors', { preview_ref: previewRef }, signal); },
-      async command(kind, action, ref, body, signal) {
-        if (kind !== 'execution' || !['create', 'supplement', 'correct', 'report_void', 'import_confirm'].includes(action)) throw window.APSResourceContract.failure('现场操作不正确。');
-        const path = action === 'create' ? target('tasks', ref) + '/reports' : action === 'import_confirm' ? 'execution/files/confirm' : target('reports', ref) + '/' + (action === 'report_void' ? 'void' : action);
-        if (action === 'import_confirm' && ref !== body.input.preview_ref) throw window.APSResourceContract.failure('确认与原预检不匹配。');
-        return api.execute(path, body, signal);
-      }
-    };
-  }
-  window.FieldAPI = { create, initial, readView };
+  const api = window.APSResourceAPI.create('execution'), C = window.FieldContract;
+  const queryScope = scope => ({ ...scope, ...(Array.isArray(scope.batch_ids) ? { batch_ids: JSON.stringify(scope.batch_ids) } : {}) });
+  function target(group, ref) { if (!C.ref(ref)) throw window.APSResourceContract.failure('报工或任务编号无效。'); return 'execution/' + group + '/' + ref; }
+  function list(scope, signal) { return api.query('execution/tasks', queryScope(scope), signal); }
+  window.FieldAPI = {
+    initial, readView, list,
+    readPending: api.readPending, savePending: api.savePending, clearPending: api.clearPending, lookup: api.lookup,
+    detail(ref, scope, signal) { return api.query(target('tasks', ref), queryScope(scope), signal); },
+    choices(kind, scope, signal) { return api.choices(kind, scope, signal); },
+    previewVoid(ref, input, signal) { return api.preview(target('reports', ref) + '/void-preview', { input }, signal); },
+    previewFile(file, scope, snapshot, signal) {
+      const body = new FormData(); body.set('file', file); body.set('scope', JSON.stringify(scope)); body.set('snapshot_ref', snapshot);
+      return api.preview('execution/files/preview', body, signal);
+    },
+    download(mode, scope, snapshot, signal) { return api.download('execution/files/' + mode, { ...queryScope(scope), snapshot_ref: snapshot }, signal, { types: [window.APSWorkbenchTransport.types.xlsx] }); },
+    downloadErrors(previewRef, signal) { return api.download('execution/files/errors', { preview_ref: previewRef }, signal, { types: [window.APSWorkbenchTransport.types.xlsx] }); },
+    async command(kind, action, ref, body) {
+      if (kind !== 'execution' || !['create', 'supplement', 'correct', 'report_void', 'import_confirm'].includes(action)) throw window.APSResourceContract.failure('现场操作不正确。');
+      const path = action === 'create' ? target('tasks', ref) + '/reports' : action === 'import_confirm' ? 'execution/files/confirm' : target('reports', ref) + '/' + (action === 'report_void' ? 'void' : action);
+      if (action === 'import_confirm' && ref !== body.input.preview_ref) throw window.APSResourceContract.failure('确认与原预检不匹配。');
+      return api.execute(path, body);
+    }
+  };
 })();

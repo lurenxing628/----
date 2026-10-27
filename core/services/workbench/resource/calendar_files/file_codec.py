@@ -13,7 +13,6 @@ from core.models.workbench_calendar_file import (
     READONLY,
     REQUIRED,
     calendar_kind,
-    file_columns,
     public_columns,
 )
 from core.models.workbench_table_descriptor import extra_sheet_notice
@@ -83,7 +82,6 @@ def read_number(value, field):
 
 def _headers(kind, values):
     names = {column["label"]: column["key"] for column in public_columns(kind)}
-    names.update({key: key for key in file_columns(kind)})
     fields = []
     for value in values:
         if type(value) is not str or value not in names:
@@ -91,7 +89,7 @@ def _headers(kind, values):
         fields.append(names[value])
     missing = [key for key in REQUIRED[kind] if key not in fields]
     if missing or len(fields) != len(set(fields)):
-        raise file_error("表头必须有日期这一列，而且不能有重复的列（中文名和英文名指同一列也算重复），"
+        raise file_error("表头必须有日期这一列，而且不能有重复的列，"
                          "没有导入。请照模板改好后重新上传。", field="headers")
     return fields
 

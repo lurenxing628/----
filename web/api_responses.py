@@ -10,7 +10,8 @@ from typing import Literal, Union
 
 from flask import Response, url_for
 
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
+from core.shared.strict_json import canonical_json
 
 
 def json_response(payload, *, byte_limit=None, too_large_code="query_too_large",

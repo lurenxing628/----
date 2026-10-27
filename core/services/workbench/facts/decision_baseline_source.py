@@ -1,10 +1,9 @@
 """Resolve archived official lineage without reading today's official rows."""
 
-import re
-
 from core.infrastructure.read_evidence import verified_read
 from core.models.scheduler_history_parser import parse_result_summary_payload
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
+from core.shared.strict_json import canonical_json
 
 from .adoption_baseline_sources import (
     read_adoption_operation_facts,
@@ -12,7 +11,7 @@ from .adoption_baseline_sources import (
 )
 from .candidate_read_source import read_candidate_source
 from .candidate_store import CandidateStore
-from .material_deferral_evidence import archived_deferred_operation_evidence, archived_deferred_payload_evidence
+from .material_deferral_evidence import archived_deferred_payload_evidence
 from .preflight_dependencies import material_deferred_ids
 from .zero_duration import PointEventError
 from .zero_duration_evidence import CandidatePointReader, trial_point_evidence
@@ -29,16 +28,10 @@ def _require_identity(actual, expected):
         )
 
 
-def _proof(audit, digest_fields):
+def _proof(audit):
+    """Every adoption audit records its source by content references."""
     proof = audit["proof"]
-    if type(proof) is not dict:
-        raise WorkbenchCommandRejected("adoption_snapshot_invalid", "此正式版本的原采用凭据字段格式无效。")
-    if proof.get("proof_version") == "content_refs_v1":
-        return proof
-    if proof.get("proof_version") is not None or any(
-            type(proof.get(field)) is not str or re.fullmatch(r"[0-9a-f]{64}", proof[field]) is None
-            for field in digest_fields + tuple(field for field in ("facts_hash", "validated_hash")
-                                              if field in proof and field not in digest_fields)):
+    if type(proof) is not dict or proof.get("proof_version") != "content_refs_v1":
         raise WorkbenchCommandRejected("adoption_snapshot_invalid", "此正式版本的原采用凭据字段格式无效。")
     return proof
 
@@ -48,12 +41,10 @@ def candidate_evidence(source, audit):
                       (audit["candidate_ref"], audit["run_ref"]))
     _require_identity((source.capture["baseline"]["plan_ref"], source.capture["baseline"]["version"]),
                       (audit["baseline_ref"], audit["baseline_version"]))
-    proof = _proof(audit, ("facts_hash", "baseline_hash", "candidate_hash"))
+    proof = _proof(audit)
     _require_identity((proof["candidate_ref"], proof["run_ref"], proof["baseline_ref"], proof["baseline_version"]),
                       (audit["candidate_ref"], audit["run_ref"], source.capture["baseline"]["plan_ref"],
                        source.capture["baseline"]["version"]))
-    if proof.get("proof_version") is None:
-        _require_identity(proof["facts_hash"], source.capture["facts_hash"])
     return {"basis": "candidate_adoption", "audit": audit,
             "arranged": [row["payload"] for row in source.raw_tasks], "generation_facts": source.facts}
 
@@ -64,14 +55,11 @@ def trial_evidence(source, audit):
                       (audit["scenario_ref"], audit["draft_ref"]))
     _require_identity((saved["baseline"]["plan_ref"], saved["baseline"]["version"]),
                       (audit["baseline_ref"], audit["baseline_version"]))
-    proof = _proof(audit, ("scenario_hash", "admission_hash", "execution_hash", "baseline_hash", "rows_hash"))
-    _require_identity((proof["scenario_ref"], proof["draft_ref"]),
-                      (audit["scenario_ref"], audit["draft_ref"]))
-    if proof.get("proof_version") is None:
-        _require_identity(proof["admission_hash"], head["admission_hash"])
-    else:
-        _require_identity((proof["scenario_revision"], proof["baseline_ref"], proof["baseline_version"]),
-                          (head["scenario_revision"], saved["baseline"]["plan_ref"], saved["baseline"]["version"]))
+    proof = _proof(audit)
+    _require_identity((proof["scenario_ref"], proof["draft_ref"], proof["scenario_revision"],
+                       proof["baseline_ref"], proof["baseline_version"]),
+                      (audit["scenario_ref"], audit["draft_ref"], head["scenario_revision"],
+                       saved["baseline"]["plan_ref"], saved["baseline"]["version"]))
     arranged = [{"op_id": row["original"]["operation"]["id"],
                  "machine_id": row["current"]["machine_id"], "operator_id": row["current"]["operator_id"],
                  "start_time": row["current"]["start"], "end_time": row["current"]["end"]} for row in rows]
@@ -79,25 +67,24 @@ def trial_evidence(source, audit):
 
 
 def _deferred_evidence(source, evidence):
-    audit = evidence["audit"]
+    """The audit's recorded pending operations, checked against the immutable adoption source."""
+    recorded, recorded_issues = archived_deferred_payload_evidence(evidence["audit"])
+    if recorded_issues:
+        return [], recorded_issues
     if evidence["basis"] == "candidate_adoption":
         ids, issues = material_deferred_ids(source.disposition.values(), source.capture["input"]), []
     else:
         original = source[1]["admission"]["source"]
-        if "deferred_operation_ids" in original:
-            ids, issues = archived_deferred_operation_evidence({"summary": original})
-            issues = sorted(set(issues + original.get("deferred_operation_issues", [])))
-        else:
+        if "capture" in original:
             # 以候选为基础的试调来源保存了候选运行的 capture 与全部工序处置。
             ids, issues = material_deferred_ids(original["dispositions"].values(), original["capture"]["input"]), []
-    recorded, recorded_issues = archived_deferred_payload_evidence(audit)
-    if "deferred_operation_evidence_invalid" in recorded_issues:
-        return [], recorded_issues
-    if audit.get("deferred_operation_ids") is not None:
-        if not issues and recorded != ids:
-            return [], ["deferred_operation_evidence_invalid"]
-        return sorted(recorded), []
-    return sorted(ids), issues
+        else:
+            # 以正式计划为基础的试调来源在创建时记下了原计划的待料工序编号与缺口。
+            ids, issues = archived_deferred_payload_evidence(original)
+            issues = sorted(set(issues + original["deferred_operation_issues"]))
+    if not issues and recorded != ids:
+        return [], ["deferred_operation_evidence_invalid"]
+    return sorted(recorded), []
 
 
 def _operation_type(operation, refs, names, trace):
@@ -195,12 +182,10 @@ def _decision_baseline_source_resolver(conn, *, candidate_provider):
         return verified_read(conn, key, lambda: load(version=version, history=history))
 
     def load(*, version, history):
-        parsed = parse_result_summary_payload(history.get("result_summary"))
-        audit = parsed.payload
-        if parsed.parse_failed:
-            return _gap("adoption_snapshot_invalid", "此正式版本的采用摘要格式无效。")
+        # Every official version is written by a candidate or trial adoption together with its audit.
+        audit = parse_result_summary_payload(history.get("result_summary")).payload
         if audit is None or audit.get("source") not in ("workbench_candidate_adoption", "workbench_trial_adoption"):
-            return _gap("adoption_not_recorded", "此正式版本没有保存候选或试排采用来源。")
+            raise WorkbenchCommandRejected("adoption_snapshot_invalid", "此正式计划的采用摘要缺失、格式无效或不是采用来源。")
         _require_identity((audit.get("version"), history.get("version")), (version, version))
         try:
             if audit["source"] == "workbench_candidate_adoption":

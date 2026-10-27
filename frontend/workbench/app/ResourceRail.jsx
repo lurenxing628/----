@@ -2,13 +2,14 @@
   'use strict';
   const C = window.APSResourceContract;
   const { Button, Icon, MetricValue } = window.ResourceControls;
-  const labels = { known: '已确认', recorded: '已登记', zero: '0 条记录', unknown: '未知', not_configured: '未填写', unavailable: '暂无数据' };
+  // 班表配置项只在非 known 时查这张表（known 各自格式化），后端只产出这两种（calendar_summary.py 的 _holiday_efficiency）。
+  const labels = { not_configured: '未填写', unavailable: '暂无数据' };
   const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
   const number = value => Number.isFinite(value) && value >= 0;
   const amount = value => window.WorkbenchFormat.number(value, { digits: 1 });
   const integer = value => window.WorkbenchFormat.number(value, { digits: 0 });
   const hoursOrNone = value => value == null ? '暂无数据' : window.WorkbenchFormat.hours(value);
-  const countLabels = { active: '启用', inactive: '停用', maintain: '停机', leave: '请假', pending_review: '待复核', unknown: '未知' };
+  const countLabels = { active: '启用', inactive: '停用', maintain: '停机', leave: '请假', pending_review: '待复核' };
   const chipOrder = ['process', 'material', 'op_int', 'machine', 'operator', 'op_ext', 'supplier'];
   // 首次展开；手动选择在同一页会话内跨节点保留，不因窗口尺寸改变而重置。
   const COLLAPSED_CHOICE_KEY = 'aps_resource_rail_collapsed';

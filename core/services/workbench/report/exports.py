@@ -6,7 +6,7 @@ import csv
 import io
 
 from core.models.report_export import ReportExport
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.common.excel_templates import sanitize_export_cell
 from core.services.report.exporters.xlsx import (
     SUMMARY_IDENTITY_LABELS,
@@ -16,6 +16,7 @@ from core.services.report.exporters.xlsx import (
 from core.services.workbench.facts.execution_projection import COMPLETION_BASIS_TEXT, DATA_QUALITY_TEXT
 from core.services.workbench.facts.export_names import export_stamp
 from core.services.workbench.facts.table_cells import number_text
+from core.shared.strict_json import canonical_json
 
 # 导出标题与列名都是用户直接看到的文字，统一走词表，不再暴露专题代号。
 

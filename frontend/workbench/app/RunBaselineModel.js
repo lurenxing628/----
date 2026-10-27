@@ -54,7 +54,7 @@
       segments: comparison.baseline_segments.filter(segment => segment.interval_comparable).map(segment => ({ comparison, segment,
         start: M.instant(segment.start), end: M.instant(segment.end), point: window.PointContract.isPoint(segment) })) })) : [] };
   }
-  function groupPrepared(prepared, mode, focus = null) {
+  function groupPrepared(prepared, mode, focus) {
     const groups = new Map(), comparisons = []; let start = null, end = null, hasPoints = false;
     for (const fact of prepared.facts) {
       const comparison = focus ? { ...fact.comparison, baseline_segments: fact.comparison.baseline_segments.filter(segment => M.resourceMatches(segment, focus)) } : fact.comparison;
@@ -73,7 +73,7 @@
     }
     return { ...prepared, groups, comparisons, start, end, hasPoints };
   }
-  function selectPrepared(candidate, baseline, query = '', operationRefs = null, baselineVisible = true) {
+  function selectPrepared(candidate, baseline, query, operationRefs, baselineVisible) {
     const groups = new Map(), needle = query.trim().toLocaleLowerCase();
     const comparisons = (baselineVisible ? baseline.comparisons : []).filter(entry => (!operationRefs || operationRefs.has(entry.comparison.operation_ref)) && (!needle || entry.search.includes(needle))).map(entry => entry.comparison);
     const included = new Set(comparisons.map(row => row.operation_ref));
@@ -88,7 +88,7 @@
     if (baselineVisible && baseline.hasPoints) ({ start, end } = window.PointGanttModel.bounds(start, end, true));
     return { candidate, groups, start, end, comparisons, hasBaseline: baselineVisible && baseline.hasBaseline };
   }
-  function layoutPrepared(prepared, width = 1000) {
+  function layoutPrepared(prepared, width) {
     const { candidate, start, end } = prepared;
     const rows = [], locations = new Map(), baselineLocations = new Map(); let top = 0;
     function append(source) {
@@ -98,7 +98,7 @@
       rows.push(row); top += row.height;
     }
     for (const [id, group] of prepared.groups) {
-      const current = group.candidate ? M.groupRows(group.candidate, start, end, width, true) : group.current;
+      const current = group.candidate ? M.groupRows(group.candidate, start, end, width) : group.current;
       current.forEach(append);
       const points = group.points.length ? window.PointGanttModel.layoutTracks(group.points, start, end, width).map(lane => lane.filter(item => group.shown.has(item))) : [];
       for (const [baselinePoint, lanes] of [[false, group.intervals], [true, points]]) lanes.forEach((items, lane) => { if (items.length) append({

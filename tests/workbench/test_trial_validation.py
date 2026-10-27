@@ -136,7 +136,8 @@ def test_fixed_and_unique_execution_projection_protect_changes(trial_case, state
 def _mixed_external_cycle(case, *, legacy_start="2026-09-09T11:00:00", legacy_finish=None,
                           legacy_machine_id=None, legacy_operator_id=None):
     case.conn.execute("UPDATE OpTypes SET category='both' WHERE op_type_id='T1'")
-    case.conn.execute("INSERT INTO Suppliers(supplier_id,name,op_type_id) VALUES ('S1','Supplier','T1')")
+    case.conn.execute("INSERT INTO Suppliers(supplier_id,name) VALUES ('S1','Supplier')")
+    case.conn.execute("INSERT INTO WorkbenchSupplierOpTypes(supplier_id,op_type_id) VALUES ('S1','T1')")
     case.conn.execute("INSERT INTO ExternalGroups(group_id,part_no,start_seq,end_seq,merge_mode,total_days,supplier_id) "
                       "VALUES ('G','P1',2,3,'merged',1,'S1')")
     members = []

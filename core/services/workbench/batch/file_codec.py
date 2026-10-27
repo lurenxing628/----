@@ -10,7 +10,6 @@ from core.models.workbench_batch_file import (
     HEADERS,
     MAX_BYTES,
     MAX_ROWS,
-    PUBLIC_HEADERS,
     READONLY_HEADERS,
     table_descriptor,
 )
@@ -20,7 +19,7 @@ from core.services.common.excel_instruction_sheet import add_enum_dropdowns, app
 
 # 这里原本拿旧模板清单（excel_template_defaults）交叉校验一遍表头。那份清单 2026-09-21
 # 随旧资料转换一起退役了，而表头本来就同源：表描述的列标签直接取自 HEADERS
-# （core/models/workbench_batch_file.py:49），用户下载到的模板由表描述现生成，
+# （core/models/workbench_batch_file.py 的 table_descriptor），用户下载到的模板由表描述现生成，
 # 再比一次旧清单只是在校验一份没人再用的数据。
 
 
@@ -58,8 +57,7 @@ def _read_first_sheet(workbook):
     sheet = workbook.worksheets[0]
     sheet.reset_dimensions()
     iterator = sheet.iter_rows()
-    aliases = dict(zip(PUBLIC_HEADERS, HEADERS))
-    headers = [aliases.get(cell.value, cell.value) for cell in next(iterator, ())]
+    headers = [cell.value for cell in next(iterator, ())]
     while headers and headers[-1] is None:
         headers.pop()
     reference_columns = [header for header in headers if header in READONLY_HEADERS]

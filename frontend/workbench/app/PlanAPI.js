@@ -1,29 +1,19 @@
 (function () {
   'use strict';
-  // Load resource-contract.js, resource-api.js and PlanContract.js first.
-  function create() {
-    const base = window.APSResourceAPI.create(), C = window.APSPlanContract;
-    return window.APSReadBoundary.verified({
-      async catalog(scope = {}, signal) {
-        const query = C.catalogScope(scope);
-        return C.catalog(await base.query('plans', query, signal), query);
-      },
-      async workspace(planRef, scope = {}, signal) {
-        const query = C.workspaceScope(planRef, scope);
-        return C.workspace(await base.query('plans/' + planRef + '/workspace', query, signal), planRef, query);
-      },
-      async export(planRef, scope, signal) {
-        const query = C.exportScope(planRef, scope);
-        return C.download(await base.download('plans/' + planRef + '/export', query, signal), query.format);
-      }
-    }, ['catalog', 'workspace']);
-  }
-  function adapter(value) {
-    const C = window.APSPlanContract;
-    return window.APSReadBoundary.checked(value, {
-      catalog: (result, scope = {}) => C.catalog(result, scope),
-      workspace: (result, planRef, scope = {}) => C.workspace(result, planRef, scope)
-    });
-  }
-  window.APSPlanAPI = { create, adapter };
+  // Load transport.js and PlanContract.js first.
+  window.APSPlanAPI = {
+    async catalog(scope = {}, signal) {
+      const C = window.APSPlanContract, query = C.catalogScope(scope);
+      return C.catalog(await window.APSWorkbenchTransport.read('/api/workbench/v1/plans', query, { signal, timeout: 20000 }), query);
+    },
+    async workspace(planRef, scope = {}, signal) {
+      const C = window.APSPlanContract, query = C.workspaceScope(planRef, scope);
+      return C.workspace(await window.APSWorkbenchTransport.read('/api/workbench/v1/plans/' + planRef + '/workspace', query, { signal, timeout: 20000 }), planRef, query);
+    },
+    async export(planRef, scope, signal) {
+      // 附件、文件类型与魔数、文件名及其后缀都由 transport.download 核对。
+      const T = window.APSWorkbenchTransport, query = window.APSPlanContract.exportScope(planRef, scope);
+      return T.download('/api/workbench/v1/plans/' + planRef + '/export', query, { signal, timeout: 20000, types: [T.types[query.format]] });
+    }
+  };
 })();

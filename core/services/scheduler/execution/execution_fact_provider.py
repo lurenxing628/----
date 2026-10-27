@@ -83,10 +83,6 @@ class ExecutionFactProvider:
         normalized = list(dict.fromkeys(scopes))
         with ledger_read_snapshot(self.conn, ledger=self.ledger) as ledger:
             facts = self._legacy_facts(normalized)
-            if ledger is None:
-                if execution_projections:
-                    raise ValueError("旧版本数据库不能接收执行台账投影。")
-                return facts
             return adapt_ledger_facts(ledger, facts, execution_projections=execution_projections)
 
     def _legacy_facts(self, normalized: Sequence[OperationExecutionScope]) -> Dict[OperationExecutionScope, ExecutionFact]:

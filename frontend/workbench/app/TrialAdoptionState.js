@@ -5,7 +5,7 @@
     try {
       return A.shape(v, ['schema_version', 'scenario_ref', 'request_key', 'input', 'preview', 'phase'], v.phase === 'committed' ? ['receipt'] : [])
         && v.schema_version === 1 && A.key(v.request_key)
-        && A.shape(v.preview, ['scenario_ref', 'draft_ref', 'baseline', 'task_count', 'scope_complete'], ['data_context_ref'])
+        && A.shape(v.preview, ['scenario_ref', 'draft_ref', 'baseline', 'task_count', 'scope_complete', 'data_context_ref'])
         && A.overview(v.preview) && v.scenario_ref === v.preview.scenario_ref
         && A.equal(A.input(v.input), v.input) && ['pending', 'rejected', 'committed'].includes(v.phase) && (v.phase !== 'committed' || !!A.receipt(v.receipt, v));
     } catch (_) { return false; }
@@ -26,13 +26,12 @@
     const scope = A.overview(preview), input = A.input(values);
     A.check(!previous || valid(previous) && previous.phase === 'rejected' && A.sameScope(previous.preview, scope) && A.equal(previous.input, input),
       '上次提交的试调方案、原因和经办人已绑定，改了内容不能沿用同一个操作编号。');
-    const requestKey = previous ? previous.request_key : 'trial-adoption-' + Array.from(crypto.getRandomValues(new Uint8Array(24)), n => n.toString(16).padStart(2, '0')).join('');
+    const requestKey = previous ? previous.request_key : window.APSWorkbenchTransport.requestKey('trial-adoption');
     return save({ schema_version: 1, scenario_ref: scope.scenario_ref, request_key: requestKey, input, preview: scope, phase: 'pending' }, previous);
   }
   // A fresh draft starts from the handler this machine remembered, so the dirty guard compares against that prefill rather than an empty string.
   const remembered = () => window.WorkbenchHandlerMemory.read().value, empty = () => ({ reason: '', declared_operator: remembered() });
-  function useSession({ scenarioRef, data, disabled = false, onAdopted }) {
-    const api = React.useMemo(() => A.create(), []);
+  function useSession({ scenarioRef, data, disabled, onAdopted }) {
     const [initial] = React.useState(() => { try { return { saved: read(), error: '' }; } catch (e) { return { saved: null, error: e.message }; } });
     const [saved, setSaved] = React.useState(initial.saved), [storageError, setStorageError] = React.useState(initial.error);
     const [draft, setDraft] = React.useState(() => initial.saved ? initial.saved.input : empty());
@@ -79,7 +78,7 @@
       if (!intent || intent.phase === 'rejected' || lock.current || storageError) return;
       setChecking(true);
       try {
-        const found = await api.lookup(intent, signal, { data_context_ref: intent.preview.data_context_ref });
+        const found = await A.lookup(intent, signal);
         if (!mounted.current || signal && signal.aborted) return;
         if (found.state === 'not_observed') {
           if (found.may_be_in_flight === false) {
@@ -102,7 +101,7 @@
       lock.current = true; setBusy(true); setOpen(true); setPreview(null); setConsent(false); setError(''); setNotice('');
       const controller = new AbortController(); request.current = controller;
       try {
-        const value = await api.preview(original, controller.signal);
+        const value = await A.preview(original, controller.signal);
         if (mounted.current && !controller.signal.aborted && !current.current.disabled && A.equal(original, current.current.original)) setPreview(value);
       } catch (e) { if (mounted.current && !controller.signal.aborted) setError(e.message); }
       finally { lock.current = false; if (mounted.current) setBusy(false); }
@@ -121,10 +120,10 @@
           if (!mounted.current || current.current.disabled || !A.equal(original, current.current.original)) return;
           const intent = begin(preview, values, active.current);
           active.current = intent; setSaved(intent); setDraft(intent.input); setPreview(null); setConsent(false);
-          try { accept(await api.adopt(intent, preview.write_context.write_token), intent); }
+          try { accept(await A.adopt(intent, preview.write_context.write_token), intent); }
           catch (e) {
             if (!mounted.current) return;
-            if (A.isRejected(e)) {
+            if (window.APSWorkbenchTransport.rejected(e)) {
               const rejected = save({ ...intent, phase: 'rejected' }, intent); active.current = rejected; setSaved(rejected);
               setError(window.WorkbenchTerms.outcomes.rejected('采用', e.message));
             } else setError(window.WorkbenchTerms.outcomes.unknown('采用'));
@@ -144,5 +143,5 @@
     return { saved, result, draft, open, preview, consent, busy: busy || checking, error, notice, storageError, sourceError, original, disabled,
       setOpen, setConsent, change: value => { if (!active.current) { setDraft(value); setConsent(false); } }, inspect, submit, lookup: () => lookup(), sync, close, finish };
   }
-  window.TrialAdoptionState = { KEY, EVENT, read, save, useSession };
+  window.TrialAdoptionState = { KEY, read, save, useSession };
 })();

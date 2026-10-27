@@ -2720,10 +2720,10 @@ function SMExport({
     if (scope.state === 'not_applicable') return '本次没有需要安排的批次';
     if (scope.source_available === false) return '工序安排记录未保存，请查看原因';
     const items = [];
-    if (scope.complete_batch_count == null) items.push('工序已排齐的批次数待确认');else if (scope.complete_batch_count > 0) items.push(countText(scope.complete_batch_count) + ' 批工序已排齐');
+    if (scope.complete_batch_count > 0) items.push(countText(scope.complete_batch_count) + ' 批工序已排齐');
     const missing = missingArrangements(scope.unplanned_operation_count, scope.deferred_operation_count);
     if (missing) items.push(missing);
-    if (scope.unknown_batch_count == null) items.push('尚待确认工序安排的批次数未记录');else if (scope.unknown_batch_count > 0) items.push(countText(scope.unknown_batch_count) + ' 批工序安排待确认，请查看原因');
+    if (scope.unknown_batch_count > 0) items.push(countText(scope.unknown_batch_count) + ' 批工序安排待确认，请查看原因');
     return items.join('；');
   }
   window.WorkbenchTerms = Object.freeze({
@@ -2851,18 +2851,16 @@ function SMExport({
       failed: '计算失败',
       skipped: '未计算'
     }),
-    // 齐套规则与拆批操作分开。旧 split 记录实际按整批齐套执行，不能据此声称已经拆批。
     material_strategies: Object.freeze({
       strict: '等整批物料齐套',
-      stage: '按工序物料齐套',
-      split: '等整批物料齐套（原分批开工入口）'
+      stage: '按工序物料齐套'
     }),
     material_descriptions: Object.freeze({
       strict: '这批全部用料到齐后，再安排工序开工。',
       stage: '每道工序只等本序和前序用料，不等后续用料。'
     }),
     material_strategy: (value, readyCheck) => readyCheck === false ? '未启用（齐套检查已关闭）' : value === null || readyCheck === null ? '未记录' : window.WorkbenchTerms.material_strategies[value || 'strict'] || '记录无效',
-    // 不重排时段：排产检查、排产任务、排产记录、候选方案的回显用同一套说法。没有这一项的是旧记录，当时按交付设置。
+    // 不重排时段：排产检查、排产任务、排产记录、候选方案的回显用同一套说法。没带这一项表示按当时的交付设置推算。
     hold_window: (value, invalid) => value === undefined ? '未记录（按当时的交付设置）' : invalid ? '记录无效' : value === null ? '不设' : value.start.replace('T', ' ') + ' 至 ' + value.end.replace('T', ' '),
     // 报工执行状态：现场记录、实际甘特、报表、校准、排产候选、试调和值班台共用；与后端导出的“排产时报工状态”一致。
     execution_states: Object.freeze({
@@ -3007,13 +3005,16 @@ function SMExport({
     return shape(value, ['value', 'state', 'reason']) && value.value === null && value.state === 'not_applicable' && shape(value.reason, ['field', 'code', 'message']) && value.reason.field === 'elapsed_seconds' && value.reason.code === 'shared_run_time' && text(value.reason.message);
   }
   function algorithm(value, runRef) {
-    const fields = ['mode', 'mode_label', 'strategy', 'strategy_label'],
-      current = unified(value);
-    return shape(value, fields.concat(current ? metadataKeys.concat(['primary_objective', 'target_objectives']) : [])) && fields.every(key => value[key] === null || text(value[key])) && (!current || metadata(value, runRef) && objective(value.primary_objective) && sameArray(value.target_objectives, targets(value.primary_objective)));
+    const fields = ['mode', 'mode_label', 'strategy', 'strategy_label'];
+    return shape(value, fields.concat(metadataKeys, ['primary_objective', 'target_objectives'])) && fields.every(key => value[key] === null || text(value[key])) && metadata(value, runRef) && objective(value.primary_objective) && sameArray(value.target_objectives, targets(value.primary_objective));
   }
   function selectionBasis(value, candidates) {
-    const fields = ['generation_policy_version', 'selection_policy_version', 'primary_objective', 'target_objectives', 'selected_candidate_ref', 'objective_winners', 'objective_winner_reasons', 'objective_field_order', 'selected_score', 'reason_code', 'scoring_scope', 'evidence_state', 'objective_name', 'raw_score_best_candidate_ref', 'health_reference_candidate_ref', 'selection_policy', 'overdue_tolerance_count', 'tardiness_tolerance_ratio', 'raw_score_comparison', 'health_comparison', 'selection_evidence_version', 'decision_evidence', 'health_decision_evidence', 'explanation'];
-    if (!shape(value, fields) || !unified(value) || value.selection_policy_version !== 'business_objectives_v1' || !objective(value.primary_objective) || !sameArray(value.target_objectives, targets(value.primary_objective)) || !ref(value.selected_candidate_ref) || value.objective_name !== value.primary_objective || value.raw_score_best_candidate_ref !== value.selected_candidate_ref || value.selection_policy !== 'business_objectives_v1' || value.selection_evidence_version !== 'business_objectives_v1' || !['complete', 'partial'].includes(value.evidence_state) || !['primary_objective_best_found', 'primary_objective_best_in_completed_scope', 'partial_scope_score_unavailable'].includes(value.reason_code) || !scoringScope(value.scoring_scope) || !score(value.selected_score) || !object(value.explanation) || !['health_reference_candidate_ref', 'overdue_tolerance_count', 'tardiness_tolerance_ratio', 'raw_score_comparison', 'health_comparison', 'decision_evidence', 'health_decision_evidence'].every(key => value[key] === null) || !shape(value.objective_winners, value.target_objectives) || !shape(value.objective_winner_reasons, value.target_objectives) || !shape(value.objective_field_order, value.target_objectives)) return false;
+    const fields = ['generation_policy_version', 'selection_policy_version', 'primary_objective', 'target_objectives', 'selected_candidate_ref', 'objective_winners', 'objective_winner_reasons', 'objective_field_order', 'selected_score', 'reason_code', 'scoring_scope', 'evidence_state', 'explanation'];
+    if (!shape(value, fields) || !object(value.explanation)) return false;
+    if (!candidates.length) {
+      return value.generation_policy_version === null && value.selection_policy_version === null && value.primary_objective === null && sameArray(value.target_objectives, []) && value.selected_candidate_ref === null && shape(value.objective_winners, []) && shape(value.objective_winner_reasons, []) && shape(value.objective_field_order, []) && sameArray(value.selected_score, []) && value.reason_code === null && value.scoring_scope === null && value.evidence_state === 'unavailable';
+    }
+    if (!unified(value) || value.selection_policy_version !== 'business_objectives_v1' || !objective(value.primary_objective) || !sameArray(value.target_objectives, targets(value.primary_objective)) || !ref(value.selected_candidate_ref) || !['complete', 'partial'].includes(value.evidence_state) || !['primary_objective_best_found', 'primary_objective_best_in_completed_scope', 'partial_scope_score_unavailable'].includes(value.reason_code) || !scoringScope(value.scoring_scope) || !score(value.selected_score) || !shape(value.objective_winners, value.target_objectives) || !shape(value.objective_winner_reasons, value.target_objectives) || !shape(value.objective_field_order, value.target_objectives)) return false;
     const known = new Set(candidates.map(candidate => candidate.candidate_ref));
     return known.has(value.selected_candidate_ref) && value.target_objectives.every(name => {
       const winner = value.objective_winners[name],
@@ -3023,12 +3024,10 @@ function SMExport({
   }
   window.RunGenerationContract = {
     metadataKeys,
-    unified,
     budget,
     objective,
     objectives,
     objectiveLabel,
-    targets,
     fieldOrders,
     sameArray,
     score,
@@ -3068,7 +3067,7 @@ function SMExport({
     return fields(value, ['state', 'issues', 'balance_cv', 'balance_state', 'balance_reason', ...measures, ...summaryCounts]) && states.includes(value.state) && states.includes(value.balance_state) && nullable(number)(value.balance_cv) && (value.balance_reason === null || issue(value.balance_reason)) && measures.every(key => nullable(number)(value[key])) && summaryCounts.every(key => nullable(count)(value[key])) && Object.keys(value).filter(key => key.startsWith('known_') && !summaryCounts.includes(key)).every(key => nullable(number)(value[key])) && Array.isArray(value.issues) && value.issues.every(issue);
   }
   function common(value, source) {
-    return fields(value, ['metric_version', 'source', 'start', 'end', 'time_basis', 'cohort_basis', 'cohort']) && ['decision-resource-v3', 'decision-resource-v4'].includes(value.metric_version) && sources.includes(value.source) && (!source || value.source === source) && value.time_basis === 'factory_local' && typeof value.start === 'string' && typeof value.end === 'string' && value.start <= value.end && typeof value.cohort_basis === 'string' && Array.isArray(value.cohort) && value.cohort.every(row => object(row) && ['machine', 'operator'].includes(row.kind) && typeof row.ref === 'string') && (value.before || value.after ? ['before', 'after'].every(side => object(value[side]) && ['machine', 'operator'].every(kind => summary(value[side][kind]))) : ['machine', 'operator'].every(kind => summary(value[kind])));
+    return fields(value, ['metric_version', 'source', 'start', 'end', 'time_basis', 'cohort_basis', 'cohort']) && value.metric_version === 'decision-resource-v4' && sources.includes(value.source) && (!source || value.source === source) && value.time_basis === 'factory_local' && typeof value.start === 'string' && typeof value.end === 'string' && value.start <= value.end && typeof value.cohort_basis === 'string' && Array.isArray(value.cohort) && value.cohort.every(row => object(row) && ['machine', 'operator'].includes(row.kind) && typeof row.ref === 'string') && (value.before || value.after ? ['before', 'after'].every(side => object(value[side]) && ['machine', 'operator'].every(kind => summary(value[side][kind]))) : ['machine', 'operator'].every(kind => summary(value[kind])));
   }
   window.ResourceProjectionContract = Object.freeze({
     window: metricWindow,
@@ -3294,13 +3293,12 @@ function SMExport({
       messages = [];
     if (message && technical(message)) entries['原始错误信息'] = message;
     if (!hideMessage) messages.push(message && !technical(message) ? message : fallback);
+    // 统一错误对象（transport.js）的编号字段。
     const labels = {
       code: '错误编号',
       status: '状态码',
-      request_key: '操作编号',
-      request_ref: '结果编号',
-      request_id: '操作标记',
-      trace_id: '诊断编号'
+      requestKey: '操作编号',
+      requestRef: '结果编号'
     };
     Object.entries(labels).forEach(([key, label]) => {
       if (present(error[key])) entries[label] = error[key];
@@ -3629,88 +3627,431 @@ function SMExport({
 (function () {
   'use strict';
 
-  async function decode(response) {
-    var type = response.headers.get('content-type') || '';
-    if (!type.toLowerCase().includes('application/json')) throw new Error('本机服务返回了非预期的数据格式。');
-    var payload;
-    try {
-      payload = await response.json();
-    } catch (error) {
-      if (error.name === 'AbortError') throw error;
-      throw new Error('本机服务返回的数据无法解析。');
+  // 工作台唯一的传输通道：地址守卫、取消与超时、信封校验、统一错误对象、命令确定/不确定判定、下载与存盘、request_key。
+  // 统一错误对象：{ message, code, fields, conflicts, committed, status, requestRef, requestKey, resultTarget }。
+  const PREFIX = '/api/workbench/v1/';
+  const REJECTED_STATUS = [400, 404, 409, 422, 503];
+  // 工作台下载只有这四种文件；领域写 types: [T.types.csv] 这种形式。
+  const types = Object.freeze({
+    csv: 'text/csv',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    zip: 'application/zip',
+    sqlite: 'application/vnd.sqlite3'
+  });
+  const ZIP = [0x50, 0x4b, 0x03, 0x04];
+  // 后端导出的 CSV 一律带 UTF-8 BOM；XLSX 与 ZIP 都是 ZIP 容器；备份文件是 SQLite 库。
+  const MAGIC = {
+    [types.csv]: [0xef, 0xbb, 0xbf],
+    [types.xlsx]: ZIP,
+    [types.zip]: ZIP,
+    [types.sqlite]: Array.from('SQLite format 3\0', character => character.charCodeAt(0))
+  };
+  // 后端附件文件名的唯一后缀：导出都按格式拼 .csv / .xlsx，诊断包是 .zip，备份文件恒为 aps_backup_*.db。
+  const EXTENSION = {
+    [types.csv]: '.csv',
+    [types.xlsx]: '.xlsx',
+    [types.zip]: '.zip',
+    [types.sqlite]: '.db'
+  };
+  const ENVELOPE_KEYS = 'data,meta,ok,schema_version,warnings',
+    META_KEYS = 'as_of,request_ref,snapshot_ref,source,time_basis';
+  const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+  const text = value => typeof value === 'string';
+  const essence = value => (value || '').split(';')[0].trim().toLowerCase();
+  const faults = new WeakSet();
+  function fault(message, details) {
+    const error = Object.assign(new Error(message), {
+      code: null,
+      fields: [],
+      conflicts: [],
+      committed: false,
+      status: null,
+      requestRef: null,
+      requestKey: null,
+      resultTarget: null
+    }, details);
+    faults.add(error);
+    return error;
+  }
+  const unknown = () => window.WorkbenchTerms.outcomes.pending('操作');
+  const readCopy = {
+    timeout: () => '读取超时，请稍后重试。',
+    network: () => '无法连接本机服务，请确认应用仍在运行后重试。',
+    format: () => '本机服务返回了非预期的数据格式。',
+    parse: () => '本机服务返回的数据无法解析。',
+    failed: () => '本机服务未能完成读取，请重试。'
+  };
+  // read：读取失败与写入无关；lookup：查回执失败时上次命令仍是“结果未知”；write：发出后没有服务端明确答复，一律按结果未知。
+  const modes = {
+    read: {
+      committed: false,
+      ...readCopy
+    },
+    lookup: {
+      committed: 'unknown',
+      ...readCopy
+    },
+    write: {
+      committed: 'unknown',
+      timeout: unknown,
+      network: unknown,
+      format: unknown,
+      parse: unknown,
+      failed: unknown
     }
-    if (!response.ok || !payload || payload.ok !== true) {
-      var message = payload && payload.error && payload.error.message;
-      throw new Error(typeof message === 'string' && message ? message : '本机服务未能完成读取，请重试。');
-    }
-    if (payload.schema_version !== 1 || !payload.meta || payload.meta.source !== 'production' || payload.meta.time_basis !== 'factory_local' || typeof payload.meta.snapshot_ref !== 'string' || !payload.meta.snapshot_ref || typeof payload.meta.request_ref !== 'string' || !payload.meta.request_ref || typeof payload.meta.as_of !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(payload.meta.as_of) || !payload.data || typeof payload.data !== 'object' || Array.isArray(payload.data)) throw new Error('读到的数据不完整，页面没有改动。请刷新后重试。');
+  };
+  function url(path, query = {}) {
+    // 只接受以 /api/workbench/v1/ 开头的绝对路径；规范化后（如带 ..）仍须留在前缀内。
+    const target = new URL(path, location.origin);
+    if (!path.startsWith(PREFIX) || !target.pathname.startsWith(PREFIX)) throw fault('数据地址不属于本机工作台。');
+    Object.keys(query).forEach(key => {
+      if (query[key] !== undefined && query[key] !== null && query[key] !== '') target.searchParams.set(key, String(query[key]));
+    });
+    return target.href;
+  }
+  // 工厂本地秒级时间，按真实日历校验（与 PlanContract 的 localTime 同一口径，不带小数秒）。
+  function localSecond(value) {
+    if (!text(value) || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(value)) return false;
+    const [year, month, day, hour, minute, second] = value.split(/[-T:]/).map(Number);
+    const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+    const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    return year >= 1 && month >= 1 && month <= 12 && day >= 1 && day <= days[month - 1] && hour < 24 && minute < 60 && second < 60;
+  }
+  // 成功信封唯一的校验点：唯一生产者是 web/api_responses.py 的 query_payload，顶层 5 个键、meta 5 个键都固定。
+  function envelope(payload) {
+    const meta = object(payload) && payload.meta;
+    if (!object(payload) || Object.keys(payload).sort().join() !== ENVELOPE_KEYS || payload.ok !== true || payload.schema_version !== 1 || !object(payload.data) || !object(meta) || Object.keys(meta).sort().join() !== META_KEYS || meta.source !== 'production' || meta.time_basis !== 'factory_local' || !text(meta.request_ref) || !/^[0-9a-f]{32}$/.test(meta.request_ref) || !(meta.snapshot_ref === null || text(meta.snapshot_ref) && /^[A-Za-z0-9_-]{32}$/.test(meta.snapshot_ref)) || !localSecond(meta.as_of) || !Array.isArray(payload.warnings) || !payload.warnings.every(item => object(item) && text(item.code) && text(item.message))) throw fault('读到的数据不完整，页面没有改动。请刷新后重试。', {
+      code: 'invalid_response'
+    });
     return payload;
   }
-  async function read(url, signal) {
-    var target = new URL(url, location.href);
-    if (target.origin !== location.origin || !target.pathname.startsWith('/api/workbench/v1/')) throw new Error('数据地址不属于本机工作台。');
-    var controller = new AbortController(),
-      timedOut = false;
-    var abort = function () {
-      controller.abort();
+  const ERROR_KEYS = ['code', 'message', 'fields', 'retryable', 'request_ref', 'conflicts', 'row_number', 'request_key', 'result_target'];
+  function failed(payload) {
+    const e = object(payload) && payload.ok === false && payload.error;
+    return object(e) && Object.keys(payload).every(key => ['ok', 'committed', 'error', 'status'].includes(key)) && [false, true, 'unknown'].includes(payload.committed) && (payload.status === undefined || Number.isInteger(payload.status) && payload.status >= 400 && payload.status <= 599) && Object.keys(e).every(key => ERROR_KEYS.includes(key)) && text(e.code) && e.code.length > 0 && text(e.message) && typeof e.retryable === 'boolean' && text(e.request_ref) && /^[0-9a-f]{32}$/.test(e.request_ref) && Array.isArray(e.fields) && e.fields.every(row => object(row) && Object.keys(row).length === 2 && text(row.path) && text(row.message)) && (e.conflicts === undefined || Array.isArray(e.conflicts)) && (e.row_number === undefined || Number.isSafeInteger(e.row_number)) && (e.request_key === undefined || text(e.request_key)) && (e.result_target === undefined || text(e.result_target));
+  }
+  // 失败信封唯一的解析点：web/api_responses.py 的 failure_payload、pages.py 的统一兜底与 run_decision.py 的内嵌资源失败。
+  function failure(payload, status) {
+    if (!failed(payload) || !Number.isInteger(status) || status < 400 || status > 599 || payload.status !== undefined && payload.status !== status) return fault(modes.read.failed(), {
+      code: 'invalid_response',
+      status
+    });
+    const e = payload.error;
+    return fault(e.message, {
+      code: e.code,
+      fields: e.fields,
+      conflicts: e.conflicts || [],
+      committed: payload.committed,
+      status,
+      requestRef: e.request_ref,
+      requestKey: e.request_key || null,
+      resultTarget: e.result_target || null
+    });
+  }
+  function encode(body) {
+    if (body instanceof FormData) return {
+      body,
+      headers: {
+        Accept: 'application/json'
+      }
     };
+    try {
+      return {
+        body: JSON.stringify(body),
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json'
+        }
+      };
+    } catch (_) {
+      throw fault('保存内容无法转换，本次没有提交。');
+    }
+  }
+  async function send(target, init, {
+    signal,
+    timeout = 20000
+  }, mode, consume) {
+    const controller = new AbortController(),
+      abort = () => controller.abort();
+    let timedOut = false;
     if (signal) {
-      signal.addEventListener('abort', abort, {
+      if (signal.aborted) abort();else signal.addEventListener('abort', abort, {
         once: true
       });
-      if (signal.aborted) controller.abort();
     }
-    var timer = setTimeout(function () {
+    const timer = setTimeout(() => {
       timedOut = true;
-      controller.abort();
-    }, 20000);
+      abort();
+    }, timeout);
     try {
-      var response;
-      try {
-        response = await fetch(target.href, {
-          signal: controller.signal,
-          credentials: 'same-origin',
-          headers: {
-            Accept: 'application/json'
-          }
-        });
-      } catch (error) {
-        if (error.name === 'AbortError') throw error;
-        throw new Error('无法连接本机服务，请确认应用仍在运行后重试。');
-      }
-      return await decode(response);
+      const response = await fetch(target, {
+        ...init,
+        signal: controller.signal,
+        credentials: 'same-origin',
+        redirect: 'error',
+        cache: 'no-store'
+      });
+      return await consume(response);
     } catch (error) {
-      if (timedOut) throw new Error('本机状态读取超时，请稍后重试。');
-      throw error;
+      if (timedOut) throw fault(mode.timeout(), {
+        code: 'timeout',
+        committed: mode.committed
+      });
+      if (error.name === 'AbortError' || faults.has(error)) throw error;
+      throw fault(mode.network(), {
+        committed: mode.committed
+      });
     } finally {
       clearTimeout(timer);
       if (signal) signal.removeEventListener('abort', abort);
     }
   }
-  function saveBlob(filename, blob) {
-    var url = URL.createObjectURL(blob),
-      link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
+  async function parse(response, mode) {
+    if (essence(response.headers.get('content-type')) !== 'application/json') throw fault(mode.format(), {
+      code: 'invalid_response',
+      committed: mode.committed,
+      status: response.status
+    });
+    try {
+      return await response.json();
+    } catch (error) {
+      if (error.name === 'AbortError') throw error;
+      throw fault(mode.parse(), {
+        code: 'invalid_response',
+        committed: mode.committed,
+        status: response.status
+      });
+    }
+  }
+  async function answer(response) {
+    const payload = await parse(response, modes.read);
+    if (failed(payload)) {
+      if (response.status === 499 && payload.error.code === 'request_superseded') throw new DOMException('筛选条件已更新，前一次读取已取消。', 'AbortError');
+      throw failure(payload, response.status);
+    }
+    if (!response.ok) throw fault(modes.read.failed(), {
+      code: 'invalid_response',
+      status: response.status
+    });
+    return envelope(payload);
+  }
+  async function read(path, query, {
+    signal,
+    timeout,
+    lane
+  } = {}) {
+    const headers = lane ? {
+      Accept: 'application/json',
+      'X-Workbench-Read-Lane': lane
+    } : {
+      Accept: 'application/json'
+    };
+    return send(url(path, query), {
+      method: 'GET',
+      headers
+    }, {
+      signal,
+      timeout
+    }, modes.read, answer);
+  }
+  async function preview(path, body, {
+    signal,
+    timeout
+  } = {}) {
+    return send(url(path), {
+      method: 'POST',
+      ...encode(body)
+    }, {
+      signal,
+      timeout
+    }, modes.read, answer);
+  }
+  // expect 是领域给出的回执地址；失败信封回显的 request_key / result_target 与本次提交对不上时不跟随，按结果未知处理。
+  async function command(path, body, {
+    timeout,
+    expect
+  } = {}) {
+    return send(url(path), {
+      method: 'POST',
+      ...encode(body)
+    }, {
+      timeout
+    }, modes.write, async response => {
+      const payload = await parse(response, modes.write);
+      if (failed(payload)) {
+        const error = failure(payload, response.status);
+        if ((error.requestKey !== null || error.resultTarget !== null) && (error.requestKey !== body.request_key || error.resultTarget !== expect)) throw fault('返回的结果编号和上次提交对不上，这里没有读取其他结果。请点「查询结果」。', {
+          code: 'invalid_response',
+          committed: 'unknown',
+          status: response.status,
+          requestRef: error.requestRef
+        });
+        throw error;
+      }
+      if (!response.ok || !object(payload) || payload.ok !== true) throw fault(unknown(), {
+        code: 'invalid_response',
+        committed: 'unknown',
+        status: response.status
+      });
+      return payload;
+    });
+  }
+  // 回执查询返回原始 JSON，由领域校验；404 receipt_not_found 表示“没查到”，返回 null。
+  async function lookup(path, {
+    signal,
+    timeout
+  } = {}) {
+    return send(url(path), {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json'
+      }
+    }, {
+      signal,
+      timeout
+    }, modes.lookup, async response => {
+      const payload = await parse(response, modes.lookup);
+      if (failed(payload)) {
+        if (response.status === 404 && payload.error.code === 'receipt_not_found') return null;
+        throw Object.assign(failure(payload, response.status), {
+          committed: 'unknown'
+        });
+      }
+      if (!response.ok || !object(payload)) throw fault(modes.lookup.failed(), {
+        code: 'invalid_response',
+        committed: 'unknown',
+        status: response.status
+      });
+      return payload;
+    });
+  }
+  // 下载必须是带文件名的附件，文件名后缀要与实际文件类型一致；文件名只认后端附件头这一个来源。
+  function filename(disposition, type, status) {
+    const value = disposition || '';
+    if (!/^attachment(?:;|$)/i.test(value)) throw fault('下载内容不是附件，没有保存文件。', {
+      code: 'invalid_response',
+      status
+    });
+    const extended = /(?:^|;)\s*filename\*\s*=\s*UTF-8''([^;]+)/i.exec(value);
+    const plain = /(?:^|;)\s*filename\s*=\s*(?:"((?:[^"\\]|\\.)*)"|([^;]+))/i.exec(value);
+    let name;
+    try {
+      name = extended ? decodeURIComponent(extended[1].trim()) : plain ? plain[1] !== undefined ? plain[1].replace(/\\(.)/g, '$1') : plain[2].trim() : '';
+    } catch (_) {
+      throw fault('下载文件名编码无效，没有保存文件。', {
+        code: 'invalid_response',
+        status
+      });
+    }
+    if (!name) throw fault('下载内容缺少文件名，没有保存文件。', {
+      code: 'invalid_response',
+      status
+    });
+    if (/[\x00-\x1f\x7f/\\]/.test(name)) throw fault('下载文件名无效，没有保存文件。', {
+      code: 'invalid_response',
+      status
+    });
+    if (!name.toLowerCase().endsWith(EXTENSION[type])) throw fault('下载文件名后缀与文件类型不一致，没有保存文件。', {
+      code: 'invalid_response',
+      status
+    });
+    return name;
+  }
+  // types 是调用方允许的 MIME 列表；X-Workbench-* 等业务头由领域经 header(name) 核对。
+  async function download(path, query, {
+    signal,
+    timeout,
+    types
+  }) {
+    const init = {
+      method: 'GET',
+      headers: {
+        Accept: types.concat('application/json').join(',')
+      }
+    };
+    return send(url(path, query), init, {
+      signal,
+      timeout
+    }, modes.read, async response => {
+      const type = essence(response.headers.get('content-type'));
+      if (type === 'application/json') {
+        const payload = await parse(response, modes.read);
+        if (failed(payload)) throw failure(payload, response.status);
+        throw fault('下载内容格式不正确，没有保存成文件。', {
+          code: 'invalid_response',
+          status: response.status
+        });
+      }
+      if (!response.ok) throw fault(modes.read.failed(), {
+        code: 'invalid_response',
+        status: response.status
+      });
+      if (!types.includes(type)) throw fault('下载内容格式不正确，没有保存成文件。', {
+        code: 'invalid_response',
+        status: response.status
+      });
+      const name = filename(response.headers.get('content-disposition'), type, response.status),
+        blob = await response.blob();
+      if (!blob.size) throw fault('下载文件是空的，没有当成导出成功。', {
+        code: 'invalid_response',
+        status: response.status
+      });
+      const head = new Uint8Array(await blob.slice(0, MAGIC[type].length).arrayBuffer());
+      if (!MAGIC[type].every((byte, index) => head[index] === byte)) throw fault('下载内容与文件类型不符，没有保存成文件。', {
+        code: 'invalid_response',
+        status: response.status
+      });
+      return {
+        blob,
+        contentType: type,
+        filename: name,
+        header: key => response.headers.get(key)
+      };
+    });
+  }
+  function saveBlob(name, blob) {
+    const link = document.createElement('a'),
+      href = URL.createObjectURL(blob);
+    link.href = href;
+    link.download = name;
     try {
       document.body.appendChild(link);
       link.click();
     } finally {
       link.remove();
-      setTimeout(function () {
-        URL.revokeObjectURL(url);
-      }, 1000);
+      setTimeout(() => URL.revokeObjectURL(href), 1000);
     }
   }
-  function downloadJSON(filename, value) {
-    saveBlob(filename, new Blob([JSON.stringify(value, null, 2)], {
+  function downloadJSON(name, value) {
+    saveBlob(name, new Blob([JSON.stringify(value, null, 2)], {
       type: 'application/json;charset=utf-8'
     }));
   }
+  // 后端 request_key 规则是 [A-Za-z0-9_-]{16,128}；工作台统一写成“前缀-48 位小写十六进制”。
+  function requestKey(prefix) {
+    const bytes = new Uint8Array(24);
+    window.crypto.getRandomValues(bytes);
+    return prefix + '-' + Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
+  }
+  // 唯一的“确定没有生效”判定：服务端在这些状态码里明确 committed:false，或请求在本地校验阶段就失败、从未发出（status 为 null）。
+  // 查回执失败一律是 committed:'unknown'，不会落进这里。
+  const rejected = error => error.committed === false && (REJECTED_STATUS.includes(error.status) && error.code !== 'request_key_conflict' || error.status === null);
+  const uncertain = error => error.committed === 'unknown';
   window.APSWorkbenchTransport = {
-    read: read,
-    downloadJSON: downloadJSON,
-    saveBlob: saveBlob
+    types,
+    url,
+    read,
+    preview,
+    command,
+    lookup,
+    download,
+    saveBlob,
+    downloadJSON,
+    requestKey,
+    rejected,
+    uncertain,
+    envelope,
+    failure
   };
 })();
 
@@ -3757,9 +4098,7 @@ function SMExport({
       return ['yes', 'no'].includes(value.values[key]);
     }) && numbers.every(function (key) {
       return count(value.values[key]);
-    }) && fields(value.defaulted_fields) && fields(value.dirty_fields) && object(value.dirty_reasons) && value.dirty_fields.every(function (key) {
-      return text(value.dirty_reasons[key]);
-    });
+    }) && fields(value.defaulted_fields);
   }
   function maintenance(value) {
     return Array.isArray(value.jobs) && value.jobs.length === jobs.length && jobs.every(function (kind) {
@@ -3785,36 +4124,6 @@ function SMExport({
 (function () {
   'use strict';
 
-  const verifiedReader = Symbol('verified workbench response reader');
-  // Factories validate responses once. Injected readers enter that same boundary.
-  function verified(adapter, names) {
-    names.forEach(name => Object.defineProperty(adapter[name], verifiedReader, {
-      value: true
-    }));
-    return adapter;
-  }
-  // 注入的 adapter（测试或组合用）可以只提供部分读取方法：没提供的方法保持缺省，由调用方按能力判断，不在这里补空实现。
-  function checked(adapter, validators) {
-    const result = {
-      ...adapter
-    };
-    Object.entries(validators).forEach(([name, validate]) => {
-      const method = adapter[name];
-      if (typeof method === 'function' && !method[verifiedReader]) {
-        result[name] = async (...args) => {
-          const value = await method.apply(adapter, args);
-          validate(value, ...args);
-          return value;
-        };
-        verified(result, [name]);
-      }
-    });
-    return result;
-  }
-  window.APSReadBoundary = {
-    verified,
-    checked
-  };
   // Plan integers keep safe values as numbers and larger SQLite int64 values as decimal text.
   function nonnegativeInt64(value) {
     if (typeof value === 'number') return Number.isSafeInteger(value) && value >= 0;
@@ -3893,9 +4202,9 @@ function SMExport({
   };
   const statuses = {
     material: [['active', '启用'], ['inactive', '停用']],
-    machine: [['active', '可用'], ['maintain', '停机'], ['inactive', '停用'], ['unknown', '旧状态 / 原因未知']],
-    operator: [['active', '在岗'], ['leave', '请假'], ['inactive', '停用'], ['unknown', '旧状态 / 原因未知']],
-    supplier: [['active', '启用'], ['pending_review', '待复核'], ['inactive', '停用'], ['unknown', '旧状态 / 原因未知']]
+    machine: [['active', '可用'], ['maintain', '停机'], ['inactive', '停用']],
+    operator: [['active', '在岗'], ['leave', '请假'], ['inactive', '停用']],
+    supplier: [['active', '启用'], ['pending_review', '待复核'], ['inactive', '停用']]
   };
   const textFields = {
     material: ['spec', 'unit', 'remark'],
@@ -3944,32 +4253,33 @@ function SMExport({
   const text = value => typeof value === 'string';
   const count = value => Number.isSafeInteger(value) && value >= 0;
   const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
+  // 本地校验失败：请求没有发出（status 为 null），与 transport 的统一错误对象同一形状，transport.rejected 判为确定没有生效。
   function failure(message, fields = []) {
-    const error = new Error(message);
-    error.fields = fields;
-    error.committed = false;
-    return error;
+    return Object.assign(new Error(message), {
+      code: null,
+      fields,
+      conflicts: [],
+      committed: false,
+      status: null,
+      requestRef: null,
+      requestKey: null,
+      resultTarget: null
+    });
   }
-  function message(error) {
-    return error && error.error && error.error.message || error && error.message || '读取失败，请刷新后重试。';
-  }
+  // 统一错误对象只有一种形状（transport.js 与上面的 failure）。
+  const message = error => error.message || '读取失败，请刷新后重试。';
   // 服务端说这次操作依据的资料已过期：需要用户刷新，不能静默复位后照旧重提。页面专属的过期码由调用方追加。
   const staleCodes = ['stale_write', 'snapshot_stale'];
-  function stale(error, extraCodes = []) {
-    const code = error && (error.code || error.error && error.error.code);
-    return staleCodes.includes(code) || extraCodes.includes(code);
-  }
-  function fieldErrors(error) {
-    const list = error && error.error && error.error.fields || error && error.fields || [];
-    return Array.isArray(list) ? list.filter(row => row && text(row.path) && text(row.message)) : [];
-  }
+  // stale / fieldErrors 的调用方在还没有错误时会传 null；字段行的形状已在 transport.failure 校验。
+  const stale = (error, extraCodes = []) => !!error && (staleCodes.includes(error.code) || extraCodes.includes(error.code));
+  const fieldErrors = error => error && Array.isArray(error.fields) ? error.fields : [];
   function entity(value) {
     return object(value) && text(value.ref) && !!value.ref && text(value.business_code) && text(value.label) && (text(value.status) || value.status === null) && object(value.fields) && object(value.relationships) && Array.isArray(value.issues) && (value.write_context === null || object(value.write_context)) && (!own(value, 'availability') || ['internal', 'both'].includes(value.fields.category) && availability(value.availability));
   }
   function availability(value) {
     return object(value) && value.basis === 'enabled_authorized_matching' && count(value.machines) && count(value.operators);
   }
-  // 信封（ok、schema_version、meta、warnings）已由 resource-api.js 的 production() 校验，这里只校验 data 形状。
+  // 信封（ok、schema_version、meta、warnings）已由 transport.js 的 envelope() 校验，这里只校验 data 形状。
   function query(result, shape) {
     if (shape === 'entity') {
       if (!entity(result.data)) throw failure('读到的详情不完整，请刷新后重试。');
@@ -3993,16 +4303,9 @@ function SMExport({
     }
     return '';
   }
-  function requestKey() {
-    const bytes = new Uint8Array(24);
-    window.crypto.getRandomValues(bytes);
-    return 'resource-' + Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
-  }
-  function statusLabel(kind, status, fields = {}) {
-    const match = own(statuses, kind) ? statuses[kind].find(row => row[0] === status) : undefined;
-    let label = match ? match[1] : status === 'active' ? '启用' : '旧状态 / 原因未知';
-    if (fields.inactive_reason === 'unknown' && status !== 'active' && status !== 'unknown') label += '（旧原因未知）';
-    return label;
+  // 后端只产出各类资料自己的固定状态（core/models/workbench_resource_status.py，其余值直接报存储损坏）。
+  function statusLabel(kind, status) {
+    return statuses[kind].find(row => row[0] === status)[1];
   }
   function resourceName(kind, category) {
     const opNames = {
@@ -4035,7 +4338,6 @@ function SMExport({
       remark: '备注',
       category: '归属',
       status: '原状态',
-      legacy_status: '原始状态（只读）',
       inactive_reason: '停用原因',
       default_days: '默认周期（天）'
     };
@@ -4057,13 +4359,9 @@ function SMExport({
         merged: '合并设置'
       },
       inactive_reason: {
-        unknown: '未知',
         disabled: '停用',
         leave: '请假',
         pending_review: '待复核'
-      },
-      legacy_status: {
-        inactive: '原停用状态，原因未登记'
       }
     };
     if (key === 'status') return statusLabel(kind, value);
@@ -4083,7 +4381,7 @@ function SMExport({
       result.fields[key] = fields[key] == null ? '' : fields[key];
     });
     if (kind === 'op_type' && !current) result.fields.category = category;
-    if (statuses[kind]) result.fields.status = current ? current.status || 'unknown' : '';
+    if (statuses[kind]) result.fields.status = current ? current.status : '';
     if (kind === 'material') result.fields.stock_qty = fields.stock_qty == null ? '' : String(fields.stock_qty);
     if (kind === 'supplier') result.fields.default_days = fields.default_days == null ? '' : String(fields.default_days);
     // 已有记录的多选关系恒为编号数组、单选关系为编号或 null（core/services/workbench/resource/projection.py）。
@@ -4144,7 +4442,7 @@ function SMExport({
         const n = Number(v);
         if (!Number.isFinite(n) || n < 0 || key === 'default_days' && n === 0) bad('fields.' + key, key === 'stock_qty' ? '请填写有效的库存数量，不能小于 0。' : '请填写有效的周期天数，要大于 0。');else fields[key] = n;
       } else if (key === 'status') {
-        if (!statuses[kind].some(item => item[0] === v && v !== 'unknown')) bad('fields.status', '请明确选择状态。');else fields.status = v;
+        if (!statuses[kind].some(item => item[0] === v)) bad('fields.status', '请明确选择状态。');else fields.status = v;
       } else if (key === 'category') {
         if (!['internal', 'external', 'both'].includes(v)) bad('fields.category', '请明确选择自制或外协。');else fields.category = v;
       } else if (key === 'default_merge_mode') {
@@ -4164,17 +4462,15 @@ function SMExport({
     if (errors.length) throw failure('请核对标红的项。', errors);
     return result;
   }
+  // 失败已由 transport 抛出统一错误，这里只区分已完成的回执与仍待确认的结果。
   function receipt(result) {
-    if (result && result.state === 'not_recorded') return 'pending';
-    if (result && result.ok === false) return result.committed === false ? 'rejected' : 'pending';
-    if (!result || result.ok !== true) return 'pending';
+    if (!result || result.ok !== true || result.state === 'not_recorded') return 'pending';
     // 命令结果已由 resource-api.js 的 terminal() 校验回执编号、data 与 warnings。
     return ['committed', 'unchanged', 'partial'].includes(result.result) ? 'terminal' : 'pending';
   }
-  // 只在命令已完成（receipt() 判为 terminal，data 已校验为对象）后调用。
+  // 只在命令已完成（receipt() 判为 terminal，data 已校验为对象）后调用；个人日历等命令不回 entity_ref，沿用意图里的记录编号。
   function resultRef(result, fallback) {
-    const data = result.data;
-    return data.entity_ref || data.ref || data.entity && data.entity.ref || fallback;
+    return result.data.entity_ref || fallback;
   }
   window.APSResourceContract = {
     nodes,
@@ -4185,7 +4481,6 @@ function SMExport({
     entity,
     query,
     blocked,
-    requestKey,
     nonnegativeInt64,
     positiveInt64,
     message,
@@ -4219,32 +4514,23 @@ function SMExport({
   // 个人日历的三个写入动作；意图里保持 kind=operator，保存后的刷新逻辑才认得出该读哪一页。
   const calendarActions = new Map([['calendar_upsert', 'upsert'], ['calendar_delete', 'delete'], ['calendar_range_clear', 'range-clear']]);
   const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
-  function problem(message, committed, details) {
-    const error = new Error(message);
-    error.committed = committed;
-    if (details) error.error = details;
-    return error;
-  }
-  function endpoint(path) {
-    if (typeof path !== 'string') throw problem('数据地址不正确。', false);
-    const target = new URL(path.startsWith('/') ? path : prefix + path, location.origin);
-    if (target.origin !== location.origin || !target.pathname.startsWith(prefix) || target.username || target.password) throw problem('数据地址不属于本机工作台。', false);
-    return target.href;
-  }
+  const T = window.APSWorkbenchTransport,
+    failure = window.APSResourceContract.failure;
+  // 资源家族的文件只有 CSV 与 XLSX 两种。
+  const fileTypes = [T.types.csv, T.types.xlsx];
+  // 本地查不到确定结果：保持“结果未知”，由用户点「查询结果」。
+  const unconfirmed = message => Object.assign(failure(message), {
+    committed: 'unknown'
+  });
+  // 资源家族沿用相对路径；拼成工作台绝对路径后再交给 transport。
+  const absolute = path => path.startsWith('/') ? path : prefix + path;
   function resource(kind, ref) {
-    if (!kinds.has(kind)) throw problem('不支持这类基础资料。', false);
-    if (ref != null && !/^[0-9a-f]{48}$/.test(ref)) throw problem('这条记录已失效，请重新选择。', false);
+    if (!kinds.has(kind)) throw failure('不支持这类基础资料。');
+    if (ref != null && !/^[0-9a-f]{48}$/.test(ref)) throw failure('这条记录已失效，请重新选择。');
     return 'entities/' + kind + (ref == null ? '' : '/' + ref);
   }
-  function queryPath(path, scope = {}) {
-    const target = new URL(endpoint(path));
-    Object.keys(scope).forEach(key => {
-      if (scope[key] !== undefined && scope[key] !== null && scope[key] !== '') target.searchParams.set(key, String(scope[key]));
-    });
-    return target.href;
-  }
   function tableScope(scope = {}) {
-    if (!object(scope)) throw problem('列表范围不完整，请刷新后重试。', false);
+    if (!object(scope)) throw failure('列表范围不完整，请刷新后重试。');
     const result = {
       ...scope
     };
@@ -4252,89 +4538,13 @@ function SMExport({
       if (result[key] === '' || result[key] === null || result[key] === undefined) delete result[key];
     });
     if (Object.prototype.hasOwnProperty.call(result, 'column_filters')) {
-      if (!object(result.column_filters)) throw problem('列筛选范围不完整，请刷新列表后重新筛选。', false);
+      if (!object(result.column_filters)) throw failure('列筛选范围不完整，请刷新列表后重新筛选。');
       if (!Object.keys(result.column_filters).length) delete result.column_filters;
     }
     return result;
   }
-  function failure(payload) {
-    return object(payload) && payload.ok === false && [false, true, 'unknown'].includes(payload.committed) && object(payload.error) && typeof payload.error.message === 'string' && Array.isArray(payload.error.fields);
-  }
   function terminal(payload) {
-    return object(payload) && payload.ok === true && ['committed', 'unchanged', 'partial'].includes(payload.result) && typeof payload.receipt_ref === 'string' && !!payload.receipt_ref && typeof payload.replayed === 'boolean' && object(payload.data) && Array.isArray(payload.warnings);
-  }
-  async function send(url, {
-    method = 'GET',
-    body,
-    signal,
-    readOnly = false,
-    binary = false,
-    timeout = 20000
-  } = {}) {
-    const target = new URL(url, location.href);
-    if (target.origin !== location.origin || !target.pathname.startsWith(prefix)) throw problem('数据地址不属于本机工作台。', false);
-    const writing = method !== 'GET' && !readOnly;
-    const headers = {
-      Accept: binary ? 'application/octet-stream,application/json' : 'application/json'
-    };
-    let payload = body;
-    if (body !== undefined && !(body instanceof FormData)) {
-      try {
-        payload = JSON.stringify(body);
-      } catch (_) {
-        throw problem('保存内容无法转换，本次没有提交。', false);
-      }
-      headers['Content-Type'] = 'application/json';
-    }
-    if (signal && signal.aborted) throw problem('操作已取消，本次没有发送。', false);
-    const controller = new AbortController();
-    let timedOut = false;
-    const abort = () => controller.abort();
-    if (signal) signal.addEventListener('abort', abort, {
-      once: true
-    });
-    const timer = setTimeout(() => {
-      timedOut = true;
-      controller.abort();
-    }, timeout);
-    try {
-      const response = await fetch(target.href, {
-        method,
-        body: payload,
-        headers,
-        signal: controller.signal,
-        credentials: 'same-origin',
-        redirect: 'error',
-        cache: 'no-store'
-      });
-      const type = (response.headers.get('content-type') || '').toLowerCase();
-      if (binary && response.ok && !type.includes('application/json')) {
-        if (!['text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'].some(value => type.startsWith(value))) throw problem('下载内容格式不正确，没有保存成文件。', false);
-        const blob = await response.blob();
-        if (!blob.size) throw problem('下载文件是空的，没有当成导出成功。', false);
-        return {
-          blob,
-          contentType: type,
-          disposition: response.headers.get('content-disposition') || ''
-        };
-      }
-      if (!type.includes('application/json')) throw problem('读到的数据格式不正确，请刷新重试。', writing ? 'unknown' : false);
-      const result = await response.json();
-      if (failure(result)) throw problem(result.error.message, result.committed, result.error);
-      if (!response.ok) throw problem('系统没有确认本次操作的结果。', writing ? 'unknown' : false);
-      return result;
-    } catch (error) {
-      if (error && [false, true, 'unknown'].includes(error.committed)) throw error;
-      const message = timedOut ? '操作超时。' : error && error.name === 'AbortError' ? '连接已中断。' : '没有取得系统的有效结果。';
-      throw problem(message + (writing ? '保存结果还没查到，请点「查询结果」，不要重复提交。' : '请刷新后重试。'), writing ? 'unknown' : false);
-    } finally {
-      clearTimeout(timer);
-      if (signal) signal.removeEventListener('abort', abort);
-    }
-  }
-  function production(result) {
-    if (!object(result) || result.ok !== true || result.schema_version !== 1 || !object(result.data) || !object(result.meta) || result.meta.source !== 'production' || result.meta.time_basis !== 'factory_local' || typeof result.meta.snapshot_ref !== 'string' || !result.meta.snapshot_ref || typeof result.meta.request_ref !== 'string' || !result.meta.request_ref || typeof result.meta.as_of !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(result.meta.as_of) || !Array.isArray(result.warnings)) throw problem('读到的数据不完整，请刷新重试。', false);
-    return result;
+    return payload.ok === true && ['committed', 'unchanged', 'partial'].includes(payload.result) && typeof payload.receipt_ref === 'string' && !!payload.receipt_ref && typeof payload.replayed === 'boolean' && object(payload.data) && Array.isArray(payload.warnings);
   }
   function validIntent(value, recovery = false) {
     if (!object(value) || typeof value.request_key !== 'string' || !/^resource-[0-9a-f]{48}$/.test(value.request_key)) return false;
@@ -4375,29 +4585,27 @@ function SMExport({
     return fileKinds.has(kind) && [kind + '_import', kind + '_bulk'].includes(intent.kind);
   }
   function create(namespace = 'resources') {
-    if (!['resources', 'calendar', 'catalog', 'process', 'batches', 'execution'].includes(namespace) && ![...fileKinds, ...importOnlyKinds].some(kind => namespace === kind + '_files')) throw problem('基础资料操作入口不正确。', false);
+    if (!['resources', 'calendar', 'catalog', 'process', 'batches', 'execution'].includes(namespace) && ![...fileKinds, ...importOnlyKinds].some(kind => namespace === kind + '_files')) throw failure('基础资料操作入口不正确。');
     const pendingKey = 'aps_workbench_resource_pending_v1' + (namespace === 'resources' ? '' : '_' + namespace);
     const api = {
-      async query(path, scope, signal) {
-        return production(await send(queryPath(path, scope), {
-          signal
-        }));
-      },
-      async preview(path, body, signal) {
-        return production(await send(endpoint(path), {
-          method: 'POST',
-          body,
+      query(path, scope, signal) {
+        return T.read(absolute(path), scope, {
           signal,
-          readOnly: true
-        }));
-      },
-      async execute(path, body, signal) {
-        const result = await send(endpoint(path), {
-          method: 'POST',
-          body,
-          signal
+          timeout: 20000
         });
-        if (!terminal(result)) throw problem('保存结果不完整，还没确认。请点「查询结果」，不要重复提交。', 'unknown');
+      },
+      preview(path, body, signal) {
+        return T.preview(absolute(path), body, {
+          signal,
+          timeout: 20000
+        });
+      },
+      async execute(path, body) {
+        const result = await T.command(absolute(path), body, {
+          timeout: 20000,
+          expect: prefix + 'commands/' + body.request_key
+        });
+        if (!terminal(result)) throw unconfirmed('保存结果不完整，还没确认。请点「查询结果」，不要重复提交。');
         return result;
       },
       list(kind, scope, signal) {
@@ -4431,29 +4639,30 @@ function SMExport({
       async downtimes(ref, signal) {
         const result = await api.query(resource('machine', ref) + '/downtimes', {}, signal),
           data = result.data;
-        if (data.entity_ref !== ref || !Array.isArray(data.rows) || !object(data.reasons) || !object(data.write_context) || !data.rows.every(row => /^[0-9a-f]{48}$/.test(row.ref) && typeof row.start_time === 'string' && typeof row.end_time === 'string')) throw problem('设备停机资料不完整，请刷新后重试。', false);
+        if (data.entity_ref !== ref || !Array.isArray(data.rows) || !object(data.reasons) || !object(data.write_context) || !data.rows.every(row => /^[0-9a-f]{48}$/.test(row.ref) && typeof row.start_time === 'string' && typeof row.end_time === 'string')) throw failure('设备停机资料不完整，请刷新后重试。');
         return result;
       },
-      command(kind, action, ref, body, signal) {
-        if (kind === 'machine' && ['downtime_create', 'downtime_update', 'downtime_cancel'].includes(action) && ref !== null) return api.execute(resource(kind, ref) + '/downtimes/' + action.slice(9), body, signal);
-        if (kind === 'operator' && action === 'machine_permissions' && ref !== null) return api.execute(resource(kind, ref) + '/machine-permissions/confirm', body, signal);
-        if (kind === 'operator' && calendarActions.has(action) && ref !== null) return api.execute(resource(kind, ref) + '/calendar/' + calendarActions.get(action), body, signal);
-        if (!['create', 'update', 'delete'].includes(action) || action === 'create' !== (ref === null)) throw problem('保存操作与所选记录不一致。', false);
-        return api.execute(resource(kind, ref) + '/' + action, body, signal);
+      command(kind, action, ref, body) {
+        if (kind === 'machine' && ['downtime_create', 'downtime_update', 'downtime_cancel'].includes(action) && ref !== null) return api.execute(resource(kind, ref) + '/downtimes/' + action.slice(9), body);
+        if (kind === 'operator' && action === 'machine_permissions' && ref !== null) return api.execute(resource(kind, ref) + '/machine-permissions/confirm', body);
+        if (kind === 'operator' && calendarActions.has(action) && ref !== null) return api.execute(resource(kind, ref) + '/calendar/' + calendarActions.get(action), body);
+        if (!['create', 'update', 'delete'].includes(action) || action === 'create' !== (ref === null)) throw failure('保存操作与所选记录不一致。');
+        return api.execute(resource(kind, ref) + '/' + action, body);
       },
-      async lookup(key, signal) {
-        if (typeof key !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(key)) throw problem('操作编号无效。', false);
-        const result = await send(endpoint('commands/' + key), {
-          signal
+      // key 来自已校验的本机意图（validIntent）；回执查询失败一律保持“结果未知”。
+      async lookup(key) {
+        const result = await T.lookup(prefix + 'commands/' + key, {
+          timeout: 20000
         });
-        if (terminal(result) || result && result.ok === true && result.state === 'not_recorded' && result.receipt === null && result.may_be_in_flight === true) return result;
-        throw problem('上次操作的结果还没确认，请保留当前页面并点「查询结果」。', 'unknown');
+        if (result && (terminal(result) || result.ok === true && result.state === 'not_recorded' && result.receipt === null && result.may_be_in_flight === true)) return result;
+        throw unconfirmed('上次操作的结果还没确认，请保留当前页面并点「查询结果」。');
       },
       download(path, scope, signal, options = {}) {
-        return send(queryPath(path, scope), {
+        return T.download(absolute(path), scope, {
+          types: fileTypes,
+          timeout: 20000,
           ...options,
-          signal,
-          binary: true
+          signal
         });
       },
       readPending() {
@@ -4462,36 +4671,24 @@ function SMExport({
           if (raw === null) return null;
           const intent = JSON.parse(raw);
           if (!validIntent(intent, true) || !matchesNamespace(namespace, intent)) throw new Error('invalid');
-          const stored = pendingRecord(intent);
-          if (Object.keys(intent).some(key => !Object.prototype.hasOwnProperty.call(stored, key))) {
-            try {
-              sessionStorage.setItem(pendingKey, JSON.stringify(stored));
-            } catch (_) {
-              const error = problem('旧预检编号尚未从本机记录清除，请先查询这次操作的结果，勿重复提交。', 'unknown');
-              error.intent = stored;
-              throw error;
-            }
-          }
-          return stored;
-        } catch (error) {
-          if (error.intent) throw error;
-          throw problem('读不到上次操作记录，请重新打开页面；暂时不能继续保存。', 'unknown');
+          return intent;
+        } catch (_) {
+          throw unconfirmed('读不到上次操作记录，请重新打开页面；暂时不能继续保存。');
         }
       },
       savePending(intent) {
-        if (!validIntent(intent) || !matchesNamespace(namespace, intent)) throw problem('操作编号无法保存，本次没有提交。', false);
-        const stored = pendingRecord(intent);
+        if (!validIntent(intent) || !matchesNamespace(namespace, intent)) throw failure('操作编号无法保存，本次没有提交。');
         try {
-          sessionStorage.setItem(pendingKey, JSON.stringify(stored));
+          sessionStorage.setItem(pendingKey, JSON.stringify(pendingRecord(intent)));
         } catch (_) {
-          throw problem('本次没有提交：操作编号没能保存，请重新打开页面。', false);
+          throw failure('本次没有提交：操作编号没能保存，请重新打开页面。');
         }
       },
       clearPending() {
         try {
           sessionStorage.removeItem(pendingKey);
         } catch (_) {
-          throw problem('结果已确认，但上次操作记录没清掉；重新打开页面后可以再点「查询结果」。', false);
+          throw failure('结果已确认，但上次操作记录没清掉；重新打开页面后可以再点「查询结果」。');
         }
       }
     };
@@ -4604,7 +4801,7 @@ function SMExport({
     if (!entity(d) || d.ref !== expectedRef || !capabilities(d.capabilities) || !Array.isArray(d.operations) || !d.operations.every(operation) || !uniqueRefs(d.operations) || !Array.isArray(d.external_groups) || !d.external_groups.every(externalGroup) || !uniqueRefs(d.external_groups) || !cycleReferences(d)) throw C.failure('读到的工艺详情不完整或不是这个零件，请刷新后重试。');
     return result;
   }
-  // 信封（ok、schema_version、meta、warnings）已由 resource-api.js 的 production() 校验，下面两个预检只校验 data。
+  // 信封（ok、schema_version、meta、warnings）已由 transport.js 的 envelope() 校验，下面两个预检只校验 data。
   function preview(result, expectedRef, body) {
     const d = result.data;
     if (d.part_ref !== expectedRef || d.mode !== body.mode || !text(d.route_raw) || !text(d.normalized_input) || !writeContext(d.write_context, d.can_confirm_route ? 'route_confirm' : null) || typeof d.can_confirm_route !== 'boolean' || !Array.isArray(d.operations) || !d.operations.every(row => C.object(row) && sequence(row.sequence) && text(row.op_type_name) && nullableRef(row.op_type_ref) && source(row.source_suggestion) && nullableRef(row.supplier_ref) && nullableText(row.supplier_label) && number(row.external_days) && (text(row.basis) || C.object(row.basis) || Array.isArray(row.basis)) && issues(row.issues)) || !Array.isArray(d.diagnostics) || !d.diagnostics.every(row => C.object(row) && text(row.code) && text(row.message) && ['error', 'warning'].includes(row.severity) && (!C.own(row, 'sequence') || sequence(row.sequence))) || !C.object(d.counts) || !['operations', 'recognized', 'unknown'].every(key => count(d.counts[key])) || d.counts.operations !== d.operations.length || d.counts.recognized + d.counts.unknown !== d.counts.operations || !C.object(d.baseline) || !count(d.baseline.operation_count) || !count(d.baseline.external_group_count) || typeof d.baseline.has_published_template !== 'boolean' || !C.object(d.changes) || !['added', 'removed', 'retained', 'same_sequence_changed'].every(key => Array.isArray(d.changes[key]) && d.changes[key].every(sequence)) || !Array.isArray(d.affected_groups) || !d.affected_groups.every(externalGroup) || !uniqueRefs(d.affected_groups)) throw C.failure('读到的路线预检结果不完整或不是这个零件，本次不作为有效输入。');
@@ -4652,10 +4849,10 @@ function SMExport({
     if (snapshot) body.snapshot_ref = snapshot;
     return body;
   }
-  function reason(value, action, connected = false) {
+  function reason(value, action) {
     if (!value) return '请先读取当前工艺能力。';
     if (value[action] !== true) return action === 'stage_confirm' ? '当前不允许确认这一步，不能保存。' : '当前不允许此操作。';
-    return connected ? '' : window.WorkbenchTerms.outcomes.unavailable;
+    return '';
   }
   function sourceLabel(value) {
     return value === 'internal' ? '自制' : value === 'external' ? '外协' : '未归类';
@@ -5171,13 +5368,9 @@ function SMExport({
       ...workspaceScope(planRef, read)
     };
   }
-  function download(value, format) {
-    const expected = format === 'csv' ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-    if (!exact(value, ['blob', 'contentType', 'disposition']) || !value.blob || !(value.blob.size > 0) || typeof value.contentType !== 'string' || value.contentType.split(';')[0] !== expected || !/^attachment;/i.test(value.disposition)) throw C.failure('导出的文件和所选格式不一致，没有保存。请重新点「导出」。');
-    return value;
-  }
+  // 成功信封（meta 五键、warnings 形状、as_of）已由 transport.read 校验；计划翻页与导出要钉住同一份快照。
   function envelope(result, query) {
-    if (!exact(result, ['ok', 'schema_version', 'data', 'meta', 'warnings']) || result.ok !== true || result.schema_version !== 1 || !exact(result.meta, ['request_ref', 'source', 'time_basis', 'snapshot_ref', 'as_of']) || result.meta.source !== 'production' || result.meta.time_basis !== 'factory_local' || !token(result.meta.snapshot_ref) || !token(result.meta.request_ref) || !localTime(result.meta.as_of) || !issues(result.warnings)) throw C.failure('计划数据不完整或数据源无效，请刷新后重试。');
+    if (result.meta.snapshot_ref === null) throw C.failure('计划数据不完整或数据源无效，请刷新后重试。');
     if (own(query, 'snapshot_ref') && result.meta.snapshot_ref !== query.snapshot_ref) throw C.failure(window.WorkbenchTerms.outcomes.stale);
   }
   function plan(value) {
@@ -5299,21 +5492,15 @@ function SMExport({
   function occupancyRow(row, data, calendars) {
     const known = ['arranged_hours', 'occupied_hours', 'overlap_hours', 'excess_arranged_hours'];
     const capacity = ['available_hours', 'available_occupied_hours', 'outside_available_hours', 'capacity_shortfall_hours'];
-    const current = row && row.metric_version === 'decision-resource-v4';
-    const versioned = row && own(row, 'metric_version');
-    const extra = current ? ['metric_version', 'available_overlap_hours', 'outside_calendar_basis', 'conflict_basis', 'conflict_segments'] : versioned ? ['metric_version'] : [];
-    if (!exact(row, ['kind', 'resource_ref', 'label', ...known, ...capacity, 'state', 'operation_count', 'capacity_basis', 'utilization', 'has_overlap', 'capacity_insufficient', 'issues', 'segments', ...extra]) || !['machine', 'operator'].includes(row.kind) || !['available', 'unavailable'].includes(row.state) || !known.every(key => number(row[key])) || !count(row.operation_count) || row.operation_count === 0 || !projectionIssues(row.issues) || !intervals(row.segments, data.time_scope, ['concurrent_operations'], segment => count(segment.concurrent_operations) && segment.concurrent_operations > 0)) return false;
-    if (current) {
-      if (row.outside_calendar_basis !== 'reservation_span_outside_work_calendar' || row.conflict_basis !== 'work_calendar_reservation_overlap') return false;
-      if (row.available_overlap_hours === null) {
-        if (row.has_overlap !== null || row.conflict_segments !== null) return false;
-      } else if (!number(row.available_overlap_hours) || row.has_overlap !== row.available_overlap_hours > 1e-9 || !intervals(row.conflict_segments, data.time_scope, ['concurrent_operations'], segment => count(segment.concurrent_operations) && segment.concurrent_operations > 1)) return false;
-    } else if (versioned && row.metric_version !== 'decision-resource-v3' || typeof row.has_overlap !== 'boolean' || row.has_overlap !== row.overlap_hours > 0) return false;
+    if (!exact(row, ['kind', 'resource_ref', 'label', ...known, ...capacity, 'state', 'operation_count', 'capacity_basis', 'utilization', 'has_overlap', 'capacity_insufficient', 'issues', 'segments', 'metric_version', 'available_overlap_hours', 'outside_calendar_basis', 'conflict_basis', 'conflict_segments']) || !['machine', 'operator'].includes(row.kind) || !['available', 'unavailable'].includes(row.state) || !known.every(key => number(row[key])) || !count(row.operation_count) || row.operation_count === 0 || !projectionIssues(row.issues) || !intervals(row.segments, data.time_scope, ['concurrent_operations'], segment => count(segment.concurrent_operations) && segment.concurrent_operations > 0) || row.metric_version !== 'decision-resource-v4' || row.outside_calendar_basis !== 'reservation_span_outside_work_calendar' || row.conflict_basis !== 'work_calendar_reservation_overlap') return false;
+    if (row.available_overlap_hours === null) {
+      if (row.has_overlap !== null || row.conflict_segments !== null) return false;
+    } else if (!number(row.available_overlap_hours) || row.has_overlap !== row.available_overlap_hours > 1e-9 || !intervals(row.conflict_segments, data.time_scope, ['concurrent_operations'], segment => count(segment.concurrent_operations) && segment.concurrent_operations > 1)) return false;
     const expected = row.kind === 'machine' ? 'global_calendar_machine_availability' : 'personal_or_operator_shift_calendar';
     const source = calendars.get(row.resource_ref);
     if (row.capacity_basis !== (source ? expected : 'unknown')) return false;
-    if (row.state === 'unavailable') return (!source || source.state === 'unavailable') && capacity.every(key => row[key] === null) && (!current || row.available_overlap_hours === null) && row.utilization === null && row.capacity_insufficient === null && row.issues.length > 0;
-    return source && source.state === 'available' && capacity.every(key => number(row[key])) && row.available_hours === source.available_hours && (!current || number(row.available_overlap_hours)) && typeof row.capacity_insufficient === 'boolean' && (row.available_hours === 0 ? row.utilization === null : number(row.utilization) && row.utilization <= 1);
+    if (row.state === 'unavailable') return (!source || source.state === 'unavailable') && capacity.every(key => row[key] === null) && row.available_overlap_hours === null && row.utilization === null && row.capacity_insufficient === null && row.issues.length > 0;
+    return source && source.state === 'available' && capacity.every(key => number(row[key])) && row.available_hours === source.available_hours && number(row.available_overlap_hours) && typeof row.capacity_insufficient === 'boolean' && (row.available_hours === 0 ? row.utilization === null : number(row.utilization) && row.utilization <= 1);
   }
   function occupancy(value, data, resourcesByRef) {
     if (!exact(value, ['state', 'plan_ref', 'time_scope', 'basis', 'resources', 'issues']) || !states.includes(value.state) || value.plan_ref !== data.plan.plan_ref || !same(value.time_scope, data.time_scope) || value.basis !== 'selected_plan_only' || !projectedResources(value.resources, resourcesByRef) || !projectionIssues(value.issues, true)) return false;
@@ -5402,8 +5589,7 @@ function SMExport({
     workspaceScope,
     exportScope,
     catalog,
-    workspace,
-    download
+    workspace
   };
 })();
 
@@ -5411,35 +5597,34 @@ function SMExport({
 (function () {
   'use strict';
 
-  // Load resource-contract.js, resource-api.js and PlanContract.js first.
-  function create() {
-    const base = window.APSResourceAPI.create(),
-      C = window.APSPlanContract;
-    return window.APSReadBoundary.verified({
-      async catalog(scope = {}, signal) {
-        const query = C.catalogScope(scope);
-        return C.catalog(await base.query('plans', query, signal), query);
-      },
-      async workspace(planRef, scope = {}, signal) {
-        const query = C.workspaceScope(planRef, scope);
-        return C.workspace(await base.query('plans/' + planRef + '/workspace', query, signal), planRef, query);
-      },
-      async export(planRef, scope, signal) {
-        const query = C.exportScope(planRef, scope);
-        return C.download(await base.download('plans/' + planRef + '/export', query, signal), query.format);
-      }
-    }, ['catalog', 'workspace']);
-  }
-  function adapter(value) {
-    const C = window.APSPlanContract;
-    return window.APSReadBoundary.checked(value, {
-      catalog: (result, scope = {}) => C.catalog(result, scope),
-      workspace: (result, planRef, scope = {}) => C.workspace(result, planRef, scope)
-    });
-  }
+  // Load transport.js and PlanContract.js first.
   window.APSPlanAPI = {
-    create,
-    adapter
+    async catalog(scope = {}, signal) {
+      const C = window.APSPlanContract,
+        query = C.catalogScope(scope);
+      return C.catalog(await window.APSWorkbenchTransport.read('/api/workbench/v1/plans', query, {
+        signal,
+        timeout: 20000
+      }), query);
+    },
+    async workspace(planRef, scope = {}, signal) {
+      const C = window.APSPlanContract,
+        query = C.workspaceScope(planRef, scope);
+      return C.workspace(await window.APSWorkbenchTransport.read('/api/workbench/v1/plans/' + planRef + '/workspace', query, {
+        signal,
+        timeout: 20000
+      }), planRef, query);
+    },
+    async export(planRef, scope, signal) {
+      // 附件、文件类型与魔数、文件名及其后缀都由 transport.download 核对。
+      const T = window.APSWorkbenchTransport,
+        query = window.APSPlanContract.exportScope(planRef, scope);
+      return T.download('/api/workbench/v1/plans/' + planRef + '/export', query, {
+        signal,
+        timeout: 20000,
+        types: [T.types[query.format]]
+      });
+    }
   };
 })();
 
@@ -5447,7 +5632,8 @@ function SMExport({
 (function () {
   'use strict';
 
-  const C = window.APSResourceContract;
+  const C = window.APSResourceContract,
+    T = window.APSWorkbenchTransport;
   // Keep uncertain intent across workspace remounts using the same adapter identity.
   // Never persist write tokens or guesses about completion to browser storage.
   const sessions = new WeakMap();
@@ -5457,7 +5643,7 @@ function SMExport({
         phase: 'idle'
       };
       try {
-        const intent = typeof adapter.readPending === 'function' && adapter.readPending();
+        const intent = adapter.readPending();
         if (intent) state = {
           phase: 'pending',
           intent,
@@ -5466,11 +5652,7 @@ function SMExport({
       } catch (error) {
         state = {
           phase: 'pending',
-          error,
-          ...(error.intent ? {
-            intent: error.intent,
-            restored: true
-          } : {})
+          error
         };
       }
       sessions.set(adapter, {
@@ -5614,13 +5796,13 @@ function SMExport({
         error: null
       });
       try {
-        const result = await adapter.lookup(intent.request_key, new AbortController().signal);
+        const result = await adapter.lookup(intent.request_key);
         const status = C.receipt(result);
         publish(store, {
           intent,
           result,
           phase: status === 'terminal' ? 'done' : 'pending',
-          error: status === 'terminal' ? null : C.failure(result && result.message || window.WorkbenchTerms.outcomes.pending('操作'))
+          error: status === 'terminal' ? null : C.failure(result.message || window.WorkbenchTerms.outcomes.pending('操作'))
         });
       } catch (error) {
         publish(store, {
@@ -5641,7 +5823,7 @@ function SMExport({
           kind,
           action,
           ref,
-          request_key: C.requestKey(),
+          request_key: T.requestKey('resource'),
           input,
           category: listCategory
         };
@@ -5664,18 +5846,17 @@ function SMExport({
           request_key: intent.request_key,
           write_token: context.write_token,
           input
-        }, new AbortController().signal);
-        const status = C.receipt(result);
+        });
         publish(store, {
           intent,
           result,
-          phase: status === 'terminal' ? 'done' : status === 'rejected' ? 'rejected' : 'pending',
-          error: status === 'rejected' ? result : null
+          phase: C.receipt(result) === 'terminal' ? 'done' : 'pending',
+          error: null
         });
       } catch (error) {
         publish(store, {
           intent,
-          phase: error && error.committed === false ? 'rejected' : 'pending',
+          phase: T.rejected(error) ? 'rejected' : 'pending',
           error
         });
       } finally {
@@ -5964,10 +6145,7 @@ function SMExport({
     const message = C.message(error),
       hideMessage = all.some(row => excluded.has(fieldPath(row.path)) && row.message === message);
     return /*#__PURE__*/React.createElement(window.WorkbenchError, {
-      error: error.error ? {
-        ...error,
-        ...error.error
-      } : error,
+      error: error,
       fields: fields,
       hideMessage: hideMessage
     });
@@ -6057,12 +6235,12 @@ function SMExport({
     entity
   }) {
     const value = entity.status,
-      tone = value === 'active' ? 'ok' : value === 'inactive' && entity.fields.inactive_reason !== 'unknown' ? 'off' : 'warn';
+      tone = value === 'active' ? 'ok' : value === 'inactive' ? 'off' : 'warn';
     return /*#__PURE__*/React.createElement("span", {
       className: 'pill wb-status ' + tone
     }, /*#__PURE__*/React.createElement("span", {
       className: "dot"
-    }), C.statusLabel(kind, value, entity.fields));
+    }), C.statusLabel(kind, value));
   }
   const ModalFocusParent = React.createContext(null),
     modalStack = [];
@@ -7060,7 +7238,7 @@ function SMExport({
   function day(value) {
     return policy(value) && isDate(value.date) && (value.explicit ? typeof value.calendar_ref === 'string' && /^[0-9a-f]{48}$/.test(value.calendar_ref) && C.object(value.entity) && value.entity.ref === value.calendar_ref : value.calendar_ref === null && value.entity === null);
   }
-  // 信封（ok、schema_version、meta、warnings）已由 resource-api.js 的 production() 校验，这里只校验 data。
+  // 信封（ok、schema_version、meta、warnings）已由 transport.js 的 envelope() 校验，这里只校验 data。
   function month(result, year, number) {
     const data = result.data;
     const prefix = monthKey(year, number) + '-';
@@ -7211,7 +7389,7 @@ function SMExport({
     if (!value.explicit) return FIELDS.every(key => value[key] === null) && value.calendar_ref === null;
     return ['workday', 'holiday'].includes(value.day_type) && isClock(value.shift_start) && (value.shift_end === null || isClock(value.shift_end)) && typeof value.shift_hours === 'number' && Number.isFinite(value.shift_hours) && value.shift_hours >= 0 && typeof value.efficiency === 'number' && Number.isFinite(value.efficiency) && value.efficiency > 0 && ['yes', 'no'].includes(value.allow_normal) && ['yes', 'no'].includes(value.allow_urgent) && (value.remark === null || typeof value.remark === 'string') && typeof value.calendar_ref === 'string' && /^[0-9a-f]{48}$/.test(value.calendar_ref);
   }
-  // 信封（ok、schema_version、meta、warnings）已由 resource-api.js 的 production() 校验，这里只校验 data。
+  // 信封（ok、schema_version、meta、warnings）已由 transport.js 的 envelope() 校验，这里只校验 data。
   function month(result, expected) {
     const data = result.data;
     if (data.year !== expected.year || data.month !== expected.month || data.operator_ref !== expected.ref) throw C.failure('读到的个人日历不是当前人员的这个月，请刷新后重试。');
@@ -8716,7 +8894,6 @@ function SMExport({
 
   const C = window.APSResourceContract;
   const key = value => typeof value === 'string' && value.length > 0;
-  const legacyKey = value => /^[0-9a-f]{64}$/.test(value);
   const count = value => Number.isSafeInteger(value) && value >= 0;
   function rule(value) {
     if (value === null || value === undefined) return {
@@ -8731,18 +8908,9 @@ function SMExport({
       values
     };
   }
-  function restore(value) {
-    if (!C.object(value)) throw C.failure('上次的列筛选格式不正确，请重新选择。');
-    const filters = {};
-    let removed = 0;
-    Object.keys(value).sort().forEach(column => {
-      const selected = rule(value[column]);
-      if (selected.values.some(legacyKey)) removed++;else filters[column] = selected;
-    });
-    return {
-      filters,
-      notice: removed ? '已清除 ' + removed + ' 项旧版列筛选，其余筛选和已选记录已保留。请重新选择这些列的筛选值。' : ''
-    };
+  // 整组列筛选逐列规范（去重、排序）；外层对象和列名由调用方按各自的列清单先校验。
+  function rules(value) {
+    return Object.fromEntries(Object.keys(value).sort().map(column => [column, rule(value[column])]));
   }
   function toggle(value, key, enabled) {
     return toggleKeys(value, [key], enabled);
@@ -8785,13 +8953,11 @@ function SMExport({
     if (C.object(value)) return '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + signature(value[key])).join(',') + '}';
     return JSON.stringify(value);
   }
+  // 信封（ok、schema_version、meta、warnings）已由 transport 校验，这里只核对列值本身。
   function envelope(raw, request) {
-    if (raw && raw.ok === false) throw raw;
-    const meta = raw && raw.meta,
-      data = raw && raw.data;
-    const invalid = !C.object(raw) || raw.ok !== true || raw.schema_version !== 1 || !C.object(meta) || !['production', 'demo'].includes(meta.source) || meta.time_basis !== 'factory_local' || !['snapshot_ref', 'request_ref', 'as_of'].every(key => typeof meta[key] === 'string' && meta[key]) || !Array.isArray(raw.warnings) || !raw.warnings.every(row => C.object(row) && typeof row.message === 'string') || !C.object(data) || data.column !== request.column || data.basis !== 'toolbar_scope';
-    if (invalid) throw C.failure('读到的列值不完整，没有当成空列表。请回到第 1 页重新查询。');
-    if (request.snapshot_ref && meta.snapshot_ref !== request.snapshot_ref) throw C.failure('数据已更新，请回到第 1 页重新查询。');
+    const data = raw.data;
+    if (data.column !== request.column || data.basis !== 'toolbar_scope') throw C.failure('读到的列值不完整，没有当成空列表。请回到第 1 页重新查询。');
+    if (request.snapshot_ref && raw.meta.snapshot_ref !== request.snapshot_ref) throw C.failure('数据已更新，请回到第 1 页重新查询。');
     return data;
   }
   function facets(raw, request) {
@@ -8813,7 +8979,7 @@ function SMExport({
   }
   window.ResourceTableFilterModel = {
     rule,
-    restore,
+    rules,
     toggle,
     toggleKeys,
     groupState,
@@ -9572,7 +9738,7 @@ function SMExport({
   };
   const ref = value => typeof value === 'string' && /^[0-9a-f]{48}$/.test(value);
   const count = value => Number.isSafeInteger(value) && value >= 0;
-  // 信封（ok、schema_version、meta、warnings）已由 resource-api.js 的 production() 校验，这里只校验关联记录与翻页。
+  // 信封（ok、schema_version、meta、warnings）已由 transport.js 的 envelope() 校验，这里只校验关联记录与翻页。
   function query(result, parent, scope) {
     const meta = result.meta,
       data = result.data,
@@ -10999,12 +11165,10 @@ function SMExport({
     }, /*#__PURE__*/React.createElement("option", {
       value: "",
       disabled: true
-    }, "\u8BF7\u9009\u62E9\u72B6\u6001"), C.statuses[kind].filter(row => row[0] !== 'unknown').map(([value, label]) => /*#__PURE__*/React.createElement("option", {
+    }, "\u8BF7\u9009\u62E9\u72B6\u6001"), C.statuses[kind].map(([value, label]) => /*#__PURE__*/React.createElement("option", {
       key: value,
       value: value
-    }, label)), !C.statuses[kind].some(row => row[0] === draft.fields.status && row[0] !== 'unknown') && draft.fields.status && /*#__PURE__*/React.createElement("option", {
-      value: draft.fields.status
-    }, "\u65E7\u72B6\u6001 / \u539F\u56E0\u672A\u77E5\uFF08\u4FDD\u6301\u539F\u503C\uFF09")));
+    }, label))));
     return /*#__PURE__*/React.createElement(Modal, {
       title: adjustingStock ? '调整库存' : (action === 'create' ? '新增' : action === 'delete' ? '删除' : '编辑') + C.resourceName(kind, opCategory),
       icon: action === 'delete' ? 'trash-2' : icons[kind],
@@ -11095,9 +11259,7 @@ function SMExport({
       value: "separate"
     }, "\u5206\u522B\u8BBE\u7F6E"), /*#__PURE__*/React.createElement("option", {
       value: "merged"
-    }, "\u5408\u5E76\u8BBE\u7F6E"), !['', 'separate', 'merged'].includes(draft.fields.default_merge_mode) && /*#__PURE__*/React.createElement("option", {
-      value: draft.fields.default_merge_mode
-    }, "\u539F\u5468\u671F\u89C4\u5219\u672A\u8BC6\u522B\uFF08\u4FDD\u6301\u539F\u503C\uFF09")))), C.relations[kind].map(field => /*#__PURE__*/React.createElement(Choice, {
+    }, "\u5408\u5E76\u8BBE\u7F6E")))), C.relations[kind].map(field => /*#__PURE__*/React.createElement(Choice, {
       key: field.key,
       adapter: adapter,
       field: field,
@@ -11111,15 +11273,7 @@ function SMExport({
     })), kind === 'supplier' && text('default_days', '默认周期（天）', {
       number: true,
       required: true
-    }), C.statuses[kind] && stateField(), entity && entity.fields.inactive_reason === 'unknown' && /*#__PURE__*/React.createElement("div", {
-      className: "field full"
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "fhint"
-    }, "\u5F53\u524D\u505C\u7528\u539F\u56E0\u672A\u77E5\uFF0C\u6CA1\u6709\u5F53\u6210\u8BF7\u5047\u6216\u5F85\u590D\u6838\u3002")), entity && C.own(entity.fields, 'legacy_status') && /*#__PURE__*/React.createElement("div", {
-      className: "field full"
-    }, /*#__PURE__*/React.createElement("label", null, "\u539F\u59CB\u72B6\u6001\uFF08\u53EA\u8BFB\uFF09"), /*#__PURE__*/React.createElement("span", {
-      className: "fhint"
-    }, entity.fields.legacy_status === 'inactive' ? '原停用状态，原因未登记' : '原状态：' + String(entity.fields.legacy_status))), (kind === 'material' || kind === 'op_type') && text('remark', kind === 'op_type' && opCategory === 'internal' ? '产能备注' : '备注', {
+    }), C.statuses[kind] && stateField(), (kind === 'material' || kind === 'op_type') && text('remark', kind === 'op_type' && opCategory === 'internal' ? '产能备注' : '备注', {
       full: true,
       multiline: true
     }), kind === 'operator' && /*#__PURE__*/React.createElement(MachinePermissionFacts, {
@@ -11301,7 +11455,7 @@ function SMExport({
   }) {
     const commandAdapter = React.useMemo(() => ({
       ...adapter,
-      readPending: undefined
+      readPending: () => null
     }), [adapter]);
     const command = S.useCommand(commandAdapter),
       [selection, setSelection] = React.useState(null);
@@ -11907,11 +12061,8 @@ function SMExport({
     Icon,
     MetricValue
   } = window.ResourceControls;
+  // 班表配置项只在非 known 时查这张表（known 各自格式化），后端只产出这两种（calendar_summary.py 的 _holiday_efficiency）。
   const labels = {
-    known: '已确认',
-    recorded: '已登记',
-    zero: '0 条记录',
-    unknown: '未知',
     not_configured: '未填写',
     unavailable: '暂无数据'
   };
@@ -11929,8 +12080,7 @@ function SMExport({
     inactive: '停用',
     maintain: '停机',
     leave: '请假',
-    pending_review: '待复核',
-    unknown: '未知'
+    pending_review: '待复核'
   };
   const chipOrder = ['process', 'material', 'op_int', 'machine', 'operator', 'op_ext', 'supplier'];
   // 首次展开；手动选择在同一页会话内跨节点保留，不因窗口尺寸改变而重置。
@@ -12309,24 +12459,18 @@ function SMExport({
     filters = window.ResourceTableFilterModel;
   const scopeKeys = ['query', 'page', 'size', 'sort', 'stage', 'column_filters'];
   const ref = value => typeof value === 'string' && /^[0-9a-f]{48}$/.test(value);
-  function restore(view) {
+  function read(view) {
     if (!C.object(view) || Object.keys(view).some(key => !['scope', 'selected_refs', 'entity_ref'].includes(key))) throw C.failure('上次的查看状态无法恢复，已按默认范围显示工艺列表。');
     const scope = view.scope;
     if (!C.object(scope) || Object.keys(scope).some(key => !scopeKeys.includes(key)) || typeof scope.query !== 'string' || !Number.isSafeInteger(scope.page) || scope.page < 1 || !Number.isSafeInteger(scope.size) || scope.size < 1 || scope.size > 100 || ![undefined, ...P.stages.map(row => row[0])].includes(scope.stage) || !Array.isArray(scope.sort) || !C.object(scope.column_filters) || Object.keys(scope.column_filters).some(key => !P.columns.some(column => column.key === key))) throw C.failure('上次的查看范围或页码不正确，已按默认范围显示工艺列表。');
     P.ordering(scope);
     if (!Array.isArray(view.selected_refs) || !view.selected_refs.every(ref) || new Set(view.selected_refs).size !== view.selected_refs.length || view.entity_ref !== null && !ref(view.entity_ref)) throw C.failure('上次打开或勾选的零件已失效，已按默认范围显示工艺列表。');
-    const migration = filters.restore(scope.column_filters),
-      restored = JSON.parse(JSON.stringify(view));
-    restored.scope.column_filters = migration.filters;
-    return {
-      view: restored,
-      notice: migration.notice
-    };
+    const restored = JSON.parse(JSON.stringify(view));
+    restored.scope.column_filters = filters.rules(scope.column_filters);
+    return restored;
   }
-  const read = view => restore(view).view;
   window.APSProcessReadView = {
     read,
-    restore,
     scopeKeys
   };
 })();
@@ -12356,7 +12500,7 @@ function SMExport({
     }[config.kind];
     return ['business_code', 'label', ...fields, ...(config.kind === 'op_type' ? [] : ['status'])];
   }
-  function restoreResourceReadView(view, node) {
+  function resourceReadView(view, node) {
     if (!C.object(view) || Object.keys(view).some(key => !['scope', 'selected_refs', 'sort_active', 'detail'].includes(key))) throw C.failure('上次浏览位置只能包含查看状态。');
     const config = C.nodes[node],
       scope = view.scope;
@@ -12375,15 +12519,10 @@ function SMExport({
       });
       if (checked.error || !checked.context || ['part', 'calendar'].includes(checked.context.kind)) throw C.failure('上次打开的详情对不上，已取消定位。');
     }
-    const migration = window.ResourceTableFilterModel.restore(scope.column_filters === undefined ? {} : scope.column_filters),
-      restored = JSON.parse(JSON.stringify(view));
-    restored.scope.column_filters = migration.filters;
-    return {
-      view: restored,
-      notice: migration.notice
-    };
+    const restored = JSON.parse(JSON.stringify(view));
+    restored.scope.column_filters = window.ResourceTableFilterModel.rules(scope.column_filters === undefined ? {} : scope.column_filters);
+    return restored;
   }
-  const resourceReadView = (view, node) => restoreResourceReadView(view, node).view;
   function navigation(context) {
     // 侧栏直接进入时 main.jsx 传空对象；资料页内部没有定位目标时传 undefined 或 null。
     if (context === undefined || context === null || !Object.keys(context).length) return {
@@ -12407,16 +12546,15 @@ function SMExport({
       if (kind === 'op_type' && !['internal', 'external'].includes(context.category)) throw C.failure('定位缺少自制或外协类别，不做猜测。');
       if (kind === 'part' && (C.own(context, 'stage') && !['route', 'source', 'hours'].includes(context.stage) || ['template_operation_ref', 'template_external_group_ref'].some(key => C.own(context, key) && !ref(context[key])))) throw C.failure('工艺阶段或模板记录编号不正确。');
       const node = kind === 'part' ? 'process' : kind === 'op_type' ? context.category === 'internal' ? 'op_int' : 'op_ext' : kind;
-      const restored = C.own(context, 'read_view') ? kind === 'part' ? window.APSProcessReadView.restore(context.read_view) : restoreResourceReadView(context.read_view, node) : undefined;
+      const restored = C.own(context, 'read_view') ? kind === 'part' ? window.APSProcessReadView.read(context.read_view) : resourceReadView(context.read_view, node) : undefined;
       return {
         context: {
           ...context,
           ...(restored ? {
-            read_view: restored.view
+            read_view: restored
           } : {})
         },
-        node,
-        notice: restored ? restored.notice : ''
+        node
       };
     } catch (error) {
       return {
@@ -12599,7 +12737,7 @@ function SMExport({
       basic = !!config && !['part', 'calendar'].includes(config.kind);
     const blocked = command.locked || external.busy;
     React.useEffect(() => {
-      if (basic && onNavigationReady) onNavigationReady(!dialog && command.phase === 'idle' && !external.busy);
+      if (basic) onNavigationReady(!dialog && command.phase === 'idle' && !external.busy);
     }, [basic, dialog, command.phase, external.busy, onNavigationReady]);
     // External writes restart from the latest committed view of this request.
     const lastScope = React.useRef(null);
@@ -12929,9 +13067,7 @@ function SMExport({
       className: "content"
     }, /*#__PURE__*/React.createElement(ErrorBox, {
       error: navigationError
-    }), target.notice && /*#__PURE__*/React.createElement("p", {
-      role: "status"
-    }, target.notice), deferred && /*#__PURE__*/React.createElement("div", {
+    }), deferred && /*#__PURE__*/React.createElement("div", {
       role: "status"
     }, /*#__PURE__*/React.createElement("p", null, "\u4E0A\u6B21\u64CD\u4F5C\u8FD8\u6CA1\u5904\u7406\u5B8C\uFF0C\u6682\u65F6\u6CA1\u6709\u8DF3\u8F6C\u5230\u6307\u5B9A\u8BB0\u5F55\u3002\u521A\u624D\u7684\u63D0\u4EA4\u6CA1\u6709\u88AB\u8986\u76D6\u3002"), /*#__PURE__*/React.createElement(Button, {
       icon: "arrow-right",
@@ -14454,7 +14590,7 @@ function SMExport({
       download: 'exports/' + kind,
       template: 'templates/' + kind
     };
-    // 信封（ok、schema_version、meta、warnings）已由 resource-api.js 的 production() 校验，这里只校验 data。
+    // 信封（ok、schema_version、meta、warnings）已由 transport.js 的 envelope() 校验，这里只校验 data。
     function preview(result, mode, expected) {
       const data = result.data;
       if (!token(data.preview_ref) || data.operation !== kind + (mode === 'import' ? '.import' : '.bulk_delete') || data.commit_policy !== 'atomic' || typeof data.can_confirm !== 'boolean' || !C.object(data.summary) || !Array.isArray(data.rows) || !C.object(data.write_context) || !C.object(data.write_context.capabilities) || !Array.isArray(data.write_context.blocked_reasons) || !token(data.write_context.write_token) || !Number.isFinite(Date.parse(data.expires_at))) throw C.failure('预检结果不完整，本批没有提交。请重新预检。');
@@ -14546,38 +14682,11 @@ function SMExport({
       if (format === 'xlsx' && (bytes[0] !== 80 || bytes[1] !== 75 || bytes[2] !== 3 || bytes[3] !== 4)) throw C.failure('文件内容不是 XLSX 工作簿，请勿只修改扩展名。');
       if (format === 'csv' && (bytes.includes(0) || bytes[0] === 80 && bytes[1] === 75)) throw C.failure('文件内容不是 UTF-8 CSV，请核对文件格式。');
     }
-    function filename(disposition, format) {
-      if (typeof disposition !== 'string' || !/^attachment(?:;|$)/i.test(disposition)) throw C.failure('下载内容缺少文件名，没有保存文件。');
-      const extended = /(?:^|;)\s*filename\*\s*=\s*UTF-8''([^;]+)/i.exec(disposition);
-      const plain = /(?:^|;)\s*filename\s*=\s*(?:"((?:[^"\\]|\\.)*)"|([^;]+))/i.exec(disposition);
-      let name;
-      try {
-        name = extended ? decodeURIComponent(extended[1].trim()) : plain && (plain[1] ? plain[1].replace(/\\(.)/g, '$1') : plain[2].trim());
-      } catch (_) {
-        throw C.failure('下载文件名编码无效，没有保存文件。');
-      }
-      if (!name || /[\x00-\x1f\x7f/\\]/.test(name) || !name.toLowerCase().endsWith('.' + format)) throw C.failure('下载文件名与所选格式不一致，没有保存文件。');
-      return name;
-    }
-    async function saveDownload(download, format, signal) {
-      const mime = format === 'csv' ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-      if (!download || !(download.blob instanceof Blob) || download.blob.size === 0 || String(download.contentType).split(';')[0].trim().toLowerCase() !== mime) throw C.failure('下载内容或文件类型不正确，没有把错误内容保存成文件。');
-      const name = filename(download.disposition, format);
-      const bytes = new Uint8Array(await download.blob.slice(0, 4).arrayBuffer());
-      if (format === 'xlsx' && (bytes[0] !== 80 || bytes[1] !== 75 || bytes[2] !== 3 || bytes[3] !== 4)) throw C.failure('下载内容不是 XLSX 工作簿，没有保存文件。');
-      if (signal && signal.aborted) throw new DOMException('下载已取消', 'AbortError');
-      const url = URL.createObjectURL(download.blob),
-        link = document.createElement('a');
-      try {
-        link.href = url;
-        link.download = name;
-        document.body.appendChild(link);
-        link.click();
-      } finally {
-        link.remove();
-        window.setTimeout(() => URL.revokeObjectURL(url), 30000);
-      }
-      return name;
+    // 类型、魔数与带正确后缀的文件名已由 transport.download 校验；资源家族同时允许 CSV 与 XLSX，这里只核对是用户所选的那一种。
+    function saveDownload(download, format) {
+      if (download.contentType !== window.APSWorkbenchTransport.types[format]) throw C.failure('下载文件与所选格式不一致，没有保存文件。');
+      window.APSWorkbenchTransport.saveBlob(download.filename, download.blob);
+      return download.filename;
     }
     // 逐行提示与勾选文案按资料类型给一次，别让预检组件再按 kind 分支。
     const confirmationHint = kind === 'material' ? '涉及已有物料需求，需核对修改前后内容。' : '涉及关键项或已有关联，需核对修改前后内容。';
@@ -14599,7 +14708,6 @@ function SMExport({
       requestBody,
       blocked,
       validateFile,
-      filename,
       saveDownload,
       confirmationHint,
       acknowledgeHint,
@@ -14645,7 +14753,7 @@ function SMExport({
       const fields = Object.keys(detailFields[key]);
       return Array.isArray(value) && value.every(item => C.object(item) && Object.keys(item).length === fields.length && fields.every(field => C.own(item, field) && scalar(item[field])));
     }
-    if (['skill_codes', 'op_type_codes', 'explicit_op_type_codes'].includes(key)) return Array.isArray(value) && value.every(item => typeof item === 'string');
+    if (['skill_codes', 'op_type_codes'].includes(key)) return Array.isArray(value) && value.every(item => typeof item === 'string');
     return scalar(value);
   }
   function displayValue(key, value) {
@@ -14688,7 +14796,7 @@ function SMExport({
       resourceLabel: value => C.resourceName(kind, value),
       category: request => category(kind, request),
       templateHint: '空白表头模板，不含示例数据。空列不改动；要清除某一项，请在格子里填 \\N（大写）。',
-      importHint: '按业务编号增量更新：编号已有的更新，没有的新增，文件以外的记录不会删除。空列或缺列保持原值；要清除某一项，请在格子里填 \\N（大写）。关联列填业务编号；要填多个，请按 ["OT1","OT2"] 这样用方括号和引号写，填 [] 表示清除全部关联。只读列仅供参考，不导入；设备权限需在人员详情设置。',
+      importHint: '按业务编号增量更新：编号已有的更新，没有的新增，文件以外的记录不会删除。空列或缺列保持原值；要清除某一项，请在格子里填 \\N（大写）。关联列填业务编号；多个编号用顿号分开，例如 OT1、OT2，填清除表示移除全部关联。只读列仅供参考，不导入；设备权限需在人员详情设置。',
       preview(raw, mode, expected, request) {
         const result = shared.preview(raw, mode, expected);
         columns(result.data);
@@ -15349,7 +15457,7 @@ function SMExport({
         if (template && M.kind === 'op_type') scope.category = M.category(original);
         const response = await adapter.download(template ? M.paths.template : M.paths.download, scope, controller.signal);
         if (controller.signal.aborted || !alive.current) return;
-        const name = await M.saveDownload(response, format, controller.signal);
+        const name = M.saveDownload(response, format);
         if (alive.current) setDownload({
           busy: false,
           name
@@ -16057,7 +16165,7 @@ function SMExport({
       className: "rc-facts"
     }, /*#__PURE__*/React.createElement("div", {
       className: "rc-section-head"
-    }, /*#__PURE__*/React.createElement("b", null, entity.business_code, " \xB7 ", entity.label), /*#__PURE__*/React.createElement("span", null, entity.status === 'active' ? '启用' : entity.status === 'inactive' ? '停用' : '旧状态 / 原因未知')), /*#__PURE__*/React.createElement("p", null, "\u5DF2\u5173\u8054", kind === 'machine_group' ? '设备' : '人员', "\uFF1A", count === null ? '未读取' : count), kind === 'shift_profile' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "\u5468\u671F\u8D77\u59CB\u65E5\u671F\uFF1A", window.WorkbenchFormat.date(entity.fields.anchor_date), " \xB7 \u8F6E\u6362\u5929\u6570\uFF1A", entity.fields.cycle_days), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("b", null, entity.business_code, " \xB7 ", entity.label), /*#__PURE__*/React.createElement("span", null, entity.status === 'active' ? '启用' : '停用')), /*#__PURE__*/React.createElement("p", null, "\u5DF2\u5173\u8054", kind === 'machine_group' ? '设备' : '人员', "\uFF1A", count === null ? '未读取' : count), kind === 'shift_profile' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "\u5468\u671F\u8D77\u59CB\u65E5\u671F\uFF1A", window.WorkbenchFormat.date(entity.fields.anchor_date), " \xB7 \u8F6E\u6362\u5929\u6570\uFF1A", entity.fields.cycle_days), /*#__PURE__*/React.createElement("div", {
       className: "wb-table-frame rc-pattern-scroll",
       "data-sticky-head": true,
       "data-sticky-actions": true
@@ -16159,9 +16267,7 @@ function SMExport({
       value: "active"
     }, "\u542F\u7528"), /*#__PURE__*/React.createElement("option", {
       value: "inactive"
-    }, "\u505C\u7528"), value.status && !['active', 'inactive'].includes(value.status) && /*#__PURE__*/React.createElement("option", {
-      value: value.status
-    }, "\u65E7\u72B6\u6001 / \u539F\u56E0\u672A\u77E5\uFF08\u4FDD\u6301\u539F\u503C\uFF09"))), kind === 'shift_profile' && /*#__PURE__*/React.createElement(React.Fragment, null, field('anchor_date', '周期起始日期', {
+    }, "\u505C\u7528"))), kind === 'shift_profile' && /*#__PURE__*/React.createElement(React.Fragment, null, field('anchor_date', '周期起始日期', {
       required: true,
       type: 'date'
     }), field('cycle_days', '轮换天数', {
@@ -16267,9 +16373,7 @@ function SMExport({
       value: "active"
     }, "\u542F\u7528"), /*#__PURE__*/React.createElement("option", {
       value: "inactive"
-    }, "\u505C\u7528"), /*#__PURE__*/React.createElement("option", {
-      value: "unknown"
-    }, "\u65E7\u72B6\u6001 / \u539F\u56E0\u672A\u77E5"))), /*#__PURE__*/React.createElement(Button, {
+    }, "\u505C\u7528"))), /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       "aria-label": "\u5237\u65B0\u5217\u8868",
       disabled: disabled,
@@ -16319,10 +16423,10 @@ function SMExport({
       }, /*#__PURE__*/React.createElement("td", {
         className: "rc-wrap wb-col-key"
       }, /*#__PURE__*/React.createElement("b", null, entity.business_code), /*#__PURE__*/React.createElement("div", null, entity.label)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
-        className: 'pill ' + (entity.status === 'active' ? 'ok' : entity.status === 'inactive' ? 'off' : 'warn')
+        className: 'pill ' + (entity.status === 'active' ? 'ok' : 'off')
       }, /*#__PURE__*/React.createElement("span", {
         className: "dot"
-      }), entity.status === 'active' ? '启用' : entity.status === 'inactive' ? '停用' : '旧状态 / 原因未知')), /*#__PURE__*/React.createElement("td", null, count === null ? '未读取' : count), kind === 'shift_profile' && /*#__PURE__*/React.createElement("td", null, entity.fields.cycle_days), /*#__PURE__*/React.createElement("td", {
+      }), entity.status === 'active' ? '启用' : '停用')), /*#__PURE__*/React.createElement("td", null, count === null ? '未读取' : count), kind === 'shift_profile' && /*#__PURE__*/React.createElement("td", null, entity.fields.cycle_days), /*#__PURE__*/React.createElement("td", {
         className: "wb-col-actions"
       }, /*#__PURE__*/React.createElement("div", {
         className: "rowact"
@@ -16707,13 +16811,13 @@ function SMExport({
           snapshot_ref: snapshotRef
         }, signal);
       },
-      command(kind, action, ref, body, signal) {
-        if (kind === 'process' && action === 'create' && ref === null) return base.execute('process/parts/create', body, signal);
-        if (kind === 'process_bulk' && action === 'confirm' && typeof ref === 'string' && /^[A-Za-z0-9_-]{32}$/.test(ref) && body.input && body.input.preview_ref === ref) return base.execute('process/parts/bulk-confirm', body, signal);
-        if (['process_route_import', 'process_hours_import'].includes(kind) && action === 'confirm' && typeof ref === 'string' && /^[A-Za-z0-9_-]{32}$/.test(ref) && body.input && body.input.preview_ref === ref) return base.execute(filePath(kind === 'process_route_import' ? 'route' : 'hours', 'confirm'), body, signal);
+      command(kind, action, ref, body) {
+        if (kind === 'process' && action === 'create' && ref === null) return base.execute('process/parts/create', body);
+        if (kind === 'process_bulk' && action === 'confirm' && typeof ref === 'string' && /^[A-Za-z0-9_-]{32}$/.test(ref) && body.input && body.input.preview_ref === ref) return base.execute('process/parts/bulk-confirm', body);
+        if (['process_route_import', 'process_hours_import'].includes(kind) && action === 'confirm' && typeof ref === 'string' && /^[A-Za-z0-9_-]{32}$/.test(ref) && body.input && body.input.preview_ref === ref) return base.execute(filePath(kind === 'process_route_import' ? 'route' : 'hours', 'confirm'), body);
         part('part', ref);
         if (kind !== 'process' || ref == null || !['route_confirm', 'source_confirm', 'hours_confirm', 'groups_confirm'].includes(action)) throw fail('工艺操作与所选零件不一致。');
-        return base.execute('process/' + ref + '/' + action, body, signal);
+        return base.execute('process/' + ref + '/' + action, body);
       }
     };
   }
@@ -16743,7 +16847,7 @@ function SMExport({
   function filters(value) {
     if (value === undefined) return {};
     if (!C.object(value) || Object.keys(value).some(key => !P.columns.some(column => column.key === key) || !C.object(value[key]))) throw C.failure('工艺列筛选不完整，未改为全量范围。');
-    return Object.fromEntries(Object.keys(value).map(key => [key, M.rule(value[key])]));
+    return M.rules(value);
   }
   function scope(value = {}) {
     if (!C.object(value) || value.query !== undefined && typeof value.query !== 'string' || value.stage !== undefined && value.stage !== null && value.stage !== '' && !['route', 'source', 'hours', 'ready'].includes(value.stage)) throw C.failure('工艺列表范围不完整。');
@@ -17322,7 +17426,7 @@ function SMExport({
   function operation(value) {
     return 'process_' + kind(value) + '_import.confirm';
   }
-  // 信封（ok、schema_version、meta、warnings）已由 resource-api.js 的 production() 校验，这里只校验 data。
+  // 信封（ok、schema_version、meta、warnings）已由 transport.js 的 envelope() 校验，这里只校验 data。
   function columns(value) {
     return Array.isArray(value) && value.length > 0 && value.every(row => C.object(row) && text(row.key) && /^[a-z][a-z0-9_]*$/.test(row.key) && !['id', 'entity_key', 'entity_ref', 'write_token', 'revision'].includes(row.key) && text(row.label) && row.label.trim() && row.label !== row.key) && new Set(value.map(row => row.key)).size === value.length;
   }
@@ -17947,7 +18051,7 @@ function SMExport({
           export_ref: data.export_ref
         }, controller.signal);
         if (!controller.signal.aborted && alive.current) {
-          const name = await M.saveDownload(response, format, controller.signal);
+          const name = M.saveDownload(response, format);
           if (alive.current) setDownload({
             busy: false,
             name
@@ -18123,12 +18227,12 @@ function SMExport({
       key: kind
     }, /*#__PURE__*/React.createElement(Button, {
       transfer: "import",
-      reason: P.reason(capabilities, 'import', true),
+      reason: P.reason(capabilities, 'import'),
       disabled: disabled,
       onClick: () => onAction(kind, 'import')
     }, '导入' + label), /*#__PURE__*/React.createElement(Button, {
       transfer: "export",
-      reason: P.reason(capabilities, 'export', true),
+      reason: P.reason(capabilities, 'export'),
       disabled: disabled,
       onClick: () => onAction(kind, 'export')
     }, '导出' + label))));
@@ -18506,7 +18610,7 @@ function SMExport({
       if (request.current) request.current.abort();
     }, []);
     React.useEffect(() => {
-      if (onDirty) onDirty(stage, dirty);
+      onDirty(stage, dirty);
     }, [dirty, stage, onDirty]);
     React.useLayoutEffect(() => {
       if (base === result) return;
@@ -18586,9 +18690,9 @@ function SMExport({
   }
   // Unconfirmed operations are reported with the page they sit on (unfiltered order, current page size),
   // so a 120-operation part can be fixed without paging blind; the first offending page rides on the error.
-  function reason(model, adapter, stage) {
+  function reason(model, stage) {
     const entity = model.base.data;
-    return model.review ? '请先核对最新资料。' : model.busy ? '正在读取最新资料。' : P.reason(entity.capabilities, 'stage_confirm', typeof adapter.command === 'function') || (entity.workflow[stage === 'source' ? 'route' : 'source'].state !== 'confirmed' ? stage === 'source' ? '请先确认路线。' : '请先确认归属。' : '') || (stage === 'source' ? model.base.meta.source !== 'production' ? '当前不是生产数据，不能保存。' : '' : C.blocked(entity.write_context, 'process', stage + '_confirm', model.base.meta.source));
+    return model.review ? '请先核对最新资料。' : model.busy ? '正在读取最新资料。' : P.reason(entity.capabilities, 'stage_confirm') || (entity.workflow[stage === 'source' ? 'route' : 'source'].state !== 'confirmed' ? stage === 'source' ? '请先确认路线。' : '请先确认归属。' : '') || (stage === 'source' ? model.base.meta.source !== 'production' ? '当前不是生产数据，不能保存。' : '' : C.blocked(entity.write_context, 'process', stage + '_confirm', model.base.meta.source));
   }
   window.ProcessStageEditor = {
     active,
@@ -18984,7 +19088,7 @@ function SMExport({
     const preview = preflightResult && preflightResult.base === model.base && preflightResult.draft === draft ? preflightResult : null;
     const request = React.useRef(null);
     const blocked = disabled || command.locked || command.phase === 'done';
-    const stageReason = E.reason(model, adapter, 'source'),
+    const stageReason = E.reason(model, 'source'),
       editBlocked = blocked || entity.workflow.route.state !== 'confirmed' || entity.capabilities.stage_confirm !== true;
     function invalidate() {
       if (request.current) request.current.abort();
@@ -19137,7 +19241,6 @@ function SMExport({
     }), /*#__PURE__*/React.createElement(Button, {
       icon: "plus",
       disabled: editBlocked,
-      reason: !adapter.resourceAdapter || !window.ProcessOpTypeCreate ? window.WorkbenchTerms.outcomes.unavailable : '',
       onClick: () => {
         invalidate();
         setCreate({});
@@ -19362,10 +19465,10 @@ function SMExport({
     const blocked = disabled || command.locked || command.phase === 'done',
       current = draft.groups.find(row => row.key === editing);
     const validPreview = preview && preview.draft === draft && preview.base === model.base && !model.review ? preview : null;
-    const reason = model.review ? '请先核对最新资料。' : entity.workflow.route.state !== 'confirmed' ? '请先确认路线。' : P.reason(entity.capabilities, 'stage_confirm', typeof adapter.stagePreview === 'function' && typeof adapter.command === 'function') || (model.base.meta.source !== 'production' ? '请先读取可保存的工艺资料。' : '') || (!model.dirty ? '请先新增、修改或解除外协段。' : '');
+    const reason = model.review ? '请先核对最新资料。' : entity.workflow.route.state !== 'confirmed' ? '请先确认路线。' : P.reason(entity.capabilities, 'stage_confirm') || (model.base.meta.source !== 'production' ? '请先读取可保存的工艺资料。' : '') || (!model.dirty ? '请先新增、修改或解除外协段。' : '');
     React.useEffect(() => () => {
       if (request.current) request.current.abort();
-      if (onDirty) onDirty('groups', false);
+      onDirty('groups', false);
     }, []);
     React.useEffect(() => {
       if (!validPreview || !reviewRoot.current) return undefined;
@@ -19788,7 +19891,7 @@ function SMExport({
       [groupsOpen, setGroupsOpen] = React.useState(false);
     const groups = React.useMemo(() => P.groupIndex(entity.external_groups), [entity.external_groups]);
     const blocked = disabled || command.locked || command.phase === 'done',
-      stageReason = E.reason(model, adapter, 'hours');
+      stageReason = E.reason(model, 'hours');
     const editBlocked = blocked || entity.workflow.source.state !== 'confirmed' || entity.capabilities.stage_confirm !== true;
     const originalTypes = new Map(entity.operations.map(row => [row.ref, row]));
     const changedTypes = model.review ? E.active(model.review.data).filter(row => {
@@ -20243,7 +20346,7 @@ function SMExport({
     const draftText = mode === 'text' ? routeRaw : D.serialize(rows),
       baselineDraft = React.useRef(draftText);
     React.useLayoutEffect(() => {
-      if (onDirty) onDirty('route', draftText !== baselineDraft.current);
+      onDirty('route', draftText !== baselineDraft.current);
     }, [draftText, onDirty]);
     const [state, setState] = React.useState({
       busy: false,
@@ -20258,7 +20361,7 @@ function SMExport({
       locked = command.locked || command.phase === 'done';
     const blocked = disabled || locked;
     // 只有带完整工艺接口的工艺详情才能打开路线录入（校准页的只读详情禁用了入口），这里的能力只看后端 capabilities。
-    const previewReason = P.reason(entity.capabilities, 'route_preview', true);
+    const previewReason = P.reason(entity.capabilities, 'route_preview');
     // Read the op_type catalog once on entry so the row inputs can suggest real names. Free text stays allowed and
     // the server route preflight remains the only authority on what is recognized.
     const opTypeListId = React.useId();
@@ -20528,7 +20631,7 @@ function SMExport({
       }
     }
     const affected = state.result ? state.result.data.affected_groups : [];
-    const saveReason = P.reason(entity.capabilities, 'stage_confirm', true) || (review ? '请先核对最新资料。' : !state.result || !state.result.data.can_confirm_route ? '请先完成当前路线预检。' : !affected.every(row => discarded.includes(row.ref)) ? '请明确勾选解除所有受影响的外协组。' : C.blocked(state.result.data.write_context, 'process', 'route_confirm', state.result.meta.source));
+    const saveReason = P.reason(entity.capabilities, 'stage_confirm') || (review ? '请先核对最新资料。' : !state.result || !state.result.data.can_confirm_route ? '请先完成当前路线预检。' : !affected.every(row => discarded.includes(row.ref)) ? '请明确勾选解除所有受影响的外协组。' : C.blocked(state.result.data.write_context, 'process', 'route_confirm', state.result.meta.source));
     async function save() {
       if (blocked || saveReason) return;
       await command.submit('process', 'route_confirm', entity.ref, state.result.data.write_context, {
@@ -20884,8 +20987,7 @@ function SMExport({
     entity,
     disabled,
     onEntry,
-    onFileAction,
-    previewAvailable
+    onFileAction
   }) {
     return /*#__PURE__*/React.createElement("section", {
       className: "process-route-section"
@@ -20897,7 +20999,7 @@ function SMExport({
       icon: "square-pen",
       className: "btn primary",
       disabled: disabled,
-      reason: P.reason(entity.capabilities, 'route_preview', previewAvailable),
+      reason: P.reason(entity.capabilities, 'route_preview'),
       onClick: onEntry
     }, "\u5F55\u5165\u8DEF\u7EBF"), /*#__PURE__*/React.createElement(window.ProcessFileButtons, {
       capabilities: entity.capabilities,
@@ -21060,7 +21162,7 @@ function SMExport({
       setEntryStarted(false);
     }
     function openFile(kind, mode, abandon = false) {
-      if (editingBlocked || !current || !['route', 'hours'].includes(kind) || !['import', 'export'].includes(mode) || P.reason(current.data.capabilities, mode, true)) return;
+      if (editingBlocked || !current || !['route', 'hours'].includes(kind) || !['import', 'export'].includes(mode) || P.reason(current.data.capabilities, mode)) return;
       if (!abandon) fileFocus.current = document.activeElement;
       if (hasDraft && !abandon) {
         setDiscard({
@@ -21277,7 +21379,6 @@ function SMExport({
       entity: entity,
       disabled: editingBlocked,
       onFileAction: openFile,
-      previewAvailable: typeof adapter.routePreview === 'function',
       onEntry: () => {
         setEntryStarted(true);
         setEntry(true);
@@ -21668,7 +21769,7 @@ function SMExport({
       }));
     }, [adapter]);
     React.useEffect(() => {
-      if (onNavigationReady) onNavigationReady(!dialog && command.phase === 'idle' && !recoveryError);
+      onNavigationReady(!dialog && command.phase === 'idle' && !recoveryError);
     }, [dialog, command.phase, recoveryError, onNavigationReady]);
     React.useEffect(() => {
       try {
@@ -21680,11 +21781,6 @@ function SMExport({
         });
         setRecoveryError(null);
       } catch (error) {
-        const restored = A.restored(error.intent);
-        if (restored) setDialog({
-          ...restored,
-          adapter
-        });
         setRecoveryError(error);
       }
     }, [adapter]);
@@ -21757,7 +21853,7 @@ function SMExport({
         const removed = new Set(receipt.data.rows.map(row => row.entity_ref));
         setSelected(current => current.filter(ref => !removed.has(ref)));
       }
-      if (onCommitted) onCommitted(receipt);
+      onCommitted(receipt);
     }
     function action(mode, refs = selected, fileKind) {
       if (!data || blocked || list.loading) return;
@@ -21773,7 +21869,7 @@ function SMExport({
         adapter
       });
     }
-    const deleteReason = P.reason(data && data.capabilities, 'delete', true);
+    const deleteReason = P.reason(data && data.capabilities, 'delete');
     const activeStage = scope.stage === undefined ? '' : scope.stage;
     const blocked = disabled || !!dialog || command.locked || !!recoveryError;
     function continueNavigation() {
@@ -21795,9 +21891,7 @@ function SMExport({
     }, /*#__PURE__*/React.createElement("p", null, "\u4E0A\u6B21\u64CD\u4F5C\u8FD8\u6CA1\u5904\u7406\u5B8C\uFF0C\u6682\u65F6\u6CA1\u6709\u8DF3\u8F6C\u5230\u6307\u5B9A\u96F6\u4EF6\u3002"), /*#__PURE__*/React.createElement(Button, {
       icon: "arrow-right",
       onClick: continueNavigation
-    }, "\u7EE7\u7EED\u8DF3\u8F6C")), target.notice && /*#__PURE__*/React.createElement("p", {
-      role: "status"
-    }, target.notice), /*#__PURE__*/React.createElement("div", {
+    }, "\u7EE7\u7EED\u8DF3\u8F6C")), /*#__PURE__*/React.createElement("div", {
       className: "statline wb-metrics",
       style: {
         '--wb-columns': 4
@@ -21872,7 +21966,7 @@ function SMExport({
       icon: "plus",
       className: "btn primary",
       disabled: blocked || list.loading,
-      reason: P.reason(data && data.capabilities, 'create', true) || A.createReason(data && data.create_context, list.result && list.result.meta.source),
+      reason: P.reason(data && data.capabilities, 'create') || A.createReason(data && data.create_context, list.result && list.result.meta.source),
       onClick: () => action('create')
     }, "\u65B0\u589E\u96F6\u4EF6"))), /*#__PURE__*/React.createElement("div", {
       className: "toolbar"
@@ -21994,29 +22088,21 @@ function SMExport({
   }
   function importOnlyAdapter(kind) {
     const adapter = window.APSResourceAPI.create(kind + '_files');
-    adapter.command = (commandKind, action, ref, body, signal) => {
+    adapter.command = (commandKind, action, ref, body) => {
       if (commandKind !== kind + '_import' || action !== 'confirm' || !body || !body.input || body.input.preview_ref !== ref) throw window.APSResourceContract.failure('确认操作与当前预检结果不一致。');
-      return adapter.execute(importOnlyBase[kind] + '/' + kind + '/confirm', body, signal);
+      return adapter.execute(importOnlyBase[kind] + '/' + kind + '/confirm', body);
     };
     return adapter;
   }
   function fileAdapter(kind) {
     const adapter = window.APSResourceAPI.create(kind + '_files');
-    adapter.command = (commandKind, action, ref, body, signal) => {
+    adapter.command = (commandKind, action, ref, body) => {
       if (![kind + '_import', kind + '_bulk'].includes(commandKind) || action !== 'confirm' || !body || !body.input || body.input.preview_ref !== ref) throw window.APSResourceContract.failure('确认操作与当前预检结果不一致。');
-      return adapter.execute(commandKind === kind + '_import' ? 'imports/' + kind + '/confirm' : 'entities/' + kind + '/bulk-confirm', body, signal);
+      return adapter.execute(commandKind === kind + '_import' ? 'imports/' + kind + '/confirm' : 'entities/' + kind + '/bulk-confirm', body);
     };
     return adapter;
   }
   function recovery(adapters) {
-    function readPending(adapter) {
-      try {
-        return adapter.readPending();
-      } catch (error) {
-        if (error.intent) return error.intent;
-        throw error;
-      }
-    }
     const pending = [{
       type: 'base',
       adapter: adapters.base
@@ -22039,7 +22125,7 @@ function SMExport({
       adapter: adapters.process
     }].map(item => ({
       ...item,
-      intent: readPending(item.adapter)
+      intent: item.adapter.readPending()
     })).find(item => item.intent);
     if (!pending) return null;
     const intent = pending.intent,
@@ -22088,9 +22174,9 @@ function SMExport({
       const files = Object.fromEntries(fileKinds.map(kind => [kind, fileAdapter(kind)])),
         catalog = window.APSResourceAPI.create('catalog');
       const imports = Object.fromEntries(importOnlyKinds.map(kind => [kind, importOnlyAdapter(kind)]));
-      calendar.command = (kind, action, ref, body, signal) => {
+      calendar.command = (kind, action, ref, body) => {
         if (kind !== 'calendar' || !['upsert', 'delete', 'confirm', 'defaults'].includes(action)) throw window.APSResourceContract.failure('工作日历操作不正确。');
-        return calendar.execute('calendar/' + (action === 'confirm' ? 'range/confirm' : action), body, signal);
+        return calendar.execute('calendar/' + (action === 'confirm' ? 'range/confirm' : action), body);
       };
       const open = (type, kind, request) => {
         setHostError(null);
@@ -22333,8 +22419,8 @@ function SMExport({
     if (!entity(d) || d.ref !== expected || !object(d.materials) || !Array.isArray(d.materials.requirements) || !d.materials.requirements.every(row => object(row) && ref(row.material_ref) && finite(row.required_quantity) && finite(row.available_quantity) && (row.operation_ref === null || ref(row.operation_ref)) && Array.isArray(row.arrivals)) || !object(d.template) || typeof d.template.complete !== 'boolean' || !count(d.template.operation_count) || !issueRows(d.template.diagnostics)) throw C.failure('读到的批次详情不完整或不是这个批次，请刷新后重试。');
     return result;
   }
+  // result 来自 resource-api 的 execute，已由 terminal() 确认是完成回执；这里只核对批次编号与逐项结果。
   function receipt(result, action, expected) {
-    if (C.receipt(result) !== 'terminal') throw C.failure(window.WorkbenchTerms.outcomes.pending('保存'));
     const data = result.data;
     const valid = ['bulk_confirm', 'import_confirm'].includes(action) ? Array.isArray(data.items) && data.items.length === data.count && data.items.every(row => ref(row.entity_ref) && ['committed', 'unchanged', 'skipped'].includes(row.result)) : ref(data.entity_ref) && (action === 'create' || data.entity_ref === expected);
     if (!valid) {
@@ -22345,9 +22431,10 @@ function SMExport({
     return result;
   }
   function preview(result, action, expectedRef, input) {
-    const data = result && result.data,
+    // 信封已由 transport.js 的 envelope() 校验，这里只核对预检 data 与所选批次、操作一致。
+    const data = result.data,
       name = 'batch.' + action + '_confirm';
-    let valid = object(result) && result.ok === true && result.schema_version === 1 && object(result.meta) && result.meta.source === 'production' && object(data) && data.operation === name && text(data.preview_ref) && /^[A-Za-z0-9_-]{32}$/.test(data.preview_ref) && context(data.write_context) && data.write_context && data.write_context.capabilities[name] === true && data.commit_policy === 'atomic';
+    let valid = data.operation === name && text(data.preview_ref) && /^[A-Za-z0-9_-]{32}$/.test(data.preview_ref) && context(data.write_context) && data.write_context && data.write_context.capabilities[name] === true && data.commit_policy === 'atomic';
     if (valid && action === 'bulk') {
       const selected = new Set(input.refs);
       valid = data.action === input.action && Array.isArray(data.rows) && data.count === input.refs.length && data.rows.length === data.count && new Set(data.rows.map(row => row.entity_ref)).size === data.count && data.rows.every(row => selected.has(row.entity_ref) && entity(row.before) && row.before.ref === row.entity_ref && (input.action === 'delete' ? row.after === null : object(row.after) && object(row.after.fields) && Array.isArray(row.after.operations)));
@@ -22468,7 +22555,11 @@ function SMExport({
 (function () {
   'use strict';
 
-  const root = 'entities/batch';
+  const root = 'entities/batch',
+    xlsx = {
+      types: [window.APSWorkbenchTransport.types.xlsx]
+    };
+  // 每次 create() 都是新的 adapter：resource-session 以 adapter 对象区分会话，批次页与分批面板各有自己的待确认状态。
   function create() {
     const api = window.APSResourceAPI.create('batches'),
       C = window.APSBatchContract;
@@ -22532,12 +22623,12 @@ function SMExport({
         }, signal);
       },
       downloadTemplate(signal) {
-        return api.download(root + '/template', {}, signal);
+        return api.download(root + '/template', {}, signal, xlsx);
       },
       downloadExport(exportRef, signal) {
         return api.download(root + '/export', {
           export_ref: exportRef
-        }, signal);
+        }, signal, xlsx);
       },
       preview(action, ref, input, scope, snapshot, signal) {
         if (action === 'bulk') return api.preview(root + '/bulk-preview', {
@@ -22551,7 +22642,7 @@ function SMExport({
         }, signal);
         throw window.APSResourceContract.failure('批次预检操作不正确。');
       },
-      async command(kind, action, ref, body, signal) {
+      async command(kind, action, ref, body) {
         if (kind !== 'batch' || !C.actions.includes(action)) throw window.APSResourceContract.failure('批次操作不正确。');
         let path;
         if (action === 'create') {
@@ -22561,7 +22652,7 @@ function SMExport({
           if (ref !== body.input.preview_ref) throw window.APSResourceContract.failure('批量确认与预检结果不一致。');
           path = root + (action === 'bulk_confirm' ? '/bulk-confirm' : '/import-confirm');
         } else path = entity(ref) + '/' + (['sync_confirm', 'split_confirm'].includes(action) ? action.replace('_', '-') : action);
-        const result = await api.execute(path, body, signal);
+        const result = await api.execute(path, body);
         C.receipt(result, action, ref);
         return result;
       }
@@ -22722,8 +22813,7 @@ function SMExport({
     source,
     command,
     onClose,
-    onCommitted,
-    disabled = false
+    onCommitted
   }) {
     const [entity, setEntity] = React.useState(original),
       [value, setValue] = React.useState(() => B.draft(original));
@@ -22768,7 +22858,7 @@ function SMExport({
         setError(error);
       }
     }, [command.phase, command.result]);
-    const locked = disabled || command.locked || command.phase === 'done' || loading;
+    const locked = command.locked || command.phase === 'done' || loading;
     async function reload() {
       setLoading(true);
       setError(null);
@@ -22936,8 +23026,7 @@ function SMExport({
     preview,
     command,
     onClose,
-    onCommitted,
-    disabled
+    onCommitted
   }) {
     const seen = React.useRef(null),
       [error, setError] = React.useState(null),
@@ -22977,7 +23066,7 @@ function SMExport({
       }, command.phase === 'done' ? '关闭' : '取消'), command.phase !== 'done' && /*#__PURE__*/React.createElement(Button, {
         icon: deleting ? 'trash-2' : 'check',
         className: 'btn ' + (deleting ? 'danger' : 'primary'),
-        disabled: disabled || command.locked,
+        disabled: command.locked,
         reason: reason,
         onClick: () => command.submit('batch', action, subject, preview.write_context, {
           preview_ref: preview.preview_ref
@@ -23009,7 +23098,7 @@ function SMExport({
     }, /*#__PURE__*/React.createElement("input", {
       type: "checkbox",
       checked: acknowledged,
-      disabled: disabled || command.locked,
+      disabled: command.locked,
       onChange: event => setAcknowledged(event.target.checked)
     }), single ? '已核对明细，确认删除批次 ' + single + '。' : '已核对全部明细，确认删除这 ' + window.WorkbenchFormat.number(preview.rows.length, {
       digits: 0
@@ -23046,8 +23135,7 @@ function SMExport({
     source,
     command,
     onCommitted,
-    onClose,
-    disabled
+    onClose
   }) {
     const internal = operation.source === 'internal',
       merged = operation.external_group && operation.external_group.merge_mode === 'merged';
@@ -23058,7 +23146,7 @@ function SMExport({
       seen = React.useRef(null);
     const form = React.useId(),
       done = command.phase === 'done',
-      locked = disabled || command.locked || done;
+      locked = command.locked || done;
     const formElement = React.useRef(null),
       paths = keys.map(key => 'fields.' + key),
       currentError = error || command.error;
@@ -23236,8 +23324,7 @@ function SMExport({
     entity: initial,
     command,
     onCommitted,
-    onClose,
-    disabled
+    onClose
   }) {
     const [entity, setEntity] = React.useState(initial),
       [rows, setRows] = React.useState(() => toRows(initial));
@@ -23251,7 +23338,7 @@ function SMExport({
       [selected, setSelected] = React.useState('');
     const form = React.useId(),
       done = command.phase === 'done',
-      locked = disabled || command.locked || done;
+      locked = command.locked || done;
     const baseRows = React.useMemo(() => JSON.stringify(toRows(entity)), [entity]);
     const seen = React.useRef(null),
       changed = JSON.stringify(rows) !== baseRows || removed.length > 0;
@@ -24010,19 +24097,11 @@ function SMExport({
       Issues,
       Icon
     } = window.ResourceControls;
-  const TEMPLATE_NAME = '批次导入模板.xlsx',
-    EXPORT_NAME = '批次清单.xlsx';
-  function saveDownload(download, filename) {
-    if (!download || !download.blob || !download.blob.size) throw C.failure('未收到有效下载文件。');
-    const url = URL.createObjectURL(download.blob),
-      link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 30000);
-  }
+  // 类型、魔数与带正确后缀的文件名都已由 transport.download 校验（BatchAPI 只收 XLSX），这里直接按后端文件名存盘。
+  const save = download => {
+    window.APSWorkbenchTransport.saveBlob(download.filename, download.blob);
+    return download.filename;
+  };
   function PreviewRow({
     row
   }) {
@@ -24052,8 +24131,7 @@ function SMExport({
     snapshot,
     command,
     onClose,
-    onCommitted,
-    disabled
+    onCommitted
   }) {
     const [mode, setMode] = React.useState('overwrite'),
       [file, setFile] = React.useState(null),
@@ -24069,7 +24147,7 @@ function SMExport({
       form = React.useId();
     const importing = operation === 'import',
       done = command.phase === 'done',
-      locked = disabled || command.locked || busy || done;
+      locked = command.locked || busy || done;
     // 已选文件或已有预检结果就算没做完：关闭前先确认，避免误关丢掉文件和预检。
     const guardOwner = window.WorkbenchGuards.useDirtyGuard({
       dirty: importing && !done && (!!file || !!preview),
@@ -24120,8 +24198,8 @@ function SMExport({
       setNotice('');
       try {
         if (action === 'template') {
-          saveDownload(await adapter.downloadTemplate(), TEMPLATE_NAME);
-          if (alive.current && id === serial.current) setNotice(T.download_started(TEMPLATE_NAME));
+          const name = save(await adapter.downloadTemplate());
+          if (alive.current && id === serial.current) setNotice(T.download_started(name));
         } else if (action === 'preview') {
           const result = await adapter.importPreview(file, mode, scope, snapshot);
           const data = result.data;
@@ -24133,9 +24211,8 @@ function SMExport({
             snapshot_ref: snapshot
           }, selected);
           if (!result.data || typeof result.data.export_ref !== 'string' || !Number.isSafeInteger(result.data.count)) throw C.failure('导出范围没有确认，文件没有生成。请刷新批次列表后重试。');
-          const downloaded = await adapter.downloadExport(result.data.export_ref);
-          saveDownload(downloaded, EXPORT_NAME);
-          if (alive.current && id === serial.current) setNotice(T.download_started(EXPORT_NAME) + '（共 ' + window.WorkbenchFormat.number(result.data.count, {
+          const name = save(await adapter.downloadExport(result.data.export_ref));
+          if (alive.current && id === serial.current) setNotice(T.download_started(name) + '（共 ' + window.WorkbenchFormat.number(result.data.count, {
             digits: 0
           }) + ' 个批次）');
         }
@@ -24190,7 +24267,7 @@ function SMExport({
       name: "file-input"
     })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
       className: "tmpl-t"
-    }, TEMPLATE_NAME), /*#__PURE__*/React.createElement("div", {
+    }, "\u6279\u6B21\u5BFC\u5165\u6A21\u677F"), /*#__PURE__*/React.createElement("div", {
       className: "tmpl-s"
     }, "\u7A7A\u767D\u8868\u5934\u6A21\u677F\uFF0C\u4E0D\u542B\u793A\u4F8B\u6279\u6B21")), /*#__PURE__*/React.createElement(Button, {
       className: "mini",
@@ -24243,7 +24320,7 @@ function SMExport({
       }
     })), /*#__PURE__*/React.createElement("p", {
       className: "iohint"
-    }, "\u65B0\u6279\u6B21\u5BFC\u5165\u540E\u9700\u751F\u6210\u5DE5\u5E8F\uFF1B\u66F4\u65B0\u65F6\u7A7A\u767D\u5355\u5143\u683C\u4FDD\u7559\u539F\u503C\u3002\u7EF4\u62A4\u9F50\u5957\u6807\u8BB0\u517C\u5BB9\u65E7\u201C\u9F50\u5957\u201D\u5217\uFF1B\u72B6\u6001\u548C\u5F53\u524D\u6709\u6548\u9F50\u5957\u53EA\u4F9B\u6838\u5BF9\uFF0C\u4E0D\u5BFC\u5165\u3002"), preview && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    }, "\u65B0\u6279\u6B21\u5BFC\u5165\u540E\u9700\u751F\u6210\u5DE5\u5E8F\uFF1B\u66F4\u65B0\u65F6\u7A7A\u767D\u5355\u5143\u683C\u4FDD\u7559\u539F\u503C\u3002\u72B6\u6001\u548C\u5F53\u524D\u6709\u6548\u9F50\u5957\u53EA\u4F9B\u6838\u5BF9\uFF0C\u4E0D\u5BFC\u5165\u3002"), preview && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "tmpl-row"
     }, /*#__PURE__*/React.createElement("span", {
       className: "tmpl-ico"
@@ -24341,8 +24418,9 @@ function SMExport({
   // 查看范围读不进来时页面会退回默认范围，提示按“发生了什么 → 哪些没变 → 点哪里”写。
   const refilter = '请点「清除全部筛选」重新查询。',
     fallbackList = '，已按默认范围显示批次列表。';
+  // 返回入口统一是 {view, context} 信封：排产检查只带 view（回去时恢复排产页自己的状态），值班台带上离开时的 context。
   function validReturnTarget(value) {
-    return ['run', 'dashboard'].includes(value) || C.object(value) && Object.keys(value).every(key => ['view', 'context'].includes(key)) && C.own(value, 'view') && value.view === 'dashboard' && C.own(value, 'context') && C.object(value.context);
+    return C.object(value) && Object.keys(value).every(key => ['view', 'context'].includes(key)) && (value.view === 'run' && !C.own(value, 'context') || value.view === 'dashboard' && C.object(value.context));
   }
   function sourceContext(value, entityRef) {
     if (value == null) return null;
@@ -24406,8 +24484,6 @@ function SMExport({
   }
   function BatchWorkspace({
     adapter,
-    onCommitted,
-    disabled = false,
     initialContext,
     onNav
   }) {
@@ -24453,7 +24529,7 @@ function SMExport({
     const data = list.result && list.result.data,
       snapshot = list.result && list.result.meta.snapshot_ref;
     const entityRefs = React.useMemo(() => data ? new Set(data.entities.map(row => row.ref)) : null, [data]);
-    const blocked = disabled || !!initial.error || command.locked || busy || !!dialog;
+    const blocked = !!initial.error || command.locked || busy || !!dialog;
     const rememberedScope = Object.fromEntries(scopeKeys.filter(key => scope[key] !== undefined).map(key => [key, scope[key]]));
     window.WorkbenchPageContext.useSnapshot({
       read_view: {
@@ -24504,10 +24580,9 @@ function SMExport({
       }
       setRevision(current => current + 1);
       filter({});
-      if (onCommitted) onCommitted(receipt);
     }
     async function preview(action, input, entity, token) {
-      if (disabled || command.locked || busy) return;
+      if (command.locked || busy) return;
       setBusy(true);
       setError(null);
       const id = ++serial.current;
@@ -24559,9 +24634,7 @@ function SMExport({
       });
     }
     // 没有来源入口时是从侧栏直接进来的，按钮是去下一步而不是返回。
-    const returnSource = initial.sourceContext !== null && initial.sourceContext.return_to !== undefined ? initial.sourceContext.return_to : null;
-    const returnTarget = returnSource || 'run';
-    const returnView = typeof returnTarget === 'string' ? returnTarget : returnTarget.view;
+    const returnTarget = initial.sourceContext !== null && initial.sourceContext.return_to !== undefined ? initial.sourceContext.return_to : null;
     const openEditor = entity => {
       command.reset();
       setDialog({
@@ -24707,15 +24780,15 @@ function SMExport({
       disabled: blocked,
       onClick: clearFilters
     }, "\u6E05\u9664\u5168\u90E8\u7B5B\u9009"), onNav && /*#__PURE__*/React.createElement(Button, {
-      icon: returnSource ? 'arrow-left' : 'arrow-right',
+      icon: returnTarget ? 'arrow-left' : 'arrow-right',
       disabled: blocked,
-      onClick: () => !returnSource ? onNav(returnTarget, selected.length > 0 ? {
+      onClick: () => returnTarget ? onNav(returnTarget.view, returnTarget.context) : onNav('run', selected.length > 0 ? {
         scope: {
           source: 'production',
           batch_refs: selected
         }
-      } : {}) : typeof returnTarget === 'string' ? onNav(returnTarget) : onNav(returnTarget.view, returnTarget.context)
-    }, !returnSource ? '下一步 · 去排产' : returnView === 'dashboard' ? '返回值班台' : '返回排产'))), /*#__PURE__*/React.createElement(window.BatchTable, {
+      } : {})
+    }, !returnTarget ? '下一步 · 去排产' : returnTarget.view === 'dashboard' ? '返回值班台' : '返回排产'))), /*#__PURE__*/React.createElement(window.BatchTable, {
       adapter: adapter,
       rows: data ? data.entities : [],
       scope: scope,
@@ -24792,8 +24865,7 @@ function SMExport({
       source: list.result && list.result.meta.source,
       command: command,
       onClose: close,
-      onCommitted: committed,
-      disabled: disabled
+      onCommitted: committed
     }), dialog && dialog.type === 'operation' && /*#__PURE__*/React.createElement(window.BatchOperationEditor, {
       adapter: adapter,
       entity: dialog.entity,
@@ -24801,21 +24873,18 @@ function SMExport({
       source: "production",
       command: command,
       onClose: close,
-      onCommitted: committed,
-      disabled: disabled
+      onCommitted: committed
     }), dialog && dialog.type === 'materials' && /*#__PURE__*/React.createElement(window.BatchMaterialEditor, {
       adapter: adapter,
       entity: dialog.entity,
       command: command,
       onClose: close,
-      onCommitted: committed,
-      disabled: disabled
+      onCommitted: committed
     }), dialog && dialog.type === 'preview' && /*#__PURE__*/React.createElement(window.BatchForms.Preview, {
       preview: dialog.preview,
       command: command,
       onClose: close,
-      onCommitted: committed,
-      disabled: disabled
+      onCommitted: committed
     }), dialog && dialog.type === 'files' && /*#__PURE__*/React.createElement(window.BatchFiles, {
       adapter: adapter,
       mode: dialog.mode,
@@ -24824,8 +24893,7 @@ function SMExport({
       snapshot: dialog.snapshot,
       command: command,
       onClose: close,
-      onCommitted: committed,
-      disabled: disabled
+      onCommitted: committed
     }), dialog && dialog.type === 'column' && /*#__PURE__*/React.createElement(window.BatchTable.ColumnFilter, {
       adapter: adapter,
       scope: dialog.scope,
@@ -26407,10 +26475,9 @@ function SMExport({
     onSelect,
     query,
     onQuery,
-    disabled = false,
     toolbarActions,
     initialMode,
-    initialBaseline = false
+    initialBaseline
   }) {
     const [mode, setMode] = React.useState(initialMode === 'operator' ? 'operator' : 'machine'),
       [baseline, setBaseline] = React.useState(initialBaseline),
@@ -26600,7 +26667,7 @@ function SMExport({
       "data-plan-gantt": true,
       "data-printing": printing || undefined,
       onKeyDown: event => {
-        if (disabled || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.target.closest('input,textarea,select,[role=dialog]')) return;
+        if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.target.closest('input,textarea,select,[role=dialog]')) return;
         if (event.key === '/') {
           event.preventDefault();
           search.current.focus();
@@ -26629,8 +26696,7 @@ function SMExport({
       value: mode,
       options: Object.entries(M.kindLabels),
       onChange: setMode,
-      label: "\u7518\u7279\u5206\u7EC4",
-      disabled: disabled
+      label: "\u7518\u7279\u5206\u7EC4"
     }), showBaseline && /*#__PURE__*/React.createElement("label", {
       className: "plan-check",
       title: "\u663E\u793A\u4FDD\u5B58\u7684\u539F\u5B89\u6392"
@@ -26638,7 +26704,6 @@ function SMExport({
       type: "checkbox",
       "aria-label": "\u663E\u793A\u539F\u5B89\u6392",
       checked: displayBaseline,
-      disabled: disabled,
       onChange: event => setBaseline(event.target.checked)
     }), "\u663E\u793A\u539F\u5B89\u6392"), showBaseline && /*#__PURE__*/React.createElement("label", {
       className: "plan-check",
@@ -26647,7 +26712,6 @@ function SMExport({
       type: "checkbox",
       "aria-label": "\u53EA\u770B\u6709\u53D8\u5316\u7684\u5DE5\u5E8F",
       checked: displayChangedOnly,
-      disabled: disabled,
       onChange: event => setChangedOnly(event.target.checked)
     }), "\u53EA\u770B\u6709\u53D8\u5316\u7684\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("label", {
       className: "search plan-search"
@@ -26676,7 +26740,6 @@ function SMExport({
       max: ZOOM_MAX,
       onZoom: changeZoom,
       onFit: fit,
-      disabled: disabled,
       className: "btn plan-icon"
     }), /*#__PURE__*/React.createElement(Button, {
       icon: "search",
@@ -26691,7 +26754,6 @@ function SMExport({
       "aria-label": expanded ? '收起甘特' : '展开甘特',
       title: expanded ? '返回完整工作区' : '展开甘特工作区',
       "aria-expanded": expanded,
-      disabled: disabled,
       onClick: toggle
     }, expanded ? '收起' : '展开'), toolbarActions)), /*#__PURE__*/React.createElement(window.GanttGraphLayer.Controls, {
       graph: data.gantt_graph,
@@ -26702,8 +26764,7 @@ function SMExport({
       onClear: () => {
         setHover(null);
         onSelect(null);
-      },
-      disabled: disabled
+      }
     }), /*#__PURE__*/React.createElement("div", {
       className: "plan-board-frame"
     }, !printing && width > viewport && /*#__PURE__*/React.createElement(Overview, {
@@ -26966,11 +27027,9 @@ function SMExport({
     }, text, unavailable ? ' · 不可查看' : '');
   }
   function Catalog({
-    adapter,
     selectedRef,
     onSelect,
-    autoSelect = false,
-    disabled = false,
+    autoSelect,
     actions,
     navigation
   }) {
@@ -26987,18 +27046,18 @@ function SMExport({
       size: 20,
       ...pages[index]
     }), [collection, pages, index]);
-    const read = S.useQuery(signal => adapter.catalog(scope, signal), [adapter, scope], !paused);
+    const read = S.useQuery(signal => window.APSPlanAPI.catalog(scope, signal), [scope], !paused);
     const result = read.result,
       data = result && result.data;
     React.useEffect(() => {
       if (attempted.current || !data || read.loading || read.error || collection !== 'history' || index !== 0) return;
       attempted.current = true;
-      const plan = autoSelect && !selectedRef && !disabled ? window.PlanSelectionModel.defaultPlan(data.plans) : null;
+      const plan = autoSelect && !selectedRef ? window.PlanSelectionModel.defaultPlan(data.plans) : null;
       if (plan) {
         setCollapsed(true);
         onSelect(plan);
       }
-    }, [data, read.loading, read.error, autoSelect, selectedRef, disabled, collection, index]);
+    }, [data, read.loading, read.error, autoSelect, selectedRef, collection, index]);
     React.useLayoutEffect(() => {
       if (collapsed && restoreFocus.current && section.current) {
         restoreFocus.current = false;
@@ -27041,7 +27100,7 @@ function SMExport({
     }, "\u8BA1\u5212 ", /*#__PURE__*/React.createElement("select", {
       "aria-label": "\u5207\u6362\u6240\u9009\u8BA1\u5212",
       value: selectedRef || '',
-      disabled: disabled || read.loading || !!read.error,
+      disabled: read.loading || !!read.error,
       onChange: event => {
         const plan = data && data.plans.find(item => item.plan_ref === event.target.value && item.capabilities.view);
         if (plan) choose(plan);
@@ -27059,15 +27118,13 @@ function SMExport({
       value: collection,
       options: [["history", "历史版本"], ["scenario", "试调方案"]],
       label: "\u8BA1\u5212\u5217\u8868\u8303\u56F4",
-      onChange: refresh,
-      disabled: disabled
+      onChange: refresh
     }), /*#__PURE__*/React.createElement("div", {
       className: "plan-catalog-actions"
     }, actions, !collapsed && /*#__PURE__*/React.createElement(Button, {
       className: "btn plan-icon",
       icon: "refresh-cw",
       "aria-label": "\u5237\u65B0\u8BA1\u5212\u5217\u8868",
-      disabled: disabled,
       busy: read.loading,
       onClick: () => refresh()
     }), read.loading && /*#__PURE__*/React.createElement(Button, {
@@ -27122,7 +27179,7 @@ function SMExport({
       name: "plan-choice",
       "aria-label": '选择 ' + plan.display_name,
       checked: !!plan.plan_ref && plan.plan_ref === selectedRef,
-      disabled: disabled || !plan.capabilities.view,
+      disabled: !plan.capabilities.view,
       onChange: () => choose(plan)
     }), /*#__PURE__*/React.createElement("strong", null, plan.display_name))), /*#__PURE__*/React.createElement("td", null, plan.version === null ? '未记录' : String(plan.version)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Identity, {
       plan: plan
@@ -27146,7 +27203,6 @@ function SMExport({
       mode: "cursor",
       page: index + 1,
       label: "\u8BA1\u5212\u5217\u8868",
-      disabled: disabled,
       busy: read.loading,
       hasPrevious: index > 0,
       hasNext: data.page.has_more,
@@ -27437,7 +27493,7 @@ function SMExport({
     }, "\u4EE5\u4E0B\u6C47\u603B\u8986\u76D6\u6240\u9009\u65F6\u95F4\u8303\u56F4\u5185\u8BE5\u8D44\u6E90\u7684\u5168\u90E8\u5B89\u6392\u3002"), resources.map(row => /*#__PURE__*/React.createElement("div", {
       key: row.resource_ref
     }, /*#__PURE__*/React.createElement("strong", null, row.label || labels.get(row.resource_ref) || '资源名称未填写'), /*#__PURE__*/React.createElement(Facts, {
-      items: [['班内已占', row.available_occupied_hours === null ? '暂无数据' : F.hours(row.available_occupied_hours, 2)], ['可排总时长', row.available_hours === null ? '暂无数据' : F.hours(row.available_hours, 2)], ['占用比例', row.utilization === null ? issueText(row.issues) : F.percent(row.utilization, 2)], ['班表内重叠', row.metric_version !== 'decision-resource-v4' ? '旧资料未记录' : row.available_overlap_hours === null ? '待确认' : /*#__PURE__*/React.createElement("span", {
+      items: [['班内已占', row.available_occupied_hours === null ? '暂无数据' : F.hours(row.available_occupied_hours, 2)], ['可排总时长', row.available_hours === null ? '暂无数据' : F.hours(row.available_hours, 2)], ['占用比例', row.utilization === null ? issueText(row.issues) : F.percent(row.utilization, 2)], ['班表内重叠', row.available_overlap_hours === null ? '待确认' : /*#__PURE__*/React.createElement("span", {
         className: row.has_overlap ? 'plan-danger' : ''
       }, F.hours(row.available_overlap_hours, 2))]]
     }), /*#__PURE__*/React.createElement(OccupancyDetails, {
@@ -27449,7 +27505,7 @@ function SMExport({
   function conflictRows(data) {
     const projection = data.projections.occupancy;
     // The read contract validates identities and interval boundaries; the source supplies calendar-bound conflict segments.
-    const rows = projection.resources.filter(resource => resource.metric_version === 'decision-resource-v4' && resource.has_overlap === true).flatMap(resource => resource.conflict_segments.map(segment => ({
+    const rows = projection.resources.filter(resource => resource.has_overlap === true).flatMap(resource => resource.conflict_segments.map(segment => ({
       kind: resource.kind,
       resource_ref: resource.resource_ref,
       label: resource.label,
@@ -27482,15 +27538,14 @@ function SMExport({
       });
     }, [rows, prepared, current]);
     const labels = prepared.labels;
-    const legacy = projection.resources.some(resource => resource.metric_version !== 'decision-resource-v4');
-    const known = projection.state === 'available' && !legacy;
+    const known = projection.state === 'available';
     const empty = !known ? '班表内重叠资料未记录，暂无法完整核对。' : !projection.resources.length ? '当前读取范围没有资源占用记录。' : '当前读取范围未发现班表内资源安排重叠。';
     return /*#__PURE__*/React.createElement("section", {
       className: "plan-projections",
       "aria-label": "\u8D44\u6E90\u91CD\u53E0\u660E\u7EC6"
     }, /*#__PURE__*/React.createElement("h3", null, "\u73ED\u8868\u5185\u8D44\u6E90\u91CD\u53E0\u660E\u7EC6"), !known && /*#__PURE__*/React.createElement("div", {
       className: "plan-note"
-    }, legacy ? '旧资料未保存班表内重叠时段，预留跨度保留在资源负荷详情。' : '部分班表资料缺失，以下为已确认的班表内重叠时段。'), /*#__PURE__*/React.createElement(Issues, {
+    }, "\u90E8\u5206\u73ED\u8868\u8D44\u6599\u7F3A\u5931\uFF0C\u4EE5\u4E0B\u4E3A\u5DF2\u786E\u8BA4\u7684\u73ED\u8868\u5185\u91CD\u53E0\u65F6\u6BB5\u3002"), /*#__PURE__*/React.createElement(Issues, {
       issues: projection.issues
     }), rows.length ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "plan-projection-table wb-table-frame",
@@ -27538,9 +27593,9 @@ function SMExport({
     prepared,
     onBatch,
     onResource,
-    tab = 'risk',
+    tab,
     onTab,
-    page = 0,
+    page,
     onPage
   }) {
     const projections = data.projections,
@@ -27619,9 +27674,7 @@ function SMExport({
       style: {
         width: row.utilization * 100 + '%'
       }
-    })))), /*#__PURE__*/React.createElement("td", null, row.metric_version !== 'decision-resource-v4' ? /*#__PURE__*/React.createElement("div", {
-      className: "plan-muted"
-    }, "\u73ED\u8868\u5185\u91CD\u53E0\u672A\u8BB0\u5F55") : row.has_overlap === true && /*#__PURE__*/React.createElement("div", {
+    })))), /*#__PURE__*/React.createElement("td", null, row.has_overlap === true && /*#__PURE__*/React.createElement("div", {
       className: "plan-danger"
     }, "\u73ED\u8868\u5185\u91CD\u53E0 ", F.hours(row.available_overlap_hours, 2)), row.issues.length > 0 && /*#__PURE__*/React.createElement("div", {
       className: "plan-muted"
@@ -27668,17 +27721,8 @@ function SMExport({
     Modal,
     ErrorBox
   } = window.ResourceControls;
-  const C = window.APSResourceContract,
-    M = window.PlanGanttModel;
-  function filename(disposition, format) {
-    const unicode = /filename\*=UTF-8''([^;]+)/i.exec(disposition),
-      plain = /filename="([^"\r\n]+)"|filename=([^;\s]+)/i.exec(disposition);
-    const name = unicode ? decodeURIComponent(unicode[1]) : plain && (plain[1] || plain[2]);
-    if (!name || /[/\\\u0000-\u001f]/.test(name) || !name.toLowerCase().endsWith('.' + format)) throw C.failure('导出文件名不正确，已停止下载。');
-    return name;
-  }
+  const M = window.PlanGanttModel;
   function PlanExportUI({
-    adapter,
     result,
     query,
     matched,
@@ -27691,7 +27735,7 @@ function SMExport({
     const active = React.useRef(null);
     React.useEffect(() => () => {
       if (active.current) active.current.abort();
-    }, [adapter, result]);
+    }, [result]);
     const reason = disabled || !result ? '先读取所选计划，才能导出当前内容。' : !result.data.plan.capabilities.export ? '当前还不能导出所选计划。' : '';
     function cancel() {
       if (active.current) active.current.abort();
@@ -27715,22 +27759,11 @@ function SMExport({
           scope.range_start = result.data.scope.range_start;
           scope.range_end = result.data.scope.range_end;
         }
-        // APSPlanAPI.export 校验导出范围与下载结果（PlanContract.exportScope / download）。
-        const output = await adapter.export(result.data.plan.plan_ref, scope, controller.signal);
+        // APSPlanAPI.export 校验导出范围与下载文件名（PlanContract.exportScope / download）。
+        const output = await window.APSPlanAPI.export(result.data.plan.plan_ref, scope, controller.signal);
         if (controller.signal.aborted || active.current !== controller) return;
-        const name = filename(output.disposition, format),
-          url = URL.createObjectURL(output.blob),
-          anchor = document.createElement('a');
-        try {
-          anchor.href = url;
-          anchor.download = name;
-          document.body.appendChild(anchor);
-          anchor.click();
-        } finally {
-          anchor.remove();
-          window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-        }
-        setNotice(window.WorkbenchTerms.download_started(name));
+        window.APSWorkbenchTransport.saveBlob(output.filename, output.blob);
+        setNotice(window.WorkbenchTerms.download_started(output.filename));
         setFormat(null);
       } catch (failure) {
         if (!controller.signal.aborted && active.current === controller) setError(failure);
@@ -27804,27 +27837,18 @@ function SMExport({
       ProjectionTables,
       Conflicts
     } = window.PlanDetailsUI;
-  const adapterIds = new WeakMap();
-  let nextAdapter = 0;
-  function adapterId(adapter) {
-    if (!adapterIds.has(adapter)) adapterIds.set(adapter, ++nextAdapter);
-    return adapterIds.get(adapter);
-  }
   // The three plan-centre tabs share the heading and task detail; the body differs: analysis = projection tables,
   // gantt = the gantt board, delay = projection tables plus resource overlap. Selecting a batch or a related task on a
   // tab without the gantt only selects it for the task detail; the gantt locates it when that tab is shown.
   function WorkspaceSession({
-    adapter,
-    view = 'analysis',
-    planRef,
+    view,
     initialContext,
-    disabled = false,
     renderTrial,
     navigation,
     onNavigate
   }) {
-    const [selection, setSelection] = React.useState(() => planRef || initialContext.plan_ref ? {
-      plan_ref: planRef || initialContext.plan_ref,
+    const [selection, setSelection] = React.useState(() => initialContext.plan_ref ? {
+      plan_ref: initialContext.plan_ref,
       display_name: '指定计划'
     } : null);
     const [scope, setScope] = React.useState(() => {
@@ -27851,7 +27875,7 @@ function SMExport({
       side: initialContext.selected_task_side === 'before' ? 'before' : 'current'
     } : null);
     // APSPlanAPI.workspace 自己校验读取范围（PlanContract.workspaceScope）。
-    const read = S.useQuery(signal => adapter.workspace(selection.plan_ref, scope, signal), [adapter, selection && selection.plan_ref, scope], !!selection && !paused);
+    const read = S.useQuery(signal => window.APSPlanAPI.workspace(selection.plan_ref, scope, signal), [selection && selection.plan_ref, scope], !!selection && !paused);
     const result = read.result,
       data = result && result.data;
     const prepared = React.useMemo(() => {
@@ -28007,7 +28031,7 @@ function SMExport({
     }
     function applyRange(event) {
       event.preventDefault();
-      if (!selection || disabled) return;
+      if (!selection) return;
       try {
         const time = window.WorkbenchDatePickerModel.factoryTime;
         const start = time(range.start),
@@ -28024,7 +28048,7 @@ function SMExport({
     }
     const matches = React.useMemo(() => prepared ? M.matching(prepared, query) : [], [prepared, query]);
     const risks = data && data.projections.delivery_risks.items;
-    const ready = !!data && !disabled;
+    const ready = !!data;
     const scopeCaption = data ? M.scopeCaption(data) : '';
     window.WorkbenchCaption.useCaption(data && !read.loading && !read.error && !paused ? {
       reference: data.plan.plan_ref,
@@ -28042,11 +28066,9 @@ function SMExport({
       className: "plan-scope wb-surface",
       "aria-label": "\u65B9\u6848\u4E0E\u8303\u56F4"
     }, /*#__PURE__*/React.createElement(Catalog, {
-      adapter: adapter,
       selectedRef: selection && selection.plan_ref,
       onSelect: choose,
-      autoSelect: !planRef && Object.keys(initialContext).length === 0,
-      disabled: disabled,
+      autoSelect: Object.keys(initialContext).length === 0,
       navigation: navigation,
       actions: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
         icon: "calendar-days",
@@ -28062,7 +28084,6 @@ function SMExport({
         disabled: !ready || read.loading
       }), /*#__PURE__*/React.createElement(window.PlanExportUI, {
         key: result ? result.meta.snapshot_ref : 'unavailable',
-        adapter: adapter,
         result: result,
         query: query,
         matched: matches.length,
@@ -28071,7 +28092,7 @@ function SMExport({
         icon: "refresh-cw",
         className: "btn plan-icon",
         "aria-label": "\u5237\u65B0\u6240\u9009\u8BA1\u5212",
-        disabled: !selection || disabled,
+        disabled: !selection,
         busy: read.loading,
         onClick: refresh
       }), read.loading && /*#__PURE__*/React.createElement(Button, {
@@ -28111,10 +28132,10 @@ function SMExport({
     })), /*#__PURE__*/React.createElement(Button, {
       type: "submit",
       icon: "check",
-      disabled: disabled || read.loading
+      disabled: read.loading
     }, "\u5E94\u7528\u8303\u56F4"), /*#__PURE__*/React.createElement(Button, {
       icon: "chart-gantt",
-      disabled: disabled || read.loading,
+      disabled: read.loading,
       onClick: () => changeScope({})
     }, "\u5B8C\u6574\u8BA1\u5212"), /*#__PURE__*/React.createElement("p", {
       className: "plan-muted plan-range-help"
@@ -28186,7 +28207,6 @@ function SMExport({
       onSelect: selectTask,
       query: query,
       onQuery: setQuery,
-      disabled: disabled,
       initialMode: initialContext.resource_kind,
       initialBaseline: !!initialTask.current && initialTask.current.side === 'before',
       toolbarActions: /*#__PURE__*/React.createElement("span", {
@@ -28229,13 +28249,11 @@ function SMExport({
     })));
   }
   function PlanWorkspace(props) {
-    const adapter = React.useMemo(() => window.APSPlanAPI.adapter(props.adapter || window.APSPlanAPI.create()), [props.adapter]);
     const context = props.initialContext;
-    const navigation = [props.planRef || context.plan_ref, context.range_start, context.range_end, context.snapshot_ref];
+    const navigation = [context.plan_ref, context.range_start, context.range_end, context.snapshot_ref];
     return /*#__PURE__*/React.createElement(WorkspaceSession, {
-      key: adapterId(adapter) + ':' + JSON.stringify(navigation),
-      ...props,
-      adapter: adapter
+      key: JSON.stringify(navigation),
+      ...props
     });
   }
   window.PlanWorkspace = PlanWorkspace;
@@ -28291,7 +28309,7 @@ function SMExport({
     const p = value && value.execution;
     return C.object(value) && ref(value.task_ref) && ref(value.plan_ref) && planned(value) && planQuantity(value) && typeof value.batch_id === 'string' && typeof value.operation_label === 'string' && C.object(p) && ref(p.operation_ref) && p.operation_ref === value.operation_ref && (p.comparison_task_ref === null || p.comparison_task_ref === value.task_ref) && Object.hasOwnProperty.call(states, p.execution_state) && ['complete', 'incomplete', 'legacy_incomplete', 'invalid'].includes(p.data_quality) && nullable(p.target_quantity) && nullable(p.known_completed_quantity) && nullable(p.remaining_quantity) && typeof p.records_complete === 'boolean' && typeof p.quantity_complete === 'boolean' && Number.isInteger(p.unknown_record_count) && Array.isArray(p.data_gaps) && Array.isArray(p.reports) && p.reports.every(row => report(row) && row.operation_ref === p.operation_ref) && Array.isArray(p.legacy_facts) && Array.isArray(p.voided_reports) && C.object(p.write_context);
   }
-  // 信封（ok、schema_version、meta、data 对象）已由 resource-api.js 的 production() 校验，这里只校验 data。
+  // 信封（ok、schema_version、meta、data 对象）已由 transport.js 的 envelope() 校验，这里只校验 data。
   function query(result, mode, expected) {
     const d = result.data;
     if (mode === 'list' && (!Array.isArray(d.tasks) || !d.tasks.every(task) || !C.object(d.page) || !Number.isInteger(d.page.total) || !C.object(d.summary))) throw C.failure('读到的现场任务列表不完整，请刷新重试。');
@@ -28343,19 +28361,6 @@ function SMExport({
     result.declared_operator = value.declared_operator.trim();
     return result;
   }
-  function saveFile(file, fallback) {
-    // resource-api.js 的二进制下载只在服务端回 JSON 成功信封时不带 blob；带 blob 时恒非空且 disposition 恒为字符串。
-    if (!(file.blob instanceof Blob) || !file.contentType.includes('spreadsheetml')) throw C.failure('下载不是有效 XLSX 文件。');
-    const match = /filename\*=UTF-8''([^;]+)/i.exec(file.disposition);
-    const url = URL.createObjectURL(file.blob),
-      link = document.createElement('a');
-    link.href = url;
-    link.download = match ? decodeURIComponent(match[1]) : fallback;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
   const display = value => value === null || value === undefined || value === '' ? '未知' : String(value);
   // Report times are second-precision (see the time pattern and step="1" inputs): seconds stay visible whenever they are
   // not :00, so nothing is lost while whole-minute times read as minutes. WorkbenchFormat has no auto option yet.
@@ -28375,7 +28380,6 @@ function SMExport({
     blocked,
     draft,
     input,
-    saveFile,
     display,
     date,
     quantity,
@@ -28518,7 +28522,7 @@ function SMExport({
       ...(value.plan_ref ? {
         plan_ref: value.plan_ref
       } : {}),
-      task_ref: value.task_ref || value.entity_ref,
+      task_ref: value.task_ref,
       operation_ref: value.operation_ref,
       page: value.table ? value.table.page : undefined,
       size: value.table ? value.table.size : 20
@@ -28560,8 +28564,8 @@ function SMExport({
     const keys = Object.keys(expected).sort();
     return JSON.stringify(keys) === JSON.stringify(Object.keys(actual).sort()) && keys.every(key => JSON.stringify(expected[key]) === JSON.stringify(actual[key]));
   }
-  async function readView(api, input, signal) {
-    if (input.snapshot_ref) return checked(await api.list(input, signal), input);
+  async function readView(input, signal) {
+    if (input.snapshot_ref) return checked(await list(input, signal), input);
     if (input.operation_ref && !input.task_ref) throw window.APSResourceContract.failure('核对原工序时缺少明确任务，没有改选其他任务。');
     if (input.page !== undefined && (!Number.isInteger(input.page) || input.page < 1 || input.page > 100000)) throw window.APSResourceContract.failure('现场原页码无效，未切换到其他页。');
     if (input.task_ref) {
@@ -28571,7 +28575,7 @@ function SMExport({
         page: 1
       };
       delete query.snapshot_ref;
-      const result = checked(await api.list(query, signal), input);
+      const result = checked(await list(query, signal), input);
       const original = result.data.tasks.find(task => task.task_ref === input.task_ref);
       if (input.page !== undefined && result.data.page.number !== input.page || !original || input.operation_ref && original.operation_ref !== input.operation_ref || !taskScopeMatches(result.data.scope, input)) throw window.APSResourceContract.failure('原现场任务、页码或筛选范围已不匹配，没有切换到其他任务。');
       return result;
@@ -28582,72 +28586,72 @@ function SMExport({
     delete query.snapshot_ref;
     delete query.task_ref;
     delete query.operation_ref;
-    const result = checked(await api.list(query, signal), input);
+    const result = checked(await list(query, signal), input);
     if (!taskScopeMatches(result.data.scope, input)) throw window.APSResourceContract.failure('原现场任务、页码或筛选范围已不匹配，没有切换到其他任务。');
     return result;
   }
-  function create() {
-    const api = window.APSResourceAPI.create('execution'),
-      C = window.FieldContract;
-    const queryScope = scope => ({
-      ...scope,
-      ...(Array.isArray(scope.batch_ids) ? {
-        batch_ids: JSON.stringify(scope.batch_ids)
-      } : {})
-    });
-    function target(group, ref) {
-      if (!C.ref(ref)) throw window.APSResourceContract.failure('报工或任务编号无效。');
-      return 'execution/' + group + '/' + ref;
-    }
-    return {
-      readPending: api.readPending,
-      savePending: api.savePending,
-      clearPending: api.clearPending,
-      lookup: api.lookup,
-      list(scope, signal) {
-        return api.query('execution/tasks', queryScope(scope), signal);
-      },
-      detail(ref, scope, signal) {
-        return api.query(target('tasks', ref), queryScope(scope), signal);
-      },
-      choices(kind, scope, signal) {
-        return api.choices(kind, scope, signal);
-      },
-      previewVoid(ref, input, signal) {
-        return api.preview(target('reports', ref) + '/void-preview', {
-          input
-        }, signal);
-      },
-      previewFile(file, scope, snapshot, signal) {
-        const body = new FormData();
-        body.set('file', file);
-        body.set('scope', JSON.stringify(scope));
-        body.set('snapshot_ref', snapshot);
-        return api.preview('execution/files/preview', body, signal);
-      },
-      download(mode, scope, snapshot, signal) {
-        return api.download('execution/files/' + mode, {
-          ...queryScope(scope),
-          snapshot_ref: snapshot
-        }, signal);
-      },
-      downloadErrors(previewRef, signal) {
-        return api.download('execution/files/errors', {
-          preview_ref: previewRef
-        }, signal);
-      },
-      async command(kind, action, ref, body, signal) {
-        if (kind !== 'execution' || !['create', 'supplement', 'correct', 'report_void', 'import_confirm'].includes(action)) throw window.APSResourceContract.failure('现场操作不正确。');
-        const path = action === 'create' ? target('tasks', ref) + '/reports' : action === 'import_confirm' ? 'execution/files/confirm' : target('reports', ref) + '/' + (action === 'report_void' ? 'void' : action);
-        if (action === 'import_confirm' && ref !== body.input.preview_ref) throw window.APSResourceContract.failure('确认与原预检不匹配。');
-        return api.execute(path, body, signal);
-      }
-    };
+  const api = window.APSResourceAPI.create('execution'),
+    C = window.FieldContract;
+  const queryScope = scope => ({
+    ...scope,
+    ...(Array.isArray(scope.batch_ids) ? {
+      batch_ids: JSON.stringify(scope.batch_ids)
+    } : {})
+  });
+  function target(group, ref) {
+    if (!C.ref(ref)) throw window.APSResourceContract.failure('报工或任务编号无效。');
+    return 'execution/' + group + '/' + ref;
+  }
+  function list(scope, signal) {
+    return api.query('execution/tasks', queryScope(scope), signal);
   }
   window.FieldAPI = {
-    create,
     initial,
-    readView
+    readView,
+    list,
+    readPending: api.readPending,
+    savePending: api.savePending,
+    clearPending: api.clearPending,
+    lookup: api.lookup,
+    detail(ref, scope, signal) {
+      return api.query(target('tasks', ref), queryScope(scope), signal);
+    },
+    choices(kind, scope, signal) {
+      return api.choices(kind, scope, signal);
+    },
+    previewVoid(ref, input, signal) {
+      return api.preview(target('reports', ref) + '/void-preview', {
+        input
+      }, signal);
+    },
+    previewFile(file, scope, snapshot, signal) {
+      const body = new FormData();
+      body.set('file', file);
+      body.set('scope', JSON.stringify(scope));
+      body.set('snapshot_ref', snapshot);
+      return api.preview('execution/files/preview', body, signal);
+    },
+    download(mode, scope, snapshot, signal) {
+      return api.download('execution/files/' + mode, {
+        ...queryScope(scope),
+        snapshot_ref: snapshot
+      }, signal, {
+        types: [window.APSWorkbenchTransport.types.xlsx]
+      });
+    },
+    downloadErrors(previewRef, signal) {
+      return api.download('execution/files/errors', {
+        preview_ref: previewRef
+      }, signal, {
+        types: [window.APSWorkbenchTransport.types.xlsx]
+      });
+    },
+    async command(kind, action, ref, body) {
+      if (kind !== 'execution' || !['create', 'supplement', 'correct', 'report_void', 'import_confirm'].includes(action)) throw window.APSResourceContract.failure('现场操作不正确。');
+      const path = action === 'create' ? target('tasks', ref) + '/reports' : action === 'import_confirm' ? 'execution/files/confirm' : target('reports', ref) + '/' + (action === 'report_void' ? 'void' : action);
+      if (action === 'import_confirm' && ref !== body.input.preview_ref) throw window.APSResourceContract.failure('确认与原预检不匹配。');
+      return api.execute(path, body);
+    }
   };
 })();
 
@@ -28712,14 +28716,13 @@ function SMExport({
     onDone,
     excludePaths = []
   }) {
-    const error = command.error && (command.error.error || command.error);
     return /*#__PURE__*/React.createElement("div", {
       "aria-live": "polite"
     }, /*#__PURE__*/React.createElement(ErrorBox, {
       error: command.error,
       excludePaths: excludePaths
     }), /*#__PURE__*/React.createElement(Conflicts, {
-      rows: error ? error.conflicts : undefined
+      rows: command.error ? command.error.conflicts : undefined
     }), command.locked && /*#__PURE__*/React.createElement("div", {
       className: "field-note"
     }, command.phase === 'sending' ? '正在保存，请保留当前页面。' : window.WorkbenchTerms.outcomes.pending('报工'), " ", /*#__PURE__*/React.createElement(Button, {
@@ -29248,7 +29251,7 @@ function SMExport({
     const changed = baseline.report_ref !== record.report_ref || baseline.revision_ref !== record.revision_ref;
     const locked = command.locked || command.phase === 'done' || reading || changed;
     React.useLayoutEffect(() => {
-      if (onDraft) onDraft({
+      onDraft({
         draft,
         baseline,
         dirty: !!(draft.reason || draft.declared_operator)
@@ -29620,7 +29623,7 @@ function SMExport({
       error: request.error
     }), /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
-      onClick: () => request.error && (request.error.error && request.error.error.code || request.error.code) === 'snapshot_stale' && onRefresh ? onRefresh() : request.reload(),
+      onClick: () => request.error && request.error.code === 'snapshot_stale' && onRefresh ? onRefresh() : request.reload(),
       disabled: command.locked
     }, "\u5237\u65B0\u8BE6\u60C5"), editor && /*#__PURE__*/React.createElement(Button, {
       onClick: onCloseEditor,
@@ -29940,7 +29943,11 @@ function SMExport({
           if (!file || !/\.xlsx$/i.test(file.name) || file.size > 8 * 1024 * 1024) throw window.APSResourceContract.failure('请选择不超过 8 MB 的 XLSX 文件。');
           const value = C.query(await adapter.previewFile(file, scope, snapshot, controller.current.signal), 'preview').data;
           if (active.current) setPreview(value);
-        } else if (action === 'errors') C.saveFile(await adapter.downloadErrors(preview.preview_ref, controller.current.signal), '报工导入问题.xlsx');else C.saveFile(await adapter.download(action, scope, snapshot, controller.current.signal), action === 'template' ? '现场分次报工模板.xlsx' : '现场报工导出.xlsx');
+        } else {
+          // 类型、魔数和带 .xlsx 后缀的文件名都由 transport 校验，这里按后端文件名存盘。
+          const download = action === 'errors' ? await adapter.downloadErrors(preview.preview_ref, controller.current.signal) : await adapter.download(action, scope, snapshot, controller.current.signal);
+          window.APSWorkbenchTransport.saveBlob(download.filename, download.blob);
+        }
       } catch (error) {
         if (active.current) setError(error);
       } finally {
@@ -29985,7 +29992,7 @@ function SMExport({
       onClick: () => run('export')
     }, "\u5BFC\u51FA\u5F53\u524D\u8303\u56F4")), /*#__PURE__*/React.createElement("div", {
       className: "field-note"
-    }, "XLSX \xB7 13 \u5217 \xB7 \u4EFB\u52A1\u7F16\u53F7\u3001\u5DE5\u5E8F\u8303\u56F4\u3001\u5355\u4EF6\u7F16\u53F7\u5DF2\u9884\u586B\uFF0C\u4E0D\u53EF\u4FEE\u6539 \xB7 \u517C\u5BB9\u65E7 10 \u5217"), /*#__PURE__*/React.createElement("div", {
+    }, "XLSX \xB7 13 \u5217 \xB7 \u4EFB\u52A1\u7F16\u53F7\u3001\u5DE5\u5E8F\u8303\u56F4\u3001\u5355\u4EF6\u7F16\u53F7\u5DF2\u9884\u586B\uFF0C\u4E0D\u53EF\u4FEE\u6539"), /*#__PURE__*/React.createElement("div", {
       className: "field-upload"
     }, /*#__PURE__*/React.createElement(Button, {
       icon: "folder-open",
@@ -30073,16 +30080,14 @@ function SMExport({
       Button,
       ErrorBox,
       Feedback
-    } = window.FieldControls;
-  let productionAdapter;
+    } = window.FieldControls,
+    api = window.FieldAPI;
   function FieldWorkspace({
-    adapter,
     onNavigate,
     initialContext
   }) {
-    const api = React.useMemo(() => adapter || productionAdapter || (productionAdapter = window.FieldAPI.create()), [adapter]);
-    const [scope, setScope] = React.useState(() => window.FieldAPI.initial(initialContext));
-    const [opened, setOpened] = React.useState(initialContext.task_ref || initialContext.entity_ref || null),
+    const [scope, setScope] = React.useState(() => api.initial(initialContext));
+    const [opened, setOpened] = React.useState(initialContext.task_ref || null),
       [editor, setEditor] = React.useState(null),
       [files, setFiles] = React.useState(false),
       [revision, setRevision] = React.useState(0);
@@ -30109,7 +30114,7 @@ function SMExport({
       });
       renderDrafts();
     }, [editor]);
-    const read = S.useQuery(signal => window.FieldAPI.readView(api, scope, signal), [api, scope, revision]);
+    const read = S.useQuery(signal => api.readView(scope, signal), [scope, revision]);
     const data = read.result && read.result.data,
       snapshot = read.result && read.result.meta.snapshot_ref;
     const readPlan = React.useRef(scope.plan_ref);
@@ -30228,9 +30233,9 @@ function SMExport({
     }, [nextDraft, read.loading, read.error, data, selectedTask]);
     const effectiveScope = data ? data.scope : scope;
     const filtered = !!(scope.query || scope.state && scope.state !== 'all' || scope.plan_finish_date_from || scope.plan_finish_date_to || scope.range_start || scope.batch_ids || scope.resource_ref);
+    // 返回入口统一是 {view, context} 信封：值班台、现场实际甘特、报表 / 复盘带过来的都是这种。
     const returnTarget = initialContext.return_to;
-    const returnView = typeof returnTarget === 'string' ? returnTarget : returnTarget && returnTarget.view;
-    const canReturn = ['analysis', 'gantt', 'fieldgantt', 'reports', 'review', 'dashboard'].includes(returnView);
+    const canReturn = !!returnTarget && ['analysis', 'gantt', 'fieldgantt', 'reports', 'review', 'dashboard'].includes(returnTarget.view);
     return /*#__PURE__*/React.createElement("section", {
       className: "plana field-workspace",
       "data-field-workspace": true,
@@ -30246,9 +30251,7 @@ function SMExport({
     }), canReturn && onNavigate && /*#__PURE__*/React.createElement(Button, {
       icon: "arrow-left",
       disabled: blocked,
-      onClick: () => onNavigate(returnView, typeof returnTarget === 'object' ? returnTarget.context || {} : {
-        plan_ref: effectiveScope.plan_ref
-      })
+      onClick: () => onNavigate(returnTarget.view, returnTarget.context)
     }, "\u8FD4\u56DE"), /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       "aria-label": "\u5237\u65B0\u73B0\u573A\u8BB0\u5F55",
@@ -30367,7 +30370,6 @@ function SMExport({
   // Same label rule as the field records: minute precision, seconds shown only when they are not :00.
   const time = value => window.FieldContract.date(value);
   // Readable file stamp for downloads: 2026-09-21_1646 instead of the raw wire time.
-  const fileStamp = value => value.slice(0, 10) + '_' + value.slice(11, 16).replace(':', '');
   const number = value => window.WorkbenchFormat.number(value, {
     digits: 2
   });
@@ -30872,7 +30874,6 @@ function SMExport({
     instant,
     wire,
     time,
-    fileStamp,
     number,
     hours,
     pieceLabel,
@@ -30913,22 +30914,20 @@ function SMExport({
       viewport: Math.max(80, width - labelWidth)
     };
   }
+  // 记住的查看位置只存时间窗口（中心时刻与跨度）和纵向滚动；横向像素随当时宽度变化，恢复时按当前宽度换算。
   function capture(position, viewport, model, zoom) {
     const windowSpan = (model.end - model.start) / zoom;
     return {
-      left: position.left,
       top: position.top,
-      viewport,
       windowSpan,
       centerAt: model.start + (position.left / viewport + .5) * windowSpan
     };
   }
-  function restoreZoom(position, model, zoom) {
-    return position.windowSpan === undefined ? zoom : Math.max(1, Math.min(1024, (model.end - model.start) / position.windowSpan));
+  function restoreZoom(position, model) {
+    return Math.max(1, Math.min(1024, (model.end - model.start) / position.windowSpan));
   }
   function restoreLeft(position, viewport, model, zoom) {
-    if (position.centerAt !== undefined) return ((position.centerAt - model.start) / (model.end - model.start) * zoom - .5) * viewport;
-    return position.viewport === undefined ? position.left : position.left * viewport / position.viewport;
+    return ((position.centerAt - model.start) / (model.end - model.start) * zoom - .5) * viewport;
   }
   // The default window follows the data but never opens beyond 64x: a few hours inside a months-long axis otherwise
   // started at 1024x with a board hundreds of thousands of pixels wide and a scrollbar thumb too small to grab.
@@ -31070,10 +31069,11 @@ function SMExport({
     });
   }
   function workspace(result, input) {
+    // 成功信封（meta 五键、warnings、as_of）已由 transport.read 校验；导出与刷新要钉住同一份快照。
     const query = scope(input),
-      d = result && result.data,
-      meta = result && result.meta;
-    if (!result || result.ok !== true || result.schema_version !== 1 || !meta || meta.source !== 'production' || meta.time_basis !== 'factory_local' || !local(meta.as_of) || typeof meta.snapshot_ref !== 'string' || !meta.snapshot_ref || query.snapshot_ref && query.snapshot_ref !== meta.snapshot_ref || !object(d)) fail('读到的现场实际甘特数据不完整，或者数据已更新。请刷新后重试。');
+      d = result.data,
+      meta = result.meta;
+    if (meta.snapshot_ref === null || query.snapshot_ref && query.snapshot_ref !== meta.snapshot_ref) fail('读到的现场实际甘特数据不完整，或者数据已更新。请刷新后重试。');
     if (!d.plan || d.plan.plan_ref !== query.plan_ref || !d.plan.capabilities.view || !span(d.plan_span) || !interval(d.axis_span) || !d.scope || d.scope.kind !== 'actual_gantt' || d.scope.source !== 'production' || !object(d.availability) || !['available', 'unavailable'].includes(d.availability.state) || !Array.isArray(d.items) || d.items.length !== d.task_count || d.task_count > 10000 || d.items_complete !== true || !executionSummary(d.execution_summary) || !Array.isArray(d.resources) || !d.resources.every(r => object(r) && ref(r.ref) && ['machine', 'operator', 'supplier'].includes(r.kind) && typeof r.business_code === 'string' && (r.label === null || typeof r.label === 'string')) || !object(d.critical_chain) || !Array.isArray(d.critical_chain.task_refs) || !Array.isArray(d.critical_chain.edges)) fail('读到的现场实际甘特范围不完整，请刷新重试。');
     if (!scopeMatches(d.scope, query)) fail('返回的范围与上次查询不同，没有自动扩大范围。');
     const resourceRefs = new Set(d.resources.map(row => row.ref)),
@@ -31145,33 +31145,25 @@ function SMExport({
 (function () {
   'use strict';
 
-  function create() {
-    const base = window.APSResourceAPI.create(),
-      C = window.ActualGanttContract;
-    return window.APSReadBoundary.verified({
-      async load(context, signal) {
-        const scope = C.scope(context);
-        return C.workspace(await base.query('actual-gantt', C.transport(scope), signal), scope);
-      },
-      async export(context, signal) {
-        const scope = C.scope(context, true),
-          output = await base.download('actual-gantt/export', C.transport(scope), signal, {
-            timeout: 60000
-          });
-        if (!output || !output.blob || !output.blob.size || output.contentType.split(';')[0] !== 'text/csv' || !/^attachment;/i.test(output.disposition)) throw window.APSResourceContract.failure('下载的现场实际甘特不是有效的 CSV 附件。');
-        return output;
-      }
-    }, ['load']);
-  }
-  function adapter(value) {
-    const C = window.ActualGanttContract;
-    return window.APSReadBoundary.checked(value, {
-      load: (result, context) => C.workspace(result, context)
-    });
-  }
   window.ActualGanttAPI = {
-    create,
-    adapter
+    async load(context, signal) {
+      const C = window.ActualGanttContract,
+        scope = C.scope(context);
+      return C.workspace(await window.APSWorkbenchTransport.read('/api/workbench/v1/actual-gantt', C.transport(scope), {
+        signal,
+        timeout: 20000
+      }), scope);
+    },
+    // 附件、CSV 类型与魔数、文件名及其后缀都由 transport.download 核对。
+    async export(context, signal) {
+      const C = window.ActualGanttContract,
+        T = window.APSWorkbenchTransport;
+      return T.download('/api/workbench/v1/actual-gantt/export', C.transport(C.scope(context, true)), {
+        signal,
+        timeout: 60000,
+        types: [T.types.csv]
+      });
+    }
   };
 })();
 
@@ -31375,7 +31367,7 @@ function SMExport({
   }
   function Range({
     scope,
-    resources = null,
+    resources,
     onApply,
     busy
   }) {
@@ -31663,7 +31655,7 @@ function SMExport({
     active,
     onSelect,
     onHover,
-    canvasPainted = false
+    canvasPainted
   }) {
     const box = window.ActualGanttWindow.markBox(mark, model, width),
       {
@@ -31956,7 +31948,7 @@ function SMExport({
     const valid = object(value) && object(value.view) && object(value.position) && Number.isFinite(value.zoom) && value.zoom >= 1 && value.zoom <= 1024;
     if (!valid) throw new Error('现场实际甘特的查看状态无效，没有改选其他工序。');
     const v = value.view;
-    if (!Object.prototype.hasOwnProperty.call(M.views, v.mode) || !Object.prototype.hasOwnProperty.call(M.lateLabels, v.late) || typeof v.query !== 'string' || v.query.length > 200 || !reference(v.selected) || !reference(v.report) || !['onlySelected', 'details', 'chain'].every(key => typeof v[key] === 'boolean') || !object(v.collapsed) || !Object.values(v.collapsed).every(item => typeof item === 'boolean') || v.chainLines !== undefined && typeof v.chainLines !== 'boolean' || value.position.viewport !== undefined && (!Number.isFinite(value.position.viewport) || value.position.viewport < 80) || (value.position.centerAt !== undefined || value.position.windowSpan !== undefined) && (!Number.isFinite(value.position.centerAt) || !Number.isFinite(value.position.windowSpan) || value.position.windowSpan <= 0) || !['left', 'top'].every(key => Number.isFinite(value.position[key]) && value.position[key] >= 0)) throw new Error('现场实际甘特的查看状态无效，没有改选其他工序。');
+    if (!Object.prototype.hasOwnProperty.call(M.views, v.mode) || !Object.prototype.hasOwnProperty.call(M.lateLabels, v.late) || typeof v.query !== 'string' || v.query.length > 200 || !reference(v.selected) || !reference(v.report) || !['onlySelected', 'details', 'chain'].every(key => typeof v[key] === 'boolean') || !object(v.collapsed) || !Object.values(v.collapsed).every(item => typeof item === 'boolean') || !Number.isFinite(value.position.centerAt) || !Number.isFinite(value.position.windowSpan) || value.position.windowSpan <= 0 || !Number.isFinite(value.position.top) || value.position.top < 0) throw new Error('现场实际甘特的查看状态无效，没有改选其他工序。');
     return value;
   }
   function initial(context) {
@@ -31964,7 +31956,7 @@ function SMExport({
         ...context.scope
       },
       scope = {};
-    const taskRef = context.task_ref !== undefined ? context.task_ref : context.entity_ref;
+    const taskRef = context.task_ref;
     for (const key of ['source', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'batch_ids']) if (context[key] !== undefined && input[key] === undefined) input[key] = context[key];
     const allowed = ['plan_ref', 'source', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'batch_ids', 'query', 'focus', 'as_of', 'snapshot_ref', 'kind', 'baseline_ref'];
     let issue = Object.keys(input).some(key => !allowed.includes(key)) ? '查询条件无效，请清除筛选后重试。' : null;
@@ -31992,13 +31984,11 @@ function SMExport({
   }
   function Content({
     onNavigate,
-    initialContext,
-    adapter: supplied
+    initialContext
   }) {
     const seed = React.useMemo(() => initial(initialContext), []),
       key = JSON.stringify(initialContext),
       saved = sessions.get(key);
-    const api = React.useMemo(() => window.ActualGanttAPI.adapter(supplied || window.ActualGanttAPI.create()), [supplied]);
     const [scope, setScope] = React.useState(saved ? saved.scope : seed.scope),
       [refresh, setRefresh] = React.useState(0);
     const [result, setResult] = React.useState(null),
@@ -32073,11 +32063,10 @@ function SMExport({
       (async () => {
         try {
           if (seed.issue) throw window.APSResourceContract.failure(seed.issue);
-          let input = scope;
-          if (input.source && input.source !== 'production') throw window.APSResourceContract.failure('数据来源无效，请重新打开现场实际甘特。');
-          if (!input.plan_ref) {
-            if (Object.keys(input).some(k => k !== 'source')) throw window.APSResourceContract.failure('来源范围缺少计划，请选择计划。');
-            const catalog = await window.APSPlanAPI.create().catalog({
+          if (scope.source && scope.source !== 'production') throw window.APSResourceContract.failure('数据来源无效，请重新打开现场实际甘特。');
+          if (!scope.plan_ref) {
+            if (Object.keys(scope).some(k => k !== 'source')) throw window.APSResourceContract.failure('来源范围缺少计划，请选择计划。');
+            const catalog = await window.APSPlanAPI.catalog({
               collection: 'history',
               size: 20
             }, controller.signal);
@@ -32088,8 +32077,7 @@ function SMExport({
             });
             return;
           }
-          input = C.scope(input);
-          const response = await api.load(input, controller.signal);
+          const response = await window.ActualGanttAPI.load(scope, controller.signal);
           if (initialContext.operation_ref && seed.selected) {
             const task = response.data.items.find(item => item.task.task_ref === seed.selected);
             if (task && task.task.operation_ref !== initialContext.operation_ref) throw window.APSResourceContract.failure('来源工序与所选计划任务不一致，请重新选择工序。');
@@ -32105,7 +32093,7 @@ function SMExport({
         active = false;
         controller.abort();
       };
-    }, [api, scope, refresh]);
+    }, [scope, refresh]);
     React.useEffect(() => () => {
       if (downloadController.current) downloadController.current.abort();
       cancelAnimationFrame(frame.current);
@@ -32193,7 +32181,7 @@ function SMExport({
         return;
       }
       if (restore) {
-        const nextZoom = W.restoreZoom(restore, model, zoom);
+        const nextZoom = W.restoreZoom(restore, model);
         if (nextZoom !== zoom) {
           setZoom(nextZoom);
           return;
@@ -32374,23 +32362,11 @@ function SMExport({
       setExportBusy(true);
       setExportError(null);
       try {
-        const output = await api.export(C.scope(viewScope(), true), controller.signal);
+        const output = await window.ActualGanttAPI.export(viewScope(), controller.signal);
         if (controller.signal.aborted) return;
-        if (!output || !output.blob || !output.blob.size || output.contentType.split(';')[0] !== 'text/csv' || !/^attachment;/i.test(output.disposition)) throw window.APSResourceContract.failure('下载不是有效的 CSV 附件。');
-        const url = URL.createObjectURL(output.blob),
-          a = document.createElement('a');
-        const name = '现场实际甘特-' + M.fileStamp(result.meta.as_of) + '.csv';
-        try {
-          a.href = url;
-          a.download = name;
-          document.body.appendChild(a);
-          a.click();
-        } finally {
-          a.remove();
-          setTimeout(() => URL.revokeObjectURL(url), 1000);
-        }
+        window.APSWorkbenchTransport.saveBlob(output.filename, output.blob);
         setExporting(false);
-        setExportNotice(window.WorkbenchTerms.download_started(name));
+        setExportNotice(window.WorkbenchTerms.download_started(output.filename));
       } catch (failure) {
         if (!controller.signal.aborted) setExportError(failure);
       } finally {
@@ -32460,13 +32436,13 @@ function SMExport({
       "aria-label": "\u5237\u65B0\u5B9E\u9645\u7518\u7279",
       busy: loading,
       onClick: reload
-    }), onNavigate && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
+    }), /*#__PURE__*/React.createElement(Button, {
       icon: "chart-gantt",
       onClick: () => navigate('gantt')
     }, "\u8BA1\u5212\u7518\u7279"), /*#__PURE__*/React.createElement(Button, {
       icon: "arrow-right",
       onClick: () => navigate('field')
-    }, "\u73B0\u573A\u8BB0\u5F55")), onNavigate && initialContext.return_to && /*#__PURE__*/React.createElement(Button, {
+    }, "\u73B0\u573A\u8BB0\u5F55"), initialContext.return_to && /*#__PURE__*/React.createElement(Button, {
       icon: "chevron-left",
       onClick: () => {
         const target = initialContext.return_to;
@@ -32486,7 +32462,7 @@ function SMExport({
         icon: "refresh-cw",
         onClick: reload
       }, "\u5237\u65B0") : undefined
-    }), !data && !loading && onNavigate && /*#__PURE__*/React.createElement(Button, {
+    }), !data && !loading && /*#__PURE__*/React.createElement(Button, {
       icon: "chart-gantt",
       onClick: () => onNavigate('analysis', {})
     }, "\u9009\u62E9\u8BA1\u5212"), data && /*#__PURE__*/React.createElement(React.Fragment, null, data.availability.state !== 'available' && /*#__PURE__*/React.createElement("div", {
@@ -32670,7 +32646,7 @@ function SMExport({
       onClick: () => patch({
         report: row.report_ref
       })
-    }, "\u67E5\u770B\u5F85\u8865\u62A5\u5DE5 ", row.report_no)), report && /*#__PURE__*/React.createElement("p", null, "\u767B\u8BB0\uFF1A", M.time(report.recorded_at), " \xB7 \u5386\u53F2\u7248\u672C ", report.correction_history.length, " \u6761")), onNavigate && /*#__PURE__*/React.createElement(Button, {
+    }, "\u67E5\u770B\u5F85\u8865\u62A5\u5DE5 ", row.report_no)), report && /*#__PURE__*/React.createElement("p", null, "\u767B\u8BB0\uFF1A", M.time(report.recorded_at), " \xB7 \u5386\u53F2\u7248\u672C ", report.correction_history.length, " \u6761")), /*#__PURE__*/React.createElement(Button, {
       icon: "arrow-right",
       onClick: () => navigate('field')
     }, "\u5230\u73B0\u573A\u8BB0\u5F55\u6838\u5BF9\u6216\u8865\u9F50"))), /*#__PURE__*/React.createElement("details", {
@@ -32743,9 +32719,10 @@ function SMExport({
 (function () {
   'use strict';
 
+  // 排产任务一律走共同优化（run_options 由 RunJobAPI 校验为 unified_search_v1），计算阶段直接按共同优化表述。
   const stages = {
     queued: '等待计算',
-    computing: '正在计算',
+    computing: '正在共同优化方案',
     awaiting_reconciliation: '核对排产记录',
     finished: '排产已结束'
   };
@@ -32787,8 +32764,7 @@ function SMExport({
     }) + ' 秒';
   }
   function stage(run) {
-    if (run.stage === 'computing' && window.RunGenerationContract.unified(run.scope_summary && run.scope_summary.run_options)) return '正在共同优化方案';
-    return stages[run.stage] || '排产阶段未知';
+    return stages[run.stage];
   }
   window.RunPresentation = {
     step,
@@ -32856,7 +32832,7 @@ function SMExport({
     }
     const optional = ['hold_window', 'time_budget_seconds'].filter(key => object(value) && own(value, key)),
       keys = fields.concat(optional);
-    if (!object(value) || Object.keys(value).length !== keys.length || !keys.every(key => own(value, key)) || !refs(value.batch_refs) || !date(value.start_date) || !date(value.end_date) || value.start_date > value.end_date || !['strict', 'stage', 'split'].includes(value.material_strategy) || value.material_strategy !== 'strict' && !value.ready_check || typeof value.ready_check !== 'boolean' || !['auto_assign', 'exclude'].includes(value.missing_resource_policy) || value.completed_policy !== 'preserve_actuals' || own(value, 'time_budget_seconds') && !window.RunGenerationContract.budget(value.time_budget_seconds)) throw fail('请核对已选批次、排产日期范围和本次排产规则。');
+    if (!object(value) || Object.keys(value).length !== keys.length || !keys.every(key => own(value, key)) || !refs(value.batch_refs) || !date(value.start_date) || !date(value.end_date) || value.start_date > value.end_date || !['strict', 'stage'].includes(value.material_strategy) || value.material_strategy === 'stage' && !value.ready_check || typeof value.ready_check !== 'boolean' || !['auto_assign', 'exclude'].includes(value.missing_resource_policy) || value.completed_policy !== 'preserve_actuals' || own(value, 'time_budget_seconds') && !window.RunGenerationContract.budget(value.time_budget_seconds)) throw fail('请核对已选批次、排产日期范围和本次排产规则。');
     const normalized = Object.fromEntries(fields.map(key => [key, key === 'batch_refs' ? value[key].slice().sort() : value[key]]));
     if (own(value, 'hold_window')) normalized.hold_window = holdWindow(value.hold_window, value.start_date, value.end_date);
     if (own(value, 'time_budget_seconds')) normalized.time_budget_seconds = value.time_budget_seconds;
@@ -32900,14 +32876,9 @@ function SMExport({
       if (!ref(context.entity_ref) || context.batch_refs !== undefined) throw fail('这个批次已失效，请点「选择批次」重新选。');
       value.batch_refs = [context.entity_ref];
     }
-    // 来源入口既可以是旧的视图名字符串，也可以是值班台用的 {view, context} 信封；本页不使用它，只做形状校验。
-    if (context.return_to !== undefined && !['batches', 'dashboard', 'run'].includes(object(context.return_to) ? context.return_to.view : context.return_to)) throw fail('返回入口无效。');
-    const normalized = input(value);
-    // 旧 split 只是拆批入口，实际放行与 strict 相同；新的可编辑规则只保留真实的两种齐套方式。
-    return normalized.material_strategy === 'split' ? {
-      ...normalized,
-      material_strategy: 'strict'
-    } : normalized;
+    // 只有值班台带 {view: 'dashboard', context} 返回入口进入本页；本页不使用它，只做形状校验。
+    if (context.return_to !== undefined && !(object(context.return_to) && Object.keys(context.return_to).every(key => ['view', 'context'].includes(key)) && context.return_to.view === 'dashboard' && object(context.return_to.context))) throw fail('返回入口无效。');
+    return input(value);
   }
   const issues = rows => Array.isArray(rows) && rows.every(row => object(row) && typeof row.code === 'string' && typeof row.message === 'string');
   const nullableCount = value => value === null || count(value);
@@ -32951,7 +32922,7 @@ function SMExport({
       if ((row.status === 'eligible' || row.status === 'auto_assign_required') && row.execution.execution_state !== 'unreported') invalidEligibleExecution = true;
       return true;
     });
-    if (!object(d) || !token(d.input_ref) || !date(String(d.input_expires_at).slice(0, 10)) || !object(d.counts) || !countKeys.every(key => count(d.counts[key])) || JSON.stringify(actual) !== JSON.stringify(normalized) || own(d, 'run_options') && (d.run_options === null ? !Array.isArray(d.blockers) || !d.blockers.some(row => row.code === 'config_error') : !window.RunGenerationContract.runOptions(d.run_options) || actual.time_budget_seconds !== d.run_options.time_budget_seconds) || !validTasks || !issues(d.blockers) || !issues(d.warnings) || !issues(d.run_blocked_reasons) || !d.run_blocked_reasons.length || d.calendar_check !== 'not_evaluated' || d.config_scope !== 'single_run' || d.run_blocked !== true || !object(d.write_context) || !object(d.write_context.capabilities) || d.write_context.capabilities['scheduling.run'] !== false || d.write_context.write_token !== null || !Array.isArray(d.no_route_batches) || !Array.isArray(d.unready_batches) || !Array.isArray(d.included_batches) || !Array.isArray(d.excluded_batches) || !object(d.scope) || d.scope.source !== 'production' || !refs(d.scope.batch_refs) || JSON.stringify(d.scope.batch_refs) !== JSON.stringify(normalized.batch_refs) || !object(d.effective_config) || !fields.slice(3).every(key => (key === 'material_strategy' ? d.effective_config[key] || 'strict' : d.effective_config[key]) === normalized[key]) || !effectiveHold(d.effective_config, normalized) || d.effective_start !== normalized.start_date + 'T00:00:00') throw fail('排产检查结果与本次范围或能力不一致，不能继续。');
+    if (!object(d) || !token(d.input_ref) || !date(String(d.input_expires_at).slice(0, 10)) || !object(d.counts) || !countKeys.every(key => count(d.counts[key])) || JSON.stringify(actual) !== JSON.stringify(normalized) || !own(d, 'run_options') || (d.run_options === null ? !Array.isArray(d.blockers) || !d.blockers.some(row => row.code === 'config_error') : !window.RunGenerationContract.runOptions(d.run_options) || actual.time_budget_seconds !== d.run_options.time_budget_seconds) || !validTasks || !issues(d.blockers) || !issues(d.warnings) || !issues(d.run_blocked_reasons) || !d.run_blocked_reasons.length || d.calendar_check !== 'not_evaluated' || d.config_scope !== 'single_run' || d.run_blocked !== true || !object(d.write_context) || !object(d.write_context.capabilities) || d.write_context.capabilities['scheduling.run'] !== false || d.write_context.write_token !== null || !Array.isArray(d.no_route_batches) || !Array.isArray(d.unready_batches) || !Array.isArray(d.included_batches) || !Array.isArray(d.excluded_batches) || !object(d.scope) || d.scope.source !== 'production' || !refs(d.scope.batch_refs) || JSON.stringify(d.scope.batch_refs) !== JSON.stringify(normalized.batch_refs) || !object(d.effective_config) || !fields.slice(3).every(key => (key === 'material_strategy' ? d.effective_config[key] || 'strict' : d.effective_config[key]) === normalized[key]) || !effectiveHold(d.effective_config, normalized) || d.effective_start !== normalized.start_date + 'T00:00:00') throw fail('排产检查结果与本次范围或能力不一致，不能继续。');
     const c = d.counts;
     if (c.ready_tasks !== statusCounts.eligible || c.auto_assign_required !== statusCounts.auto_assign_required || c.skipped_tasks !== statusCounts.skipped || c.blocked_tasks !== statusCounts.blocked || c.protected_tasks !== statusCounts.protected || c.held_tasks !== heldCount || c.hold_window_tasks !== heldCount || d.effective_config.hold_window === null && c.held_tasks !== 0) throw fail('排产检查计数不一致。');
     const batchRows = d.included_batches.concat(d.excluded_batches);
@@ -32994,14 +32965,12 @@ function SMExport({
         const input = C.input(value),
           current = C.preferences(await transport.query('scheduling/preferences', {}, signal)).data;
         if (current.input !== null && JSON.stringify(C.input(current.input)) === JSON.stringify(input)) return input;
-        const bytes = new Uint8Array(24);
-        window.crypto.getRandomValues(bytes);
-        const request_key = 'preferences-' + Array.from(bytes, n => n.toString(16).padStart(2, '0')).join('');
+        const request_key = window.APSWorkbenchTransport.requestKey('preferences');
         const receipt = await transport.execute('scheduling/preferences', {
           request_key,
           write_token: current.write_context.write_token,
           input
-        }, signal);
+        });
         if (JSON.stringify(C.input(receipt.data.input)) !== JSON.stringify(input)) throw C.fail('保存的排产范围与本次选择不一致，请重新检查。');
         return input;
       },
@@ -34016,7 +33985,9 @@ function SMExport({
       onNavigate('batches', {
         focus: kind === 'unready' ? 'unready' : 'gaps',
         batchIds: ids,
-        return_to: 'run'
+        return_to: {
+          view: 'run'
+        }
       });
     }
     const checks = [['设备 / 人员', counts ? counts.missing_resource_tasks + ' 道缺资源；' + (value.missing_resource_policy === 'auto_assign' ? counts.auto_assign_required + ' 道待自动分配。' : '按本次规则暂不排入。') : '尚未检查设备与人员。', 'resources', '去补齐'], ['齐套状态', counts ? counts.unready_batches + ' 批未齐套；' + (value.ready_check ? '本次执行齐套检查。' : '本次关闭齐套检查。') : '尚未读取齐套情况。', 'unready', '查看批次'], ['工时 / 工艺 / 外协', counts ? counts.blocked_tasks + ' 道缺资料，' + counts.no_route_batches + ' 批未生成工艺。' : '尚未检查必填资料。', 'gaps', '处理缺项'], ['班表与产能', '本次不检查。夜班、停机和产能是否够用，请到「工作日历」核对。', null, null]];
@@ -34170,7 +34141,8 @@ function SMExport({
 (function () {
   'use strict';
 
-  const BASE = '/api/workbench/v1/scheduling',
+  const T = window.APSWorkbenchTransport,
+    BASE = '/api/workbench/v1/scheduling',
     PENDING_KEY = 'aps_workbench_run_pending_v1',
     RECENT_KEY = 'aps_workbench_run_recent_v1';
   const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -34181,7 +34153,6 @@ function SMExport({
   const key = v => text(v) && /^run-[a-f0-9]{48}$/.test(v);
   // 数据上下文编号的格式只在 RunAdoptionAPI 定义一份；本文件先于它加载，所以在调用时再取。
   const contextRef = v => window.RunAdoptionAPI.contextRef(v);
-  const rejections = new WeakSet();
   const terminal = run => !!run && ['complete', 'partial', 'failed', 'interrupted'].includes(run.state);
   function check(valid, message = '读到的排产数据不完整，请刷新重试。') {
     if (!valid) throw new Error(message);
@@ -34199,43 +34170,41 @@ function SMExport({
   const issue = v => shape(v, ['code', 'message'], ['operation_ref', 'batch_ref', 'batch_id']) && text(v.code) && v.code.length > 0 && text(v.message) && ['operation_ref', 'batch_ref'].every(k => v[k] === undefined || ref(v[k])) && (v.batch_id === undefined || text(v.batch_id));
   const issues = v => Array.isArray(v) && v.every(issue);
   // Progress is the worker's count of finished candidate plans; it only exists while the run is computing.
-  const progress = v => shape(v, ['done', 'total', 'updated_at']) && count(v.done) && count(v.total) && v.done <= v.total && time(v.updated_at);
-  // 不重排时段：旧调用不带这一项（按交付设置），null 为本次不设，否则是精确到分的起止。
+  // 不重排时段：不带这一项表示按交付设置，null 为本次不设，否则是精确到分的起止。
   const minute = v => text(v) && /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d$/.test(v) && date(v.slice(0, 10));
   const holdWindow = v => v === undefined || v === null || shape(v, ['start', 'end']) && minute(v.start) && minute(v.end) && v.start < v.end;
   function input(v) {
-    check(shape(v, ['batch_refs', 'start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'], ['material_strategy', 'hold_window', 'time_budget_seconds']) && (v.material_strategy === undefined || ['strict', 'stage', 'split'].includes(v.material_strategy)) && holdWindow(v.hold_window) && (v.time_budget_seconds === undefined || window.RunGenerationContract.budget(v.time_budget_seconds)) && Array.isArray(v.batch_refs) && v.batch_refs.length <= 5000 && v.batch_refs.every(ref) && new Set(v.batch_refs).size === v.batch_refs.length && date(v.start_date) && date(v.end_date) && v.start_date <= v.end_date && typeof v.ready_check === 'boolean' && ['auto_assign', 'exclude'].includes(v.missing_resource_policy) && v.completed_policy === 'preserve_actuals');
+    check(shape(v, ['batch_refs', 'start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'], ['material_strategy', 'hold_window', 'time_budget_seconds']) && (v.material_strategy === undefined || ['strict', 'stage'].includes(v.material_strategy)) && holdWindow(v.hold_window) && (v.time_budget_seconds === undefined || window.RunGenerationContract.budget(v.time_budget_seconds)) && Array.isArray(v.batch_refs) && v.batch_refs.length <= 5000 && v.batch_refs.every(ref) && new Set(v.batch_refs).size === v.batch_refs.length && date(v.start_date) && date(v.end_date) && v.start_date <= v.end_date && typeof v.ready_check === 'boolean' && ['auto_assign', 'exclude'].includes(v.missing_resource_policy) && v.completed_policy === 'preserve_actuals');
     return v;
   }
-  function envelope(v) {
-    check(shape(v, ['ok', 'schema_version', 'data', 'meta', 'warnings']) && v.ok === true && v.schema_version === 1 && shape(v.meta, ['request_ref', 'source', 'time_basis', 'snapshot_ref', 'as_of']) && /^[a-f0-9]{32}$/.test(v.meta.request_ref) && v.meta.source === 'production' && v.meta.time_basis === 'factory_local' && token(v.meta.snapshot_ref) && time(v.meta.as_of) && issues(v.warnings));
+  // 信封已由 transport 校验；这里只核对排产自己的提示形状，再取出数据。
+  function content(v) {
+    check(issues(v.warnings));
     return v.data;
   }
-  function preview(v, inputRef) {
-    const d = envelope(v);
-    check(shape(d, ['input_ref', 'normalized_input', 'write_context', 'calendar_check', 'warnings', 'data_context_ref'], ['run_options']) && contextRef(d.data_context_ref) && token(inputRef) && d.input_ref === inputRef && d.calendar_check === 'not_evaluated' && issues(d.warnings));
+  function previewResult(v, inputRef) {
+    const d = content(v);
+    check(shape(d, ['input_ref', 'normalized_input', 'write_context', 'calendar_check', 'warnings', 'data_context_ref', 'run_options']) && contextRef(d.data_context_ref) && token(inputRef) && d.input_ref === inputRef && d.calendar_check === 'not_evaluated' && issues(d.warnings));
     input(d.normalized_input);
     const c = d.write_context;
-    check(d.run_options === undefined || (d.run_options === null ? object(c) && c.capabilities && c.capabilities['scheduling.run'] === false && Array.isArray(c.blocked_reasons) && c.blocked_reasons.some(row => row.code === 'config_error') : window.RunGenerationContract.runOptions(d.run_options) && d.run_options.time_budget_seconds === d.normalized_input.time_budget_seconds));
+    check(d.run_options === null ? object(c) && c.capabilities && c.capabilities['scheduling.run'] === false && Array.isArray(c.blocked_reasons) && c.blocked_reasons.some(row => row.code === 'config_error') : window.RunGenerationContract.runOptions(d.run_options) && d.run_options.time_budget_seconds === d.normalized_input.time_budget_seconds);
     check(shape(c, ['write_token', 'expires_at', 'capabilities', 'blocked_reasons']) && shape(c.capabilities, ['scheduling.run']) && issues(c.blocked_reasons));
     check(c.capabilities['scheduling.run'] === true ? token(c.write_token) && time(c.expires_at) && c.blocked_reasons.length === 0 && d.normalized_input.batch_refs.length > 0 : c.capabilities['scheduling.run'] === false && c.write_token === null && c.expires_at === null && c.blocked_reasons.length > 0);
-    check(c.capabilities['scheduling.run'] !== true || d.normalized_input.time_budget_seconds === undefined || d.run_options !== undefined);
     return d;
   }
   function run(v, expectedRef) {
-    check(shape(v, ['run_ref', 'job_ref', 'state', 'stage', 'progress', 'plans', 'plan_catalog_connected', 'candidates', 'result_persisted', 'accepted_at', 'started_at', 'finished_at', 'receipt_ref', 'error', 'recovery_required', 'scope_summary']) && ref(v.run_ref) && v.job_ref === v.run_ref && (!expectedRef || v.run_ref === expectedRef) && ['queued', 'running', 'complete', 'partial', 'failed', 'interrupted'].includes(v.state) && (v.progress === null || v.state === 'running' && v.stage === 'computing' && progress(v.progress)) && Array.isArray(v.plans) && v.plans.length === 0 && v.plan_catalog_connected === false && Array.isArray(v.candidates) && time(v.accepted_at) && (v.started_at === null || time(v.started_at)) && (v.finished_at === null || time(v.finished_at)) && (v.error === null || shape(v.error, ['code', 'message']) && text(v.error.code) && v.error.code.length > 0 && text(v.error.message)));
+    check(shape(v, ['run_ref', 'job_ref', 'state', 'stage', 'progress', 'plans', 'plan_catalog_connected', 'candidates', 'result_persisted', 'accepted_at', 'started_at', 'finished_at', 'receipt_ref', 'error', 'recovery_required', 'scope_summary']) && ref(v.run_ref) && v.job_ref === v.run_ref && (!expectedRef || v.run_ref === expectedRef) && ['queued', 'running', 'complete', 'partial', 'failed', 'interrupted'].includes(v.state) && v.progress === null && Array.isArray(v.plans) && v.plans.length === 0 && v.plan_catalog_connected === false && Array.isArray(v.candidates) && time(v.accepted_at) && (v.started_at === null || time(v.started_at)) && (v.finished_at === null || time(v.finished_at)) && (v.error === null || shape(v.error, ['code', 'message']) && text(v.error.code) && v.error.code.length > 0 && text(v.error.message)));
+    // runScope 只接受统一搜索的运行选项：不报告进度，最多保存 3 份候选，且只保存算完的候选。
     runScope(v.scope_summary);
-    const unified = v.scope_summary.run_options && v.scope_summary.run_options.generation_policy_version === 'unified_search_v1';
-    check(!unified || v.progress === null && v.candidates.length <= 3 && v.candidates.every(candidate => candidate.status === 'completed'));
     const done = terminal(v),
       saved = ['complete', 'partial'].includes(v.state);
-    check(v.result_persisted === saved && v.recovery_required === (v.stage === 'awaiting_reconciliation') && (done ? v.stage === 'finished' && ref(v.receipt_ref) && time(v.finished_at) : v.receipt_ref === null && v.finished_at === null && [v.state === 'queued' ? 'queued' : 'computing', 'awaiting_reconciliation'].includes(v.stage)) && (v.state === 'queued' ? v.started_at === null : v.state === 'running' || saved ? time(v.started_at) : true) && (saved || !done ? v.error === null : v.error !== null) && v.candidates.every(c => shape(c, ['candidate_ref', 'label', 'status', 'task_count', 'selected']) && ref(c.candidate_ref) && text(c.label) && ['completed', 'failed', 'skipped'].includes(c.status) && count(c.task_count) && typeof c.selected === 'boolean' && (c.status === 'completed' || c.task_count === 0 && c.selected === false)) && new Set(v.candidates.map(c => c.candidate_ref)).size === v.candidates.length && (saved ? v.candidates.length > 0 && v.candidates.filter(c => c.selected).length === 1 : v.candidates.length === 0));
+    check(v.result_persisted === saved && v.recovery_required === (v.stage === 'awaiting_reconciliation') && (done ? v.stage === 'finished' && ref(v.receipt_ref) && time(v.finished_at) : v.receipt_ref === null && v.finished_at === null && [v.state === 'queued' ? 'queued' : 'computing', 'awaiting_reconciliation'].includes(v.stage)) && (v.state === 'queued' ? v.started_at === null : v.state === 'running' || saved ? time(v.started_at) : true) && (saved || !done ? v.error === null : v.error !== null) && v.candidates.length <= 3 && v.candidates.every(c => shape(c, ['candidate_ref', 'label', 'status', 'task_count', 'selected']) && ref(c.candidate_ref) && text(c.label) && c.status === 'completed' && count(c.task_count) && typeof c.selected === 'boolean') && new Set(v.candidates.map(c => c.candidate_ref)).size === v.candidates.length && (saved ? v.candidates.length > 0 && v.candidates.filter(c => c.selected).length === 1 : v.candidates.length === 0));
     return v;
   }
   function runScope(value) {
     const nullableText = item => item === null || text(item),
       nullableCount = item => item === null || count(item);
-    check(shape(value, ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy', 'batch_count', 'selection', 'basis', 'data_gaps', 'operation_count', 'batches', 'objective', 'objective_label'], ['material_strategy', 'hold_window', 'run_options']) && value.selection === 'explicit_batches' && value.basis === 'captured_at_run_admission' && ['start_date', 'end_date'].every(field => value[field] === null || date(value[field])) && (value.start_date === null || value.end_date === null || value.start_date <= value.end_date) && (value.ready_check === null || typeof value.ready_check === 'boolean') && [null, 'auto_assign', 'exclude'].includes(value.missing_resource_policy) && [null, 'preserve_actuals'].includes(value.completed_policy) && (value.material_strategy === undefined || [null, 'strict', 'stage', 'split'].includes(value.material_strategy)) && holdWindow(value.hold_window) && nullableCount(value.batch_count) && nullableCount(value.operation_count) && (value.run_options === undefined || window.RunGenerationContract.runOptions(value.run_options)) && nullableText(value.objective) && nullableText(value.objective_label) && gaps(value.data_gaps) && Array.isArray(value.batches) && value.batches.every(row => shape(row, ['batch_ref', 'batch_id', 'part_no', 'part_label']) && ref(row.batch_ref) && ['batch_id', 'part_no', 'part_label'].every(field => nullableText(row[field]))));
+    check(shape(value, ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy', 'batch_count', 'selection', 'basis', 'data_gaps', 'operation_count', 'batches', 'objective', 'objective_label', 'run_options'], ['material_strategy', 'hold_window']) && value.selection === 'explicit_batches' && value.basis === 'captured_at_run_admission' && ['start_date', 'end_date'].every(field => value[field] === null || date(value[field])) && (value.start_date === null || value.end_date === null || value.start_date <= value.end_date) && (value.ready_check === null || typeof value.ready_check === 'boolean') && [null, 'auto_assign', 'exclude'].includes(value.missing_resource_policy) && [null, 'preserve_actuals'].includes(value.completed_policy) && (value.material_strategy === undefined || [null, 'strict', 'stage'].includes(value.material_strategy)) && holdWindow(value.hold_window) && nullableCount(value.batch_count) && nullableCount(value.operation_count) && window.RunGenerationContract.runOptions(value.run_options) && nullableText(value.objective) && nullableText(value.objective_label) && gaps(value.data_gaps) && Array.isArray(value.batches) && value.batches.every(row => shape(row, ['batch_ref', 'batch_id', 'part_no', 'part_label']) && ref(row.batch_ref) && ['batch_id', 'part_no', 'part_label'].every(field => nullableText(row[field]))));
     return value;
   }
   function accepted(v) {
@@ -34243,39 +34212,13 @@ function SMExport({
     run(v.data, v.run_ref);
     return v;
   }
-  function lookup(v, expectedRef) {
-    const d = envelope(v);
+  function lookupResult(v, expectedRef) {
+    const d = content(v);
     check(shape(d, ['found', 'run', 'data_context_ref', 'resolution']) && typeof d.found === 'boolean' && contextRef(d.data_context_ref) && ['found', 'context_replaced', 'unresolved'].includes(d.resolution) && d.found === (d.resolution === 'found'));
     if (d.found) run(d.run, expectedRef);else check(d.run === null);
     return d;
   }
   const gaps = v => Array.isArray(v) && v.every(g => shape(g, ['field', 'code', 'message']) && [g.field, g.code, g.message].every(text));
-  const capabilities = v => shape(v, ['view', 'export', 'edit_draft', 'adopt', 'report_actual']) && v.view === true && v.export === true && v.edit_draft === false && v.adopt === false && v.report_actual === false;
-  const blocked = v => Array.isArray(v) && v.every(r => shape(r, ['capability', 'code', 'message']) && ['adopt', 'edit_draft', 'report_actual', 'preview'].includes(r.capability) && text(r.code) && text(r.message)) && ['adopt', 'edit_draft', 'report_actual'].every(c => v.some(r => r.capability === c));
-  function catalogScope(v = {}) {
-    check(shape(v, [], ['page', 'snapshot_ref']) && (v.page === undefined || Number.isInteger(v.page) && v.page >= 1 && v.page <= 256) && (v.snapshot_ref === undefined || token(v.snapshot_ref)));
-    return {
-      page: v.page || 1,
-      size: 20,
-      status: 'all',
-      sort: 'sequence',
-      order: 'asc',
-      ...(v.snapshot_ref ? {
-        snapshot_ref: v.snapshot_ref
-      } : {})
-    };
-  }
-  function catalog(v, runRef, query = {}) {
-    const d = envelope(v),
-      scope = catalogScope(query);
-    check(shape(d, ['run_ref', 'run_state', 'candidates', 'page', 'candidate_count', 'catalog_complete', 'capabilities', 'blocked_reasons']) && ref(runRef) && d.run_ref === runRef && ['queued', 'running', 'complete', 'partial', 'failed', 'interrupted'].includes(d.run_state) && count(d.candidate_count) && d.candidate_count <= 256 && d.catalog_complete === !['queued', 'running'].includes(d.run_state) && capabilities(d.capabilities) && blocked(d.blocked_reasons) && shape(d.page, ['number', 'size', 'total', 'has_more']) && d.page.number === scope.page && d.page.size === 20 && count(d.page.total) && d.page.total === d.candidate_count && d.page.has_more === scope.page * 20 < d.page.total && (!scope.snapshot_ref || v.meta.snapshot_ref === scope.snapshot_ref) && Array.isArray(d.candidates) && d.candidates.length === Math.min(20, Math.max(0, d.page.total - (scope.page - 1) * 20)));
-    d.candidates.forEach(candidate => {
-      window.RunCandidateAPI.summary(candidate, runRef);
-      check(capabilities(candidate.capabilities) && blocked(candidate.blocked_reasons));
-    });
-    check(new Set(d.candidates.map(c => c.candidate_ref)).size === d.candidates.length);
-    return d;
-  }
   const OUTCOMES = window.WorkbenchTerms.outcomes;
   const messages = {
     input_already_used: '这份检查结果已经开始过排产，请重新检查后再开始下一次。',
@@ -34317,18 +34260,8 @@ function SMExport({
   function details(error) {
     return messageDetails[error && error.code] || null;
   }
-  function errorResponse(v, status, requestKey) {
-    const e = v && v.error;
-    const valid = shape(v, ['ok', 'committed', 'error']) && v.ok === false && [false, 'unknown'].includes(v.committed) && shape(e, ['code', 'message', 'fields', 'retryable', 'request_ref'], ['request_key', 'result_target']) && text(e.code) && text(e.message) && Array.isArray(e.fields) && e.fields.every(f => shape(f, ['path', 'message']) && text(f.path) && text(f.message)) && typeof e.retryable === 'boolean' && /^[a-f0-9]{32}$/.test(e.request_ref) && (e.request_key === undefined && e.result_target === undefined || e.request_key === requestKey && key(requestKey) && e.result_target === BASE + '/requests/' + requestKey);
-    const error = new Error(valid ? message(e) : '读到的排产数据不完整，请刷新重试。');
-    error.code = valid ? e.code : 'invalid_response';
-    error.status = status;
-    error.rejected = valid && v.committed === false && ([400, 404, 409, 422].includes(status) && ['invalid_input', 'entity_not_found', 'snapshot_stale', 'stale_write', 'constraint_conflict', 'input_already_used'].includes(e.code) || status === 503 && ['run_schema_unavailable', 'run_worker_not_connected', 'request_lifecycle_stopping'].includes(e.code));
-    if (error.rejected) rejections.add(error);
-    return error;
-  }
   function validIntent(v) {
-    return (shape(v, ['input_ref', 'request_key', 'run_ref']) || shape(v, ['schema_version', 'input_ref', 'request_key', 'run_ref', 'data_context_ref']) && v.schema_version === 2 && contextRef(v.data_context_ref)) && token(v.input_ref) && key(v.request_key) && (v.run_ref === null || ref(v.run_ref));
+    return shape(v, ['schema_version', 'input_ref', 'request_key', 'run_ref', 'data_context_ref']) && v.schema_version === 2 && contextRef(v.data_context_ref) && token(v.input_ref) && key(v.request_key) && (v.run_ref === null || ref(v.run_ref));
   }
   function pending(storage) {
     if (storage === undefined) {
@@ -34379,22 +34312,18 @@ function SMExport({
     return {
       read,
       recent,
-      begin(inputRef, previous = null, dataContext = null) {
+      begin(inputRef, previous, dataContext) {
         check(token(inputRef), '排产检查已失效，请重新做排产检查。');
         const current = read();
         check(previous === null || validIntent(previous));
         check(previous ? same(current, previous) : current === null, '上次排产还没确认结果，不能重做。请先点「查询结果」。');
-        const bytes = new Uint8Array(24);
-        window.crypto.getRandomValues(bytes);
-        check(dataContext === null || contextRef(dataContext));
+        check(contextRef(dataContext));
         return save({
+          schema_version: 2,
           input_ref: inputRef,
-          request_key: 'run-' + Array.from(bytes, n => n.toString(16).padStart(2, '0')).join(''),
+          request_key: T.requestKey('run'),
           run_ref: null,
-          ...(dataContext === null ? {} : {
-            schema_version: 2,
-            data_context_ref: dataContext
-          })
+          data_context_ref: dataContext
         });
       },
       attach(intent, runRef) {
@@ -34429,80 +34358,48 @@ function SMExport({
       }
     };
   }
-  function create(fetcher = window.fetch.bind(window)) {
-    async function request(path, body, signal, requestKey) {
-      const controller = new AbortController(),
-        abort = () => controller.abort();
-      if (signal) {
-        if (signal.aborted) abort();else signal.addEventListener('abort', abort, {
-          once: true
-        });
-      }
-      const timer = setTimeout(abort, 30000);
-      try {
-        const response = await fetcher(BASE + path, {
-          method: body ? 'POST' : 'GET',
-          credentials: 'same-origin',
-          cache: 'no-store',
-          redirect: 'error',
-          signal: controller.signal,
-          ...(body ? {
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(body)
-          } : {})
-        });
-        check((response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() === 'application/json', '没有读到有效的排产数据，请重试。');
-        const payload = await response.json();
-        if (!response.ok || payload.ok !== true) throw errorResponse(payload, response.status, requestKey);
-        check(response.status === (path === '/runs' ? 202 : 200));
-        return payload;
-      } finally {
-        clearTimeout(timer);
-        if (signal) signal.removeEventListener('abort', abort);
-      }
-    }
-    return {
-      async preview(inputRef, signal) {
-        check(token(inputRef));
-        const v = await request('/runs/preview', {
-          input_ref: inputRef
-        }, signal);
-        preview(v, inputRef);
-        return v;
-      },
-      async accept(intent, writeToken) {
-        check(validIntent(intent) && intent.run_ref === null && token(writeToken));
-        return accepted(await request('/runs', {
-          input_ref: intent.input_ref,
-          write_token: writeToken,
-          request_key: intent.request_key
-        }, null, intent.request_key));
-      },
-      async get(runRef, signal) {
-        check(ref(runRef));
-        const v = await request('/runs/' + runRef, null, signal);
-        run(envelope(v), runRef);
-        return v;
-      },
-      async lookup(requestKey, signal, dataContext) {
-        check(key(requestKey) && (dataContext === undefined || contextRef(dataContext)));
-        const v = await request('/requests/' + requestKey + (dataContext ? '?data_context_ref=' + encodeURIComponent(dataContext) : ''), null, signal, requestKey);
-        lookup(v);
-        return v;
-      },
-      async catalog(runRef, query, signal) {
-        check(ref(runRef));
-        const scope = catalogScope(query);
-        const v = await request('/runs/' + runRef + '/candidates?' + new URLSearchParams(scope), null, signal);
-        catalog(v, runRef, query);
-        return v;
-      }
-    };
+  // 排产检查核对、受理回执和读取都按 30 秒等待；受理失败的结果编号指向排产请求查询。
+  async function preview(inputRef, signal) {
+    check(token(inputRef));
+    return previewResult(await T.preview(BASE + '/runs/preview', {
+      input_ref: inputRef
+    }, {
+      signal,
+      timeout: 30000
+    }), inputRef);
+  }
+  async function accept(intent, writeToken) {
+    check(validIntent(intent) && intent.run_ref === null && token(writeToken));
+    return accepted(await T.command(BASE + '/runs', {
+      input_ref: intent.input_ref,
+      write_token: writeToken,
+      request_key: intent.request_key
+    }, {
+      timeout: 30000,
+      expect: BASE + '/requests/' + intent.request_key
+    }));
+  }
+  async function get(runRef, signal) {
+    check(ref(runRef));
+    return run(content(await T.read(BASE + '/runs/' + runRef, {}, {
+      signal,
+      timeout: 30000
+    })), runRef);
+  }
+  async function lookup(intent, signal) {
+    check(validIntent(intent));
+    return lookupResult(await T.read(BASE + '/requests/' + intent.request_key, {
+      data_context_ref: intent.data_context_ref
+    }, {
+      signal,
+      timeout: 30000
+    }), intent.run_ref);
   }
   window.RunJobAPI = {
-    create,
+    preview,
+    accept,
+    get,
+    lookup,
     pending,
     PENDING_KEY,
     RECENT_KEY,
@@ -34510,17 +34407,12 @@ function SMExport({
     ref,
     validIntent,
     terminal,
-    preview,
     run,
     accepted,
-    lookup,
-    catalog,
-    envelope,
     message,
     failure,
     previewMessage,
     details,
-    isRejected: e => rejections.has(e),
     pollDelay: attempt => Math.min(30000, 2000 * Math.pow(2, Math.min(4, Math.max(0, attempt))))
   };
 })();
@@ -34546,27 +34438,20 @@ function SMExport({
       }, 1000);
       return () => clearInterval(timer);
     }, [run.run_ref, run.finished_at]);
-    const progress = window.RunGenerationContract.unified(run.scope_summary.run_options) ? null : run.progress,
-      computing = !A.terminal(run) && !run.recovery_required;
-    const percent = progress && progress.total > 0 ? Math.round(progress.done / progress.total * 100) : null;
+    // 统一搜索不报告候选计数进度，计算中只显示不确定进度条。
+    const computing = !A.terminal(run) && !run.recovery_required;
     return /*#__PURE__*/React.createElement("div", {
       className: "rj-progress",
       "data-run-progress": true
-    }, /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, window.RunPresentation.stage(run)), /*#__PURE__*/React.createElement("span", null, run.started_at ? '处理用时' : run.finished_at ? '提交后用时' : '已等待', " ", window.RunPresentation.elapsed(run, now)), progress && /*#__PURE__*/React.createElement("span", {
-      "data-run-progress-count": true
-    }, "\u5DF2\u7B97\u5B8C ", progress.done, " / ", progress.total, " \u4E2A\u5019\u9009\u65B9\u6848")), computing && /*#__PURE__*/React.createElement("div", {
-      className: 'rj-bar' + (percent === null ? ' rj-bar-indeterminate' : ''),
+    }, /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, window.RunPresentation.stage(run)), /*#__PURE__*/React.createElement("span", null, run.started_at ? '处理用时' : run.finished_at ? '提交后用时' : '已等待', " ", window.RunPresentation.elapsed(run, now))), computing && /*#__PURE__*/React.createElement("div", {
+      className: "rj-bar rj-bar-indeterminate",
       role: "progressbar",
       "aria-label": "\u6392\u4EA7\u8BA1\u7B97\u8FDB\u5EA6",
       "aria-valuemin": 0,
       "aria-valuemax": 100,
-      "aria-valuenow": percent === null ? undefined : percent,
-      "aria-valuetext": percent === null ? '正在计算，进度未知' : '已算完 ' + progress.done + ' / ' + progress.total + ' 个候选方案'
+      "aria-valuetext": "\u6B63\u5728\u8BA1\u7B97\uFF0C\u8FDB\u5EA6\u672A\u77E5"
     }, /*#__PURE__*/React.createElement("i", {
-      className: "rj-bar-fill",
-      style: percent === null ? undefined : {
-        width: percent + '%'
-      }
+      className: "rj-bar-fill"
     })));
   }
   function Status({
@@ -34831,7 +34716,7 @@ function SMExport({
   }) {
     const replaced = resolution === 'context_replaced';
     const queryLabel = checking ? '正在查询结果' : replaced ? '数据库已恢复' : resolution === 'lookup_failed' ? '查询失败' : '暂未查到这次排产记录';
-    const saved = run && run.result_persisted && run.candidates.some(row => row.status === 'completed');
+    const saved = run && run.result_persisted;
     return /*#__PURE__*/React.createElement("section", {
       "aria-label": "\u672C\u6B21\u6392\u4EA7\u8BB0\u5F55",
       className: "rj-record"
@@ -34853,7 +34738,7 @@ function SMExport({
       value: run.scope_summary
     }), /*#__PURE__*/React.createElement(Progress, {
       run: run
-    }), saved && window.RunGenerationContract.unified(run.scope_summary.run_options) && /*#__PURE__*/React.createElement("p", {
+    }), saved && /*#__PURE__*/React.createElement("p", {
       className: "rj-muted"
     }, "\u672C\u6B21\u4FDD\u5B58 ", run.candidates.length, " \u4EFD\u65B9\u6848\u3002"), run.recovery_required && /*#__PURE__*/React.createElement("p", {
       className: "rj-notice"
@@ -34924,10 +34809,8 @@ function SMExport({
     preflight,
     preflightOwner,
     onRecheck,
-    onNavigate,
-    adapter
+    onNavigate
   }) {
-    const api = React.useMemo(() => adapter || A.create(), [adapter]);
     const [initial] = React.useState(() => {
       try {
         return savedRecord();
@@ -35003,14 +34886,14 @@ function SMExport({
       // A budget check continues the same confirmation even while the parent clears its old result.
       // Its owner also prevents a closed confirmation from reopening when a check has already finished.
       if (preflightOwner) {
-        if (confirmationSession.current !== preflightOwner || preflightOwner.api !== api) closeConfirmation();
+        if (confirmationSession.current !== preflightOwner) closeConfirmation();
         return;
       }
       if (!inputRef && confirmationSession.current && confirmationSession.current.rechecking) return;
       closeConfirmation();
       setUnavailable('');
       if (inputRef && !storageError && !pendingActive) inspect();
-    }, [inputRef, preflightOwner, api]);
+    }, [inputRef, preflightOwner]);
     React.useEffect(() => {
       function changed(event) {
         if (![A.PENDING_KEY, A.RECENT_KEY, null].includes(event.key)) return;
@@ -35062,7 +34945,7 @@ function SMExport({
         setChecking(true);
         const started = Date.now();
         try {
-          const found = A.lookup(await api.lookup(intent.request_key, localController.signal, intent.data_context_ref), intent.run_ref);
+          const found = await A.lookup(intent, localController.signal);
           if (!current() || localController.signal.aborted) return;
           setLastChecked(Date.now());
           setResolution(found.resolution);
@@ -35150,7 +35033,7 @@ function SMExport({
         if (controller) controller.abort();
         document.removeEventListener('visibilitychange', visibility);
       };
-    }, [api, intent && intent.request_key, revision, storageError]);
+    }, [intent && intent.request_key, revision, storageError]);
     function beginPreviewRequest() {
       if (previewRequest.current) previewRequest.current.abort();
       const controller = new AbortController();
@@ -35164,12 +35047,12 @@ function SMExport({
       return controller;
     }
     function ownsPreview(owner, controller) {
-      return alive.current && confirmationSession.current === owner && owner.api === api && previewRequest.current === controller && !controller.signal.aborted;
+      return alive.current && confirmationSession.current === owner && previewRequest.current === controller && !controller.signal.aborted;
     }
     async function readPreview(checked, owner, controller) {
-      const value = A.preview(await api.preview(checked.input_ref, controller.signal), checked.input_ref);
+      const value = await A.preview(checked.input_ref, controller.signal);
       if (!ownsPreview(owner, controller)) return;
-      if (JSON.stringify(window.PreflightContract.input(value.normalized_input)) !== JSON.stringify(window.PreflightContract.input(checked.normalized_input)) || checked.run_options && (!value.run_options || Object.keys(checked.run_options).some(key => JSON.stringify(checked.run_options[key]) !== JSON.stringify(value.run_options[key])))) throw window.PreflightContract.fail('核对结果与本次排产检查不一致，请重新检查。');
+      if (JSON.stringify(window.PreflightContract.input(value.normalized_input)) !== JSON.stringify(window.PreflightContract.input(checked.normalized_input)) || checked.run_options === null !== (value.run_options === null) || checked.run_options !== null && Object.keys(checked.run_options).some(key => JSON.stringify(checked.run_options[key]) !== JSON.stringify(value.run_options[key]))) throw window.PreflightContract.fail('核对结果与本次排产检查不一致，请重新检查。');
       currentPreview.current = value;
       setPreview(value);
       setConfirming(value.write_context.capabilities['scheduling.run']);
@@ -35190,12 +35073,11 @@ function SMExport({
       if (locked.current || previewRequest.current || storageError || !inputRef || pendingActive) return;
       const owner = {
         preflight,
-        api,
         rechecking: false
       };
       confirmationSession.current = owner;
       setConfirmationData(preflight);
-      setTimeBudget(preflight.run_options ? preflight.run_options.time_budget_seconds : null);
+      setTimeBudget(preflight.run_options === null ? null : preflight.run_options.time_budget_seconds);
       setConfirming(false);
       const controller = beginPreviewRequest();
       try {
@@ -35264,7 +35146,7 @@ function SMExport({
           setVerified(false);
           setConfirming(false);
           try {
-            const receipt = A.accepted(await api.accept(original, preview.write_context.write_token));
+            const receipt = await A.accept(original, preview.write_context.write_token);
             const owned = alive.current && activeIntent.current && activeIntent.current.request_key === original.request_key;
             // 服务端已受理：先发布这次排产，本机记录写入失败只报存储问题，不当成结果没查到。
             if (owned) {
@@ -35282,7 +35164,7 @@ function SMExport({
               if (alive.current) setStorageError('排产已接收，但本机没能保存这次排产的编号。请不要重新提交，到排产记录页查看结果。');
             }
           } catch (e) {
-            if (A.isRejected(e)) {
+            if (window.APSWorkbenchTransport.rejected(e)) {
               A.pending().reject(original);
               if (alive.current) {
                 activeIntent.current = null;
@@ -35416,7 +35298,8 @@ function SMExport({
 (function () {
   'use strict';
 
-  const BASE = '/api/workbench/v1/',
+  const T = window.APSWorkbenchTransport,
+    BASE = '/api/workbench/v1/',
     ACTION = 'scheduling.candidate.adopt';
   const PENDING_KEY = 'aps_workbench_candidate_adoption_pending_v1',
     EVENT = PENDING_KEY + '_changed';
@@ -35426,7 +35309,6 @@ function SMExport({
   const ref = v => text(v) && /^[a-f0-9]{48}$/.test(v),
     token = v => text(v) && /^[A-Za-z0-9_-]{32}$/.test(v);
   const key = v => text(v) && /^adoption-[a-f0-9]{48}$/.test(v),
-    rejections = new WeakSet(),
     replacedProofs = new WeakMap();
   function check(valid, message = '读到的采用数据不完整，请刷新重试。') {
     if (!valid) throw new Error(message);
@@ -35436,7 +35318,6 @@ function SMExport({
   }
   function contextRef(v) {
     if (!text(v)) return false;
-    if (/^[a-f0-9]{64}$/.test(v)) return true;
     try {
       const data = JSON.parse(v);
       return shape(data, ['database_scope', 'successful_restores']) && text(data.database_scope) && data.database_scope.length > 0 && Array.isArray(data.successful_restores) && data.successful_restores.every((item, index, list) => text(item) && /^[a-f0-9]{32}$/.test(item) && (index === 0 || list[index - 1] < item));
@@ -35465,22 +35346,21 @@ function SMExport({
     check(summary(result));
     return result;
   }
-  function preview(v, candidateRef) {
-    check(shape(v, ['ok', 'schema_version', 'data', 'meta', 'warnings']) && v.ok === true && v.schema_version === 1 && Array.isArray(v.warnings) && v.warnings.length === 0 && shape(v.meta, ['request_ref', 'source', 'time_basis', 'snapshot_ref', 'as_of']) && /^[a-f0-9]{32}$/.test(v.meta.request_ref) && v.meta.source === 'production' && v.meta.time_basis === 'factory_local' && token(v.meta.snapshot_ref) && time(v.meta.as_of));
+  function previewResult(v, candidateRef) {
+    check(v.warnings.length === 0);
     const d = v.data,
       c = d && d.write_context,
       validation = d && d.validation;
-    check(ref(candidateRef) && object(d) && d.candidate_ref === candidateRef && shape(validation, ['status', 'can_adopt', 'issues']) && issues(validation.issues) && shape(c, ['write_token', 'expires_at', 'capabilities', 'blocked_reasons']) && shape(c.capabilities, [ACTION]) && issues(c.blocked_reasons));
-    check(d.data_context_ref === undefined || contextRef(d.data_context_ref));
+    check(ref(candidateRef) && object(d) && d.candidate_ref === candidateRef && shape(validation, ['status', 'can_adopt', 'issues']) && issues(validation.issues) && shape(c, ['write_token', 'expires_at', 'capabilities', 'blocked_reasons']) && shape(c.capabilities, [ACTION]) && issues(c.blocked_reasons) && contextRef(d.data_context_ref));
     if (validation.can_adopt === true) {
-      check(shape(d, ['candidate_ref', 'run_ref', 'baseline', 'task_count', 'scope_complete', 'validation', 'write_context'], ['data_context_ref']) && summary({
+      check(shape(d, ['candidate_ref', 'run_ref', 'baseline', 'task_count', 'scope_complete', 'validation', 'write_context', 'data_context_ref']) && summary({
         candidate_ref: d.candidate_ref,
         run_ref: d.run_ref,
         baseline: d.baseline,
         task_count: d.task_count,
         scope_complete: d.scope_complete
       }) && validation.status === 'valid' && validation.issues.length === 0 && c.capabilities[ACTION] === true && token(c.write_token) && time(c.expires_at) && c.expires_at > v.meta.as_of && c.blocked_reasons.length === 0);
-    } else check(shape(d, ['candidate_ref', 'validation', 'write_context'], ['data_context_ref']) && validation.can_adopt === false && validation.status === 'blocked' && validation.issues.length > 0 && c.capabilities[ACTION] === false && c.write_token === null && c.expires_at === null && c.blocked_reasons.length > 0);
+    } else check(shape(d, ['candidate_ref', 'validation', 'write_context', 'data_context_ref']) && validation.can_adopt === false && validation.status === 'blocked' && validation.issues.length > 0 && c.capabilities[ACTION] === false && c.write_token === null && c.expires_at === null && c.blocked_reasons.length > 0);
     return d;
   }
   function input(v) {
@@ -35501,7 +35381,7 @@ function SMExport({
     check(validIntent(intent) && shape(v, ['ok', 'result', 'data', 'warnings', 'receipt_ref', 'replayed']) && v.ok === true && v.result === 'committed' && text(v.receipt_ref) && /^[a-f0-9]{32}$/.test(v.receipt_ref) && typeof v.replayed === 'boolean' && Array.isArray(v.warnings) && v.warnings.length === 0 && shape(d, ['candidate_ref', 'run_ref', 'official_plan', 'row_count']) && d.candidate_ref === intent.candidate_ref && d.run_ref === s.run_ref && d.row_count === s.task_count && shape(p, ['plan_ref', 'version', 'kind', 'is_current_official', 'display_name', 'source_run_ref', 'baseline_ref', 'completeness', 'capabilities', 'blocked_reasons']) && ref(p.plan_ref) && p.plan_ref !== intent.candidate_ref && p.plan_ref !== s.baseline.plan_ref && count(p.version) && p.version > (s.baseline.version === null ? 0 : s.baseline.version) && p.kind === 'official' && p.is_current_official === true && p.display_name === '正式计划 v' + p.version && p.source_run_ref === s.run_ref && p.baseline_ref === s.baseline.plan_ref && p.completeness === 'complete' && shape(p.capabilities, ['view', 'edit_draft', 'adopt', 'report_actual']) && p.capabilities.view === true && p.capabilities.edit_draft === false && p.capabilities.adopt === false && p.capabilities.report_actual === true && Array.isArray(p.blocked_reasons) && p.blocked_reasons.length === 0);
     return v;
   }
-  function lookup(v, intent) {
+  function lookupResult(v, intent) {
     if (v && v.result === 'not_recorded') {
       check(validIntent(intent) && shape(v, ['ok', 'result', 'request_key', 'may_be_in_flight', 'resolution', 'data_context_ref', 'message']) && v.ok === true && v.request_key === intent.request_key && contextRef(v.data_context_ref) && text(v.message) && ['unresolved', 'context_replaced'].includes(v.resolution) && v.may_be_in_flight === (v.resolution === 'unresolved'));
       if (v.resolution === 'unresolved') return null;
@@ -35514,16 +35394,8 @@ function SMExport({
     }
     return receipt(v, intent);
   }
-  function failure(v, status, requestKey) {
-    const e = v && v.error,
-      valid = shape(v, ['ok', 'committed', 'error']) && v.ok === false && [false, 'unknown'].includes(v.committed) && shape(e, ['code', 'message', 'fields', 'retryable', 'request_ref'], ['request_key', 'result_target']) && text(e.code) && text(e.message) && Array.isArray(e.fields) && e.fields.every(f => shape(f, ['path', 'message']) && text(f.path) && text(f.message)) && typeof e.retryable === 'boolean' && text(e.request_ref) && /^[a-f0-9]{32}$/.test(e.request_ref) && (e.request_key === undefined && e.result_target === undefined || key(requestKey) && e.request_key === requestKey && e.result_target === BASE + 'commands/' + requestKey);
-    const error = new Error(valid ? e.message : window.WorkbenchTerms.outcomes.pending('采用'));
-    error.code = valid ? e.code : 'invalid_response';
-    if (valid && v.committed === false && [400, 404, 409, 422, 503].includes(status) && e.code !== 'request_key_conflict') rejections.add(error);
-    return error;
-  }
   function validIntent(v) {
-    if (!shape(v, ['schema_version', 'candidate_ref', 'request_key', 'input', 'preview', 'phase'], ['data_context_ref']) || ![1, 2].includes(v.schema_version) || !ref(v.candidate_ref) || (v.schema_version === 2 || v.data_context_ref !== undefined) && !contextRef(v.data_context_ref) || !key(v.request_key) || !summary(v.preview) || v.preview.candidate_ref !== v.candidate_ref || !['pending', 'rejected'].includes(v.phase)) return false;
+    if (!shape(v, ['schema_version', 'candidate_ref', 'request_key', 'input', 'preview', 'phase', 'data_context_ref']) || v.schema_version !== 2 || !ref(v.candidate_ref) || !contextRef(v.data_context_ref) || !key(v.request_key) || !summary(v.preview) || v.preview.candidate_ref !== v.candidate_ref || !['pending', 'rejected'].includes(v.phase)) return false;
     try {
       return JSON.stringify(input(v.input)) === JSON.stringify(v.input);
     } catch (_) {
@@ -35571,24 +35443,20 @@ function SMExport({
     }
     return {
       read,
-      begin(value, values, previous = null) {
+      begin(value, values, previous) {
         check(!previous || validIntent(previous) && previous.phase === 'rejected' && previous.candidate_ref === value.candidate_ref, '上次采用还没确认结果，不能重新提交。');
-        const bytes = new Uint8Array(24);
-        window.crypto.getRandomValues(bytes);
         return save({
-          schema_version: value.data_context_ref === undefined ? 1 : 2,
+          schema_version: 2,
           candidate_ref: value.candidate_ref,
-          request_key: previous ? previous.request_key : 'adoption-' + Array.from(bytes, n => n.toString(16).padStart(2, '0')).join(''),
+          request_key: previous ? previous.request_key : T.requestKey('adoption'),
           input: input(values),
           preview: overview(value),
           phase: 'pending',
-          ...(value.data_context_ref === undefined ? {} : {
-            data_context_ref: value.data_context_ref
-          })
+          data_context_ref: value.data_context_ref
         }, previous);
       },
       reject(intent, error) {
-        check(rejections.has(error), '没有确认拒绝结果，已保留上次操作。');
+        check(T.rejected(error), '没有确认拒绝结果，已保留上次操作。');
         return save({
           ...intent,
           phase: 'rejected'
@@ -35608,74 +35476,41 @@ function SMExport({
       }
     };
   }
-  function create(fetcher = window.fetch.bind(window)) {
-    async function request(path, body, signal, requestKey) {
-      const controller = new AbortController(),
-        abort = () => controller.abort();
-      if (signal) {
-        if (signal.aborted) abort();else signal.addEventListener('abort', abort, {
-          once: true
-        });
-      }
-      const timer = setTimeout(abort, 30000);
-      try {
-        const response = await fetcher(BASE + path, {
-          method: body === undefined ? 'GET' : 'POST',
-          credentials: 'same-origin',
-          cache: 'no-store',
-          redirect: 'error',
-          signal: controller.signal,
-          ...(body === undefined ? {} : {
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(body)
-          })
-        });
-        check((response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() === 'application/json');
-        const value = await response.json();
-        if (!response.ok) throw failure(value, response.status, requestKey);
-        check(response.status === 200);
-        return value;
-      } finally {
-        clearTimeout(timer);
-        if (signal) signal.removeEventListener('abort', abort);
-      }
-    }
-    return {
-      async preview(candidateRef, signal) {
-        check(ref(candidateRef));
-        const v = await request('scheduling/candidates/' + candidateRef + '/adopt-preview', {}, signal);
-        preview(v, candidateRef);
-        return v;
-      },
-      async adopt(intent, writeToken) {
-        check(validIntent(intent) && intent.phase === 'pending' && token(writeToken));
-        const v = await request('scheduling/candidates/' + intent.candidate_ref + '/adopt', {
-          write_token: writeToken,
-          request_key: intent.request_key,
-          input: intent.input
-        }, undefined, intent.request_key);
-        receipt(v, intent);
-        return v;
-      },
-      async lookup(intent, signal) {
-        check(validIntent(intent));
-        const query = new URLSearchParams({
-          run_ref: intent.preview.run_ref,
-          ...(intent.data_context_ref === undefined ? {} : {
-            data_context_ref: intent.data_context_ref
-          })
-        });
-        return request('scheduling/candidates/' + intent.candidate_ref + '/adoption-commands/' + intent.request_key + '?' + query, undefined, signal, intent.request_key);
-      }
-    };
+  const candidatePath = candidateRef => BASE + 'scheduling/candidates/' + candidateRef;
+  async function preview(candidateRef, signal) {
+    check(ref(candidateRef));
+    return previewResult(await T.preview(candidatePath(candidateRef) + '/adopt-preview', {}, {
+      signal,
+      timeout: 30000
+    }), candidateRef);
+  }
+  async function adopt(intent, writeToken) {
+    check(validIntent(intent) && intent.phase === 'pending' && token(writeToken));
+    return receipt(await T.command(candidatePath(intent.candidate_ref) + '/adopt', {
+      write_token: writeToken,
+      request_key: intent.request_key,
+      input: intent.input
+    }, {
+      timeout: 30000,
+      expect: BASE + 'commands/' + intent.request_key
+    }), intent);
+  }
+  async function lookup(intent, signal) {
+    check(validIntent(intent));
+    const query = new URLSearchParams({
+      run_ref: intent.preview.run_ref,
+      data_context_ref: intent.data_context_ref
+    });
+    return lookupResult(await T.lookup(candidatePath(intent.candidate_ref) + '/adoption-commands/' + intent.request_key + '?' + query, {
+      signal,
+      timeout: 30000
+    }), intent);
   }
   window.RunAdoptionAPI = {
-    create,
     preview,
-    receipt,
+    adopt,
     lookup,
+    receipt,
     input,
     pending,
     ref,
@@ -35683,8 +35518,7 @@ function SMExport({
     validIntent,
     contextRef,
     PENDING_KEY,
-    EVENT,
-    isRejected: e => rejections.has(e)
+    EVENT
   };
 })();
 
@@ -35892,11 +35726,9 @@ function SMExport({
   function Session({
     candidateRef,
     candidateDisplay,
-    candidateCatalog = [],
-    onNavigate,
-    adapter
+    candidateCatalog,
+    onNavigate
   }) {
-    const api = React.useMemo(() => adapter || A.create(), [adapter]);
     const [initial] = React.useState(() => {
       try {
         return {
@@ -35981,7 +35813,7 @@ function SMExport({
         if (lock.current) return;
         setChecking(true);
         try {
-          const found = A.lookup(await api.lookup(intent, controller.signal), intent);
+          const found = await A.lookup(intent, controller.signal);
           if (disposed) return;
           if (found && found.resolution === 'context_replaced') {
             setReplacedInfo(found);
@@ -36003,7 +35835,7 @@ function SMExport({
         controller.abort();
         setChecking(false);
       };
-    }, [api, intent, revision, storageError, result]);
+    }, [intent, revision, storageError, result]);
     async function inspect() {
       const target = active.current ? active.current.candidate_ref : candidateRef;
       if (lock.current || storageError || !A.ref(target) || active.current && active.current.phase === 'pending') return;
@@ -36017,7 +35849,7 @@ function SMExport({
       const controller = new AbortController();
       previewRequest.current = controller;
       try {
-        const value = A.preview(await api.preview(target, controller.signal), target);
+        const value = await A.preview(target, controller.signal);
         if (alive.current && !controller.signal.aborted) setPreview(value);
       } catch (e) {
         if (alive.current && !controller.signal.aborted) setError(e.message);
@@ -36064,9 +35896,9 @@ function SMExport({
           setPreview(null);
           setConsent(false);
           try {
-            acceptResult(await api.adopt(original, preview.write_context.write_token), original);
+            acceptResult(await A.adopt(original, preview.write_context.write_token), original);
           } catch (e) {
-            if (A.isRejected(e)) {
+            if (window.APSWorkbenchTransport.rejected(e)) {
               // Only an authentic, definitive non-commit permits a new preview. Unknown responses keep the original key.
               const rejected = A.pending().reject(original, e);
               if (alive.current) {
@@ -36202,7 +36034,8 @@ function SMExport({
 (function () {
   'use strict';
 
-  const P = window.PointContract;
+  const P = window.PointContract,
+    T = window.APSWorkbenchTransport;
   const BASE = '/api/workbench/v1/scheduling';
   const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
   const text = v => typeof v === 'string',
@@ -36225,35 +36058,31 @@ function SMExport({
   const timeKey = value => value.slice(0, 19) + '.' + (value.split('.')[1] || '').padEnd(6, '0');
   const gap = v => shape(v, ['field', 'code', 'message']) && [v.field, v.code, v.message].every(text);
   const gaps = v => Array.isArray(v) && v.every(gap);
-  // 生成时的不重排时段：旧记录不带这一项；null 是“不设”（存的值读不出来时也是 null，并附 input.hold_window 资料缺项）。
+  // 生成时的不重排时段：没带这一项表示按交付设置推算；null 是“不设”（存的值读不出来时也是 null，并附 input.hold_window 资料缺项）。
   const minute = v => text(v) && /^(?!0000)\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d$/.test(v) && time(v + ':00');
   const holdWindow = v => v === undefined || v === null || shape(v, ['start', 'end']) && minute(v.start) && minute(v.end) && v.start < v.end;
   const nullableText = v => v === null || text(v);
   const number = v => typeof v === 'number' && Number.isFinite(v) && v >= 0 || text(v) && /^[1-9]\d{15,}$/.test(v) && (v.length > 16 || v > '9007199254740991');
   const nullableNumber = v => v === null || number(v);
   const version = v => v === null || (typeof v === 'string' ? number(v) : Number.isSafeInteger(v) && v > 0);
-  const caps = v => shape(v, ['view', 'export', 'edit_draft', 'adopt', 'report_actual'], ['trial']) && typeof v.view === 'boolean' && typeof v.export === 'boolean' && v.edit_draft === false && v.adopt === false && v.report_actual === false && (v.trial === undefined || v.trial === false);
+  const caps = v => shape(v, ['view', 'export', 'edit_draft', 'adopt', 'report_actual']) && typeof v.view === 'boolean' && typeof v.export === 'boolean' && v.edit_draft === false && v.adopt === false && v.report_actual === false;
   const blocked = v => Array.isArray(v) && v.every(r => shape(r, ['capability', 'code', 'message']) && [r.capability, r.code, r.message].every(text));
   const metricKeys = ['overdue_count', 'total_tardiness_hours', 'makespan_hours', 'changeover_count', 'weighted_tardiness_hours', 'machine_used_count', 'operator_used_count', 'machine_busy_hours_total', 'operator_busy_hours_total', 'machine_util_avg', 'operator_util_avg', 'elapsed_seconds'];
   function metric(v) {
     return shape(v, ['value', 'reason']) && (v.value === null ? gap(v.reason) : number(v.value) && v.reason === null);
   }
+  // 候选只由共同优化生成（unified_search_v1），保存时恒为计算完成。
   function summary(v, runRef) {
-    const unified = v && v.generation_policy_version === 'unified_search_v1',
-      G = window.RunGenerationContract;
-    check(shape(v, ['candidate_ref', 'run_ref', 'label', 'status', 'persisted_status', 'task_count', 'completeness', 'metrics', 'metric_scopes', 'capabilities', 'blocked_reasons', 'data_gaps'].concat(unified ? G.metadataKeys : [])) && ref(v.candidate_ref) && ref(v.run_ref) && (!runRef || v.run_ref === runRef) && nullableText(v.label) && count(v.task_count) && v.task_count <= 20000 && ['completed', 'failed', 'skipped'].includes(v.persisted_status) && ['complete', 'partial', 'unknown', 'no_result'].includes(v.completeness) && v.status === (v.persisted_status === 'completed' && v.completeness === 'partial' ? 'partial' : v.persisted_status) && (v.persisted_status === 'completed' ? v.completeness !== 'no_result' : v.completeness === 'no_result' && v.task_count === 0) && shape(v.metrics, metricKeys) && metricKeys.every(k => unified && k === 'elapsed_seconds' ? G.catalogElapsed(v.metrics[k]) : metric(v.metrics[k])) && shape(v.metric_scopes, ['delivery', 'resources']) && v.metric_scopes.delivery === 'completed_batches_only' && v.metric_scopes.resources === 'scheduled_results_only' && caps(v.capabilities) && blocked(v.blocked_reasons) && gaps(v.data_gaps) && (!unified || v.persisted_status === 'completed' && G.metadata(v, v.run_ref)));
+    const G = window.RunGenerationContract;
+    check(shape(v, ['candidate_ref', 'run_ref', 'label', 'status', 'persisted_status', 'task_count', 'completeness', 'metrics', 'metric_scopes', 'capabilities', 'blocked_reasons', 'data_gaps'].concat(G.metadataKeys)) && ref(v.candidate_ref) && ref(v.run_ref) && (!runRef || v.run_ref === runRef) && nullableText(v.label) && count(v.task_count) && v.task_count <= 20000 && v.persisted_status === 'completed' && ['complete', 'partial', 'unknown'].includes(v.completeness) && v.status === (v.completeness === 'partial' ? 'partial' : 'completed') && shape(v.metrics, metricKeys) && metricKeys.every(k => k === 'elapsed_seconds' ? G.catalogElapsed(v.metrics[k]) : metric(v.metrics[k])) && shape(v.metric_scopes, ['delivery', 'resources']) && v.metric_scopes.delivery === 'completed_batches_only' && v.metric_scopes.resources === 'scheduled_results_only' && caps(v.capabilities) && blocked(v.blocked_reasons) && gaps(v.data_gaps) && G.metadata(v, v.run_ref));
     return v;
   }
-  function envelope(v) {
-    check(shape(v, ['ok', 'schema_version', 'data', 'meta', 'warnings']) && v.ok === true && v.schema_version === 1 && shape(v.meta, ['request_ref', 'source', 'time_basis', 'snapshot_ref', 'as_of']) && /^[a-f0-9]{32}$/.test(v.meta.request_ref) && v.meta.source === 'production' && v.meta.time_basis === 'factory_local' && token(v.meta.snapshot_ref) && time(v.meta.as_of) && Array.isArray(v.warnings) && v.warnings.every(r => object(r) && text(r.code) && text(r.message)));
-    return v.data;
-  }
-  function identity(v, candidateRef) {
-    const data = envelope(v);
+  function validateIdentity(v, candidateRef) {
+    const data = v.data;
     check(shape(data, ['candidate_ref', 'run_ref', 'label', 'status']) && ref(candidateRef) && data.candidate_ref === candidateRef && ref(data.run_ref) && nullableText(data.label) && ['completed', 'failed', 'skipped'].includes(data.status), '候选身份与所选方案不一致，请重新打开。');
     return data;
   }
-  function catalogScope(query = {}) {
+  function catalogScope(query) {
     check(shape(query, [], ['page', 'size', 'status', 'sort', 'order', 'snapshot_ref']));
     const q = {
       page: 1,
@@ -36267,10 +36096,10 @@ function SMExport({
     if (q.snapshot_ref === undefined) delete q.snapshot_ref;
     return q;
   }
-  function catalog(v, runRef, query) {
-    const d = envelope(v),
+  function validateCatalog(v, runRef, query) {
+    const d = v.data,
       q = catalogScope(query);
-    check(ref(runRef) && shape(d, ['run_ref', 'run_state', 'candidates', 'page', 'candidate_count', 'catalog_complete', 'capabilities', 'blocked_reasons']) && d.run_ref === runRef && ['queued', 'running', 'complete', 'partial', 'failed', 'interrupted'].includes(d.run_state) && count(d.candidate_count) && d.candidate_count <= 256 && d.catalog_complete === !['queued', 'running'].includes(d.run_state) && caps(d.capabilities) && blocked(d.blocked_reasons) && shape(d.page, ['number', 'size', 'total', 'has_more']) && d.page.number === q.page && d.page.size === q.size && count(d.page.total) && d.page.total <= d.candidate_count && (q.status !== 'all' || d.page.total === d.candidate_count) && d.page.has_more === q.page * q.size < d.page.total && (!q.snapshot_ref || v.meta.snapshot_ref === q.snapshot_ref) && Array.isArray(d.candidates) && d.candidates.length === Math.min(q.size, Math.max(0, d.page.total - (q.page - 1) * q.size)));
+    check(ref(runRef) && shape(d, ['run_ref', 'run_state', 'candidates', 'page', 'candidate_count', 'catalog_complete', 'capabilities', 'blocked_reasons']) && d.run_ref === runRef && ['queued', 'running', 'complete', 'partial', 'failed', 'interrupted'].includes(d.run_state) && count(d.candidate_count) && d.candidate_count <= 256 && d.catalog_complete === !['queued', 'running'].includes(d.run_state) && caps(d.capabilities) && blocked(d.blocked_reasons) && shape(d.page, ['number', 'size', 'total', 'has_more']) && d.page.number === q.page && d.page.size === q.size && count(d.page.total) && d.page.total <= d.candidate_count && (q.status !== 'all' || d.page.total === d.candidate_count) && d.page.has_more === q.page * q.size < d.page.total && token(v.meta.snapshot_ref) && (!q.snapshot_ref || v.meta.snapshot_ref === q.snapshot_ref) && Array.isArray(d.candidates) && d.candidates.length === Math.min(q.size, Math.max(0, d.page.total - (q.page - 1) * q.size)));
     d.candidates.forEach(c => {
       summary(c, runRef);
       check(q.status === 'all' || c.status === q.status);
@@ -36278,7 +36107,7 @@ function SMExport({
     check(new Set(d.candidates.map(c => c.candidate_ref)).size === d.candidates.length);
     return d;
   }
-  function workspaceScope(candidateRef, query = {}) {
+  function workspaceScope(candidateRef, query) {
     check(ref(candidateRef), '请选择有效的候选方案。');
     check(shape(query, [], ['range_start', 'range_end', 'batch_ref', 'sort', 'order', 'snapshot_ref']));
     const q = {
@@ -36301,7 +36130,7 @@ function SMExport({
     return v.quantity === (proven ? e.target_quantity : null);
   }
   function operation(v, planned) {
-    check(shape(v, operationKeys.concat(planned ? ['row_ref', 'start', 'end', 'source', 'locked', 'machine', 'operator', 'supplier', ...(P.isPoint(v) ? P.fields : [])] : ['row_ref', 'status', 'reason']), ['operation_effort', 'process_type_ref', 'process_type_label']) && ref(v.operation_ref) && (v.batch_ref === null || ref(v.batch_ref)) && ['batch_label', 'part_label', 'process_label', 'due_date'].every(k => nullableText(v[k])) && nullableNumber(v.sequence) && quantityContext(v) && (v.process_type_ref === undefined || v.process_type_ref === null || ref(v.process_type_ref)) && (v.process_type_label === undefined || nullableText(v.process_type_label)) && (v.operation_effort === undefined || window.EffortProjectionContract.compact(v.operation_effort)));
+    check(shape(v, operationKeys.concat(['operation_effort', 'process_type_ref', 'process_type_label'], planned ? ['row_ref', 'start', 'end', 'source', 'locked', 'machine', 'operator', 'supplier', ...(P.isPoint(v) ? P.fields : [])] : ['row_ref', 'status', 'reason'])) && ref(v.operation_ref) && (v.batch_ref === null || ref(v.batch_ref)) && ['batch_label', 'part_label', 'process_label', 'process_type_label', 'due_date'].every(k => nullableText(v[k])) && nullableNumber(v.sequence) && quantityContext(v) && (v.process_type_ref === null || ref(v.process_type_ref)) && window.EffortProjectionContract.compact(v.operation_effort));
     if (planned) {
       check(ref(v.row_ref) && time(v.start) && time(v.end) && (P.isPoint(v) || timeKey(v.start) < timeKey(v.end)) && ['internal', 'external'].includes(v.source) && typeof v.locked === 'boolean');
       for (const k of ['machine', 'operator', 'supplier']) check(v[k] === null || shape(v[k], ['ref', 'label']) && (v[k].ref === null || ref(v[k].ref)) && nullableText(v[k].label));
@@ -36328,11 +36157,11 @@ function SMExport({
     const s = v.summary;
     check(new Set(v.items.map(row => row.batch_ref)).size === v.items.length && object(s) && ['complete', 'partial', 'unavailable', 'not_applicable'].includes(s.state) && ['batch_count', 'due_eligible_count', 'excluded_due_count', 'invalid_due_count', 'due_evaluation_count', 'known_due_count', 'unknown_due_count', 'unknown_count', 'known_overdue_count'].every(k => count(s[k])) && ['overdue_count', 'total_tardiness_hours', 'known_tardiness_hours'].every(k => nullableNumber(s[k])) && s.batch_count === v.batch_count && Array.isArray(s.known_batch_refs) && s.known_batch_refs.every(ref));
   }
-  function workspace(v, candidateRef, query = {}, runRef) {
-    const d = envelope(v),
+  function validateWorkspace(v, candidateRef, query) {
+    const d = v.data,
       q = workspaceScope(candidateRef, query);
     check(shape(d, ['candidate', 'generation', 'tasks', 'task_count', 'tasks_complete', 'candidate_task_count', 'candidate_span', 'task_span', 'unplanned_operations', 'unplanned_operation_count', 'time_scope', 'batch_ref', 'capabilities', 'blocked_reasons', 'data_gaps', 'delivery_risks', 'gantt_graph']));
-    summary(d.candidate, runRef);
+    summary(d.candidate);
     check(d.candidate.candidate_ref === candidateRef);
     check(Array.isArray(d.tasks) && count(d.task_count) && d.task_count === d.tasks.length && d.tasks_complete === true && d.candidate_task_count === d.candidate.task_count && d.task_count <= d.candidate_task_count && span(d.candidate_span) && span(d.task_span) && d.task_count === 0 === (d.task_span === null) && d.candidate_task_count === 0 === (d.candidate_span === null) && caps(d.capabilities) && blocked(d.blocked_reasons) && gaps(d.data_gaps) && (!q.snapshot_ref || q.snapshot_ref === v.meta.snapshot_ref) && d.batch_ref === (q.batch_ref ?? null));
     check(shape(d.time_scope, ['range_start', 'range_end', 'interval', 'time_basis', 'unplanned_policy']) && d.time_scope.range_start === (q.range_start ?? null) && d.time_scope.range_end === (q.range_end ?? null) && d.time_scope.interval === 'half_open_overlap' && d.time_scope.time_basis === 'factory_local' && d.time_scope.unplanned_policy === 'included_without_time_interval');
@@ -36368,7 +36197,7 @@ function SMExport({
     });
     const g = d.generation,
       G = window.RunGenerationContract;
-    check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated', 'input', 'data_gaps', 'baseline', 'algorithm']) && g.run_ref === d.candidate.run_ref && time(g.accepted_at) && (g.finished_at === null || time(g.finished_at)) && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission' && g.current_entities_consulted === false && g.formal_version_allocated === false && gaps(g.data_gaps) && shape(g.input, ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'], ['material_strategy', 'hold_window', 'time_budget_seconds']) && (g.input.time_budget_seconds === undefined || G.budget(g.input.time_budget_seconds)) && (g.input.material_strategy === undefined || ['strict', 'stage', 'split'].includes(g.input.material_strategy) || g.input.material_strategy === null && g.data_gaps.some(gap => gap.field === 'input.material_strategy')) && holdWindow(g.input.hold_window) && (g.input.hold_window === null || !g.data_gaps.some(gap => gap.field === 'input.hold_window')) && ['start_date', 'end_date', 'missing_resource_policy', 'completed_policy'].every(k => nullableText(g.input[k])) && (g.input.ready_check === null || typeof g.input.ready_check === 'boolean') && window.RunGenerationContract.algorithm(g.algorithm, g.run_ref) && shape(g.baseline, ['baseline_ref', 'version', 'kind', 'captured_at', 'captured_task_count']) && g.baseline.kind === 'admission_official' && version(g.baseline.version) && time(g.baseline.captured_at) && (g.baseline.version === null ? g.baseline.baseline_ref === null : ref(g.baseline.baseline_ref)) && (g.baseline.captured_task_count === null || count(g.baseline.captured_task_count)));
+    check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated', 'input', 'data_gaps', 'baseline', 'algorithm']) && g.run_ref === d.candidate.run_ref && time(g.accepted_at) && (g.finished_at === null || time(g.finished_at)) && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission' && g.current_entities_consulted === false && g.formal_version_allocated === false && gaps(g.data_gaps) && shape(g.input, ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'], ['material_strategy', 'hold_window', 'time_budget_seconds']) && (g.input.time_budget_seconds === undefined || G.budget(g.input.time_budget_seconds)) && (g.input.material_strategy === undefined || ['strict', 'stage'].includes(g.input.material_strategy) || g.input.material_strategy === null && g.data_gaps.some(gap => gap.field === 'input.material_strategy')) && holdWindow(g.input.hold_window) && (g.input.hold_window === null || !g.data_gaps.some(gap => gap.field === 'input.hold_window')) && ['start_date', 'end_date', 'missing_resource_policy', 'completed_policy'].every(k => nullableText(g.input[k])) && (g.input.ready_check === null || typeof g.input.ready_check === 'boolean') && window.RunGenerationContract.algorithm(g.algorithm, g.run_ref) && shape(g.baseline, ['baseline_ref', 'version', 'kind', 'captured_at', 'captured_task_count']) && g.baseline.kind === 'admission_official' && version(g.baseline.version) && time(g.baseline.captured_at) && (g.baseline.version === null ? g.baseline.baseline_ref === null : ref(g.baseline.baseline_ref)) && (g.baseline.captured_task_count === null || count(g.baseline.captured_task_count)));
     delivery(d.delivery_risks, d, q);
     check(window.GanttGraph.validate(d.gantt_graph, {
       scope: 'full_candidate',
@@ -36381,121 +36210,80 @@ function SMExport({
     }));
     return d;
   }
-  function failure(payload, status) {
-    const e = payload && payload.error;
-    const error = new Error(e && text(e.message) ? e.message : '候选方案数据无效，请刷新后重试。');
-    error.code = e && e.code || 'invalid_response';
-    error.status = status;
-    return error;
-  }
-  function download(value, result, fmt) {
+  // 文件名非空与后缀由传输层按 Content-Type 断言；这里只核对本领域业务头与当前读取范围。
+  function download(value, result) {
     const d = result.data;
-    check(value && value.blob instanceof Blob && value.blob.size > 0 && value.candidate_ref === d.candidate.candidate_ref && value.snapshot_ref === result.meta.snapshot_ref && value.task_count === d.task_count && value.row_count === Math.max(1, d.task_count + d.unplanned_operation_count) && text(value.filename) && !/[\\/\r\n]/.test(value.filename) && value.filename.endsWith('.' + fmt), '下载结果与当前完整范围不一致，没有保存文件。');
+    check(value.candidate_ref === d.candidate.candidate_ref && value.snapshot_ref === result.meta.snapshot_ref && value.task_count === d.task_count && value.row_count === Math.max(1, d.task_count + d.unplanned_operation_count), '下载结果与当前完整范围不一致，没有保存文件。');
     return value;
   }
-  function create(fetcher = window.fetch.bind(window)) {
-    async function request(path, signal, binary) {
-      const controller = new AbortController(),
-        abort = () => controller.abort();
-      if (signal) {
-        if (signal.aborted) abort();else signal.addEventListener('abort', abort, {
-          once: true
-        });
-      }
-      const timer = setTimeout(abort, 60000);
-      try {
-        const response = await fetcher(BASE + path, {
-          method: 'GET',
-          credentials: 'same-origin',
-          cache: 'no-store',
-          redirect: 'error',
-          signal: controller.signal
-        });
-        const mime = (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
-        if (!response.ok) throw failure(mime === 'application/json' ? await response.json() : null, response.status);
-        check(response.status === 200);
-        if (!binary) {
-          check(mime === 'application/json');
-          return await response.json();
-        }
-        check(mime === (binary === 'csv' ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'), '下载格式不符，未保存文件。');
-        const blob = await response.blob(),
-          bytes = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
-        check(binary === 'xlsx' ? bytes[0] === 80 && bytes[1] === 75 : bytes[0] === 239 && bytes[1] === 187 && bytes[2] === 191, '下载文件内容无效。');
-        check(/^attachment;/i.test(response.headers.get('Content-Disposition') || ''));
-        const headerCount = key => {
-          const raw = response.headers.get(key);
-          check(raw !== null && /^\d+$/.test(raw) && count(Number(raw)));
-          return Number(raw);
-        };
-        return {
-          blob,
-          filename: '候选范围导出.' + binary,
-          candidate_ref: response.headers.get('X-Workbench-Candidate-Ref'),
-          snapshot_ref: response.headers.get('X-Workbench-Snapshot-Ref'),
-          task_count: headerCount('X-Workbench-Task-Count'),
-          row_count: headerCount('X-Workbench-Row-Count')
-        };
-      } finally {
-        clearTimeout(timer);
-        if (signal) signal.removeEventListener('abort', abort);
-      }
-    }
-    return window.APSReadBoundary.verified({
-      async identity(candidateRef, signal) {
-        check(ref(candidateRef));
-        const value = await request('/candidates/' + candidateRef + '/identity', signal);
-        identity(value, candidateRef);
-        return value;
-      },
-      async catalog(runRef, query = {}, signal) {
-        check(ref(runRef));
-        const q = catalogScope(query);
-        const v = await request('/runs/' + runRef + '/candidates?' + new URLSearchParams(q), signal);
-        catalog(v, runRef, q);
-        return v;
-      },
-      async workspace(candidateRef, query = {}, signal) {
-        const q = workspaceScope(candidateRef, query);
-        const v = await request('/candidates/' + candidateRef + '/workspace?' + new URLSearchParams(q), signal);
-        workspace(v, candidateRef, q);
-        return v;
-      },
-      async export(candidateRef, query, snapshotRef, fmt, signal) {
-        check(token(snapshotRef) && ['csv', 'xlsx'].includes(fmt));
-        const q = workspaceScope(candidateRef, {
-          ...query,
-          snapshot_ref: snapshotRef
-        });
-        return request('/candidates/' + candidateRef + '/export?' + new URLSearchParams({
-          ...q,
-          format: fmt
-        }), signal, fmt);
-      }
-    }, ['identity', 'catalog', 'workspace']);
+  const read = (path, query, signal) => T.read(BASE + path, query, {
+    signal,
+    timeout: 60000
+  });
+  async function identity(candidateRef, signal) {
+    check(ref(candidateRef));
+    const value = await read('/candidates/' + candidateRef + '/identity', {}, signal);
+    validateIdentity(value, candidateRef);
+    return value;
   }
-  function adapter(value) {
-    return window.APSReadBoundary.checked(value, {
-      identity: (result, candidateRef) => identity(result, candidateRef),
-      catalog: (result, runRef, query) => catalog(result, runRef, query),
-      workspace: (result, candidateRef, query) => workspace(result, candidateRef, query)
+  async function catalog(runRef, query, signal) {
+    check(ref(runRef));
+    const q = catalogScope(query),
+      value = await read('/runs/' + runRef + '/candidates', q, signal);
+    validateCatalog(value, runRef, q);
+    return value;
+  }
+  async function workspace(candidateRef, query, signal) {
+    const q = workspaceScope(candidateRef, query),
+      value = await read('/candidates/' + candidateRef + '/workspace', q, signal);
+    validateWorkspace(value, candidateRef, q);
+    return value;
+  }
+  // 传输层已校验附件、文件名与后缀、格式、魔数与非空；这里只取文件与本领域的四个响应头，与当前读取范围的核对在 download() 里做。
+  async function exportFile(candidateRef, query, snapshotRef, fmt, signal) {
+    check(token(snapshotRef) && ['csv', 'xlsx'].includes(fmt));
+    const q = workspaceScope(candidateRef, {
+      ...query,
+      snapshot_ref: snapshotRef
     });
+    const file = await T.download(BASE + '/candidates/' + candidateRef + '/export', {
+      ...q,
+      format: fmt
+    }, {
+      signal,
+      timeout: 60000,
+      types: [T.types[fmt]]
+    });
+    const headerCount = key => {
+      const raw = file.header(key);
+      check(raw !== null && /^\d+$/.test(raw) && count(Number(raw)));
+      return Number(raw);
+    };
+    return {
+      blob: file.blob,
+      filename: file.filename,
+      candidate_ref: file.header('X-Workbench-Candidate-Ref'),
+      snapshot_ref: file.header('X-Workbench-Snapshot-Ref'),
+      task_count: headerCount('X-Workbench-Task-Count'),
+      row_count: headerCount('X-Workbench-Row-Count')
+    };
   }
   window.RunCandidateAPI = {
-    create,
-    adapter,
+    identity,
+    catalog,
+    workspace,
+    export: exportFile,
     check,
     ref,
     time,
     timeKey,
     version,
     shape,
-    envelope,
     summary,
-    identity,
-    catalog,
+    validateIdentity,
+    validateCatalog,
     catalogScope,
-    workspace,
+    validateWorkspace,
     workspaceScope,
     download,
     metricKeys,
@@ -36522,7 +36310,6 @@ function SMExport({
     digits: 3,
     trim: true
   });
-  const percent = value => typeof value === 'string' ? window.WorkbenchFormat.integerText(value + '00') + '%' : window.WorkbenchFormat.percent(value);
   // A real change below the three shown decimals must not read as "增加 0".
   const tiny = value => typeof value === 'number' && Number(Math.abs(value).toFixed(3)) === 0;
   const signedChange = value => value === 0 ? '不变' : (value > 0 ? '增加' : '减少') + (tiny(value) ? '不到 0.001' : ' ' + number(Math.abs(value)));
@@ -36581,7 +36368,7 @@ function SMExport({
   function matches(item, needle, operationRefs, focus) {
     return (!needle || item.search.includes(needle)) && (!operationRefs || operationRefs.has(item.task.operation_ref)) && resourceMatches(item.task, focus);
   }
-  function matching(prepared, query, focus = null, unplanned = false) {
+  function matching(prepared, query, focus, unplanned) {
     const needle = query.trim().toLocaleLowerCase();
     return (unplanned ? prepared.unplanned : prepared.items).filter(item => matches(item, needle, null, focus)).map(item => item.task);
   }
@@ -36721,7 +36508,7 @@ function SMExport({
       groups
     };
   }
-  function selectPrepared(prepared, query = '', operationRefs = null, focus = null) {
+  function selectPrepared(prepared, query, operationRefs, focus) {
     const needle = query.trim().toLocaleLowerCase(),
       groups = new Map(),
       tasks = [],
@@ -36756,7 +36543,8 @@ function SMExport({
       groupCount: groups.size
     };
   }
-  function groupRows(group, start, end, width, pointRows = false) {
+  // 唯一调用方（RunBaselineModel.layoutPrepared）把点状工序单独成行：点状行自带 lane 与 laneCount。
+  function groupRows(group, start, end, width) {
     const points = group.points.length ? window.PointGanttModel.layoutTracks(group.points, start, end, width).map(lane => lane.filter(item => group.shown.has(item))) : [];
     const laneCount = group.normal.length + points.length,
       rows = [];
@@ -36776,12 +36564,12 @@ function SMExport({
     points.forEach((items, lane) => {
       if (items.length) rows.push({
         id: group.id,
-        key: group.id + (pointRows ? ':point:' + lane : ':' + (group.normal.length + lane)),
+        key: group.id + ':point:' + lane,
         label: group.label,
         items,
         height: 56,
-        lane: pointRows ? lane : group.normal.length + lane,
-        laneCount: pointRows ? points.length : laneCount,
+        lane,
+        laneCount: points.length,
         normalLaneCount: group.normal.length,
         point: true
       });
@@ -36792,7 +36580,6 @@ function SMExport({
     instant,
     timeLabel,
     number,
-    percent,
     signedChange,
     visibleItems,
     visibleRows,
@@ -36933,7 +36720,7 @@ function SMExport({
     }, error.message || '候选方案读取失败，请刷新后重试。') : null;
   }
   function Reasons({
-    rows = []
+    rows
   }) {
     const groups = new Map();
     rows.forEach(r => {
@@ -36980,22 +36767,15 @@ function SMExport({
       label: label
     });
   }
+  // 只在候选目录的交付三项（超期数、拖期小时、完工跨度）上使用；这三项按 {value, reason} 校验，没有 not_applicable 状态。
   function Metric({
-    metric,
-    suffix = '',
-    kind
+    metric
   }) {
-    if (metric.state === 'not_applicable' && metric.reason && metric.reason.code === 'shared_run_time') return /*#__PURE__*/React.createElement("details", {
-      className: "rc-metric rc-muted",
-      "data-metric-state": "not_applicable"
-    }, /*#__PURE__*/React.createElement("summary", {
-      title: metric.reason.message
-    }, "N/A"), /*#__PURE__*/React.createElement("small", null, metric.reason.message));
     return metric.value === null ? /*#__PURE__*/React.createElement("details", {
       className: "rc-metric rc-muted"
     }, /*#__PURE__*/React.createElement("summary", {
       title: metric.reason.message
-    }, "\u672A\u77E5"), /*#__PURE__*/React.createElement("small", null, metric.reason.message)) : /*#__PURE__*/React.createElement("span", null, ['machine_util_avg', 'operator_util_avg'].includes(kind) ? window.RunCandidateModel.percent(metric.value) : window.RunCandidateModel.number(metric.value), suffix);
+    }, "\u672A\u77E5"), /*#__PURE__*/React.createElement("small", null, metric.reason.message)) : /*#__PURE__*/React.createElement("span", null, window.RunCandidateModel.number(metric.value));
   }
   function ScoringScope({
     value
@@ -37181,8 +36961,7 @@ function SMExport({
   }) {
     const g = data.generation,
       input = g.input,
-      M = window.RunCandidateModel,
-      unified = window.RunGenerationContract.unified(g.algorithm);
+      M = window.RunCandidateModel;
     return /*#__PURE__*/React.createElement("div", {
       className: "rc-source-summary",
       "aria-label": "\u5168\u65B9\u6848\u8D44\u6599"
@@ -37192,12 +36971,12 @@ function SMExport({
       className: "rc-meta"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5168\u65B9\u6848\u6392\u4EA7\u65E5\u671F"), /*#__PURE__*/React.createElement("dd", null, input.start_date || '未记录', " \u81F3 ", input.end_date || '未记录')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u63D0\u4EA4 / \u7ED3\u675F\u65F6\u95F4"), /*#__PURE__*/React.createElement("dd", null, M.timeLabel(g.accepted_at), /*#__PURE__*/React.createElement("small", null, M.timeLabel(g.finished_at)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u8BA1\u7B97\u72B6\u6001"), /*#__PURE__*/React.createElement("dd", {
       "data-candidate-persisted-status": data.candidate.persisted_status
-    }, window.WorkbenchTerms.candidate_statuses[data.candidate.persisted_status] || '未记录')), meta && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u672C\u6B21\u5237\u65B0\u65F6\u95F4"), /*#__PURE__*/React.createElement("dd", null, M.timeLabel(meta.as_of))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u8BA1\u7B97\u65B9\u5F0F"), /*#__PURE__*/React.createElement("dd", null, [g.algorithm.mode_label, g.algorithm.strategy_label].filter(Boolean).join(' · ') || '未记录')), unified && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u4E3B\u76EE\u6807"), /*#__PURE__*/React.createElement("dd", null, window.RunGenerationContract.objectiveLabel(g.algorithm.primary_objective))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u540C\u65F6\u63A2\u7D22"), /*#__PURE__*/React.createElement("dd", null, g.algorithm.target_objectives.map(window.RunGenerationContract.objectiveLabel).join(' · '))), input.time_budget_seconds !== undefined && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u603B\u8BA1\u7B97\u9884\u7B97"), /*#__PURE__*/React.createElement("dd", null, M.number(input.time_budget_seconds), " \u79D2"))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u7269\u6599\u9F50\u5957\u89C4\u5219"), /*#__PURE__*/React.createElement("dd", null, window.WorkbenchTerms.material_strategy(input.material_strategy, input.ready_check))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u4E0D\u91CD\u6392\u65F6\u6BB5"), /*#__PURE__*/React.createElement("dd", {
+    }, window.WorkbenchTerms.candidate_statuses[data.candidate.persisted_status] || '未记录')), meta && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u672C\u6B21\u5237\u65B0\u65F6\u95F4"), /*#__PURE__*/React.createElement("dd", null, M.timeLabel(meta.as_of))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u8BA1\u7B97\u65B9\u5F0F"), /*#__PURE__*/React.createElement("dd", null, [g.algorithm.mode_label, g.algorithm.strategy_label].filter(Boolean).join(' · ') || '未记录')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u4E3B\u76EE\u6807"), /*#__PURE__*/React.createElement("dd", null, window.RunGenerationContract.objectiveLabel(g.algorithm.primary_objective))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u540C\u65F6\u63A2\u7D22"), /*#__PURE__*/React.createElement("dd", null, g.algorithm.target_objectives.map(window.RunGenerationContract.objectiveLabel).join(' · '))), input.time_budget_seconds !== undefined && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u603B\u8BA1\u7B97\u9884\u7B97"), /*#__PURE__*/React.createElement("dd", null, M.number(input.time_budget_seconds), " \u79D2")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u7269\u6599\u9F50\u5957\u89C4\u5219"), /*#__PURE__*/React.createElement("dd", null, window.WorkbenchTerms.material_strategy(input.material_strategy, input.ready_check))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u4E0D\u91CD\u6392\u65F6\u6BB5"), /*#__PURE__*/React.createElement("dd", {
       "data-hold-window": true
     }, window.WorkbenchTerms.hold_window(input.hold_window, g.data_gaps.some(gap => gap.field === 'input.hold_window')))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u9F50\u5957\u68C0\u67E5 / \u7F3A\u8D44\u6E90"), /*#__PURE__*/React.createElement("dd", null, input.ready_check === null ? '未记录' : input.ready_check ? '开启' : '关闭', " / ", {
       auto_assign: '自动分配',
       exclude: '暂不排'
-    }[input.missing_resource_policy] || '未记录')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, '已有执行 / ' + window.WorkbenchTerms.baseline_plan), /*#__PURE__*/React.createElement("dd", null, input.completed_policy === 'preserve_actuals' ? '保留已有开工和完工记录' : '执行规则未记录', /*#__PURE__*/React.createElement("small", null, g.baseline.captured_task_count === null ? '正式计划安排数未记录' : '已保留 ' + g.baseline.captured_task_count + ' 道正式计划安排')))), unified && /*#__PURE__*/React.createElement(GenerationMetadata, {
+    }[input.missing_resource_policy] || '未记录')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, '已有执行 / ' + window.WorkbenchTerms.baseline_plan), /*#__PURE__*/React.createElement("dd", null, input.completed_policy === 'preserve_actuals' ? '保留已有开工和完工记录' : '执行规则未记录', /*#__PURE__*/React.createElement("small", null, g.baseline.captured_task_count === null ? '正式计划安排数未记录' : '已保留 ' + g.baseline.captured_task_count + ' 道正式计划安排')))), /*#__PURE__*/React.createElement(GenerationMetadata, {
       value: g.algorithm,
       runRef: g.run_ref
     }), /*#__PURE__*/React.createElement("div", null, "\u539F\u5B89\u6392\uFF1A", g.baseline.version === null ? '提交试排时没有正式计划' : '提交试排时保存的正式 v' + M.number(g.baseline.version) + ' · ' + M.timeLabel(g.baseline.captured_at)), /*#__PURE__*/React.createElement("div", {
@@ -37402,12 +37181,12 @@ function SMExport({
   'use strict';
 
   const A = window.RunCandidateAPI,
+    T = window.APSWorkbenchTransport,
     {
       check,
       ref,
       time,
-      shape,
-      envelope
+      shape
     } = A;
   const count = v => Number.isSafeInteger(v) && v >= 0;
   const number = v => typeof v === 'number' && Number.isFinite(v);
@@ -37427,8 +37206,8 @@ function SMExport({
   function delivery(row, batch, available = true) {
     check(window.DeliveryProjectionContract.row(row, !available) && row.batch_ref === batch.batch_ref && row.batch_id === batch.batch_id);
   }
-  function analysis(payload, candidateRef, runRef) {
-    const d = envelope(payload);
+  function validateAnalysis(payload, candidateRef, runRef) {
+    const d = payload.data;
     check(shape(d, ['candidate_ref', 'run_ref', 'baseline', 'batch_refs', 'batches', 'metrics', 'before_metrics', 'delivery_deltas', 'operations', 'basis', 'capabilities']) && d.candidate_ref === candidateRef && ref(d.run_ref) && (!runRef || d.run_ref === runRef) && refs(d.batch_refs) && Array.isArray(d.batches) && equal(d.batches.map(row => row.batch_ref), d.batch_refs) && shape(d.metrics, keys) && shape(d.before_metrics, keys.slice(0, 2)) && shape(d.delivery_deltas, keys.slice(0, 2)) && equal(d.basis, {
       scope: 'full_candidate_and_full_admission_baseline',
       batch_scope: 'admission_selected_batches',
@@ -37465,8 +37244,8 @@ function SMExport({
     keys.slice(2).forEach(key => metric(d.metrics[key], key));
     return d;
   }
-  function history(payload, candidateRef, runRef) {
-    const d = envelope(payload);
+  function validateAdoptions(payload, candidateRef, runRef) {
+    const d = payload.data;
     check(shape(d, ['candidate_ref', 'run_ref', 'items', 'total', 'state', 'basis']) && d.candidate_ref === candidateRef && ref(d.run_ref) && (!runRef || d.run_ref === runRef) && Array.isArray(d.items) && d.total === d.items.length && d.state === (d.total ? 'available' : 'empty') && d.basis === 'original_candidate_receipts_and_official_adoption_audits');
     d.items.forEach(row => {
       check(shape(row, ['receipt_ref', 'request_key', 'candidate_ref', 'run_ref', 'committed_at_utc', 'row_count', 'official_plan', 'adoption', 'can_open', 'evidence_gaps']) && /^[a-f0-9]{32}$/.test(row.receipt_ref) && text(row.request_key) && row.candidate_ref === candidateRef && row.run_ref === d.run_ref && text(row.committed_at_utc) && /Z$/.test(row.committed_at_utc) && Number.isFinite(Date.parse(row.committed_at_utc)) && count(row.row_count) && row.row_count > 0 && shape(row.official_plan, ['plan_ref', 'version', 'label']) && ref(row.official_plan.plan_ref) && count(row.official_plan.version) && row.official_plan.version > 0 && row.official_plan.label === '正式计划 v' + row.official_plan.version && Array.isArray(row.evidence_gaps) && row.evidence_gaps.every(reason) && row.can_open === (row.evidence_gaps.length === 0));
@@ -37475,59 +37254,20 @@ function SMExport({
     check(new Set(d.items.map(row => row.receipt_ref)).size === d.total && new Set(d.items.map(row => row.official_plan.plan_ref)).size === d.total);
     return d;
   }
-  function create(fetcher = window.fetch.bind(window)) {
-    async function read(candidateRef, runRef, leaf, validate, signal) {
-      check(ref(candidateRef) && (!runRef || ref(runRef)));
-      const controller = new AbortController(),
-        abort = () => controller.abort();
-      if (signal) {
-        if (signal.aborted) abort();else signal.addEventListener('abort', abort, {
-          once: true
-        });
-      }
-      const timer = setTimeout(abort, 60000);
-      try {
-        const response = await fetcher('/api/workbench/v1/scheduling/candidates/' + candidateRef + '/' + leaf, {
-          method: 'GET',
-          credentials: 'same-origin',
-          cache: 'no-store',
-          redirect: 'error',
-          signal: controller.signal
-        });
-        const json = (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() === 'application/json';
-        const value = json ? await response.json() : null;
-        if (!response.ok) {
-          const error = value && value.error;
-          throw Object.assign(new Error(error && text(error.message) ? error.message : '候选方案资料读取失败，请刷新后重试。'), {
-            code: error && error.code || 'invalid_response',
-            status: response.status
-          });
-        }
-        check(response.status === 200 && json);
-        validate(value, candidateRef, runRef);
-        return value;
-      } finally {
-        clearTimeout(timer);
-        if (signal) signal.removeEventListener('abort', abort);
-      }
-    }
-    return window.APSReadBoundary.verified({
-      ...A.create(fetcher),
-      analysis: (candidateRef, runRef, signal) => read(candidateRef, runRef, 'analysis', analysis, signal),
-      adoptions: (candidateRef, runRef, signal) => read(candidateRef, runRef, 'adoptions', history, signal)
-    }, ['analysis', 'adoptions']);
-  }
-  function adapter(value) {
-    return window.APSReadBoundary.checked(A.adapter(value), {
-      analysis,
-      adoptions: history
+  async function read(candidateRef, runRef, leaf, validate, signal) {
+    check(ref(candidateRef) && (!runRef || ref(runRef)));
+    const value = await T.read('/api/workbench/v1/scheduling/candidates/' + candidateRef + '/' + leaf, {}, {
+      signal,
+      timeout: 60000
     });
+    validate(value, candidateRef, runRef);
+    return value;
   }
   window.RunCandidateAnalysisAPI = {
-    create,
-    adapter,
-    analysis,
-    history
+    analysis: (candidateRef, runRef, signal) => read(candidateRef, runRef, 'analysis', validateAnalysis, signal),
+    adoptions: (candidateRef, runRef, signal) => read(candidateRef, runRef, 'adoptions', validateAdoptions, signal),
+    validateAnalysis,
+    validateAdoptions
   };
 })();
 
@@ -37625,7 +37365,6 @@ function SMExport({
       row: row.after
     })), /*#__PURE__*/React.createElement("td", null, !data.baseline.available || row.after.due_state === 'unspecified' ? '不适用' : row.delay_delta_hours === null ? '交付待确认' : M.signedChange(row.delay_delta_hours)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(C.Button, {
       icon: "chart-gantt",
-      disabled: !onBatch,
       "aria-label": '查看批次甘特 ' + row.batch_id,
       onClick: () => onBatch(row)
     }, "\u6279\u6B21\u7518\u7279"), row.after.last_operations.map(task => /*#__PURE__*/React.createElement(C.Button, {
@@ -37681,7 +37420,7 @@ function SMExport({
       rows: row.evidence_gaps
     })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(C.Button, {
       icon: "chart-gantt",
-      disabled: !row.can_open || !onPlan,
+      disabled: !row.can_open,
       title: row.evidence_gaps.map(gap => gap.message).join(' '),
       "aria-label": '打开原采用计划 v' + row.official_plan.version,
       onClick: () => onPlan(row.official_plan)
@@ -37704,12 +37443,13 @@ function SMExport({
   'use strict';
 
   const A = window.RunCandidateAPI,
+    G = window.RunGenerationContract,
+    T = window.APSWorkbenchTransport,
     {
       check,
       ref,
       time,
-      timeKey,
-      envelope
+      timeKey
     } = A;
   const queryKeys = ['selected_candidate_ref', 'reference_candidate_ref', 'comparison_mode', 'resource_view', 'range_start', 'range_end', 'snapshot_ref'];
   function bindSnapshot(payload, query) {
@@ -37722,7 +37462,7 @@ function SMExport({
     if (query.comparison_mode === 'admission_official') check(data.scope.reference && data.scope.reference.kind === 'admission_official' && data.baseline && data.baseline.kind === 'admission_official' && data.baseline.baseline_ref === data.scope.reference.baseline_ref && data.baseline.state === data.scope.reference_state, '比较基准的正式计划资料已变化，请刷新。');
   }
   // 各 *Scope 只保留填了值的筛选（空串、null、undefined 都不进 q）；后端把未填的筛选回显为 null，比较时用 `?? null` 对齐。
-  function scope(runRef, query = {}) {
+  function scope(runRef, query) {
     check(ref(runRef), '请从排产记录打开方案对比。');
     const value = {
       comparison_mode: 'candidates',
@@ -37762,19 +37502,19 @@ function SMExport({
     if (context.comparison_tab === undefined) check(ref(context.operation_ref) && time(context.range_start) && time(context.range_end) && timeKey(context.range_start) <= timeKey(data.scope.range_start) && timeKey(context.range_end) >= timeKey(data.scope.range_end) && (timeKey(context.range_start) === timeKey(data.scope.range_start) && timeKey(context.range_end) === timeKey(data.scope.range_end) || context.drill_range_adjusted === true), '推荐理由的工序位置资料不完整，请点“刷新方案对比”。');else for (const key of ['range_start', 'range_end']) if (context[key] !== undefined) check(time(context[key]) && timeKey(context[key]) === timeKey(data.scope[key]), '推荐理由的比较时间范围已变化，请点“刷新方案对比”。');
     if (context.comparison_tab !== undefined) check(['batches', 'operations', 'resources', 'preparation', 'changeovers'].includes(context.comparison_tab) && object(context.detail_query), '推荐理由的明细资料不完整，请点“刷新方案对比”。');
   }
+  const completionBatchCounts = ['complete_batch_count', 'incomplete_batch_count', 'ordinary_incomplete_batch_count', 'deferred_batch_count', 'unknown_batch_count'];
   function completion(value) {
-    const counts = ['complete_batch_count', 'incomplete_batch_count', 'ordinary_incomplete_batch_count', 'deferred_batch_count', 'unknown_batch_count', 'unplanned_operation_count', 'deferred_operation_count'];
-    return object(value) && value.scope === 'full_admission' && ['complete', 'partial', 'unavailable', 'not_applicable'].includes(value.state) && typeof value.source_available === 'boolean' && counts.every(key => value[key] === null || count(value[key])) && object(value.sample_batch_refs) && ['complete', 'incomplete', 'deferred', 'unknown'].every(key => Array.isArray(value.sample_batch_refs[key]) && value.sample_batch_refs[key].length <= 3 && value.sample_batch_refs[key].every(ref)) && object(value.remaining_work) && object(value.remaining_work.metrics) && preparationMetrics.every(key => window.EffortProjectionContract.metric(value.remaining_work.metrics[key])) && ['operation_count', 'unplanned_operation_count', 'deferred_operation_count'].every(key => value.remaining_work[key] === null || count(value.remaining_work[key]));
+    // 批次计数恒为整数；两个工序计数只在工序安排记录未保存（source_available 为假）时为 null。
+    return object(value) && value.scope === 'full_admission' && ['complete', 'partial', 'unavailable', 'not_applicable'].includes(value.state) && typeof value.source_available === 'boolean' && completionBatchCounts.every(key => count(value[key])) && ['unplanned_operation_count', 'deferred_operation_count'].every(key => value.source_available ? count(value[key]) : value[key] === null) && object(value.sample_batch_refs) && ['complete', 'incomplete', 'deferred', 'unknown'].every(key => Array.isArray(value.sample_batch_refs[key]) && value.sample_batch_refs[key].length <= 3 && value.sample_batch_refs[key].every(ref)) && object(value.remaining_work) && object(value.remaining_work.metrics) && preparationMetrics.every(key => window.EffortProjectionContract.metric(value.remaining_work.metrics[key])) && ['operation_count', 'unplanned_operation_count', 'deferred_operation_count'].every(key => value.remaining_work[key] === null || count(value.remaining_work[key]));
   }
   function recommendation(data) {
     const value = data.recommendation,
       basis = data.selection_basis,
       comparison = value && value.current_comparison;
-    if (basis && basis.selection_policy_version === 'business_objectives_v1') check(window.RunGenerationContract.selectionBasis(basis, data.candidates), '保存的共同优化选择资料不完整，请点“刷新方案对比”。');
-    check(object(basis) && ['selected_candidate_ref', 'raw_score_best_candidate_ref', 'health_reference_candidate_ref'].every(key => basis[key] === null || ref(basis[key]) && data.candidates.some(row => row.candidate_ref === basis[key])) && ['complete', 'partial', 'unavailable'].includes(basis.evidence_state) && object(value) && value.recommendation_version === 'decision-recommendation-v1' && ['available', 'unavailable'].includes(value.state) && value.candidate_ref === basis.selected_candidate_ref && (value.state === 'available' ? ref(value.candidate_ref) : value.candidate_ref === null) && value.viewed_candidate_ref === data.scope.selected_candidate_ref && typeof value.headline === 'string' && (value.state === 'available' ? ['complete', 'schedulable_scope', 'partial'].includes(value.recommendation_type) : value.recommendation_type === null), '推荐方案或推荐理由已变化，请点“刷新方案对比”。');
-    check(object(basis.explanation) && typeof basis.explanation.headline === 'string' && Array.isArray(basis.explanation.entries) && basis.explanation.entries.every(entry => object(entry) && ['key', 'label', 'text', 'state', 'source', 'scope'].every(key => typeof entry[key] === 'string') && (entry.unit === null || typeof entry.unit === 'string') && (entry.tolerance_unit === null || typeof entry.tolerance_unit === 'string') && ['reference_value', 'selected_value', 'value', 'limit', 'tolerance'].every(key => numeric(entry[key]))) && Array.isArray(basis.explanation.issues) && basis.explanation.issues.every(issue), '推荐理由资料不完整，请点“刷新方案对比”。');
-    if (basis.decision_evidence !== null) check(object(basis.decision_evidence) && basis.selection_evidence_version === 'candidate-selection-evidence-v1' && basis.decision_evidence.version === basis.selection_evidence_version && object(basis.decision_evidence.anchors) && object(basis.decision_evidence.selected) && basis.decision_evidence.selected.candidate_ref === basis.selected_candidate_ref && object(basis.decision_evidence.anchors.raw_score_best) && basis.decision_evidence.anchors.raw_score_best.candidate_ref === basis.raw_score_best_candidate_ref && (basis.decision_evidence.anchors.health_reference === null ? basis.health_reference_candidate_ref === null : object(basis.decision_evidence.anchors.health_reference) && basis.decision_evidence.anchors.health_reference.candidate_ref === basis.health_reference_candidate_ref), '推荐理由与本次选择的方案不一致，请点“刷新方案对比”。');
-    check(basis.health_decision_evidence === null || object(basis.health_decision_evidence) && basis.health_decision_evidence.version === 'candidate-health-evidence-v1', '推荐理由中的方案比较资料不完整，请点“刷新方案对比”。');
+    // 推荐只按业务方向选择（business_objectives_v1）；选择依据的编号、评分与空的旧证据位都由 selectionBasis 一次核对。
+    check(G.selectionBasis(basis, data.candidates), '保存的共同优化选择资料不完整，请点“刷新方案对比”。');
+    check(object(value) && value.recommendation_version === 'decision-recommendation-v1' && ['available', 'unavailable'].includes(value.state) && value.candidate_ref === basis.selected_candidate_ref && (value.state === 'available' ? ref(value.candidate_ref) : value.candidate_ref === null) && value.viewed_candidate_ref === data.scope.selected_candidate_ref && typeof value.headline === 'string' && (value.state === 'available' ? ['complete', 'schedulable_scope', 'partial'].includes(value.recommendation_type) : value.recommendation_type === null), '推荐方案或推荐理由已变化，请点“刷新方案对比”。');
+    check(object(basis.explanation) && typeof basis.explanation.headline === 'string' && Array.isArray(basis.explanation.entries) && basis.explanation.entries.every(entry => A.shape(entry, ['key', 'label', 'text', 'state', 'unit', 'selected_value', 'source', 'scope']) && ['key', 'label', 'text', 'state', 'source', 'scope'].every(key => typeof entry[key] === 'string') && (entry.unit === null || typeof entry.unit === 'string') && numeric(entry.selected_value)) && Array.isArray(basis.explanation.issues) && basis.explanation.issues.every(issue), '推荐理由资料不完整，请点“刷新方案对比”。');
     check(object(value.axes) && object(value.axes.algorithm) && value.axes.algorithm.state === (value.state === 'available' ? 'selected' : 'unavailable') && value.axes.algorithm.reason_code === basis.reason_code && value.axes.algorithm.evidence_state === basis.evidence_state && object(value.axes.completion) && object(value.axes.preflight) && value.axes.preflight.state === 'not_checked' && value.axes.preflight.source === 'existing_adoption_preview' && (value.state === 'available' ? completion(value.completion_scope) && object(value.axes.completion.search) && object(value.axes.completion.schedulable) && completion(value.axes.completion.delivery) : value.completion_scope === null), '推荐方案的工序安排或采用检查资料不完整，请点“刷新方案对比”。');
     check(object(comparison) && comparison.candidate_ref === value.candidate_ref && comparison.viewed_candidate_ref === data.scope.selected_candidate_ref && ['available', 'unavailable', 'absent', 'selection_required'].includes(comparison.state) && object(comparison.reference) && comparison.reference.kind === data.scope.reference.kind && (data.scope.comparison_mode === 'candidates' ? comparison.reference.candidate_ref === data.scope.reference.candidate_ref : comparison.reference.baseline_ref === data.scope.reference.baseline_ref) && ['benefits', 'costs', 'all_differences'].every(key => Array.isArray(comparison[key])) && comparison.benefits.length <= 3 && comparison.costs.length <= 3, '推荐方案与当前查看方案或比较基准不一致，请点“刷新方案对比”。');
     if (value.state === 'available') recommendationDrill(value.completion_scope.drill, data, value.candidate_ref);
@@ -37794,12 +37534,12 @@ function SMExport({
     check(common === null || object(common) && common.scope === 'common_completed_batches' && ['complete', 'partial', 'unavailable', 'not_applicable'].includes(common.state) && count(common.batch_count) && Array.isArray(common.sample_batch_refs) && common.sample_batch_refs.length <= 3 && common.sample_batch_refs.every(ref) && object(common.before) && object(common.after) && numeric(common.delay_delta_hours) && numeric(common.overdue_delta_count), '推荐方案的批次交付对比资料不完整，请点“刷新方案对比”。');
   }
   function completionGroups(data) {
-    check(Array.isArray(data.completion_groups) && data.completion_groups.every(group => object(group) && count(group.group_index) && typeof group.source_available === 'boolean' && (group.complete_batch_count === null || count(group.complete_batch_count)) && Array.isArray(group.sample_complete_batch_refs) && group.sample_complete_batch_refs.length <= 3 && group.sample_complete_batch_refs.every(ref) && Array.isArray(group.candidate_refs) && group.candidate_refs.every(ref)), '方案的批次安排分类资料不完整，请点“刷新方案对比”。');
+    check(Array.isArray(data.completion_groups) && data.completion_groups.every(group => object(group) && count(group.group_index) && typeof group.source_available === 'boolean' && count(group.complete_batch_count) && Array.isArray(group.sample_complete_batch_refs) && group.sample_complete_batch_refs.length <= 3 && group.sample_complete_batch_refs.every(ref) && Array.isArray(group.candidate_refs) && group.candidate_refs.every(ref)), '方案的批次安排分类资料不完整，请点“刷新方案对比”。');
     const grouped = data.completion_groups.flatMap(group => group.candidate_refs);
     check(grouped.length === data.candidates.length && new Set(grouped).size === grouped.length && data.candidates.every(row => grouped.includes(row.candidate_ref)), '批次安排分类与本次排产方案不一致，请点“刷新方案对比”。');
   }
-  function decisionCore(payload, runRef, query = {}) {
-    const data = envelope(payload),
+  function decisionCore(payload, runRef, query) {
+    const data = payload.data,
       q = scope(runRef, query);
     check(data.run && data.run.run_ref === runRef && data.scope && data.scope.run_ref === runRef && data.scope.comparison_mode === q.comparison_mode && Array.isArray(data.candidates) && Array.isArray(data.metric_definitions), '比较资料与当前排产记录不一致，请点“刷新方案对比”。');
     check(data.metric_definitions.every(metric => object(metric) && typeof metric.key === 'string' && typeof metric.metric_version === 'string') && new Set(data.metric_definitions.map(metric => metric.key)).size === data.metric_definitions.length && coreMetricKeys.every(key => data.metric_definitions.some(metric => metric.key === key)), '方案核心指标目录不完整，请点“刷新方案对比”。');
@@ -37807,10 +37547,8 @@ function SMExport({
     data.candidates.forEach(row => {
       check(ref(row.candidate_ref) && !candidates.has(row.candidate_ref) && object(row.coverage) && ['schedulable', 'delivery', 'search'].every(key => object(row.coverage[key])) && row.metrics && row.deltas && Array.isArray(row.selection_role), '方案的比较资料不完整，请点“刷新方案对比”。');
       candidates.add(row.candidate_ref);
-      if (row.generation_policy_version !== undefined) {
-        const G = window.RunGenerationContract;
-        check(A.shape(row, ['candidate_ref', 'label', 'kind', 'status', 'persisted_status', 'task_count', 'completeness', 'coverage', 'metrics', 'capabilities', 'selection_role', 'equivalent_source_ref', 'source', 'deltas'].concat(G.metadataKeys)) && G.metadata(row, runRef) && row.kind === 'business_objective' && row.persisted_status === 'completed' && ['completed', 'partial'].includes(row.status) && row.equivalent_source_ref === null && new Set(row.selection_role).size === row.selection_role.length && row.selection_role.every(role => role === 'recommended' || G.objective(role)), '业务方向候选的保存资料不完整，请点“刷新方案对比”。');
-      }
+      // 候选只由共同优化按业务方向生成（unified_search_v1）。
+      check(A.shape(row, ['candidate_ref', 'label', 'kind', 'status', 'persisted_status', 'task_count', 'completeness', 'coverage', 'metrics', 'capabilities', 'selection_role', 'equivalent_source_ref', 'source', 'deltas'].concat(G.metadataKeys)) && G.metadata(row, runRef) && row.kind === 'business_objective' && row.persisted_status === 'completed' && ['completed', 'partial'].includes(row.status) && row.equivalent_source_ref === null && new Set(row.selection_role).size === row.selection_role.length && row.selection_role.every(role => role === 'recommended' || G.objective(role)), '业务方向候选的保存资料不完整，请点“刷新方案对比”。');
       coreMetricKeys.forEach(key => {
         const metric = data.metric_definitions.find(definition => definition.key === key);
         check(metric && window.EffortProjectionContract.metric(row.metrics[key]) && row.metrics[key].metric_version === metric.metric_version && window.EffortProjectionContract.delta(row.deltas[key]), '方案核心指标资料不完整，请点“刷新方案对比”。');
@@ -37821,7 +37559,7 @@ function SMExport({
     if (q.comparison_mode === 'candidates' && data.scope.reference_state === 'available') check(data.scope.reference && candidates.has(data.scope.reference.candidate_ref), '比较基准已不在这次排产中，请点“刷新方案对比”。');
     if (q.comparison_mode === 'candidates' && q.reference_candidate_ref) check(data.scope.reference && data.scope.reference.candidate_ref === q.reference_candidate_ref, '比较基准已变化，请点“刷新方案对比”。');
     if (q.comparison_mode === 'admission_official') check(data.scope.reference && data.scope.reference.kind === 'admission_official', '比较基准的正式计划资料已变化，请点“刷新方案对比”。');
-    if (data.scope.run_options !== undefined) check(window.RunGenerationContract.runOptions(data.scope.run_options), '本次保存的优化选项不完整，请点“刷新方案对比”。');
+    check(G.runOptions(data.scope.run_options), '本次保存的优化选项不完整，请点“刷新方案对比”。');
     bindScope(payload, data, q);
     recommendation(data);
     if (data.difference_summary !== undefined) {
@@ -37830,14 +37568,14 @@ function SMExport({
     }
     return data;
   }
-  function decision(payload, runRef, query = {}) {
+  function validateDecision(payload, runRef, query) {
     const data = decisionCore(payload, runRef, query);
     const extraMetrics = data.metric_definitions.filter(metric => !coreMetricKeys.includes(metric.key));
     data.candidates.forEach(row => extraMetrics.forEach(metric => check(window.EffortProjectionContract.metric(row.metrics[metric.key]) && row.metrics[metric.key].metric_version === metric.metric_version && window.EffortProjectionContract.delta(row.deltas[metric.key]), '比较指标资料不完整，请点“刷新方案对比”。')));
     completionGroups(data);
     return data;
   }
-  function decisionSummary(payload, runRef, query = {}) {
+  function validateDecisionSummary(payload, runRef, query) {
     const data = decisionCore(payload, runRef, query),
       exactCore = value => object(value) && Object.keys(value).length === coreMetricKeys.length && coreMetricKeys.every(key => Object.prototype.hasOwnProperty.call(value, key));
     const baseline = data.baseline,
@@ -37846,7 +37584,7 @@ function SMExport({
     return data;
   }
   const completionFilters = ['all', 'complete', 'unfinished', 'ordinary', 'deferred', 'unknown'];
-  function completionScope(runRef, query = {}) {
+  function completionScope(runRef, query) {
     const value = {
       ...scope(runRef, query),
       completion_filter: 'all',
@@ -37855,26 +37593,25 @@ function SMExport({
       page: 1,
       size: 20
     };
-    ['completion_candidate_ref', 'completion_filter', 'sort', 'order', 'page', 'size'].forEach(key => {
+    ['completion_filter', 'sort', 'order', 'page', 'size'].forEach(key => {
       if (query[key] !== undefined && query[key] !== null && query[key] !== '') value[key] = query[key];
     });
-    if (value.completion_candidate_ref === undefined) value.completion_candidate_ref = value.selected_candidate_ref;
-    check(ref(value.completion_candidate_ref), '请选择要查看批次安排的方案。');
+    check(ref(value.selected_candidate_ref), '请选择要查看批次安排的方案。');
     check(completionFilters.includes(value.completion_filter) && value.sort === 'batch_id' && ['asc', 'desc'].includes(value.order), '批次安排的筛选或排序条件无效，请重新选择。');
     check(Number.isInteger(value.page) && value.page > 0 && [20, 50].includes(value.size), '批次清单每页支持 20 或 50 条，请重新选择页码。');
     return value;
   }
-  function completionBatches(payload, runRef, query = {}) {
-    const data = envelope(payload),
+  function validateCompletionBatches(payload, runRef, query) {
+    const data = payload.data,
       q = completionScope(runRef, query),
       E = window.EffortProjectionContract;
-    check(A.shape(data, ['run_ref', 'scope', 'baseline', 'candidate', 'source', 'filters', 'items', 'page', 'summary', 'metric_version']) && data.run_ref === runRef && object(data.scope) && data.scope.run_ref === runRef && (q.selected_candidate_ref ? data.scope.selected_candidate_ref === q.selected_candidate_ref : data.scope.selected_candidate_ref === null || ref(data.scope.selected_candidate_ref)) && data.scope.comparison_mode === q.comparison_mode && time(data.scope.range_start) && time(data.scope.range_end) && timeKey(data.scope.range_start) < timeKey(data.scope.range_end) && Array.isArray(data.scope.batch_refs) && data.scope.batch_refs.every(ref) && object(data.scope.reference) && object(data.baseline) && data.baseline.kind === data.scope.reference.kind && data.baseline.state === data.scope.reference_state && A.shape(data.candidate, ['candidate_ref', 'label', 'persisted_status']) && data.candidate.candidate_ref === q.completion_candidate_ref && (data.candidate.label === null || typeof data.candidate.label === 'string') && ['completed', 'failed', 'skipped'].includes(data.candidate.persisted_status) && data.metric_version === 'decision-preparation-v4', '批次安排资料与当前方案或比较范围不一致，请刷新批次清单。');
+    check(A.shape(data, ['run_ref', 'scope', 'baseline', 'candidate', 'source', 'filters', 'items', 'page', 'summary', 'metric_version']) && data.run_ref === runRef && object(data.scope) && data.scope.run_ref === runRef && data.scope.selected_candidate_ref === q.selected_candidate_ref && data.scope.comparison_mode === q.comparison_mode && time(data.scope.range_start) && time(data.scope.range_end) && timeKey(data.scope.range_start) < timeKey(data.scope.range_end) && Array.isArray(data.scope.batch_refs) && data.scope.batch_refs.every(ref) && object(data.scope.reference) && object(data.baseline) && data.baseline.kind === data.scope.reference.kind && data.baseline.state === data.scope.reference_state && A.shape(data.candidate, ['candidate_ref', 'label', 'persisted_status']) && data.candidate.candidate_ref === q.selected_candidate_ref && (data.candidate.label === null || typeof data.candidate.label === 'string') && ['completed', 'failed', 'skipped'].includes(data.candidate.persisted_status) && data.metric_version === 'decision-preparation-v4', '批次安排资料与当前方案或比较范围不一致，请刷新批次清单。');
     if (q.comparison_mode === 'candidates') check(data.scope.reference.kind === 'candidate' && data.baseline.candidate_ref === data.scope.reference.candidate_ref && (data.scope.reference_state === 'available' ? ref(data.scope.reference.candidate_ref) : data.scope.reference_state === 'selection_required' && data.scope.reference.candidate_ref === null) && (!q.reference_candidate_ref || data.scope.reference.candidate_ref === q.reference_candidate_ref), '批次安排的比较基准已变化，请刷新批次清单。');else check(data.scope.reference.kind === 'admission_official' && (data.scope.reference_state === 'available' ? ref(data.scope.reference.baseline_ref) : data.scope.reference_state === 'absent' && data.scope.reference.baseline_ref === null), '批次安排使用的正式计划资料已变化，请刷新批次清单。');
     bindScope(payload, data, q);
     const source = data.source,
       available = data.candidate.persisted_status === 'completed';
-    check(A.shape(source, ['role', 'grain', 'candidate_ref', 'available', 'reason']) && source.role === 'completion_anchor' && source.grain === 'full_admission_per_candidate_batch' && source.candidate_ref === q.completion_candidate_ref && source.available === available && (available || data.scope.selected_candidate_ref !== q.completion_candidate_ref) && (available ? source.reason === null : issue(source.reason)), '所选方案的批次安排资料不完整，请刷新批次清单。');
-    check(A.shape(data.filters, ['section', 'completion_candidate_ref', 'completion_filter', 'sort', 'order']) && data.filters.section === 'completion-batches' && ['completion_candidate_ref', 'completion_filter', 'sort', 'order'].every(key => data.filters[key] === q[key]), '批次清单的方案、筛选或排序已变化，请刷新批次清单。');
+    check(A.shape(source, ['role', 'grain', 'candidate_ref', 'available', 'reason']) && source.role === 'completion_anchor' && source.grain === 'full_admission_per_candidate_batch' && source.candidate_ref === q.selected_candidate_ref && source.available === available && (available ? source.reason === null : issue(source.reason)), '所选方案的批次安排资料不完整，请刷新批次清单。');
+    check(A.shape(data.filters, ['section', 'completion_filter', 'sort', 'order']) && data.filters.section === 'completion-batches' && ['completion_filter', 'sort', 'order'].every(key => data.filters[key] === q[key]), '批次清单的方案、筛选或排序已变化，请刷新批次清单。');
     check(completion(data.summary) && data.summary.source_available === available && (available || data.summary.state === 'unavailable'), '批次安排和待安排工时资料不完整，请刷新批次清单。');
     const cohort = new Set(data.scope.batch_refs);
     check(Object.values(data.summary.sample_batch_refs).every(values => values.every(value => cohort.has(value))), '批次清单与本次选择的批次不一致，请刷新批次清单。');
@@ -37892,8 +37629,8 @@ function SMExport({
         check(value === null, '待安排工序的定位资料已失效，请刷新批次清单。');
         return;
       }
-      check(object(value) && value.comparison_tab === 'preparation' && value.selected_candidate_ref === q.completion_candidate_ref && A.shape(value.detail_query, ['work_scope'], batchRef ? ['batch_ref'] : []) && value.detail_query.work_scope === 'remaining' && (batchRef ? value.detail_query.batch_ref === batchRef : value.detail_query.batch_ref === undefined), '待安排工序的方案、批次或范围已变化，请刷新批次清单。');
-      recommendationDrill(value, data, q.completion_candidate_ref);
+      check(object(value) && value.comparison_tab === 'preparation' && value.selected_candidate_ref === q.selected_candidate_ref && A.shape(value.detail_query, ['work_scope'], batchRef ? ['batch_ref'] : []) && value.detail_query.work_scope === 'remaining' && (batchRef ? value.detail_query.batch_ref === batchRef : value.detail_query.batch_ref === undefined), '待安排工序的方案、批次或范围已变化，请刷新批次清单。');
+      recommendationDrill(value, data, q.selected_candidate_ref);
       check(['range_start', 'range_end'].every(key => time(value[key]) && timeKey(value[key]) === timeKey(data.scope[key])), '待安排工序的比较时间范围已变化，请刷新批次清单。');
     }
     remainingDrill(data.summary.drill, data.summary.remaining_work.operation_count);
@@ -37907,7 +37644,7 @@ function SMExport({
     check(new Set(data.items.map(row => row.batch_ref)).size === data.items.length, '批次清单出现重复记录，请刷新批次清单。');
     return data;
   }
-  function processScope(runRef, query = {}) {
+  function processScope(runRef, query) {
     const value = {
       ...scope(runRef, query),
       record_kind: 'attempts',
@@ -37921,19 +37658,16 @@ function SMExport({
     if (value.process_candidate_ref === undefined && value.selected_candidate_ref) value.process_candidate_ref = value.selected_candidate_ref;
     if (value.sort === undefined) value.sort = value.record_kind === 'progress' ? 'elapsed_ms' : 'rank';
     check(value.process_candidate_ref === undefined || ref(value.process_candidate_ref), '优化过程的方案选择已失效，请重新选择方案。');
-    check(value.objective === undefined || window.RunGenerationContract.objective(value.objective), '请选择有效的优化方向。');
-    check(['attempts', 'progress'].includes(value.record_kind) && (value.record_kind === 'progress' ? ['event_index', 'elapsed_ms', 'primary_value'] : ['rank', 'elapsed_ms', 'primary_value']).includes(value.sort) && ['asc', 'desc'].includes(value.order), '优化过程的筛选或排序条件无效，请重新选择。');
+    check(value.objective === undefined || G.objective(value.objective), '请选择有效的优化方向。');
+    check(['attempts', 'progress'].includes(value.record_kind) && (value.record_kind === 'progress' ? ['event_index', 'elapsed_ms', 'primary_value'] : ['rank', 'elapsed_ms']).includes(value.sort) && ['asc', 'desc'].includes(value.order), '优化过程的筛选或排序条件无效，请重新选择。');
     check(Number.isInteger(value.page) && value.page > 0 && [20, 50].includes(value.size), '优化过程每页支持 20 或 50 条，请重新选择页码。');
     return value;
   }
-  const processCountKeys = ['evaluated', 'accepted', 'current_accepted', 'strict_improvements', 'rejected', 'unverified_trials', 'decoder_invocations'];
-  const processCompletionKeys = ['expected_operation_count', 'missing_operation_count', 'unexpected_result_count', 'complete_batch_count', 'incomplete_batch_count'];
-  const processMetricKeys = ['changeover_count', 'makespan_hours', 'overdue_count', 'total_tardiness_hours', 'weighted_tardiness_hours'];
-  const processComparisonMetricKeys = ['failed_ops', 'overdue_count', 'weighted_tardiness_hours', 'total_tardiness_hours', 'makespan_hours', 'changeover_count'];
-  const processMemberKeys = ['candidate_ref', 'label', 'status', 'persisted_status', 'kind', 'algo_mode', 'used_strategy', 'dispatch_mode', 'configured_dispatch_rule', 'adopted_dispatch_rule', 'source_kind', 'source_candidate_ref', 'own_elapsed_ms', 'source_solver_elapsed_ms', 'own_counts', 'solver_counts', 'stop_reason', 'final_metrics', 'completion', 'algorithm_profile', 'legacy_best_updates', 'evidence_state', 'evidence_version'];
-  function unifiedProcessDetails(payload, data, runRef, q) {
-    const G = window.RunGenerationContract,
-      nullableText = value => value === null || typeof value === 'string';
+  // 优化过程只有共同优化一种存档（unified-optimization-process-v1）。
+  function processDetails(payload, runRef, query) {
+    const data = payload.data,
+      q = processScope(runRef, query);
+    const nullableText = value => value === null || typeof value === 'string';
     const amount = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
     const optionalAmount = value => value === null || amount(value),
       positive = value => count(value) && value > 0;
@@ -37941,7 +37675,7 @@ function SMExport({
     const integers = value => object(value) && Object.values(value).every(count);
     const descriptors = ['name', 'label', 'primary_metric_key', 'primary_metric_label', 'unit', 'score_fields'];
     const fields = ['run_ref', 'capture_ref', 'scope', 'baseline', 'process_version', 'summary', 'counts', 'budget', 'stop_reason', 'bridges', 'objectives', 'selected_objective', 'progress', 'scopes', 'actions', 'stages', 'candidate', 'candidates', 'source_event', 'items', 'page', 'filters'];
-    check(A.shape(data, fields) && data.run_ref === runRef && data.capture_ref === runRef && object(data.scope) && data.scope.run_ref === runRef && data.scope.comparison_mode === q.comparison_mode && (q.selected_candidate_ref ? data.scope.selected_candidate_ref === q.selected_candidate_ref : data.scope.selected_candidate_ref === null || ref(data.scope.selected_candidate_ref)) && time(data.scope.range_start) && time(data.scope.range_end) && timeKey(data.scope.range_start) < timeKey(data.scope.range_end) && object(data.scope.reference) && object(data.baseline) && data.baseline.kind === data.scope.reference.kind && data.baseline.state === data.scope.reference_state && G.runOptions(data.scope.run_options), '共同优化过程的运行或保存选项不一致，请点“刷新优化过程”。');
+    check(A.shape(data, fields) && data.process_version === 'unified-optimization-process-v1' && data.run_ref === runRef && data.capture_ref === runRef && object(data.scope) && data.scope.run_ref === runRef && data.scope.comparison_mode === q.comparison_mode && (q.selected_candidate_ref ? data.scope.selected_candidate_ref === q.selected_candidate_ref : data.scope.selected_candidate_ref === null || ref(data.scope.selected_candidate_ref)) && time(data.scope.range_start) && time(data.scope.range_end) && timeKey(data.scope.range_start) < timeKey(data.scope.range_end) && object(data.scope.reference) && object(data.baseline) && data.baseline.kind === data.scope.reference.kind && data.baseline.state === data.scope.reference_state && G.runOptions(data.scope.run_options), '共同优化过程的运行或保存选项不一致，请点“刷新优化过程”。');
     bindScope(payload, data, q);
     if (q.comparison_mode === 'candidates') check(data.scope.reference.kind === 'candidate' && data.baseline.candidate_ref === data.scope.reference.candidate_ref && (data.scope.reference_state === 'available' ? ref(data.scope.reference.candidate_ref) : data.scope.reference_state === 'selection_required' && data.scope.reference.candidate_ref === null) && (!q.reference_candidate_ref || data.scope.reference.candidate_ref === q.reference_candidate_ref), '过程的查看基准已变化，请点“刷新优化过程”。');
     const names = data.scope.run_options.target_objectives;
@@ -37976,89 +37710,7 @@ function SMExport({
     const action = value => A.shape(value, actionFields) && positive(value.action_id) && value.search_objective === selectedObjective && typeof value.phase === 'string' && typeof value.initial_construction === 'boolean' && ['started_elapsed_ms', 'finished_elapsed_ms', 'elapsed_ms'].every(key => amount(value[key])) && value.started_elapsed_ms <= value.finished_elapsed_ms && counters.every(key => count(value[key])) && value.verified_evaluation_count <= value.evaluation_count && nullableText(value.skip_reason) && G.objectives(value.improved_objectives) && value.improved_objectives.every(name => names.includes(name));
     check(Array.isArray(data.actions) && data.actions.every(action) && new Set(data.actions.map(value => value.action_id)).size === data.actions.length && Array.isArray(data.stages) && data.stages.every(value => A.shape(value, ['phase', 'start_elapsed_ms', 'end_elapsed_ms', 'elapsed_ms', 'action_count', ...counters]) && typeof value.phase === 'string' && ['start_elapsed_ms', 'end_elapsed_ms', 'elapsed_ms'].every(key => optionalAmount(value[key])) && count(value.action_count) && counters.every(key => count(value[key]))), '实际搜索动作或阶段统计不完整，请点“刷新优化过程”。');
     check(Array.isArray(data.bridges) && data.bridges.every(value => A.shape(value, ['search_objective', 'phase', 'before_entry_id', 'after_entry_id', 'elapsed_ms', 'started_elapsed_ms', 'finished_elapsed_ms', 'same_arrangement', 'decoder_executed', 'reference_kind', 'source_event_id']) && names.includes(value.search_objective) && ['phase', 'reference_kind'].every(key => typeof value[key] === 'string') && ['before_entry_id', 'after_entry_id'].every(key => value[key] === null || positive(value[key])) && ['elapsed_ms', 'started_elapsed_ms', 'finished_elapsed_ms'].every(key => amount(value[key])) && (value.same_arrangement === null || typeof value.same_arrangement === 'boolean') && typeof value.decoder_executed === 'boolean' && positive(value.source_event_id)), '共同优化的实际接续记录不完整，请点“刷新优化过程”。');
-    check(A.shape(data.filters, ['section', 'process_candidate_ref', 'objective', 'record_kind', 'sort', 'order']) && data.filters.section === 'process' && data.filters.process_candidate_ref === anchor && data.filters.objective === selectedObjective && ['record_kind', 'sort', 'order'].every(key => data.filters[key] === q[key]) && (q.record_kind !== 'attempts' || ['rank', 'elapsed_ms'].includes(q.sort)) && A.shape(data.page, ['number', 'size', 'total', 'has_more']) && data.page.number === q.page && data.page.size === q.size && count(data.page.total) && data.page.total === (q.record_kind === 'progress' ? data.progress.points.length : data.actions.length) && data.page.has_more === q.page * q.size < data.page.total && Array.isArray(data.items) && data.items.length === Math.min(q.size, Math.max(0, data.page.total - (q.page - 1) * q.size)) && data.items.every(q.record_kind === 'progress' ? point : action), '过程方向、来源或分页位置已变化，请点“刷新优化过程”。');
-    return data;
-  }
-  function processDetails(payload, runRef, query = {}) {
-    const data = envelope(payload),
-      q = processScope(runRef, query);
-    if (data.process_version === 'unified-optimization-process-v1') return unifiedProcessDetails(payload, data, runRef, q);
-    const nullableText = value => value === null || typeof value === 'string';
-    const amount = value => value === null || typeof value === 'number' && Number.isFinite(value) && value >= 0;
-    const nullableCount = value => value === null || count(value);
-    const counts = value => A.shape(value, processCountKeys) && processCountKeys.every(key => nullableCount(value[key]));
-    const completed = value => A.shape(value, processCompletionKeys) && processCompletionKeys.every(key => nullableCount(value[key]));
-    const metrics = value => A.shape(value, processMetricKeys) && processMetricKeys.every(key => amount(value[key]));
-    const reason = value => value === null || A.shape(value, ['code', 'message']) && issue(value);
-    const rejectionCounts = value => value === null || object(value) && Object.values(value).every(count);
-    const evidenceVersion = value => value === null || value === 'optimization-process-v1';
-    const evidenceStates = ['complete', 'partial', 'unavailable'],
-      sourceKinds = ['own_search', 'reused', 'not_started', 'failed', 'budget_skipped'];
-    function sameSaved(left, right) {
-      if (left === right) return true;
-      if (Array.isArray(left)) return Array.isArray(right) && left.length === right.length && left.every((value, index) => sameSaved(value, right[index]));
-      return object(left) && object(right) && Object.keys(left).length === Object.keys(right).length && Object.keys(left).every(key => Object.prototype.hasOwnProperty.call(right, key) && sameSaved(left[key], right[key]));
-    }
-    function member(value) {
-      return A.shape(value, processMemberKeys) && ref(value.candidate_ref) && ['label', 'kind', 'algo_mode', 'used_strategy', 'dispatch_mode', 'configured_dispatch_rule', 'adopted_dispatch_rule', 'algorithm_profile'].every(key => nullableText(value[key])) && ['completed', 'failed', 'skipped'].includes(value.persisted_status) && value.status === value.persisted_status && sourceKinds.includes(value.source_kind) && (value.source_candidate_ref === null || ref(value.source_candidate_ref)) && ['own_elapsed_ms', 'source_solver_elapsed_ms'].every(key => amount(value[key])) && counts(value.own_counts) && counts(value.solver_counts) && reason(value.stop_reason) && metrics(value.final_metrics) && completed(value.completion) && nullableCount(value.legacy_best_updates) && evidenceStates.includes(value.evidence_state) && evidenceVersion(value.evidence_version) && (value.evidence_version === null ? value.solver_counts.strict_improvements === null : value.legacy_best_updates === null) && (value.source_kind === 'reused' ? value.source_candidate_ref !== value.candidate_ref && processCountKeys.every(key => value.own_counts[key] === 0) : value.source_candidate_ref === value.candidate_ref && sameSaved(value.own_counts, value.solver_counts));
-    }
-    function sampling(value) {
-      return A.shape(value, ['policy', 'point_budget', 'event_total_count', 'retained_point_count', 'bucket_count', 'bucket_width_ms', 'mandatory']) && [null, 'elapsed_equal_width_bucket_end_best_v1', 'legacy_saved_events', 'not_applicable'].includes(value.policy) && value.point_budget === 200 && ['event_total_count', 'bucket_count'].every(key => nullableCount(value[key])) && count(value.retained_point_count) && value.retained_point_count <= 200 && amount(value.bucket_width_ms) && Array.isArray(value.mandatory) && value.mandatory.every(flag => ['first_valid', 'first_expected_complete', 'final'].includes(flag)) && new Set(value.mandatory).size === value.mandatory.length;
-    }
-    function coverage(value, endpoints = false) {
-      return A.shape(value, ['state', 'reason', ...(endpoints ? ['endpoint_coverage'] : [])]) && evidenceStates.includes(value.state) && reason(value.reason) && (!endpoints || A.shape(value.endpoint_coverage, ['first_valid', 'first_expected_complete', 'final']) && Object.values(value.endpoint_coverage).every(flag => flag === null || typeof flag === 'boolean'));
-    }
-    function profile(value) {
-      const texts = ['profile', 'acceptance', 'system_limit_reason', 'message'];
-      const integers = ['seed', 'configured_time_budget_seconds', 'effective_time_budget_seconds', 'assigned_time_budget_ms', 'configured_max_iterations', 'effective_max_iterations'];
-      const booleans = ['enabled', 'system_limit_applied'],
-        lists = ['candidate_strategy_families', 'configured_neighborhoods', 'effective_neighborhoods'];
-      return A.shape(value, [], [...texts, ...integers, ...booleans, ...lists]) && texts.every(key => value[key] === undefined || typeof value[key] === 'string') && integers.every(key => value[key] === undefined || count(value[key])) && booleans.every(key => value[key] === undefined || typeof value[key] === 'boolean') && lists.every(key => value[key] === undefined || Array.isArray(value[key]) && value[key].every(item => typeof item === 'string'));
-    }
-    function attemptComparison(value) {
-      return value === null || A.shape(value, ['kind', 'state', 'objective_name', 'objective_scope', 'reference_scope', 'reference_score', 'reference_metrics', 'reference_completion', 'metric_deltas']) && ['incumbent', 'current_solution', 'reference_capture', 'none'].includes(value.kind) && ['comparable', 'different_coverage', 'unavailable', 'unverified', 'no_reference'].includes(value.state) && ['objective_name', 'objective_scope', 'reference_scope'].every(key => nullableText(value[key])) && (value.reference_score === null || Array.isArray(value.reference_score) && value.reference_score.every(amount)) && (value.reference_metrics === null || A.shape(value.reference_metrics, processComparisonMetricKeys) && processComparisonMetricKeys.every(key => amount(value.reference_metrics[key]))) && (value.reference_completion === null || completed(value.reference_completion)) && (value.metric_deltas === null || A.shape(value.metric_deltas, processComparisonMetricKeys) && processComparisonMetricKeys.every(key => numeric(value.metric_deltas[key])));
-    }
-    check(A.shape(data, ['run_ref', 'capture_ref', 'scope', 'baseline', 'candidates', 'candidate', 'source', 'summary', 'objective', 'progress', 'stages', 'items', 'page', 'filters', 'process_version'], ['attempts']) && data.run_ref === runRef && data.capture_ref === runRef && data.process_version === 'decision-process-v1' && object(data.scope) && data.scope.run_ref === runRef && data.scope.comparison_mode === q.comparison_mode && (q.selected_candidate_ref ? data.scope.selected_candidate_ref === q.selected_candidate_ref : data.scope.selected_candidate_ref === null || ref(data.scope.selected_candidate_ref)) && time(data.scope.range_start) && time(data.scope.range_end) && timeKey(data.scope.range_start) < timeKey(data.scope.range_end) && object(data.scope.reference) && Array.isArray(data.scope.batch_refs) && data.scope.batch_refs.every(ref) && object(data.baseline) && data.baseline.kind === data.scope.reference.kind && data.baseline.state === data.scope.reference_state && Array.isArray(data.candidates) && data.candidates.length > 0 && data.candidates.every(member) && new Set(data.candidates.map(value => value.candidate_ref)).size === data.candidates.length && member(data.candidate), '优化过程资料与当前排产记录或查看方案不一致，请点“刷新优化过程”。');
-    if (q.comparison_mode === 'candidates') check(data.scope.reference.kind === 'candidate' && data.baseline.candidate_ref === data.scope.reference.candidate_ref && (data.scope.reference_state === 'available' ? ref(data.scope.reference.candidate_ref) : data.scope.reference_state === 'selection_required' && data.scope.reference.candidate_ref === null) && (!q.reference_candidate_ref || data.scope.reference.candidate_ref === q.reference_candidate_ref), '优化过程的比较基准已变化，请点“刷新优化过程”。');else check(data.scope.reference.kind === 'admission_official' && (data.scope.reference_state === 'available' ? ref(data.scope.reference.baseline_ref) : data.scope.reference_state === 'absent' && data.scope.reference.baseline_ref === null), '优化过程使用的正式计划资料已变化，请点“刷新优化过程”。');
-    bindScope(payload, data, q);
-    const catalog = new Map(data.candidates.map(value => [value.candidate_ref, value]));
-    check(data.scope.selected_candidate_ref === null || catalog.has(data.scope.selected_candidate_ref), '当前查看方案已变化，请点“刷新优化过程”。');
-    data.candidates.forEach(value => check(value.source_candidate_ref === null ? value.evidence_state === 'unavailable' : catalog.has(value.source_candidate_ref) && sameSaved(value.solver_counts, catalog.get(value.source_candidate_ref).solver_counts) && value.source_solver_elapsed_ms === catalog.get(value.source_candidate_ref).source_solver_elapsed_ms, '优化过程的计算来源与所选方案不一致，请点“刷新优化过程”。'));
-    const anchorRef = q.process_candidate_ref || data.scope.selected_candidate_ref || data.candidates[0].candidate_ref;
-    check(data.candidate.candidate_ref === anchorRef && catalog.has(anchorRef) && sameSaved(data.candidate, catalog.get(anchorRef)), '所选方案的优化过程资料已变化，请点“刷新优化过程”。');
-    const source = data.source,
-      summary = data.summary,
-      progress = data.progress;
-    check(A.shape(source, ['role', 'grain', 'kind', 'candidate_ref', 'source_candidate_ref', 'evidence_state', 'available', 'reason', 'evidence_version', 'profile', 'rejection_summary']) && source.role === 'process_anchor' && source.grain === 'saved_candidate_solver_process' && source.candidate_ref === anchorRef && source.kind === data.candidate.source_kind && source.source_candidate_ref === data.candidate.source_candidate_ref && source.evidence_state === data.candidate.evidence_state && source.evidence_version === data.candidate.evidence_version && typeof source.available === 'boolean' && source.available === (source.evidence_state !== 'unavailable') && reason(source.reason) && (source.evidence_state === 'complete' ? source.reason === null : source.reason !== null) && profile(source.profile) && rejectionCounts(source.rejection_summary), '优化过程的计算来源或保存状态已变化，请点“刷新优化过程”。');
-    check(A.shape(data.filters, ['section', 'process_candidate_ref', 'record_kind', 'sort', 'order']) && data.filters.section === 'process' && data.filters.process_candidate_ref === anchorRef && ['record_kind', 'sort', 'order'].every(key => data.filters[key] === q[key]), '优化过程的方案、筛选或排序已变化，请点“刷新优化过程”。');
-    check(A.shape(summary, ['own_elapsed_ms', 'source_solver_elapsed_ms', 'own_counts', 'solver_counts', 'saved_attempt_count', 'retained_point_count', 'stop_reason', 'coverage', 'sampling', 'legacy_best_updates', 'rejection_summary']) && ['own_elapsed_ms', 'source_solver_elapsed_ms', 'own_counts', 'solver_counts', 'stop_reason', 'legacy_best_updates'].every(key => sameSaved(summary[key], data.candidate[key])) && count(summary.saved_attempt_count) && count(summary.retained_point_count) && summary.retained_point_count <= 200 && coverage(summary.coverage) && summary.coverage.state === source.evidence_state && sameSaved(summary.coverage.reason, source.reason) && sampling(summary.sampling) && sameSaved(summary.rejection_summary, source.rejection_summary), '优化过程的计算统计资料不完整，请点“刷新优化过程”。');
-    check(A.shape(data.objective, ['name', 'label', 'primary_metric_key', 'primary_metric_label', 'unit', 'score_fields']) && ['name', 'label', 'primary_metric_key', 'primary_metric_label', 'unit'].every(key => nullableText(data.objective[key])) && Array.isArray(data.objective.score_fields) && data.objective.score_fields.every(value => A.shape(value, ['index', 'key', 'label', 'unit', 'direction']) && nullableCount(value.index) && ['key', 'label', 'unit'].every(key => nullableText(value[key])) && value.direction === 'lower'), '优化过程的目标指标资料不完整，请点“刷新优化过程”。');
-    function point(value) {
-      return A.shape(value, ['source_candidate_ref', 'event_index', 'elapsed_ms', 'phase', 'phase_visit', 'segment', 'flags', 'score', 'primary_value', 'objective_scope', 'completion', 'verified'], ['evaluation_scope']) && ref(value.source_candidate_ref) && value.source_candidate_ref === source.source_candidate_ref && ['event_index', 'phase_visit', 'segment'].every(key => nullableCount(value[key])) && amount(value.elapsed_ms) && amount(value.primary_value) && nullableText(value.phase) && nullableText(value.objective_scope) && completed(value.completion) && (value.evaluation_scope == null || A.shape(value.evaluation_scope, ['incomplete_batch_ids']) && Array.isArray(value.evaluation_scope.incomplete_batch_ids) && value.evaluation_scope.incomplete_batch_ids.every(id => typeof id === 'string' && id.trim().length > 0) && new Set(value.evaluation_scope.incomplete_batch_ids).size === value.evaluation_scope.incomplete_batch_ids.length) && Array.isArray(value.score) && value.score.every(amount) && Array.isArray(value.flags) && value.flags.every(flag => ['first_valid', 'first_expected_complete', 'final', 'strict_improvement', 'segment_start'].includes(flag)) && new Set(value.flags).size === value.flags.length && (value.verified === null || typeof value.verified === 'boolean') && (source.evidence_version !== null || value.flags.length === 0 && value.verified === null);
-    }
-    check(A.shape(progress, ['mode', 'points', 'source_candidate_ref', 'sampling', 'coverage']) && ['curve', 'discrete', 'none'].includes(progress.mode) && progress.source_candidate_ref === source.source_candidate_ref && Array.isArray(progress.points) && progress.points.length <= 200 && progress.points.every(point) && progress.points.length === summary.retained_point_count && sameSaved(progress.sampling, summary.sampling) && summary.sampling.retained_point_count === progress.points.length && coverage(progress.coverage, true) && progress.coverage.state === source.evidence_state && sameSaved(progress.coverage.reason, source.reason) && progress.mode === (source.evidence_version !== null && source.available && progress.points.length ? 'curve' : progress.points.length ? 'discrete' : 'none') && ['first_valid', 'first_expected_complete', 'final'].every(flag => progress.coverage.endpoint_coverage[flag] === (source.evidence_version !== null && source.available ? progress.points.some(value => value.flags.includes(flag)) : null)), '优化过程的进展记录与计算来源不一致，请点“刷新优化过程”。');
-    if (source.evidence_version === null) check(summary.sampling.event_total_count === null && summary.sampling.bucket_count === null && summary.sampling.bucket_width_ms === null && summary.sampling.mandatory.length === 0, '旧记录的优化过程资料已失效，请点“刷新优化过程”。');
-    check(Array.isArray(data.stages) && data.stages.every(value => A.shape(value, ['phase', 'start_elapsed_ms', 'end_elapsed_ms', 'elapsed_ms', 'visits', 'evaluated', 'accepted', 'strict_improvements', 'rejected', 'stop_reason', 'status']) && nullableText(value.phase) && nullableText(value.stop_reason) && ['completed', 'skipped', 'failed'].includes(value.status) && ['start_elapsed_ms', 'end_elapsed_ms', 'elapsed_ms'].every(key => amount(value[key])) && ['visits', 'evaluated', 'accepted', 'strict_improvements', 'rejected'].every(key => nullableCount(value[key]))), '优化过程的阶段耗时或统计资料不完整，请点“刷新优化过程”。');
-    const total = q.record_kind === 'progress' ? summary.retained_point_count : summary.saved_attempt_count;
-    check(A.shape(data.page, ['number', 'size', 'total', 'has_more']) && data.page.number === q.page && data.page.size === q.size && count(data.page.total) && data.page.total === total && data.page.has_more === q.page * q.size < total && Array.isArray(data.items) && data.items.length === Math.min(q.size, Math.max(0, total - (q.page - 1) * q.size)), '优化过程的记录条数或页码已变化，请点“刷新优化过程”。');
-    function attempt(value) {
-      return A.shape(value, ['source_candidate_ref', 'saved_index', 'rank', 'strategy', 'dispatch_mode', 'dispatch_rule', 'candidate_status', 'source_label', 'score', 'failed_ops', 'metrics', 'primary_value', 'objective_scope', 'completion', 'elapsed_ms', 'accepted', 'candidate_origin', 'weight_profile_slug', 'event_index', 'verified', 'strict_improved', 'comparison']) && ref(value.source_candidate_ref) && value.source_candidate_ref === source.source_candidate_ref && count(value.saved_index) && value.saved_index > 0 && (value.rank === null || count(value.rank) && value.rank > 0) && nullableCount(value.event_index) && ['strategy', 'dispatch_mode', 'dispatch_rule', 'candidate_status', 'source_label', 'objective_scope', 'candidate_origin', 'weight_profile_slug'].every(key => nullableText(value[key])) && Array.isArray(value.score) && value.score.every(amount) && nullableCount(value.failed_ops) && metrics(value.metrics) && completed(value.completion) && amount(value.primary_value) && amount(value.elapsed_ms) && ['accepted', 'verified', 'strict_improved'].every(key => value[key] === null || typeof value[key] === 'boolean') && attemptComparison(value.comparison);
-    }
-    if (data.attempts !== undefined) check(Array.isArray(data.attempts) && data.attempts.every(attempt) && data.attempts.length === summary.saved_attempt_count && new Set(data.attempts.map(value => value.saved_index)).size === data.attempts.length, '已保存计算尝试与所选方案的计算来源不一致，请点“刷新优化过程”。');
-    if (q.record_kind === 'progress') {
-      const pointsByEvent = new Map();
-      progress.points.forEach(saved => {
-        const list = pointsByEvent.get(saved.event_index);
-        if (list) list.push(saved);else pointsByEvent.set(saved.event_index, [saved]);
-      });
-      check(data.items.every(value => {
-        const saved = pointsByEvent.get(value.event_index);
-        return point(value) && saved !== undefined && saved.some(row => sameSaved(row, value));
-      }) && new Set(data.items.map(value => value.event_index)).size === data.items.length, '本页优化进展与保存的记录不一致，请点“刷新优化过程”。');
-    } else {
-      const attemptsByIndex = data.attempts === undefined ? null : new Map(data.attempts.map(saved => [saved.saved_index, saved]));
-      check(data.items.every(value => attemptsByIndex === null ? attempt(value) : attemptsByIndex.has(value.saved_index) && sameSaved(attemptsByIndex.get(value.saved_index), value)) && new Set(data.items.map(value => value.saved_index)).size === data.items.length, '本页计算尝试的记录不完整，请点“刷新优化过程”。');
-    }
+    check(A.shape(data.filters, ['section', 'process_candidate_ref', 'objective', 'record_kind', 'sort', 'order']) && data.filters.section === 'process' && data.filters.process_candidate_ref === anchor && data.filters.objective === selectedObjective && ['record_kind', 'sort', 'order'].every(key => data.filters[key] === q[key]) && A.shape(data.page, ['number', 'size', 'total', 'has_more']) && data.page.number === q.page && data.page.size === q.size && count(data.page.total) && data.page.total === (q.record_kind === 'progress' ? data.progress.points.length : data.actions.length) && data.page.has_more === q.page * q.size < data.page.total && Array.isArray(data.items) && data.items.length === Math.min(q.size, Math.max(0, data.page.total - (q.page - 1) * q.size)) && data.items.every(q.record_kind === 'progress' ? point : action), '过程方向、来源或分页位置已变化，请点“刷新优化过程”。');
     return data;
   }
   function detailScope(runRef, query, section) {
@@ -38082,7 +37734,7 @@ function SMExport({
     return value;
   }
   function details(payload, runRef, query, section) {
-    const data = envelope(payload),
+    const data = payload.data,
       q = detailScope(runRef, query, section);
     check(data.run_ref === runRef && data.scope && data.scope.run_ref === runRef && data.scope.selected_candidate_ref === q.selected_candidate_ref && data.scope.comparison_mode === q.comparison_mode && data.candidate && data.candidate.candidate_ref === q.selected_candidate_ref && Array.isArray(data.items) && data.page && data.page.number === q.page && data.page.size === q.size && data.filters && data.filters.section === section, '明细的方案、比较范围或页码已变化，请点“刷新影响明细”。');
     if (q.comparison_mode === 'candidates' && q.reference_candidate_ref) check(data.scope.reference && data.scope.reference.candidate_ref === q.reference_candidate_ref, '明细的比较基准已变化，请点“刷新影响明细”。');
@@ -38105,7 +37757,7 @@ function SMExport({
   const changeoverSorts = ['next_start', 'machine_label', 'next_batch_id'];
   const preparationMetrics = ['pending_setup_hours', 'scheduled_setup_hours', 'unplanned_setup_hours', 'deferred_setup_hours', 'pending_processing_hours', 'scheduled_processing_hours', 'unplanned_processing_hours', 'deferred_processing_hours'];
   const changeoverMetrics = ['type_changeover_count', 'changed_machine_count'];
-  function preparationScope(runRef, query = {}, section = 'preparation') {
+  function preparationScope(runRef, query, section = 'preparation') {
     check(['preparation', 'changeovers'].includes(section), '请选择准备需求或工种切换明细。');
     const value = {
       ...scope(runRef, query),
@@ -38131,7 +37783,7 @@ function SMExport({
     return value;
   }
   function preparationDetails(payload, runRef, query, section = 'preparation') {
-    const data = envelope(payload),
+    const data = payload.data,
       q = preparationScope(runRef, query, section),
       E = window.EffortProjectionContract;
     check(data.run_ref === runRef && data.scope && data.scope.run_ref === runRef && data.scope.selected_candidate_ref === q.selected_candidate_ref && data.scope.comparison_mode === q.comparison_mode && data.candidate && data.candidate.candidate_ref === q.selected_candidate_ref && data.metric_version === 'decision-preparation-v4' && data.filters && data.filters.section === section && Array.isArray(data.items) && data.baseline && ['available', 'absent', 'selection_required'].includes(data.baseline.state) && data.page && data.page.number === q.page && data.page.size === q.size && Number.isSafeInteger(data.page.total) && data.page.total >= 0, '准备与切换明细的方案、范围或页码已变化，请点“刷新准备与切换明细”。');
@@ -38156,11 +37808,11 @@ function SMExport({
     } else check(data.items.every(row => typeof row.event_ref === 'string' && ['selected', 'reference'].includes(row.event_side) && ref(row.machine_ref) && ref(row.previous_operation_ref) && ref(row.next_operation_ref) && ref(row.previous_row_ref) && ref(row.next_row_ref) && row.previous && row.next && typeof row.predecessor_outside_window === 'boolean' && [true, false, null].includes(row.overlap) && row.drill && drill(row.drill.previous, row.event_side, row.previous_operation_ref) && drill(row.drill.next, row.event_side, row.next_operation_ref)), '工种切换事件或甘特定位资料不完整，请点“刷新准备与切换明细”。');
     return data;
   }
-  function referenceWorkspace(payload, runRef, query) {
-    const data = envelope(payload);
+  function validateReferenceWorkspace(payload, runRef, query) {
+    const data = payload.data;
     check(data.candidate && data.candidate.run_ref === runRef && data.candidate.candidate_ref === query.selected_candidate_ref && data.reference && data.reference.kind === 'admission_official' && Array.isArray(data.tasks) && Array.isArray(data.unplanned_operations), '正式计划资料与本次比较不一致，请从方案对比重新打开。');
     check(ref(data.plan_ref) && data.plan_ref === data.reference.plan_ref && data.plan_ref === data.reference.baseline_ref && (!query.plan_ref || data.plan_ref === query.plan_ref), '比较基准的正式计划已变化，请从方案对比重新打开。');
-    check([data.capabilities, data.candidate.capabilities].every(caps => caps && ['edit_draft', 'adopt', 'report_actual'].every(key => caps[key] === false) && caps.trial !== true), '这份正式计划的查看资料已失效，请从方案对比重新打开。');
+    check([data.capabilities, data.candidate.capabilities].every(caps => caps && ['edit_draft', 'adopt', 'report_actual'].every(key => caps[key] === false)), '这份正式计划的查看资料已失效，请从方案对比重新打开。');
     check(data.batch_ref === (query.batch_ref || null), '正式计划的批次范围已变化，请从方案对比重新打开。');
     for (const key of ['range_start', 'range_end']) if (query[key]) check(data.time_scope && time(data.time_scope[key]) && timeKey(data.time_scope[key]) === timeKey(query[key]), '正式计划的时间范围已变化，请从方案对比重新打开。');
     if (query.resource_view) check(data.scope && data.scope.resource_view === query.resource_view, '正式计划的资源范围已变化，请从方案对比重新打开。');
@@ -38168,7 +37820,7 @@ function SMExport({
     bindSnapshot(payload, query);
     return data;
   }
-  function resourceFilters(query = {}, section = 'resources') {
+  function resourceFilters(query, section = 'resources') {
     const value = {
       resource_kind: 'machine',
       grain: 'day',
@@ -38202,7 +37854,7 @@ function SMExport({
     if (query.snapshot_ref !== undefined && query.snapshot_ref !== null && query.snapshot_ref !== '') value.snapshot_ref = query.snapshot_ref;
     return value;
   }
-  function resourceScope(runRef, query = {}, section = 'resources') {
+  function resourceScope(runRef, query, section = 'resources') {
     const value = {
       ...scope(runRef, query),
       ...resourceFilters(query, section)
@@ -38228,7 +37880,7 @@ function SMExport({
     }
     return next;
   }
-  function resourceWorkspaceScope(runRef, query = {}, savedQuery = {}) {
+  function resourceWorkspaceScope(runRef, query, savedQuery) {
     const filters = resourceFilters(savedQuery),
       resourceSnapshot = filters.snapshot_ref;
     delete filters.snapshot_ref;
@@ -38240,20 +37892,13 @@ function SMExport({
       } : {})
     };
   }
-  function resourceError(value) {
-    return Object.assign(new Error(value.error.message), value.error, {
-      status: value.status,
-      committed: value.committed
-    });
-  }
-  function resourceWorkspace(payload, runRef, query = {}, savedQuery = {}) {
-    check(A.shape(payload, ['ok', 'schema_version', 'data', 'meta', 'warnings', 'resource_result', 'resource_query']), '资源首屏的共同读取资料不完整，请刷新方案对比。');
-    const {
-      resource_result: resources,
-      resource_query: effective,
-      ...summary
-    } = payload;
-    const data = decisionSummary(summary, runRef, query),
+  // 资源首屏的 data 在方案对比首屏之外多带 resource_result（内嵌的资源读取结果）与 resource_query（实际采用的资源筛选）。
+  function validateResourceWorkspace(payload, runRef, query, savedQuery) {
+    const data = validateDecisionSummary(payload, runRef, query),
+      {
+        resource_result: resources,
+        resource_query: effective
+      } = data,
       cohort = data.scope.resource_refs;
     check(object(cohort) && ['machine', 'operator'].every(kind => Array.isArray(cohort[kind]) && cohort[kind].every(ref) && new Set(cohort[kind]).size === cohort[kind].length), '参与比较的设备或人员资料不完整，请刷新方案对比。');
     const filterKeys = ['resource_kind', 'grain', 'pressure_threshold', 'page', 'size', 'pressure_filter', 'sort', 'order', 'heatmap_page', 'heatmap_size'];
@@ -38262,12 +37907,14 @@ function SMExport({
       actual = resourceFilters(effective);
     check(JSON.stringify(actual) === JSON.stringify(expected) && Object.keys(effective).length === Object.keys(actual).length, '恢复的资源筛选与当前范围不一致，请刷新方案对比。');
     const candidate = data.candidates.find(row => row.candidate_ref === data.scope.selected_candidate_ref);
-    if (!candidate || candidate.persisted_status !== 'completed') {
+    if (!candidate) {
       check(resources === null, '当前方案没有可查看的资源结果，请刷新方案对比。');
       return data;
     }
     check(object(resources), '资源读取结果未记录，请刷新方案对比。');
+    // 内嵌的资源结果没有经过传输层：成功时按同一份查询信封核对；失败时原样留给资源页签，由 APSWorkbenchTransport.failure 统一解析。
     if (resources.ok === true) {
+      T.envelope(resources);
       const comparison = {
         comparison_mode: data.scope.comparison_mode,
         resource_view: data.scope.resource_view,
@@ -38283,14 +37930,11 @@ function SMExport({
         ...actual,
         expected_resource_refs: cohort
       });
-    } else {
-      const error = resources.error;
-      check(A.shape(resources, ['ok', 'committed', 'error', 'status']) && resources.ok === false && resources.committed === false && Number.isInteger(resources.status) && resources.status >= 400 && resources.status <= 599 && A.shape(error, ['code', 'message', 'fields', 'retryable', 'request_ref']) && typeof error.code === 'string' && error.code.length > 0 && typeof error.message === 'string' && typeof error.retryable === 'boolean' && /^[a-f0-9]{32}$/.test(error.request_ref) && Array.isArray(error.fields) && error.fields.every(field => A.shape(field, ['path', 'message']) && typeof field.path === 'string' && typeof field.message === 'string'), '资源读取失败的资料不完整，请刷新方案对比。');
     }
     return data;
   }
   function resourceDetails(payload, runRef, query, section = 'resources') {
-    const data = envelope(payload),
+    const data = payload.data,
       q = resourceScope(runRef, query, section);
     check(data.run_ref === runRef && data.scope && data.scope.run_ref === runRef && data.scope.selected_candidate_ref === q.selected_candidate_ref && data.scope.comparison_mode === q.comparison_mode && data.candidate && data.candidate.candidate_ref === q.selected_candidate_ref && data.metric_version === 'decision-resource-v4' && data.filters && data.filters.section === section && data.filters.resource_kind === q.resource_kind && data.filters.resource_ref === (q.resource_ref ?? null) && Array.isArray(data.items) && data.page && data.page.number === q.page && data.page.size === q.size, '资源明细的方案、设备人员范围或页码已变化，请点“刷新资源影响”。');
     if (q.comparison_mode === 'candidates' && q.reference_candidate_ref) check(data.scope.reference && data.scope.reference.candidate_ref === q.reference_candidate_ref, '资源明细的比较基准已变化，请点“刷新资源影响”。');
@@ -38327,183 +37971,134 @@ function SMExport({
     }
     return data;
   }
-  function create(fetcher = window.fetch.bind(window)) {
-    async function request(runRef, query, signal, format, leaf = '') {
-      const path = '/api/workbench/v1/scheduling/runs/' + runRef + '/decision' + (format ? '/export' : leaf);
-      const controller = new AbortController(),
-        abort = () => controller.abort();
-      if (signal) {
-        if (signal.aborted) abort();else signal.addEventListener('abort', abort, {
-          once: true
-        });
-      }
-      const timer = setTimeout(abort, 60000);
-      try {
-        const response = await fetcher(path + '?' + new URLSearchParams(query), {
-          method: 'GET',
-          credentials: 'same-origin',
-          cache: 'no-store',
-          redirect: 'error',
-          signal: controller.signal
-        });
-        const mime = (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
-        if (!response.ok) {
-          const value = mime === 'application/json' ? await response.json() : null;
-          throw Object.assign(new Error(value && value.error && value.error.message || '比较资料读取失败，请刷新后重试。'), {
-            status: response.status
-          });
-        }
-        if (!format) {
-          check(mime === 'application/json', '读取的比较资料格式异常，请刷新后重试。');
-          return await response.json();
-        }
-        check(mime === (format === 'csv' ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') && /^attachment;/i.test(response.headers.get('Content-Disposition') || ''), '导出文件格式异常，请重新点击下载。');
-        check(response.headers.get('X-Workbench-Run-Ref') === runRef && response.headers.get('X-Workbench-Snapshot-Ref') === query.snapshot_ref, '比较资料已更新，请关闭导出窗口，刷新后重新导出。');
-        const rowCount = response.headers.get('X-Workbench-Row-Count'),
-          blob = await response.blob();
-        check(rowCount !== null && /^\d+$/.test(rowCount) && blob.size > 0, '导出文件没有读取到内容，请重新点击下载。');
-        return {
-          blob,
-          row_count: Number(rowCount),
-          filename: '排产方案对比.' + format
-        };
-      } finally {
-        clearTimeout(timer);
-        if (signal) signal.removeEventListener('abort', abort);
-      }
-    }
-    return window.APSReadBoundary.verified({
-      async decision(runRef, query = {}, signal) {
-        const q = scope(runRef, query),
-          value = await request(runRef, q, signal);
-        decision(value, runRef, q);
-        return value;
-      },
-      async decisionSummary(runRef, query = {}, signal) {
-        const q = scope(runRef, query),
-          value = await request(runRef, q, signal, null, '/summary');
-        decisionSummary(value, runRef, q);
-        return value;
-      },
-      async resourceWorkspace(runRef, query = {}, savedQuery = {}, signal) {
-        const q = resourceWorkspaceScope(runRef, query, savedQuery),
-          value = await request(runRef, q, signal, null, '/resource-workspace');
-        resourceWorkspace(value, runRef, query, savedQuery);
-        return value;
-      },
-      async decisionDetails(runRef, query, section, signal) {
-        const q = detailScope(runRef, query, section),
-          value = await request(runRef, q, signal, null, '/' + section);
-        details(value, runRef, q, section);
-        return value;
-      },
-      async completionBatches(runRef, query = {}, signal) {
-        const q = completionScope(runRef, query),
-          value = await request(runRef, q, signal, null, '/completion-batches');
-        completionBatches(value, runRef, q);
-        return value;
-      },
-      async process(runRef, query = {}, signal) {
-        const q = processScope(runRef, query),
-          value = await request(runRef, q, signal, null, '/process');
-        processDetails(value, runRef, q);
-        return value;
-      },
-      async referenceWorkspace(runRef, query, signal) {
-        const q = {
-          ...scope(runRef, {
-            ...query,
-            comparison_mode: 'admission_official'
-          })
-        };
-        if (query.batch_ref) q.batch_ref = query.batch_ref;
-        const value = await request(runRef, q, signal, null, '/reference-workspace');
-        referenceWorkspace(value, runRef, {
-          ...q,
-          plan_ref: query.plan_ref
-        });
-        return value;
-      },
-      async resources(runRef, query, signal) {
-        const q = resourceScope(runRef, query),
-          value = await request(runRef, q, signal, null, '/resources');
-        resourceDetails(value, runRef, {
-          ...q,
-          expected_resource_refs: query.expected_resource_refs
-        });
-        return value;
-      },
-      async resourceDays(runRef, query, signal) {
-        const q = resourceScope(runRef, query, 'resource-days'),
-          value = await request(runRef, q, signal, null, '/resource-days');
-        resourceDetails(value, runRef, {
-          ...q,
-          expected_resource_refs: query.expected_resource_refs
-        }, 'resource-days');
-        return value;
-      },
-      async preparation(runRef, query, signal) {
-        const q = preparationScope(runRef, query),
-          value = await request(runRef, q, signal, null, '/preparation');
-        preparationDetails(value, runRef, q);
-        return value;
-      },
-      async changeovers(runRef, query, signal) {
-        const q = preparationScope(runRef, query, 'changeovers'),
-          value = await request(runRef, q, signal, null, '/changeovers');
-        preparationDetails(value, runRef, q, 'changeovers');
-        return value;
-      },
-      async decisionExport(runRef, query, snapshotRef, format, signal, section = 'overview') {
-        check(['csv', 'xlsx'].includes(format) && typeof snapshotRef === 'string' && snapshotRef.length > 0);
-        const detailSection = query.filter_section || (['batches', 'operations', 'resources', 'resource-days', 'preparation', 'changeovers', 'process'].includes(section) ? section : null);
-        const q = detailSection === 'process' ? processScope(runRef, query) : ['preparation', 'changeovers'].includes(detailSection) ? preparationScope(runRef, query, detailSection) : ['resources', 'resource-days'].includes(detailSection) ? resourceScope(runRef, query, detailSection) : detailSection ? detailScope(runRef, query, detailSection) : scope(runRef, query);
-        for (const key of ['page', 'size', 'heatmap_page', 'heatmap_size']) delete q[key];
-        return request(runRef, {
-          ...q,
-          ...(detailSection ? {
-            filter_section: detailSection
-          } : {}),
-          snapshot_ref: snapshotRef,
-          format,
-          section
-        }, signal, format);
-      }
-    }, ['decision', 'decisionSummary', 'resourceWorkspace', 'decisionDetails', 'completionBatches', 'process', 'referenceWorkspace', 'resources', 'resourceDays', 'preparation', 'changeovers']);
-  }
-  function adapter(value) {
-    return window.APSReadBoundary.checked(value, {
-      decision,
-      decisionSummary,
-      resourceWorkspace,
-      decisionDetails: (payload, runRef, query, section) => details(payload, runRef, query, section),
-      completionBatches,
-      process: processDetails,
-      referenceWorkspace,
-      resources: (payload, runRef, query) => resourceDetails(payload, runRef, query),
-      resourceDays: (payload, runRef, query) => resourceDetails(payload, runRef, query, 'resource-days'),
-      preparation: (payload, runRef, query) => preparationDetails(payload, runRef, query),
-      changeovers: (payload, runRef, query) => preparationDetails(payload, runRef, query, 'changeovers')
-    });
-  }
+  const BASE = '/api/workbench/v1/scheduling/runs/';
+  const read = (runRef, leaf, query, signal) => T.read(BASE + runRef + '/decision' + leaf, query, {
+    signal,
+    timeout: 60000
+  });
   window.RunDecisionAPI = {
-    create,
-    adapter,
-    decision,
-    decisionSummary,
-    resourceWorkspace,
+    async decision(runRef, query, signal) {
+      const q = scope(runRef, query),
+        value = await read(runRef, '', q, signal);
+      validateDecision(value, runRef, q);
+      return value;
+    },
+    async decisionSummary(runRef, query, signal) {
+      const q = scope(runRef, query),
+        value = await read(runRef, '/summary', q, signal);
+      validateDecisionSummary(value, runRef, q);
+      return value;
+    },
+    async resourceWorkspace(runRef, query, savedQuery, signal) {
+      const value = await read(runRef, '/resource-workspace', resourceWorkspaceScope(runRef, query, savedQuery), signal);
+      validateResourceWorkspace(value, runRef, query, savedQuery);
+      return value;
+    },
+    async decisionDetails(runRef, query, section, signal) {
+      const q = detailScope(runRef, query, section),
+        value = await read(runRef, '/' + section, q, signal);
+      details(value, runRef, q, section);
+      return value;
+    },
+    async completionBatches(runRef, query, signal) {
+      const q = completionScope(runRef, query),
+        value = await read(runRef, '/completion-batches', q, signal);
+      validateCompletionBatches(value, runRef, q);
+      return value;
+    },
+    async process(runRef, query, signal) {
+      const q = processScope(runRef, query),
+        value = await read(runRef, '/process', q, signal);
+      processDetails(value, runRef, q);
+      return value;
+    },
+    async referenceWorkspace(runRef, query, signal) {
+      const q = {
+        ...scope(runRef, {
+          ...query,
+          comparison_mode: 'admission_official'
+        })
+      };
+      if (query.batch_ref) q.batch_ref = query.batch_ref;
+      const value = await read(runRef, '/reference-workspace', q, signal);
+      validateReferenceWorkspace(value, runRef, {
+        ...q,
+        plan_ref: query.plan_ref
+      });
+      return value;
+    },
+    async resources(runRef, query, signal) {
+      const q = resourceScope(runRef, query),
+        value = await read(runRef, '/resources', q, signal);
+      resourceDetails(value, runRef, {
+        ...q,
+        expected_resource_refs: query.expected_resource_refs
+      });
+      return value;
+    },
+    async resourceDays(runRef, query, signal) {
+      const q = resourceScope(runRef, query, 'resource-days'),
+        value = await read(runRef, '/resource-days', q, signal);
+      resourceDetails(value, runRef, {
+        ...q,
+        expected_resource_refs: query.expected_resource_refs
+      }, 'resource-days');
+      return value;
+    },
+    async preparation(runRef, query, signal) {
+      const q = preparationScope(runRef, query),
+        value = await read(runRef, '/preparation', q, signal);
+      preparationDetails(value, runRef, q);
+      return value;
+    },
+    async changeovers(runRef, query, signal) {
+      const q = preparationScope(runRef, query, 'changeovers'),
+        value = await read(runRef, '/changeovers', q, signal);
+      preparationDetails(value, runRef, q, 'changeovers');
+      return value;
+    },
+    async decisionExport(runRef, query, snapshotRef, format, signal, section) {
+      check(['csv', 'xlsx'].includes(format) && typeof snapshotRef === 'string' && snapshotRef.length > 0);
+      const detailSection = query.filter_section || (['batches', 'operations', 'resources', 'resource-days', 'preparation', 'changeovers', 'process'].includes(section) ? section : null);
+      const q = detailSection === 'process' ? processScope(runRef, query) : ['preparation', 'changeovers'].includes(detailSection) ? preparationScope(runRef, query, detailSection) : ['resources', 'resource-days'].includes(detailSection) ? resourceScope(runRef, query, detailSection) : detailSection ? detailScope(runRef, query, detailSection) : scope(runRef, query);
+      for (const key of ['page', 'size', 'heatmap_page', 'heatmap_size']) delete q[key];
+      const file = await T.download(BASE + runRef + '/decision/export', {
+        ...q,
+        ...(detailSection ? {
+          filter_section: detailSection
+        } : {}),
+        snapshot_ref: snapshotRef,
+        format,
+        section
+      }, {
+        signal,
+        timeout: 60000,
+        types: [T.types[format]]
+      });
+      check(file.header('X-Workbench-Run-Ref') === runRef && file.header('X-Workbench-Snapshot-Ref') === snapshotRef, '比较资料已更新，请关闭导出窗口，刷新后重新导出。');
+      // 传输层已校验附件、文件名与后缀、格式、魔数与非空；这里只断言本领域业务头。
+      const rowCount = file.header('X-Workbench-Row-Count');
+      check(rowCount !== null && /^\d+$/.test(rowCount), '导出文件没有读取到内容，请重新点击下载。');
+      return {
+        blob: file.blob,
+        row_count: Number(rowCount),
+        filename: file.filename
+      };
+    },
+    validateDecision,
+    validateDecisionSummary,
+    validateResourceWorkspace,
     resourceWorkspaceScope,
     resourceFilters,
     savedResourceView,
-    resourceError,
     details,
     scope,
     detailScope,
     completionScope,
-    completionBatches,
+    validateCompletionBatches,
     processScope,
     processDetails,
-    referenceWorkspace,
+    validateReferenceWorkspace,
     resourceScope,
     resourceDetails,
     preparationScope,
@@ -38517,11 +38112,6 @@ function SMExport({
 
   const C = window.RunCandidateControls,
     T = window.WorkbenchTerms;
-  const titles = {
-    complete: '推荐方案',
-    schedulable_scope: '推荐方案',
-    partial: '推荐的部分安排'
-  };
   const supports = {
     batch: '查看批次',
     operation: '查看工序',
@@ -38550,7 +38140,7 @@ function SMExport({
     onSupport,
     compact = false
   }) {
-    return onSupport && targets.length ? /*#__PURE__*/React.createElement("span", {
+    return targets.length ? /*#__PURE__*/React.createElement("span", {
       className: "rd-supports"
     }, (compact ? targets.slice(0, 1) : targets).map((target, index) => {
       const resourceKind = target.drill.detail_query && target.drill.detail_query.resource_kind || target.drill.resource_kind;
@@ -38631,11 +38221,10 @@ function SMExport({
       const row = data.candidates.find(candidate => candidate.candidate_ref === reference);
       return row ? row.label || '候选名称未填写' : '资料未记录';
     };
-    const unified = window.RunGenerationContract.unified(basis),
-      G = window.RunGenerationContract;
-    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h4", null, unified ? '共同优化的推荐规则与数值' : '排产时的推荐规则与数值'), /*#__PURE__*/React.createElement("dl", {
+    const G = window.RunGenerationContract;
+    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h4", null, "\u5171\u540C\u4F18\u5316\u7684\u63A8\u8350\u89C4\u5219\u4E0E\u6570\u503C"), /*#__PURE__*/React.createElement("dl", {
       className: "rd-selection-facts"
-    }, unified ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u4E3B\u76EE\u6807"), /*#__PURE__*/React.createElement("dd", null, G.objectiveLabel(basis.primary_objective))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u672C\u8F6E\u63A8\u8350"), /*#__PURE__*/React.createElement("dd", null, name(basis.selected_candidate_ref), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+    }, basis.selected_candidate_ref !== null && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u4E3B\u76EE\u6807"), /*#__PURE__*/React.createElement("dd", null, G.objectiveLabel(basis.primary_objective))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u672C\u8F6E\u63A8\u8350"), /*#__PURE__*/React.createElement("dd", null, name(basis.selected_candidate_ref), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       value: basis.selected_candidate_ref,
       label: "\u5019\u9009\u6C38\u4E45\u7F16\u53F7"
     }))), basis.target_objectives.map(objective => {
@@ -38663,22 +38252,17 @@ function SMExport({
         '主目标指标顺序': basis.objective_field_order[basis.primary_objective],
         '主目标保存评分': basis.selected_score
       }
-    })))) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u76EE\u6807\u6700\u4F18\u5019\u9009"), /*#__PURE__*/React.createElement("dd", null, name(basis.raw_score_best_candidate_ref))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5065\u5EB7\u6BD4\u8F83\u539F\u65B9\u6848"), /*#__PURE__*/React.createElement("dd", null, name(basis.health_reference_candidate_ref)))), basis.explanation.entries.map(entry => /*#__PURE__*/React.createElement("div", {
+    })))), basis.explanation.entries.map(entry => /*#__PURE__*/React.createElement("div", {
       key: entry.key,
       "data-selection-evidence": entry.key
-    }, /*#__PURE__*/React.createElement("dt", null, entry.label), /*#__PURE__*/React.createElement("dd", null, entry.text, /*#__PURE__*/React.createElement("small", {
+    }, /*#__PURE__*/React.createElement("dt", null, entry.label), /*#__PURE__*/React.createElement("dd", null, entry.text, entry.selected_value !== null && /*#__PURE__*/React.createElement("small", {
       className: "rd-evidence-values"
-    }, [['reference_value', '参考值'], ['selected_value', '本项值'], ['value', '记录值'], ['limit', '采用上限'], ['tolerance', '采用容差']].filter(([key]) => entry[key] !== null).map(([key, label]) => {
-      const unit = key === 'tolerance' ? entry.tolerance_unit : entry.unit,
-        value = unit === '%' ? window.WorkbenchFormat.percent(entry[key]) : window.WorkbenchFormat.number(entry[key], {
-          digits: 6,
-          trim: true
-        });
-      return /*#__PURE__*/React.createElement("span", {
-        key: key,
-        title: String(entry[key])
-      }, label, " ", value, unit && unit !== '%' && ' ' + unit);
-    })))))), basis.explanation.issues.length > 0 && /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("span", {
+      title: String(entry.selected_value)
+    }, "\u672C\u9879\u503C ", window.WorkbenchFormat.number(entry.selected_value, {
+      digits: 6,
+      trim: true
+    }), entry.unit && ' ' + entry.unit)))))), basis.explanation.issues.length > 0 && /*#__PURE__*/React.createElement("div", {
       className: "rc-notice"
     }, /*#__PURE__*/React.createElement("strong", null, "\u63A8\u8350\u7406\u7531\u7F3A\u5C11\u8D44\u6599"), /*#__PURE__*/React.createElement("ul", null, basis.explanation.issues.map(issue => /*#__PURE__*/React.createElement("li", {
       key: issue.code
@@ -38712,8 +38296,7 @@ function SMExport({
       scope: "row"
     }, definition.label), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Metric, {
       metric: work.metrics[definition.key],
-      definition: definition,
-      showReason: false
+      definition: definition
     }))))))), reasons.map(message => /*#__PURE__*/React.createElement("p", {
       className: "rc-muted",
       key: message
@@ -38744,11 +38327,11 @@ function SMExport({
       label: "\u63A8\u8350\u65B9\u6848\u5269\u4F59\u51C6\u5907\u4E0E\u52A0\u5DE5\u9700\u6C42"
     }));
   }
+  // 方案对比页唯一挂载点只用紧凑版：推荐摘要一行，取舍与依据收进“推荐详情”。
   function Panel({
     data,
     onSelect,
-    onSupport,
-    compact = false
+    onSupport
   }) {
     const recommendation = data.recommendation,
       comparison = recommendation.current_comparison;
@@ -38757,7 +38340,7 @@ function SMExport({
     const completionSummary = scope ? T.completion_summary(scope) : '';
     const mainBenefit = comparison.benefits.find(item => item.value !== null && item.value !== 0),
       mainCost = comparison.costs.find(item => item.value !== null && item.value !== 0);
-    const mainCause = selected && data.selection_basis && data.selection_basis.explanation && data.selection_basis.explanation.headline || recommendation.headline;
+    const mainCause = selected && data.selection_basis.explanation.headline || recommendation.headline;
     const sameReference = comparison.reference.kind === 'candidate' && comparison.reference.candidate_ref === recommendation.candidate_ref;
     const supplement = data.scope.reference_state === 'available' && !sameReference ? [mainBenefit && mainBenefit.label + '，' + difference(mainBenefit), mainCost && mainCost.label + '，' + difference(mainCost)].filter(Boolean).join('；') : '';
     const tradeoffs = /*#__PURE__*/React.createElement("div", {
@@ -38775,27 +38358,25 @@ function SMExport({
       onSupport: onSupport
     }) : /*#__PURE__*/React.createElement("p", null, data.scope.reference_state === 'available' ? '暂无明确' + label.slice(2) : window.RunDecisionComparison.referenceNotice(data)))));
     return /*#__PURE__*/React.createElement("section", {
-      className: 'rd-recommendation' + (compact ? ' rd-recommendation-compact' : ''),
+      className: "rd-recommendation rd-recommendation-compact",
       "aria-label": "\u63A8\u8350\u65B9\u6848\u4E0E\u63A8\u8350\u7406\u7531",
       "data-recommendation-type": recommendation.recommendation_type
     }, /*#__PURE__*/React.createElement("div", {
       className: "rd-recommend-main"
     }, /*#__PURE__*/React.createElement("div", {
       className: "rd-recommend-heading"
-    }, /*#__PURE__*/React.createElement("h3", null, selected ? (compact ? '本次建议：' : titles[recommendation.recommendation_type] + '：') + selected.label : '本次排产暂无推荐方案'), selected && /*#__PURE__*/React.createElement(C.Button, {
+    }, /*#__PURE__*/React.createElement("h3", null, selected ? '本次建议：' + selected.label : '本次排产暂无推荐方案'), selected && /*#__PURE__*/React.createElement(C.Button, {
       icon: "search",
       className: "btn link",
       "aria-label": '查看推荐方案：' + selected.label,
       onClick: () => onSelect(selected)
-    }, compact ? '查看方案' : '查看推荐方案')), !compact && selected && completionSummary && /*#__PURE__*/React.createElement("small", {
-      className: "rd-recommend-coverage"
-    }, completionSummary)), /*#__PURE__*/React.createElement("p", {
+    }, "\u67E5\u770B\u65B9\u6848"))), /*#__PURE__*/React.createElement("p", {
       className: "rd-recommend-cause"
-    }, mainCause), compact && supplement && /*#__PURE__*/React.createElement("small", {
+    }, mainCause), supplement && /*#__PURE__*/React.createElement("small", {
       className: "rd-recommend-tradeoff"
-    }, "\u76F8\u5BF9", data.baseline.label || '当前对照', "\uFF1A", supplement), !compact && tradeoffs, /*#__PURE__*/React.createElement("details", {
+    }, "\u76F8\u5BF9", data.baseline.label || '当前对照', "\uFF1A", supplement), /*#__PURE__*/React.createElement("details", {
       className: "rd-recommend-evidence"
-    }, /*#__PURE__*/React.createElement("summary", null, compact ? '推荐详情' : '查看推荐规则、全部差值与明细'), compact && /*#__PURE__*/React.createElement(React.Fragment, null, selected && completionSummary && /*#__PURE__*/React.createElement("p", null, completionSummary), tradeoffs), /*#__PURE__*/React.createElement(SelectionEvidence, {
+    }, /*#__PURE__*/React.createElement("summary", null, "\u63A8\u8350\u8BE6\u60C5"), selected && completionSummary && /*#__PURE__*/React.createElement("p", null, completionSummary), tradeoffs, /*#__PURE__*/React.createElement(SelectionEvidence, {
       basis: data.selection_basis,
       data: data
     }), scope && /*#__PURE__*/React.createElement(CompletionEvidence, {
@@ -38813,7 +38394,6 @@ function SMExport({
     SelectionEvidence,
     CompletionEvidence,
     RemainingMetrics,
-    titles,
     amount,
     difference,
     Support,
@@ -38827,6 +38407,8 @@ function SMExport({
   'use strict';
 
   const A = window.RunCandidateAPI,
+    N = window.RunCandidateAnalysisAPI,
+    D = window.RunDecisionAPI,
     C = window.RunCandidateControls,
     M = window.RunCandidateModel,
     G = window.RunGenerationContract;
@@ -38877,8 +38459,8 @@ function SMExport({
   });
   const comparisonTabs = [['delivery', '交期与未排'], ['differences', '方案差异'], ['resources', '资源占用'], ['process', '计算过程'], ['preparation', '准备与切换']];
   const secondaryTabs = [['metrics', '全部指标'], ['completion', '工序安排']];
+  // 后端甘特/明细定位用 batches、operations 命名页签，这里换成本页的交付与差异页签。
   const tabAliases = {
-    overview: 'delivery',
     batches: 'delivery',
     operations: 'differences'
   };
@@ -38926,10 +38508,9 @@ function SMExport({
   function Metric({
     metric,
     definition,
-    delta,
-    showReason = true
+    delta
   }) {
-    const reasons = [...new Set([showReason && metric.reason && metric.reason.message, delta && delta.reason && delta.reason.message].filter(Boolean))];
+    const reasons = [...new Set([metric.reason && metric.reason.message, delta && delta.reason && delta.reason.message].filter(Boolean))];
     const coverage = metricCoverage(metric, definition);
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("strong", {
       title: coverage.title
@@ -38972,11 +38553,11 @@ function SMExport({
       className: "rd-candidate-basis"
     }, /*#__PURE__*/React.createElement("summary", {
       "aria-label": candidate.label + '指标依据'
-    }, "\u6307\u6807\u4F9D\u636E"), /*#__PURE__*/React.createElement("div", null, onCompletion && /*#__PURE__*/React.createElement(C.Button, {
+    }, "\u6307\u6807\u4F9D\u636E"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(C.Button, {
       className: "btn link",
       "aria-label": candidate.label + '批次工序安排',
       onClick: () => onCompletion(candidate)
-    }, "\u67E5\u770B\u6279\u6B21\u5DE5\u5E8F\u5B89\u6392"), onProcess && /*#__PURE__*/React.createElement(C.Button, {
+    }, "\u67E5\u770B\u6279\u6B21\u5DE5\u5E8F\u5B89\u6392"), /*#__PURE__*/React.createElement(C.Button, {
       className: "btn link",
       "aria-label": candidate.label + '优化过程',
       onClick: () => onProcess(candidate)
@@ -39013,11 +38594,6 @@ function SMExport({
     const row = data.candidates.find(candidate => candidate.candidate_ref === candidateRef);
     return row ? row.label || '候选名称未填写' : '资料未记录';
   }
-  function Recommendation(props) {
-    return /*#__PURE__*/React.createElement(window.RunDecisionRecommendation.Panel, {
-      ...props
-    });
-  }
   function CandidateReuse({
     candidate,
     data
@@ -39048,12 +38624,11 @@ function SMExport({
     onSelect,
     busy
   }) {
-    const unified = G.unified(data.selection_basis),
-      weighted = unified && data.selection_basis.primary_objective === 'min_weighted_tardiness';
+    const weighted = data.selection_basis.primary_objective === 'min_weighted_tardiness';
     const definitions = (weighted ? ['weighted_tardiness_hours', 'overdue_count', 'total_tardiness_hours'] : ['overdue_count', 'total_tardiness_hours']).map(key => data.metric_definitions.find(row => row.key === key)).filter(Boolean);
     return /*#__PURE__*/React.createElement("div", {
       className: "rd-candidate-grid",
-      "data-unified-candidates": unified ? data.candidates.length : undefined,
+      "data-unified-candidates": data.candidates.length,
       "aria-label": "\u672C\u6B21\u5168\u90E8\u5019\u9009\u65B9\u6848"
     }, data.candidates.map(candidate => {
       const {
@@ -39078,7 +38653,7 @@ function SMExport({
         onClick: () => onSelect(candidate)
       }, /*#__PURE__*/React.createElement("span", {
         className: "rd-candidate-choice-heading"
-      }, /*#__PURE__*/React.createElement("strong", null, unified && candidate.representative_objectives.length ? candidate.representative_objectives.map(G.objectiveLabel).join(' · ') : candidate.label || '候选名称未填写'), (fixed || recommended) && /*#__PURE__*/React.createElement("span", {
+      }, /*#__PURE__*/React.createElement("strong", null, candidate.representative_objectives.length ? candidate.representative_objectives.map(G.objectiveLabel).join(' · ') : candidate.label || '候选名称未填写'), (fixed || recommended) && /*#__PURE__*/React.createElement("span", {
         className: "rd-candidate-identities"
       }, fixed && /*#__PURE__*/React.createElement("span", {
         className: "rd-badge rd-reference"
@@ -39130,12 +38705,12 @@ function SMExport({
     return candidate ? /*#__PURE__*/React.createElement("section", {
       className: "rd-candidate-facts",
       "aria-label": "\u5F53\u524D\u5019\u9009\u7684\u5B8C\u6574\u4FDD\u5B58\u4F9D\u636E"
-    }, /*#__PURE__*/React.createElement("h3", null, candidate.label || '当前候选', " \xB7 \u4FDD\u5B58\u4F9D\u636E"), /*#__PURE__*/React.createElement("p", null, candidate.selection_role.map(role => roles[role] || (G.objective(role) ? G.objectiveLabel(role) + '代表方案' : null)).filter(Boolean).join(' · ')), G.unified(candidate) && /*#__PURE__*/React.createElement(C.GenerationMetadata, {
+    }, /*#__PURE__*/React.createElement("h3", null, candidate.label || '当前候选', " \xB7 \u4FDD\u5B58\u4F9D\u636E"), /*#__PURE__*/React.createElement("p", null, candidate.selection_role.map(role => roles[role] || (G.objective(role) ? G.objectiveLabel(role) + '代表方案' : null)).filter(Boolean).join(' · ')), /*#__PURE__*/React.createElement(C.GenerationMetadata, {
       value: candidate,
       runRef: data.run.run_ref
     }), /*#__PURE__*/React.createElement(Coverage, {
       candidate: candidate
-    }), candidate.source && candidate.source.reason && /*#__PURE__*/React.createElement("p", null, candidate.source.reason.message), G.unified(candidate) && candidate.representative_objectives.map(name => /*#__PURE__*/React.createElement("div", {
+    }), candidate.source && candidate.source.reason && /*#__PURE__*/React.createElement("p", null, candidate.source.reason.message), candidate.representative_objectives.map(name => /*#__PURE__*/React.createElement("div", {
       key: name,
       className: "rd-saved-score-scope"
     }, /*#__PURE__*/React.createElement("strong", null, G.objectiveLabel(name), "\u7684\u4FDD\u5B58\u8BC4\u4EF7\u8303\u56F4"), /*#__PURE__*/React.createElement(C.ScoringScope, {
@@ -39216,10 +38791,9 @@ function SMExport({
     }, "\u5168\u90E8\u65B9\u6848\u6307\u6807\u8BFB\u53D6\u5DF2\u53D6\u6D88\uFF0C\u70B9\u51FB\u5237\u65B0\u7EE7\u7EED\u3002"));
   }
   function Export({
-    adapter,
     result,
-    initialSection = 'overview',
-    filterQuery = {}
+    initialSection,
+    filterQuery
   }) {
     const [format, setFormat] = React.useState(null),
       [busy, setBusy] = React.useState(false),
@@ -39240,8 +38814,7 @@ function SMExport({
         process: '优化过程'
       },
       runRef = data.run_ref || data.run.run_ref;
-    const sharedProcess = data.process_version === 'unified-optimization-process-v1' || G.unified(data.selection_basis);
-    const description = section === 'all' && sharedProcess ? '导出整份方案对照与本轮全部优化目标的过程记录，保留当前候选来源定位。' : initialSection === 'process' ? sharedProcess ? '导出本轮共同优化的摘要、当前方向曲线、阶段和全部实际动作，保留候选来源定位。' : '导出当前过程候选的计算摘要、进展、阶段和全部代表尝试。' : section === 'recommendation' ? '导出推荐原因、相对当前基准的差值、批次工序安排和未安排工时。' : initialSection === 'overview' ? '导出本次全部 ' + data.candidates.length + ' 个候选和 ' + data.metric_definitions.length + ' 项指标。' : '导出当前筛选的全部明细。';
+    const description = section === 'all' ? '导出整份方案对照与本轮全部优化目标的过程记录，保留当前候选来源定位。' : initialSection === 'process' ? '导出本轮共同优化的摘要、当前方向曲线、阶段和全部实际动作，保留候选来源定位。' : section === 'recommendation' ? '导出推荐原因、相对当前基准的差值、批次工序安排和未安排工时。' : initialSection === 'overview' ? '导出本次全部 ' + data.candidates.length + ' 个候选和 ' + data.metric_definitions.length + ' 项指标。' : '导出当前筛选的全部明细。';
     React.useEffect(() => () => {
       if (active.current) active.current.abort();
     }, []);
@@ -39272,7 +38845,7 @@ function SMExport({
         } : {})
       };
       try {
-        const file = await adapter.decisionExport(runRef, query, result.meta.snapshot_ref, format, controller.signal, section);
+        const file = await D.decisionExport(runRef, query, result.meta.snapshot_ref, format, controller.signal, section);
         if (controller.signal.aborted) return;
         window.APSWorkbenchTransport.saveBlob(file.filename, file.blob);
         setDone(window.WorkbenchTerms.download_started(file.filename) + ' · ' + file.row_count + ' 条记录');
@@ -39341,7 +38914,7 @@ function SMExport({
       value: "all"
     }, "\u6574\u4EFD\u5BF9\u7167\uFF1A\u63A8\u8350\u4E0E\u5168\u90E8\u65B9\u6848\u660E\u7EC6"))), section === 'all' && initialSection !== 'overview' && /*#__PURE__*/React.createElement("p", {
       className: "rc-muted"
-    }, initialSection === 'process' ? data.process_version === 'unified-optimization-process-v1' ? '整份导出包含本轮全部优化目标，保留当前候选来源和固定对照。优化方向筛选只用于单张过程导出。' : '过程记录与其他结果均采用当前方案，比较结果保留固定对照。' : ['preparation', 'changeovers'].includes(initialSection) ? '当前明细保留筛选；另一张表按当前设备导出。' : ['resources', 'resource-days'].includes(initialSection) ? '资源明细保留当前粒度、关注线与时段筛选。' : '当前明细保留筛选，批次条件同时应用于批次和工序明细。'), /*#__PURE__*/React.createElement(C.ErrorBox, {
+    }, initialSection === 'process' ? '整份导出包含本轮全部优化目标，保留当前候选来源和固定对照。优化方向筛选只用于单张过程导出。' : ['preparation', 'changeovers'].includes(initialSection) ? '当前明细保留筛选；另一张表按当前设备导出。' : ['resources', 'resource-days'].includes(initialSection) ? '资源明细保留当前粒度、关注线与时段筛选。' : '当前明细保留筛选，批次条件同时应用于批次和工序明细。'), /*#__PURE__*/React.createElement(C.ErrorBox, {
       error: error
     }))));
   }
@@ -39411,8 +38984,7 @@ function SMExport({
     }, item)))))));
   }
   function Workspace({
-    adapter,
-    initialContext = {},
+    initialContext,
     onNavigate,
     renderAdoption,
     renderTrial,
@@ -39448,10 +39020,6 @@ function SMExport({
     const initialDetails = initialContext.detail_queries === undefined ? {} : initialContext.detail_queries;
     const [tab, updateTab] = React.useState(() => {
       const requested = tabAliases[initialContext.comparison_tab] || initialContext.comparison_tab;
-      const leaves = initialDetails,
-        legacyOverview = !initialContext.comparison_tab || initialContext.comparison_tab === 'overview';
-      if (legacyOverview && leaves.process && leaves.process.open) return 'process';
-      if (legacyOverview && leaves['completion-batches'] && leaves['completion-batches'].open) return 'completion';
       return [...comparisonTabs, ...secondaryTabs, ['changeovers']].some(row => row[0] === requested) ? requested : 'delivery';
     });
     const [visitedPanels, setVisitedPanels] = React.useState(() => [tab]);
@@ -39474,43 +39042,8 @@ function SMExport({
       const machine = initialContext.resource_kind === 'machine' && initialContext.resource_ref ? {
         machine_ref: initialContext.resource_ref
       } : {};
-      const legacyBatches = initial.batches,
-        legacyOperations = initial.operations,
-        differences = legacyOperations ? {
-          size: legacyOperations.size,
-          batch_ref: legacyOperations.batch_ref,
-          change_kind: 'changed',
-          sort: 'current_priority',
-          order: 'asc',
-          delivery_filter: 'all'
-        } : null;
-      const leaves = {
-        ...initial
-      };
-      for (const [section, field] of [['completion-batches', 'completion_candidate_ref']]) if (leaves[section]) {
-        leaves[section] = {
-          ...leaves[section]
-        };
-        if (leaves[section][field] && leaves[section][field] !== initialContext.candidate_ref) {
-          leaves[section].page = 1;
-          delete leaves[section].snapshot_ref;
-        }
-        delete leaves[section][field];
-      }
       return {
-        ...leaves,
-        ...(legacyBatches && !initial.delivery ? {
-          delivery: {
-            ...legacyBatches,
-            delivery_filter: 'all'
-          }
-        } : {}),
-        ...(differences && !initial.differences ? {
-          differences
-        } : {}),
-        ...(legacyOperations && !initial['difference-chain'] ? {
-          'difference-chain': legacyOperations
-        } : {}),
+        ...initial,
         ...(Object.keys(resources).length ? {
           resources
         } : {}),
@@ -39528,11 +39061,11 @@ function SMExport({
     });
     // 各明细分区的查询条件按需出现；还没打开过的分区按空条件读取。
     const leafQuery = key => detailQueries[key] === undefined ? {} : detailQueries[key];
-    const lookup = window.APSResourceSession.useQuery(signal => adapter.identity(initialContext.candidate_ref, signal), [adapter, initialContext.candidate_ref], !runRef && A.ref(initialContext.candidate_ref));
+    const lookup = window.APSResourceSession.useQuery(signal => A.identity(initialContext.candidate_ref, signal), [initialContext.candidate_ref], !runRef && A.ref(initialContext.candidate_ref));
     React.useEffect(() => {
       if (lookup.result) setRunRef(lookup.result.data.run_ref);
     }, [lookup.result]);
-    const read = window.APSResourceSession.useQuery(signal => tab === 'resources' ? adapter.resourceWorkspace(runRef, query, leafQuery('resources'), signal) : adapter.decisionSummary(runRef, query, signal), [adapter, runRef, query, revision], A.ref(runRef));
+    const read = window.APSResourceSession.useQuery(signal => tab === 'resources' ? D.resourceWorkspace(runRef, query, leafQuery('resources'), signal) : D.decisionSummary(runRef, query, signal), [runRef, query, revision], A.ref(runRef));
     const result = read.result,
       data = result && result.data,
       selected = data && data.candidates.find(row => row.candidate_ref === data.scope.selected_candidate_ref);
@@ -39547,7 +39080,7 @@ function SMExport({
         reference_candidate_ref: data.scope.reference.candidate_ref
       } : {})
     };
-    const fullRead = window.APSResourceSession.useQuery(signal => adapter.decision(runRef, fullQuery, signal), [adapter, runRef, JSON.stringify(query), JSON.stringify(fullQuery), revision], !!data && (tab === 'metrics' || sourceOpen) && !fullPaused);
+    const fullRead = window.APSResourceSession.useQuery(signal => D.decision(runRef, fullQuery, signal), [runRef, JSON.stringify(query), JSON.stringify(fullQuery), revision], !!data && (tab === 'metrics' || sourceOpen) && !fullPaused);
     const fullData = fullRead.result && fullRead.result.data,
       fullSelected = fullData && fullData.candidates.find(row => row.candidate_ref === data.scope.selected_candidate_ref);
     React.useEffect(() => {
@@ -39577,29 +39110,14 @@ function SMExport({
         if (entry) entry.focus();
       }
     }, [data, read.error, tab]);
-    const history = window.APSResourceSession.useQuery(signal => adapter.adoptions(selected.candidate_ref, runRef, signal), [adapter, selected && selected.candidate_ref, runRef, revision, result && result.meta.snapshot_ref], !!selected && selected.persisted_status === 'completed' && historyOpen);
-    const unified = data && G.unified(data.selection_basis),
-      processQuery = {
-        ...detailQueries.process
-      };
-    if (!unified && processQuery.process_candidate_ref) {
-      if (processQuery.process_candidate_ref !== (data ? data.scope.selected_candidate_ref : initialContext.candidate_ref)) {
-        processQuery.page = 1;
-        delete processQuery.snapshot_ref;
-      }
-      delete processQuery.process_candidate_ref;
-    }
+    const history = window.APSResourceSession.useQuery(signal => N.adoptions(selected.candidate_ref, runRef, signal), [selected && selected.candidate_ref, runRef, revision, result && result.meta.snapshot_ref], !!selected && selected.persisted_status === 'completed' && historyOpen);
+    const processQuery = leafQuery('process');
     const remembered = data ? comparisonContext(data, {
       ...initialContext,
       metric_view: metricView,
       comparison_tab: tab,
       selected_batch_ref: selectedBatchRef,
-      detail_queries: {
-        ...detailQueries,
-        ...(detailQueries.process ? {
-          process: processQuery
-        } : {})
-      }
+      detail_queries: detailQueries
     }) : initialContext;
     window.WorkbenchPageContext.useSnapshot(remembered, !!data);
     window.WorkbenchCaption.useCaption(data && selected ? {
@@ -39622,12 +39140,7 @@ function SMExport({
       setRangeError(null);
       setHistoryOpen(false);
       setFullPaused(false);
-      setDetailQueries(values => {
-        const next = freshDetailQueries(values);
-        if (next.process && !unified) delete next.process.process_candidate_ref;
-        if (next['completion-batches']) delete next['completion-batches'].completion_candidate_ref;
-        return next;
-      });
+      setDetailQueries(freshDetailQueries);
     }
     function reference(candidate) {
       setQuery(value => ({
@@ -39755,20 +39268,15 @@ function SMExport({
     function completionQueryChange(value) {
       setDetailQueries(queries => ({
         ...queries,
-        'completion-batches': {
-          ...value,
-          open: true
-        }
+        'completion-batches': value
       }));
     }
     function openCompletion(candidate, filter) {
       choose(candidate);
       setDetailQueries(queries => {
         const next = {
-          ...queries['completion-batches'],
-          open: true
+          ...queries['completion-batches']
         };
-        delete next.completion_candidate_ref;
         if (filter && filter !== next.completion_filter) {
           next.completion_filter = filter;
           next.page = 1;
@@ -39784,22 +39292,17 @@ function SMExport({
     function processQueryChange(value) {
       setDetailQueries(queries => ({
         ...queries,
-        process: {
-          ...value,
-          open: true
-        }
+        process: value
       }));
     }
     function openProcess(candidate) {
-      if (!unified) choose(candidate);
       setDetailQueries(queries => {
         const next = {
           ...queries.process,
-          open: true,
-          page: 1
+          page: 1,
+          process_candidate_ref: candidate.candidate_ref
         };
         delete next.snapshot_ref;
-        if (unified) next.process_candidate_ref = candidate.candidate_ref;else delete next.process_candidate_ref;
         return {
           ...queries,
           process: next
@@ -39886,15 +39389,15 @@ function SMExport({
       className: "rc-tools rd-header-tools"
     }, navigation, /*#__PURE__*/React.createElement("div", {
       className: "rc-tools rd-return-tools"
-    }, onNavigate && runHistoryReturn && /*#__PURE__*/React.createElement(C.Button, {
+    }, /*#__PURE__*/React.createElement(C.Button, {
       icon: "chevron-left",
       className: "btn link",
       onClick: () => onNavigate(runHistoryReturn.view, runHistoryReturn.context)
-    }, "\u8FD4\u56DE\u6392\u4EA7\u8BB0\u5F55"), onNavigate && initialContext.return_plan_context && /*#__PURE__*/React.createElement(C.Button, {
+    }, "\u8FD4\u56DE\u6392\u4EA7\u8BB0\u5F55"), initialContext.return_plan_context && /*#__PURE__*/React.createElement(C.Button, {
       icon: "chevron-left",
       className: "btn link",
       onClick: () => onNavigate('analysis', initialContext.return_plan_context)
-    }, "\u8FD4\u56DE\u6B63\u5F0F\u8BA1\u5212"), onNavigate && initialContext.return_recommendation_context && /*#__PURE__*/React.createElement(C.Button, {
+    }, "\u8FD4\u56DE\u6B63\u5F0F\u8BA1\u5212"), initialContext.return_recommendation_context && /*#__PURE__*/React.createElement(C.Button, {
       icon: "chevron-left",
       className: "btn link",
       onClick: () => onNavigate('analysis', initialContext.return_recommendation_context)
@@ -39902,8 +39405,9 @@ function SMExport({
       className: "rc-tools rd-scope-tools"
     }, data && /*#__PURE__*/React.createElement(Export, {
       key: result.meta.snapshot_ref,
-      adapter: adapter,
-      result: result
+      result: result,
+      initialSection: "overview",
+      filterQuery: {}
     }), /*#__PURE__*/React.createElement(C.Button, {
       icon: "refresh-cw",
       "aria-label": "\u5237\u65B0\u65B9\u6848\u5BF9\u6BD4",
@@ -39974,11 +39478,10 @@ function SMExport({
       referenceRef: data.scope.reference.candidate_ref,
       onSelect: choose,
       busy: read.loading
-    }), /*#__PURE__*/React.createElement(Recommendation, {
+    }), /*#__PURE__*/React.createElement(window.RunDecisionRecommendation.Panel, {
       data: data,
       onSelect: choose,
-      onSupport: onNavigate && support,
-      compact: true
+      onSupport: support
     }), /*#__PURE__*/React.createElement("div", {
       className: "rd-choice"
     }, /*#__PURE__*/React.createElement("div", {
@@ -40007,16 +39510,16 @@ function SMExport({
       className: "rd-official-baseline"
     }, referenceNotice(data))), selected && /*#__PURE__*/React.createElement("div", {
       className: "rc-tools rd-current-actions"
-    }, onNavigate && /*#__PURE__*/React.createElement(C.Button, {
+    }, /*#__PURE__*/React.createElement(C.Button, {
       icon: "chart-gantt",
       disabled: selected.persisted_status !== 'completed',
       onClick: () => gantt(selected)
-    }, "\u770B\u7518\u7279"), renderTrial && renderTrial({
+    }, "\u770B\u7518\u7279"), renderTrial({
       candidateRef: selected.candidate_ref,
       scope: data.scope,
       query: '',
       disabled: selected.persisted_status !== 'completed'
-    }), renderAdoption && selected.persisted_status === 'completed' && /*#__PURE__*/React.createElement("div", {
+    }), selected.persisted_status === 'completed' && /*#__PURE__*/React.createElement("div", {
       className: "rd-adoption-status"
     }, renderAdoption(selected.candidate_ref, {
       candidateDisplay: {
@@ -40028,13 +39531,13 @@ function SMExport({
       candidateCatalog: data.candidates
     })))), /*#__PURE__*/React.createElement("section", {
       className: "rd-candidate-section",
-      "aria-label": "\u65B9\u6848\u6BD4\u8F83\u7ED3\u679C"
+      "aria-label": "\u65B9\u6848\u5BF9\u6BD4\u7ED3\u679C"
     }, /*#__PURE__*/React.createElement("div", {
       className: "rc-heading rd-result-nav"
     }, /*#__PURE__*/React.createElement("div", {
       className: "rc-tabs rd-result-tabs",
       role: "tablist",
-      "aria-label": "\u65B9\u6848\u6BD4\u8F83\u660E\u7EC6",
+      "aria-label": "\u65B9\u6848\u5BF9\u6BD4\u660E\u7EC6",
       onKeyDown: event => {
         const index = Math.max(0, comparisonTabs.findIndex(row => row[0] === primaryTab)),
           next = event.key === 'ArrowRight' ? (index + 1) % comparisonTabs.length : event.key === 'ArrowLeft' ? (index + comparisonTabs.length - 1) % comparisonTabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? comparisonTabs.length - 1 : null;
@@ -40093,40 +39596,34 @@ function SMExport({
       data: fullData,
       selectedRef: data.scope.selected_candidate_ref
     })) : panel === 'process' ? /*#__PURE__*/React.createElement(window.RunDecisionProcess.Pane, {
-      adapter: adapter,
       result: result,
       query: processQuery,
       onQuery: processQueryChange,
-      onSelectCandidate: choose,
       enabled: tab === panel
     }) : panel === 'completion' ? selected ? /*#__PURE__*/React.createElement(window.RunDecisionCompletion.Pane, {
-      adapter: adapter,
       result: result,
       query: completionQuery,
       onQuery: completionQueryChange,
-      onSupport: onNavigate && support,
+      onSupport: support,
       enabled: tab === panel
     }) : /*#__PURE__*/React.createElement("p", {
       className: "rc-empty"
     }, "\u9009\u62E9\u5F53\u524D\u65B9\u6848\u67E5\u770B\u5DE5\u5E8F\u5B89\u6392\u3002") : selected && selected.persisted_status === 'completed' ? panel === 'resources' ? /*#__PURE__*/React.createElement(window.RunDecisionResources.Pane, {
-      adapter: adapter,
       result: result,
       query: leafQuery(panel),
       onQuery: value => detailQuery(panel, value),
       onView: resourceView,
       onRange: changeRange,
-      onDrill: onNavigate && drill,
+      onDrill: drill,
       enabled: tab === panel
     }) : ['preparation', 'changeovers'].includes(panel) ? /*#__PURE__*/React.createElement(window.RunDecisionPreparation.Pane, {
-      adapter: adapter,
       result: result,
       section: panel,
       query: leafQuery(panel),
       onQuery: value => detailQuery(panel, value),
-      onDrill: onNavigate && drill,
+      onDrill: drill,
       enabled: tab === panel
     }) : /*#__PURE__*/React.createElement(window.RunDecisionDetails.Pane, {
-      adapter: adapter,
       result: result,
       section: panel === 'differences' ? 'differences' : 'delivery',
       query: leafQuery(panel),
@@ -40135,7 +39632,7 @@ function SMExport({
       onSelectBatch: selectBatch,
       chainQuery: leafQuery(panel === 'differences' ? 'difference-chain' : 'delivery-chain'),
       onChainQuery: value => chainQuery(panel, value),
-      onDrill: onNavigate && drill,
+      onDrill: drill,
       onChooseReference: () => {
         const target = referenceChoice.current && referenceChoice.current.querySelector('select');
         if (target) target.focus();
@@ -40153,11 +39650,11 @@ function SMExport({
       role: "status"
     }, "\u6B63\u5728\u8BFB\u53D6\u6B64\u65B9\u6848\u7684\u91C7\u7528\u8BB0\u5F55\u3002"), history.result && /*#__PURE__*/React.createElement(window.RunCandidateAnalysis.History, {
       data: history.result.data,
-      onPlan: onNavigate && (plan => onNavigate('analysis', {
+      onPlan: plan => onNavigate('analysis', {
         ...historyOrigin,
         plan_ref: plan.plan_ref,
         return_decision_context: remembered
-      }))
+      })
     })), /*#__PURE__*/React.createElement("details", {
       className: "rd-official rd-data-source",
       open: sourceOpen,
@@ -40192,7 +39689,6 @@ function SMExport({
   }
   window.RunDecisionComparison = {
     Workspace,
-    Recommendation,
     CandidateTable,
     CandidateFacts,
     DifferenceSummary,
@@ -40216,7 +39712,7 @@ function SMExport({
   const C = window.RunCandidateControls,
     M = window.RunCandidateModel,
     T = window.WorkbenchTerms;
-  const queryKeys = ['completion_candidate_ref', 'completion_filter', 'sort', 'order', 'page', 'size', 'snapshot_ref'];
+  const queryKeys = ['completion_filter', 'sort', 'order', 'page', 'size', 'snapshot_ref'];
   const filters = [['all', '全部批次'], ['complete', '工序已排齐'], ['unfinished', '工序未排齐'], ['ordinary', '其他未排齐'], ['deferred', '仅因缺料未排齐'], ['unknown', '工序安排待确认']];
   const issueLabels = {
     material_deferred: '工序因缺料暂未安排',
@@ -40274,7 +39770,7 @@ function SMExport({
     label,
     onSupport
   }) {
-    return data.source.available && hasRemaining(work) && drill && onSupport ? /*#__PURE__*/React.createElement(C.Button, {
+    return data.source.available && hasRemaining(work) && drill ? /*#__PURE__*/React.createElement(C.Button, {
       icon: "search",
       className: "btn link",
       "aria-label": label,
@@ -40377,12 +39873,11 @@ function SMExport({
     })))))));
   }
   function Pane({
-    adapter,
     result,
-    query = {},
+    query,
     onQuery,
     onSupport,
-    enabled = false
+    enabled
   }) {
     const overview = result.data,
       scope = overview.scope,
@@ -40398,19 +39893,13 @@ function SMExport({
       } : {})
     };
     const stored = Object.fromEntries(Object.entries(query).filter(([key]) => queryKeys.includes(key)));
-    if (stored.completion_candidate_ref && stored.completion_candidate_ref !== scope.selected_candidate_ref) {
-      stored.page = 1;
-      delete stored.snapshot_ref;
-    }
-    delete stored.completion_candidate_ref;
     const q = window.RunDecisionAPI.completionScope(runRef, {
         ...stored,
-        ...shared,
-        completion_candidate_ref: scope.selected_candidate_ref
+        ...shared
       }),
       key = JSON.stringify(q);
-    const read = window.APSResourceSession.useQuery(signal => adapter.completionBatches(runRef, q, signal), [adapter, runRef, key, result.meta.snapshot_ref], enabled);
-    const detail = read.result && read.result.data.candidate.candidate_ref === q.completion_candidate_ref ? read.result : null,
+    const read = window.APSResourceSession.useQuery(signal => window.RunDecisionAPI.completionBatches(runRef, q, signal), [runRef, key, result.meta.snapshot_ref], enabled);
+    const detail = read.result && read.result.data.candidate.candidate_ref === q.selected_candidate_ref ? read.result : null,
       data = detail && detail.data;
     function update(change, paging = false) {
       const next = {
@@ -40419,7 +39908,6 @@ function SMExport({
         page: paging ? change.page : 1
       };
       delete next.snapshot_ref;
-      delete next.completion_candidate_ref;
       if (paging && detail) next.snapshot_ref = detail.meta.snapshot_ref;
       onQuery(Object.fromEntries(Object.entries(next).filter(([name]) => queryKeys.includes(name))));
     }
@@ -40431,7 +39919,7 @@ function SMExport({
     return /*#__PURE__*/React.createElement("section", {
       className: "rd-completion",
       "aria-label": "\u5019\u9009\u65B9\u6848\u6279\u6B21\u5DE5\u5E8F\u5B89\u6392",
-      "data-completion-anchor": q.completion_candidate_ref
+      "data-completion-anchor": q.selected_candidate_ref
     }, /*#__PURE__*/React.createElement("div", {
       className: "rd-detail-filters"
     }, /*#__PURE__*/React.createElement("label", null, "\u5DE5\u5E8F\u5B89\u6392", /*#__PURE__*/React.createElement("select", {
@@ -40523,7 +40011,7 @@ function SMExport({
 (function () {
   'use strict';
 
-  const completionKeys = ['expected_operation_count', 'missing_operation_count', 'unexpected_result_count', 'complete_batch_count', 'incomplete_batch_count'];
+  // 过程点只来自共同优化存档：每点都有 scope_ref 指向保存的评价范围，耗时与核验状态都已记录（RunDecisionAPI.processDetails 校验）。
   const known = value => typeof value === 'number' && Number.isFinite(value);
   const knownDimension = value => value !== null && value !== undefined && value !== '' && value !== 'unknown' && (typeof value !== 'number' || known(value));
   const flagLabels = {
@@ -40564,35 +40052,15 @@ function SMExport({
   const metricLabel = objective => objective && objective.primary_metric_label || '主指标（名称未记录）';
   const metricUnit = objective => objective && objective.unit || '';
   const metricValue = (value, objective) => (known(value) ? String(value) : '—') + (known(value) && metricUnit(objective) ? ' ' + metricUnit(objective) : '');
-  const verifiedLabel = point => point.verified === true ? '已核验' : point.verified === false ? '未核验' : '核验 —';
-  function scopeText(value) {
-    switch (value) {
-      case 'all_batches':
-        return '本次参与计算的全部批次';
-      case 'completed_batches_only':
-        return '本次计算范围内工序已排齐的批次';
-      case 'unknown':
-        return '未知';
-      case null:
-      case undefined:
-        return '评价范围未记录';
-      default:
-        return '其他评价范围（' + value + '）';
-    }
-  }
-  function sameScope(left, right) {
-    if (left.scope_ref !== undefined || right.scope_ref !== undefined) {
-      return left.scope_ref === right.scope_ref && left.shared_scope && right.shared_scope && left.shared_scope.components_known && right.shared_scope.components_known;
-    }
-    const scopeKeys = ['source_candidate_ref', 'objective_scope'];
-    // 没有 scope_ref 的过程点都经 RunDecisionAPI.js point() 校验：evaluation_scope 缺省、为 null，或带 incomplete_batch_ids 数组。
-    const before = left.evaluation_scope,
-      after = right.evaluation_scope;
-    return !!(scopeKeys.every(key => knownDimension(left[key]) && left[key] === right[key]) && before && after && before.incomplete_batch_ids.length === after.incomplete_batch_ids.length && before.incomplete_batch_ids.every((batch, index) => batch === after.incomplete_batch_ids[index]) && completionKeys.every(key => known(left.completion[key]) && known(right.completion[key]) && left.completion[key] === right.completion[key]));
-  }
+  const verifiedLabel = point => point.verified ? '已核验' : '未核验';
+  const scopeLabels = {
+    all_batches: '本次参与计算的全部批次',
+    completed_batches_only: '本次计算范围内工序已排齐的批次',
+    unknown: '未知'
+  };
+  const sameScope = (left, right) => left.scope_ref === right.scope_ref && left.shared_scope.components_known && right.shared_scope.components_known;
   // Saved incumbent events stay continuous across search phases; evaluation coverage remains separate.
-  function segments(progress, value = point => point.primary_value) {
-    if (progress.mode !== 'curve') return [];
+  function segments(progress, value) {
     const groups = [];
     let group = [];
     const finish = () => {
@@ -40600,7 +40068,7 @@ function SMExport({
       group = [];
     };
     progress.points.forEach(point => {
-      if (!known(point.elapsed_ms) || !known(value(point)) || point.verified !== true) {
+      if (!known(value(point)) || !point.verified) {
         finish();
         return;
       }
@@ -40612,22 +40080,15 @@ function SMExport({
   }
   // Actual boundaries between adjacent saved points with time/value coordinates on both sides.
   function markers(progress) {
-    if (!['curve', 'discrete'].includes(progress.mode)) return [];
     const result = [];
     progress.points.forEach((point, index) => {
       if (!index) return;
       const before = progress.points[index - 1];
-      if (![before.elapsed_ms, point.elapsed_ms, before.primary_value, point.primary_value].every(known)) return;
+      if (![before.primary_value, point.primary_value].every(known)) return;
       const changes = [];
       if (knownDimension(before.phase) && knownDimension(point.phase) && before.phase !== point.phase) changes.push('phase');
-      if (knownDimension(before.phase) && before.phase === point.phase && known(before.phase_visit) && known(point.phase_visit) && before.phase_visit !== point.phase_visit) changes.push('phase_visit');
-      if (knownDimension(before.segment) && knownDimension(point.segment) && before.segment !== point.segment) changes.push('segment');
-      if (before.scope_ref !== undefined || point.scope_ref !== undefined) {
-        if (before.scope_ref !== point.scope_ref) changes.push('scope');
-      } else {
-        if (before.evaluation_scope && point.evaluation_scope && (before.evaluation_scope.incomplete_batch_ids.length !== point.evaluation_scope.incomplete_batch_ids.length || before.evaluation_scope.incomplete_batch_ids.some((batch, member) => batch !== point.evaluation_scope.incomplete_batch_ids[member]))) changes.push('evaluation_scope');
-        if (completionKeys.every(key => known(before.completion[key]) && known(point.completion[key])) && completionKeys.some(key => before.completion[key] !== point.completion[key])) changes.push('completion');
-      }
+      if (before.segment !== point.segment) changes.push('segment');
+      if (before.scope_ref !== point.scope_ref) changes.push('scope');
       if (changes.length) result.push({
         before,
         point,
@@ -40641,24 +40102,14 @@ function SMExport({
     point,
     changes
   }) {
-    const labels = {
-      expected_operation_count: '参与计算工序',
-      missing_operation_count: '计算范围内未安排工序',
-      unexpected_result_count: '计算范围外结果',
-      complete_batch_count: '计算范围内已排齐批次',
-      incomplete_batch_count: '计算范围内未排齐批次'
-    };
-    const descriptions = changes.map(change => change === 'phase' ? '阶段：' + phaseText(before.phase) + ' → ' + phaseText(point.phase) : change === 'phase_visit' ? '搜索次数：' + phaseText(point.phase) + '，' + before.phase_visit + ' → ' + point.phase_visit : change === 'segment' ? '开始新的比较' : change === 'scope' ? '评价范围：' + sharedScopeText(before.shared_scope) + ' → ' + sharedScopeText(point.shared_scope) : change === 'evaluation_scope' ? '评价排除批次：' + (before.evaluation_scope.incomplete_batch_ids.join('、') || '无') + ' → ' + (point.evaluation_scope.incomplete_batch_ids.join('、') || '无') : '工序安排：' + completionKeys.filter(key => before.completion[key] !== point.completion[key]).map(key => labels[key] + ' ' + before.completion[key] + ' → ' + point.completion[key]).join('、'));
+    const descriptions = changes.map(change => change === 'phase' ? '阶段：' + phaseText(before.phase) + ' → ' + phaseText(point.phase) : change === 'segment' ? '开始新的比较' : '评价范围：' + sharedScopeText(before.shared_scope) + ' → ' + sharedScopeText(point.shared_scope));
     return '事件 ' + number(point.event_index) + '，累计求解 ' + elapsed(point.elapsed_ms) + '（' + point.elapsed_ms + ' ms）；' + descriptions.join('；') + '。';
   }
   function sharedScopeText(scope) {
-    return scopeText(scope.objective_scope) + '；已安排 ' + number(scope.scheduled_operation_refs.length) + ' 道工序，已排齐 ' + number(scope.complete_batch_refs.length) + ' 批；' + (scope.is_complete ? '完整安排范围' : '部分安排范围') + '；' + (scope.components_known ? '评分已知' : '评分缺项');
+    return scopeLabels[scope.objective_scope] + '；已安排 ' + number(scope.scheduled_operation_refs.length) + ' 道工序，已排齐 ' + number(scope.complete_batch_refs.length) + ' 批；' + (scope.is_complete ? '完整安排范围' : '部分安排范围') + '；' + (scope.components_known ? '评分已知' : '评分缺项');
   }
   function pointText(point, index, total, objective) {
-    if (point.shared_scope) return '第 ' + (index + 1) + ' / ' + total + ' 个保存点，来源事件 ' + number(point.source_event_id) + '；累计计算 ' + elapsed(point.elapsed_ms) + '；' + metricLabel(objective) + ' ' + metricValue(point.primary_value, objective) + '；' + sharedScopeText(point.shared_scope) + '；阶段 ' + phaseText(point.phase) + '；' + verifiedLabel(point) + (point.flags.length ? '；事件标记：' + flagsText(point) : '') + '。';
-    const completion = point.completion,
-      scopeDescription = scopeText(point.objective_scope);
-    return '第 ' + (index + 1) + ' / ' + total + ' 个保存点，事件 ' + number(point.event_index) + '；累计计算 ' + elapsed(point.elapsed_ms) + (known(point.elapsed_ms) ? '（' + point.elapsed_ms + ' ms）' : '') + '；' + metricLabel(objective) + ' ' + metricValue(point.primary_value, objective) + '；' + (scopeDescription.startsWith('评价范围') ? scopeDescription : '评价范围：' + scopeDescription) + '；评价集合：' + (point.evaluation_scope ? point.evaluation_scope.incomplete_batch_ids.length ? '排除批次 ' + point.evaluation_scope.incomplete_batch_ids.join('、') : '没有排除批次' : '未记录') + '；阶段 ' + phaseText(point.phase) + '；本次参与计算 ' + number(completion.expected_operation_count) + ' 道工序，其中未安排 ' + number(completion.missing_operation_count) + ' 道；本次计算范围内已排齐 ' + number(completion.complete_batch_count) + ' 批、未排齐 ' + number(completion.incomplete_batch_count) + ' 批；本次计算范围外结果 ' + number(completion.unexpected_result_count) + '；' + verifiedLabel(point) + (point.flags.length ? '；事件标记：' + flagsText(point) : '') + '。';
+    return '第 ' + (index + 1) + ' / ' + total + ' 个保存点，来源事件 ' + number(point.source_event_id) + '；累计计算 ' + elapsed(point.elapsed_ms) + '；' + metricLabel(objective) + ' ' + metricValue(point.primary_value, objective) + '；' + sharedScopeText(point.shared_scope) + '；阶段 ' + phaseText(point.phase) + '；' + verifiedLabel(point) + (point.flags.length ? '；事件标记：' + flagsText(point) : '') + '。';
   }
   const businessMetrics = ['overdue_count', 'total_tardiness_hours', 'weighted_tardiness_hours', 'makespan_hours', 'changeover_count'];
   const metricLabels = {
@@ -40681,34 +40132,31 @@ function SMExport({
     }))];
   }
   function savedValue(point, definition) {
+    if (!point) return null;
     if (definition.primary) return point.primary_value;
-    const index = point.field_order ? point.field_order.indexOf(definition.key) : definition.index;
+    const index = point.field_order.indexOf(definition.key);
     return Number.isInteger(index) && index >= 0 && known(point.score[index]) ? point.score[index] : null;
   }
-  function pointName(point, index, mode) {
+  function pointName(point, index) {
     if (point.flags.includes('first_valid') && point.flags.includes('final')) return '首个有效方案 / 最终结果';
     if (point.flags.includes('first_valid')) return '首个有效方案';
     if (point.flags.includes('final')) return '最终结果';
     if (point.flags.includes('strict_improvement')) return '评分改善';
-    return (mode === 'discrete' ? '旧保存点 ' : '保存点 ') + (index + 1);
+    return '保存点 ' + (index + 1);
   }
   function timeRange(progress, elapsedMs, lastImprovementElapsedMs) {
-    const times = progress.points.map(point => point.elapsed_ms).filter(known);
-    const full = Math.max(0, ...(known(elapsedMs) ? [elapsedMs] : []), ...times);
-    const explicit = lastImprovementElapsedMs !== undefined;
-    const last = explicit ? null : progress.points.filter(point => point.flags.includes('strict_improvement') && known(point.elapsed_ms)).slice(-1)[0];
-    const lastElapsedMs = explicit ? lastImprovementElapsedMs : last ? last.elapsed_ms : null;
+    const full = Math.max(elapsedMs, ...progress.points.map(point => point.elapsed_ms));
     return {
       full,
-      improvements: lastElapsedMs !== null && (explicit || lastElapsedMs > 0) ? Math.min(full, lastElapsedMs * (explicit ? 1 : 1.5)) : full,
-      lastImprovementElapsedMs: lastElapsedMs
+      improvements: lastImprovementElapsedMs !== null ? Math.min(full, lastImprovementElapsedMs) : full,
+      lastImprovementElapsedMs
     };
   }
-  function nearestPoint(plotted, value, xValue) {
+  function nearestPoint(plotted, value) {
     if (!plotted.length) return null;
-    return plotted.reduce((best, item) => Math.abs(xValue(item.point) - value) < Math.abs(xValue(best.point) - value) ? item : best, plotted[0]);
+    return plotted.reduce((best, item) => Math.abs(item.point.elapsed_ms - value) < Math.abs(best.point.elapsed_ms - value) ? item : best, plotted[0]);
   }
-  function stepPath(group, x, y, end = null) {
+  function stepPath(group, x, y, end) {
     let path = group.map((point, index) => index ? 'H' + x(point).toFixed(3) + ' V' + y(point).toFixed(3) : 'M' + x(point).toFixed(3) + ' ' + y(point).toFixed(3)).join(' ');
     if (group.length && end !== null && x(group[group.length - 1]) < end) path += ' H' + end.toFixed(3);
     return path;
@@ -40734,13 +40182,12 @@ function SMExport({
   function Chart({
     progress: savedProgress,
     objective,
-    elapsedMs = null,
-    attempts = [],
-    scopes = null,
-    sourceEventId = null,
+    elapsedMs,
+    scopes,
+    sourceEventId,
     lastImprovementElapsedMs
   }) {
-    const progress = React.useMemo(() => scopes === null ? savedProgress : {
+    const progress = React.useMemo(() => ({
       ...savedProgress,
       mode: savedProgress.points.length ? 'curve' : 'none',
       points: savedProgress.points.map(point => ({
@@ -40748,8 +40195,7 @@ function SMExport({
         event_index: point.source_event_id,
         shared_scope: scopes[point.scope_ref]
       }))
-    }, [savedProgress, scopes]);
-    const shared = scopes !== null;
+    }), [savedProgress, scopes]);
     const id = React.useId(),
       svg = React.useRef(null),
       [selection, setSelection] = React.useState(null),
@@ -40757,8 +40203,7 @@ function SMExport({
         objective: objective.name,
         key: objective.primary_metric_key
       }),
-      [windowMode, setWindowMode] = React.useState('full'),
-      [showAttempts, setShowAttempts] = React.useState(false);
+      [windowMode, setWindowMode] = React.useState('full');
     const metricKey = metricSelection.objective === objective.name ? metricSelection.key : objective.primary_metric_key;
     const points = progress.points,
       mode = progress.mode;
@@ -40767,14 +40212,11 @@ function SMExport({
       definition,
       value,
       viewedObjective,
-      eventAxis,
-      xValue,
       range,
       hasImprovement,
       activeWindow,
       limit,
       plotted,
-      scatter,
       xDomain,
       yDomain,
       x,
@@ -40784,7 +40226,6 @@ function SMExport({
       phaseMarkers,
       xTicks,
       yTicks,
-      xLabel,
       chartLabel,
       initial,
       final,
@@ -40799,35 +40240,27 @@ function SMExport({
           primary_metric_label: definition.label,
           unit: definition.unit
         };
-      const eventAxis = mode === 'discrete' && points.length > 0 && points.every(point => !known(point.elapsed_ms));
-      const xValue = point => eventAxis ? point.event_index : point.elapsed_ms,
-        range = timeRange(progress, elapsedMs, lastImprovementElapsedMs),
+      const range = timeRange(progress, elapsedMs, lastImprovementElapsedMs),
         hasImprovement = range.lastImprovementElapsedMs !== null;
       const activeWindow = mode === 'curve' && hasImprovement ? windowMode : 'full',
         limit = activeWindow === 'improvements' ? range.improvements : range.full;
-      const plotted = mode === 'none' ? [] : points.map((point, index) => ({
+      const plotted = points.map((point, index) => ({
         point,
         index
-      })).filter(item => known(xValue(item.point)) && known(value(item.point)) && (eventAxis || xValue(item.point) <= limit));
-      const scatter = showAttempts && !eventAxis ? attempts.filter(point => known(point.elapsed_ms) && point.elapsed_ms <= limit && known(value(point))) : [];
-      const eventValues = eventAxis ? points.map(xValue).filter(known) : [];
-      const xDomain = eventAxis ? {
-        min: eventValues.length ? Math.min(...eventValues) : 0,
-        max: eventValues.length ? Math.max(...eventValues) : 1
-      } : {
-        min: 0,
-        max: limit || 1
-      };
-      const yDomain = domain([...plotted.map(item => value(item.point)), ...scatter.map(value)]);
-      const x = point => 8 + ratio(xValue(point), xDomain) * 784,
+      })).filter(item => known(value(item.point)) && item.point.elapsed_ms <= limit);
+      const xDomain = {
+          min: 0,
+          max: limit || 1
+        },
+        yDomain = domain(plotted.map(item => value(item.point)));
+      const x = point => 8 + ratio(point.elapsed_ms, xDomain) * 784,
         y = point => 232 - ratio(value(point), yDomain) * 224;
-      const sampled = mode === 'curve' && progress.sampling && known(progress.sampling.event_total_count) && progress.sampling.event_total_count > points.length;
+      const sampled = mode === 'curve' && progress.sampling.event_total_count > points.length;
       const lineGroups = segments(progress, value).map(group => group.filter(point => point.elapsed_ms <= limit)).filter(group => group.length > 1);
       const phaseMarkers = markers(progress).filter(marker => known(value(marker.point)) && marker.point.elapsed_ms <= limit);
-      const xTicks = eventAxis && plotted.length ? [...new Set([0, Math.floor((plotted.length - 1) / 4), Math.floor((plotted.length - 1) / 2), Math.floor((plotted.length - 1) * 3 / 4), plotted.length - 1].map(index => xValue(plotted[index].point)))] : ticks(xDomain);
-      const yTicks = ticks(yDomain);
-      const xLabel = eventAxis ? '已保存事件顺序（累计计算耗时未记录）' : '累计计算耗时',
-        chartLabel = definition.label + (definition.unit ? '（' + definition.unit + '）' : '');
+      const xTicks = ticks(xDomain),
+        yTicks = ticks(yDomain);
+      const chartLabel = definition.label + (definition.unit ? '（' + definition.unit + '）' : '');
       const initial = points.find(point => point.flags.includes('first_valid')),
         final = points.find(point => point.flags.includes('final'));
       const lastVisible = plotted.length ? plotted[plotted.length - 1].point : null,
@@ -40838,14 +40271,11 @@ function SMExport({
         definition,
         value,
         viewedObjective,
-        eventAxis,
-        xValue,
         range,
         hasImprovement,
         activeWindow,
         limit,
         plotted,
-        scatter,
         xDomain,
         yDomain,
         x,
@@ -40855,19 +40285,18 @@ function SMExport({
         phaseMarkers,
         xTicks,
         yTicks,
-        xLabel,
         chartLabel,
         initial,
         final,
         lastVisible,
         continueToEnd
       };
-    }, [progress, objective, metricKey, elapsedMs, lastImprovementElapsedMs, attempts, windowMode, showAttempts]);
-    const sourceIndex = shared && sourceEventId !== null ? points.findIndex(point => point.source_event_id === sourceEventId) : -1;
+    }, [progress, objective, metricKey, elapsedMs, lastImprovementElapsedMs, windowMode]);
+    const sourceIndex = sourceEventId !== null ? points.findIndex(point => point.source_event_id === sourceEventId) : -1;
     const cursor = selection && selection.progress === progress ? Math.min(selection.index, Math.max(0, points.length - 1)) : Math.max(0, sourceIndex),
       selected = points[cursor];
     function choose(index) {
-      if (windowMode === 'improvements' && points[index] && known(points[index].elapsed_ms) && points[index].elapsed_ms > limit) setWindowMode('full');
+      if (windowMode === 'improvements' && points[index] && points[index].elapsed_ms > limit) setWindowMode('full');
       if (!selection || selection.progress !== progress || index !== cursor) setSelection({
         progress,
         index
@@ -40885,7 +40314,7 @@ function SMExport({
       const box = svg.current.getBoundingClientRect(),
         relative = (event.clientX - box.left) / box.width * 800;
       if (relative < 8 || relative > 792) return;
-      const found = nearestPoint(plotted, xDomain.min + (relative - 8) / 784 * (xDomain.max - xDomain.min), xValue);
+      const found = nearestPoint(plotted, xDomain.min + (relative - 8) / 784 * (xDomain.max - xDomain.min));
       if (found) choose(found.index);
     }
     const selectedPlotted = plotted.find(item => item.index === cursor),
@@ -40896,7 +40325,6 @@ function SMExport({
     return /*#__PURE__*/React.createElement("figure", {
       className: "rd-process-chart",
       "data-progress-mode": mode,
-      "data-progress-axis": eventAxis ? 'event_index' : 'elapsed_ms',
       "data-process-metric": definition.key,
       "data-process-window": activeWindow
     }, /*#__PURE__*/React.createElement("div", {
@@ -40916,28 +40344,13 @@ function SMExport({
       value: field.key || ''
     }, field.label, field.unit ? '（' + field.unit + '）' : ''))))), /*#__PURE__*/React.createElement("div", {
       className: "rd-process-chart-summary"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, mode === 'discrete' ? '首个保存点' : '首个有效方案'), /*#__PURE__*/React.createElement("strong", null, number(value(mode === 'discrete' ? points[0] || {
-      primary_value: null,
-      score: []
-    } : initial || {
-      primary_value: null,
-      score: []
-    }))), definition.unit && ' ' + definition.unit), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, mode === 'discrete' ? '末个保存点' : '最终结果'), /*#__PURE__*/React.createElement("strong", null, number(value(mode === 'discrete' ? points[points.length - 1] || {
-      primary_value: null,
-      score: []
-    } : final || {
-      primary_value: null,
-      score: []
-    }))), definition.unit && ' ' + definition.unit), hasImprovement && /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, "\u9996\u4E2A\u6709\u6548\u65B9\u6848"), /*#__PURE__*/React.createElement("strong", null, number(value(initial))), definition.unit && ' ' + definition.unit), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, "\u6700\u7EC8\u7ED3\u679C"), /*#__PURE__*/React.createElement("strong", null, number(value(final))), definition.unit && ' ' + definition.unit), hasImprovement && /*#__PURE__*/React.createElement("div", {
       "data-process-last-improvement-ms": range.lastImprovementElapsedMs
-    }, /*#__PURE__*/React.createElement("span", null, "\u6700\u540E\u4E00\u6B21\u8BC4\u5206\u6539\u5584"), shared ? /*#__PURE__*/React.createElement("strong", null, elapsed(range.lastImprovementElapsedMs)) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("strong", null, number(range.lastImprovementElapsedMs / 1000)), " \u79D2"))), mode !== 'curve' && /*#__PURE__*/React.createElement("p", {
+    }, /*#__PURE__*/React.createElement("span", null, "\u6700\u540E\u4E00\u6B21\u8BC4\u5206\u6539\u5584"), /*#__PURE__*/React.createElement("strong", null, elapsed(range.lastImprovementElapsedMs)))), mode === 'none' && /*#__PURE__*/React.createElement("p", {
       className: "rd-process-chart-note"
-    }, mode === 'discrete' ? '旧记录按已保存的离散结果点显示，首末点按保存顺序表示。' : '计算进展未保存。'), mode === 'curve' && points.some(point => shared ? !point.shared_scope : !point.evaluation_scope) && /*#__PURE__*/React.createElement("p", {
-      className: "rd-process-chart-note",
-      "data-process-scope-missing": true
-    }, "\u90E8\u5206\u4FDD\u5B58\u70B9\u7684\u8BC4\u4EF7\u96C6\u5408\u672A\u8BB0\u5F55\uFF0C\u6309\u79BB\u6563\u70B9\u663E\u793A\uFF1B\u4FDD\u5B58\u4E8B\u4EF6\u6761\u6570\u548C\u91C7\u6837\u8986\u76D6\u5728\u8BB0\u5F55\u8BF4\u660E\u4E2D\u5355\u5217\u3002"), (mode === 'curve' || !eventAxis && attempts.some(point => known(point.elapsed_ms))) && /*#__PURE__*/React.createElement("div", {
+    }, "\u8BA1\u7B97\u8FDB\u5C55\u672A\u4FDD\u5B58\u3002"), mode === 'curve' && /*#__PURE__*/React.createElement("div", {
       className: "rd-process-chart-controls"
-    }, mode === 'curve' ? /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", {
       className: "rc-tabs",
       role: "group",
       "aria-label": "\u8BA1\u7B97\u8FC7\u7A0B\u663E\u793A\u8303\u56F4"
@@ -40946,11 +40359,7 @@ function SMExport({
       "aria-pressed": activeWindow === key,
       disabled: key === 'improvements' && !hasImprovement,
       onClick: () => setWindowMode(key)
-    }, label, " \xB7 ", key === 'improvements' && !hasImprovement ? '无改善记录' : elapsed(end)))) : /*#__PURE__*/React.createElement("span", null, "\u6309\u771F\u5B9E\u4FDD\u5B58\u65F6\u523B\u663E\u793A"), attempts.length > 0 && /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("input", {
-      type: "checkbox",
-      checked: showAttempts,
-      onChange: event => setShowAttempts(event.target.checked)
-    }), "\u663E\u793A\u4EE3\u8868\u5C1D\u8BD5\u70B9\uFF08", attempts.length, " \u6761\uFF09")), mode !== 'none' && points.length > 0 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    }, label, " \xB7 ", key === 'improvements' && !hasImprovement ? '无改善记录' : elapsed(end))))), mode === 'curve' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "rd-process-plot"
     }, /*#__PURE__*/React.createElement("div", {
       className: "rd-process-y-axis",
@@ -40977,7 +40386,7 @@ function SMExport({
       "aria-describedby": id + '-keys ' + id + '-selected',
       onKeyDown: keyboard,
       onPointerMove: pointer
-    }, /*#__PURE__*/React.createElement("title", null, chartLabel, "\uFF1B", xLabel), yTicks.map(tick => /*#__PURE__*/React.createElement("line", {
+    }, /*#__PURE__*/React.createElement("title", null, chartLabel, "\uFF1B\u7D2F\u8BA1\u8BA1\u7B97\u8017\u65F6"), yTicks.map(tick => /*#__PURE__*/React.createElement("line", {
       className: "rd-process-gridline",
       key: tick,
       x1: "8",
@@ -41007,16 +40416,7 @@ function SMExport({
       fill: "none",
       vectorEffect: "non-scaling-stroke",
       "aria-hidden": "true"
-    })), scatter.map(point => /*#__PURE__*/React.createElement("circle", {
-      className: "rd-process-attempt-point",
-      key: point.saved_index,
-      cx: x(point),
-      cy: y(point),
-      r: "3",
-      vectorEffect: "non-scaling-stroke",
-      "aria-hidden": "true",
-      "data-process-attempt-index": point.saved_index
-    }, /*#__PURE__*/React.createElement("title", null, "\u5DF2\u4FDD\u5B58\u4EE3\u8868\u5C1D\u8BD5 ", point.saved_index, " \xB7 ", elapsed(point.elapsed_ms), " \xB7 ", definition.label, " ", number(value(point)), definition.unit && ' ' + definition.unit, " \xB7 ", verifiedLabel(point)))), selectedPlotted && /*#__PURE__*/React.createElement("line", {
+    })), selectedPlotted && /*#__PURE__*/React.createElement("line", {
       className: "rd-process-guide",
       x1: x(selected),
       x2: x(selected),
@@ -41041,7 +40441,7 @@ function SMExport({
       "data-progress-flags": point.flags.join(' '),
       "data-primary-value": point.primary_value,
       "data-metric-value": value(point),
-      "data-verified": point.verified === null ? 'unknown' : String(point.verified),
+      "data-verified": String(point.verified),
       "data-selected": index === cursor || undefined,
       onClick: () => {
         choose(index);
@@ -41060,12 +40460,12 @@ function SMExport({
       style: {
         left: (8 + ratio(tick, xDomain) * 784) / 800 * 100 + '%'
       },
-      title: String(tick) + (eventAxis ? '（事件顺序）' : ' ms')
-    }, eventAxis ? number(tick) : elapsed(tick))))), /*#__PURE__*/React.createElement("p", {
+      title: String(tick) + ' ms'
+    }, elapsed(tick))))), /*#__PURE__*/React.createElement("p", {
       className: "rd-process-axis-title"
-    }, xLabel, " \xB7 ", chartLabel), /*#__PURE__*/React.createElement("div", {
+    }, "\u7D2F\u8BA1\u8BA1\u7B97\u8017\u65F6 \xB7 ", chartLabel), /*#__PURE__*/React.createElement("div", {
       className: "rd-process-chart-legend"
-    }, /*#__PURE__*/React.createElement("span", null, lineGroups.length ? sampled ? '采样后的保留方案趋势' : '当时保留的方案' : '真实保存点'), showAttempts && /*#__PURE__*/React.createElement("span", null, "\u7070\u70B9\uFF1A\u5DF2\u4FDD\u5B58\u4EE3\u8868\u5C1D\u8BD5"), sampled && /*#__PURE__*/React.createElement("span", null, "\u5DF2\u4FDD\u5B58 ", points.length, " / ", progress.sampling.event_total_count, " \u4E2A\u4E8B\u4EF6\uFF1B\u865A\u7EBF\u95F4\u5B58\u5728\u672A\u4FDD\u5B58\u53D8\u5316\u3002"), /*#__PURE__*/React.createElement("span", null, "\u9009\u62E9\u6216\u60AC\u505C\u5B9A\u4F4D\u771F\u5B9E\u4FDD\u5B58\u65F6\u523B\u3002")), !plotted.length && /*#__PURE__*/React.createElement("p", {
+    }, /*#__PURE__*/React.createElement("span", null, lineGroups.length ? sampled ? '采样后的保留方案趋势' : '当时保留的方案' : '真实保存点'), sampled && /*#__PURE__*/React.createElement("span", null, "\u5DF2\u4FDD\u5B58 ", points.length, " / ", progress.sampling.event_total_count, " \u4E2A\u4E8B\u4EF6\uFF1B\u865A\u7EBF\u95F4\u5B58\u5728\u672A\u4FDD\u5B58\u53D8\u5316\u3002"), /*#__PURE__*/React.createElement("span", null, "\u9009\u62E9\u6216\u60AC\u505C\u5B9A\u4F4D\u771F\u5B9E\u4FDD\u5B58\u65F6\u523B\u3002")), !plotted.length && /*#__PURE__*/React.createElement("p", {
       className: "rd-process-chart-note"
     }, "\u6240\u9009\u6307\u6807\u6216\u8017\u65F6\u7F3A\u9879\uFF0C\u5F53\u524D\u6CA1\u6709\u53EF\u5B9A\u4F4D\u7684\u70B9\uFF1B\u4ECD\u53EF\u7528\u952E\u76D8\u67E5\u770B\u4FDD\u5B58\u8BE6\u60C5\u3002"), /*#__PURE__*/React.createElement("div", {
       className: "rd-process-point-picker"
@@ -41093,7 +40493,7 @@ function SMExport({
       id: id + '-keys'
     }, "\u805A\u7126\u56FE\u8868\u540E\uFF0C\u7528\u65B9\u5411\u952E\u9009\u62E9\u4FDD\u5B58\u70B9\uFF0CHome / End \u5230\u9996\u672B\u70B9\uFF1B\u70B9\u51FB\u3001\u60AC\u505C\u548C\u8BB0\u5F55\u70B9\u9009\u62E9\u5747\u5B9A\u4F4D\u771F\u5B9E\u4FDD\u5B58\u65F6\u523B\u3002")), selected && /*#__PURE__*/React.createElement("div", {
       className: "rd-process-point-card"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", null, pointName(selected, cursor, mode), " \xB7 \u4FDD\u5B58\u4E8E ", elapsed(selected.elapsed_ms)), /*#__PURE__*/React.createElement("span", null, phaseText(selected.phase))), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", null, pointName(selected, cursor), " \xB7 \u4FDD\u5B58\u4E8E ", elapsed(selected.elapsed_ms)), /*#__PURE__*/React.createElement("span", null, phaseText(selected.phase))), /*#__PURE__*/React.createElement("div", {
       className: "rd-process-point-values"
     }, definitions.map(field => {
       const metric = savedValue(selected, field),
@@ -41103,7 +40503,7 @@ function SMExport({
       }, /*#__PURE__*/React.createElement("span", null, field.label), /*#__PURE__*/React.createElement("strong", {
         title: isKnown ? String(metric) : undefined
       }, number(metric), isKnown && field.unit && ' ' + field.unit));
-    })), /*#__PURE__*/React.createElement("small", null, shared ? sharedScopeText(selected.shared_scope) : /*#__PURE__*/React.createElement(React.Fragment, null, "\u672C\u6B21\u8BA1\u7B97\u8303\u56F4\uFF1A", number(selected.completion.expected_operation_count), " \u9053\u53C2\u4E0E\u5DE5\u5E8F\uFF0C\u5176\u4E2D\u672A\u5B89\u6392 ", number(selected.completion.missing_operation_count), " \u9053\uFF1B", scopeText(selected.objective_scope), "\u3002"), "\u5B8C\u6574\u4EA4\u4ED8\u548C\u5F85\u6599\u5DE5\u5E8F\u5728\u201C\u4EA4\u671F\u4E0E\u672A\u6392\u201D\u4E2D\u67E5\u770B\u3002")), /*#__PURE__*/React.createElement("p", {
+    })), /*#__PURE__*/React.createElement("small", null, sharedScopeText(selected.shared_scope), "\u5B8C\u6574\u4EA4\u4ED8\u548C\u5F85\u6599\u5DE5\u5E8F\u5728\u201C\u4EA4\u671F\u4E0E\u672A\u6392\u201D\u4E2D\u67E5\u770B\u3002")), /*#__PURE__*/React.createElement("p", {
       className: "rd-process-selected wb-visually-hidden",
       id: id + '-selected',
       "aria-live": "polite",
@@ -41117,7 +40517,6 @@ function SMExport({
     segments,
     markers,
     flagLabels,
-    scopeText,
     sharedScopeText,
     phaseText,
     stepPath
@@ -41128,18 +40527,10 @@ function SMExport({
 (function () {
   'use strict';
 
+  // 优化过程只有共同优化一种存档（unified-optimization-process-v1），由 RunDecisionAPI.processDetails 校验。
   const C = window.RunCandidateControls,
     D = window.RunDecisionComparison;
   const queryKeys = ['process_candidate_ref', 'objective', 'record_kind', 'sort', 'order', 'page', 'size', 'snapshot_ref'];
-  const unifiedVersion = 'unified-optimization-process-v1';
-  const countLabels = [['decoder_invocations', '排法计算次数'], ['evaluated', '尝试评估次数'], ['accepted', '搜索保留次数'], ['current_accepted', '更新搜索当前排法次数'], ['strict_improvements', '评分改善次数'], ['rejected', '搜索拒绝次数'], ['unverified_trials', '未核验尝试次数']];
-  const metricLabels = {
-    overdue_count: ['超期批次', '批'],
-    total_tardiness_hours: ['总拖期', '小时'],
-    weighted_tardiness_hours: ['加权拖期', '小时'],
-    makespan_hours: ['安排时长', '小时'],
-    changeover_count: ['算法工种切换次数', '次']
-  };
   const stopLabels = {
     time_budget: '时间预算已用完',
     iteration_limit: '达到迭代上限',
@@ -41155,45 +40546,12 @@ function SMExport({
     graph_ready_uses_graph_candidate_phase: '改用按规则生成和调整排法的阶段'
   };
   const flagLabels = window.RunDecisionProcessChart.flagLabels;
-  const rejectionLabels = {
-    same_fingerprint: '结果与已评估候选相同',
-    validation_error: '候选校验未通过',
-    candidate_rejected: '候选未通过接受检查',
-    not_better: '未改善当前比较结果',
-    no_strict_improvement: '评分没有进一步改善'
-  };
-  const sourceLabels = {
-    own_search: '本候选求解',
-    reused: '复用保存结果',
-    not_started: '未开始求解',
-    failed: '求解失败',
-    budget_skipped: '计算期间预算已用完'
-  };
-  const comparisonLabels = {
-    incumbent: '当时最优结果',
-    current_solution: '当时搜索的当前结果',
-    reference_capture: '当时保存的参考结果',
-    none: '未设置比较对象'
-  };
-  const comparisonStates = {
-    comparable: '同一评价范围',
-    different_coverage: '评价批次不同',
-    unavailable: '比较资料未保存',
-    unverified: '本次尝试未核验',
-    no_reference: '没有比较对象'
-  };
   const number = value => value === null || value === undefined ? '—' : window.WorkbenchFormat.number(value, {
     digits: 3,
     trim: true
   });
   const savedText = value => value === null || value === undefined || value === '' ? '未记录' : String(value);
   const phaseText = window.RunDecisionProcessChart.phaseText;
-  const stageStatuses = {
-    completed: '已完成',
-    skipped: '已跳过',
-    failed: '失败'
-  };
-  const statusText = value => window.WorkbenchTerms.candidate_statuses[value] || savedText(value);
   function Elapsed({
     value
   }) {
@@ -41209,44 +40567,15 @@ function SMExport({
       title: value === null ? undefined : String(value)
     }, number(value), value !== null && objective.unit && ' ' + objective.unit);
   }
-  function Completion({
-    value
-  }) {
-    const labels = {
-      expected_operation_count: '本次参与计算工序',
-      missing_operation_count: '本次计算范围内未安排工序',
-      unexpected_result_count: '本次计算范围外结果',
-      complete_batch_count: '本次计算范围内已排齐批次',
-      incomplete_batch_count: '本次计算范围内未排齐批次'
-    };
-    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("details", {
-      className: "rd-process-facts rd-process-completion"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u672C\u6B21\u53C2\u4E0E\u8BA1\u7B97 ", number(value.expected_operation_count), " \u9053\u5DE5\u5E8F", value.missing_operation_count > 0 && ' · 未安排 ' + number(value.missing_operation_count) + ' 道'), /*#__PURE__*/React.createElement("dl", null, Object.entries(labels).map(([key, label]) => /*#__PURE__*/React.createElement("div", {
-      key: key
-    }, /*#__PURE__*/React.createElement("dt", null, label), /*#__PURE__*/React.createElement("dd", {
-      title: value[key] === null ? undefined : String(value[key])
-    }, number(value[key])))))), /*#__PURE__*/React.createElement("small", null, "\u672C\u6B21\u8BA1\u7B97\u8303\u56F4\u5185\u5DF2\u6392\u9F50 ", number(value.complete_batch_count), " \u6279", value.incomplete_batch_count > 0 && ' · 未排齐 ' + number(value.incomplete_batch_count) + ' 批', value.unexpected_result_count > 0 && ' · 范围外结果 ' + number(value.unexpected_result_count)));
-  }
-  function Metrics({
-    values
-  }) {
-    return /*#__PURE__*/React.createElement("details", {
-      className: "rd-process-facts"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u8BA1\u7B97\u4FDD\u5B58\u7684\u6700\u7EC8\u7EDF\u8BA1"), /*#__PURE__*/React.createElement("dl", null, Object.entries(metricLabels).map(([key, [label, unit]]) => /*#__PURE__*/React.createElement("div", {
-      key: key
-    }, /*#__PURE__*/React.createElement("dt", null, label), /*#__PURE__*/React.createElement("dd", {
-      title: values[key] === null ? undefined : String(values[key])
-    }, number(values[key]), values[key] !== null && ' ' + unit)))));
-  }
   function Score({
     value,
     objective,
-    fieldOrder = null
+    fieldOrder
   }) {
     return /*#__PURE__*/React.createElement("details", {
       className: "rd-process-facts"
     }, /*#__PURE__*/React.createElement("summary", null, "\u8BA1\u7B97\u8BC4\u5206 \xB7 ", value.length, " \u9879"), /*#__PURE__*/React.createElement("dl", null, value.map((item, index) => {
-      const definition = objective.score_fields.find(field => fieldOrder ? field.key === fieldOrder[index] : field.index === index);
+      const definition = objective.score_fields.find(field => field.key === fieldOrder[index]);
       return /*#__PURE__*/React.createElement("div", {
         key: index
       }, /*#__PURE__*/React.createElement("dt", null, definition ? definition.label : '分量 ' + (index + 1)), /*#__PURE__*/React.createElement("dd", {
@@ -41254,324 +40583,7 @@ function SMExport({
       }, number(item), item !== null && definition && definition.unit && ' ' + definition.unit));
     })));
   }
-  function AttemptComparison({
-    row,
-    objective
-  }) {
-    const comparison = row.comparison;
-    if (comparison === null) return null;
-    const labels = {
-        failed_ops: ['未安排工序', '道'],
-        ...metricLabels
-      },
-      values = {
-        failed_ops: row.failed_ops,
-        ...row.metrics
-      };
-    const metric = (value, unit) => number(value) + (value !== null && unit ? ' ' + unit : '');
-    const change = (value, unit) => value === null ? '—' : D.deltaText({
-      value,
-      state: comparison.state
-    }, {
-      unit,
-      precision: 3,
-      source: 'saved_algorithm'
-    });
-    return /*#__PURE__*/React.createElement("details", {
-      className: "rd-process-facts"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u5F53\u65F6\u6BD4\u8F83\u4E0E\u6307\u6807\u53D8\u5316"), /*#__PURE__*/React.createElement("p", null, comparisonLabels[comparison.kind], " \xB7 ", comparisonStates[comparison.state]), /*#__PURE__*/React.createElement("p", null, "\u672C\u6B21\u8BC4\u4EF7\uFF1A", window.RunDecisionProcessChart.scopeText(comparison.objective_scope), "\uFF1B\u6BD4\u8F83\u5BF9\u8C61\u8BC4\u4EF7\uFF1A", window.RunDecisionProcessChart.scopeText(comparison.reference_scope)), /*#__PURE__*/React.createElement("div", {
-      className: "wb-table-frame"
-    }, /*#__PURE__*/React.createElement("table", {
-      className: "wb-table rd-process-comparison-table",
-      "aria-label": "\u5C1D\u8BD5\u76F8\u5BF9\u5F53\u65F6\u6BD4\u8F83\u5BF9\u8C61\u7684\u4FDD\u5B58\u53D8\u5316"
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
-      scope: "col"
-    }, "\u6307\u6807"), /*#__PURE__*/React.createElement("th", {
-      scope: "col"
-    }, "\u5F53\u65F6\u6BD4\u8F83\u5BF9\u8C61"), /*#__PURE__*/React.createElement("th", {
-      scope: "col"
-    }, "\u672C\u6B21\u5C1D\u8BD5"), /*#__PURE__*/React.createElement("th", {
-      scope: "col"
-    }, "\u53D8\u5316"))), /*#__PURE__*/React.createElement("tbody", null, Object.entries(labels).map(([key, [label, unit]]) => /*#__PURE__*/React.createElement("tr", {
-      key: key,
-      "data-attempt-comparison-metric": key
-    }, /*#__PURE__*/React.createElement("th", {
-      scope: "row"
-    }, label), /*#__PURE__*/React.createElement("td", {
-      title: comparison.reference_metrics && comparison.reference_metrics[key] !== null ? String(comparison.reference_metrics[key]) : undefined
-    }, metric(comparison.reference_metrics ? comparison.reference_metrics[key] : null, unit)), /*#__PURE__*/React.createElement("td", {
-      title: values[key] === null ? undefined : String(values[key])
-    }, metric(values[key], unit)), /*#__PURE__*/React.createElement("td", {
-      title: comparison.metric_deltas && comparison.metric_deltas[key] !== null ? String(comparison.metric_deltas[key]) : undefined
-    }, change(comparison.metric_deltas ? comparison.metric_deltas[key] : null, unit))))))), comparison.reference_completion && /*#__PURE__*/React.createElement("div", null, "\u5F53\u65F6\u6BD4\u8F83\u5BF9\u8C61\u7684\u5DE5\u5E8F\u5B89\u6392\uFF1A", /*#__PURE__*/React.createElement(Completion, {
-      value: comparison.reference_completion
-    })), comparison.reference_score && /*#__PURE__*/React.createElement(Score, {
-      value: comparison.reference_score,
-      objective: objective
-    }), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
-      entries: {
-        '比较对象类型': comparison.kind,
-        '比较状态': comparison.state,
-        '计算目标': comparison.objective_name
-      }
-    }));
-  }
-  function CandidateTable({
-    data,
-    overview,
-    anchorRef,
-    onAnchor
-  }) {
-    if (data.process_version === unifiedVersion) return /*#__PURE__*/React.createElement(UnifiedCandidates, {
-      data: data,
-      overview: overview,
-      anchorRef: anchorRef,
-      onAnchor: onAnchor
-    });
-    return /*#__PURE__*/React.createElement("div", {
-      className: "rc-table wb-table-frame rd-process-candidate-frame",
-      "data-sticky-head": true,
-      "data-sticky-key": true,
-      "data-sticky-actions": true,
-      "data-wb-scroll-key": "decision-process-candidates"
-    }, /*#__PURE__*/React.createElement("table", {
-      className: "wb-table rd-process-candidate-table",
-      "aria-label": "\u672C\u6B21\u5168\u90E8\u5019\u9009\u8BA1\u7B97\u6765\u6E90\u4E0E\u7ED3\u679C"
-    }, /*#__PURE__*/React.createElement("caption", {
-      className: "wb-visually-hidden"
-    }, "\u672C\u6B21\u5168\u90E8\u5019\u9009\u7684\u8BA1\u7B97\u5143\u6570\u636E\u4E0E\u7B97\u6CD5\u4FDD\u5B58\u7EDF\u8BA1"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
-      scope: "col",
-      className: "wb-col-key"
-    }, "\u5019\u9009 / \u89D2\u8272"), /*#__PURE__*/React.createElement("th", {
-      scope: "col"
-    }, "\u8BA1\u7B97\u6765\u6E90"), /*#__PURE__*/React.createElement("th", {
-      scope: "col"
-    }, "\u8BA1\u7B97\u8017\u65F6 / \u505C\u6B62\u539F\u56E0"), /*#__PURE__*/React.createElement("th", {
-      scope: "col"
-    }, "\u672C\u6B21\u8BA1\u7B97\u7ED3\u679C"), /*#__PURE__*/React.createElement("th", {
-      scope: "col",
-      className: "wb-col-actions"
-    }, "\u67E5\u770B\u8FC7\u7A0B"))), /*#__PURE__*/React.createElement("tbody", null, data.candidates.map(candidate => {
-      const owner = data.candidates.find(row => row.candidate_ref === candidate.source_candidate_ref),
-        roles = [];
-      if (candidate.candidate_ref === overview.recommendation.candidate_ref) roles.push('计算时推荐');
-      if (candidate.candidate_ref === overview.scope.selected_candidate_ref) roles.push('当前方案');
-      if (candidate.candidate_ref === overview.scope.reference.candidate_ref) roles.push('当前比较基准');
-      return /*#__PURE__*/React.createElement("tr", {
-        key: candidate.candidate_ref,
-        "data-process-candidate": candidate.candidate_ref,
-        "data-selected": candidate.candidate_ref === anchorRef || undefined
-      }, /*#__PURE__*/React.createElement("td", {
-        className: "wb-col-key"
-      }, /*#__PURE__*/React.createElement("strong", null, candidate.label || '候选名称未填写'), /*#__PURE__*/React.createElement("small", null, statusText(candidate.status), roles.length > 0 && ' · ' + roles.join(' · '))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", null, sourceLabels[candidate.source_kind], candidate.source_kind === 'reused' && ' · ' + (owner ? owner.label || '来源名称未填写' : '来源候选未记录')), /*#__PURE__*/React.createElement("details", {
-        className: "rd-process-facts"
-      }, /*#__PURE__*/React.createElement("summary", null, "\u7B97\u6CD5\u4E0E\u6D3E\u5DE5\u8BB0\u5F55"), /*#__PURE__*/React.createElement("dl", null, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u7B97\u6CD5"), /*#__PURE__*/React.createElement("dd", null, savedText(candidate.algo_mode))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u7B56\u7565"), /*#__PURE__*/React.createElement("dd", null, savedText(candidate.used_strategy))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u641C\u7D22\u914D\u7F6E"), /*#__PURE__*/React.createElement("dd", null, savedText(candidate.algorithm_profile))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6D3E\u5DE5\u6A21\u5F0F"), /*#__PURE__*/React.createElement("dd", null, savedText(candidate.dispatch_mode))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u914D\u7F6E\u89C4\u5219"), /*#__PURE__*/React.createElement("dd", null, savedText(candidate.configured_dispatch_rule))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5B9E\u9645\u89C4\u5219"), /*#__PURE__*/React.createElement("dd", null, savedText(candidate.adopted_dispatch_rule))))), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
-        entries: {
-          '当前候选': candidate.candidate_ref,
-          '求解来源候选': candidate.source_candidate_ref
-        }
-      })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", null, "\u672C\u5019\u9009 ", /*#__PURE__*/React.createElement(Elapsed, {
-        value: candidate.own_elapsed_ms
-      })), /*#__PURE__*/React.createElement("small", null, "\u6765\u6E90\u6C42\u89E3 ", /*#__PURE__*/React.createElement(Elapsed, {
-        value: candidate.source_solver_elapsed_ms
-      })), /*#__PURE__*/React.createElement("small", null, candidate.stop_reason ? candidate.stop_reason.message : '停止原因未记录')), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Completion, {
-        value: candidate.completion
-      }), /*#__PURE__*/React.createElement(Metrics, {
-        values: candidate.final_metrics
-      })), /*#__PURE__*/React.createElement("td", {
-        className: "wb-col-actions"
-      }, /*#__PURE__*/React.createElement(C.Button, {
-        className: "btn link",
-        disabled: !onAnchor || !overview.candidates.some(row => row.candidate_ref === candidate.candidate_ref),
-        "aria-pressed": candidate.candidate_ref === anchorRef,
-        onClick: () => onAnchor(candidate.candidate_ref)
-      }, candidate.candidate_ref === anchorRef ? '当前方案' : '查看此候选')));
-    }))));
-  }
-  function Coverage({
-    data
-  }) {
-    if (data.process_version === unifiedVersion) {
-      const sampling = data.progress.sampling;
-      return /*#__PURE__*/React.createElement("div", {
-        className: "rd-process-coverage"
-      }, /*#__PURE__*/React.createElement("span", null, "\u5F53\u524D\u65B9\u5411\u4FDD\u7559 ", number(data.progress.points.length), " \u4E2A\u70B9 \xB7 \u539F\u8FDB\u5C55 ", number(sampling.event_total_count), " \u4E2A\u4E8B\u4EF6"), /*#__PURE__*/React.createElement("details", {
-        className: "rd-process-facts"
-      }, /*#__PURE__*/React.createElement("summary", null, "\u8FDB\u5C55\u8BB0\u5F55\u8BF4\u660E"), /*#__PURE__*/React.createElement("p", null, "\u6309\u8BA1\u7B97\u8017\u65F6\u5206\u6BB5\u4FDD\u7559\u6700\u597D\u7ED3\u679C\uFF0C\u5E76\u4FDD\u7559\u5173\u952E\u9996\u5C3E\u8BB0\u5F55\uFF1B\u6700\u591A\u4FDD\u7559 ", sampling.point_budget, " \u4E2A\u70B9\u3002"), /*#__PURE__*/React.createElement("p", null, "\u8BC4\u4EF7\u8303\u56F4\u53D8\u5316\u65F6\u5206\u6BB5\u663E\u793A\uFF1B\u8BC4\u5206\u7F3A\u9879\u4FDD\u7559\u672A\u77E5\u503C\u3002"), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
-        entries: {
-          '保存方式': sampling.policy
-        }
-      })));
-    }
-    const summary = data.summary,
-      sampling = summary.sampling,
-      endpoints = data.progress.coverage.endpoint_coverage;
-    const reasons = [data.source.reason, summary.coverage.reason, data.progress.coverage.reason].filter(Boolean);
-    const uniqueReasons = reasons.filter((reason, index) => reasons.findIndex(item => item.code === reason.code && item.message === reason.message) === index);
-    const flag = value => value === null ? '未记录' : value ? '已覆盖' : '未覆盖';
-    return /*#__PURE__*/React.createElement("div", {
-      className: "rd-process-coverage"
-    }, /*#__PURE__*/React.createElement("span", null, "\u5DF2\u4FDD\u5B58\u4EE3\u8868\u5C1D\u8BD5 ", number(summary.saved_attempt_count), " \u6761 \xB7 \u8FDB\u5C55\u4E8B\u4EF6 ", number(sampling.event_total_count), " \u4E2A \xB7 \u56FE\u8868\u663E\u793A ", number(summary.retained_point_count), " \u4E2A\u70B9"), /*#__PURE__*/React.createElement("details", {
-      className: "rd-process-facts"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u8FDB\u5C55\u8BB0\u5F55\u8BF4\u660E"), /*#__PURE__*/React.createElement("p", null, sampling.policy === 'elapsed_equal_width_bucket_end_best_v1' ? '按计算耗时分段保留最好结果，并保留关键首尾记录。' : sampling.policy === 'legacy_saved_events' ? '按旧记录中保存的结果显示。' : sampling.policy === 'not_applicable' ? '这个候选没有独立计算过程。' : '记录方式未保存。'), /*#__PURE__*/React.createElement("p", null, "\u9996\u6B21\u6709\u6548\uFF1A", flag(endpoints.first_valid), " \xB7 \u672C\u6B21\u8BA1\u7B97\u8303\u56F4\u9996\u6B21\u6392\u9F50\uFF1A", flag(endpoints.first_expected_complete), " \xB7 \u6700\u7EC8\u8BB0\u5F55\uFF1A", flag(endpoints.final)), /*#__PURE__*/React.createElement("dl", null, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u56FE\u8868\u6700\u591A\u4FDD\u7559"), /*#__PURE__*/React.createElement("dd", null, sampling.point_budget, " \u70B9")), sampling.bucket_count !== null && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u65F6\u95F4\u5206\u6BB5\u6570"), /*#__PURE__*/React.createElement("dd", null, sampling.bucket_count)), sampling.bucket_width_ms !== null && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6BCF\u6BB5\u65F6\u957F"), /*#__PURE__*/React.createElement("dd", null, number(sampling.bucket_width_ms / 1000), " \u79D2"))), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
-      entries: {
-        '保存方式': sampling.policy
-      }
-    })), uniqueReasons.map(reason => /*#__PURE__*/React.createElement("small", {
-      key: reason.code + ':' + reason.message
-    }, reason.message)));
-  }
-  function Counts({
-    summary
-  }) {
-    return /*#__PURE__*/React.createElement("details", {
-      className: "rd-process-facts"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u8BA1\u7B97\u7EDF\u8BA1"), summary.legacy_best_updates !== null && /*#__PURE__*/React.createElement("p", null, "\u65E7\u8BB0\u5F55\u66F4\u65B0\u7ED3\u679C ", number(summary.legacy_best_updates), " \u6B21\uFF08\u542B\u540C\u5206\uFF09\uFF0C\u8BC4\u5206\u6539\u5584\u6B21\u6570\u672A\u8BB0\u5F55\u3002"), /*#__PURE__*/React.createElement("div", {
-      className: "wb-table-frame"
-    }, /*#__PURE__*/React.createElement("table", {
-      className: "wb-table rd-process-count-table",
-      "aria-label": "\u672C\u5019\u9009\u4E0E\u6765\u6E90\u8BA1\u7B97\u6B21\u6570"
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
-      scope: "col"
-    }, "\u8BB0\u5F55\u9879"), /*#__PURE__*/React.createElement("th", {
-      scope: "col"
-    }, "\u672C\u5019\u9009"), /*#__PURE__*/React.createElement("th", {
-      scope: "col"
-    }, "\u6765\u6E90\u8BA1\u7B97"))), /*#__PURE__*/React.createElement("tbody", null, countLabels.map(([key, label]) => /*#__PURE__*/React.createElement("tr", {
-      key: key
-    }, /*#__PURE__*/React.createElement("th", {
-      scope: "row"
-    }, label), /*#__PURE__*/React.createElement("td", null, number(summary.own_counts[key])), /*#__PURE__*/React.createElement("td", null, number(summary.solver_counts[key]))))))));
-  }
-  function Rejections({
-    values
-  }) {
-    const entries = values ? Object.entries(values) : null;
-    return /*#__PURE__*/React.createElement("details", {
-      className: "rd-process-facts"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u641C\u7D22\u62D2\u7EDD\u539F\u56E0", entries !== null && entries.length > 0 && ' · ' + entries.length + ' 类'), entries === null ? /*#__PURE__*/React.createElement("p", {
-      className: "rc-muted"
-    }, "\u62D2\u7EDD\u539F\u56E0\u672A\u4FDD\u5B58\u3002") : entries.length ? /*#__PURE__*/React.createElement("dl", null, entries.map(([code, count]) => /*#__PURE__*/React.createElement("div", {
-      key: code
-    }, /*#__PURE__*/React.createElement("dt", null, rejectionLabels[code] || code), /*#__PURE__*/React.createElement("dd", null, number(count), " \u6B21", /*#__PURE__*/React.createElement(window.WorkbenchReference, {
-      entries: {
-        '保存原因码': code
-      }
-    }))))) : /*#__PURE__*/React.createElement("p", {
-      className: "rc-muted"
-    }, "\u6CA1\u6709\u8BB0\u5F55\u5230\u62D2\u7EDD\u539F\u56E0\u3002"));
-  }
-  function Stages({
-    values
-  }) {
-    return /*#__PURE__*/React.createElement("details", {
-      className: "rd-process-stages"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u641C\u7D22\u9636\u6BB5 \xB7 ", values.length, " \u9879"), values.length ? /*#__PURE__*/React.createElement("div", {
-      className: "rc-table wb-table-frame rd-process-frame",
-      "data-sticky-head": true,
-      "data-wb-scroll-key": "decision-process-stages"
-    }, /*#__PURE__*/React.createElement("table", {
-      className: "wb-table rd-process-stage-table",
-      "aria-label": "\u4FDD\u5B58\u7684\u641C\u7D22\u9636\u6BB5\u6C47\u603B"
-    }, /*#__PURE__*/React.createElement("caption", {
-      className: "wb-visually-hidden"
-    }, "\u6BCF\u9636\u6BB5\u5B9E\u9645\u8D77\u6B62\u3001\u8BA1\u6570\u4E0E\u505C\u6B62\u4E8B\u5B9E"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ['阶段 / 状态', '实际开始 / 结束', '耗时 / 进入次数', '评估 / 搜索保留 / 评分改善 / 拒绝', '停止原因'].map(label => /*#__PURE__*/React.createElement("th", {
-      scope: "col",
-      key: label
-    }, label)))), /*#__PURE__*/React.createElement("tbody", null, values.map((stage, index) => /*#__PURE__*/React.createElement("tr", {
-      key: stage.phase + ':' + index,
-      "data-process-phase": stage.phase
-    }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("strong", null, phaseText(stage.phase)), /*#__PURE__*/React.createElement("small", null, stageStatuses[stage.status] || savedText(stage.status))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Elapsed, {
-      value: stage.start_elapsed_ms
-    }), /*#__PURE__*/React.createElement("small", null, "\u81F3 ", /*#__PURE__*/React.createElement(Elapsed, {
-      value: stage.end_elapsed_ms
-    }))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Elapsed, {
-      value: stage.elapsed_ms
-    }), /*#__PURE__*/React.createElement("small", null, "\u8FDB\u5165 ", number(stage.visits), " \u6B21")), /*#__PURE__*/React.createElement("td", null, number(stage.evaluated), " / ", number(stage.accepted), " / ", number(stage.strict_improvements), " / ", number(stage.rejected)), /*#__PURE__*/React.createElement("td", null, stopLabels[stage.stop_reason] || (stage.stop_reason === null ? '停止原因未记录' : '其他停止原因'), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
-      entries: {
-        '搜索阶段': stage.phase,
-        '停止原因': stage.stop_reason
-      }
-    }))))))) : /*#__PURE__*/React.createElement("p", {
-      className: "rc-muted"
-    }, "\u4FDD\u5B58\u8D44\u6599\u6CA1\u6709\u9636\u6BB5\u8D77\u6B62\u8BB0\u5F55\u3002"));
-  }
-  function Records({
-    data
-  }) {
-    if (data.process_version === unifiedVersion) return /*#__PURE__*/React.createElement(UnifiedRecords, {
-      data: data
-    });
-    const progress = data.filters.record_kind === 'progress',
-      objective = data.objective;
-    const fields = progress ? [['elapsed_ms', '累计计算耗时'], ['primary_value', '主目标值'], ['verified', '核验状态']] : [['event_index', '计算事件'], ['elapsed_ms', '累计计算耗时'], ['primary_value', '主目标值'], ['accepted', '搜索保留情况'], ['verified', '核验状态'], ['strict_improved', '评分改善判断'], ['comparison', '当时比较资料']];
-    const missing = fields.filter(([key]) => data.items.some(row => row[key] === null)).map(([, label]) => label);
-    return /*#__PURE__*/React.createElement(React.Fragment, null, missing.length > 0 && /*#__PURE__*/React.createElement("p", {
-      className: "rc-muted",
-      "data-process-missing": true,
-      role: "status"
-    }, "\u672C\u9875\u90E8\u5206\u4FDD\u5B58\u8BB0\u5F55\u7F3A\u5C11\uFF1A", missing.join('、'), "\u3002\u672A\u8BB0\u5F55\u7684\u6570\u503C\u4E0E\u72B6\u6001\u663E\u793A \u2014\u3002"), /*#__PURE__*/React.createElement("div", {
-      className: "rc-table wb-table-frame rd-process-frame",
-      "data-sticky-head": true,
-      "data-wb-scroll-key": "decision-process-records"
-    }, /*#__PURE__*/React.createElement("table", {
-      className: 'wb-table rd-process-record-table ' + (progress ? 'rd-process-point-table' : 'rd-process-attempt-table'),
-      "aria-label": progress ? '进步曲线数值等价表' : '已保存的代表尝试'
-    }, /*#__PURE__*/React.createElement("caption", {
-      className: "wb-visually-hidden"
-    }, progress ? '保存曲线点与图表使用同一值' : '保存的代表搜索尝试，按当前条件排序'), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, (progress ? ['事件 / 阶段', '累计计算耗时', objective.primary_metric_label || '主目标未记录', '工序安排', '核验 / 计算详情'] : ['保存记录 / 排名', '尝试来源 / 策略', objective.primary_metric_label || '主目标未记录', '工序安排 / 累计耗时', '搜索结果 / 指标变化']).map(label => /*#__PURE__*/React.createElement("th", {
-      key: label,
-      scope: "col"
-    }, label)))), /*#__PURE__*/React.createElement("tbody", null, data.items.map(row => progress ? /*#__PURE__*/React.createElement("tr", {
-      key: row.event_index,
-      "data-process-point": row.event_index
-    }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("strong", null, "\u4E8B\u4EF6 ", row.event_index), /*#__PURE__*/React.createElement("small", null, phaseText(row.phase)), /*#__PURE__*/React.createElement("details", {
-      className: "rd-process-facts"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u9636\u6BB5\u8BB0\u5F55"), /*#__PURE__*/React.createElement("p", null, "\u7B2C ", number(row.phase_visit), " \u6B21 \xB7 \u6BD4\u8F83\u7F16\u53F7 ", savedText(row.segment)), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
-      entries: {
-        '搜索阶段': row.phase
-      }
-    }))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Elapsed, {
-      value: row.elapsed_ms
-    })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Primary, {
-      value: row.primary_value,
-      objective: objective
-    }), /*#__PURE__*/React.createElement("small", null, "\u8BC4\u4EF7\u8303\u56F4\uFF1A", window.RunDecisionProcessChart.scopeText(row.objective_scope))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Completion, {
-      value: row.completion
-    }), row.flags.length > 0 && /*#__PURE__*/React.createElement("small", null, row.flags.map(flag => flagLabels[flag] || flag).join(' · '))), /*#__PURE__*/React.createElement("td", null, row.verified === null ? '—' : row.verified ? '已核验' : '未核验', /*#__PURE__*/React.createElement(Score, {
-      value: row.score,
-      objective: objective
-    }))) : /*#__PURE__*/React.createElement(React.Fragment, {
-      key: row.saved_index
-    }, /*#__PURE__*/React.createElement("tr", {
-      "data-process-attempt": row.saved_index,
-      "data-process-attempt-event": row.event_index
-    }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("strong", null, "\u4FDD\u5B58 ", row.saved_index), /*#__PURE__*/React.createElement("small", null, "\u4EE3\u8868\u6392\u540D ", number(row.rank)), /*#__PURE__*/React.createElement("small", null, row.event_index === null ? '—' : '计算事件 ' + row.event_index)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", null, savedText(row.source_label)), /*#__PURE__*/React.createElement("details", {
-      className: "rd-process-facts"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u7B56\u7565\u8BB0\u5F55"), /*#__PURE__*/React.createElement("dl", null, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6743\u91CD\u914D\u7F6E"), /*#__PURE__*/React.createElement("dd", null, savedText(row.weight_profile_slug))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u7B56\u7565"), /*#__PURE__*/React.createElement("dd", null, savedText(row.strategy))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6D3E\u5DE5"), /*#__PURE__*/React.createElement("dd", null, savedText(row.dispatch_mode), " \xB7 ", savedText(row.dispatch_rule))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u7ED3\u679C"), /*#__PURE__*/React.createElement("dd", null, statusText(row.candidate_status)))), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
-      entries: {
-        '保存的来源类型': row.candidate_origin
-      }
-    }))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Primary, {
-      value: row.primary_value,
-      objective: objective
-    }), /*#__PURE__*/React.createElement("small", null, "\u8BC4\u4EF7\u8303\u56F4\uFF1A", window.RunDecisionProcessChart.scopeText(row.objective_scope))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Completion, {
-      value: row.completion
-    }), /*#__PURE__*/React.createElement("small", null, "\u7D2F\u8BA1\u8017\u65F6 ", /*#__PURE__*/React.createElement(Elapsed, {
-      value: row.elapsed_ms
-    })), (row.failed_ops === null || row.failed_ops > 0) && /*#__PURE__*/React.createElement("small", null, "\u672A\u5B89\u6392\u5DE5\u5E8F ", number(row.failed_ops))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", null, row.accepted === null ? '—' : row.accepted ? '已留作继续搜索' : '未留作继续搜索'), /*#__PURE__*/React.createElement("small", null, row.verified === null ? '—' : row.verified ? '已核验' : '未核验'), /*#__PURE__*/React.createElement("small", null, row.strict_improved === null ? '—' : row.strict_improved ? '优于当时比较对象' : '未优于当时比较对象'), /*#__PURE__*/React.createElement(Score, {
-      value: row.score,
-      objective: objective
-    }))), row.comparison !== null && /*#__PURE__*/React.createElement("tr", {
-      "data-process-attempt-comparison": row.saved_index
-    }, /*#__PURE__*/React.createElement("td", {
-      colSpan: 5
-    }, /*#__PURE__*/React.createElement(AttemptComparison, {
-      row: row,
-      objective: objective
-    })))))))));
-  }
-  const unifiedCountLabels = [['actual_decoder_calls', '真实排法计算次数'], ['new_decisions', '新排法决策'], ['decision_reuses', '复用已核验决策'], ['skipped_requests', '跳过执行次数'], ['failed_decoder_calls', '计算失败次数'], ['request_count', '不同计算请求']];
+  const countLabels = [['actual_decoder_calls', '真实排法计算次数'], ['new_decisions', '新排法决策'], ['decision_reuses', '复用已核验决策'], ['skipped_requests', '跳过执行次数'], ['failed_decoder_calls', '计算失败次数'], ['request_count', '不同计算请求']];
   const opportunityLabels = {
     searched: '已探索',
     paused_no_gain: '已暂停暂无改善的探索',
@@ -41588,7 +40600,7 @@ function SMExport({
     const descriptor = data.objectives.find(value => value.name === name);
     return descriptor ? descriptor.label : '方向未记录';
   };
-  function UnifiedScope({
+  function Scope({
     scope,
     scopeRef
   }) {
@@ -41598,7 +40610,7 @@ function SMExport({
       }
     }));
   }
-  function UnifiedOrigin({
+  function Origin({
     origin,
     data
   }) {
@@ -41614,7 +40626,7 @@ function SMExport({
       }
     })));
   }
-  function UnifiedCandidates({
+  function CandidateTable({
     data,
     overview,
     anchorRef,
@@ -41638,17 +40650,16 @@ function SMExport({
       "data-selected": candidate.candidate_ref === anchorRef || undefined
     }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("strong", null, candidate.label), /*#__PURE__*/React.createElement("small", null, candidate.representative_objectives.map(name => objectiveLabel(data, name)).join(' · ')), candidate.candidate_ref === overview.recommendation.candidate_ref && /*#__PURE__*/React.createElement("small", null, "\u63A8\u8350")), /*#__PURE__*/React.createElement("td", null, "\u9996\u6B21\u53D1\u73B0\u4E8E ", /*#__PURE__*/React.createElement(Elapsed, {
       value: candidate.first_found_elapsed_ms
-    })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(UnifiedOrigin, {
+    })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Origin, {
       origin: candidate.origin,
       data: data
     })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(C.Button, {
       className: "btn link",
-      disabled: !onAnchor,
       "aria-pressed": candidate.candidate_ref === anchorRef,
       onClick: () => onAnchor(candidate.candidate_ref)
     }, candidate.candidate_ref === anchorRef ? '当前来源' : '定位来源')))))));
   }
-  function UnifiedSummary({
+  function Summary({
     data
   }) {
     const direction = data.budget.objectives[data.selected_objective.name];
@@ -41665,7 +40676,7 @@ function SMExport({
       "data-process-first-improvement-ms": data.summary.first_improvement_elapsed_ms
     }, /*#__PURE__*/React.createElement("dt", null, "\u5F53\u524D\u65B9\u5411\u9996\u6B21\u8BC4\u5206\u6539\u5584"), /*#__PURE__*/React.createElement("dd", null, data.summary.first_improvement_elapsed_ms === null ? '本方向未发生评分改善' : /*#__PURE__*/React.createElement(Elapsed, {
       value: data.summary.first_improvement_elapsed_ms
-    }))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u603B\u8BA1\u7B97\u9884\u7B97"), /*#__PURE__*/React.createElement("dd", null, number(data.budget.configured_seconds), " \u79D2")), unifiedCountLabels.map(([key, label]) => /*#__PURE__*/React.createElement("div", {
+    }))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u603B\u8BA1\u7B97\u9884\u7B97"), /*#__PURE__*/React.createElement("dd", null, number(data.budget.configured_seconds), " \u79D2")), countLabels.map(([key, label]) => /*#__PURE__*/React.createElement("div", {
       key: key,
       "data-unified-count": key
     }, /*#__PURE__*/React.createElement("dt", null, label), /*#__PURE__*/React.createElement("dd", null, number(data.counts[key]))))), /*#__PURE__*/React.createElement("p", {
@@ -41679,7 +40690,7 @@ function SMExport({
       "data-process-opportunity": direction.objective_status
     }, opportunityLabels[direction.objective_status], direction.budget_reason && /*#__PURE__*/React.createElement("small", null, skipLabels[direction.budget_reason] || '预算原因已保存')));
   }
-  function UnifiedRecords({
+  function Records({
     data
   }) {
     const progress = data.filters.record_kind === 'progress',
@@ -41702,7 +40713,7 @@ function SMExport({
     })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Primary, {
       value: row.primary_value,
       objective: objective
-    })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(UnifiedScope, {
+    })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Scope, {
       scope: data.scopes[row.scope_ref],
       scopeRef: row.scope_ref
     })), /*#__PURE__*/React.createElement("td", null, row.verified ? '已核验' : '未核验', /*#__PURE__*/React.createElement(Score, {
@@ -41724,7 +40735,7 @@ function SMExport({
       }
     })))))));
   }
-  function UnifiedStages({
+  function Stages({
     values
   }) {
     return /*#__PURE__*/React.createElement("details", {
@@ -41750,7 +40761,7 @@ function SMExport({
       value: stage.elapsed_ms
     }), /*#__PURE__*/React.createElement("small", null, number(stage.action_count), " \u4E2A\u52A8\u4F5C")), /*#__PURE__*/React.createElement("td", null, number(stage.evaluation_count), " / ", number(stage.verified_evaluation_count)), /*#__PURE__*/React.createElement("td", null, number(stage.new_decisions), " / ", number(stage.reused_decisions))))))));
   }
-  function UnifiedSource({
+  function Source({
     data
   }) {
     const source = data.source_event,
@@ -41759,7 +40770,7 @@ function SMExport({
       className: "rd-process-facts"
     }, /*#__PURE__*/React.createElement("summary", null, "\u5F53\u524D\u5019\u9009\u6765\u6E90\u4E0E\u65B9\u5411\u8BB0\u5F55"), /*#__PURE__*/React.createElement("p", null, candidate.label, " \xB7 \u9996\u6B21\u53D1\u73B0\u4E8E ", /*#__PURE__*/React.createElement(Elapsed, {
       value: candidate.first_found_elapsed_ms
-    })), /*#__PURE__*/React.createElement(UnifiedOrigin, {
+    })), /*#__PURE__*/React.createElement(Origin, {
       origin: candidate.origin,
       data: data
     }), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
@@ -41802,27 +40813,30 @@ function SMExport({
       }
     })))))))));
   }
+  function Coverage({
+    data
+  }) {
+    const sampling = data.progress.sampling;
+    return /*#__PURE__*/React.createElement("div", {
+      className: "rd-process-coverage"
+    }, /*#__PURE__*/React.createElement("span", null, "\u5F53\u524D\u65B9\u5411\u4FDD\u7559 ", number(data.progress.points.length), " \u4E2A\u70B9 \xB7 \u539F\u8FDB\u5C55 ", number(sampling.event_total_count), " \u4E2A\u4E8B\u4EF6"), /*#__PURE__*/React.createElement("details", {
+      className: "rd-process-facts"
+    }, /*#__PURE__*/React.createElement("summary", null, "\u8FDB\u5C55\u8BB0\u5F55\u8BF4\u660E"), /*#__PURE__*/React.createElement("p", null, "\u6309\u8BA1\u7B97\u8017\u65F6\u5206\u6BB5\u4FDD\u7559\u6700\u597D\u7ED3\u679C\uFF0C\u5E76\u4FDD\u7559\u5173\u952E\u9996\u5C3E\u8BB0\u5F55\uFF1B\u6700\u591A\u4FDD\u7559 ", sampling.point_budget, " \u4E2A\u70B9\u3002"), /*#__PURE__*/React.createElement("p", null, "\u8BC4\u4EF7\u8303\u56F4\u53D8\u5316\u65F6\u5206\u6BB5\u663E\u793A\uFF1B\u8BC4\u5206\u7F3A\u9879\u4FDD\u7559\u672A\u77E5\u503C\u3002"), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      entries: {
+        '保存方式': sampling.policy
+      }
+    })));
+  }
   function Pane({
-    adapter,
     result,
-    query = {},
+    query,
     onQuery,
-    onSelectCandidate,
-    enabled = false
+    enabled
   }) {
     const overview = result.data,
       scope = overview.scope,
       runRef = overview.run.run_ref;
-    const unified = !!overview.selection_basis && overview.selection_basis.generation_policy_version === 'unified_search_v1';
     const stored = Object.fromEntries(Object.entries(query).filter(([key]) => queryKeys.includes(key)));
-    if (!unified) {
-      if (stored.process_candidate_ref && stored.process_candidate_ref !== scope.selected_candidate_ref) {
-        stored.page = 1;
-        delete stored.snapshot_ref;
-      }
-      delete stored.process_candidate_ref;
-      delete stored.objective;
-    }
     const shared = {
       comparison_mode: scope.comparison_mode,
       resource_view: scope.resource_view,
@@ -41836,14 +40850,14 @@ function SMExport({
     const q = window.RunDecisionAPI.processScope(runRef, {
         ...stored,
         ...shared,
-        process_candidate_ref: unified && stored.process_candidate_ref || scope.selected_candidate_ref || undefined
+        process_candidate_ref: stored.process_candidate_ref || scope.selected_candidate_ref || undefined
       }),
       key = JSON.stringify(q);
     const [paused, setPaused] = React.useState(false);
     React.useEffect(() => {
       setPaused(false);
     }, [runRef, key, result.meta.snapshot_ref]);
-    const read = window.APSResourceSession.useQuery(signal => adapter.process(runRef, q, signal), [adapter, runRef, key, result.meta.snapshot_ref], enabled && !paused);
+    const read = window.APSResourceSession.useQuery(signal => window.RunDecisionAPI.process(runRef, q, signal), [runRef, key, result.meta.snapshot_ref], enabled && !paused);
     const detail = read.result && (!q.process_candidate_ref || read.result.data.candidate.candidate_ref === q.process_candidate_ref) ? read.result : null,
       data = detail && detail.data;
     function update(change, paging = false) {
@@ -41853,7 +40867,7 @@ function SMExport({
         page: paging ? change.page : 1
       };
       delete next.snapshot_ref;
-      if (!unified) delete next.process_candidate_ref;else if (data && !next.objective) next.objective = data.selected_objective.name;
+      if (data && !next.objective) next.objective = data.selected_objective.name;
       if (paging && detail) next.snapshot_ref = detail.meta.snapshot_ref;
       setPaused(false);
       onQuery(Object.fromEntries(Object.entries(next).filter(([name]) => queryKeys.includes(name))));
@@ -41864,23 +40878,12 @@ function SMExport({
         sort: value === 'progress' ? 'elapsed_ms' : 'rank'
       });
     }
-    function selectCandidate(candidateRef) {
-      const candidate = overview.candidates.find(row => row.candidate_ref === candidateRef);
-      if (!candidate) return;
-      if (unified) update({
-        process_candidate_ref: candidateRef
-      });else if (onSelectCandidate) {
-        setPaused(false);
-        onSelectCandidate(candidate);
-      }
-    }
     function reload() {
       update({});
       read.reload();
     }
     if (!enabled) return null;
-    const sorts = q.record_kind === 'progress' ? [['elapsed_ms', '累计耗时'], ['event_index', '保存事件顺序'], ['primary_value', '主目标值']] : unified ? [['rank', '动作顺序'], ['elapsed_ms', '动作耗时']] : [['rank', '代表排名'], ['elapsed_ms', '尝试耗时'], ['primary_value', '主目标值']];
-    const profileEntries = data && !unified ? Object.entries(data.source.profile) : null;
+    const sorts = q.record_kind === 'progress' ? [['elapsed_ms', '累计耗时'], ['event_index', '保存事件顺序'], ['primary_value', '主目标值']] : [['rank', '动作顺序'], ['elapsed_ms', '动作耗时']];
     return /*#__PURE__*/React.createElement("section", {
       className: "rd-process",
       "aria-label": "\u5019\u9009\u4F18\u5316\u8FC7\u7A0B",
@@ -41891,7 +40894,6 @@ function SMExport({
       className: "rc-tools rd-detail-actions"
     }, data && /*#__PURE__*/React.createElement(D.Export, {
       key: detail.meta.snapshot_ref,
-      adapter: adapter,
       result: detail,
       initialSection: "process",
       filterQuery: {
@@ -41915,15 +40917,11 @@ function SMExport({
     }, "\u53D6\u6D88\u8BFB\u53D6")), paused && /*#__PURE__*/React.createElement("p", {
       className: "rc-muted",
       role: "status"
-    }, "\u8FC7\u7A0B\u8BFB\u53D6\u5DF2\u53D6\u6D88\uFF0C\u70B9\u51FB\u5237\u65B0\u7EE7\u7EED\u3002"), data && /*#__PURE__*/React.createElement(React.Fragment, null, unified ? /*#__PURE__*/React.createElement(UnifiedSummary, {
+    }, "\u8FC7\u7A0B\u8BFB\u53D6\u5DF2\u53D6\u6D88\uFF0C\u70B9\u51FB\u5237\u65B0\u7EE7\u7EED\u3002"), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Summary, {
       data: data
-    }) : /*#__PURE__*/React.createElement("div", {
-      className: "rd-process-heading"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", null, "\u8BA1\u7B97\u8FDB\u5C55"), /*#__PURE__*/React.createElement("span", null, "\u672C\u8F6E\u76EE\u6807\uFF1A", data.objective.label || '计算目标未记录', " \xB7 \u6765\u6E90\u8BA1\u7B97 ", /*#__PURE__*/React.createElement(Elapsed, {
-      value: data.summary.source_solver_elapsed_ms
-    }), data.summary.solver_counts.evaluated !== null && ' · 已评估 ' + number(data.summary.solver_counts.evaluated) + ' 次'))), /*#__PURE__*/React.createElement(C.Reasons, {
+    }), /*#__PURE__*/React.createElement(C.Reasons, {
       rows: detail.warnings
-    }), unified && /*#__PURE__*/React.createElement("div", {
+    }), /*#__PURE__*/React.createElement("div", {
       className: "rd-process-objective"
     }, /*#__PURE__*/React.createElement("label", null, "\u4F18\u5316\u65B9\u5411", /*#__PURE__*/React.createElement("select", {
       "aria-label": "\u4F18\u5316\u65B9\u5411",
@@ -41934,19 +40932,14 @@ function SMExport({
     }, data.objectives.map(descriptor => /*#__PURE__*/React.createElement("option", {
       key: descriptor.name,
       value: descriptor.name
-    }, descriptor.label))))), !unified && data.source.kind === 'reused' && /*#__PURE__*/React.createElement("p", {
-      className: "rd-process-chart-note"
-    }, "\u6B64\u65B9\u6848\u6CBF\u7528 ", (overview.candidates.find(row => row.candidate_ref === data.source.source_candidate_ref) || data.candidates.find(row => row.candidate_ref === data.source.source_candidate_ref) || {}).label || '已保存方案', " \u7684\u8BA1\u7B97\u7ED3\u679C\u3002"), /*#__PURE__*/React.createElement(window.RunDecisionProcessChart.Chart, {
-      key: unified ? data.selected_objective.name : undefined,
+    }, descriptor.label))))), /*#__PURE__*/React.createElement(window.RunDecisionProcessChart.Chart, {
+      key: data.selected_objective.name,
       progress: data.progress,
-      objective: unified ? data.selected_objective : data.objective,
-      elapsedMs: unified ? data.summary.elapsed_ms : data.summary.source_solver_elapsed_ms,
-      attempts: unified ? undefined : data.attempts,
-      scopes: unified ? data.scopes : null,
-      sourceEventId: unified && data.source_event ? data.source_event.event_id : null,
-      ...(unified ? {
-        lastImprovementElapsedMs: data.summary.last_improvement_elapsed_ms
-      } : {})
+      objective: data.selected_objective,
+      elapsedMs: data.summary.elapsed_ms,
+      scopes: data.scopes,
+      sourceEventId: data.source_event ? data.source_event.event_id : null,
+      lastImprovementElapsedMs: data.summary.last_improvement_elapsed_ms
     }), /*#__PURE__*/React.createElement(Coverage, {
       data: data
     }), /*#__PURE__*/React.createElement("details", {
@@ -41957,7 +40950,7 @@ function SMExport({
       className: "rc-tabs",
       role: "group",
       "aria-label": "\u4F18\u5316\u8FC7\u7A0B\u8BB0\u5F55\u89C6\u56FE"
-    }, [['attempts', unified ? '搜索动作' : '已保存代表尝试'], ['progress', '曲线数据']].map(([value, label]) => /*#__PURE__*/React.createElement(C.Button, {
+    }, [['attempts', '搜索动作'], ['progress', '曲线数据']].map(([value, label]) => /*#__PURE__*/React.createElement(C.Button, {
       key: value,
       "aria-pressed": q.record_kind === value,
       onClick: () => recordKind(value)
@@ -41984,7 +40977,7 @@ function SMExport({
       data: data
     }) : /*#__PURE__*/React.createElement("p", {
       className: "rc-empty"
-    }, unified ? '这个方向没有保存当前类别的过程记录。' : '这个候选没有保存当前类别的过程记录。'), /*#__PURE__*/React.createElement("div", {
+    }, "\u8FD9\u4E2A\u65B9\u5411\u6CA1\u6709\u4FDD\u5B58\u5F53\u524D\u7C7B\u522B\u7684\u8FC7\u7A0B\u8BB0\u5F55\u3002"), /*#__PURE__*/React.createElement("div", {
       className: "rc-heading rd-detail-pages"
     }, /*#__PURE__*/React.createElement("span", {
       className: "rc-muted"
@@ -42010,60 +41003,31 @@ function SMExport({
       }, true)
     }))), /*#__PURE__*/React.createElement("details", {
       className: "rd-process-catalog"
-    }, /*#__PURE__*/React.createElement("summary", null, unified ? '全部候选的来源定位' : '全部候选的计算来源与结果', " \xB7 ", data.candidates.length, " \u9879"), /*#__PURE__*/React.createElement(CandidateTable, {
+    }, /*#__PURE__*/React.createElement("summary", null, "\u5168\u90E8\u5019\u9009\u7684\u6765\u6E90\u5B9A\u4F4D \xB7 ", data.candidates.length, " \u9879"), /*#__PURE__*/React.createElement(CandidateTable, {
       data: data,
       overview: overview,
       anchorRef: data.candidate.candidate_ref,
-      onAnchor: unified || onSelectCandidate ? selectCandidate : undefined
-    })), unified ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(UnifiedStages, {
+      onAnchor: candidateRef => update({
+        process_candidate_ref: candidateRef
+      })
+    })), /*#__PURE__*/React.createElement(Stages, {
       values: data.stages
-    }), /*#__PURE__*/React.createElement(UnifiedSource, {
+    }), /*#__PURE__*/React.createElement(Source, {
       data: data
-    })) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Stages, {
-      values: data.stages
-    }), /*#__PURE__*/React.createElement(Counts, {
-      summary: data.summary
-    }), /*#__PURE__*/React.createElement(Rejections, {
-      values: data.summary.rejection_summary
-    }), /*#__PURE__*/React.createElement("details", {
-      className: "rd-process-facts"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u8BA1\u7B97\u6765\u6E90\u4E0E\u914D\u7F6E"), /*#__PURE__*/React.createElement("div", {
-      className: "rd-process-identity"
-    }, /*#__PURE__*/React.createElement("span", null, sourceLabels[data.source.kind], " \xB7 \u672C\u5019\u9009 ", /*#__PURE__*/React.createElement(Elapsed, {
-      value: data.summary.own_elapsed_ms
-    }), " \xB7 \u6765\u6E90\u8BA1\u7B97 ", /*#__PURE__*/React.createElement(Elapsed, {
-      value: data.summary.source_solver_elapsed_ms
-    })), /*#__PURE__*/React.createElement("span", null, data.summary.stop_reason ? data.summary.stop_reason.message : '停止原因未记录'), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
-      entries: {
-        '过程查看候选': data.candidate.candidate_ref,
-        '计算来源候选': data.source.source_candidate_ref,
-        '排产记录': data.run_ref
-      }
-    })), profileEntries.length ? /*#__PURE__*/React.createElement("dl", null, profileEntries.map(([key, value]) => /*#__PURE__*/React.createElement("div", {
-      key: key
-    }, /*#__PURE__*/React.createElement("dt", null, key), /*#__PURE__*/React.createElement("dd", null, value === null ? '未记录' : typeof value === 'object' ? JSON.stringify(value) : typeof value === 'boolean' ? value ? '是' : '否' : String(value))))) : /*#__PURE__*/React.createElement("p", {
-      className: "rc-muted"
-    }, "\u6CA1\u6709\u4FDD\u5B58\u641C\u7D22\u914D\u7F6E\u3002"))))));
+    }))));
   }
   window.RunDecisionProcess = {
     Pane,
     CandidateTable,
     Coverage,
-    Counts,
-    Rejections,
-    Stages,
+    Summary,
     Records,
-    Completion,
+    Stages,
+    Source,
+    Scope,
     Score,
-    AttemptComparison,
     Elapsed,
-    Primary,
-    UnifiedSummary,
-    UnifiedRecords,
-    UnifiedCandidates,
-    UnifiedStages,
-    UnifiedSource,
-    UnifiedScope
+    Primary
   };
 })();
 
@@ -42079,7 +41043,6 @@ function SMExport({
   const batchChanges = [['all', '全部'], ['changed', '有明确变化'], ['earlier', '预计完工提前'], ['later', '预计完工推迟'], ['new_overdue', '新增超期'], ['relieved_overdue', '解除超期'], ['completion_improved', '工序安排改善'], ['completion_worsened', '工序安排变差'], ['unchanged', '持平'], ['unknown', '差值待确认']];
   const operationChanges = [['all', '全部'], ['changed', '有明确变化'], ['added', '新增安排'], ['removed', '移除安排'], ['moved', '时间移动'], ['machine_changed', '设备变化'], ['operator_changed', '人员变化'], ['source_changed', '内外协变化'], ['status_changed', '排产状态变化'], ['unchanged', '持平'], ['unknown', '差值待确认']];
   const batchSorts = [['current_priority', '当前风险优先'], ['worsened', '恶化优先'], ['improved', '改善优先'], ['after_delay_hours', '当前拖期'], ['delay_delta_hours', '拖期变化'], ['finish_delta_hours', '完工变化'], ['batch_id', '批次编号']];
-  const operationSorts = [['sequence', '工序顺序'], ['start_delta_hours', '开始变化'], ['end_delta_hours', '结束变化'], ['batch_id', '批次编号'], ['change_kind', '变化类型']];
   const changeLabels = {
     ...Object.fromEntries([...batchChanges, ...operationChanges]),
     operation_changed: '工序安排变化'
@@ -42140,7 +41103,7 @@ function SMExport({
     row,
     onDrill
   }) {
-    return onDrill ? /*#__PURE__*/React.createElement("div", {
+    return /*#__PURE__*/React.createElement("div", {
       className: "rd-locate"
     }, /*#__PURE__*/React.createElement(C.Button, {
       icon: "chart-gantt",
@@ -42159,7 +41122,7 @@ function SMExport({
         ...row.drill.selected,
         candidate_tab: 'unplanned'
       })
-    }, "\u67E5\u770B\u672A\u5B89\u6392\u5DE5\u5E8F")) : null;
+    }, "\u67E5\u770B\u672A\u5B89\u6392\u5DE5\u5E8F"));
   }
   function BatchDelivery({
     value,
@@ -42185,62 +41148,6 @@ function SMExport({
     }, value.planned_finish ? T.arrangement_labels.planned_finish + '：' + F.compactDateTime(value.planned_finish, {
       year
     }) : '批次完工待确认'), (complete || value.risk !== 'unknown' || value.delay_hours !== null) && /*#__PURE__*/React.createElement("span", null, T.delivery_risks[value.risk], value.delay_hours !== null && ' · ' + amount(value.delay_hours, ' 小时')));
-  }
-  function BatchTable({
-    data,
-    onDrill
-  }) {
-    return /*#__PURE__*/React.createElement("div", {
-      className: "rc-table wb-table-frame rd-impact-frame",
-      "data-sticky-head": true,
-      "data-sticky-key": true,
-      "data-sticky-actions": true
-    }, /*#__PURE__*/React.createElement("table", {
-      className: "wb-table rd-impact-table rd-batch-table",
-      "aria-label": "\u9010\u6279\u4EA4\u4ED8\u5F71\u54CD"
-    }, /*#__PURE__*/React.createElement("caption", {
-      className: "wb-visually-hidden"
-    }, "\u9010\u6279\u4EA4\u4ED8\u5F71\u54CD"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
-      scope: "col",
-      className: "wb-col-key"
-    }, "\u6279\u6B21 / \u96F6\u4EF6"), /*#__PURE__*/React.createElement("th", {
-      scope: "col"
-    }, "\u6279\u91CF / \u4F18\u5148\u7EA7 / \u4EA4\u671F"), /*#__PURE__*/React.createElement("th", {
-      scope: "col"
-    }, "\u56FA\u5B9A\u5BF9\u7167"), /*#__PURE__*/React.createElement("th", {
-      scope: "col"
-    }, "\u5F53\u524D\u65B9\u6848"), /*#__PURE__*/React.createElement("th", {
-      scope: "col"
-    }, "\u5DEE\u503C"), /*#__PURE__*/React.createElement("th", {
-      scope: "col"
-    }, "\u53D8\u5316"), /*#__PURE__*/React.createElement("th", {
-      scope: "col",
-      className: "wb-col-actions"
-    }, "\u67E5\u770B\u7518\u7279"))), /*#__PURE__*/React.createElement("tbody", null, data.items.map(row => {
-      const showYear = !row.before.planned_finish || !row.after.planned_finish || row.before.planned_finish.slice(0, 4) !== row.after.planned_finish.slice(0, 4);
-      return /*#__PURE__*/React.createElement("tr", {
-        key: row.batch_ref,
-        "data-decision-batch": row.batch_ref
-      }, /*#__PURE__*/React.createElement("td", {
-        className: "wb-col-key"
-      }, /*#__PURE__*/React.createElement("strong", null, row.batch_id), /*#__PURE__*/React.createElement("small", null, row.part_no || '图号未记录', " \xB7 ", row.part_label || T.name_missing), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
-        value: row.batch_ref
-      })), /*#__PURE__*/React.createElement("td", null, amount(row.quantity, ' 件'), /*#__PURE__*/React.createElement("small", null, "\u4F18\u5148\u7EA7 ", window.APSBatchContract.label('priority', row.priority)), /*#__PURE__*/React.createElement("span", null, T.due_date(row.due_date, row.due_state, row.due_issue))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(BatchDelivery, {
-        value: row.before,
-        absent: data.baseline.state !== 'available',
-        year: showYear
-      })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(BatchDelivery, {
-        value: row.after,
-        year: showYear
-      })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", null, "\u9884\u8BA1\u5B8C\u5DE5 ", delta(row.finish_delta_hours)), /*#__PURE__*/React.createElement("small", null, "\u62D6\u671F ", delta(row.delay_delta_hours, '减少', '增加'))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Changes, {
-        values: row.change_kinds
-      })), /*#__PURE__*/React.createElement("td", {
-        className: "wb-col-actions"
-      }, /*#__PURE__*/React.createElement(Locate, {
-        row: row,
-        onDrill: onDrill
-      })));
-    }))));
   }
   function ArrangementSegment({
     row
@@ -42321,7 +41228,6 @@ function SMExport({
   }
   function BatchList({
     data,
-    rows = data.items,
     difference,
     selectedRef,
     onSelect
@@ -42343,7 +41249,7 @@ function SMExport({
       scope: "col"
     }, "\u4E0E\u56FA\u5B9A\u5BF9\u7167\u7684\u53D8\u5316"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
-    }, "\u4EA4\u4ED8\u72B6\u6001"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(row => /*#__PURE__*/React.createElement("tr", {
+    }, "\u4EA4\u4ED8\u72B6\u6001"))), /*#__PURE__*/React.createElement("tbody", null, data.items.map(row => /*#__PURE__*/React.createElement("tr", {
       key: row.batch_ref,
       "data-decision-batch": row.batch_ref,
       "aria-selected": row.batch_ref === selectedRef
@@ -42507,7 +41413,6 @@ function SMExport({
     }))));
   }
   function BatchChain({
-    adapter,
     result,
     batch,
     difference,
@@ -42515,7 +41420,7 @@ function SMExport({
     onQuery,
     onDrill,
     headingRef,
-    enabled = true
+    enabled
   }) {
     const scope = result.data.scope,
       runRef = result.data.run.run_ref;
@@ -42540,7 +41445,7 @@ function SMExport({
     React.useEffect(() => {
       setPaused(false);
     }, [runRef, key, result.meta.snapshot_ref]);
-    const read = window.APSResourceSession.useQuery(signal => adapter.decisionDetails(runRef, q, 'operations', signal), [adapter, runRef, key, result.meta.snapshot_ref], enabled && !paused),
+    const read = window.APSResourceSession.useQuery(signal => window.RunDecisionAPI.decisionDetails(runRef, q, 'operations', signal), [runRef, key, result.meta.snapshot_ref], enabled && !paused),
       detailResult = read.result,
       data = detailResult && detailResult.data;
     function update(change, paging = false) {
@@ -42619,7 +41524,6 @@ function SMExport({
       value: row.ref
     }, row.kind === 'machine' ? '设备' : '人员', " \xB7 ", row.label || T.name_missing)))), detailResult && /*#__PURE__*/React.createElement(D.Export, {
       key: detailResult.meta.snapshot_ref,
-      adapter: adapter,
       result: detailResult,
       initialSection: "operations",
       filterQuery: q
@@ -42676,18 +41580,17 @@ function SMExport({
     }))));
   }
   function Pane({
-    adapter,
     result,
     section,
     query,
     onQuery,
     selectedBatchRef,
     onSelectBatch,
-    chainQuery = {},
+    chainQuery,
     onChainQuery,
     onDrill,
     onChooseReference,
-    enabled = true
+    enabled
   }) {
     const overview = result.data,
       scope = overview.scope,
@@ -42723,7 +41626,7 @@ function SMExport({
     React.useEffect(() => {
       setPaused(false);
     }, [runRef, key, section, result.meta.snapshot_ref]);
-    const read = window.APSResourceSession.useQuery(signal => adapter.decisionDetails(runRef, q, 'batches', signal), [adapter, runRef, key, section, result.meta.snapshot_ref], enabled && !paused && !sameCandidate);
+    const read = window.APSResourceSession.useQuery(signal => window.RunDecisionAPI.decisionDetails(runRef, q, 'batches', signal), [runRef, key, section, result.meta.snapshot_ref], enabled && !paused && !sameCandidate);
     const detailResult = read.result,
       data = detailResult && detailResult.data,
       options = data && data.filter_options;
@@ -42743,8 +41646,8 @@ function SMExport({
     }, [enabled, selectedRef, chainQuery.batch_ref, chainQuery.change_kind]);
     function selectBatch(ref) {
       focusRequested.current = true;
-      if (ref !== selectedBatchRef && onQuery && query && query.snapshot_ref !== undefined) onQuery(Object.fromEntries(Object.entries(query).filter(([name]) => detailKeys.includes(name) && name !== 'snapshot_ref')));
-      if (onChainQuery && (chainQuery.batch_ref !== ref || arrangementsEqual && chainQuery.change_kind !== 'all')) onChainQuery({
+      if (ref !== selectedBatchRef && query.snapshot_ref !== undefined) onQuery(Object.fromEntries(Object.entries(query).filter(([name]) => detailKeys.includes(name) && name !== 'snapshot_ref')));
+      if (chainQuery.batch_ref !== ref || arrangementsEqual && chainQuery.change_kind !== 'all') onChainQuery({
         ...chainQuery,
         batch_ref: ref,
         ...(arrangementsEqual ? {
@@ -42783,7 +41686,6 @@ function SMExport({
     }, /*#__PURE__*/React.createElement("h3", null, difference ? '方案差异' : '交期与未排')), sameCandidate ? /*#__PURE__*/React.createElement("div", {
       className: "rc-empty"
     }, /*#__PURE__*/React.createElement("p", null, "\u6B63\u5728\u67E5\u770B\u540C\u4E00\u4E2A\u65B9\u6848\u3002"), /*#__PURE__*/React.createElement(C.Button, {
-      disabled: !onChooseReference,
       onClick: onChooseReference
     }, "\u9009\u62E9\u5BF9\u7167")) : /*#__PURE__*/React.createElement("div", {
       className: "rd-detail-filters"
@@ -42848,7 +41750,6 @@ function SMExport({
       className: "rc-tools rd-detail-actions"
     }, data && /*#__PURE__*/React.createElement(D.Export, {
       key: detailResult.meta.snapshot_ref,
-      adapter: adapter,
       result: detailResult,
       initialSection: "batches",
       filterQuery: q
@@ -42924,7 +41825,6 @@ function SMExport({
       onClick: () => selectBatch(selectedRef)
     }, "\u5F53\u524D\u67E5\u770B\uFF1A", selected.batch_id)), selected && (!arrangementsEqual || chainQuery.change_kind === 'all') && /*#__PURE__*/React.createElement(BatchChain, {
       key: (difference ? 'difference:' : 'delivery:') + selected.batch_ref,
-      adapter: adapter,
       result: result,
       batch: selected,
       difference: difference,
@@ -42950,7 +41850,6 @@ function SMExport({
     OperationChain,
     ChainTimeline,
     CurrentRisk,
-    BatchTable,
     Arrangement,
     Summary,
     delta
@@ -43015,7 +41914,7 @@ function SMExport({
       precision: 3
     });
   }
-  function metricDefinition(field, kind, definitions = []) {
+  function metricDefinition(field, kind, definitions) {
     const labels = {
       high_pressure_count: '高负荷' + (T.resource_kinds[kind] || '资源'),
       zero_capacity_task_count: '无可排时段仍有安排',
@@ -43169,7 +42068,7 @@ function SMExport({
     row,
     onDrill
   }) {
-    return onDrill && /*#__PURE__*/React.createElement("div", {
+    return /*#__PURE__*/React.createElement("div", {
       className: "rd-locate"
     }, /*#__PURE__*/React.createElement(C.Button, {
       icon: "chart-gantt",
@@ -43288,7 +42187,7 @@ function SMExport({
         seconds: true,
         fractions: true
       })
-    }, F.compactRange(item.start, item.end)), onDrill && /*#__PURE__*/React.createElement(C.Button, {
+    }, F.compactRange(item.start, item.end)), /*#__PURE__*/React.createElement(C.Button, {
       icon: "chart-gantt",
       className: "mini",
       onClick: () => onDrill(item.drill)
@@ -43302,7 +42201,7 @@ function SMExport({
         seconds: true,
         fractions: true
       })
-    }, F.compactRange(item.start, item.end)), onDrill && /*#__PURE__*/React.createElement(C.Button, {
+    }, F.compactRange(item.start, item.end)), /*#__PURE__*/React.createElement(C.Button, {
       icon: "chart-gantt",
       className: "mini",
       onClick: () => onDrill(item.drill)
@@ -43313,7 +42212,6 @@ function SMExport({
   function Days({
     result,
     query,
-    adapter,
     definitions,
     onQuery,
     onClose,
@@ -43331,7 +42229,6 @@ function SMExport({
       className: "rc-tools"
     }, /*#__PURE__*/React.createElement(D.Export, {
       key: result.meta.snapshot_ref,
-      adapter: adapter,
       result: result,
       initialSection: "resource-days",
       filterQuery: {
@@ -43435,14 +42332,13 @@ function SMExport({
   function SelectedWindow({
     result,
     query,
-    adapter,
     definitions,
-    whole = false,
+    whole,
     onQuery,
     onClose,
     onWhole,
     onDrill,
-    enabled = true
+    enabled
   }) {
     const data = result.data,
       cell = whole ? {
@@ -43478,7 +42374,6 @@ function SMExport({
       className: "rc-tools"
     }, /*#__PURE__*/React.createElement(D.Export, {
       key: result.meta.snapshot_ref,
-      adapter: adapter,
       result: result,
       initialSection: "resource-days",
       filterQuery: {
@@ -43511,7 +42406,7 @@ function SMExport({
     }, whole && /*#__PURE__*/React.createElement("h4", null, F.compactRange(period.start, period.end)), period.after.tasks.map((item, index) => /*#__PURE__*/React.createElement("div", {
       className: "rres-contribution-row",
       key: item.row_ref || item.operation_ref + ':' + index
-    }, /*#__PURE__*/React.createElement("div", null, onDrill ? /*#__PURE__*/React.createElement(C.Button, {
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(C.Button, {
       className: "btn link",
       "data-resource-batch": item.batch_ref,
       onClick: () => onDrill({
@@ -43520,7 +42415,7 @@ function SMExport({
         operation_ref: undefined,
         selected_row_ref: undefined
       })
-    }, item.batch_label || T.name_missing) : /*#__PURE__*/React.createElement("strong", null, item.batch_label || T.name_missing), /*#__PURE__*/React.createElement("span", null, item.process_label || T.name_missing)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+    }, item.batch_label || T.name_missing), /*#__PURE__*/React.createElement("span", null, item.process_label || T.name_missing)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
       title: F.dateTime(item.start, {
         seconds: true,
         fractions: true
@@ -43528,7 +42423,7 @@ function SMExport({
         seconds: true,
         fractions: true
       })
-    }, F.compactRange(item.start, item.end)), /*#__PURE__*/React.createElement("small", null, "\u672C\u65F6\u6BB5\u73ED\u5185\u5360\u7528 ", scalar(item.occupied_hours), " \u5C0F\u65F6")), onDrill && /*#__PURE__*/React.createElement(C.Button, {
+    }, F.compactRange(item.start, item.end)), /*#__PURE__*/React.createElement("small", null, "\u672C\u65F6\u6BB5\u73ED\u5185\u5360\u7528 ", scalar(item.occupied_hours), " \u5C0F\u65F6")), /*#__PURE__*/React.createElement(C.Button, {
       icon: "chart-gantt",
       className: "mini",
       onClick: () => onDrill(item.drill)
@@ -43556,7 +42451,6 @@ function SMExport({
     })), whole ? /*#__PURE__*/React.createElement("details", {
       className: "rres-basis"
     }, /*#__PURE__*/React.createElement("summary", null, "\u9010\u65E5\u6570\u503C"), /*#__PURE__*/React.createElement(Days, {
-      adapter: adapter,
       result: result,
       definitions: definitions,
       query: query,
@@ -43573,7 +42467,7 @@ function SMExport({
       className: "rres-day-facts"
     }, /*#__PURE__*/React.createElement("strong", null, "\u73ED\u5185\u51B2\u7A81 \xB7 ", value.conflicts.length, " \u6BB5"), value.conflicts.map((item, index) => /*#__PURE__*/React.createElement("div", {
       key: index
-    }, /*#__PURE__*/React.createElement("span", null, F.compactRange(item.start, item.end)), onDrill && /*#__PURE__*/React.createElement(C.Button, {
+    }, /*#__PURE__*/React.createElement("span", null, F.compactRange(item.start, item.end)), /*#__PURE__*/React.createElement(C.Button, {
       icon: "chart-gantt",
       className: "mini",
       onClick: () => onDrill(item.drill)
@@ -43593,8 +42487,7 @@ function SMExport({
   function RangeControls({
     scope,
     onRange,
-    title = '资源范围',
-    actionLabel = '应用范围'
+    title
   }) {
     const [value, setValue] = React.useState({
         range_start: F.dateTime(scope.range_start, {
@@ -43685,21 +42578,20 @@ function SMExport({
     })), /*#__PURE__*/React.createElement(C.Button, {
       icon: "check",
       type: "submit"
-    }, actionLabel), /*#__PURE__*/React.createElement(C.Button, {
+    }, "\u5E94\u7528\u8303\u56F4"), /*#__PURE__*/React.createElement(C.Button, {
       onClick: close
     }, "\u6536\u8D77"), /*#__PURE__*/React.createElement(C.ErrorBox, {
       error: error
     })));
   }
   function Pane({
-    adapter,
     result,
-    query = {},
+    query,
     onQuery,
     onView,
     onRange,
     onDrill,
-    enabled = true
+    enabled
   }) {
     const overview = result.data,
       scope = overview.scope,
@@ -43735,20 +42627,22 @@ function SMExport({
       setPaused(false);
     }, [runRef, qKey, result]);
     const read = window.APSResourceSession.useQuery(signal => {
-      if (signal && signal.aborted) throw new DOMException('读取已取消', 'AbortError');
-      if (result.resource_result && consumed.current !== result && JSON.stringify(A.resourceScope(runRef, {
-        ...result.resource_query,
+      if (signal.aborted) throw new DOMException('读取已取消', 'AbortError');
+      // 资源首屏顺带读回的资源结果只消费一次；失败信封由 APSWorkbenchTransport.failure 统一解析。
+      const embedded = result.data.resource_result;
+      if (embedded && consumed.current !== result && JSON.stringify(A.resourceScope(runRef, {
+        ...result.data.resource_query,
         ...shared
       })) === qKey) {
         consumed.current = result;
-        if (result.resource_result.ok === false) throw A.resourceError(result.resource_result);
-        return result.resource_result;
+        if (embedded.ok !== true) throw window.APSWorkbenchTransport.failure(embedded, embedded.status);
+        return embedded;
       }
-      return adapter.resources(runRef, {
+      return A.resources(runRef, {
         ...q,
         expected_resource_refs: scope.resource_refs
       }, signal);
-    }, [adapter, runRef, qKey, result], enabled && !paused);
+    }, [runRef, qKey, result], enabled && !paused);
     const data = read.result && read.result.data;
     const activeFilters = [q.resource_ref && data && data.filter_options.resources.find(row => row.ref === q.resource_ref)?.label, !['all', 'high_pressure', 'conflicts'].includes(q.pressure_filter) && pressureFilters.find(row => row[0] === q.pressure_filter)[1]].filter(Boolean);
     const dayRef = stored.day_resource_ref,
@@ -43768,10 +42662,10 @@ function SMExport({
     React.useEffect(() => {
       setDaysPaused(false);
     }, [runRef, dayKey, result]);
-    const days = window.APSResourceSession.useQuery(signal => adapter.resourceDays(runRef, {
+    const days = window.APSResourceSession.useQuery(signal => A.resourceDays(runRef, {
       ...dayQ,
       expected_resource_refs: scope.resource_refs
-    }, signal), [adapter, runRef, dayKey, result], enabled && !!dayQ && !daysPaused);
+    }, signal), [runRef, dayKey, result], enabled && !!dayQ && !daysPaused);
     function change(value, type = 'filter') {
       const next = {
         ...stored,
@@ -43927,7 +42821,7 @@ function SMExport({
       onClick: () => change({
         grain: value
       })
-    }, label)))), onRange && /*#__PURE__*/React.createElement(RangeControls, {
+    }, label)))), /*#__PURE__*/React.createElement(RangeControls, {
       scope: scope,
       title: "\u7EDF\u8BA1\u65F6\u95F4",
       onRange: onRange
@@ -44028,7 +42922,6 @@ function SMExport({
       className: "rc-tools rd-detail-actions"
     }, data && /*#__PURE__*/React.createElement(D.Export, {
       key: read.result.meta.snapshot_ref,
-      adapter: adapter,
       result: read.result,
       initialSection: "resources",
       filterQuery: {
@@ -44122,7 +43015,6 @@ function SMExport({
     }, "\u91CD\u8BD5\u9010\u65E5\u8BFB\u53D6"), /*#__PURE__*/React.createElement(C.Button, {
       onClick: closeDays
     }, "\u5173\u95ED\u9010\u65E5\u660E\u7EC6")), days.result && /*#__PURE__*/React.createElement(SelectedWindow, {
-      adapter: adapter,
       result: days.result,
       definitions: overview.metric_definitions,
       query: {
@@ -44212,7 +43104,7 @@ function SMExport({
   function knownRest(value) {
     return value.calendar_state === 'complete' && value.available_hours === 0 && value.zero_capacity_task !== true && value.conflict !== true;
   }
-  function cellText(cell, mode, baselineState = 'available') {
+  function cellText(cell, mode, baselineState) {
     if (mode === 'delta') return cell.deltas.utilization_ratio === null ? '待确认' : R.deltaText(cell.deltas.utilization_ratio, 'utilization_ratio');
     if (mode === 'before' && baselineState !== 'available') return '对照未记录';
     const value = cell[mode];
@@ -44220,7 +43112,7 @@ function SMExport({
     if (value.utilization_ratio === null) return '待确认';
     return R.metricText(value, 'utilization_ratio');
   }
-  function cellPresentation(row, cell, mode, pressureLabel = '高负荷', baselineState = 'available') {
+  function cellPresentation(row, cell, mode, pressureLabel, baselineState) {
     const missing = mode === 'before' && baselineState !== 'available',
       value = missing ? null : cellValue(cell, mode),
       text = cellText(cell, mode, baselineState),
@@ -44269,7 +43161,7 @@ function SMExport({
   function Heatmap({
     data,
     definitions,
-    mode = 'after',
+    mode,
     focus,
     onMode,
     onCursor,
@@ -44748,7 +43640,7 @@ function SMExport({
     drill,
     onDrill
   }) {
-    return onDrill && /*#__PURE__*/React.createElement("div", {
+    return /*#__PURE__*/React.createElement("div", {
       className: "rd-locate"
     }, /*#__PURE__*/React.createElement(C.Button, {
       icon: "chart-gantt",
@@ -44801,11 +43693,11 @@ function SMExport({
       "data-decision-preparation": row.operation_ref
     }, /*#__PURE__*/React.createElement("td", {
       className: "wb-col-key"
-    }, onDrill ? /*#__PURE__*/React.createElement(C.Button, {
+    }, /*#__PURE__*/React.createElement(C.Button, {
       className: "btn link",
       "data-preparation-operation": row.operation_ref,
       onClick: () => onDrill(row.drill.selected)
-    }, row.batch_label, " \xB7 ", E.amount(row.sequence), " ", row.process_label || T.name_missing) : /*#__PURE__*/React.createElement("strong", null, row.batch_label, " \xB7 ", E.amount(row.sequence), " ", row.process_label || T.name_missing), /*#__PURE__*/React.createElement("small", null, row.part_label || T.name_missing, " \xB7 ", M.pieceLabel(row))), ['setup_standard_hours', 'processing_standard_hours', 'required_standard_hours'].map(key => /*#__PURE__*/React.createElement("td", {
+    }, row.batch_label, " \xB7 ", E.amount(row.sequence), " ", row.process_label || T.name_missing), /*#__PURE__*/React.createElement("small", null, row.part_label || T.name_missing, " \xB7 ", M.pieceLabel(row))), ['setup_standard_hours', 'processing_standard_hours', 'required_standard_hours'].map(key => /*#__PURE__*/React.createElement("td", {
       key: key,
       className: "rd-preparation-hours"
     }, /*#__PURE__*/React.createElement("strong", null, data.baseline.state === 'available' && row.before[key] !== row.after[key] && /*#__PURE__*/React.createElement(React.Fragment, null, row.before[key] === null ? E.hours(row.before[key], row.before.state) : E.amount(row.before[key]), " \u2192 "), row.after[key] === null ? E.hours(row.after[key], row.after.state) : E.amount(row.after[key])))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("strong", null, T.preparation_allocations[row.after.allocation_state])), /*#__PURE__*/React.createElement("td", {
@@ -44815,7 +43707,7 @@ function SMExport({
       "aria-expanded": openOperation === row.operation_ref,
       "data-preparation-detail": row.operation_ref,
       onClick: () => setOpenOperation(openOperation === row.operation_ref ? null : row.operation_ref)
-    }, "\u5DE5\u65F6\u8BE6\u60C5"), onDrill && /*#__PURE__*/React.createElement(C.Button, {
+    }, "\u5DE5\u65F6\u8BE6\u60C5"), /*#__PURE__*/React.createElement(C.Button, {
       icon: "chart-gantt",
       className: "mini",
       onClick: () => onDrill(row.drill.selected)
@@ -44901,7 +43793,7 @@ function SMExport({
       })
     }, F.dateTime(row.next_start))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("div", {
       className: "rd-changeover-flow"
-    }, onDrill ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(C.Button, {
+    }, /*#__PURE__*/React.createElement(C.Button, {
       className: "btn link",
       "data-changeover-operation": row.previous_operation_ref,
       onClick: () => onDrill(row.drill.previous)
@@ -44911,14 +43803,14 @@ function SMExport({
       className: "btn link",
       "data-changeover-operation": row.next_operation_ref,
       onClick: () => onDrill(row.drill.next)
-    }, row.next.batch_label || '批次未记录', " \xB7 ", row.next.process_label || T.name_missing)) : /*#__PURE__*/React.createElement("span", null, row.previous.batch_label, " \xB7 ", row.previous.process_label, " \u2192 ", row.next.batch_label, " \xB7 ", row.next.process_label)), /*#__PURE__*/React.createElement("small", null, row.previous.type_label || '工种未记录', " \u2192 ", row.next.type_label || '工种未记录')), /*#__PURE__*/React.createElement("td", null, row.predecessor_outside_window && /*#__PURE__*/React.createElement("small", null, "\u524D\u5E8F\u5728\u8303\u56F4\u5916"), row.overlap !== false && /*#__PURE__*/React.createElement("small", null, row.overlap === null ? '重叠待确认' : '前后安排重叠'), row.state !== 'complete' && /*#__PURE__*/React.createElement("small", null, "\u8D44\u6599\u5F85\u786E\u8BA4")), /*#__PURE__*/React.createElement("td", {
+    }, row.next.batch_label || '批次未记录', " \xB7 ", row.next.process_label || T.name_missing)), /*#__PURE__*/React.createElement("small", null, row.previous.type_label || '工种未记录', " \u2192 ", row.next.type_label || '工种未记录')), /*#__PURE__*/React.createElement("td", null, row.predecessor_outside_window && /*#__PURE__*/React.createElement("small", null, "\u524D\u5E8F\u5728\u8303\u56F4\u5916"), row.overlap !== false && /*#__PURE__*/React.createElement("small", null, row.overlap === null ? '重叠待确认' : '前后安排重叠'), row.state !== 'complete' && /*#__PURE__*/React.createElement("small", null, "\u8D44\u6599\u5F85\u786E\u8BA4")), /*#__PURE__*/React.createElement("td", {
       className: "wb-col-actions"
     }, /*#__PURE__*/React.createElement(C.Button, {
       className: "mini",
       "data-changeover-detail": row.event_ref,
       "aria-expanded": openEvent === row.event_ref,
       onClick: () => setOpenEvent(openEvent === row.event_ref ? null : row.event_ref)
-    }, "\u5207\u6362\u8BE6\u60C5"), onDrill && /*#__PURE__*/React.createElement("div", {
+    }, "\u5207\u6362\u8BE6\u60C5"), /*#__PURE__*/React.createElement("div", {
       className: "rd-locate"
     }, /*#__PURE__*/React.createElement(C.Button, {
       icon: "chart-gantt",
@@ -44955,13 +43847,12 @@ function SMExport({
     }))))))));
   }
   function Pane({
-    adapter,
     result,
     section,
     query,
     onQuery,
     onDrill,
-    enabled = true
+    enabled
   }) {
     const overview = result.data,
       scope = overview.scope,
@@ -44987,7 +43878,7 @@ function SMExport({
     React.useEffect(() => {
       setPaused(false);
     }, [runRef, key, section, result.meta.snapshot_ref]);
-    const read = window.APSResourceSession.useQuery(signal => adapter[section](runRef, q, signal), [adapter, runRef, key, section, result.meta.snapshot_ref], enabled && !paused),
+    const read = window.APSResourceSession.useQuery(signal => window.RunDecisionAPI[section](runRef, q, signal), [runRef, key, section, result.meta.snapshot_ref], enabled && !paused),
       detail = read.result,
       data = detail && detail.data;
     function update(change, paging = false) {
@@ -45100,7 +43991,6 @@ function SMExport({
       className: "rc-tools rd-detail-actions"
     }, data && /*#__PURE__*/React.createElement(D.Export, {
       key: detail.meta.snapshot_ref,
-      adapter: adapter,
       result: detail,
       initialSection: section,
       filterQuery: q
@@ -45182,6 +44072,7 @@ function SMExport({
 
   const A = window.RunCandidateAPI,
     P = window.PointContract,
+    T = window.APSWorkbenchTransport,
     {
       ref,
       time
@@ -45192,7 +44083,6 @@ function SMExport({
     count = v => Number.isSafeInteger(v) && v >= 0;
   const finite = v => typeof v === 'number' && Number.isFinite(v),
     nullable = fn => v => v === null || fn(v);
-  const token = v => text(v) && /^[A-Za-z0-9_-]{32}$/.test(v);
   const reason = v => shape(v, ['code', 'message']) && text(v.code) && text(v.message);
   const gaps = v => Array.isArray(v) && v.every(g => shape(g, ['field', 'code', 'message']) && Object.values(g).every(text));
   const resource = v => v === null || shape(v, ['ref', 'label']) && nullable(ref)(v.ref) && nullable(text)(v.label);
@@ -45228,7 +44118,7 @@ function SMExport({
     if (baseline) check(typeof v.interval_comparable === 'boolean' && (['internal', 'external'].includes(v.source) || v.source === null && v.data_gaps.some(gap => gap.field === 'source')));else check(time(v.start) && time(v.end) && ['internal', 'external'].includes(v.source) && typeof v.locked === 'boolean');
   }
   function comparison(row, q, seen, segments, candidateRefs) {
-    check(A.shape(row, ['operation_ref', 'row_ref', 'batch_ref', 'batch_label', 'part_label', 'sequence', 'process_label', 'piece_id', 'quantity', 'batch_quantity', 'due_date', 'execution_at_generation', 'data_gaps', 'candidate', 'baseline_segments', 'selected_at_admission', 'candidate_operation_status', 'status', 'comparison_available', 'delta', 'execution_affected', 'improvement_assessment', 'reasons'], ['process_type_ref', 'process_type_label']) && ref(row.operation_ref) && !seen.has(row.operation_ref) && nullable(ref)(row.batch_ref) && (!q.batch_ref || row.batch_ref === q.batch_ref) && typeof row.selected_at_admission === 'boolean' && typeof row.execution_affected === 'boolean' && row.improvement_assessment === null && statuses.includes(row.status) && ['batch_label', 'part_label', 'process_label', 'due_date'].every(k => nullable(text)(row[k])) && A.quantityContext(row, true) && (row.process_type_ref === undefined || nullable(ref)(row.process_type_ref)) && (row.process_type_label === undefined || nullable(text)(row.process_type_label)) && Array.isArray(row.reasons) && row.reasons.every(reason) && Array.isArray(row.baseline_segments));
+    check(shape(row, ['operation_ref', 'row_ref', 'batch_ref', 'batch_label', 'part_label', 'sequence', 'process_label', 'process_type_ref', 'process_type_label', 'piece_id', 'quantity', 'batch_quantity', 'due_date', 'execution_at_generation', 'data_gaps', 'candidate', 'baseline_segments', 'selected_at_admission', 'candidate_operation_status', 'status', 'comparison_available', 'delta', 'execution_affected', 'improvement_assessment', 'reasons']) && ref(row.operation_ref) && !seen.has(row.operation_ref) && nullable(ref)(row.batch_ref) && (!q.batch_ref || row.batch_ref === q.batch_ref) && typeof row.selected_at_admission === 'boolean' && typeof row.execution_affected === 'boolean' && row.improvement_assessment === null && statuses.includes(row.status) && ['batch_label', 'part_label', 'process_label', 'process_type_label', 'due_date'].every(k => nullable(text)(row[k])) && A.quantityContext(row, true) && nullable(ref)(row.process_type_ref) && Array.isArray(row.reasons) && row.reasons.every(reason) && Array.isArray(row.baseline_segments));
     seen.add(row.operation_ref);
     for (const value of row.baseline_segments) {
       interval(value, true);
@@ -45249,9 +44139,8 @@ function SMExport({
     }
   }
   function validate(payload, workspace) {
-    const q = scope(workspace);
-    check(shape(payload, ['ok', 'schema_version', 'data', 'meta', 'warnings']) && payload.ok === true && payload.schema_version === 1 && shape(payload.meta, ['request_ref', 'source', 'time_basis', 'snapshot_ref', 'as_of']) && /^[a-f0-9]{32}$/.test(payload.meta.request_ref) && payload.meta.source === 'production' && payload.meta.time_basis === 'factory_local' && token(payload.meta.snapshot_ref) && time(payload.meta.as_of) && Array.isArray(payload.warnings) && payload.warnings.every(reason));
-    const d = payload.data;
+    const q = scope(workspace),
+      d = payload.data;
     check(shape(d, ['candidate', 'generation', 'baseline', 'comparisons', 'operation_count', 'full_operation_count', 'rows_complete', 'counts', 'execution_affected_count', 'time_scope', 'batch_ref', 'delta_basis', 'duration_basis', 'improvement_assessment', 'capabilities', 'data_gaps']) && equal(d.candidate, workspace.candidate) && d.batch_ref === workspace.batch_ref && d.rows_complete === true && count(d.operation_count) && count(d.full_operation_count) && d.operation_count <= d.full_operation_count && d.full_operation_count <= 40000 && Array.isArray(d.comparisons) && d.operation_count === d.comparisons.length && d.improvement_assessment === null && d.delta_basis === 'candidate_minus_admission_baseline' && d.duration_basis === 'elapsed_wall_clock_hours_not_effective_processing' && equal(d.capabilities, {
       view: true,
       adopt: false,
@@ -45272,7 +44161,7 @@ function SMExport({
     if (!q.range_start && !q.batch_ref) check(d.operation_count === d.full_operation_count);
     const g = d.generation,
       wg = workspace.generation;
-    check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated', 'input', 'source_verification']) && ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated'].every(k => g[k] === wg[k]) && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission' && g.current_entities_consulted === false && g.formal_version_allocated === false && object(g.input) && Object.keys(wg.input).every(k => equal(g.input[k], wg.input[k])) && shape(g.source_verification, ['facts_content_verified', 'baseline_matches_archived_schedule', 'execution_verified_at', 'input_source_verified', 'candidate_content_verified']) && g.source_verification.facts_content_verified === true && typeof g.source_verification.input_source_verified === 'boolean' && g.source_verification.baseline_matches_archived_schedule === true && g.source_verification.execution_verified_at === 'run_admission' && g.source_verification.candidate_content_verified === true);
+    check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated', 'input']) && ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated'].every(k => g[k] === wg[k]) && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission' && g.current_entities_consulted === false && g.formal_version_allocated === false && object(g.input) && Object.keys(wg.input).every(k => equal(g.input[k], wg.input[k])));
     const b = d.baseline,
       seen = new Set(),
       segments = new Set(),
@@ -45290,41 +44179,16 @@ function SMExport({
     });
     return d;
   }
-  function create(fetcher = window.fetch.bind(window)) {
-    return {
-      async read(workspace, signal) {
-        const q = scope(workspace),
-          controller = new AbortController(),
-          abort = () => controller.abort();
-        if (signal) {
-          if (signal.aborted) abort();else signal.addEventListener('abort', abort, {
-            once: true
-          });
-        }
-        const timer = setTimeout(abort, 60000);
-        try {
-          const response = await fetcher('/api/workbench/v1/scheduling/candidates/' + workspace.candidate.candidate_ref + '/baseline?' + new URLSearchParams(q), {
-            method: 'GET',
-            credentials: 'same-origin',
-            cache: 'no-store',
-            redirect: 'error',
-            signal: controller.signal
-          });
-          const json = (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() === 'application/json';
-          const payload = json ? await response.json() : null;
-          if (!response.ok) throw new Error(payload && payload.error && text(payload.error.message) ? payload.error.message : '原安排读取失败，没有显示上次结果。请点「刷新原安排」。');
-          check(response.status === 200 && json);
-          validate(payload, workspace);
-          return payload;
-        } finally {
-          clearTimeout(timer);
-          if (signal) signal.removeEventListener('abort', abort);
-        }
-      }
-    };
+  async function read(workspace, signal) {
+    const payload = await T.read('/api/workbench/v1/scheduling/candidates/' + workspace.candidate.candidate_ref + '/baseline', scope(workspace), {
+      signal,
+      timeout: 60000
+    });
+    validate(payload, workspace);
+    return payload;
   }
   window.RunBaselineAPI = {
-    create,
+    read,
     validate,
     scope,
     resourceIdentity
@@ -45424,7 +44288,7 @@ function SMExport({
       })) : []
     };
   }
-  function groupPrepared(prepared, mode, focus = null) {
+  function groupPrepared(prepared, mode, focus) {
     const groups = new Map(),
       comparisons = [];
     let start = null,
@@ -45475,7 +44339,7 @@ function SMExport({
       hasPoints
     };
   }
-  function selectPrepared(candidate, baseline, query = '', operationRefs = null, baselineVisible = true) {
+  function selectPrepared(candidate, baseline, query, operationRefs, baselineVisible) {
     const groups = new Map(),
       needle = query.trim().toLocaleLowerCase();
     const comparisons = (baselineVisible ? baseline.comparisons : []).filter(entry => (!operationRefs || operationRefs.has(entry.comparison.operation_ref)) && (!needle || entry.search.includes(needle))).map(entry => entry.comparison);
@@ -45525,7 +44389,7 @@ function SMExport({
       hasBaseline: baselineVisible && baseline.hasBaseline
     };
   }
-  function layoutPrepared(prepared, width = 1000) {
+  function layoutPrepared(prepared, width) {
     const {
       candidate,
       start,
@@ -45549,7 +44413,7 @@ function SMExport({
       top += row.height;
     }
     for (const [id, group] of prepared.groups) {
-      const current = group.candidate ? M.groupRows(group.candidate, start, end, width, true) : group.current;
+      const current = group.candidate ? M.groupRows(group.candidate, start, end, width) : group.current;
       current.forEach(append);
       const points = group.points.length ? window.PointGanttModel.layoutTracks(group.points, start, end, width).map(lane => lane.filter(item => group.shown.has(item))) : [];
       for (const [baselinePoint, lanes] of [[false, group.intervals], [true, points]]) lanes.forEach((items, lane) => {
@@ -45609,9 +44473,7 @@ function SMExport({
   function useBaseline(data, available) {
     const [enabled, setEnabled] = React.useState(false);
     const active = enabled && available;
-    const read = window.APSResourceSession.useQuery(signal => window.RunBaselineAPI.create().read(data, signal).catch(error => {
-      throw new Error(error.name === 'AbortError' ? '原安排读取超时，请刷新原安排。' : error.message);
-    }), [data], active);
+    const read = window.APSResourceSession.useQuery(signal => window.RunBaselineAPI.read(data, signal), [data], active);
     return {
       ...read,
       retainedResult: read.result,
@@ -45803,7 +44665,7 @@ function SMExport({
     chosen,
     onChoose,
     workspace,
-    inspecting = false,
+    inspecting,
     onShowAll
   }) {
     const [open, setOpen] = React.useState(false),
@@ -46658,9 +45520,9 @@ function SMExport({
   'use strict';
 
   const A = window.RunCandidateAPI,
+    N = window.RunCandidateAnalysisAPI,
+    D = window.RunDecisionAPI,
     C = window.RunCandidateControls;
-  const adapterIds = new WeakMap();
-  let nextAdapter = 0;
   function useRead(load, deps, enabled) {
     const read = window.APSResourceSession.useQuery(load, deps, enabled);
     return {
@@ -46676,7 +45538,6 @@ function SMExport({
   }
   // One 导出 button opens the format dialog, the same walk as the plan, trial and actual-gantt exports.
   function Export({
-    adapter,
     result,
     scope,
     query
@@ -46706,7 +45567,7 @@ function SMExport({
       setError(null);
       setDone('');
       try {
-        const file = A.download(await adapter.export(d.candidate.candidate_ref, scope, result.meta.snapshot_ref, fmt, controller.signal), result, fmt);
+        const file = A.download(await A.export(d.candidate.candidate_ref, scope, result.meta.snapshot_ref, fmt, controller.signal), result);
         if (controller.signal.aborted) return;
         window.APSWorkbenchTransport.saveBlob(file.filename, file.blob);
         setDone(window.WorkbenchTerms.download_started(file.filename) + '，共 ' + file.row_count + ' 条记录（安排 ' + d.task_count + '，未安排 ' + d.unplanned_operation_count + '）。');
@@ -46766,9 +45627,8 @@ function SMExport({
     }))));
   }
   function Session({
-    adapter,
-    view = 'analysis',
-    initialContext = {},
+    view,
+    initialContext,
     onNavigate,
     renderAdoption,
     renderTrial,
@@ -46808,30 +45668,26 @@ function SMExport({
       [historyPaused, setHistoryPaused] = React.useState(false);
     const [detailsOpen, setDetailsOpen] = React.useState(view === 'gantt' && (A.ref(initialContext.operation_ref) || A.ref(initialContext.selected_row_ref)));
     const detailsToggle = React.useRef(null);
-    const directory = useRead(signal => adapter.catalog(runRef, catalogQuery, signal), [adapter, runRef, catalogQuery, revision], !!runRef && !invalid && !isReference);
+    const directory = useRead(signal => A.catalog(runRef, catalogQuery, signal), [runRef, catalogQuery, revision], !!runRef && !invalid && !isReference);
     const read = useRead(async signal => {
-      const v = isReference ? await adapter.referenceWorkspace(runRef, {
+      const v = isReference ? await D.referenceWorkspace(runRef, {
         ...scope,
         selected_candidate_ref: candidateRef,
         comparison_mode: 'admission_official',
         resource_view: initialContext.resource_view,
         plan_ref: initialContext.plan_ref
-      }, signal) : await adapter.workspace(candidateRef, scope, signal);
+      }, signal) : await A.workspace(candidateRef, scope, signal);
       A.check(!initialContext.run_ref || v.data.candidate.run_ref === initialContext.run_ref, '候选方案不属于所选排产记录。');
       return v;
-    }, [adapter, candidateRef, scope, revision, isReference, isReference ? runRef : null], !!candidateRef && !invalid);
+    }, [candidateRef, scope, revision, isReference, isReference ? runRef : null], !!candidateRef && !invalid);
     const result = read.result,
       data = result && result.data;
     React.useEffect(() => {
       if (data && !runRef) setRunRef(data.candidate.run_ref);
     }, [data, runRef]);
     const shown = data && data.capabilities.view === true && data.candidate.capabilities.view === true ? data : null;
-    const analysisRead = useRead(async signal => {
-      return adapter.analysis(candidateRef, runRef, signal);
-    }, [adapter, candidateRef, revision, analysisPaused], !!candidateRef && !invalid && !analysisPaused && !isReference);
-    const historyRead = useRead(async signal => {
-      return adapter.adoptions(candidateRef, runRef, signal);
-    }, [adapter, candidateRef, revision, result && result.meta.snapshot_ref], !!shown && tab === 'history' && !historyPaused && !isReference);
+    const analysisRead = useRead(signal => N.analysis(candidateRef, runRef, signal), [candidateRef, revision, analysisPaused], !!candidateRef && !invalid && !analysisPaused && !isReference);
+    const historyRead = useRead(signal => N.adoptions(candidateRef, runRef, signal), [candidateRef, revision, result && result.meta.snapshot_ref], !!shown && tab === 'history' && !historyPaused && !isReference);
     const analysis = shown && !analysisPaused && analysisRead.result && analysisRead.result.data.run_ref === shown.candidate.run_ref ? analysisRead.result.data : null;
     const ownershipError = readState => shown && readState.result && readState.result.data.run_ref !== shown.candidate.run_ref ? new Error('读到的数据不属于所选候选方案的排产记录。') : readState.error;
     window.WorkbenchCaption.useCaption(shown && !read.busy && !read.error && shown.candidate.label ? {
@@ -46975,7 +45831,7 @@ function SMExport({
       className: "rc-tools"
     }, /*#__PURE__*/React.createElement("div", {
       className: "rc-nav"
-    }, onNavigate && (initialContext.return_decision_context || initialContext.reference_candidate_ref || initialContext.comparison_mode) && /*#__PURE__*/React.createElement(C.Button, {
+    }, (initialContext.return_decision_context || initialContext.reference_candidate_ref || initialContext.comparison_mode) && /*#__PURE__*/React.createElement(C.Button, {
       icon: "chevron-left",
       className: "btn link",
       onClick: () => onNavigate('analysis', initialContext.return_decision_context || {
@@ -46985,11 +45841,11 @@ function SMExport({
         comparison_mode: initialContext.comparison_mode || 'candidates',
         ...scope
       })
-    }, "\u8FD4\u56DE\u65B9\u6848\u5BF9\u6BD4"), onNavigate && runHistoryReturn && /*#__PURE__*/React.createElement(C.Button, {
+    }, "\u8FD4\u56DE\u65B9\u6848\u5BF9\u6BD4"), /*#__PURE__*/React.createElement(C.Button, {
       icon: "chevron-left",
       className: "btn link",
       onClick: () => onNavigate(runHistoryReturn.view, runHistoryReturn.context)
-    }, "\u8FD4\u56DE\u6392\u4EA7\u8BB0\u5F55"), onNavigate && initialContext.return_plan_context && A.ref(initialContext.return_plan_context.plan_ref) && /*#__PURE__*/React.createElement(C.Button, {
+    }, "\u8FD4\u56DE\u6392\u4EA7\u8BB0\u5F55"), initialContext.return_plan_context && A.ref(initialContext.return_plan_context.plan_ref) && /*#__PURE__*/React.createElement(C.Button, {
       icon: "chevron-left",
       className: "btn link",
       onClick: () => onNavigate('analysis', returnContext(initialContext.return_plan_context))
@@ -47098,7 +45954,6 @@ function SMExport({
       onClick: () => setRangeOpen(!rangeOpen)
     }, "\u8BFB\u53D6\u8303\u56F4"), shown && !isReference && /*#__PURE__*/React.createElement(Export, {
       key: result.meta.snapshot_ref,
-      adapter: adapter,
       result: result,
       scope: scope,
       query: query
@@ -47220,10 +46075,10 @@ function SMExport({
       error: historyError
     }), !historyPaused && historyRead.result && !historyError && /*#__PURE__*/React.createElement(Analysis.History, {
       data: historyRead.result.data,
-      onPlan: onNavigate && (plan => onNavigate('analysis', {
+      onPlan: plan => onNavigate('analysis', {
         ...historyOrigin,
         plan_ref: plan.plan_ref
-      }))
+      })
     })) : tab === 'delivery' ? analysis && /*#__PURE__*/React.createElement(Analysis.Batches, {
       key: analysis.candidate_ref,
       data: analysis,
@@ -47231,13 +46086,13 @@ function SMExport({
         lastOperation(task);
         setTab('tasks');
       },
-      onBatch: onNavigate && (row => onNavigate('gantt', {
+      onBatch: row => onNavigate('gantt', {
         ...historyOrigin,
         run_ref: analysis.run_ref,
         candidate_ref: analysis.candidate_ref,
         batch_ref: row.batch_ref,
         candidate_tab: 'tasks'
-      }))
+      })
     }) : tab === 'unplanned' && shown.unplanned_operations === null ? /*#__PURE__*/React.createElement("div", {
       className: "rc-notice"
     }, "\u672A\u8BB0\u5F55\u6392\u4EA7\u65F6\u7684\u672A\u6392\u5DE5\u5E8F\u660E\u7EC6\u3002") : /*#__PURE__*/React.createElement(window.RunCandidateGantt.TaskList, {
@@ -47270,21 +46125,14 @@ function SMExport({
     }))));
   }
   function RunCandidateWorkspace(props) {
-    const adapter = React.useMemo(() => window.RunDecisionAPI.adapter(window.RunCandidateAnalysisAPI.adapter(props.adapter || {
-      ...window.RunCandidateAnalysisAPI.create(),
-      ...window.RunDecisionAPI.create()
-    })), [props.adapter]);
-    if (!adapterIds.has(adapter)) adapterIds.set(adapter, ++nextAdapter);
     const context = props.initialContext,
       identity = [context.run_ref, context.candidate_ref, context.range_start, context.range_end, context.batch_ref, context.operation_ref, context.selected_row_ref, context.reference_view, context.plan_ref, context.comparison_mode, context.resource_view, context.resource_kind, context.resource_ref];
     return props.view === 'analysis' ? /*#__PURE__*/React.createElement(window.RunDecisionComparison.Workspace, {
-      key: adapterIds.get(adapter) + ':' + JSON.stringify(identity),
-      ...props,
-      adapter: adapter
+      key: JSON.stringify(identity),
+      ...props
     }) : /*#__PURE__*/React.createElement(Session, {
-      key: adapterIds.get(adapter) + ':' + JSON.stringify(identity),
-      ...props,
-      adapter: adapter
+      key: JSON.stringify(identity),
+      ...props
     });
   }
   window.RunCandidateWorkspace = RunCandidateWorkspace;
@@ -47294,6 +46142,7 @@ function SMExport({
 (function () {
   'use strict';
 
+  const T = window.APSWorkbenchTransport;
   const states = ['queued', 'running', 'complete', 'partial', 'failed', 'interrupted'];
   const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
   const text = v => typeof v === 'string',
@@ -47320,7 +46169,7 @@ function SMExport({
   const timeKey = v => v.slice(0, 19) + '.' + (v.split('.')[1] || '').padEnd(6, '0');
   const gap = v => shape(v, ['field', 'code', 'message']) && [v.field, v.code, v.message].every(text);
   const queryKeys = ['page', 'size', 'state', 'accepted_from', 'accepted_to', 'sort', 'order', 'snapshot_ref'];
-  function scope(query = {}) {
+  function scope(query) {
     check(shape(query, [], queryKeys), '查询条件里有不认识的项，没有自动忽略。请从侧栏重新打开排产记录。');
     const q = {
       page: 1,
@@ -47367,17 +46216,17 @@ function SMExport({
     if (Object.keys(returnPlan).length) result.return_plan_context = returnPlan;
     return result;
   }
-  // 不重排时段：旧记录不带这一项；null 是“不设”，存的值读不出来时也是 null，并附一条资料缺项。
+  // 不重排时段：没带这一项表示按交付设置推算；null 是“不设”，存的值读不出来时也是 null，并附一条资料缺项。
   const minute = v => text(v) && date(v.slice(0, 10)) && /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d$/.test(v);
   const holdWindow = v => v === undefined || v === null || shape(v, ['start', 'end']) && minute(v.start) && minute(v.end) && v.start < v.end;
   function admission(s) {
     const keys = ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy', 'batch_count'].concat(s.material_strategy === undefined ? [] : ['material_strategy']);
     const recorded = keys.concat(s.hold_window === undefined ? [] : ['hold_window']);
-    check(shape(s, recorded.concat(['selection', 'basis', 'data_gaps'], s.run_options === undefined ? [] : ['run_options'])) && s.selection === 'explicit_batches' && s.basis === 'captured_at_run_admission' && Array.isArray(s.data_gaps) && s.data_gaps.every(gap) && s.data_gaps.every(g => recorded.includes(g.field) && ['not_recorded', 'invalid_stored_value'].includes(g.code)) && holdWindow(s.hold_window));
+    check(shape(s, recorded.concat(['selection', 'basis', 'data_gaps', 'run_options'])) && s.selection === 'explicit_batches' && s.basis === 'captured_at_run_admission' && Array.isArray(s.data_gaps) && s.data_gaps.every(gap) && s.data_gaps.every(g => recorded.includes(g.field) && ['not_recorded', 'invalid_stored_value'].includes(g.code)) && holdWindow(s.hold_window));
     const gapFields = new Set(s.data_gaps.map(g => g.field));
-    check(['start_date', 'end_date'].every(k => s[k] === null || date(s[k])) && (s.start_date === null || s.end_date === null || s.start_date <= s.end_date) && (s.ready_check === null || typeof s.ready_check === 'boolean') && [null, 'auto_assign', 'exclude'].includes(s.missing_resource_policy) && (s.material_strategy === undefined || [null, 'strict', 'stage', 'split'].includes(s.material_strategy)) && [null, 'preserve_actuals'].includes(s.completed_policy) && (s.batch_count === null || count(s.batch_count) && s.batch_count > 0) && gapFields.size === s.data_gaps.length && (s.hold_window === null || !gapFields.has('hold_window')));
+    check(['start_date', 'end_date'].every(k => s[k] === null || date(s[k])) && (s.start_date === null || s.end_date === null || s.start_date <= s.end_date) && (s.ready_check === null || typeof s.ready_check === 'boolean') && [null, 'auto_assign', 'exclude'].includes(s.missing_resource_policy) && (s.material_strategy === undefined || [null, 'strict', 'stage'].includes(s.material_strategy)) && [null, 'preserve_actuals'].includes(s.completed_policy) && (s.batch_count === null || count(s.batch_count) && s.batch_count > 0) && gapFields.size === s.data_gaps.length && (s.hold_window === null || !gapFields.has('hold_window')));
     check(keys.every(k => gapFields.has(k) === (s[k] === null)));
-    check(s.run_options === undefined || window.RunGenerationContract.runOptions(s.run_options));
+    check(window.RunGenerationContract.runOptions(s.run_options));
   }
   function run(v) {
     check(shape(v, ['run_ref', 'state', 'stage', 'accepted_at', 'started_at', 'finished_at', 'candidate_count', 'task_count', 'task_count_basis', 'counts_final', 'scope_summary', 'recovery_required', 'recovery_reason', 'error', 'completion_semantics', 'constraint_verification', 'task_content_verification']) && ref(v.run_ref) && states.includes(v.state) && time(v.accepted_at) && ['started_at', 'finished_at'].every(k => v[k] === null || time(v[k])) && count(v.candidate_count) && count(v.task_count) && v.task_count_basis === 'persisted_rows_across_candidates' && v.completion_semantics === 'execution_state_only' && v.constraint_verification === 'not_checked_by_history' && v.task_content_verification === 'candidate_workspace_required');
@@ -47400,9 +46249,10 @@ function SMExport({
       y = right === null ? '' : timeKey(right);
     return direction * (x < y ? -1 : x > y ? 1 : a.run_ref < b.run_ref ? -1 : a.run_ref > b.run_ref ? 1 : 0);
   }
-  function catalog(v, query = {}) {
+  function validateCatalog(v, query) {
+    // 翻页和页面记忆都要用本次快照，不能为空。
     const q = scope(query);
-    check(shape(v, ['ok', 'schema_version', 'data', 'meta', 'warnings']) && v.ok === true && v.schema_version === 1 && shape(v.meta, ['request_ref', 'source', 'time_basis', 'snapshot_ref', 'as_of']) && /^[a-f0-9]{32}$/.test(v.meta.request_ref) && v.meta.source === 'production' && v.meta.time_basis === 'factory_local' && token(v.meta.snapshot_ref) && time(v.meta.as_of) && Array.isArray(v.warnings) && v.warnings.every(w => object(w) && text(w.code) && text(w.message)));
+    check(token(v.meta.snapshot_ref));
     if (q.snapshot_ref && q.snapshot_ref !== v.meta.snapshot_ref) {
       const error = new Error(window.WorkbenchTerms.outcomes.stale);
       error.code = 'snapshot_stale';
@@ -47417,66 +46267,22 @@ function SMExport({
     check(new Set(d.runs.map(r => r.run_ref)).size === d.runs.length);
     return d;
   }
-  function create(fetcher = window.fetch.bind(window)) {
-    return window.APSReadBoundary.verified({
-      async catalog(query = {}, signal) {
-        const q = scope(query),
-          controller = new AbortController(),
-          abort = () => controller.abort();
-        if (signal) {
-          if (signal.aborted) abort();else signal.addEventListener('abort', abort, {
-            once: true
-          });
-        }
-        const timer = setTimeout(abort, 60000);
-        try {
-          const response = await fetcher('/api/workbench/v1/scheduling/runs?' + new URLSearchParams(q), {
-            method: 'GET',
-            credentials: 'same-origin',
-            cache: 'no-store',
-            redirect: 'error',
-            signal: controller.signal
-          });
-          const json = (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() === 'application/json';
-          if (!response.ok) {
-            const value = json ? await response.json() : null,
-              e = value && value.error;
-            const error = new Error(e && text(e.message) ? e.message : '排产记录读取失败，请重新查询。');
-            error.code = e && text(e.code) ? e.code : 'invalid_response';
-            error.status = response.status;
-            throw error;
-          }
-          check(response.status === 200 && json);
-          const value = await response.json();
-          catalog(value, q);
-          return value;
-        } catch (error) {
-          if (controller.signal.aborted && !(signal && signal.aborted)) {
-            const timeout = new Error('排产记录读取超时，请刷新重试。');
-            timeout.code = 'timeout';
-            throw timeout;
-          }
-          throw error;
-        } finally {
-          clearTimeout(timer);
-          if (signal) signal.removeEventListener('abort', abort);
-        }
-      }
-    }, ['catalog']);
-  }
-  function adapter(value) {
-    return window.APSReadBoundary.checked(value, {
-      catalog: (result, query) => catalog(result, query)
-    });
+  async function catalog(query, signal) {
+    const q = scope(query),
+      value = await T.read('/api/workbench/v1/scheduling/runs', q, {
+        signal,
+        timeout: 60000
+      });
+    validateCatalog(value, q);
+    return value;
   }
   window.RunHistoryAPI = {
-    create,
-    adapter,
+    catalog,
+    validateCatalog,
     check,
     scope,
     context,
     returnContext,
-    catalog,
     ref,
     date,
     time,
@@ -47503,13 +46309,10 @@ function SMExport({
     completed_policy: '执行规则',
     batch_count: '所选批次'
   };
-  function Button({
-    className = '',
-    ...props
-  }) {
+  function Button(props) {
     return /*#__PURE__*/React.createElement(window.ResourceControls.Button, {
       ...props,
-      className: 'btn wb-action ' + className
+      className: "btn wb-action"
     });
   }
   const timeLabel = v => window.WorkbenchFormat.dateTime(v);
@@ -47660,12 +46463,12 @@ function SMExport({
     value
   }) {
     const options = value.run_options;
-    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, value.start_date || '起日未记录', " \u81F3 ", value.end_date || '止日未记录'), /*#__PURE__*/React.createElement("small", null, "\u7269\u6599\u9F50\u5957\u89C4\u5219\uFF1A", window.WorkbenchTerms.material_strategy(value.material_strategy, value.ready_check)), /*#__PURE__*/React.createElement("small", null, "\u9009\u6279 ", value.batch_count === null ? '未记录' : number(value.batch_count) + ' 批', " \xB7 \u9F50\u5957", value.ready_check === null ? '未记录' : value.ready_check ? '开启' : '关闭'), options && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("small", null, "\u4E3B\u76EE\u6807\uFF1A", window.RunGenerationContract.objectiveLabel(options.primary_objective)), /*#__PURE__*/React.createElement("small", null, "\u540C\u65F6\u63A2\u7D22\uFF1A", options.target_objectives.map(window.RunGenerationContract.objectiveLabel).join(' · ')), /*#__PURE__*/React.createElement("small", null, "\u603B\u8BA1\u7B97\u9884\u7B97\uFF1A", number(options.time_budget_seconds), " \u79D2 \xB7 ", options.algo_mode === 'greedy' ? '快速生成' : '共同优化')), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u6392\u4EA7\u8BBE\u7F6E"), /*#__PURE__*/React.createElement("small", null, "\u7F3A\u8D44\u6E90\uFF1A", {
+    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, value.start_date || '起日未记录', " \u81F3 ", value.end_date || '止日未记录'), /*#__PURE__*/React.createElement("small", null, "\u7269\u6599\u9F50\u5957\u89C4\u5219\uFF1A", window.WorkbenchTerms.material_strategy(value.material_strategy, value.ready_check)), /*#__PURE__*/React.createElement("small", null, "\u9009\u6279 ", value.batch_count === null ? '未记录' : number(value.batch_count) + ' 批', " \xB7 \u9F50\u5957", value.ready_check === null ? '未记录' : value.ready_check ? '开启' : '关闭'), /*#__PURE__*/React.createElement("small", null, "\u4E3B\u76EE\u6807\uFF1A", window.RunGenerationContract.objectiveLabel(options.primary_objective)), /*#__PURE__*/React.createElement("small", null, "\u540C\u65F6\u63A2\u7D22\uFF1A", options.target_objectives.map(window.RunGenerationContract.objectiveLabel).join(' · ')), /*#__PURE__*/React.createElement("small", null, "\u603B\u8BA1\u7B97\u9884\u7B97\uFF1A", number(options.time_budget_seconds), " \u79D2 \xB7 ", options.algo_mode === 'greedy' ? '快速生成' : '共同优化'), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u6392\u4EA7\u8BBE\u7F6E"), /*#__PURE__*/React.createElement("small", null, "\u7F3A\u8D44\u6E90\uFF1A", {
       auto_assign: '自动分配',
       exclude: '暂不排'
     }[value.missing_resource_policy] || '未记录', " \xB7 ", value.completed_policy === 'preserve_actuals' ? '保留开工和完工记录' : '执行规则未记录'), /*#__PURE__*/React.createElement("small", {
       "data-hold-window": true
-    }, "\u4E0D\u91CD\u6392\u65F6\u6BB5\uFF1A", window.WorkbenchTerms.hold_window(value.hold_window, value.data_gaps.some(g => g.field === 'hold_window'))), options && /*#__PURE__*/React.createElement("small", null, "\u751F\u6210\u7B56\u7565\uFF1A", options.generation_policy_version, " \xB7 \u56FE\u5206\u6790\uFF1A", {
+    }, "\u4E0D\u91CD\u6392\u65F6\u6BB5\uFF1A", window.WorkbenchTerms.hold_window(value.hold_window, value.data_gaps.some(g => g.field === 'hold_window'))), /*#__PURE__*/React.createElement("small", null, "\u751F\u6210\u7B56\u7565\uFF1A", options.generation_policy_version, " \xB7 \u56FE\u5206\u6790\uFF1A", {
       off: '关闭',
       report: '诊断报告',
       on: '参与优化'
@@ -47774,20 +46577,19 @@ function SMExport({
 
   const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   // 返回位置与条件明细只读，并随 onNavigate 经 history.pushState 结构化克隆，不另做深拷贝。
-  const states = ['all', 'queued', 'running', 'complete', 'partial', 'failed', 'interrupted', 'committed', 'success', 'unknown', 'available', 'current', 'historical', 'unavailable'];
+  const states = ['all', 'queued', 'running', 'complete', 'partial', 'failed', 'interrupted', 'committed'];
   const queryKeys = ['timeline', 'date_from', 'date_to', 'metric_keys', 'comparison', 'reference_run_ref', 'selected_entry_ref', 'range_start', 'range_end', 'resource_window_days', 'state', 'sort', 'order', 'page', 'size', 'condition_page', 'condition_size', 'snapshot_ref'];
   // 默认指标列表直接放进每份默认查询，冻结后谁也不能原地改它；切换指标一律生成新数组。
   const defaultMetrics = Object.freeze(['overdue_count', 'total_tardiness_hours', 'makespan_hours', 'elapsed_seconds']);
   const sourceLabels = {
     run: '排产运行',
     candidate_adoption: '候选方案采用',
-    trial_adoption: '试调方案采用',
-    legacy_official: '旧正式计划'
+    trial_adoption: '试调方案采用'
   };
   const sourceLabel = value => sourceLabels[typeof value === 'string' ? value : value.source_kind];
   const windowMetric = definition => ['fixed_resource_window', 'fixed_changeover_window'].includes(definition.scope);
   const sameMetricDefinition = (a, b) => a.unit === b.unit && a.metric_version === b.metric_version && a.scope === b.scope;
-  const entryRef = value => typeof value === 'string' && /^(?:run:[a-f0-9]{48}|adoption:[a-f0-9]{32}|legacy:[1-9][0-9]*)$/.test(value);
+  const entryRef = value => typeof value === 'string' && /^(?:run:[a-f0-9]{48}|adoption:[a-f0-9]{32})$/.test(value);
   const runRef = value => typeof value === 'string' && /^[a-f0-9]{48}$/.test(value);
   const timeKey = value => value.slice(0, 19) + '.' + (value.split('.')[1] || '').padEnd(6, '0');
   const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
@@ -47811,10 +46613,10 @@ function SMExport({
     return ['absolute', 'fixed_days'].includes(value.mode) && [value.start, value.end].every(v => v === null || H.time(v)) && (value.start === null || value.end === null || timeKey(value.start) < timeKey(value.end)) && (value.days === null || count(value.days)) && ['source_start', 'common_absolute_window'].includes(value.anchor) && value.time_basis === 'factory_local' && value.boundary === 'half_open' && (policy || ['available', 'partial', 'unavailable'].includes(value.state) && reason(value.reason) && shape(value.cohort, ['machine_refs', 'operator_refs']) && refs(value.cohort.machine_refs) && refs(value.cohort.operator_refs));
   }
   function entry(value, metricKeys) {
-    check(shape(value, ['entry_ref', 'timeline', 'source_kind', 'label', 'occurred_at', 'time_basis', 'state', 'identity', 'times', 'baseline', 'source', 'scope', 'reading_context', 'metrics', 'navigation', 'issues']) && entryRef(value.entry_ref) && ['run', 'official'].includes(value.timeline) && ['run', 'candidate_adoption', 'trial_adoption', 'legacy_official'].includes(value.source_kind) && ['label', 'state'].every(key => text(value[key])) && (value.occurred_at === null || window.RunHistoryAPI.time(value.occurred_at)) && nullableText(value.time_basis));
+    check(shape(value, ['entry_ref', 'timeline', 'source_kind', 'label', 'occurred_at', 'time_basis', 'state', 'identity', 'times', 'baseline', 'source', 'scope', 'reading_context', 'metrics', 'navigation', 'issues']) && entryRef(value.entry_ref) && ['run', 'official'].includes(value.timeline) && ['run', 'candidate_adoption', 'trial_adoption'].includes(value.source_kind) && ['label', 'state'].every(key => text(value[key])) && (value.occurred_at === null || window.RunHistoryAPI.time(value.occurred_at)) && nullableText(value.time_basis));
     check(shape(value.identity, ['run_ref', 'candidate_ref', 'scenario_ref', 'draft_ref', 'plan_ref', 'plan_version', 'history_id', 'receipt_ref', 'request_key']) && ['run_ref', 'candidate_ref', 'scenario_ref', 'draft_ref', 'plan_ref'].every(key => value.identity[key] === null || runRef(value.identity[key])) && ['plan_version', 'history_id'].every(key => value.identity[key] === null || count(value.identity[key])) && nullableText(value.identity.receipt_ref) && nullableText(value.identity.request_key));
-    check(value.source_kind === 'run' ? value.timeline === 'run' && value.entry_ref === 'run:' + value.identity.run_ref : value.timeline === 'official' && (value.source_kind === 'legacy_official' ? value.entry_ref === 'legacy:' + value.identity.history_id : value.entry_ref === 'adoption:' + value.identity.receipt_ref));
-    check(shape(value.times, ['accepted_at', 'started_at', 'finished_at', 'adopted_at', 'committed_at_utc', 'schedule_time']) && Object.values(value.times).every(nullableText) && shape(value.baseline, ['plan_ref', 'version']) && (value.baseline.plan_ref === null || runRef(value.baseline.plan_ref)) && (value.baseline.version === null || count(value.baseline.version)) && shape(value.source, ['kind', 'ref', 'state', 'reason']) && text(value.source.kind) && ['available', 'partial', 'unavailable'].includes(value.source.state) && nullableText(value.source.ref) && reason(value.source.reason));
+    check(value.source_kind === 'run' ? value.timeline === 'run' && value.entry_ref === 'run:' + value.identity.run_ref : value.timeline === 'official' && value.entry_ref === 'adoption:' + value.identity.receipt_ref);
+    check(shape(value.times, ['accepted_at', 'started_at', 'finished_at', 'adopted_at', 'committed_at_utc', 'schedule_time']) && Object.values(value.times).every(nullableText) && shape(value.baseline, ['plan_ref', 'version']) && (value.baseline.plan_ref === null || runRef(value.baseline.plan_ref)) && (value.baseline.version === null || count(value.baseline.version)) && shape(value.source, ['kind', 'ref', 'state', 'reason']) && ['run', 'trial'].includes(value.source.kind) && ['available', 'partial', 'unavailable'].includes(value.source.state) && nullableText(value.source.ref) && reason(value.source.reason));
     check(admission(value.scope) && shape(value.reading_context, ['resource_window', 'metric_basis']) && resourceWindow(value.reading_context.resource_window) && text(value.reading_context.metric_basis));
     check(object(value.metrics) && metricKeys.every(key => own(value.metrics, key)) && Object.values(value.metrics).every(metric));
     check(Array.isArray(value.navigation) && value.navigation.every(target => shape(target, ['label', 'view', 'context', 'enabled', 'reason']) && text(target.label) && ['analysis', 'gantt', 'run', 'trial'].includes(target.view) && object(target.context) && typeof target.enabled === 'boolean' && nullableText(target.reason)) && Array.isArray(value.issues) && value.issues.every(v => v !== null && reason(v)));
@@ -47919,8 +46721,9 @@ function SMExport({
     return new URLSearchParams(Object.fromEntries(Object.entries(query).filter(([, value]) => value !== null && value !== undefined).map(([key, value]) => [key, key === 'metric_keys' ? value.join(',') : value])));
   }
   function history(payload, query = {}) {
+    // 成功信封（meta 五键、warnings 形状、as_of）已由 transport.read 校验；历史分页与导出要钉住同一份快照。
     const q = scope(query);
-    check(shape(payload, ['ok', 'schema_version', 'data', 'meta', 'warnings']) && payload.ok === true && payload.schema_version === 1 && object(payload.meta) && text(payload.meta.request_ref) && payload.meta.source === 'production' && payload.meta.time_basis === 'factory_local' && text(payload.meta.snapshot_ref) && payload.meta.snapshot_ref.length > 0 && window.RunHistoryAPI.time(payload.meta.as_of) && Array.isArray(payload.warnings) && payload.warnings.every(value => value !== null && reason(value)));
+    check(payload.meta.snapshot_ref !== null);
     if (q.snapshot_ref && payload.meta.snapshot_ref !== q.snapshot_ref) throw Object.assign(new Error('历史资料已更新，请刷新当前条件后继续查看。'), {
       code: 'snapshot_stale'
     });
@@ -47985,88 +46788,43 @@ function SMExport({
   function metricText(value, definition) {
     return value.value === null ? value.state === 'not_applicable' ? '不适用' : '未知' : numberText(value.value, value.unit, definition.precision);
   }
-  function create(fetcher = window.fetch.bind(window)) {
-    async function request(query, signal, format, section) {
-      const controller = new AbortController(),
-        abort = () => controller.abort();
-      if (signal) {
-        if (signal.aborted) abort();else signal.addEventListener('abort', abort, {
-          once: true
-        });
-      }
-      const timer = setTimeout(abort, 60000);
-      try {
-        const q = {
-          ...query
-        };
-        if (format) {
-          ['page', 'size', 'condition_page', 'condition_size'].forEach(key => delete q[key]);
-          q.format = format;
-          q.section = section;
-        }
-        const response = await fetcher('/api/workbench/v1/scheduling/decision-history' + (format ? '/export' : '') + '?' + serialized(q), {
-          method: 'GET',
-          credentials: 'same-origin',
-          cache: 'no-store',
-          redirect: 'error',
-          signal: controller.signal
-        });
-        const mime = (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
-        if (!response.ok) {
-          const value = mime === 'application/json' ? await response.json() : null,
-            detail = value && value.error;
-          throw Object.assign(new Error(detail && typeof detail.message === 'string' ? detail.message : '历史资料读取失败，请重新查询。'), {
-            code: detail && detail.code || 'invalid_response',
-            status: response.status
-          });
-        }
-        check(response.status === 200, '历史接口的响应状态无效，请重新查询。');
-        if (!format) {
-          check(mime === 'application/json', '历史接口返回的文件类型无效。');
-          return await response.json();
-        }
-        check(mime === (format === 'csv' ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') && /^attachment;/i.test(response.headers.get('Content-Disposition') || ''), '历史导出文件格式无效，请重新下载。');
-        check(response.headers.get('X-Workbench-Snapshot-Ref') === q.snapshot_ref, '历史快照已变化，请刷新后重新导出。');
-        const count = response.headers.get('X-Workbench-Row-Count'),
-          blob = await response.blob();
-        check(count !== null && /^[0-9]+$/.test(count) && Number.isSafeInteger(Number(count)) && blob.size > 0, '历史导出文件内容不完整，请重新下载。');
-        return {
-          filename: '排产历史趋势.' + format,
-          blob,
-          row_count: Number(count)
-        };
-      } catch (error) {
-        if (controller.signal.aborted && !(signal && signal.aborted)) throw Object.assign(new Error('历史资料读取超时，请刷新重试。'), {
-          code: 'timeout'
-        });
-        throw error;
-      } finally {
-        clearTimeout(timer);
-        if (signal) signal.removeEventListener('abort', abort);
-      }
-    }
-    return window.APSReadBoundary.verified({
-      async history(query = {}, signal) {
-        const q = scope(query),
-          result = await request(q, signal);
-        history(result, q);
-        return result;
-      },
-      async historyExport(query, snapshotRef, format, signal, section = 'entries') {
-        check(['csv', 'xlsx'].includes(format) && ['entries', 'conditions', 'configurations', 'all'].includes(section) && (section !== 'all' || format === 'xlsx'), '请选择有效的历史导出格式和内容。');
-        const q = scope({
-          ...query,
-          snapshot_ref: snapshotRef
-        });
-        check(typeof q.snapshot_ref === 'string', '请读取历史资料后再导出。');
-        return request(q, signal, format, section);
-      }
-    }, ['history']);
+  async function read(query = {}, signal) {
+    const q = scope(query),
+      result = await window.APSWorkbenchTransport.read('/api/workbench/v1/scheduling/decision-history', Object.fromEntries(serialized(q)), {
+        signal,
+        timeout: 60000
+      });
+    history(result, q);
+    return result;
   }
-  function adapter(value) {
-    return window.APSReadBoundary.checked(value, {
-      history
+  // 附件、文件类型与魔数、文件名及其后缀由 transport.download 核对；这里只核对快照与行数两个业务头。
+  async function historyExport(query, snapshotRef, format, signal, section = 'entries') {
+    check(['csv', 'xlsx'].includes(format) && ['entries', 'conditions', 'configurations', 'all'].includes(section) && (section !== 'all' || format === 'xlsx'), '请选择有效的历史导出格式和内容。');
+    const q = scope({
+      ...query,
+      snapshot_ref: snapshotRef
     });
+    check(typeof q.snapshot_ref === 'string', '请读取历史资料后再导出。');
+    const params = {
+      ...q,
+      format,
+      section
+    };
+    ['page', 'size', 'condition_page', 'condition_size'].forEach(key => delete params[key]);
+    const T = window.APSWorkbenchTransport,
+      file = await T.download('/api/workbench/v1/scheduling/decision-history/export', Object.fromEntries(serialized(params)), {
+        signal,
+        timeout: 60000,
+        types: [T.types[format]]
+      });
+    check(file.header('X-Workbench-Snapshot-Ref') === q.snapshot_ref, '历史快照已变化，请刷新后重新导出。');
+    const rows = file.header('X-Workbench-Row-Count');
+    check(rows !== null && /^[0-9]+$/.test(rows) && Number.isSafeInteger(Number(rows)), '历史导出文件内容不完整，请重新下载。');
+    return {
+      filename: file.filename,
+      blob: file.blob,
+      row_count: Number(rows)
+    };
   }
   window.DecisionHistoryAPI = {
     check,
@@ -48079,8 +46837,8 @@ function SMExport({
     sourceLabel,
     windowMetric,
     sameMetricDefinition,
-    create,
-    adapter,
+    read,
+    historyExport,
     history,
     entry,
     numberText,
@@ -48453,21 +47211,11 @@ function SMExport({
     F = window.WorkbenchFormat;
   const savedSourceLabels = {
     run: '排产归档',
-    trial: '试调归档',
-    legacy: '旧正式摘要'
+    trial: '试调归档'
   };
+  // 运行条目的状态用 run_statuses；采用条目的状态恒为 committed（history/catalog.py）。
   const stateLabels = {
-    ...window.WorkbenchTerms.run_statuses,
-    complete: '完整',
-    partial: '部分资料',
-    committed: '已正式采用',
-    success: '成功',
-    available: '可读取',
-    current: '当前版本',
-    historical: '历史版本',
-    unavailable: '资料未保存',
-    unknown: '待确认',
-    not_applicable: '不适用'
+    committed: '已正式采用'
   };
   const pairLabels = {
     equal: '相同',
@@ -48491,8 +47239,7 @@ function SMExport({
   const timeBasisLabels = {
     accepted_at_factory_local: '排产受理时间（工厂本地）',
     adopted_at_factory_local: '采用时间（工厂本地）',
-    committed_at_utc_to_factory_local: '回执提交时间（UTC 转工厂本地）',
-    schedule_time_utc_to_factory_local: '旧记录时间（UTC 转工厂本地）'
+    committed_at_utc_to_factory_local: '回执提交时间（UTC 转工厂本地）'
   };
   const scopeLabels = {
     full_admission: '整次排产范围',
@@ -48503,13 +47250,7 @@ function SMExport({
     fixed_resource_window: '固定资源窗口',
     fixed_changeover_window: '固定换型窗口',
     selected_batches: '选中批次范围',
-    complete_trial: '整份保存试调',
-    legacy_saved_algorithm_batches: '旧摘要算法批次',
-    legacy_saved_schedule: '旧摘要保存安排',
-    legacy_summary_counts: '旧摘要计数范围',
-    legacy_completed_batches_only: '旧摘要已完成批次',
-    legacy_input_to_summary: '旧记录受理至摘要',
-    legacy_not_recorded: '旧摘要原范围'
+    complete_trial: '整份保存试调'
   };
   const fieldLabels = {
     members: '成员集合',
@@ -48654,7 +47395,6 @@ function SMExport({
   function Navigation({
     entry,
     onOpen,
-    canNavigate,
     busy
   }) {
     return /*#__PURE__*/React.createElement("div", {
@@ -48663,7 +47403,7 @@ function SMExport({
       key: target.view + ':' + index
     }, /*#__PURE__*/React.createElement(C.Button, {
       icon: "arrow-right",
-      disabled: busy || !canNavigate || !target.enabled,
+      disabled: busy || !target.enabled,
       title: target.reason || undefined,
       onClick: () => onOpen(target)
     }, target.label), !target.enabled && target.reason && /*#__PURE__*/React.createElement("p", {
@@ -48815,8 +47555,7 @@ function SMExport({
   function PairRows({
     rows,
     categories,
-    label,
-    compare = true
+    label
   }) {
     const names = Object.fromEntries(categories.map(category => [category.key, category.label]));
     return rows.length ? /*#__PURE__*/React.createElement("div", {
@@ -48832,11 +47571,11 @@ function SMExport({
       scope: "col"
     }, "\u5BF9\u8C61"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
-    }, "\u6761\u4EF6"), compare && /*#__PURE__*/React.createElement("th", {
+    }, "\u6761\u4EF6"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
     }, "\u5BF9\u7167\u8BB0\u5F55"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
-    }, compare ? '当前记录' : '保存值'), compare && /*#__PURE__*/React.createElement("th", {
+    }, "\u5F53\u524D\u8BB0\u5F55"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
     }, "\u7ED3\u679C"))), /*#__PURE__*/React.createElement("tbody", null, rows.map((row, index) => /*#__PURE__*/React.createElement("tr", {
       key: row.category + ':' + row.entity.key + ':' + row.field + ':' + index,
@@ -48845,13 +47584,13 @@ function SMExport({
       className: "dh-note"
     }, names[row.category] || row.category)), /*#__PURE__*/React.createElement("th", {
       scope: "row"
-    }, fieldLabel(row)), compare && /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(SavedSide, {
+    }, fieldLabel(row)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(SavedSide, {
       value: row.before,
       field: row.field
     })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(SavedSide, {
       value: row.after,
       field: row.field
-    })), compare && /*#__PURE__*/React.createElement("td", null, pairLabels[row.state])))))) : /*#__PURE__*/React.createElement("p", {
+    })), /*#__PURE__*/React.createElement("td", null, pairLabels[row.state])))))) : /*#__PURE__*/React.createElement("p", {
       className: "dh-note"
     }, "\u672C\u9875\u6CA1\u6709", label, "\u3002");
   }
@@ -48931,7 +47670,7 @@ function SMExport({
       className: "dh-detail-meta"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u539F\u6B63\u5F0F\u57FA\u51C6"), /*#__PURE__*/React.createElement("dd", null, entry.baseline.version === null ? '版本未记录' : entry.baseline.version === 0 ? '当时无正式计划' : '第 ' + entry.baseline.version + ' 版')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5E94\u6392\u9700\u6C42"), /*#__PURE__*/React.createElement("dd", null, number(entry.scope.demand_hours, '小时', 3), /*#__PURE__*/React.createElement(Reason, {
       value: entry.scope.reason
-    }))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u65F6\u95F4\u6765\u6E90"), /*#__PURE__*/React.createElement("dd", null, timeBasisLabels[entry.time_basis] || plain(entry.time_basis))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u4FDD\u5B58\u6765\u6E90"), /*#__PURE__*/React.createElement("dd", null, savedSourceLabels[entry.source.kind] || A.sourceLabel(entry)))), /*#__PURE__*/React.createElement(Raw, {
+    }))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u65F6\u95F4\u6765\u6E90"), /*#__PURE__*/React.createElement("dd", null, timeBasisLabels[entry.time_basis] || plain(entry.time_basis))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u4FDD\u5B58\u6765\u6E90"), /*#__PURE__*/React.createElement("dd", null, savedSourceLabels[entry.source.kind]))), /*#__PURE__*/React.createElement(Raw, {
       value: {
         identity: entry.identity,
         times: entry.times,
@@ -48959,10 +47698,9 @@ function SMExport({
     data,
     onQuery,
     onOpen,
-    canNavigate,
     busy,
     onEndComparison,
-    conditionsOpen = false,
+    conditionsOpen,
     onConditionsToggle
   }) {
     const entry = data.selection.entry,
@@ -49004,12 +47742,11 @@ function SMExport({
     }, /*#__PURE__*/React.createElement("h4", null, "\u4E0B\u4E00\u6B65"), /*#__PURE__*/React.createElement(Navigation, {
       entry: entry,
       onOpen: onOpen,
-      canNavigate: canNavigate,
       busy: busy
     })), compare && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("details", {
       className: "dh-condition-details",
       open: conditionsOpen,
-      onToggle: event => onConditionsToggle && onConditionsToggle(event.currentTarget.open)
+      onToggle: event => onConditionsToggle(event.currentTarget.open)
     }, /*#__PURE__*/React.createElement("summary", null, "\u751F\u4EA7\u6761\u4EF6\u8BE6\u60C5 \xB7 ", data.comparison.conditions.page.total, " \u9879"), /*#__PURE__*/React.createElement(Conditions, {
       value: data.comparison.conditions,
       onQuery: onQuery,
@@ -49059,13 +47796,7 @@ function SMExport({
   const stateLabels = {
     all: '全部状态',
     ...window.WorkbenchTerms.run_statuses,
-    committed: '已提交采用',
-    success: '采用成功',
-    unknown: '状态未知',
-    available: '来源可读',
-    current: '当前版本',
-    historical: '历史版本',
-    unavailable: '来源缺失'
+    committed: '已提交采用'
   };
   const clearEventFilters = {
     date_from: null,
@@ -49428,10 +48159,9 @@ function SMExport({
       onClick: () => onReference(entry)
     }, data.selection.reference && data.selection.reference.identity.run_ref === entry.identity.run_ref ? '当前对照' : '用作对照'), entry.source_kind === 'candidate_adoption' && /*#__PURE__*/React.createElement("small", null, "\u5BF9\u7167\u5176\u6765\u6E90\u6392\u4EA7", data.selection.reference && data.selection.reference.identity.run_ref === entry.identity.run_ref ? '：' + data.selection.reference.label : '')) : /*#__PURE__*/React.createElement("span", {
       className: "dh-muted"
-    }, entry.source_kind === 'trial_adoption' ? '试调来源' : '旧正式计划来源')))))));
+    }, "\u8BD5\u8C03\u6765\u6E90")))))));
   }
   function Export({
-    adapter,
     result,
     query,
     busy: reading
@@ -49458,7 +48188,7 @@ function SMExport({
       setBusy(true);
       setError(null);
       try {
-        const file = await adapter.historyExport(query, result.meta.snapshot_ref, format, controller.signal, section);
+        const file = await A.historyExport(query, result.meta.snapshot_ref, format, controller.signal, section);
         if (controller.signal.aborted) return;
         window.APSWorkbenchTransport.saveBlob(file.filename, file.blob);
         setDone(window.WorkbenchTerms.download_started(file.filename) + ' · ' + file.row_count + ' 条记录');
@@ -49526,10 +48256,7 @@ function SMExport({
       error: error
     }))));
   }
-  const adapters = new WeakMap();
-  let nextAdapter = 0;
   function Session({
-    adapter,
     start,
     pageContext,
     navigation,
@@ -49545,9 +48272,8 @@ function SMExport({
     const workspace = React.useRef(null),
       pendingFocus = React.useRef(null),
       readingHeight = React.useRef(null);
-    const api = React.useMemo(() => A.adapter(adapter), [adapter]),
-      serialized = JSON.stringify(query);
-    const read = window.APSResourceSession.useQuery(signal => api.history(query, signal), [api, serialized, revision, paused], !paused),
+    const serialized = JSON.stringify(query);
+    const read = window.APSResourceSession.useQuery(signal => A.read(query, signal), [serialized, revision, paused], !paused),
       result = read.result,
       data = result && result.data;
     const remembered = {
@@ -49706,7 +48432,6 @@ function SMExport({
       className: "dh-actions"
     }, result && /*#__PURE__*/React.createElement(Export, {
       key: result.meta.snapshot_ref,
-      adapter: api,
       result: result,
       query: query,
       busy: read.loading
@@ -49720,7 +48445,7 @@ function SMExport({
         readingHeight.current = null;
         setPaused(true);
       }
-    }, "\u53D6\u6D88\u8BFB\u53D6"))), renderTopics && renderTopics(historyContext), /*#__PURE__*/React.createElement("div", {
+    }, "\u53D6\u6D88\u8BFB\u53D6"))), renderTopics(historyContext), /*#__PURE__*/React.createElement("div", {
       id: "dh-history-content",
       role: "tabpanel",
       "aria-labelledby": "dh-topic-decision_history"
@@ -49783,7 +48508,6 @@ function SMExport({
       data: data,
       onQuery: change,
       onOpen: open,
-      canNavigate: true,
       busy: read.loading,
       conditionsOpen: conditionsOpen,
       onConditionsToggle: setConditionsOpen,
@@ -49823,15 +48547,12 @@ function SMExport({
     })));
   }
   function Workspace({
-    initialContext = {},
-    pageContext = {},
-    adapter,
+    initialContext,
+    pageContext,
     navigation,
     onNavigate,
     renderTopics
   }) {
-    const fallback = React.useMemo(() => A.create(), []),
-      active = adapter || fallback;
     let start;
     try {
       start = A.context(initialContext);
@@ -49844,10 +48565,8 @@ function SMExport({
         error: error
       }));
     }
-    if (!adapters.has(active)) adapters.set(active, ++nextAdapter);
     return /*#__PURE__*/React.createElement(Session, {
-      key: adapters.get(active) + ':' + JSON.stringify(start),
-      adapter: active,
+      key: JSON.stringify(start),
       start: start,
       pageContext: pageContext,
       navigation: navigation,
@@ -49872,14 +48591,9 @@ function SMExport({
 
   const A = window.RunHistoryAPI,
     C = window.RunHistoryControls;
-  const adapterIds = new WeakMap();
-  let nextAdapter = 0;
   let focusTopic = null;
-  function useRead(adapter, query, revision) {
-    const api = React.useMemo(() => A.adapter(adapter), [adapter]);
-    const read = window.APSResourceSession.useQuery(async signal => {
-      return api.catalog(query, signal);
-    }, [adapter, query, revision]);
+  function useRead(query, revision) {
+    const read = window.APSResourceSession.useQuery(signal => A.catalog(query, signal), [query, revision]);
     return {
       ...read,
       busy: read.loading
@@ -49926,7 +48640,6 @@ function SMExport({
     }, label)));
   }
   function Session({
-    adapter,
     start,
     onNavigate,
     navigation,
@@ -49934,7 +48647,7 @@ function SMExport({
   }) {
     const [query, setQuery] = React.useState(start.query),
       [revision, refresh] = React.useReducer(v => v + 1, 0);
-    const read = useRead(adapter, query, revision),
+    const read = useRead(query, revision),
       result = read.result,
       data = result && result.data;
     const remembered = {
@@ -50056,14 +48769,11 @@ function SMExport({
     }))));
   }
   function RunHistoryWorkspace({
-    initialContext = {},
-    pageContext = {},
+    initialContext,
+    pageContext,
     onNavigate,
-    adapter,
     navigation
   }) {
-    const fallback = React.useMemo(() => A.create(), []),
-      active = adapter || fallback;
     if (pageContext.history_topic === 'decision_history') return /*#__PURE__*/React.createElement(window.DecisionHistoryWorkspace, {
       initialContext: pageContext.decision_history_context || {},
       pageContext: pageContext,
@@ -50090,10 +48800,8 @@ function SMExport({
         error: error
       }));
     }
-    if (!adapterIds.has(active)) adapterIds.set(active, ++nextAdapter);
     return /*#__PURE__*/React.createElement(Session, {
-      key: adapterIds.get(active) + ':' + JSON.stringify(start),
-      adapter: active,
+      key: JSON.stringify(start),
       start: start,
       pageContext: pageContext,
       onNavigate: onNavigate,
@@ -50167,7 +48875,6 @@ function SMExport({
   }
   function ReadRun({
     runRef,
-    api,
     onNavigate,
     initialContext,
     runHistoryReturn
@@ -50210,7 +48917,7 @@ function SMExport({
         setVerified(false);
         const started = Date.now();
         try {
-          const value = A.run(A.envelope(await api.get(runRef, localController.signal)), runRef);
+          const value = await A.get(runRef, localController.signal);
           if (disposed || localController.signal.aborted) return;
           if (!value.recovery_required) attempt = 0;
           setRecord(value);
@@ -50252,7 +48959,7 @@ function SMExport({
         if (controller) controller.abort();
         document.removeEventListener('visibilitychange', visibility);
       };
-    }, [runRef, api, revision]);
+    }, [runRef, revision]);
     const historyReturn = /*#__PURE__*/React.createElement(HistoryReturn, {
       context: initialContext,
       onNavigate: onNavigate
@@ -50277,7 +48984,7 @@ function SMExport({
       headerTitle: "\u672C\u6B21\u6392\u4EA7\u7ED3\u679C",
       runStatus: record.state,
       runTiming: record,
-      renderAdoption: (candidateRef, metadata = {}) => /*#__PURE__*/React.createElement(window.RunAdoptionAction, {
+      renderAdoption: (candidateRef, metadata) => /*#__PURE__*/React.createElement(window.RunAdoptionAction, {
         candidateRef: candidateRef,
         ...metadata,
         onNavigate: onNavigate
@@ -50332,8 +49039,7 @@ function SMExport({
     onNavigate,
     initialContext
   }) {
-    const api = React.useMemo(() => A.create(), []),
-      specified = Object.prototype.hasOwnProperty.call(initialContext, 'run_ref');
+    const specified = Object.prototype.hasOwnProperty.call(initialContext, 'run_ref');
     const runHistoryReturn = runHistoryDestination(initialContext);
     const history = /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(HistoryReturn, {
       context: initialContext,
@@ -50345,7 +49051,6 @@ function SMExport({
     return specified ? /*#__PURE__*/React.createElement(ReadRun, {
       key: initialContext.run_ref,
       runRef: initialContext.run_ref,
-      api: api,
       initialContext: initialContext,
       onNavigate: onNavigate,
       runHistoryReturn: runHistoryReturn
@@ -50355,7 +49060,6 @@ function SMExport({
       actions: history,
       renderRunPanel: (data, continuation) => /*#__PURE__*/React.createElement(window.RunJobPanel, {
         preflight: data,
-        adapter: api,
         onNavigate: onNavigate,
         onRecheck: continuation.onRecheck,
         preflightOwner: continuation.confirmationOwner
@@ -50395,7 +49099,7 @@ function SMExport({
       onNavigate: onNavigate,
       runHistoryReturn: runHistoryReturn,
       navigation: navigation,
-      renderAdoption: (candidateRef, metadata = {}) => /*#__PURE__*/React.createElement(window.RunAdoptionAction, {
+      renderAdoption: (candidateRef, metadata) => /*#__PURE__*/React.createElement(window.RunAdoptionAction, {
         candidateRef: candidateRef,
         ...metadata,
         onNavigate: onNavigate
@@ -50491,9 +49195,9 @@ function SMExport({
     check(object(v.adoption) && typeof v.adoption.available === 'boolean');
     issues(v.adoption.blocked_reasons);
   }
+  // 信封已由 transport 校验；试调列表翻页和采用记录都钉在这次读取的数据版本上，所以数据版本不能为空。
   function envelope(v, q = {}) {
-    check(v && v.ok === true && v.schema_version === 1 && object(v.data) && v.meta && v.meta.source === 'production' && v.meta.time_basis === 'factory_local' && time(v.meta.as_of) && /^[A-Za-z0-9_-]{32}$/.test(v.meta.snapshot_ref) && /^[a-f0-9]{32}$/.test(v.meta.request_ref));
-    issues(v.warnings);
+    check(v.meta.snapshot_ref !== null);
     if (q.snapshot_ref) check(v.meta.snapshot_ref === q.snapshot_ref, window.WorkbenchTerms.outcomes.stale);
     return v.data;
   }
@@ -50663,7 +49367,8 @@ function SMExport({
 (function () {
   'use strict';
 
-  const C = window.TrialContract,
+  const T = window.APSWorkbenchTransport,
+    C = window.TrialContract,
     ROOT = '/api/workbench/v1',
     BASE = ROOT + '/trial';
   const PENDING_KEY = 'aps_workbench_trial_pending_v1';
@@ -50680,9 +49385,7 @@ function SMExport({
   }
   function reserve() {
     C.check(pending() === null, window.WorkbenchTerms.outcomes.pending('试调提交'));
-    const bytes = new Uint8Array(24);
-    crypto.getRandomValues(bytes);
-    const key = 'trial-' + Array.from(bytes, n => n.toString(16).padStart(2, '0')).join('');
+    const key = T.requestKey('trial');
     try {
       localStorage.setItem(PENDING_KEY, key);
     } catch (_) {
@@ -50698,53 +49401,10 @@ function SMExport({
       throw new Error('上次提交的结果已确认，但上次操作记录没清掉。请点「刷新」后重新查询。');
     }
   }
-  async function request(path, options = {}) {
-    C.check(path.startsWith(ROOT + '/'));
-    const controller = new AbortController(),
-      abort = () => controller.abort(),
-      signal = options.signal;
-    if (signal) {
-      if (signal.aborted) abort();else signal.addEventListener('abort', abort, {
-        once: true
-      });
-    }
-    const timer = setTimeout(abort, 60000);
-    try {
-      const response = await fetch(path, {
-        method: options.body === undefined ? 'GET' : 'POST',
-        signal: controller.signal,
-        credentials: 'same-origin',
-        cache: 'no-store',
-        redirect: 'error',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json'
-        },
-        ...(options.body === undefined ? {} : {
-          body: JSON.stringify(options.body)
-        })
-      });
-      C.check((response.headers.get('Content-Type') || '').split(';')[0] === 'application/json', '读到的试调数据不完整，请点「刷新」重试。');
-      const value = await response.json();
-      if (!response.ok || value.ok !== true) {
-        const error = new Error(value.error && value.error.message || window.WorkbenchTerms.outcomes.failure);
-        error.code = value.error && value.error.code;
-        error.fields = value.error && value.error.fields;
-        error.rejected = (response.status >= 400 && response.status < 500 || response.status === 503) && value.ok === false && value.committed === false && error.code !== 'request_key_conflict';
-        throw error;
-      }
-      return value;
-    } catch (error) {
-      if (controller.signal.aborted && !(signal && signal.aborted)) throw new Error(options.body === undefined ? '读取超时，请刷新重试。' : window.WorkbenchTerms.outcomes.unknown('试调操作'));
-      throw error;
-    } finally {
-      clearTimeout(timer);
-      if (signal) signal.removeEventListener('abort', abort);
-    }
-  }
-  async function read(path, q = {}, signal, validate) {
-    const value = await request(ROOT + path + (Object.keys(q).length ? '?' + new URLSearchParams(q) : ''), {
-      signal
+  async function read(path, q, signal, validate) {
+    const value = await T.read(ROOT + path, q, {
+      signal,
+      timeout: 60000
     });
     if (validate) return validate(value);
     C.envelope(value, q);
@@ -50753,9 +49413,9 @@ function SMExport({
   async function preview(input, signal) {
     C.base(input.base);
     C.scope(input.scope || {});
-    const v = await request(BASE + '/drafts/preview', {
-        body: input,
-        signal
+    const v = await T.preview(BASE + '/drafts/preview', input, {
+        signal,
+        timeout: 60000
       }),
       d = C.envelope(v);
     C.check(JSON.stringify(d.base) === JSON.stringify(input.base) && d.tasks_complete === true && C.count(d.task_count) && C.object(d.base_identity) && (input.base.candidate_ref ? d.base_identity.candidate_ref === input.base.candidate_ref : d.base_identity.plan_ref === input.base.plan_ref) && d.write_context && d.write_context.capabilities['trial.create'] === true && typeof d.write_context.write_token === 'string');
@@ -50765,12 +49425,13 @@ function SMExport({
   async function command(intent, token, key) {
     C.check(validKey(key) && typeof token === 'string');
     const suffix = intent.action === 'create' ? '/drafts' : '/drafts/' + intent.draft_ref + '/' + intent.action;
-    return C.receipt(await request(BASE + suffix, {
-      body: {
-        request_key: key,
-        write_token: token,
-        input: intent.input
-      }
+    return C.receipt(await T.command(BASE + suffix, {
+      request_key: key,
+      write_token: token,
+      input: intent.input
+    }, {
+      timeout: 60000,
+      expect: BASE + '/commands/' + key
     }), intent);
   }
   async function lookup(key) {
@@ -50921,7 +49582,7 @@ function SMExport({
         await confirmed(result, key);
         return true;
       } catch (error) {
-        if (key && error.rejected) release(key, {
+        if (key && window.APSWorkbenchTransport.rejected(error)) release(key, {
           error,
           note: '这次没有写入。填写内容已保留，请点「刷新」后重新确认。'
         }, '这次没有写入，但本机操作记录还没清掉。请点「查询结果」重试清理。');else patch({
@@ -52452,7 +51113,7 @@ function SMExport({
       if (!commands.busy && !commands.key && (await window.WorkbenchGuards.confirmLeave({
         owner: guardOwner
       }))) {
-        if (commands.clearError) commands.clearError();
+        commands.clearError();
         close();
       }
     }
@@ -53845,9 +52506,9 @@ function SMExport({
 (function () {
   'use strict';
 
-  const BASE = '/api/workbench/v1/trial/scenarios/',
-    ACTION = 'trial.scenario.adopt',
-    rejections = new WeakSet();
+  const T = window.APSWorkbenchTransport,
+    BASE = '/api/workbench/v1/trial/scenarios/',
+    ACTION = 'trial.scenario.adopt';
   const object = v => v !== null && typeof v === 'object' && !Array.isArray(v),
     text = v => typeof v === 'string';
   const ref = v => text(v) && /^[a-f0-9]{48}$/.test(v),
@@ -53876,16 +52537,22 @@ function SMExport({
     return m >= 1 && m <= 12 && d >= 1 && d <= (m === 2 && y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0) ? 29 : DAYS[m]);
   }
   const issues = v => Array.isArray(v) && v.every(r => shape(r, ['code', 'message', 'severity'], ['task_ref', 'related_task_ref']) && text(r.code) && r.code && text(r.message) && r.message && r.severity === 'blocker' && ['task_ref', 'related_task_ref'].every(k => r[k] === undefined || r[k] === null || ref(r[k])));
-  function overview(v) {
+  // 采用范围有两种来源：试调详情（source）不带数据上下文，可采用的预检（overview）恒带数据上下文。
+  function scope(v) {
     check(object(v) && ref(v.scenario_ref) && ref(v.draft_ref) && v.scenario_ref !== v.draft_ref && positive(v.task_count) && v.scope_complete === true && shape(v.baseline, ['plan_ref', 'version']) && (v.baseline.plan_ref === null ? v.baseline.version === null : ref(v.baseline.plan_ref) && positive(v.baseline.version)));
-    if (v.data_context_ref != null) check(window.RunAdoptionAPI.contextRef(v.data_context_ref));
     return {
       scenario_ref: v.scenario_ref,
       draft_ref: v.draft_ref,
       baseline: v.baseline,
       task_count: v.task_count,
-      scope_complete: true,
-      data_context_ref: v.data_context_ref == null ? null : v.data_context_ref
+      scope_complete: true
+    };
+  }
+  function overview(v) {
+    check(window.RunAdoptionAPI.contextRef(v.data_context_ref));
+    return {
+      ...scope(v),
+      data_context_ref: v.data_context_ref
     };
   }
   function sameScope(a, b) {
@@ -53893,22 +52560,23 @@ function SMExport({
   }
   function source(scenarioRef, data) {
     check(ref(scenarioRef) && object(data) && data.scenario_ref === scenarioRef && data.status === 'saved' && data.tasks_complete === true && Array.isArray(data.tasks) && data.tasks.length === data.task_count, '请先完整读取所选的试调方案；不能采用其他记录或不完整的内容。');
-    return overview({
+    return scope({
       ...data,
       scope_complete: true
     });
   }
-  function envelope(v) {
-    check(shape(v, ['ok', 'schema_version', 'data', 'meta', 'warnings']) && v.ok === true && v.schema_version === 1 && Array.isArray(v.warnings) && !v.warnings.length && shape(v.meta, ['request_ref', 'source', 'time_basis', 'snapshot_ref', 'as_of']) && text(v.meta.request_ref) && /^[a-f0-9]{32}$/.test(v.meta.request_ref) && v.meta.source === 'production' && v.meta.time_basis === 'factory_local' && token(v.meta.snapshot_ref) && time(v.meta.as_of));
+  // 信封已由 transport 校验；采用预检和回执查询都不该带提示。
+  function content(v) {
+    check(!v.warnings.length);
     return v.data;
   }
-  function preview(v, original) {
-    const d = envelope(v),
+  function previewResult(v, original) {
+    const d = content(v),
       c = d && d.write_context,
       validation = d && d.validation;
     check(object(d) && d.scenario_ref === original.scenario_ref && shape(validation, ['status', 'can_adopt', 'issues']) && issues(validation.issues) && shape(c, ['write_token', 'expires_at', 'capabilities', 'blocked_reasons']) && shape(c.capabilities, [ACTION]) && issues(c.blocked_reasons));
     if (validation.can_adopt === true) {
-      check(shape(d, ['scenario_ref', 'draft_ref', 'baseline', 'task_count', 'scope_complete', 'validation', 'write_context'], ['data_context_ref']) && sameScope(overview(d), overview(original)) && validation.status === 'valid' && !validation.issues.length && c.capabilities[ACTION] === true && token(c.write_token) && time(c.expires_at) && c.expires_at > v.meta.as_of && !c.blocked_reasons.length);
+      check(shape(d, ['scenario_ref', 'draft_ref', 'baseline', 'task_count', 'scope_complete', 'validation', 'write_context', 'data_context_ref']) && sameScope(overview(d), original) && validation.status === 'valid' && !validation.issues.length && c.capabilities[ACTION] === true && token(c.write_token) && time(c.expires_at) && c.expires_at > v.meta.as_of && !c.blocked_reasons.length);
     } else check(shape(d, ['scenario_ref', 'validation', 'write_context']) && validation.can_adopt === false && validation.status === 'blocked' && validation.issues.length > 0 && equal(validation.issues, c.blocked_reasons) && c.capabilities[ACTION] === false && c.write_token === null && c.expires_at === null);
     return d;
   }
@@ -53933,8 +52601,8 @@ function SMExport({
     }) && Array.isArray(p.blocked_reasons) && !p.blocked_reasons.length);
     return v;
   }
-  function lookup(v, intent) {
-    const d = envelope(v);
+  function lookupResult(v, intent) {
+    const d = content(v);
     if (d?.state === 'not_observed') {
       check(shape(d, ['state', 'receipt', 'may_be_in_flight', 'can_retry_automatically']) && d.receipt === null && typeof d.may_be_in_flight === 'boolean' && d.can_retry_automatically === false);
       return {
@@ -53947,75 +52615,39 @@ function SMExport({
     check(shape(d, ['state', 'receipt']) && d.state === 'committed');
     return receipt(d.receipt, intent);
   }
-  function failure(v, status, intent) {
-    const e = v && v.error,
-      valid = shape(v, ['ok', 'committed', 'error']) && v.ok === false && [false, 'unknown'].includes(v.committed) && shape(e, ['code', 'message', 'fields', 'retryable', 'request_ref'], ['request_key', 'result_target']) && text(e.code) && text(e.message) && Array.isArray(e.fields) && e.fields.every(f => shape(f, ['path', 'message']) && text(f.path) && text(f.message)) && typeof e.retryable === 'boolean' && text(e.request_ref) && /^[a-f0-9]{32}$/.test(e.request_ref) && (e.request_key === undefined && e.result_target === undefined || intent && e.request_key === intent.request_key && e.result_target === BASE + intent.scenario_ref + '/adoption-commands/' + intent.request_key);
-    const error = new Error(valid ? e.message : window.WorkbenchTerms.outcomes.pending('采用'));
-    error.code = valid ? e.code : 'invalid_response';
-    if (valid && v.committed === false && [400, 404, 409, 422, 503].includes(status) && e.code !== 'request_key_conflict') rejections.add(error);
-    return error;
+  // original 由 source() 从完整读取的试调方案构造；预检、采用和回执查询都按 30 秒等待。
+  async function preview(original, signal) {
+    return previewResult(await T.preview(BASE + original.scenario_ref + '/adopt-preview', {}, {
+      signal,
+      timeout: 30000
+    }), original);
   }
-  function create(fetcher = window.fetch.bind(window)) {
-    async function request(path, body, signal, intent) {
-      const controller = new AbortController(),
-        abort = () => controller.abort();
-      if (signal) {
-        if (signal.aborted) abort();else signal.addEventListener('abort', abort, {
-          once: true
-        });
-      }
-      const timer = setTimeout(abort, 30000);
-      try {
-        const response = await fetcher(BASE + path, {
-          method: body === undefined ? 'GET' : 'POST',
-          credentials: 'same-origin',
-          cache: 'no-store',
-          redirect: 'error',
-          signal: controller.signal,
-          ...(body === undefined ? {} : {
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(body)
-          })
-        });
-        check((response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() === 'application/json');
-        const value = await response.json();
-        if (!response.ok) throw failure(value, response.status, intent);
-        check(response.status === 200);
-        return value;
-      } finally {
-        clearTimeout(timer);
-        if (signal) signal.removeEventListener('abort', abort);
-      }
-    }
-    return {
-      async preview(original, signal) {
-        overview(original);
-        return preview(await request(original.scenario_ref + '/adopt-preview', {}, signal), original);
-      },
-      async adopt(intent, writeToken) {
-        check(key(intent.request_key) && intent.phase === 'pending' && token(writeToken));
-        overview(intent.preview);
-        return receipt(await request(intent.scenario_ref + '/adopt', {
-          write_token: writeToken,
-          request_key: intent.request_key,
-          input: input(intent.input)
-        }, undefined, intent), intent);
-      },
-      async lookup(intent, signal, options = {}) {
-        check(key(intent.request_key) && ref(intent.scenario_ref));
-        let query = '';
-        if (options.data_context_ref != null) {
-          check(window.RunAdoptionAPI.contextRef(options.data_context_ref));
-          query = '?data_context_ref=' + encodeURIComponent(options.data_context_ref);
-        }
-        return lookup(await request(intent.scenario_ref + '/adoption-commands/' + intent.request_key + query, undefined, signal, intent), intent);
-      }
-    };
+  async function adopt(intent, writeToken) {
+    check(key(intent.request_key) && intent.phase === 'pending' && token(writeToken));
+    overview(intent.preview);
+    const target = BASE + intent.scenario_ref + '/adoption-commands/' + intent.request_key;
+    return receipt(await T.command(BASE + intent.scenario_ref + '/adopt', {
+      write_token: writeToken,
+      request_key: intent.request_key,
+      input: input(intent.input)
+    }, {
+      timeout: 30000,
+      expect: target
+    }), intent);
+  }
+  async function lookup(intent, signal) {
+    check(key(intent.request_key) && ref(intent.scenario_ref));
+    return lookupResult(await T.read(BASE + intent.scenario_ref + '/adoption-commands/' + intent.request_key, {
+      data_context_ref: intent.preview.data_context_ref
+    }, {
+      signal,
+      timeout: 30000
+    }), intent);
   }
   window.TrialAdoptionAPI = {
-    create,
+    preview,
+    adopt,
+    lookup,
     source,
     overview,
     sameScope,
@@ -54024,8 +52656,7 @@ function SMExport({
     check,
     shape,
     key,
-    equal,
-    isRejected: e => rejections.has(e)
+    equal
   };
 })();
 
@@ -54038,7 +52669,7 @@ function SMExport({
     EVENT = KEY + '_changed';
   function valid(v) {
     try {
-      return A.shape(v, ['schema_version', 'scenario_ref', 'request_key', 'input', 'preview', 'phase'], v.phase === 'committed' ? ['receipt'] : []) && v.schema_version === 1 && A.key(v.request_key) && A.shape(v.preview, ['scenario_ref', 'draft_ref', 'baseline', 'task_count', 'scope_complete'], ['data_context_ref']) && A.overview(v.preview) && v.scenario_ref === v.preview.scenario_ref && A.equal(A.input(v.input), v.input) && ['pending', 'rejected', 'committed'].includes(v.phase) && (v.phase !== 'committed' || !!A.receipt(v.receipt, v));
+      return A.shape(v, ['schema_version', 'scenario_ref', 'request_key', 'input', 'preview', 'phase'], v.phase === 'committed' ? ['receipt'] : []) && v.schema_version === 1 && A.key(v.request_key) && A.shape(v.preview, ['scenario_ref', 'draft_ref', 'baseline', 'task_count', 'scope_complete', 'data_context_ref']) && A.overview(v.preview) && v.scenario_ref === v.preview.scenario_ref && A.equal(A.input(v.input), v.input) && ['pending', 'rejected', 'committed'].includes(v.phase) && (v.phase !== 'committed' || !!A.receipt(v.receipt, v));
     } catch (_) {
       return false;
     }
@@ -54077,7 +52708,7 @@ function SMExport({
     const scope = A.overview(preview),
       input = A.input(values);
     A.check(!previous || valid(previous) && previous.phase === 'rejected' && A.sameScope(previous.preview, scope) && A.equal(previous.input, input), '上次提交的试调方案、原因和经办人已绑定，改了内容不能沿用同一个操作编号。');
-    const requestKey = previous ? previous.request_key : 'trial-adoption-' + Array.from(crypto.getRandomValues(new Uint8Array(24)), n => n.toString(16).padStart(2, '0')).join('');
+    const requestKey = previous ? previous.request_key : window.APSWorkbenchTransport.requestKey('trial-adoption');
     return save({
       schema_version: 1,
       scenario_ref: scope.scenario_ref,
@@ -54096,10 +52727,9 @@ function SMExport({
   function useSession({
     scenarioRef,
     data,
-    disabled = false,
+    disabled,
     onAdopted
   }) {
-    const api = React.useMemo(() => A.create(), []);
     const [initial] = React.useState(() => {
       try {
         return {
@@ -54226,9 +52856,7 @@ function SMExport({
       if (!intent || intent.phase === 'rejected' || lock.current || storageError) return;
       setChecking(true);
       try {
-        const found = await api.lookup(intent, signal, {
-          data_context_ref: intent.preview.data_context_ref
-        });
+        const found = await A.lookup(intent, signal);
         if (!mounted.current || signal && signal.aborted) return;
         if (found.state === 'not_observed') {
           if (found.may_be_in_flight === false) {
@@ -54275,7 +52903,7 @@ function SMExport({
       const controller = new AbortController();
       request.current = controller;
       try {
-        const value = await api.preview(original, controller.signal);
+        const value = await A.preview(original, controller.signal);
         if (mounted.current && !controller.signal.aborted && !current.current.disabled && A.equal(original, current.current.original)) setPreview(value);
       } catch (e) {
         if (mounted.current && !controller.signal.aborted) setError(e.message);
@@ -54322,10 +52950,10 @@ function SMExport({
           setPreview(null);
           setConsent(false);
           try {
-            accept(await api.adopt(intent, preview.write_context.write_token), intent);
+            accept(await A.adopt(intent, preview.write_context.write_token), intent);
           } catch (e) {
             if (!mounted.current) return;
-            if (A.isRejected(e)) {
+            if (window.APSWorkbenchTransport.rejected(e)) {
               const rejected = save({
                 ...intent,
                 phase: 'rejected'
@@ -54402,7 +53030,6 @@ function SMExport({
   }
   window.TrialAdoptionState = {
     KEY,
-    EVENT,
     read,
     save,
     useSession
@@ -54633,7 +53260,7 @@ function SMExport({
   }
   window.TrialAdoptionAction = function TrialAdoptionAction(props) {
     return /*#__PURE__*/React.createElement(Session, {
-      key: props.scenarioRef || 'missing',
+      key: props.scenarioRef,
       ...props
     });
   };
@@ -54643,6 +53270,8 @@ function SMExport({
 (function () {
   'use strict';
 
+  const T = window.APSWorkbenchTransport,
+    ROOT = '/api/workbench/v1/';
   const topics = ['delivery', 'records', 'machines', 'people', 'quality'];
   const scopeKeys = ['source', 'plan_ref', 'plan_finish_date_from', 'plan_finish_date_to', 'batch_ref', 'resource_type', 'resource_ref', 'query', 'focus'];
   const sorts = {
@@ -54674,9 +53303,9 @@ function SMExport({
     if (value.topic !== undefined && value.topic !== topic || !Number.isSafeInteger(result.page) || result.page < 1 || ![10, 20, 50].includes(result.size) || !sorts[topic].includes(result.sort) || !['asc', 'desc'].includes(result.direction)) throw new Error('报表专题、排序或分页无效，未改到其他查看状态。');
     return result;
   }
-  async function readView(api, input, signal) {
-    if (input.snapshot_ref) return api.read(input, signal);
-    const result = await api.read(input, signal);
+  async function readView(input, signal) {
+    if (input.snapshot_ref) return read(input, signal);
+    const result = await read(input, signal);
     if (input.plan_ref && result.data.plan.plan_ref !== input.plan_ref || result.data.topic !== input.topic) throw new Error('刷新后的计划或专题与原查看状态不一致，没有改用其他来源。');
     if (result.data.page.number !== input.page || result.data.page.size !== input.size) throw new Error('翻页位置已失效，请回到第 1 页重新查询。');
     return result;
@@ -54690,9 +53319,10 @@ function SMExport({
   function validateLedger(data) {
     if (!totals(data.summary) || !data.resources || !['machines', 'people'].every(kind => Array.isArray(data.resources[kind]) && data.resources[kind].every(totals)) || !data.rows.every(data.topic === 'records' ? record : ['machines', 'people'].includes(data.topic) ? totals : operation)) throw new Error('报工数据缺项或计数不一致，请刷新重试。');
   }
+  // 信封已由 transport.js 的 envelope() 校验；报表的翻页、详情与导出都绑定快照，这里断言快照非空。
   function validate(result) {
-    const data = result && result.data;
-    if (!result || result.ok !== true || !result.meta || result.meta.source !== 'production' || !result.meta.snapshot_ref || !data || !data.plan || !data.plan.is_current_official || !data.scope || !Array.isArray(data.rows) || !data.page || !data.summary || !Array.isArray(data.data_gaps) || !Number.isInteger(data.page.total) || data.page.total < 0 || !Number.isInteger(data.page.number) || !Number.isInteger(data.page.pages)) throw new Error('读到的报表数据不完整，请刷新重试。');
+    const data = result.data;
+    if (!result.meta.snapshot_ref || !data.plan || !data.plan.is_current_official || !data.scope || !Array.isArray(data.rows) || !data.page || !data.summary || !Array.isArray(data.data_gaps) || !Number.isInteger(data.page.total) || data.page.total < 0 || !Number.isInteger(data.page.number) || !Number.isInteger(data.page.pages)) throw new Error('读到的报表数据不完整，请刷新重试。');
     if (topics.includes(data.topic)) {
       if (!['operations', 'events', 'due', 'confirmed_due', 'unreported', 'finish_sample'].every(key => Number.isInteger(data.summary[key]) && data.summary[key] >= 0) || !['completion_rate', 'on_time_rate', 'effective_processing_hours', 'median_finish_minutes'].every(key => data.summary[key] === null || Number.isFinite(data.summary[key]))) throw new Error('报表汇总缺列或数值无效，没有按 0 处理。');
       validateLedger(data);
@@ -54700,48 +53330,50 @@ function SMExport({
     return result;
   }
   function validateDetail(result) {
-    const data = result && result.data;
-    if (!result || result.ok !== true || !result.meta || result.meta.source !== 'production' || !result.meta.snapshot_ref || !data || !data.plan || !data.plan.is_current_official || !data.detail || !data.detail.operation || !operation(data.detail.operation) || !Array.isArray(data.detail.records) || !data.detail.records.every(record)) throw new Error('读到的工序详情不完整，请刷新重试。');
+    const data = result.data;
+    if (!result.meta.snapshot_ref || !data.plan || !data.plan.is_current_official || !data.detail || !data.detail.operation || !operation(data.detail.operation) || !Array.isArray(data.detail.records) || !data.detail.records.every(record)) throw new Error('读到的工序详情不完整，请刷新重试。');
     return result;
   }
-  function create(transport) {
-    const io = transport || window.APSResourceAPI.create();
+  async function read(input, signal) {
+    return validate(await T.read(ROOT + 'analytics', input, {
+      signal,
+      timeout: 20000
+    }));
+  }
+  async function detail(ref, input, signal) {
+    if (!/^[0-9a-f]{48}$/.test(ref)) throw new Error('工序编号无效，没有定位其他工序。');
+    const result = validateDetail(await T.read(ROOT + 'analytics/operations/' + ref, input, {
+      signal,
+      timeout: 20000
+    }));
+    if (result.data.detail.operation.operation_ref !== ref || result.data.detail.records.some(row => row.operation_ref !== ref) || result.meta.snapshot_ref !== input.snapshot_ref || input.plan_ref && result.data.plan.plan_ref !== input.plan_ref) throw new Error('工序详情与原工序、计划或当前数据版本不一致，没有改指其他工序。');
+    return result;
+  }
+  async function catalog(kind, input, signal) {
+    if (!['overdue', 'utilization', 'downtime', 'official-review'].includes(kind)) throw new Error('报表不存在。');
+    return validate(await T.read(ROOT + 'reports/' + kind, input, {
+      signal,
+      timeout: 20000
+    }));
+  }
+  async function download(path, input, signal) {
+    if (!/^\/api\/workbench\/v1\/(analytics|reports\/(overdue|utilization|downtime|official-review))\/export$/.test(path) || !input.snapshot_ref) throw new Error('导出地址或数据版本无效，请刷新后重试。');
+    const file = await T.download(path, input, {
+      signal,
+      timeout: 20000,
+      types: [T.types[input.format]]
+    });
+    T.saveBlob(file.filename, file.blob);
     return {
-      async read(input, signal) {
-        return validate(await io.query('analytics', input, signal));
-      },
-      async detail(ref, input, signal) {
-        if (!/^[0-9a-f]{48}$/.test(ref)) throw new Error('工序编号无效，没有定位其他工序。');
-        const result = validateDetail(await io.query('analytics/operations/' + ref, input, signal));
-        if (result.data.detail.operation.operation_ref !== ref || result.data.detail.records.some(row => row.operation_ref !== ref) || result.meta.snapshot_ref !== input.snapshot_ref || input.plan_ref && result.data.plan.plan_ref !== input.plan_ref) throw new Error('工序详情与原工序、计划或当前数据版本不一致，没有改指其他工序。');
-        return result;
-      },
-      async catalog(kind, input, signal) {
-        if (!['overdue', 'utilization', 'downtime', 'official-review'].includes(kind)) throw new Error('报表不存在。');
-        return validate(await io.query('reports/' + kind, input, signal));
-      },
-      async download(path, input, signal) {
-        if (!/^\/api\/workbench\/v1\/(analytics|reports\/(overdue|utilization|downtime|official-review))\/export$/.test(path) || !input.snapshot_ref) throw new Error('导出地址或数据版本无效，请刷新后重试。');
-        const result = await io.download(path, input, signal);
-        const filename = /filename\*=UTF-8''([^;]+)/i.exec(result.disposition) || /filename="?([^";]+)/i.exec(result.disposition);
-        let name = 'workbench-report.' + input.format;
-        if (filename) {
-          try {
-            name = decodeURIComponent(filename[1]);
-          } catch (_) {
-            throw new Error('下载文件名无效。');
-          }
-        }
-        window.APSWorkbenchTransport.saveBlob(name, result.blob);
-        return {
-          filename: name,
-          bytes: result.blob.size
-        };
-      }
+      filename: file.filename,
+      bytes: file.blob.size
     };
   }
   window.ReportAPI = {
-    create,
+    read,
+    detail,
+    catalog,
+    download,
     scope,
     table,
     readView,
@@ -55656,7 +54288,6 @@ function SMExport({
     })))));
   }
   function Detail({
-    api,
     operationRef,
     input,
     onClose,
@@ -55676,7 +54307,7 @@ function SMExport({
       Table
     } = window.ReportTable;
     const identity = operationRef + JSON.stringify(input);
-    const request = useRead(signal => api.detail(operationRef, input, signal), identity);
+    const request = useRead(signal => window.ReportAPI.detail(operationRef, input, signal), identity);
     const detail = request.result && request.result.data.detail;
     const [page, setPage] = React.useState(initialView ? initialView.page : 1),
       [size, setSize] = React.useState(initialView ? initialView.size : 10);
@@ -56128,7 +54759,6 @@ function SMExport({
 
   const options = [['overdue', '超期批次'], ['utilization', '资源负荷 / 利用率'], ['downtime', '停机影响'], ['official-review', '正式执行复盘 / Excel']];
   function Catalog({
-    api,
     scope,
     snapshot
   }) {
@@ -56161,7 +54791,7 @@ function SMExport({
       ...base,
       ...table
     };
-    const request = useRead(signal => api.catalog(kind, input, signal), kind + JSON.stringify(input));
+    const request = useRead(signal => window.ReportAPI.catalog(kind, input, signal), kind + JSON.stringify(input));
     const response = request.result;
     function choose(next) {
       setKind(next);
@@ -56179,7 +54809,7 @@ function SMExport({
       setError(null);
       setNotice('');
       try {
-        const result = await api.download('/api/workbench/v1/reports/' + kind + '/export', {
+        const result = await window.ReportAPI.download('/api/workbench/v1/reports/' + kind + '/export', {
           ...input,
           snapshot_ref: response.meta.snapshot_ref,
           format: 'xlsx'
@@ -56326,7 +54956,6 @@ function SMExport({
 
   let pendingViewFocus = null;
   function Workspace({
-    adapter,
     mode = 'reports',
     initialContext,
     onNav
@@ -56344,7 +54973,6 @@ function SMExport({
       Table,
       Metrics
     } = window.ReportTable;
-    const api = React.useMemo(() => adapter || window.ReportAPI.create(), [adapter]);
     const initialTopic = mode === 'review' ? 'delivery' : window.ReportAPI.topics.includes(initialContext.topic) ? initialContext.topic : 'delivery';
     const [scope, setScope] = React.useState(() => window.ReportAPI.scope(initialContext.scope));
     const [state, setState] = React.useState(() => window.ReportAPI.table(initialContext.table, initialTopic));
@@ -56372,7 +55000,7 @@ function SMExport({
       ...scope,
       ...state
     };
-    const request = useRead(signal => window.ReportAPI.readView(api, input, signal), JSON.stringify(input) + revision);
+    const request = useRead(signal => window.ReportAPI.readView(input, signal), JSON.stringify(input) + revision);
     const response = request.result,
       data = response && response.data;
     const captionPlan = !request.busy && !request.error && data && data.plan;
@@ -56500,7 +55128,7 @@ function SMExport({
       setError(null);
       setNotice('');
       try {
-        const result = await api.download(data.exports.url, {
+        const result = await window.ReportAPI.download(data.exports.url, {
           ...window.ReportAPI.scope(data.scope),
           ...window.ReportAPI.table(state, data.topic),
           snapshot_ref: response.meta.snapshot_ref,
@@ -56740,7 +55368,6 @@ function SMExport({
       onChange: changePage,
       busy: request.busy
     })), selected && /*#__PURE__*/React.createElement(window.ReportDetail, {
-      api: api,
       operationRef: selected,
       input: {
         ...window.ReportAPI.scope(data.scope),
@@ -56769,7 +55396,6 @@ function SMExport({
       open: catalog,
       onToggle: event => setCatalog(event.currentTarget.open)
     }, /*#__PURE__*/React.createElement("summary", null, "\u5176\u4ED6\u62A5\u8868"), catalog && /*#__PURE__*/React.createElement(window.ReportCatalog, {
-      api: api,
       scope: data.scope,
       snapshot: response.meta.snapshot_ref
     }))))));
@@ -56850,14 +55476,11 @@ function SMExport({
   const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   const count = value => Number.isInteger(value) && value >= 0;
   const number = value => value === null || typeof value === 'number' && Number.isFinite(value);
-  function failure(message, code) {
+  function failure(message, code = null) {
     const error = new Error(message);
     error.committed = false;
-    error.error = {
-      code,
-      message,
-      fields: []
-    };
+    error.code = code;
+    error.fields = [];
     return error;
   }
   function input(value = {}) {
@@ -56869,30 +55492,31 @@ function SMExport({
     if (typeof result.query !== 'string' || result.query.length > 200 || result.query.includes('\0') || result.part_ref !== null && !ref(result.part_ref) || ![null, 'internal', 'external', 'unknown'].includes(result.source) || !['all', 'suggested', 'insufficient_data'].includes(result.status) || !['all', 'over_20_percent'].includes(result.deviation) || !(result.sort in sorts) || !['asc', 'desc'].includes(result.direction) || !Number.isInteger(result.page) || result.page < 1 || result.page > 1000000 || !Number.isInteger(result.size) || result.size < 1 || result.size > 200 || result.snapshot_ref !== undefined && (typeof result.snapshot_ref !== 'string' || !result.snapshot_ref)) throw failure('筛选或记录编号无效，请核对后重试。');
     result.query = result.query.trim();
     if (!object(result.column_filters) || Object.keys(result.column_filters).some(key => !(key in sorts) || !object(result.column_filters[key]))) throw failure('校准列筛选不完整。');
-    result.column_filters = Object.fromEntries(Object.keys(result.column_filters).sort().map(key => [key, window.ResourceTableFilterModel.rule(result.column_filters[key])]));
+    result.column_filters = window.ResourceTableFilterModel.rules(result.column_filters);
     return result;
   }
-  function restoreInitial(value = {}) {
-    if (!object(value) || Object.keys(value).some(key => !['scope', 'table', 'snapshot_ref', 'selected', 'sample_ref', 'table_widths'].includes(key))) throw failure('无法识别所选完工记录来源。');
+  // 页面上下文只来自本页快照和执行复盘的返回入口，都只写 scope、table、selected、sample_ref、table_widths。
+  function initial(value) {
+    if (!object(value) || Object.keys(value).some(key => !['scope', 'table', 'selected', 'sample_ref', 'table_widths'].includes(key))) throw failure('无法识别所选完工记录来源。');
     if (value.selected != null && !ref(value.selected) || value.sample_ref != null && !ref(value.sample_ref)) throw failure('已选记录编号无效。');
     if (value.table_widths !== undefined && (!object(value.table_widths) || Object.keys(value.table_widths).some(key => !(key in sorts) || !Number.isFinite(value.table_widths[key]) || value.table_widths[key] < 56 || value.table_widths[key] > 16384))) throw failure('校准表格列宽记录无效。');
-    const saved = {
+    return input({
       ...value.scope,
       ...value.table
-    };
-    delete saved.snapshot_ref;
-    const restored = input(saved),
-      migration = window.ResourceTableFilterModel.restore(restored.column_filters);
-    restored.column_filters = migration.filters;
-    return {
-      input: restored,
-      notice: migration.notice
-    };
+    });
   }
-  const initial = value => restoreInitial(value).input;
-  async function readView(api, value, signal) {
+  const read = (value, signal) => window.APSWorkbenchTransport.read(base, encode(input(value)), {
+    signal
+  });
+  async function readView(value, signal) {
     const wanted = input(value);
-    return validate(await api.read(wanted, signal), wanted);
+    return validate(await read(wanted, signal), wanted);
+  }
+  function detail(value, query, signal) {
+    if (!ref(value) || !query.snapshot_ref) throw failure('所选记录或数据版本缺失。');
+    return window.APSWorkbenchTransport.read(base + '/' + value, encode(input(query)), {
+      signal
+    });
   }
   function validRow(row, meta) {
     return object(row) && ref(row.suggestion_ref) && row.suggestion_ref === row.template_operation_ref && row.operation_ref === row.suggestion_ref && ref(row.part_ref) && ['part_no', 'part_name', 'operation_label', 'template_snapshot', 'method_version', 'generated_at'].every(key => typeof row[key] === 'string') && Number.isInteger(row.sequence) && Number.isInteger(row.template_revision) && row.template_revision > 0 && ['old_unit_hours', 'suggested_unit_hours', 'deviation_percent', 'absolute_deviation_percent'].every(key => number(row[key])) && ['sample_count', 'eligible_sample_count', 'candidate_count', 'excluded_count'].every(key => count(row[key])) && row.sample_count <= 20 && row.sample_count <= row.eligible_sample_count && row.eligible_sample_count <= row.candidate_count && row.excluded_count === row.candidate_count - row.sample_count && Array.isArray(row.sample_refs) && row.sample_refs.length === row.sample_count && row.sample_refs.every(ref) && new Set(row.sample_refs).size === row.sample_count && Array.isArray(row.sample_revisions) && row.sample_revisions.length === row.sample_count && Array.isArray(row.exclusion_reasons) && Array.isArray(row.blocked_reasons) && object(row.capabilities) && typeof row.over_20_percent === 'boolean' && ['relative', 'old_zero', 'old_unknown', 'suggestion_unavailable', 'not_representable'].includes(row.deviation_basis) && ['insufficient_data', 'suggested'].includes(row.status) && row.status === 'insufficient_data' === (row.suggested_unit_hours === null) && (row.sample_count >= 5 || row.suggested_unit_hours === null) && row.snapshot_ref === meta.snapshot_ref && row.as_of === meta.as_of;
@@ -56910,9 +55534,10 @@ function SMExport({
     return selected.length === row.sample_count && samples.filter(sample => sample.eligible).length === row.eligible_sample_count && selected.every(sample => row.sample_refs.includes(sample.sample_ref) && row.sample_revisions.some(revision => object(revision) && revision.sample_ref === sample.sample_ref && revision.sample_revision === sample.sample_revision && revision.template_revision === sample.template_revision && JSON.stringify(revision.report_revision_refs) === JSON.stringify(sample.report_revision_refs)));
   }
   function validate(result, query, detailRef) {
-    const data = result && result.data,
-      meta = result && result.meta;
-    if (!result || result.ok !== true || result.schema_version !== 1 || !meta || meta.source !== 'production' || meta.time_basis !== 'factory_local' || typeof meta.snapshot_ref !== 'string' || !meta.snapshot_ref || typeof meta.as_of !== 'string' || !Array.isArray(result.warnings) || !data || !object(data.scope) || !object(data.summary) || !object(data.capabilities) || !Array.isArray(data.blocked_reasons) || !Array.isArray(data.source_constraints) || typeof data.lineage_available !== 'boolean' || !object(data.exports) || data.exports.url !== base + '/export' || data.exports.scope !== 'all_filtered_suggestions' || !Array.isArray(data.exports.formats)) throw failure('校准数据不完整，未使用样例或零值替代。');
+    // 信封已由 transport 校验；本页要按快照绑定明细和导出，所以快照必须非空。
+    const data = result.data,
+      meta = result.meta;
+    if (!meta.snapshot_ref || !object(data.scope) || !object(data.summary) || !object(data.capabilities) || !Array.isArray(data.blocked_reasons) || !Array.isArray(data.source_constraints) || typeof data.lineage_available !== 'boolean' || !object(data.exports) || data.exports.url !== base + '/export' || data.exports.scope !== 'all_filtered_suggestions' || !Array.isArray(data.exports.formats)) throw failure('校准数据不完整，未使用样例或零值替代。');
     const wanted = input(query);
     if (wanted.snapshot_ref && wanted.snapshot_ref !== meta.snapshot_ref) throw failure(window.WorkbenchTerms.outcomes.stale, 'snapshot_stale');
     if (Object.keys(defaults).filter(key => !['page', 'column_filters'].includes(key)).some(key => data.scope[key] !== wanted[key])
@@ -56935,63 +55560,26 @@ function SMExport({
       reason = exportReason(result.data, format);
     if (reason) throw failure(reason);
     if (!query.snapshot_ref || query.snapshot_ref !== result.meta.snapshot_ref) throw failure('导出的数据版本缺失或不一致，请刷新后重试。', 'snapshot_stale');
-    const target = new URL(base + '/export', location.origin);
-    Object.entries(transport({
+    const file = await window.APSWorkbenchTransport.download(base + '/export', encode({
       ...query,
       format
-    })).forEach(([key, item]) => {
-      if (item !== undefined && item !== null && item !== '') target.searchParams.set(key, String(item));
+    }), {
+      signal,
+      types: [window.APSWorkbenchTransport.types[format]]
     });
-    const controller = new AbortController(),
-      abort = () => controller.abort();
-    if (signal) {
-      signal.addEventListener('abort', abort, {
-        once: true
-      });
-      if (signal.aborted) abort();
-    }
-    const timer = setTimeout(abort, 20000);
-    try {
-      const response = await fetch(target.href, {
-        method: 'GET',
-        cache: 'no-store',
-        credentials: 'same-origin',
-        redirect: 'error',
-        signal: controller.signal
-      });
-      const mime = response.headers.get('content-type') || '';
-      if (!response.ok || mime.includes('application/json')) {
-        const payload = mime.includes('application/json') ? await response.json() : null;
-        throw failure(payload && payload.error && payload.error.message || '导出读取失败，请重试。', payload && payload.error && payload.error.code);
-      }
-      if (response.headers.get('X-Workbench-Snapshot') !== query.snapshot_ref || response.headers.get('X-Workbench-As-Of') !== result.meta.as_of || response.headers.get('X-Workbench-Row-Count') !== String(result.data.summary.total)) throw failure('导出的数据版本或总行数不一致，文件没有保存，请刷新后重试。', 'snapshot_stale');
-      const expected = format === 'csv' ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-      if (!mime.toLowerCase().startsWith(expected)) throw failure('导出文件格式不正确，文件未保存。');
-      const blob = await response.blob(),
-        bytes = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
-      if (!blob.size || blob.size > 16 * 1024 * 1024 || (format === 'csv' ? bytes[0] !== 239 || bytes[1] !== 187 || bytes[2] !== 191 : bytes[0] !== 80 || bytes[1] !== 75)) throw failure('导出文件内容不完整，文件未保存。');
-      const disposition = response.headers.get('content-disposition') || '';
-      const match = /filename\*=UTF-8''([^;]+)/i.exec(disposition) || /filename="?([^";]+)/i.exec(disposition);
-      const filename = match ? decodeURIComponent(match[1]) : '';
-      if (!/^工时校准明细-[\wT-]+\.(csv|xlsx)$/.test(filename) || !filename.endsWith('.' + format)) throw failure('导出文件名不正确，文件未保存。');
-      if (controller.signal.aborted) throw failure('导出已取消，文件未保存。');
-      window.APSWorkbenchTransport.saveBlob(filename, blob);
-      return {
-        filename,
-        rows: result.data.summary.total,
-        snapshot_ref: query.snapshot_ref,
-        bytes: blob.size
-      };
-    } finally {
-      clearTimeout(timer);
-      if (signal) signal.removeEventListener('abort', abort);
-    }
+    if (file.header('X-Workbench-Snapshot-Ref') !== query.snapshot_ref || file.header('X-Workbench-As-Of') !== result.meta.as_of || file.header('X-Workbench-Row-Count') !== String(result.data.summary.total)) throw failure('导出的数据版本或总行数不一致，文件没有保存，请刷新后重试。', 'snapshot_stale');
+    if (signal.aborted) throw failure('导出已取消，文件未保存。');
+    window.APSWorkbenchTransport.saveBlob(file.filename, file.blob);
+    return {
+      rows: result.data.summary.total
+    };
   }
-  function transport(value) {
+  // column_filters 已由 input() 规范成对象；空对象不上送。
+  function encode(value) {
     const result = {
       ...value
     };
-    if (result.column_filters && Object.keys(result.column_filters).length) result.column_filters = JSON.stringify(result.column_filters);else delete result.column_filters;
+    if (Object.keys(result.column_filters).length) result.column_filters = JSON.stringify(result.column_filters);else delete result.column_filters;
     return result;
   }
   function facetScope(value, column) {
@@ -57003,43 +55591,34 @@ function SMExport({
     result.column_filters = Object.fromEntries(Object.entries(checked.column_filters).filter(([key]) => key !== column));
     return result;
   }
-  function create(supplied) {
-    const io = supplied || window.APSResourceAPI.create();
-    const parameters = value => transport(input(value));
-    function facet(kind, request, signal, selection) {
-      if (kind !== 'calibration' || !(request.column in sorts)) throw failure('校准列筛选项无效。');
-      const {
-        scope,
-        column,
-        ...query
-      } = request;
-      return io.query('calibration/' + (selection ? 'facet-selection/' : 'facets/') + column, {
-        ...query,
-        scope: JSON.stringify(scope)
-      }, signal);
-    }
-    return {
-      read: (value, signal) => io.query('calibration', parameters(value), signal),
-      detail: (value, query, signal) => {
-        if (!ref(value) || !query.snapshot_ref) throw failure('所选记录或数据版本缺失。');
-        return io.query('calibration/' + value, parameters(query), signal);
-      },
-      download,
-      facets: (kind, request, signal) => facet(kind, request, signal, false),
-      facetSelection: (kind, request, signal) => facet(kind, request, signal, true)
-    };
+  function facet(kind, request, signal, selection) {
+    if (kind !== 'calibration' || !(request.column in sorts)) throw failure('校准列筛选项无效。');
+    const {
+      scope,
+      column,
+      ...query
+    } = request;
+    return window.APSWorkbenchTransport.read(base + (selection ? '/facet-selection/' : '/facets/') + column, {
+      ...query,
+      scope: JSON.stringify(scope)
+    }, {
+      signal
+    });
   }
   window.CalibrationAPI = {
-    create,
+    read,
+    readView,
+    detail,
+    download,
     validate,
     input,
     initial,
-    restoreInitial,
-    readView,
     sorts,
     exportReason,
     failure,
-    facetScope
+    facetScope,
+    facets: (kind, request, signal) => facet(kind, request, signal, false),
+    facetSelection: (kind, request, signal) => facet(kind, request, signal, true)
   };
 })();
 
@@ -57312,9 +55891,9 @@ function SMExport({
 (function () {
   'use strict';
 
-  const BASE = '/api/workbench/v1/calibration/',
-    ACTION = 'calibration.adopt',
-    rejected = new WeakSet();
+  const T = window.APSWorkbenchTransport,
+    BASE = '/api/workbench/v1/calibration/',
+    ACTION = 'calibration.adopt';
   const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
   const ref = v => typeof v === 'string' && /^[a-f0-9]{48}$/.test(v);
   const key = v => typeof v === 'string' && /^calibration-[a-f0-9]{48}$/.test(v);
@@ -57347,12 +55926,12 @@ function SMExport({
     return Object.fromEntries(bindingFields.map(k => [k, row[k]]));
   }
   const issues = value => Array.isArray(value) && value.every(v => object(v) && text(v.code) && text(v.message));
-  function preview(value, original, intent) {
+  function previewResult(value, original, intent) {
     const d = value && value.data,
       m = value && value.meta,
       c = d && d.write_context,
       v = d && d.validation;
-    check(value && value.ok === true && value.schema_version === 1 && Array.isArray(value.warnings) && !value.warnings.length && m && m.source === 'production' && m.time_basis === 'factory_local' && text(m.as_of) && object(d) && d.template_operation_ref === original.template_operation_ref && d.generated_at === m.as_of && d.effect_scope === 'future_template_use_only' && equal(d.input, input(intent)) && object(v) && typeof v.can_adopt === 'boolean' && issues(v.issues) && object(c) && object(c.capabilities) && issues(c.blocked_reasons));
+    check(!value.warnings.length && object(d) && d.template_operation_ref === original.template_operation_ref && d.generated_at === m.as_of && d.effect_scope === 'future_template_use_only' && equal(d.input, input(intent)) && object(v) && typeof v.can_adopt === 'boolean' && issues(v.issues) && object(c) && object(c.capabilities) && issues(c.blocked_reasons));
     check(equal(binding(d.suggestion), binding(original)), '模板、原定额或完工记录已变化，请点「刷新所选模板」后重新预检。');
     const row = d.suggestion;
     check(row.suggestion_ref === row.template_operation_ref && row.operation_ref === row.template_operation_ref && Array.isArray(d.samples) && d.samples.length === row.sample_count && d.samples.every((sample, i) => object(sample) && sample.sample_ref === row.sample_refs[i] && sample.execution_operation_ref === sample.sample_ref && sample.template_operation_ref === row.template_operation_ref && sample.template_revision === row.template_revision && ref(sample.lineage_evidence_ref) && sample.selected === true && sample.eligible === true && sample.sample_revision === row.sample_revisions[i].sample_revision && equal(sample.report_revision_refs, row.sample_revisions[i].report_revision_refs) && number(sample.effective_processing_hours) && number(sample.completed_quantity) && sample.completed_quantity > 0 && number(sample.unit_hours) && sample.unknown_record_count === 0 && Array.isArray(sample.exclusion_reasons) && !sample.exclusion_reasons.length && Array.isArray(sample.reports)));
@@ -57366,90 +55945,46 @@ function SMExport({
     check(object(intent) && key(intent.request_key) && s && value && value.ok === true && value.result === 'committed' && typeof value.receipt_ref === 'string' && /^[a-f0-9]{32}$/.test(value.receipt_ref) && typeof value.replayed === 'boolean' && Array.isArray(value.warnings) && !value.warnings.length && object(d) && ref(d.adoption_ref) && d.template_operation_ref === s.template_operation_ref && d.request_key === intent.request_key && d.reason === intent.input.reason && d.declared_operator === intent.input.declared_operator && d.confirmed === true && text(d.application_operator) && text(d.adopted_at) && text(d.generated_at) && d.old_unit_hours === s.old_unit_hours && d.new_unit_hours === s.suggested_unit_hours && d.template_revision_before === s.template_revision && d.template_revision_after === s.template_revision + Number(s.old_unit_hours !== s.suggested_unit_hours) && d.method_version === s.method_version && d.sample_count === s.sample_count && equal(d.sample_refs, s.sample_refs) && equal(d.sample_revisions, s.sample_revisions) && d.effect_scope === 'future_template_use_only');
     return value;
   }
-  function failure(value, status) {
-    const e = value && value.error;
-    const valid = object(value) && value.ok === false && [false, 'unknown'].includes(value.committed) && object(e) && text(e.code) && text(e.message) && Array.isArray(e.fields) && typeof e.retryable === 'boolean' && typeof e.request_ref === 'string' && /^[a-f0-9]{32}$/.test(e.request_ref);
-    const error = new Error(valid ? e.message : window.WorkbenchTerms.outcomes.pending('采用'));
-    error.code = valid ? e.code : 'invalid_response';
-    error.status = status;
-    if (valid && value.committed === false && [400, 404, 409, 422, 503].includes(status) && !['request_key_conflict', 'receipt_not_found'].includes(e.code)) rejected.add(error);
-    error.notFound = valid && value.committed === false && status === 404 && e.code === 'receipt_not_found';
-    return error;
+  // 预检、采用和回执查询都按 30 秒等待；回执还没记下时 lookup 返回 null。
+  async function preview(row, values, signal) {
+    const original = binding(row),
+      intent = input(values);
+    return previewResult(await T.preview(BASE + original.template_operation_ref + '/adopt-preview', {
+      input: intent
+    }, {
+      signal,
+      timeout: 30000
+    }), original, intent);
   }
-  function create(fetcher = window.fetch.bind(window)) {
-    async function request(path, body, signal) {
-      const controller = new AbortController(),
-        abort = () => controller.abort();
-      if (signal) {
-        signal.addEventListener('abort', abort, {
-          once: true
-        });
-        if (signal.aborted) abort();
-      }
-      const timer = setTimeout(abort, 30000);
-      try {
-        const response = await fetcher(BASE + path, {
-          method: body === undefined ? 'GET' : 'POST',
-          credentials: 'same-origin',
-          redirect: 'error',
-          cache: 'no-store',
-          signal: controller.signal,
-          ...(body === undefined ? {} : {
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(body)
-          })
-        });
-        if (response.status === 404 && !(response.headers.get('Content-Type') || '').includes('application/json') && path.endsWith('/adopt-preview')) throw new Error(window.WorkbenchTerms.outcomes.unavailable + '仍可以核对完工记录和导出。');
-        check((response.headers.get('Content-Type') || '').split(';')[0].toLowerCase() === 'application/json');
-        const value = await response.json();
-        if (!response.ok) throw failure(value, response.status);
-        check(response.status === 200);
-        return value;
-      } finally {
-        clearTimeout(timer);
-        if (signal) signal.removeEventListener('abort', abort);
-      }
-    }
-    return {
-      async preview(row, values, signal) {
-        const original = binding(row),
-          intent = input(values);
-        return preview(await request(original.template_operation_ref + '/adopt-preview', {
-          input: intent
-        }, signal), original, intent);
-      },
-      async adopt(intent, token) {
-        check(text(token));
-        return receipt(await request(intent.baseline.template_operation_ref + '/adopt', {
-          write_token: token,
-          request_key: intent.request_key,
-          input: input(intent.input, true)
-        }), intent);
-      },
-      async lookup(intent, signal) {
-        check(key(intent.request_key) && ref(intent.baseline.template_operation_ref));
-        try {
-          return receipt(await request(intent.baseline.template_operation_ref + '/adopt/receipts/' + intent.request_key, undefined, signal), intent);
-        } catch (e) {
-          if (e.notFound) return null;
-          throw e;
-        }
-      }
-    };
+  async function adopt(intent, token) {
+    check(text(token));
+    return receipt(await T.command(BASE + intent.baseline.template_operation_ref + '/adopt', {
+      write_token: token,
+      request_key: intent.request_key,
+      input: input(intent.input, true)
+    }, {
+      timeout: 30000,
+      expect: '/api/workbench/v1/commands/' + intent.request_key
+    }), intent);
+  }
+  async function lookup(intent, signal) {
+    check(key(intent.request_key) && ref(intent.baseline.template_operation_ref));
+    const value = await T.lookup(BASE + intent.baseline.template_operation_ref + '/adopt/receipts/' + intent.request_key, {
+      signal,
+      timeout: 30000
+    });
+    return value === null ? null : receipt(value, intent);
   }
   window.CalibrationAdoptionAPI = {
-    create,
     preview,
+    adopt,
+    lookup,
     receipt,
     binding,
     input,
     check,
-    ref,
     key,
-    equal,
-    isRejected: e => rejected.has(e)
+    equal
   };
 })();
 
@@ -57501,7 +56036,7 @@ function SMExport({
     A.check(!previous || previous.phase === 'rejected', '上次操作的结果还没确认，不能开始新的采用。');
     return save({
       version: 1,
-      request_key: 'calibration-' + Array.from(crypto.getRandomValues(new Uint8Array(24)), n => n.toString(16).padStart(2, '0')).join(''),
+      request_key: window.APSWorkbenchTransport.requestKey('calibration'),
       phase: 'pending',
       baseline: A.binding(preview.suggestion),
       input: A.input({
@@ -57512,10 +56047,8 @@ function SMExport({
   }
   function useSession({
     detail,
-    stale,
-    adapter
+    stale
   }) {
-    const api = React.useMemo(() => adapter || A.create(), [adapter]);
     const [initial] = React.useState(() => {
       try {
         return {
@@ -57624,7 +56157,7 @@ function SMExport({
       let disposed = false;
       const controller = new AbortController();
       setBusy(true);
-      api.lookup(saved, controller.signal).then(value => {
+      A.lookup(saved, controller.signal).then(value => {
         if (disposed) return;
         if (value) accept(value, saved);else setNotice('上次采用结果尚未确认，请稍后再次查询。');
       }).catch(e => {
@@ -57636,7 +56169,7 @@ function SMExport({
         disposed = true;
         controller.abort();
       };
-    }, [saved, api, revision, storageError]);
+    }, [saved, revision, storageError]);
     function change(value) {
       setDraft(value);
       setPreview(null);
@@ -57665,7 +56198,7 @@ function SMExport({
       const controller = new AbortController();
       request.current = controller;
       try {
-        const value = await api.preview(detail.suggestion, values, controller.signal);
+        const value = await A.preview(detail.suggestion, values, controller.signal);
         if (mounted.current && !controller.signal.aborted && A.equal(detail, source.current)) setPreview(value);
       } catch (e) {
         if (mounted.current && !controller.signal.aborted) setError(e.message);
@@ -57698,16 +56231,17 @@ function SMExport({
           setPreview(null);
           setConsent(false);
           try {
-            accept(await api.adopt(original, preview.write_context.write_token), original);
+            accept(await A.adopt(original, preview.write_context.write_token), original);
           } catch (e) {
-            if (A.isRejected(e)) {
-              const rejected = save({
+            const rejected = window.APSWorkbenchTransport.rejected(e);
+            if (rejected) {
+              const value = save({
                 ...original,
                 phase: 'rejected'
               }, original);
-              if (mounted.current) setSaved(rejected);
+              if (mounted.current) setSaved(value);
             }
-            if (mounted.current) setError(A.isRejected(e) ? e.message + ' 本次没有采用；请点「刷新所选模板」后重新预检。' : window.WorkbenchTerms.outcomes.pending('采用'));
+            if (mounted.current) setError(rejected ? e.message + ' 本次没有采用；请点「刷新所选模板」后重新预检。' : window.WorkbenchTerms.outcomes.pending('采用'));
           }
         });
       } catch (e) {
@@ -57765,7 +56299,6 @@ function SMExport({
   }
   window.CalibrationAdoptionState = {
     KEY,
-    EVENT,
     read,
     save,
     begin,
@@ -58004,15 +56537,13 @@ function SMExport({
 
   function CalibrationAdoptionAction({
     detail,
-    stale = false,
-    onRefresh,
-    adapter
+    stale,
+    onRefresh
   }) {
     const U = window.CalibrationAdoptionControls,
       s = window.CalibrationAdoptionState.useSession({
         detail,
-        stale,
-        adapter
+        stale
       });
     const label = s.saved ? s.saved.phase === 'committed' ? '查看采用结果' : s.saved.phase === 'pending' ? '查询上次采用结果' : '重新核对采用' : '预检采用';
     return /*#__PURE__*/React.createElement("div", {
@@ -58271,8 +56802,7 @@ function SMExport({
 
   function Workspace({
     initialContext,
-    onNavigate,
-    adapter
+    onNavigate
   }) {
     const A = window.CalibrationAPI,
       C = window.CalibrationControls;
@@ -58281,32 +56811,32 @@ function SMExport({
       ErrorBox,
       useRead
     } = C;
-    const api = React.useMemo(() => adapter || A.create(), [adapter]);
+    // 本页只读查看零件工艺：没有写入会话，不读取也不接续工艺页留下的待确认操作。
     const partAdapter = React.useMemo(() => ({
-      detail: (...args) => window.APSProcessAPI.create().detail(...args)
+      detail: window.APSProcessAPI.create().detail,
+      readPending: () => null
     }), []);
     const [part, setPart] = React.useState(null);
-    const [restored] = React.useState(() => A.restoreInitial(initialContext));
-    const [input, setInput] = React.useState(restored.input);
+    const [input, setInput] = React.useState(() => A.initial(initialContext));
     const [widths, setWidths] = React.useState(initialContext.table_widths || {});
     const [selected, setSelected] = React.useState(initialContext.selected || null),
       [sampleRef, setSample] = React.useState(initialContext.sample_ref || null);
     const [revision, refresh] = React.useReducer(value => value + 1, 0),
       [format, setFormat] = React.useState('csv');
-    const [notice, setNotice] = React.useState(restored.notice),
+    const [notice, setNotice] = React.useState(''),
       [error, setError] = React.useState(null),
       [downloading, setDownloading] = React.useState(false);
     const [stale, setStale] = React.useState(false),
       downloadAbort = React.useRef(null);
     const identity = JSON.stringify(input) + ':' + revision;
-    const request = useRead(signal => A.readView(api, input, signal), identity, api);
+    const request = useRead(signal => A.readView(input, signal), identity, A);
     const result = request.result,
       data = result && result.data;
     const bound = {
       ...input,
       snapshot_ref: result ? result.meta.snapshot_ref : input.snapshot_ref
     };
-    const detail = useRead(async signal => A.validate(await api.detail(selected, bound, signal), bound, selected), selected + ':' + JSON.stringify(bound) + ':' + revision, api, !!(selected && result && data.capabilities.view === true && !stale));
+    const detail = useRead(async signal => A.validate(await A.detail(selected, bound, signal), bound, selected), selected + ':' + JSON.stringify(bound) + ':' + revision, A, !!(selected && result && data.capabilities.view === true && !stale));
     const isStale = failure => window.APSResourceContract.stale(failure, ['calibration_source_changed']);
     window.WorkbenchPageContext.useSnapshot(data ? {
       scope: Object.fromEntries(Object.entries(input).filter(([key]) => !['page', 'size', 'sort', 'direction', 'snapshot_ref'].includes(key))),
@@ -58325,7 +56855,7 @@ function SMExport({
     }, [request.error, detail.error]);
     React.useEffect(() => () => {
       if (downloadAbort.current) downloadAbort.current.abort();
-    }, [api]);
+    }, []);
     function reload() {
       if (downloadAbort.current) downloadAbort.current.abort();
       setInput(old => ({
@@ -58365,11 +56895,8 @@ function SMExport({
       setNotice('');
       setError(null);
       try {
-        const receipt = await api.download(result, bound, format, controller.signal);
-        if (!controller.signal.aborted) {
-          if (!receipt || receipt.rows !== data.summary.total || receipt.snapshot_ref !== result.meta.snapshot_ref) throw A.failure('导出结果不完整，请重新导出。');
-          setNotice('已导出 ' + receipt.rows + ' 项。');
-        }
+        const receipt = await A.download(result, bound, format, controller.signal);
+        if (!controller.signal.aborted) setNotice('已导出 ' + receipt.rows + ' 项。');
       } catch (failure) {
         if (!controller.signal.aborted) {
           setError(failure);
@@ -58524,7 +57051,7 @@ function SMExport({
         setSample(null);
       },
       scope: bound,
-      adapter: api,
+      adapter: A,
       widths: widths,
       total: data.summary.total,
       onResize: (key, value) => setWidths(old => ({
@@ -58676,15 +57203,15 @@ function SMExport({
     } else if (!count(value.filled_fields) || !count(value.checked_fields) || value.filled_fields > value.checked_fields || !count(value.known_relation_count) || typeof value.checks_complete !== 'boolean' || typeof value.relations_complete !== 'boolean' || typeof value.summary !== 'string' || value.relations_complete && value.relation_count !== value.known_relation_count) fail();
     return value;
   }
-  function envelope(result) {
-    if (!object(result) || result.ok !== true || result.schema_version !== 1 || !object(result.data) || !object(result.meta) || result.meta.source !== 'production' || result.meta.time_basis !== 'factory_local' || !result.meta.snapshot_ref || typeof result.meta.as_of !== 'string' || !Array.isArray(result.warnings)) fail();
-    return result;
+  // 信封已由 transport.js 的 envelope() 校验；基础资料的翻页、详情与导出都绑定快照，这里只断言快照非空。
+  function bound(result) {
+    if (!result.meta.snapshot_ref) fail();
   }
   function page(value, rows, size) {
     if (!object(value) || !count(value.total) || !Number.isSafeInteger(value.number) || value.number < 1 || !Number.isSafeInteger(value.pages) || value.pages !== Math.max(1, Math.ceil(value.total / value.size)) || value.number > value.pages || value.size !== size || rows.length !== Math.min(size, Math.max(0, value.total - (value.number - 1) * size))) fail('基础资料的分页数量对不上，请刷新后重试。');
   }
   function list(result, expected, snapshot) {
-    envelope(result);
+    bound(result);
     const data = result.data,
       actual = scope(data.scope),
       overview = data.overview;
@@ -58703,8 +57230,10 @@ function SMExport({
     return result;
   }
   function detail(result, expected, selection, section, snapshot) {
-    envelope(result);
+    bound(result);
+    // 列表里内嵌的 selected_detail 也走这里，所以 data 仍要自己校验是对象。
     const data = result.data;
+    if (!object(data)) fail('详情和所选资料对不上，页面没有切换。请刷新后重试。');
     if (canonical(scope(data.scope)) !== canonical(scope(expected)) || result.meta.snapshot_ref !== snapshot || data.section !== section || !object(data.entity) || data.entity.ref !== selection.entity_ref || data.entity.domain !== selection.domain || !Array.isArray(data.rows) || !object(data.counts) || ['issues', 'relations', 'fields'].some(key => !count(data.counts[key]))) fail('详情和所选资料对不上，页面没有切换。请刷新后重试。');
     row(data.entity, 'entities');
     page(data.page, data.rows, 10);
@@ -58759,92 +57288,69 @@ function SMExport({
   'use strict';
 
   const C = window.APSMasterOverviewContract,
+    T = window.APSWorkbenchTransport,
     base = '/api/workbench/v1/master-overview';
-  function url(path, scope, token, extra = {}) {
-    const query = new URLSearchParams({
-      scope: JSON.stringify(scope),
-      ...extra
-    });
-    if (token) query.set('snapshot_ref', token);
-    return base + path + '?' + query.toString();
+  const query = (scope, token, extra = {}) => ({
+    scope: JSON.stringify(scope),
+    ...extra,
+    snapshot_ref: token
+  });
+  async function list(scope, page, token, signal) {
+    const normalized = C.scope(scope);
+    const result = C.list(await T.read(base, query(normalized, token, {
+      page
+    }), {
+      signal,
+      timeout: 20000
+    }), normalized, token);
+    if (result.data.page.number !== page) C.fail('读到的不是当前这一页，页面内容没有变化。请刷新后重试。');
+    return result;
   }
-  function create() {
+  async function detail(scope, selected, section, page, token, signal) {
+    const normalized = C.scope(scope);
+    const result = C.detail(await T.read(base + '/entities/' + selected.domain + '/' + selected.entity_ref, query(normalized, token, {
+      section,
+      detail_page: page
+    }), {
+      signal,
+      timeout: 20000
+    }), normalized, selected, section, token);
+    if (result.data.page.number !== page) C.fail('读到的不是当前这一页详情，页面内容没有变化。请刷新后重试。');
+    return result;
+  }
+  async function locate(scope, selected, token, signal) {
+    if (!C.ref(selected.entity_ref) || !C.domains.some(row => row[0] === selected.domain)) C.fail('定位目标不正确。');
+    const result = C.list(await T.read(base + '/locate/' + selected.domain + '/' + selected.entity_ref, query(C.scope(scope), token), {
+      signal,
+      timeout: 20000
+    }));
+    if (!result.data.selected || result.data.selected.entity_ref !== selected.entity_ref || result.data.selected.domain !== selected.domain || !result.data.rows.some(row => row.ref === selected.entity_ref && row.domain === selected.domain)) C.fail('清单里没有定位到这条资料，页面内容没有变化。请刷新后重试。');
+    return result;
+  }
+  // 文件名与后缀已由 transport.download 校验；这里只核对快照与行数两个业务头。
+  async function exportFile(scope, token, signal) {
+    const file = await T.download(base + '/export', query(C.scope(scope), token), {
+      signal,
+      timeout: 20000,
+      types: [T.types.csv]
+    });
+    const countText = file.header('X-Workbench-Row-Count'),
+      count = Number(countText);
+    if (file.header('X-Workbench-Snapshot-Ref') !== token || countText === null || !/^(0|[1-9][0-9]*)$/.test(countText) || !Number.isSafeInteger(count)) C.fail('导出范围或数据版本对不上，没有开始下载。请刷新后重试。');
     return {
-      list: async (scope, page, token, signal) => {
-        const normalized = C.scope(scope);
-        const result = C.list(await window.APSWorkbenchTransport.read(url('', normalized, token, {
-          page
-        }), signal), normalized, token);
-        if (result.data.page.number !== page) C.fail('读到的不是当前这一页，页面内容没有变化。请刷新后重试。');
-        return result;
-      },
-      detail: async (scope, selected, section, page, token, signal) => {
-        const normalized = C.scope(scope);
-        const result = C.detail(await window.APSWorkbenchTransport.read(url('/entities/' + selected.domain + '/' + selected.entity_ref, normalized, token, {
-          section,
-          detail_page: page
-        }), signal), normalized, selected, section, token);
-        if (result.data.page.number !== page) C.fail('读到的不是当前这一页详情，页面内容没有变化。请刷新后重试。');
-        return result;
-      },
-      locate: async (scope, selected, token, signal) => {
-        if (!C.ref(selected.entity_ref) || !C.domains.some(row => row[0] === selected.domain)) C.fail('定位目标不正确。');
-        const result = C.list(await window.APSWorkbenchTransport.read(url('/locate/' + selected.domain + '/' + selected.entity_ref, C.scope(scope), token), signal));
-        if (!result.data.selected || result.data.selected.entity_ref !== selected.entity_ref || result.data.selected.domain !== selected.domain || !result.data.rows.some(row => row.ref === selected.entity_ref && row.domain === selected.domain)) C.fail('清单里没有定位到这条资料，页面内容没有变化。请刷新后重试。');
-        return result;
-      },
-      export: (scope, token, signal) => download(scope, token, signal)
+      blob: file.blob,
+      filename: file.filename,
+      count
     };
   }
-  async function download(scope, token, signal) {
-    const controller = new AbortController(),
-      abort = () => controller.abort();
-    let timedOut = false;
-    if (signal) {
-      signal.addEventListener('abort', abort, {
-        once: true
-      });
-      if (signal.aborted) controller.abort();
-    }
-    const timer = setTimeout(() => {
-      timedOut = true;
-      abort();
-    }, 20000);
-    try {
-      const response = await fetch(url('/export', C.scope(scope), token), {
-        signal: controller.signal,
-        credentials: 'same-origin',
-        headers: {
-          Accept: 'text/csv'
-        }
-      });
-      const type = (response.headers.get('content-type') || '').toLowerCase();
-      if (!response.ok) {
-        const payload = type.includes('application/json') ? await response.json() : null;
-        C.fail(payload && payload.error && payload.error.message || '基础资料导出失败，没有开始下载。请刷新后重试。');
-      }
-      const countText = response.headers.get('X-Workbench-Row-Count'),
-        count = Number(countText);
-      if (!type.startsWith('text/csv') || response.headers.get('X-Workbench-Snapshot-Ref') !== token || countText === null || !/^(0|[1-9][0-9]*)$/.test(countText) || !Number.isSafeInteger(count)) C.fail('导出范围或数据版本对不上，没有开始下载。请刷新后重试。');
-      const filename = scope.view === 'issues' ? '基础资料待维护项.csv' : '基础资料清单.csv';
-      return {
-        blob: await response.blob(),
-        filename,
-        count
-      };
-    } catch (error) {
-      if (timedOut) C.fail('基础资料导出超时，请重试。');
-      throw error;
-    } finally {
-      clearTimeout(timer);
-      if (signal) signal.removeEventListener('abort', abort);
-    }
-  }
   function save(file) {
-    window.APSWorkbenchTransport.saveBlob(file.filename, file.blob);
+    T.saveBlob(file.filename, file.blob);
   }
   window.APSMasterOverviewAPI = {
-    create,
+    list,
+    detail,
+    locate,
+    export: exportFile,
     save
   };
 })();
@@ -59154,8 +57660,7 @@ function SMExport({
       page: 1,
       selected: null,
       section: 'issues',
-      detailPage: 1,
-      notice: ''
+      detailPage: 1
     };
     // 侧栏直接进入时 main.jsx 传空对象，按“无定位”处理。
     if (!Object.keys(context).length) return empty;
@@ -59175,17 +57680,14 @@ function SMExport({
     if (!view || typeof view !== 'object' || Array.isArray(view) || Object.keys(view).some(key => !['scope', 'page', 'selected', 'section', 'detail_page'].includes(key))) C.fail('上次操作记录里只能保存浏览状态，页面没有恢复。请刷新后重试。');
     const scope = C.scope(view.scope);
     if (!Number.isSafeInteger(view.page) || view.page < 1 || !Number.isSafeInteger(view.detail_page) || view.detail_page < 1 || !['issues', 'relations', 'fields'].includes(view.section)) C.fail('上次操作记录里的页码或页签不正确，页面没有恢复。请刷新后重试。');
-    const selected = view.selected,
-      legacyIssue = selected && typeof selected.issue_ref === 'string' && /^[0-9a-f]{48}$/.test(selected.issue_ref);
+    const selected = view.selected;
     if (selected !== null && (!selected || typeof selected !== 'object' || Array.isArray(selected) || Object.keys(selected).some(key => !['domain', 'entity_ref', 'issue_ref'].includes(key)) || !C.ref(selected.entity_ref) || !C.domains.some(row => row[0] === selected.domain) || selected.issue_ref !== undefined && !C.issueKey(selected.issue_ref))) C.fail('上次操作记录里的资料编号不正确，页面没有恢复。请刷新后重试。');
     return {
       scope,
       page: view.page,
-      selected: legacyIssue ? null : selected,
+      selected,
       section: view.section,
-      detailPage: view.detail_page,
-      restoreSelection: !!legacyIssue,
-      notice: legacyIssue ? '旧版待维护项选择已清除，筛选范围和页码已保留。请重新选择条目。' : ''
+      detailPage: view.detail_page
     };
   }
   function Statistics({
@@ -59269,7 +57771,7 @@ function SMExport({
     onNavigate,
     initialContext
   }) {
-    const api = useMemo(() => window.APSMasterOverviewAPI.create(), []);
+    const api = window.APSMasterOverviewAPI;
     const contextKey = C.canonical(initialContext);
     const initial = useMemo(() => {
       try {
@@ -59311,7 +57813,7 @@ function SMExport({
     const [search, setSearch] = useState(initial.scope.query),
       [column, setColumn] = useState(null),
       [columnText, setColumnText] = useState('');
-    const [message, setMessage] = useState(initial.notice),
+    const [message, setMessage] = useState(''),
       [actionError, setActionError] = useState(null),
       [exporting, setExporting] = useState(false),
       [stale, setStale] = useState(false);
@@ -59387,7 +57889,6 @@ function SMExport({
       });
       setSearch(initial.scope.query);
       setColumn(null);
-      setMessage(initial.notice);
     }, [contextKey, initial]);
     useEffect(() => {
       const controller = new AbortController();
@@ -59396,7 +57897,7 @@ function SMExport({
       setError(null);
       setStale(false);
       setActionError(null);
-      setMessage(request.restore === undefined ? '' : request.restore.notice);
+      setMessage('');
       if (!request.keep) {
         setResult(null);
         setDetailRequest({
@@ -59423,7 +57924,7 @@ function SMExport({
           const same = (item, target) => (item.entity_ref || item.ref) === target.entity_ref && item.domain === target.domain && (!target.issue_ref || item.issue_ref === target.issue_ref);
           const restoredRow = restored ? next.data.rows.find(item => same(item, restored)) : null;
           if (restored && !restoredRow) C.fail('原来选中的资料已不在当前范围，这里没有自动换成其他记录。请刷新后重试。');
-          const defaultRow = restored ? restoredRow : focus ? next.data.rows.find(item => item.ref === focus.entity_ref && item.domain === focus.domain) : request.restore && request.restore.restoreSelection && request.restore.selected === null ? null : next.data.rows[0];
+          const defaultRow = restored ? restoredRow : focus ? next.data.rows.find(item => item.ref === focus.entity_ref && item.domain === focus.domain) : next.data.rows[0];
           const capturedRow = focus || next.data.rows[0],
             capturedSelection = capturedRow ? selection(capturedRow) : null;
           const captured = capturedSelection ? C.detail({
@@ -59903,7 +58404,6 @@ function SMExport({
     not_checked: '尚未检查',
     unavailable: '完整性检查资料缺失'
   };
-  const historicalDigests = [['历史所选备份 SHA-256', 'target_sha256'], ['历史保护副本 SHA-256', 'protection_sha256'], ['历史维护结束数据库 SHA-256', 'database_after_sha256']];
   function check(ok) {
     if (!ok) throw new Error('维护状态数据不完整或存在冲突，请重新查询并核对维护记录。');
   }
@@ -59924,8 +58424,7 @@ function SMExport({
   function operation(op) {
     check(op.result_source === source && typeof op.restart_required === 'boolean' && Object.prototype.hasOwnProperty.call(origins, op.database_origin));
     const value = op.source_verification;
-    check(object(value) && ['original_file_content_and_sqlite', 'legacy_record'].includes(value.basis) && ['target', 'protection'].every(key => Object.prototype.hasOwnProperty.call(fileStates, value[key])) && Object.prototype.hasOwnProperty.call(sqliteStates, value.sqlite_integrity));
-    check(historicalDigests.every(([, key]) => value.basis === 'legacy_record' ? !Object.prototype.hasOwnProperty.call(op, key) || op[key] === null || typeof op[key] === 'string' && /^[a-f0-9]{64}$/.test(op[key]) : !Object.prototype.hasOwnProperty.call(op, key)));
+    check(object(value) && value.basis === 'original_file_content_and_sqlite' && ['target', 'protection'].every(key => Object.prototype.hasOwnProperty.call(fileStates, value[key])) && Object.prototype.hasOwnProperty.call(sqliteStates, value.sqlite_integrity));
     if (op.action === 'restore') {
       check(op.restart_scope === 'restoring_process' && op.references_require_reload === true);
       const expected = {
@@ -59941,10 +58440,7 @@ function SMExport({
     const value = op.source_verification;
     return [['所选备份内容', fileStates[value.target]], ['保护副本内容', fileStates[value.protection]], ['SQLite 完整性', sqliteStates[value.sqlite_integrity]]];
   }
-  function legacyDigests(op) {
-    return op.source_verification.basis === 'legacy_record' ? historicalDigests.filter(([, key]) => op[key]).map(([label, key]) => [label, op[key]]) : [];
-  }
-  function referencePath(reference, kind = 'request') {
+  function referencePath(reference, kind) {
     check(['request', 'job'].includes(kind) && typeof reference === 'string' && (kind === 'job' ? /^[a-f0-9]{32}$/ : /^[A-Za-z0-9_-]{16,128}$/).test(reference));
     return (kind === 'job' ? '/jobs/' : '/results/') + reference;
   }
@@ -59959,7 +58455,7 @@ function SMExport({
       uncertain
     };
   }
-  // 三种诊断文件各有一个名字：诊断包（日志 ZIP）、页面诊断（系统管理页）、维护诊断（恢复维护页）。
+  // 三种诊断文件：日志 ZIP 的名字由后端附件头给出；页面诊断（系统管理页）和维护诊断（恢复维护页）是本页生成的 JSON，名字在本地。
   const DIAGNOSTIC_FILENAME = '维护诊断.json';
   function download(host, result, error) {
     const payload = {
@@ -59979,7 +58475,6 @@ function SMExport({
     host,
     operation,
     sourceFacts,
-    legacyDigests,
     referencePath,
     describe,
     download,
@@ -59993,7 +58488,8 @@ function SMExport({
 (function () {
   'use strict';
 
-  const BASE = '/api/workbench/v1/system',
+  const T = window.APSWorkbenchTransport,
+    BASE = '/api/workbench/v1/system',
     PENDING_KEY = 'aps_workbench_system_pending_v1';
   const actions = {
     create: '新增备份',
@@ -60019,14 +58515,11 @@ function SMExport({
   function check(valid, message = '读到的维护数据不完整，页面没有改动。请刷新后重试。') {
     if (!valid) throw new Error(message);
   }
-  function envelope(value, snapshot = true) {
-    check(object(value) && value.ok === true && value.schema_version === 1 && object(value.data) && object(value.meta) && value.meta.source === 'production' && value.meta.time_basis === 'factory_local' && (snapshot ? nonempty(value.meta.snapshot_ref) : /^[a-f0-9]{32}$/.test(value.meta.request_ref)) && nonempty(value.meta.as_of) && Array.isArray(value.warnings));
-    return value.data;
-  }
+  // 存储值损坏时后端直接拒绝读取，这里只会读到八项有效值和尚未保存的默认项。
   function config(value, writable = true) {
-    check(object(value) && object(value.values) && object(value.stored_values) && object(value.dirty_reasons) && Array.isArray(value.dirty_fields) && Array.isArray(value.defaulted_fields) && (!writable || context(value.write_context)));
+    check(object(value) && object(value.values) && Array.isArray(value.defaulted_fields) && (!writable || context(value.write_context)));
     check(fields.every(field => field.switch ? ['yes', 'no'].includes(value.values[field.key]) : count(value.values[field.key])));
-    check(value.dirty_fields.concat(value.defaulted_fields).every(key => fields.some(field => field.key === key)) && value.dirty_fields.every(key => text(value.dirty_reasons[key])) && fields.every(field => value.stored_values[field.key] === null || text(value.stored_values[field.key])));
+    check(value.defaulted_fields.every(key => fields.some(field => field.key === key)));
     return value;
   }
   function backupFile(row) {
@@ -60037,10 +58530,11 @@ function SMExport({
     const caps = row.file_capabilities;
     return object(caps) && Object.keys(caps).length === 3 && ['download', 'restore', 'delete'].every(key => caps[key] === false) && !['backup_ref', 'write_context', 'filename', 'size_bytes', '_signature', 'file_exists', 'verification_state'].some(key => Object.prototype.hasOwnProperty.call(row, key)) && nonempty(row.event_ref) && (row.record_kind === 'restore_event' ? row.type === 'restore' && states.includes(row.status) && row.event_source === 'external_maintenance_journal' && /^[a-f0-9]{32}$/.test(row.event_ref) : row.type === 'cleanup' && ['succeeded', 'failed', 'unknown'].includes(row.status) && ['operation_audit', 'latest_job_state_only'].includes(row.event_source));
   }
+  // 清单读取已由 transport 校验过信封；翻页和导出还要用这次读取的数据版本。
   function collection(value, kind) {
-    const data = envelope(value),
+    const data = value.data,
       page = data.page;
-    check(object(page) && ['number', 'size', 'total', 'pages'].every(key => count(page[key])) && page.number >= 1 && [10, 25, 50].includes(page.size) && page.pages === Math.max(1, Math.ceil(page.total / page.size)) && page.number <= page.pages && Array.isArray(data.rows) && data.rows.length === Math.min(page.size, Math.max(0, page.total - (page.number - 1) * page.size)) && Array.isArray(data.sources) && data.scope === (kind === 'backups' ? 'backup-files-and-maintenance-events' : 'bounded-log-windows'));
+    check(nonempty(value.meta.snapshot_ref) && object(page) && ['number', 'size', 'total', 'pages'].every(key => count(page[key])) && page.number >= 1 && [10, 25, 50].includes(page.size) && page.pages === Math.max(1, Math.ceil(page.total / page.size)) && page.number <= page.pages && Array.isArray(data.rows) && data.rows.length === Math.min(page.size, Math.max(0, page.total - (page.number - 1) * page.size)) && Array.isArray(data.sources) && data.scope === (kind === 'backups' ? 'backup-files-and-maintenance-events' : 'bounded-log-windows'));
     check(new Set(data.rows.map(row => row.key)).size === data.rows.length && data.rows.every(row => object(row) && nonempty(row.key) && (row.time === null || nonempty(row.time)) && text(row.summary) && text(row.body) && (kind === 'backups' ? backupFile(row) || maintenanceEvent(row) : ['runtime', 'operation'].includes(row.type) && row.status === 'recorded' && text(row.level) && text(row.file) && typeof row.content_truncated === 'boolean')));
     if (kind === 'backups') {
       const caps = data.capabilities;
@@ -60060,8 +58554,10 @@ function SMExport({
     };
   }
   function result(value, intent) {
+    // 回执查询拿到的是原始 JSON：维护期间由维护日志服务器作答，平时是标准信封。
     const external = object(value) && object(value.meta) && value.meta.result_source === 'external_maintenance_journal';
-    const data = external ? window.SystemRestoreStatus.envelope(value) : envelope(value, false);
+    if (!external) T.envelope(value);
+    const data = external ? window.SystemRestoreStatus.envelope(value) : value.data;
     if (!external && data.host) window.SystemRestoreStatus.validateHost(data.host);
     if (data.kind === 'not_recorded') {
       check(text(data.message));
@@ -60128,10 +58624,8 @@ function SMExport({
       begin(action) {
         check(Object.prototype.hasOwnProperty.call(actions, action), '未知维护动作。');
         check(!this.read(), '还有一次操作没有确认结果，不能重新发起。请先点「查询结果」。');
-        const bytes = new Uint8Array(24);
-        window.crypto.getRandomValues(bytes);
         const value = {
-          request_key: 'system-' + Array.from(bytes, n => n.toString(16).padStart(2, '0')).join(''),
+          request_key: T.requestKey('system'),
           action,
           summary: actions[action]
         };
@@ -60144,14 +58638,6 @@ function SMExport({
         if (saved) storage.removeItem(PENDING_KEY);
       }
     };
-  }
-  function errorResponse(value, status) {
-    const valid = object(value) && value.ok === false && object(value.error) && text(value.error.message) && text(value.error.code);
-    const problem = new Error(valid ? value.error.message : '维护接口返回的数据格式无效，请重新查询。');
-    problem.code = valid ? value.error.code : 'invalid_response';
-    problem.status = status;
-    problem.rejected = valid && value.committed === false && status >= 400;
-    return problem;
   }
   function inspectPending() {
     try {
@@ -60166,30 +58652,20 @@ function SMExport({
       };
     }
   }
-  function parameters(input) {
-    const params = new URLSearchParams();
-    Object.entries(input).forEach(([key, value]) => {
-      if (value !== '' && value !== undefined && value !== null) params.set(key, value);
-    });
-    return params.toString() ? '?' + params : '';
-  }
   function recordSelection(selection, kind) {
     if (selection === undefined || selection === null) return null;
-    check(object(selection) && Object.keys(selection).every(key => ['key', 'backup_ref', 'record_kind'].includes(key)) && (selection.key === undefined || nonempty(selection.key)) && (selection.record_kind === undefined || ['backup_file', 'restore_event', 'cleanup_event'].includes(selection.record_kind)) && (selection.backup_ref === undefined || nonempty(selection.backup_ref) && (selection.record_kind === undefined || selection.record_kind === 'backup_file')), '原先选中的记录已失效，请重新选择。');
-    check(kind !== 'logs' || nonempty(selection.key) && selection.backup_ref === undefined && selection.record_kind === undefined, '原先选中的日志记录编号不对，请重新选择。');
-    const recordKind = selection.record_kind || (kind === 'backups' && selection.backup_ref ? 'backup_file' : undefined);
+    // 唯一写方 SystemMaintenanceRecords 只存 { key, record_kind }（日志只存 key）。
+    check(object(selection) && Object.keys(selection).every(key => ['key', 'record_kind'].includes(key)) && nonempty(selection.key) && (kind === 'logs' || ['backup_file', 'restore_event', 'cleanup_event'].includes(selection.record_kind)), '原先选中的记录已失效，请重新选择。');
+    check(kind !== 'logs' || selection.record_kind === undefined, '原先选中的日志记录编号不对，请重新选择。');
     return {
-      ...(selection.key !== undefined ? {
-        key: selection.key
-      } : {}),
-      ...(recordKind ? {
-        record_kind: recordKind
-      } : {})
+      key: selection.key,
+      ...(kind === 'logs' ? {} : {
+        record_kind: selection.record_kind
+      })
     };
   }
   function recordContext(value = {}, kind) {
-    const migrationNotice = '原记录编号已更新，已清除上次的记录选择，请重新选择。';
-    check(object(value) && Object.keys(value).every(key => ['filters', 'page', 'snapshot_ref', 'selection', 'migration_notice'].includes(key)) && (value.migration_notice === undefined || value.migration_notice === migrationNotice), '上次的筛选和翻页状态无法恢复。请刷新后重新筛选。');
+    check(object(value) && Object.keys(value).every(key => ['filters', 'page', 'selection'].includes(key)), '上次的筛选和翻页状态无法恢复。请刷新后重新筛选。');
     const filters = {
       query: '',
       type: '',
@@ -60201,198 +58677,121 @@ function SMExport({
       ...value.filters
     };
     check((value.filters === undefined || object(value.filters)) && Object.keys(filters).every(key => ['query', 'type', 'status', 'level', 'file', 'start', 'end'].includes(key) && text(filters[key]) && filters[key].length <= 200), '上次的筛选条件无法恢复。请刷新后重新筛选。');
-    const page = value.page === undefined ? 1 : value.page,
-      snapshot = value.snapshot_ref === undefined ? '' : value.snapshot_ref;
-    check(count(page) && page >= 1 && page <= 100000 && text(snapshot), '上次的页码或数据版本无法恢复。请刷新后重新翻页。');
-    const selection = recordSelection(value.selection, kind),
-      legacy = selection && /^[a-f0-9]{64}$/.test(selection.key);
+    const page = value.page === undefined ? 1 : value.page;
+    check(count(page) && page >= 1 && page <= 100000, '上次的页码无法恢复。请刷新后重新翻页。');
     return {
       filters,
       page,
-      selection: legacy ? null : selection,
-      ...(legacy || value.migration_notice ? {
-        migration_notice: migrationNotice
-      } : {})
+      selection: recordSelection(value.selection, kind)
     };
   }
   function pageContext(value) {
-    check(object(value) && Object.keys(value).every(key => ['source', 'tab', 'page_size', 'records'].includes(key)), '上次的页面状态无法恢复。请从侧栏重新打开系统管理。');
-    // `sample` 是下线前唯一发布过的旧来源。只迁移这个精确值，并清空其样例记录状态；未知来源仍 fail closed。
-    const legacySample = value.source === 'sample';
+    check(object(value) && Object.keys(value).every(key => ['tab', 'page_size', 'records'].includes(key)), '上次的页面状态无法恢复。请从侧栏重新打开系统管理。');
     const tab = value.tab === undefined ? 'overview' : value.tab;
     const size = value.page_size === undefined ? 10 : value.page_size;
-    const records = legacySample || value.records === undefined ? {} : value.records;
-    check((value.source === undefined || value.source === 'current' || legacySample) && ['overview', 'backups', 'logs', 'config'].includes(tab) && [10, 25, 50].includes(size) && object(records) && Object.keys(records).every(key => ['backups', 'logs'].includes(key)), '上次的页面状态不完整，无法恢复。请从侧栏重新打开系统管理。');
+    const records = value.records === undefined ? {} : value.records;
+    check(['overview', 'backups', 'logs', 'config'].includes(tab) && [10, 25, 50].includes(size) && object(records) && Object.keys(records).every(key => ['backups', 'logs'].includes(key)), '上次的页面状态不完整，无法恢复。请从侧栏重新打开系统管理。');
     return {
       tab,
       page_size: size,
       records: Object.fromEntries(Object.entries(records).map(([kind, item]) => [kind, recordContext(item, kind)]))
     };
   }
-  function create(fetcher = window.fetch.bind(window)) {
-    async function exchange(path, options, consume) {
-      const controller = new AbortController(),
-        external = options.signal;
-      const abort = () => controller.abort();
-      let expired = false;
-      if (external) {
-        if (external.aborted) abort();else external.addEventListener('abort', abort, {
-          once: true
-        });
-      }
-      const timer = setTimeout(() => {
-        expired = true;
-        abort();
-      }, 30000);
-      try {
-        const response = await fetcher(BASE + path, {
-          credentials: 'same-origin',
-          cache: 'no-store',
-          redirect: 'error',
-          ...options,
-          signal: controller.signal
-        });
-        return await consume(response);
-      } catch (problem) {
-        if (expired) throw new Error(options.method === 'POST' ? window.WorkbenchTerms.outcomes.pending('维护操作') : '维护查询超时，请重新查询。');
-        throw problem;
-      } finally {
-        clearTimeout(timer);
-        if (external) external.removeEventListener('abort', abort);
-      }
+  // 维护读取、提交和下载都按 30 秒等待。维护状态与回执查询是原始 JSON，交给 result / SystemRestoreStatus 校验。
+  const TIMEOUT = 30000;
+  async function host() {
+    try {
+      return window.SystemRestoreStatus.host(await T.lookup(BASE + '/restore-host', {
+        timeout: TIMEOUT
+      }));
+    } catch (problem) {
+      const message = problem.status === 404 ? '维护状态接口未注册（HTTP 404），请检查服务启动配置。' : '维护状态查询失败' + (problem.status ? '（HTTP ' + problem.status + '）' : '') + '：' + problem.message;
+      const error = new Error(message);
+      error.code = problem.code;
+      error.status = problem.status;
+      throw error;
     }
-    async function request(path, options = {}) {
-      return exchange(path, options, async response => {
-        const mime = (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
-        if (mime !== 'application/json') throw errorResponse(null, response.status);
-        const payload = await response.json();
-        if (!response.ok || payload.ok !== true) throw errorResponse(payload, response.status);
-        return payload;
-      });
+  }
+  // input 是页面按当前筛选组装的查询对象（配置页传 {}），不会缺省。
+  async function read(kind, input, signal) {
+    check(['backups', 'logs', 'config'].includes(kind));
+    const value = await T.read(BASE + '/' + kind, input, {
+      signal,
+      timeout: TIMEOUT
+    });
+    if (kind === 'config') config(value.data);else {
+      collection(value, kind);
+      check(value.data.page.number === (input.page === undefined ? 1 : input.page) && value.data.page.size === (input.page_size === undefined ? 10 : input.page_size) && (!input.snapshot_ref || value.meta.snapshot_ref === input.snapshot_ref), '读到的维护记录和刚才的筛选不一致，页面没有改动。请刷新后重试。');
     }
+    return value;
+  }
+  async function command(intent, token, input) {
+    check(validIntent(intent) && nonempty(token));
+    const payload = await T.command(BASE + (intent.action === 'config' ? '/config/save' : '/backups/' + intent.action), {
+      request_key: intent.request_key,
+      write_token: token,
+      input
+    }, {
+      timeout: TIMEOUT,
+      expect: BASE + '/results/' + intent.request_key
+    });
+    return intent.action === 'config' ? receipt(payload) : result(payload, intent);
+  }
+  async function lookup(intent) {
+    check(validIntent(intent));
+    return result(await T.lookup(BASE + '/results/' + intent.request_key, {
+      timeout: TIMEOUT
+    }), intent);
+  }
+  async function lookupReference(reference, kind, signal) {
+    const path = window.SystemRestoreStatus.referencePath(reference, kind);
+    const value = await T.lookup(BASE + path, {
+        signal,
+        timeout: TIMEOUT
+      }),
+      op = value.data && value.data.operation;
+    if (op && path.startsWith('/jobs/')) check(op.job_ref === reference, '返回的维护记录不是所查询的记录。');
+    return result(value, {
+      action: op && op.action,
+      request_key: path.startsWith('/jobs/') ? op && op.request_key : reference
+    });
+  }
+  // 文件名只认后端附件头给的名字，非空与后缀由 transport 校验；这里只核对本领域的内容与业务头。
+  // format 只会是 csv / zip，input 带着已读日志的数据版本，都由 SystemMaintenanceRecords 传入。
+  async function download(format, input) {
+    const file = await T.download(BASE + '/logs/export/' + format, input, {
+      timeout: TIMEOUT,
+      types: [T.types[format]]
+    });
+    if (format === 'csv') check((await file.blob.slice(0, 8192).text()).startsWith('来源,时间,'), '下载内容与日志文件格式不符。');
+    T.saveBlob(file.filename, file.blob);
     return {
-      async host(signal) {
-        try {
-          return window.SystemRestoreStatus.host(await request('/restore-host', {
-            signal
-          }));
-        } catch (problem) {
-          if (problem.name === 'AbortError') throw problem;
-          const message = problem.status === 404 ? '维护状态接口未注册（HTTP 404），请检查服务启动配置。' : problem.name === 'TypeError' ? '维护状态服务连接失败，请检查软件服务后重新查询。' : '维护状态查询失败' + (problem.status ? '（HTTP ' + problem.status + '）' : '') + '：' + problem.message;
-          const error = new Error(message);
-          error.code = problem.code;
-          error.status = problem.status;
-          throw error;
-        }
-      },
-      // input 是页面按当前筛选组装的查询对象（配置页传 {}），不会缺省。
-      async read(kind, input, signal) {
-        check(['backups', 'logs', 'config'].includes(kind));
-        const value = await request('/' + kind + parameters(input), {
-          signal
-        });
-        if (kind === 'config') config(envelope(value, false));else {
-          collection(value, kind);
-          check(value.data.page.number === (input.page === undefined ? 1 : input.page) && value.data.page.size === (input.page_size === undefined ? 10 : input.page_size) && (!input.snapshot_ref || value.meta.snapshot_ref === input.snapshot_ref), '读到的维护记录和刚才的筛选不一致，页面没有改动。请刷新后重试。');
-        }
-        return value;
-      },
-      async command(intent, token, input) {
-        check(validIntent(intent) && nonempty(token));
-        const payload = await request(intent.action === 'config' ? '/config/save' : '/backups/' + intent.action, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            request_key: intent.request_key,
-            write_token: token,
-            input
-          })
-        });
-        return intent.action === 'config' ? receipt(payload) : result(payload, intent);
-      },
-      async lookup(intent, signal) {
-        check(validIntent(intent));
-        return result(await request('/results/' + intent.request_key, {
-          signal
-        }), intent);
-      },
-      async lookupReference(reference, kind = 'request', signal) {
-        const path = window.SystemRestoreStatus.referencePath(reference, kind);
-        const value = await request(path, {
-            signal
-          }),
-          op = value.data && value.data.operation;
-        if (op && path.startsWith('/jobs/')) check(op.job_ref === reference, '返回的维护记录不是所查询的记录。');
-        return result(value, {
-          action: op && op.action,
-          request_key: path.startsWith('/jobs/') ? op && op.request_key : reference
-        });
-      },
-      async download(format, input, signal) {
-        check(['csv', 'zip'].includes(format) && nonempty(input.snapshot_ref), '还没有读到日志，不能导出。请先点「查询」。');
-        return exchange('/logs/export/' + format + parameters(input), {
-          signal
-        }, async response => {
-          const blob = await response.blob(),
-            mime = (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
-          check(blob instanceof Blob && blob.size > 0, '下载内容为空，没有保存文件。请刷新后重试。');
-          const prefix = await blob.slice(0, 8192).text();
-          if (mime === 'application/json' || /^[\s\ufeff]*[\[{]/.test(prefix)) {
-            let payload;
-            try {
-              payload = JSON.parse(prefix);
-            } catch (_) {
-              throw new Error('下载返回的不是日志文件，没有保存。请刷新后重试。');
-            }
-            throw errorResponse(payload, response.status);
-          }
-          const expected = format === 'csv' ? 'text/csv' : 'application/zip';
-          check(response.ok && mime === expected && blob.type.split(';')[0].trim().toLowerCase() === expected, '下载的文件类型不对，没有保存。请刷新后重试。');
-          const magic = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
-          check(format === 'zip' ? magic[0] === 80 && magic[1] === 75 && magic[2] === 3 && magic[3] === 4 : magic[0] === 239 && magic[1] === 187 && magic[2] === 191 && prefix.startsWith('来源,时间,'), '下载内容与日志文件格式不符。');
-          const filename = format === 'csv' ? '系统日志片段.csv' : '诊断包.zip';
-          window.APSWorkbenchTransport.saveBlob(filename, blob);
-          return {
-            filename,
-            bytes: blob.size
-          };
-        });
-      },
-      async downloadBackup(row, input, signal) {
-        check(object(row) && row.record_kind === 'backup_file' && !['event_ref', 'event_source'].some(key => Object.prototype.hasOwnProperty.call(row, key)) && nonempty(row.backup_ref) && nonempty(row.filename) && count(row.size_bytes) && object(input) && nonempty(input.snapshot_ref), '请先读取备份清单再选择文件。');
-        return exchange('/backups/' + encodeURIComponent(row.backup_ref) + '/download' + parameters(input), {
-          signal
-        }, async response => {
-          const blob = await response.blob(),
-            mime = (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
-          const prefix = await blob.slice(0, 8192).text();
-          if (mime === 'application/json' || /^[\s\ufeff]*[\[{]/.test(prefix)) {
-            let payload;
-            try {
-              payload = JSON.parse(prefix);
-            } catch (_) {
-              throw new Error('备份下载返回的不是备份文件，没有保存。请刷新后重试。');
-            }
-            throw errorResponse(payload, response.status);
-          }
-          check(response.ok && mime === 'application/vnd.sqlite3' && blob.size > 0 && blob.size === row.size_bytes && Number(response.headers.get('Content-Length')) === blob.size, '备份下载状态、类型或大小与原清单不一致。');
-          const disposition = response.headers.get('Content-Disposition') || '',
-            match = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
-          check(/^attachment;/i.test(disposition) && match && decodeURIComponent(match[1]) === row.filename && response.headers.get('X-APS-Backup-Ref') === row.backup_ref, '下载到的不是刚才选中的备份文件，没有保存。');
-          check((await blob.slice(0, 16).text()) === 'SQLite format 3\u0000', '下载内容不是备份数据库文件，没有保存。');
-          window.APSWorkbenchTransport.saveBlob(row.filename, blob);
-          return {
-            filename: row.filename,
-            bytes: blob.size
-          };
-        });
-      }
+      filename: file.filename,
+      bytes: file.blob.size
+    };
+  }
+  // row 是已校验清单里的备份文件行，input 带着这次清单的数据版本，都由 SystemMaintenanceRecords 传入。
+  async function downloadBackup(row, input) {
+    const file = await T.download(BASE + '/backups/' + encodeURIComponent(row.backup_ref) + '/download', input, {
+      timeout: TIMEOUT,
+      types: [T.types.sqlite]
+    });
+    check(file.blob.size === row.size_bytes && Number(file.header('Content-Length')) === file.blob.size, '备份下载状态、类型或大小与原清单不一致。');
+    check(file.header('X-APS-Backup-Ref') === row.backup_ref, '下载到的不是刚才选中的备份文件，没有保存。');
+    T.saveBlob(file.filename, file.blob);
+    return {
+      filename: file.filename,
+      bytes: file.blob.size
     };
   }
   window.SystemMaintenanceAPI = {
-    create,
+    host,
+    read,
+    command,
+    lookup,
+    lookupReference,
+    download,
+    downloadBackup,
     pending,
     inspectPending,
     PENDING_KEY,
@@ -60438,9 +58837,9 @@ function SMExport({
       error: error
     }) : null;
   }
-  function useRead(api, kind, input, revision, enabled = true) {
+  function useRead(kind, input, revision, enabled) {
     const signature = JSON.stringify(input);
-    const query = window.APSResourceSession.useQuery(signal => api.read(kind, input, signal), [api, kind, signature, revision], enabled);
+    const query = window.APSResourceSession.useQuery(signal => A.read(kind, input, signal), [kind, signature, revision], enabled);
     return {
       data: query.result,
       error: query.error,
@@ -60613,7 +59012,6 @@ function SMExport({
     R = window.SystemRestoreStatus;
   function Panel({
     command,
-    api,
     theme,
     onSetTheme
   }) {
@@ -60671,7 +59069,7 @@ function SMExport({
       });
       controller.current = new AbortController();
       try {
-        const value = await api.lookupReference(reference.trim(), kind, controller.current.signal);
+        const value = await window.SystemMaintenanceAPI.lookupReference(reference.trim(), kind, controller.current.signal);
         setQuery({
           reference: reference.trim(),
           kind,
@@ -60793,9 +59191,7 @@ function SMExport({
       key: index
     }, window.WorkbenchFormat.dateTime(step.time), " \xB7 ", R.labels[step.state])), R.sourceFacts(op).map(([label, value]) => /*#__PURE__*/React.createElement("p", {
       key: label
-    }, label, "\uFF1A", value)), R.legacyDigests(op).map(([label, value]) => /*#__PURE__*/React.createElement("p", {
-      key: label
-    }, label, "\uFF1A", /*#__PURE__*/React.createElement("code", null, value), "\uFF08\u539F\u8BB0\u5F55\uFF09")), /*#__PURE__*/React.createElement("p", null, "\u5185\u5BB9\u4E0E\u5B8C\u6574\u6027\u72B6\u6001\u6765\u81EA\u5BF9\u5E94\u7EF4\u62A4\u4EFB\u52A1\u3002")))), document.body);
+    }, label, "\uFF1A", value)), /*#__PURE__*/React.createElement("p", null, "\u5185\u5BB9\u4E0E\u5B8C\u6574\u6027\u72B6\u6001\u6765\u81EA\u5BF9\u5E94\u7EF4\u62A4\u4EFB\u52A1\u3002")))), document.body);
   }
   window.SystemRestorePanel = Panel;
 })();
@@ -61031,13 +59427,12 @@ function SMExport({
     }, "\u5220\u9664\u5907\u4EFD"))));
   }
   function Records({
-    api,
     kind,
     pageSize,
     onPageSize,
     revision,
     command,
-    active = true,
+    active,
     initialContext,
     onReadContext
   }) {
@@ -61051,8 +59446,8 @@ function SMExport({
       [confirm, setConfirm] = React.useState(null),
       [downloadBusy, setDownloadBusy] = React.useState(false);
     const [error, setError] = React.useState(null),
-      [notice, setNotice] = React.useState(start.migration_notice || '');
-    const request = C.useRead(api, kind, {
+      [notice, setNotice] = React.useState('');
+    const request = C.useRead(kind, {
       ...filters,
       page,
       page_size: pageSize,
@@ -61060,8 +59455,7 @@ function SMExport({
     }, revision + ':' + refresh, active);
     const payload = request.data,
       data = payload && payload.data;
-    const stableSelection = selection && (kind !== 'backups' || typeof selection.key === 'string' && selection.key.length > 0 && ['backup_file', 'restore_event', 'cleanup_event'].includes(selection.record_kind));
-    const matches = stableSelection && data ? data.rows.filter(row => row.key === selection.key && (kind !== 'backups' || row.record_kind === selection.record_kind && (row.record_kind !== 'backup_file' || !selection.backup_ref || row.backup_ref === selection.backup_ref))) : [];
+    const matches = selection && data ? data.rows.filter(row => row.key === selection.key && (kind !== 'backups' || row.record_kind === selection.record_kind && (row.record_kind !== 'backup_file' || !selection.backup_ref || row.backup_ref === selection.backup_ref))) : [];
     const selected = matches.length === 1 ? matches[0] : null;
     function setSelected(row) {
       setSelection(row ? {
@@ -61088,9 +59482,7 @@ function SMExport({
       setConfirm(null);
     }, [revision, pageSize]);
     const savedSelection = selection ? {
-      ...(selection.key !== undefined ? {
-        key: selection.key
-      } : {}),
+      key: selection.key,
       ...(selection.record_kind ? {
         record_kind: selection.record_kind
       } : {})
@@ -61101,7 +59493,7 @@ function SMExport({
       selection: savedSelection
     });
     React.useLayoutEffect(() => {
-      if (onReadContext && active && data) onReadContext(kind, {
+      if (active && data) onReadContext(kind, {
         filters: {
           ...filters
         },
@@ -61139,7 +59531,7 @@ function SMExport({
       setNotice('');
       setDownloadBusy(true);
       try {
-        const file = await api.download(format, {
+        const file = await A.download(format, {
           ...filters,
           page: 1,
           page_size: pageSize,
@@ -61157,7 +59549,7 @@ function SMExport({
       setNotice('');
       setDownloadBusy(true);
       try {
-        const file = await api.downloadBackup(row, {
+        const file = await A.downloadBackup(row, {
           ...filters,
           page: 1,
           page_size: pageSize,
@@ -61237,7 +59629,7 @@ function SMExport({
     }, notice), selection && data && !selected && /*#__PURE__*/React.createElement("p", {
       className: "sm-notice",
       role: "status"
-    }, !stableSelection ? '原先选中的记录编号不完整，没有按同名文件或第一条记录乱猜。请重新选择。' : '这一页里找不到原先选中的记录，没有自动换成别的记录。请重新选择。', /*#__PURE__*/React.createElement(C.Button, {
+    }, "\u8FD9\u4E00\u9875\u91CC\u627E\u4E0D\u5230\u539F\u5148\u9009\u4E2D\u7684\u8BB0\u5F55\uFF0C\u6CA1\u6709\u81EA\u52A8\u6362\u6210\u522B\u7684\u8BB0\u5F55\u3002\u8BF7\u91CD\u65B0\u9009\u62E9\u3002", /*#__PURE__*/React.createElement(C.Button, {
       icon: "x",
       onClick: () => setSelected(null)
     }, "\u6E05\u9664\u539F\u9009\u62E9")), kind === 'backups' && sharedReason && !command.storageError && /*#__PURE__*/React.createElement("p", {
@@ -61374,10 +59766,9 @@ function SMExport({
   const A = window.SystemMaintenanceAPI,
     C = window.SystemMaintenanceControls;
   function Config({
-    api,
     revision,
     command,
-    active = true,
+    active,
     ...preferences
   }) {
     const [refresh, reload] = React.useReducer(value => value + 1, 0),
@@ -61385,7 +59776,7 @@ function SMExport({
       [validated, setValidated] = React.useState(false);
     const [base, setBase] = React.useState(null),
       [replace, setReplace] = React.useState(false);
-    const request = C.useRead(api, 'config', {}, revision + ':' + refresh, active),
+    const request = C.useRead('config', {}, revision + ':' + refresh, active),
       incoming = request.data && request.data.data;
     const validation = A.normalize(draft || {}),
       changed = base && draft && A.fields.some(field => String(draft[field.key]) !== String(base.values[field.key]));
@@ -61431,7 +59822,7 @@ function SMExport({
       role: "status"
     }, "\u5DF2\u8BFB\u5230\u65B0\u7684\u914D\u7F6E\u6570\u636E\uFF0C\u4F60\u586B\u7684\u5185\u5BB9\u6CA1\u6709\u88AB\u8986\u76D6\u3002\u8BF7\u6838\u5BF9\u53D8\u5316\u540E\u518D\u4FDD\u5B58\u3002", /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u6700\u65B0\u5DF2\u5B58\u914D\u7F6E"), A.fields.map(field => /*#__PURE__*/React.createElement("p", {
       key: field.key
-    }, field.label, "\uFF1A", String(incoming.values[field.key]), incoming.dirty_fields.includes(field.key) ? ' · ' + incoming.dirty_reasons[field.key] : ''))), /*#__PURE__*/React.createElement(C.Button, {
+    }, field.label, "\uFF1A", String(incoming.values[field.key])))), /*#__PURE__*/React.createElement(C.Button, {
       icon: "check",
       disabled: command.locked,
       onClick: () => setBase(incoming)
@@ -61485,9 +59876,7 @@ function SMExport({
     }), /*#__PURE__*/React.createElement("span", null, field.unit)), /*#__PURE__*/React.createElement("small", {
       id: 'sm-maintenance-help-' + field.key,
       className: validated && validation.errors[field.key] ? 'sm-error' : 'sm-meta'
-    }, validated && validation.errors[field.key] || (field.switch ? '正式配置' : '1 至 ' + field.max + ' ' + field.unit)), base.dirty_fields.includes(field.key) ? /*#__PURE__*/React.createElement("small", {
-      className: "sm-error"
-    }, "\u65E7\u914D\u7F6E\u5F02\u5E38\uFF1A", base.dirty_reasons[field.key], base.stored_values[field.key] !== null ? ' · 原值：' + base.stored_values[field.key] : '') : base.defaulted_fields.includes(field.key) ? /*#__PURE__*/React.createElement("small", {
+    }, validated && validation.errors[field.key] || (field.switch ? '正式配置' : '1 至 ' + field.max + ' ' + field.unit)), base.defaulted_fields.includes(field.key) ? /*#__PURE__*/React.createElement("small", {
       className: "sm-meta"
     }, "\u9ED8\u8BA4\u503C\uFF0C\u5C1A\u672A\u4FDD\u5B58") : /*#__PURE__*/React.createElement("small", {
       className: "sm-meta"
@@ -61495,7 +59884,7 @@ function SMExport({
       className: "sm-form-footer"
     }, /*#__PURE__*/React.createElement("span", {
       className: "sm-meta"
-    }, changed ? '有未保存修改' : base.dirty_fields.length || base.defaulted_fields.length ? '含异常或默认项，还需核对后保存' : '当前值已读取'), /*#__PURE__*/React.createElement("div", {
+    }, changed ? '有未保存修改' : base.defaulted_fields.length ? '含默认项，还需核对后保存' : '当前值已读取'), /*#__PURE__*/React.createElement("div", {
       className: "sm-actions"
     }, /*#__PURE__*/React.createElement(C.Button, {
       icon: "rotate-ccw",
@@ -61534,7 +59923,7 @@ function SMExport({
 
   const A = window.SystemMaintenanceAPI,
     C = window.SystemMaintenanceControls;
-  function useCommand(api, onChanged, revision) {
+  function useCommand(onChanged, revision) {
     const [initial] = React.useState(A.inspectPending),
       [intent, setIntent] = React.useState(initial.intent),
       [storageError, setStorageError] = React.useState(initial.storageError);
@@ -61564,7 +59953,7 @@ function SMExport({
       const sequence = ++hostSequence.current;
       if (mounted.current) setHostBusy(true);
       try {
-        const value = await api.host();
+        const value = await A.host();
         if (mounted.current && sequence === hostSequence.current) {
           setHost(value);
           setHostError(null);
@@ -61585,7 +59974,7 @@ function SMExport({
       setBusy(true);
       setError(null);
       try {
-        settle(await api.lookup(original));
+        settle(await A.lookup(original));
       } catch (problem) {
         if (mounted.current) setError(problem);
       } finally {
@@ -61622,7 +60011,7 @@ function SMExport({
         window.removeEventListener('online', reload);
         window.removeEventListener('storage', reload);
       };
-    }, [api, revision]);
+    }, [revision]);
     async function execute(action, token, input, selected = null) {
       if (running.current || current.current || storageError || !host || hostError || host.state !== 'ready' || !host.operations_available) return;
       let original;
@@ -61641,10 +60030,10 @@ function SMExport({
       setBusy(true);
       running.current = true;
       try {
-        settle(await api.command(original, token, input));
+        settle(await A.command(original, token, input));
       } catch (problem) {
         if (mounted.current) setError(problem);
-        if (problem.rejected) {
+        if (window.APSWorkbenchTransport.rejected(problem)) {
           settle({
             kind: 'rejected',
             terminal: true,
@@ -61717,23 +60106,21 @@ function SMExport({
     onPageSize,
     compact,
     onCompact,
-    revision = 0,
+    revision,
     onChanged,
     onReadSuspendedChange,
-    recordContexts = {},
+    recordContexts,
     onRecordContext,
-    api: supplied,
     children
   }) {
-    const api = React.useMemo(() => supplied || A.create(), [supplied]);
     const [version, refresh] = React.useReducer(value => value + 1, 0);
-    const command = useCommand(api, (intent, result) => {
+    const command = useCommand((intent, result) => {
       refresh();
-      if (onChanged) onChanged(intent, result);
+      onChanged(intent, result);
     }, revision);
     const suspended = command.suspended;
     React.useLayoutEffect(() => {
-      if (onReadSuspendedChange) onReadSuspendedChange(suspended, command.readReason);
+      onReadSuspendedChange(suspended, command.readReason);
     }, [suspended, command.readReason, onReadSuspendedChange]);
     const enabled = !suspended,
       serial = revision + ':' + version;
@@ -61749,7 +60136,6 @@ function SMExport({
       "data-system-maintenance": "v1"
     }, command.maintenanceRequired ? /*#__PURE__*/React.createElement(window.SystemRestorePanel, {
       command: command,
-      api: api,
       theme: theme,
       onSetTheme: onSetTheme
     }) : /*#__PURE__*/React.createElement(React.Fragment, null, command.hostError && /*#__PURE__*/React.createElement("section", {
@@ -61779,7 +60165,6 @@ function SMExport({
       key: kind,
       hidden: !enabled || tab !== kind
     }, /*#__PURE__*/React.createElement(window.SystemMaintenanceRecords, {
-      api: api,
       kind: kind,
       pageSize: pageSize,
       onPageSize: onPageSize,
@@ -61791,7 +60176,6 @@ function SMExport({
     })) : null), (visited.config || enabled && tab === 'config') && /*#__PURE__*/React.createElement("div", {
       hidden: !enabled || tab !== 'config'
     }, /*#__PURE__*/React.createElement(window.SystemMaintenanceConfig, {
-      api: api,
       revision: serial,
       command: command,
       active: enabled && tab === 'config',
@@ -61875,7 +60259,10 @@ function SystemLive({
     const controller = new AbortController();
     setLoading(true);
     setError('');
-    window.APSWorkbenchTransport.read(boot.overview_url, controller.signal).then(result => {
+    window.APSWorkbenchTransport.read(boot.overview_url, {}, {
+      signal: controller.signal,
+      timeout: 20000
+    }).then(result => {
       if (!window.APSWorkbenchSystemContract.validate(result.data)) throw new Error('读到的本机系统信息不完整，页面没有改动。请点「重新检查」重试。');
       setPayload(result);
     }).catch(problem => {
@@ -61967,7 +60354,7 @@ function SystemLive({
     tone: error ? 'danger' : undefined
   }), /*#__PURE__*/React.createElement(Metric, {
     label: "\u6570\u636E\u5E93\u72B6\u6001",
-    value: data ? stateLabel(data.database.state) : '待读取',
+    value: data ? stateLabel(data.database.state) : '未读取',
     helper: "\u5C1A\u672A\u6267\u884C\u5B8C\u6574\u6027\u68C0\u67E5",
     tone: data && data.database.state === 'error' ? 'danger' : undefined
   }), /*#__PURE__*/React.createElement(Metric, {
@@ -62152,7 +60539,8 @@ function SystemLiveOverview({
 (function () {
   'use strict';
 
-  const BASE = '/api/workbench/v1/outsourcing',
+  const T = window.APSWorkbenchTransport,
+    BASE = '/api/workbench/v1/outsourcing',
     COMMANDS = '/api/workbench/v1/commands/';
   const states = {
     in_transit: '在途',
@@ -62170,7 +60558,6 @@ function SystemLiveOverview({
   const ref = v => typeof v === 'string' && /^[a-f0-9]{48}$/.test(v);
   const text = v => typeof v === 'string' && v.length > 0;
   const count = v => Number.isSafeInteger(v) && v >= 0;
-  const rejected = new WeakSet();
   function check(ok, message = '外协读到的数据不完整，请刷新后重试。') {
     if (!ok) throw new Error(message);
   }
@@ -62236,7 +60623,7 @@ function SystemLiveOverview({
     check(v.awaiting_return === (v.returned === null) && typeof v.overdue === 'boolean');
     return v;
   }
-  function query(kind, value = {}) {
+  function query(kind, value) {
     const allowed = ['page', 'size', 'snapshot_ref'].concat(kind === 'receipts' ? ['status'] : []);
     if (kind === 'targets') allowed.push('query');
     const q = {
@@ -62247,9 +60634,10 @@ function SystemLiveOverview({
     check(object(value) && Object.keys(q).every(k => allowed.includes(k)) && Number.isSafeInteger(q.page) && q.page >= 1 && q.page <= 1000000 && Number.isSafeInteger(q.size) && q.size >= 1 && q.size <= 100 && (q.status === undefined || ['all', 'awaiting', 'overdue', 'returned'].includes(q.status)) && (q.snapshot_ref === undefined || text(q.snapshot_ref)) && (q.query === undefined || typeof q.query === 'string' && q.query.length <= 200 && !q.query.includes('\0')) && (q.page === 1 || text(q.snapshot_ref)), '外协的筛选或翻页条件无效，当前范围没有变化。请重新选择。');
     return q;
   }
-  function envelope(v, q, preview = false) {
-    check(object(v) && v.ok === true && v.schema_version === 1 && object(v.meta) && v.meta.source === 'production' && v.meta.time_basis === 'factory_local' && time(v.meta.as_of) && (preview ? v.meta.snapshot_ref === null : text(v.meta.snapshot_ref)) && Array.isArray(v.warnings) && object(v.data));
-    if (q && q.snapshot_ref) check(q.snapshot_ref === v.meta.snapshot_ref, '数据已更新，请刷新后重试。刚才的选择已保留。');
+  // 信封已由 transport 校验；外协列表翻页钉在这次读取的数据版本上，所以列表读取的数据版本不能为空。
+  function envelope(v, q) {
+    check(text(v.meta.snapshot_ref));
+    if (q.snapshot_ref) check(q.snapshot_ref === v.meta.snapshot_ref, '数据已更新，请刷新后重试。刚才的选择已保留。');
     return v.data;
   }
   function page(p, rows, q) {
@@ -62302,8 +60690,8 @@ function SystemLiveOverview({
     }
     return v;
   }
-  function preview(v, input) {
-    const d = envelope(v, null, true);
+  function previewResult(v, input) {
+    const d = v.data;
     target(d.target, true);
     facts(d.after, v.meta.as_of);
     boundary(d.execution, d.target);
@@ -62322,80 +60710,44 @@ function SystemLiveOverview({
     boundary(d.execution, d.target);
     return v;
   }
-  function failure(v, status, intent) {
-    const e = v && v.error,
-      valid = v && v.ok === false && [false, 'unknown'].includes(v.committed) && object(e) && text(e.code) && text(e.message) && Array.isArray(e.fields);
-    const error = new Error(valid ? e.message : '读到的结果无法确认，上次提交可能已经生效。请点「查询结果」，不要重复提交。');
-    error.code = valid ? e.code : 'invalid_response';
-    error.fields = valid ? e.fields : [];
-    if (valid && v.committed === false && [400, 404, 409, 422, 503].includes(status) && e.code !== 'request_key_conflict') rejected.add(error);
-    if (valid && v.committed === 'unknown' && intent && e.result_target !== undefined) check(e.request_key === intent.request_key && e.result_target === COMMANDS + intent.request_key, '返回的结果编号和上次提交对不上，这里没有读取其他结果。请点「查询结果」。');
-    return error;
+  // 外协读取、预检、提交和回执查询都按 30 秒等待；提交失败的结果编号指向通用命令回执。
+  async function read(kind, args, selected, signal) {
+    const q = query(kind, args);
+    check(['targets', 'receipts', 'detail', 'history'].includes(kind));
+    if (['detail', 'history'].includes(kind)) check(ref(selected));
+    const path = ['targets', 'receipts'].includes(kind) ? '/' + kind : '/receipts/' + selected + (kind === 'history' ? '/history' : '');
+    return catalog(await T.read(BASE + path, q, {
+      signal,
+      timeout: 30000
+    }), kind, q, selected);
   }
-  function create(fetcher = window.fetch.bind(window)) {
-    async function request(url, body, signal, intent) {
-      const controller = new AbortController(),
-        abort = () => controller.abort(),
-        timer = setTimeout(abort, 30000);
-      if (signal) {
-        signal.addEventListener('abort', abort, {
-          once: true
-        });
-        if (signal.aborted) abort();
-      }
-      try {
-        const r = await fetcher(url, {
-          method: body === undefined ? 'GET' : 'POST',
-          credentials: 'same-origin',
-          cache: 'no-store',
-          redirect: 'error',
-          signal: controller.signal,
-          ...(body === undefined ? {} : {
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(body)
-          })
-        });
-        check((r.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() === 'application/json', '外协读到的数据不完整，请刷新后重试。');
-        const v = await r.json();
-        if (!r.ok || v.ok === false) throw failure(v, r.status, intent);
-        check(r.status === 200);
-        return v;
-      } finally {
-        clearTimeout(timer);
-        if (signal) signal.removeEventListener('abort', abort);
-      }
+  async function preview(input) {
+    return previewResult(await T.preview(BASE + '/receipts/preview', {
+      input
+    }, {
+      timeout: 30000
+    }), input);
+  }
+  async function command(intent, token) {
+    return receipt(await T.command(BASE + '/receipts', {
+      input: intent.input,
+      request_key: intent.request_key,
+      write_token: token
+    }, {
+      timeout: 30000,
+      expect: COMMANDS + intent.request_key
+    }), intent);
+  }
+  async function lookup(intent) {
+    const v = await T.lookup(COMMANDS + intent.request_key, {
+      timeout: 30000
+    });
+    if (v === null) return null;
+    if (v.state === 'not_recorded') {
+      check(v.ok === true && v.receipt === null && v.may_be_in_flight === true);
+      return null;
     }
-    return {
-      async read(kind, args = {}, selected, signal) {
-        const q = query(kind, args);
-        check(['targets', 'receipts', 'detail', 'history'].includes(kind));
-        if (['detail', 'history'].includes(kind)) check(ref(selected));
-        const path = ['targets', 'receipts'].includes(kind) ? '/' + kind : '/receipts/' + selected + (kind === 'history' ? '/history' : '');
-        return catalog(await request(BASE + path + '?' + new URLSearchParams(q), undefined, signal), kind, q, selected);
-      },
-      async preview(input, signal) {
-        return preview(await request(BASE + '/receipts/preview', {
-          input
-        }, signal), input);
-      },
-      async command(intent, token) {
-        return receipt(await request(BASE + '/receipts', {
-          input: intent.input,
-          request_key: intent.request_key,
-          write_token: token
-        }, undefined, intent), intent);
-      },
-      async lookup(intent) {
-        const v = await request(COMMANDS + intent.request_key, undefined, undefined, intent);
-        if (v.state === 'not_recorded') {
-          check(v.ok === true && v.receipt === null && v.may_be_in_flight === true);
-          return null;
-        }
-        return receipt(v, intent);
-      }
-    };
+    return receipt(v, intent);
   }
   window.OutsourcingContract = {
     states,
@@ -62409,10 +60761,11 @@ function SystemLiveOverview({
     stamp,
     facts,
     target,
-    preview,
     receipt,
-    create,
-    isRejected: e => rejected.has(e)
+    read,
+    preview,
+    command,
+    lookup
   };
 })();
 
@@ -62469,7 +60822,7 @@ function SystemLiveOverview({
     }));
     return v;
   }
-  function useCommand(api) {
+  function useCommand() {
     const [initial] = React.useState(() => {
       try {
         return {
@@ -62514,7 +60867,7 @@ function SystemLiveOverview({
         window.removeEventListener(EVENT, changed);
       };
     }, []);
-    // api.command/api.lookup already checked the receipt; a failed local write belongs to storageError.
+    // C.command/C.lookup already checked the receipt; a failed local write belongs to storageError.
     function accept(v, original) {
       try {
         save({
@@ -62537,7 +60890,7 @@ function SystemLiveOverview({
       setBusy(true);
       if (!preserveError) setError(null);
       try {
-        const v = await api.lookup(original);
+        const v = await C.lookup(original);
         if (v) accept(v, original);else if (mounted.current) setNotice('还是没有查到结果。请稍后再点「查询结果」，不要重复提交。');
       } catch (e) {
         if (mounted.current) setError(e);
@@ -62569,32 +60922,27 @@ function SystemLiveOverview({
             if (mounted.current) setError(new Error('另一个页面有还没确认的外协登记，请先在那里点「查询结果」。'));
             return;
           }
-          // The precheck has not touched localStorage, so its failure is an operation error.
-          let d;
-          try {
-            d = C.preview(preview, preview.data.input).data;
-          } catch (e) {
-            if (mounted.current) setError(e);
-            return;
-          }
+          // C.preview 已校验过这份预检结果。
+          const d = preview.data;
           original = {
             version: 1,
             phase: 'pending',
-            request_key: 'outsourcing-' + Array.from(crypto.getRandomValues(new Uint8Array(24)), n => n.toString(16).padStart(2, '0')).join(''),
+            request_key: window.APSWorkbenchTransport.requestKey('outsourcing'),
             input: d.input,
             after: d.after,
             target: d.target
           };
           save(original, null);
           try {
-            accept(await api.command(original, d.write_context.write_token), original);
+            accept(await C.command(original, d.write_context.write_token), original);
           } catch (e) {
             // 明确被拒的登记什么都没写入：直接放弃这条待确认记录，表单回到可编辑状态，改好后重新预检提交。
-            if (C.isRejected(e)) save(null, original);else needLookup = true;
+            const rejected = window.APSWorkbenchTransport.rejected(e);
+            if (rejected) save(null, original);else needLookup = true;
             // Rejection returns to the form; pending outcomes remain in Pending. Keep the reason in the error box.
             if (mounted.current) {
               setError(e);
-              setNotice(C.isRejected(e) ? window.WorkbenchTerms.outcomes.rejected('外协登记') : '');
+              setNotice(rejected ? window.WorkbenchTerms.outcomes.rejected('外协登记') : '');
             }
           }
         });
@@ -62632,8 +60980,8 @@ function SystemLiveOverview({
       finish
     };
   }
-  function useRead(load, deps, enabled = true) {
-    return window.APSResourceSession.useQuery(load, deps, enabled);
+  function useRead(load, deps) {
+    return window.APSResourceSession.useQuery(load, deps);
   }
   function memberConflict(first, row) {
     if (!first) return '';
@@ -62751,7 +61099,6 @@ function SystemLiveOverview({
     }, /*#__PURE__*/React.createElement("dt", null, C.labels[k]), /*#__PURE__*/React.createElement("dd", null, before && before[k] !== facts[k] && /*#__PURE__*/React.createElement("del", null, k === 'confirmedState' ? C.states[before[k]] : k === 'returned' && before[k] === null ? '未回厂' : when(before[k])), /*#__PURE__*/React.createElement("span", null, k === 'confirmedState' ? C.states[facts[k]] : k === 'returned' && facts[k] === null ? '未回厂' : when(facts[k]))))));
   }
   function TargetPicker({
-    api,
     mode,
     selected,
     onSelect,
@@ -62763,7 +61110,7 @@ function SystemLiveOverview({
       page: 1,
       size: 10
     }));
-    const read = S.useRead(signal => api.read('targets', q, undefined, signal), [api, q]);
+    const read = S.useRead(signal => C.read('targets', q, undefined, signal), [q]);
     const result = read.result,
       data = result && result.data;
     function change(patch, paging = false) {
@@ -63002,7 +61349,6 @@ function SystemLiveOverview({
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u7ECF\u529E\u4EBA"), /*#__PURE__*/React.createElement("dd", null, v.input.declared_operator)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6838\u5B9E\u539F\u56E0"), /*#__PURE__*/React.createElement("dd", null, v.input.reason)), done && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u8BB0\u5F55\u4EBA"), /*#__PURE__*/React.createElement("dd", null, v.receipt.data.local_operator)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u786E\u8BA4\u65F6\u95F4"), /*#__PURE__*/React.createElement("dd", null, when(v.receipt.data.confirmed_at))))));
   }
   function Editor({
-    api,
     item,
     command,
     onClose,
@@ -63057,7 +61403,7 @@ function SystemLiveOverview({
     }, [error]);
     // 被拒后原预检结果已失效：清掉它，表单回到可编辑状态，改好后重新预检再提交；填写内容不动。
     React.useEffect(() => {
-      if (!saved && command.error && C.isRejected(command.error)) setPreview(null);
+      if (!saved && command.error && window.APSWorkbenchTransport.rejected(command.error)) setPreview(null);
     }, [saved, command.error]);
     function update(k, v) {
       setDraft(d => ({
@@ -63074,7 +61420,7 @@ function SystemLiveOverview({
       setError(null);
       try {
         const p = S.input(draft, selected, item),
-          result = await api.preview(p);
+          result = await C.preview(p);
         if (alive.current) setPreview(result);
       } catch (e) {
         if (alive.current) setError(e);
@@ -63148,7 +61494,6 @@ function SystemLiveOverview({
     }, "\u6838\u5BF9\u65F6\u70B9 ", when(preview.meta.as_of))) : /*#__PURE__*/React.createElement(React.Fragment, null, item ? /*#__PURE__*/React.createElement(Target, {
       target: item.target
     }) : /*#__PURE__*/React.createElement(TargetPicker, {
-      api: api,
       mode: draft.kind,
       selected: selected,
       onSelect: setSelected,
@@ -63191,7 +61536,6 @@ function SystemLiveOverview({
     EmptyState
   } = window.WorkbenchListControls;
   function Records({
-    api,
     selected,
     revision,
     onEdit,
@@ -63202,7 +61546,7 @@ function SystemLiveOverview({
       page: 1,
       size: 10
     });
-    const read = S.useRead(signal => api.read('history', q, selected, signal), [api, q, selected, revision]);
+    const read = S.useRead(signal => C.read('history', q, selected, signal), [q, selected, revision]);
     const result = read.result,
       data = result && result.data,
       item = data && data.item;
@@ -63291,8 +61635,7 @@ function SystemLiveOverview({
     outsourcingRef,
     onUpdated
   }) {
-    const api = React.useMemo(() => C.create(), []),
-      command = S.useCommand(api);
+    const command = S.useCommand();
     const [q, setQuery] = React.useState(() => ({
       page: 1,
       size: 10,
@@ -63301,7 +61644,7 @@ function SystemLiveOverview({
     const [selected, setSelected] = React.useState(outsourcingRef || null),
       [dialog, setDialog] = React.useState(null),
       [revision, refresh] = React.useReducer(n => n + 1, 0);
-    const read = S.useRead(signal => api.read('receipts', q, undefined, signal), [api, q, revision]);
+    const read = S.useRead(signal => C.read('receipts', q, undefined, signal), [q, revision]);
     const result = read.result,
       blocked = command.busy || !!command.saved || !!command.storageError;
     // 刷新期间继续显示上一次读到的列表，只标 aria-busy，不把整块清空。
@@ -63461,7 +61804,6 @@ function SystemLiveOverview({
       })
     })), selected && /*#__PURE__*/React.createElement(Records, {
       key: selected + ':' + revision,
-      api: api,
       selected: selected,
       revision: revision,
       onEdit: item => setDialog({
@@ -63471,7 +61813,6 @@ function SystemLiveOverview({
       blocked: blocked
     }), dialog && /*#__PURE__*/React.createElement(P.Editor, {
       key: dialog.item ? dialog.item.latest_fact_ref : 'create',
-      api: api,
       item: dialog.item,
       command: command,
       onClose: () => setDialog(null),
@@ -63499,10 +61840,12 @@ function SystemLiveOverview({
 (function () {
   'use strict';
 
-  const BASE = '/api/workbench/v1/dashboard',
+  const T = window.APSWorkbenchTransport,
+    BASE = '/api/workbench/v1/dashboard',
     RECEIPTS = '/api/workbench/v1/commands/';
   const READ_TIMEOUT_MS = 60000;
-  const laneId = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+  // 同一页面的列表读取共用一条读取通道：新的筛选会让后端放弃这条通道上还没读完的旧请求。
+  const LANE = 'dashboard-list:' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
   const categories = {
     all: '全部风险',
     delivery: '交期风险',
@@ -63542,7 +61885,6 @@ function SystemLiveOverview({
   const text = v => typeof v === 'string' && v.length > 0;
   const count = v => Number.isSafeInteger(v) && v >= 0;
   const equal = (a, b) => canonical(a) === canonical(b);
-  const rejected = new WeakSet();
   function canonical(v) {
     return JSON.stringify(v, (_, value) => object(value) ? Object.keys(value).sort().reduce((out, k) => {
       out[k] = value[k];
@@ -63552,7 +61894,7 @@ function SystemLiveOverview({
   function check(ok, message = '值班台读到的数据不完整，请刷新后重试。') {
     if (!ok) throw new Error(message);
   }
-  function scope(value = {}) {
+  function scope(value) {
     const q = {
       category: 'all',
       status: 'all',
@@ -63589,8 +61931,9 @@ function SystemLiveOverview({
     } else row.navigation.forEach(n => check(object(n) && ['gantt', 'fieldgantt', 'batches', 'analysis'].includes(n.view) && object(n.context) && typeof n.enabled === 'boolean' && Object.keys(n.context).every(k => ['plan_ref', 'batch_ref', 'task_ref', 'operation_ref'].includes(k) && ref(n.context[k]))));
     return row;
   }
+  // 信封已由 transport 校验；值班台翻页和详情都钉在这次读取的数据版本上，所以数据版本不能为空。
   function envelope(v, s) {
-    check(object(v) && v.ok === true && v.schema_version === 1 && object(v.meta) && v.meta.source === 'production' && v.meta.time_basis === 'factory_local' && text(v.meta.snapshot_ref) && text(v.meta.as_of) && Array.isArray(v.warnings) && object(v.data));
+    check(text(v.meta.snapshot_ref));
     if (s) {
       check(!s.snapshot_ref || s.snapshot_ref === v.meta.snapshot_ref, '数据已更新，请刷新后重试。刚才的选择已保留。');
       const expected = {
@@ -63645,7 +61988,7 @@ function SystemLiveOverview({
     c.runs.forEach(r => check(ref(r.run_ref) && text(r.accepted_at) && count(r.candidate_count)));
     return v;
   }
-  function detail(v, q, selected, historyPage) {
+  function detailResult(v, q, selected, historyPage) {
     const s = scope(q),
       d = envelope(v, s);
     item(d.item);
@@ -63687,111 +62030,69 @@ function SystemLiveOverview({
     check(v && v.ok === true && ['committed', 'unchanged'].includes(v.result) && /^[a-f0-9]{32}$/.test(v.receipt_ref) && typeof v.replayed === 'boolean' && Array.isArray(v.warnings) && object(d) && d.item_ref === intent.item_ref && d.refresh_required === true && equal(d.handling, expected(intent)) && equal(d.source, intent.source) && equal(d.risk, intent.risk) && (v.result === 'committed' ? ref(d.history_ref) : d.history_ref === null), '保存结果和这条处置对不上，结果还不确定。请点「查询结果」，不要重复提交。');
     return v;
   }
-  function resultTarget(intent) {
-    return RECEIPTS + intent.request_key;
-  }
-  function failure(v, status, intent) {
-    const e = v && v.error,
-      valid = v && v.ok === false && [false, 'unknown'].includes(v.committed) && object(e) && text(e.code) && text(e.message) && Array.isArray(e.fields);
-    const error = new Error(valid ? e.message : '读到的结果无法确认，上次提交可能已经生效。请点「查询结果」，不要重复提交。');
-    error.code = valid ? e.code : 'invalid_response';
-    error.fields = valid ? e.fields : [];
-    if (valid && v.committed === false && [400, 404, 409, 422, 503].includes(status) && e.code !== 'request_key_conflict') rejected.add(error);
-    if (valid && v.committed === 'unknown' && intent && e.result_target !== undefined) check(e.request_key === intent.request_key && e.result_target === resultTarget(intent), '返回的结果编号和上次提交对不上，这里没有读取其他结果。请点「查询结果」。');
-    return error;
-  }
-  function create(fetcher = window.fetch.bind(window)) {
-    async function request(url, body, signal, intent, listRead = false) {
-      const controller = new AbortController(),
-        abort = () => controller.abort();
-      let timedOut = false;
-      const timer = setTimeout(() => {
-        timedOut = body === undefined;
-        abort();
-      }, body === undefined ? READ_TIMEOUT_MS : 30000);
-      if (signal) {
-        signal.addEventListener('abort', abort, {
-          once: true
-        });
-        if (signal.aborted) abort();
-      }
-      try {
-        const r = await fetcher(url, {
-          method: body === undefined ? 'GET' : 'POST',
-          credentials: 'same-origin',
-          cache: 'no-store',
-          redirect: 'error',
-          signal: controller.signal,
-          ...(body === undefined ? listRead ? {
-            headers: {
-              'X-Workbench-Read-Lane': 'dashboard-list:' + laneId
-            }
-          } : {} : {
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(body)
-          })
-        });
-        check((r.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() === 'application/json', '值班台读到的数据不完整，请刷新后重试。');
-        const v = await r.json();
-        if (r.status === 499 && v.error && v.error.code === 'request_superseded') throw new DOMException('读取已被更新请求替代', 'AbortError');
-        if (!r.ok || v.ok === false) throw failure(v, r.status, intent);
-        check(r.status === 200);
-        return v;
-      } catch (error) {
-        if (timedOut) throw new Error('值班台读取超时（超过 60 秒），请重试或缩小筛选范围。');
-        throw error;
-      } finally {
-        clearTimeout(timer);
-        if (signal) signal.removeEventListener('abort', abort);
-      }
+  // 值班台读取（含回执查询）按 60 秒等待，超时说清楚是值班台读取；写入按 30 秒等待。
+  async function wait(load) {
+    try {
+      return await load();
+    } catch (error) {
+      if (error.code === 'timeout') error.message = '值班台读取超时（超过 60 秒），请重试或缩小筛选范围。';
+      throw error;
     }
-    return {
-      async list(q, signal) {
-        const value = catalog(await request(BASE + '?' + new URLSearchParams(q), undefined, signal, undefined, true), q);
-        try {
-          if (value.data.analysis_error !== null) check(text(value.data.analysis_error) && value.data.analysis === null);else window.DashboardAnalysisAPI.validate({
-            ...value,
-            data: value.data.analysis
-          }, value.data.plan && value.data.plan.plan_ref, {
-            section: 'overview',
-            page: 1,
-            size: 20
-          });
-        } catch (error) {
-          value.data.analysis = null;
-          value.data.analysis_error = '影响分析读取失败：' + error.message;
-        }
-        return value;
-      },
-      async detail(selected, q, historyPage, signal) {
-        check(ref(selected));
-        const args = {
-          ...q
-        };
-        if (historyPage !== undefined) args.history_page = historyPage;
-        return detail(await request(BASE + '/items/' + selected + (historyPage === undefined ? '' : '/history') + '?' + new URLSearchParams(args), undefined, signal), q, selected, historyPage);
-      },
-      async command(intent, token) {
-        return receipt(await request(BASE + '/items/' + intent.item_ref + '/' + intent.action, {
-          request_key: intent.request_key,
-          write_token: token,
-          input: intent.input
-        }, undefined, intent), intent);
-      },
-      async lookup(intent, signal) {
-        const v = await request(resultTarget(intent), undefined, signal, intent);
-        if (v.state === 'not_recorded') {
-          check(v.ok === true && v.receipt === null && v.may_be_in_flight === true);
-          return null;
-        }
-        return receipt(v, intent);
-      }
+  }
+  function read(path, query, signal, lane) {
+    return wait(() => T.read(path, query, {
+      signal,
+      timeout: READ_TIMEOUT_MS,
+      lane
+    }));
+  }
+  async function list(q, signal) {
+    const value = catalog(await read(BASE, q, signal, LANE), q);
+    try {
+      if (value.data.analysis_error !== null) check(text(value.data.analysis_error) && value.data.analysis === null);else window.DashboardAnalysisAPI.validate({
+        ...value,
+        data: value.data.analysis
+      }, value.data.plan && value.data.plan.plan_ref, {
+        section: 'overview',
+        page: 1,
+        size: 20
+      });
+    } catch (error) {
+      value.data.analysis = null;
+      value.data.analysis_error = '影响分析读取失败：' + error.message;
+    }
+    return value;
+  }
+  async function detail(selected, q, historyPage, signal) {
+    check(ref(selected));
+    const args = {
+      ...q
     };
+    if (historyPage !== undefined) args.history_page = historyPage;
+    return detailResult(await read(BASE + '/items/' + selected + (historyPage === undefined ? '' : '/history'), args, signal), q, selected, historyPage);
+  }
+  async function command(intent, token) {
+    return receipt(await T.command(BASE + '/items/' + intent.item_ref + '/' + intent.action, {
+      request_key: intent.request_key,
+      write_token: token,
+      input: intent.input
+    }, {
+      timeout: 30000,
+      expect: RECEIPTS + intent.request_key
+    }), intent);
+  }
+  async function lookup(intent) {
+    const v = await wait(() => T.lookup(RECEIPTS + intent.request_key, {
+      timeout: READ_TIMEOUT_MS
+    }));
+    if (v === null) return null;
+    if (v.state === 'not_recorded') {
+      check(v.ok === true && v.receipt === null && v.may_be_in_flight === true);
+      return null;
+    }
+    return receipt(v, intent);
   }
   window.DashboardContract = {
-    READ_TIMEOUT_MS,
     categories,
     statuses,
     states,
@@ -63807,8 +62108,11 @@ function SystemLiveOverview({
     catalog,
     expected,
     receipt,
-    create,
-    isRejected: e => rejected.has(e)
+    read,
+    list,
+    detail,
+    command,
+    lookup
   };
 })();
 
@@ -63825,53 +62129,15 @@ function SystemLiveOverview({
   const nullable = test => value => value === null || test(value);
   const shape = (value, required, optional = []) => C.object(value) && required.every(key => Object.prototype.hasOwnProperty.call(value, key)) && Object.keys(value).every(key => required.includes(key) || optional.includes(key));
   const issue = value => C.object(value) && C.text(value.code) && C.text(value.message);
-  function envelope(value) {
-    C.check(shape(value, ['ok', 'schema_version', 'data', 'meta', 'warnings']) && value.ok === true && value.schema_version === 1 && C.object(value.data) && shape(value.meta, ['request_ref', 'source', 'time_basis', 'snapshot_ref', 'as_of']) && /^[a-f0-9]{32}$/.test(value.meta.request_ref) && value.meta.source === 'production' && value.meta.time_basis === 'factory_local' && typeof value.meta.snapshot_ref === 'string' && /^[A-Za-z0-9_-]{32}$/.test(value.meta.snapshot_ref) && time(value.meta.as_of) && Array.isArray(value.warnings) && value.warnings.every(issue));
-    return value.data;
-  }
-  async function request(url, fetcher, signal) {
-    const controller = new AbortController(),
-      abort = () => controller.abort();
-    if (signal) {
-      signal.addEventListener('abort', abort, {
-        once: true
-      });
-      if (signal.aborted) abort();
-    }
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      abort();
-    }, C.READ_TIMEOUT_MS);
-    try {
-      const response = await fetcher(url, {
-        method: 'GET',
-        credentials: 'same-origin',
-        cache: 'no-store',
-        redirect: 'error',
-        signal: controller.signal
-      });
-      C.check((response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() === 'application/json', '读到的数据不完整，请刷新后重试。');
-      const payload = await response.json();
-      if (!response.ok || payload.ok !== true) throw new Error(payload && payload.error && C.text(payload.error.message) ? payload.error.message : '影响分析读取失败，请刷新后重试。');
-      C.check(response.status === 200);
-      return payload;
-    } catch (error) {
-      if (timedOut) throw new Error('值班台读取超时（超过 60 秒），请重试或缩小筛选范围。');
-      throw error;
-    } finally {
-      clearTimeout(timer);
-      if (signal) signal.removeEventListener('abort', abort);
-    }
-  }
   function pressure(value) {
     const R = window.ResourceProjectionContract;
     C.check(C.object(value) && ['available', 'partial', 'unavailable'].includes(value.state) && Array.isArray(value.days) && nullable(number)(value.peak_utilization) && count(value.zero_capacity_days) && count(value.unknown_days) && R.window(value.window_metrics));
-    value.days.forEach(day => C.check(C.object(day) && time(day.start) && time(day.end) && day.start <= day.end && day.date === day.start.slice(0, 10) && R.window(day.window_metrics) && ['available_hours', 'occupied_hours', 'inside_available_hours', 'outside_available_hours', 'overlap_hours', 'utilization'].every(key => nullable(number)(day[key]))));
+    // 每个逐日行就是共同口径的窗口行本身（后端不再套 window_metrics、不再给旧别名）。
+    value.days.forEach(day => C.check(R.window(day) && time(day.start) && time(day.end) && day.start <= day.end && day.date === day.start.slice(0, 10)));
   }
   const sections = ['overview', 'delivery', 'actual', 'downtime', 'material', 'pressure', 'resource_days', 'timeline'];
   const totals = ['tasks', 'resources', 'downtimes', 'overlaps', 'deliveries', 'execution', 'pending', 'resource_days'];
-  function scope(value = {}) {
+  function scope(value) {
     const q = {
       section: 'delivery',
       page: 1,
@@ -63883,10 +62149,8 @@ function SystemLiveOverview({
   }
   function pagination(value, q, payload) {
     C.check(shape(value, ['section', 'number', 'size', 'total', 'pages', 'totals']) && sections.includes(value.section) && count(value.number) && value.number > 0 && count(value.size) && value.size >= 1 && value.size <= 100 && count(value.total) && value.pages === Math.max(1, Math.ceil(value.total / value.size)) && shape(value.totals, totals) && totals.every(key => count(value.totals[key])), '影响分析的分页资料不完整，请刷新分析。');
-    if (q) {
-      C.check(value.section === q.section && value.size === q.size && (q.locate_batch_ref ? value.number <= value.pages : value.number === q.page), '影响分析返回的页码或范围和当前选择不一致，请刷新分析。');
-      C.check(!q.snapshot_ref || payload.meta.snapshot_ref === q.snapshot_ref, '分析资料已更新，请刷新分析后继续翻页。');
-    }
+    C.check(value.section === q.section && value.size === q.size && (q.locate_batch_ref ? value.number <= value.pages : value.number === q.page), '影响分析返回的页码或范围和当前选择不一致，请刷新分析。');
+    C.check(!q.snapshot_ref || payload.meta.snapshot_ref === q.snapshot_ref, '分析资料已更新，请刷新分析后继续翻页。');
     const key = {
       delivery: 'deliveries',
       actual: 'execution',
@@ -63899,10 +62163,10 @@ function SystemLiveOverview({
     return value;
   }
   function validate(payload, planRef, query) {
-    return _validate(payload, planRef, query ? scope(query) : null);
+    return _validate(payload, planRef, scope(query));
   }
   function _validate(payload, planRef, q) {
-    const d = envelope(payload);
+    const d = payload.data;
     C.check(shape(d, ['plan', 'state', 'time_scope', 'tasks', 'resources', 'downtimes', 'overlaps', 'deliveries', 'execution', 'pending', 'pressure', 'issues', 'as_of', 'capabilities', 'basis', 'resource_common', 'pagination']) && d.basis === 'current_official_plan_and_readiness_sources' && C.equal(d.capabilities, {
       view: true,
       adopt: false
@@ -63913,7 +62177,7 @@ function SystemLiveOverview({
     if (d.plan === null) C.check(!planRef && d.state !== 'available' && d.time_scope === null && !d.tasks.length && !d.resources.length && d.pressure.count === null);else C.check(C.object(d.plan) && C.ref(d.plan.plan_ref) && d.plan.kind === 'official' && d.plan.is_current_official === true && (!planRef || d.plan.plan_ref === planRef) && d.state === 'available' && C.object(d.time_scope) && time(d.time_scope.range_start) && time(d.time_scope.range_end) && d.time_scope.range_start <= d.time_scope.range_end);
     d.tasks.forEach(task => C.check(C.object(task) && C.ref(task.task_ref) && C.ref(task.operation_ref) && C.ref(task.batch_ref) && task.plan_ref === d.plan.plan_ref && C.text(task.batch_id) && C.text(task.process_label) && ['internal', 'external'].includes(task.source) && nullable(C.ref)(task.machine_ref) && time(task.start) && time(task.end) && task.start <= task.end && number(task.span_hours) && Math.abs(task.span_hours - (Date.parse(task.end + 'Z') - Date.parse(task.start + 'Z')) / 3600000) < 0.000001 && (task.start !== task.end || task.event_kind === 'point' && task.duration_seconds === 0 && task.occupies_resources === false)));
     C.check(new Set(d.tasks.map(task => task.task_ref)).size === d.tasks.length);
-    if (q && q.locate_batch_ref) C.check(d.tasks.some(task => task.batch_ref === q.locate_batch_ref && task.source === 'internal' && task.machine_ref), '影响分析返回的工序和所选批次不一致，请刷新分析。');
+    if (q.locate_batch_ref) C.check(d.tasks.some(task => task.batch_ref === q.locate_batch_ref && task.source === 'internal' && task.machine_ref), '影响分析返回的工序和所选批次不一致，请刷新分析。');
     const tasks = new Map(d.tasks.map(task => [task.task_ref, task]));
     d.resources.forEach(resource => {
       pressure(resource);
@@ -63946,34 +62210,28 @@ function SystemLiveOverview({
     }[section];
     if (primary) C.check(d[primary].length === pageLength(page.total));
     if (section === 'downtime') ['downtimes', 'overlaps'].forEach(key => C.check(d[key].length === pageLength(page.totals[key])));
-    if (section === 'resource_days' && d.plan) C.check(d.resources.length === 1 && d.resources[0].days.length === pageLength(page.total) && (!q || d.resources[0].resource_ref === q.resource_ref));
+    if (section === 'resource_days' && d.plan) C.check(d.resources.length === 1 && d.resources[0].days.length === pageLength(page.total) && d.resources[0].resource_ref === q.resource_ref);
     if (section === 'pressure') C.check(d.resources.every(resource => resource.days.length === 0));
     C.check(d.plan === null ? d.resource_common === null : window.ResourceProjectionContract.common(d.resource_common, 'current_transaction_snapshot'));
     return d;
   }
-  function create(fetcher = window.fetch.bind(window)) {
-    return {
-      async read(planRef, signal, query = {}) {
-        C.check(planRef === null || planRef === undefined || C.ref(planRef));
-        const q = scope(query),
-          args = {
-            ...q,
-            ...(planRef ? {
-              plan_ref: planRef
-            } : {})
-          };
-        const value = await request('/api/workbench/v1/dashboard/analysis?' + new URLSearchParams(args), fetcher, signal);
-        _validate(value, planRef, q);
-        return value;
-      }
-    };
+  async function read(planRef, signal, query) {
+    C.check(planRef === null || planRef === undefined || C.ref(planRef));
+    const q = scope(query),
+      args = {
+        ...q,
+        ...(planRef ? {
+          plan_ref: planRef
+        } : {})
+      };
+    const value = await C.read('/api/workbench/v1/dashboard/analysis', args, signal);
+    _validate(value, planRef, q);
+    return value;
   }
   window.DashboardAnalysisAPI = {
-    create,
+    read,
     validate,
     scope,
-    envelope,
-    request,
     pressure,
     shape,
     number,
@@ -63995,7 +62253,7 @@ function SystemLiveOverview({
     count,
     nullable
   } = D;
-  function context(value = {}) {
+  function context(value) {
     C.check(shape(value, [], ['run_ref', 'candidate_ref', 'range_start', 'range_end', 'batch_ref']), '候选方案比较条件无效，本页内容没有变化。请重新选择排产记录和候选方案。');
     for (const key of ['run_ref', 'candidate_ref', 'batch_ref']) if (value[key] !== undefined) C.check(C.ref(value[key]));
     C.check(!value.candidate_ref || value.run_ref);
@@ -64030,20 +62288,14 @@ function SystemLiveOverview({
     ['benefits', 'costs'].forEach((key, index) => C.check(value[key].every(item => item.direction === (index ? 'worse' : 'better') && value.all_differences.some(entry => C.equal(entry, item))), '主要取舍与完整差值不一致，请刷新。'));
   }
   function validate(payload, scope) {
-    const d = D.envelope(payload);
+    const d = payload.data;
     C.check(shape(d, ['candidate', 'generation', 'baseline', 'time_scope', 'batch_ref', 'batch_refs', 'batches', 'resources', 'summary', 'resource_common', 'machine_changes', 'resource_scope_complete', 'resource_scope_unknown_rows', 'basis', 'capabilities', 'tradeoffs']));
     A.summary(d.candidate, scope.run_ref);
     C.check(d.candidate.candidate_ref === scope.candidate_ref, '返回的候选与所选方案不一致，请重新选择。');
     const g = d.generation;
-    C.check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated', 'input', 'source_verification']) && g.run_ref === d.candidate.run_ref && A.time(g.accepted_at) && (g.finished_at === null || A.time(g.finished_at)) && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission' && g.current_entities_consulted === false && g.formal_version_allocated === false && C.equal(g.source_verification, {
-      facts_content_verified: true,
-      baseline_matches_archived_schedule: true,
-      execution_verified_at: 'run_admission',
-      input_source_verified: true,
-      candidate_content_verified: true
-    }));
+    C.check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated', 'input']) && g.run_ref === d.candidate.run_ref && A.time(g.accepted_at) && (g.finished_at === null || A.time(g.finished_at)) && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission' && g.current_entities_consulted === false && g.formal_version_allocated === false);
     const input = g.input;
-    C.check(shape(input, ['batch_refs', 'start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'], ['material_strategy', 'hold_window', 'time_budget_seconds']) && Array.isArray(input.batch_refs) && input.batch_refs.every(C.ref) && new Set(input.batch_refs).size === input.batch_refs.length && ['start_date', 'end_date'].every(key => A.time(input[key] + 'T00:00:00')) && input.start_date <= input.end_date && typeof input.ready_check === 'boolean' && ['auto_assign', 'exclude'].includes(input.missing_resource_policy) && input.completed_policy === 'preserve_actuals' && (input.material_strategy === undefined || ['strict', 'stage', 'split'].includes(input.material_strategy)) && (input.time_budget_seconds === undefined || window.RunGenerationContract.budget(input.time_budget_seconds)));
+    C.check(shape(input, ['batch_refs', 'start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'], ['material_strategy', 'hold_window', 'time_budget_seconds']) && Array.isArray(input.batch_refs) && input.batch_refs.every(C.ref) && new Set(input.batch_refs).size === input.batch_refs.length && ['start_date', 'end_date'].every(key => A.time(input[key] + 'T00:00:00')) && input.start_date <= input.end_date && typeof input.ready_check === 'boolean' && ['auto_assign', 'exclude'].includes(input.missing_resource_policy) && input.completed_policy === 'preserve_actuals' && (input.material_strategy === undefined || ['strict', 'stage'].includes(input.material_strategy)) && (input.time_budget_seconds === undefined || window.RunGenerationContract.budget(input.time_budget_seconds)));
     const hold = input.hold_window;
     C.check(hold === undefined || hold === null || shape(hold, ['start', 'end']) && A.time(hold.start + ':00') && A.time(hold.end + ':00') && hold.start < hold.end);
     const expected = scope.batch_ref ? [scope.batch_ref] : input.batch_refs.slice().sort();
@@ -64091,26 +62343,22 @@ function SystemLiveOverview({
     tradeoffs(d.tradeoffs, d);
     return d;
   }
-  function create(fetcher = window.fetch.bind(window)) {
-    return {
-      async read(value, signal) {
-        const scope = context(value);
-        C.check(scope.candidate_ref && scope.range_start && scope.range_end, '请先选择候选并填写两个方案共同的开始和结束时间。');
-        const query = {
-          range_start: scope.range_start,
-          range_end: scope.range_end,
-          ...(scope.batch_ref ? {
-            batch_ref: scope.batch_ref
-          } : {})
-        };
-        const payload = await D.request('/api/workbench/v1/dashboard/candidates/' + scope.candidate_ref + '/comparison?' + new URLSearchParams(query), fetcher, signal);
-        validate(payload, scope);
-        return payload;
-      }
+  async function read(value, signal) {
+    const scope = context(value);
+    C.check(scope.candidate_ref && scope.range_start && scope.range_end, '请先选择候选并填写两个方案共同的开始和结束时间。');
+    const query = {
+      range_start: scope.range_start,
+      range_end: scope.range_end,
+      ...(scope.batch_ref ? {
+        batch_ref: scope.batch_ref
+      } : {})
     };
+    const payload = await C.read('/api/workbench/v1/dashboard/candidates/' + scope.candidate_ref + '/comparison', query, signal);
+    validate(payload, scope);
+    return payload;
   }
   window.DashboardCandidateComparisonAPI = {
-    create,
+    read,
     validate,
     context
   };
@@ -64706,17 +62954,14 @@ function SystemLiveOverview({
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u8BBE\u5907"), /*#__PURE__*/React.createElement("dd", null, value(row.machine_label))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u539F\u56E0"), /*#__PURE__*/React.createElement("dd", null, value(row.reason))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5F00\u59CB / \u7ED3\u675F"), /*#__PURE__*/React.createElement("dd", null, M.timeLabel(row.start), " / ", M.timeLabel(row.end))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u767B\u8BB0\u65F6\u95F4"), /*#__PURE__*/React.createElement("dd", null, M.timeLabel(row.recorded_at)))))));
   }
   function Material({
-    data,
-    showIssues = true
+    data
   }) {
     const p = data.pending;
     return /*#__PURE__*/React.createElement("section", {
       "aria-label": "\u5F85\u6392\u6279\u6B21\u4E0E\u9F50\u5957\u65E5\u671F"
     }, /*#__PURE__*/React.createElement("h3", null, "\u5F85\u6392\u6279\u6B21\u4E0E\u9F50\u5957\u65E5\u671F"), /*#__PURE__*/React.createElement("div", {
       className: "dy-context"
-    }, "\u5F85\u6392 ", value(p.count), " \u6279 \xB7 \u672C\u9875 ", p.items.length, " \u6279 \xB7 \u5DF2\u786E\u8BA4\u5F85\u6392 ", p.known_count, " \u6279"), showIssues && /*#__PURE__*/React.createElement(Issues, {
-      issues: p.issues
-    }), /*#__PURE__*/React.createElement("div", {
+    }, "\u5F85\u6392 ", value(p.count), " \u6279 \xB7 \u672C\u9875 ", p.items.length, " \u6279 \xB7 \u5DF2\u786E\u8BA4\u5F85\u6392 ", p.known_count, " \u6279"), /*#__PURE__*/React.createElement("div", {
       className: "dy-scroll"
     }, /*#__PURE__*/React.createElement("table", {
       className: "dy-analysis-table"
@@ -64808,7 +63053,6 @@ function SystemLiveOverview({
     label,
     render
   }) {
-    const api = React.useMemo(() => window.DashboardAnalysisAPI.create(), []);
     const loadedPage = React.useRef(null);
     const base = React.useMemo(() => ({
       section,
@@ -64835,7 +63079,7 @@ function SystemLiveOverview({
         size: paging.query.size
       };
     }, [base, paging]);
-    const read = window.DashboardSession.useRead(signal => api.read(planRef, signal, query), [api, planRef, query], enabled);
+    const read = window.DashboardSession.useRead(signal => window.DashboardAnalysisAPI.read(planRef, signal, query), [planRef, query], enabled);
     const result = read.result,
       data = result && result.data;
     React.useEffect(() => {
@@ -64934,8 +63178,8 @@ function SystemLiveOverview({
       }, "\u8D44\u6599\u72B6\u6001"))), /*#__PURE__*/React.createElement("tbody", null, data.resources.flatMap(resource => resource.days.map(day => /*#__PURE__*/React.createElement("tr", {
         key: day.date,
         "data-resource-day": day.date
-      }, /*#__PURE__*/React.createElement("td", null, day.date, /*#__PURE__*/React.createElement("small", null, M.timeLabel(day.start), " / ", M.timeLabel(day.end))), /*#__PURE__*/React.createElement("td", null, value(day.available_hours)), /*#__PURE__*/React.createElement("td", null, value(day.inside_available_hours)), /*#__PURE__*/React.createElement("td", null, window.WorkbenchFormat.percent(day.utilization)), /*#__PURE__*/React.createElement("td", null, value(day.outside_available_hours)), /*#__PURE__*/React.createElement("td", null, T.resource_states[day.window_metrics.state], /*#__PURE__*/React.createElement(Issues, {
-        issues: day.window_metrics.issues
+      }, /*#__PURE__*/React.createElement("td", null, day.date, /*#__PURE__*/React.createElement("small", null, M.timeLabel(day.start), " / ", M.timeLabel(day.end))), /*#__PURE__*/React.createElement("td", null, value(day.available_hours)), /*#__PURE__*/React.createElement("td", null, value(day.occupied_hours)), /*#__PURE__*/React.createElement("td", null, window.WorkbenchFormat.percent(day.utilization_ratio)), /*#__PURE__*/React.createElement("td", null, value(day.outside_calendar_hours)), /*#__PURE__*/React.createElement("td", null, T.resource_states[day.state], /*#__PURE__*/React.createElement(Issues, {
+        issues: day.issues
       })))))))), data.pagination.total === 0 && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
         kind: "empty",
         title: "\u5F53\u524D\u8D44\u6E90\u6CA1\u6709\u9010\u65E5\u8D44\u6599\u3002"
@@ -64963,8 +63207,7 @@ function SystemLiveOverview({
       planRef: planRef,
       label: labels[section],
       render: analysis => section === 'material' ? /*#__PURE__*/React.createElement(Material, {
-        data: analysis,
-        showIssues: false
+        data: analysis
       }) : !analysis.plan ? /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
         kind: "empty",
         title: "\u5F53\u524D\u6CA1\u6709\u53EF\u5206\u6790\u7684\u6B63\u5F0F\u8BA1\u5212\u3002"
@@ -65000,14 +63243,11 @@ function SystemLiveOverview({
           ...data,
           analysis
         },
-        showIssues: false,
         navigate: navigate
       })
     }));
   }
   window.DashboardAnalysisPanels = {
-    Delivery,
-    Downtime,
     Material,
     Actual,
     Section,
@@ -65335,15 +63575,15 @@ function SystemLiveOverview({
       range_end: end
     };
   }
-  async function allCandidates(api, runRef, signal) {
-    const first = await api.catalog(runRef, {
+  async function allCandidates(runRef, signal) {
+    const first = await A.catalog(runRef, {
         size: 50
       }, signal),
       rows = first.data.candidates.slice();
     let page = 1,
       next = first;
     while (next.data.page.has_more) {
-      next = await api.catalog(runRef, {
+      next = await A.catalog(runRef, {
         page: ++page,
         size: 50,
         snapshot_ref: first.meta.snapshot_ref
@@ -65359,14 +63599,12 @@ function SystemLiveOverview({
   }
   function Candidates({
     catalog,
-    initialContext = {},
+    initialContext,
     onState,
     selectedBatch,
     onSelectBatch,
-    issueBatchRef = null
+    issueBatchRef
   }) {
-    const api = React.useMemo(() => A.create(), []),
-      comparisonApi = React.useMemo(() => Q.create(), []);
     const [choice, setChoice] = React.useState(() => {
         const value = Q.context(initialContext);
         delete value.batch_ref;
@@ -65408,7 +63646,7 @@ function SystemLiveOverview({
         error: null,
         loading: !!run
       });
-      if (run) allCandidates(api, run, controller.signal).then(data => {
+      if (run) allCandidates(run, controller.signal).then(data => {
         if (!controller.signal.aborted) setList({
           run,
           data,
@@ -65424,7 +63662,7 @@ function SystemLiveOverview({
         });
       });
       return () => controller.abort();
-    }, [api, choice.run_ref, revision]);
+    }, [choice.run_ref, revision]);
     React.useEffect(() => {
       const controller = new AbortController();
       setSummary(false);
@@ -65437,7 +63675,7 @@ function SystemLiveOverview({
       if (!context.candidate_ref) return () => controller.abort();
       const load = async () => {
         if (!context.range_start || !context.range_end) {
-          const first = await api.workspace(context.candidate_ref, context.batch_ref ? {
+          const first = await A.workspace(context.candidate_ref, context.batch_ref ? {
             batch_ref: context.batch_ref
           } : {}, controller.signal);
           C.check(first.data.candidate.run_ref === context.run_ref, '返回的候选不属于原排产记录，未改指其他记录。');
@@ -65447,7 +63685,7 @@ function SystemLiveOverview({
           } : previous);
           return;
         }
-        const comparison = await comparisonApi.read(context, controller.signal);
+        const comparison = await Q.read(context, controller.signal);
         if (!controller.signal.aborted) setRead({
           signature,
           data: comparison,
@@ -65464,7 +63702,7 @@ function SystemLiveOverview({
         });
       });
       return () => controller.abort();
-    }, [api, comparisonApi, signature, revision]);
+    }, [signature, revision]);
     const current = read.signature === signature ? read : null,
       result = current && current.data;
     const data = result && result.data,
@@ -65477,7 +63715,7 @@ function SystemLiveOverview({
     } : null;
     const captionKey = JSON.stringify(caption);
     React.useLayoutEffect(() => {
-      if (onState) onState({
+      onState({
         context,
         caption
       });
@@ -65698,7 +63936,7 @@ function SystemLiveOverview({
     }));
     return value;
   }
-  function useCommand(api) {
+  function useCommand() {
     const [initial] = React.useState(() => {
       try {
         return {
@@ -65744,7 +63982,7 @@ function SystemLiveOverview({
         window.removeEventListener(EVENT, changed);
       };
     }, []);
-    // api.command/api.lookup already checked the receipt; a failed local write belongs to storageError.
+    // C.command/C.lookup already checked the receipt; a failed local write belongs to storageError.
     function accept(v, original) {
       try {
         save({
@@ -65767,7 +64005,7 @@ function SystemLiveOverview({
       setBusy(true);
       if (!preserveError) setError(null);
       try {
-        const v = await api.lookup(original);
+        const v = await C.lookup(original);
         if (v) accept(v, original);else if (mounted.current) setNotice('还是没有查到结果。请稍后再点「查询结果」，不要重复提交。');
       } catch (e) {
         if (mounted.current) setError(e);
@@ -65805,7 +64043,7 @@ function SystemLiveOverview({
           }
           original = {
             version: 1,
-            request_key: 'dashboard-' + Array.from(crypto.getRandomValues(new Uint8Array(24)), n => n.toString(16).padStart(2, '0')).join(''),
+            request_key: window.APSWorkbenchTransport.requestKey('dashboard'),
             phase: 'pending',
             item_ref: item.item_ref,
             subject: item.subject,
@@ -65817,9 +64055,9 @@ function SystemLiveOverview({
           };
           save(original, null);
           try {
-            accept(await api.command(original, item.write_context.write_token), original);
+            accept(await C.command(original, item.write_context.write_token), original);
           } catch (e) {
-            if (C.isRejected(e)) save({
+            if (window.APSWorkbenchTransport.rejected(e)) save({
               ...original,
               phase: 'rejected'
             }, original);else needLookup = true;
@@ -65871,7 +64109,7 @@ function SystemLiveOverview({
     compare: '方案对比',
     records: '处置历史'
   };
-  function context(value = {}) {
+  function context(value) {
     C.check(C.object(value) && Object.keys(value).every(k => ['scope', 'tab', 'item_ref', 'history_page', 'source'].includes(k)) && (value.source === undefined || value.source === 'production'), '本页数据已过期，请刷新后重试。');
     const q = C.scope(value.scope === undefined ? {} : value.scope),
       tab = value.tab === undefined ? 'items' : value.tab;
@@ -66639,8 +64877,7 @@ function SystemLiveOverview({
   }
   function Pressure({
     data,
-    navigate,
-    showIssues = true
+    navigate
   }) {
     const p = data.resource_pressure,
       common = data.analysis && data.analysis.resource_common,
@@ -66659,9 +64896,7 @@ function SystemLiveOverview({
         },
         enabled: true
       })
-    }, "\u8BA1\u5212\u7518\u7279")), showIssues && /*#__PURE__*/React.createElement(Issues, {
-      issues: p.issues
-    }), !rows || !rows.length ? /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+    }, "\u8BA1\u5212\u7518\u7279")), !rows || !rows.length ? /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: "empty",
       title: !rows ? '资源压力暂时无法计算。' : '当前正式计划没有资源占用数据。'
     }) : /*#__PURE__*/React.createElement("div", {
@@ -67152,8 +65387,7 @@ function SystemLiveOverview({
     start,
     onNavigate
   }) {
-    const api = React.useMemo(() => C.create(), []),
-      command = S.useCommand(api);
+    const command = S.useCommand();
     const [q, setQuery] = React.useState(start.q),
       [tab, setTab] = React.useState(start.tab),
       [selected, setSelected] = React.useState(start.selected);
@@ -67170,7 +65404,7 @@ function SystemLiveOverview({
       caption: null
     });
     const onComparisonState = React.useCallback(value => setComparisonState(previous => C.equal(previous, value) ? previous : value), []);
-    const list = S.useRead(signal => api.list(q, signal), [api, q, revision]);
+    const list = S.useRead(signal => C.list(q, signal), [q, revision]);
     const result = list.result,
       data = result && result.data,
       snapshot = result && result.meta.snapshot_ref;
@@ -67184,8 +65418,8 @@ function SystemLiveOverview({
       snapshot_ref: snapshot
     }), [q, snapshot]);
     const handlingAvailable = q.category !== 'external' || !!data;
-    const history = S.useRead(signal => api.detail(selected, detailQuery, historyPage, signal), [api, selected, detailQuery, historyPage], handlingAvailable && tab === 'records' && !!selected && !!snapshot);
-    const detail = S.useRead(signal => api.detail(selected, detailQuery, undefined, signal), [api, selected, detailQuery], handlingAvailable && tab !== 'records' && !!selected && !!snapshot && !history.result);
+    const history = S.useRead(signal => C.detail(selected, detailQuery, historyPage, signal), [selected, detailQuery, historyPage], handlingAvailable && tab === 'records' && !!selected && !!snapshot);
+    const detail = S.useRead(signal => C.detail(selected, detailQuery, undefined, signal), [selected, detailQuery], handlingAvailable && tab !== 'records' && !!selected && !!snapshot && !history.result);
     const item = history.result ? history.result.data.item : detail.result && detail.result.data.item;
     const handlingOpen = !!(dialog && (command.saved || item));
     function choose(ref) {

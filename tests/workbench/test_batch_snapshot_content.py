@@ -10,7 +10,7 @@ from core.models.workbench_execution import ProductionReport
 from core.services.workbench.batch.execution import execution_content
 from core.services.workbench.batch.queries import WorkbenchBatchQueryService
 from core.services.workbench.batch.snapshot_content import record_content, shared_content
-from data.repositories.workbench_batch_facts_repo import BATCH_FACT_TABLES, VERSIONED_FACT_TABLES
+from data.repositories.workbench_batch_facts_repo import BATCH_FACT_TABLES
 from tests.workbench.batch_support import batch_database
 
 _batch_fixture = batch_database
@@ -21,8 +21,6 @@ def restored_records(value):
 
 
 def restored_execution(value):
-    if not value["available"]:
-        return value
     encoded = value["projections"]
     rows = restored_records(encoded["records"])
     for row in rows:
@@ -34,7 +32,7 @@ def restored_execution(value):
 def restored_facts(text):
     version, facts = unpacked(json.loads(text))
     assert version == "batch-facts-v2"
-    for name in BATCH_FACT_TABLES + VERSIONED_FACT_TABLES:
+    for name in BATCH_FACT_TABLES:
         facts[name] = restored_records(facts[name])
     # JSON object keys are text; these two pre-existing indexes use operation
     # integer IDs, whose original numeric sort order is part of content_text.

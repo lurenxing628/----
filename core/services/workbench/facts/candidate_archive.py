@@ -6,8 +6,10 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 
+from .candidate_facts import GenerationFacts
 from .candidate_projection import candidate_summary, completed_dispositions, scheduled_ids, validate_manifest
 from .candidate_store import CandidateStore
+from .decision_metrics import admission_operation_refs
 from .preflight_dependencies import material_deferred_ids
 from .run_policy import require_admission
 
@@ -32,8 +34,8 @@ def load_adoption_candidate(conn, candidate_ref):
     candidates = store.candidates(run_ref)
     validate_manifest(run, candidates, receipt)
     candidate = next(row for row in candidates if row["candidate_ref"] == candidate_ref)
-    scope = completed_dispositions(receipt)
     capture = store.capture(run_ref)
+    scope = completed_dispositions(receipt, expected_refs=admission_operation_refs(GenerationFacts(capture), capture["input"]))
     ids = require_candidate_scope(run, candidate, scope, capture, scheduled_op_ids=scheduled_ids(candidate))
     tasks = store.tasks(candidate_ref)
     if len(tasks) != len(ids):

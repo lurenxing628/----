@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const A = window.RunCandidateAPI, C = window.RunCandidateControls, M = window.RunCandidateModel, G = window.RunGenerationContract;
+  const A = window.RunCandidateAPI, N = window.RunCandidateAnalysisAPI, D = window.RunDecisionAPI, C = window.RunCandidateControls, M = window.RunCandidateModel, G = window.RunGenerationContract;
   const roles = { recommended: '计算时推荐', algorithm_baseline: '原算法', raw_score_best: '目标最优', health_reference: '健康比较原方案' };
   const groups = { completeness: '工序安排', delivery: '批次交付', time: '时间与目标', preparation: '准备与工种切换', resources: '设备与人员', stability: '安排变化' };
   const metricState = { unavailable: '资料未记录', not_applicable: '本范围不适用', partial: '完整值待确认' };
@@ -11,7 +11,8 @@
   const rangeDraft = value => ({ start: value.range_start === undefined ? '' : value.range_start, end: value.range_end === undefined ? '' : value.range_end });
   const comparisonTabs = [['delivery', '交期与未排'], ['differences', '方案差异'], ['resources', '资源占用'], ['process', '计算过程'], ['preparation', '准备与切换']];
   const secondaryTabs = [['metrics', '全部指标'], ['completion', '工序安排']];
-  const tabAliases = { overview: 'delivery', batches: 'delivery', operations: 'differences' };
+  // 后端甘特/明细定位用 batches、operations 命名页签，这里换成本页的交付与差异页签。
+  const tabAliases = { batches: 'delivery', operations: 'differences' };
   function referenceNotice(data) { return data.scope.comparison_mode === 'admission_official' ? '排产时尚无正式计划。' : '选定比较基准后显示差值。'; }
   function metricText(metric, definition) {
     if (metric.value === null) return metricState[metric.state] || '完整值待确认';
@@ -41,8 +42,8 @@
       known: metric.known_count > 0 && metric.known_subtotal !== null ? '已知' + label + ' ' + metricText({ ...metric, value: metric.known_subtotal }, definition) : null,
       title: '已知 ' + countText(metric.known_count) + ' / ' + countText(metric.total_count) + ' ' + unit + '；待确认 ' + countText(metric.unknown_count) + ' ' + unit };
   }
-  function Metric({ metric, definition, delta, showReason = true }) {
-    const reasons = [...new Set([showReason && metric.reason && metric.reason.message, delta && delta.reason && delta.reason.message].filter(Boolean))];
+  function Metric({ metric, definition, delta }) {
+    const reasons = [...new Set([metric.reason && metric.reason.message, delta && delta.reason && delta.reason.message].filter(Boolean))];
     const coverage = metricCoverage(metric, definition);
     return <><strong title={coverage.title}>{metric.value === null ? coverage.pending : metricText(metric, definition)}</strong>
       {metric.value === null && coverage.known && <small>{coverage.known}</small>}
@@ -55,7 +56,7 @@
       {metric.value === null && coverage.known && <small>{coverage.known}</small>}</span>;
   }
   function CandidateBasis({ candidate, definitions, onCompletion, onProcess }) {
-    return <details className="rd-candidate-basis"><summary aria-label={candidate.label + '指标依据'}>指标依据</summary><div>{onCompletion && <C.Button className="btn link" aria-label={candidate.label + '批次工序安排'} onClick={() => onCompletion(candidate)}>查看批次工序安排</C.Button>}{onProcess && <C.Button className="btn link" aria-label={candidate.label + '优化过程'} onClick={() => onProcess(candidate)}>优化过程</C.Button>}{definitions.map(definition => <div key={definition.key}><strong>{definition.label}</strong><Metric metric={candidate.metrics[definition.key]} definition={definition} delta={candidate.deltas[definition.key]} /></div>)}</div></details>;
+    return <details className="rd-candidate-basis"><summary aria-label={candidate.label + '指标依据'}>指标依据</summary><div><C.Button className="btn link" aria-label={candidate.label + '批次工序安排'} onClick={() => onCompletion(candidate)}>查看批次工序安排</C.Button><C.Button className="btn link" aria-label={candidate.label + '优化过程'} onClick={() => onProcess(candidate)}>优化过程</C.Button>{definitions.map(definition => <div key={definition.key}><strong>{definition.label}</strong><Metric metric={candidate.metrics[definition.key]} definition={definition} delta={candidate.deltas[definition.key]} /></div>)}</div></details>;
   }
   function Coverage({ candidate }) {
     const { schedulable, delivery } = candidate.coverage;
@@ -68,7 +69,6 @@
     return search ? <span className="rd-run-coverage">搜索 {countText(search.completed_count)} / {countText(search.total_count)} · 失败 {countText(search.failed_count)} · 跳过 {countText(search.skipped_count)}</span> : null;
   }
   function recommendationLabel(data, candidateRef) { const row = data.candidates.find(candidate => candidate.candidate_ref === candidateRef); return row ? row.label || '候选名称未填写' : '资料未记录'; }
-  function Recommendation(props) { return <window.RunDecisionRecommendation.Panel {...props} />; }
   function CandidateReuse({ candidate, data }) {
     const source = data.candidates.find(row => row.candidate_ref === candidate.equivalent_source_ref);
     const fields = [['algo_mode', '算法方式'], ['used_strategy', '使用策略'], ['dispatch_mode', '调度模式'], ['dispatch_rule', '调度规则']];
@@ -82,9 +82,9 @@
     </div></details>;
   }
   function CandidateTable({ data, selectedRef, referenceRef, onSelect, busy }) {
-    const unified = G.unified(data.selection_basis), weighted = unified && data.selection_basis.primary_objective === 'min_weighted_tardiness';
+    const weighted = data.selection_basis.primary_objective === 'min_weighted_tardiness';
     const definitions = (weighted ? ['weighted_tardiness_hours', 'overdue_count', 'total_tardiness_hours'] : ['overdue_count', 'total_tardiness_hours']).map(key => data.metric_definitions.find(row => row.key === key)).filter(Boolean);
-    return <div className="rd-candidate-grid" data-unified-candidates={unified ? data.candidates.length : undefined} aria-label="本次全部候选方案">{data.candidates.map(candidate => {
+    return <div className="rd-candidate-grid" data-unified-candidates={data.candidates.length} aria-label="本次全部候选方案">{data.candidates.map(candidate => {
       const { schedulable } = candidate.coverage, missing = window.WorkbenchTerms.missing_arrangements(schedulable.missing_count, schedulable.deferred_count);
       const pending = [...new Set(definitions.filter(definition => candidate.metrics[definition.key].value === null && candidate.metrics[definition.key].state !== 'not_applicable').map(definition => metricCoverage(candidate.metrics[definition.key], definition).pending))].join('；');
       const fixed = data.scope.comparison_mode === 'candidates' && candidate.candidate_ref === referenceRef, recommended = candidate.selection_role.includes('recommended');
@@ -92,7 +92,7 @@
       const completion = '已排 ' + countText(schedulable.scheduled_count) + ' / ' + countText(schedulable.expected_count) + ' 道' + (missing ? ' · ' + missing : '') + (pending ? ' · ' + (knownPending ? '另有 ' : '') + pending : '');
       return <section className="rd-candidate-card" key={candidate.candidate_ref} data-decision-candidate={candidate.candidate_ref} data-selected={candidate.candidate_ref === selectedRef || undefined}>
       <C.Button className="rd-candidate-choice" aria-label={'查看' + (candidate.label || '候选方案')} aria-pressed={candidate.candidate_ref === selectedRef} disabled={busy} onClick={() => onSelect(candidate)}>
-        <span className="rd-candidate-choice-heading"><strong>{unified && candidate.representative_objectives.length ? candidate.representative_objectives.map(G.objectiveLabel).join(' · ') : candidate.label || '候选名称未填写'}</strong>{(fixed || recommended) && <span className="rd-candidate-identities">
+        <span className="rd-candidate-choice-heading"><strong>{candidate.representative_objectives.length ? candidate.representative_objectives.map(G.objectiveLabel).join(' · ') : candidate.label || '候选名称未填写'}</strong>{(fixed || recommended) && <span className="rd-candidate-identities">
           {fixed && <span className="rd-badge rd-reference">对照</span>}{recommended && <span className="rd-badge rd-recommended">推荐</span>}</span>}</span>
         <span className="rd-candidate-card-metrics">{definitions.map(definition => {
           const metric = candidate.metrics[definition.key], known = metric.value === null && metric.known_count > 0 && metric.known_subtotal !== null, coverage = metricCoverage(metric, definition);
@@ -107,9 +107,9 @@
   function CandidateFacts({ data, candidate, onCompletion, onProcess }) {
     return candidate ? <section className="rd-candidate-facts" aria-label="当前候选的完整保存依据"><h3>{candidate.label || '当前候选'} · 保存依据</h3>
       <p>{candidate.selection_role.map(role => roles[role] || (G.objective(role) ? G.objectiveLabel(role) + '代表方案' : null)).filter(Boolean).join(' · ')}</p>
-      {G.unified(candidate) && <C.GenerationMetadata value={candidate} runRef={data.run.run_ref} />}
+      <C.GenerationMetadata value={candidate} runRef={data.run.run_ref} />
       <Coverage candidate={candidate} />{candidate.source && candidate.source.reason && <p>{candidate.source.reason.message}</p>}
-      {G.unified(candidate) && candidate.representative_objectives.map(name => <div key={name} className="rd-saved-score-scope"><strong>{G.objectiveLabel(name)}的保存评价范围</strong><C.ScoringScope value={candidate.evaluations[name].scoring_scope} /></div>)}
+      {candidate.representative_objectives.map(name => <div key={name} className="rd-saved-score-scope"><strong>{G.objectiveLabel(name)}的保存评价范围</strong><C.ScoringScope value={candidate.evaluations[name].scoring_scope} /></div>)}
       <CandidateBasis candidate={candidate} definitions={data.metric_definitions} onCompletion={onCompletion} onProcess={onProcess} />
       {candidate.equivalent_source_ref && <CandidateReuse candidate={candidate} data={data} />}
     </section> : null;
@@ -129,13 +129,12 @@
       {read.loading && <><span role="status">正在读取全部方案指标。</span><C.Button icon="x" onClick={onCancel}>取消读取</C.Button></>}</div>
       <C.ErrorBox error={read.error} />{paused && <p className="rc-muted" role="status">全部方案指标读取已取消，点击刷新继续。</p>}</>;
   }
-  function Export({ adapter, result, initialSection = 'overview', filterQuery = {} }) {
+  function Export({ result, initialSection, filterQuery }) {
     const [format, setFormat] = React.useState(null), [busy, setBusy] = React.useState(false), [error, setError] = React.useState(null), [done, setDone] = React.useState('');
     const [section, setSection] = React.useState(initialSection), active = React.useRef(null), data = result.data;
     const labels = { overview: '方案总览', recommendation: '推荐说明与未安排工序', batches: '批次对照', operations: '工序变化', resources: '资源影响', 'resource-days': '资源逐日明细', preparation: '准备需求', changeovers: '工种切换', process: '优化过程' }, runRef = data.run_ref || data.run.run_ref;
-    const sharedProcess = data.process_version === 'unified-optimization-process-v1' || G.unified(data.selection_basis);
-    const description = section === 'all' && sharedProcess ? '导出整份方案对照与本轮全部优化目标的过程记录，保留当前候选来源定位。'
-      : initialSection === 'process' ? sharedProcess ? '导出本轮共同优化的摘要、当前方向曲线、阶段和全部实际动作，保留候选来源定位。' : '导出当前过程候选的计算摘要、进展、阶段和全部代表尝试。'
+    const description = section === 'all' ? '导出整份方案对照与本轮全部优化目标的过程记录，保留当前候选来源定位。'
+      : initialSection === 'process' ? '导出本轮共同优化的摘要、当前方向曲线、阶段和全部实际动作，保留候选来源定位。'
         : section === 'recommendation' ? '导出推荐原因、相对当前基准的差值、批次工序安排和未安排工时。'
           : initialSection === 'overview' ? '导出本次全部 ' + data.candidates.length + ' 个候选和 ' + data.metric_definitions.length + ' 项指标。' : '导出当前筛选的全部明细。';
     React.useEffect(() => () => { if (active.current) active.current.abort(); }, []);
@@ -147,7 +146,7 @@
         ...(data.scope.comparison_mode === 'candidates' ? { reference_candidate_ref: data.scope.reference.candidate_ref } : {}),
         range_start: data.scope.range_start, range_end: data.scope.range_end, ...(initialSection !== 'overview' ? { filter_section: initialSection } : {}) };
       try {
-        const file = await adapter.decisionExport(runRef, query, result.meta.snapshot_ref, format, controller.signal, section);
+        const file = await D.decisionExport(runRef, query, result.meta.snapshot_ref, format, controller.signal, section);
         if (controller.signal.aborted) return;
         window.APSWorkbenchTransport.saveBlob(file.filename, file.blob); setDone(window.WorkbenchTerms.download_started(file.filename) + ' · ' + file.row_count + ' 条记录'); setFormat(null);
       } catch (problem) { if (!controller.signal.aborted) setError(problem); }
@@ -158,7 +157,7 @@
         <div className="modal-b"><p>{description}</p>
           <div className="rc-tools" role="radiogroup" aria-label="方案对比导出格式">{['xlsx', 'csv'].map(value => <label key={value}><input type="radio" name="decision-export-format" checked={format === value} disabled={busy} onChange={() => { setFormat(value); if (value === 'csv' && section === 'all') setSection(initialSection); }} />{value.toUpperCase()}</label>)}</div>
           <label className="rd-export-section">导出内容<select aria-label="方案对比导出内容" value={section} disabled={busy} onChange={event => setSection(event.target.value)}><option value={initialSection}>{labels[initialSection]}</option>{initialSection === 'overview' && <option value="recommendation">{labels.recommendation}</option>}{format === 'xlsx' && data.scope.selected_candidate_ref && <option value="all">整份对照：推荐与全部方案明细</option>}</select></label>
-          {section === 'all' && initialSection !== 'overview' && <p className="rc-muted">{initialSection === 'process' ? data.process_version === 'unified-optimization-process-v1' ? '整份导出包含本轮全部优化目标，保留当前候选来源和固定对照。优化方向筛选只用于单张过程导出。' : '过程记录与其他结果均采用当前方案，比较结果保留固定对照。' : ['preparation', 'changeovers'].includes(initialSection) ? '当前明细保留筛选；另一张表按当前设备导出。' : ['resources', 'resource-days'].includes(initialSection) ? '资源明细保留当前粒度、关注线与时段筛选。' : '当前明细保留筛选，批次条件同时应用于批次和工序明细。'}</p>}<C.ErrorBox error={error} /></div>
+          {section === 'all' && initialSection !== 'overview' && <p className="rc-muted">{initialSection === 'process' ? '整份导出包含本轮全部优化目标，保留当前候选来源和固定对照。优化方向筛选只用于单张过程导出。' : ['preparation', 'changeovers'].includes(initialSection) ? '当前明细保留筛选；另一张表按当前设备导出。' : ['resources', 'resource-days'].includes(initialSection) ? '资源明细保留当前粒度、关注线与时段筛选。' : '当前明细保留筛选，批次条件同时应用于批次和工序明细。'}</p>}<C.ErrorBox error={error} /></div>
       </window.ResourceControls.Modal>}</>;
   }
   function comparisonContext(data, original = {}) {
@@ -186,7 +185,7 @@
       <details><summary>数值与范围</summary><small>{scopeLabels[item.scope] || '保存的共同比较范围'}</small><small>固定对照 {item.reference_value === null ? '待确认' : metricText({ value: item.reference_value }, item)} → 当前查看 {item.selected_value === null ? '待确认' : metricText({ value: item.selected_value }, item)}</small>{[['reference_coverage', '固定对照'], ['selected_coverage', '当前查看']].map(([key, label]) => item[key] && <small key={key}>{label}：已知 {countText(item[key].known_count)} / {countText(item[key].total_count)}；待确认 {countText(item[key].unknown_count)}{item[key].known_subtotal !== null && '；保存小计 ' + metricText({ value: item[key].known_subtotal }, item)}</small>)}</details>
     </div>)}</div>;
   }
-  function Workspace({ adapter, initialContext = {}, onNavigate, renderAdoption, renderTrial, navigation, runHistoryReturn, headerTitle = '方案对比', runStatus, runTiming }) {
+  function Workspace({ initialContext, onNavigate, renderAdoption, renderTrial, navigation, runHistoryReturn, headerTitle = '方案对比', runStatus, runTiming }) {
     const [runRef, setRunRef] = React.useState(initialContext.run_ref === undefined ? null : initialContext.run_ref), [query, setQuery] = React.useState(() => {
       const value = { comparison_mode: initialContext.comparison_mode === 'admission_official' ? 'admission_official' : 'candidates', resource_view: initialContext.resource_view === 'full_candidate' ? 'full_candidate' : 'selected_batches' }; ['range_start', 'range_end', ...(value.comparison_mode === 'candidates' ? ['reference_candidate_ref'] : [])].forEach(key => { if (initialContext[key]) value[key] = initialContext[key]; });
       if (initialContext.candidate_ref) value.selected_candidate_ref = initialContext.candidate_ref; return value;
@@ -198,34 +197,26 @@
     const metricView = initialContext.metric_view === 'all' ? 'all' : 'common';
     const initialDetails = initialContext.detail_queries === undefined ? {} : initialContext.detail_queries;
     const [tab, updateTab] = React.useState(() => { const requested = tabAliases[initialContext.comparison_tab] || initialContext.comparison_tab;
-      const leaves = initialDetails, legacyOverview = !initialContext.comparison_tab || initialContext.comparison_tab === 'overview';
-      if (legacyOverview && leaves.process && leaves.process.open) return 'process';
-      if (legacyOverview && leaves['completion-batches'] && leaves['completion-batches'].open) return 'completion';
       return [...comparisonTabs, ...secondaryTabs, ['changeovers']].some(row => row[0] === requested) ? requested : 'delivery'; });
     const [visitedPanels, setVisitedPanels] = React.useState(() => [tab]);
     function setTab(value) { updateTab(value); setVisitedPanels(current => current.includes(value) ? current : [...current, value]); }
     const [selectedBatchRef, setSelectedBatchRef] = React.useState(initialContext.selected_batch_ref !== undefined ? initialContext.selected_batch_ref : initialContext.batch_ref !== undefined ? initialContext.batch_ref : null);
     const [detailQueries, setDetailQueries] = React.useState(() => { const initial = initialDetails, resources = { ...(initialContext.resource_kind ? { resource_kind: initialContext.resource_kind } : {}), ...(initialContext.resource_ref ? { resource_ref: initialContext.resource_ref } : {}), ...initial.resources };
       const machine = initialContext.resource_kind === 'machine' && initialContext.resource_ref ? { machine_ref: initialContext.resource_ref } : {};
-      const legacyBatches = initial.batches, legacyOperations = initial.operations, differences = legacyOperations ? { size: legacyOperations.size, batch_ref: legacyOperations.batch_ref, change_kind: 'changed', sort: 'current_priority', order: 'asc', delivery_filter: 'all' } : null;
-      const leaves = { ...initial };
-      for (const [section, field] of [['completion-batches', 'completion_candidate_ref']]) if (leaves[section]) {
-        leaves[section] = { ...leaves[section] }; if (leaves[section][field] && leaves[section][field] !== initialContext.candidate_ref) { leaves[section].page = 1; delete leaves[section].snapshot_ref; } delete leaves[section][field];
-      }
-      return { ...leaves, ...(legacyBatches && !initial.delivery ? { delivery: { ...legacyBatches, delivery_filter: 'all' } } : {}), ...(differences && !initial.differences ? { differences } : {}), ...(legacyOperations && !initial['difference-chain'] ? { 'difference-chain': legacyOperations } : {}), ...(Object.keys(resources).length ? { resources } : {}), ...(Object.keys(machine).length ? { preparation: { ...machine, ...initial.preparation }, changeovers: { ...machine, ...initial.changeovers } } : {}) }; });
+      return { ...initial, ...(Object.keys(resources).length ? { resources } : {}), ...(Object.keys(machine).length ? { preparation: { ...machine, ...initial.preparation }, changeovers: { ...machine, ...initial.changeovers } } : {}) }; });
     // 各明细分区的查询条件按需出现；还没打开过的分区按空条件读取。
     const leafQuery = key => detailQueries[key] === undefined ? {} : detailQueries[key];
-    const lookup = window.APSResourceSession.useQuery(signal => adapter.identity(initialContext.candidate_ref, signal), [adapter, initialContext.candidate_ref], !runRef && A.ref(initialContext.candidate_ref));
+    const lookup = window.APSResourceSession.useQuery(signal => A.identity(initialContext.candidate_ref, signal), [initialContext.candidate_ref], !runRef && A.ref(initialContext.candidate_ref));
     React.useEffect(() => { if (lookup.result) setRunRef(lookup.result.data.run_ref); }, [lookup.result]);
     const read = window.APSResourceSession.useQuery(signal => tab === 'resources'
-      ? adapter.resourceWorkspace(runRef, query, leafQuery('resources'), signal) : adapter.decisionSummary(runRef, query, signal),
-    [adapter, runRef, query, revision], A.ref(runRef));
+      ? D.resourceWorkspace(runRef, query, leafQuery('resources'), signal) : D.decisionSummary(runRef, query, signal),
+    [runRef, query, revision], A.ref(runRef));
     const result = read.result, data = result && result.data, selected = data && data.candidates.find(row => row.candidate_ref === data.scope.selected_candidate_ref);
     const fullQuery = data && { comparison_mode: data.scope.comparison_mode, resource_view: data.scope.resource_view,
       selected_candidate_ref: data.scope.selected_candidate_ref, range_start: data.scope.range_start, range_end: data.scope.range_end, snapshot_ref: result.meta.snapshot_ref,
       ...(data.scope.comparison_mode === 'candidates' ? { reference_candidate_ref: data.scope.reference.candidate_ref } : {}) };
-    const fullRead = window.APSResourceSession.useQuery(signal => adapter.decision(runRef, fullQuery, signal),
-      [adapter, runRef, JSON.stringify(query), JSON.stringify(fullQuery), revision], !!data && (tab === 'metrics' || sourceOpen) && !fullPaused);
+    const fullRead = window.APSResourceSession.useQuery(signal => D.decision(runRef, fullQuery, signal),
+      [runRef, JSON.stringify(query), JSON.stringify(fullQuery), revision], !!data && (tab === 'metrics' || sourceOpen) && !fullPaused);
     const fullData = fullRead.result && fullRead.result.data, fullSelected = fullData && fullData.candidates.find(row => row.candidate_ref === data.scope.selected_candidate_ref);
     React.useEffect(() => {
       const root = workspaceRef.current; if (!root) return undefined;
@@ -238,10 +229,9 @@
       if (intent.tab !== tab || read.error) { rangeReturnFocus.current = null; return; }
       if (data && workspaceRef.current) { const entry = workspaceRef.current.querySelector('[data-resource-range-entry]'); rangeReturnFocus.current = null; if (entry) entry.focus(); }
     }, [data, read.error, tab]);
-    const history = window.APSResourceSession.useQuery(signal => adapter.adoptions(selected.candidate_ref, runRef, signal), [adapter, selected && selected.candidate_ref, runRef, revision, result && result.meta.snapshot_ref], !!selected && selected.persisted_status === 'completed' && historyOpen);
-    const unified = data && G.unified(data.selection_basis), processQuery = { ...detailQueries.process };
-    if (!unified && processQuery.process_candidate_ref) { if (processQuery.process_candidate_ref !== (data ? data.scope.selected_candidate_ref : initialContext.candidate_ref)) { processQuery.page = 1; delete processQuery.snapshot_ref; } delete processQuery.process_candidate_ref; }
-    const remembered = data ? comparisonContext(data, { ...initialContext, metric_view: metricView, comparison_tab: tab, selected_batch_ref: selectedBatchRef, detail_queries: { ...detailQueries, ...(detailQueries.process ? { process: processQuery } : {}) } }) : initialContext;
+    const history = window.APSResourceSession.useQuery(signal => N.adoptions(selected.candidate_ref, runRef, signal), [selected && selected.candidate_ref, runRef, revision, result && result.meta.snapshot_ref], !!selected && selected.persisted_status === 'completed' && historyOpen);
+    const processQuery = leafQuery('process');
+    const remembered = data ? comparisonContext(data, { ...initialContext, metric_view: metricView, comparison_tab: tab, selected_batch_ref: selectedBatchRef, detail_queries: detailQueries }) : initialContext;
     window.WorkbenchPageContext.useSnapshot(remembered, !!data);
     window.WorkbenchCaption.useCaption(data && selected ? { reference: runRef, label: '当前比较', name: selected.label, status: '同次候选 · ' + data.candidates.length + ' 项' } : null);
     function resetDetailPages() { setDetailQueries(freshDetailQueries); setFullPaused(false); }
@@ -249,7 +239,7 @@
       if (data && candidate.candidate_ref === data.scope.selected_candidate_ref) return;
       setQuery(value => ({ ...value, selected_candidate_ref: candidate.candidate_ref }));
       setRangeOpen(false); setRangeError(null); setHistoryOpen(false); setFullPaused(false);
-      setDetailQueries(values => { const next = freshDetailQueries(values); if (next.process && !unified) delete next.process.process_candidate_ref; if (next['completion-batches']) delete next['completion-batches'].completion_candidate_ref; return next; });
+      setDetailQueries(freshDetailQueries);
     }
     function reference(candidate) { setQuery(value => ({ ...value, comparison_mode: 'candidates', reference_candidate_ref: candidate.candidate_ref })); resetDetailPages(); }
     function mode(value) { setQuery(current => { const next = { ...current, comparison_mode: value }; delete next.reference_candidate_ref; return next; }); resetDetailPages(); }
@@ -281,15 +271,15 @@
     function detailQuery(section, value) { setDetailQueries(queries => ({ ...queries, [section]: value })); }
     function chainQuery(section, value) { setDetailQueries(queries => ({ ...queries, [section === 'differences' ? 'difference-chain' : 'delivery-chain']: value })); }
     const completionQuery = leafQuery('completion-batches');
-    function completionQueryChange(value) { setDetailQueries(queries => ({ ...queries, 'completion-batches': { ...value, open: true } })); }
+    function completionQueryChange(value) { setDetailQueries(queries => ({ ...queries, 'completion-batches': value })); }
     function openCompletion(candidate, filter) { choose(candidate); setDetailQueries(queries => {
-      const next = { ...queries['completion-batches'], open: true }; delete next.completion_candidate_ref;
+      const next = { ...queries['completion-batches'] };
       if (filter && filter !== next.completion_filter) { next.completion_filter = filter; next.page = 1; delete next.snapshot_ref; }
       return { ...queries, 'completion-batches': next };
     }); setTab('completion'); }
-    function processQueryChange(value) { setDetailQueries(queries => ({ ...queries, process: { ...value, open: true } })); }
-    function openProcess(candidate) { if (!unified) choose(candidate); setDetailQueries(queries => {
-      const next = { ...queries.process, open: true, page: 1 }; delete next.snapshot_ref; if (unified) next.process_candidate_ref = candidate.candidate_ref; else delete next.process_candidate_ref;
+    function processQueryChange(value) { setDetailQueries(queries => ({ ...queries, process: value })); }
+    function openProcess(candidate) { setDetailQueries(queries => {
+      const next = { ...queries.process, page: 1, process_candidate_ref: candidate.candidate_ref }; delete next.snapshot_ref;
       return { ...queries, process: next };
     }); setTab('process'); }
     function reload() { resetDetailPages(); refresh(); }
@@ -315,26 +305,26 @@
     const primaryTab = tab === 'changeovers' ? 'preparation' : tab;
     const sameCandidate = data && data.scope.comparison_mode === 'candidates' && data.scope.selected_candidate_ref === data.scope.reference.candidate_ref;
     return <div className="plana run-candidate-workspace rd-workspace" ref={workspaceRef} data-run-decision-workspace><div className="rc-heading rd-heading scheduling-page-tools"><div className="rd-page-heading"><h2 className="rd-page-title">{headerTitle}</h2>{(runStatus || data && data.run.state) && <span className="rd-run-state">{window.WorkbenchTerms.run_statuses[runStatus || data.run.state] || runStatus || data.run.state}</span>}{runTiming && <span className="rd-run-state">处理用时 {window.RunPresentation.elapsed(runTiming)}</span>}</div><div className="rc-tools rd-header-tools">{navigation}<div className="rc-tools rd-return-tools">
-      {onNavigate && runHistoryReturn && <C.Button icon="chevron-left" className="btn link" onClick={() => onNavigate(runHistoryReturn.view, runHistoryReturn.context)}>返回排产记录</C.Button>}
-      {onNavigate && initialContext.return_plan_context && <C.Button icon="chevron-left" className="btn link" onClick={() => onNavigate('analysis', initialContext.return_plan_context)}>返回正式计划</C.Button>}
-      {onNavigate && initialContext.return_recommendation_context && <C.Button icon="chevron-left" className="btn link" onClick={() => onNavigate('analysis', initialContext.return_recommendation_context)}>返回原比较</C.Button>}
+      <C.Button icon="chevron-left" className="btn link" onClick={() => onNavigate(runHistoryReturn.view, runHistoryReturn.context)}>返回排产记录</C.Button>
+      {initialContext.return_plan_context && <C.Button icon="chevron-left" className="btn link" onClick={() => onNavigate('analysis', initialContext.return_plan_context)}>返回正式计划</C.Button>}
+      {initialContext.return_recommendation_context && <C.Button icon="chevron-left" className="btn link" onClick={() => onNavigate('analysis', initialContext.return_recommendation_context)}>返回原比较</C.Button>}
       </div><div className="rc-tools rd-scope-tools">
-      {data && <Export key={result.meta.snapshot_ref} adapter={adapter} result={result} />}<C.Button icon="refresh-cw" aria-label="刷新方案对比" disabled={!runRef} busy={read.loading} onClick={reload} /></div></div></div>
+      {data && <Export key={result.meta.snapshot_ref} result={result} initialSection="overview" filterQuery={{}} />}<C.Button icon="refresh-cw" aria-label="刷新方案对比" disabled={!runRef} busy={read.loading} onClick={reload} /></div></div></div>
       <C.ErrorBox error={lookup.error || read.error} />{(read.loading || lookup.loading) && <p className="rc-muted" role="status">正在读取本次全部候选及推荐依据。</p>}
       {!runRef && !initialContext.candidate_ref && <p className="rc-empty">请从排产记录打开需要比较的候选方案。</p>}
       {data && <><div className="rd-candidate-strip-heading">{tab !== 'resources' ? <C.Button icon="calendar-days" data-resource-range-entry aria-label={windowTitle} title={windowTitle} aria-expanded={rangeOpen} onClick={() => { if (!rangeOpen) setRange({ start: data.scope.range_start, end: data.scope.range_end }); setRangeOpen(!rangeOpen); }}><span className="rd-window-value">{window.WorkbenchFormat.compactRange(data.scope.range_start, data.scope.range_end)}</span></C.Button> : <span title={windowTitle}>{window.WorkbenchFormat.compactRange(data.scope.range_start, data.scope.range_end)}</span>}<span>{data.scope.batch_refs.length} 批 / {data.scope.operation_refs.length} 道工序 · {data.candidates.length} 个候选</span></div>
         {rangeOpen && tab !== 'resources' && <form className="rc-range" onSubmit={applyRange}><label>开始（包含）<input type="text" data-picker-type="factory-local" aria-label="资源比较时间窗开始" value={range.start} onChange={event => setRange({ ...range, start: event.target.value })} /></label><label>结束（不含）<input type="text" data-picker-type="factory-local" aria-label="资源比较时间窗结束" value={range.end} onChange={event => setRange({ ...range, end: event.target.value })} /></label><C.Button icon="check" type="submit">应用时间窗</C.Button><C.Button onClick={event => applyRange(event, true)}>默认时间窗</C.Button></form>}
         <C.ErrorBox error={rangeError} /><C.Reasons rows={result.warnings} />{!data.catalog_complete && <p className="rc-notice">排产正在运行，已保存 {data.candidates.length} 个候选。刷新查看新增候选。</p>}
         <CandidateTable data={data} selectedRef={data.scope.selected_candidate_ref} referenceRef={data.scope.reference.candidate_ref} onSelect={choose} busy={read.loading} />
-        <Recommendation data={data} onSelect={choose} onSupport={onNavigate && support} compact />
+        <window.RunDecisionRecommendation.Panel data={data} onSelect={choose} onSupport={support} />
         <div className="rd-choice"><div className="rd-current-context">{selected && <div className="rd-selected-name"><span className="rc-muted">查看：</span><strong>{selected.label || '候选名称未填写'}</strong>{selected.persisted_status !== 'completed' && <C.Status candidate={selected} />}</div>}
           <label className="rd-reference-choice" ref={referenceChoice}>对照方案<select aria-label="候选比较基准" value={data.scope.comparison_mode === 'admission_official' ? 'admission_official' : data.scope.reference_state === 'available' ? data.scope.reference.candidate_ref : ''} onChange={event => event.target.value === 'admission_official' ? mode('admission_official') : reference(data.candidates.find(row => row.candidate_ref === event.target.value))}>
             {data.scope.comparison_mode === 'candidates' && data.scope.reference_state === 'selection_required' && <option value="">请选择对照方案</option>}{data.candidates.filter(row => row.persisted_status === 'completed').map(row => <option key={row.candidate_ref} value={row.candidate_ref}>{row.label || '候选名称未填写'}</option>)}<option value="admission_official">{data.scope.comparison_mode === 'admission_official' && data.scope.reference_state === 'available' ? data.baseline.label : '排产时的正式计划'}</option></select></label>
           {data.scope.comparison_mode === 'admission_official' && data.scope.reference_state !== 'available' && <span className="rd-official-baseline">{referenceNotice(data)}</span>}</div>{selected && <div className="rc-tools rd-current-actions">
-          {onNavigate && <C.Button icon="chart-gantt" disabled={selected.persisted_status !== 'completed'} onClick={() => gantt(selected)}>看甘特</C.Button>}{renderTrial && renderTrial({ candidateRef: selected.candidate_ref, scope: data.scope, query: '', disabled: selected.persisted_status !== 'completed' })}
-          {renderAdoption && selected.persisted_status === 'completed' && <div className="rd-adoption-status">{renderAdoption(selected.candidate_ref, { candidateDisplay: { candidate_ref: selected.candidate_ref, label: selected.label || '候选名称未填写', batch_count: data.scope.batch_refs.length, operation_count: data.scope.operation_refs.length }, candidateCatalog: data.candidates })}</div>}</div>}</div>
-        <section className="rd-candidate-section" aria-label="方案比较结果"><div className="rc-heading rd-result-nav">
-          <div className="rc-tabs rd-result-tabs" role="tablist" aria-label="方案比较明细" onKeyDown={event => {
+          <C.Button icon="chart-gantt" disabled={selected.persisted_status !== 'completed'} onClick={() => gantt(selected)}>看甘特</C.Button>{renderTrial({ candidateRef: selected.candidate_ref, scope: data.scope, query: '', disabled: selected.persisted_status !== 'completed' })}
+          {selected.persisted_status === 'completed' && <div className="rd-adoption-status">{renderAdoption(selected.candidate_ref, { candidateDisplay: { candidate_ref: selected.candidate_ref, label: selected.label || '候选名称未填写', batch_count: data.scope.batch_refs.length, operation_count: data.scope.operation_refs.length }, candidateCatalog: data.candidates })}</div>}</div>}</div>
+        <section className="rd-candidate-section" aria-label="方案对比结果"><div className="rc-heading rd-result-nav">
+          <div className="rc-tabs rd-result-tabs" role="tablist" aria-label="方案对比明细" onKeyDown={event => {
             const index = Math.max(0, comparisonTabs.findIndex(row => row[0] === primaryTab)), next = event.key === 'ArrowRight' ? (index + 1) % comparisonTabs.length : event.key === 'ArrowLeft' ? (index + comparisonTabs.length - 1) % comparisonTabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? comparisonTabs.length - 1 : null;
             if (next !== null) { event.preventDefault(); setTab(comparisonTabs[next][0]); event.currentTarget.querySelector('#rd-tab-' + comparisonTabs[next][0]).focus(); }
           }}>{comparisonTabs.map(([value, label]) => <C.Button key={value} role="tab" id={'rd-tab-' + value} aria-selected={primaryTab === value} aria-controls="rd-result-panel" tabIndex={primaryTab === value ? 0 : -1} onClick={() => setTab(value === 'preparation' && primaryTab === 'preparation' ? tab : value)}>{label}</C.Button>)}</div>
@@ -344,17 +334,17 @@
           {tab === 'differences' && !sameCandidate && <DifferenceSummary data={data} />}
           {[...comparisonTabs, ...secondaryTabs, ['changeovers']].filter(([panel]) => visitedPanels.includes(panel)).map(([panel]) => <div key={panel + ':' + (data.scope.selected_candidate_ref || 'no-candidate') + ':' + data.scope.comparison_mode} hidden={tab !== panel} data-decision-panel={panel}>
             {panel === 'metrics' ? <><FullReadStatus read={fullRead} paused={fullPaused} onCancel={() => setFullPaused(true)} onReload={reload} />{fullData && <Details data={fullData} selectedRef={data.scope.selected_candidate_ref} />}</>
-              : panel === 'process' ? <window.RunDecisionProcess.Pane adapter={adapter} result={result} query={processQuery} onQuery={processQueryChange} onSelectCandidate={choose} enabled={tab === panel} />
-              : panel === 'completion' ? selected ? <window.RunDecisionCompletion.Pane adapter={adapter} result={result} query={completionQuery} onQuery={completionQueryChange} onSupport={onNavigate && support} enabled={tab === panel} /> : <p className="rc-empty">选择当前方案查看工序安排。</p>
-              : selected && selected.persisted_status === 'completed' ? panel === 'resources' ? <window.RunDecisionResources.Pane adapter={adapter} result={result} query={leafQuery(panel)} onQuery={value => detailQuery(panel, value)} onView={resourceView} onRange={changeRange} onDrill={onNavigate && drill} enabled={tab === panel} />
-                : ['preparation', 'changeovers'].includes(panel) ? <window.RunDecisionPreparation.Pane adapter={adapter} result={result} section={panel} query={leafQuery(panel)} onQuery={value => detailQuery(panel, value)} onDrill={onNavigate && drill} enabled={tab === panel} />
-                  : <window.RunDecisionDetails.Pane adapter={adapter} result={result} section={panel === 'differences' ? 'differences' : 'delivery'} query={leafQuery(panel)} onQuery={value => detailQuery(panel, value)} selectedBatchRef={selectedBatchRef} onSelectBatch={selectBatch} chainQuery={leafQuery(panel === 'differences' ? 'difference-chain' : 'delivery-chain')} onChainQuery={value => chainQuery(panel, value)} onDrill={onNavigate && drill} onChooseReference={() => { const target = referenceChoice.current && referenceChoice.current.querySelector('select'); if (target) target.focus(); }} enabled={tab === panel} />
+              : panel === 'process' ? <window.RunDecisionProcess.Pane result={result} query={processQuery} onQuery={processQueryChange} enabled={tab === panel} />
+              : panel === 'completion' ? selected ? <window.RunDecisionCompletion.Pane result={result} query={completionQuery} onQuery={completionQueryChange} onSupport={support} enabled={tab === panel} /> : <p className="rc-empty">选择当前方案查看工序安排。</p>
+              : selected && selected.persisted_status === 'completed' ? panel === 'resources' ? <window.RunDecisionResources.Pane result={result} query={leafQuery(panel)} onQuery={value => detailQuery(panel, value)} onView={resourceView} onRange={changeRange} onDrill={drill} enabled={tab === panel} />
+                : ['preparation', 'changeovers'].includes(panel) ? <window.RunDecisionPreparation.Pane result={result} section={panel} query={leafQuery(panel)} onQuery={value => detailQuery(panel, value)} onDrill={drill} enabled={tab === panel} />
+                  : <window.RunDecisionDetails.Pane result={result} section={panel === 'differences' ? 'differences' : 'delivery'} query={leafQuery(panel)} onQuery={value => detailQuery(panel, value)} selectedBatchRef={selectedBatchRef} onSelectBatch={selectBatch} chainQuery={leafQuery(panel === 'differences' ? 'difference-chain' : 'delivery-chain')} onChainQuery={value => chainQuery(panel, value)} onDrill={drill} onChooseReference={() => { const target = referenceChoice.current && referenceChoice.current.querySelector('select'); if (target) target.focus(); }} enabled={tab === panel} />
                 : <div className="rc-empty"><p>{selected ? (selected.label || '当前候选') + '：' + window.WorkbenchTerms.candidate_statuses[selected.persisted_status] : '请选择候选查看明细。'}</p>{selected && selected.source && selected.source.reason && <p>{selected.source.reason.message}</p>}</div>}
           </div>)}
         </div></section>
-        {selected && selected.persisted_status === 'completed' && <details className="rd-official" open={historyOpen} onToggle={event => setHistoryOpen(event.currentTarget.open)}><summary>此方案的采用记录</summary><C.ErrorBox error={history.error} />{history.loading && <p role="status">正在读取此方案的采用记录。</p>}{history.result && <window.RunCandidateAnalysis.History data={history.result.data} onPlan={onNavigate && (plan => onNavigate('analysis', { ...historyOrigin, plan_ref: plan.plan_ref, return_decision_context: remembered }))} />}</details>}
+        {selected && selected.persisted_status === 'completed' && <details className="rd-official" open={historyOpen} onToggle={event => setHistoryOpen(event.currentTarget.open)}><summary>此方案的采用记录</summary><C.ErrorBox error={history.error} />{history.loading && <p role="status">正在读取此方案的采用记录。</p>}{history.result && <window.RunCandidateAnalysis.History data={history.result.data} onPlan={plan => onNavigate('analysis', { ...historyOrigin, plan_ref: plan.plan_ref, return_decision_context: remembered })} />}</details>}
         <details className="rd-official rd-data-source" open={sourceOpen} onToggle={event => { setSourceOpen(event.currentTarget.open); if (event.currentTarget.open) setFullPaused(false); }}><summary>数据来源</summary>{sourceOpen && <><FullReadStatus read={fullRead} paused={fullPaused} onCancel={() => setFullPaused(true)} onReload={reload} />{fullSelected && <CandidateFacts data={fullData} candidate={fullSelected} onCompletion={openCompletion} onProcess={openProcess} />}</>}<dl className="rc-meta"><div><dt>开始计算</dt><dd>{M.timeLabel(data.run.accepted_at)}</dd></div><div><dt>计算结束</dt><dd>{M.timeLabel(data.run.finished_at)}</dd></div><div><dt>候选搜索</dt><dd><RunCoverage data={data} /></dd></div><div><dt>资料依据</dt><dd>排产时选中的批次和工序、保存的候选安排与推荐原因</dd></div><div><dt>资源和切换比较范围</dt><dd>{windowTitle}</dd></div><div><dt>本次刷新时间</dt><dd>{window.WorkbenchFormat.dateTime(result.meta.as_of, { seconds: true, fractions: true })}</dd></div></dl><window.WorkbenchReference entries={{ '排产记录': runRef, '当前查看候选': data.scope.selected_candidate_ref, '比较基准': data.scope.reference.candidate_ref }} /></details>
       </>}</div>;
   }
-  window.RunDecisionComparison = { Workspace, Recommendation, CandidateTable, CandidateFacts, DifferenceSummary, Details, Coverage, RunCoverage, Export, Metric, CompactValue, metricText, deltaText, comparisonContext, referenceNotice };
+  window.RunDecisionComparison = { Workspace, CandidateTable, CandidateFacts, DifferenceSummary, Details, Coverage, RunCoverage, Export, Metric, CompactValue, metricText, deltaText, comparisonContext, referenceNotice };
 })();

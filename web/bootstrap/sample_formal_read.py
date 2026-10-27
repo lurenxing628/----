@@ -2,7 +2,8 @@
 from datetime import datetime, timedelta
 from urllib.parse import urlencode
 
-from core.models.workbench_command import canonical_json
+from core.shared.strict_json import canonical_json
+from web.api_responses import query_payload
 
 from .sample_constraint_checks import require
 from .sample_http import BASE, SampleAPIError
@@ -74,17 +75,18 @@ def _assembled(plan_ref, expected, documents, rejected, low, high):
               "canonical_bytes": len(canonical_json(document).encode("utf-8")),
               "snapshot_ref": document["meta"]["snapshot_ref"], "as_of": document["meta"]["as_of"]}
              for document in documents]
-    return {"ok": True, "schema_version": 1,
-            "data": {"plan": plan, "tasks": tasks, "task_count": len(tasks), "tasks_complete": True,
-                     "resources": resources, "scope": {"kind": "sample_assembled_plan_workspace", "plan_ref": plan_ref},
-                     "plan_span": span, "projections": {"kind": "segmented_http", "source": "assembly.segments[].data.projections"}},
-            "meta": {"source": "production", "snapshot_ref": None, "as_of": None},
-            "assembly": {"kind": "segmented_http", "segments": documents, "reads": reads, "rejected_scopes": rejected,
-                         "requested_span": {"range_start": low.isoformat(), "range_end": high.isoformat()},
-                         "unique_task_count": len(tasks), "segment_count": len(documents),
-                         "duplicate_overlap_count": sum(row["task_count"] for row in reads) - len(tasks),
-                         "resource_scope": "union_of_segment_identity_directories_without_global_metrics",
-                         "snapshot_rule": "Each original snapshot belongs only to its exact segment scope; no global snapshot was issued."}}
+    data = {"plan": plan, "tasks": tasks, "task_count": len(tasks), "tasks_complete": True,
+            "resources": resources, "scope": {"kind": "sample_assembled_plan_workspace", "plan_ref": plan_ref},
+            "plan_span": span, "projections": {"kind": "segmented_http", "source": "assembly.segments[].data.projections"}}
+    # 拼装件没有整体快照：snapshot_ref 为空，as_of 记拼装完成的工厂本地时间；各分段原快照留在 assembly.reads。
+    document = query_payload(data, {"as_of": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"), "snapshot_ref": None})
+    document["assembly"] = {"kind": "segmented_http", "segments": documents, "reads": reads, "rejected_scopes": rejected,
+                           "requested_span": {"range_start": low.isoformat(), "range_end": high.isoformat()},
+                           "unique_task_count": len(tasks), "segment_count": len(documents),
+                           "duplicate_overlap_count": sum(row["task_count"] for row in reads) - len(tasks),
+                           "resource_scope": "union_of_segment_identity_directories_without_global_metrics",
+                           "snapshot_rule": "Each original snapshot belongs only to its exact segment scope; no global snapshot was issued."}
+    return document
 
 
 def read_formal(client, plan_ref, expected):

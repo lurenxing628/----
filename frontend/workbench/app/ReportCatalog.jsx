@@ -1,18 +1,18 @@
 (function () {
   'use strict';
   const options = [['overdue', '超期批次'], ['utilization', '资源负荷 / 利用率'], ['downtime', '停机影响'], ['official-review', '正式执行复盘 / Excel']];
-  function Catalog({ api, scope, snapshot }) {
+  function Catalog({ scope, snapshot }) {
     const { Button, ErrorBox, useRead, Page } = window.ReportControls;
     const [kind, setKind] = React.useState('overdue'), [draft, setDraft] = React.useState({}), [filter, setFilter] = React.useState({}),
       [table, setTable] = React.useState({ page: 1, size: 10 }), [notice, setNotice] = React.useState(''), [error, setError] = React.useState(null), [downloading, setDownloading] = React.useState(false);
     const base = kind === 'official-review' ? { ...window.ReportAPI.scope(scope), snapshot_ref: snapshot, topic: 'delivery' } : { source: 'production', plan_ref: scope.plan_ref, ...filter };
     const input = { ...base, ...table };
-    const request = useRead(signal => api.catalog(kind, input, signal), kind + JSON.stringify(input));
+    const request = useRead(signal => window.ReportAPI.catalog(kind, input, signal), kind + JSON.stringify(input));
     const response = request.result;
     function choose(next) { setKind(next); setFilter({}); setDraft({}); setTable({ page: 1, size: 10 }); setError(null); setNotice(''); }
     async function download() {
       setDownloading(true); setError(null); setNotice('');
-      try { const result = await api.download('/api/workbench/v1/reports/' + kind + '/export', { ...input, snapshot_ref: response.meta.snapshot_ref, format: 'xlsx' }); setNotice(window.WorkbenchTerms.download_started(result.filename) + '（完整范围）。'); }
+      try { const result = await window.ReportAPI.download('/api/workbench/v1/reports/' + kind + '/export', { ...input, snapshot_ref: response.meta.snapshot_ref, format: 'xlsx' }); setNotice(window.WorkbenchTerms.download_started(result.filename) + '（完整范围）。'); }
       catch (failure) { setError(failure); } finally { setDownloading(false); }
     }
     const empty = { title: '当前范围没有结果', hint: kind === 'official-review' ? '当前正式计划里没有符合范围的工序。' : '调整统计日期或搜索条件后重新查询。' };

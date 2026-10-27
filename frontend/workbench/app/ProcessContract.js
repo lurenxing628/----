@@ -119,7 +119,7 @@
       throw C.failure('读到的工艺详情不完整或不是这个零件，请刷新后重试。');
     return result;
   }
-  // 信封（ok、schema_version、meta、warnings）已由 resource-api.js 的 production() 校验，下面两个预检只校验 data。
+  // 信封（ok、schema_version、meta、warnings）已由 transport.js 的 envelope() 校验，下面两个预检只校验 data。
   function preview(result, expectedRef, body) {
     const d = result.data;
     if (d.part_ref !== expectedRef || d.mode !== body.mode || !text(d.route_raw) || !text(d.normalized_input)
@@ -174,10 +174,10 @@
     if (snapshot) body.snapshot_ref = snapshot;
     return body;
   }
-  function reason(value, action, connected = false) {
+  function reason(value, action) {
     if (!value) return '请先读取当前工艺能力。';
     if (value[action] !== true) return action === 'stage_confirm' ? '当前不允许确认这一步，不能保存。' : '当前不允许此操作。';
-    return connected ? '' : window.WorkbenchTerms.outcomes.unavailable;
+    return '';
   }
   function sourceLabel(value) { return value === 'internal' ? '自制' : value === 'external' ? '外协' : '未归类'; }
   // 数值按录入精度显示（最多四位小数），格式统一走 WorkbenchFormat；单位由表头交代，这里不拼。

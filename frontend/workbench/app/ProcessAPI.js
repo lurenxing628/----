@@ -62,16 +62,16 @@
           throw fail('归属检查缺少当前零件资料，请刷新后重试。');
         return base.preview('process/' + ref + '/stage-preview', { action, input, snapshot_ref: snapshotRef }, signal);
       },
-      command(kind, action, ref, body, signal) {
-        if (kind === 'process' && action === 'create' && ref === null) return base.execute('process/parts/create', body, signal);
+      command(kind, action, ref, body) {
+        if (kind === 'process' && action === 'create' && ref === null) return base.execute('process/parts/create', body);
         if (kind === 'process_bulk' && action === 'confirm' && typeof ref === 'string' && /^[A-Za-z0-9_-]{32}$/.test(ref)
-            && body.input && body.input.preview_ref === ref) return base.execute('process/parts/bulk-confirm', body, signal);
+            && body.input && body.input.preview_ref === ref) return base.execute('process/parts/bulk-confirm', body);
         if (['process_route_import', 'process_hours_import'].includes(kind) && action === 'confirm' && typeof ref === 'string' && /^[A-Za-z0-9_-]{32}$/.test(ref)
-            && body.input && body.input.preview_ref === ref) return base.execute(filePath(kind === 'process_route_import' ? 'route' : 'hours', 'confirm'), body, signal);
+            && body.input && body.input.preview_ref === ref) return base.execute(filePath(kind === 'process_route_import' ? 'route' : 'hours', 'confirm'), body);
         part('part', ref);
         if (kind !== 'process' || ref == null || !['route_confirm', 'source_confirm', 'hours_confirm', 'groups_confirm'].includes(action))
           throw fail('工艺操作与所选零件不一致。');
-        return base.execute('process/' + ref + '/' + action, body, signal);
+        return base.execute('process/' + ref + '/' + action, body);
       }
     };
   }

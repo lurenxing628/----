@@ -96,13 +96,6 @@ def _compare(before, after, categories):
             "page": {"number": 1, "size": len(rows), "total": len(rows), "has_more": False}}
 
 
-def _table(source, name, *, introduced):
-    rows = source.table(name)
-    if rows is None and source.calendar.version is not None and source.calendar.version < introduced:
-        return []
-    return rows
-
-
 def _reference(source, kind, key, *, original=False):
     if key is None:
         return None
@@ -147,7 +140,7 @@ def _scope(projection):
                        "operations." + ref, "selected_operations", origin="original")
     for field in ("start_date", "end_date", "ready_check", "missing_resource_policy", "completed_policy", "material_strategy"):
         value = source.input.get(field, _MISSING)
-        # Strict was the saved call contract before the material-strategy key existed.
+        # material_strategy is an optional input field; its absence means strict.
         if field == "material_strategy" and value is _MISSING:
             value = "strict"
         projection.add("scope", "planning", "本次排产", field, value, field, "planning", origin="input")
@@ -190,9 +183,9 @@ def _materials(projection, batches, operations):
     projection.declare(category, "materials", "tables.BatchMaterials", requirements is not None)
     by_batch = {row["batch_id"]: ref for ref, row in batches.items()}
     by_op = {row["id"]: ref for ref, row in operations.items()}
-    reviews = _table(source, "BatchMaterialReviews", introduced=36)
-    stages = _table(source, "BatchMaterialStages", introduced=36)
-    arrivals = _table(source, "BatchMaterialArrivals", introduced=36)
+    reviews = source.table("BatchMaterialReviews")
+    stages = source.table("BatchMaterialStages")
+    arrivals = source.table("BatchMaterialArrivals")
     for name, rows in (("BatchMaterialReviews", reviews), ("BatchMaterialStages", stages), ("BatchMaterialArrivals", arrivals)):
         if requirements and any(row.get("batch_id") in by_batch for row in requirements):
             projection.declare(category, name, "tables." + name, rows is not None)
@@ -272,7 +265,7 @@ def _materials(projection, batches, operations):
 def _resources(projection, operations):
     source, category = projection.source, "resource_qualifications"
     machines, operators, types = source.table("Machines"), source.table("Operators"), source.table("OpTypes")
-    capabilities = _table(source, "MachineOpTypes", introduced=35)
+    capabilities = source.table("MachineOpTypes")
     links, profiles, skills = source.table("OperatorMachine"), source.table("WorkbenchOperatorProfiles"), source.table("OperatorSkill")
     needed = {row.get("op_type_id") for row in operations.values() if row.get("source") == "internal"}
     assigned_machines = {row.get("machine_id") for row in operations.values()} - {None}
@@ -507,7 +500,7 @@ def _production(source):
     return projection, resources, known
 
 
-def _saved_objective(source, packet, artifact, algo, native):
+def _saved_objective(source, packet, artifact, algo):
     receipt = packet.get("receipt") or {}
     selection, candidate = receipt.get("selection") or {}, packet.get("candidate") or {}
     name = artifact.get("objective_name") or artifact.get("objective", _MISSING)
@@ -526,20 +519,12 @@ def _saved_objective(source, packet, artifact, algo, native):
         score = artifact.get("score")
         return name == saved_name and type(score) is list and len(score) == len(order)
 
-    saved_name = (selection.get("primary_objective", name) if selection.get("selection_policy_version") == "business_objectives_v1"
-                  else selection.get("objective_name", name))
-    order = selection.get("objective_field_order", _MISSING)
-    if selection.get("selection_policy_version") == "business_objectives_v1":
-        order = order.get(saved_name, _MISSING) if type(order) is dict and type(saved_name) is str else _MISSING
+    # A run's saved business selection fixes the primary objective and its field order.
+    saved_name = selection.get("primary_objective", name)
+    orders = selection.get("objective_field_order")
+    order = orders.get(saved_name, _MISSING) if type(orders) is dict and type(saved_name) is str else _MISSING
     if applicable(saved_name, order):
         return _side(source.source("receipt.selection"), {"name": saved_name, "field_order": order})
-    if native is not None:
-        _, _, selection = native
-        saved_name = selection.get("primary_objective", _MISSING)
-        orders = selection.get("objective_field_order")
-        order = orders.get(saved_name, _MISSING) if type(orders) is dict and type(saved_name) is str else _MISSING
-        if selection.get("selection_policy_version") == "business_objectives_v1" and applicable(saved_name, order, owned=True):
-            return _side(source.source("algo.candidate_comparison.selection"), {"name": saved_name, "field_order": order})
     sources = ((algo, "candidate.artifact.summary.algo", True),
                (((receipt.get("summary") or {}).get("algo") or {}), "receipt.summary.algo", False))
     for values, path, owned in sources:
@@ -554,41 +539,6 @@ def _saved_objective(source, packet, artifact, algo, native):
                  reason=_reason("objective_basis_not_recorded", "原记录缺少适用于该候选的目标名称或实际评分字段顺序。"))
 
 
-def _native_optimization(source):
-    """Native formal runs keep their saved optimization facts in the summary."""
-    if source.kind != "legacy" or type(source.saved) is not dict:
-        return None
-    algo = source.saved.get("algo")
-    if type(algo) is not dict:
-        return None
-    comparison = algo.get("candidate_comparison")
-    comparison = comparison if type(comparison) is dict else {}
-    if (comparison.get("generation_policy_version") or algo.get("generation_policy_version")) != "unified_search_v1":
-        return None
-    selection = comparison.get("selection")
-    return algo, comparison, selection if type(selection) is dict else {}
-
-
-def _native_run_options(projection, native):
-    algo, comparison, selection = native
-    algorithm_path, comparison_path = "algo.", "algo.candidate_comparison."
-    selection_path = comparison_path + "selection."
-    sources = {
-        "generation_policy_version": ((comparison, comparison_path, "generation_policy_version"), (algo, algorithm_path, "generation_policy_version")),
-        "selection_policy_version": ((selection, selection_path, "selection_policy_version"), (comparison, comparison_path, "selection_policy_version")),
-        "primary_objective": ((selection, selection_path, "primary_objective"), (comparison, comparison_path, "primary_objective"), (algo, algorithm_path, "primary_objective")),
-        "target_objectives": ((selection, selection_path, "target_objectives"), (comparison, comparison_path, "target_objectives"), (algo, algorithm_path, "target_objectives")),
-        "time_budget_seconds": ((comparison, comparison_path, "run_time_budget_seconds"), (algo, algorithm_path, "time_budget_seconds")),
-    }
-    for field, candidates in sources.items():
-        value, path = _MISSING, candidates[0][1] + candidates[0][2]
-        for values, prefix, key in candidates:
-            if key in values:
-                value, path = values[key], prefix + key
-                break
-        projection.add("algorithm", "run_options", "本次保存的优化策略和预算", field, value, path, "algorithm")
-
-
 def _experiments(source, packet):
     projection = _Projection(source)
     projection.declare("algorithm", "algorithm", "tables.ScheduleConfig", source.available)
@@ -600,9 +550,6 @@ def _experiments(source, packet):
     artifact = source.artifact or {}
     selection = (packet.get("receipt") or {}).get("selection") or {}
     inputs = source.input or {}
-    native = _native_optimization(source)
-    if native is not None:
-        _native_run_options(projection, native)
     if source.available:
         for key in ("generation_policy_version", "selection_policy_version", "primary_objective", "target_objectives", "time_budget_seconds"):
             if key in inputs:
@@ -645,7 +592,7 @@ def _experiments(source, packet):
     if not any("algorithm_version" in values for values in (artifact, algo)):
         projection.add("algorithm", "version", "实际算法版本", "algorithm_version", _MISSING, "candidate.artifact.algorithm_version", "algorithm",
                        reason=_reason("algorithm_version_not_recorded", "原记录未保存实际算法版本。"))
-    return projection, _saved_objective(source, packet, artifact, algo, native)
+    return projection, _saved_objective(source, packet, artifact, algo)
 
 
 def prepare_history_condition_source(packet):

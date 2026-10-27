@@ -5,11 +5,11 @@ import csv
 from tempfile import SpooledTemporaryFile
 
 from core.models.workbench_action_values import FileDownload
-from core.models.workbench_command import canonical_json
 from core.services.common.excel_instruction_sheet import close_write_only_sheets
 from core.services.workbench.facts.file_writer import _value, check_capacity
 from core.services.workbench.facts.process_file_xml import preserve_carriage_returns
 from core.services.workbench.facts.table_cells import number_text
+from core.shared.strict_json import canonical_json
 
 HEADERS = ("记录类型", "排产编号", "候选方案编号", "候选方案名称", "候选方案状态", "候选方案完整性", "排产时间",
            "数据版本编号", "读取时间", "范围起点（含）", "范围终点（不含）", "行编号", "工序编号", "批次编号",

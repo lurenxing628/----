@@ -1,6 +1,6 @@
 """Replay fixed historical business facts without invoking current application services.
 
-The data was recorded by the original seed_v25/v26/v27/v28/v29/v30 helpers from
+The data was recorded by the original seed_v25/v30 helpers from
 commit 7034b87303ec10e5d2f40ea704aee0b98770cf9c in an isolated checkout. Its
 existing frozen schema assertions and foreign-key checks passed before capture.
 Since then only two run-artifact keys that production no longer writes (the
@@ -12,7 +12,7 @@ import sqlite3
 from pathlib import Path
 
 FIXTURES = Path(__file__).parent / "fixtures"
-ARCHIVE_VERSIONS = (25, 26, 27, 28, 29, 30)
+ARCHIVE_VERSIONS = (25, 30)
 
 
 def _archive(prefix, version):

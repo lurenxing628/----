@@ -226,7 +226,6 @@ def test_report_preserves_raw_resource_id_without_stripping_non_empty_whitespace
 
     facts = {
         "defaults": (),
-        "legacy_defaults": True,
         "global": [
             {
                 "date": "2026-10-17",

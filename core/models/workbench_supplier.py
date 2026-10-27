@@ -92,5 +92,5 @@ def normalize_supplier_input(action: str, payload: Any) -> Dict[str, Any]:
 
 
 def supplier_state(status, profile) -> Dict[str, Any]:
-    """Keep legacy inactive-without-reason distinct from explicit pending review."""
+    """Stored status plus registered inactive reason; any other combination is damaged storage."""
     return reasoned_resource_state("supplier", status, profile)

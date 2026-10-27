@@ -51,8 +51,12 @@ def resource_database(schema_conn):
     for code, category in (("OT2", "internal"), ("EXT", "external")):
         insert_row(schema_conn, "OpTypes", {"op_type_id": code, "name": code, "category": category})
     insert_row(schema_conn, "Operators", {"operator_id": "EMPTY", "name": "empty", "status": "inactive"})
-    schema_conn.commit()
     assert all(not table_rows(schema_conn, table) for table in NEW_TABLES)
+    # 写入口只产出“启用”或“带登记原因的停用”：种子里停用的供应商和人员补上停用原因。
+    insert_row(schema_conn, "WorkbenchSupplierProfiles", {"supplier_id": "S1", "inactive_reason": "disabled"})
+    insert_row(schema_conn, "WorkbenchOperatorProfiles", {"operator_id": "EMPTY", "skills_declared": 0,
+                                                          "inactive_reason": "disabled"})
+    schema_conn.commit()
     return schema_conn
 
 

@@ -6,11 +6,11 @@ import json
 import secrets
 from datetime import datetime, timezone
 
-from flask import current_app, request
+from flask import Blueprint, current_app, request
 
 from web.runtime_host import request_shutdown, runtime_identity
 
-from .legacy_blueprints import system_bp as bp
+bp = Blueprint("system", __name__)
 
 _APP_ID = "aps"
 _CONTRACT_VERSION = 1

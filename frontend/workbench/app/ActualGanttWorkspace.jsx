@@ -20,17 +20,14 @@
       || typeof v.query !== 'string' || v.query.length > 200 || !reference(v.selected) || !reference(v.report)
       || !['onlySelected', 'details', 'chain'].every(key => typeof v[key] === 'boolean')
       || !object(v.collapsed) || !Object.values(v.collapsed).every(item => typeof item === 'boolean')
-      || v.chainLines !== undefined && typeof v.chainLines !== 'boolean'
-      || value.position.viewport !== undefined && (!Number.isFinite(value.position.viewport) || value.position.viewport < 80)
-      || (value.position.centerAt !== undefined || value.position.windowSpan !== undefined)
-        && (!Number.isFinite(value.position.centerAt) || !Number.isFinite(value.position.windowSpan) || value.position.windowSpan <= 0)
-      || !['left', 'top'].every(key => Number.isFinite(value.position[key]) && value.position[key] >= 0))
+      || !Number.isFinite(value.position.centerAt) || !Number.isFinite(value.position.windowSpan) || value.position.windowSpan <= 0
+      || !Number.isFinite(value.position.top) || value.position.top < 0)
       throw new Error('现场实际甘特的查看状态无效，没有改选其他工序。');
     return value;
   }
   function initial(context) {
     const input = { ...context.scope }, scope = {};
-    const taskRef = context.task_ref !== undefined ? context.task_ref : context.entity_ref;
+    const taskRef = context.task_ref;
     for (const key of ['source', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'batch_ids'])
       if (context[key] !== undefined && input[key] === undefined) input[key] = context[key];
     const allowed = ['plan_ref', 'source', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'batch_ids', 'query', 'focus', 'as_of', 'snapshot_ref', 'kind', 'baseline_ref'];
@@ -48,9 +45,8 @@
     return { scope, issue, persisted, query: typeof input.query === 'string' ? input.query : typeof context.query === 'string' ? context.query : '',
       selected: taskRef === undefined ? null : taskRef, report: context.report_ref === undefined ? null : context.report_ref };
   }
-  function Content({ onNavigate, initialContext, adapter: supplied }) {
+  function Content({ onNavigate, initialContext }) {
     const seed = React.useMemo(() => initial(initialContext), []), key = JSON.stringify(initialContext), saved = sessions.get(key);
-    const api = React.useMemo(() => window.ActualGanttAPI.adapter(supplied || window.ActualGanttAPI.create()), [supplied]);
     const [scope, setScope] = React.useState(saved ? saved.scope : seed.scope), [refresh, setRefresh] = React.useState(0);
     const [result, setResult] = React.useState(null), [loading, setLoading] = React.useState(false), [error, setError] = React.useState(null);
     const [view, setView] = React.useState(saved ? saved.view : seed.persisted ? seed.persisted.view : { mode: seed.scope.resource_type || 'machine', query: seed.query, selected: seed.selected,
@@ -81,18 +77,16 @@
       (async () => {
         try {
           if (seed.issue) throw window.APSResourceContract.failure(seed.issue);
-          let input = scope;
-          if (input.source && input.source !== 'production') throw window.APSResourceContract.failure('数据来源无效，请重新打开现场实际甘特。');
-          if (!input.plan_ref) {
-            if (Object.keys(input).some(k => k !== 'source')) throw window.APSResourceContract.failure('来源范围缺少计划，请选择计划。');
-            const catalog = await window.APSPlanAPI.create().catalog({ collection: 'history', size: 20 }, controller.signal);
+          if (scope.source && scope.source !== 'production') throw window.APSResourceContract.failure('数据来源无效，请重新打开现场实际甘特。');
+          if (!scope.plan_ref) {
+            if (Object.keys(scope).some(k => k !== 'source')) throw window.APSResourceContract.failure('来源范围缺少计划，请选择计划。');
+            const catalog = await window.APSPlanAPI.catalog({ collection: 'history', size: 20 }, controller.signal);
             const current = catalog.data.plans.filter(p => p.is_current_official && p.capabilities.view);
             if (current.length !== 1) throw window.APSResourceContract.failure('没有唯一可读取的当前正式计划，请先选择计划。');
             if (active) setScope({ plan_ref: current[0].plan_ref });
             return;
           }
-          input = C.scope(input);
-          const response = await api.load(input, controller.signal);
+          const response = await window.ActualGanttAPI.load(scope, controller.signal);
           if (initialContext.operation_ref && seed.selected) {
             const task = response.data.items.find(item => item.task.task_ref === seed.selected);
             if (task && task.task.operation_ref !== initialContext.operation_ref) throw window.APSResourceContract.failure('来源工序与所选计划任务不一致，请重新选择工序。');
@@ -102,7 +96,7 @@
         finally { if (active) setLoading(false); }
       })();
       return () => { active = false; controller.abort(); };
-    }, [api, scope, refresh]);
+    }, [scope, refresh]);
     React.useEffect(() => () => { if (downloadController.current) downloadController.current.abort(); cancelAnimationFrame(frame.current); }, []);
     const data = result && result.data;
     const captionPlan = !loading && !error && data && data.plan;
@@ -156,7 +150,7 @@
       // Restore only after the measured width is rendered; the initial width can clamp scrollLeft.
       if (restore && position.width !== node.clientWidth) { measure(); return; }
       if (restore) {
-        const nextZoom = W.restoreZoom(restore, model, zoom);
+        const nextZoom = W.restoreZoom(restore, model);
         if (nextZoom !== zoom) { setZoom(nextZoom); return; }
         node.scrollLeft = W.restoreLeft(restore, viewport, model, zoom); node.scrollTop = restore.top; setRestore(null);
       }
@@ -226,14 +220,10 @@
     async function download() {
       const controller = new AbortController(); downloadController.current = controller; setExportBusy(true); setExportError(null);
       try {
-        const output = await api.export(C.scope(viewScope(), true), controller.signal);
+        const output = await window.ActualGanttAPI.export(viewScope(), controller.signal);
         if (controller.signal.aborted) return;
-        if (!output || !output.blob || !output.blob.size || output.contentType.split(';')[0] !== 'text/csv' || !/^attachment;/i.test(output.disposition)) throw window.APSResourceContract.failure('下载不是有效的 CSV 附件。');
-        const url = URL.createObjectURL(output.blob), a = document.createElement('a');
-        const name = '现场实际甘特-' + M.fileStamp(result.meta.as_of) + '.csv';
-        try { a.href = url; a.download = name; document.body.appendChild(a); a.click(); }
-        finally { a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
-        setExporting(false); setExportNotice(window.WorkbenchTerms.download_started(name));
+        window.APSWorkbenchTransport.saveBlob(output.filename, output.blob);
+        setExporting(false); setExportNotice(window.WorkbenchTerms.download_started(output.filename));
       } catch (failure) { if (!controller.signal.aborted) setExportError(failure); }
       finally { if (downloadController.current === controller) { downloadController.current = null; setExportBusy(false); } }
     }
@@ -257,13 +247,13 @@
     return <div className="plana fg-page fg-live" data-actual-gantt>
       <div className="fg-heading"><div><h2 className="wb-page-title">现场实际甘特</h2><span className="fg-muted wb-page-context">{data ? data.plan.display_name + ' · ' + window.WorkbenchTerms.data_as_of(M.time(result.meta.as_of)) : loading ? '正在读取计划与现场记录' : '计划与现场记录'}</span></div>
         <div className="wb-actions"><Button icon="refresh-cw" aria-label="刷新实际甘特" busy={loading} onClick={reload} />
-          {onNavigate && <><Button icon="chart-gantt" onClick={() => navigate('gantt')}>计划甘特</Button><Button icon="arrow-right" onClick={() => navigate('field')}>现场记录</Button></>}
-          {onNavigate && initialContext.return_to && <Button icon="chevron-left" onClick={() => { const target = initialContext.return_to; if (['gantt', 'field', 'analysis', 'reports', 'review', 'dashboard'].includes(target.view)) onNavigate(target.view, target.context); }}>返回</Button>}</div></div>
+          <Button icon="chart-gantt" onClick={() => navigate('gantt')}>计划甘特</Button><Button icon="arrow-right" onClick={() => navigate('field')}>现场记录</Button>
+          {initialContext.return_to && <Button icon="chevron-left" onClick={() => { const target = initialContext.return_to; if (['gantt', 'field', 'analysis', 'reports', 'review', 'dashboard'].includes(target.view)) onNavigate(target.view, target.context); }}>返回</Button>}</div></div>
       <ErrorBox error={error} />
       {scope.plan_ref && <Range scope={scope} resources={data ? data.resources : null} onApply={apply} busy={loading} />}
       {!data && <window.WorkbenchControls.EmptyState kind={loading ? 'loading' : error ? 'error' : 'empty'} title={loading ? '正在读取计划与现场记录…' : error ? '现场实际甘特未读取成功' : '暂无现场实际甘特数据'}
         action={error && !loading ? <Button icon="refresh-cw" onClick={reload}>刷新</Button> : undefined} />}
-      {!data && !loading && onNavigate && <Button icon="chart-gantt" onClick={() => onNavigate('analysis', {})}>选择计划</Button>}
+      {!data && !loading && <Button icon="chart-gantt" onClick={() => onNavigate('analysis', {})}>选择计划</Button>}
       {data && <>{data.availability.state !== 'available' && <div role="status" className="fg-note">{data.availability.reason}</div>}
         <dl className="fg-metrics" aria-label="当前范围概况"><div><dt>整道已完工</dt><dd>{stats.complete === null ? '报工数据不可用' : stats.complete}</dd></div>
           <div><dt>已报工 · 未整道完工</dt><dd>{stats.reported === null ? '报工数据不可用' : stats.reported}</dd></div>
@@ -298,7 +288,7 @@
                 {selected.execution.reports.filter(row => selected.execution.data_gaps.some(gap => gap.report_ref === row.report_ref)).map(row => <Button key={row.report_ref} icon="search"
                   onClick={() => patch({ report: row.report_ref })}>查看待补报工 {row.report_no}</Button>)}
                 {report && <p>登记：{M.time(report.recorded_at)} · 历史版本 {report.correction_history.length} 条</p>}</>}
-              {onNavigate && <Button icon="arrow-right" onClick={() => navigate('field')}>到现场记录核对或补齐</Button>}
+              <Button icon="arrow-right" onClick={() => navigate('field')}>到现场记录核对或补齐</Button>
             </div></details>
             <details className="wb-gantt-detail-section" open><summary>完整工艺路线</summary><div className="wb-gantt-detail-section-body">
               <window.GanttRouteList index={graph} targetRef={selected.task.task_ref} loadedRefs={model.shownRefs}

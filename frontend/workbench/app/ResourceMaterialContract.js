@@ -10,7 +10,7 @@
     import: 'imports/' + kind + '/preview', bulk: 'entities/' + kind + '/bulk-preview', export: 'exports/' + kind + '/preview',
     download: 'exports/' + kind, template: 'templates/' + kind
   };
-  // 信封（ok、schema_version、meta、warnings）已由 resource-api.js 的 production() 校验，这里只校验 data。
+  // 信封（ok、schema_version、meta、warnings）已由 transport.js 的 envelope() 校验，这里只校验 data。
   function preview(result, mode, expected) {
     const data = result.data;
     if (!token(data.preview_ref) || data.operation !== kind + (mode === 'import' ? '.import' : '.bulk_delete')
@@ -103,31 +103,11 @@
     if (format === 'csv' && (bytes.includes(0) || bytes[0] === 80 && bytes[1] === 75))
       throw C.failure('文件内容不是 UTF-8 CSV，请核对文件格式。');
   }
-  function filename(disposition, format) {
-    if (typeof disposition !== 'string' || !/^attachment(?:;|$)/i.test(disposition)) throw C.failure('下载内容缺少文件名，没有保存文件。');
-    const extended = /(?:^|;)\s*filename\*\s*=\s*UTF-8''([^;]+)/i.exec(disposition);
-    const plain = /(?:^|;)\s*filename\s*=\s*(?:"((?:[^"\\]|\\.)*)"|([^;]+))/i.exec(disposition);
-    let name;
-    try { name = extended ? decodeURIComponent(extended[1].trim()) : plain && (plain[1] ? plain[1].replace(/\\(.)/g, '$1') : plain[2].trim()); }
-    catch (_) { throw C.failure('下载文件名编码无效，没有保存文件。'); }
-    if (!name || /[\x00-\x1f\x7f/\\]/.test(name) || !name.toLowerCase().endsWith('.' + format))
-      throw C.failure('下载文件名与所选格式不一致，没有保存文件。');
-    return name;
-  }
-  async function saveDownload(download, format, signal) {
-    const mime = format === 'csv' ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-    if (!download || !(download.blob instanceof Blob) || download.blob.size === 0
-        || String(download.contentType).split(';')[0].trim().toLowerCase() !== mime)
-      throw C.failure('下载内容或文件类型不正确，没有把错误内容保存成文件。');
-    const name = filename(download.disposition, format);
-    const bytes = new Uint8Array(await download.blob.slice(0, 4).arrayBuffer());
-    if (format === 'xlsx' && (bytes[0] !== 80 || bytes[1] !== 75 || bytes[2] !== 3 || bytes[3] !== 4))
-      throw C.failure('下载内容不是 XLSX 工作簿，没有保存文件。');
-    if (signal && signal.aborted) throw new DOMException('下载已取消', 'AbortError');
-    const url = URL.createObjectURL(download.blob), link = document.createElement('a');
-    try { link.href = url; link.download = name; document.body.appendChild(link); link.click(); }
-    finally { link.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 30000); }
-    return name;
+  // 类型、魔数与带正确后缀的文件名已由 transport.download 校验；资源家族同时允许 CSV 与 XLSX，这里只核对是用户所选的那一种。
+  function saveDownload(download, format) {
+    if (download.contentType !== window.APSWorkbenchTransport.types[format]) throw C.failure('下载文件与所选格式不一致，没有保存文件。');
+    window.APSWorkbenchTransport.saveBlob(download.filename, download.blob);
+    return download.filename;
   }
   // 逐行提示与勾选文案按资料类型给一次，别让预检组件再按 kind 分支。
   const confirmationHint = kind === 'material' ? '涉及已有物料需求，需核对修改前后内容。' : '涉及关键项或已有关联，需核对修改前后内容。';
@@ -135,7 +115,7 @@
   // 这一类资料勾选几条就导出几行；关联资料一条记录可能带出多行，由它自己的契约改成 false。
   // 导出范围里说的还是这类资料本身，所以不给 scopeLabel，由对话框沿用当前标签（工种要区分自制与外协）。
   const rowsMatchSelection = true;
-  return { kind, label, fields, results, paths, preview, exportPreview, source, selection, listContext, requestBody, blocked, validateFile, filename, saveDownload, confirmationHint, acknowledgeHint, rowsMatchSelection };
+  return { kind, label, fields, results, paths, preview, exportPreview, source, selection, listContext, requestBody, blocked, validateFile, saveDownload, confirmationHint, acknowledgeHint, rowsMatchSelection };
   }
   window.APSResourceMaterial = { ...create(), create };
 })();

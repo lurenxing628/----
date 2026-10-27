@@ -27,8 +27,7 @@ def _service():
     enabled = current_app.config.get("WORKBENCH_RUN_JOBS_ENABLED") is True and callable(dispatcher)
     return WorkbenchRunService(g.db, integration_enabled=enabled, input_resolver=evaluate_preflight_input_prepared,
                                context_factory=issue_write_context, context_validator=validate_write_context,
-                               data_context=RunDataContext(g.db, current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR"),
-                                                           current_app.config.get("BACKUP_DIR")))
+                               data_context=RunDataContext(g.db, current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR")))
 
 
 def _boundary(function):
@@ -70,8 +69,8 @@ def _input(keys):
 
 
 def _query(data):
-    return query_success(data, {"snapshot_ref": uuid4().hex,
-                                "as_of": datetime.now().isoformat(timespec="seconds")})
+    # Run and request lookups read live state; no read snapshot backs them.
+    return query_success(data, {"snapshot_ref": None, "as_of": datetime.now().isoformat(timespec="seconds")})
 
 
 @_boundary
@@ -106,14 +105,15 @@ def get_scheduling_run(run_ref):
 
 @_boundary
 def get_scheduling_request(request_key):
+    # The browser always sends the data generation it submitted under.
     previous = request.args.get("data_context_ref")
-    if (set(request.args) - {"data_context_ref"} or len(request.args.getlist("data_context_ref")) > 1
-            or previous is not None and not valid_data_context_ref(previous)):
-        raise WorkbenchCommandRejected("invalid_input", "查询这次排产不需要其他条件。请直接点「刷新」。", 400)
+    if (set(request.args) != {"data_context_ref"} or len(request.args.getlist("data_context_ref")) != 1
+            or not valid_data_context_ref(previous)):
+        raise WorkbenchCommandRejected("invalid_input", "查询这次排产的条件不完整或有多余项。请刷新页面后重新查询。", 400)
     service = _service()
     data = service.lookup(request_key)
     records = service.data_context.capture()
-    resolution = "found" if data is not None else service.data_context.resolve_missing(request_key, previous, records=records)
+    resolution = "found" if data is not None else service.data_context.resolve_missing(previous, records=records)
     return _query({"found": data is not None, "run": data, "resolution": resolution,
                    "data_context_ref": service.data_context.ref(records=records)})
 

@@ -13,7 +13,7 @@
       return Array.isArray(value) && value.every(item => C.object(item) && Object.keys(item).length === fields.length
         && fields.every(field => C.own(item, field) && scalar(item[field])));
     }
-    if (['skill_codes', 'op_type_codes', 'explicit_op_type_codes'].includes(key)) return Array.isArray(value) && value.every(item => typeof item === 'string');
+    if (['skill_codes', 'op_type_codes'].includes(key)) return Array.isArray(value) && value.every(item => typeof item === 'string');
     return scalar(value);
   }
   function displayValue(key, value) {
@@ -61,7 +61,7 @@
       resourceLabel: value => C.resourceName(kind, value),
       category: request => category(kind, request),
       templateHint: '空白表头模板，不含示例数据。空列不改动；要清除某一项，请在格子里填 \\N（大写）。',
-      importHint: '按业务编号增量更新：编号已有的更新，没有的新增，文件以外的记录不会删除。空列或缺列保持原值；要清除某一项，请在格子里填 \\N（大写）。关联列填业务编号；要填多个，请按 ["OT1","OT2"] 这样用方括号和引号写，填 [] 表示清除全部关联。只读列仅供参考，不导入；设备权限需在人员详情设置。',
+      importHint: '按业务编号增量更新：编号已有的更新，没有的新增，文件以外的记录不会删除。空列或缺列保持原值；要清除某一项，请在格子里填 \\N（大写）。关联列填业务编号；多个编号用顿号分开，例如 OT1、OT2，填清除表示移除全部关联。只读列仅供参考，不导入；设备权限需在人员详情设置。',
       preview(raw, mode, expected, request) {
         const result = shared.preview(raw, mode, expected);
         columns(result.data);

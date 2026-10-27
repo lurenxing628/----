@@ -1,17 +1,11 @@
 (function () {
   'use strict';
   const { Button, Modal, ErrorBox } = window.ResourceControls;
-  const C = window.APSResourceContract, M = window.PlanGanttModel;
-  function filename(disposition, format) {
-    const unicode = /filename\*=UTF-8''([^;]+)/i.exec(disposition), plain = /filename="([^"\r\n]+)"|filename=([^;\s]+)/i.exec(disposition);
-    const name = unicode ? decodeURIComponent(unicode[1]) : plain && (plain[1] || plain[2]);
-    if (!name || /[/\\\u0000-\u001f]/.test(name) || !name.toLowerCase().endsWith('.' + format)) throw C.failure('导出文件名不正确，已停止下载。');
-    return name;
-  }
-  function PlanExportUI({ adapter, result, query, matched, disabled }) {
+  const M = window.PlanGanttModel;
+  function PlanExportUI({ result, query, matched, disabled }) {
     const [format, setFormat] = React.useState(null), [busy, setBusy] = React.useState(false), [error, setError] = React.useState(null), [notice, setNotice] = React.useState('');
     const active = React.useRef(null);
-    React.useEffect(() => () => { if (active.current) active.current.abort(); }, [adapter, result]);
+    React.useEffect(() => () => { if (active.current) active.current.abort(); }, [result]);
     const reason = disabled || !result ? '先读取所选计划，才能导出当前内容。' : !result.data.plan.capabilities.export ? '当前还不能导出所选计划。' : '';
     function cancel() { if (active.current) active.current.abort(); active.current = null; setBusy(false); setFormat(null); }
     async function download() {
@@ -20,13 +14,11 @@
       try {
         const scope = { format, snapshot_ref: result.meta.snapshot_ref };
         if (result.data.scope.range_start !== null) { scope.range_start = result.data.scope.range_start; scope.range_end = result.data.scope.range_end; }
-        // APSPlanAPI.export 校验导出范围与下载结果（PlanContract.exportScope / download）。
-        const output = await adapter.export(result.data.plan.plan_ref, scope, controller.signal);
+        // APSPlanAPI.export 校验导出范围与下载文件名（PlanContract.exportScope / download）。
+        const output = await window.APSPlanAPI.export(result.data.plan.plan_ref, scope, controller.signal);
         if (controller.signal.aborted || active.current !== controller) return;
-        const name = filename(output.disposition, format), url = URL.createObjectURL(output.blob), anchor = document.createElement('a');
-        try { anchor.href = url; anchor.download = name; document.body.appendChild(anchor); anchor.click(); }
-        finally { anchor.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 1000); }
-        setNotice(window.WorkbenchTerms.download_started(name)); setFormat(null);
+        window.APSWorkbenchTransport.saveBlob(output.filename, output.blob);
+        setNotice(window.WorkbenchTerms.download_started(output.filename)); setFormat(null);
       } catch (failure) { if (!controller.signal.aborted && active.current === controller) setError(failure); }
       finally { if (active.current === controller) { active.current = null; setBusy(false); } }
     }

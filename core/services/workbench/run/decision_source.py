@@ -7,7 +7,6 @@ from core.models.workbench_preflight import preflight_window
 from core.models.workbench_run_candidate import local_time, reference, reject
 from core.services.workbench.facts.candidate_baseline import invalid_baseline
 from core.services.workbench.facts.candidate_facts import GenerationFacts
-from core.services.workbench.facts.candidate_process import index_saved_processes
 from core.services.workbench.facts.candidate_projection import completed_dispositions, validate_manifest
 from core.services.workbench.facts.candidate_tasks import project_validated_tasks, validate_saved_tasks
 from core.services.workbench.facts.candidate_values import corrupt
@@ -77,9 +76,7 @@ class DecisionSource:
         basis_header = {**self.header, "selection": self.memberships.expand(self.header.get("selection"))} if self.header else None
         self.basis = selection_basis(basis_header, self.rows)
         self.comparison_mode, self.resource_view = comparison_mode, resource_view
-        original = next((row for row in self.rows if row["status"] == "completed" and row["artifact"].get("kind") == "baseline"), None)
-        default = self.basis["selected_candidate_ref"] if ((self.header or {}).get("selection") or {}).get("generation_policy_version") == "unified_search_v1" else (original["candidate_ref"] if original else None)
-        self.reference_ref = (reference_candidate_ref or default) if comparison_mode == "candidates" else None
+        self.reference_ref = (reference_candidate_ref or self.basis["selected_candidate_ref"]) if comparison_mode == "candidates" else None
         self.selected_ref = selected_candidate_ref or self.basis["selected_candidate_ref"]
         self._candidate_reference(self.reference_ref)
         self._candidate_reference(self.selected_ref, require_result=False)
@@ -114,8 +111,8 @@ class DecisionSource:
 
     @cached_property
     def disposition(self) -> Dict[str, Dict[str, Any]]:
-        """Dispositions saved with this run's candidate results."""
-        return completed_dispositions(self.receipt)
+        """Dispositions saved with this run's candidate results, covering its admitted operations."""
+        return completed_dispositions(self.receipt, expected_refs=self._members("admission_operation_refs"))
 
     @cached_property
     def input(self):
@@ -205,10 +202,6 @@ class DecisionSource:
             return None
         return decode_model(self.repo.decision_read_model(self.run["run_ref"], ("process",)), ("process",))["process"]
 
-    @cached_property
-    def candidate_processes(self):
-        return index_saved_processes(self.saved_process, self.rows)
-
     @overload
     def _candidate_reference(self, candidate_ref: None, *, require_result: bool = True) -> None: ...
 
@@ -243,15 +236,12 @@ class DecisionSource:
         baseline = self.baseline
         identity = {"kind": "candidate", "candidate_ref": self.reference_ref} if self.comparison_mode == "candidates" else {
             "kind": "admission_official", "baseline_ref": baseline["baseline_ref"]}
-        result = {"run_ref": self.run["run_ref"], "comparison_mode": self.comparison_mode, "selected_candidate_ref": self.selected_ref,
+        return {"run_ref": self.run["run_ref"], "comparison_mode": self.comparison_mode, "selected_candidate_ref": self.selected_ref,
                 "reference": identity, "reference_state": baseline["state"], "range_start": start.isoformat(), "range_end": end.isoformat(),
                 "batch_refs": sorted(self.input["batch_refs"]), "operation_refs": sorted(refs),
                 "resource_view": self.resource_view,
-                "metric_scope": "full_admission", "time_basis": "factory_local", "delta_basis": "candidate_minus_reference"}
-        options = self.context.get("run_options")
-        if options is not None and options.get("generation_policy_version") == "unified_search_v1":
-            result["run_options"] = dict(options)
-        return result
+                "metric_scope": "full_admission", "time_basis": "factory_local", "delta_basis": "candidate_minus_reference",
+                "run_options": dict(self.context["run_options"])}
 
     def tasks(self, candidate_ref):
         if candidate_ref not in self._projected:
@@ -283,7 +273,7 @@ class DecisionSource:
                 intervals=self.task_intervals("reference"))
         return self.saved_projection(key, "delivery")
 
-    def legacy_delivery(self, candidate_ref):
+    def delivery_detail(self, candidate_ref):
         self._candidate_reference(candidate_ref, require_result=False)
         return self.saved_projection(candidate_ref, "delivery_detail")
 

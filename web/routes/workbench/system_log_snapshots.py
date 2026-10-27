@@ -6,9 +6,10 @@ from threading import RLock
 
 from flask import current_app
 
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench import messages
 from core.services.workbench.facts.run_data_context import restored_context_ref
+from core.shared.strict_json import canonical_json
 
 from .read_context import bind_read_snapshot
 from .system_context import database_scope, journal

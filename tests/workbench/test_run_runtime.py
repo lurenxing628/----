@@ -22,6 +22,7 @@ def test_http_202_single_background_worker_real_engine_and_replay(runtime_api, m
         response = client.post(BASE + "/runs", json=value)
         assert response.status_code == 202, response.get_json()
         ref = response.get_json()["run_ref"]
+        data_context_ref = response.get_json()["data_context_ref"]
         assert entered.wait(timeout=15)
         assert calls[0] != threading.get_ident()
         assert client.get(BASE + "/runs/" + ref).get_json()["data"]["state"] == "running"
@@ -41,7 +42,8 @@ def test_http_202_single_background_worker_real_engine_and_replay(runtime_api, m
     assert selection["selected_candidate_ref"] == next(row["candidate_ref"] for row in final["candidates"] if row["selected"])
     assert set(selection["objective_winners"]) == set(selection["target_objectives"])
     assert set(selection["objective_winners"].values()) <= {row["candidate_ref"] for row in final["candidates"]}
-    assert client.get(BASE + "/requests/" + value["request_key"]).get_json()["data"]["run"] == final
+    assert client.get(BASE + "/requests/" + value["request_key"],
+                      query_string={"data_context_ref": data_context_ref}).get_json()["data"]["run"] == final
 
     redundant_calls = []
 

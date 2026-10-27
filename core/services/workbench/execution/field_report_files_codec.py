@@ -1,4 +1,4 @@
-"""Strict legacy ten-column and explicit-task thirteen-column XLSX contracts."""
+"""Strict explicit-task thirteen-column XLSX contract."""
 
 import math
 import re
@@ -13,8 +13,6 @@ from core.models.workbench_field_report_file import (
     FIELDS,
     HEADERS,
     ROW_LIMIT,
-    TASK_FIELDS,
-    TASK_HEADERS,
     table_descriptor,
 )
 from core.models.workbench_table_descriptor import INSTRUCTION_SHEET
@@ -88,15 +86,14 @@ def _numeric(value, field):
 
 def _column_order(first):
     headers = [cell.value.strip() if type(cell.value) is str else cell.value for cell in first]
-    for version, expected, fields in ((1, HEADERS, FIELDS), (2, TASK_HEADERS, TASK_FIELDS)):
-        if len(headers) == len(expected) and set(headers) == set(expected):
-            return version, fields, [headers.index(label) for label in expected]
-    reject('第一张工作表的表头必须正好是原来的 10 列，或者是带任务编号、工序范围、单件编号的 13 列。')
+    if len(headers) == len(HEADERS) and set(headers) == set(HEADERS):
+        return [headers.index(label) for label in HEADERS]
+    reject('第一张工作表的表头必须正好是导出文件里带任务编号、工序范围、单件编号的 13 列。')
 
 
-def _decode_row(cells, number, version, fields, order, epoch):
-    row = {'row': number, 'format_version': version, 'values': {}, 'errors': []}
-    for field, index in zip(fields, order):
+def _decode_row(cells, number, order, epoch):
+    row = {'row': number, 'values': {}, 'errors': []}
+    for field, index in zip(FIELDS, order):
         try:
             row['values'][field] = _value(cells[index], field, epoch) if index < len(cells) else None
         except (WorkbenchCommandRejected, ValueError, OverflowError) as exc:
@@ -119,14 +116,14 @@ def decode_reports(content):
         # Do not trust a forged/undersized dimension to truncate physical rows.
         sheet.reset_dimensions()
         source = sheet.iter_rows()
-        version, fields, order = _column_order(next(source, ()))
-        if columns > len(fields):
+        order = _column_order(next(source, ()))
+        if columns > len(FIELDS):
             reject('有单元格超出表头范围，请按模板修正。')
         result = []
         for number, cells in enumerate(source, 2):
             if number > ROW_LIMIT + 1:
                 reject('最多只能导入 5000 行，这次一行都没有导入。')
-            result.append(_decode_row(cells, number, version, fields, order, book.epoch))
+            result.append(_decode_row(cells, number, order, book.epoch))
         return result
     finally:
         book.close()
@@ -140,10 +137,10 @@ def _export_value(value, field):
     return value
 
 
-def _append_report(sheet, row, fields):
-    values = [_export_value(row.get(field), field) for field in fields]
+def _append_report(sheet, row):
+    values = [_export_value(row.get(field), field) for field in FIELDS]
     sheet.append(values)
-    for column, (field, value) in enumerate(zip(fields, values), 1):
+    for column, (field, value) in enumerate(zip(FIELDS, values), 1):
         if field in _NUMBER_FIELDS and type(value) is str:
             sheet.cell(sheet.max_row, column).number_format = '@'
 
@@ -178,13 +175,13 @@ def encode_reports(rows, *, summaries, metadata):
     book = Workbook()
     sheet = cast(Worksheet, book.active)
     sheet.title = '报工记录'
-    sheet.append(TASK_HEADERS)
+    sheet.append(HEADERS)
     for number, row in enumerate(rows, 1):
         if number > ROW_LIMIT:
             reject('导出超过 5000 行，请缩小筛选范围。')
-        _append_report(sheet, row, TASK_FIELDS)
+        _append_report(sheet, row)
     # 模板和导出都带说明表，位置固定在数据表后面；回导时它会被当成多余的表忽略。
-    append_instruction_sheet(book, table_descriptor(2))
+    append_instruction_sheet(book, table_descriptor())
     for title, values in [('工序汇总', summaries), ('录入信息', metadata)]:
         values = list(values)
         if values:

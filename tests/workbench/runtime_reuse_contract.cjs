@@ -3,6 +3,7 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), path = re
 const { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), app = path.join(root, 'frontend/workbench/app');
 const babel = path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js');
+const { routeFetch, envelope, file, browser, loadTransport } = require('./route_fetch.cjs');
 const source = name => fs.readFileSync(path.join(app, name), 'utf8');
 const unavailableGraph = () => ({ state: 'unavailable', reason: 'No captured process order', scope: 'full_plan', nodes: [], critical_task_refs: [], critical_edges: [] });
 function load(ctx, name, code = source(name)) {
@@ -24,6 +25,11 @@ function hooks() {
     unmount() { effects.length = 0; slots.forEach(slot => { if (slot.cleanup) { const cleanup = slot.cleanup; slot.cleanup = null; cleanup(); } }); }, slots };
 }
 const turns = async () => { for (let i = 0; i < 5; i++) await Promise.resolve(); };
+// Contexts that write or read through APSWorkbenchTransport load it the way the bundle does: WorkbenchTerms, then transport,
+// with a fetch that fails loudly unless a section installs routes of its own.
+function withTransport(context, routes = {}) {
+  load(context, 'WorkbenchTerms.js'); const fetch = routeFetch(routes); browser(context, fetch); loadTransport(context); return fetch;
+}
 async function main() {
   // Ordinary GET hooks keep cancellation and identity boundaries in the existing owner.
   const queryHooks = hooks(), queryContext = vm.createContext({ window: { APSResourceContract: {} }, React: queryHooks.React, AbortController, DOMException });
@@ -77,7 +83,7 @@ async function main() {
   // R18 retains the private baseline result while its display toggle masks it.
   const baselineHooks = hooks(), baselineWindow = { APSResourceContract: {}, RunCandidateModel: {}, RunBaselineModel: {}, RunCandidateControls: { Button: 'button' } };
   let baselineLoads = 0; const frozenBaseline = { snapshot: 'baseline-one' };
-  baselineWindow.RunBaselineAPI = { create: () => ({ read: async () => { baselineLoads++; return frozenBaseline; } }) };
+  baselineWindow.RunBaselineAPI = { read: async () => { baselineLoads++; return frozenBaseline; } };
   const baselineContext = vm.createContext({ window: baselineWindow, React: baselineHooks.React, AbortController, DOMException });
   load(baselineContext, 'resource-session.js'); load(baselineContext, 'RunBaselineControls.jsx'); let baselineData = {};
   const baselineRead = () => baselineHooks.render(() => baselineWindow.RunBaselineControls.useBaseline(baselineData, true));
@@ -179,21 +185,22 @@ async function main() {
   const masterDetail = (scope, ref, section, title) => ({ scope, entity: masterEntity(ref), section,
     counts: { issues: 1, relations: 0, fields: 0 }, rows: section === 'issues' ? [masterIssue(ref, title)] : [],
     page: { number: 1, pages: 1, size: 10, total: section === 'issues' ? 1 : 0 } });
-  const masterEnvelope = (data, snapshot) => ({ ok: true, schema_version: 1, warnings: [], data,
-    meta: { source: 'production', time_basis: 'factory_local', snapshot_ref: snapshot, as_of: '2026-10-22T08:00:00' } });
-  masterWindow.APSWorkbenchTransport = { async read(path) {
-    const url = new URL(path, 'http://localhost'), scope = JSON.parse(url.searchParams.get('scope')); masterRequests.push(url);
-    if (url.pathname.includes('/entities/')) return masterEnvelope(masterDetail(scope, url.pathname.split('/').at(-1),
-      url.searchParams.get('section'), '当前到料'), url.searchParams.get('snapshot_ref'));
-    const located = url.pathname.includes('/locate/'), ref = located ? url.pathname.split('/').at(-1) : masterRefs[0];
+  // Fetch-level answers: the real MasterOverviewAPI, transport and contract validate every response.
+  const masterTokens = { list: 'M'.repeat(32), located: 'L'.repeat(32) };
+  const masterAnswer = call => {
+    const scope = JSON.parse(call.query.scope); masterRequests.push(call.url);
+    if (call.path.includes('/entities/')) return envelope(masterDetail(scope, call.path.split('/').at(-1), call.query.section, '当前到料'), { snapshot_ref: call.query.snapshot_ref });
+    const located = call.path.includes('/locate/'), ref = located ? call.path.split('/').at(-1) : masterRefs[0];
     const currentScope = located ? masterWindow.APSMasterOverviewContract.scope({ view: 'entities', domain: 'material', sort: 'business_code', direction: 'asc' }) : scope;
-    return masterEnvelope({ scope: currentScope, rows: masterRefs.map(value => located ? masterEntity(value) : masterIssue(value, '捕获到料')),
+    return envelope({ scope: currentScope, rows: masterRefs.map(value => located ? masterEntity(value) : masterIssue(value, '捕获到料')),
       page: { number: 1, pages: 1, size: 20, total: 2 }, selected_detail: masterDetail(currentScope, ref, 'issues', '捕获到料'),
       ...(located ? { selected: { domain: 'material', entity_ref: ref } } : {}),
       overview: { complete: true, basis: '基础资料', gaps: [], stats: { entities: 2, issues: 2, affected: 2, relations: 0, known_relation_pairs: 0 },
         domains: masterWindow.APSMasterOverviewContract.domains.map(([id]) => ({ id, loaded: true,
-          count: id === 'material' ? 2 : 0, attention: id === 'material' ? 2 : 0, unknown: 0 })) } }, located ? 'master-located' : 'master-list');
-  } };
+          count: id === 'material' ? 2 : 0, attention: id === 'material' ? 2 : 0, unknown: 0 })) } }, { snapshot_ref: located ? masterTokens.located : masterTokens.list });
+  };
+  browser(masterContext, routeFetch({ 'GET /api/workbench/v1/master-overview': masterAnswer, 'GET /api/workbench/v1/master-overview/entities/*/*': masterAnswer,
+    'GET /api/workbench/v1/master-overview/locate/*/*': masterAnswer })); loadTransport(masterContext);
   load(masterContext, 'MasterOverviewAPI.js'); load(masterContext, 'MasterOverviewWorkspace.jsx');
   let masterTree;
   async function settleMaster() {
@@ -237,15 +244,16 @@ async function main() {
       candidate_count: 1, page: { has_more: false } }, meta: { snapshot_ref: 'dashboard-directory' } }),
     workspace: (candidateRef, scope, signal) => new Promise(resolve => dashboardRequests.push({ kind: 'workspace', candidateRef, scope, signal, resolve }))
   };
-  const dashboardWindow = { RunCandidateAPI: { create: () => dashboardApi, time: value => typeof value === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d$/.test(value) },
+  const dashboardWindow = { RunCandidateAPI: { ...dashboardApi, time: value => typeof value === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d$/.test(value) },
     DashboardCandidatePanels: { Metrics: 'dashboard-metrics', Batches: 'dashboard-batches', Summary: 'dashboard-summary' },
     ResourceControls: { Button: 'button', ErrorBox: 'error', Issues: 'issues' }, WorkbenchReference: 'reference',
     WorkbenchFormat: { dateTime: String, compactRange: (start, end) => start + ' / ' + end, compactDateTime: String },
     WorkbenchTerms: { candidate_statuses: { completed: '计算完成' }, hold_window: () => '未设置', material_strategy: () => '全部齐套' } };
   const dashboardContext = vm.createContext({ window: dashboardWindow, React: dashboardHooks.React, AbortController });
   load(dashboardContext, 'DashboardContract.js'); load(dashboardContext, 'DashboardAnalysisAPI.js'); load(dashboardContext, 'DashboardCandidateComparisonAPI.js');
-  dashboardWindow.DashboardCandidateComparisonAPI.create = () => ({ read: (scope, signal) => new Promise(resolve =>
-    dashboardRequests.push({ kind: 'comparison', candidateRef: scope.candidate_ref, scope, signal, resolve })) });
+  // Component-ownership check: the comparison read itself is covered by its own contract, so only its answer timing is held here.
+  dashboardWindow.DashboardCandidateComparisonAPI.read = (scope, signal) => new Promise(resolve =>
+    dashboardRequests.push({ kind: 'comparison', candidateRef: scope.candidate_ref, scope, signal, resolve }));
   load(dashboardContext, 'DashboardCandidates.jsx');
   let dashboardProps = { catalog: { runs: [{ run_ref: dashboardRun, candidate_count: 1, accepted_at: dashboardChoice.range_start }] },
     initialContext: { run_ref: dashboardRun, candidate_ref: dashboardCandidate, batch_ref: batchTwo }, issueBatchRef: batchOne, selectedBatch: batchOne,
@@ -312,7 +320,7 @@ async function main() {
   const planContext = vm.createContext({ window: planWindow, React: planHooks.React });
   load(planContext, 'GanttGraph.js'); load(planContext, 'PlanGanttModel.js'); Object.assign(planWindow.PlanGanttModel, { names: () => new Map(), timeLabel: String, number: String });
   load(planContext, 'PlanWorkspace.jsx', source('PlanWorkspace.jsx').replace('window.PlanWorkspace = PlanWorkspace;', 'window.PlanWorkspaceSession = WorkspaceSession;'));
-  const renderPlan = () => planHooks.render(() => planWindow.PlanWorkspaceSession({ adapter: {}, planRef: planA, initialContext: { projection_page: 3 }, renderTrial: () => null }));
+  const renderPlan = () => planHooks.render(() => planWindow.PlanWorkspaceSession({ initialContext: { plan_ref: planA, projection_page: 3 }, renderTrial: () => null }));
   let planTree = renderPlan(); assert.equal(find(planTree, 'projection-tables').page, 3);
   find(find(planTree, 'catalog').actions, 'button').onClick(); planTree = renderPlan();
   find(planTree, 'form').onSubmit({ preventDefault() {} }); planTree = renderPlan();
@@ -325,7 +333,7 @@ async function main() {
     due_date: null, completion_state: 'complete', risk: 'on_time', unscheduled_operation_count: 0, ordinary_unscheduled_operation_count: 0, deferred_operation_count: 0, issues: [] }];
   Object.assign(planWindow.WorkbenchTerms, { delivery_risks: { on_time: '准时' }, delivery_completion_states: { complete: '已排齐' }, due_date: () => '未指定' });
   load(planContext, 'PlanDetailsUI.jsx');
-  const projection = planHooks.render(() => planWindow.PlanDetailsUI.ProjectionTables({ data: planData, prepared: planWindow.PlanGanttModel.prepare(planData), page: 3, onPage() {}, onTab() {}, onBatch() {} }));
+  const projection = planHooks.render(() => planWindow.PlanDetailsUI.ProjectionTables({ data: planData, prepared: planWindow.PlanGanttModel.prepare(planData), tab: 'risk', page: 3, onPage() {}, onTab() {}, onBatch() {} }));
   assert.equal(find(projection, 'pager').page, 1); assert(find(projection, 'button', props => props.children.includes('B-01')));
   assert.equal(find(projection, 'empty'), null);
 
@@ -347,13 +355,14 @@ async function main() {
   const createRouteGraph = routeWindow.GanttGraph.create; let routeGraphBuilds = 0;
   routeWindow.GanttGraph.create = graph => { routeGraphBuilds++; return createRouteGraph(graph); };
   load(routeContext, 'PlanWorkspace.jsx', source('PlanWorkspace.jsx').replace('window.PlanWorkspace = PlanWorkspace;', 'window.PlanWorkspaceSession = WorkspaceSession;'));
-  const routeProps = { planRef: planA, view: 'gantt', renderTrial: () => null, initialContext: { selected_task_ref: tasks[0].task_ref, range_start: tasks[0].start, range_end: tasks[0].end },
-    adapter: { async workspace(_plan, scope) {
-      requests.push(JSON.parse(JSON.stringify(scope)));
-      const task = tasks.find(task => task.start === scope.range_start);
-      return { warnings: [], meta: { snapshot_ref: 'route-' + requests.length }, data: { ...planData, scope,
-        tasks: [task], task_count: 1, gantt_graph: graph, time_scope: scope } };
-    } } };
+  // Workspace-ownership check: the plan read's own validation is covered by plan_transport_probe; here only its answers are counted.
+  routeWindow.APSPlanAPI = { async workspace(_plan, scope) {
+    requests.push(JSON.parse(JSON.stringify(scope)));
+    const task = tasks.find(task => task.start === scope.range_start);
+    return { warnings: [], meta: { snapshot_ref: 'route-' + requests.length }, data: { ...planData, scope,
+      tasks: [task], task_count: 1, gantt_graph: graph, time_scope: scope } };
+  } };
+  const routeProps = { view: 'gantt', renderTrial: () => null, initialContext: { plan_ref: planA, selected_task_ref: tasks[0].task_ref, range_start: tasks[0].start, range_end: tasks[0].end } };
   const settleRoute = async () => { let tree; for (let index = 0; index < 4; index++) { tree = routeHooks.render(() => routeWindow.PlanWorkspaceSession(routeProps)); routeHooks.flush(); await turns(); } return tree; };
   let routeTree = await settleRoute(); assert.equal(requests.length, 1); assert.equal(routeGraphBuilds, 1);
   assert.strictEqual(find(routeTree, 'plan-gantt').prepared, find(routeTree, 'task-detail').prepared, 'Drawing and details receive the original preparation object');
@@ -447,10 +456,10 @@ async function main() {
   const sessionWindow = { addEventListener() {}, removeEventListener() {}, WorkbenchTerms: { outcomes: { pending: action => '上次' + action + '待确认' } },
     TrialAPI: { PENDING_KEY: 'pending', pending: () => storage.key, reserve: () => (storage.key = 'trial-' + 'b'.repeat(48)),
       clear() { if (clearFailure) throw clearFailure; storage.key = null; }, command: async () => outcome(), lookup: async () => { lookups++; return { state: 'not_observed', receipt: null }; } } };
-  load(vm.createContext({ window: sessionWindow, React: sessionHooks.React }), 'TrialSession.js');
+  const sessionContext = vm.createContext({ window: sessionWindow, React: sessionHooks.React }); loadTransport(sessionContext); load(sessionContext, 'TrialSession.js');
   const useSession = () => sessionHooks.render(() => sessionWindow.TrialSession.useCommands(receipt => receipts.push(receipt)));
   let session = useSession(); sessionHooks.flush();
-  const receipt = { data: { draft_ref: 'draft' } }, rejected = Object.assign(new Error('来源已变化'), { rejected: true });
+  const receipt = { data: { draft_ref: 'draft' } }, rejected = sessionWindow.APSWorkbenchTransport.failure({ ok: false, committed: false, error: { code: 'stale_write', message: '来源已变化', fields: [], retryable: false, request_ref: '1'.repeat(32) } }, 409);
   clearFailure = new Error('本机操作记录没清掉'); outcome = async () => receipt;
   assert.equal(await useSession().execute({ action: 'save' }, 'token'), true); session = useSession();
   assert.strictEqual(session.receipt, receipt); assert.deepEqual(receipts, [receipt], 'A failed local clear must not withhold the confirmed receipt');
@@ -481,7 +490,7 @@ async function main() {
     statuses: { machine: [], operator: [] }, object: value => value !== null && typeof value === 'object' && !Array.isArray(value),
     own: (value, key) => Object.prototype.hasOwnProperty.call(value, key), query: value => value, failure: message => new Error(message),
     message: error => error.message, blocked: () => '', receipt: value => value && value.ok ? 'terminal' : 'pending',
-    requestKey: () => 'related-resource-request', resultRef: (value, fallback) => value.data.entity_ref || fallback };
+    stale: error => !!error && ['stale_write', 'snapshot_stale'].includes(error.code), resultRef: (value, fallback) => value.data.entity_ref || fallback };
   const resourceAdapter = {
     readPending() { return null; }, savePending() {}, clearPending() {},
     async list(kind, scope) {
@@ -494,14 +503,14 @@ async function main() {
   };
   const resourceWindow = { APSResourceContract: resourceContract, ResourceControls: { Button: 'button', Icon: 'icon', ErrorBox: 'error', Issues: 'issues', Modal: 'modal' },
     ResourceForms: resourceForms, ResourceTables: resourceTables, ResourceRail: 'resource-rail', ResourceMetrics: 'resource-metrics',
-    ResourceTableFilterModel: { restore: filters => ({ filters, notice: '' }) }, WorkbenchPageContext: { useSnapshot: (...args) => resourceSnapshots.push(args) },
+    ResourceTableFilterModel: { rules: filters => filters }, WorkbenchPageContext: { useSnapshot: (...args) => resourceSnapshots.push(args) },
     addEventListener() {}, removeEventListener() {} };
   const resourceContext = vm.createContext({ window: resourceWindow, React: resourceHooks.React, AbortController, DOMException });
-  load(resourceContext, 'resource-session.js'); resourceWindow.APSResourceSession.useCounts = () => ({ summary: { reload() {} } });
+  withTransport(resourceContext); load(resourceContext, 'resource-session.js'); resourceWindow.APSResourceSession.useCounts = () => ({ summary: { reload() {} } });
   load(resourceContext, 'ResourceWorkspace.jsx');
   const resourceContextInput = { source: 'production', kind: 'machine', read_view: { scope: { query: '', status: '', page: 3, size: 20, sort: 'business_code', direction: 'asc' },
     selected_refs: [], sort_active: false, detail: null } };
-  const resourceRender = () => resourceHooks.render(() => resourceWindow.ResourceWorkspace({ adapter: resourceAdapter, initialContext: resourceContextInput }));
+  const resourceRender = () => resourceHooks.render(() => resourceWindow.ResourceWorkspace({ adapter: resourceAdapter, initialContext: resourceContextInput, onNavigationReady() {} }));
   const settleResource = async () => { let tree; for (let n = 0; n < 4; n++) { tree = resourceRender(); resourceHooks.flush(); await turns(); } return tree; };
   let resourceTree = await settleResource();
   assert.deepEqual(resourceRequests.map(value => [value.kind, value.page, value.snapshot_ref || null]), [['machine', 3, null], ['machine', 2, 'snapshot-machine']]);
@@ -525,14 +534,14 @@ async function main() {
     const workspaceHooks = hooks(), localWindow = {
       ResourceControls: Object.fromEntries(['Button', 'Icon', 'ErrorBox', 'Issues', 'Status', 'Modal', 'Choice', 'Relation', 'Field'].map(name => [name, name])),
       ResourceRail: 'resource-rail', ResourceMetrics: 'resource-metrics',
-      ResourceTableFilterModel: { restore: filters => ({ filters, notice: '' }) }, WorkbenchPageContext: { useSnapshot() {} },
+      ResourceTableFilterModel: { rules: filters => filters }, WorkbenchPageContext: { useSnapshot() {} },
       WorkbenchGuards: { useDirtyGuard: () => 'op-type-form', confirmLeave: async () => true }, WorkbenchTerms: { refresh_latest: '刷新最新资料' },
       crypto: { getRandomValues: bytes => bytes.fill(1) }, addEventListener() {}, removeEventListener() {}
     };
     localWindow.ResourceControls.focusFirstInvalid = () => {};
     const tables = () => null; tables.Pager = 'resource-pager'; localWindow.ResourceTables = tables;
     const context = vm.createContext({ window: localWindow, React: workspaceHooks.React, AbortController, DOMException });
-    for (const name of ['resource-contract.js', 'resource-session.js', 'ResourceForms.jsx', 'ResourceWorkspace.jsx']) load(context, name);
+    withTransport(context); for (const name of ['resource-contract.js', 'resource-session.js', 'ResourceForms.jsx', 'ResourceWorkspace.jsx']) load(context, name);
     localWindow.APSResourceSession.useCounts = () => ({ summary: { reload() {} } });
     const ref = '3'.repeat(48), supplierRef = '4'.repeat(48), requests = [], details = [], saved = [], writes = [];
     const writeContext = { write_token: 'op-type-token', capabilities: { 'op_type.create': true, 'op_type.update': true, 'op_type.delete': true }, blocked_reasons: [] };
@@ -549,7 +558,7 @@ async function main() {
         return envelope({ entities, create_context: writeContext, page: { number: scope.page, size: scope.size, total: entities.length, pages: 1, sort: [] } });
       },
       async detail(kind, selectedRef) { details.push({ kind, ref: selectedRef }); assert.equal(selectedRef, kind === 'supplier' ? supplierRef : ref); return envelope(kind === 'supplier' ? makeEntity('supplier') : entity); },
-      savePending(intent) { saved.push({ category: intent.category, input: JSON.parse(JSON.stringify(intent.input)) }); }, clearPending() {},
+      readPending() { return null; }, savePending(intent) { saved.push({ category: intent.category, input: JSON.parse(JSON.stringify(intent.input)) }); }, clearPending() {},
       async command(kind, action, selectedRef, body) {
         assert.equal(kind, 'op_type'); writes.push({ action, input: JSON.parse(JSON.stringify(body.input)) });
         if (action === 'create') entity = { ...makeEntity(kind), ...body.input, fields: body.input.fields };
@@ -559,7 +568,7 @@ async function main() {
       }
     };
     let tree, formHooks;
-    const render = () => workspaceHooks.render(() => localWindow.ResourceWorkspace({ adapter: api, initialNode }));
+    const render = () => workspaceHooks.render(() => localWindow.ResourceWorkspace({ adapter: api, initialNode, onNavigationReady() {} }));
     async function settle() { for (let n = 0; n < 6; n++) { tree = render(); workspaceHooks.flush(); await turns(); } return tree; }
     const editor = () => find(tree, localWindow.ResourceForms);
     function form() { context.React = formHooks.React; const result = formHooks.render(() => localWindow.ResourceForms(editor())); formHooks.flush(); context.React = workspaceHooks.React; return result; }
@@ -603,15 +612,17 @@ async function main() {
     const commandWindow = { crypto: { getRandomValues: bytes => bytes.fill(2) }, addEventListener() {}, removeEventListener() {},
       ResourceControls: Object.fromEntries(['Button', 'Icon', 'ErrorBox', 'Issues', 'Modal'].map(name => [name, name.toLowerCase()])),
       ResourceForms: rejectedForms, ResourceTables: rejectedTables, ResourceRail: 'resource-rail', ResourceMetrics: 'resource-metrics',
-      ResourceTableFilterModel: { restore: filters => ({ filters, notice: '' }) }, WorkbenchPageContext: { useSnapshot() {} } };
+      ResourceTableFilterModel: { rules: filters => filters }, WorkbenchPageContext: { useSnapshot() {} } };
     const commandContext = vm.createContext({ window: commandWindow, React: commandHooks.React, AbortController, DOMException });
-    for (const name of ['resource-contract.js', 'resource-session.js', 'ResourceWorkspace.jsx']) load(commandContext, name);
+    withTransport(commandContext); for (const name of ['resource-contract.js', 'resource-session.js', 'ResourceWorkspace.jsx']) load(commandContext, name);
     commandWindow.APSResourceSession.useCounts = () => ({ summary: { reload() {} } });
-    const rejection = { ok: false, committed: false, error: { code: 'validation_failed', message: '编号重复。' } }, cleared = [], lookups = [];
+    // The resource adapter throws the transport's unified error; only a definite rejection (Q2-A) may release the intent.
+    const T = commandWindow.APSWorkbenchTransport, refusal = (code, message, status) => T.failure({ ok: false, committed: false, error: { code, message, fields: [], retryable: status >= 500, request_ref: '1'.repeat(32) } }, status);
+    const rejection = refusal('validation_failed', '编号重复。', 422), cleared = [], lookups = [];
     let clearFailure = new Error('上次操作记录没清掉');
-    const commandAdapter = { savePending() {}, clearPending() { cleared.push(clearFailure ? 'failed' : 'cleared'); if (clearFailure) throw clearFailure; },
+    const commandAdapter = { readPending() { return null; }, savePending() {}, clearPending() { cleared.push(clearFailure ? 'failed' : 'cleared'); if (clearFailure) throw clearFailure; },
       async lookup(key) { lookups.push(key); return { ok: true, state: 'not_recorded', receipt: null, may_be_in_flight: true }; },
-      async command() { return rejection; } };
+      async command() { throw rejection; } };
     const useRejected = () => commandHooks.render(() => commandWindow.APSResourceSession.useCommand(commandAdapter));
     useRejected(); commandHooks.flush();
     await useRejected().submit('machine', 'create', null, { write_token: 'token' }, { label: '设备' });
@@ -624,7 +635,7 @@ async function main() {
 
     // A remounted workspace shows the orphan rejection; closing it retries the cleanup.
     const workspaceHooks = hooks(); commandContext.React = workspaceHooks.React;
-    const renderWorkspace = () => { const tree = workspaceHooks.render(() => commandWindow.ResourceWorkspace({ adapter: commandAdapter, initialNode: 'machine' })); workspaceHooks.flush(); return tree; };
+    const renderWorkspace = () => { const tree = workspaceHooks.render(() => commandWindow.ResourceWorkspace({ adapter: commandAdapter, initialNode: 'machine', onNavigationReady() {} })); workspaceHooks.flush(); return tree; };
     const orphan = find(renderWorkspace(), 'modal', props => props.title === '上次操作结果');
     assert(orphan && !orphan.locked, 'A rejected command without its dialog still offers a closable previous result');
     clearFailure = null; orphan.onClose(); await turns();
@@ -643,9 +654,9 @@ async function main() {
     clearedHooks.unmount();
 
     // Editing input clears an ordinary rejection; a stale one waits for refreshed data unless a fresh preview replaces the write basis.
-    const staleRejection = { ok: false, committed: false, error: { code: 'stale_write', message: '本页数据已过期。' } };
+    const staleRejection = refusal('stale_write', '本页数据已过期。', 409);
     for (const [response, stale] of [[rejection, false], [staleRejection, true]]) {
-      const editHooks = hooks(), editAdapter = { ...commandAdapter, async command() { return response; } }; commandContext.React = editHooks.React;
+      const editHooks = hooks(), editAdapter = { ...commandAdapter, async command() { throw response; } }; commandContext.React = editHooks.React;
       const useEdited = () => editHooks.render(() => commandWindow.APSResourceSession.useCommand(editAdapter));
       useEdited(); editHooks.flush();
       assert.equal(useEdited().clearRejection(), false, 'An idle command has no rejection to clear');
@@ -655,6 +666,15 @@ async function main() {
       if (stale) { assert.equal(useEdited().clearRejection({ includeStale: true }), true); assert.equal(useEdited().phase, 'idle'); }
       editHooks.unmount();
     }
+    const downtimeHooks = hooks(); commandContext.React = downtimeHooks.React;
+    commandWindow.ResourceControls.Field = 'field';
+    commandWindow.WorkbenchGuards = { useDirtyGuard: () => 'guard', confirmLeave: async () => true };
+    load(commandContext, 'MachineDowntimePanel.jsx');
+    const downtimeAdapter = { ...commandAdapter, readPending() { throw new Error('outer pending must not be read by downtime panel'); }, downtimes: async () => ({ data: { rows: [], reasons: {}, write_context: { write_token: 't', capabilities: {}, blocked_reasons: [] } } }) };
+    const downtimeTree = downtimeHooks.render(() => commandWindow.MachineDowntimePanel({ adapter: downtimeAdapter, entity: { ref: '1'.repeat(48), business_code: 'M-01' }, source: 'production', onClose() {} }));
+    downtimeHooks.flush();
+    assert.equal(find(downtimeTree, 'modal').locked, false, 'MachineDowntimePanel overrides readPending with a null-returning function so useCommand starts idle and unlocked');
+    downtimeHooks.unmount();
   }
 
   const modelContext = vm.createContext({ window: { WorkbenchFormat: {}, FieldContract: { quantityReasons: {}, states: {} } } });
@@ -818,11 +838,11 @@ async function main() {
   const candidateFacts = CM.prepare({ tasks: candidateTasks, unplanned_operations: [], gantt_graph: { ...unavailableGraph(), scope: 'full_candidate' }, task_span: { start: stamp(8), end: stamp(12) } });
   const baselineFacts = BM.prepare({ comparisons: [{ ...candidateTasks[0], baseline_segments: [{ ...candidateTasks[0], row_ref: 'baseline-first', interval_comparable: true, start: stamp(7), end: stamp(9) }] }] });
   const candidateTimes = timeReads, candidateGroups = CM.groupPrepared(candidateFacts, 'machine'), baselineGroups = BM.groupPrepared(baselineFacts, 'machine');
-  const selectedCandidate = CM.selectPrepared(candidateGroups, 'first'), withBaseline = BM.selectPrepared(selectedCandidate, baselineGroups, 'first');
+  const selectedCandidate = CM.selectPrepared(candidateGroups, 'first', null, null), withBaseline = BM.selectPrepared(selectedCandidate, baselineGroups, 'first', null, true);
   assert.equal(graphBuilds, 0); assert.strictEqual(selectedCandidate.taskIndex, candidateFacts.taskIndex);
   const narrowCandidate = BM.layoutPrepared(withBaseline, 640), wideCandidate = BM.layoutPrepared(withBaseline, 2000);
   assert.strictEqual(narrowCandidate.locations.get('first').item, wideCandidate.locations.get('first').item);
-  CM.matching(candidateFacts, 'second'); CM.selectPrepared(candidateGroups, 'second');
+  CM.matching(candidateFacts, 'second', null); CM.selectPrepared(candidateGroups, 'second', null, null);
   const hiddenBaseline = BM.layoutPrepared(BM.selectPrepared(selectedCandidate, baselineGroups, 'first', null, false), 640);
   assert.equal(hiddenBaseline.baselineLocations.size, 0); assert.equal(BM.layoutPrepared(withBaseline, 640).baselineLocations.size, 1);
   assert.equal(timeReads, candidateTimes, 'Candidate filters, baseline hide/show and width consume the same parsed facts');
@@ -915,7 +935,7 @@ async function main() {
   let actualGraphBuilds = 0;
   const actualFailure = Object.assign(Error('现场实际甘特数据超过读取容量，请缩小范围。'), { code: 'query_too_large', status: 413 });
   const actualWindow = { APSResourceContract: { failure: message => Error(message) }, FieldContract: { quantityReasons: {}, states: {}, date: String },
-    ResourceControls: { Button: 'button', ErrorBox: 'error', Modal: 'modal' }, ActualGanttAPI: { adapter: value => value },
+    ResourceControls: { Button: 'button', ErrorBox: 'error', Modal: 'modal' }, ActualGanttAPI: {},
     WorkbenchTerms: { current_official: '当前正式计划', data_as_of: String, plan_version: String }, WorkbenchPageContext: { useSnapshot() {} }, WorkbenchCaption: { useCaption() {} },
     WorkbenchControls: { EmptyState: 'empty' }, GanttPresentation: { axis: () => ({ ticks: [] }) }, GanttPresentationUI: { Axis: 'axis' },
     GanttGraph: { create: () => { actualGraphBuilds++; return {}; }, selection: () => ({ critical: new Set(), related: new Set() }), locationIndex: () => ({}), paths: () => ({}) },
@@ -923,8 +943,9 @@ async function main() {
   const actualContext = vm.createContext({ window: actualWindow, React: actualHooks.React, AbortController, cancelAnimationFrame() {} });
   for (const name of ['WorkbenchFormat.js', 'PointContract.js', 'PointGanttModel.js', 'PlanGanttModel.js', 'ActualGanttModel.js', 'ActualGanttWindow.js', 'ActualGanttContract.js', 'ActualGanttControls.jsx']) load(actualContext, name);
   load(actualContext, 'ActualGanttWorkspace.jsx', source('ActualGanttWorkspace.jsx').replace('window.ActualGanttWorkspace = ActualGanttWorkspace;', 'window.ActualGanttSession = Content;'));
-  const actualProps = { initialContext: { plan_ref: actualPlan, scope: { resource_type: 'machine', resource_ref: actualResource, batch_ids: ['OLD'] } },
-    adapter: { async load(input) {
+  // Workspace-ownership check: ActualGanttAPI's own validation is covered by the actual Gantt contracts; the workspace hands it the scope state.
+  const actualProps = { initialContext: { plan_ref: actualPlan, scope: { resource_type: 'machine', resource_ref: actualResource, batch_ids: ['OLD'] } } };
+  actualWindow.ActualGanttAPI.load = async input => {
       actualReads.push(JSON.parse(JSON.stringify(input)));
       if (!input.plan_finish_date_from) throw actualFailure;
       return { meta: { as_of: '2026-10-12T12:00:00', snapshot_ref: 'actual-range' }, data: { scope: input,
@@ -932,7 +953,7 @@ async function main() {
         resources: [{ ref: otherResource, kind: 'machine', label: 'M1' }, ...(input.batch_ids.includes('ONLY-M1') ? [] : [{ ref: actualResource, kind: 'machine', label: 'M2' }])], items: [], task_count: 0,
         availability: { state: 'available' }, axis_span: { start: '2026-10-12T08:00:00', end: '2026-10-12T16:00:00' },
         execution_summary: { complete: 0, reported: 0, pending: 0, average_finish_deviation_minutes: null }, gantt_graph: {} } };
-    } } };
+  };
   let actualTree, rangeTree;
   const renderActual = async () => {
     for (let index = 0; index < 4; index++) {
@@ -990,14 +1011,14 @@ async function main() {
       legacy_facts: [{ legacy_fact_ref: 'f'.repeat(48), recorded_against_task_ref: selectedRef, event_type: 'finish', event_time: navigationTask.end,
         quantity_done: 10, actual_machine_ref: historicalMachine, actual_operator_ref: historicalOperator }],
       remaining_plan: { start: '2026-10-12T12:00:00', end: '2026-10-12T14:00:00', machine_ref: otherResource, operator_ref: null } } };
-  const navigationProps = { initialContext: { plan_ref: actualPlan, task_ref: selectedRef, scope: { batch_ids: [], plan_finish_date_from: '2026-10-12', plan_finish_date_to: '2026-10-13' } },
-    adapter: { async load(input) { return { meta: { as_of: '2026-10-12T12:00:00', snapshot_ref: 'navigation-snapshot' }, data: {
+  actualWindow.ActualGanttAPI.load = async input => ({ meta: { as_of: '2026-10-12T12:00:00', snapshot_ref: 'navigation-snapshot' }, data: {
       scope: input, plan: { plan_ref: actualPlan, display_name: '正式计划', kind: 'official', is_current_official: true, version: 1 },
       resources: [{ ref: actualResource, label: '当前设备' }, { ref: plannedOperator, label: '计划人员' }, { ref: otherResource, label: '剩余设备专名' },
         { ref: reportedMachine, label: '实报设备' }, { ref: reportedOperator, label: '实报人员' },
         { ref: historicalMachine, label: '历史设备' }, { ref: historicalOperator, label: '历史人员' }],
       items: input.batch_ids.includes('NONE') ? [] : [navigationItem], task_count: input.batch_ids.includes('NONE') ? 0 : 1, availability: { state: 'available' },
-      axis_span: { start: navigationTask.start, end: '2026-10-12T16:00:00' }, execution_summary: { complete: 0, reported: 1, pending: 0, average_finish_deviation_minutes: null }, gantt_graph: {} } }; } },
+      axis_span: { start: navigationTask.start, end: '2026-10-12T16:00:00' }, execution_summary: { complete: 0, reported: 1, pending: 0, average_finish_deviation_minutes: null }, gantt_graph: {} } });
+  const navigationProps = { initialContext: { plan_ref: actualPlan, task_ref: selectedRef, scope: { batch_ids: [], plan_finish_date_from: '2026-10-12', plan_finish_date_to: '2026-10-13' } },
     onNavigate: (target, context) => navigationEvents.push({ target, context }) };
   const renderNavigation = async () => {
     let tree;
@@ -1187,12 +1208,12 @@ async function main() {
   const sectionHooks = hooks(), sectionRequests = [], sectionWindow = { APSResourceContract: {}, WorkbenchTerms: { delivery_risks: {} },
     ResourceControls: { Button: 'button', ErrorBox: 'error' }, DashboardPanels: { Pager: 'pager' } };
   sectionWindow.DashboardSession = { useRead: (...args) => sectionWindow.APSResourceSession.useQuery(...args) };
-  sectionWindow.DashboardAnalysisAPI = { create: () => ({ read: async (plan, signal, query) => {
+  sectionWindow.DashboardAnalysisAPI = { read: async (plan, signal, query) => {
     sectionRequests.push({ ...query });
     return { meta: { snapshot_ref: 'same-timeline-snapshot' }, data: {
       tasks: query.page === 2 && !query.locate_batch_ref ? [{ batch_ref: 'in-page-batch', source: 'internal', machine_ref: 'machine' }] : [], pagination: {
       number: query.locate_batch_ref ? Math.floor(40 / query.size) + 1 : query.page, size: query.size, total: 60, pages: Math.ceil(60 / query.size) } } };
-  } }) };
+  } };
   const sectionContext = vm.createContext({ window: sectionWindow, React: sectionHooks.React, AbortController, DOMException });
   load(sectionContext, 'resource-session.js'); load(sectionContext, 'DashboardAnalysisPanels.jsx');
   let sectionBatch = null;
@@ -1455,9 +1476,11 @@ async function main() {
     WorkbenchTerms: { current_official: '当前正式计划', plan_version: String }, WorkbenchListControls: { Pager: 'field-pager' },
     FieldFilters: 'field-filters', FieldTable: 'field-table', FieldDetail: 'field-detail', FieldFiles: 'field-files' };
   const fieldWorkspaceContext = vm.createContext({ window: fieldWorkspaceWindow, React: fieldWorkspaceHooks.React, AbortController, DOMException });
+  // FieldAPI binds its execution namespace at load; this workspace check replaces only its readView answer.
+  fieldWorkspaceWindow.APSResourceAPI = { create: () => ({}) };
   load(fieldWorkspaceContext, 'resource-session.js'); load(fieldWorkspaceContext, 'FieldAPI.js');
   fieldWorkspaceWindow.APSResourceSession.useCommand = () => fileCommand;
-  fieldWorkspaceWindow.FieldAPI.readView = async (api, input) => {
+  fieldWorkspaceWindow.FieldAPI.readView = async input => {
     fieldWorkspaceReads.push({ ...input });
     const { page, size, task_ref, operation_ref, snapshot_ref, ...scope } = input;
     return { meta: { snapshot_ref: 'field-snapshot' }, data: { scope,
@@ -1465,7 +1488,7 @@ async function main() {
       tasks: [{ task_ref: 'field-task', operation_ref: 'field-operation' }], page: { number: page || 1, size, total: 30, pages: 2 }, summary: {} } };
   };
   load(fieldWorkspaceContext, 'FieldWorkspace.jsx');
-  const fieldWorkspaceProps = { adapter: {}, initialContext: { plan_ref: 'field-plan', task_ref: 'field-task', operation_ref: 'field-operation', scope: { query: 'old-query' } } };
+  const fieldWorkspaceProps = { initialContext: { plan_ref: 'field-plan', task_ref: 'field-task', operation_ref: 'field-operation', scope: { query: 'old-query' } } };
   const renderFieldWorkspace = () => fieldWorkspaceHooks.render(() => fieldWorkspaceWindow.FieldWorkspace(fieldWorkspaceProps));
   const settleFieldWorkspace = async () => {
     let tree;
@@ -1495,24 +1518,25 @@ async function main() {
   assert.equal(fieldWorkspaceReads.at(-1).task_ref, undefined); assert.equal(fieldWorkspaceReads.at(-1).operation_ref, undefined); fieldWorkspaceHooks.unmount();
 
   // Only the actual CSV export gets the longer transport deadline; other downloads keep 20 seconds.
-  const downloadDeadlines = [], downloadRequests = [], downloadTimers = new Map(); let downloadTimerId = 0;
-  const downloadLocation = { href: 'http://localhost/workbench', origin: 'http://localhost' }, downloadBlob = new Blob(['csv']);
-  const downloadWindow = { APSReadBoundary: { verified: value => value }, ActualGanttContract: { scope: value => value, transport: value => value } };
-  const downloadContext = vm.createContext({ window: downloadWindow, location: downloadLocation, URL, AbortController, FormData,
+  // Every download runs through APSWorkbenchTransport.download: attachment, CSV magic bytes and a backend filename with its .csv suffix.
+  const downloadDeadlines = [], downloadTimers = new Map(); let downloadTimerId = 0;
+  const actualCsvName = '现场实际甘特-2026-10-26T101500.csv', csvBytes = [0xef, 0xbb, 0xbf, 0x61];
+  const downloadWindow = { ActualGanttContract: { scope: value => value, transport: value => value } };
+  const downloadContext = vm.createContext({ window: downloadWindow,
     setTimeout(fn, delay) { downloadDeadlines.push(delay); const id = ++downloadTimerId; downloadTimers.set(id, fn); return id; },
-    clearTimeout(id) { downloadTimers.delete(id); },
-    async fetch(url, options) {
-      downloadRequests.push({ url, signal: options.signal });
-      return { ok: true, headers: { get: key => key === 'content-type' ? 'text/csv' : key === 'content-disposition' ? 'attachment; filename=actual.csv' : null }, blob: async () => downloadBlob };
-    } });
-  load(downloadContext, 'resource-api.js'); load(downloadContext, 'ActualGanttAPI.js');
+    clearTimeout(id) { downloadTimers.delete(id); } });
+  const downloadFetch = withTransport(downloadContext, call => file(Uint8Array.from(csvBytes), 'text/csv',
+    { 'Content-Disposition': "attachment; filename*=UTF-8''" + encodeURIComponent(call.path.endsWith('/actual-gantt/export') ? actualCsvName : 'export.csv') }));
+  load(downloadContext, 'resource-contract.js'); load(downloadContext, 'resource-api.js'); load(downloadContext, 'ActualGanttAPI.js');
   const resourceDownloads = downloadWindow.APSResourceAPI.create(), exportController = new AbortController();
   await resourceDownloads.download('plans/plan/export', {}, exportController.signal);
   await resourceDownloads.download('execution/files/export', {}, exportController.signal, { timeout: 35000 });
-  assert.strictEqual((await downloadWindow.ActualGanttAPI.create().export({ format: 'csv' }, exportController.signal)).blob, downloadBlob);
+  const actualExport = await downloadWindow.ActualGanttAPI.export({ format: 'csv' }, exportController.signal);
+  assert.equal(actualExport.filename, actualCsvName, 'The saved name is the backend Content-Disposition name');
+  assert.deepEqual([...new Uint8Array(await actualExport.blob.arrayBuffer())], csvBytes);
   assert.deepEqual(downloadDeadlines, [20000, 35000, 60000]); assert.equal(downloadTimers.size, 0);
-  assert.equal(downloadRequests.at(-1).url, 'http://localhost/api/workbench/v1/actual-gantt/export?format=csv');
-  assert.equal(downloadRequests.some(request => request.signal.aborted), false);
+  assert.equal(downloadFetch.calls.at(-1).url.href, 'http://127.0.0.1:8080/api/workbench/v1/actual-gantt/export?format=csv');
+  assert.equal(downloadFetch.calls.some(call => call.signal.aborted), false);
   console.log(JSON.stringify({ read_identity_and_cancellation: true, same_identity_reopen_loads: reopenLoads, error_retry_and_hidden_snapshot_loads: retryLoads, unmount_refresh_waiters_cancelled: outcomes.length, unstarted_refresh_loads: queuedLoads,
     baseline_reopen_reads: 1, baseline_refresh_and_identity_reads: baselineLoads,
     resource_related_save_requests: resourceRequests.map(value => ({ kind: value.kind, page: value.page, snapshot_ref: value.snapshot_ref || null })),
