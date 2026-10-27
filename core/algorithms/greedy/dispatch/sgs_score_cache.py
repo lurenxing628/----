@@ -322,15 +322,15 @@ class SgsScoreCache:
 
     def selected_estimate(self, inputs: Dict[str, Any]) -> Optional[Tuple[Any, float]]:
         """(estimate, total_hours_base) proved current this round for exactly these placement inputs."""
-        entry = self._entries.get(id(inputs.get("op")))
+        entry = self._entries.get(id(inputs["op"]))
         if entry is None or entry.round != self.round or entry.estimate is None:
             return None
         estimate, total_hours_base, machine_id, operator_id, prev_end, calendar, end_dt_exclusive = entry.estimate
-        if (inputs.get("machine_id"), inputs.get("operator_id")) != (machine_id, operator_id):
+        if (inputs["machine_id"], inputs["operator_id"]) != (machine_id, operator_id):
             return None
-        if inputs.get("prev_end") != prev_end or inputs.get("calendar") is not calendar:
+        if inputs["prev_end"] != prev_end or inputs["calendar"] is not calendar:
             return None
-        if inputs.get("end_dt_exclusive") != end_dt_exclusive:
+        if inputs["end_dt_exclusive"] != end_dt_exclusive:
             return None
         return estimate, total_hours_base
 

@@ -126,9 +126,7 @@ def _record_graph_fixed_order_conflict(
     # 按批失败留痕（不中止整趟）：给失败工序追加一条结构化明细并写清冲突的固定
     # 后继 op_id，业务侧据此核对报工顺序；渲染文案见
     # core/models/scheduler_public_errors._structured_failure_message。
-    _failed_batch_id, failed_op = graph_state["op_by_id"].get(failed_op_id, ("", None))
-    if failed_op is None:
-        return
+    _failed_batch_id, failed_op = graph_state["op_by_id"][failed_op_id]
     state.record_graph_fixed_order_conflict(
         failed_op,
         batch_id,
@@ -145,9 +143,9 @@ def _record_graph_blocked_operations(
     already_counted_op_ids: set,
 ) -> int:
     extra_failed_count = 0
-    _failed_batch_id, failed_op = graph_state["op_by_id"].get(failed_op_id, ("", None))
+    _failed_batch_id, failed_op = graph_state["op_by_id"][failed_op_id]
     for blocked_op_id in sorted(newly_blocked_op_ids):
-        if blocked_op_id == failed_op_id or blocked_op_id not in graph_state["op_by_id"]:
+        if blocked_op_id == failed_op_id:
             continue
         if blocked_op_id in already_counted_op_ids:
             continue

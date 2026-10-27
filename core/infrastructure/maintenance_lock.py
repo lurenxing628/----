@@ -58,8 +58,6 @@ def current_thread_holds_maintenance_window(db_path: str) -> bool:
 
 
 def _pid_exists(pid: int) -> bool:
-    if pid <= 0:
-        return True
     if os.name == "nt":
         try:
             import ctypes
@@ -161,16 +159,8 @@ def read_maintenance_lock_state(db_path: str) -> Optional[dict]:
     return state
 
 
-def _lock_age_value(state: dict) -> Optional[float]:
-    age_seconds = state["age_seconds"]
-    return float(age_seconds) if isinstance(age_seconds, (int, float)) else None
-
-
 def _should_auto_heal_lock(state: dict) -> bool:
-    age_value = _lock_age_value(state)
-    if age_value is None:
-        return False
-    if age_value < float(_MAINT_LOCK_STALE_SECONDS):
+    if float(state["age_seconds"]) < float(_MAINT_LOCK_STALE_SECONDS):
         return False
     pid = state["pid"]
     if not isinstance(pid, int) or pid <= 0:
@@ -182,8 +172,8 @@ def _should_auto_heal_lock(state: dict) -> bool:
 
 def _log_stale_lock_kept_alive(state: dict, logger) -> None:
     """B04(c)：超龄锁因 pid 判定存活而不自愈时留痕（Windows 无法核对进程身份，PID 可能被复用）。"""
-    age_value = _lock_age_value(state)
-    if age_value is None or age_value < float(_MAINT_LOCK_STALE_SECONDS):
+    age_value = float(state["age_seconds"])
+    if age_value < float(_MAINT_LOCK_STALE_SECONDS):
         return
     fallback_log(
         logger,

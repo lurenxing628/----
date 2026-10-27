@@ -15,18 +15,15 @@ def group_seed_operations_by_batch(seed_operations: List[Any]) -> Dict[str, List
 
 def window_anchors_by_batch(schedule_map: Dict[int, Dict[str, Any]],
                             op_by_id: Dict[int, Any]) -> Dict[str, Dict[Optional[str], int]]:
-    """{批次: {分件号（None 为不分件或共同工序）: 窗口里这一件最大的工序号}}；工序号 <=0 的不算。"""
+    """{批次: {分件号（None 为不分件或共同工序）: 窗口里这一件最大的工序号}}。"""
     anchors: Dict[str, Dict[Optional[str], int]] = {}
     for oid in schedule_map.keys():
         op0 = op_by_id.get(int(oid))
         if not op0:
             continue
-        seq0 = op0.seq
-        if seq0 <= 0:
-            continue
         pieces = anchors.setdefault(op0.batch_id, {})
         piece = op0.piece_id
-        pieces[piece] = max(pieces.get(piece, 0), seq0)
+        pieces[piece] = max(pieces.get(piece, 0), op0.seq)
     return anchors
 
 
@@ -34,15 +31,14 @@ def prefix_op_ids_for_anchors(operations: List[Any], anchors: Dict[Optional[str]
     """窗口里的工序加上它们的前道。不分件的批次就是工序号不超过窗口里最大号的全部工序；
     分件批次里，分件工序只跟同一件和共同工序走，另一件排在后面的工序不算前道（与排产计算的分件前后关系一致）。"""
     # BatchOperation.batch_id/seq are required (core/models/batch_operation.py; NOT NULL in schema).
-    batch_ops = [op for op in operations if op and op.id and op.seq > 0]
     top = max(anchors.values())
     common_bound = max(
-        (op.seq for op in batch_ops if op.piece_id is None and op.seq <= top),
+        (op.seq for op in operations if op.piece_id is None and op.seq <= top),
         default=anchors.get(None, 0),
     )
     return [
         int(op.id)
-        for op in batch_ops
+        for op in operations
         if op.seq <= (top if op.piece_id is None else max(common_bound, anchors.get(op.piece_id, 0)))
     ]
 

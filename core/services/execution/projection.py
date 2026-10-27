@@ -47,7 +47,7 @@ def _execution_state(reports, totals, complete_reports):
         return "complete"
     if totals.known > 0 or any(report.actual_end for report in reports):
         return "partial"
-    return "started" if reports or totals.starts else "unreported"
+    return "started" if reports else "unreported"
 
 
 def _completion(reports, complete_reports):

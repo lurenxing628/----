@@ -8,7 +8,6 @@ from core.algorithm_contracts.operator_eligibility import qualified_operators
 from core.algorithm_contracts.types import OpForScheduleAlgo
 from core.algorithm_runtime.algo_stats import increment_counter
 from core.algorithm_runtime.auto_assign_contract import (
-    AUTO_ASSIGN_REASON_INVALID_INTERNAL_HOURS,
     AUTO_ASSIGN_REASON_MISSING_MACHINE_POOL,
     AUTO_ASSIGN_REASON_NO_MACHINE_CANDIDATE,
     AUTO_ASSIGN_REASON_NO_OPERATOR_CANDIDATE,
@@ -16,7 +15,7 @@ from core.algorithm_runtime.auto_assign_contract import (
     AUTO_ASSIGN_REASON_WINDOW_BLOCKED,
     AutoAssignAttempt,
 )
-from core.algorithm_runtime.internal_slot import estimate_internal_slot, validate_internal_hours
+from core.algorithm_runtime.internal_slot import estimate_internal_slot
 from core.algorithm_runtime.resource_quality import prefer_resource_pair
 from core.algorithm_runtime.sgs_estimate_reuse import current_sgs_handoff
 from core.algorithm_runtime.slot_overlap_reuse import SlotOverlapReuse, overlap_reuse_for
@@ -107,11 +106,7 @@ def auto_assign_internal_resources_attempt(
         pool = candidates.pool
     else:
         pool = _coerce_resource_pool(resource_pool)
-    total_hours_base = resource_preparation.total_hours_by_op_id.get(op.id)
-    if total_hours_base is None:
-        total_hours_base = _validated_total_hours(op, batch, count=count)
-    if total_hours_base is None:
-        return AutoAssignAttempt(reason=AUTO_ASSIGN_REASON_INVALID_INTERNAL_HOURS)
+    total_hours_base = resource_preparation.total_hours_by_op_id[op.id]
 
     machine_candidates = _sort_machine_candidates(
         candidates.machines,
@@ -213,14 +208,6 @@ def _filter_machines_by_op_type(candidates: List[str], *, op_type_id: str, pool:
         count("auto_assign_missing_machine_pool_count")
         return None
     return [mid for mid in candidates if mid in allowed]
-
-
-def _validated_total_hours(op: OpForScheduleAlgo, batch: Batch, *, count: Any) -> Optional[float]:
-    try:
-        return validate_internal_hours(op, batch)
-    except ValueError:
-        count("auto_assign_invalid_total_hours_count")
-        return None
 
 
 def _sort_machine_candidates(

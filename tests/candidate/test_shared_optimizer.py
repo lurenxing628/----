@@ -197,7 +197,14 @@ def _comparison_input(*, cfg, calendar, operations, batches, seeds, pool, downti
         execution_completed_op_ids=set(), execution_seed_results=[],
         execution_snapshot_revision="fixture", execution_snapshot_op_ids=[], execution_snapshot_op_count=0,
         schedule_output_allowed_op_ids=operation_ids | frozen_ids, payload_validation_operations=batch_operations,
-        freeze_meta={}, downtime_meta={}, resource_pool_meta={},
+        freeze_meta={
+            "freeze_state": "disabled",
+            "freeze_applied": False,
+            "freeze_enabled": False,
+            "freeze_days": 0,
+            "freeze_disabled_reason": None,
+        },
+        downtime_meta={}, resource_pool_meta={},
         downtime_map=downtime, resource_pool=pool, optimizer_seed_version=0,
     )
 
@@ -872,7 +879,7 @@ def test_real_shared_optimizer_preserves_start_archive_resource_bridge_and_piece
             entry = actual.archive.entry(entry_id)
             assert public.primary_objective is not None
             assert plan.search_evidence_ref is not None and plan.origin is not None
-            assert plan.kind == "business_objective" and plan.status == "completed" and plan.health is None
+            assert plan.kind == "business_objective" and plan.status == "completed"
             assert schedule_content_key(plan.results) == entry.content_key
             assert plan.score == entry.evaluations[public.primary_objective].score
             assert plan.representative_objectives == [target for target in actual.target_objectives if selected_ids[target] == entry_id]

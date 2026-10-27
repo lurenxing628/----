@@ -15,7 +15,6 @@ from core.algorithm_runtime.piece_input import operation_dispatch_state
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.algorithm_runtime.sgs_estimate_reuse import sgs_handoff_scope
 from core.algorithm_runtime.slot_overlap_reuse import sgs_overlap_reuse
-from core.errors import ValidationError
 
 from .sgs_checkpoint import (
     DecodeCheckpoint,
@@ -175,7 +174,7 @@ def _run_sgs_loop(
     score_cache = ctx.sgs_score_cache
     if score_cache is not None and score_cache.state is not state:
         raise RuntimeError("SGS 评分缓存绑定的运行状态与本次派工不一致")
-    pruning = GraphPriorityPruning.for_cache(score_cache, graph_state, batches, total_hours_by_op_id)
+    pruning = GraphPriorityPruning.for_cache(score_cache, graph_state, batches)
     acceleration = DecodeAcceleration(decode_checkpoints, graph_state, pruning, total_hours_by_op_id,
                                       resume=decode_resume)
 
@@ -355,8 +354,4 @@ def _score_candidate(
     base_key = score()
     if graph_state is None or not graph_state["score_enabled"]:
         return base_key
-    op_id = op.id
-    graph_key = graph_state["graph_priority_key_by_op_id"].get(op_id)
-    if graph_key is None:
-        raise ValidationError(f"图评分上下文缺少待排工序 {op_id} 的评分 key。", field="graph_ready_context")
-    return with_graph_priority_key(base_key, graph_key)
+    return with_graph_priority_key(base_key, graph_state["graph_priority_key_by_op_id"][op.id])

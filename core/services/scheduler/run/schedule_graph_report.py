@@ -43,7 +43,6 @@ from .schedule_graph_score_projection import (
 )
 from .schedule_input_contracts import ScheduleRunInput
 
-_GRAPH_ANALYSIS_MODES = {"off", "report", "on"}
 _GRAPH_TOPOLOGICAL_SAMPLE_LIMIT = 20
 _GRAPH_CRITICAL_PATH_SAMPLE_LIMIT = 50
 _GRAPH_WARNING_SAMPLE_LIMIT = 20
@@ -63,25 +62,11 @@ def _elapsed_ms(started: float) -> int:
     return int((time.time() - float(started)) * 1000)
 
 
-def _graph_analysis_mode(cfg: Any) -> str:
-    mode = str(cfg.graph_analysis_mode).strip().lower()
-    if mode not in _GRAPH_ANALYSIS_MODES:
-        raise ValueError(f"graph_analysis_mode 只支持 off/report/on：{mode!r}")
-    return mode
-
-
-def _graph_block_on_cycle(cfg: Any) -> str:
-    value = str(cfg.graph_block_on_cycle).strip().lower()
-    if value not in ("yes", "no"):
-        raise ValueError(f"graph_block_on_cycle 只支持 yes/no：{value!r}")
-    return value
-
-
 def prepare_schedule_graph_for_dispatch(
     schedule_input: ScheduleRunInput,
 ) -> ScheduleGraphDispatchPreparation:
     """为本次搜索构建一次图分析、派工和资源投影。"""
-    mode = _graph_analysis_mode(schedule_input.cfg)
+    mode = schedule_input.cfg.graph_analysis_mode
     if mode == "off":
         return ScheduleGraphDispatchPreparation(
             graph_analysis_public=None,
@@ -89,7 +74,7 @@ def prepare_schedule_graph_for_dispatch(
             graph_ready_context=None,
             graph_dispatch_mode_override=None,
         )
-    graph_block_on_cycle = _graph_block_on_cycle(schedule_input.cfg)
+    graph_block_on_cycle = schedule_input.cfg.graph_block_on_cycle
     public, diagnostics, graph_ready_context, graph_dispatch_mode_override = _build_schedule_graph_analysis_projection(
         schedule_input,
         mode=mode,

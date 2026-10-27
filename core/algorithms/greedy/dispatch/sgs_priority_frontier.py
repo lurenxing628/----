@@ -34,7 +34,7 @@ class PriorityReadyQueue:
             heapq.heappop(self.heap)
 
     def after_pick(self, op_id):
-        for successor in self.graph["successor_op_ids_by_op_id"].get(op_id, ()):
+        for successor in self.graph["successor_op_ids_by_op_id"][op_id]:
             if successor in self.graph["ready_op_ids"] and successor not in self.queued:
                 self.queued.add(successor)
                 heapq.heappush(self.heap, (self.keys[successor], successor))

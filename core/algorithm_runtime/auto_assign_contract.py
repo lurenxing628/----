@@ -10,7 +10,6 @@ AUTO_ASSIGN_REASON_NO_OPERATOR_CANDIDATE = "auto_assign_no_operator_candidate"
 # 全部机-人组合的完工时间都越过排产截止窗口（blocked_by_window）时的专属归因；
 # 避免把截止日期问题误导成资质问题。
 AUTO_ASSIGN_REASON_WINDOW_BLOCKED = "auto_assign_window_blocked"
-AUTO_ASSIGN_REASON_INVALID_INTERNAL_HOURS = "invalid_internal_hours"
 
 
 @dataclass(frozen=True)

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping as MappingABC
 from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -91,7 +90,7 @@ def residual_capacity_for_operation(
     prepared: FixedResourceBlockingFacts,
 ) -> Dict[str, float]:
     pool = prepared.pool_view(resource_pool)
-    resource_key = (_text(op.machine_id), _text(op.operator_id), _text(op.op_type_id))
+    resource_key = (op.machine_id, op.operator_id, op.op_type_id)
     machine_ids = pool.candidate_machine_ids(op, key=resource_key)
     window_end = residual_capacity_window_end(start_dt=start_dt, due_exclusive=due_exclusive)
     if not machine_ids or window_end <= start_dt:
@@ -150,12 +149,10 @@ def seed_results_by_resource_id(seed_results: Iterable[Any]) -> Dict[str, Dict[s
                 if not (isinstance(seg_start, datetime) and isinstance(seg_end, datetime) and seg_end > seg_start):
                     continue
                 span = (seg_start, seg_end)
-                machine_id = _text(seg_machine_id)
-                if machine_id:
-                    out["machine"].setdefault(machine_id, []).append(span)
-                operator_id = _text(seg_operator_id)
-                if operator_id:
-                    out["operator"].setdefault(operator_id, []).append(span)
+                if seg_machine_id:
+                    out["machine"].setdefault(seg_machine_id, []).append(span)
+                if seg_operator_id:
+                    out["operator"].setdefault(seg_operator_id, []).append(span)
             continue
         if not (
             isinstance(result.start_time, datetime)
@@ -164,12 +161,10 @@ def seed_results_by_resource_id(seed_results: Iterable[Any]) -> Dict[str, Dict[s
         ):
             continue
         span = (result.start_time, result.end_time)
-        machine_id = _text(result.machine_id)
-        if machine_id:
-            out["machine"].setdefault(machine_id, []).append(span)
-        operator_id = _text(result.operator_id)
-        if operator_id:
-            out["operator"].setdefault(operator_id, []).append(span)
+        if result.machine_id:
+            out["machine"].setdefault(result.machine_id, []).append(span)
+        if result.operator_id:
+            out["operator"].setdefault(result.operator_id, []).append(span)
     return out
 
 
@@ -277,44 +272,44 @@ def _capacity_rank(item: Tuple[float, float, float]) -> Tuple[float, float, floa
 
 
 def _requires_auto_operator(op: Any, *, pool: _ResourcePoolView) -> bool:
-    if _text(op.operator_id):
+    if op.operator_id:
         return False
-    if _text(op.machine_id):
+    if op.machine_id:
         return True
-    op_type_id = _text(op.op_type_id)
+    op_type_id = op.op_type_id
     return bool(op_type_id and op_type_id in pool.machines_by_op_type)
 
 
 def _candidate_machine_ids(op: Any, *, pool: _ResourcePoolView) -> Tuple[str, ...]:
-    fixed_machine = _text(op.machine_id)
-    fixed_operator = _text(op.operator_id)
-    op_type_id = _text(op.op_type_id)
+    fixed_machine = op.machine_id
+    fixed_operator = op.operator_id
+    op_type_id = op.op_type_id
     if fixed_machine:
-        candidates = [fixed_machine]
+        candidates = (fixed_machine,)
     elif fixed_operator:
-        candidates = _machines_for_fixed_operator(fixed_operator, pool=pool)
+        candidates = tuple(pool.machines_by_operator.get(fixed_operator, ()))
     elif op_type_id and op_type_id in pool.machines_by_op_type:
-        candidates = _text_list(pool.machines_by_op_type.get(op_type_id))
+        return tuple(pool.machines_by_op_type[op_type_id])
     else:
-        candidates = []
-    if (fixed_machine or fixed_operator) and op_type_id and op_type_id in pool.machines_by_op_type:
-        allowed = set(_text_list(pool.machines_by_op_type.get(op_type_id)))
-        candidates = [machine_id for machine_id in candidates if machine_id in allowed]
-    return _unique_text_tuple(candidates)
+        return ()
+    if op_type_id and op_type_id in pool.machines_by_op_type:
+        allowed = set(pool.machines_by_op_type[op_type_id])
+        return tuple(machine_id for machine_id in candidates if machine_id in allowed)
+    return candidates
 
 
 def _candidate_operator_ids(op: Any, *, machine_id: str, pool: _ResourcePoolView) -> Tuple[str, ...]:
-    return _unique_text_tuple(qualified_operators(
-        pool.resource_pool, _text_list(pool.operators_by_machine.get(machine_id)), op.op_type_id,
+    return tuple(qualified_operators(
+        pool.resource_pool, pool.operators_by_machine.get(machine_id, ()), op.op_type_id,
     ))
 
 
 class _ResourcePoolView:
     def __init__(self, resource_pool: Optional[Dict[str, Any]]) -> None:
         self.resource_pool = resource_pool
-        self.machines_by_op_type = _mapping_part(resource_pool, "machines_by_op_type")
-        self.operators_by_machine = _mapping_part(resource_pool, "operators_by_machine")
-        self.machines_by_operator = _mapping_part(resource_pool, "machines_by_operator")
+        self.machines_by_op_type = {} if resource_pool is None else resource_pool["machines_by_op_type"]
+        self.operators_by_machine = {} if resource_pool is None else resource_pool["operators_by_machine"]
+        self.machines_by_operator = {} if resource_pool is None else resource_pool["machines_by_operator"]
         self._candidate_machines: Dict[Tuple[Optional[str], Optional[str], Optional[str]], Tuple[str, ...]] = {}
         self._machine_operators: Dict[
             Tuple[Optional[str], Optional[str], Optional[str]],
@@ -355,17 +350,6 @@ class _ResourcePoolView:
                 pairs.append((machine_id, operator_ids))
             self._machine_operators[key] = tuple(pairs)
         return self._machine_operators[key]
-
-
-def _mapping_part(source: Optional[Dict[str, Any]], key: str) -> MappingABC:
-    if not isinstance(source, dict):
-        return {}
-    value = source.get(key)
-    return value if isinstance(value, MappingABC) else {}
-
-
-def _machines_for_fixed_operator(fixed_operator: str, *, pool: _ResourcePoolView) -> List[str]:
-    return _text_list(pool.machines_by_operator.get(fixed_operator))
 
 
 def _valid_segments(segments: Iterable[Tuple[datetime, datetime]]) -> List[Tuple[datetime, datetime]]:
@@ -432,34 +416,6 @@ def _calendar_capacity_hours(
         calendar_service.capacity_hours_between(start_dt, end_dt, priority=priority, operator_id=operator_id),
         field="calendar_capacity_hours",
     )
-
-
-def _text(value: Any) -> Optional[str]:
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text or None
-
-
-def _text_list(values: Any) -> List[str]:
-    if values is None:
-        return []
-    if isinstance(values, str):
-        text = _text(values)
-        return [text] if text else []
-    return [text for text in (_text(value) for value in values) if text]
-
-
-def _unique_text_tuple(values: Iterable[Any]) -> Tuple[str, ...]:
-    ordered: List[str] = []
-    seen = set()
-    for value in values:
-        text = _text(value)
-        if not text or text in seen:
-            continue
-        seen.add(text)
-        ordered.append(text)
-    return tuple(ordered)
 
 
 def non_negative_float(value: Any, *, field: str) -> float:

@@ -151,10 +151,10 @@ def _apply_visible_degradations(
     counters: Dict[str, Any],
     causes: List[str],
     completion_status: str,
-    degraded_success: bool,
     graph_analysis_public: Optional[Dict[str, Any]],
     failure_details: List[Dict[str, Any]],
 ) -> Tuple[bool, int, int, int]:
+    degraded_success = False
     op_count, scheduled_ops, failed_ops = summary_counts(summary)
     if _graph_enhancement_degraded(graph_analysis_public):
         record_summary_degradation(
@@ -167,7 +167,7 @@ def _apply_visible_degradations(
             message="工序图报告已生成，但图增强排队因循环依赖关闭，本次退回普通排法。",
             count=1,
         )
-        degraded_success = degraded_success or completion_status == "success"
+        degraded_success = completion_status == "success"
     # Every failure detail carries a literal code (run_state._failure_detail).
     dispatch_failure_count = len(failure_details)
     if dispatch_failure_count:
@@ -208,8 +208,6 @@ def _build_result_summary_obj(
     warnings: List[str],
     algorithm_state: AlgorithmSummaryState,
     summary_degradation: Dict[str, Any],
-    degraded_success: bool,
-    degraded_causes: List[str],
     completion_status: str,
     time_cost_ms: int,
 ) -> Dict[str, Any]:
@@ -224,14 +222,13 @@ def _build_result_summary_obj(
     warnings = warnings_with_graph(warnings, public_algo.get("graph_analysis"))
     degradation_events = list(summary_degradation["events"])
     degradation_counters = dict(summary_degradation["counters"])
-    result_degraded_causes = list(degraded_causes)
+    result_degraded_causes: List[str] = []
     result_degraded_success, op_count, scheduled_ops, failed_ops = _apply_visible_degradations(
         summary=ctx.summary,
         events=degradation_events,
         counters=degradation_counters,
         causes=result_degraded_causes,
         completion_status=completion_status,
-        degraded_success=degraded_success,
         graph_analysis_public=ctx.graph_analysis_public,
         failure_details=failure_details,
     )

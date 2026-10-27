@@ -122,7 +122,7 @@ def try_solve_bottleneck_batch_order(
 
     # 若规模过大：只对“更紧急”的一部分求解（滚动窗口/瓶颈子问题）
     if len(jobs) > _MAX_BOTTLENECK_JOBS:
-        jobs.sort(key=lambda x: (due_min_by_batch.get(x[0], 10**9), -x[2], x[0]))
+        jobs.sort(key=lambda x: (due_min_by_batch[x[0]], -x[2], x[0]))
         keep = jobs[:_MAX_BOTTLENECK_JOBS]
         keep_ids = {bid for bid, _, _ in keep}
         jobs = keep
@@ -133,7 +133,7 @@ def try_solve_bottleneck_batch_order(
     horizon = int(sum(d for _, d, _ in jobs) + 1)
     # due_min 允许为负时：tardy 可能大于 horizon*10，需要放大上界避免模型 infeasible
     tardy_ub = int(horizon * 10)
-    min_due_min = min(int(due_min_by_batch.get(bid, 10**9)) for bid, _, _ in jobs)
+    min_due_min = min(int(due_min_by_batch[bid]) for bid, _, _ in jobs)
     if min_due_min < 0:
         tardy_ub = max(tardy_ub, int(horizon - min_due_min + 1))
 
@@ -150,7 +150,7 @@ def try_solve_bottleneck_batch_order(
         starts[bid] = s
         intervals.append(itv)
 
-        due_min = int(due_min_by_batch.get(bid, 10**9))
+        due_min = int(due_min_by_batch[bid])
         # tardy >= end - due ; tardy >= 0
         t = model.NewIntVar(0, int(tardy_ub), f"tardy_{idx}")
         model.Add(t >= e - int(due_min))
@@ -186,7 +186,7 @@ def try_solve_bottleneck_batch_order(
         # 交期早/高优先级的优先（简单排序）
         rest.sort(
             key=lambda bid: (
-                due_min_by_batch.get(bid, 10**9),
+                due_min_by_batch[bid],
                 -priority_weight_scaled(batches[bid].priority),
                 bid,
             )

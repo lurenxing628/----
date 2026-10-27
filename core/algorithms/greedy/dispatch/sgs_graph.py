@@ -37,8 +37,7 @@ def prepare_graph_ready_topology(context, operations: List[OpForScheduleAlgo]) -
     for op in operations:
         grouped.setdefault(op.batch_id, []).append(op)
     state = _prepare_graph_ready_state(raw, ops_by_batch=grouped)
-    if state is None:
-        raise ValidationError("图 ready 队列上下文无效，不能启用图排产候选。", field="graph_ready_context")
+    assert state is not None
     return PreparedGraphReadyTopology(
         frozenset(state["op_by_id"]), state["input_fixed_op_ids"],
         MappingProxyType({key: frozenset(value) for key, value in state["predecessor_op_ids_by_op_id"].items()}),
@@ -199,8 +198,6 @@ def _graph_sort_key_map(value: Any, *, schedulable_ids: set) -> Dict[int, Tuple[
 
     normalized: Dict[int, Tuple[int, int, int]] = {}
     for op_id in sorted(schedulable_ids):
-        if op_id not in value:
-            raise ValidationError(f"图 ready 队列缺少工序 {op_id} 的排序 key。", field="graph_ready_context")
         raw_key = value[op_id]
         if not isinstance(raw_key, tuple) or len(raw_key) != 3:
             raise ValidationError(f"图 ready 队列工序 {op_id} 的排序 key 必须是三元组。", field="graph_ready_context")
@@ -380,12 +377,9 @@ def _ensure_graph_ready_complete(
 
 def mark_graph_operation_completed(graph_state: Dict[str, Any], op_id: int) -> None:
     completed_or_fixed = graph_state["completed_or_fixed_op_ids"]
-    if op_id in completed_or_fixed:
-        return
-
     completed_or_fixed.add(op_id)
     graph_state["ready_op_ids"].discard(op_id)
-    for successor_id in graph_state["successor_op_ids_by_op_id"].get(op_id, set()):
+    for successor_id in graph_state["successor_op_ids_by_op_id"][op_id]:
         if successor_id not in graph_state["op_by_id"]:
             continue
         if successor_id in completed_or_fixed or successor_id in graph_state["blocked_op_ids"]:

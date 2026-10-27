@@ -10,7 +10,6 @@ from core.algorithm_runtime.checkpoint_calendar import checkpoint_calendar_signa
 from core.algorithm_runtime.checkpoint_inputs import input_record, input_value
 from core.algorithm_runtime.piece_input import operation_batch
 from core.algorithm_runtime.resource_demand import ResourceClaim
-from core.errors import ValidationError
 from core.models.batch import Batch
 
 
@@ -76,11 +75,7 @@ class NativeSchedulePreparation:
             source = str(values.get("source", "internal") or "internal").strip().lower()
             if (type(op_id) is int and op_id > 0 and type(batch_id) in (str, int) and batch_id
                     and source == "internal" and (piece is None or (type(piece) is str and piece and piece.strip() == piece))):
-                try:
-                    pairs = frozenset(self.qualified_resource_pairs(op))
-                except ValidationError:
-                    # Reservation hints do not admit bad input; the real assignment reports it at its original use.
-                    return None
+                pairs = frozenset(self.qualified_resource_pairs(op))
                 claim = ResourceClaim(token, op_id, str(batch_id).strip(), (str(batch_id).strip(), piece), pairs,
                                       Counter(mid for mid, _ in pairs), Counter(oid for _, oid in pairs))
         if token in self.records_by_token:

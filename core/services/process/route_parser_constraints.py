@@ -28,10 +28,10 @@ class SupplierConstraintResolver:
         """
         supplier_map: Dict[str, str] = {}
         for row in self.capabilities:
-            if row["missing_supplier"]:
+            supplier_id = row["supplier_id"]
+            if row["missing_supplier"] or not isinstance(supplier_id, str) or not supplier_id:
                 self.global_issues.append(SupplierGlobalIssue(op_type_id=row["op_type_id"]))
                 continue
-            supplier_id = str(row["supplier_id"] or "").strip() or "?"
             op_type_name = self._resolve_supplier_op_type_name(row, supplier_id)
             if not op_type_name:
                 continue

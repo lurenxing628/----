@@ -21,28 +21,6 @@ def parse_date(value: Any) -> Optional[date]:
         return None
 
 
-def parse_datetime(value: Any) -> Optional[datetime]:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value
-    if isinstance(value, date):
-        return datetime(value.year, value.month, value.day, 0, 0, 0)
-    s = str(value).strip()
-    if not s:
-        return None
-    s = s.replace("/", "-").replace("T", " ").replace("：", ":")
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
-        try:
-            return datetime.strptime(s, fmt)
-        except ValueError:
-            continue
-    try:
-        return datetime.strptime(s, "%Y-%m-%d")
-    except ValueError:
-        return None
-
-
 def due_exclusive(d: Optional[date]) -> datetime:
     if not d:
         return datetime.max

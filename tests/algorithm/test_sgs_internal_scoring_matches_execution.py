@@ -98,7 +98,7 @@ def test_sgs_internal_scoring_uses_shared_estimator_and_matches_execution_order(
     ]
 
     def _dispatch_key_by_end(inp):
-        return (inp.est_end.timestamp(), float(inp.batch_order), float(inp.seq), float(inp.op_id))
+        return (-inp.slack_hours, float(inp.batch_order), float(inp.seq), float(inp.op_id))
 
     with mock.patch.object(sgs_module, "estimate_internal_slot", wraps=sgs_module.estimate_internal_slot) as wrapped, mock.patch.object(
         sgs_module,

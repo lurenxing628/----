@@ -17,22 +17,17 @@ def is_unified_generation(value: Any) -> bool:
     return isinstance(value, dict) and value.get("generation_policy_version") == UNIFIED_GENERATION_VERSION
 
 
-def candidate_score_summary(candidate: CandidatePlan) -> Optional[List[Any]]:
+def candidate_score_summary(candidate: CandidatePlan) -> List[Any]:
+    primary = candidate.objective_name
     score = candidate.score
-    if score is None:
-        return None
-    primary = candidate.objective_name or candidate.objective
     scope = candidate.evaluations[primary]["scoring_scope"]
     return numeric_score(score, components_known=scope["components_known"])
 
 
-def candidate_metrics_summary(candidate: CandidatePlan, *, score: Optional[List[Any]]) -> Dict[str, Any]:
+def candidate_metrics_summary(candidate: CandidatePlan) -> Dict[str, Any]:
+    score = candidate.score
     metrics = candidate.metrics
-    out: Dict[str, Any] = {}
-    if score and score[0] is not None:
-        out["failed_ops"] = int(score[0])
-    if metrics is None:
-        return out
+    out: Dict[str, Any] = {"failed_ops": int(score[0])}
     metrics_data = metrics.to_dict()
     for key in (
         "overdue_count",
@@ -64,7 +59,7 @@ def candidate_roles_by_key(selection: BusinessObjectiveSelectionResult) -> Dict[
 
 
 def candidate_graph_enabled(candidate: CandidatePlan) -> bool:
-    return candidate.origin is not None and bool(candidate.origin.get("graph_ready_profile"))
+    return bool(candidate.origin.get("graph_ready_profile"))
 
 
 def _business_candidate_fields(candidate: CandidatePlan) -> Dict[str, Any]:
@@ -101,7 +96,7 @@ def candidate_public_summary(candidate: CandidatePlan, *, roles: List[str]) -> D
         "kind": candidate.kind,
         "status": candidate.status,
         "score": score,
-        "metrics": candidate_metrics_summary(candidate, score=score),
+        "metrics": candidate_metrics_summary(candidate),
         "health": None,
         "graph_enabled": candidate_graph_enabled(candidate),
         "critical_weight": candidate.graph_critical_weight,

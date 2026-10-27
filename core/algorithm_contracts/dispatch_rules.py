@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Iterable, List, Optional, Tuple, Union
 
-from .date_parsers import due_exclusive
 from .priority_constants import PRIORITY_RANK, PRIORITY_WEIGHT, normalize_priority
 
 
@@ -114,9 +113,6 @@ def dispatch_rule_search_pool(valid_rules: Iterable[Any]) -> Tuple[str, ...]:
 class DispatchInputs:
     rule: DispatchRule
     priority: str
-    due_date: Optional[Any]
-    est_start: Any
-    est_end: Any
     proc_hours: float
     avg_proc_hours: float
     # tie-break
@@ -124,12 +120,9 @@ class DispatchInputs:
     batch_order: int
     seq: int
     op_id: int
+    slack_hours: float
+    time_left_hours: float
     atc_k: float = DEFAULT_ATC_K
-    # 工作小时口径的交期余量（由评分层按日历折算，两项必须同时给）：
-    # slack_hours = 交期 - 预计完工，time_left_hours = 交期 - 预计开工。缺省时按裸交期的墙钟小时差算，
-    # 供纯合同调用与连续日历使用。
-    slack_hours: Optional[float] = None
-    time_left_hours: Optional[float] = None
 
 
 def _safe_positive(value: float) -> float:
@@ -140,29 +133,6 @@ def _safe_positive(value: float) -> float:
     if (not math.isfinite(number)) or number <= 0:
         return 0.0
     return number
-
-
-def _finite_hours(value: Any, name: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError(f"{name} must be a finite number")
-    number = float(value)
-    if not math.isfinite(number):
-        raise ValueError(f"{name} must be a finite number")
-    return number
-
-
-def _due_spans(inp: DispatchInputs) -> Tuple[float, float]:
-    """(slack, time_left) in hours: the caller's working-hour spans, else wall-clock spans to the exclusive due instant."""
-    provided = (inp.slack_hours is not None, inp.time_left_hours is not None)
-    if provided == (False, False):
-        due_dt_exclusive = due_exclusive(inp.due_date)
-        return (
-            (due_dt_exclusive - inp.est_end).total_seconds() / 3600.0,
-            (due_dt_exclusive - inp.est_start).total_seconds() / 3600.0,
-        )
-    if provided != (True, True):
-        raise ValueError("slack_hours and time_left_hours must be supplied together")
-    return _finite_hours(inp.slack_hours, "slack_hours"), _finite_hours(inp.time_left_hours, "time_left_hours")
 
 
 def _weighted_urgency(value: float, weight: float) -> float:
@@ -183,7 +153,7 @@ def build_dispatch_key(inp: DispatchInputs) -> Tuple[float, ...]:
     pr_rank = float(PRIORITY_RANK[pr])
     w = float(PRIORITY_WEIGHT[pr])
 
-    slack_h, time_left_h = _due_spans(inp)
+    slack_h, time_left_h = inp.slack_hours, inp.time_left_hours
 
     if inp.rule == DispatchRule.CR:
         p = _safe_positive(inp.proc_hours) or _safe_positive(inp.avg_proc_hours) or 1.0
@@ -192,11 +162,8 @@ def build_dispatch_key(inp: DispatchInputs) -> Tuple[float, ...]:
         avg_raw = _safe_positive(inp.avg_proc_hours)
         p = _safe_positive(inp.proc_hours) or avg_raw or 1.0
         avg_p = avg_raw or p
-        # ATC 越大越优；这里用 -ATC 使其“越小越好”。k 来自规则规格，不再写死。
-        k = _finite_positive(inp.atc_k)
-        if k is None:
-            raise ValueError("ATC k must be a finite positive number")
-        atc = (w / p) * math.exp((-max(slack_h, 0.0)) / (k * avg_p))
+        # ATC 越大越优；这里用 -ATC 使其“越小越好”。k 来自已校验的规则规格。
+        atc = (w / p) * math.exp((-max(slack_h, 0.0)) / (inp.atc_k * avg_p))
         primary = float(-atc)
     else:
         # SLACK

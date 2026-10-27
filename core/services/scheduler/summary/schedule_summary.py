@@ -23,7 +23,6 @@ from .summary_runtime_state import (
     _build_fallback_state,
     _build_runtime_state,
     _build_summary_warnings,
-    _degraded_success_state,
     _merge_fallback_warnings,
 )
 from .summary_size_guard import apply_summary_size_guard
@@ -42,7 +41,7 @@ def build_result_summary(*, ctx: SummaryBuildContext) -> Dict[str, Any]:
     time_cost_ms = int((time.time() - float(ctx.t0)) * 1000)
     frozen_batch_ids = _frozen_batch_ids(ctx.operations, frozen_op_ids=ctx.frozen_op_ids)
     warnings = _build_summary_warnings(summary=ctx.summary, runtime_state=runtime_state)
-    freeze_state = _freeze_meta_dict(ctx.cfg, frozen_op_ids=ctx.frozen_op_ids, freeze_meta=ctx.freeze_meta)
+    freeze_state = _freeze_meta_dict(ctx.freeze_meta)
     resource_pool_enabled, resource_pool_attempted = _compute_resource_pool_state(
         ctx.cfg, resource_pool_meta=ctx.resource_pool_meta
     )
@@ -53,10 +52,6 @@ def build_result_summary(*, ctx: SummaryBuildContext) -> Dict[str, Any]:
         invalid_due_count=runtime_state.invalid_due_count,
         invalid_due_batch_ids_sample=runtime_state.invalid_due_batch_ids_sample,
         ortools_warmstart_failed_count=fallback_state.ortools_warmstart_failed_count,
-    )
-    degraded_success, degraded_causes = _degraded_success_state(
-        summary_degradation=summary_degradation,
-        completion_status=completion_status,
     )
     algorithm_state = AlgorithmSummaryState(
         ctx=ctx,
@@ -74,8 +69,6 @@ def build_result_summary(*, ctx: SummaryBuildContext) -> Dict[str, Any]:
         warnings=warnings,
         algorithm_state=algorithm_state,
         summary_degradation=summary_degradation,
-        degraded_success=degraded_success,
-        degraded_causes=degraded_causes,
         completion_status=completion_status,
         time_cost_ms=time_cost_ms,
     )

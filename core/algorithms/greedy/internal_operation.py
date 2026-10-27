@@ -8,17 +8,12 @@ from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
 from core.algorithm_contracts.value_domains import INTERNAL
 from core.algorithm_runtime.algo_stats import increment_counter
 from core.algorithm_runtime.auto_assign_contract import (
-    AUTO_ASSIGN_REASON_INVALID_INTERNAL_HOURS,
     AUTO_ASSIGN_REASON_MISSING_MACHINE_POOL,
     AUTO_ASSIGN_REASON_WINDOW_BLOCKED,
     AutoAssignAttempt,
 )
 from core.algorithm_runtime.downtime import occupy_resource
-from core.algorithm_runtime.internal_slot import (
-    estimate_internal_slot,
-    raise_internal_hours_validation,
-    validate_internal_hours,
-)
+from core.algorithm_runtime.internal_slot import estimate_internal_slot
 from core.algorithm_runtime.sgs_estimate_reuse import selected_sgs_estimate, selected_sgs_resources
 from core.algorithm_runtime.slot_overlap_reuse import overlap_reuse_for
 from core.models.batch import Batch
@@ -81,7 +76,7 @@ def schedule_internal_operation(
         end_dt_exclusive=end_dt_exclusive,
         machine_downtimes=machine_downtimes,
         last_op_type_by_machine=last_op_type_by_machine,
-        total_hours_base=total_hours_by_op_id.get(op.id),
+        total_hours_base=total_hours_by_op_id[op.id],
     )
     if estimate.blocked_by_window:
         errors.append(_window_blocked_error(op=op, batch_id=bid, end_time=estimate.end_time, end_dt_exclusive=end_dt_exclusive))
@@ -150,8 +145,6 @@ def _auto_assign_failure_message(*, op: OpForScheduleAlgo, reason: str) -> str:
     op_code = op.op_code
     if reason == AUTO_ASSIGN_REASON_MISSING_MACHINE_POOL:
         return f"自动派工资料不完整，本次无法自动补齐设备和人员：工序 {op_code}"
-    if reason == AUTO_ASSIGN_REASON_INVALID_INTERNAL_HOURS:
-        return f"工时不合法：工序 {op_code}"
     if reason == AUTO_ASSIGN_REASON_WINDOW_BLOCKED:
         # 窗口截止不是资质/资料问题，不能落进下面的通用文案误导用户去查设备工种。
         # 改这条中文模板必须同步 core/models/scheduler_public_errors.py 的反解表（同生共死）。
@@ -180,33 +173,30 @@ def _estimate_internal(
     end_dt_exclusive: Optional[datetime],
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
     last_op_type_by_machine: Optional[Dict[str, str]],
-    total_hours_base: Optional[float],
+    total_hours_base: float,
 ):
-    try:
-        inputs = dict(
-            calendar=calendar,
-            op=op,
-            batch=batch,
-            machine_id=machine_id,
-            operator_id=operator_id,
-            base_time=base_time,
-            prev_end=batch_progress.get(bid, base_time),
-            machine_timeline=machine_timeline.get(machine_id) or [],
-            operator_timeline=operator_timeline.get(operator_id) or [],
-            end_dt_exclusive=end_dt_exclusive,
-            machine_downtimes=(machine_downtimes.get(machine_id) or []) if machine_downtimes and machine_id else [],
-            last_op_type_by_machine=last_op_type_by_machine,
-            total_hours_base=total_hours_base,
-        )
-        estimate = None
-        reused = selected_sgs_estimate(**inputs)
-        # Formal placement keeps its own validation, failure accounting and occupancy writes.
-        if reused is not None and (total_hours_base if total_hours_base is not None else validate_internal_hours(op, batch)) == reused[1]:
-            estimate = reused[0]
-        if estimate is None:
-            estimate = estimate_internal_slot(**inputs, abort_after=None, overlap_reuse=overlap_reuse_for(machine_timeline))
-    except ValueError:
-        raise_internal_hours_validation(op, batch)
+    inputs = dict(
+        calendar=calendar,
+        op=op,
+        batch=batch,
+        machine_id=machine_id,
+        operator_id=operator_id,
+        base_time=base_time,
+        prev_end=batch_progress.get(bid, base_time),
+        machine_timeline=machine_timeline.get(machine_id) or [],
+        operator_timeline=operator_timeline.get(operator_id) or [],
+        end_dt_exclusive=end_dt_exclusive,
+        machine_downtimes=(machine_downtimes.get(machine_id) or []) if machine_downtimes and machine_id else [],
+        last_op_type_by_machine=last_op_type_by_machine,
+        total_hours_base=total_hours_base,
+    )
+    estimate = None
+    reused = selected_sgs_estimate(**inputs)
+    # Formal placement keeps its own validation, failure accounting and occupancy writes.
+    if reused is not None and total_hours_base == reused[1]:
+        estimate = reused[0]
+    if estimate is None:
+        estimate = estimate_internal_slot(**inputs, abort_after=None, overlap_reuse=overlap_reuse_for(machine_timeline))
     if estimate.abort_after_hit:
         raise RuntimeError("正式内部排产不应命中 abort_after 早停")
     return estimate

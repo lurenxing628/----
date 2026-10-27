@@ -18,7 +18,6 @@ from core.services.personnel.operator_qualification import (
     require_explicit_auto_work_types,
     require_machine_authorization,
 )
-from core.shared.boolean_normalize import to_yes_no
 
 
 class CapturedResourceFacts:
@@ -161,7 +160,7 @@ def build_resource_pool(*, cfg, algo_ops: List[OpForScheduleAlgo], resource_fact
     """Build automatic assignment inputs from this operation's captured resources."""
     if meta is not None:
         meta["resource_pool_attempted"] = False
-    if to_yes_no(cfg.auto_assign_enabled, default=YesNo.NO.value) != YesNo.YES.value:
+    if cfg.auto_assign_enabled != YesNo.YES.value:
         return None
     if meta is not None:
         meta["resource_pool_attempted"] = True
@@ -189,7 +188,7 @@ def build_resource_pool(*, cfg, algo_ops: List[OpForScheduleAlgo], resource_fact
 
 def extend_downtime_map_for_resource_pool(*, cfg, resource_pool, downtime_map, start_dt, downtimes, meta=None):
     """Include automatic assignment equipment using the same captured downtime groups."""
-    if to_yes_no(cfg.auto_assign_enabled, default=YesNo.NO.value) != YesNo.YES.value or not resource_pool:
+    if cfg.auto_assign_enabled != YesNo.YES.value or not resource_pool:
         return downtime_map
     if meta is not None:
         meta["downtime_extend_attempted"] = True

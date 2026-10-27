@@ -140,7 +140,7 @@ def _prepare_freeze_seed_scope(
 
     freeze_end = hold_window[1]
     seed_operations_by_batch = group_seed_operations_by_batch(seed_operations)
-    op_by_id: Dict[int, Any] = {int(op.id): op for op in seed_operations if op and op.id}
+    op_by_id: Dict[int, Any] = {int(op.id): op for op in seed_operations}
     op_ids_all = sorted(op_by_id)
     if not op_ids_all:
         _set_freeze_disabled(freeze_meta, _FREEZE_DISABLED_NO_RESCHEDULABLE_OPERATIONS)

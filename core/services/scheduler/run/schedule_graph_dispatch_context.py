@@ -107,16 +107,17 @@ def build_graph_ready_context(
     edges: List[OperationGraphEdge],
     enabled: bool,
     score_context: Dict[str, Any],
+    op_id_sets: Optional[Tuple[Set[int], Set[int], Set[int]]] = None,
 ) -> Optional[Dict[str, Any]]:
     if not enabled:
         return None
-    schedulable_op_ids, fixed_op_ids, seed_op_ids = schedule_input_op_id_sets(schedule_input)
+    schedulable_op_ids, fixed_op_ids, seed_op_ids = op_id_sets or schedule_input_op_id_sets(schedule_input)
     predecessor_map, successor_map = build_predecessor_successor_maps(nodes, edges)
     context = {
         "enabled": True,
         "disabled_reason": None,
-        "schedulable_op_ids": set(schedulable_op_ids),
-        "fixed_op_ids": set(fixed_op_ids),
+        "schedulable_op_ids": schedulable_op_ids,
+        "fixed_op_ids": fixed_op_ids,
         "predecessor_op_ids_by_op_id": predecessor_map,
         "successor_op_ids_by_op_id": successor_map,
         "sort_key_by_op_id": sort_key_by_op_id(nodes, schedulable_op_ids=schedulable_op_ids),

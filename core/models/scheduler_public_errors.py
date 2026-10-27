@@ -261,7 +261,7 @@ def public_error_message_from_detail(raw: Any) -> str:
 
 
 def _structured_failure_message(detail: Dict[str, Any]) -> str:
-    code = str(detail.get("code") or "").strip()
+    code = detail["code"]
     op_code = public_safe_identifier(detail.get("op_code")) or "-"
     failed_op_code = public_safe_identifier(detail.get("failed_op_code")) or "-"
     if code == "dispatch_operation_failed":
@@ -287,8 +287,6 @@ def _public_error_from_structured_failure(detail: Dict[str, Any]) -> Optional[Di
     if code not in _STRUCTURED_FAILURE_CODES:
         return None
     message = _structured_failure_message(detail)
-    if not message:
-        return None
     return make_public_error(
         code=code,
         message=message,
@@ -358,7 +356,7 @@ def build_public_error_records(raw_errors: Any, structured_details: List[Dict[st
         record = _public_error_from_structured_failure(detail)
         if record is None:
             continue
-        dedupe_key = (record.get("code"), record.get("message"), record.get("op_id"), record.get("batch_id"))
+        dedupe_key = (record["code"], record["message"], record.get("op_id"), record.get("batch_id"))
         if dedupe_key in seen:
             continue
         seen.add(dedupe_key)

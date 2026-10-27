@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
 from functools import lru_cache
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithm_runtime.calendar_timing_memo import make_lineage_timing_guard, register_calendar_timing_guard
 from core.errors import BusinessError, ErrorCode, ValidationError
@@ -118,12 +118,10 @@ class CalendarEngine:
             return value if value.strip() else None
         return normalize_text(value)
 
-    def default_periods(self):
+    def default_periods(self) -> List[Dict[str, Any]]:
         """The engine owns these parsed defaults; callers consume them read-only."""
         if self._default_periods is None:
             periods = read_default_periods(self.conn, capture=self.capture)
-            if not periods:
-                raise ValidationError("默认工作时间至少需要一个工作时段。", field="periods")
             self._default_periods = periods
             self._default_periods_json = encode_periods(periods)
             _, self._default_period_hours = self._period_facts_for_json(self._default_periods_json, periods)

@@ -101,7 +101,8 @@ class WorkbenchOperatorMachinePermissions:
             for key, values in (("skill_level", ("beginner", "normal", "expert")), ("is_primary", ("yes", "no"))):
                 if row[key] not in values and (key not in previous or row[key] != previous[key]):
                     raise ValidationError("请选择有效的技能等级和主操标记。", field="machine_permissions")
-            normalize_skill_level_stored(row["skill_level"])
+            if row["skill_level"] not in ("beginner", "normal", "expert"):
+                normalize_skill_level_stored(row["skill_level"])
             result.append(row)
         if sum(normalize_yes_no_stored(row["is_primary"]) == "yes" for row in result) > 1:
             raise ValidationError("同一人员只能设置一台主操设备。", field="machine_permissions")

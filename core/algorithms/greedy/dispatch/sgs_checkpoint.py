@@ -162,9 +162,7 @@ def _matches_prefix_order(graph_state: Dict[str, Any], prefix_op_ids: Tuple[int,
     prev_key = None
     prev_id = 0
     for op_id in prefix_op_ids:
-        key = keys.get(op_id)
-        if key is None:
-            return False
+        key = keys[op_id]
         if prev_key is not None and (key < prev_key or (key == prev_key and op_id <= prev_id)):
             return False
         prev_key = key

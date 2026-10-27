@@ -13,7 +13,7 @@ from core.services.common.normalization_matrix import (
 
 
 def batch_priority_label(value: Any) -> str:
-    v = normalize_batch_priority_value(value, default=BatchPriority.NORMAL.value, unknown_policy="passthrough")
+    v = normalize_batch_priority_value(value, default=BatchPriority.NORMAL.value)
     if v == BatchPriority.CRITICAL.value:
         return "特急"
     if v == BatchPriority.URGENT.value:
@@ -24,7 +24,7 @@ def batch_priority_label(value: Any) -> str:
 
 
 def ready_status_label(value: Any) -> str:
-    v = normalize_ready_status_value(value, default=ReadyStatus.YES.value, unknown_policy="passthrough")
+    v = normalize_ready_status_value(value, default=ReadyStatus.YES.value)
     if v == ReadyStatus.YES.value:
         return "齐套"
     if v == ReadyStatus.NO.value:

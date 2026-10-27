@@ -251,8 +251,8 @@ class ScheduleRunState:
         detail = self._op_identity(op)
         detail.update({"code": code, "batch_id": batch_id})
         if failed_source:
-            detail["failed_op_id"] = failed_source.get("op_id")
-            detail["failed_op_code"] = failed_source.get("op_code")
+            detail["failed_op_id"] = failed_source["op_id"]
+            detail["failed_op_code"] = failed_source["op_code"]
         if extra:
             detail.update(extra)
         return detail

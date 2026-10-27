@@ -69,13 +69,6 @@ def _build_operation_node(
     )
 
 
-def _optional_text(value: Any) -> Optional[str]:
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text or None
-
-
 def _operation_duration_minutes(row: OpForScheduleAlgo, batch: Batch) -> int:
     if row.source == INTERNAL:
         return _round_minutes((row.setup_hours + row.unit_hours * batch.quantity) * 60)
@@ -94,42 +87,17 @@ def _candidate_machine_ids(row: OpForScheduleAlgo, *, resource_pool: GraphResour
     fixed_operator = row.operator_id
     op_type_id = row.op_type_id
     if fixed_machine:
-        candidates = [fixed_machine]
+        candidates = (fixed_machine,)
     elif fixed_operator:
-        candidates = _machines_for_fixed_operator(fixed_operator, resource_pool=resource_pool)
+        candidates = tuple(resource_pool.machines_by_operator.get(fixed_operator, ()))
     elif op_type_id and op_type_id in resource_pool.machines_by_op_type:
-        return _unique_text_tuple(_text_list(resource_pool.machines_by_op_type.get(op_type_id)))
+        return tuple(resource_pool.machines_by_op_type[op_type_id])
     else:
         return ()
     if op_type_id and op_type_id in resource_pool.machines_by_op_type:
-        allowed = set(_text_list(resource_pool.machines_by_op_type.get(op_type_id)))
-        candidates = [machine_id for machine_id in candidates if machine_id in allowed]
-    return _unique_text_tuple(candidates)
-
-
-def _machines_for_fixed_operator(fixed_operator: str, *, resource_pool: GraphResourcePreparation) -> List[str]:
-    return _text_list(resource_pool.machines_by_operator.get(fixed_operator))
-
-
-def _text_list(values: Any) -> List[str]:
-    if values is None:
-        return []
-    if isinstance(values, str):
-        text = _optional_text(values)
-        return [text] if text else []
-    return [text for text in (_optional_text(value) for value in values) if text]
-
-
-def _unique_text_tuple(values: Iterable[Any]) -> Tuple[str, ...]:
-    ordered: List[str] = []
-    seen = set()
-    for value in values:
-        text = _optional_text(value)
-        if not text or text in seen:
-            continue
-        seen.add(text)
-        ordered.append(text)
-    return tuple(ordered)
+        allowed = set(resource_pool.machines_by_op_type[op_type_id])
+        return tuple(machine_id for machine_id in candidates if machine_id in allowed)
+    return candidates
 
 
 __all__ = ["GraphInputContractError", "GraphResourcePreparation", "build_operation_nodes_from_rows"]

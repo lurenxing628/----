@@ -21,7 +21,6 @@ def normalize_yes_no_wide(
     value: Any,
     *,
     default: str = _NO,
-    unknown_policy: str = "no",
 ) -> str:
     # 这是 core 低层宽口径；不要改指 services.common.normalization_matrix，反向导入会把 core/services 绕成环。
     if value is None:
@@ -32,11 +31,4 @@ def normalize_yes_no_wide(
         return _YES
     if text == "否" or lowered in _YES_NO_FALSE_WIDE:
         return _NO
-
-    policy = str(unknown_policy or "no").strip().lower()
-    return _normalize_default_yes_no(default) if policy == "default" else _NO
-
-
-def to_yes_no(value: Any, *, default: str = "no") -> str:
-    """归一化 yes/no 开关值，未知值按 ``no`` 处理。"""
-    return normalize_yes_no_wide(value, default=default, unknown_policy="no")
+    return _normalize_default_yes_no(default)

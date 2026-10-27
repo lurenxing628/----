@@ -207,7 +207,17 @@ def test_graph_blocked_public_error_keeps_operation_codes_through_size_guard_pro
     assert tier_once == record
     assert tier_twice == record
     minimal = minimal_summary_for_size_guard(
-        {"public_error_details": [tier_twice]},
+        {
+            "summary_schema_version": "1.2",
+            "is_simulation": False,
+            "completion_status": "partial",
+            "readiness": {"gate_enabled": False},
+            "version": 1,
+            "strategy": "priority_first",
+            "counts": {"batch_count": 1, "op_count": 2, "scheduled_ops": 0, "failed_ops": 2, "unscheduled_batch_count": 1},
+            "time_cost_ms": 1,
+            "public_error_details": [tier_twice],
+        },
         original_size=1,
         diagnostics_truncated=False,
     )

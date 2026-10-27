@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
 from core.models.batch import Batch
@@ -39,15 +39,6 @@ def _merge_warning_lists(primary: Any, extra: Any) -> List[str]:
         seen.add(text)
         merged.append(text)
     return merged
-
-
-def _dedupe_text_list(values: List[str]) -> List[str]:
-    # The only caller passes whitelisted literal cause codes.
-    out: List[str] = []
-    for item in values:
-        if item not in out:
-            out.append(item)
-    return out
 
 
 def _append_summary_warning(summary: Optional[ScheduleSummary], message: str) -> None:
@@ -115,7 +106,7 @@ def _build_fallback_state(algo_stats: Optional[Dict[str, Any]]) -> FallbackState
     fallback_counts = _counter_dict(algo_stats_dict.get("fallback_counts"))
     return FallbackState(
         fallback_counts=fallback_counts,
-        ortools_warmstart_failed_count=int(fallback_counts.get("ortools_warmstart_failed_count") or 0),
+        ortools_warmstart_failed_count=fallback_counts.get("ortools_warmstart_failed_count", 0),
     )
 
 
@@ -124,30 +115,3 @@ def _merge_fallback_warnings(all_warnings: List[str], fallback_state: FallbackSt
     if warmstart_count > 0:
         all_warnings = _merge_warning_lists(all_warnings, ["OR-Tools 预热失败，系统已改用普通计算方式继续排产。"])
     return all_warnings
-
-
-def _degraded_cause_codes(
-    *,
-    summary_degradation: Dict[str, Any],
-) -> List[str]:
-    causes: List[str] = []
-    # _summary_degradation_state always returns {"events": [...], "counters": {...}} with str codes.
-    for raw_event in summary_degradation["events"]:
-        code = raw_event["code"]
-        if code in {
-            "graph_enhancement_degraded",
-            "dispatch_failure_details",
-        }:
-            causes.append(code)
-    return _dedupe_text_list(causes)
-
-
-def _degraded_success_state(
-    *,
-    summary_degradation: Dict[str, Any],
-    completion_status: str,
-) -> Tuple[bool, List[str]]:
-    deduped = _degraded_cause_codes(
-        summary_degradation=summary_degradation,
-    )
-    return completion_status == "success" and bool(deduped), deduped

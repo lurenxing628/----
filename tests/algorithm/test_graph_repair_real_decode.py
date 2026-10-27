@@ -125,6 +125,7 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
     context["predecessor_op_ids_by_op_id"].update({99: set(), 1: {99}, 2: {1}})
     context["successor_op_ids_by_op_id"].update({99: {1}, 1: {2}})
     pool = {"machines_by_op_type": {"OT-BENCH": ["MC-BENCH", "MC-ALT"]},
+            "machines_by_operator": {},
             "operators_by_machine": {"MC-BENCH": ["OP-BENCH"], "MC-ALT": ["OP-ALT"]}}
     downtime = {"MC-ALT": [(START_DT, START_DT + timedelta(hours=4))]}
     original = deepcopy((operations, context, pool, seed))

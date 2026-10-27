@@ -86,6 +86,13 @@ def test_due_exclusive_consistency() -> None:
         improvement_trace=[],
         frozen_op_ids=set(),
         scheduled_op_ids={1},
+        freeze_meta={
+            "freeze_enabled": False,
+            "freeze_days": 0,
+            "freeze_state": "disabled",
+            "freeze_applied": False,
+            "freeze_disabled_reason": "config_disabled",
+        },
         downtime_meta={},
         simulate=False,
         t0=time.time(),

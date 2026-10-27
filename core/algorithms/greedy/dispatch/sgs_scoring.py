@@ -1,20 +1,15 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, NamedTuple, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, NamedTuple, Optional, Tuple
 
 from core.algorithm_contracts.dispatch_rules import (
     DispatchInputs,
-    DispatchRule,
     DispatchRuleSpec,
-    as_dispatch_rule_spec,
     build_dispatch_key,
 )
 from core.algorithm_runtime.auto_assign_contract import AUTO_ASSIGN_REASON_WINDOW_BLOCKED
-from core.algorithm_runtime.internal_slot import (
-    estimate_internal_slot,
-    require_internal_hours,
-)
+from core.algorithm_runtime.internal_slot import estimate_internal_slot
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.algorithm_runtime.sgs_estimate_reuse import current_sgs_handoff, remember_sgs_estimate
 from core.algorithm_runtime.slot_overlap_reuse import overlap_reuse_for
@@ -66,11 +61,8 @@ def parse_due_date(value: Any) -> Optional[date]:
 def _dispatch_key(
     *,
     dispatch_key_builder: Callable[[DispatchInputs], Tuple[float, ...]] = build_dispatch_key,
-    dispatch_rule: Union[DispatchRule, DispatchRuleSpec],
+    dispatch_rule: DispatchRuleSpec,
     priority: str,
-    due_date: Optional[date],
-    est_start: datetime,
-    est_end: datetime,
     proc_hours: float,
     avg_proc_hours: float,
     changeover_penalty: int,
@@ -82,22 +74,17 @@ def _dispatch_key(
     slack_hours: float,
     time_left_hours: float,
 ) -> Tuple[float, ...]:
-    # Internal callers may still hand over the bare enum; both are explicit contract values.
-    spec = as_dispatch_rule_spec(dispatch_rule)
     base_key = dispatch_key_builder(
         DispatchInputs(
-            rule=spec.rule,
+            rule=dispatch_rule.rule,
             priority=priority,
-            due_date=due_date,
-            est_start=est_start,
-            est_end=est_end,
             proc_hours=proc_hours,
             avg_proc_hours=avg_proc_hours,
             changeover_penalty=changeover_penalty,
             batch_order=batch_order.get(batch_id, 999999),
             seq=seq,
             op_id=op_id,
-            atc_k=spec.atc_k,
+            atc_k=dispatch_rule.atc_k,
             slack_hours=slack_hours,
             time_left_hours=time_left_hours,
         )
@@ -133,7 +120,7 @@ def _score_external_candidate(
     batch: Batch,
     batch_id: str,
     batch_order: Dict[str, int],
-    dispatch_rule: Union[DispatchRule, DispatchRuleSpec],
+    dispatch_rule: DispatchRuleSpec,
     end_dt_exclusive: Optional[datetime],
     avg_proc_hours: float,
     dispatch_key_builder: Callable[[DispatchInputs], Tuple[float, ...]] = build_dispatch_key,
@@ -150,9 +137,6 @@ def _score_external_candidate(
         dispatch_key_builder=dispatch_key_builder,
         dispatch_rule=dispatch_rule,
         priority=meta["priority"],
-        due_date=meta["due_date"],
-        est_start=est_start,
-        est_end=est_end,
         proc_hours=proc_hours,
         avg_proc_hours=avg_proc_hours,
         changeover_penalty=0,
@@ -174,7 +158,7 @@ def _score_internal_candidate(
     batch: Batch,
     batch_id: str,
     batch_order: Dict[str, int],
-    dispatch_rule: Union[DispatchRule, DispatchRuleSpec],
+    dispatch_rule: DispatchRuleSpec,
     end_dt_exclusive: Optional[datetime],
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
     auto_assign_enabled: bool,
@@ -186,12 +170,7 @@ def _score_internal_candidate(
     attempt_sink: Optional[Callable[[Any], None]] = None,
 ) -> Tuple[float, ...]:
     meta = _candidate_meta(op=op, batch=batch, batch_id=batch_id, state=state)
-    total_hours = _scoring_total_hours(
-        op=op,
-        batch=batch,
-        total_hours_by_op_id=total_hours_by_op_id,
-        op_id=meta["op_id"],
-    )
+    total_hours = total_hours_by_op_id[meta["op_id"]]
     resources = _scoring_resources(
         ctx,
         state=state,
@@ -218,9 +197,6 @@ def _score_internal_candidate(
                 dispatch_key_builder=dispatch_key_builder,
                 dispatch_rule=dispatch_rule,
                 priority=meta["priority"],
-                due_date=meta["due_date"],
-                est_start=meta["prev_end"],
-                est_end=meta["prev_end"],
                 proc_hours=total_hours,
                 avg_proc_hours=avg_proc_hours,
                 changeover_penalty=0,
@@ -236,8 +212,6 @@ def _score_internal_candidate(
             batch=batch,
             op=op,
             meta=meta,
-            machine_id=resources.machine_id,
-            operator_id=resources.operator_id,
             reason=resources.reason,
             auto_assign_reason=resources.auto_assign_reason,
         )
@@ -263,9 +237,6 @@ def _score_internal_candidate(
         dispatch_key_builder=dispatch_key_builder,
         dispatch_rule=dispatch_rule,
         priority=meta["priority"],
-        due_date=meta["due_date"],
-        est_start=estimate.start_time,
-        est_end=estimate.end_time,
         proc_hours=estimate.total_hours,
         avg_proc_hours=avg_proc_hours,
         changeover_penalty=estimate.changeover_penalty,
@@ -290,20 +261,6 @@ def _candidate_meta(
         "batch_id": batch_id,
         "prev_end": state.prev_end(batch_id),
     }
-
-
-def _scoring_total_hours(
-    *,
-    op: OpForScheduleAlgo,
-    batch: Batch,
-    total_hours_by_op_id: Dict[int, float],
-    op_id: int,
-) -> float:
-    if op_id in total_hours_by_op_id:
-        return total_hours_by_op_id[op_id]
-    total_hours = require_internal_hours(op, batch)
-    total_hours_by_op_id[op_id] = total_hours
-    return total_hours
 
 
 def _scoring_resources(

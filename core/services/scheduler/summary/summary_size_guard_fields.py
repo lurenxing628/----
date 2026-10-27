@@ -20,28 +20,9 @@ def summary_size_bytes(obj: Dict[str, Any]) -> int:
     return len(canonical_json(obj).encode("utf-8"))
 
 
-def size_guard_scalar(value: Any, *, max_chars: int = 200) -> Any:
-    if value is None or isinstance(value, (bool, int, float)):
-        return value
-    text = str(value)
-    return text[:max_chars]
-
-
 def _guard_text(value: Any, *, max_chars: int) -> str:
     text = str(value or "").strip().replace("\r", " ").replace("\n", " ")
     return text[:max_chars]
-
-
-def size_guard_dict(raw: Any, *, max_items: int = 20, max_value_chars: int = 120) -> Dict[str, Any]:
-    if not isinstance(raw, dict):
-        return {}
-    out: Dict[str, Any] = {}
-    for key, value in raw.items():
-        if len(out) >= max_items:
-            break
-        # Keys are internal non-empty literals or event codes (readiness/counts/degradation_counters).
-        out[key[:80]] = size_guard_scalar(value, max_chars=max_value_chars)
-    return out
 
 
 def _search_report_minimal_summary(raw: Any) -> Dict[str, Any]:
@@ -149,13 +130,10 @@ def guarded_items(raw_list: Any, limit: int, guard_fn: Any) -> List[Dict[str, An
 
 
 def _copy_minimal_error_fields(minimal: Dict[str, Any], result_summary_obj: Dict[str, Any]) -> None:
-    if result_summary_obj.get("error_count") is not None:
-        minimal["error_count"] = size_guard_scalar(result_summary_obj.get("error_count"), max_chars=40)
-    if result_summary_obj.get("failure_detail_count") is not None:
-        minimal["failure_detail_count"] = size_guard_scalar(
-            result_summary_obj.get("failure_detail_count"),
-            max_chars=40,
-        )
+    if "error_count" in result_summary_obj:
+        minimal["error_count"] = result_summary_obj["error_count"]
+    if "failure_detail_count" in result_summary_obj:
+        minimal["failure_detail_count"] = result_summary_obj["failure_detail_count"]
     if isinstance(result_summary_obj.get("public_error_details"), list):
         minimal["public_error_details"] = guarded_items(
             result_summary_obj.get("public_error_details"),
@@ -169,11 +147,8 @@ def _copy_minimal_error_fields(minimal: Dict[str, Any], result_summary_obj: Dict
 
 
 def _copy_minimal_missing_resource_fields(minimal: Dict[str, Any], result_summary_obj: Dict[str, Any]) -> None:
-    if result_summary_obj.get("missing_internal_resource_count") is not None:
-        minimal["missing_internal_resource_count"] = size_guard_scalar(
-            result_summary_obj.get("missing_internal_resource_count"),
-            max_chars=40,
-        )
+    if "missing_internal_resource_count" in result_summary_obj:
+        minimal["missing_internal_resource_count"] = result_summary_obj["missing_internal_resource_count"]
     if isinstance(result_summary_obj.get("missing_internal_resource_ops"), list):
         minimal["missing_internal_resource_ops"] = guarded_items(
             result_summary_obj.get("missing_internal_resource_ops"),
@@ -199,9 +174,9 @@ def _copy_minimal_degradation_fields(minimal: Dict[str, Any], result_summary_obj
         minimal["degradation_events"] = guarded_items(events, 20, _size_guard_degradation_event)
         if len(events) > 20:
             minimal["degradation_events_truncated"] = True
-    counters = size_guard_dict(result_summary_obj.get("degradation_counters"), max_items=30, max_value_chars=40)
-    if counters:
-        minimal["degradation_counters"] = counters
+    counters = result_summary_obj.get("degradation_counters")
+    if isinstance(counters, dict) and counters:
+        minimal["degradation_counters"] = dict(list(counters.items())[:30])
     causes = result_summary_obj.get("degraded_causes")
     if isinstance(causes, list):
         minimal["degraded_causes"] = [str(item).strip()[:120] for item in causes[:20] if str(item).strip()]
@@ -242,7 +217,10 @@ def _minimal_due_count_field(minimal: Dict[str, Any], result_summary_obj: Dict[s
     # 超期/临期 minimal 兜底同构：dict 非空时只留 count（丢 items），与 tier 路径互补保关键计数。
     payload = result_summary_obj.get(key)
     if isinstance(payload, dict) and payload:
-        minimal[key] = {"count": size_guard_scalar(payload.get("count"), max_chars=40)}
+        bucket: Dict[str, Any] = {"count": payload["count"]}
+        if "window_days" in payload:
+            bucket["window_days"] = payload["window_days"]
+        minimal[key] = bucket
 
 
 def _minimal_incomplete_batches_field(minimal: Dict[str, Any], result_summary_obj: Dict[str, Any]) -> None:
@@ -259,7 +237,7 @@ def _minimal_incomplete_batches_field(minimal: Dict[str, Any], result_summary_ob
             if batch_id:
                 items.append({"batch_id": batch_id})
     minimal["incomplete_batches"] = {
-        "count": size_guard_scalar(payload.get("count"), max_chars=40),
+        "count": payload["count"],
         "items": items,
     }
 
@@ -274,24 +252,24 @@ def minimal_summary_for_size_guard(
     algo_dict = algo if isinstance(algo, dict) else {}
 
     minimal: Dict[str, Any] = {
-        "summary_schema_version": size_guard_scalar(result_summary_obj.get("summary_schema_version") or "1.2", max_chars=20),
-        "is_simulation": bool(result_summary_obj.get("is_simulation")),
-        "completion_status": size_guard_scalar(result_summary_obj.get("completion_status"), max_chars=40),
-        "readiness": size_guard_dict(result_summary_obj.get("readiness"), max_items=4, max_value_chars=40),
-        "version": size_guard_scalar(result_summary_obj.get("version"), max_chars=40),
-        "strategy": size_guard_scalar(result_summary_obj.get("strategy"), max_chars=80),
-        "counts": size_guard_dict(result_summary_obj.get("counts"), max_items=20, max_value_chars=40),
-        "time_cost_ms": size_guard_scalar(result_summary_obj.get("time_cost_ms"), max_chars=40),
+        "summary_schema_version": result_summary_obj["summary_schema_version"],
+        "is_simulation": result_summary_obj["is_simulation"],
+        "completion_status": result_summary_obj["completion_status"],
+        "readiness": dict(result_summary_obj["readiness"]),
+        "version": result_summary_obj["version"],
+        "strategy": result_summary_obj["strategy"],
+        "counts": dict(result_summary_obj["counts"]),
+        "time_cost_ms": result_summary_obj["time_cost_ms"],
         "summary_truncated": True,
         "original_size_bytes": int(original_size),
     }
 
-    if result_summary_obj.get("degraded_success") is not None:
-        minimal["degraded_success"] = bool(result_summary_obj.get("degraded_success"))
-    if result_summary_obj.get("invalid_due_count") is not None:
-        minimal["invalid_due_count"] = size_guard_scalar(result_summary_obj.get("invalid_due_count"), max_chars=40)
-    if result_summary_obj.get("unscheduled_batch_count") is not None:
-        minimal["unscheduled_batch_count"] = size_guard_scalar(result_summary_obj.get("unscheduled_batch_count"), max_chars=40)
+    if "degraded_success" in result_summary_obj:
+        minimal["degraded_success"] = result_summary_obj["degraded_success"]
+    if "invalid_due_count" in result_summary_obj:
+        minimal["invalid_due_count"] = result_summary_obj["invalid_due_count"]
+    if "unscheduled_batch_count" in result_summary_obj:
+        minimal["unscheduled_batch_count"] = result_summary_obj["unscheduled_batch_count"]
     _minimal_due_count_field(minimal, result_summary_obj, "overdue_batches")
     _minimal_due_count_field(minimal, result_summary_obj, "near_due_batches")
     _minimal_incomplete_batches_field(minimal, result_summary_obj)
@@ -300,16 +278,11 @@ def minimal_summary_for_size_guard(
     _copy_minimal_degradation_fields(minimal, result_summary_obj)
     _copy_minimal_warning_fields(minimal, result_summary_obj)
 
-    minimal_algo = size_guard_dict(
-        {
-            "mode": algo_dict.get("mode"),
-            "objective": algo_dict.get("objective"),
-            "comparison_metric": algo_dict.get("comparison_metric"),
-            "time_budget_seconds": algo_dict.get("time_budget_seconds"),
-        },
-        max_items=4,
-        max_value_chars=80,
-    )
+    minimal_algo = {
+        key: algo_dict[key]
+        for key in ("mode", "objective", "comparison_metric", "time_budget_seconds")
+        if algo_dict.get(key) is not None
+    }
     candidate_comparison = candidate_comparison_minimal_summary(algo_dict.get("candidate_comparison"))
     if candidate_comparison:
         minimal_algo["candidate_comparison"] = candidate_comparison

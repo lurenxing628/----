@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
 from core.algorithm_runtime.auto_assign_contract import (
-    AUTO_ASSIGN_REASON_INVALID_INTERNAL_HOURS,
     AUTO_ASSIGN_REASON_MISSING_MACHINE_POOL,
     AUTO_ASSIGN_REASON_WINDOW_BLOCKED,
 )
@@ -23,8 +22,6 @@ def internal_resource_validation_message(
     batch: Batch,
     op: OpForScheduleAlgo,
     meta: Dict[str, Any],
-    machine_id: str,
-    operator_id: str,
     reason: str,
     auto_assign_reason: str,
 ) -> Tuple[str, Dict[str, Any]]:
@@ -41,7 +38,7 @@ def internal_resource_validation_message(
         details.update({"user_message": message, "reason": public_reason, "auto_assign_reason": auto_assign_reason})
         return message, details
 
-    missing_fields = _missing_internal_resource_fields(op=op, machine_id=machine_id, operator_id=operator_id)
+    missing_fields = _missing_internal_resource_fields(op=op)
     message = (
         f"批次 {details['batch_id']} 的{operation_display}"
         f"（{operation_context}）"
@@ -89,8 +86,6 @@ def _auto_assign_resource_message(
             f"{prefix}自动派工资料不完整，请检查设备工种和人员可操作设备后再排产。",
             "auto_assign_resource_pool_incomplete",
         )
-    if auto_assign_reason == AUTO_ASSIGN_REASON_INVALID_INTERNAL_HOURS:
-        return (f"{prefix}工时不合法，请修正工时后再排产。", "invalid_internal_work_hours")
     if auto_assign_reason == AUTO_ASSIGN_REASON_WINDOW_BLOCKED:
         # 窗口截止不是资质/资料问题，文案必须指向截止日期，不能误导用户去查设备工种和人员资质。
         # 改这条中文模板必须同步 core/models/scheduler_public_errors.py 的反解表（同生共死）。
@@ -142,17 +137,11 @@ def _part_context(*, part_no: str, part_name: str, piece_id: str) -> str:
     return "，".join(parts)
 
 
-def _missing_internal_resource_fields(*, op: OpForScheduleAlgo, machine_id: str, operator_id: str) -> List[str]:
+def _missing_internal_resource_fields(*, op: OpForScheduleAlgo) -> List[str]:
     # None 与派生变体写入的空串都表示这道工序没有指定该资源。
     missing_fields: List[str] = []
     if not op.machine_id:
         missing_fields.append("设备")
     if not op.operator_id:
         missing_fields.append("人员")
-    if missing_fields:
-        return missing_fields
-    if not machine_id:
-        missing_fields.append("设备")
-    if not operator_id:
-        missing_fields.append("人员")
-    return missing_fields or ["设备", "人员"]
+    return missing_fields

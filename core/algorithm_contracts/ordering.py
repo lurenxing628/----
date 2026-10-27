@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from core.errors import ValidationError
 from core.models.batch import Batch
 from core.shared.strict_parse import parse_optional_date, parse_optional_datetime
 
-from .date_parsers import parse_datetime
 from .sort_strategies import BatchForSort, SortStrategy
 from .types import OpForScheduleAlgo
 
@@ -57,31 +55,19 @@ def normalize_batch_order_override(
     return override_order
 
 
-def _parse_created_at_for_sort(value: Any, *, strategy: SortStrategy) -> Optional[datetime]:
-    # 只有 FIFO 按创建时间排序，才把它当必须合法的输入。
-    if strategy == SortStrategy.FIFO:
-        return parse_optional_datetime(value, field="created_at")
-    return parse_datetime(value)
-
-
 def build_batch_sort_inputs(
     batches: Mapping[str, Batch],
     *,
     strategy: SortStrategy,
-    readiness_gate_enabled: bool = False,
 ) -> List[BatchForSort]:
     batch_for_sort: List[BatchForSort] = []
-    for batch_key, batch in batches.items():
-        batch_id = resolve_batch_sort_batch_id(batch_key, batch)
-        if not batch_id:
-            raise ValidationError(f"批次号不能为空：来源值={batch_key!r}", field="batch_id")
+    for batch_id, batch in batches.items():
         batch_for_sort.append(
             BatchForSort(
                 batch_id=batch_id,
                 priority=batch.priority,
                 due_date=parse_optional_date(batch.due_date, field="due_date"),
-                ready_date=parse_optional_date(batch.ready_date, field="ready_date") if readiness_gate_enabled else None,
-                created_at=_parse_created_at_for_sort(batch.created_at, strategy=strategy),
+                created_at=parse_optional_datetime(batch.created_at, field="created_at") if strategy == SortStrategy.FIFO else None,
             )
         )
     return batch_for_sort

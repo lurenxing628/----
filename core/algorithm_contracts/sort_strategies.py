@@ -29,7 +29,6 @@ class BatchForSort:
     batch_id: str
     priority: str  # normal/urgent/critical
     due_date: Optional[date] = None
-    ready_date: Optional[date] = None
     created_at: Optional[datetime] = None
 
 

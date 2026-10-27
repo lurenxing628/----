@@ -67,63 +67,48 @@ def _lookup_alias(alias_map: Dict[str, str], text: str) -> Optional[str]:
     return alias_map.get(text) or alias_map.get(text.lower())
 
 
-def _unknown_result(text: str, *, default: str, unknown_policy: str) -> str:
-    policy = unknown_policy.strip().lower()
-    if policy == "default":
-        return default
-    if policy == "raise":
-        raise ValueError(text)
-    return text
-
-
-def _enum_alias_lookup(
-    value: Any,
-    *,
-    alias_map: Dict[str, str],
-    default: str,
-    unknown_policy: str,
-) -> str:
-    text = _text(value)
-    if not text:
-        return default
-    mapped = _lookup_alias(alias_map, text)
-    if mapped is not None:
-        return mapped
-    return _unknown_result(text, default=default, unknown_policy=unknown_policy)
-
-
 def normalize_batch_priority_value(
     value: Any,
     *,
     default: str,
-    unknown_policy: str = "passthrough",
 ) -> str:
-    return _enum_alias_lookup(value, alias_map=_BATCH_PRIORITY_ALIAS_MAP, default=default, unknown_policy=unknown_policy)
+    text = _text(value)
+    if not text:
+        return default
+    mapped = _lookup_alias(_BATCH_PRIORITY_ALIAS_MAP, text)
+    return mapped if mapped is not None else text
 
 
 def normalize_ready_status_value(
     value: Any,
     *,
     default: str,
-    unknown_policy: str = "passthrough",
 ) -> str:
-    return _enum_alias_lookup(value, alias_map=_READY_STATUS_ALIAS_MAP, default=default, unknown_policy=unknown_policy)
+    text = _text(value)
+    if not text:
+        return default
+    mapped = _lookup_alias(_READY_STATUS_ALIAS_MAP, text)
+    return mapped if mapped is not None else text
 
 
 def normalize_calendar_day_type_value(
     value: Any,
     *,
     default: str,
-    unknown_policy: str,
 ) -> str:
-    return _enum_alias_lookup(value, alias_map=_CALENDAR_DAY_TYPE_ALIAS_MAP, default=default, unknown_policy=unknown_policy)
+    text = _text(value)
+    if not text:
+        return default
+    mapped = _lookup_alias(_CALENDAR_DAY_TYPE_ALIAS_MAP, text)
+    if mapped is not None:
+        return mapped
+    raise ValueError(text)
 
 
 def normalize_yes_no_narrow_value(
     value: Any,
     *,
     default: str,
-    unknown_policy: str,
     true_aliases: Optional[Sequence[str]] = None,
     false_aliases: Optional[Sequence[str]] = None,
 ) -> str:
@@ -136,23 +121,19 @@ def normalize_yes_no_narrow_value(
         return YesNo.YES.value
     if text == "否" or lowered in _YES_NO_FALSE_NARROW or lowered in {alias.lower() for item in (false_aliases or ()) if (alias := _text(item))}:
         return YesNo.NO.value
-    return _unknown_result(text, default=default, unknown_policy=unknown_policy)
+    raise ValueError(text)
 
 
 def normalize_skill_level_value(
     value: Any,
-    *,
-    unknown_policy: str,
 ) -> str:
     text = _text(value)
     if not text:
-        return SkillLevel.NORMAL.value
-    return _enum_alias_lookup(
-        text,
-        alias_map=_SKILL_LEVEL_ALIAS_MAP,
-        default=SkillLevel.NORMAL.value,
-        unknown_policy=unknown_policy,
-    )
+        raise ValueError(f"Invalid skill_level: {value!r}")
+    mapped = _lookup_alias(_SKILL_LEVEL_ALIAS_MAP, text)
+    if mapped is not None:
+        return mapped
+    raise ValueError(text)
 
 
 def skill_level_rank(value: Any) -> int:

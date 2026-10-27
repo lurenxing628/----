@@ -37,7 +37,7 @@ def test_pair_blocking_is_prepared_once_across_feature_bases_and_operation_windo
                                   start_time=at(2), end_time=at(4))]
     downtime = {"M1": [(at(4), at(5)), (start, start), (None, start)]}
     pool = {"machines_by_op_type": {"OT1": ["M1"]}, "operators_by_machine": {"M1": ["O1"]},
-            "operator_skills": {"O1": ["OT1"]}}
+            "machines_by_operator": {}, "operator_skills": {"O1": ["OT1"]}}
     original_merge, original_downtime = v2_capacity._merge_segments, v2_capacity._valid_segments
 
     def merge(values):
@@ -133,6 +133,7 @@ def test_multi_segment_seed_result_blocks_each_resource_only_during_its_segment(
     )
     pool = {
         "machines_by_op_type": {"OT1": ["M1", "M2"]},
+        "machines_by_operator": {},
         "operators_by_machine": {"M1": ["O1"], "M2": ["O2"]},
         "operator_skills": {"O1": ["OT1"], "O2": ["OT1"]},
     }

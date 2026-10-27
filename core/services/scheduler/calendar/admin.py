@@ -101,7 +101,6 @@ class CalendarAdmin:
             normalized = normalize_calendar_day_type_value(
                 value,
                 default=CalendarDayType.WORKDAY.value,
-                unknown_policy="raise",
             )
         except ValueError as exc:
             raise ValidationError("“类型”不正确，请选择：工作日 / 假期。", field="类型") from exc
@@ -110,7 +109,7 @@ class CalendarAdmin:
     @staticmethod
     def _normalize_yesno(value: Any, field: str) -> str:
         try:
-            return normalize_yes_no_narrow_value(value, default=YesNo.YES.value, unknown_policy="raise")
+            return normalize_yes_no_narrow_value(value, default=YesNo.YES.value)
         except ValueError as e:
             raise ValidationError(
                 f"“{field}”不正确，请选择：是 / 否。以前的 Excel 如果写过英文，系统会尽量按中文意思读取；新文件请直接填中文。",

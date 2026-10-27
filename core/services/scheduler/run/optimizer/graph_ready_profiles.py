@@ -103,7 +103,7 @@ def _build_profile(index: int, raw: Dict[str, Any]) -> GraphReadyWeightProfile:
         formula_slug=str(raw.get("formula_slug") or "v1_weighted_graph"),
         formula_version=str(raw.get("formula_version") or "graph_ready_v1"),
         jitter_seed=int(raw.get("jitter_seed") or 0),
-        objective_name=normalize_objective_name(raw.get("objective_name")),
+        objective_name=str(raw.get("objective_name") or "min_overdue"),
         feature_basis=str(raw.get("feature_basis") or SUCCESSOR_WORKLOAD_BASIS),
     )
 
@@ -123,7 +123,6 @@ def _graph_ready_v2_profile_specs(*, seed: int, objective_name: str) -> Tuple[Di
     v1 = GRAPH_READY_DEFAULT_WEIGHT_PROFILES
     base_specs = _v2_ordering_specs(seed)
     baseline = tuple(dict(item, feature_basis=BATCH_WORKLOAD_BASIS) for item in base_specs)
-    objective_name = normalize_objective_name(objective_name)
     successor = _successor_profile_specs(base_specs, objective_name)
     # Preserve two established, distinct baseline parents before adding features.
     # Remaining baseline and enhanced candidates compete within the same limits.
@@ -139,7 +138,7 @@ def _shared_profile_specs(specs: Tuple[Dict[str, Any], ...], *, objective_name: 
         "min_tardiness": ("spt", "min_slack"),
         "min_weighted_tardiness": ("weighted_spt", "weighted_atc"),
         "min_changeover": ("type_group", "type_group_reverse"),
-    }[normalize_objective_name(objective_name)]
+    }[objective_name]
     leading = tuple(item for formula in preferred for item in specs
                     if item.get("feature_basis") == SUCCESSOR_WORKLOAD_BASIS and item.get("formula_slug") == formula)
     leading_slugs = {item["slug"] for item in leading}

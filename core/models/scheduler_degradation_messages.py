@@ -34,7 +34,7 @@ def public_degradation_events(events: Iterable[Any]) -> List[Dict[str, Any]]:
     for event in events:
         code = event["code"]
         public_code = _public_degradation_event_code(code)
-        count = max(1, int(event.get("count") or 1))
+        count = event["count"]
         if public_code not in by_code:
             order.append(public_code)
             by_code[public_code] = {

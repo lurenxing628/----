@@ -20,7 +20,7 @@ def _require_stored_text(value: Any, field: str) -> str:
 
 def normalize_skill_level_stored(value: Any) -> str:
     text = _require_stored_text(value, "skill_level")
-    return normalize_skill_level_value(text, unknown_policy="raise")
+    return normalize_skill_level_value(text)
 
 
 def normalize_yes_no_stored(value: Any) -> str:
@@ -28,7 +28,6 @@ def normalize_yes_no_stored(value: Any) -> str:
     return normalize_yes_no_narrow_value(
         text,
         default=YesNo.NO.value,
-        unknown_policy="raise",
         true_aliases=_OPERATOR_PRIMARY_TRUE_ALIASES,
         false_aliases=_OPERATOR_PRIMARY_FALSE_ALIASES,
     )

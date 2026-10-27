@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .schedule_graph_dispatch_context import build_predecessor_successor_maps, schedule_input_op_id_sets
 from .schedule_input_contracts import ScheduleRunInput
@@ -14,9 +14,10 @@ def build_first_wave_ready_nodes(
     nodes: List[Any],
     edges: List[Any],
     graph_ready_context: Optional[Dict[str, Any]] = None,
+    op_id_sets: Optional[Tuple[Set[int], Set[int], Set[int]]] = None,
 ) -> List[Any]:
     if graph_ready_context is None:
-        schedulable_op_ids, fixed_op_ids, _ = schedule_input_op_id_sets(schedule_input)
+        schedulable_op_ids, fixed_op_ids, _ = op_id_sets or schedule_input_op_id_sets(schedule_input)
         predecessor_map, _successor_map = build_predecessor_successor_maps(nodes, edges)
     else:
         schedulable_op_ids = graph_ready_context["schedulable_op_ids"]
@@ -53,6 +54,7 @@ def build_graph_resource_matching_projection(
     nodes: List[Any],
     edges: List[Any],
     graph_ready_context: Optional[Dict[str, Any]],
+    op_id_sets: Optional[Tuple[Set[int], Set[int], Set[int]]] = None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     if not is_dag:
         return _resource_matching_status_projection(
@@ -71,6 +73,7 @@ def build_graph_resource_matching_projection(
         nodes=nodes,
         edges=edges,
         graph_ready_context=(graph_ready_context if mode == "on" else None),
+        op_id_sets=op_id_sets,
     )
     summary = summarize_operation_machine_matching(ready_nodes)
     return resource_matching_summary_to_public_dict(summary), resource_matching_summary_to_diagnostics_dict(summary)

@@ -151,7 +151,7 @@ class LocalSearchStage(SearchStage):
         if self._skip_reason:
             return
         best = cast(Dict[str, Any], best)
-        local_state = LocalSearchState.from_best(best, resource_pool=resource_pool)
+        local_state = LocalSearchState.from_best(best)
         strategy_state = resolve_current_strategy_state(best)
         active_neighborhoods = _active_neighborhoods(
             neighborhoods=neighborhoods, cur_dispatch_mode=strategy_state[2],

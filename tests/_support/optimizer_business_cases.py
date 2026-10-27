@@ -180,7 +180,15 @@ def case_environment(data, objective, config=None):
             prev_version=0, execution_facts={}, execution_completed_op_ids=set(),
             execution_seed_results=[], execution_snapshot_revision="fixture", execution_snapshot_op_ids=[],
             execution_snapshot_op_count=0, schedule_output_allowed_op_ids={row["id"] for row in data["operations"]},
-            payload_validation_operations=batch_operations, freeze_meta={}, downtime_meta={},
+            payload_validation_operations=batch_operations,
+            freeze_meta={
+                "freeze_enabled": values["freeze_window_enabled"] == "yes",
+                "freeze_days": int(values["freeze_window_days"]),
+                "freeze_state": "active" if frozen_ids else "disabled",
+                "freeze_applied": bool(frozen_ids),
+                "freeze_disabled_reason": None if frozen_ids else "config_disabled",
+            },
+            downtime_meta={},
             resource_pool_meta={},
         )
     finally:

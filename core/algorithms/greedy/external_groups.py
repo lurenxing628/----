@@ -3,12 +3,13 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.algorithm_contracts.material_release import released_start
 from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
 from core.algorithm_contracts.value_domains import EXTERNAL, MERGED
 from core.algorithm_runtime.algo_stats import increment_counter
 from core.algorithm_runtime.piece_input import external_group_key
 from core.errors import ValidationError
+
+from .dispatch.sgs_due_span import external_candidate_window
 
 
 def rebuild_external_group_cache_from_seeds(
@@ -112,40 +113,20 @@ def schedule_external(
     排产输入构建已把周期规范成正有限数：合并组读 ext_group_total_days，单道读 ext_days；这里直接使用。
     """
     bid = op.batch_id
-    prev_end = released_start(op, batch_progress.get(bid, base_time))
-
-    # merged 外部组：整组作为一个时间块（组内工序同起止）；输入构建保证合并组必带组身份。
-    if op.ext_merge_mode == MERGED:
-        ext_group_id = op.ext_group_id
-        cache_key = external_group_key(op)
-        cached = external_group_cache.get(cache_key)
-        if cached:
-            start, end = cached
-        else:
-            start = prev_end
-            end = calendar.add_calendar_days(start, op.ext_group_total_days)
-
-        if end_dt_exclusive is not None and end >= end_dt_exclusive:
-            deadline = (end_dt_exclusive - timedelta(seconds=1)).strftime("%Y-%m-%d")
-            errors.append(
-                f"排产窗口截止到 {deadline}：外协组 {ext_group_id}（批次 {bid}）预计完工 {end.strftime('%Y-%m-%d %H:%M')} 超出窗口"
-            )
-            return None, True
-        # Only a group block that fits the window becomes the shared start/end of its members.
-        if not cached:
-            external_group_cache[cache_key] = (start, end)
-
-        return _external_result(op, start, end), False
-
-    # separate（或无组）：按单道工序 ext_days 推进
-    start = prev_end
-    end = calendar.add_calendar_days(start, op.ext_days)
+    is_merged = op.ext_merge_mode == MERGED
+    start, end = external_candidate_window(
+        calendar, external_group_cache, op=op, prev_end=batch_progress.get(bid, base_time),
+    )
     if end_dt_exclusive is not None and end >= end_dt_exclusive:
         deadline = (end_dt_exclusive - timedelta(seconds=1)).strftime("%Y-%m-%d")
+        target = f"外协组 {op.ext_group_id}" if is_merged else f"外协工序 {op.op_code}"
         errors.append(
-            f"排产窗口截止到 {deadline}：外协工序 {op.op_code}（批次 {bid}）预计完工 {end.strftime('%Y-%m-%d %H:%M')} 超出窗口"
+            f"排产窗口截止到 {deadline}：{target}（批次 {bid}）预计完工 {end.strftime('%Y-%m-%d %H:%M')} 超出窗口"
         )
         return None, True
+    # Only a group block that fits the window becomes the shared start/end of its members.
+    if is_merged:
+        external_group_cache.setdefault(external_group_key(op), (start, end))
 
     return _external_result(op, start, end), False
 

@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Set
 
 from core.algorithm_contracts.date_parsers import due_exclusive, parse_date
-from core.algorithm_contracts.dispatch_rules import DispatchRule, DispatchRuleSpec, parse_dispatch_rule_token
+from core.algorithm_contracts.dispatch_rules import DispatchRuleSpec, parse_dispatch_rule_token
 from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.errors import ValidationError
 from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
@@ -35,7 +35,6 @@ class ScheduleParams:
     strategy: SortStrategy
     used_params: Dict[str, Any]
     dispatch_mode_key: str
-    dispatch_rule_enum: DispatchRule
     dispatch_rule_spec: DispatchRuleSpec
     auto_assign_enabled: bool
     warnings: List[str]
@@ -189,7 +188,6 @@ def resolve_schedule_params(
         strategy=resolved_strategy,
         used_params=used_params,
         dispatch_mode_key=dispatch_mode_key,
-        dispatch_rule_enum=dispatch_rule_spec.rule,
         dispatch_rule_spec=dispatch_rule_spec,
         auto_assign_enabled=auto_assign_enabled,
         warnings=warnings,

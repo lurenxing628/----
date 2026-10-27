@@ -24,16 +24,16 @@ def record_summary_degradation(
             "scope": scope,
             "field": field,
             "message": message,
-            "count": int(count),
+            "count": count,
         }
     )
-    counters[code] = int(counters.get(code) or 0) + int(count)
+    counters[code] = counters.get(code, 0) + count
     if code not in causes:
         causes.append(code)
 
 
 def summary_counts(summary: Optional[ScheduleSummary]) -> Tuple[int, int, int]:
-    # ScheduleSummary 构造时已校验三项计数都是非负整数；没有摘要（排产未产出）时计数为 0。
+    # 三项计数由受控排产汇总生产者保证为非负整数；没有摘要（排产未产出）时计数为 0。
     if summary is None:
         return 0, 0, 0
     return summary.total_ops, summary.scheduled_ops, summary.failed_ops
@@ -61,7 +61,7 @@ def public_summary_error_state(
     raw_summary_errors: List[Any], structured_details: List[Dict[str, Any]],
 ) -> Tuple[List[Dict[str, Any]], List[str]]:
     details = build_public_error_records(raw_summary_errors, structured_details=structured_details)
-    messages = [item["message"] for item in details if item.get("message")]
+    messages = [item["message"] for item in details]
     return details, messages
 
 

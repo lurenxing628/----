@@ -4,6 +4,7 @@ from dataclasses import replace
 
 import pytest
 
+from core.algorithm_contracts.types import ScheduleSummary
 from core.algorithms.evaluation import ScheduleMetrics, objective_score
 from core.algorithms.evaluation_completion import BatchCompletion
 from core.models.objective import objective_metric_keys, target_objectives_for
@@ -39,8 +40,20 @@ def _candidate(key, *, sequence, overdue=2, weighted=10.0, tardiness=10.0):
         graph_critical_weight=0 if key == "baseline" else 500,
         graph_impact_weight=0 if key == "baseline" else 10,
         graph_downstream_weight=0 if key == "baseline" else 1,
+        summary=ScheduleSummary(
+            success=True,
+            total_ops=2,
+            scheduled_ops=2,
+            failed_ops=0,
+            warnings=[],
+            errors=[],
+            duration_seconds=0.0,
+        ),
         metrics=metrics,
-        objective="min_overdue",
+        generation_policy_version="unified_search_v1",
+        origin={"origin": key},
+        first_found_elapsed_ms=0,
+        search_evidence_ref={"source_event_id": None},
         objective_name="min_overdue",
     )
 

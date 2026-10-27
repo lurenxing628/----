@@ -53,7 +53,7 @@ def operation_dispatch_state(state, graph_state, op: OpForScheduleAlgo, batch: B
     if op.id in states:
         return states[op.id]
     ends = graph_state["end_time_by_op_id"]
-    predecessors = graph_state["predecessor_op_ids_by_op_id"].get(op.id, set())
+    predecessors = graph_state["predecessor_op_ids_by_op_id"][op.id]
     if any(key not in ends for key in predecessors):
         raise ValidationError("A ready operation lacks predecessor completion evidence.", field="graph_ready_context")
     earliest = max([state.base_time] + [ends[key] for key in predecessors])

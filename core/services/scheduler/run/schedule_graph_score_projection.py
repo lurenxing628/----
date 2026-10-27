@@ -25,9 +25,9 @@ def graph_score_weights(cfg: ScheduleConfigSnapshot) -> Dict[str, int]:
 
 def graph_score_requested(score_weights: Dict[str, int]) -> bool:
     return bool(
-        int(score_weights["critical_weight"]) > 0
-        or int(score_weights["impact_weight"]) > 0
-        or int(score_weights["downstream_minutes_weight"]) > 0
+        score_weights["critical_weight"] > 0
+        or score_weights["impact_weight"] > 0
+        or score_weights["downstream_minutes_weight"] > 0
     )
 
 
@@ -35,9 +35,9 @@ def score_weight_summary(score_weights: Optional[Dict[str, int]]) -> Optional[Di
     if score_weights is None:
         return None
     return {
-        "critical_weight": int(score_weights["critical_weight"]),
-        "impact_weight": int(score_weights["impact_weight"]),
-        "downstream_minutes_weight": int(score_weights["downstream_minutes_weight"]),
+        "critical_weight": score_weights["critical_weight"],
+        "impact_weight": score_weights["impact_weight"],
+        "downstream_minutes_weight": score_weights["downstream_minutes_weight"],
     }
 
 
@@ -77,6 +77,7 @@ def build_graph_score_projection(
     node_metrics: Dict[str, Dict[str, Any]],
     topological_order: List[str],
     schedule_input: ScheduleRunInput,
+    op_id_sets: Optional[Tuple[Set[int], Set[int], Set[int]]] = None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
     disabled_projection = graph_score_disabled_projection(
         mode=mode,
@@ -95,6 +96,7 @@ def build_graph_score_projection(
         node_metrics=node_metrics,
         topological_order=topological_order,
         schedule_input=schedule_input,
+        op_id_sets=op_id_sets,
     )
 
 
@@ -142,15 +144,17 @@ def build_available_graph_score_projection(
     node_metrics: Dict[str, Dict[str, Any]],
     topological_order: List[str],
     schedule_input: ScheduleRunInput,
+    op_id_sets: Optional[Tuple[Set[int], Set[int], Set[int]]] = None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
     from core.services.scheduler.graph.scoring import graph_score_components
 
-    schedulable_op_ids, allowed_op_ids = graph_score_op_id_sets(schedule_input)
+    schedulable_op_ids, fixed_op_ids, _ = op_id_sets or schedule_input_op_id_sets(schedule_input)
+    allowed_op_ids = schedulable_op_ids | fixed_op_ids
     metrics_by_op_id = node_metrics_by_op_id(
         nodes=nodes,
         node_metrics=node_metrics,
         allowed_op_ids=allowed_op_ids,
-        required_op_ids=set(schedulable_op_ids),
+        required_op_ids=schedulable_op_ids,
     )
     ordered_op_ids = ordered_schedulable_op_ids(
         nodes=nodes,
@@ -181,11 +185,6 @@ def build_available_graph_score_projection(
             node_metrics_by_op_id=metrics_by_op_id,
         ),
     )
-
-
-def graph_score_op_id_sets(schedule_input: ScheduleRunInput) -> Tuple[Set[int], Set[int]]:
-    schedulable_op_ids, fixed_op_ids, _ = schedule_input_op_id_sets(schedule_input)
-    return schedulable_op_ids, schedulable_op_ids | fixed_op_ids
 
 
 def node_metrics_by_op_id(

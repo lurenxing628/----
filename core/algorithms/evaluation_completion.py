@@ -54,7 +54,7 @@ def prepare_evaluation_context(
     # Batch keys are database primary keys: non-empty and already trimmed.
     for bid, batch in batches.items():
         priority = normalize_priority(batch.priority, default="normal")
-        weight = float(PRIORITY_WEIGHT.get(priority, 1.0))
+        weight = float(PRIORITY_WEIGHT[priority])
         priority_weights[bid] = weight
         due_datetime, due_text, due_invalid = parse_due_exclusive_datetime(batch.due_date)
         due_batches.append(PreparedBatchDue(

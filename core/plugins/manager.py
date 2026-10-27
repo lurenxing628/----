@@ -17,7 +17,7 @@ PluginConfigReader = Callable[[str], Optional[Any]]
 
 
 def _normalize_yes_no(value: Any, default: str = "no") -> str:
-    return normalize_yes_no_wide(value, default=default, unknown_policy="default")
+    return normalize_yes_no_wide(value, default=default)
 
 
 @dataclass

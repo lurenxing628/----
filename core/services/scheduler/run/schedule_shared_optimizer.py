@@ -166,8 +166,7 @@ def optimize_shared_schedule(
     native_preparation = session.decode_session.native_preparation
 
     def build_order(strategy: SortStrategy, params: Dict[str, Any]) -> List[str]:
-        sortable = build_batch_sort_inputs(native_preparation.batches, strategy=strategy,
-                                           readiness_gate_enabled=bool(readiness_gate_enabled))
+        sortable = build_batch_sort_inputs(native_preparation.batches, strategy=strategy)
         sorter = StrategyFactory.create(strategy, **params)
         return [item.batch_id for item in sorter.sort(sortable, base_date=start_dt.date())]
 

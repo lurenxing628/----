@@ -51,9 +51,9 @@ class SummaryBuildContext:
     improvement_trace: List[Dict[str, Any]]
     frozen_op_ids: Set[int]
     scheduled_op_ids: Set[int]
+    freeze_meta: Dict[str, Any]
     search_report: Dict[str, Any] = field(default_factory=dict)
     missing_internal_resource_op_ids: Optional[Set[int]] = None
-    freeze_meta: Optional[Dict[str, Any]] = None
     downtime_meta: Dict[str, Any] = field(default_factory=dict)
     resource_pool_meta: Optional[Dict[str, Any]] = None
     readiness_gate_enabled: bool = False

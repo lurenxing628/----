@@ -165,8 +165,7 @@ class SharedDecodeSession:
         readiness = bool(kwargs.get("readiness_gate_enabled", False))
         override = normalize_batch_order_override(kwargs.get("batch_order_override"), self._normalized_batches)
         full_override = bool(override) and len(override) == len(self._normalized_batches)
-        batch_ranks = build_batch_order(self._normalized_batches, params, batch_order_override=override,
-                                       readiness_gate_enabled=readiness)
+        batch_ranks = build_batch_order(self._normalized_batches, params, batch_order_override=override)
         order = tuple(sorted(batch_ranks, key=batch_ranks.__getitem__))
         sort_inputs = () if full_override else (
             params.strategy.value,

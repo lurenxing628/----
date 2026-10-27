@@ -41,13 +41,12 @@ def _algo_dict(result_summary_obj: Dict[str, Any]) -> Dict[str, Any]:
     return algo if isinstance(algo, dict) else {}
 
 
-def _diagnostic_context(result_summary_obj: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any], Any]:
+def _diagnostic_context(result_summary_obj: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     diagnostics = result_summary_obj.get("diagnostics")
     diagnostics_dict = diagnostics if isinstance(diagnostics, dict) else {}
     optimizer_value = diagnostics_dict.get("optimizer")
     optimizer_diagnostics = optimizer_value if isinstance(optimizer_value, dict) else {}
-    diagnostic_attempts = optimizer_diagnostics.get("attempts")
-    return diagnostics_dict, optimizer_diagnostics, diagnostic_attempts
+    return diagnostics_dict, optimizer_diagnostics
 
 
 def _mark_diagnostics_truncated(state: _SizeGuardState) -> None:
@@ -166,10 +165,9 @@ def _trim_diagnostic_attempts(
     *,
     optimizer_diagnostics: Dict[str, Any],
     diagnostics_dict: Dict[str, Any],
-    diagnostic_attempts: Any,
     limit: int,
 ) -> bool:
-    current_attempts = optimizer_diagnostics.get("attempts", diagnostic_attempts)
+    current_attempts = optimizer_diagnostics.get("attempts")
     if isinstance(current_attempts, list) and len(current_attempts) > limit:
         optimizer_diagnostics["attempts"] = current_attempts[:limit]
         _mark_diagnostics_truncated(state)
@@ -184,7 +182,6 @@ def _apply_truncation_tiers(
     algo_dict: Dict[str, Any],
     diagnostics_dict: Dict[str, Any],
     optimizer_diagnostics: Dict[str, Any],
-    diagnostic_attempts: Any,
 ) -> Optional[Dict[str, Any]]:
     obj = state.result_summary_obj
     obj["summary_truncated"] = True
@@ -199,7 +196,6 @@ def _apply_truncation_tiers(
                 state,
                 optimizer_diagnostics=optimizer_diagnostics,
                 diagnostics_dict=diagnostics_dict,
-                diagnostic_attempts=diagnostic_attempts,
                 limit=tier.attempt_limit,
             )
             or changed
@@ -218,44 +214,6 @@ def _apply_truncation_tiers(
         if changed and summary_size_bytes(obj) <= SUMMARY_SIZE_LIMIT_BYTES:
             return obj
     return None
-
-
-def _drop_diagnostic_fallback_samples(state: _SizeGuardState, *, optimizer_diagnostics: Dict[str, Any]) -> bool:
-    attempts_value = optimizer_diagnostics.get("attempts")
-    if not isinstance(attempts_value, list):
-        return False
-    changed = False
-    for attempt in attempts_value:
-        if not isinstance(attempt, dict):
-            continue
-        algo_stats = attempt.get("algo_stats")
-        if isinstance(algo_stats, dict) and "fallback_samples" in algo_stats:
-            algo_stats.pop("fallback_samples", None)
-            changed = True
-    if changed:
-        _mark_diagnostics_truncated(state)
-    return changed
-
-
-def _drop_diagnostic_field(
-    state: _SizeGuardState,
-    *,
-    optimizer_diagnostics: Dict[str, Any],
-    diagnostics_dict: Dict[str, Any],
-    field: str,
-) -> bool:
-    attempts_value = optimizer_diagnostics.get("attempts")
-    if not isinstance(attempts_value, list):
-        return False
-    changed = False
-    for attempt in attempts_value:
-        if isinstance(attempt, dict) and field in attempt:
-            attempt.pop(field, None)
-            changed = True
-    if changed:
-        _mark_diagnostics_truncated(state)
-        _prune_empty_diagnostics(state.result_summary_obj, diagnostics_dict)
-    return changed
 
 
 def _drop_optimizer_diagnostics(
@@ -283,22 +241,8 @@ def _apply_diagnostic_drop_sequence(
     state: _SizeGuardState,
     *,
     diagnostics_dict: Dict[str, Any],
-    optimizer_diagnostics: Dict[str, Any],
 ) -> Optional[Dict[str, Any]]:
     actions = (
-        lambda: _drop_diagnostic_fallback_samples(state, optimizer_diagnostics=optimizer_diagnostics),
-        lambda: _drop_diagnostic_field(
-            state,
-            optimizer_diagnostics=optimizer_diagnostics,
-            diagnostics_dict=diagnostics_dict,
-            field="used_params",
-        ),
-        lambda: _drop_diagnostic_field(
-            state,
-            optimizer_diagnostics=optimizer_diagnostics,
-            diagnostics_dict=diagnostics_dict,
-            field="algo_stats",
-        ),
         lambda: _drop_optimizer_diagnostics(state, diagnostics_dict=diagnostics_dict),
         lambda: _drop_all_diagnostics(state),
     )
@@ -320,14 +264,13 @@ def apply_summary_size_guard(result_summary_obj: Dict[str, Any]) -> Dict[str, An
 
     state = _SizeGuardState(result_summary_obj=result_summary_obj, original_size=int(original_size))
     algo_dict = _algo_dict(result_summary_obj)
-    diagnostics_dict, optimizer_diagnostics, diagnostic_attempts = _diagnostic_context(result_summary_obj)
+    diagnostics_dict, optimizer_diagnostics = _diagnostic_context(result_summary_obj)
 
     truncated = _apply_truncation_tiers(
         state,
         algo_dict=algo_dict,
         diagnostics_dict=diagnostics_dict,
         optimizer_diagnostics=optimizer_diagnostics,
-        diagnostic_attempts=diagnostic_attempts,
     )
     if truncated is not None:
         return truncated
@@ -335,7 +278,6 @@ def apply_summary_size_guard(result_summary_obj: Dict[str, Any]) -> Dict[str, An
     trimmed = _apply_diagnostic_drop_sequence(
         state,
         diagnostics_dict=diagnostics_dict,
-        optimizer_diagnostics=optimizer_diagnostics,
     )
     if trimmed is not None:
         return trimmed

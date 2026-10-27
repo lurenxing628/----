@@ -15,7 +15,6 @@ first error stays the same. ``fixed_resources`` tells consumers that need the st
 fixed-resource proof (decode tail reuse) whether every operation names its machine and operator.
 """
 
-import math
 from datetime import datetime
 from types import MappingProxyType
 
@@ -40,16 +39,16 @@ def prepare_pruning_record(record, plain_classes):
 
 class GraphPriorityPruning:
     @classmethod
-    def for_cache(cls, cache, graph_state, batches, hours):
+    def for_cache(cls, cache, graph_state, batches):
         if cache is None or cache._timing is None:
             return None
         # The cache already certified the pool and the native probe; auto-assign operations
         # are admitted only through that same certification.
-        return cls(graph_state, batches, hours,
+        return cls(graph_state, batches,
                    eligible_resources=cache.eligible_resources,
                    calendar=cache._timing.calendar, calendar_days=cache.calendar_days, preparation=cache.preparation)
 
-    def __init__(self, graph_state, batches, hours, *, eligible_resources=None, calendar=None, calendar_days=None, preparation):
+    def __init__(self, graph_state, batches, *, eligible_resources=None, calendar=None, calendar_days=None, preparation):
         self._plain_classes = preparation.plain_classes
         self._calendar_days = calendar_days
         self._records = preparation.pruning_records
@@ -60,7 +59,7 @@ class GraphPriorityPruning:
         self.fixed_resources = True
         self._eligible_resources = eligible_resources
         self._calendar = calendar
-        self.supported = self._prepare(graph_state, batches, hours)
+        self.supported = self._prepare(graph_state, batches)
 
     def _record(self, record):
         token = id(record)
@@ -69,7 +68,7 @@ class GraphPriorityPruning:
             records[token] = prepare_pruning_record(record, self._plain_classes)
         return records[token]
 
-    def _prepare(self, graph, batches, hours):
+    def _prepare(self, graph, batches):
         if graph is None or not graph.get("score_enabled"):
             return False
         keys = graph["graph_priority_key_by_op_id"]
@@ -88,10 +87,10 @@ class GraphPriorityPruning:
                 parse_due_date(batch.due_date)
             except ValidationError:
                 return False
-        return self._certify_operations(graph, hours)
+        return self._certify_operations(graph)
 
-    def _certify_operations(self, graph, hours):
-        for op_id, (_batch_id, op) in graph["op_by_id"].items():
+    def _certify_operations(self, graph):
+        for _op_id, (_batch_id, op) in graph["op_by_id"].items():
             if not self._record(op):
                 return False
             if op.source == EXTERNAL:
@@ -99,8 +98,6 @@ class GraphPriorityPruning:
                     return False
                 self.fixed_resources = False
                 continue
-            if not self._certified_internal(op_id, hours):
-                return False
             fixed = self._certified_resources(op)
             if fixed is None:
                 return False
@@ -118,10 +115,6 @@ class GraphPriorityPruning:
         except (ValidationError, ValueError, OverflowError):
             return False
         return True
-
-    @staticmethod
-    def _certified_internal(op_id, hours):
-        return op_id in hours and type(hours[op_id]) is float and math.isfinite(hours[op_id]) and hours[op_id] >= 0
 
     def _certified_resources(self, op):
         """True for a fixed machine/operator pair, False for a certified auto-assign operation, None otherwise.

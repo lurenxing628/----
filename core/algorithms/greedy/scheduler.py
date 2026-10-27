@@ -302,7 +302,6 @@ def build_batch_order(
     params: ScheduleParams,
     *,
     batch_order_override: List[str],
-    readiness_gate_enabled: bool,
 ) -> Dict[str, int]:
     override_order = list(batch_order_override)
     if override_order and len(override_order) == len(batches):
@@ -310,7 +309,6 @@ def build_batch_order(
     batch_for_sort = build_batch_sort_inputs(
         batches,
         strategy=params.strategy,
-        readiness_gate_enabled=readiness_gate_enabled,
     )
     sorted_batches = StrategyFactory.create(params.strategy, **params.used_params).sort(batch_for_sort, base_date=params.base_time.date())
     if not override_order:

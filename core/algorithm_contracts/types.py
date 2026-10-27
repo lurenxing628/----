@@ -65,13 +65,3 @@ class ScheduleSummary:
     errors: List[str]
     duration_seconds: float
     failure_details: List[Dict[str, Any]] = field(default_factory=list)
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.success, bool):
-            raise TypeError("success 必须是布尔值。")
-        for field_name in ("total_ops", "scheduled_ops", "failed_ops"):
-            value = getattr(self, field_name)
-            if isinstance(value, bool) or not isinstance(value, int):
-                raise TypeError(f"{field_name} 必须是非负整数。")
-            if value < 0:
-                raise ValueError(f"{field_name} 必须是非负整数。")

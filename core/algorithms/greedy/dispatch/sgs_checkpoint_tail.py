@@ -71,8 +71,8 @@ def _same_future_state(state, reference, graph, progress):
     batches = {graph["op_by_id"][op_id][0] for op_id in remaining}
     if any(state.prev_end(batch) != reference.prev_end(batch) for batch in batches):
         return False
-    old_keys = progress.get("checkpoint_priority_keys", {})
-    if any(graph["graph_priority_key_by_op_id"][op_id] != old_keys.get(op_id) for op_id in remaining):
+    old_keys = progress["checkpoint_priority_keys"]
+    if any(graph["graph_priority_key_by_op_id"][op_id] != old_keys[op_id] for op_id in remaining):
         return False
     return _same_dependency_ends(remaining, graph, progress)
 
@@ -80,7 +80,7 @@ def _same_future_state(state, reference, graph, progress):
 def _same_dependency_ends(remaining, graph, progress):
     needed_ends = set()
     for op_id in remaining:
-        needed_ends.update(graph["predecessor_op_ids_by_op_id"].get(op_id, ()))
+        needed_ends.update(graph["predecessor_op_ids_by_op_id"][op_id])
     current_ends, old_ends = graph.get("end_time_by_op_id", {}), progress.get("end_time_by_op_id", {})
     return all(current_ends.get(op_id) == old_ends.get(op_id) for op_id in needed_ends)
 

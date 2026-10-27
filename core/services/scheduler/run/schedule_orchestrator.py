@@ -47,7 +47,7 @@ def orchestrate_schedule_run(
         operations=schedule_input.payload_validation_operations,
         operation_sources=schedule_input.operation_sources,
         missing_internal_resource_op_ids=schedule_input.missing_internal_resource_op_ids,
-        schedule_errors=adopted_plan.summary.errors if adopted_plan.summary is not None else [],
+        schedule_errors=adopted_plan.summary.errors,
         point_validator=point_validator,
     )
 

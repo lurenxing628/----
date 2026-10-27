@@ -23,13 +23,7 @@ def _public_node_label(nodes: Dict[str, Dict[str, Any]], node_id: str) -> str:
     return nodes[node_id]["label"]
 
 
-def _node_dt(node: Dict[str, Any], key: str) -> Optional[datetime]:
-    return node.get(key)
-
-
-def _minutes_between(a: Optional[datetime], b: Optional[datetime]) -> Optional[int]:
-    if not a or not b:
-        return None
+def _minutes_between(a: datetime, b: datetime) -> int:
     return (b - a) // timedelta(minutes=1)
 
 
@@ -183,9 +177,7 @@ def _backtrace_chain(
 
     cur = sink_id
     seen: set = set()
-    guard = 0
-    while cur and cur not in seen and guard < (len(nodes) + 5):
-        guard += 1
+    while cur and cur not in seen:
         seen.add(cur)
         chain_rev.append(cur)
         control = ctrl_prev.get(cur)
@@ -212,10 +204,7 @@ def _backtrace_chain(
 def _edge_type_stats(edges: List[Dict[str, Any]]) -> Dict[str, int]:
     stats: Dict[str, int] = {"process": 0, "machine": 0, "operator": 0, "unknown": 0}
     for e in edges:
-        k = str(e.get("edge_type") or "unknown")
-        if k not in stats:
-            k = "unknown"
-        stats[k] = stats[k] + 1
+        stats[e["edge_type"]] += 1
     return stats
 
 
@@ -235,28 +224,26 @@ def _explicit_sink(rows: List[Dict[str, Any]], nodes: Dict[str, Dict[str, Any]],
 def compute_critical_chain_from_rows(rows: List[Dict[str, Any]], *, target_id: Optional[str] = None) -> Dict[str, Any]:
     """An explicit sink changes only backtracing, never the full input control graph."""
     nodes, dropped = _build_nodes(rows)
-    sink_id = ""
     if target_id is not None:
         sink_id, reason = _explicit_sink(rows, nodes, target_id)
         if reason:
             return _unavailable_result(reason)
     elif not nodes:
         return _empty_result(dropped_count=dropped)
+    else:
+        sink_id = _sink_id(nodes)
 
     proc_prev = _build_process_prev(nodes)
     return _chain_result(nodes, proc_prev, dropped_count=dropped, sink_id=sink_id)
 
 
-def _chain_result(nodes, proc_prev, *, dropped_count, sink_id=""):
+def _chain_result(nodes, proc_prev, *, dropped_count, sink_id):
     mach_prev = _build_prev_by_resource(nodes, resource_key="machine_id")
     op_prev = _build_prev_by_resource(nodes, resource_key="operator_id")
 
     ctrl_prev = _choose_control_prev(nodes, proc_prev=proc_prev, mach_prev=mach_prev, op_prev=op_prev)
-    if not sink_id:
-        sink_id = _sink_id(nodes)
     chain, edges = _backtrace_chain(sink_id, ctrl_prev=ctrl_prev, nodes=nodes)
-    sink_end = _node_dt(nodes[sink_id], "end") if sink_id in nodes else None
-    makespan_end = _fmt_dt(sink_end) if sink_end is not None else None
+    makespan_end = _fmt_dt(nodes[sink_id]["end"])
 
     return {
         "ids": chain,
@@ -303,4 +290,4 @@ def compute_critical_chain_from_dependencies(rows, predecessor_ids):
                 heappush(ready, (nodes[child]["start"], nodes[child]["end"], nodes[child]["sort_id"], child))
     if order != len(nodes):
         raise ValueError("工艺前后关系形成循环，无法计算关键链。")
-    return _chain_result(nodes, previous, dropped_count=dropped)
+    return _chain_result(nodes, previous, dropped_count=dropped, sink_id=_sink_id(nodes))

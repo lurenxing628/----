@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 from .candidate_comparison import candidate_is_preferred
 from .candidate_fingerprint import CandidateFingerprint
@@ -12,17 +12,17 @@ class LocalSearchState:
     current: Dict[str, Any]
     best: Dict[str, Any]
     current_order: List[str]
-    current_resource_pool: Optional[Dict[str, Any]]
+    current_resource_pool: Dict[str, Any]
     current_resource_pair_rank: Dict[Tuple[str, str], int]
 
     @classmethod
-    def from_best(cls, best: Dict[str, Any], *, resource_pool: Optional[Dict[str, Any]]) -> LocalSearchState:
+    def from_best(cls, best: Dict[str, Any]) -> LocalSearchState:
         return cls(
             current=best,
             best=best,
             current_order=list(best["order"]),
             # Every candidate carries the run's own pool normalized as ``resource_pool or {}``.
-            current_resource_pool=best["resource_pool"] or resource_pool or {},
+            current_resource_pool=best["resource_pool"],
             current_resource_pair_rank=best.get("resource_pair_rank") or {},
         )
 
@@ -30,7 +30,7 @@ class LocalSearchState:
         self.current = candidate
         self.current_resource_pair_rank = candidate["resource_pair_rank"]
         self.current_order = list(candidate["order"])
-        self.current_resource_pool = candidate["resource_pool"] or {}
+        self.current_resource_pool = candidate["resource_pool"]
 
     def improve_best(self, candidate: Dict[str, Any]) -> None:
         self.best = candidate
