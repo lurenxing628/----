@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 import pytest
 
 from core.infrastructure.transaction import TransactionManager
-from core.infrastructure.workbench_template_lineage_schema import install_template_lineage
 from core.models.workbench_batch import normalize_operation_input
 from core.models.workbench_calibration import CalibrationQuery
 from core.services.scheduler.template_lineage import TemplateLineageWriter
@@ -46,8 +45,6 @@ def lineage_case(ledger_case):
     case = ledger_case
     case.conn.execute("INSERT INTO PartOperations(part_no,seq,op_type_id,op_type_name,source,setup_hours,unit_hours) VALUES ('P1',1,'T1','Turning','internal',0,1)")
     case.conn.commit()
-    with TransactionManager(case.conn).transaction():
-        install_template_lineage(case.conn)
     case.lineage_repo = WorkbenchTemplateLineageRepository(case.conn)
     case.template_id = case.conn.execute("SELECT id FROM PartOperations WHERE part_no='P1'").fetchone()[0]
     return case

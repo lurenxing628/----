@@ -2712,13 +2712,12 @@ function SMExport({
   function missingArrangements(unplannedCount, deferredCount) {
     if (unplannedCount == null && deferredCount == null) return '未安排工序数待确认，请查看原因';
     const items = [];
-    if (unplannedCount == null) items.push('其他未安排工序数待确认');else if (unplannedCount > 0) items.push(countText(unplannedCount) + ' 道工序' + (deferredCount > 0 ? '因其他原因未安排' : '未安排'));
-    if (deferredCount == null) items.push('缺料未安排工序数待确认');else if (deferredCount > 0) items.push(countText(deferredCount) + ' 道工序因缺料暂未安排');
+    if (unplannedCount > 0) items.push(countText(unplannedCount) + ' 道工序' + (deferredCount > 0 ? '因其他原因未安排' : '未安排'));
+    if (deferredCount > 0) items.push(countText(deferredCount) + ' 道工序因缺料暂未安排');
     return items.join('；');
   }
   function completionSummary(scope) {
     if (scope.state === 'not_applicable') return '本次没有需要安排的批次';
-    if (scope.source_available === false) return '工序安排记录未保存，请查看原因';
     const items = [];
     if (scope.complete_batch_count > 0) items.push(countText(scope.complete_batch_count) + ' 批工序已排齐');
     const missing = missingArrangements(scope.unplanned_operation_count, scope.deferred_operation_count);
@@ -2829,7 +2828,6 @@ function SMExport({
     accept_latest: '已核对，继续编辑',
     personal_calendar: '个人日历',
     name_missing: '名称未填写',
-    legacy_field_records: '历史现场记录',
     shared_operation: '共同工序',
     overdue: '超期',
     current_official: '当前正式',
@@ -2847,9 +2845,7 @@ function SMExport({
     }),
     candidate_statuses: Object.freeze({
       completed: '计算完成',
-      partial: '工序未排齐',
-      failed: '计算失败',
-      skipped: '未计算'
+      partial: '工序未排齐'
     }),
     material_strategies: Object.freeze({
       strict: '等整批物料齐套',
@@ -2867,15 +2863,12 @@ function SMExport({
       unreported: '待报工',
       started: '已开工',
       partial: '部分完成',
-      paused: '已暂停',
-      exception: '异常',
       complete: '已完工'
     }),
     // 报工记录的数据完整性：与后端报表、实际甘特导出的叫法一致。complete 在这里是“完整”，不是执行状态的“已完工”。
     data_quality: Object.freeze({
       complete: '完整',
       incomplete: '不完整',
-      legacy_incomplete: '历史资料不完整',
       invalid: '需复核'
     }),
     // 交付判断：计划详情、执行排产、值班台、试调共用；与正式计划导出一致。
@@ -5345,7 +5338,7 @@ function SMExport({
     const query = parameters(scope, ['collection', 'size', 'cursor', 'snapshot_ref']);
     if (!own(query, 'collection')) query.collection = 'history';
     if (!own(query, 'size')) query.size = 20;
-    if (!['history', 'scenario'].includes(query.collection) || !Number.isSafeInteger(query.size) || query.size < 1 || query.size > 50) throw C.failure('计划列表只能按历史版本或试调方案查看，每页 1 至 50 条。这次没有读取，请点「刷新」重试。');
+    if (query.collection !== 'history' || !Number.isSafeInteger(query.size) || query.size < 1 || query.size > 50) throw C.failure('计划列表只能按历史版本查看，每页 1 至 50 条。这次没有读取，请点「刷新」重试。');
     return query;
   }
   function workspaceScope(planRef, scope = {}) {
@@ -5374,9 +5367,9 @@ function SMExport({
     if (own(query, 'snapshot_ref') && result.meta.snapshot_ref !== query.snapshot_ref) throw C.failure(window.WorkbenchTerms.outcomes.stale);
   }
   function plan(value) {
-    if (!exact(value, ['plan_ref', 'version', 'kind', 'is_current_official', 'display_name', 'completeness', 'capabilities', 'blocked_reasons']) || !nullableRef(value.plan_ref) || !(value.version === null || int64(value.version)) || !['official', 'candidate', 'scenario'].includes(value.kind) || typeof value.is_current_official !== 'boolean' || !label(value.display_name) || !['complete', 'partial', 'invalid', 'unknown'].includes(value.completeness) || !exact(value.capabilities, ['view', 'export', 'edit_draft', 'adopt', 'report_actual']) || typeof value.capabilities.view !== 'boolean' || value.capabilities.export !== value.capabilities.view || !['edit_draft', 'adopt', 'report_actual'].every(key => value.capabilities[key] === false) || !issues(value.blocked_reasons)) return false;
+    if (!exact(value, ['plan_ref', 'version', 'kind', 'is_current_official', 'display_name', 'completeness', 'capabilities', 'blocked_reasons']) || !nullableRef(value.plan_ref) || !(value.version === null || int64(value.version)) || value.kind !== 'official' || typeof value.is_current_official !== 'boolean' || !label(value.display_name) || !['complete', 'partial', 'invalid', 'unknown'].includes(value.completeness) || !exact(value.capabilities, ['view', 'export', 'edit_draft', 'adopt', 'report_actual']) || typeof value.capabilities.view !== 'boolean' || value.capabilities.export !== value.capabilities.view || !['edit_draft', 'adopt', 'report_actual'].every(key => value.capabilities[key] === false) || !issues(value.blocked_reasons)) return false;
     const view = value.capabilities.view;
-    return (view ? ref(value.plan_ref) && int64(value.version) && value.blocked_reasons.length === 0 && value.completeness !== 'invalid' : value.blocked_reasons.length > 0) && (!value.is_current_official || value.kind === 'official' && view);
+    return (view ? ref(value.plan_ref) && int64(value.version) && value.blocked_reasons.length === 0 && value.completeness !== 'invalid' : value.blocked_reasons.length > 0) && (!value.is_current_official || view);
   }
   function uniqueRefs(rows, key) {
     if (!Array.isArray(rows) || rows.some(row => !object(row) || !own(row, key))) return false;
@@ -5388,9 +5381,9 @@ function SMExport({
     envelope(result, query);
     const d = result.data,
       p = d && d.page;
-    if (!exact(d, ['plans', 'page']) || !Array.isArray(d.plans) || !d.plans.every(plan) || !uniqueRefs(d.plans, 'plan_ref') || !exact(p, ['collection', 'size', 'unit', 'has_more', 'next_cursor']) || p.collection !== query.collection || p.size !== query.size || p.unit !== (query.collection === 'history' ? 'version' : 'scenario') || typeof p.has_more !== 'boolean' || (p.has_more ? !token(p.next_cursor) || !d.plans.length || p.next_cursor === query.cursor : p.next_cursor !== null) || d.plans.some(row => row.kind === 'scenario' !== (query.collection === 'scenario')) || d.plans.filter(row => row.is_current_official).length > 1) throw C.failure('计划列表的类型或分页与查询不一致，请刷新。');
+    if (!exact(d, ['plans', 'page']) || !Array.isArray(d.plans) || !d.plans.every(plan) || !uniqueRefs(d.plans, 'plan_ref') || !exact(p, ['collection', 'size', 'unit', 'has_more', 'next_cursor']) || p.collection !== query.collection || p.size !== query.size || p.unit !== 'version' || typeof p.has_more !== 'boolean' || (p.has_more ? !token(p.next_cursor) || !d.plans.length || p.next_cursor === query.cursor : p.next_cursor !== null) || d.plans.filter(row => row.is_current_official).length > 1) throw C.failure('计划列表的类型或分页与查询不一致，请刷新。');
     // A history page counts versions, not role entries; null versions cannot be grouped by guessed identity.
-    const units = query.collection === 'scenario' ? d.plans.length : new Set(d.plans.filter(row => row.version !== null).map(row => String(row.version))).size + d.plans.filter(row => row.version === null).length;
+    const units = new Set(d.plans.filter(row => row.version !== null).map(row => String(row.version))).size + d.plans.filter(row => row.version === null).length;
     if (units > query.size) throw C.failure('计划列表条数超过每页上限，请刷新。');
     return result;
   }
@@ -5431,10 +5424,10 @@ function SMExport({
   }
   function baseline(value, data) {
     if (!object(value)) return false;
-    if (value.state === 'unavailable') return exact(value, ['state', 'reason_code', 'reason', 'baseline_plan', 'items', 'item_count', 'items_complete']) && ['not_recorded', 'baseline_binding_invalid', 'baseline_unavailable', 'scenario_unavailable', 'baseline_task_invalid', 'no_adoption_baseline', 'adoption_evidence_missing', 'adoption_source_archived', 'adoption_snapshot_invalid', 'adoption_baseline_archived', 'adoption_reference_invalid', 'adoption_baseline_drift', 'adoption_plan_drift'].includes(value.reason_code) && label(value.reason) && value.baseline_plan === null && Array.isArray(value.items) && value.items.length === 0 && value.item_count === 0 && value.items_complete === false;
+    if (value.state === 'unavailable') return exact(value, ['state', 'reason_code', 'reason', 'baseline_plan', 'items', 'item_count', 'items_complete']) && ['not_recorded', 'baseline_binding_invalid', 'baseline_unavailable', 'baseline_task_invalid', 'no_adoption_baseline', 'adoption_evidence_missing', 'adoption_source_archived', 'adoption_snapshot_invalid', 'adoption_baseline_archived', 'adoption_reference_invalid', 'adoption_baseline_drift', 'adoption_plan_drift'].includes(value.reason_code) && label(value.reason) && value.baseline_plan === null && Array.isArray(value.items) && value.items.length === 0 && value.item_count === 0 && value.items_complete === false;
     const fields = ['start', 'end', 'machine_ref', 'operator_ref'],
       s = value.comparison_scope;
-    if (!exact(value, ['state', 'reason_code', 'reason', 'basis', 'baseline_plan', 'comparison_scope', 'compared_fields', 'items', 'item_count', 'items_complete']) || value.state !== 'available' || value.reason_code !== null || value.reason !== null || !['scenario_base', 'candidate_adoption', 'trial_adoption'].includes(value.basis) || data.plan.kind !== (value.basis === 'scenario_base' ? 'scenario' : 'official') || !plan(value.baseline_plan) || !value.baseline_plan.capabilities.view || value.basis !== 'scenario_base' && (value.baseline_plan.kind !== 'official' || value.baseline_plan.is_current_official) || value.baseline_plan.kind === 'scenario' || value.baseline_plan.plan_ref === data.plan.plan_ref || !exact(s, ['scope', 'selection', 'boundary', 'alignment', 'time_basis', 'task_times']) || !same(s.scope, data.scope) || s.selection !== 'either_side_overlap' || s.boundary !== 'half_open' || s.alignment !== 'operation_ref' || s.time_basis !== 'factory_local' || s.task_times !== 'unclipped' || !sameArray(value.compared_fields, fields) || !Array.isArray(value.items) || value.item_count !== value.items.length || value.item_count > 20000 || value.items_complete !== true || !uniqueRefs(value.items, 'operation_ref')) return false;
+    if (!exact(value, ['state', 'reason_code', 'reason', 'basis', 'baseline_plan', 'comparison_scope', 'compared_fields', 'items', 'item_count', 'items_complete']) || value.state !== 'available' || value.reason_code !== null || value.reason !== null || !['candidate_adoption', 'trial_adoption'].includes(value.basis) || !plan(value.baseline_plan) || !value.baseline_plan.capabilities.view || value.baseline_plan.is_current_official || value.baseline_plan.plan_ref === data.plan.plan_ref || !exact(s, ['scope', 'selection', 'boundary', 'alignment', 'time_basis', 'task_times']) || !same(s.scope, data.scope) || s.selection !== 'either_side_overlap' || s.boundary !== 'half_open' || s.alignment !== 'operation_ref' || s.time_basis !== 'factory_local' || s.task_times !== 'unclipped' || !sameArray(value.compared_fields, fields) || !Array.isArray(value.items) || value.item_count !== value.items.length || value.item_count > 20000 || value.items_complete !== true || !uniqueRefs(value.items, 'operation_ref')) return false;
     const selected = new Map(data.tasks.map(row => [row.task_ref, row]));
     let afterCount = 0;
     for (const row of value.items) {
@@ -26461,11 +26454,11 @@ function SMExport({
       baseline = data.projections.baseline;
     const algorithm = p.algorithm,
       captured = p.baseline;
-    const identity = plan => [plan.kind === 'official' ? '正式计划' : plan.kind === 'candidate' ? window.WorkbenchTerms.candidate : window.WorkbenchTerms.trial_scenario, plan.display_name, plan.version === null ? null : 'v' + plan.version].filter(Boolean).join(' · ');
+    const identity = plan => ['正式计划', plan.display_name, plan.version === null ? null : 'v' + plan.version].filter(Boolean).join(' · ');
     return /*#__PURE__*/React.createElement("div", {
       className: "wb-gantt-comparison-source",
       "data-gantt-comparison-source": true
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", null, "\u5F53\u524D\u5B89\u6392\uFF1A", identity(data.plan)), p.state === 'available' ? p.source_kind === 'candidate_adoption' ? /*#__PURE__*/React.createElement(React.Fragment, null, "\uFF0C\u91C7\u7528\u7B97\u6CD5\u751F\u6210\u7684\u5019\u9009\u300C", p.source_label || '未命名', "\u300D\uFF1B\u7B97\u6CD5\uFF1A", algorithm.mode_label || algorithm.mode || '未记录', algorithm.strategy_label && ' · ' + algorithm.strategy_label, "\u3002") : /*#__PURE__*/React.createElement(React.Fragment, null, "\uFF0C\u91C7\u7528\u4FDD\u5B58\u7684\u8BD5\u8C03\u65B9\u6848\u300C", p.source_label || '未命名', "\u300D\u3002") : '，' + p.reason), baseline.state === 'available' ? /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", null, "\u539F\u5B89\u6392\uFF1A", identity(baseline.baseline_plan)), "\uFF0C", captured ? (captured.kind === 'admission_official' ? '提交该次试排时' : '创建该次试调时') + '自动保存' : baseline.basis === 'scenario_base' ? '创建试调时保存的基础安排' : '生成此方案时记录的对照安排', "\u3002") : /*#__PURE__*/React.createElement("div", null, "\u539F\u5B89\u6392\uFF1A", baseline.reason));
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", null, "\u5F53\u524D\u5B89\u6392\uFF1A", identity(data.plan)), p.state === 'available' ? p.source_kind === 'candidate_adoption' ? /*#__PURE__*/React.createElement(React.Fragment, null, "\uFF0C\u91C7\u7528\u7B97\u6CD5\u751F\u6210\u7684\u5019\u9009\u300C", p.source_label || '未命名', "\u300D\uFF1B\u7B97\u6CD5\uFF1A", algorithm.mode_label || algorithm.mode || '未记录', algorithm.strategy_label && ' · ' + algorithm.strategy_label, "\u3002") : /*#__PURE__*/React.createElement(React.Fragment, null, "\uFF0C\u91C7\u7528\u4FDD\u5B58\u7684\u8BD5\u8C03\u65B9\u6848\u300C", p.source_label || '未命名', "\u300D\u3002") : '，' + p.reason), baseline.state === 'available' ? /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", null, "\u539F\u5B89\u6392\uFF1A", identity(baseline.baseline_plan)), "\uFF0C", captured ? (captured.kind === 'admission_official' ? '提交该次试排时' : '创建该次试调时') + '自动保存' : '生成此方案时记录的对照安排', "\u3002") : /*#__PURE__*/React.createElement("div", null, "\u539F\u5B89\u6392\uFF1A", baseline.reason));
   }
   function PlanGantt({
     data,
@@ -27021,7 +27014,7 @@ function SMExport({
   }) {
     const unavailable = !plan.capabilities.view;
     const T = window.WorkbenchTerms;
-    const text = plan.is_current_official ? T.current_official : plan.kind === 'official' ? T.historical_official : plan.kind === 'candidate' ? T.candidate : T.trial_scenario;
+    const text = plan.is_current_official ? T.current_official : T.historical_official;
     return /*#__PURE__*/React.createElement("span", {
       className: 'plan-state ' + (unavailable ? 'unavailable' : plan.is_current_official ? 'official' : '')
     }, text, unavailable ? ' · 不可查看' : '');
@@ -27033,8 +27026,7 @@ function SMExport({
     actions,
     navigation
   }) {
-    const [collection, setCollection] = React.useState('history'),
-      [pages, setPages] = React.useState([{}]),
+    const [pages, setPages] = React.useState([{}]),
       [index, setIndex] = React.useState(0);
     const [paused, setPaused] = React.useState(false),
       [collapsed, setCollapsed] = React.useState(!!selectedRef);
@@ -27042,22 +27034,22 @@ function SMExport({
       section = React.useRef(null),
       restoreFocus = React.useRef(false);
     const scope = React.useMemo(() => ({
-      collection,
+      collection: 'history',
       size: 20,
       ...pages[index]
-    }), [collection, pages, index]);
+    }), [pages, index]);
     const read = S.useQuery(signal => window.APSPlanAPI.catalog(scope, signal), [scope], !paused);
     const result = read.result,
       data = result && result.data;
     React.useEffect(() => {
-      if (attempted.current || !data || read.loading || read.error || collection !== 'history' || index !== 0) return;
+      if (attempted.current || !data || read.loading || read.error || index !== 0) return;
       attempted.current = true;
       const plan = autoSelect && !selectedRef ? window.PlanSelectionModel.defaultPlan(data.plans) : null;
       if (plan) {
         setCollapsed(true);
         onSelect(plan);
       }
-    }, [data, read.loading, read.error, autoSelect, selectedRef, collection, index]);
+    }, [data, read.loading, read.error, autoSelect, selectedRef, index]);
     React.useLayoutEffect(() => {
       if (collapsed && restoreFocus.current && section.current) {
         restoreFocus.current = false;
@@ -27070,8 +27062,7 @@ function SMExport({
       setCollapsed(true);
       onSelect(plan);
     }
-    function refresh(next = collection) {
-      setCollection(next);
+    function refresh() {
       setPages([{}]);
       setIndex(0);
       setPaused(false);
@@ -27114,12 +27105,7 @@ function SMExport({
       key: plan.plan_ref,
       value: plan.plan_ref,
       disabled: !plan.capabilities.view
-    }, plan.display_name, plan.is_current_official ? ' · 当前正式' : '')))), !collapsed && /*#__PURE__*/React.createElement(window.PlanSegmentUI, {
-      value: collection,
-      options: [["history", "历史版本"], ["scenario", "试调方案"]],
-      label: "\u8BA1\u5212\u5217\u8868\u8303\u56F4",
-      onChange: refresh
-    }), /*#__PURE__*/React.createElement("div", {
+    }, plan.display_name, plan.is_current_official ? ' · 当前正式' : '')))), /*#__PURE__*/React.createElement("div", {
       className: "plan-catalog-actions"
     }, actions, !collapsed && /*#__PURE__*/React.createElement(Button, {
       className: "btn plan-icon",
@@ -28054,8 +28040,8 @@ function SMExport({
       reference: data.plan.plan_ref,
       label: '正式计划',
       name: data.plan.display_name,
-      status: data.plan.is_current_official ? window.WorkbenchTerms.current_official : data.plan.kind === 'official' ? window.WorkbenchTerms.historical_official : data.plan.kind === 'candidate' ? window.WorkbenchTerms.candidate : window.WorkbenchTerms.trial_scenario,
-      ...(data.plan.kind === 'official' && data.plan.version !== null ? {
+      status: data.plan.is_current_official ? window.WorkbenchTerms.current_official : window.WorkbenchTerms.historical_official,
+      ...(data.plan.version !== null ? {
         version: window.WorkbenchTerms.plan_version(data.plan.version)
       } : {})
     } : null);
@@ -28307,7 +28293,7 @@ function SMExport({
   }
   function task(value) {
     const p = value && value.execution;
-    return C.object(value) && ref(value.task_ref) && ref(value.plan_ref) && planned(value) && planQuantity(value) && typeof value.batch_id === 'string' && typeof value.operation_label === 'string' && C.object(p) && ref(p.operation_ref) && p.operation_ref === value.operation_ref && (p.comparison_task_ref === null || p.comparison_task_ref === value.task_ref) && Object.hasOwnProperty.call(states, p.execution_state) && ['complete', 'incomplete', 'legacy_incomplete', 'invalid'].includes(p.data_quality) && nullable(p.target_quantity) && nullable(p.known_completed_quantity) && nullable(p.remaining_quantity) && typeof p.records_complete === 'boolean' && typeof p.quantity_complete === 'boolean' && Number.isInteger(p.unknown_record_count) && Array.isArray(p.data_gaps) && Array.isArray(p.reports) && p.reports.every(row => report(row) && row.operation_ref === p.operation_ref) && Array.isArray(p.legacy_facts) && Array.isArray(p.voided_reports) && C.object(p.write_context);
+    return C.object(value) && ref(value.task_ref) && ref(value.plan_ref) && planned(value) && planQuantity(value) && typeof value.batch_id === 'string' && typeof value.operation_label === 'string' && C.object(p) && ref(p.operation_ref) && p.operation_ref === value.operation_ref && (p.comparison_task_ref === null || p.comparison_task_ref === value.task_ref) && Object.hasOwnProperty.call(states, p.execution_state) && ['complete', 'incomplete', 'invalid'].includes(p.data_quality) && nullable(p.target_quantity) && nullable(p.known_completed_quantity) && nullable(p.remaining_quantity) && typeof p.records_complete === 'boolean' && typeof p.quantity_complete === 'boolean' && Number.isInteger(p.unknown_record_count) && Array.isArray(p.data_gaps) && Array.isArray(p.reports) && p.reports.every(row => report(row) && row.operation_ref === p.operation_ref) && Array.isArray(p.voided_reports) && C.object(p.write_context);
   }
   // 信封（ok、schema_version、meta、data 对象）已由 transport.js 的 envelope() 校验，这里只校验 data。
   function query(result, mode, expected) {
@@ -28403,47 +28389,11 @@ function SMExport({
   function previous(task) {
     return task.execution.reports.filter(record => record.recorded_against_task_ref === task.task_ref && C.validTime(record.actual_end) && (record.actual_start === null || C.validTime(record.actual_start) && record.actual_start <= record.actual_end)).sort((a, b) => b.actual_end.localeCompare(a.actual_end) || b.report_no.localeCompare(a.report_no))[0] || null;
   }
-  function legacyTime(value) {
-    // Match the preserved formats accepted by parse_operation_event_time.
-    const stamp = value.trim().replace(/\//g, '-').replace(/T/g, ' ').replace(/：/g, ':');
-    const match = /^(\d{4})-(\d{1,2})-(\d{1,2}| [1-9])(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/.exec(stamp);
-    if (!match) return stamp;
-    const [year, month, day, hour = '0', minute = '0', second = '0'] = match.slice(1);
-    return year + '-' + month.padStart(2, '0') + '-' + day.trim().padStart(2, '0') + 'T' + hour.padStart(2, '0') + ':' + minute.padStart(2, '0') + ':' + second.padStart(2, '0');
-  }
-  function legacyResources(scope, gaps) {
-    const scopeRefs = new Set(scope.map(fact => fact.legacy_fact_ref)),
-      result = {};
-    for (const key of ['actual_machine_ref', 'actual_operator_ref']) {
-      const unresolved = gaps.some(gap => gap.code === 'legacy_resource_identity_unresolved' && scopeRefs.has(gap.legacy_fact_ref) && gap.fields.includes(key));
-      const refs = [...new Set(scope.map(fact => fact[key]).filter(value => value != null))];
-      result[key] = !unresolved && refs.length === 1 ? refs[0] : null;
-    }
-    return result;
-  }
-  function legacyValues(task, legacyFactRef) {
-    if (!legacyFactRef) return null;
-    const e = task.execution,
-      finish = e.legacy_facts.find(fact => fact.legacy_fact_ref === legacyFactRef && fact.event_type === 'finish');
-    if (!finish) return null;
-    const scope = e.legacy_facts.filter(fact => fact.recorded_against_task_ref === finish.recorded_against_task_ref);
-    const starts = [...new Set(scope.filter(fact => fact.event_type === 'start').map(fact => legacyTime(fact.event_time)).filter(Boolean))];
-    const known = {},
-      end = legacyTime(finish.event_time);
-    if (starts.length === 1) known.actual_start = starts[0];
-    if (end) known.actual_end = end;
-    if (finish.quantity_done !== null && finish.quantity_done !== undefined) known.completed_quantity = String(finish.quantity_done);
-    const resources = legacyResources(scope, e.data_gaps);
-    for (const key of ['actual_machine_ref', 'actual_operator_ref']) if (resources[key]) known[key] = resources[key];
-    return known;
-  }
   function initialize({
     task,
     record,
-    legacy,
     action,
     retained,
-    knownLegacy,
     now = new Date()
   }) {
     if (retained) return {
@@ -28459,9 +28409,7 @@ function SMExport({
     };
     const draft = C.draft(record),
       suggestions = {};
-    if (legacy) {
-      Object.assign(draft, knownLegacy === undefined ? legacyValues(task, legacy.legacy_fact_ref) : knownLegacy);
-    } else if (action === 'create' && !record) {
+    if (action === 'create' && !record) {
       const last = previous(task),
         current = localNow(now);
       draft.actual_start = last && last.actual_end <= current ? last.actual_end : current;
@@ -28499,9 +28447,6 @@ function SMExport({
   }
   window.FieldDraftModel = {
     previous,
-    legacyTime,
-    legacyResources,
-    legacyValues,
     initialize,
     copyPrevious,
     continuation
@@ -28851,7 +28796,6 @@ function SMExport({
   function FieldEditorFields({
     task,
     record,
-    legacy,
     action,
     adapter,
     draft,
@@ -28859,14 +28803,10 @@ function SMExport({
     disabled,
     first,
     change,
-    error,
-    knownLegacy
+    error
   }) {
     const Field = window.ResourceControls.Field;
-    const readonly = key => {
-      const hasKnownLegacy = Boolean(knownLegacy && Object.prototype.hasOwnProperty.call(knownLegacy, key) && knownLegacy[key] !== '');
-      return disabled || hasKnownLegacy && (!record || String(record[key] ?? '') === knownLegacy[key]) || action === 'supplement' && record[key] != null && record[key] !== '';
-    };
+    const readonly = key => disabled || action === 'supplement' && record[key] != null && record[key] !== '';
     const choices = (key, label, kind) => /*#__PURE__*/React.createElement(window.ResourceControls.Choice, {
       adapter: adapter,
       field: {
@@ -28888,7 +28828,7 @@ function SMExport({
     const amount = value => value !== '' && Number.isFinite(Number(value)) ? Number(value) : null;
     const quantity = amount(draft.completed_quantity),
       effectiveHours = amount(draft.effective_processing_hours);
-    const previousQuantity = knownLegacy && knownLegacy.completed_quantity !== undefined && (!record || record.completed_quantity == null) ? Number(knownLegacy.completed_quantity) : record ? Number(record.completed_quantity) : 0;
+    const previousQuantity = record ? Number(record.completed_quantity) : 0;
     const cumulative = quantity === null || !Number.isSafeInteger(quantity) || quantity < 0 || task.execution.known_completed_quantity === null ? null : task.execution.known_completed_quantity - previousQuantity + quantity;
     const start = draft.actual_start ? Date.parse(draft.actual_start + 'Z') : NaN,
       end = draft.actual_end ? Date.parse(draft.actual_end + 'Z') : NaN;
@@ -28900,7 +28840,7 @@ function SMExport({
       trim: true
     });
     const timeHints = Object.keys(suggestions).length > 0,
-      reasonLabel = action === 'supplement' || legacy ? '补齐原因' : '更正原因';
+      reasonLabel = action === 'supplement' ? '补齐原因' : '更正原因';
     // 外协不占本厂设备和人员，不提供选择；旧记录里已填的仍显示，方便用「更正」清除（写入仍以服务端校验为准）。
     const external = task.source === 'external',
       held = key => !!draft[key] || !!(record && record[key]);
@@ -28933,7 +28873,7 @@ function SMExport({
       className: "field-note"
     }, "\u5DF2\u77E5\u7D2F\u8BA1 ", /*#__PURE__*/React.createElement("output", {
       "aria-label": "\u5DF2\u77E5\u7D2F\u8BA1"
-    }, cumulative === null ? '未核对' : cumulative), " / \u6267\u884C\u76EE\u6807 ", C.quantity(task.execution.target_quantity), " \u4EF6", quantityReadonly && /*#__PURE__*/React.createElement("small", null, " \xB7 \u65E7\u5B8C\u5DE5\u6570\u91CF\u53D7\u4FDD\u62A4\uFF0C\u672C\u6B21\u4FDD\u7559\u539F\u7D2F\u8BA1\u6570\u91CF"), task.execution.unknown_record_count > 0 && /*#__PURE__*/React.createElement("small", null, " \xB7 \u539F\u8BB0\u5F55\u6570\u91CF\u5F85\u8865 ", task.execution.unknown_record_count, " \u6761"))), /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h4", null, "\u5B9E\u9645\u8D77\u6B62"), timeHints && /*#__PURE__*/React.createElement("p", {
+    }, cumulative === null ? '未核对' : cumulative), " / \u6267\u884C\u76EE\u6807 ", C.quantity(task.execution.target_quantity), " \u4EF6", task.execution.unknown_record_count > 0 && /*#__PURE__*/React.createElement("small", null, " \xB7 \u539F\u8BB0\u5F55\u6570\u91CF\u5F85\u8865 ", task.execution.unknown_record_count, " \u6761"))), /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h4", null, "\u5B9E\u9645\u8D77\u6B62"), timeHints && /*#__PURE__*/React.createElement("p", {
       className: "field-suggestion",
       role: "status"
     }, "\u8BF7\u6838\u5BF9\u9884\u586B\u65F6\u95F4\uFF1B\u4E0D\u786E\u5B9A\u7684\u65F6\u95F4\u8BF7\u6E05\u9664\u3002"), /*#__PURE__*/React.createElement("div", {
@@ -28978,8 +28918,8 @@ function SMExport({
     }, "\u5DE5\u65F6\u5DEE\u989D ", /*#__PURE__*/React.createElement("output", {
       "aria-label": "\u5DE5\u65F6\u5DEE\u989D"
     }, hours(difference))))), /*#__PURE__*/React.createElement("details", {
-      open: action !== 'create' || !!legacy
-    }, /*#__PURE__*/React.createElement("summary", null, external ? '' : '实际设备 / 人员 / ', "\u5907\u6CE8", record || legacy ? ' / 原因' : ''), /*#__PURE__*/React.createElement("div", {
+      open: action !== 'create'
+    }, /*#__PURE__*/React.createElement("summary", null, external ? '' : '实际设备 / 人员 / ', "\u5907\u6CE8", record ? ' / 原因' : ''), /*#__PURE__*/React.createElement("div", {
       className: "field-extra"
     }, external && /*#__PURE__*/React.createElement("p", {
       className: "field-note",
@@ -28994,7 +28934,7 @@ function SMExport({
       value: draft.remark,
       disabled: readonly('remark'),
       onChange: event => change('remark', event.target.value)
-    })), (record || legacy) && /*#__PURE__*/React.createElement(Field, {
+    })), record && /*#__PURE__*/React.createElement(Field, {
       label: reasonLabel,
       path: "reason",
       error: error,
@@ -29035,7 +28975,6 @@ function SMExport({
   function FieldEditor({
     task,
     record,
-    legacy,
     action,
     adapter,
     command,
@@ -29044,15 +28983,11 @@ function SMExport({
     onClose,
     onDone
   }) {
-    const legacyRef = legacy ? legacy.legacy_fact_ref : record && record.legacy_fact_ref;
-    const knownLegacy = React.useMemo(() => M.legacyValues(task, legacyRef), [task.execution, legacyRef]);
     const [initial] = React.useState(() => M.initialize({
       task,
       record,
-      legacy,
       action,
-      retained,
-      knownLegacy
+      retained
     }));
     const [draft, setDraft] = React.useState(initial.draft),
       [suggestions, setSuggestions] = React.useState(initial.suggestions);
@@ -29062,8 +28997,7 @@ function SMExport({
       task_ref: task.task_ref,
       plan_ref: task.plan_ref,
       report_ref: record ? record.report_ref : null,
-      revision_ref: record ? record.revision_ref : null,
-      legacy_ref: legacy ? legacy.legacy_fact_ref : null
+      revision_ref: record ? record.revision_ref : null
     };
     const [baseline] = React.useState(() => retained ? retained.baseline : currentBaseline);
     const changed = JSON.stringify(baseline) !== JSON.stringify(currentBaseline);
@@ -29079,7 +29013,7 @@ function SMExport({
     }, [draft, baseline, suggestions, dirty, initial, onDraft]);
     const form = React.useRef(null),
       first = React.useRef(null);
-    const title = legacy ? '补齐原始完工记录' : action === 'create' ? '本次报工' : action === 'supplement' ? '补齐本次报工' : '更正报工';
+    const title = action === 'create' ? '本次报工' : action === 'supplement' ? '补齐本次报工' : '更正报工';
     const context = record ? record.write_context : task.execution.write_context;
     const disabled = command.locked || command.phase === 'done' || changed;
     const reason = changed ? '原记录或任务已变化，暂存内容未写入；请取消后重新核对。' : C.blocked(context, action);
@@ -29129,14 +29063,6 @@ function SMExport({
       if (disabled || reason) return;
       try {
         const input = C.input(value, record, action);
-        if (legacy) {
-          if (!value.reason.trim()) throw window.APSResourceContract.failure('请填写历史完工记录的补齐原因。', [{
-            path: 'reason',
-            message: '请填写历史完工记录的补齐原因。'
-          }]);
-          input.legacy_fact_ref = legacy.legacy_fact_ref;
-          input.reason = value.reason.trim();
-        }
         if (!form.current.reportValidity()) return;
         setError(null);
         setContinueAfter(next);
@@ -29152,7 +29078,7 @@ function SMExport({
       clearRejected();
       setSuggestions(Object.fromEntries(['actual_start', 'actual_end'].filter(key => value[key]).map(key => [key, '复制自同任务上一条报工，请重新核对'])));
     }
-    const fresh = action === 'create' && !legacy;
+    const fresh = action === 'create';
     const hasPrevious = React.useMemo(() => fresh && Boolean(M.previous(task)), [fresh, task]);
     const mapped = C.fields.concat(['reason', 'declared_operator']);
     return /*#__PURE__*/React.createElement("form", {
@@ -29174,7 +29100,6 @@ function SMExport({
     }, "\u590D\u5236\u4E0A\u4E00\u6761")), /*#__PURE__*/React.createElement(window.FieldEditorFields, {
       task,
       record,
-      legacy,
       action,
       adapter,
       draft,
@@ -29182,7 +29107,6 @@ function SMExport({
       disabled,
       first,
       change,
-      knownLegacy,
       error: shownError
     }), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error,
@@ -29630,8 +29554,7 @@ function SMExport({
       disabled: command.locked
     }, "\u53D6\u6D88\u6682\u5B58\u7F16\u8F91"));
     const report = editor && p.reports.find(row => row.report_ref === editor.reportRef);
-    const legacy = editor && p.legacy_facts.find(row => row.legacy_fact_ref === editor.legacyRef);
-    const missingOriginal = editor && (editor.reportRef && !report || editor.legacyRef && !legacy);
+    const missingOriginal = editor && editor.reportRef && !report;
     return /*#__PURE__*/React.createElement("section", {
       ref: detail,
       className: "field-detail",
@@ -29681,9 +29604,7 @@ function SMExport({
       }
     }, "\u73B0\u573A\u5B9E\u9645\u7518\u7279")), timeline && /*#__PURE__*/React.createElement(Timeline, {
       task: task
-    }), p.completion_basis === 'legacy_finish_event' && /*#__PURE__*/React.createElement("div", {
-      className: "field-note"
-    }, "\u5B8C\u5DE5\u72B6\u6001\u6765\u81EA\u5386\u53F2\u5B8C\u5DE5\u8BB0\u5F55\u3002"), /*#__PURE__*/React.createElement(Issues, {
+    }), /*#__PURE__*/React.createElement(Issues, {
       issues: p.data_gaps
     }), /*#__PURE__*/React.createElement("div", {
       className: "field-scroll wb-table-frame",
@@ -29774,10 +29695,9 @@ function SMExport({
       onClose: onCloseEditor,
       onDone: onDone
     }), editor && editor.action !== 'report_void' && !missingOriginal && (editor.action === 'create' || report) && /*#__PURE__*/React.createElement(window.FieldEditor, {
-      key: editor.action + ':' + (editor.reportRef || editor.legacyRef || taskRef),
+      key: editor.action + ':' + (editor.reportRef || taskRef),
       task: task,
       record: report,
-      legacy: legacy,
       action: editor.action,
       adapter: adapter,
       command: command,
@@ -29793,26 +29713,7 @@ function SMExport({
       className: "field-history"
     }, /*#__PURE__*/React.createElement("dl", null, /*#__PURE__*/React.createElement("dt", null, "\u539F\u5B9E\u9645\u8D77\u6B62"), /*#__PURE__*/React.createElement("dd", null, C.date(item.report.actual_start), " \u81F3 ", C.date(item.report.actual_end)), /*#__PURE__*/React.createElement("dt", null, "\u539F\u8BBE\u5907 / \u4EBA\u5458"), /*#__PURE__*/React.createElement("dd", null, C.display(item.report.actual_machine_label), " / ", C.display(item.report.actual_operator_label)), /*#__PURE__*/React.createElement("dt", null, "\u539F\u5907\u6CE8"), /*#__PURE__*/React.createElement("dd", null, C.display(item.report.remark)))), /*#__PURE__*/React.createElement(History, {
       record: item.report
-    })))), p.legacy_facts.length > 0 && /*#__PURE__*/React.createElement("details", {
-      className: "field-note"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u5386\u53F2\u73B0\u573A\u8BB0\u5F55 \xB7 ", p.legacy_facts.length, " \u6761"), p.legacy_facts.map((fact, index) => /*#__PURE__*/React.createElement("div", {
-      key: fact.legacy_fact_ref || index
-    }, C.date(fact.event_time), " \xB7 ", {
-      start: '开工',
-      finish: '完工',
-      pause: '暂停',
-      resume: '恢复',
-      exception: '异常'
-    }[fact.event_type] || '历史记录', " \xB7 ", C.display(fact.remark), fact.event_type === 'finish' && !p.reports.some(row => row.legacy_fact_ref === fact.legacy_fact_ref) && /*#__PURE__*/React.createElement(Button, {
-      icon: "plus",
-      disabled: command.locked || !!editor,
-      reason: C.blocked(p.write_context, 'create'),
-      onClick: () => onEdit({
-        taskRef,
-        legacyRef: fact.legacy_fact_ref,
-        action: 'create'
-      })
-    }, "\u8865\u9F50\u539F\u59CB\u5B8C\u5DE5\u8BB0\u5F55")))));
+    })))));
   }
   window.FieldDetail = FieldDetail;
 })();
@@ -30120,17 +30021,13 @@ function SMExport({
     const readPlan = React.useRef(scope.plan_ref);
     if (data && !read.loading && !read.error) readPlan.current = data.scope.plan_ref;
     const captionPlan = !read.loading && !read.error && data && data.plan;
-    const captionStatus = captionPlan && {
-      official: captionPlan.is_current_official ? window.WorkbenchTerms.current_official : window.WorkbenchTerms.historical_official,
-      candidate: window.WorkbenchTerms.candidate,
-      scenario: window.WorkbenchTerms.trial_scenario
-    }[captionPlan.kind];
+    const captionStatus = captionPlan && (captionPlan.is_current_official ? window.WorkbenchTerms.current_official : window.WorkbenchTerms.historical_official);
     window.WorkbenchCaption.useCaption(captionStatus ? {
       reference: captionPlan.plan_ref,
       label: '现场计划',
       name: captionPlan.display_name,
       status: captionStatus,
-      version: captionPlan.kind === 'official' && Number.isSafeInteger(captionPlan.version) ? window.WorkbenchTerms.plan_version(captionPlan.version) : undefined,
+      version: Number.isSafeInteger(captionPlan.version) ? window.WorkbenchTerms.plan_version(captionPlan.version) : undefined,
       range: data.scope.plan_finish_date_from && data.scope.plan_finish_date_to ? '计划完工 ' + data.scope.plan_finish_date_from + ' 至 ' + data.scope.plan_finish_date_to : undefined
     } : null);
     const selectedTask = data && data.tasks.find(task => task.task_ref === opened);
@@ -30417,7 +30314,6 @@ function SMExport({
     const text = [t.batch_id, t.sequence, t.process_label, t.piece_id, labels.get(t.machine_ref), labels.get(t.operator_ref)];
     if (e) {
       e.reports.forEach(r => text.push(r.report_no, labels.get(r.actual_machine_ref), labels.get(r.actual_operator_ref)));
-      e.legacy_facts.forEach(fact => text.push(labels.get(fact.actual_machine_ref), labels.get(fact.actual_operator_ref)));
     }
     return text.map(value => value == null ? '' : value).join(' ').toLowerCase();
   }
@@ -30477,46 +30373,6 @@ function SMExport({
     });
     return result;
   }
-  function prepareLegacy(e) {
-    if (!e || !e.legacy_facts.length || e.data_gaps.some(gap => gap.code === 'invalid_legacy_sequence')) return [];
-    const covered = new Set(e.reports.map(report => report.legacy_fact_ref).filter(Boolean)),
-      scopes = new Map(),
-      result = [];
-    for (const fact of e.legacy_facts) {
-      if (!fact.recorded_against_task_ref) continue;
-      if (!scopes.has(fact.recorded_against_task_ref)) scopes.set(fact.recorded_against_task_ref, []);
-      scopes.get(fact.recorded_against_task_ref).push(fact);
-    }
-    for (const [scopeRef, scope] of scopes) {
-      const startFact = scope.find(fact => fact.event_type === 'start'),
-        finish = scope.find(fact => fact.event_type === 'finish');
-      if (!startFact || !finish || covered.has(finish.legacy_fact_ref) || typeof startFact.event_time !== 'string' || typeof finish.event_time !== 'string') continue;
-      const start = instant(window.FieldDraftModel.legacyTime(startFact.event_time)),
-        end = instant(window.FieldDraftModel.legacyTime(finish.event_time));
-      if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) continue;
-      const resources = window.FieldDraftModel.legacyResources(scope, e.data_gaps);
-      const point = start === end,
-        key = 'legacy:' + scopeRef;
-      result.push({
-        key,
-        legacy: finish,
-        start,
-        end,
-        ...resources,
-        mark: {
-          key,
-          kind: point ? 'legacy-point' : 'legacy',
-          legacy: finish,
-          start,
-          end,
-          ...resources,
-          y: point ? 20 : 14,
-          height: point ? 24 : 38
-        }
-      });
-    }
-    return result;
-  }
   function prepare(data, asOf) {
     const labels = names(data),
       taskIndex = new Map(),
@@ -30569,7 +30425,6 @@ function SMExport({
           } : null
         };
       }) : [];
-      const legacyMarks = prepareLegacy(e);
       const remaining = e && e.remaining_plan ? {
         key: 'remaining',
         kind: 'remaining',
@@ -30584,15 +30439,10 @@ function SMExport({
         include(reportRange, report.start);
         include(reportRange, report.end);
       }
-      for (const segment of legacyMarks) {
-        include(reportRange, segment.start);
-        include(reportRange, segment.end);
-      }
       const fact = {
         item,
         baseline,
         reports,
-        legacyMarks,
         reportIndex: new Map(reports.map(report => [report.report.report_ref, report])),
         remaining,
         search: searchText(item, labels),
@@ -30601,7 +30451,7 @@ function SMExport({
       facts.push(fact);
       taskIndex.set(task.task_ref, fact);
     }
-    const hasPoints = facts.some(fact => fact.baseline.kind === 'plan-point' || fact.reports.some(report => report.mark && report.mark.kind === 'point') || fact.legacyMarks.some(segment => segment.mark.kind === 'legacy-point'));
+    const hasPoints = facts.some(fact => fact.baseline.kind === 'plan-point' || fact.reports.some(report => report.mark && report.mark.kind === 'point'));
     const axis = window.PointGanttModel.bounds(instant(data.axis_span.start), instant(data.axis_span.end), hasPoints);
     const dataRange = Number.isFinite(planRange.start) ? planRange : Number.isFinite(reportRange.start) ? reportRange : null;
     return {
@@ -30634,8 +30484,6 @@ function SMExport({
         item: fact.item,
         baseline: false,
         reports: [],
-        legacy: [],
-        legacyMarks: [],
         remaining: false
       });
       return members.get(key);
@@ -30649,23 +30497,12 @@ function SMExport({
         machine_ref: report.report.actual_machine_ref,
         operator_ref: report.report.actual_operator_ref
       }).reports.push(report));
-      e.legacy_facts.forEach(legacy => {
-        if (legacy.actual_machine_ref || legacy.actual_operator_ref) group(fact, {
-          machine_ref: legacy.actual_machine_ref,
-          operator_ref: legacy.actual_operator_ref
-        }).legacy.push(legacy);
-      });
-      fact.legacyMarks.forEach(segment => group(fact, {
-        machine_ref: segment.actual_machine_ref,
-        operator_ref: segment.actual_operator_ref
-      }).legacyMarks.push(segment));
       if (e.execution_state !== 'complete' && e.remaining_quantity !== 0) group(fact, e.remaining_plan || item.task).remaining = true;
     }
     for (const g of groups.values()) for (const member of g.members.values()) {
-      const ts = tracks(member.reports.concat(member.legacyMarks));
+      const ts = tracks(member.reports);
       if (!ts.length) ts.push([]);
       member.reportCount = member.reports.length;
-      member.legacyCount = member.legacy.length;
       member.knownCount = 0;
       member.knownHours = 0;
       member.unknownHours = 0;
@@ -30680,7 +30517,7 @@ function SMExport({
       member.rows = ts.map((segments, i) => ({
         key: g.id + ':' + member.item.task.task_ref + ':' + i,
         item: member.item,
-        reports: segments.filter(fact => fact.report).map(fact => fact.report),
+        reports: segments.map(fact => fact.report),
         baseline: i === 0 && member.baseline,
         kind: 'actual',
         height: 88,
@@ -30716,7 +30553,6 @@ function SMExport({
         ...source,
         members,
         reportCount: 0,
-        legacyCount: 0,
         knownHours: null,
         unknownHours: 0
       };
@@ -30724,7 +30560,6 @@ function SMExport({
         knownHours = 0;
       for (const member of members.values()) {
         g.reportCount += member.reportCount;
-        g.legacyCount += member.legacyCount;
         g.unknownHours += member.unknownHours;
         knownCount += member.knownCount;
         knownHours += member.knownHours;
@@ -30849,7 +30684,7 @@ function SMExport({
     if (t.quantity_reason) result.push(quantityReasons[t.quantity_reason]);
     if (!e) return result.concat('报工记录不可用');
     result.push(states[e.execution_state] + ' · 已知完成 ' + number(e.known_completed_quantity) + ' 件', '整道实际完工：' + (e.confirmed_finish ? time(e.confirmed_finish) : e.execution_state === 'complete' ? '已标记完工，确认完工时间缺失' : '尚未确认整道完工'), '剩余数量：' + (e.remaining_quantity === null ? '当前记录无法计算，见记录问题' : number(e.remaining_quantity)));
-    if (e.completion_basis) result.push(e.completion_basis === 'legacy_finish_event' ? '完成依据：历史完工记录' : '完成依据：逐次报工记录');
+    if (e.completion_basis) result.push('完成依据：逐次报工记录');
     const deviation = finishDeviation(item);
     result.push('整道完工偏差：' + (deviation || '未完工，不计算完成偏差'));
     e.data_gaps.forEach(gap => result.push('记录问题：' + gap.message));
@@ -30857,7 +30692,6 @@ function SMExport({
     return result;
   }
   function markTitle(mark, item, labels) {
-    if (mark.legacy) return [mark.kind === 'legacy-point' ? '历史实际时刻' : '历史实际时段', '历史事件记录 · 有效工时未记录', '实际：' + time(wire(mark.start)) + ' 至 ' + time(wire(mark.end)), '旧已知累计：' + number(mark.legacy.quantity_done) + ' 件 · 有效工时：未知', '实际资源：' + (labels.get(mark.actual_machine_ref) || '设备未填写') + ' / ' + (labels.get(mark.actual_operator_ref) || '人员未填写')].concat(describe(item, labels)).join('\n');
     const heading = mark.kind === 'plan-point' ? '原计划 · 零工时工序' : mark.kind === 'plan' ? '原计划' : mark.kind === 'remaining' ? '已有剩余安排' : mark.kind === 'point' ? mark.report.actual_end ? '报工时刻' : '报工开工时刻 · 结束未填写' : '实际报工时段';
     return [heading].concat(describe(item, labels, mark.report)).join('\n');
   }
@@ -30958,7 +30792,7 @@ function SMExport({
     const scale = width / (model.end - model.start),
       x = (mark.start - model.start) * scale - left;
     const size = (mark.end - mark.start) * scale,
-      point = mark.kind === 'point' || mark.kind === 'plan-point' || mark.kind === 'legacy-point';
+      point = mark.kind === 'point' || mark.kind === 'plan-point';
     const hitWidth = point ? 24 : Math.max(4, size);
     const hitLeft = point ? x - 12 : Math.max(0, Math.min(width - hitWidth, x + left - (hitWidth - size) / 2)) - left;
     return {
@@ -31060,7 +30894,7 @@ function SMExport({
     return object(row) && ref(row.report_ref) && ref(row.revision_ref) && row.operation_ref === operationRef && ref(row.recorded_against_task_ref) && ref(row.recorded_against_plan_ref) && typeof row.report_no === 'string' && row.report_no && nullableTime(row.actual_start) && nullableTime(row.actual_end) && (!row.actual_end || !row.actual_start || row.actual_end >= row.actual_start) && quantity(row.completed_quantity) && (row.effective_processing_hours === null || typeof row.effective_processing_hours === 'number' && Number.isFinite(row.effective_processing_hours) && row.effective_processing_hours >= 0) && nullableRef(row.actual_machine_ref) && nullableRef(row.actual_operator_ref) && typeof row.remark === 'string' && local(row.recorded_at) && Array.isArray(row.correction_history);
   }
   function execution(e, task) {
-    return object(e) && e.operation_ref === task.operation_ref && e.comparison_task_ref === task.task_ref && nullableRef(e.current_task_ref) && quantity(e.target_quantity) && quantity(e.remaining_quantity) && quantity(e.known_completed_quantity) && e.known_completed_quantity !== null && Number.isSafeInteger(e.unknown_record_count) && e.unknown_record_count >= 0 && typeof e.quantity_complete === 'boolean' && typeof e.records_complete === 'boolean' && ['batch', 'piece'].includes(e.target_basis) && own(window.ActualGanttModel.states, e.execution_state) && [null, 'complete_reports', 'legacy_finish_event'].includes(e.completion_basis) && ['complete', 'incomplete', 'legacy_incomplete', 'invalid'].includes(e.data_quality) && nullableTime(e.first_actual_start) && nullableTime(e.confirmed_finish) && (e.remaining_plan === null || interval(e.remaining_plan)) && Array.isArray(e.reports) && e.reports.every(r => report(r, task.operation_ref)) && new Set(e.reports.map(r => r.report_ref)).size === e.reports.length && Array.isArray(e.legacy_facts) && e.legacy_facts.every(fact => object(fact) && ref(fact.legacy_fact_ref) && nullableRef(fact.actual_machine_ref) && nullableRef(fact.actual_operator_ref)) && Array.isArray(e.data_gaps);
+    return object(e) && e.operation_ref === task.operation_ref && e.comparison_task_ref === task.task_ref && nullableRef(e.current_task_ref) && quantity(e.target_quantity) && quantity(e.remaining_quantity) && quantity(e.known_completed_quantity) && e.known_completed_quantity !== null && Number.isSafeInteger(e.unknown_record_count) && e.unknown_record_count >= 0 && typeof e.quantity_complete === 'boolean' && typeof e.records_complete === 'boolean' && ['batch', 'piece'].includes(e.target_basis) && own(window.ActualGanttModel.states, e.execution_state) && [null, 'complete_reports'].includes(e.completion_basis) && ['complete', 'incomplete', 'invalid'].includes(e.data_quality) && nullableTime(e.first_actual_start) && nullableTime(e.confirmed_finish) && (e.remaining_plan === null || interval(e.remaining_plan)) && Array.isArray(e.reports) && e.reports.every(r => report(r, task.operation_ref)) && new Set(e.reports.map(r => r.report_ref)).size === e.reports.length && Array.isArray(e.data_gaps);
   }
   function scopeMatches(value, query) {
     return object(value) && cohortKeys.every(key => {
@@ -31090,7 +30924,7 @@ function SMExport({
       const used = [t.machine_ref, t.operator_ref];
       if (e) {
         count += e.reports.length;
-        e.reports.concat(e.legacy_facts).forEach(r => used.push(r.actual_machine_ref, r.actual_operator_ref));
+        e.reports.forEach(r => used.push(r.actual_machine_ref, r.actual_operator_ref));
         if (e.remaining_plan) used.push(e.remaining_plan.machine_ref, e.remaining_plan.operator_ref);
       }
       if (used.some(r => r != null && (!ref(r) || !resourceRefs.has(r)))) fail('实际或计划资源清单不完整。');
@@ -31467,7 +31301,7 @@ function SMExport({
   function palette(node) {
     const style = getComputedStyle(node),
       colors = {};
-    for (const [kind, tone] of [['plan', 'plan'], ['plan-point', 'plan'], ['actual', 'primary'], ['point', 'primary'], ['legacy', 'primary'], ['legacy-point', 'primary'], ['remaining', 'primary']]) colors[kind] = {
+    for (const [kind, tone] of [['plan', 'plan'], ['plan-point', 'plan'], ['actual', 'primary'], ['point', 'primary'], ['remaining', 'primary']]) colors[kind] = {
       fill: style.getPropertyValue('--wb-gantt-' + tone + '-fill').trim(),
       edge: style.getPropertyValue('--wb-gantt-' + tone + '-edge').trim()
     };
@@ -31509,7 +31343,7 @@ function SMExport({
         ctx.fillStyle = colors[mark.kind].fill;
         ctx.strokeStyle = chosen || critical || related ? colors.selected : colors[mark.kind].edge;
         ctx.setLineDash([]);
-        if (mark.kind === 'point' || mark.kind === 'plan-point' || mark.kind === 'legacy-point') window.PointGanttModel.paint(ctx, x, mark.y + 12, ctx.fillStyle, ctx.strokeStyle, chosen || critical, related ? 1.5 : 1);else {
+        if (mark.kind === 'point' || mark.kind === 'plan-point') window.PointGanttModel.paint(ctx, x, mark.y + 12, ctx.fillStyle, ctx.strokeStyle, chosen || critical, related ? 1.5 : 1);else {
           ctx.fillRect(x, mark.y, size, mark.height);
           ctx.lineWidth = Math.min(chosen ? 2 : related ? 1.5 : 1, size);
           ctx.setLineDash(['plan', 'remaining'].includes(mark.kind) ? [3, 2] : []);
@@ -31615,7 +31449,7 @@ function SMExport({
       },
       onMouseLeave: () => onHover(null),
       onKeyDown: keyDown
-    }), visibleMarks.filter(mark => mark.kind === 'point' || mark.kind === 'plan-point' || mark.kind === 'legacy-point').map(mark => renderMark(mark, true)));
+    }), visibleMarks.filter(mark => mark.kind === 'point' || mark.kind === 'plan-point').map(mark => renderMark(mark, true)));
   }
   window.ActualGanttCanvas = {
     DenseRow
@@ -31641,9 +31475,9 @@ function SMExport({
         const unbound = execution.reports.some(report => !report[field]);
         return '本' + resource + '暂无报工；报工在' + (bound ? '其他' + resource + (unbound ? '及' : '') : '') + (unbound ? '“' + resource + '未填写”分组' : '下');
       }
-      return '本' + resource + '暂无报工' + (execution.legacy_facts.length ? '；有历史现场记录' : '');
+      return '本' + resource + '暂无报工';
     }
-    return execution.legacy_facts.length ? '仅有历史现场记录' : '暂无实际报工';
+    return '暂无实际报工';
   }
   function Bar({
     mark,
@@ -31664,7 +31498,6 @@ function SMExport({
       } = box;
     const kind = {
       actual: 'act',
-      legacy: 'act',
       plan: 'plan',
       remaining: 'remaining'
     }[mark.kind];
@@ -31699,12 +31532,9 @@ function SMExport({
         y: rect.top
       });
     }
-    if (mark.kind === 'plan-point' || mark.kind === 'point' || mark.kind === 'legacy-point') return /*#__PURE__*/React.createElement(window.PointGantt.Marker, {
+    if (mark.kind === 'plan-point' || mark.kind === 'point') return /*#__PURE__*/React.createElement(window.PointGantt.Marker, {
       ...emphasis,
-      task: mark.legacy ? {
-        task_ref: mark.key,
-        start: M.wire(mark.start)
-      } : mark.report ? {
+      task: mark.report ? {
         task_ref: mark.report.report_ref,
         start: mark.report.actual_start
       } : row.item.task,
@@ -31754,7 +31584,7 @@ function SMExport({
         left: box.faceLeft,
         width: size
       }
-    }, size >= 55 && mark.kind !== 'plan' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", null, mark.legacy ? '历史事件记录 · 有效工时未记录' : mark.report ? mark.report.report_no : '剩余 ' + M.number(row.item.execution.remaining_quantity) + ' 件'), size >= 150 && /*#__PURE__*/React.createElement("span", null, mark.legacy ? '旧已知累计 ' + M.number(mark.legacy.quantity_done) + ' 件' : mark.report ? M.number(mark.report.completed_quantity) + ' 件 · ' + M.hours(mark.report.effective_processing_hours) : M.time(row.item.execution.remaining_plan.start)))));
+    }, size >= 55 && mark.kind !== 'plan' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", null, mark.report ? mark.report.report_no : '剩余 ' + M.number(row.item.execution.remaining_quantity) + ' 件'), size >= 150 && /*#__PURE__*/React.createElement("span", null, mark.report ? M.number(mark.report.completed_quantity) + ' 件 · ' + M.hours(mark.report.effective_processing_hours) : M.time(row.item.execution.remaining_plan.start)))));
   }
   function Rows({
     model,
@@ -31811,15 +31641,14 @@ function SMExport({
         title: row.group.label
       }, row.group.label)), /*#__PURE__*/React.createElement("div", {
         className: "fg-group-summary"
-      }, row.group.members.size, " \u9053\u5DE5\u5E8F \xB7 ", model.executionAvailable ? row.group.reportCount + ' 次报工 · ' + (row.group.knownHours === null ? row.group.reportCount ? '本组报工未填写有效工时' : '本组暂无逐次报工工时' : '已知实报工时 ' + M.hours(row.group.knownHours)) + (row.group.unknownHours ? ' · ' + row.group.unknownHours + ' 条工时待补' : '') + (row.group.legacyCount ? ' · ' + row.group.legacyCount + ' 条历史记录' : '') : '报工记录不可用'));
+      }, row.group.members.size, " \u9053\u5DE5\u5E8F \xB7 ", model.executionAvailable ? row.group.reportCount + ' 次报工 · ' + (row.group.knownHours === null ? row.group.reportCount ? '本组报工未填写有效工时' : '本组暂无逐次报工工时' : '已知实报工时 ' + M.hours(row.group.knownHours)) + (row.group.unknownHours ? ' · ' + row.group.unknownHours + ' 条工时待补' : '') : '报工记录不可用'));
       const {
           item
         } = row,
         e = item.execution,
         t = item.task,
         marks = row.marks;
-      const hasLegacy = !row.reports.length && marks.some(mark => mark.legacy);
-      const emptyText = row.kind === 'actual' && !row.reports.length && !hasLegacy ? emptyReports(row, view.mode) : '';
+      const emptyText = row.kind === 'actual' && !row.reports.length ? emptyReports(row, view.mode) : '';
       const renderMark = (mark, canvasPainted = false) => /*#__PURE__*/React.createElement(Bar, {
         key: mark.key,
         mark,
@@ -31861,7 +31690,7 @@ function SMExport({
       }, row.kind === 'remaining' ? '执行剩余 ' + M.number(e.remaining_quantity) + ' 件' : e ? M.states[e.execution_state] + ' · 已知 ' + M.number(e.known_completed_quantity) + ' / 计划 ' + M.number(t.quantity) : '计划应做 ' + M.number(t.quantity) + ' 件 · 报工记录不可用'), /*#__PURE__*/React.createElement("span", {
         className: "fg-row-caption",
         title: emptyText || undefined
-      }, row.kind === 'remaining' ? e.remaining_plan ? '已有剩余安排' : pending : row.reports.length ? row.reports.length + ' 次报工' + (row.trackCount > 1 ? ' · 分行 ' + row.track + '/' + row.trackCount : '') : hasLegacy ? '0 次报工 · 历史现场记录' : emptyText), row.kind !== 'remaining' && (deviation || timing.unclosed || timing.forecastLate) && /*#__PURE__*/React.createElement("span", {
+      }, row.kind === 'remaining' ? e.remaining_plan ? '已有剩余安排' : pending : row.reports.length ? row.reports.length + ' 次报工' + (row.trackCount > 1 ? ' · 分行 ' + row.track + '/' + row.trackCount : '') : emptyText), row.kind !== 'remaining' && (deviation || timing.unclosed || timing.forecastLate) && /*#__PURE__*/React.createElement("span", {
         className: "fg-row-caption",
         title: deviation || undefined,
         "data-finish-deviation": deviation || undefined
@@ -32100,17 +31929,13 @@ function SMExport({
     }, []);
     const data = result && result.data;
     const captionPlan = !loading && !error && data && data.plan;
-    const captionStatus = captionPlan && {
-      official: captionPlan.is_current_official ? window.WorkbenchTerms.current_official : window.WorkbenchTerms.historical_official,
-      candidate: window.WorkbenchTerms.candidate,
-      scenario: window.WorkbenchTerms.trial_scenario
-    }[captionPlan.kind];
+    const captionStatus = captionPlan && (captionPlan.is_current_official ? window.WorkbenchTerms.current_official : window.WorkbenchTerms.historical_official);
     window.WorkbenchCaption.useCaption(captionStatus ? {
       reference: captionPlan.plan_ref,
       label: '对照计划',
       name: captionPlan.display_name,
       status: captionStatus,
-      version: captionPlan.kind === 'official' && Number.isSafeInteger(captionPlan.version) ? window.WorkbenchTerms.plan_version(captionPlan.version) : undefined,
+      version: Number.isSafeInteger(captionPlan.version) ? window.WorkbenchTerms.plan_version(captionPlan.version) : undefined,
       range: data.scope.plan_finish_date_from && data.scope.plan_finish_date_to ? '计划完工 ' + data.scope.plan_finish_date_from + ' 至 ' + data.scope.plan_finish_date_to : undefined
     } : null);
     const selectedFilter = view.onlySelected ? view.selected : null;
@@ -32884,7 +32709,7 @@ function SMExport({
   const nullableCount = value => value === null || count(value);
   const localTime = value => value === null || typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.(?!000000$)\d{6})?(?![\s\S])/.test(value) && date(value.slice(0, 10));
   function execution(value) {
-    return object(value) && ['unreported', 'started', 'partial', 'paused', 'exception', 'complete'].includes(value.execution_state) && [null, 'complete_reports', 'legacy_finish_event'].includes(value.completion_basis) && ['complete', 'incomplete', 'legacy_incomplete', 'invalid'].includes(value.data_quality) && ['first_actual_start', 'confirmed_finish'].every(key => localTime(value[key])) && ['remaining_quantity', 'known_completed_quantity', 'unknown_record_count'].every(key => nullableCount(value[key]));
+    return object(value) && ['unreported', 'started', 'partial', 'complete'].includes(value.execution_state) && [null, 'complete_reports'].includes(value.completion_basis) && ['complete', 'incomplete', 'invalid'].includes(value.data_quality) && ['first_actual_start', 'confirmed_finish'].every(key => localTime(value[key])) && ['remaining_quantity', 'known_completed_quantity', 'unknown_record_count'].every(key => nullableCount(value[key]));
   }
   // 排产会原样保留的原安排：落在不重排时段里的（含同批次一起保留的前道）。正式计划里的锁定标记已不再起作用。
   const held = value => value === null || object(value) && Object.keys(value).length === 3 && value.basis === 'hold_window' && value.start !== null && localTime(value.start) && value.end !== null && localTime(value.end) && value.start <= value.end;
@@ -36074,12 +35899,12 @@ function SMExport({
   // 候选只由共同优化生成（unified_search_v1），保存时恒为计算完成。
   function summary(v, runRef) {
     const G = window.RunGenerationContract;
-    check(shape(v, ['candidate_ref', 'run_ref', 'label', 'status', 'persisted_status', 'task_count', 'completeness', 'metrics', 'metric_scopes', 'capabilities', 'blocked_reasons', 'data_gaps'].concat(G.metadataKeys)) && ref(v.candidate_ref) && ref(v.run_ref) && (!runRef || v.run_ref === runRef) && nullableText(v.label) && count(v.task_count) && v.task_count <= 20000 && v.persisted_status === 'completed' && ['complete', 'partial', 'unknown'].includes(v.completeness) && v.status === (v.completeness === 'partial' ? 'partial' : 'completed') && shape(v.metrics, metricKeys) && metricKeys.every(k => k === 'elapsed_seconds' ? G.catalogElapsed(v.metrics[k]) : metric(v.metrics[k])) && shape(v.metric_scopes, ['delivery', 'resources']) && v.metric_scopes.delivery === 'completed_batches_only' && v.metric_scopes.resources === 'scheduled_results_only' && caps(v.capabilities) && blocked(v.blocked_reasons) && gaps(v.data_gaps) && G.metadata(v, v.run_ref));
+    check(shape(v, ['candidate_ref', 'run_ref', 'label', 'status', 'persisted_status', 'task_count', 'completeness', 'metrics', 'metric_scopes', 'capabilities', 'blocked_reasons', 'data_gaps'].concat(G.metadataKeys)) && ref(v.candidate_ref) && ref(v.run_ref) && (!runRef || v.run_ref === runRef) && nullableText(v.label) && count(v.task_count) && v.task_count <= 20000 && v.persisted_status === 'completed' && ['complete', 'partial'].includes(v.completeness) && v.status === (v.completeness === 'partial' ? 'partial' : 'completed') && shape(v.metrics, metricKeys) && metricKeys.every(k => k === 'elapsed_seconds' ? G.catalogElapsed(v.metrics[k]) : metric(v.metrics[k])) && shape(v.metric_scopes, ['delivery', 'resources']) && v.metric_scopes.delivery === 'completed_batches_only' && v.metric_scopes.resources === 'scheduled_results_only' && caps(v.capabilities) && blocked(v.blocked_reasons) && gaps(v.data_gaps) && G.metadata(v, v.run_ref));
     return v;
   }
   function validateIdentity(v, candidateRef) {
     const data = v.data;
-    check(shape(data, ['candidate_ref', 'run_ref', 'label', 'status']) && ref(candidateRef) && data.candidate_ref === candidateRef && ref(data.run_ref) && nullableText(data.label) && ['completed', 'failed', 'skipped'].includes(data.status), '候选身份与所选方案不一致，请重新打开。');
+    check(shape(data, ['candidate_ref', 'run_ref', 'label', 'status']) && ref(candidateRef) && data.candidate_ref === candidateRef && ref(data.run_ref) && nullableText(data.label) && data.status === 'completed', '候选身份与所选方案不一致，请重新打开。');
     return data;
   }
   function catalogScope(query) {
@@ -36092,7 +35917,7 @@ function SMExport({
       order: 'asc',
       ...query
     };
-    check(Number.isInteger(q.page) && q.page >= 1 && q.page <= 256 && Number.isInteger(q.size) && q.size >= 1 && q.size <= 50 && ['all', 'completed', 'partial', 'failed', 'skipped'].includes(q.status) && ['sequence', 'label', 'task_count'].includes(q.sort) && ['asc', 'desc'].includes(q.order) && (q.snapshot_ref === undefined || token(q.snapshot_ref)));
+    check(Number.isInteger(q.page) && q.page >= 1 && q.page <= 256 && Number.isInteger(q.size) && q.size >= 1 && q.size <= 50 && ['all', 'completed', 'partial'].includes(q.status) && ['sequence', 'label', 'task_count'].includes(q.sort) && ['asc', 'desc'].includes(q.order) && (q.snapshot_ref === undefined || token(q.snapshot_ref)));
     if (q.snapshot_ref === undefined) delete q.snapshot_ref;
     return q;
   }
@@ -36125,7 +35950,7 @@ function SMExport({
     if (!nullableText(v.piece_id) || v.piece_id !== null && (!v.piece_id.trim() || v.piece_id.includes('\0')) || !nullableNumber(v.quantity) || !nullableNumber(v.batch_quantity) || !gaps(v.data_gaps)) return false;
     const e = v.execution_at_generation;
     if (e === null) return v.quantity === null;
-    if (!shape(e, executionKeys.concat(baseline ? ['first_actual_start', 'confirmed_finish', 'unknown_record_count', 'records_complete', 'quantity_complete', 'completion_basis', 'report_count', 'legacy_fact_count', 'legacy_unavailable_field_count'] : [])) || !['target_quantity', 'known_completed_quantity', 'remaining_quantity'].every(k => nullableNumber(e[k])) || !['execution_state', 'data_quality', 'target_basis'].every(k => nullableText(e[k]))) return false;
+    if (!shape(e, executionKeys.concat(baseline ? ['first_actual_start', 'confirmed_finish', 'unknown_record_count', 'records_complete', 'quantity_complete', 'completion_basis', 'report_count'] : [])) || !['target_quantity', 'known_completed_quantity', 'remaining_quantity'].every(k => nullableNumber(e[k])) || !['execution_state', 'data_quality', 'target_basis'].every(k => nullableText(e[k]))) return false;
     const proven = !v.data_gaps.some(g => g.field === 'piece_id') && e.target_basis === (v.piece_id === null ? 'batch' : 'piece');
     return v.quantity === (proven ? e.target_quantity : null);
   }
@@ -36341,8 +36166,7 @@ function SMExport({
       batch: '批'
     },
     completion_basis: {
-      complete_reports: '逐次报工记录',
-      legacy_finish_event: '历史完工记录'
+      complete_reports: '逐次报工记录'
     }
   };
   function executionValue(value, key = 'execution_state') {
@@ -36832,9 +36656,9 @@ function SMExport({
       "data-candidate-status": candidate.status
     }, /*#__PURE__*/React.createElement("span", {
       className: "dot"
-    }), window.WorkbenchTerms.candidate_statuses[candidate.status], candidate.completeness === 'unknown' && ' · 工序安排待确认'), candidate.status === 'partial' && /*#__PURE__*/React.createElement("small", {
+    }), window.WorkbenchTerms.candidate_statuses[candidate.status]), candidate.status === 'partial' && /*#__PURE__*/React.createElement("small", {
       "data-candidate-persisted-status": candidate.persisted_status
-    }, "\u8BA1\u7B97\u72B6\u6001\uFF1A", window.WorkbenchTerms.candidate_statuses[candidate.persisted_status] || '未记录'));
+    }, "\u8BA1\u7B97\u72B6\u6001\uFF1A", window.WorkbenchTerms.candidate_statuses[candidate.persisted_status]));
   }
   function Catalog({
     result,
@@ -37504,8 +37328,7 @@ function SMExport({
   }
   const completionBatchCounts = ['complete_batch_count', 'incomplete_batch_count', 'ordinary_incomplete_batch_count', 'deferred_batch_count', 'unknown_batch_count'];
   function completion(value) {
-    // 批次计数恒为整数；两个工序计数只在工序安排记录未保存（source_available 为假）时为 null。
-    return object(value) && value.scope === 'full_admission' && ['complete', 'partial', 'unavailable', 'not_applicable'].includes(value.state) && typeof value.source_available === 'boolean' && completionBatchCounts.every(key => count(value[key])) && ['unplanned_operation_count', 'deferred_operation_count'].every(key => value.source_available ? count(value[key]) : value[key] === null) && object(value.sample_batch_refs) && ['complete', 'incomplete', 'deferred', 'unknown'].every(key => Array.isArray(value.sample_batch_refs[key]) && value.sample_batch_refs[key].length <= 3 && value.sample_batch_refs[key].every(ref)) && object(value.remaining_work) && object(value.remaining_work.metrics) && preparationMetrics.every(key => window.EffortProjectionContract.metric(value.remaining_work.metrics[key])) && ['operation_count', 'unplanned_operation_count', 'deferred_operation_count'].every(key => value.remaining_work[key] === null || count(value.remaining_work[key]));
+    return object(value) && value.scope === 'full_admission' && ['complete', 'partial', 'unavailable', 'not_applicable'].includes(value.state) && value.source_available === true && completionBatchCounts.every(key => count(value[key])) && ['unplanned_operation_count', 'deferred_operation_count'].every(key => count(value[key])) && object(value.sample_batch_refs) && ['complete', 'incomplete', 'deferred', 'unknown'].every(key => Array.isArray(value.sample_batch_refs[key]) && value.sample_batch_refs[key].length <= 3 && value.sample_batch_refs[key].every(ref)) && object(value.remaining_work) && object(value.remaining_work.metrics) && preparationMetrics.every(key => window.EffortProjectionContract.metric(value.remaining_work.metrics[key])) && ['operation_count', 'unplanned_operation_count', 'deferred_operation_count'].every(key => count(value.remaining_work[key]));
   }
   function recommendation(data) {
     const value = data.recommendation,
@@ -37534,7 +37357,7 @@ function SMExport({
     check(common === null || object(common) && common.scope === 'common_completed_batches' && ['complete', 'partial', 'unavailable', 'not_applicable'].includes(common.state) && count(common.batch_count) && Array.isArray(common.sample_batch_refs) && common.sample_batch_refs.length <= 3 && common.sample_batch_refs.every(ref) && object(common.before) && object(common.after) && numeric(common.delay_delta_hours) && numeric(common.overdue_delta_count), '推荐方案的批次交付对比资料不完整，请点“刷新方案对比”。');
   }
   function completionGroups(data) {
-    check(Array.isArray(data.completion_groups) && data.completion_groups.every(group => object(group) && count(group.group_index) && typeof group.source_available === 'boolean' && count(group.complete_batch_count) && Array.isArray(group.sample_complete_batch_refs) && group.sample_complete_batch_refs.length <= 3 && group.sample_complete_batch_refs.every(ref) && Array.isArray(group.candidate_refs) && group.candidate_refs.every(ref)), '方案的批次安排分类资料不完整，请点“刷新方案对比”。');
+    check(Array.isArray(data.completion_groups) && data.completion_groups.every(group => object(group) && count(group.group_index) && group.source_available === true && count(group.complete_batch_count) && Array.isArray(group.sample_complete_batch_refs) && group.sample_complete_batch_refs.length <= 3 && group.sample_complete_batch_refs.every(ref) && Array.isArray(group.candidate_refs) && group.candidate_refs.every(ref)), '方案的批次安排分类资料不完整，请点“刷新方案对比”。');
     const grouped = data.completion_groups.flatMap(group => group.candidate_refs);
     check(grouped.length === data.candidates.length && new Set(grouped).size === grouped.length && data.candidates.every(row => grouped.includes(row.candidate_ref)), '批次安排分类与本次排产方案不一致，请点“刷新方案对比”。');
   }
@@ -37548,7 +37371,7 @@ function SMExport({
       check(ref(row.candidate_ref) && !candidates.has(row.candidate_ref) && object(row.coverage) && ['schedulable', 'delivery', 'search'].every(key => object(row.coverage[key])) && row.metrics && row.deltas && Array.isArray(row.selection_role), '方案的比较资料不完整，请点“刷新方案对比”。');
       candidates.add(row.candidate_ref);
       // 候选只由共同优化按业务方向生成（unified_search_v1）。
-      check(A.shape(row, ['candidate_ref', 'label', 'kind', 'status', 'persisted_status', 'task_count', 'completeness', 'coverage', 'metrics', 'capabilities', 'selection_role', 'equivalent_source_ref', 'source', 'deltas'].concat(G.metadataKeys)) && G.metadata(row, runRef) && row.kind === 'business_objective' && row.persisted_status === 'completed' && ['completed', 'partial'].includes(row.status) && row.equivalent_source_ref === null && new Set(row.selection_role).size === row.selection_role.length && row.selection_role.every(role => role === 'recommended' || G.objective(role)), '业务方向候选的保存资料不完整，请点“刷新方案对比”。');
+      check(A.shape(row, ['candidate_ref', 'label', 'kind', 'status', 'persisted_status', 'task_count', 'completeness', 'coverage', 'metrics', 'capabilities', 'selection_role', 'deltas'].concat(G.metadataKeys)) && G.metadata(row, runRef) && row.kind === 'business_objective' && row.persisted_status === 'completed' && ['completed', 'partial'].includes(row.status) && new Set(row.selection_role).size === row.selection_role.length && row.selection_role.every(role => role === 'recommended' || G.objective(role)), '业务方向候选的保存资料不完整，请点“刷新方案对比”。');
       coreMetricKeys.forEach(key => {
         const metric = data.metric_definitions.find(definition => definition.key === key);
         check(metric && window.EffortProjectionContract.metric(row.metrics[key]) && row.metrics[key].metric_version === metric.metric_version && window.EffortProjectionContract.delta(row.deltas[key]), '方案核心指标资料不完整，请点“刷新方案对比”。');
@@ -37605,14 +37428,13 @@ function SMExport({
     const data = payload.data,
       q = completionScope(runRef, query),
       E = window.EffortProjectionContract;
-    check(A.shape(data, ['run_ref', 'scope', 'baseline', 'candidate', 'source', 'filters', 'items', 'page', 'summary', 'metric_version']) && data.run_ref === runRef && object(data.scope) && data.scope.run_ref === runRef && data.scope.selected_candidate_ref === q.selected_candidate_ref && data.scope.comparison_mode === q.comparison_mode && time(data.scope.range_start) && time(data.scope.range_end) && timeKey(data.scope.range_start) < timeKey(data.scope.range_end) && Array.isArray(data.scope.batch_refs) && data.scope.batch_refs.every(ref) && object(data.scope.reference) && object(data.baseline) && data.baseline.kind === data.scope.reference.kind && data.baseline.state === data.scope.reference_state && A.shape(data.candidate, ['candidate_ref', 'label', 'persisted_status']) && data.candidate.candidate_ref === q.selected_candidate_ref && (data.candidate.label === null || typeof data.candidate.label === 'string') && ['completed', 'failed', 'skipped'].includes(data.candidate.persisted_status) && data.metric_version === 'decision-preparation-v4', '批次安排资料与当前方案或比较范围不一致，请刷新批次清单。');
+    check(A.shape(data, ['run_ref', 'scope', 'baseline', 'candidate', 'source', 'filters', 'items', 'page', 'summary', 'metric_version']) && data.run_ref === runRef && object(data.scope) && data.scope.run_ref === runRef && data.scope.selected_candidate_ref === q.selected_candidate_ref && data.scope.comparison_mode === q.comparison_mode && time(data.scope.range_start) && time(data.scope.range_end) && timeKey(data.scope.range_start) < timeKey(data.scope.range_end) && Array.isArray(data.scope.batch_refs) && data.scope.batch_refs.every(ref) && object(data.scope.reference) && object(data.baseline) && data.baseline.kind === data.scope.reference.kind && data.baseline.state === data.scope.reference_state && A.shape(data.candidate, ['candidate_ref', 'label', 'persisted_status']) && data.candidate.candidate_ref === q.selected_candidate_ref && (data.candidate.label === null || typeof data.candidate.label === 'string') && data.candidate.persisted_status === 'completed' && data.metric_version === 'decision-preparation-v4', '批次安排资料与当前方案或比较范围不一致，请刷新批次清单。');
     if (q.comparison_mode === 'candidates') check(data.scope.reference.kind === 'candidate' && data.baseline.candidate_ref === data.scope.reference.candidate_ref && (data.scope.reference_state === 'available' ? ref(data.scope.reference.candidate_ref) : data.scope.reference_state === 'selection_required' && data.scope.reference.candidate_ref === null) && (!q.reference_candidate_ref || data.scope.reference.candidate_ref === q.reference_candidate_ref), '批次安排的比较基准已变化，请刷新批次清单。');else check(data.scope.reference.kind === 'admission_official' && (data.scope.reference_state === 'available' ? ref(data.scope.reference.baseline_ref) : data.scope.reference_state === 'absent' && data.scope.reference.baseline_ref === null), '批次安排使用的正式计划资料已变化，请刷新批次清单。');
     bindScope(payload, data, q);
-    const source = data.source,
-      available = data.candidate.persisted_status === 'completed';
-    check(A.shape(source, ['role', 'grain', 'candidate_ref', 'available', 'reason']) && source.role === 'completion_anchor' && source.grain === 'full_admission_per_candidate_batch' && source.candidate_ref === q.selected_candidate_ref && source.available === available && (available ? source.reason === null : issue(source.reason)), '所选方案的批次安排资料不完整，请刷新批次清单。');
+    const source = data.source;
+    check(A.shape(source, ['role', 'grain', 'candidate_ref', 'available', 'reason']) && source.role === 'completion_anchor' && source.grain === 'full_admission_per_candidate_batch' && source.candidate_ref === q.selected_candidate_ref && source.available === true && source.reason === null, '所选方案的批次安排资料不完整，请刷新批次清单。');
     check(A.shape(data.filters, ['section', 'completion_filter', 'sort', 'order']) && data.filters.section === 'completion-batches' && ['completion_filter', 'sort', 'order'].every(key => data.filters[key] === q[key]), '批次清单的方案、筛选或排序已变化，请刷新批次清单。');
-    check(completion(data.summary) && data.summary.source_available === available && (available || data.summary.state === 'unavailable'), '批次安排和待安排工时资料不完整，请刷新批次清单。');
+    check(completion(data.summary), '批次安排和待安排工时资料不完整，请刷新批次清单。');
     const cohort = new Set(data.scope.batch_refs);
     check(Object.values(data.summary.sample_batch_refs).every(values => values.every(value => cohort.has(value))), '批次清单与本次选择的批次不一致，请刷新批次清单。');
     const totalKey = {
@@ -37625,7 +37447,7 @@ function SMExport({
     const total = totalKey ? data.summary[totalKey] : cohort.size;
     check(A.shape(data.page, ['number', 'size', 'total', 'has_more']) && data.page.number === q.page && data.page.size === q.size && count(data.page.total) && data.page.total === total && data.page.has_more === q.page * q.size < total && Array.isArray(data.items) && data.items.length === Math.min(q.size, Math.max(0, total - (q.page - 1) * q.size)), '批次清单的记录条数或页码已变化，请刷新批次清单。');
     function remainingDrill(value, operationCount, batchRef) {
-      if (operationCount === null || operationCount === 0) {
+      if (operationCount === 0) {
         check(value === null, '待安排工序的定位资料已失效，请刷新批次清单。');
         return;
       }
@@ -37634,10 +37456,10 @@ function SMExport({
       check(['range_start', 'range_end'].every(key => time(value[key]) && timeKey(value[key]) === timeKey(data.scope[key])), '待安排工序的比较时间范围已变化，请刷新批次清单。');
     }
     remainingDrill(data.summary.drill, data.summary.remaining_work.operation_count);
-    check(available ? data.summary.remaining_work.operation_count === data.summary.unplanned_operation_count + data.summary.deferred_operation_count && ['unplanned_operation_count', 'deferred_operation_count'].every(key => data.summary.remaining_work[key] === data.summary[key]) : data.summary.unplanned_operation_count === null && data.summary.deferred_operation_count === null && ['operation_count', 'unplanned_operation_count', 'deferred_operation_count'].every(key => data.summary.remaining_work[key] === null) && preparationMetrics.every(key => data.summary.remaining_work.metrics[key].state === 'unavailable' && data.summary.remaining_work.metrics[key].value === null), '所选方案的待安排工序资料不完整，请刷新批次清单。');
+    check(data.summary.remaining_work.operation_count === data.summary.unplanned_operation_count + data.summary.deferred_operation_count && ['unplanned_operation_count', 'deferred_operation_count'].every(key => data.summary.remaining_work[key] === data.summary[key]), '所选方案的待安排工序资料不完整，请刷新批次清单。');
     data.items.forEach(row => {
       check(A.shape(row, ['batch_ref', 'batch_label', 'part_no', 'part_label', 'quantity', 'completion_state', 'schedule_complete', 'scheduled_operation_count', 'unplanned_operation_count', 'deferred_operation_count', 'remaining_work', 'issues', 'remaining_drill']) && ref(row.batch_ref) && cohort.has(row.batch_ref) && ['batch_label', 'part_no', 'part_label'].every(key => row[key] === null || typeof row[key] === 'string') && (row.quantity === null || typeof row.quantity === 'number' && Number.isFinite(row.quantity) && row.quantity >= 0) && ['complete', 'incomplete', 'deferred', 'unknown'].includes(row.completion_state) && A.shape(row.remaining_work, ['operation_count', 'metrics']) && object(row.remaining_work.metrics) && preparationMetrics.every(key => E.metric(row.remaining_work.metrics[key])) && Array.isArray(row.issues) && row.issues.every(value => typeof value === 'string'), '批次安排或待安排工时资料不完整，请刷新批次清单。');
-      check(available ? typeof row.schedule_complete === 'boolean' && ['scheduled_operation_count', 'unplanned_operation_count', 'deferred_operation_count'].every(key => count(row[key])) && count(row.remaining_work.operation_count) && row.remaining_work.operation_count === row.unplanned_operation_count + row.deferred_operation_count : row.completion_state === 'unknown' && row.schedule_complete === null && ['scheduled_operation_count', 'unplanned_operation_count', 'deferred_operation_count'].every(key => row[key] === null) && row.remaining_work.operation_count === null && preparationMetrics.every(key => row.remaining_work.metrics[key].state === 'unavailable' && row.remaining_work.metrics[key].value === null), '批次的工序安排数量与读取的资料不一致，请刷新批次清单。');
+      check(typeof row.schedule_complete === 'boolean' && ['scheduled_operation_count', 'unplanned_operation_count', 'deferred_operation_count'].every(key => count(row[key])) && count(row.remaining_work.operation_count) && row.remaining_work.operation_count === row.unplanned_operation_count + row.deferred_operation_count, '批次的工序安排数量与读取的资料不一致，请刷新批次清单。');
       check(q.completion_filter === 'all' || q.completion_filter === 'complete' && row.schedule_complete === true || q.completion_filter === 'unfinished' && row.schedule_complete !== true || q.completion_filter === 'ordinary' && row.completion_state === 'incomplete' || q.completion_filter === 'deferred' && row.completion_state === 'deferred' || q.completion_filter === 'unknown' && row.completion_state === 'unknown', '批次清单与当前筛选条件不一致，请刷新批次清单。');
       remainingDrill(row.remaining_drill, row.remaining_work.operation_count, row.batch_ref);
     });
@@ -38124,7 +37946,7 @@ function SMExport({
     unavailable: '资料待确认',
     not_applicable: '本范围不适用'
   };
-  const countText = value => value === null ? '未记录' : window.RunCandidateModel.number(value);
+  const countText = value => window.RunCandidateModel.number(value);
   function amount(value, item) {
     if (value === null) return item.state === 'not_applicable' ? states.not_applicable : '资料待确认';
     return item.unit === '%' ? window.WorkbenchFormat.percent(value) : window.WorkbenchFormat.number(value, {
@@ -38312,7 +38134,7 @@ function SMExport({
       className: "rd-selection-facts"
     }, [['complete_batch_count', '工序已排齐', '批'], ['incomplete_batch_count', '工序未排齐', '批'], ['ordinary_incomplete_batch_count', '其他未排齐', '批'], ['deferred_batch_count', '仅因缺料未排齐', '批'], ['unknown_batch_count', '工序安排待确认', '批'], ['unplanned_operation_count', '其他未安排工序', '道'], ['deferred_operation_count', '缺料未安排工序', '道']].map(([key, label, unit]) => /*#__PURE__*/React.createElement("div", {
       key: key
-    }, /*#__PURE__*/React.createElement("dt", null, label), /*#__PURE__*/React.createElement("dd", null, countText(scope[key]), " ", unit)))), scope.source_available && scope.remaining_work.operation_count > 0 && scope.drill && /*#__PURE__*/React.createElement(Support, {
+    }, /*#__PURE__*/React.createElement("dt", null, label), /*#__PURE__*/React.createElement("dd", null, countText(scope[key]), " ", unit)))), scope.remaining_work.operation_count > 0 && scope.drill && /*#__PURE__*/React.createElement(Support, {
       targets: [{
         kind: 'preparation',
         label: '查看未安排工序',
@@ -38588,34 +38410,7 @@ function SMExport({
       search = candidate && candidate.coverage.search;
     return search ? /*#__PURE__*/React.createElement("span", {
       className: "rd-run-coverage"
-    }, "\u641C\u7D22 ", countText(search.completed_count), " / ", countText(search.total_count), " \xB7 \u5931\u8D25 ", countText(search.failed_count), " \xB7 \u8DF3\u8FC7 ", countText(search.skipped_count)) : null;
-  }
-  function recommendationLabel(data, candidateRef) {
-    const row = data.candidates.find(candidate => candidate.candidate_ref === candidateRef);
-    return row ? row.label || '候选名称未填写' : '资料未记录';
-  }
-  function CandidateReuse({
-    candidate,
-    data
-  }) {
-    const source = data.candidates.find(row => row.candidate_ref === candidate.equivalent_source_ref);
-    const fields = [['algo_mode', '算法方式'], ['used_strategy', '使用策略'], ['dispatch_mode', '调度模式'], ['dispatch_rule', '调度规则']];
-    return /*#__PURE__*/React.createElement("details", {
-      className: "rd-candidate-basis rd-candidate-reuse"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u590D\u7528\u6765\u6E90\u4E0E\u7B56\u7565\u8BB0\u5F55"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", null, "\u590D\u7528\u540C\u6B21\u201C", recommendationLabel(data, candidate.equivalent_source_ref), "\u201D\u7684\u6392\u4EA7\u7ED3\u679C\u3002"), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
-      entries: {
-        '复用候选': candidate.candidate_ref,
-        '来源候选': candidate.equivalent_source_ref
-      }
-    }), [['本候选', candidate], ['来源候选', source]].map(([label, row]) => /*#__PURE__*/React.createElement("section", {
-      key: label
-    }, /*#__PURE__*/React.createElement("strong", null, label, "\uFF1A", row ? row.label || '候选名称未填写' : '资料未记录'), /*#__PURE__*/React.createElement("dl", null, fields.map(([key, title]) => {
-      const value = row && row.source && row.source[key];
-      return /*#__PURE__*/React.createElement("div", {
-        key: key,
-        "data-reuse-field": key
-      }, /*#__PURE__*/React.createElement("dt", null, title, " ", /*#__PURE__*/React.createElement("code", null, key)), /*#__PURE__*/React.createElement("dd", null, value === null || value === undefined || value === '' ? '未记录' : String(value)));
-    }))))));
+    }, "\u641C\u7D22 ", countText(search.completed_count), " / ", countText(search.total_count)) : null;
   }
   function CandidateTable({
     data,
@@ -38691,9 +38486,7 @@ function SMExport({
         }, "\u6309\u8BA1\u7B97\u65F6\u4FDD\u5B58\u7684\u6279\u6B21\u4F18\u5148\u7EA7\u52A0\u6743 \xB7 \u5DF2\u77E5 ", countText(metric.known_count), " / ", countText(metric.total_count), " \u6279", metric.unknown_count > 0 && ' · ' + countText(metric.unknown_count) + ' 批待确认'));
       })), /*#__PURE__*/React.createElement("span", {
         className: "rd-card-completion"
-      }, candidate.persisted_status === 'completed' ? completion : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(C.Status, {
-        candidate: candidate
-      }), candidate.source && candidate.source.reason && /*#__PURE__*/React.createElement("small", null, candidate.source.reason.message)))));
+      }, completion)));
     }));
   }
   function CandidateFacts({
@@ -38710,7 +38503,7 @@ function SMExport({
       runRef: data.run.run_ref
     }), /*#__PURE__*/React.createElement(Coverage, {
       candidate: candidate
-    }), candidate.source && candidate.source.reason && /*#__PURE__*/React.createElement("p", null, candidate.source.reason.message), candidate.representative_objectives.map(name => /*#__PURE__*/React.createElement("div", {
+    }), candidate.representative_objectives.map(name => /*#__PURE__*/React.createElement("div", {
       key: name,
       className: "rd-saved-score-scope"
     }, /*#__PURE__*/React.createElement("strong", null, G.objectiveLabel(name), "\u7684\u4FDD\u5B58\u8BC4\u4EF7\u8303\u56F4"), /*#__PURE__*/React.createElement(C.ScoringScope, {
@@ -38720,9 +38513,6 @@ function SMExport({
       definitions: data.metric_definitions,
       onCompletion: onCompletion,
       onProcess: onProcess
-    }), candidate.equivalent_source_ref && /*#__PURE__*/React.createElement(CandidateReuse, {
-      candidate: candidate,
-      data: data
     })) : null;
   }
   function Details({
@@ -39110,7 +38900,7 @@ function SMExport({
         if (entry) entry.focus();
       }
     }, [data, read.error, tab]);
-    const history = window.APSResourceSession.useQuery(signal => N.adoptions(selected.candidate_ref, runRef, signal), [selected && selected.candidate_ref, runRef, revision, result && result.meta.snapshot_ref], !!selected && selected.persisted_status === 'completed' && historyOpen);
+    const history = window.APSResourceSession.useQuery(signal => N.adoptions(selected.candidate_ref, runRef, signal), [selected && selected.candidate_ref, runRef, revision, result && result.meta.snapshot_ref], !!selected && historyOpen);
     const processQuery = leafQuery('process');
     const remembered = data ? comparisonContext(data, {
       ...initialContext,
@@ -39490,9 +39280,7 @@ function SMExport({
       className: "rd-selected-name"
     }, /*#__PURE__*/React.createElement("span", {
       className: "rc-muted"
-    }, "\u67E5\u770B\uFF1A"), /*#__PURE__*/React.createElement("strong", null, selected.label || '候选名称未填写'), selected.persisted_status !== 'completed' && /*#__PURE__*/React.createElement(C.Status, {
-      candidate: selected
-    })), /*#__PURE__*/React.createElement("label", {
+    }, "\u67E5\u770B\uFF1A"), /*#__PURE__*/React.createElement("strong", null, selected.label || '候选名称未填写')), /*#__PURE__*/React.createElement("label", {
       className: "rd-reference-choice",
       ref: referenceChoice
     }, "\u5BF9\u7167\u65B9\u6848", /*#__PURE__*/React.createElement("select", {
@@ -39501,7 +39289,7 @@ function SMExport({
       onChange: event => event.target.value === 'admission_official' ? mode('admission_official') : reference(data.candidates.find(row => row.candidate_ref === event.target.value))
     }, data.scope.comparison_mode === 'candidates' && data.scope.reference_state === 'selection_required' && /*#__PURE__*/React.createElement("option", {
       value: ""
-    }, "\u8BF7\u9009\u62E9\u5BF9\u7167\u65B9\u6848"), data.candidates.filter(row => row.persisted_status === 'completed').map(row => /*#__PURE__*/React.createElement("option", {
+    }, "\u8BF7\u9009\u62E9\u5BF9\u7167\u65B9\u6848"), data.candidates.map(row => /*#__PURE__*/React.createElement("option", {
       key: row.candidate_ref,
       value: row.candidate_ref
     }, row.label || '候选名称未填写')), /*#__PURE__*/React.createElement("option", {
@@ -39512,14 +39300,13 @@ function SMExport({
       className: "rc-tools rd-current-actions"
     }, /*#__PURE__*/React.createElement(C.Button, {
       icon: "chart-gantt",
-      disabled: selected.persisted_status !== 'completed',
       onClick: () => gantt(selected)
     }, "\u770B\u7518\u7279"), renderTrial({
       candidateRef: selected.candidate_ref,
       scope: data.scope,
       query: '',
-      disabled: selected.persisted_status !== 'completed'
-    }), selected.persisted_status === 'completed' && /*#__PURE__*/React.createElement("div", {
+      disabled: false
+    }), /*#__PURE__*/React.createElement("div", {
       className: "rd-adoption-status"
     }, renderAdoption(selected.candidate_ref, {
       candidateDisplay: {
@@ -39608,7 +39395,7 @@ function SMExport({
       enabled: tab === panel
     }) : /*#__PURE__*/React.createElement("p", {
       className: "rc-empty"
-    }, "\u9009\u62E9\u5F53\u524D\u65B9\u6848\u67E5\u770B\u5DE5\u5E8F\u5B89\u6392\u3002") : selected && selected.persisted_status === 'completed' ? panel === 'resources' ? /*#__PURE__*/React.createElement(window.RunDecisionResources.Pane, {
+    }, "\u9009\u62E9\u5F53\u524D\u65B9\u6848\u67E5\u770B\u5DE5\u5E8F\u5B89\u6392\u3002") : selected ? panel === 'resources' ? /*#__PURE__*/React.createElement(window.RunDecisionResources.Pane, {
       result: result,
       query: leafQuery(panel),
       onQuery: value => detailQuery(panel, value),
@@ -39640,7 +39427,7 @@ function SMExport({
       enabled: tab === panel
     }) : /*#__PURE__*/React.createElement("div", {
       className: "rc-empty"
-    }, /*#__PURE__*/React.createElement("p", null, selected ? (selected.label || '当前候选') + '：' + window.WorkbenchTerms.candidate_statuses[selected.persisted_status] : '请选择候选查看明细。'), selected && selected.source && selected.source.reason && /*#__PURE__*/React.createElement("p", null, selected.source.reason.message)))))), selected && selected.persisted_status === 'completed' && /*#__PURE__*/React.createElement("details", {
+    }, /*#__PURE__*/React.createElement("p", null, "\u8BF7\u9009\u62E9\u5019\u9009\u67E5\u770B\u660E\u7EC6\u3002")))))), selected && /*#__PURE__*/React.createElement("details", {
       className: "rd-official",
       open: historyOpen,
       onToggle: event => setHistoryOpen(event.currentTarget.open)
@@ -39745,7 +39532,6 @@ function SMExport({
   }
   function Issues({
     row,
-    source,
     definitions
   }) {
     return /*#__PURE__*/React.createElement("details", {
@@ -39754,7 +39540,7 @@ function SMExport({
       key: key
     }, /*#__PURE__*/React.createElement("dt", null, label), /*#__PURE__*/React.createElement("dd", null, countText(row[key]), " \u9053"))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5269\u4F59\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("dd", null, countText(row.remaining_work.operation_count), " \u9053"))), row.issues.length > 0 && /*#__PURE__*/React.createElement("ul", null, row.issues.map((code, index) => /*#__PURE__*/React.createElement("li", {
       key: code + ':' + index
-    }, source.reason && source.reason.code === code ? source.reason.message : issueLabels[code] || code))), !hasRemaining(row.remaining_work) && /*#__PURE__*/React.createElement(window.RunDecisionRecommendation.RemainingMetrics, {
+    }, issueLabels[code] || code))), !hasRemaining(row.remaining_work) && /*#__PURE__*/React.createElement(window.RunDecisionRecommendation.RemainingMetrics, {
       work: row.remaining_work,
       definitions: definitions,
       label: (row.batch_label || '本批次') + '剩余准备与加工需求',
@@ -39770,7 +39556,7 @@ function SMExport({
     label,
     onSupport
   }) {
-    return data.source.available && hasRemaining(work) && drill ? /*#__PURE__*/React.createElement(C.Button, {
+    return hasRemaining(work) && drill ? /*#__PURE__*/React.createElement(C.Button, {
       icon: "search",
       className: "btn link",
       "aria-label": label,
@@ -39794,7 +39580,7 @@ function SMExport({
       className: "rd-completion-summary",
       "aria-label": "\u5F53\u524D\u65B9\u6848\u5168\u90E8\u6279\u6B21\u7684\u5DE5\u5E8F\u5B89\u6392\u6458\u8981",
       "data-completion-source-available": data.source.available
-    }, text && (data.source.available || !data.source.reason) && /*#__PURE__*/React.createElement("p", null, text), /*#__PURE__*/React.createElement("div", {
+    }, text && /*#__PURE__*/React.createElement("p", null, text), /*#__PURE__*/React.createElement("div", {
       className: "rc-tools"
     }, /*#__PURE__*/React.createElement(Remaining, {
       work: summary.remaining_work,
@@ -39855,7 +39641,6 @@ function SMExport({
       value: row.batch_ref
     })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("strong", null, T.delivery_completion_states[row.completion_state]), /*#__PURE__*/React.createElement(Issues, {
       row: row,
-      source: data.source,
       definitions: definitions
     })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", null, "\u5DF2\u6392 ", countText(row.scheduled_operation_count), " \u9053"), row.unplanned_operation_count !== 0 && /*#__PURE__*/React.createElement("small", null, "\u5176\u4ED6\u672A\u5B89\u6392 ", countText(row.unplanned_operation_count), " \u9053"), row.deferred_operation_count !== 0 && /*#__PURE__*/React.createElement("small", null, "\u7F3A\u6599\u672A\u5B89\u6392 ", countText(row.deferred_operation_count), " \u9053")), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Remaining, {
       work: row.remaining_work,
@@ -39953,10 +39738,7 @@ function SMExport({
     }), read.loading && /*#__PURE__*/React.createElement("p", {
       className: "rc-muted",
       role: "status"
-    }, "\u6B63\u5728\u8BFB\u53D6\u5F53\u524D\u65B9\u6848\u7684\u6279\u6B21\u5DE5\u5E8F\u5B89\u6392\u3002"), data && /*#__PURE__*/React.createElement(React.Fragment, null, data.source.reason && /*#__PURE__*/React.createElement("p", {
-      className: "rc-notice",
-      role: "status"
-    }, data.source.reason.message), /*#__PURE__*/React.createElement(Summary, {
+    }, "\u6B63\u5728\u8BFB\u53D6\u5F53\u524D\u65B9\u6848\u7684\u6279\u6B21\u5DE5\u5E8F\u5B89\u6392\u3002"), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Summary, {
       data: data,
       definitions: overview.metric_definitions,
       onSupport: onSupport
@@ -39968,7 +39750,7 @@ function SMExport({
       data: data,
       definitions: overview.metric_definitions,
       onSupport: onSupport
-    }) : data.source.available && /*#__PURE__*/React.createElement("div", {
+    }) : /*#__PURE__*/React.createElement("div", {
       className: "rc-empty"
     }, /*#__PURE__*/React.createElement("p", null, data.page.total > 0 ? '当前页没有批次。' : '当前方案没有符合筛选的批次。'), /*#__PURE__*/React.createElement(C.Button, {
       onClick: () => data.page.total > 0 ? update({
@@ -44603,7 +44385,7 @@ function SMExport({
       chosen: segment
     }), row.comparison_available && /*#__PURE__*/React.createElement("div", null, "\u5B89\u6392\u53D8\u52A8\uFF08\u65B0\u5B89\u6392\u51CF\u539F\u5B89\u6392\uFF09\uFF1A\u5F00\u59CB ", M.number(delta.start_hours), " \u5C0F\u65F6 \xB7 \u7ED3\u675F ", M.number(delta.end_hours), " \u5C0F\u65F6 \xB7 \u8D77\u6B62\u65F6\u957F ", M.number(delta.elapsed_hours), " \u5C0F\u65F6", /*#__PURE__*/React.createElement("small", null, "\u8BBE\u5907\u53D8\u5316\uFF1A", B.resourceChange(row, 'machine'), " \xB7 \u4EBA\u5458\u53D8\u5316\uFF1A", B.resourceChange(row, 'operator'), " \xB7 \u4F9B\u5E94\u5546\u53D8\u5316\uFF1A", B.resourceChange(row, 'supplier'))), /*#__PURE__*/React.createElement("div", null, "\u751F\u6210\u65F6\u62A5\u5DE5\uFF1A", execution ? M.executionField(row, 'execution_state') : '提交试排时的报工记录缺失'), execution && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, ['target_quantity', 'known_completed_quantity', 'remaining_quantity'].map(key => /*#__PURE__*/React.createElement("div", {
       key: key
-    }, M.executionLabels[key], "\uFF1A", M.executionField(row, key)))), execution.unknown_record_count > 0 && /*#__PURE__*/React.createElement("div", null, "\u7F3A\u5C11\u5B8C\u6210\u6570\u91CF\u7684\u62A5\u5DE5\u8BB0\u5F55\uFF1A", execution.unknown_record_count, " \u6761"), execution.legacy_unavailable_field_count > 0 && /*#__PURE__*/React.createElement("div", null, "\u5386\u53F2\u62A5\u5DE5\u672A\u4FDD\u5B58\u7684\u5B57\u6BB5\uFF1A", execution.legacy_unavailable_field_count, " \u9879"), /*#__PURE__*/React.createElement("div", null, "\u751F\u6210\u65F6\u62A5\u5DE5\u6570\u636E\u8D28\u91CF\uFF1A", M.executionField(row, 'data_quality'))), row.reasons.filter(reason => !['execution_affected', 'resource_identity_unavailable'].includes(reason.code)).concat(row.data_gaps.filter(gap => !gap.field.startsWith('execution_at_generation'))).map((r, i) => /*#__PURE__*/React.createElement("div", {
+    }, M.executionLabels[key], "\uFF1A", M.executionField(row, key)))), execution.unknown_record_count > 0 && /*#__PURE__*/React.createElement("div", null, "\u7F3A\u5C11\u5B8C\u6210\u6570\u91CF\u7684\u62A5\u5DE5\u8BB0\u5F55\uFF1A", execution.unknown_record_count, " \u6761"), /*#__PURE__*/React.createElement("div", null, "\u751F\u6210\u65F6\u62A5\u5DE5\u6570\u636E\u8D28\u91CF\uFF1A", M.executionField(row, 'data_quality'))), row.reasons.filter(reason => !['execution_affected', 'resource_identity_unavailable'].includes(reason.code)).concat(row.data_gaps.filter(gap => !gap.field.startsWith('execution_at_generation'))).map((r, i) => /*#__PURE__*/React.createElement("div", {
       key: i
     }, r.message)));
   }
@@ -49262,7 +49044,7 @@ function SMExport({
       arrangement(t.original, t);
       if (t.execution_anchor !== undefined) {
         arrangement(t.execution_anchor, t);
-        check(['completed_actuals', 'started_actuals', 'merged_external_actuals'].includes(t.execution_anchor.basis) && (t.execution_anchor.basis !== 'merged_external_actuals' || t.source === 'external') && typeof t.execution_anchor.message === 'string' && t.execution_anchor.message.length > 0 && ['machine_ref', 'operator_ref', 'start', 'end'].every(k => t.execution_anchor[k] === t[k]) && t.edit_context.can_change === false, '实际执行固定安排不完整，请刷新试调。');
+        check(['completed_actuals', 'merged_external_actuals'].includes(t.execution_anchor.basis) && (t.execution_anchor.basis !== 'merged_external_actuals' || t.source === 'external') && typeof t.execution_anchor.message === 'string' && t.execution_anchor.message.length > 0 && ['machine_ref', 'operator_ref', 'start', 'end'].every(k => t.execution_anchor[k] === t[k]) && t.edit_context.can_change === false, '实际执行固定安排不完整，请刷新试调。');
       }
       if (d.base.candidate_ref && !d.scenario_ref) check(t.source_task_ref === null);
       check(['internal', 'external'].includes(t.source) && object(t.hours) && typeof t.changed === 'boolean' && Array.isArray(t.predecessor_refs) && Array.isArray(t.predecessor_operation_refs) && object(t.edit_context) && typeof t.edit_context.can_change === 'boolean');
@@ -53276,10 +53058,10 @@ function SMExport({
   const scopeKeys = ['source', 'plan_ref', 'plan_finish_date_from', 'plan_finish_date_to', 'batch_ref', 'resource_type', 'resource_ref', 'query', 'focus'];
   const sorts = {
     delivery: ['batch_label', 'planned_end', 'finish_deviation_minutes', 'effective_processing_hours'],
-    records: ['event_time', 'batch_label', 'quantity_done', 'effective_processing_hours'],
-    machines: ['resource_label', 'events', 'effective_processing_hours'],
-    people: ['resource_label', 'events', 'effective_processing_hours'],
-    quality: ['batch_label', 'event_count', 'data_quality']
+    records: ['event_time', 'batch_label', 'completed_quantity', 'effective_processing_hours'],
+    machines: ['resource_label', 'production_reports', 'effective_processing_hours'],
+    people: ['resource_label', 'production_reports', 'effective_processing_hours'],
+    quality: ['batch_label', 'production_report_count', 'data_quality']
   };
   function scope(value = {}) {
     if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !scopeKeys.includes(key) && key !== 'kind') || value.kind !== undefined && value.kind !== 'execution_analysis') throw new Error('传入范围里有本页不支持的条件，没有忽略日期或批次筛选。');
@@ -53313,9 +53095,9 @@ function SMExport({
   const count = value => Number.isInteger(value) && value >= 0;
   const amount = value => value === null || Number.isFinite(value);
   const hours = row => ['effective_processing_hours', 'known_effective_processing_hours'].every(key => amount(row[key])) && count(row.unknown_hour_events);
-  const totals = row => ['events', 'production_reports', 'records'].every(key => count(row[key])) && row.events + row.production_reports === row.records && hours(row);
-  const operation = row => ['event_count', 'production_report_count', 'record_count', 'unknown_record_count'].every(key => count(row[key])) && row.event_count + row.production_report_count === row.record_count && amount(row.known_completed_quantity) && amount(row.remaining_quantity) && hours(row);
-  const record = row => ['legacy_event', 'production_report'].includes(row.record_kind) && typeof row.record_kind_label === 'string' && row.record_kind_label.length > 0 && amount(row.quantity_done) && amount(row.effective_processing_hours) && ['factory_local', 'legacy_storage'].includes(row.recorded_at_time_basis) && (row.record_kind === 'legacy_event' ? row.legacy_evidence && typeof row.legacy_evidence === 'object' : typeof row.report_no === 'string' && Array.isArray(row.correction_history) && row.correction_history.length > 0 && row.correction_history.every(revision => revision.after && (revision.before === null || typeof revision.before === 'object')));
+  const totals = row => count(row.production_reports) && hours(row);
+  const operation = row => ['production_report_count', 'unknown_record_count'].every(key => count(row[key])) && amount(row.known_completed_quantity) && amount(row.remaining_quantity) && hours(row);
+  const record = row => row.record_kind === 'production_report' && typeof row.record_kind_label === 'string' && row.record_kind_label.length > 0 && amount(row.completed_quantity) && amount(row.effective_processing_hours) && row.recorded_at_time_basis === 'factory_local' && typeof row.report_no === 'string' && Array.isArray(row.correction_history) && row.correction_history.length > 0 && row.correction_history.every(revision => revision.after && (revision.before === null || typeof revision.before === 'object'));
   function validateLedger(data) {
     if (!totals(data.summary) || !data.resources || !['machines', 'people'].every(kind => Array.isArray(data.resources[kind]) && data.resources[kind].every(totals)) || !data.rows.every(data.topic === 'records' ? record : ['machines', 'people'].includes(data.topic) ? totals : operation)) throw new Error('报工数据缺项或计数不一致，请刷新重试。');
   }
@@ -53324,7 +53106,7 @@ function SMExport({
     const data = result.data;
     if (!result.meta.snapshot_ref || !data.plan || !data.plan.is_current_official || !data.scope || !Array.isArray(data.rows) || !data.page || !data.summary || !Array.isArray(data.data_gaps) || !Number.isInteger(data.page.total) || data.page.total < 0 || !Number.isInteger(data.page.number) || !Number.isInteger(data.page.pages)) throw new Error('读到的报表数据不完整，请刷新重试。');
     if (topics.includes(data.topic)) {
-      if (!['operations', 'events', 'due', 'confirmed_due', 'unreported', 'finish_sample'].every(key => Number.isInteger(data.summary[key]) && data.summary[key] >= 0) || !['completion_rate', 'on_time_rate', 'effective_processing_hours', 'median_finish_minutes'].every(key => data.summary[key] === null || Number.isFinite(data.summary[key]))) throw new Error('报表汇总缺列或数值无效，没有按 0 处理。');
+      if (!['operations', 'production_reports', 'due', 'confirmed_due', 'unreported', 'finish_sample'].every(key => Number.isInteger(data.summary[key]) && data.summary[key] >= 0) || !['completion_rate', 'on_time_rate', 'effective_processing_hours', 'median_finish_minutes'].every(key => data.summary[key] === null || Number.isFinite(data.summary[key]))) throw new Error('报表汇总缺列或数值无效，没有按 0 处理。');
       validateLedger(data);
     }
     return result;
@@ -53401,17 +53183,16 @@ function SMExport({
       className: 'wb-action ' + className
     });
   }
-  // 排序列名在渲染时才读词表里的「历史现场记录」，避免加载顺序依赖。
   const names = () => ({
     batch_label: '批次',
     planned_end: '计划完工',
     finish_deviation_minutes: '完工偏差（分钟）',
     effective_processing_hours: '有效工时（小时）',
-    event_time: '实际结束或记录时间',
-    quantity_done: '本次数量或登记数量',
+    event_time: '实际记录时间',
+    completed_quantity: '本次完成数量',
     resource_label: '资源',
-    events: window.WorkbenchTerms.legacy_field_records + '数',
-    event_count: window.WorkbenchTerms.legacy_field_records + '数',
+    production_reports: '逐次报工数',
+    production_report_count: '逐次报工数',
     data_quality: '完整性'
   });
   // 「清除某个筛选」按钮的可读名字，不用内部键名。
@@ -53687,12 +53468,9 @@ function SMExport({
     actual_start: '实际开工',
     actual_end: '本次实际结束',
     completed_quantity: '本次完成数量',
-    quantity_done: '登记数量',
     effective_processing_hours: '有效加工工时',
     remark: '备注',
-    event_type: '记录类型',
     event_time: '记录时间',
-    event_label: '记录名称',
     recorded_at: '登记时间',
     recorded_at_time_basis: '登记时间说明',
     source: '来源',
@@ -53702,9 +53480,6 @@ function SMExport({
     evidence: '来源记录',
     message: '说明',
     reason: '原因',
-    event_time_basis: '记录时间说明',
-    raw_event_time: '原存储记录时间',
-    legacy_fact_ref: '历史记录编号',
     operation_ref: '工序编号',
     actual_machine_ref: '设备编号',
     actual_operator_ref: '人员编号',
@@ -53726,13 +53501,13 @@ function SMExport({
     original_values: '原始值'
   };
   const diagnosticFields = new Set(['code', 'rule', 'rule_code', 'diagnostic_code', 'request_key']);
-  const businessTextFields = new Set(['part_no', 'remark', 'message', 'reason', 'description', 'source', 'event_type', 'created_by', 'local_operator', 'declared_operator', 'quantity_done']);
+  const businessTextFields = new Set(['part_no', 'remark', 'message', 'reason', 'description', 'source', 'created_by', 'local_operator', 'declared_operator']);
   function referenceField(key, value) {
     if (diagnosticFields.has(key) || /(?:_ref|_refs|_snapshot)$/.test(key)) return true;
     const business = businessTextFields.has(key) || /(?:_code|_label|_name|_no|_quantity|_hours|_minutes)$/.test(key);
     return !business && typeof value === 'string' && /^[0-9a-f]{32,}$/i.test(value);
   }
-  const noFeedback = summary => !!summary && summary.records === 0;
+  const noFeedback = summary => !!summary && summary.production_reports === 0;
   function actualValue(value, empty, missing = '未知') {
     if (value === null || value === undefined) return empty ? /*#__PURE__*/React.createElement("span", {
       className: "rw-no-feedback-value",
@@ -53775,109 +53550,6 @@ function SMExport({
       entries: refs
     }));
   }
-  // 历史现场记录（legacy_evidence）只展示登记过中文名的项，值里的英文代号换成说法，
-  // 和后端 core/models/operation_execution_labels.py、report/review_records.py 同一套叫法；
-  // 编号类和没登记的项折叠进「编号」区，正文不再出现英文键名。
-  const legacyCodes = {
-    event_type: {
-      start: '开工',
-      finish: '整道完工',
-      pause: '暂停',
-      resume: '恢复',
-      exception: '异常'
-    },
-    reported_status: {
-      not_started: '待开工',
-      processing: '生产中',
-      paused: '已暂停',
-      exception: '异常中',
-      completed: '已完工'
-    },
-    reason_code: {
-      equipment: '设备问题',
-      person: '人员问题',
-      material: '物料问题',
-      quality: '质量问题',
-      process: '工艺问题',
-      external: '外协问题',
-      other: '其他'
-    },
-    severity: {
-      low: '轻微',
-      medium: '一般',
-      high: '严重',
-      critical: '紧急'
-    },
-    handling_status: {
-      new: '刚上报',
-      checking: '处理中',
-      waiting: '等待条件',
-      handled: '已处理'
-    }
-  };
-  const legacyFields = [['event_type', '记录类型'], ['reported_status', '登记状态'], ['event_time', '记录时间'], ['quantity_done', '登记数量'], ['quantity_scrapped', '报废数量'], ['reason_code', '异常原因'], ['reason_detail', '原因说明'], ['severity', '严重程度'], ['impact_minutes', '影响时长'], ['handling_status', '处理状态'], ['suggest_reschedule', '是否建议重新排程'], ['remark', '备注'], ['created_by', '记录人'], ['created_at', '登记时间']];
-  // 这几项没填也要列出来，让人一眼看到这条记录缺什么；其余项只在有值时显示。
-  const legacyAlways = new Set(['event_type', 'event_time', 'quantity_done', 'created_at']);
-  const legacyReferences = {
-    legacy_fact_ref: '历史记录编号',
-    operation_ref: '工序编号',
-    recorded_against_task_ref: '原任务编号',
-    recorded_against_plan_ref: '原计划编号',
-    actual_machine_ref: '设备编号',
-    actual_operator_ref: '人员编号'
-  };
-  // 时间来源的内部标记由「登记时间」旁的说明代替；工时在历史记录里恒为空，不单独显示。
-  const legacyInternal = new Set(['created_at_time_basis', 'created_at_default_basis', 'unavailable_fields', 'effective_processing_hours']);
-  const blank = value => value === null || value === undefined || value === '';
-  function legacyTime(value) {
-    try {
-      return window.WorkbenchFormat.dateTime(String(value), {
-        seconds: true
-      });
-    } catch (_) {
-      return String(value) + '（原始格式，无法换算）';
-    }
-  }
-  function legacyText(key, value) {
-    if (blank(value)) return key === 'event_time' ? '未知' : '未填写';
-    if (legacyCodes[key]) return legacyCodes[key][String(value).trim()] || (key === 'event_type' ? '执行事件' : '未识别');
-    if (key === 'event_time') return legacyTime(value);
-    if (key === 'created_at') return String(value) + '（历史系统导入的原始时间）';
-    if (key === 'impact_minutes') return typeof value === 'number' ? window.WorkbenchFormat.number(value, {
-      digits: 0
-    }) + ' 分钟' : String(value);
-    if (key === 'suggest_reschedule') {
-      const flag = String(value).trim().toLowerCase();
-      return ['1', 'yes', 'true'].includes(flag) ? '建议重新排程' : ['0', 'no', 'false'].includes(flag) ? '暂不建议重新排程' : '暂不清楚是否需要重新排程';
-    }
-    return typeof value === 'boolean' ? value ? '是' : '否' : String(value);
-  }
-  function LegacyRecord({
-    value
-  }) {
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) return /*#__PURE__*/React.createElement(StructuredFacts, {
-      value: value
-    });
-    const refs = {},
-      shown = legacyFields.filter(([key]) => legacyAlways.has(key) || !blank(value[key]));
-    Object.entries(value).forEach(([key, item]) => {
-      if (legacyInternal.has(key) || legacyFields.some(([field]) => field === key) || blank(item)) return;
-      refs[legacyReferences[key] || '原始项 ' + key] = typeof item === 'object' ? JSON.stringify(item) : item;
-    });
-    const unavailable = Array.isArray(value.unavailable_fields) ? value.unavailable_fields : [];
-    unavailable.forEach((item, index) => {
-      refs['无法显示的项 ' + (index + 1)] = item && item.field ? item.field : String(item);
-    });
-    return /*#__PURE__*/React.createElement("div", {
-      className: "rw-evidence-facts rw-legacy-record"
-    }, /*#__PURE__*/React.createElement("dl", null, shown.map(([key, label]) => /*#__PURE__*/React.createElement(React.Fragment, {
-      key: key
-    }, /*#__PURE__*/React.createElement("dt", null, label), /*#__PURE__*/React.createElement("dd", null, legacyText(key, value[key]))))), !!unavailable.length && /*#__PURE__*/React.createElement("p", {
-      className: "rw-muted"
-    }, "\u6709 ", unavailable.length, " \u9879\u539F\u503C\u7684\u683C\u5F0F\u65E0\u6CD5\u663E\u793A\uFF0C\u539F\u503C\u5DF2\u4FDD\u7559\u3002"), !!Object.keys(refs).length && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
-      entries: refs
-    }));
-  }
   function NoFeedback({
     summary
   }) {
@@ -53916,12 +53588,10 @@ function SMExport({
   }
   window.ReportEvidence = {
     StructuredFacts,
-    LegacyRecord,
     NoFeedback,
     noFeedback,
     actualValue,
-    TableFrame,
-    legacyText
+    TableFrame
   };
 })();
 
@@ -53949,7 +53619,6 @@ function SMExport({
     trim: true
   }) + ' 分钟';
   const signedMinutes = value => (value > 0 ? '+' : '') + minutes(value);
-  const legacy = () => window.WorkbenchTerms.legacy_field_records;
   const hoursColumns = new Set(['effective_processing_hours', 'known_effective_processing_hours']);
   const defaultEmpty = {
     title: '当前筛选没有结果',
@@ -54061,20 +53730,20 @@ function SMExport({
       width: 185,
       render: row => stack(row.batch_label, row.operation_label)
     }, {
-      key: 'event_label',
-      title: '记录来源 / 内容',
+      key: 'record_kind_label',
+      title: '记录类型 / 单号',
       width: 140,
-      render: row => stack(row.record_kind_label, row.record_kind === 'production_report' ? row.report_no : row.event_label)
+      render: row => stack(row.record_kind_label, row.report_no)
     }, {
       key: 'event_time',
       title: '实际时段 / 记录时间',
       width: 164,
-      render: row => row.record_kind === 'production_report' ? stack(time(row.actual_start), time(row.actual_end)) : time(row.event_time, '未知')
+      render: row => stack(time(row.actual_start), time(row.actual_end))
     }, {
-      key: 'quantity_done',
-      title: '本次 / 登记数量',
+      key: 'completed_quantity',
+      title: '本次完成数量',
       width: 130,
-      render: row => text(row.quantity_done)
+      render: row => text(row.completed_quantity)
     }, {
       key: 'effective_processing_hours',
       title: '有效工时（小时）',
@@ -54109,16 +53778,8 @@ function SMExport({
       width: 135,
       render: status
     }, {
-      key: 'event_count',
-      title: legacy() + '数',
-      width: 112
-    }, {
       key: 'production_report_count',
       title: '逐次报工数',
-      width: 110
-    }, {
-      key: 'record_count',
-      title: '全部记录数',
       width: 110
     }, {
       key: 'data_gaps',
@@ -54138,7 +53799,7 @@ function SMExport({
         value: hoursColumns.has(column.key) ? amount(row[column.key]) : text(row[column.key]),
         label: column.label
       }),
-      align: ['operations', 'batches', 'events', 'production_reports', 'records', 'effective_processing_hours', 'known_effective_processing_hours', 'unknown_hour_events'].includes(column.key) ? 'right' : 'left'
+      align: ['operations', 'batches', 'production_reports', 'effective_processing_hours', 'known_effective_processing_hours', 'unknown_hour_events'].includes(column.key) ? 'right' : 'left'
     }));
     if (data.topic === 'records' && typeof onLocate === 'function') columns.push({
       key: 'locate',
@@ -54147,14 +53808,14 @@ function SMExport({
       render: row => /*#__PURE__*/React.createElement(Button, {
         className: "rw-icon-button",
         icon: "chart-gantt",
-        "aria-label": '定位实际甘特 ' + (row.report_no || row.event_label),
+        "aria-label": '定位实际甘特 ' + row.report_no,
         disabled: busy,
         onClick: () => onLocate(row)
       })
     });
     const visible = columns.filter(column => column.key !== 'action' || typeof onDetail === 'function');
     const fixedWidth = visible.every(column => typeof column.width === 'number') ? visible.reduce((sum, column) => sum + column.width, 0) : 0;
-    const recordsTitle = '逐次报工与' + legacy();
+    const recordsTitle = '逐次报工记录';
     return data.rows.length ? /*#__PURE__*/React.createElement(window.ReportEvidence.TableFrame, {
       className: primary ? 'rw-primary-table' : '',
       caption: data.topic === 'records' ? recordsTitle : '当前范围报表结果',
@@ -54201,7 +53862,7 @@ function SMExport({
     const values = topic === 'delivery' ? [['到期工序完成率', pct(s.completion_rate), s.confirmed_due + ' 已确认 / ' + s.due + ' 已到期'], ['到期工序按时完成率', pct(s.on_time_rate), s.due_on_time + ' 按时 / ' + s.due + ' 已到期'], ['超时未确认完成', s.late_open, '超过计划完工时间 10 分钟', s.late_open ? 'warning' : undefined, '道'], ['完工偏差中位数', s.median_finish_minutes == null ? actual(null) : window.WorkbenchFormat.number(s.median_finish_minutes, {
       digits: 2,
       trim: true
-    }), s.finish_sample ? '完工记录 ' + s.finish_sample + ' 道；90% 的记录完工偏差不超过 ' + minutes(s.p90_finish_minutes) : '暂无已确认完工记录', undefined, s.median_finish_minutes == null ? undefined : '分钟']] : [['范围内工序', s.operations, s.reported_operations + ' 道有反馈；' + s.unreported + ' 道暂无反馈'], ['逐次报工', s.production_reports, legacy() + ' ' + s.events + ' 条'], ['全部记录', s.records, legacy() + '与逐次报工合计'], ['有效加工工时', s.effective_processing_hours == null ? actual(null) : amount(s.effective_processing_hours), empty ? '暂无现场工时记录' : '已知小计 ' + hoursText(s.known_effective_processing_hours) + '；未知 ' + s.unknown_hour_events + ' 条', undefined, s.effective_processing_hours == null ? undefined : '小时']];
+    }), s.finish_sample ? '完工记录 ' + s.finish_sample + ' 道；90% 的记录完工偏差不超过 ' + minutes(s.p90_finish_minutes) : '暂无已确认完工记录', undefined, s.median_finish_minutes == null ? undefined : '分钟']] : [['范围内工序', s.operations, s.reported_operations + ' 道有反馈；' + s.unreported + ' 道暂无反馈'], ['逐次报工', s.production_reports, '当前范围逐次报工'], ['已知工时小计', s.known_effective_processing_hours == null ? actual(null) : amount(s.known_effective_processing_hours), empty ? '暂无已登记工时' : '工时待补 ' + s.unknown_hour_events + ' 条', undefined, s.known_effective_processing_hours == null ? undefined : '小时'], ['有效加工工时', s.effective_processing_hours == null ? actual(null) : amount(s.effective_processing_hours), empty ? '暂无现场工时记录' : '已知小计 ' + hoursText(s.known_effective_processing_hours) + '；未知 ' + s.unknown_hour_events + ' 条', undefined, s.effective_processing_hours == null ? undefined : '小时']];
     return /*#__PURE__*/React.createElement(MetricStrip, {
       columns: 4,
       className: "rw-metrics"
@@ -54239,12 +53900,9 @@ function SMExport({
     } = window.ReportTable;
     // 工时列表头已写明单位，格子里只放整形后的数字；其余项照原值显示。
     const cell = (key, value) => key === 'effective_processing_hours' ? amount(value) : text(value);
-    const legacy = record.record_kind === 'legacy_event';
     return /*#__PURE__*/React.createElement("details", {
       className: "rw-limitations rw-record-evidence"
-    }, /*#__PURE__*/React.createElement("summary", null, record.record_kind_label, " \xB7 ", record.report_no || record.event_label, " \xB7 ", time(record.event_time, '未知')), legacy ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h4", null, window.WorkbenchTerms.legacy_field_records), /*#__PURE__*/React.createElement(window.ReportEvidence.LegacyRecord, {
-      value: record.legacy_evidence
-    })) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "\u767B\u8BB0\u65F6\u95F4\uFF1A", time(record.recorded_at), "\uFF08\u73B0\u573A\u8BB0\u5F55\u65F6\u95F4\uFF09\uFF1B\u8BB0\u5F55\u4EBA\uFF1A", text(record.local_operator), "\uFF1B\u7ECF\u529E\u4EBA\uFF1A", text(record.declared_operator)), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+    }, /*#__PURE__*/React.createElement("summary", null, record.record_kind_label, " \xB7 ", record.report_no, " \xB7 ", time(record.event_time, '未知')), /*#__PURE__*/React.createElement("p", null, "\u767B\u8BB0\u65F6\u95F4\uFF1A", time(record.recorded_at), "\uFF08\u73B0\u573A\u8BB0\u5F55\u65F6\u95F4\uFF09\uFF1B\u8BB0\u5F55\u4EBA\uFF1A", text(record.local_operator), "\uFF1B\u7ECF\u529E\u4EBA\uFF1A", text(record.declared_operator)), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
         '报工来源': record.source
       }
@@ -54285,7 +53943,7 @@ function SMExport({
         '原人员编号': revision.before && revision.before.actual_operator_ref,
         '新人员编号': revision.after.actual_operator_ref
       }
-    })))));
+    }))));
   }
   function Detail({
     operationRef,
@@ -54370,7 +54028,7 @@ function SMExport({
       title: "\u6B63\u5728\u8BFB\u53D6\u5DE5\u5E8F\u8BB0\u5F55"
     }), row && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("dl", {
       className: "rw-detail-facts"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6574\u9053\u5B8C\u6210"), /*#__PURE__*/React.createElement("dd", null, row.execution_label)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5DF2\u786E\u8BA4\u5B8C\u5DE5\u65F6\u95F4"), /*#__PURE__*/React.createElement("dd", null, time(row.confirmed_finish))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5DF2\u77E5\u7D2F\u8BA1\u6570\u91CF"), /*#__PURE__*/React.createElement("dd", null, text(row.known_completed_quantity), "\uFF1B\u6570\u91CF\u672A\u77E5 ", row.unknown_record_count, " \u6761")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6709\u6548\u52A0\u5DE5\u5DE5\u65F6"), /*#__PURE__*/React.createElement("dd", null, hoursText(row.effective_processing_hours), "\uFF1B\u5DF2\u77E5\u5C0F\u8BA1 ", hoursText(row.known_effective_processing_hours)))), /*#__PURE__*/React.createElement("p", null, window.WorkbenchTerms.legacy_field_records, " ", row.event_count, " \u6761\uFF1B\u9010\u6B21\u62A5\u5DE5 ", row.production_report_count, " \u6761\uFF1B\u5168\u90E8\u8BB0\u5F55 ", row.record_count, " \u6761\u3002\u5269\u4F59\u6570\u91CF\uFF1A", text(row.remaining_quantity), "\u3002"), /*#__PURE__*/React.createElement("p", null, row.data_gaps.join(' ')), /*#__PURE__*/React.createElement(Table, {
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6574\u9053\u5B8C\u6210"), /*#__PURE__*/React.createElement("dd", null, row.execution_label)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5DF2\u786E\u8BA4\u5B8C\u5DE5\u65F6\u95F4"), /*#__PURE__*/React.createElement("dd", null, time(row.confirmed_finish))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5DF2\u77E5\u7D2F\u8BA1\u6570\u91CF"), /*#__PURE__*/React.createElement("dd", null, text(row.known_completed_quantity), "\uFF1B\u6570\u91CF\u672A\u77E5 ", row.unknown_record_count, " \u6761")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6709\u6548\u52A0\u5DE5\u5DE5\u65F6"), /*#__PURE__*/React.createElement("dd", null, hoursText(row.effective_processing_hours), "\uFF1B\u5DF2\u77E5\u5C0F\u8BA1 ", hoursText(row.known_effective_processing_hours)))), /*#__PURE__*/React.createElement("p", null, "\u9010\u6B21\u62A5\u5DE5 ", row.production_report_count, " \u6761\u3002\u5269\u4F59\u6570\u91CF\uFF1A", text(row.remaining_quantity), "\u3002"), /*#__PURE__*/React.createElement("p", null, row.data_gaps.join(' ')), /*#__PURE__*/React.createElement(Table, {
       data: {
         topic: 'records',
         rows: records
@@ -54563,8 +54221,7 @@ function SMExport({
       scope: "row"
     }, window.WorkbenchFormat.date(row.label)), /*#__PURE__*/React.createElement("td", null, row.planned), /*#__PURE__*/React.createElement("td", null, row.actual == null ? '未知' : row.actual))))))));
   }
-  // 列名里的「历史现场记录」从词表取，所以做成函数，在渲染时再读。
-  const resourceColumns = () => [['resource_label', '实际资源'], ['operations', '涉及工序'], ['events', window.WorkbenchTerms.legacy_field_records + '数'], ['production_reports', '逐次报工数'], ['records', '全部记录数'], ['effective_processing_hours', '有效加工工时（小时）'], ['known_effective_processing_hours', '已知工时小计（小时）'], ['unknown_hour_events', '工时未知记录数']].map(([key, label]) => ({
+  const resourceColumns = () => [['resource_label', '实际资源'], ['operations', '涉及工序'], ['production_reports', '逐次报工数'], ['effective_processing_hours', '有效加工工时（小时）'], ['known_effective_processing_hours', '已知工时小计（小时）'], ['unknown_hour_events', '工时未知记录数']].map(([key, label]) => ({
     key,
     label
   }));
@@ -54690,8 +54347,7 @@ function SMExport({
       } = window.ReviewChartViews,
       {
         hoursText
-      } = window.ReportTable,
-      legacy = window.WorkbenchTerms.legacy_field_records;
+      } = window.ReportTable;
     const points = data.charts.trend.map(row => ({
       time: new Date(row.date + 'T00:00:00').getTime(),
       label: row.date,
@@ -54712,7 +54368,7 @@ function SMExport({
       label: "\u8303\u56F4\u5185\u5DE5\u5E8F\u7D2F\u8BA1\u5B8C\u5DE5"
     })), /*#__PURE__*/React.createElement("section", {
       className: "er-section er-insights"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u8BB0\u5F55\u8981\u70B9"), /*#__PURE__*/React.createElement("p", null, "\u5DF2\u786E\u8BA4\u665A\u5B8C\u6210 ", data.summary.finish_late, " \u9053\uFF1B\u5230\u671F\u672A\u786E\u8BA4 ", data.summary.unclosed_due, " \u9053\u3002"), /*#__PURE__*/React.createElement("p", null, legacy, " ", data.summary.events, " \u6761\uFF1B\u9010\u6B21\u62A5\u5DE5 ", data.summary.production_reports, " \u6761\uFF1B\u5168\u90E8\u8BB0\u5F55 ", data.summary.records, " \u6761\u3002"), !window.ReportEvidence.noFeedback(data.summary) && /*#__PURE__*/React.createElement("p", null, "\u6709\u6548\u52A0\u5DE5\u5DE5\u65F6 ", hoursText(data.summary.effective_processing_hours), "\uFF1B\u5DF2\u77E5\u5C0F\u8BA1 ", hoursText(data.summary.known_effective_processing_hours), "\uFF1B\u5DE5\u65F6\u672A\u77E5 ", data.summary.unknown_hour_events, " \u6761\u3002"), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("h3", null, "\u8BB0\u5F55\u8981\u70B9"), /*#__PURE__*/React.createElement("p", null, "\u5DF2\u786E\u8BA4\u665A\u5B8C\u6210 ", data.summary.finish_late, " \u9053\uFF1B\u5230\u671F\u672A\u786E\u8BA4 ", data.summary.unclosed_due, " \u9053\u3002"), /*#__PURE__*/React.createElement("p", null, "\u9010\u6B21\u62A5\u5DE5 ", data.summary.production_reports, " \u6761\u3002"), !window.ReportEvidence.noFeedback(data.summary) && /*#__PURE__*/React.createElement("p", null, "\u6709\u6548\u52A0\u5DE5\u5DE5\u65F6 ", hoursText(data.summary.effective_processing_hours), "\uFF1B\u5DF2\u77E5\u5C0F\u8BA1 ", hoursText(data.summary.known_effective_processing_hours), "\uFF1B\u5DE5\u65F6\u672A\u77E5 ", data.summary.unknown_hour_events, " \u6761\u3002"), /*#__PURE__*/React.createElement("div", {
       className: "rw-actions"
     }, [['finish_late', '晚完成明细'], ['unclosed', '未确认明细'], [data.scope.focus, '工序明细']].map(([focus, label]) => /*#__PURE__*/React.createElement(window.ResourceControls.Button, {
       key: label,
@@ -55004,17 +54660,13 @@ function SMExport({
     const response = request.result,
       data = response && response.data;
     const captionPlan = !request.busy && !request.error && data && data.plan;
-    const captionStatus = captionPlan && {
-      official: captionPlan.is_current_official ? window.WorkbenchTerms.current_official : window.WorkbenchTerms.historical_official,
-      candidate: window.WorkbenchTerms.candidate,
-      scenario: window.WorkbenchTerms.trial_scenario
-    }[captionPlan.kind];
+    const captionStatus = captionPlan && (captionPlan.is_current_official ? window.WorkbenchTerms.current_official : window.WorkbenchTerms.historical_official);
     window.WorkbenchCaption.useCaption(captionStatus ? {
       reference: captionPlan.plan_ref,
       label: mode === 'review' ? '复盘计划' : '报表计划',
       name: captionPlan.display_name,
       status: captionStatus,
-      version: captionPlan.kind === 'official' && Number.isSafeInteger(captionPlan.version) ? window.WorkbenchTerms.plan_version(captionPlan.version) : undefined,
+      version: Number.isSafeInteger(captionPlan.version) ? window.WorkbenchTerms.plan_version(captionPlan.version) : undefined,
       range: data.scope.plan_finish_date_from && data.scope.plan_finish_date_to ? '计划完工 ' + data.scope.plan_finish_date_from + ' 至 ' + data.scope.plan_finish_date_to : undefined
     } : null);
     window.WorkbenchPageContext.useSnapshot(data ? {
@@ -55327,7 +54979,7 @@ function SMExport({
       className: "rw-table-heading wb-surface-row wb-surface-divider"
     }, /*#__PURE__*/React.createElement("div", {
       className: "rw-table-title"
-    }, /*#__PURE__*/React.createElement("h3", null, state.topic === 'records' ? '逐次报工与' + window.WorkbenchTerms.legacy_field_records : ['machines', 'people'].includes(state.topic) ? '实际资源记录' : '范围内工序'), /*#__PURE__*/React.createElement("span", null, data.page.total, " \u9879")), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("h3", null, state.topic === 'records' ? '逐次报工记录' : ['machines', 'people'].includes(state.topic) ? '实际资源记录' : '范围内工序'), /*#__PURE__*/React.createElement("span", null, data.page.total, " \u9879")), /*#__PURE__*/React.createElement("div", {
       className: "rw-filters"
     }, /*#__PURE__*/React.createElement(Sort, {
       topic: state.topic,
@@ -55526,7 +55178,7 @@ function SMExport({
       samples = data.samples;
     if (data.candidate_scope_basis !== 'template_ref_and_same_part_unbound' || !Array.isArray(samples) || samples.length !== row.candidate_count || new Set(samples.map(sample => sample && sample.sample_ref)).size !== samples.length) return false;
     if (!samples.every(sample => {
-      if (!object(sample) || !ref(sample.sample_ref) || sample.execution_operation_ref !== sample.sample_ref || typeof sample.eligible !== 'boolean' || typeof sample.selected !== 'boolean' || typeof sample.sample_revision !== 'string' || !['completed_quantity', 'effective_processing_hours', 'unit_hours'].every(key => number(sample[key])) || !count(sample.unknown_record_count) || !Array.isArray(sample.exclusion_reasons) || !Array.isArray(sample.reports) || !Array.isArray(sample.legacy_facts) || !Array.isArray(sample.data_gaps) || !sample.reports.every(report => object(report) && ref(report.report_ref) && ref(report.revision_ref) && Array.isArray(report.correction_history))) return false;
+      if (!object(sample) || !ref(sample.sample_ref) || sample.execution_operation_ref !== sample.sample_ref || typeof sample.eligible !== 'boolean' || typeof sample.selected !== 'boolean' || typeof sample.sample_revision !== 'string' || !['completed_quantity', 'effective_processing_hours', 'unit_hours'].every(key => number(sample[key])) || !count(sample.unknown_record_count) || !Array.isArray(sample.exclusion_reasons) || !Array.isArray(sample.reports) || !Array.isArray(sample.data_gaps) || !sample.reports.every(report => object(report) && ref(report.report_ref) && ref(report.revision_ref) && Array.isArray(report.correction_history))) return false;
       if (sample.template_operation_ref === null) return sample.template_revision === null && sample.lineage_evidence_ref === null && !sample.eligible && !sample.selected && sample.exclusion_reasons.some(reason => reason.code === 'template_lineage_missing');
       return sample.template_operation_ref === row.template_operation_ref && Number.isInteger(sample.template_revision) && sample.template_revision > 0 && ref(sample.lineage_evidence_ref) && (!sample.eligible || sample.template_revision === row.template_revision) && (!sample.selected || sample.eligible && sample.exclusion_reasons.length === 0) && (sample.selected || sample.exclusion_reasons.length > 0);
     })) return false;
@@ -56672,11 +56324,7 @@ function SMExport({
     }, reason.message))), /*#__PURE__*/React.createElement("h4", null, "\u9010\u6B21\u62A5\u5DE5\uFF08", sample.reports.length, " \u6761\uFF09"), sample.reports.map(report => /*#__PURE__*/React.createElement(Report, {
       key: report.report_ref,
       report: report
-    })), /*#__PURE__*/React.createElement("h4", null, window.WorkbenchTerms.legacy_field_records, "\uFF08", sample.legacy_facts.length, " \u6761\uFF09"), sample.legacy_facts.map((fact, index) => /*#__PURE__*/React.createElement("details", {
-      key: fact.legacy_fact_ref || index
-    }, /*#__PURE__*/React.createElement("summary", null, window.WorkbenchTerms.legacy_field_records, " ", index + 1), /*#__PURE__*/React.createElement(window.ReportEvidence.LegacyRecord, {
-      value: fact
-    }))), !!sample.data_gaps.length && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h4", null, "\u6570\u636E\u7F3A\u53E3"), /*#__PURE__*/React.createElement("ul", null, sample.data_gaps.map((gap, index) => /*#__PURE__*/React.createElement("li", {
+    })), !!sample.data_gaps.length && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h4", null, "\u6570\u636E\u7F3A\u53E3"), /*#__PURE__*/React.createElement("ul", null, sample.data_gaps.map((gap, index) => /*#__PURE__*/React.createElement("li", {
       key: index
     }, gap.message || /*#__PURE__*/React.createElement(window.ReportEvidence.StructuredFacts, {
       value: gap
@@ -64235,11 +63883,8 @@ function SystemLiveOverview({
     unreported: '待报工',
     started: '已开工',
     complete: '完整',
-    paused: '已暂停',
-    exception: '异常',
     incomplete: '尚不完整',
     invalid: '待核对',
-    legacy: '旧记录需核对',
     available: '已读取',
     unknown: '未知',
     missing: '缺少来源',

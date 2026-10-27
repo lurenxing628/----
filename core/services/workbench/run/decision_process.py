@@ -49,7 +49,7 @@ def process_details(source, filters, *, page: Union[int, str] = 1, size: Union[i
     anchor = filters["process_candidate_ref"] or source.selected_ref or (source.rows[0]["candidate_ref"] if source.rows else None)
     if anchor is None:
         reject("entity_not_found", "这次排产还没有保存候选计算记录。", 404)
-    source._candidate_reference(anchor, require_result=False)
+    source._candidate_reference(anchor)
     filters = {**filters, "process_candidate_ref": anchor}
     page, size = parse_page(page), parse_page(size, size=True)
     offset = (page - 1) * size

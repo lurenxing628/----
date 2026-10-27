@@ -1,9 +1,8 @@
-"""Additive report-void facts. Installation belongs to an explicit migration."""
+"""Additive report-void facts."""
 
-from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_migration_contract_issues
 from core.infrastructure.workbench_metadata_schema import canonical_sql
 
-from .schema_structure import SchemaStructure, schema_objects
+from .schema_structure import schema_objects
 
 
 def execution_void_objects():
@@ -48,25 +47,3 @@ def execution_void_contract_issues(conn, *, structure=None):
     return [("missing_execution_void:" if name not in actual else "invalid_execution_void:") + name
             for name, sql in execution_void_objects().items()
             if name not in actual or canonical_sql(sql) != canonical_sql(actual[name])]
-
-
-def install_execution_voids(conn):
-    if not conn.in_transaction:
-        raise RuntimeError("Execution void installation requires the migration transaction.")
-    structure = SchemaStructure(conn)
-    objects = execution_void_objects()
-    names = structure.objects.keys()
-    if names & objects.keys():
-        issues = execution_void_contract_issues(conn, structure=structure)
-        if issues:
-            raise RuntimeError("Cannot repair partial execution void facts: " + "; ".join(issues))
-        return
-    required = {"WorkbenchProductionReports", "WorkbenchProductionReportRevisions", "WorkbenchExecutionLedgerClock", "WorkbenchCommandReceipts"}
-    if not required <= names:
-        raise RuntimeError("Execution void prerequisites are missing.")
-    if execution_ledger_migration_contract_issues(conn, structure=structure):
-        raise RuntimeError("Execution ledger prerequisites do not match their schema contract.")
-    if conn.execute("SELECT 1 FROM WorkbenchCommandReceipts WHERE action='execution.report_void' LIMIT 1").fetchone():
-        raise RuntimeError("Report void receipts remain without facts; restore the complete ledger.")
-    for sql in objects.values():
-        conn.execute(sql)

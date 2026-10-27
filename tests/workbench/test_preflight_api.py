@@ -97,9 +97,9 @@ def test_read_only_zero_hours_and_unavailable_worker(pf, monkeypatch):
     from core.services.workbench.facts.schema_compat import project_facts
 
     archive = json.loads(first_binding["fingerprint"])
-    legacy = {"schema": archive["schema"], "tables": archive["tables"]}
+    without_columns = {"version": archive["version"], "schema": archive["schema"], "tables": archive["tables"]}
     assert archive["version"] == "production-facts-v2" and archive["columns"]
-    assert same(project_facts(archive), project_facts(legacy))
+    assert same(project_facts(archive), project_facts(without_columns))
     assert data["counts"]["ready_tasks"] == 1
     assert data["counts"]["blocked_tasks"] == 0
     assert data["calendar_check"] == "not_evaluated"
@@ -112,8 +112,8 @@ def test_read_only_zero_hours_and_unavailable_worker(pf, monkeypatch):
     assert "execution_projection_source" not in data and "execution_ledger_unavailable" not in reasons
 
 
-_RECEIPT = ("INSERT INTO WorkbenchCommandReceipts(request_key,receipt_ref,action,context_ref,input_hash,outcome_json) "
-            "VALUES ('preflight-receipt-0001','" + "c" * 32 + "','{}','context','" + "d" * 64 + "','{{\"result\":\"{}\"}}')")
+_RECEIPT = ("INSERT INTO WorkbenchCommandReceipts(request_key,receipt_ref,action,context_ref,input_json,outcome_json) "
+            "VALUES ('preflight-receipt-0001','" + "c" * 32 + "','{}','context','{{}}','{{\"result\":\"{}\"}}')")
 
 
 @pytest.mark.parametrize("change,stale", [(_RECEIPT.format("dashboard.transition", "committed"), False), (_RECEIPT.format("calendar.defaults", "committed"), True)])

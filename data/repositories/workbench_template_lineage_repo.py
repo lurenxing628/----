@@ -118,7 +118,7 @@ class WorkbenchTemplateLineageRepository(BaseRepository):
                    source_lineage_ref=source["lineage_ref"] if source else None, source_event_id=source_event_id,
                    source_eligible=int(source_eligible), birth_event_id=birth_event_id,
                    evidence_version=EVIDENCE_VERSION, template_snapshot=template_snapshot,
-                   template_fingerprint=None, instance_snapshot=instance_snapshot, instance_fingerprint=None)
+                   instance_snapshot=instance_snapshot)
         self.conn.execute("INSERT INTO WorkbenchTemplateLineageOrigins (" + ",".join(row) + ") VALUES (" +
                           ",".join("?" for _ in row) + ")", tuple(row.values()))
         return row

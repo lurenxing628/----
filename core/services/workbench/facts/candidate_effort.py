@@ -12,7 +12,6 @@ def candidate_operation_effort_projection(source):
     arranged = {row["operation_ref"]: row for row in source.tasks}
     refs = set(arranged) | {row["operation_ref"] for row in source.unplanned}
     deferred = material_deferred_ids(source.disposition.values(), source.capture["input"])
-    available = source.candidate["status"] == "completed"
     roles = {OperationRequirementRole.NEW_SCHEDULE.value, OperationRequirementRole.RETAINED.value,
              OperationRequirementRole.EXECUTION.value, OperationRequirementRole.COMPLETED.value}
     result = {}
@@ -21,9 +20,7 @@ def candidate_operation_effort_projection(source):
         execution = source.facts.execution[ref]
         saved = runtime.get(ref)
         original_source = saved.get("source") if saved is not None else arranged.get(ref, operation).get("source")
-        if not available:
-            allocation = "unknown"
-        elif ref not in arranged:
+        if ref not in arranged:
             allocation = "deferred" if source.facts.operations[ref] in deferred else "unplanned"
         elif original_source == SourceType.EXTERNAL.value:
             allocation = "external"
@@ -32,7 +29,7 @@ def candidate_operation_effort_projection(source):
             allocation = role if role in roles else "unknown"
         standard = {**archived_standard_effort(operation, execution),
                     "evidence_source": {"kind": "admission", "run_ref": source.run["run_ref"]}}
-        result[ref] = project_operation_effort(saved, standard, allocation_state=allocation, source_available=available,
+        result[ref] = project_operation_effort(saved, standard, allocation_state=allocation, source_available=True,
                                              source=original_source, execution=execution,
                                              evidence_source={"kind": "run", "run_ref": source.run["run_ref"]})
     return result

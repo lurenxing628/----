@@ -6,18 +6,13 @@ from contextlib import contextmanager
 from typing import Dict, Tuple, Union, cast
 
 from core.infrastructure.transaction import TransactionManager
-from core.models.schedule_adjustment import ScheduleAdjustmentScenario
-from core.models.schedule_plan_role import (
-    ROLE_ADOPTED,
-    plan_candidate_label,
-    plan_role_label,
-)
+from core.models.schedule_plan_role import ROLE_ADOPTED, plan_role_label
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
 from core.models.workbench_plan_scope import MAX_PLAN_TASKS
 from core.services.common.bounded_plan_query import PagePlanQueryService
 from core.services.common.plan_query import SchedulePlanResolution
-from core.services.scheduler.workbench_plan_catalog import PlanCatalogEntry, _role_entry, _scenario_entry
+from core.services.scheduler.workbench_plan_catalog import PlanCatalogEntry, _role_entry
 from core.services.workbench.facts.candidate_tasks import task_span
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
@@ -37,21 +32,13 @@ def selected_plan(context, locator):
     repo = context.repo
     query = PagePlanQueryService(repo, repo.latest_version())
     history = repo.get_history_identity_row(locator.version)
-    if locator.scenario_id is not None:
-        row = repo.get_scenario_context(locator.scenario_id)
-        if row is None:
-            raise WorkbenchCommandRejected("entity_not_found", "所选试调方案已不存在，请到「试调排产方案」重新选择。", 404)
-        entry = _scenario_entry(query, ScheduleAdjustmentScenario.from_row(row), history, query.latest)
-    else:
-        if history is None:
-            raise WorkbenchCommandRejected("entity_not_found", "所选排产记录已不存在，请刷新列表后重新选择。", 404)
-        option = next((row for row in repo.list_plan_role_options(locator.version) if row["role"] == locator.plan_role), None)
-        entry = _role_entry(query, history, query.latest, locator.plan_role, option)
+    if history is None:
+        raise WorkbenchCommandRejected("entity_not_found", "所选排产记录已不存在，请刷新列表后重新选择。", 404)
+    entry = _role_entry(query, history, query.latest)
     identity = entry.plan_identity
     if not entry.can_view or identity is None:
         raise WorkbenchCommandRejected("plan_unavailable", "所选计划的状态、摘要或明细无效，看不了。请回计划列表查看不可用原因。")
-    span = repo.get_plan_time_span(version=locator.version, source_table=identity.source_table,
-                                   candidate_id=identity.candidate_id, scenario_id=locator.scenario_id)
+    span = repo.get_plan_time_span(version=locator.version, source_table=identity.source_table)
     if span is None:
         raise WorkbenchCommandRejected("plan_unavailable", "所选计划没有可查看的明细。请刷新计划列表后重新选择。")
     public_span: Dict[str, Union[str, bool]] = {"start": public_time(span.get("start_time")), "end": public_time(span.get("end_time"))}
@@ -84,59 +71,34 @@ class WorkbenchPlanQueryService:
             ) from exc
 
     def catalog_page(self, scope, seek=None):
-        repo = PlanMetadataRepository(self.conn, self.logger, role_reader=self.references.read_role_options)
+        repo = PlanMetadataRepository(self.conn, self.logger)
         context = PlanReadContext(self.conn, self.logger, references=self.references, entities=self.entities, repo=repo)
         with context.read_scope():
             return self._catalog_page(scope, seek, context)
 
     def _catalog_page(self, scope, seek, context):
         repo = context.repo
-        if scope.collection == "history":
-            heads, has_more = repo.history_page(page_size=scope.size, before_version=seek)
-            # 当前页各版本的角色一次读齐，逐个计划核对身份时复用，不再逐版本查库。
-            self.references.role_rows([head["version"] for head in heads])
-        else:
-            heads, has_more = repo.scenario_page(page_size=scope.size, after_scenario_id=seek)
-            # 试调方案按基准版本核对身份并读历史行，同样整页读齐。
-            base_versions = [head["base_version"] for head in heads]
-            self.references.role_rows(base_versions)
-            repo.prefetch_history_rows(base_versions)
+        heads, has_more = repo.history_page(page_size=scope.size, before_version=seek)
         query = PagePlanQueryService(repo, repo.latest_version() if heads else None)
         plans = []
         for head in heads:
-            if scope.collection == "history":
-                plans.extend(self._catalog_history(query, head))
-            else:
-                plans.append(self._catalog_scenario(query, head))
-        next_seek = heads[-1]["version" if scope.collection == "history" else "scenario_id"] if has_more else None
+            plans.extend(self._catalog_history(query, head))
+        next_seek = heads[-1]["version"] if has_more else None
         data = {"plans": plans, "page": {"collection": scope.collection, "size": scope.size,
-                "unit": "version" if scope.collection == "history" else "scenario", "has_more": has_more}}
+                "unit": "version", "has_more": has_more}}
         return data, next_seek
 
     def _catalog_history(self, query, history):
-        options = query.repo.list_plan_role_options(history["version"])
-        adopted = next((row for row in options if row["role"] == ROLE_ADOPTED), None)
-        roles = [(ROLE_ADOPTED, adopted)] + [(row["role"], row) for row in options if row["role"] != ROLE_ADOPTED]
-        return [self.catalog_role(query, history, role, option) for role, option in roles]
+        return [self.catalog_role(query, history, ROLE_ADOPTED)]
 
-    def catalog_role(self, query, history, role, option):
+    def catalog_role(self, query, history, role=ROLE_ADOPTED):
         """某个版本某个角色的计划目录投影；采用历史也用它核对正式计划身份。"""
         locator = WorkbenchPlanLocator(history["version"], role)
-        name = plan_candidate_label(option.get("candidate_label"), role=role, candidate_key=option.get("candidate_key")) if option is not None else plan_role_label(role)
+        name = plan_role_label(role)
         ref, blocked = self._catalog_reference(locator, name)
         if blocked is not None:
             return blocked
-        return project_plan(_role_entry(query, history, query.latest, role, option), ref)
-
-    def _catalog_scenario(self, query, row):
-        scenario = ScheduleAdjustmentScenario.from_row(row)
-        locator = WorkbenchPlanLocator(scenario.base_version, scenario.base_plan_role, scenario.scenario_id)
-        name = scenario.scenario_name or "试调方案（未命名）"
-        ref, blocked = self._catalog_reference(locator, name)
-        if blocked is not None:
-            return blocked
-        history = query.repo.get_history_identity_row(scenario.base_version)
-        return project_plan(_scenario_entry(query, scenario, history, query.latest), ref)
+        return project_plan(_role_entry(query, history, query.latest), ref)
 
     def _catalog_reference(self, locator, display_name):
         reference = self.references.get_catalog_reference(locator)
@@ -151,7 +113,7 @@ class WorkbenchPlanQueryService:
     def selected_metadata(
         self, plan_ref,
     ) -> Tuple[SchedulePlanResolution, PlanCatalogEntry, Dict[str, Union[str, bool]]]:
-        repo = PlanMetadataRepository(self.conn, logger=self.logger, role_reader=self.references.read_role_options)
+        repo = PlanMetadataRepository(self.conn, logger=self.logger)
         context = PlanReadContext(
             self.conn, self.logger, references=self.references, entities=self.entities, repo=repo)
         with context.read_scope():

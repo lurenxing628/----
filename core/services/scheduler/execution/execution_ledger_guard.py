@@ -1,15 +1,13 @@
-"""Preserve actual execution across plan versions and keep legacy duration rules."""
+"""Preserve actual execution across plan versions."""
 
 from datetime import datetime
 
 from core.errors import AppError, ErrorCode
 from core.models.enums import SourceType
-from core.models.operation_execution_event import parse_operation_event_time
-from core.services.execution.legacy import legacy_resource_refs
+from core.models.operation_execution_scope import parse_operation_event_time
 
 _STATUSES = {"unreported": "not_started", "started": "processing", "partial": "processing",
-             "paused": "paused", "exception": "exception", "complete": "completed"}
-_IDENTITY_GAPS = {"invalid_legacy_sequence", "legacy_identity_unresolved", "operation_retired"}
+             "complete": "completed"}
 
 
 def is_point_work(source, setup_hours, unit_hours, target_quantity):
@@ -49,7 +47,7 @@ def _report_segments(projection):
     )
 
 
-def _actual_intervals(projection, reasons, report_segments, first_start, confirmed_finish, *, is_point):
+def _actual_intervals(reasons, report_segments, *, is_point):
     intervals = []
     for start, end, report in report_segments:
         valid_point = is_point and end == start and report.effective_processing_hours == 0
@@ -57,30 +55,14 @@ def _actual_intervals(projection, reasons, report_segments, first_start, confirm
             reasons.append("execution_ledger_actual_interval_missing")
         else:
             intervals.append((start, end))
-    if not projection.reports and projection.completion_basis == "legacy_finish_event":
-        valid_span = (confirmed_finish >= first_start) if is_point else (confirmed_finish > first_start)
-        if valid_span:
-            intervals.append((first_start, confirmed_finish))
-        else:
-            reasons.append("execution_ledger_actual_interval_missing")
     return tuple(intervals)
-
-
-def _requires_ledger_projection(fact, projection, gap_codes, *, is_point):
-    identity_invalid = bool(_IDENTITY_GAPS.intersection(gap_codes))
-    # Report intervals and completed legacy evidence use the strict ledger
-    # contract; in-progress event-only evidence keeps legacy plan duration.
-    old_finish = projection.completion_basis == "legacy_finish_event" and (
-        fact.actual_status != "completed" or is_point or fact.actual_start_time == fact.actual_end_time
-    )
-    return bool(projection.reports or identity_invalid or old_finish)
 
 
 def _protected_status(projection, reasons, gap_codes):
     status = _STATUSES.get(projection.execution_state)
     if status is None:
         reasons.append("execution_ledger_protection_flags_missing")
-        status = "exception"
+        status = "not_started"
     if projection.data_quality == "invalid":
         reasons.extend(gap_codes)
     if projection.reports and not projection.records_complete:
@@ -98,10 +80,8 @@ def _occupancy_intervals(intervals):
     return positive or intervals
 
 
-def _protected_intervals(projection, status, reasons, report_segments, first_start, confirmed_finish, *, is_point):
-    intervals = _actual_intervals(
-        projection, reasons, report_segments, first_start, confirmed_finish, is_point=is_point,
-    )
+def _protected_intervals(status, reasons, report_segments, *, is_point):
+    intervals = _actual_intervals(reasons, report_segments, is_point=is_point)
     if status == "completed":
         span = _occupancy_intervals(intervals)
         if not span or any(left[1] != right[0] for left, right in zip(span, span[1:])) or any(
@@ -111,19 +91,11 @@ def _protected_intervals(projection, status, reasons, report_segments, first_sta
     return intervals
 
 
-def _actual_resource_refs(projection, field):
-    # Reports describe complete actual records; legacy finish/pause events need
-    # not repeat resources already identified by their start event.
-    return [getattr(report, field) for report in projection.reports] + list(
-        legacy_resource_refs(projection.legacy_facts, field, gaps=projection.data_gaps))
-
-
 def _actual_resources(projection, resources, *, source, reasons, report_segments=()):
     machine, operator = None, None
     if source == SourceType.EXTERNAL.value:
         fields = ("actual_machine_ref", "actual_operator_ref")
-        if (any(getattr(report, field) is not None for report in projection.reports for field in fields)
-                or any(legacy_resource_refs(projection.legacy_facts, field, gaps=projection.data_gaps) for field in fields)):
+        if any(getattr(report, field) is not None for report in projection.reports for field in fields):
             reasons.append("execution_ledger_external_resource_conflict")
     elif source == SourceType.INTERNAL.value:
         if projection.reports:
@@ -135,49 +107,27 @@ def _actual_resources(projection, resources, *, source, reasons, report_segments
             for field, kind in (("actual_machine_ref", "machine"), ("actual_operator_ref", "operator")):
                 refs = {getattr(report, field) for report in projection.reports}
                 codes = {ref: _resource_id((ref,), resources, kind, reasons) for ref in refs}
-                legacy_refs = legacy_resource_refs(projection.legacy_facts, field, gaps=projection.data_gaps)
-                if None in legacy_refs or not legacy_refs <= refs:
-                    reasons.append("execution_ledger_actual_resource_missing_or_multiple")
                 resolved[field] = codes[getattr(primary, field)]
             machine, operator = resolved["actual_machine_ref"], resolved["actual_operator_ref"]
         else:
-            machine = _resource_id(_actual_resource_refs(projection, "actual_machine_ref"), resources, "machine", reasons)
-            operator = _resource_id(_actual_resource_refs(projection, "actual_operator_ref"), resources, "operator", reasons)
+            machine = _resource_id((), resources, "machine", reasons)
+            operator = _resource_id((), resources, "operator", reasons)
     else:
         reasons.append("execution_ledger_operation_source_invalid")
     return machine, operator
 
 
-def _legacy_in_progress_changes(fact, projection, resources, gap_codes, *, source):
-    if not projection.legacy_facts or projection.execution_state not in ("started", "paused", "exception"):
-        return None
-    reasons = gap_codes if projection.data_quality == "invalid" else []
-    machine, operator = _actual_resources(projection, resources, source=source, reasons=reasons)
-    start = _actual_time(projection.first_actual_start)
-    if start is None:
-        reasons.append("execution_ledger_actual_start_missing")
-    if reasons:
-        _raise_reconciliation(fact.op_id, projection.execution_state, projection.remaining_quantity, reasons)
-    # Permanent history survives adoption into a new scope. These remain
-    # event-only facts: use their actual start/resources with the existing
-    # legacy plan-duration contract, without claiming a new report or finish.
-    return {"actual_status": _STATUSES[projection.execution_state], "actual_start_time": start,
-            "actual_end_time": None, "actual_machine_id": machine, "actual_operator_id": operator}
-
-
-def ledger_fact_changes(fact, projection, resources, *, source, setup_hours, unit_hours):
+def ledger_fact_changes(projection, resources, *, source, setup_hours, unit_hours):
     gap_codes = [gap["code"] for gap in projection.data_gaps]
+    if not projection.reports and "operation_retired" not in gap_codes:
+        return None
     is_point = is_point_work(source, setup_hours, unit_hours, projection.target_quantity)
-    if not _requires_ledger_projection(fact, projection, gap_codes, is_point=is_point):
-        return _legacy_in_progress_changes(fact, projection, resources, gap_codes, source=source)
     reasons = []
     status = _protected_status(projection, reasons, gap_codes)
     report_segments = _report_segments(projection)
     first_start = _actual_time(projection.first_actual_start)
     confirmed_finish = _actual_time(projection.confirmed_finish)
-    intervals = _protected_intervals(
-        projection, status, reasons, report_segments, first_start, confirmed_finish, is_point=is_point,
-    )
+    intervals = _protected_intervals(status, reasons, report_segments, is_point=is_point)
     machine, operator = _actual_resources(projection, resources, source=source, reasons=reasons,
                                           report_segments=report_segments)
     return {"actual_status": status, "actual_start_time": first_start,
@@ -226,7 +176,7 @@ def ensure_ledger_execution_schedulable(facts):
             reasons.append("execution_ledger_protection_flags_missing")
         elif fact.actual_status != _STATUSES[fact.ledger_execution_state]:
             reasons.append("execution_ledger_protection_flags_inconsistent")
-        if fact.ledger_execution_state in ("started", "partial", "paused", "exception"):
+        if fact.ledger_execution_state in ("started", "partial"):
             reasons.append("execution_ledger_remaining_plan_unavailable")
         if fact.actual_status == "completed":
             intervals = fact.execution_effective_intervals

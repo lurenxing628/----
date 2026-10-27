@@ -7,11 +7,6 @@ from types import MappingProxyType
 import pytest
 from flask import Flask
 
-from core.infrastructure.workbench_execution_ledger_schema import install_execution_ledger
-from core.infrastructure.workbench_execution_void_schema import install_execution_voids
-from core.infrastructure.workbench_metadata_schema import install_metadata
-from core.infrastructure.workbench_plan_identity_schema import install_plan_identity
-from core.infrastructure.workbench_run_schema import install_workbench_run_schema
 from core.models.schedule_config_runtime_fields import default_snapshot_values
 from core.models.workbench_run_job import new_run_ref
 from core.services.workbench.run.jobs import WorkbenchRunService
@@ -59,13 +54,6 @@ def job_case(schema_conn, tmp_path):
     conn = connection(path)
     schema_conn.backup(conn)
     conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("BEGIN IMMEDIATE")
-    install_metadata(conn)
-    install_plan_identity(conn)
-    install_execution_ledger(conn)
-    install_execution_voids(conn)
-    install_workbench_run_schema(conn)
-    conn.commit()
     # Existing candidate/locked-plan fixtures use an explicit 08:00-16:00 shift.
     conn.execute("INSERT INTO WorkbenchCalendarDefaults(singleton,periods_json) VALUES (1,?)",
                  ('[{"start":"08:00","end":"16:00","day_offset":0}]',))

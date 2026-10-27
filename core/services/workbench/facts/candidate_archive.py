@@ -47,8 +47,7 @@ def require_candidate_scope(run, candidate, scope, capture, *, scheduled_op_ids)
     """Prove this candidate's scope; a comparison sibling may have exhausted its budget."""
     summary = candidate_summary(candidate, scope, scheduled_op_ids=scheduled_op_ids)
     deferred = material_deferred_ids(scope.values(), capture["input"])
-    if (run["state"] not in ("complete", "partial") or candidate["status"] != "completed"
-            or (summary["completeness"] != "complete" and not deferred)):
+    if run["state"] not in ("complete", "partial") or (summary["completeness"] != "complete" and not deferred):
         raise CandidateAdoptionBlocked("candidate_incomplete", _incomplete_message(candidate, scope, deferred, scheduled_op_ids))
     ids = scheduled_op_ids
     if not ids or ids != {row["op_id"] for row in scope.values()} - deferred:
@@ -59,8 +58,6 @@ def require_candidate_scope(run, candidate, scope, capture, *, scheduled_op_ids)
 
 def _incomplete_message(candidate, scope, deferred, scheduled_op_ids):
     """按没排完的原因说出路：本次跳过的批次重排还是跳过，要先取消勾选或处理好跳过原因。"""
-    if candidate["status"] != "completed":
-        return "这个候选方案没有算出结果，不能采用。请看其它候选方案；都不行请到「排产记录」查看原因。"
     skipped = sorted({row["batch_id"] for row in scope.values()
                       if row["status"] == "skipped" and row["op_id"] not in deferred})
     if skipped:

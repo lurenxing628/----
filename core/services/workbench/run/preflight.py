@@ -47,7 +47,7 @@ def task_row(operation_ref, batch, op, projection):
     return {"operation_ref": operation_ref, "op_id": op["id"], "batch_ref": batch["ref"], "batch_id": batch["batch_id"],
             "sequence": op["seq"], "piece_id": op["piece_id"], "label": op["op_type_name"], "source": op["source"],
             "status": "eligible", "issues": [], "predecessor_refs": [],
-            "has_execution_facts": bool(projection["reports"] or projection["legacy_facts"]),
+            "has_execution_facts": bool(projection["reports"]),
             "execution": {key: projection[key] for key in execution_keys}}
 
 
@@ -188,7 +188,7 @@ class PreflightService:
         不重排时段保留的原安排按现在的资料已不成立。返回 (阻断原因, 提醒, {工序: 保留标记}, 保留安排结果)。"""
         capture = cast("ProductionFactsCapture", self.facts.capture)
         version = max((row["version"] for row in capture.table("ScheduleHistory")), default=0)
-        reasons = external_resource_issues(self.facts, operations, version)
+        reasons = external_resource_issues(self.facts, version)
         # 与排产计算查不重排时段的范围一致：这次要重排的工序，加上合并外协组按实际周期派生保留的成员。
         held_ids = {row["op_id"] for row in rows if row["status"] in ("eligible", "auto_assign_required")} | set(cycles)
         held, notes, marks, held_obj = held_arrangement_reasons(

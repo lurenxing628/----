@@ -196,11 +196,11 @@ function identities() {
     origin: { search_objective: 'min_overdue', phase: 'construct', origin: 'seed', dispatch_mode: null, dispatch_rule: null, strategy: 'greedy', repair_decision: null },
     first_found_elapsed_ms: 12, search_evidence_ref: { run_ref: run, source_event_id: null } };
   const candidate = { candidate_ref: chosen, label: '所选候选', kind: 'business_objective', status: 'completed', persisted_status: 'completed', completeness: 'complete', task_count: 23, ...generation,
-    selection_role: [], equivalent_source_ref: null, metrics: {}, deltas: {},
-    coverage: { search: { state: 'complete', completed_count: 1, failed_count: 0, skipped_count: 0, total_count: 1 },
+    selection_role: [], metrics: {}, deltas: {},
+    coverage: { search: { state: 'complete', completed_count: 1, total_count: 1 },
       schedulable: { state: 'complete', expected_count: 23, scheduled_count: 23, missing_count: 0, deferred_count: 0 },
       delivery: { complete_batch_count: 1, batch_count: 1, deferred_batch_count: 0 } },
-    capabilities: { view: true, compare: true, gantt: true, adoption_preview: true, adopt: false }, source: { reason: null } };
+    capabilities: { view: true, compare: true, gantt: true, adoption_preview: true, adopt: false } };
   // 推荐只按业务方向选择（business_objectives_v1）：选择依据带统一搜索的目标、胜者与评分，旧健康证据位恒为 null。
   const targets = ['min_overdue', 'min_tardiness', 'min_changeover'], fieldOrders = window.RunGenerationContract.fieldOrders;
   const scoring = generation.evaluations.min_overdue.scoring_scope;

@@ -88,7 +88,7 @@ def test_compact_snapshot_restores_complete_facts_and_execution_histories(batch_
                                  "reason": "corrected", "kept": {"$sqlite_blob": "literal"}}],
             write_context={"writable": False, "reason": "read-only"})
         enriched = replace(first, reports=[report], plan_identity={"plan_ref": "a" * 48, "version": 1},
-            legacy_facts=[{"event": "finish", "stored": b"raw"}], data_gaps=[{"code": "kept", "details": [None, True, 1.0]}],
+            data_gaps=[{"code": "kept", "details": [None, True, 1.0]}],
             voided_reports=[{"report": report.to_dict(), "void_fact": {"reason": "voided", "revision": 2}}])
         other = replace(first, plan_identity={"plan_ref": "b" * 48, "version": 2})
         # Differing plan identities and dictionary insertion orders must survive.

@@ -19,12 +19,6 @@ def dump(value):
     return encode_trial_text(value)[0]
 
 
-def dump_document(value):
-    """Save the original document; the legacy digest column remains empty."""
-    text, _ = encode_trial_text(value)
-    return text, None
-
-
 def _unreadable() -> NoReturn:
     reject("trial_snapshot_invalid", "试调数据读不出来，这里不改用最新计划。请刷新后重试。")
 

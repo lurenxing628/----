@@ -78,8 +78,8 @@ def test_plain_resource_pages_share_batch_states_and_read_dependencies_once(reso
     insert_row(conn, "Machines", {"machine_id": "M2", "name": "second machine", "op_type_id": "OT1"})
     insert_row(conn, "Machines", {"machine_id": "M3", "name": "Ä"})
     insert_row(conn, "Operators", {"operator_id": "O2", "name": "second operator"})
-    insert_row(conn, "Suppliers", {"supplier_id": "S2", "name": "second supplier", "op_type_id": "EXT", "default_days": None})
-    conn.execute("UPDATE Suppliers SET op_type_id='EXT' WHERE supplier_id='S1'")
+    insert_row(conn, "Suppliers", {"supplier_id": "S2", "name": "second supplier", "default_days": None})
+    conn.executemany("INSERT INTO WorkbenchSupplierOpTypes(supplier_id, op_type_id) VALUES (?, 'EXT')", [("S1",), ("S2",)])
     conn.execute("UPDATE Machines SET name='车床AlPhA' WHERE machine_id IN ('M1','M2')")
     conn.commit()
     group, shift = create_catalog(conn, "machine_group"), create_catalog(conn, "shift_profile")
@@ -362,9 +362,9 @@ def test_active_production_report_revision_blocks_resource_deletion_until_voided
 
     with conn:
         conn.execute(
-            """INSERT INTO WorkbenchCommandReceipts(request_key, receipt_ref, action, context_ref, input_hash, outcome_json)
-            VALUES (?, ?, 'execution.report_create', ?, ?, '{}')""",
-            (req_create, ("1" if kind == "machine" else "2") * 32, op_ref, "0" * 64),
+            """INSERT INTO WorkbenchCommandReceipts(request_key, receipt_ref, action, context_ref, input_json, outcome_json)
+            VALUES (?, ?, 'execution.report_create', ?, '{}', '{}')""",
+            (req_create, ("1" if kind == "machine" else "2") * 32, op_ref),
         )
         conn.execute(
             """INSERT INTO WorkbenchProductionReports
@@ -401,9 +401,9 @@ def test_active_production_report_revision_blocks_resource_deletion_until_voided
 
     with conn:
         conn.execute(
-            """INSERT INTO WorkbenchCommandReceipts(request_key, receipt_ref, action, context_ref, input_hash, outcome_json)
-            VALUES (?, ?, 'execution.report_void', ?, ?, '{}')""",
-            (req_void, ("3" if kind == "machine" else "4") * 32, report_ref, "0" * 64),
+            """INSERT INTO WorkbenchCommandReceipts(request_key, receipt_ref, action, context_ref, input_json, outcome_json)
+            VALUES (?, ?, 'execution.report_void', ?, '{}', '{}')""",
+            (req_void, ("3" if kind == "machine" else "4") * 32, report_ref),
         )
         conn.execute(
             """INSERT INTO WorkbenchProductionReportVoids

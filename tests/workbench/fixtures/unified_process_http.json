@@ -298,8 +298,6 @@
           },
           "search": {
             "completed_count": 1,
-            "failed_count": 0,
-            "skipped_count": 0,
             "state": "complete",
             "total_count": 1
           }
@@ -418,7 +416,6 @@
             "value": 0.0
           }
         },
-        "equivalent_source_ref": null,
         "evaluations": {
           "min_changeover": {
             "field_order": [
@@ -739,14 +736,6 @@
           "min_tardiness",
           "min_changeover"
         ],
-        "source": {
-          "algo_mode": "greedy",
-          "dispatch_mode": "batch_order",
-          "dispatch_rule": "slack",
-          "failure_reason": null,
-          "reason": null,
-          "used_strategy": "priority_first"
-        },
         "status": "completed",
         "task_count": 1
       }
@@ -1647,8 +1636,6 @@
           },
           "search": {
             "completed_count": 1,
-            "failed_count": 0,
-            "skipped_count": 0,
             "state": "complete",
             "total_count": 1
           }
@@ -6572,8 +6559,6 @@
         },
         "search": {
           "completed_count": 1,
-          "failed_count": 0,
-          "skipped_count": 0,
           "state": "complete",
           "total_count": 1
         }
@@ -7656,8 +7641,6 @@
           },
           "search": {
             "completed_count": 1,
-            "failed_count": 0,
-            "skipped_count": 0,
             "state": "complete",
             "total_count": 1
           }
@@ -8028,7 +8011,6 @@
             "value": 0.0
           }
         },
-        "equivalent_source_ref": null,
         "evaluations": {
           "min_changeover": {
             "field_order": [
@@ -8925,14 +8907,6 @@
           "min_tardiness",
           "min_changeover"
         ],
-        "source": {
-          "algo_mode": "greedy",
-          "dispatch_mode": "batch_order",
-          "dispatch_rule": "slack",
-          "failure_reason": null,
-          "reason": null,
-          "used_strategy": "priority_first"
-        },
         "status": "completed",
         "task_count": 1
       }
@@ -9846,8 +9820,6 @@
           },
           "search": {
             "completed_count": 1,
-            "failed_count": 0,
-            "skipped_count": 0,
             "state": "complete",
             "total_count": 1
           }

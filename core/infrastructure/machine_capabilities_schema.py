@@ -1,6 +1,6 @@
-"""Additional machine work types; the legacy primary capability remains valid."""
+"""Additional machine work types; the primary capability remains valid."""
 
-from .schema_structure import SchemaStructure, schema_objects
+from .schema_structure import schema_objects
 from .workbench_metadata_schema import canonical_sql
 
 
@@ -28,17 +28,3 @@ def contract_issues(conn, *, structure=None):
     return [("missing_machine_capabilities:" if name not in actual else "invalid_machine_capabilities:") + name
             for name, sql in objects().items()
             if name not in actual or canonical_sql(sql) != canonical_sql(actual[name])]
-
-
-def install(conn):
-    if not conn.in_transaction:
-        raise RuntimeError("Machine capabilities require a migration transaction.")
-    structure = SchemaStructure(conn)
-    definitions = objects()
-    if structure.objects.keys() & definitions.keys():
-        issues = contract_issues(conn, structure=structure)
-        if issues:
-            raise RuntimeError("Cannot repair partial machine capabilities: " + ";".join(issues))
-        return
-    for sql in definitions.values():
-        conn.execute(sql)

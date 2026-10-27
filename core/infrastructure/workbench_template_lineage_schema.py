@@ -1,11 +1,9 @@
-"""Caller-owned installation, immutable origins and lossless instance transitions."""
+"""Immutable template lineage origins and lossless instance transitions."""
 
-from core.infrastructure.workbench_metadata_schema import schema_contract_matches, workbench_metadata_contract_issues
-from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
-from core.infrastructure.workbench_process_schema import workbench_process_contract_issues
+from core.infrastructure.workbench_metadata_schema import canonical_sql
 from core.models.workbench_template_lineage import OPERATION_COLUMNS, SEMANTIC_COLUMNS, STATE_COLUMNS
 
-from .schema_structure import SchemaStructure, schema_objects
+from .schema_structure import schema_objects
 
 _REF = "TEXT NOT NULL CHECK(length({0})=48 AND {0} NOT GLOB '*[^0-9a-f]*')"
 _STAMP = "strftime('%Y-%m-%dT%H:%M:%fZ','now')"
@@ -53,7 +51,7 @@ def _source_triggers():
     }
 
 
-def template_lineage_objects(*, legacy=False):
+def template_lineage_objects():
     objects = {
         "WorkbenchTemplateLineageOrigins": """CREATE TABLE WorkbenchTemplateLineageOrigins (
             lineage_ref """ + _REF.format("lineage_ref") + """ PRIMARY KEY,
@@ -62,8 +60,8 @@ def template_lineage_objects(*, legacy=False):
             source_operation_ref TEXT, source_lineage_ref TEXT, source_event_id INTEGER,
             source_eligible INTEGER NOT NULL CHECK(source_eligible IN (0,1)), birth_event_id INTEGER NOT NULL UNIQUE,
             evidence_version TEXT NOT NULL CHECK(evidence_version='template-copy-v1'),
-            template_snapshot TEXT NOT NULL, template_fingerprint TEXT NOT NULL,
-            instance_snapshot TEXT NOT NULL, instance_fingerprint TEXT NOT NULL,
+            template_snapshot TEXT NOT NULL,
+            instance_snapshot TEXT NOT NULL,
             recorded_at_utc TEXT NOT NULL DEFAULT (""" + _STAMP + """),
             FOREIGN KEY(operation_ref) REFERENCES WorkbenchPlanSourceRefs(ref),
             FOREIGN KEY(template_operation_ref) REFERENCES WorkbenchEntityRefs(ref),
@@ -85,10 +83,6 @@ def template_lineage_objects(*, legacy=False):
         "idx_wb_lineage_birth": "CREATE UNIQUE INDEX idx_wb_lineage_birth ON WorkbenchTemplateLineageEvents(operation_ref) WHERE event_type='created'",
         "idx_wb_lineage_template_revision": "CREATE INDEX idx_wb_lineage_template_revision ON WorkbenchTemplateLineageOrigins(template_operation_ref,template_revision)",
     }
-    if not legacy:
-        for column in ("template_fingerprint", "instance_fingerprint"):
-            objects["WorkbenchTemplateLineageOrigins"] = objects["WorkbenchTemplateLineageOrigins"].replace(
-                column + " TEXT NOT NULL", column + " TEXT")
     objects.update(_source_triggers())
     for table, stem in (("WorkbenchTemplateLineageOrigins", "origin"), ("WorkbenchTemplateLineageEvents", "event")):
         for event in ("update", "delete"):
@@ -109,37 +103,8 @@ def template_lineage_objects(*, legacy=False):
     return objects
 
 
-def template_lineage_contract_issues(conn, *, structure=None, allow_legacy=True):
+def template_lineage_contract_issues(conn, *, structure=None):
     actual = schema_objects(conn, structure=structure)
-    legacy = template_lineage_objects(legacy=True)
     return [("missing_template_lineage:" if name not in actual else "invalid_template_lineage:") + name
             for name, sql in template_lineage_objects().items()
-            if name not in actual or not schema_contract_matches(
-                conn, actual[name], sql, legacy[name], allow_legacy=allow_legacy)]
-
-
-def _source_contract_issues(*, structure: SchemaStructure):
-    required = {"BatchOperations": set(OPERATION_COLUMNS), "Batches": {"batch_id", "part_no", "quantity"},
-                "PartOperations": {"id", "part_no", "seq", "op_type_id", "op_type_name", "source", "supplier_id",
-                                   "setup_hours", "unit_hours", "ext_days", "ext_group_id", "status", "created_at"}}
-    return ["missing_template_lineage_source:" + table + "." + column for table, columns in required.items()
-            for column in sorted(columns - {row[1] for row in structure.table_info(table)})]
-
-
-def install_template_lineage(conn):
-    """Never backfill, commit, alter a business table, or repair a partial install."""
-    if not conn.in_transaction:
-        raise RuntimeError("install_template_lineage requires the caller's migration transaction.")
-    structure = SchemaStructure(conn)
-    objects = template_lineage_objects()
-    actual = structure.objects.keys()
-    has_any = bool(actual & objects.keys())
-    issues = (workbench_metadata_contract_issues(conn, structure=structure) + workbench_process_contract_issues(conn, structure=structure) +
-              workbench_plan_identity_contract_issues(conn, structure=structure) + _source_contract_issues(structure=structure))
-    if has_any:
-        issues += template_lineage_contract_issues(conn, structure=structure)
-    if issues:
-        raise RuntimeError("Cannot install template lineage: " + "; ".join(issues))
-    if not has_any:
-        for sql in objects.values():
-            conn.execute(sql)
+            if name not in actual or canonical_sql(actual[name]) != canonical_sql(sql)]

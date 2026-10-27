@@ -100,10 +100,10 @@
     React.useEffect(() => () => { if (downloadController.current) downloadController.current.abort(); cancelAnimationFrame(frame.current); }, []);
     const data = result && result.data;
     const captionPlan = !loading && !error && data && data.plan;
-    const captionStatus = captionPlan && ({ official: captionPlan.is_current_official ? window.WorkbenchTerms.current_official : window.WorkbenchTerms.historical_official, candidate: window.WorkbenchTerms.candidate, scenario: window.WorkbenchTerms.trial_scenario })[captionPlan.kind];
+    const captionStatus = captionPlan && (captionPlan.is_current_official ? window.WorkbenchTerms.current_official : window.WorkbenchTerms.historical_official);
     window.WorkbenchCaption.useCaption(captionStatus ? {
       reference: captionPlan.plan_ref, label: '对照计划', name: captionPlan.display_name, status: captionStatus,
-      version: captionPlan.kind === 'official' && Number.isSafeInteger(captionPlan.version) ? window.WorkbenchTerms.plan_version(captionPlan.version) : undefined,
+      version: Number.isSafeInteger(captionPlan.version) ? window.WorkbenchTerms.plan_version(captionPlan.version) : undefined,
       range: data.scope.plan_finish_date_from && data.scope.plan_finish_date_to ? '计划完工 ' + data.scope.plan_finish_date_from + ' 至 ' + data.scope.plan_finish_date_to : undefined
     } : null);
     const selectedFilter = view.onlySelected ? view.selected : null;

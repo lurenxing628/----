@@ -1,15 +1,13 @@
 """Catalog metadata stays streaming and retains exact persisted time semantics."""
 
-import json
 import sqlite3
 
 import pytest
 
-from core.models.workbench_plan_scope import PlanCatalogScope, PlanReadScope
+from core.models.workbench_plan_scope import PlanCatalogScope
 from core.services.workbench.plan.point_query import PlanMetadataRepository, PointPlanCatalogRepository
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from core.services.workbench.plan.read_context import PlanReadContext
-from tests.workbench.plan_catalog_support import scenario
 from tests.workbench.plan_read_support import plan_read_api  # noqa: F401
 
 
@@ -25,40 +23,29 @@ def _complete_capture_catalog(api, collection):
                 return data["plans"]
 
 
-def test_catalog_streams_history_and_exact_scenario_keys_without_complete_capture(plan_api, monkeypatch):
-    scenario_key = " PRIVATE-SPACED-SCENARIO "
-    with plan_api.db() as conn:
-        candidate_id = conn.execute("SELECT candidate_id FROM ScheduleCandidateSelection WHERE version=3 AND role='adopted'").fetchone()[0]
-        op_id = conn.execute("SELECT op_id FROM Schedule WHERE version=3").fetchone()[0]
-        scenario(conn, scenario_key, 3, op_id=op_id, candidate_id=candidate_id, candidate_key="adopted")
-        conn.execute("UPDATE ScheduleAdjustmentScenario SET scenario_name='Spaced permanent key' WHERE scenario_id=?", (scenario_key,))
-    ref = plan_api.ref(scenario_id=scenario_key)
+def test_catalog_streams_history_without_complete_capture(plan_api, monkeypatch):
     expected_history = _complete_capture_catalog(plan_api, "history")
-    expected_scenarios = _complete_capture_catalog(plan_api, "scenario")
 
     def no_full_capture(*args, **kwargs):
         pytest.fail("Catalog must not materialize complete plan arrangements")
 
     monkeypatch.setattr(PointPlanCatalogRepository, "source_rows", no_full_capture)
     history = plan_api.read(collection="history")["data"]["plans"]
-    scenarios = plan_api.read(collection="scenario")["data"]["plans"]
-    assert history == expected_history and scenarios == expected_scenarios
+    assert history == expected_history
     assert next(row for row in history if row["plan_ref"] == plan_api.ref())["capabilities"]["view"]
-    assert next(row for row in scenarios if row["plan_ref"] == ref)["capabilities"]["view"]
     assert not any('FROM "SCHEDULE" R' in sql.upper() for sql in plan_api.statements)
 
 
-@pytest.mark.parametrize("table,start,end,collection,role,scenario_id", [
-    ("Schedule", "invalid", "2026-09-10T09:00:00", "history", "adopted", None),
-    ("ScheduleCandidateRows", "2026-09-11T03:00:00", "2026-09-11T01:00:00", "history", "critical_best", None),
-    ("ScheduleAdjustmentScenarioRow", "2026-09-12T23:00:00", "2026-09-12T23:00:00", "scenario", "adopted", "PRIVATE-ACTIVE"),
+@pytest.mark.parametrize("start,end", [
+    ("invalid", "2026-09-10T09:00:00"),
+    ("2026-09-12T23:00:00", "2026-09-12T23:00:00"),
 ])
-def test_catalog_metadata_keeps_invalid_time_and_unproven_point_disabled(plan_api, table, start, end, collection, role, scenario_id):
-    ref = plan_api.ref(role=role, scenario_id=scenario_id)
+def test_catalog_metadata_keeps_invalid_time_and_unproven_point_disabled(plan_api, start, end):
+    ref = plan_api.ref(role="adopted")
     with plan_api.db() as conn:
-        conn.execute("UPDATE " + table + " SET start_time=?,end_time=?", (start, end))
-    expected = _complete_capture_catalog(plan_api, collection)
-    plans = plan_api.read(collection=collection)["data"]["plans"]
+        conn.execute("UPDATE Schedule SET start_time=?,end_time=? WHERE version=3", (start, end))
+    expected = _complete_capture_catalog(plan_api, "history")
+    plans = plan_api.read(collection="history")["data"]["plans"]
     assert plans == expected
     selected = next(row for row in plans if row["plan_ref"] == ref)
     assert not selected["capabilities"]["view"] and not selected["capabilities"]["export"]
@@ -75,61 +62,7 @@ def test_metadata_time_scan_retains_raw_values_with_declared_datetime_converter(
     try:
         conn.execute("PRAGMA query_only=1")
         repo = PlanMetadataRepository(conn)
-        candidate_id = conn.execute("SELECT candidate_id FROM ScheduleCandidateSelection WHERE role='critical_best'").fetchone()[0]
-        for source, candidate, scenario_id in (("schedule", None, None), ("candidate_rows", candidate_id, None),
-                                               ("adjustment_scenario_rows", None, "PRIVATE-ACTIVE")):
-            span = repo.get_plan_time_span(version=3, source_table=source, candidate_id=candidate, scenario_id=scenario_id)
-            assert span is not None and isinstance(span["start_time"], str) and isinstance(span["end_time"], str)
+        span = repo.get_plan_time_span(version=3, source_table="schedule")
+        assert span is not None and isinstance(span["start_time"], str) and isinstance(span["end_time"], str)
     finally:
         conn.close()
-
-
-@pytest.mark.parametrize("issues", [None, "[]", '[{"code":"stored-warning","message":"保留原始记录"}]'])
-@pytest.mark.parametrize("warm_catalog", [False, True])
-def test_scenario_workspace_preserves_real_issues_from_direct_and_cached_headers(plan_api, issues, warm_catalog):
-    scenario_id = "PRIVATE-ACTIVE"
-    with plan_api.db() as conn:
-        conn.execute("UPDATE ScheduleAdjustmentScenario SET issues_json=? WHERE scenario_id=?", (issues, scenario_id))
-    ref = plan_api.ref(scenario_id=scenario_id)
-    scope = PlanReadScope(ref)
-    with plan_api.db() as conn:
-        reader = WorkbenchPlanQueryService(conn)
-        with reader.read_snapshot():
-            context = PlanReadContext(conn, references=reader.references, entities=reader.entities)
-            with context.read_scope():
-                if warm_catalog:
-                    context.repo.scenario_page(page_size=20, after_scenario_id=None)
-                data, state = reader.workspace(scope, context=context)
-                raw = context.repo.get_scenario_context(scenario_id)
-                assert raw is not None
-                # 直读与目录分页缓存的方案头是同一种行，读方案模型的列一个不缺。
-                assert list(raw) == ["scenario_id", "source_draft_id", "base_version", "base_plan_role",
-                                     "base_source_table", "base_candidate_id", "base_candidate_key", "scenario_name",
-                                     "status", "validation_status", "issue_count", "issues_json", "row_count",
-                                     "published_version"]
-                assert raw["issues_json"] == issues
-                completion = state["projection_facts"]["delivery_risks"]["completion_record"]
-                assert completion["scenario"]["issues_json"] == issues
-                assert data["task_count"] == 1 and data["tasks_complete"] is True
-                assert len(data["projections"]["delivery_risks"]["items"]) == 1
-                assert "issues_json" not in json.dumps(data, ensure_ascii=False)
-
-
-def test_changing_only_stored_scenario_issues_changes_workspace_snapshot_evidence(plan_api):
-    ref = plan_api.ref(scenario_id="PRIVATE-ACTIVE")
-
-    def workspace():
-        with plan_api.db() as conn:
-            reader = WorkbenchPlanQueryService(conn)
-            with reader.read_snapshot():
-                return reader.workspace(PlanReadScope(ref))
-
-    before, original = workspace()
-    with plan_api.db() as conn:
-        conn.execute("UPDATE ScheduleAdjustmentScenario SET issues_json='[]' WHERE scenario_id='PRIVATE-ACTIVE'")
-    after, changed = workspace()
-    assert before == after
-    old = original["projection_facts"]["delivery_risks"]["completion_record"]["scenario"]
-    new = changed["projection_facts"]["delivery_risks"]["completion_record"]["scenario"]
-    assert old["issues_json"] is None and new["issues_json"] == "[]"
-    assert original != changed

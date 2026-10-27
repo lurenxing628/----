@@ -1,11 +1,8 @@
 """Append-only calibration adoption history; current template hours remain revisable."""
 
-from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_migration_contract_issues
-from core.infrastructure.workbench_metadata_schema import canonical_sql, workbench_metadata_contract_issues
-from core.infrastructure.workbench_process_schema import workbench_process_contract_issues
-from core.infrastructure.workbench_template_lineage_schema import template_lineage_contract_issues
+from core.infrastructure.workbench_metadata_schema import canonical_sql
 
-from .schema_structure import SchemaStructure, schema_objects
+from .schema_structure import schema_objects
 
 ADOPTIONS = "WorkbenchCalibrationAdoptions"
 _REF = "TEXT NOT NULL CHECK(length({0})=48 AND {0} NOT GLOB '*[^0-9a-f]*')"
@@ -54,22 +51,3 @@ def contract_issues(conn, *, structure=None):
     return [("missing_calibration_adoption:" if name not in actual else "invalid_calibration_adoption:") + name
             for name, sql in objects().items()
             if name not in actual or canonical_sql(actual[name]) != canonical_sql(sql)]
-
-
-def install(conn):
-    """Caller migration owns commit/rollback. Partial or changed DDL is rejected."""
-    if not conn.in_transaction:
-        raise RuntimeError("Calibration adoption installation requires the caller migration transaction.")
-    structure = SchemaStructure(conn)
-    declared = objects()
-    actual = structure.objects.keys()
-    has_any = bool(actual & declared.keys())
-    issues = (workbench_metadata_contract_issues(conn, structure=structure) + workbench_process_contract_issues(conn, structure=structure) +
-              execution_ledger_migration_contract_issues(conn, structure=structure) + template_lineage_contract_issues(conn, structure=structure))
-    if has_any:
-        issues += contract_issues(conn, structure=structure)
-    if issues:
-        raise RuntimeError("Cannot install calibration adoption: " + "; ".join(issues))
-    if not has_any:
-        for sql in declared.values():
-            conn.execute(sql)

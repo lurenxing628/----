@@ -156,7 +156,7 @@ def mem_conn():
 def db_path(tmp_path):
     """临时文件库路径（str），经生产 ensure_schema 建好全部表并满足迁移契约。"""
     path = tmp_path / "aps_test.db"
-    ensure_schema(str(path), logger=None, schema_path=str(SCHEMA_PATH), backup_dir=None)
+    ensure_schema(str(path), logger=None, schema_path=str(SCHEMA_PATH))
     return str(path)
 
 

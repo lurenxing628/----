@@ -8,7 +8,7 @@ import pytest
 from flask import Blueprint, Flask, g
 
 from core.infrastructure.database import ensure_schema
-from core.infrastructure.workbench_trial_schema import TRIAL_TABLES, install_workbench_trial_schema
+from core.infrastructure.workbench_trial_schema import TRIAL_TABLES
 from core.models.content import same
 from core.models.schedule_config_runtime_fields import default_snapshot_values
 from core.services.workbench.run.worker import WorkbenchRunWorker
@@ -36,11 +36,8 @@ def service(conn):
 @pytest.fixture
 def trial_case(tmp_path):
     path = tmp_path / "trial.sqlite"
-    ensure_schema(str(path), schema_path=str(Path(__file__).resolve().parents[2] / "schema.sql"), backup_dir=None)
+    ensure_schema(str(path), schema_path=str(Path(__file__).resolve().parents[2] / "schema.sql"))
     conn = connect(path)
-    conn.execute("BEGIN IMMEDIATE")
-    install_workbench_trial_schema(conn)
-    conn.commit()
     # The saved plans in this fixture explicitly use the historical eight-hour shift.
     conn.execute("INSERT INTO WorkbenchCalendarDefaults(singleton,periods_json) VALUES (1,?)",
                  ('[{"start":"08:00","end":"16:00","day_offset":0}]',))

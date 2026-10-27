@@ -1,14 +1,13 @@
-"""Explicit metadata-only installation. The main migration owns version changes."""
+"""Workbench dashboard schema and contract validation."""
 
-from core.infrastructure.workbench_metadata_schema import schema_contract_matches, workbench_metadata_contract_issues
-from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
+from core.infrastructure.workbench_metadata_schema import canonical_sql
 
 from .schema_structure import SchemaStructure, schema_objects
 
 _REF = "TEXT NOT NULL CHECK(length({0})=48 AND {0} NOT GLOB '*[^0-9a-f]*')"
 
 
-def workbench_dashboard_objects(*, legacy=False):
+def workbench_dashboard_objects():
     result = {
         "WorkbenchDashboardItems": """CREATE TABLE WorkbenchDashboardItems (
             item_ref {} PRIMARY KEY, category TEXT NOT NULL CHECK(category IN ('delivery','material','actual','downtime')),
@@ -28,7 +27,7 @@ def workbench_dashboard_objects(*, legacy=False):
             history_ref {} PRIMARY KEY, item_ref TEXT NOT NULL,
             sequence INTEGER NOT NULL CHECK(typeof(sequence)='integer' AND sequence>0),
             action TEXT NOT NULL CHECK(action IN ('transition','reopen')), before_json TEXT NOT NULL, after_json TEXT NOT NULL,
-            source_json TEXT NOT NULL, source_facts_json TEXT NOT NULL, source_hash TEXT NOT NULL,
+            source_json TEXT NOT NULL, source_facts_json TEXT NOT NULL,
             reason TEXT, local_operator TEXT NOT NULL, recorded_at TEXT NOT NULL, request_key TEXT NOT NULL UNIQUE,
             UNIQUE(item_ref,sequence), FOREIGN KEY(item_ref) REFERENCES WorkbenchDashboardStates(item_ref),
             FOREIGN KEY(request_key) REFERENCES WorkbenchCommandReceipts(request_key) DEFERRABLE INITIALLY DEFERRED
@@ -56,9 +55,6 @@ def workbench_dashboard_objects(*, legacy=False):
             WHEN NEW.item_ref IS NOT OLD.item_ref OR NEW.origin_json IS NOT OLD.origin_json OR NEW.revision<>OLD.revision+1
             BEGIN SELECT RAISE(ABORT,'dashboard origin is permanent'); END""",
     }
-    if not legacy:
-        result["WorkbenchDashboardHistory"] = result["WorkbenchDashboardHistory"].replace(
-            "source_hash TEXT NOT NULL", "source_hash TEXT")
     for table, events in (("WorkbenchDashboardItems", ("UPDATE", "DELETE")),
                           ("WorkbenchDashboardHistory", ("UPDATE", "DELETE")),
                           ("WorkbenchDashboardStates", ("DELETE",)),
@@ -80,44 +76,15 @@ def workbench_dashboard_objects(*, legacy=False):
     return result
 
 
-def workbench_dashboard_contract_issues(conn, *, structure=None, allow_legacy=True):
+def workbench_dashboard_contract_issues(conn, *, structure=None):
     structure = structure or SchemaStructure(conn)
     actual = schema_objects(conn, structure=structure)
-    legacy = workbench_dashboard_objects(legacy=True)
     issues = [("missing_dashboard_schema:" if name not in actual else "invalid_dashboard_schema:") + name
               for name, sql in workbench_dashboard_objects().items()
-              if name not in actual or not schema_contract_matches(
-                  conn, actual[name], sql, legacy[name], allow_legacy=allow_legacy)]
+              if name not in actual or canonical_sql(actual[name]) != canonical_sql(sql)]
     if ("WorkbenchDashboardDowntimeRefs" in actual
             and "invalid_dashboard_schema:WorkbenchDashboardDowntimeRefs" not in issues
             and tuple(col[1] for col in structure.table_info("WorkbenchDashboardDowntimeRefs"))
             != ("ref", "source_id", "active", "revision")):
         issues.append("invalid_dashboard_schema:WorkbenchDashboardDowntimeRefs")
     return issues
-
-
-def install_workbench_dashboard_schema(conn):
-    if not conn.in_transaction:
-        raise RuntimeError("Dashboard installation requires the caller's migration transaction")
-    structure = SchemaStructure(conn)
-    definitions = workbench_dashboard_objects()
-    names = structure.objects.keys()
-    if names & definitions.keys():
-        issues = workbench_dashboard_contract_issues(conn, structure=structure)
-        if issues:
-            raise RuntimeError("Cannot repair partial dashboard schema: " + ";".join(issues))
-        return
-    issues = workbench_metadata_contract_issues(conn, structure=structure) + workbench_plan_identity_contract_issues(conn, structure=structure)
-    if issues or "MachineDowntimes" not in names:
-        raise RuntimeError("Dashboard prerequisites are incomplete: " + ";".join(issues))
-    if conn.execute("SELECT 1 FROM WorkbenchCommandReceipts WHERE action IN ('dashboard.transition','dashboard.reopen') LIMIT 1").fetchone():
-        raise RuntimeError("Dashboard receipts exist without their ledger; restore a complete backup")
-    for sql in definitions.values():
-        conn.execute(sql)
-    for category in ("delivery", "material"):
-        conn.execute("INSERT INTO WorkbenchDashboardItems(item_ref,category,batch_ref) "
-                     "SELECT lower(hex(randomblob(24))),?,ref FROM WorkbenchEntityRefs WHERE kind='batch' AND active=1", (category,))
-    for category in ("actual", "downtime"):
-        conn.execute("INSERT INTO WorkbenchDashboardItems(item_ref,category,task_ref) "
-                     "SELECT lower(hex(randomblob(24))),?,ref FROM WorkbenchTaskRefs", (category,))
-    conn.execute("INSERT INTO WorkbenchDashboardDowntimeRefs(ref,source_id,active,revision) SELECT lower(hex(randomblob(24))),id,1,1 FROM MachineDowntimes")

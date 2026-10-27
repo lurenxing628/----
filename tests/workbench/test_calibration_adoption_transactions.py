@@ -109,7 +109,7 @@ def test_adoption_keeps_raw_reports_once_and_binds_source_versions(ready_adoptio
         assert revision["report_revision_refs"] == sample["report_revision_refs"]
         assert revision["lineage"]["evidence_ref"] == sample["lineage_evidence_ref"]
         assert revision["lineage"]["birth_event_id"] in revision["lineage"]["event_ids"]
-        assert not {"reports", "execution", "instance_snapshot", "instance_fingerprint"}.intersection(revision)
+        assert not {"reports", "execution", "instance_snapshot"}.intersection(revision)
         assert "reports" not in revision["lineage"]
         assert len(sample["reports"]) == 1
     assert all(set(row) == {"sample_ref", "sample_revision", "eligible", "exclusion_reasons"}

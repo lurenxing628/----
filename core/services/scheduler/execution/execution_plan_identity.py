@@ -17,7 +17,7 @@ def current_execution_plan(conn):
         plan_ref = refs.get_plan_ref(WorkbenchPlanLocator(version, "adopted"))
     except WorkbenchPlanReferenceError as exc:
         raise WorkbenchCommandRejected("execution_ledger_unavailable", "当前正式计划永久身份不可用，不能改指其他计划。") from exc
-    resolution = PagePlanQueryService(repo, version).resolve_plan_view(version, "adopted", None)
+    resolution = PagePlanQueryService(repo, version).resolve_plan(version, "adopted")
     identity = resolution.plan_identity
     writable = bool(identity and identity.can_write_feedback)
     return {"plan_ref": plan_ref, "version": version, "kind": "official", "display_name": "当前正式计划",

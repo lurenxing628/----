@@ -8,7 +8,6 @@ from core.algorithm_runtime.internal_slot import estimate_internal_slot
 from core.models.batch import Batch
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from core.services.scheduler.execution.execution_ledger_guard import fact_resource_segments
-from core.services.scheduler.run.schedule_execution_reservations import reserve_execution_machines
 from core.services.scheduler.run.schedule_input_seed_metadata import (
     merged_actual_group_intervals,
     merged_external_group_identity,
@@ -47,14 +46,13 @@ def _resource_overlaps(rows, execution_facts):
 
 def adoption_downtimes(prepared, payload=None):
     if payload is not None:
-        actual = prepared.execution_fixed_op_ids | prepared.execution_completed_op_ids
+        actual = prepared.execution_completed_op_ids
         rows = [row for row in payload.schedule_rows if row.source == "internal" and row.op_id not in actual]
         if not rows:
             return {}
     # Locked seeds may precede the requested run window. Prove every planned
     # arrangement against downtime at its own time and assigned machine.
-    downtimes = runtime_resource_facts(prepared.preflight_facts).downtimes
-    return reserve_execution_machines(downtimes, prepared.execution_reservations)
+    return runtime_resource_facts(prepared.preflight_facts).downtimes
 
 
 def calendar_duration_conflict(calendar, row, op: OpForScheduleAlgo, batch: Batch, machine_downtimes, *, quantity):
@@ -84,7 +82,7 @@ def _internal(prepared, row, op, batch, downtime):
 
 def adoption_external_intervals(prepared, *, algo_ops=None):
     groups = {op.id: merged_external_group_identity(op) for op in (prepared.algo_ops if algo_ops is None else algo_ops)}
-    actual = prepared.execution_fixed_op_ids | prepared.execution_completed_op_ids
+    actual = prepared.execution_completed_op_ids
     cycles = merged_actual_group_intervals(groups, prepared.execution_seed_results, actual)
     return {op_id: cycles[identity] for op_id, identity in groups.items() if identity in cycles}
 
@@ -153,7 +151,7 @@ def validate_adoption_constraints(prepared, payload):
     ops = {op.id: op for op in prepared.operations}
     raw_batches = {batch_id: vars(batch) for batch_id, batch in prepared.batches.items()}
     algo_ops = {op.id: op for op in prepared.algo_ops}
-    actual_ids = prepared.execution_fixed_op_ids | prepared.execution_completed_op_ids
+    actual_ids = prepared.execution_completed_op_ids
     downtime = adoption_downtimes(prepared, payload)
     actual_intervals = adoption_external_intervals(prepared)
     _resource_overlaps(payload.schedule_rows, prepared.execution_facts)

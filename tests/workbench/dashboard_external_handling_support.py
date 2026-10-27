@@ -2,15 +2,11 @@
 
 import pytest
 
-from core.infrastructure.workbench_dashboard_external_schema import install
 from tests.workbench.dashboard_external_support import storage
 
 
 @pytest.fixture(name="external_handling_case")
 def external_handling_case(external_case):
-    external_case.conn.execute("BEGIN")
-    install(external_case.conn)
-    external_case.conn.commit()
     with external_case.app.app_context():
         yield external_case
 

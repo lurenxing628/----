@@ -51,26 +51,22 @@ def test_routes_list_detail_transition_history_and_stale_snapshot(dashboard_case
     assert history["data"]["history"]["page"]["total"] == 1
     assert history["data"]["history"]["items"][0]["receipt_ref"] == response.get_json()["receipt_ref"]
     row = WorkbenchDashboardRepository(dashboard_case.conn).history_rows(item["item_ref"], 1, 0)[0]
-    assert row["source_hash"] is None
+    assert "source_hash" not in row
     saved = json.loads(row["source_facts_json"])
     assert saved["facts"] and saved["guard"]["identity"]["item_ref"] == item["item_ref"]
     assert saved["guard"]["revision"] == 0 and saved["guard"]["handling"]["status"] == "new"
-    original = history_contents(row)
-    legacy_hash = "a238b41ba2fb0965614fc2900a71b159051e868872a77a7d0543b05c9c5fe63e"
-    historical = dict(row, source_hash=legacy_hash)
-    assert history_contents(historical) == original and historical["source_hash"] == legacy_hash
     for field, value in (("receipt_action", "dashboard.reopen"), ("receipt_context_ref", "0" * 48)):
         with pytest.raises(WorkbenchCommandRejected, match="处置记录") as rejected:
-            history_contents(dict(historical, **{field: value}))
+            history_contents(dict(row, **{field: value}))
         assert rejected.value.code == "dashboard_storage_invalid"
     outcome = json.loads(row["receipt_outcome_json"])
     outcome["data"]["history_ref"] = "0" * 48
     with pytest.raises(WorkbenchCommandRejected, match="处置记录") as rejected:
-        history_contents(dict(historical, receipt_outcome_json=json.dumps(outcome)))
+        history_contents(dict(row, receipt_outcome_json=json.dumps(outcome)))
     assert rejected.value.code == "dashboard_storage_invalid"
     saved["guard"]["revision"] = False
     with pytest.raises(WorkbenchCommandRejected, match="处置记录") as rejected:
-        history_contents(dict(historical, source_facts_json=json.dumps(saved)))
+        history_contents(dict(row, source_facts_json=json.dumps(saved)))
     assert rejected.value.code == "dashboard_storage_invalid"
 
 

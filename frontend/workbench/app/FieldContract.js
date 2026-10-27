@@ -42,10 +42,10 @@
     const p = value && value.execution;
     return C.object(value) && ref(value.task_ref) && ref(value.plan_ref) && planned(value) && planQuantity(value) && typeof value.batch_id === 'string' && typeof value.operation_label === 'string'
       && C.object(p) && ref(p.operation_ref) && p.operation_ref === value.operation_ref && (p.comparison_task_ref === null || p.comparison_task_ref === value.task_ref) && Object.hasOwnProperty.call(states, p.execution_state)
-      && ['complete', 'incomplete', 'legacy_incomplete', 'invalid'].includes(p.data_quality) && nullable(p.target_quantity)
+      && ['complete', 'incomplete', 'invalid'].includes(p.data_quality) && nullable(p.target_quantity)
       && nullable(p.known_completed_quantity) && nullable(p.remaining_quantity) && typeof p.records_complete === 'boolean'
       && typeof p.quantity_complete === 'boolean' && Number.isInteger(p.unknown_record_count) && Array.isArray(p.data_gaps)
-      && Array.isArray(p.reports) && p.reports.every(row => report(row) && row.operation_ref === p.operation_ref) && Array.isArray(p.legacy_facts) && Array.isArray(p.voided_reports) && C.object(p.write_context);
+      && Array.isArray(p.reports) && p.reports.every(row => report(row) && row.operation_ref === p.operation_ref) && Array.isArray(p.voided_reports) && C.object(p.write_context);
   }
   // 信封（ok、schema_version、meta、data 对象）已由 transport.js 的 envelope() 校验，这里只校验 data。
   function query(result, mode, expected) {

@@ -71,8 +71,7 @@ def decision_details(source, section, filters, *, page: Union[int, str] = 1, siz
     offset = (page - 1) * size
     result = {"run_ref": source.run["run_ref"], "scope": source.scope, "baseline": source.baseline,
               "candidate": {"candidate_ref": source.selected_ref, "label": source.selected["artifact"].get("label"),
-                            "status": source.selected["status"], "result_available": source.result_available(source.selected_ref),
-                            "failure_reason": source.selected["artifact"].get("failure_reason")},
+                            "status": source.selected["status"], "result_available": source.result_available(source.selected_ref)},
               "filters": filters, "filter_options": options, "items": rows if all_rows else rows[offset:offset + size],
               "page": {"number": page, "size": size, "total": len(rows), "has_more": offset + size < len(rows)},
               "summary": {**summary, "scope": "full_admission"}, "metric_version": METRIC_VERSION}

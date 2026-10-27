@@ -31,7 +31,7 @@ def _official(export):
     # 与现场分析是同一份“整份正式计划 + 台账”重建，和看板、现场页一起排读额度。
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():
-            facts = reader.read(scope, as_of=as_of)
+            facts = reader.read(scope)
             snapshot = bind_read_snapshot(facts["scope"].scope(), facts["fingerprint"], token, as_of=as_of, binding=binding)
             data, ordered, labels = report_workspace(facts, snapshot, topic, page)
     if not export:
@@ -40,7 +40,7 @@ def _official(export):
         return response
     if request.args.get("format", "xlsx") != "xlsx":
         raise WorkbenchCommandRejected("invalid_input", "正式执行复盘只提供 XLSX，没有开始下载。需要 CSV 请用五个专题的范围导出。", 400)
-    selected = project_export_rows(facts, ordered, labels)
+    selected = project_export_rows(ordered, labels)
     if not selected:
         raise WorkbenchCommandRejected("empty_export", "当前范围里没有可导出的正式工序，没有开始下载。请放宽筛选范围后重新点「导出 XLSX」。", 422)
     decision = ensure_export_size(reader.engine, len(selected))

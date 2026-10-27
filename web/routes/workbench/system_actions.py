@@ -72,7 +72,7 @@ def _file_service():
 def _restore_runner(manager, path):
     import os
     return run_backup_restore(filename=os.path.basename(path), backup_path=path,
-                              database_path=current_app.config["DATABASE_PATH"], backup_dir=current_app.config["BACKUP_DIR"],
+                              database_path=current_app.config["DATABASE_PATH"],
                               manager=manager, logger=current_app.logger, ensure_schema_func=ensure_schema)
 
 

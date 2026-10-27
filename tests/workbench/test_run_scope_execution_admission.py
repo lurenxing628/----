@@ -145,19 +145,3 @@ def test_outside_partial_blocks_preview_and_fresh_and_stale_admission(scope_serv
         "write_token": authorization["write_context"]["write_token"], "request_key": "scope-valid-accept-" + uuid.uuid4().hex})
     assert status == 202 and dispatched == [accepted["run_ref"]], accepted
     assert WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])["state"] == "complete"
-
-
-def test_outside_legacy_release_unknown_is_blocked_before_worker(scope_server):
-    case, base_url, dispatched = scope_server
-    schedule = case.conn.execute("SELECT id FROM Schedule WHERE version=? AND op_id=?",
-                                  (case.version, case.op_id)).fetchone()[0]
-    case.conn.execute("""INSERT INTO OperationExecutionEvents
-        (schedule_version,schedule_id,op_id,batch_id,source_table,effective_plan_role,
-         event_type,reported_status,event_time,actual_machine_id,actual_operator_id,
-         created_by,idempotency_key,request_fingerprint,previous_state_revision)
-        VALUES (?,?,?,'B1','schedule','adopted','start','processing','2026-09-09T08:00:00',
-                'M1','O1','legacy-operator','scope-legacy-start-001','legacy-start-fingerprint',?)""",
-        (case.version, schedule, case.op_id, f"{case.op_id}:0:0"))
-    case.conn.commit()
-    assert_rejected_without_writes(case, base_url, dispatched,
-        case.settings("B2", start_date="2026-09-10"), "execution_resource_release_unknown")

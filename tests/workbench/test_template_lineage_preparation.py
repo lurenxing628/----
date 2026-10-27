@@ -4,7 +4,6 @@ import json
 
 import pytest
 
-from core.infrastructure.batch_external_context_schema import install as install_external_contexts
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_template_lineage import STATE_COLUMNS
@@ -20,7 +19,6 @@ def test_batch_copies_prepare_raw_sources_once_and_reuse_across_targets(lineage_
     case, trace = lineage_case, []
     conn = case.conn
     with TransactionManager(conn).transaction():
-        install_external_contexts(conn)
         conn.execute("UPDATE PartOperations SET unit_hours=NULL,op_type_name=? WHERE id=?", (b"Turning\x00", case.template_id))
         conn.execute("INSERT INTO PartOperations(part_no,seq,op_type_id,op_type_name,source,setup_hours,unit_hours,ext_days) "
                      "VALUES ('P1',2,'T1','Turning','internal',NULL,0,?)", (b"raw\x00",))
@@ -31,7 +29,7 @@ def test_batch_copies_prepare_raw_sources_once_and_reuse_across_targets(lineage_
                                                   "WHERE batch_id='PREP-SOURCE' ORDER BY seq")]
     assert original[0][1] == b"Turning\x00" and original[0][3] is None
     assert original[1][2] is None and original[1][4] == b"raw\x00"
-    conn.execute("UPDATE BatchExternalContexts SET origin='migration_v33' WHERE operation_id IN "
+    conn.execute("UPDATE BatchExternalContexts SET origin='instance_copy' WHERE operation_id IN "
                  "(SELECT id FROM BatchOperations WHERE batch_id='PREP-SOURCE')")
     conn.commit()
     facts = BatchFacts(conn).load()
@@ -58,7 +56,7 @@ def test_batch_copies_prepare_raw_sources_once_and_reuse_across_targets(lineage_
     assert len(contexts) == 3
     assert all({key: value for key, value in row.items() if key not in ('operation_id', 'origin')} ==
                {key: value for key, value in contexts[0].items() if key not in ('operation_id', 'origin')} for row in contexts)
-    assert [row['origin'] for row in contexts] == ['migration_v33', 'migration_v33', 'migration_v33']
+    assert [row['origin'] for row in contexts] == ['instance_copy', 'instance_copy', 'instance_copy']
     record_property("lineage_two_targets_source_event_reads", 1)
 
 

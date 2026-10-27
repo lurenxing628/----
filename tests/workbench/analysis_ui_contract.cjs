@@ -111,7 +111,6 @@ assert.equal(show('partial', 'ready_status'), '部分齐套');
 assert.equal(show('partial', 'execution_state'), '部分完成');
 assert.equal(show('complete', 'execution_state'), '已完工');
 assert.equal(show('complete', 'data_quality'), '完整');
-assert.equal(show('legacy_incomplete', 'data_quality'), '历史资料不完整');
 assert.equal(show('on_time', 'risk'), '预计按期');
 assert.equal(show(0.004, 'required_quantity'), '0.004');
 assert.equal(show(2.0005, 'available_quantity'), '2.0005');

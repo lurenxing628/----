@@ -1,16 +1,11 @@
-"""Template row identities only; installation never rewrites process facts."""
+"""Template row identities only."""
 
 from __future__ import annotations
 
 from typing import Dict, List, Tuple
 
 from .schema_structure import SchemaStructure
-from .workbench_metadata_schema import (
-    canonical_sql,
-    entity_key_sql,
-    identity_triggers,
-    workbench_metadata_contract_issues,
-)
+from .workbench_metadata_schema import canonical_sql, identity_triggers
 
 PROCESS_ENTITY_TABLES: Dict[str, Tuple[str, Tuple[str, ...]]] = {
     "template_operation": ("PartOperations", ("id",)),
@@ -19,32 +14,13 @@ PROCESS_ENTITY_TABLES: Dict[str, Tuple[str, Tuple[str, ...]]] = {
 _ALTERNATE_COLUMNS = {"template_operation": ("part_no", "seq")}
 
 
-def process_objects(*, legacy=False) -> Dict[str, str]:
+def process_objects() -> Dict[str, str]:
     objects = {}
     for kind, (table, columns) in PROCESS_ENTITY_TABLES.items():
         objects.update(identity_triggers(
-            kind, table, columns, alternate_columns=_ALTERNATE_COLUMNS.get(kind, ()), split_conflicts=not legacy,
+            kind, table, columns, alternate_columns=_ALTERNATE_COLUMNS.get(kind, ()), split_conflicts=True,
         ))
     return objects
-
-
-def optimize_process_identity_triggers(conn) -> None:
-    """Upgrade only the exact known v22 DDL, without reallocating any identity."""
-    if not conn.in_transaction:
-        raise RuntimeError("Process identity trigger upgrade requires a caller transaction.")
-    current, legacy = process_objects(), process_objects(legacy=True)
-    actual = {row[0]: row[1] for row in conn.execute("SELECT name, sql FROM sqlite_master WHERE type='trigger'")}
-    changed = []
-    for name, sql in current.items():
-        actual_canonical = canonical_sql(actual[name]) if name in actual else None
-        expected_canonical = canonical_sql(sql)
-        if actual_canonical not in (expected_canonical, canonical_sql(legacy[name])):
-            raise RuntimeError("Cannot replace missing or unrecognized process identity trigger: " + name)
-        if actual_canonical != expected_canonical:
-            changed.append((name, sql))
-    for name, sql in changed:
-        conn.execute('DROP TRIGGER "' + name + '"')
-        conn.execute(sql)
 
 
 def _source_contract_issues(*, structure: SchemaStructure) -> List[str]:
@@ -72,28 +48,3 @@ def workbench_process_contract_issues(conn, *, structure=None) -> List[str]:
         elif canonical_sql(actual[name]) != canonical_sql(sql):
             issues.append("bad_workbench_process: " + name)
     return issues
-
-
-def install_process(conn) -> None:
-    """Install/backfill within the caller's transaction; reject damaged objects."""
-    structure = SchemaStructure(conn)
-    issues = workbench_metadata_contract_issues(conn, structure=structure) + [
-        issue for issue in workbench_process_contract_issues(conn, structure=structure)
-        if not issue.startswith("missing_workbench_process: ")
-    ]
-    if issues:
-        raise RuntimeError("Cannot install workbench process identities: " + "; ".join(issues))
-    for table, columns in PROCESS_ENTITY_TABLES.values():
-        key = entity_key_sql(columns, "source")
-        if conn.execute(f'SELECT 1 FROM "{table}" AS source WHERE {key} IS NULL LIMIT 1').fetchone():
-            raise RuntimeError(f"{table} has a missing primary key; process identities were not installed.")
-    for sql in process_objects().values():
-        conn.execute(sql)
-    for kind, (table, columns) in PROCESS_ENTITY_TABLES.items():
-        key = entity_key_sql(columns, "source")
-        alternate_columns = _ALTERNATE_COLUMNS.get(kind, ())
-        alternate = entity_key_sql(alternate_columns, "source") if alternate_columns else "NULL"
-        conn.execute(f"""INSERT INTO WorkbenchEntityRefs(ref, kind, entity_key, alternate_key)
-            SELECT lower(hex(randomblob(24))), ?, {key}, {alternate} FROM "{table}" AS source
-            WHERE NOT EXISTS (SELECT 1 FROM WorkbenchEntityRefs AS existing
-                WHERE existing.kind = ? AND existing.entity_key = {key} AND existing.active = 1)""", (kind, kind))

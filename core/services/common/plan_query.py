@@ -4,46 +4,22 @@ import sqlite3
 from dataclasses import replace
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
-from core.models.schedule_plan_resolution import SchedulePlanResolution, SchedulePlanRoleOption
+from core.models.schedule_plan_resolution import SchedulePlanResolution
 from core.models.schedule_plan_role import (
     ROLE_ADOPTED,
-    SOURCE_ADJUSTMENT_SCENARIO_ROWS,
-    SOURCE_CANDIDATE_ROWS,
     SOURCE_SCHEDULE,
     VALID_PLAN_ROLES,
     _normalize_role,
-    is_comparison_plan,
-    plan_candidate_label,
-    plan_role_label,
 )
 from core.models.scheduler_history_parser import ResultSummaryParseResult, parse_result_summary_payload
 from data.repositories.schedule_plan_query_repo import SchedulePlanQueryRepository
-from data.repositories.schedule_rows import ScheduleDetailRow, ScheduleTimeSpanRow
+from data.repositories.schedule_rows import ScheduleDetailRow
 
 from .plan_identity import build_plan_identity
 
 
-def _resolution_status(role: str, *, source_table: str) -> str:
-    if is_comparison_plan(role=role, source_table=source_table):
-        return "resolved_comparison"
-    return "resolved_adopted"
-
-
-def _default_adopted_option() -> SchedulePlanRoleOption:
-    return SchedulePlanRoleOption(
-        role=ROLE_ADOPTED,
-        source_table=SOURCE_SCHEDULE,
-        candidate_id=None,
-        candidate_key=None,
-        candidate_label=plan_role_label(ROLE_ADOPTED),
-        candidate_kind=None,
-        candidate_status=None,
-        detail_saved=None,
-    )
-
-
 class SchedulePlanQueryService:
-    """统一解析 adopted / 代表方案，并按同一字段形状读取明细。"""
+    """统一解析正式排产方案，并按同一字段形状读取明细。"""
 
     def __init__(
         self,
@@ -63,18 +39,6 @@ class SchedulePlanQueryService:
             self._parsed_summaries[key] = cached
         return cached
 
-    def list_plan_roles(self, version: int) -> List[SchedulePlanRoleOption]:
-        rows = self.repo.list_plan_role_options(int(version))
-        options = [self._role_option_from_row(row) for row in rows]
-        if not options:
-            return [_default_adopted_option()]
-        self._validate_plan_role_options_integrity(int(version), options)
-        return options
-    def _option_for_resolution(self, resolution: SchedulePlanResolution) -> Optional[SchedulePlanRoleOption]:
-        for option in resolution.available_roles:
-            if option.role == resolution.selected_role:
-                return option
-        return None
     def _latest_official_version(self) -> Optional[int]:
         return self.repo.latest_version()
 
@@ -83,262 +47,65 @@ class SchedulePlanQueryService:
         source_row = self.repo.get_first_plan_identity_row(
             version=int(resolution.version),
             source_table=resolution.source_table,
-            candidate_id=resolution.candidate_id,
-            scenario_id=resolution.scenario_id,
         ) or {}
-        option = self._option_for_resolution(resolution)
         identity = build_plan_identity(
             version=int(resolution.version),
-            requested_role=resolution.requested_role,
-            effective_role=resolution.selected_role,
-            status=resolution.status,
-            source_table=resolution.source_table,
             source_row_id=source_row.get("source_row_id"),
-            candidate_id=resolution.candidate_id,
-            candidate_key=resolution.candidate_key,
-            scenario_id=resolution.scenario_id,
-            scenario_display_name=resolution.scenario_display_name,
             schedule_result_status=history_row.get("result_status"),
             result_summary=history_row.get("result_summary"),
             latest_official_version=self._latest_official_version(),
             schedule_lock_status=source_row.get("lock_status"),
-            detail_saved=option.detail_saved if option is not None else None,
             summary_parse=self.parse_history_summary(history_row),
         )
         return replace(resolution, plan_identity=identity)
-    def resolve_plan(self, version: int, role: Optional[str]) -> SchedulePlanResolution:
+
+    def resolve_plan(self, version: int, role: Optional[str] = None) -> SchedulePlanResolution:
         requested_role = _normalize_role(role)
         if requested_role not in VALID_PLAN_ROLES:
             raise ValueError(f"未知的排产方案角色：{requested_role}")
 
-        available_roles = self.list_plan_roles(int(version))
-        roles_by_name = {option.role: option for option in available_roles}
-        if requested_role in roles_by_name:
-            option = roles_by_name[requested_role]
-            self._validate_resolution_option(int(version), option)
-            return self._with_plan_identity(SchedulePlanResolution(
-                version=int(version),
-                requested_role=requested_role,
-                selected_role=option.role,
-                source_table=option.source_table,
-                candidate_id=option.candidate_id,
-                candidate_key=option.candidate_key,
-                status=_resolution_status(option.role, source_table=option.source_table),
-                message="",
-                available_roles=available_roles,
-            ))
-
-        # 【承重·勿改成 raise】宽松 view 门：请求的是合法对比角色但本版本没存这套明细 → 降级显示
-        # 采用方案，但带 message + status=fallback_to_adopted 显式披露（非静默吞错）。坏数据仍 loud：
-        # 下一行 _validate_resolution_option 对任何坏 adopted 照样 raise，只有 adopted 干净才回退。
-        # 严格门是 resolve_existing_plan（缺角色即 raise，供甘特调整草稿/校验等编辑路径）。死/活双轨
-        # 由 tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py（O21/O22）钉死，刻意
-        # 防"把两路改成等价"——此处若改 raise 会破坏合法 UX 且踩红该契约。
-        adopted = roles_by_name[ROLE_ADOPTED]
-        self._validate_resolution_option(int(version), adopted)
         return self._with_plan_identity(SchedulePlanResolution(
             version=int(version),
             requested_role=requested_role,
             selected_role=ROLE_ADOPTED,
-            source_table=adopted.source_table,
-            candidate_id=adopted.candidate_id,
-            candidate_key=adopted.candidate_key,
-            status="fallback_to_adopted",
-            message=f"你原本选择的是“{plan_role_label(requested_role)}”，但当前版本没有保存这套方案明细，已显示正式采用方案。",
-            available_roles=available_roles,
+            source_table=SOURCE_SCHEDULE,
+            status="resolved_adopted",
+            message="",
         ))
-    def resolve_existing_plan(self, version: int, role: str) -> SchedulePlanResolution:
+
+    def resolve_existing_plan(self, version: int, role: str = ROLE_ADOPTED) -> SchedulePlanResolution:
         if role not in VALID_PLAN_ROLES:
             raise ValueError(f"未知的排产方案角色：{role}")
 
-        available_roles = self.list_plan_roles(int(version))
-        roles_by_name = {option.role: option for option in available_roles}
-        option = roles_by_name.get(role)
-        if option is None:
-            raise ValueError("所选方案不存在。")
-
-        try:
-            self._validate_resolution_option(int(version), option)
-        except ValueError as exc:
-            raise ValueError("所选方案没有可查看的明细。") from exc
         if self.repo.get_plan_time_span(
             version=int(version),
-            source_table=option.source_table,
-            candidate_id=option.candidate_id,
+            source_table=SOURCE_SCHEDULE,
         ) is None:
             raise ValueError("所选方案没有可查看的明细。")
-        return self._with_plan_identity(SchedulePlanResolution(
-            version=int(version),
-            requested_role=role,
-            selected_role=option.role,
-            source_table=option.source_table,
-            candidate_id=option.candidate_id,
-            candidate_key=option.candidate_key,
-            status=_resolution_status(option.role, source_table=option.source_table),
-            message="",
-            available_roles=available_roles,
-        ))
-    def resolve_plan_view(
-        self,
-        version: int,
-        role: Optional[str],
-        scenario_id: Optional[str] = None,
-    ) -> SchedulePlanResolution:
-        if not scenario_id:
-            return self.resolve_plan(version, role)
-        return self._resolve_scenario_plan(version=int(version), role=role, scenario_id=scenario_id)
-    def get_plan_time_span(self, version: int, role: Optional[str]) -> Optional[ScheduleTimeSpanRow]:
-        resolution = self.resolve_plan(version, role)
-        return self.get_plan_time_span_for_resolution(
-            version=int(version),
-            source_table=resolution.source_table,
-            candidate_id=resolution.candidate_id,
-            scenario_id=resolution.scenario_id,
-        )
-    def get_plan_time_span_for_view(
-        self,
-        version: int,
-        role: Optional[str],
-        scenario_id: Optional[str] = None,
-    ) -> Optional[ScheduleTimeSpanRow]:
-        resolution = self.resolve_plan_view(version, role, scenario_id)
-        return self.get_plan_time_span_for_resolution(
-            version=int(version),
-            source_table=resolution.source_table,
-            candidate_id=resolution.candidate_id,
-            scenario_id=resolution.scenario_id,
-        )
-    def get_plan_time_span_for_resolution(
-        self,
-        *,
-        version: int,
-        source_table: str,
-        candidate_id: Optional[int],
-        scenario_id: Optional[str] = None,
-    ) -> Optional[ScheduleTimeSpanRow]:
-        return self.repo.get_plan_time_span(
-            version=int(version),
-            source_table=source_table,
-            candidate_id=candidate_id,
-            scenario_id=scenario_id,
-        )
+        return self.resolve_plan(version, role)
+
     def list_plan_detail_rows_between_for_resolution(
         self,
         *,
         version: int,
-        source_table: str,
-        candidate_id: Optional[int],
-        scenario_id: Optional[str] = None,
+        source_table: str = SOURCE_SCHEDULE,
         start_time: str,
         end_time: str,
     ) -> List[ScheduleDetailRow]:
         return self.repo.list_detail_rows_between(
             version=int(version),
             source_table=source_table,
-            candidate_id=candidate_id,
-            scenario_id=scenario_id,
             start_time=start_time,
             end_time=end_time,
         )
+
     def list_plan_overdue_base_rows_for_resolution(
         self,
         *,
         version: int,
-        source_table: str,
-        candidate_id: Optional[int],
-        scenario_id: Optional[str] = None,
+        source_table: str = SOURCE_SCHEDULE,
     ) -> List[Dict[str, Any]]:
         return self.repo.list_overdue_base_rows(
             version=int(version),
             source_table=source_table,
-            candidate_id=candidate_id,
-            scenario_id=scenario_id,
         )
-    @staticmethod
-    def _role_option_from_row(row: Dict[str, Any]) -> SchedulePlanRoleOption:
-        role = row["role"]
-        candidate_key = str(row["candidate_key"]) if row.get("candidate_key") is not None else None
-        selection_id = int(row["selection_candidate_id"]) if row.get("selection_candidate_id") is not None else None
-        resolved_id = int(row["resolved_candidate_id"]) if row.get("resolved_candidate_id") is not None else None
-        return SchedulePlanRoleOption(
-            role=role,
-            source_table=row["source_table"],
-            candidate_id=resolved_id,
-            candidate_key=candidate_key,
-            candidate_label=plan_candidate_label(
-                row.get("candidate_label"),
-                role=role,
-                candidate_key=candidate_key,
-            ),
-            candidate_kind=str(row["candidate_kind"]) if row.get("candidate_kind") is not None else None,
-            candidate_status=str(row["candidate_status"]) if row.get("candidate_status") is not None else None,
-            detail_saved=str(row["detail_saved"]) if row.get("detail_saved") is not None else None,
-            selection_candidate_id=selection_id,
-            resolved_candidate_id=resolved_id,
-            candidate_missing=selection_id is not None and resolved_id is None,
-        )
-
-    def _validate_plan_role_options_integrity(self, version: int, options: List[SchedulePlanRoleOption]) -> None:
-        for option in options:
-            if option.candidate_missing:
-                raise ValueError(
-                    f"方案对比记录不完整：version={version}, role={option.role} 指向的方案不存在。"
-                )
-
-        roles = {option.role for option in options}
-        if ROLE_ADOPTED not in roles:
-            raise ValueError(f"方案对比记录不完整：version={version} 缺少正式采用方案。")
-
-    def _validate_resolution_option(self, version: int, option: SchedulePlanRoleOption) -> None:
-        if option.role not in VALID_PLAN_ROLES:
-            raise ValueError(f"未知的排产方案角色：{option.role}")
-        if option.source_table not in (SOURCE_SCHEDULE, SOURCE_CANDIDATE_ROWS):
-            raise ValueError(f"未知的排产方案数据来源：{option.source_table}")
-        if option.role != ROLE_ADOPTED and option.candidate_status != "completed":
-            raise ValueError("这套对比参考方案当前不是已完成状态，不能查看明细。")
-        if option.source_table == SOURCE_CANDIDATE_ROWS:
-            if option.candidate_id is None:
-                raise ValueError("方案对比明细缺少编号。")
-            if option.detail_saved != "yes":
-                raise ValueError("方案对比明细没有保存。")
-            if not self.repo.has_candidate_rows(version=int(version), candidate_id=int(option.candidate_id)):
-                raise ValueError("方案对比明细没有找到对应排程。")
-        if option.role == ROLE_ADOPTED and option.source_table != SOURCE_SCHEDULE:
-            raise ValueError("adopted 方案必须从 Schedule 读取")
-
-    def _resolve_scenario_plan(
-        self,
-        *,
-        version: int,
-        role: Optional[str],
-        scenario_id: str,
-    ) -> SchedulePlanResolution:
-        row = self.repo.get_scenario_context(scenario_id)
-        if row is None:
-            raise ValueError("模拟方案不存在。")
-        if row["status"] != "active":
-            raise ValueError("模拟方案不是可预览状态。")
-        if row["base_version"] != int(version):
-            raise ValueError("模拟方案不属于当前排产版本。")
-        base_role = row["base_plan_role"]
-        requested_role = str(role or "").strip() or base_role
-        if requested_role != base_role:
-            raise ValueError("模拟方案不属于当前排产方案。")
-        if not self.repo.has_scenario_rows(scenario_id=scenario_id):
-            raise ValueError("模拟方案明细不存在。")
-        available_roles = self.list_plan_roles(int(version))
-        scenario_name = str(row.get("scenario_name") or "").strip() or None
-        return self._with_plan_identity(SchedulePlanResolution(
-            version=int(version),
-            requested_role=base_role,
-            selected_role=base_role,
-            source_table=SOURCE_ADJUSTMENT_SCENARIO_ROWS,
-            candidate_id=None,
-            candidate_key=str(row.get("base_candidate_key")) if row.get("base_candidate_key") is not None else None,
-            status="scenario_preview",
-            message="当前正在预览模拟方案，正式计划还没有改变。",
-            available_roles=available_roles,
-            scenario_id=scenario_id,
-            scenario_name=scenario_name,
-            is_scenario_preview=True,
-        ))

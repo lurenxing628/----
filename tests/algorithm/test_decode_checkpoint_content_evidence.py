@@ -3,6 +3,7 @@
 from collections import OrderedDict
 from copy import deepcopy
 from dataclasses import replace
+from datetime import timedelta
 from time import perf_counter
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -27,14 +28,36 @@ from core.services.scheduler.run.optimizer.search_report import OptimizationSear
 from core.services.scheduler.run.optimizer.shared_archive import CandidateArchiveRef, SharedScheduleArchive
 from core.services.scheduler.run.optimizer.shared_budget import SharedSearchBudget
 from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession, decode_and_metrics
-from core.services.scheduler.run.schedule_execution_reservations import (
-    ExecutionResourceCalendar,
-    ExecutionResourceReservation,
-)
 from data.repositories.calendar_checkpoint_repo import CalendarCheckpointRepository
-from tests._support.busy_block_case import at, native_calendar
+from tests._support.algo_operations import make_algo_op, make_batch
+from tests._support.busy_block_case import BASE, at, native_calendar
 from tests._support.schedule_decode import config_snapshot, production_decode
-from tests.algorithm.test_execution_calendar_certified_overlay import _saturated_case
+
+
+def _saturated_case(batch_count=30, ops_per_batch=3):
+    machines, operators = ["M1", "M2", "M3"], ["O1", "O2"]
+    batches, operations, predecessors, successors = {}, [], {}, {}
+    for b in range(batch_count):
+        bid = f"B{b:03d}"
+        batches[bid] = make_batch(batch_id=bid, priority="urgent" if b % 4 == 0 else "normal",
+                                  due_date=(BASE + timedelta(days=2 + b % 9)).date(), quantity=1 + b % 3)
+        for seq in range(ops_per_batch):
+            oid = b * ops_per_batch + seq + 1
+            operations.append(make_algo_op(
+                id=oid, op_code=f"{bid}_{seq}", batch_id=bid, seq=seq,
+                machine_id=machines[(b + seq) % 3], operator_id=operators[(b + 2 * seq) % 2],
+                setup_hours=0.25 * (1 + oid % 3), unit_hours=0.2 + 0.1 * (oid % 4),
+                op_type_id=f"T{oid % 2}", op_type_name=f"TYPE{oid % 2}"))
+            predecessors[oid] = [oid - 1] if seq else []
+            successors[oid] = [oid + 1] if seq + 1 < ops_per_batch else []
+    context = {
+        "enabled": True, "schedulable_op_ids": list(predecessors), "fixed_op_ids": [], "score_enabled": True,
+        "predecessor_op_ids_by_op_id": predecessors, "successor_op_ids_by_op_id": successors,
+        "sort_key_by_op_id": {op.id: ((op.id - 1) // ops_per_batch, op.seq, op.id) for op in operations},
+        "graph_priority_key_by_op_id": {op.id: (float((op.id * 7) % 11), float(op.id)) for op in operations},
+    }
+    return dict(operations=operations, batches=batches, start_dt=BASE, dispatch_mode="sgs", dispatch_rule="atc",
+                graph_ready_context=context)
 
 
 def _decode(scheduler, inputs, **changes):
@@ -193,21 +216,6 @@ def test_checkpoint_resumes_same_inputs_and_rejects_changed_type_or_prefix():
             assert certificate.call_count == calendar_encodings() == 2 and len(metadata) == 8
             assert next_capture[0].signature[9] == component
 
-            release_components = []
-            for release in (0.5, 1.5):
-                overlay = ExecutionResourceCalendar(calendar, [ExecutionResourceReservation(
-                    100, "M2", "O1", at(), at(release))])
-                overlay_scheduler = GreedyScheduler(calendar_service=overlay, config_service=config_snapshot(auto_assign_enabled="no"))
-                overlay_owner = new_session(overlay_scheduler)
-                overlay_capture = []
-                decoded = decode(owner=overlay_owner, decoder=overlay_scheduler,
-                                 decode_checkpoints=DecodeCheckpointRequest([1], overlay_capture.append))
-                assert all(row.start_time >= at(release) for row in decoded.results
-                           if row.operator_id == "O1" and row.op_id != 99)
-                release_components.append(overlay_capture[0].signature[9])
-            assert release_components[0] != release_components[1]
-            assert certificate.call_count == calendar_encodings() == 4 and len(metadata) == 16
-
             class UnregisteredCalendar:
                 def __getattr__(self, name):
                     return getattr(calendar, name)
@@ -216,16 +224,16 @@ def test_checkpoint_resumes_same_inputs_and_rejects_changed_type_or_prefix():
                                                      config_service=config_snapshot(auto_assign_enabled="no"))
             unsupported_owner = new_session(unsupported_scheduler)
             decode(owner=unsupported_owner, decoder=unsupported_scheduler)
-            assert certificate.call_count == 4
+            assert certificate.call_count == 2
             with pytest.raises(ValidationError) as caught:
                 decode(owner=unsupported_owner, decoder=unsupported_scheduler,
                        decode_checkpoints=DecodeCheckpointRequest([1], lambda item: None))
             assert caught.value.details["reason"] == "decode_checkpoint_unsupported_calendar"
             assert unsupported_owner.native_preparation._calendar_signature is None
-            assert certificate.call_count == 5 and calendar_encodings() == 4 and len(metadata) == 16
+            assert certificate.call_count == 3 and calendar_encodings() == 2 and len(metadata) == 8
             print("R28 native checkpoint counts:", {"same_session_certificate": 1, "same_session_encoding": 1,
                   "same_session_metadata": 4, "same_session_actual_decodes": session.actual_decoder_calls,
-                  "new_session_certificate": 1, "two_release_calendars_certificate": 2,
+                  "new_session_certificate": 1,
                   "unsupported_ordinary_certificate": 0, "unsupported_capture_failures": 1,
                   "total_calendar_certificate_attempts": certificate.call_count,
                   "total_calendar_encodings": calendar_encodings(), "total_metadata_pragmas": len(metadata)})

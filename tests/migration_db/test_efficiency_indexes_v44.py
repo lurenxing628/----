@@ -21,8 +21,6 @@ from data.repositories.batch_operation_repo import BatchOperationRepository
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_run_query_repo import WorkbenchRunHistoryQueryRepository
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
-from tests.workbench.plan_catalog_support import scenario
-from tests.workbench.run_schema_migration_support import snapshot, source_ddl
 
 
 @pytest.fixture
@@ -45,7 +43,7 @@ def _run(conn, number, accepted, *, time=None, archive='{"synthetic":"saved inpu
         outcome=WorkbenchCommandOutcome("committed", {"run_ref": ref}))
     repo = WorkbenchRunRepository(conn)
     repo.insert(request_key=request_key, input_ref="input-" + ref, settings={"saved": number},
-                facts_hash=None, facts_json=archive, projections=[], baseline={}, now=accepted, run_ref=ref)
+                facts_json=archive, projections=[], baseline={}, now=accepted, run_ref=ref)
     if time is not None:
         repo.claim(ref, f"{number + 100:048x}", time)
         repo.finish(ref, "complete", {"state": "complete", "candidates": [], "error": None}, time)
@@ -98,32 +96,20 @@ def _operations(conn):
             VALUES (1,'DELETE-1','DELETE',1,'Turning'),(2,'KEEP-1','KEEP',1,'Turning');
         INSERT INTO Materials(material_id,name) VALUES ('MAT','Material');
         INSERT INTO BatchMaterials(id,batch_id,material_id,required_qty) VALUES (1,'KEEP','MAT',1);
-        INSERT INTO BatchMaterialStages(requirement_id,operation_id) VALUES (1,2);
-        INSERT INTO ScheduleAdjustmentDraft(draft_id,base_version,base_plan_role)
-            VALUES ('delete-draft',1,'adopted'),('keep-draft',1,'adopted');
-        INSERT INTO ScheduleAdjustmentChange(draft_id,op_id,change_type)
-            VALUES ('delete-draft',1,'move_time'),('keep-draft',2,'move_time');""")
-    scenario(conn, "delete-scenario", 1, op_id=1)
-    scenario(conn, "keep-scenario", 1, op_id=2)
+        INSERT INTO BatchMaterialStages(requirement_id,operation_id) VALUES (1,2);""")
     conn.commit()
 
 
-def test_operation_deletion_searches_all_three_child_keys_and_keeps_foreign_key_actions(indexed_db):
+def test_operation_deletion_searches_child_key_and_keeps_foreign_key_actions(indexed_db):
     _path, conn = indexed_db
     _operations(conn)
     plan = [row[3] for row in conn.execute(
         "EXPLAIN QUERY PLAN DELETE FROM BatchOperations WHERE batch_id=?", ("DELETE",))]
-    children = (("BatchMaterialStages", "idx_material_stage_operation"),
-                ("ScheduleAdjustmentChange", "idx_schedule_adjustment_change_op"),
-                ("ScheduleAdjustmentScenarioRow", "idx_schedule_adjustment_scenario_row_op_id"))
-    for table, index in children:
-        related = [detail for detail in plan if table in detail]
-        assert related and all("SEARCH" in detail and index in detail for detail in related)
+    related = [detail for detail in plan if "BatchMaterialStages" in detail]
+    assert related and all("SEARCH" in detail and "idx_material_stage_operation" in detail for detail in related)
 
     repo = BatchOperationRepository(conn)
     repo.delete_by_batch("DELETE")
-    assert [row[0] for row in conn.execute("SELECT op_id FROM ScheduleAdjustmentChange")] == [2]
-    assert [row[0] for row in conn.execute("SELECT op_id FROM ScheduleAdjustmentScenarioRow")] == [2]
     assert [tuple(row) for row in conn.execute("SELECT * FROM BatchMaterialStages")] == [(1, 2)]
     with pytest.raises(AppError) as rejected:
         repo.delete_by_batch("KEEP")
@@ -133,27 +119,18 @@ def test_operation_deletion_searches_all_three_child_keys_and_keeps_foreign_key_
     assert not conn.execute("PRAGMA foreign_key_check").fetchall()
 
 
-def test_v43_to_v44_changes_only_declared_indexes_and_preserves_archives(indexed_db, tmp_path):
-    path, conn = indexed_db
+def test_declared_efficiency_indexes_contract_and_archive_projection(indexed_db):
+    _path, conn = indexed_db
     _operations(conn)
-    for name in ADDED:
-        conn.execute('DROP INDEX "' + name + '"')
-    conn.execute("UPDATE SchemaVersion SET version=43 WHERE id=1")
-    conn.commit()
     archived = ProductionFactsCapture(conn).content()
     ref = _run(conn, 1, "2026-10-17T08:00:00", time="2026-10-17T08:01:00.100000", archive=archived)
     conn.commit()
-    before_rows, before_ddl = snapshot(conn), source_ddl(conn)
 
-    database.ensure_schema(path, backup_dir=str(tmp_path / "backups"))
-    assert conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()[0] == 44
+    assert conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()[0] == CURRENT_SCHEMA_VERSION
     assert contract_issues(conn) == current_schema_contract_issues(
         conn, schema_version=CURRENT_SCHEMA_VERSION, schema_sql=load_schema_sql()) == []
-    after_rows, after_ddl = snapshot(conn), source_ddl(conn)
-    assert {name: rows for name, rows in before_rows.items() if name != "SchemaVersion"} == {
-        name: rows for name, rows in after_rows.items() if name != "SchemaVersion"}
-    assert [row for row in after_ddl if row[1] not in ADDED] == before_ddl
-    assert {row[1] for row in after_ddl if row not in before_ddl} == set(ADDED)
+    indexes = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='index'")}
+    assert set(ADDED) <= indexes
     assert conn.execute("SELECT facts_json FROM WorkbenchRunJobs WHERE run_ref=?", (ref,)).fetchone()[0] == archived
     assert production_facts_match(conn, archived)
     current = ProductionFactsCapture(conn).content()

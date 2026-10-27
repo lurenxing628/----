@@ -68,7 +68,7 @@ def test_real_complete_chain_preserves_raw_source_old_scene_and_receipts(trial_c
             assert audit["run_ref"] == run_ref if version == 1 else audit["scenario_ref"] == saved["scenario_ref"]
         current = snapshot(reopened)
         for table in ("Batches", "BatchOperations", "WorkbenchRunCandidates", "WorkbenchRunCandidateTasks",
-                      "WorkbenchProductionReports", "WorkbenchProductionReportRevisions", "OperationExecutionEvents"):
+                      "WorkbenchProductionReports", "WorkbenchProductionReportRevisions"):
             assert current[table] == before[table], table
         replay = trial_adoption(reopened).adopt(saved["scenario_ref"], "expired", "ef-piece-trial-adopt-0001", INTENT)
         assert replay["receipt_ref"] == adopted_trial["receipt_ref"] and replay["replayed"]

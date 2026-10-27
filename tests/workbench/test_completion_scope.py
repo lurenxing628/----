@@ -55,8 +55,8 @@ def test_different_partial_results_compare_delivery_only_on_the_nonempty_common_
     assert delivery_summary(before)["total_tardiness_hours"] is delivery_summary(after)["total_tardiness_hours"] is None
     assert (before, after) == original
     groups = completion_groups([
-        {"candidate_ref": "first", "persisted_status": "completed", "completion_scope": first},
-        {"candidate_ref": "second", "persisted_status": "completed", "completion_scope": second},
+        {"candidate_ref": "first", "completion_scope": first},
+        {"candidate_ref": "second", "completion_scope": second},
     ])
     assert [row["complete_batch_refs"] for row in groups] == [["A", "C"], ["B", "C"]]
 
@@ -69,8 +69,8 @@ def test_same_completed_group_preserves_distinct_unfinished_operation_prefixes()
         work_item("op-1", "B", arranged=True, allocation="new_schedule"),
         work_item("op-2", "B", arranged=True, allocation="new_schedule", sequence=2), work_item("op-3", "B", sequence=3)])
     groups = completion_groups([
-        {"candidate_ref": "second", "persisted_status": "completed", "completion_scope": second},
-        {"candidate_ref": "first", "persisted_status": "completed", "completion_scope": first},
+        {"candidate_ref": "second", "completion_scope": second},
+        {"candidate_ref": "first", "completion_scope": first},
     ])
     assert groups == [{"source_available": True, "complete_batch_refs": [], "candidate_refs": ["first", "second"]}]
     assert first["unplanned_operation_refs"] == ["op-2", "op-3"]
@@ -102,25 +102,6 @@ def test_remaining_work_keeps_ordinary_deferred_unknown_and_original_measurement
     assert metrics["pending_setup_hours"]["value"] is None and metrics["pending_setup_hours"]["known_subtotal"] == 2
     assert metrics["pending_setup_hours"]["unknown_count"] == 1
     assert (items, work) == original and scope["schedulable"]["missing_count"] == 1
-
-
-def test_failed_and_budget_skipped_sources_stay_separate_from_produced_empty_completed_sets():
-    items = [batch_item("B", arranged=())]
-    produced = project_completion_summary(items, [work_item("pending", "B")])
-    absent = project_completion_summary(items, [work_item("pending", "B")], available=False)
-    assert absent["state"] == "unavailable" and absent["unknown_batch_refs"] == ["B"]
-    assert absent["ordinary_incomplete_batch_refs"] == absent["unplanned_operation_refs"] == []
-    assert absent["remaining_batches"][0]["operation_count"] is None
-    assert absent["remaining_work"]["metrics"]["unplanned_setup_hours"]["state"] == "unavailable"
-    groups = completion_groups([
-        {"candidate_ref": "partial", "persisted_status": "completed", "completion_scope": produced},
-        {"candidate_ref": "failed", "persisted_status": "failed", "completion_scope": absent},
-        {"candidate_ref": "skipped", "persisted_status": "skipped", "completion_scope": absent},
-    ])
-    assert groups == [
-        {"source_available": True, "complete_batch_refs": [], "candidate_refs": ["partial"]},
-        {"source_available": False, "complete_batch_refs": [], "candidate_refs": ["failed", "skipped"]},
-    ]
 
 
 @pytest.mark.parametrize("case,state,refs", [("empty", "not_applicable", []),

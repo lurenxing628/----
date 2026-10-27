@@ -53,8 +53,7 @@
   function Source({ data }) {
     const p = data.provenance, baseline = data.projections.baseline;
     const algorithm = p.algorithm, captured = p.baseline;
-    const identity = plan => [plan.kind === 'official' ? '正式计划' : plan.kind === 'candidate' ? window.WorkbenchTerms.candidate : window.WorkbenchTerms.trial_scenario,
-      plan.display_name, plan.version === null ? null : 'v' + plan.version].filter(Boolean).join(' · ');
+    const identity = plan => ['正式计划', plan.display_name, plan.version === null ? null : 'v' + plan.version].filter(Boolean).join(' · ');
     return <div className="wb-gantt-comparison-source" data-gantt-comparison-source>
       <div><strong>当前安排：{identity(data.plan)}</strong>{p.state === 'available'
         ? p.source_kind === 'candidate_adoption'
@@ -63,7 +62,7 @@
         : '，' + p.reason}</div>
       {baseline.state === 'available' ? <div><strong>原安排：{identity(baseline.baseline_plan)}</strong>，{captured
         ? (captured.kind === 'admission_official' ? '提交该次试排时' : '创建该次试调时') + '自动保存'
-        : baseline.basis === 'scenario_base' ? '创建试调时保存的基础安排' : '生成此方案时记录的对照安排'}。
+        : '生成此方案时记录的对照安排'}。
         </div>
         : <div>原安排：{baseline.reason}</div>}
     </div>;

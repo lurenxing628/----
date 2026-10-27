@@ -12,9 +12,6 @@ class PlanIdentity:
     plan_resolution_status: str
     source_table: str
     source_row_id: Optional[int]
-    candidate_id: Optional[int]
-    candidate_key: Optional[str]
-    scenario_id: Optional[str]
     schedule_result_status: Optional[str]
     result_summary_parse_failed: bool
     result_summary_parse_reason: str
@@ -22,7 +19,6 @@ class PlanIdentity:
     label: str
     user_label: str
     is_official: bool
-    is_preview: bool
     is_current_executable_version: bool
     is_current_executable_official_version: bool
     is_superseded_by_newer_version: bool
@@ -39,9 +35,6 @@ class PlanIdentity:
             "plan_resolution_status": self.plan_resolution_status,
             "source_table": self.source_table,
             "source_row_id": self.source_row_id,
-            "candidate_id": self.candidate_id,
-            "candidate_key": self.candidate_key,
-            "scenario_id": self.scenario_id,
             "schedule_result_status": self.schedule_result_status,
             "result_summary_parse_failed": bool(self.result_summary_parse_failed),
             "result_summary_parse_reason": self.result_summary_parse_reason,
@@ -49,7 +42,6 @@ class PlanIdentity:
             "label": self.label,
             "user_label": self.user_label,
             "is_official": bool(self.is_official),
-            "is_preview": bool(self.is_preview),
             "is_current_executable_version": bool(self.is_current_executable_version),
             "is_current_executable_official_version": bool(self.is_current_executable_official_version),
             "is_superseded_by_newer_version": bool(self.is_superseded_by_newer_version),

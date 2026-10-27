@@ -21,7 +21,6 @@ def run_backup_restore(
     filename: str,
     backup_path: str,
     database_path: str,
-    backup_dir: Optional[str],
     manager: Any,
     logger: Any,
     ensure_schema_func: Callable[..., Any],
@@ -39,7 +38,6 @@ def run_backup_restore(
             filename=filename,
             result=result,
             database_path=database_path,
-            backup_dir=backup_dir,
             manager=manager,
             logger=logger,
             ensure_schema_func=ensure_schema_func,
@@ -60,7 +58,6 @@ def _verify_restored_database(
     filename: str,
     result: Any,
     database_path: str,
-    backup_dir: Optional[str],
     manager: Any,
     logger: Any,
     ensure_schema_func: Callable[..., Any],
@@ -69,7 +66,6 @@ def _verify_restored_database(
         ensure_schema_func(
             database_path,
             logger,
-            backup_dir=backup_dir,
             full_data=True,
         )
     except Exception:

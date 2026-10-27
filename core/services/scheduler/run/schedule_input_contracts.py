@@ -29,7 +29,6 @@ class ScheduleRunInput:
     frozen_op_ids: Set[int]
     seed_results: List[Dict[str, Any]]
     execution_facts: Dict[int, ExecutionFact]
-    execution_fixed_op_ids: Set[int]
     execution_completed_op_ids: Set[int]
     execution_seed_results: List[Dict[str, Any]]
     execution_snapshot_revision: str

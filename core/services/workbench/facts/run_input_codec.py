@@ -39,7 +39,7 @@ def _validate_projection_quantities(values):
 
 
 def _validate_projection_collections(values, *, check_reports=False):
-    for field in ("reports", "legacy_facts", "data_gaps", "voided_reports"):
+    for field in ("reports", "data_gaps", "voided_reports"):
         if field == "reports" and not check_reports:
             continue
         value = values[field]
@@ -74,10 +74,10 @@ def _validate_projection_values(values, *, check_reports=False):
     if not public_ref(values["operation_ref"]):
         fail("execution_projection_type", "读到的报工记录或工序编号不对，这次排产没有开始。请刷新重试；仍不行请联系维护人员。")
     _validate_projection_quantities(values)
-    if (values["execution_state"] not in ("unreported", "started", "partial", "paused", "exception", "complete")
-            or values["data_quality"] not in ("invalid", "legacy_incomplete", "incomplete", "complete")
+    if (values["execution_state"] not in ("unreported", "started", "partial", "complete")
+            or values["data_quality"] not in ("invalid", "incomplete", "complete")
             or values["target_basis"] not in ("batch", "piece")
-            or values["completion_basis"] not in (None, "legacy_finish_event", "complete_reports")):
+            or values["completion_basis"] not in (None, "complete_reports")):
         fail("execution_projection_type", "存下来的报工状态认不出来，这次排产没有开始。请到现场记录核对后重试。")
     _validate_projection_collections(values, check_reports=check_reports)
     _validate_projection_times(values)
@@ -94,11 +94,6 @@ def prepare_execution_projections(payload, *, max_operations: Optional[int] = MA
     projections = []
     refs = set()
     for value in payload:
-        # The sole pre-void DTO shape predates this additive audit collection.
-        # Its effective reports retain their captured meaning, without querying
-        # current facts or changing any persisted snapshot.
-        if isinstance(value, dict) and "voided_reports" not in value:
-            value = dict(value, voided_reports=[])
         row = _exact_fields(value, ExecutionProjection)
         if not isinstance(row["reports"], list):
             fail("execution_snapshot_invalid", "存下来的逐次报工格式不对，这次排产没有开始。请刷新重试；仍不行请联系维护人员。")

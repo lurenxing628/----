@@ -33,7 +33,7 @@ def test_workspace_snapshot_binds_plan_range_and_related_resource_facts(plan_api
     first = plan_api.read("/" + ref + "/workspace")
     token = first["meta"]["snapshot_ref"]
     assert plan_api.read("/" + ref + "/workspace", snapshot_ref=token)["meta"]["as_of"] == first["meta"]["as_of"]
-    assert_error(plan_api.get("/" + plan_api.ref(role="baseline_best") + "/workspace", snapshot_ref=token), "snapshot_stale")
+    assert_error(plan_api.get("/" + plan_api.ref(version=2) + "/workspace", snapshot_ref=token), "snapshot_stale")
     assert_error(plan_api.get("/" + ref + "/workspace", snapshot_ref=token,
                              range_start=NIGHT_START, range_end=NIGHT_END), "snapshot_stale")
     with plan_api.db() as conn:

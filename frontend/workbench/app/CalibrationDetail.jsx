@@ -40,7 +40,6 @@
         <p>单件工时：{unitHours(sample.unit_hours, '未知')}；数量未知记录 {sample.unknown_record_count} 条。</p>
         <ul>{sample.exclusion_reasons.map((reason, index) => <li key={reason.code + ':' + index}>{reason.message}</li>)}</ul>
         <h4>逐次报工（{sample.reports.length} 条）</h4>{sample.reports.map(report => <Report key={report.report_ref} report={report} />)}
-        <h4>{window.WorkbenchTerms.legacy_field_records}（{sample.legacy_facts.length} 条）</h4>{sample.legacy_facts.map((fact, index) => <details key={fact.legacy_fact_ref || index}><summary>{window.WorkbenchTerms.legacy_field_records} {index + 1}</summary><window.ReportEvidence.LegacyRecord value={fact} /></details>)}
         {!!sample.data_gaps.length && <><h4>数据缺口</h4><ul>{sample.data_gaps.map((gap, index) => <li key={index}>{gap.message || <window.ReportEvidence.StructuredFacts value={gap} />}</li>)}</ul></>}
       </>}
     </details>;

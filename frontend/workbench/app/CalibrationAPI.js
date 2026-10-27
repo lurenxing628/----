@@ -60,7 +60,7 @@
       if (!object(sample) || !ref(sample.sample_ref) || sample.execution_operation_ref !== sample.sample_ref
         || typeof sample.eligible !== 'boolean' || typeof sample.selected !== 'boolean' || typeof sample.sample_revision !== 'string'
         || !['completed_quantity', 'effective_processing_hours', 'unit_hours'].every(key => number(sample[key])) || !count(sample.unknown_record_count)
-        || !Array.isArray(sample.exclusion_reasons) || !Array.isArray(sample.reports) || !Array.isArray(sample.legacy_facts) || !Array.isArray(sample.data_gaps)
+        || !Array.isArray(sample.exclusion_reasons) || !Array.isArray(sample.reports) || !Array.isArray(sample.data_gaps)
         || !sample.reports.every(report => object(report) && ref(report.report_ref) && ref(report.revision_ref) && Array.isArray(report.correction_history))) return false;
       if (sample.template_operation_ref === null) return sample.template_revision === null && sample.lineage_evidence_ref === null
         && !sample.eligible && !sample.selected && sample.exclusion_reasons.some(reason => reason.code === 'template_lineage_missing');

@@ -73,7 +73,7 @@ def _comparison_state(candidate, segments, selected):
 def _execution_affected(execution):
     return (execution is None or execution["execution_state"] != "unreported"
             or execution["known_completed_quantity"] != 0 or execution["remaining_quantity"] is None
-            or execution["data_quality"] in (None, "invalid", "legacy_incomplete"))
+            or execution["data_quality"] in (None, "invalid"))
 
 
 @dataclass(frozen=True)

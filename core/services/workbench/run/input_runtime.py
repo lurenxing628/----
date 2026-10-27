@@ -13,7 +13,6 @@ from core.services.scheduler.resource_pool_builder import (
     load_machine_downtimes,
 )
 from core.services.scheduler.run.freeze_window import build_freeze_window_seed
-from core.services.scheduler.run.schedule_execution_reservations import reserve_execution_machines
 from core.services.scheduler.run.schedule_input_runtime_support import (
     _load_runtime_resource_inputs,
     prepare_runtime_seeds,
@@ -178,7 +177,7 @@ def runtime_resource_facts(facts):
 
 
 def build_runtime(conn, *, facts, cfg, prev_version, start_dt, batches, operations, mutable, algo_ops,
-                  fixed_ids, completed_ids, execution_seeds, reservations, hold_window, piece_scope,
+                  completed_ids, execution_seeds, hold_window, piece_scope,
                   for_adoption: bool, held):
     from .input_piece import validate_piece_seed_precedence
 
@@ -191,7 +190,7 @@ def build_runtime(conn, *, facts, cfg, prev_version, start_dt, batches, operatio
     frozen, seeds, to_schedule = prepare_runtime_seeds(
         conn, run_label="排产计算", batches=batches, operations=operations, algo_ops=algo_ops,
         frozen_op_ids=held.frozen_op_ids, freeze_seed_results=held.seed_results,
-        execution_fixed_op_ids=fixed_ids, execution_completed_op_ids=completed_ids,
+        execution_completed_op_ids=completed_ids,
         execution_seed_results=execution_seeds,
         raise_schedule_empty_result_fn=lambda message, *, reason: fail(reason, message),
         validate_completed_seed_constraints_fn=seed_validator,
@@ -206,6 +205,5 @@ def build_runtime(conn, *, facts, cfg, prev_version, start_dt, batches, operatio
         extend_downtime_map_for_resource_pool_fn=partial(extend_downtime_map_for_resource_pool,
                                                        downtimes=resources.downtimes),
     )
-    downtime = reserve_execution_machines(downtime, reservations)
     seed_version = max(int(prev_version) + 1, 1)
     return frozen, seeds, held.meta, to_schedule, downtime_meta, pool_meta, downtime, pool, seed_version

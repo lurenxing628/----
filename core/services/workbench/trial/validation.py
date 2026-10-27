@@ -90,9 +90,6 @@ class TrialValidator:
             issues.append(self.frozen_issue)
         if self.anchor_error:
             issues.append(self.anchor_error)
-        if any(row["operation_ref"] is None or row["recorded_against_task_ref"] is None
-               for row in self.tables["WorkbenchExecutionLegacyFacts"]):
-            issues.append(issue("execution_scope_unproven", "保留的历史报工记录里有对不上工序的记录，这里没有忽略它们。"))
         for row in self.rows:
             issues.extend(self._row(row))
         issues.extend(relation_issues(self.rows, self.live))
@@ -145,7 +142,7 @@ class TrialValidator:
         original, current, ref = row["original"], row["current"], row["task_ref"]
         batch, issues = original["batch"], []
         anchor = self.anchors.get(original["operation"]["id"])
-        actual = anchor is not None and anchor["basis"] in ("completed_actuals", "started_actuals")
+        actual = anchor is not None and anchor["basis"] == "completed_actuals"
         fixed_cycle = anchor is not None and anchor["basis"] == "merged_external_actuals"
         try:
             start, end = interval(current, original=original)

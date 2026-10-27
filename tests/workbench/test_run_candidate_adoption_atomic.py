@@ -62,7 +62,6 @@ def test_adoption_reuses_one_capture_through_input_and_constraints(candidate_cas
 
     from core.services.workbench.facts.production_capture import ProductionFactsCapture
     from core.services.workbench.run.candidate_adoption_validation import validate_adoption
-    from data.repositories.operation_execution_event_repo import OperationExecutionEventRepo
     from data.repositories.workbench_preflight_facts_repo import WorkbenchPreflightFactsRepository
 
     case = candidate_case
@@ -78,12 +77,8 @@ def test_adoption_reuses_one_capture_through_input_and_constraints(candidate_cas
         counts[name] += 1
         return read(repo, name)
 
-    def redundant_query(*args, **kwargs):
-        raise AssertionError("adoption must consume captured plan and execution rows")
-
     monkeypatch.setattr(ProductionFactsCapture, "__init__", capture_once)
     monkeypatch.setattr(WorkbenchPreflightFactsRepository, "capture_table", table_once)
-    monkeypatch.setattr(OperationExecutionEventRepo, "list_events_by_scopes", redundant_query)
     sql = []
     case.conn.set_trace_callback(sql.append)
     evidence = validate_adoption(case.conn, ref)

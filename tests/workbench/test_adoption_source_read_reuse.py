@@ -84,7 +84,6 @@ def test_candidate_and_trial_adoption_reuse_frozen_inputs_without_optimizer_prep
     before, changes = snapshot(case.conn), case.conn.total_changes
     optimizer = (
         (input_runtime, "_load_runtime_resource_inputs", input_runtime._load_runtime_resource_inputs),
-        (input_runtime, "reserve_execution_machines", input_runtime.reserve_execution_machines),
         (run_input, "build_operation_efforts", run_input.build_operation_efforts),
         (run_input, "saved_seed_efforts", run_input.saved_seed_efforts),
     )
@@ -257,13 +256,12 @@ def test_arrangement_comparison_keeps_canonical_types_and_reuses_only_completed_
     assert calls == [candidate["start_time"], candidate["end_time"]]
     context = PlanReadContext.__new__(PlanReadContext)
     context._intervals = {}
-    query = {"version": 2, "source_table": "schedule", "candidate_id": None, "scenario_id": None}
+    query = {"version": 2, "source_table": "schedule"}
     assert context.peek_source_intervals(**query) is None
     completed = {1: (base["start_time"], base["end_time"])}
     context._intervals[context.source_key(query)] = completed
     assert context.peek_source_intervals(**query) is completed
     assert context.peek_source_intervals(**dict(query, version=3)) is None
-    assert context.peek_source_intervals(**dict(query, source_table="candidate_rows", candidate_id=1)) is None
 
 
 def test_caller_version_and_history_cannot_reuse_another_adoption(adopted_versions):

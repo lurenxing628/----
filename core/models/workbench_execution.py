@@ -51,7 +51,6 @@ class ProductionReport:
     correction_history: List[Dict[str, Any]]
     write_context: Dict[str, Any]
     revision_ref: str
-    legacy_fact_ref: Optional[str] = None
     local_operator: str = ""
     declared_operator: str = ""
 
@@ -77,7 +76,6 @@ class ExecutionProjection:
     completion_basis: Optional[str]
     data_quality: str
     reports: List[ProductionReport] = field(default_factory=list)
-    legacy_facts: List[Dict[str, Any]] = field(default_factory=list)
     remaining_quantity: Optional[int] = None
     remaining_plan: Optional[Dict[str, Any]] = None
     data_gaps: List[Dict[str, Any]] = field(default_factory=list)

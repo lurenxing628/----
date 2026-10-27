@@ -133,8 +133,8 @@ class WorkbenchProcessWorkflowRepository(BaseRepository):
     ) -> None:
         self.execute(
             """INSERT INTO WorkbenchProcessOperationConfirmations
-                (part_ref,operation_ref,stage,signature,confirmed_at,confirmed_by,content_json)
-                VALUES (?,?,?,NULL,?,NULL,?)""",
+                (part_ref,operation_ref,stage,confirmed_at,confirmed_by,content_json)
+                VALUES (?,?,?,?,NULL,?)""",
             (part_ref, operation_ref, stage, confirmed_at, content_json),
         )
 

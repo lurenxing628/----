@@ -5,8 +5,6 @@ import sqlite3
 import pytest
 from flask import Blueprint, Flask, g
 
-from core.infrastructure.transaction import TransactionManager
-from core.infrastructure.workbench_calibration_adoption_schema import install
 from core.models.workbench_template_lineage import typed_value
 from core.services.workbench.calibration.adoption import WorkbenchCalibrationAdoptionService
 from tests.workbench.execution_ledger_support import NOW
@@ -31,8 +29,6 @@ def service(conn, **kwargs):
 @pytest.fixture(name="adoption_case")
 def adoption_case(lineage_case, monkeypatch):
     case = lineage_case
-    with TransactionManager(case.conn).transaction():
-        install(case.conn)
     case.conn.execute("PRAGMA foreign_keys=ON")
     case.app = Flask(__name__)
     case.app.config.update(TESTING=True, SECRET_KEY="co-calibration-adoption-only", WORKBENCH_CALIBRATION_ADOPTION_ENABLED=True)

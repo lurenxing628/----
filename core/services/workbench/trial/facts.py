@@ -33,9 +33,6 @@ def execution_facts(tables, selected_refs, *, operation_refs, service):
     refs.update(operation_refs[row["op_id"]] for row in tables["Schedule"] if row["op_id"] in operation_refs)
     for row in tables.get("WorkbenchProductionReports", []):
         refs.add(row["operation_ref"])
-    for row in tables.get("WorkbenchExecutionLegacyFacts", []):
-        if row["operation_ref"] is not None:
-            refs.add(row["operation_ref"])
     if len(refs) > MAX_TRIAL_TASKS:
         reject("query_too_large", "试调及真实执行保护范围超过10000道工序，未遗漏范围外占用。", 413)
     values = service.project_operations(sorted(refs))

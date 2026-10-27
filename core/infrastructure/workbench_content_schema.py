@@ -1,6 +1,5 @@
-"""Declared v39/v40 content representation; business identities are unchanged."""
+"""Declared content representation; business identities are unchanged."""
 
-from .operation_execution_event_schema import operation_execution_event_objects
 from .workbench_dashboard_external_schema import workbench_dashboard_external_objects
 from .workbench_dashboard_schema import workbench_dashboard_objects
 from .workbench_metadata_schema import metadata_objects
@@ -10,7 +9,7 @@ from .workbench_template_lineage_schema import template_lineage_objects
 from .workbench_trial_schema import workbench_trial_objects
 
 CONTENT_TABLES = (
-    "WorkbenchCommandReceipts", "OperationExecutionEvents",
+    "WorkbenchCommandReceipts",
     "WorkbenchProcessWorkflow", "WorkbenchProcessOperationConfirmations",
     "WorkbenchRunJobs", "WorkbenchRunReceipts", "WorkbenchRunCandidates", "WorkbenchRunCandidateTasks",
     "WorkbenchTrialDrafts", "WorkbenchTrialRows", "WorkbenchTrialChanges",
@@ -20,10 +19,10 @@ CONTENT_TABLES = (
 )
 
 
-def content_objects(*, legacy=False):
+def content_objects():
     result = {}
-    for source in (metadata_objects, operation_execution_event_objects, workflow_objects,
+    for source in (metadata_objects, workflow_objects,
                    workbench_run_objects, workbench_trial_objects,
                    workbench_dashboard_objects, workbench_dashboard_external_objects, template_lineage_objects):
-        result.update(source(legacy=legacy))
+        result.update(source())
     return result

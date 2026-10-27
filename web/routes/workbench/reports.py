@@ -61,7 +61,7 @@ def _read(export=False, operation_ref=None):
     as_of, binding = read_snapshot_time(token)
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():
-            facts = reader.read(scope, as_of=as_of)
+            facts = reader.read(scope)
             snapshot = bind_read_snapshot(facts["scope"].scope(), facts["fingerprint"], token, as_of=as_of, binding=binding)
             if operation_ref is not None:
                 data = report_detail(facts, snapshot, operation_ref)

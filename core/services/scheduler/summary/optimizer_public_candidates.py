@@ -61,9 +61,8 @@ def project_candidate_comparison(value: Any) -> Dict[str, Any]:
     # Nullable score components and the run's process are already canonical.
     fields = (
         "enabled", "generation_policy_version", "primary_objective", "target_objectives",
-        "planned_candidate_count", "completed_candidate_count", "failed_candidate_count",
-        "skipped_candidate_count", "reused_candidate_count", "time_budget_reached", "run_time_budget_seconds",
-        "skipped_candidate_labels", "selection_policy_version", "selection_reason_code", "selection", "unified_process",
+        "planned_candidate_count", "completed_candidate_count", "time_budget_reached", "run_time_budget_seconds",
+        "selection_policy_version", "selection_reason_code", "selection", "unified_process",
     )
     out = {key: value[key] for key in fields if key in value}
     if "candidates" in value:
@@ -76,8 +75,7 @@ def _project_business_candidate(candidate: Dict[str, Any]) -> Dict[str, Any]:
         "label", "kind", "status", "score", "metrics", "health", "graph_enabled", "critical_weight",
         "impact_weight", "downstream_weight", "elapsed_ms", "elapsed_seconds", "detail_saved", "roles",
         "generation_policy_version", "representative_objectives", "evaluations", "origin", "first_found_elapsed_ms",
-        "search_evidence_ref", "adopted_dispatch_rule", "configured_dispatch_rule", "failure_reason",
-        "reused_from_label", "input_certification",
+        "search_evidence_ref", "adopted_dispatch_rule", "configured_dispatch_rule",
     )
     return {key: candidate[key] for key in fields if key in candidate}
 

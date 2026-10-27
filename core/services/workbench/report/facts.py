@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import date, datetime
+from datetime import date
 
 from core.models.content import content_text
 from core.models.schedule_plan_role import ROLE_ADOPTED
@@ -40,7 +40,7 @@ class WorkbenchReportFacts:
                 raise WorkbenchCommandRejected("plan_unavailable", "当前没有正式计划，不能生成现场分析。")
             ref = self.plans.references.get_plan_ref(WorkbenchPlanLocator(version, ROLE_ADOPTED))
         resolution, entry, span = self.plans.selected_metadata(ref)
-        if resolution.selected_role != ROLE_ADOPTED or resolution.scenario_id is not None:
+        if resolution.selected_role != ROLE_ADOPTED:
             raise WorkbenchCommandRejected("plan_not_current_official", "现场分析只看当前正式计划，没有生成结果。候选方案和试调方案请到试调页查看。")
         plan = project_plan(entry, ref)
         if not plan["is_current_official"]:
@@ -61,11 +61,7 @@ class WorkbenchReportFacts:
                           for key, identity in identities.items()}
         return maps
 
-    def read(self, scope, as_of=None):
-        if as_of is None:
-            as_of = datetime.now().replace(microsecond=0)
-        if not isinstance(as_of, datetime) or as_of.tzinfo is not None:
-            raise ValueError("Report as_of must be a factory-local naive datetime.")
+    def read(self, scope):
         if scope.plan_finish_date_from:
             ensure_report_date_range_within_limit(date.fromisoformat(scope.plan_finish_date_from), date.fromisoformat(scope.plan_finish_date_to))
         scope, plan, resolution, span = self.current_plan_metadata(scope)
@@ -85,10 +81,10 @@ class WorkbenchReportFacts:
         operation_refs = self.plans.references.get_operation_refs(row["op_id"] for row in rows)
         tasks = [{"plan_ref": scope.plan_ref, "operation_ref": operation_refs[row["op_id"]],
                   "task_ref": task_refs[row["schedule_id"]]} for row in rows]
-        ledger_reader = ExecutionLedgerService(self.conn, clock=lambda: as_of, current_plan_provider=lambda conn: plan)
+        ledger_reader = ExecutionLedgerService(self.conn, current_plan_provider=lambda conn: plan)
         with ledger_reader.read_snapshot():
             ledger = ledger_reader.workspace_projection(scope.plan_ref, tasks)
-            events_count = sum(len(row["legacy_facts"]) + sum(len(report["correction_history"]) for report in row["reports"])
+            events_count = sum(sum(len(report["correction_history"]) for report in row["reports"])
                                for row in ledger["projections"])
             if events_count > MAX_REPORT_EVENTS:
                 raise WorkbenchCommandRejected("query_too_large", "这个范围里的报工和更正记录太多，一次读不完，没有生成结果。请缩小计划完工日期范围后重试。", 413)

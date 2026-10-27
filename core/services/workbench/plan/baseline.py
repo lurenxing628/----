@@ -17,7 +17,6 @@ from __future__ import annotations
 
 from typing import Any, Dict, Tuple
 
-from core.models.schedule_plan_role import SOURCE_ADJUSTMENT_SCENARIO_ROWS
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
 from core.models.workbench_plan_scope import PlanReadScope
@@ -36,7 +35,6 @@ _REASONS = {
     "not_recorded": "此版本未记录初始计划，无法对比。",
     "baseline_binding_invalid": "试调方案或初始计划编号已失效，无法对比。",
     "baseline_unavailable": "试调依据的那份计划摘要或明细无效，对不全，这里不显示对比。",
-    "scenario_unavailable": "所选试调方案不是有效的已保存方案，做不了初始计划对比。请回「试调」重新选一个。",
     "baseline_task_invalid": "对比工序的时间、批次信息或编号不完整，给不出完整对比。请刷新后重试。",
 }
 
@@ -83,29 +81,9 @@ class _BaselineReader:
     def read(self):
         locator = self.context.resolve(self.scope.plan_ref)
         selected = self.entry.locator
-        if locator != WorkbenchPlanLocator(selected.version, selected.plan_role, selected.scenario_id):
+        if locator != WorkbenchPlanLocator(selected.version, selected.plan_role):
             raise WorkbenchCommandRejected("invalid_input", "所选计划已经变了，不能跨计划对比。请刷新计划列表后重新选择。", 400)
-        if locator.scenario_id is None:
-            return self._adopted(locator)
-        header = self.repo.get_scenario_context(locator.scenario_id)
-        self.facts["scenario_header"] = header
-        if (header is None or header["status"] != "active" or not self.entry.can_view
-                or self.entry.plan_identity is None
-                or self.entry.plan_identity.source_table != SOURCE_ADJUSTMENT_SCENARIO_ROWS):
-            return _unavailable("scenario_unavailable", self.facts)
-        base_locator = WorkbenchPlanLocator(header["base_version"], header["base_plan_role"])
-        # resolve_plan above validates the persisted parent_ref AND exact source,
-        # candidate id/key against the current base. Same-number replacements fail.
-        base_ref = self.references.get_plan_ref(base_locator)
-        self.facts["base_plan_ref"] = base_ref
-        base_entry = self._base_entry(base_locator)
-        if base_entry is None or not base_entry.can_view:
-            return _unavailable("baseline_unavailable", self.facts)
-        base_rows = self.context.detail_rows(base_entry)
-        current_rows = self.context.detail_rows(self.entry)
-        if not current_rows:
-            return _unavailable("scenario_unavailable", self.facts)
-        return self._project(base_entry, base_ref, base_rows, current_rows)
+        return self._adopted(locator)
 
     def _adopted(self, locator):
         if locator.plan_role != "adopted":
@@ -113,7 +91,7 @@ class _BaselineReader:
         evidence = read_adoption_baseline(self.conn, plan_ref=self.scope.plan_ref, version=locator.version,
             history=self.repo.get_history_identity_row(locator.version), facts=self.facts,
             point_annotator=lambda rows: self.context.attach_points(rows, version=rows[0]["version"],
-                source_table="schedule", candidate_id=None, scenario_id=None) if rows else rows,
+                source_table="schedule") if rows else rows,
             context=self.context)
         base = evidence["baseline"]
         base_entry = self._base_entry(WorkbenchPlanLocator(base["version"], "adopted"))
@@ -129,20 +107,8 @@ class _BaselineReader:
         self.facts["base_history"] = history
         if history is None:
             return None
-        options = self.repo.list_plan_role_options(locator.version)
-        self.facts["base_roles"] = options
-        option = next((row for row in options if row["role"] == locator.plan_role), None)
         query = PagePlanQueryService(self.repo, self.repo.latest_version())
-        return _role_entry(query, history, query.latest, locator.plan_role, option)
-
-    def _project(self, base_entry, base_ref, base_rows, current_rows):
-        from .workspace_dto import resource_directory
-
-        resources, resource_state = self.context.resources(base_rows + current_rows, baseline=True)
-        self.facts["resource_directory"] = resource_directory(base_rows + current_rows, resources)
-        before, _, _, _ = self.context.projected_tasks(base_ref, base_rows)
-        after, _, _, _ = self.context.projected_tasks(self.scope.plan_ref, current_rows)
-        return self._comparison(base_entry, base_ref, before, after, resource_state, "scenario_base")
+        return _role_entry(query, history, query.latest)
 
     def _comparison(self, base_entry, base_ref, before, after, resource_state, basis):
         items = _comparison_items(before, after, self.scope)

@@ -23,12 +23,12 @@ def _resolve_algo_ops_to_schedule(
     *,
     algo_ops: List[Any],
     frozen_op_ids: Set[int],
-    execution_fixed_op_ids: Set[int],
+    execution_completed_op_ids: Set[int],
     run_label: str,
     raise_schedule_empty_result_fn: Any,
     derived_group_op_ids: Optional[Set[int]] = None,
 ) -> List[Any]:
-    fixed_seed_op_ids = frozen_op_ids | execution_fixed_op_ids
+    fixed_seed_op_ids = frozen_op_ids | execution_completed_op_ids
     algo_ops_to_schedule = [op for op in algo_ops if op.id not in fixed_seed_op_ids]
     if algo_ops_to_schedule:
         return algo_ops_to_schedule
@@ -37,9 +37,9 @@ def _resolve_algo_ops_to_schedule(
         # started physical cycle has been represented by exact derived seeds.
         return []
     algo_op_ids = {op.id for op in algo_ops}
-    if algo_op_ids and algo_op_ids <= execution_fixed_op_ids:
+    if algo_op_ids and algo_op_ids <= execution_completed_op_ids:
         raise_schedule_empty_result_fn(
-            f"所选工序都已经开工或暂停，不能自动移动，本次未执行{run_label}。请先按现场情况处理。",
+            f"所选工序都已经完工，不能自动移动，本次未执行{run_label}。请先按现场情况处理。",
             reason="all_operations_fixed_by_execution_facts",
         )
     raise_schedule_empty_result_fn(
@@ -117,14 +117,12 @@ def prepare_runtime_seeds(
     algo_ops: List[Any],
     frozen_op_ids: Set[int],
     freeze_seed_results: List[Dict[str, Any]],
-    execution_fixed_op_ids: Set[int],
     execution_completed_op_ids: Set[int],
     execution_seed_results: List[Dict[str, Any]],
     raise_schedule_empty_result_fn: Any,
     validate_fixed_operator_qualifications_fn: Any,
     validate_completed_seed_constraints_fn: Any = None,
 ) -> Tuple[Set[int], List[Dict[str, Any]], List[Any]]:
-    actual_op_ids = execution_fixed_op_ids | execution_completed_op_ids
     seed_results = _merge_execution_and_freeze_seed_results(
         execution_seed_results=execution_seed_results,
         freeze_seed_results=freeze_seed_results,
@@ -132,7 +130,7 @@ def prepare_runtime_seeds(
     # 合并外协组身份按本次 algo_ops 算一次，组内派生原安排和完工下游校验（含分件校验）共用。
     groups = {op.id: merged_external_group_identity(op) for op in algo_ops}
     seed_results, derived_group_ids = with_merged_actual_group_seeds(seed_results, algo_ops=algo_ops,
-        groups=groups, actual_op_ids=actual_op_ids)
+        groups=groups, actual_op_ids=execution_completed_op_ids)
     frozen_op_ids = frozen_op_ids | derived_group_ids
     seed_results = with_external_seed_metadata(seed_results, algo_ops=algo_ops)
     validate_seeds = validate_completed_seed_constraints_fn or partial(
@@ -146,7 +144,7 @@ def prepare_runtime_seeds(
     algo_ops_to_schedule = _resolve_algo_ops_to_schedule(
         algo_ops=algo_ops,
         frozen_op_ids=frozen_op_ids,
-        execution_fixed_op_ids=actual_op_ids,
+        execution_completed_op_ids=execution_completed_op_ids,
         run_label=run_label,
         raise_schedule_empty_result_fn=raise_schedule_empty_result_fn,
         derived_group_op_ids=derived_group_ids,

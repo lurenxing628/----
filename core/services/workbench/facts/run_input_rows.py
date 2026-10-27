@@ -143,7 +143,7 @@ def _classification(checks, batch, op, projection, settings, guarded_ids, cycles
     if op["id"] in guarded_ids:
         return "protected", [issue("actuals_preserved", "已开工工序保留原安排。")], None
     if (op["status"] in ("processing", "completed") or projection.execution_state != "unreported"
-            or projection.reports or projection.legacy_facts or projection.first_actual_start or projection.confirmed_finish):
+            or projection.reports or projection.first_actual_start or projection.confirmed_finish):
         return "blocked", [issue("execution_protection_unresolved", "这道工序已经有报工记录，这次排产保不住它的原安排，排产没有开始。请把它移出排产范围。")], None
     gaps = checks.protected_resources(op) if op["id"] in cycles else checks.fields(batch, op)
     if projection.data_quality == "invalid":

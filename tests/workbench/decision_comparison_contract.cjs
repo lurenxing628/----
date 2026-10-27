@@ -42,9 +42,9 @@ const generation = (objective, index) => ({ generation_policy_version: 'unified_
   first_found_elapsed_ms: 10 * (index + 1), search_evidence_ref: { run_ref: runRef, source_event_id: null } });
 const candidateObjectives = ['min_tardiness', 'min_overdue', 'min_changeover'];
 const candidates = [first, recommended, third].map((candidate_ref, index) => ({ candidate_ref, label: ['拖期更轻方案', '交期优先方案', '切换更少方案'][index], kind: 'business_objective', status: 'completed', persisted_status: 'completed', completeness: 'complete', task_count: 3,
-  ...generation(candidateObjectives[index], index), selection_role: index === 1 ? ['recommended', 'min_overdue'] : [candidateObjectives[index]], equivalent_source_ref: null,
-  capabilities: { view: true, compare: true, gantt: true, adoption_preview: true, adopt: false }, source: { reason: null },
-  coverage: { search: { state: 'complete', completed_count: 3, failed_count: 0, skipped_count: 0, total_count: 3 }, schedulable: { state: 'complete', scheduled_count: 3, expected_count: 3, missing_count: 0, deferred_count: 1 }, delivery: { complete_batch_count: 1, batch_count: 2, deferred_batch_count: 1 } },
+  ...generation(candidateObjectives[index], index), selection_role: index === 1 ? ['recommended', 'min_overdue'] : [candidateObjectives[index]],
+  capabilities: { view: true, compare: true, gantt: true, adoption_preview: true, adopt: false },
+  coverage: { search: { state: 'complete', completed_count: 3, total_count: 3 }, schedulable: { state: 'complete', scheduled_count: 3, expected_count: 3, missing_count: 0, deferred_count: 1 }, delivery: { complete_batch_count: 1, batch_count: 2, deferred_batch_count: 1 } },
   metrics: Object.fromEntries(definitions.map(row => [row.key, { ...metric }])), deltas: Object.fromEntries(definitions.map(row => [row.key, { ...delta }])) }));
 // Recommendation follows business_objectives_v1: the saved primary objective, per-objective winners and the selected score; the old health evidence slots stay null.
 const basis = { generation_policy_version: 'unified_search_v1', selection_policy_version: 'business_objectives_v1', primary_objective: 'min_overdue', target_objectives: objectives,
@@ -832,31 +832,31 @@ async function paneContracts() {
 function completionFixture(q = {}, state = 'complete', persisted = 'completed') {
   // The batch list belongs to the current candidate itself (selected_candidate_ref); there is no second anchor.
   q = API.completionScope(runRef, { ...query, ...q });
-  const available = persisted === 'completed', refs = Array.from({ length: 21 }, (_, index) => (index + 100).toString(16).padStart(48, '0'));
-  const savedMetric = available ? { ...metric, value: 0, known_subtotal: 0 } : { ...metric, value: null, known_subtotal: null, known_count: 0, unknown_count: 1, total_count: 1, state: 'unavailable', reason: { code: 'candidate_result_missing', message: '候选没有产出保存安排。' } };
+  const refs = Array.from({ length: 21 }, (_, index) => (index + 100).toString(16).padStart(48, '0'));
+  const savedMetric = { ...metric, value: 0, known_subtotal: 0 };
   const metrics = Object.fromEntries(prepKeys.map(key => [key, clone(savedMetric)]));
-  const remaining = available && state === 'ordinary' ? 1 : available ? 0 : null;
+  const remaining = state === 'ordinary' ? 1 : 0;
   const drill = remaining ? { run_ref: runRef, candidate_ref: q.selected_candidate_ref, selected_candidate_ref: q.selected_candidate_ref, reference_candidate_ref: first, comparison_mode: 'candidates', resource_view: q.resource_view, range_start, range_end, comparison_tab: 'preparation', detail_query: { work_scope: 'remaining' } } : null;
   let items = refs.map((batch_ref, index) => {
-    const unfinished = !available || state !== 'complete' && index === 0, count = available ? unfinished && state === 'ordinary' ? 1 : 0 : null;
+    const unfinished = state !== 'complete' && index === 0, count = unfinished && state === 'ordinary' ? 1 : 0;
     return { batch_ref, batch_label: 'B-' + String(index + 1).padStart(3, '0'), part_no: 'P-001', part_label: null, quantity: 1,
-      completion_state: !available || unfinished && state === 'unknown' ? 'unknown' : unfinished ? 'incomplete' : 'complete', schedule_complete: available ? !unfinished : null,
-      scheduled_operation_count: available ? 1 : null, unplanned_operation_count: count, deferred_operation_count: available ? 0 : null,
+      completion_state: unfinished && state === 'unknown' ? 'unknown' : unfinished ? 'incomplete' : 'complete', schedule_complete: !unfinished,
+      scheduled_operation_count: 1, unplanned_operation_count: count, deferred_operation_count: 0,
       remaining_work: { operation_count: count, metrics: clone(metrics) }, issues: unfinished ? ['schedule_time_invalid'] : [],
       remaining_drill: count ? { ...clone(drill), detail_query: { work_scope: 'remaining', batch_ref } } : null };
   });
   const incomplete = items.filter(row => row.schedule_complete !== true), complete = items.filter(row => row.schedule_complete === true), ordinary = items.filter(row => row.completion_state === 'incomplete'), unknown = items.filter(row => row.completion_state === 'unknown');
-  const summary = { ...clone(completionScope), state: available ? incomplete.length ? state === 'unknown' ? 'unavailable' : 'partial' : 'complete' : 'unavailable', source_available: available,
+  const summary = { ...clone(completionScope), state: incomplete.length ? state === 'unknown' ? 'unavailable' : 'partial' : 'complete', source_available: true,
     complete_batch_count: complete.length, incomplete_batch_count: incomplete.length, ordinary_incomplete_batch_count: ordinary.length, deferred_batch_count: 0, unknown_batch_count: unknown.length,
-    unplanned_operation_count: remaining, deferred_operation_count: available ? 0 : null,
+    unplanned_operation_count: remaining, deferred_operation_count: 0,
     sample_batch_refs: { complete: complete.slice(0, 3).map(row => row.batch_ref), incomplete: incomplete.slice(0, 3).map(row => row.batch_ref), deferred: [], unknown: unknown.slice(0, 3).map(row => row.batch_ref) },
-    remaining_work: { operation_count: remaining, unplanned_operation_count: remaining, deferred_operation_count: available ? 0 : null, metrics: clone(metrics) }, drill };
+    remaining_work: { operation_count: remaining, unplanned_operation_count: remaining, deferred_operation_count: 0, metrics: clone(metrics) }, drill };
   items = items.filter(row => q.completion_filter === 'all' || q.completion_filter === 'complete' && row.schedule_complete === true || q.completion_filter === 'unfinished' && row.schedule_complete !== true || q.completion_filter === 'ordinary' && row.completion_state === 'incomplete' || q.completion_filter === 'unknown' && row.completion_state === 'unknown');
   if (q.order === 'desc') items.reverse();
   const total = items.length;
   return { ...clone(payload), data: { run_ref: runRef, scope: { ...clone(data.scope), selected_candidate_ref: q.selected_candidate_ref, batch_refs: refs }, baseline: clone(data.baseline),
-    candidate: { candidate_ref: q.selected_candidate_ref, label: persisted === 'completed' ? '完成集合成员' : '未产出成员', persisted_status: persisted },
-    source: { role: 'completion_anchor', grain: 'full_admission_per_candidate_batch', candidate_ref: q.selected_candidate_ref, available, reason: available ? null : { code: 'candidate_result_missing', message: '候选没有产出保存安排。' } },
+    candidate: { candidate_ref: q.selected_candidate_ref, label: '完成集合成员', persisted_status: persisted },
+    source: { role: 'completion_anchor', grain: 'full_admission_per_candidate_batch', candidate_ref: q.selected_candidate_ref, available: true, reason: null },
     filters: { section: 'completion-batches', completion_filter: q.completion_filter, sort: q.sort, order: q.order },
     summary, items: items.slice((q.page - 1) * q.size, q.page * q.size), page: { number: q.page, size: q.size, total, has_more: q.page * q.size < total }, metric_version: 'decision-preparation-v4' } };
 }
@@ -878,17 +878,9 @@ async function completionContracts() {
   const unknownQuery = { ...q, completion_filter: 'unknown' }, unknown = completionFixture(unknownQuery, 'unknown');
   assert.strictEqual(API.validateCompletionBatches(unknown, runRef, unknownQuery), unknown.data);
   assert.equal(unknown.data.items[0].remaining_work.operation_count, 0); assert.equal(unknown.data.items[0].remaining_drill, null, '已安排但时间未知的批次保持零剩余，不推断漏排');
-  // Unavailable data means the current candidate itself was failed or skipped.
   for (const persisted of ['failed', 'skipped']) {
-    const unavailable = completionFixture(unknownQuery, 'unknown', persisted);
-    assert.strictEqual(API.validateCompletionBatches(unavailable, runRef, unknownQuery), unavailable.data);
-    assert.equal(unavailable.data.items[0].remaining_work.operation_count, null); assert.equal(unavailable.data.summary.drill, null);
-    const paneWindow = { ...window, RunDecisionAPI: { ...API, completionBatches: (run, value) => completionFixture(value, 'unknown', persisted) } };
-    vm.runInNewContext(built.outputs.find(output => output.path === 'RunDecisionCompletion.jsx').code, { React, window: paneWindow, AbortController, DOMException });
-    const unavailableTree = expand(h(paneWindow.RunDecisionCompletion.Pane, { result: payload, query: unknownQuery, enabled: true, onQuery: () => {}, onSupport: () => {} }));
-    assert(!nodes(unavailableTree).some(row => row.type === 'button' && row.props.icon === 'search'), '缺少剩余资料不生成活动需求跳转');
-    assert(!nodes(unavailableTree).some(row => row.type === 'details' && row.props.className === 'rd-completion-demand'));
-    assert(nodes(unavailableTree).some(row => row.props['data-completion-metric']), '剩余metric的null缺项仍保留在原生数量资料中');
+    const invalidStatus = completionFixture(unknownQuery, 'unknown', persisted);
+    assert.throws(() => API.validateCompletionBatches(invalidStatus, runRef, unknownQuery), /批次安排资料/);
   }
   // The pane reads RunDecisionAPI.completionBatches itself; this ownership check answers it on the module object.
   const state = hooks(), calls = [], links = [], local = { ...window, RunDecisionAPI: { ...API, completionBatches: (run, value, signal) => { calls.push({ value: clone(value), signal }); return Promise.resolve(completionFixture(value, value.completion_filter === 'ordinary' ? 'ordinary' : 'complete')); } } };

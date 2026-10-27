@@ -5,7 +5,7 @@ import secrets
 from core.infrastructure.connection_guards import schema_contract_memo
 from core.infrastructure.workbench_trial_schema import workbench_trial_contract_issues
 from core.models.workbench_trial import MAX_TRIAL_TASKS
-from core.models.workbench_trial_codec import dump, dump_document, load_object
+from core.models.workbench_trial_codec import dump, load_object
 from core.models.workbench_trial_scenario_archive import EncodedScenario
 
 HISTORY_REFERENCE_FORMAT = "trial-change-history-ref-v1"
@@ -37,23 +37,23 @@ class WorkbenchTrialRepository:
         self._transaction()
         ref = new_ref()
         key, value = next(iter(admission["input"]["base"].items()))
-        admission_json, admission_hash = dump_document(admission)
+        admission_json = dump(admission)
         self.conn.execute("""INSERT INTO WorkbenchTrialDrafts
-            (draft_ref,base_kind,base_ref,admission_json,admission_hash,row_count,revision,status,
+            (draft_ref,base_kind,base_ref,admission_json,row_count,revision,status,
              validation_json,created_at,updated_at,local_operator,request_key)
-            VALUES (?,?,?,?,?,?,1,'editing',?,?,?,?,?)""",
-            (ref, key, value, admission_json, admission_hash, len(rows), dump(checked), now, now, actor, request_key))
+            VALUES (?,?,?,?,?,1,'editing',?,?,?,?,?)""",
+            (ref, key, value, admission_json, len(rows), dump(checked), now, now, actor, request_key))
         stored_rows = []
         for index, row in enumerate(rows):
-            original_json, original_hash = dump_document(row["original"])
+            original_json = dump(row["original"])
             stored_rows.append((row["row_ref"], row["task_ref"], ref, row["operation_ref"], row["source_task_ref"],
-                                row["source_row_ref"], index, original_json, original_hash, dump(row["current"])))
+                                row["source_row_ref"], index, original_json, dump(row["current"])))
         self.conn.executemany("""INSERT INTO WorkbenchTrialRows
             (row_ref,task_ref,draft_ref,operation_ref,source_task_ref,source_row_ref,ordinal,
-             original_json,original_hash,current_json) VALUES (?,?,?,?,?,?,?,?,?,?)""",
+             original_json,current_json) VALUES (?,?,?,?,?,?,?,?,?)""",
             stored_rows)
         head = {"draft_ref": ref, "base_kind": key, "base_ref": value, "admission": admission,
-                "admission_hash": admission_hash, "row_count": len(rows), "revision": 1, "status": "editing",
+                "row_count": len(rows), "revision": 1, "status": "editing",
                 "validation": checked, "created_at": now, "updated_at": now, "local_operator": actor,
                 "request_key": request_key}
         return head, [dict(row, draft_ref=ref, ordinal=index) for index, row in enumerate(rows)]
@@ -89,9 +89,9 @@ class WorkbenchTrialRepository:
         self._transaction()
         ref = snapshot["scenario_ref"]
         self.conn.execute("""INSERT INTO WorkbenchTrialScenarios
-            (scenario_ref,draft_ref,name,revision,snapshot_json,snapshot_hash,saved_at,local_operator,request_key)
-            VALUES (?,?,?,?,?,?,?,?,?)""", (ref, head["draft_ref"], snapshot["name"], head["revision"],
-            encoded.header, None, now, actor, request_key))
+            (scenario_ref,draft_ref,name,revision,snapshot_json,saved_at,local_operator,request_key)
+            VALUES (?,?,?,?,?,?,?,?)""", (ref, head["draft_ref"], snapshot["name"], head["revision"],
+            encoded.header, now, actor, request_key))
         self.conn.executemany("""INSERT INTO WorkbenchTrialScenarioRows
             (row_ref,task_ref,scenario_ref,source_row_ref,payload_json) VALUES (?,?,?,?,?)""",
             [(row["row_ref"], row["task_ref"], ref, row["source_row_ref"], text)

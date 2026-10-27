@@ -1,6 +1,6 @@
 """Read API registration only. The workbench owner registers these routes.
 
-GET /plans?collection=history|scenario&size=20[&cursor=opaque]
+GET /plans?collection=history&size=20[&cursor=opaque]
 GET /plans/<plan_ref> is an alias of the workspace read, sharing its exact scope.
 GET /plans/<plan_ref>/workspace[?range_start=local&range_end=local&snapshot_ref=opaque]
 GET /plans/<plan_ref>/export?format=csv|xlsx&snapshot_ref=opaque[&range_start=local&range_end=local]
@@ -46,7 +46,7 @@ def _response(data, snapshot):
     return response
 
 
-def _cursor(scope, scope_dict):
+def _cursor(scope_dict):
     token = request.args.get("cursor")
     snapshot = request.args.get("snapshot_ref")
     if token is None:
@@ -56,8 +56,7 @@ def _cursor(scope, scope_dict):
     except ValidationError as exc:
         raise WorkbenchCommandRejected("snapshot_stale", "翻页位置已失效，请回到第 1 页重新查询。") from exc
     seek = payload["seek"]
-    valid_seek = (type(seek) is int and 1 <= seek <= (1 << 63) - 1 if scope.collection == "history"
-                  else type(seek) is str and bool(seek) and "\x00" not in seek)
+    valid_seek = type(seek) is int and 1 <= seek <= (1 << 63) - 1
     if payload["scope"] != scope_dict or (snapshot is not None and snapshot != payload["snapshot_ref"]) or not valid_seek:
         raise WorkbenchCommandRejected("snapshot_stale", "翻页位置已失效，请回到第 1 页重新查询。")
     return seek, payload["snapshot_ref"]
@@ -71,7 +70,7 @@ def plan_list():
         raise WorkbenchCommandRejected("invalid_input", "每页数量要填 1 至 50 的整数，列表没有变化。请回到第 1 页重新查询。", 400)
     scope = PlanCatalogScope(request.args.get("collection", "history"), int(size))
     scope_dict = scope.scope()
-    seek, token = _cursor(scope, scope_dict)
+    seek, token = _cursor(scope_dict)
     reader = WorkbenchPlanQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as revision:
         snapshot = bind_read_snapshot(scope_dict, revision, token)

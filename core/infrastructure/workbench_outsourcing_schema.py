@@ -1,17 +1,8 @@
-"""DI integration DDL. Explicit caller transaction; no version change or auto repair.
+"""Workbench outsourcing schema and contract validation."""
 
-Call install_workbench_outsourcing_schema(conn) in the coordinator's migration,
-then register the route hook. workbench_outsourcing_objects() is the exact ordered
-DDL; workbench_outsourcing_contract_issues() is a SELECT-only check.
-Existing operations use retained birth evidence; missing birth stays unknown.
-New operations capture their batch instance on insert, never a template group.
-"""
+from core.infrastructure.workbench_metadata_schema import canonical_sql
 
-from core.infrastructure.workbench_metadata_schema import canonical_sql, workbench_metadata_contract_issues
-from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
-from core.infrastructure.workbench_template_lineage_schema import template_lineage_contract_issues
-
-from .schema_structure import SchemaStructure, schema_objects
+from .schema_structure import schema_objects
 
 _REF = "TEXT NOT NULL CHECK(length({0})=48 AND {0} NOT GLOB '*[^0-9a-f]*')"
 
@@ -87,36 +78,3 @@ def workbench_outsourcing_contract_issues(conn, *, structure=None):
     return [("missing_outsourcing_schema:" if name not in actual else "invalid_outsourcing_schema:") + name
             for name, sql in workbench_outsourcing_objects().items()
             if name not in actual or canonical_sql(sql) != canonical_sql(actual[name])]
-
-
-def install_workbench_outsourcing_schema(conn):
-    if not conn.in_transaction:
-        raise RuntimeError("Outsourcing installation requires the caller's migration transaction")
-    structure = SchemaStructure(conn)
-    definitions = workbench_outsourcing_objects()
-    names = structure.objects.keys()
-    has_any = bool(names & definitions.keys())
-    issues = (workbench_metadata_contract_issues(conn, structure=structure) + workbench_plan_identity_contract_issues(conn, structure=structure) +
-              template_lineage_contract_issues(conn, structure=structure))
-    if has_any:
-        issues += workbench_outsourcing_contract_issues(conn, structure=structure)
-    if issues:
-        raise RuntimeError("Cannot install or repair outsourcing schema: " + ";".join(issues))
-    if has_any:
-        if conn.execute("SELECT 1 FROM WorkbenchPlanSourceRefs r WHERE r.kind='operation' AND r.active=1 "
-                        "AND NOT EXISTS(SELECT 1 FROM WorkbenchOutsourcingOperationOrigins o WHERE o.operation_ref=r.ref) LIMIT 1").fetchone():
-            raise RuntimeError("Outsourcing origins are missing; existing installation cannot be repaired")
-        return
-    if conn.execute("SELECT 1 FROM WorkbenchCommandReceipts WHERE action='outsourcing.confirm' LIMIT 1").fetchone():
-        raise RuntimeError("Outsourcing receipts exist without facts; restore a complete backup")
-    if conn.execute("SELECT 1 FROM BatchOperations o WHERE NOT EXISTS (SELECT 1 FROM WorkbenchPlanSourceRefs r "
-                    "WHERE r.kind='operation' AND r.active=1 AND r.source_key=CAST(o.id AS TEXT)) LIMIT 1").fetchone():
-        raise RuntimeError("Outsourcing operation identities are missing; no guessed replacements")
-    for sql in definitions.values():
-        conn.execute(sql)
-    # No birth evidence means unknown, not permission to attach to a same-number batch.
-    conn.execute("""INSERT INTO WorkbenchOutsourcingOperationOrigins(operation_ref,batch_ref)
-        SELECT r.ref,(SELECT e.batch_ref FROM WorkbenchTemplateLineageEvents e
-            WHERE e.operation_ref=r.ref AND e.event_type='created' ORDER BY e.event_id LIMIT 1)
-        FROM WorkbenchPlanSourceRefs r JOIN BatchOperations o ON r.source_key=CAST(o.id AS TEXT)
-        WHERE r.kind='operation' AND r.active=1""")

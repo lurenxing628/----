@@ -66,16 +66,12 @@ def _run(client, seed, progress, label):
 
 
 def _summary_run(artifacts):
-    candidates = artifacts["catalog"]["candidates"]
-    skipped = [{"candidate_ref": row["candidate_ref"], "label": row["label"], "status": row["status"],
-                "task_count": row["task_count"], "published_reasons": row["blocked_reasons"]}
-               for row in candidates if row["status"] == "skipped"]
     return {"run_ref": artifacts["run"]["run_ref"], "state": artifacts["run"]["state"],
             "elapsed_seconds": artifacts["elapsed_seconds"], "preflight_task_count": len(artifacts["preflight"]["tasks"]),
             "candidate_count": artifacts["catalog"]["candidate_count"], "candidates": artifacts["catalog"]["candidates"],
             "candidate_ref": artifacts["candidate_ref"], "task_count": artifacts["workspace"]["data"]["task_count"],
-            "selected_batch_count": len(artifacts["selected_batch_codes"]), "skipped_candidates": skipped,
-            "optimizer_coverage": "存在未执行候选；只验收实际完整候选，未宣称优化方案全部通过。" if skipped else "本轮候选状态见真实目录记录。"}
+            "selected_batch_count": len(artifacts["selected_batch_codes"]),
+            "optimizer_coverage": "本轮候选状态见真实目录记录。"}
 
 
 def _formal(client, plan_ref, expected):

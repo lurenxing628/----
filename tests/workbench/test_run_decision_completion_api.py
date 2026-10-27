@@ -17,21 +17,21 @@ from tests.workbench.test_run_decision_impact_api import detail, many_batches, o
 RUN, FIRST, SECOND = (format(number, "048x") for number in range(1, 4))
 
 
-def completion_source(deliveries, pending, selected, *, unavailable=()):
-    scopes = {key: project_completion_summary(items, pending[key], available=key not in unavailable)
+def completion_source(deliveries, pending, selected):
+    scopes = {key: project_completion_summary(items, pending[key])
               for key, items in deliveries.items()}
     scope = {"run_ref": RUN, "selected_candidate_ref": selected, "comparison_mode": "candidates",
              "reference": {"kind": "candidate", "candidate_ref": FIRST}, "reference_state": "available",
              "range_start": "2026-10-13T08:00:00", "range_end": "2026-10-13T09:00:00",
              "resource_view": "selected_batches", "metric_scope": "full_admission", "time_basis": "factory_local",
              "batch_refs": sorted({row["batch_ref"] for items in deliveries.values() for row in items})}
-    rows = [{"candidate_ref": key, "status": "failed" if key in unavailable else "completed",
-             "artifact": {"label": "候选 " + str(index), "failure_reason": "历史结果缺失" if key in unavailable else None}}
+    rows = [{"candidate_ref": key, "status": "completed",
+             "artifact": {"label": "候选 " + str(index)}}
             for index, key in enumerate(deliveries, 1)]
     source = SimpleNamespace(run={"run_ref": RUN}, scope=scope, baseline={"kind": "candidate", "candidate_ref": FIRST,
                             "state": "available"}, selected_ref=selected, rows=rows, reference_ref=FIRST,
                              comparison_mode="candidates", resource_view="selected_batches")
-    source._candidate_reference = lambda key, require_result=True: next(row for row in rows if row["candidate_ref"] == key)
+    source._candidate_reference = lambda key: next(row for row in rows if row["candidate_ref"] == key)
     source.completion = SimpleNamespace(
         delivery=deliveries.__getitem__, scope=lambda key, coverage=None: scopes[key],
         remaining_batches=lambda key: {row["batch_ref"]: row for row in scopes[key]["remaining_batches"]},
@@ -171,11 +171,11 @@ def test_completion_batches_api_paginates_all_members_under_one_snapshot(candida
     assert rejected.status_code == 422 and rejected.get_json()["error"]["code"] == "invalid_input"
 
 
-def test_unknown_arranged_batch_has_no_invented_remaining_work_and_unavailable_source_keeps_nulls():
+def test_unknown_arranged_batch_has_no_invented_remaining_work():
     ref = format(101, "048x")
     unknown = [batch_item(ref, finish=None)]
     deliveries, pending = {FIRST: unknown, SECOND: unknown}, {FIRST: [], SECOND: []}
-    known = completion_batches(completion_source(deliveries, pending, FIRST, unavailable=(SECOND,)),
+    known = completion_batches(completion_source(deliveries, pending, FIRST),
                                normalize_completion_filters(completion_filter="unknown"))
     assert known["source"]["available"] is True and known["page"]["total"] == 1
     item = known["items"][0]
@@ -183,13 +183,3 @@ def test_unknown_arranged_batch_has_no_invented_remaining_work_and_unavailable_s
     assert item["scheduled_operation_count"] == 1 and item["remaining_work"]["operation_count"] == 0
     assert item["remaining_drill"] is None and "schedule_time_invalid" in item["issues"]
     assert known["summary"]["unknown_batch_count"] == 1 and known["summary"]["remaining_work"]["operation_count"] == 0
-    absent = completion_batches(completion_source(deliveries, pending, SECOND, unavailable=(SECOND,)),
-                                normalize_completion_filters(completion_filter="unknown"))
-    assert absent["source"]["available"] is False and absent["source"]["reason"] is not None
-    assert absent["page"]["total"] == 1
-    missing = absent["items"][0]
-    assert missing["completion_state"] == "unknown" and missing["remaining_drill"] is None
-    assert missing["remaining_work"]["operation_count"] is None
-    assert missing["unplanned_operation_count"] is missing["deferred_operation_count"] is None
-    assert absent["summary"]["remaining_work"]["operation_count"] is None
-    assert all(value["value"] is None and value["state"] == "unavailable" for value in missing["remaining_work"]["metrics"].values())

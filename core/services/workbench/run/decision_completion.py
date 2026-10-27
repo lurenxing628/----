@@ -45,7 +45,7 @@ class DecisionCompletion:
         return self._work[key]
 
     def groups(self, candidates):
-        rows = [{"candidate_ref": row["candidate_ref"], "persisted_status": row["persisted_status"],
+        rows = [{"candidate_ref": row["candidate_ref"],
                  "completion_scope": self.scope(row["candidate_ref"], row["coverage"]["schedulable"])} for row in candidates]
         return completion_groups(rows)
 
@@ -66,16 +66,17 @@ def compact_completion(value, drill):
     names = (("complete", "complete_batch_refs"), ("incomplete", "incomplete_batch_refs"),
              ("ordinary_incomplete", "ordinary_incomplete_batch_refs"), ("deferred", "deferred_batch_refs"),
              ("unknown", "unknown_batch_refs"))
-    available = value["source_available"]
-    return {"scope": "full_admission", "state": value["state"], "source_available": available,
+    unplanned = len(value["unplanned_operation_refs"])
+    deferred = len(value["deferred_operation_refs"])
+    return {"scope": "full_admission", "state": value["state"], "source_available": True,
             **{name + "_batch_count": len(value[key]) for name, key in names},
-            "unplanned_operation_count": len(value["unplanned_operation_refs"]) if available else None,
-            "deferred_operation_count": len(value["deferred_operation_refs"]) if available else None,
+            "unplanned_operation_count": unplanned,
+            "deferred_operation_count": deferred,
             "sample_batch_refs": {name: value[key][:3] for name, key in names if name != "ordinary_incomplete"},
             "remaining_work": {"metrics": public_preparation_metrics(value["remaining_work"]["metrics"]),
-                "operation_count": len(value["unplanned_operation_refs"]) + len(value["deferred_operation_refs"]) if available else None,
-                "unplanned_operation_count": len(value["unplanned_operation_refs"]) if available else None,
-                "deferred_operation_count": len(value["deferred_operation_refs"]) if available else None}, "drill": drill}
+                "operation_count": unplanned + deferred,
+                "unplanned_operation_count": unplanned,
+                "deferred_operation_count": deferred}, "drill": drill}
 
 
 def compact_common(value):

@@ -1,7 +1,6 @@
 """Static enabled-resource counts, not calendar capacity or scheduled utilization."""
 
 from collections import Counter, defaultdict
-from itertools import chain
 from typing import Dict
 
 from core.models.resource_capabilities import OP_TYPE_CATEGORIES, machine_type_index, supports_source
@@ -123,8 +122,6 @@ class WorkbenchResourceMetricsService:
             _invalid("资源关联的工种，自制或外协归属对不上")
 
     def _validate_suppliers(self):
-        for row in self.records["supplier"].values():
-            self._work_type(row["op_type_id"], "external", nullable=True)
         for row in self.facts["capabilities"]:
             _relation(row["supplier_id"], self.records["supplier"], "供应商能力")
             self._work_type(row["op_type_id"], "external")
@@ -172,8 +169,8 @@ class WorkbenchResourceMetricsService:
         self.kind_records("supplier")
         self._statuses("supplier")
         self._validate_suppliers()
-        for row in chain(self.records["supplier"].values(), self.facts["capabilities"]):
-            if row["op_type_id"] is not None and self.statuses["supplier"][row["supplier_id"]] == "active":
+        for row in self.facts["capabilities"]:
+            if self.statuses["supplier"][row["supplier_id"]] == "active":
                 self.available_suppliers[row["op_type_id"]].add(row["supplier_id"])
         self._computed.add("external")
 

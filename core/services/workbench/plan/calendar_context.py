@@ -32,7 +32,7 @@ def selected_context(conn, entry, scope, rows, resources, plan_span, *, read_con
 
 def _selected_rows(conn, entry, scope, rows, start, end, *, read_context):
     selected, unique = [], {}
-    prepared = rows if read_context is not None else annotate_plan_points(conn, rows, source_table=entry.plan_identity.source_table)
+    prepared = rows if read_context is not None else annotate_plan_points(conn, rows)
     times = read_context.datetime_intervals(entry) if read_context is not None else None
     for original in prepared:
         if times is None:
@@ -64,8 +64,7 @@ def _context_binding(entry, scope, selected, resources, time_scope):
             for kind, mapping in resources.items() if kind in ("machine", "operator")}
     identity = entry.plan_identity
     return {"version": entry.locator.version, "role": entry.locator.plan_role,
-               "scenario_id": entry.locator.scenario_id, "source_table": identity.source_table,
-               "candidate_id": identity.candidate_id, "scope": scope.scope(), "time_scope": time_scope,
+               "source_table": identity.source_table, "scope": scope.scope(), "time_scope": time_scope,
                "rows": sorted(({key: value for key, value in row.items() if key != "_point_work"}
                                for row in selected), key=lambda row: row["schedule_id"]), "refs": refs}
 

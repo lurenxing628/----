@@ -19,11 +19,9 @@ CHOICE_CATALOG_TABLES = ("Parts", "Machines", "Operators", "Suppliers", "Operato
 class WorkbenchBatchFactsRepository(BaseRepository):
     def plan_reference_counts(self):
         """Only live operation references affect batch maintenance, regardless of plan contents."""
-        rows = self.fetchall("""SELECT p.op_id, COUNT(*) AS reference_count FROM (
-            SELECT op_id FROM Schedule UNION ALL SELECT op_id FROM ScheduleCandidateRows
-            UNION ALL SELECT op_id FROM ScheduleAdjustmentChange
-            UNION ALL SELECT op_id FROM ScheduleAdjustmentScenarioRow
-        ) p JOIN BatchOperations o ON o.id=p.op_id GROUP BY p.op_id ORDER BY p.op_id""")
+        rows = self.fetchall("""SELECT p.op_id, COUNT(*) AS reference_count
+            FROM Schedule p JOIN BatchOperations o ON o.id=p.op_id
+            GROUP BY p.op_id ORDER BY p.op_id""")
         return {row["op_id"]: row["reference_count"] for row in rows}
 
     def whole_tables(self) -> Dict[str, List[Dict[str, Any]]]:

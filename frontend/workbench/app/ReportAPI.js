@@ -4,8 +4,8 @@
   const topics = ['delivery', 'records', 'machines', 'people', 'quality'];
   const scopeKeys = ['source', 'plan_ref', 'plan_finish_date_from', 'plan_finish_date_to', 'batch_ref', 'resource_type', 'resource_ref', 'query', 'focus'];
   const sorts = { delivery: ['batch_label', 'planned_end', 'finish_deviation_minutes', 'effective_processing_hours'],
-    records: ['event_time', 'batch_label', 'quantity_done', 'effective_processing_hours'], machines: ['resource_label', 'events', 'effective_processing_hours'],
-    people: ['resource_label', 'events', 'effective_processing_hours'], quality: ['batch_label', 'event_count', 'data_quality'] };
+    records: ['event_time', 'batch_label', 'completed_quantity', 'effective_processing_hours'], machines: ['resource_label', 'production_reports', 'effective_processing_hours'],
+    people: ['resource_label', 'production_reports', 'effective_processing_hours'], quality: ['batch_label', 'production_report_count', 'data_quality'] };
   function scope(value = {}) {
     if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !scopeKeys.includes(key) && key !== 'kind')
       || value.kind !== undefined && value.kind !== 'execution_analysis')
@@ -35,13 +35,13 @@
   const count = value => Number.isInteger(value) && value >= 0;
   const amount = value => value === null || Number.isFinite(value);
   const hours = row => ['effective_processing_hours', 'known_effective_processing_hours'].every(key => amount(row[key])) && count(row.unknown_hour_events);
-  const totals = row => ['events', 'production_reports', 'records'].every(key => count(row[key])) && row.events + row.production_reports === row.records && hours(row);
-  const operation = row => ['event_count', 'production_report_count', 'record_count', 'unknown_record_count'].every(key => count(row[key]))
-      && row.event_count + row.production_report_count === row.record_count && amount(row.known_completed_quantity) && amount(row.remaining_quantity) && hours(row);
-  const record = row => ['legacy_event', 'production_report'].includes(row.record_kind) && typeof row.record_kind_label === 'string' && row.record_kind_label.length > 0
-      && amount(row.quantity_done) && amount(row.effective_processing_hours) && ['factory_local', 'legacy_storage'].includes(row.recorded_at_time_basis)
-      && (row.record_kind === 'legacy_event' ? row.legacy_evidence && typeof row.legacy_evidence === 'object' : typeof row.report_no === 'string'
-        && Array.isArray(row.correction_history) && row.correction_history.length > 0 && row.correction_history.every(revision => revision.after && (revision.before === null || typeof revision.before === 'object')));
+  const totals = row => count(row.production_reports) && hours(row);
+  const operation = row => ['production_report_count', 'unknown_record_count'].every(key => count(row[key]))
+      && amount(row.known_completed_quantity) && amount(row.remaining_quantity) && hours(row);
+  const record = row => row.record_kind === 'production_report' && typeof row.record_kind_label === 'string' && row.record_kind_label.length > 0
+      && amount(row.completed_quantity) && amount(row.effective_processing_hours) && row.recorded_at_time_basis === 'factory_local'
+      && typeof row.report_no === 'string'
+      && Array.isArray(row.correction_history) && row.correction_history.length > 0 && row.correction_history.every(revision => revision.after && (revision.before === null || typeof revision.before === 'object'));
   function validateLedger(data) {
     if (!totals(data.summary) || !data.resources || !['machines', 'people'].every(kind => Array.isArray(data.resources[kind]) && data.resources[kind].every(totals))
       || !data.rows.every(data.topic === 'records' ? record : ['machines', 'people'].includes(data.topic) ? totals : operation))
@@ -54,7 +54,7 @@
       || !Number.isInteger(data.page.total) || data.page.total < 0 || !Number.isInteger(data.page.number) || !Number.isInteger(data.page.pages))
       throw new Error('读到的报表数据不完整，请刷新重试。');
     if (topics.includes(data.topic)) {
-      if (!['operations', 'events', 'due', 'confirmed_due', 'unreported', 'finish_sample'].every(key => Number.isInteger(data.summary[key]) && data.summary[key] >= 0)
+      if (!['operations', 'production_reports', 'due', 'confirmed_due', 'unreported', 'finish_sample'].every(key => Number.isInteger(data.summary[key]) && data.summary[key] >= 0)
         || !['completion_rate', 'on_time_rate', 'effective_processing_hours', 'median_finish_minutes'].every(key => data.summary[key] === null || Number.isFinite(data.summary[key])))
         throw new Error('报表汇总缺列或数值无效，没有按 0 处理。');
       validateLedger(data);

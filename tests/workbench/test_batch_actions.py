@@ -168,16 +168,7 @@ def test_plan_counts_protect_batches_without_binding_plan_contents(batch_client)
     conn = batch_client.batch_conn
     op_id = conn.execute("SELECT id FROM BatchOperations WHERE batch_id='FREE-001'").fetchone()[0]
     conn.execute("INSERT INTO Schedule(op_id,start_time,end_time,version) VALUES (?,'2026-09-09 08:00:00','2026-09-09 09:00:00',6)", (op_id,))
-    candidate = conn.execute("INSERT INTO ScheduleCandidate(version,candidate_key,candidate_label,candidate_kind,status) "
-                             "VALUES (6,'batch-test','test','baseline','completed')").lastrowid
-    conn.execute("INSERT INTO ScheduleCandidateRows(version,candidate_id,op_id,start_time,end_time) "
-                 "VALUES (6,?,?,'2026-09-09 08:00:00','2026-09-09 09:00:00')", (candidate, op_id))
-    conn.execute("INSERT INTO ScheduleAdjustmentDraft(draft_id,base_version,base_plan_role) VALUES ('batch-draft',6,'adopted')")
-    conn.execute("INSERT INTO ScheduleAdjustmentChange(draft_id,op_id,change_type) VALUES ('batch-draft',?,'move_time')", (op_id,))
-    conn.execute("INSERT INTO ScheduleAdjustmentScenario(scenario_id,source_draft_id,base_version,base_plan_role,base_source_table,validation_status) "
-                 "VALUES ('batch-scenario','batch-draft',6,'adopted','schedule','valid')")
-    conn.execute("INSERT INTO ScheduleAdjustmentScenarioRow(scenario_id,source_table,op_id,start_time,end_time) "
-                 "VALUES ('batch-scenario','schedule',?,'2026-09-09 08:00:00','2026-09-09 09:00:00')", (op_id,))
+    conn.execute("INSERT INTO Schedule(op_id,start_time,end_time,version) VALUES (?,'2026-09-09 09:00:00','2026-09-09 10:00:00',7)", (op_id,))
     conn.commit()
     reader, trace = BatchFacts(conn), []
     conn.set_trace_callback(trace.append)
@@ -185,27 +176,24 @@ def test_plan_counts_protect_batches_without_binding_plan_contents(batch_client)
         facts = reader.load()
     finally:
         conn.set_trace_callback(None)
-    assert facts['plan_reference_counts'][op_id] == 4
-    assert not {'Schedule', 'ScheduleCandidateRows', 'ScheduleAdjustmentChange', 'ScheduleAdjustmentScenarioRow',
-                'OperationExecutionEvents', 'WorkbenchPlanSourceRefs'} & facts.keys()
+    assert facts['plan_reference_counts'][op_id] == 2
+    assert not {'Schedule', 'WorkbenchPlanSourceRefs'} & facts.keys()
     batch = next(row for row in facts['Batches'] if row['batch_id'] == 'FREE-001')
     relations = index_relations(facts)['FREE-001']
     entity = BatchProjection(facts).entity(batch)
-    assert relations['protected'] and entity['relationships']['plan_reference_count'] == 4
+    assert relations['protected'] and entity['relationships']['plan_reference_count'] == 2
     with pytest.raises(WorkbenchCommandRejected, match='已经进了计划'):
         require_unreferenced(relations)
-    assert not any('SELECT * FROM "Schedule"' in sql or 'SELECT * FROM OperationExecutionEvents' in sql or
+    assert not any('SELECT * FROM "Schedule"' in sql or
                    'SELECT * FROM WorkbenchPlanSourceRefs' in sql for sql in trace)
     before = reader.fingerprint()
-    conn.execute("UPDATE ScheduleCandidateRows SET start_time='2026-09-09 09:00:00' WHERE candidate_id=?", (candidate,))
-    conn.execute("INSERT INTO ScheduleCandidate(version,candidate_key,candidate_label,candidate_kind,status) "
-                 "VALUES (100,'unrelated','test','baseline','completed')")
+    conn.execute("UPDATE Schedule SET start_time='2026-09-09 08:30:00' WHERE version=6 AND op_id=?", (op_id,))
     conn.commit()
     assert reader.fingerprint() == before
-    conn.execute("DELETE FROM ScheduleAdjustmentChange WHERE draft_id='batch-draft'")
+    conn.execute("DELETE FROM Schedule WHERE version=6 AND op_id=?", (op_id,))
     conn.commit()
     assert reader.fingerprint() != before
-    assert WorkbenchBatchFactsRepository(conn).plan_reference_counts()[op_id] == 3
+    assert WorkbenchBatchFactsRepository(conn).plan_reference_counts()[op_id] == 1
 
 
 def test_batch_creation_choices_read_only_base_catalogs(batch_client):
@@ -279,7 +267,7 @@ def test_batch_qualification_uses_captured_skills_authorizations_and_supplier_bi
     assert '授权' in next(row for row in choices['operators'] if row['business_code'] == 'O1')['unavailable_reason']
     conn.execute("UPDATE BatchOperations SET source='external',machine_id=NULL,operator_id=NULL,supplier_id='S1',ext_days=1 WHERE batch_id='FREE-001'")
     conn.commit()
-    # 供应商能力只认 WorkbenchSupplierOpTypes；种子里的 Suppliers.op_type_id 不算能力。
+    # 供应商能力只认 WorkbenchSupplierOpTypes。
     choices = client.get(BASE + '/choices', query_string={'batch_ref': ref_for(client), 'operation_ref': operation_ref}).get_json()['data']
     assert not next(row for row in choices['suppliers'] if row['business_code'] == 'S1')['eligible']
     conn.execute("INSERT INTO WorkbenchSupplierOpTypes(supplier_id,op_type_id) VALUES ('S1','OT1')")

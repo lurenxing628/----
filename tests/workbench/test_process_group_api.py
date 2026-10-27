@@ -48,9 +48,7 @@ def test_single_part_write_context_keeps_hidden_deleted_template_facts(stage_api
 @pytest.mark.parametrize("foreign_member", (True, False))
 def test_single_part_reads_preserve_cross_part_group_diagnostics_and_write_guard(stage_api, foreign_member):
     from core.errors import ValidationError
-    from core.infrastructure.transaction import TransactionManager
-    from core.services.process.workflow_state import record_confirmation
-
+        
     api = stage_api
     api.prepare()
     if foreign_member:
@@ -317,8 +315,8 @@ def test_group_preview_command_and_receipt_roundtrip(stage_api):
     part_ref = api.ref()
     confirmations = api.rows("WorkbenchProcessOperationConfirmations", "part_ref=?", (part_ref,))
     stored = api.rows("WorkbenchProcessWorkflow", "part_ref=?", (part_ref,))[0]
-    assert all(row["signature"] is None and row["content_json"] for row in confirmations)
-    assert all(stored[stage + "_signature"] is None and stored[stage + "_content_json"] for stage in ("route", "source", "hours"))
+    assert all("signature" not in row and row["content_json"] for row in confirmations)
+    assert all(stage + "_signature" not in stored and stored[stage + "_content_json"] for stage in ("route", "source", "hours"))
     source_document = json.loads(stored["source_content_json"])
     group_ref = detail["external_groups"][0]["ref"]
     assert len(source_document[3]) == 1 and len(source_document[3][group_ref]["members"]) == 2
@@ -343,38 +341,6 @@ def test_group_preview_command_and_receipt_roundtrip(stage_api):
     assert all(row["confirmation"]["source"]["state"] == "confirmed" for row in changed["operations"] if row["source"] == "internal")
     api.execute("UPDATE PartOperations SET ext_group_id='PROC-G' WHERE part_no=? AND seq=21", (PART,))
     assert api.detail()["data"]["workflow"]["ready"]
-    # Old markers preserve the actual historical record while current facts require a new confirmation.
-    legacy_marker, legacy_stamp, legacy_person = "a" * 64, "2001-02-03T04:05:06Z", "原确认人"
-    business = api.preserved()
-    with api.database() as conn:
-        for stage in ("route", "source", "hours"):
-            conn.execute("UPDATE WorkbenchProcessWorkflow SET " + stage + "_signature=?," + stage + "_content_json=NULL,"
-                         + stage + "_confirmed_at=?," + stage + "_confirmed_by=? WHERE part_ref=?",
-                         (legacy_marker, legacy_stamp, legacy_person, part_ref))
-        conn.execute("UPDATE WorkbenchProcessOperationConfirmations SET signature=?,content_json=NULL,confirmed_at=?,confirmed_by=? WHERE part_ref=?",
-                     (legacy_marker, legacy_stamp, legacy_person, part_ref))
-    old_rows = api.snapshot()
-    historical = api.detail()["data"]
-    assert historical["workflow"]["route"]["state"] == "unconfirmed" and not historical["workflow"]["ready"]
-    for stage in ("route", "source", "hours"):
-        current = historical["workflow"][stage]
-        assert current["content_state"] == "missing_original" and "重新确认" in current["reason"]
-        assert current["history"] == {"confirmed_at": legacy_stamp, "confirmed_by": legacy_person}
-        assert current["confirmed_at"] is None and current["confirmed_by"] is None
-    assert all(row["confirmation"]["source"]["content_state"] == "missing_original" for row in historical["operations"] if row["status"] == "active")
-    assert api.snapshot() == old_rows
-    rejected(api.preview("source_confirm", api.source()), "stage_locked")
-    with api.database() as conn:
-        with TransactionManager(conn).transaction():
-            record_confirmation(conn, PART, "route")
-    api.confirm("source_confirm", api.source())
-    api.confirm("hours_confirm", api.hours())
-    assert api.detail()["data"]["workflow"]["ready"] and api.preserved() == business
-    stored = api.rows("WorkbenchProcessWorkflow", "part_ref=?", (part_ref,))[0]
-    assert all(stored[stage + "_signature"] == legacy_marker and stored[stage + "_content_json"]
-               and stored[stage + "_confirmed_at"] != legacy_stamp for stage in ("route", "source", "hours"))
-    assert all(row["signature"] == legacy_marker and row["content_json"] and row["confirmed_at"] != legacy_stamp
-               for row in api.rows("WorkbenchProcessOperationConfirmations", "part_ref=?", (part_ref,)))
     detail = success(api.client.get(path))
     assert detail["data"]["template"]["complete"]
     preview = success(api.client.post(path + "/sync-preview", json={"input": {}, "snapshot_ref": detail["meta"]["snapshot_ref"]}))["data"]

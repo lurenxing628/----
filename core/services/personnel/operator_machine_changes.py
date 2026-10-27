@@ -4,7 +4,10 @@ from dataclasses import dataclass
 
 from core.models.operator_machine import OperatorMachine
 
-from .operator_machine_normalizers import normalize_yes_no_stored
+from .operator_machine_normalizers import (
+    normalize_skill_level_stored,
+    normalize_yes_no_stored,
+)
 
 
 @dataclass(frozen=True)
@@ -15,7 +18,7 @@ class OperatorMachineChanges:
 
 
 def _is_primary(value):
-    return value == "yes" or (value != "no" and normalize_yes_no_stored(value) == "yes")
+    return normalize_yes_no_stored(value) == "yes"
 
 
 def prepare_operator_machine_changes(current_rows, requested, *, removed=(), primaries=None):
@@ -26,6 +29,7 @@ def prepare_operator_machine_changes(current_rows, requested, *, removed=(), pri
     final = dict(original)
     selected_primaries = {}
     for key, fields in original.items():
+        normalize_skill_level_stored(fields["skill_level"])
         if _is_primary(fields["is_primary"]):
             selected_primaries.setdefault(key[0], set()).add(key[1])
     for key in removed:

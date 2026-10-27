@@ -42,9 +42,7 @@ class WorkbenchReportFactsRepository(BaseRepository):
             JOIN WorkbenchPlanSourceRefs r ON r.ref=t.row_ref AND r.active=1
             WHERE t.plan_ref=?
         ) """
-        legacy = self.iter_rows(operations + """SELECT DISTINCT f.actual_machine_ref, f.actual_operator_ref
-            FROM operations o JOIN WorkbenchExecutionLegacyFacts f ON f.operation_ref=o.operation_ref""", (plan_ref,))
-        refs = {ref for row in legacy for ref in row.values() if ref}
+        refs = set()
         reports = self.iter_rows(operations + """SELECT v.values_json FROM operations o
             JOIN WorkbenchProductionReports p ON p.operation_ref=o.operation_ref
             JOIN WorkbenchProductionReportRevisions v ON v.report_ref=p.report_ref

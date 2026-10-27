@@ -19,10 +19,10 @@
     const request = useRead(signal => window.ReportAPI.readView(input, signal), JSON.stringify(input) + revision);
     const response = request.result, data = response && response.data;
     const captionPlan = !request.busy && !request.error && data && data.plan;
-    const captionStatus = captionPlan && ({ official: captionPlan.is_current_official ? window.WorkbenchTerms.current_official : window.WorkbenchTerms.historical_official, candidate: window.WorkbenchTerms.candidate, scenario: window.WorkbenchTerms.trial_scenario })[captionPlan.kind];
+    const captionStatus = captionPlan && (captionPlan.is_current_official ? window.WorkbenchTerms.current_official : window.WorkbenchTerms.historical_official);
     window.WorkbenchCaption.useCaption(captionStatus ? {
       reference: captionPlan.plan_ref, label: mode === 'review' ? '复盘计划' : '报表计划', name: captionPlan.display_name, status: captionStatus,
-      version: captionPlan.kind === 'official' && Number.isSafeInteger(captionPlan.version) ? window.WorkbenchTerms.plan_version(captionPlan.version) : undefined,
+      version: Number.isSafeInteger(captionPlan.version) ? window.WorkbenchTerms.plan_version(captionPlan.version) : undefined,
       range: data.scope.plan_finish_date_from && data.scope.plan_finish_date_to ? '计划完工 ' + data.scope.plan_finish_date_from + ' 至 ' + data.scope.plan_finish_date_to : undefined
     } : null);
     window.WorkbenchPageContext.useSnapshot(data ? {
@@ -134,7 +134,7 @@
       {data && <div id="report-topic-panel" role={review ? undefined : 'tabpanel'} aria-labelledby={review ? undefined : 'report-tab-' + state.topic}>
         <div className="rw-summary"><Metrics summary={data.summary} topic={state.topic} />
         <window.ReportEvidence.NoFeedback summary={data.summary} /></div>
-        <div className="rw-table-heading wb-surface-row wb-surface-divider"><div className="rw-table-title"><h3>{state.topic === 'records' ? '逐次报工与' + window.WorkbenchTerms.legacy_field_records : ['machines', 'people'].includes(state.topic) ? '实际资源记录' : '范围内工序'}</h3><span>{data.page.total} 项</span></div>
+        <div className="rw-table-heading wb-surface-row wb-surface-divider"><div className="rw-table-title"><h3>{state.topic === 'records' ? '逐次报工记录' : ['machines', 'people'].includes(state.topic) ? '实际资源记录' : '范围内工序'}</h3><span>{data.page.total} 项</span></div>
           <div className="rw-filters"><Sort topic={state.topic} state={state} onChange={changePage} />
             {!review && <><label>格式<select aria-label="导出格式" value={format} onChange={event => setFormat(event.target.value)}><option value="csv">CSV</option><option value="xlsx">XLSX</option></select></label>
             <Button transfer="export" busy={downloading} disabled={request.busy} reasonDisplay="inline" reason={!data.page.total ? '当前范围没有可导出的结果。' : ''} onClick={download}>导出范围</Button></>}</div></div>

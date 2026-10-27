@@ -3,10 +3,6 @@
 import pytest
 
 from core.infrastructure.database import get_connection
-from core.infrastructure.workbench_outsourcing_schema import install_workbench_outsourcing_schema
-from core.infrastructure.workbench_outsourcing_source_schema import install as install_sources
-from core.infrastructure.workbench_process_schema import install_process
-from core.infrastructure.workbench_template_lineage_schema import install_template_lineage
 from tests.workbench.dashboard_support import DashboardCase
 from tests.workbench.outsourcing_support import OutsourcingCase, original_rows
 
@@ -41,10 +37,6 @@ class ExternalCase(DashboardCase):
 def external_case(dashboard_case):
     conn = get_connection(str(dashboard_case.path))
     conn.execute("BEGIN")
-    install_process(conn)
-    install_template_lineage(conn)
-    install_workbench_outsourcing_schema(conn)
-    install_sources(conn)
     conn.execute("INSERT INTO OpTypes(op_type_id,name,category) VALUES ('XT1','Heat treatment','external')")
     conn.execute("INSERT INTO Suppliers(supplier_id,name,default_days) VALUES ('XS1','Supplier',2)")
     conn.execute("INSERT INTO WorkbenchSupplierOpTypes(supplier_id,op_type_id) VALUES ('XS1','XT1')")

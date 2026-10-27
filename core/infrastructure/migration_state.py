@@ -2,23 +2,21 @@ from __future__ import annotations
 
 import sqlite3
 from functools import lru_cache
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Set
 
 from .batch_external_context_schema import contract_issues as batch_external_context_contract_issues
 from .batch_external_context_schema import objects as batch_external_context_objects
 from .calendar_periods_schema import contract_issues as calendar_periods_contract_issues
 from .calendar_periods_schema import objects as calendar_periods_objects
+from .efficiency_indexes_schema import contract_issues as efficiency_index_contract_issues
 from .machine_capabilities_schema import contract_issues as machine_capabilities_contract_issues
 from .machine_capabilities_schema import objects as machine_capabilities_objects
 from .material_stages_schema import contract_issues as material_stages_contract_issues
 from .material_stages_schema import objects as material_stages_objects
-from .migration_common import MigrationOutcome, fallback_log
-from .migration_operation_execution_contract import operation_execution_event_contract_issues
-from .operation_execution_event_schema import operation_execution_event_objects
-from .schedule_business_roles_schema import contract_issues as schedule_business_roles_contract_issues
-from .schedule_business_roles_schema import objects as schedule_business_roles_objects
+from .migration_common import fallback_log
 from .schema_declaration import declared_columns
 from .schema_structure import SchemaStructure
+from .single_pass_indexes_schema import contract_issues as index_contract_issues
 from .workbench_calibration_adoption_schema import contract_issues as calibration_adoption_contract_issues
 from .workbench_calibration_adoption_schema import objects as calibration_adoption_objects
 from .workbench_dashboard_external_schema import (
@@ -53,25 +51,28 @@ CURRENT_SCHEMA_VERSION = 44
 
 
 class MigrationContractError(RuntimeError):
-    """迁移契约不满足：坏库必须暴露，不能被当前 schema 静默补成好库。"""
+    """Schema 契约不满足：坏库或旧版本库必须暴露，不能被当前 schema 静默补成好库。"""
 
 
-def build_contract_error(
-    *,
-    missing_tables: List[str],
-    blocked_version: Optional[int] = None,
-    blocked_outcome: Optional[MigrationOutcome] = None,
+def build_outdated_schema_version_error(
+    db_version: int, *, supported_version: int = CURRENT_SCHEMA_VERSION
 ) -> MigrationContractError:
-    parts = ["检测到非空数据库存在不受支持的残缺结构。"]
-    if missing_tables:
-        parts.append(f"已识别缺失整表：{', '.join(missing_tables)}。")
-    parts.append("系统不会用当前 schema.sql 静默补齐缺失整表；请先人工修复或恢复到完整备份后再重试。")
-    if blocked_version is not None and blocked_outcome is not None:
-        parts.append(f"迁移预检在 v{blocked_version} 返回 {blocked_outcome.value}。")
-    return MigrationContractError(" ".join(parts))
+    current = int(db_version)
+    supported = int(supported_version)
+    return MigrationContractError(
+        " ".join(
+            [
+                f"检测到数据库 SchemaVersion={current} 低于当前程序支持版本 {supported}。",
+                "系统不支持旧版数据库迁移，也不会用当前 schema.sql 静默补齐残缺结构。",
+                "请重建数据库或恢复与当前版本匹配的完整备份后再重试。",
+            ]
+        )
+    )
 
 
-def build_future_schema_version_error(db_version: int, *, supported_version: int = CURRENT_SCHEMA_VERSION) -> MigrationContractError:
+def build_future_schema_version_error(
+    db_version: int, *, supported_version: int = CURRENT_SCHEMA_VERSION
+) -> MigrationContractError:
     current = int(db_version)
     supported = int(supported_version)
     return MigrationContractError(
@@ -88,7 +89,7 @@ def build_future_schema_version_error(db_version: int, *, supported_version: int
 
 def build_current_schema_contract_error(db_version: int, *, issues: List[str]) -> MigrationContractError:
     current = int(db_version)
-    visible_issues = _prioritized_contract_issues(issues)
+    visible_issues = issues[:8]
     issue_lines = [f"结构问题：{item}" for item in visible_issues]
     if len(issues) > len(visible_issues):
         issue_lines.append(f"其余结构问题 {len(issues) - len(visible_issues)} 项略。")
@@ -98,16 +99,10 @@ def build_current_schema_contract_error(db_version: int, *, issues: List[str]) -
                 f"检测到数据库 SchemaVersion={current} 等于当前程序支持版本 {CURRENT_SCHEMA_VERSION}，但表结构不满足当前契约。",
                 "为避免陈旧结构静默冒充当前版本，已阻断启动/迁移。",
                 *issue_lines,
-                "请恢复完整备份，或先使用能正确迁移该数据库的程序版本修复结构后再重试。",
+                "请恢复完整备份，或重建与当前程序版本匹配的数据库后再重试。",
             ]
         )
     )
-
-
-def _prioritized_contract_issues(issues: List[str]) -> List[str]:
-    operation_issues = [item for item in issues if "OperationExecutionEvents" in item or "__probe_" in item]
-    other_issues = [item for item in issues if item not in operation_issues]
-    return (operation_issues + other_issues)[:8]
 
 
 def ensure_schema_version_not_newer(db_version: int, *, supported_version: int = CURRENT_SCHEMA_VERSION) -> None:
@@ -129,27 +124,23 @@ def ensure_schema_version(
     conn: sqlite3.Connection, logger=None, *, schema_sql: str, full_data: bool = False
 ) -> int:
     """
-    确保 SchemaVersion 表存在，并写入/修正版本号。
-
-    兼容策略：
-    - 老库可能没有 SchemaVersion：插入 version=0
-    - 新库可能由 schema.sql 初始化为 version=0：若检测到结构已满足当前版本且库中仍无业务数据，则直接将版本提升到 CURRENT_SCHEMA_VERSION
+    若当前为空库且结构已满足当前版本契约，则确保 SchemaVersion 表存在并将版本号设为 CURRENT_SCHEMA_VERSION；
+    否则不执行任何写入，原样返回当前版本号。
     """
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS SchemaVersion (
-            id INTEGER PRIMARY KEY CHECK (id = 1),
-            version INTEGER NOT NULL,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-        """
-    )
-    conn.execute("INSERT OR IGNORE INTO SchemaVersion (id, version) VALUES (1, 0)")
-
     version = get_schema_version(conn)
     if version <= 0 and is_truly_empty_db(conn) and detect_schema_is_current(
         conn, schema_version=version, schema_sql=schema_sql, full_data=full_data
     ):
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS SchemaVersion (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                version INTEGER NOT NULL,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute("INSERT OR IGNORE INTO SchemaVersion (id, version) VALUES (1, 0)")
         set_schema_version(conn, CURRENT_SCHEMA_VERSION)
         fallback_log(
             logger, "info", f"检测到新库结构已满足当前版本，SchemaVersion 已设为 {CURRENT_SCHEMA_VERSION}。"
@@ -222,10 +213,8 @@ def detect_schema_is_current(
 
 # 有自己 DDL 模块与契约函数的子系统：它们的表/索引/触发器按“DDL 逐字相等”核对，不再重复做列级比对。
 _SUBSYSTEM_OBJECT_SOURCES = (
-    operation_execution_event_objects,
     metadata_objects, resource_objects, process_objects, workflow_objects, plan_identity_objects,
     plan_identity_write_guard_objects, execution_ledger_objects, execution_void_objects, workbench_run_objects, run_read_model_objects,
-    schedule_business_roles_objects,
     template_lineage_objects, workbench_trial_objects, lineage_lookup_objects, calibration_adoption_objects,
     workbench_dashboard_objects, workbench_dashboard_external_objects, workbench_outsourcing_objects,
     workbench_outsourcing_source_objects, batch_external_context_objects, calendar_periods_objects, machine_capabilities_objects, material_stages_objects,
@@ -248,7 +237,7 @@ def current_schema_contract_issues(
     """
     当前库是否满足当前版本的结构契约。
 
-    核心表按“live 表列集合 ⊇ schema.sql 声明表列集合”派生比对（schema.sql 由迁移链生成，不再手写 needed 清单）；
+    核心表按“live 表列集合 ⊇ schema.sql 声明表列集合”派生比对；
     各子系统 DDL 模块拥有的对象交给它们自己的契约函数逐字核对。用于 brand-new 空库初始化后的版本快进与启动阻断。
     """
     issues = []
@@ -268,39 +257,32 @@ def current_schema_contract_issues(
     for ok, label in (
         (_has_system_management_tables(structure=structure), "missing_table: SystemConfig/SystemJobState"),
         (_has_schedule_unique_index(structure=structure), "bad_index: idx_schedule_version_op_unique"),
-        (_has_candidate_indexes(structure=structure), "bad_index: schedule candidate indexes"),
-        (_has_adjustment_draft_indexes(structure=structure), "bad_index: schedule adjustment draft indexes"),
-        (_has_adjustment_scenario_indexes(structure=structure), "bad_index: schedule adjustment scenario indexes"),
         (_batch_material_ready_default_is_no(structure=structure), "bad_default: BatchMaterials.ready_status expected no"),
     ):
         if not ok:
             issues.append(label)
-    issues.extend(operation_execution_event_contract_issues(conn, structure=structure, full_data=full_data, schema_version=schema_version))
-    issues.extend(workbench_metadata_contract_issues(conn, structure=structure, allow_legacy=False))
+    issues.extend(workbench_metadata_contract_issues(conn, structure=structure))
     issues.extend(workbench_resource_contract_issues(conn, structure=structure))
     issues.extend(workbench_process_contract_issues(conn, structure=structure))
-    issues.extend(workbench_process_workflow_contract_issues(conn, structure=structure, allow_legacy=False))
+    issues.extend(workbench_process_workflow_contract_issues(conn, structure=structure))
     issues.extend(execution_ledger_contract_issues(conn, structure=structure))
-    issues.extend(workbench_run_contract_issues(conn, structure=structure, allow_legacy=False))
+    issues.extend(workbench_run_contract_issues(conn, structure=structure))
     issues.extend(run_read_model_contract_issues(conn, structure=structure))
-    issues.extend(schedule_business_roles_contract_issues(conn, structure=structure))
-    issues.extend(template_lineage_contract_issues(conn, structure=structure, allow_legacy=False))
-    issues.extend(workbench_trial_contract_issues(conn, structure=structure, allow_legacy=False))
+    issues.extend(template_lineage_contract_issues(conn, structure=structure))
+    issues.extend(workbench_trial_contract_issues(conn, structure=structure))
     issues.extend(lineage_lookup_contract_issues(structure))
     issues.extend(calibration_adoption_contract_issues(conn, structure=structure))
-    issues.extend(workbench_dashboard_contract_issues(conn, structure=structure, allow_legacy=False))
+    issues.extend(workbench_dashboard_contract_issues(conn, structure=structure))
     # This contract already validates complete plan identities and their clock.
     issues.extend(plan_identity_write_guard_contract_issues(conn, structure=structure))
     issues.extend(workbench_outsourcing_contract_issues(conn, structure=structure))
-    issues.extend(dashboard_external_contract_issues(conn, structure=structure, allow_legacy=False))
+    issues.extend(dashboard_external_contract_issues(conn, structure=structure))
     issues.extend(workbench_outsourcing_source_contract_issues(conn, structure=structure))
     issues.extend(execution_void_contract_issues(conn, structure=structure))
     issues.extend(batch_external_context_contract_issues(conn, structure=structure))
     issues.extend(calendar_periods_contract_issues(conn, structure=structure))
     issues.extend(machine_capabilities_contract_issues(conn, structure=structure))
     issues.extend(material_stages_contract_issues(conn, structure=structure))
-    from .efficiency_indexes_schema import contract_issues as efficiency_index_contract_issues
-    from .single_pass_indexes_schema import contract_issues as index_contract_issues
     if schema_version in (0, CURRENT_SCHEMA_VERSION):
         issues.extend(index_contract_issues(conn, structure=structure))
         issues.extend(efficiency_index_contract_issues(conn, structure=structure))
@@ -342,18 +324,3 @@ def _has_schedule_unique_index(*, structure: SchemaStructure) -> bool:
             for row in structure.index_list("Schedule")
         )
     )
-
-
-def _has_candidate_indexes(*, structure: SchemaStructure) -> bool:
-    names = ['idx_schedule_candidate_rows_time', 'idx_schedule_candidate_rows_version_candidate', 'idx_schedule_candidate_rows_version_candidate_time', 'idx_schedule_candidate_version_kind', 'idx_schedule_history_version', 'idx_schedule_version_time']
-    return all(name in structure.objects and structure.objects[name][0] == "index" for name in names)
-
-
-def _has_adjustment_draft_indexes(*, structure: SchemaStructure) -> bool:
-    names = ['idx_schedule_adjustment_change_draft_op', 'idx_schedule_adjustment_draft_base', 'idx_schedule_adjustment_draft_status']
-    return all(name in structure.objects and structure.objects[name][0] == "index" for name in names)
-
-
-def _has_adjustment_scenario_indexes(*, structure: SchemaStructure) -> bool:
-    names = ['idx_schedule_adjustment_scenario_base', 'idx_schedule_adjustment_scenario_row_op', 'idx_schedule_adjustment_scenario_row_time']
-    return all(name in structure.objects and structure.objects[name][0] == "index" for name in names) and structure.has_unique_key("ScheduleAdjustmentScenario", ("source_draft_id",))

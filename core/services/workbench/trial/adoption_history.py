@@ -61,7 +61,6 @@ class WorkbenchTrialAdoptionHistoryService:
             plans.append(plan)
         versions = [plan["version"] for plan in plans]
         catalog.prefetch_history_rows(versions)
-        refs.role_rows(versions)
         histories = [history_audit_row(catalog.history_rows(version)) for version in versions]
         command_repo = WorkbenchCommandRepository(self.conn)
         for row, plan, history in zip(rows, plans, histories):
@@ -104,9 +103,7 @@ class WorkbenchTrialAdoptionHistoryService:
             if locator != WorkbenchPlanLocator(plan["version"], "adopted"):
                 raise ValueError("Receipt plan identity mismatch")
             history = query.repo.get_history_identity_row(plan["version"])
-            options = query.repo.list_plan_role_options(plan["version"])
-            option = next((row for row in options if row["role"] == "adopted"), None)
-            identity = reader.catalog_role(query, history, "adopted", option)
+            identity = reader.catalog_role(query, history, "adopted")
             if identity["plan_ref"] != plan["plan_ref"]:
                 raise ValueError("Receipt plan ref mismatch")
             return identity, identity["blocked_reasons"]

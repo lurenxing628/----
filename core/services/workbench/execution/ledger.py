@@ -9,7 +9,6 @@ from core.services.execution.projection import projection_resource_refs
 from core.services.scheduler.execution.execution_plan_identity import current_execution_plan
 from core.services.workbench.facts.execution_projection import ExecutionContextFactory, attach_context
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
-from data.repositories.workbench_execution_source_repo import EMPTY_SOURCE_CONTENT
 
 
 def _check_workspace_tasks(tasks, facts, plan_ref):
@@ -44,10 +43,7 @@ class ExecutionLedgerService(ExecutionLedgerReader):
         return plain_plan_facts({"operation": facts["operations"][operation_ref],
                 "current_task": facts["current_tasks"].get(operation_ref), "plan": facts["plan"],
                 "reports": reports,
-                "voids": {ref: facts["voids"][ref] for ref in reports if ref in facts["voids"]},
-                "legacy": facts["legacy"].get(operation_ref, []),
-                "unresolved": operation_ref in facts["unresolved"],
-                "legacy_source_state": facts["legacy_source"]["states"].get(operation_ref, EMPTY_SOURCE_CONTENT)})
+                "voids": {ref: facts["voids"][ref] for ref in reports if ref in facts["voids"]}})
 
     def project_loaded(self, facts, *, contexts=True):
         projections = super().project_loaded(facts)
@@ -68,5 +64,4 @@ class ExecutionLedgerService(ExecutionLedgerReader):
                     "resources": {"machines": [row for row in resources if row["kind"] == "machine"],
                                   "operators": [row for row in resources if row["kind"] == "operator"]},
                     "snapshot_facts": {**facts["clock"], "projections": _stable_projection_rows(plain),
-                                       "resources": resources,
-                                       "legacy_source_states": facts["legacy_source"]["states"]}}
+                                       "resources": resources}}

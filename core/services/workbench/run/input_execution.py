@@ -3,7 +3,6 @@
 from core.services.scheduler.run.schedule_execution_guardrails import build_execution_guardrails_from_projections
 from core.services.workbench.facts.run_input_rows import fail
 
-from .input_external import execution_groups
 from .piece_adoption_execution import _quantities
 
 
@@ -26,7 +25,7 @@ def _validate_execution_target(op, batches, projection):
 
 def _validate_execution_origin(op_id, projection, prior_refs):
     if projection.operation_ref not in prior_refs and (
-        projection.execution_state != "unreported" or projection.reports or projection.legacy_facts
+        projection.execution_state != "unreported" or projection.reports
         or projection.first_actual_start is not None or projection.confirmed_finish is not None
         or projection.known_completed_quantity != 0
     ):
@@ -51,5 +50,4 @@ def execution_guards(conn, facts, operations, batches, projections, prev_version
         conn, operations, prev_version=prev_version,
         execution_projections=[projections[ref] for ref in sorted(prior_refs)],
         facts=facts,
-        external_groups=execution_groups(facts, batches, operations),
     )

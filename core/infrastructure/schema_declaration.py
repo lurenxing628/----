@@ -1,6 +1,6 @@
 """schema.sql 的定位与“声明结构”解析。
 
-schema.sql 是生成物（python -m tools.generate_schema_sql --write），手写源是 DDL 模块与迁移链；
+schema.sql 是生成物（python -m tools.generate_schema_sql --write），手写源是 DDL 模块；
 运行期需要“声明了哪些表、每张表有哪些列”时，把文本装进一个隔离的 :memory: 库再用 PRAGMA 读，
 不再用正则猜 CREATE TABLE。解析结果按文本内容缓存，同一份 schema 只解析一次。
 """

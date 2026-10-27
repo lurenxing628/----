@@ -36,7 +36,6 @@ def load_draft(repo, draft_ref, *, header=None):
         if item["ordinal"] != len(rows):
             reject("trial_snapshot_invalid", "草稿原始行顺序缺失。")
         item["original"] = load_object(item.pop("original_json"))
-        item.pop("original_hash")
         item["current"] = load_object(item.pop("current_json"))
         if not _current_fields(item["current"]):
             reject("trial_snapshot_invalid", "草稿安排字段不完整。")

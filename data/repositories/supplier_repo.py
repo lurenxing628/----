@@ -12,8 +12,8 @@ class SupplierRepository(BaseRepository):
 
     def create(self, supplier: Supplier) -> None:
         self.execute(
-            "INSERT INTO Suppliers (supplier_id, name, op_type_id, default_days, status, remark) VALUES (?, ?, ?, ?, ?, ?)",
-            (supplier.supplier_id, supplier.name, supplier.op_type_id, supplier.default_days, supplier.status, supplier.remark),
+            "INSERT INTO Suppliers (supplier_id, name, default_days, status, remark) VALUES (?, ?, ?, ?, ?)",
+            (supplier.supplier_id, supplier.name, supplier.default_days, supplier.status, supplier.remark),
         )
 
     def update(self, supplier_id: str, updates: Dict[str, Any]) -> None:
@@ -22,7 +22,7 @@ class SupplierRepository(BaseRepository):
 
         说明：
         - 只更新 updates 中出现的字段
-        - 允许显式清空 op_type_id/remark 为 NULL（便于后续调整绑定关系）
+        - 允许显式清空 remark 为 NULL（便于后续调整绑定关系）
         """
         set_parts = [f"{k} = ?" for k in updates]
         params = [*updates.values(), supplier_id]

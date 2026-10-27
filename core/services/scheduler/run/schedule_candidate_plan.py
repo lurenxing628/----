@@ -10,8 +10,6 @@ from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
 if TYPE_CHECKING:
     from core.services.scheduler.contracts.schedule_summary_types import SummaryMetrics
 
-CANDIDATE_KIND_CRITICAL_CHAIN = "critical_chain"
-
 
 @dataclass(frozen=True)
 class CandidatePlan:
@@ -48,17 +46,7 @@ class CandidatePlan:
     # Dispatch rule of the plan the optimizer finally adopted; may differ from the configured
     # ``dispatch_rule`` because the rule pool is an optimizer-internal search dimension.
     adopted_dispatch_rule: str = ""
-    failure_reason: Optional[str] = None
     elapsed_seconds: float = 0.0
-    # Set when this plan is a completed sibling's plan under this candidate's identity: the two
-    # candidates had identical optimizer inputs, so no search of its own was spent on it.
-    reused_from_candidate_key: Optional[str] = None
-    reused_from_label: Optional[str] = None
-    # ``certified`` when the optimizer inputs were fingerprinted for sibling reuse,
-    # ``uncertified: <reason>`` when they could not be (the plan ran its own search), empty
-    # for plans that never enter the ledger (the baseline).
-    input_certification: str = ""
-    process_evidence: Optional[Dict[str, Any]] = None
     generation_policy_version: Optional[str] = None
     representative_objectives: List[str] = field(default_factory=list)
     evaluations: Dict[str, Dict[str, Any]] = field(default_factory=dict)
@@ -71,16 +59,8 @@ class CandidatePlan:
 class CandidateComparisonOutcome:
     candidates: List[CandidatePlan]
     selection: Any
-    planned_count: int
-    completed_count: int
-    failed_count: int
-    skipped_count: int
     time_budget_reached: bool
-    selection_policy: str
     run_time_budget_seconds: Optional[float]
-    skipped_candidate_labels: List[str]
-    baseline_missing_or_failed: bool
-    reused_count: int = 0
     generation_policy_version: Optional[str] = None
     primary_objective: Optional[str] = None
     target_objectives: List[str] = field(default_factory=list)
@@ -88,6 +68,5 @@ class CandidateComparisonOutcome:
 
 
 __all__ = [
-    "CANDIDATE_KIND_CRITICAL_CHAIN",
     "CandidateComparisonOutcome", "CandidatePlan",
 ]

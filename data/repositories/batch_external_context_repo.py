@@ -33,6 +33,6 @@ class BatchExternalContextRepository(BaseRepository):
     def copy_captured(self, source, destination_id):
         self.execute("DELETE FROM BatchExternalContexts WHERE operation_id=?", (destination_id,))
         values = dict(source, operation_id=destination_id,
-                      origin=source["origin"] if source["origin"] == "migration_v33" else "instance_copy")
+                      origin="instance_copy")
         self.execute("INSERT INTO BatchExternalContexts (" + ",".join(COPY_COLUMNS) + ") VALUES (" +
                      ",".join("?" for _ in COPY_COLUMNS) + ")", tuple(values[key] for key in COPY_COLUMNS))

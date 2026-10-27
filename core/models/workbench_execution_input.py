@@ -62,10 +62,6 @@ def _validate_field(key, value):
 
 
 def _validate_create(result):
-    if result.get("legacy_fact_ref") and not result.get("reason", "").strip():
-        reject("补齐历史完工记录必须填写原因。")
-    if "reason" in result and not result.get("legacy_fact_ref"):
-        reject("新增报工不用填更正原因；补齐历史记录必须选好来源记录。", status=400)
     result.setdefault("source", "manual")
     if result["source"] not in ("manual", "excel"):
         reject("报工来源只能是手工或 Excel。")
@@ -87,7 +83,7 @@ def normalize_report_input(action, payload):
     if action not in ("create", "supplement", "correct") or type(payload) is not dict:
         reject("报工动作或输入结构无效。", status=400)
     extra = {"declared_operator"}
-    extra |= {"source", "report_no", "legacy_fact_ref", "reason"} if action == "create" else {"original_revision_ref", "reason"}
+    extra |= {"source", "report_no"} if action == "create" else {"original_revision_ref", "reason"}
     if set(payload) - set(REPORT_FIELDS) - extra:
         reject("报工内容含有不支持的项，这次没有保存。请刷新页面后重试。", status=400)
     result = dict(payload)

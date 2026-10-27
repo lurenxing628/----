@@ -30,7 +30,7 @@ def _stored_snapshot(conn):
 @pytest.fixture()
 def config_store(tmp_path):
     test_db = tmp_path / "aps_config_field_spec.db"
-    ensure_schema(str(test_db), logger=None, schema_path=str(SCHEMA_PATH), backup_dir=None)
+    ensure_schema(str(test_db), logger=None, schema_path=str(SCHEMA_PATH))
     bootstrap_schedule_config(str(test_db), logger=_LOGGER)
     conn = get_connection(str(test_db))
     try:

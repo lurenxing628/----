@@ -177,20 +177,6 @@ def test_schedule_history_optional_count_with_bad_value_is_corrupt(raw) -> None:
         ScheduleHistory.from_row(_history_row(batch_count=raw))
 
 
-def test_schedule_adjustment_scenario_not_null_counts_no_longer_default_to_zero() -> None:
-    from core.models.schedule_adjustment import ScheduleAdjustmentScenario
-
-    row = {"scenario_id": "S1", "source_draft_id": "D1", "base_version": 2, "base_plan_role": "adopted",
-           "base_source_table": "schedule", "base_candidate_id": "", "base_candidate_key": None,
-           "scenario_name": None, "status": "active", "validation_status": "valid", "issue_count": 0,
-           "issues_json": None, "row_count": 3, "published_version": None}
-    scenario = ScheduleAdjustmentScenario.from_row(row)
-    assert (scenario.base_version, scenario.base_candidate_id, scenario.issue_count, scenario.row_count) == (2, None, 0, 3)
-    for field, raw in (("issue_count", ""), ("row_count", "n/a"), ("base_version", None), ("published_version", "v2")):
-        with pytest.raises(ValueError, match=f"{field} 必须是整数"):
-            ScheduleAdjustmentScenario.from_row(dict(row, **{field: raw}))
-
-
 @pytest.mark.parametrize("corrupt", ["abc", b"7"])
 def test_latest_version_with_corrupt_stored_value_is_a_query_error(corrupt) -> None:
     # SQLite 允许 INTEGER 列存文本/blob，且 MAX 会返回它；精确整数口径下一律报读取失败，不再把 b"7" 读成 7。

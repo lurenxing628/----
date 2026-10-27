@@ -193,7 +193,7 @@ def _comparison_input(*, cfg, calendar, operations, batches, seeds, pool, downti
         operations=batch_operations, missing_internal_resource_op_ids=set(),
         algo_ops=operations, algo_ops_to_schedule=operations,
         prev_version=0, frozen_op_ids=frozen_ids, seed_results=seeds, execution_facts={},
-        execution_fixed_op_ids=set(), execution_completed_op_ids=set(), execution_seed_results=[],
+        execution_completed_op_ids=set(), execution_seed_results=[],
         execution_snapshot_revision="fixture", execution_snapshot_op_ids=[], execution_snapshot_op_count=0,
         schedule_output_allowed_op_ids=operation_ids | frozen_ids, payload_validation_operations=batch_operations,
         freeze_meta={}, downtime_meta={}, resource_pool_meta={},
@@ -865,9 +865,6 @@ def test_real_shared_optimizer_preserves_start_archive_resource_bridge_and_piece
         selected_ids = actual.process_facts["selected_entries_by_objective"]
         entry_ids = list(dict.fromkeys(selected_ids[target] for target in actual.target_objectives))
         assert 1 <= len(public.candidates) == len(entry_ids) <= 3
-        assert public.planned_count == public.completed_count == len(entry_ids)
-        assert public.failed_count == public.skipped_count == public.reused_count == 0
-        assert public.skipped_candidate_labels == []
         assert [plan.candidate_key for plan in public.candidates] == ["business_" + str(index + 1) for index in range(len(entry_ids))]
         for plan, entry_id in zip(public.candidates, entry_ids):
             entry = actual.archive.entry(entry_id)
@@ -882,7 +879,7 @@ def test_real_shared_optimizer_preserves_start_archive_resource_bridge_and_piece
             assert plan.origin["origin"] == entry.evidence_origin["origin"]
             assert plan.dispatch_mode == plan.used_params["dispatch_mode"]
             assert plan.dispatch_rule == plan.adopted_dispatch_rule == plan.used_params["dispatch_rule"]
-            assert plan.process_evidence is None and plan.attempts == [] and plan.search_report == {}
+            assert plan.attempts == [] and plan.search_report == {}
         selection = public.selection.to_dict()
         assert set(selection) == {"generation_policy_version", "selection_policy_version", "primary_objective", "target_objectives",
             "selected_candidate_key", "objective_winners", "objective_winner_reasons", "objective_field_order", "selected_score",

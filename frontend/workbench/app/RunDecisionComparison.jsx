@@ -66,20 +66,7 @@
   }
   function RunCoverage({ data }) {
     const candidate = data.candidates[0], search = candidate && candidate.coverage.search;
-    return search ? <span className="rd-run-coverage">搜索 {countText(search.completed_count)} / {countText(search.total_count)} · 失败 {countText(search.failed_count)} · 跳过 {countText(search.skipped_count)}</span> : null;
-  }
-  function recommendationLabel(data, candidateRef) { const row = data.candidates.find(candidate => candidate.candidate_ref === candidateRef); return row ? row.label || '候选名称未填写' : '资料未记录'; }
-  function CandidateReuse({ candidate, data }) {
-    const source = data.candidates.find(row => row.candidate_ref === candidate.equivalent_source_ref);
-    const fields = [['algo_mode', '算法方式'], ['used_strategy', '使用策略'], ['dispatch_mode', '调度模式'], ['dispatch_rule', '调度规则']];
-    return <details className="rd-candidate-basis rd-candidate-reuse"><summary>复用来源与策略记录</summary><div>
-      <p>复用同次“{recommendationLabel(data, candidate.equivalent_source_ref)}”的排产结果。</p>
-      <window.WorkbenchReference entries={{ '复用候选': candidate.candidate_ref, '来源候选': candidate.equivalent_source_ref }} />
-      {[['本候选', candidate], ['来源候选', source]].map(([label, row]) => <section key={label}><strong>{label}：{row ? row.label || '候选名称未填写' : '资料未记录'}</strong><dl>{fields.map(([key, title]) => {
-        const value = row && row.source && row.source[key];
-        return <div key={key} data-reuse-field={key}><dt>{title} <code>{key}</code></dt><dd>{value === null || value === undefined || value === '' ? '未记录' : String(value)}</dd></div>;
-      })}</dl></section>)}
-    </div></details>;
+    return search ? <span className="rd-run-coverage">搜索 {countText(search.completed_count)} / {countText(search.total_count)}</span> : null;
   }
   function CandidateTable({ data, selectedRef, referenceRef, onSelect, busy }) {
     const weighted = data.selection_basis.primary_objective === 'min_weighted_tardiness';
@@ -100,7 +87,7 @@
           const value = known ? metric.known_subtotal : metric.value;
           return <span key={definition.key} data-card-metric={definition.key}><span className="rd-candidate-metric-label">{label}</span><span className="rd-card-metric-value" data-metric-state={metric.state}><strong title={coverage.title + '；保存小计 ' + (metric.known_subtotal === null ? '未记录' : metricText({ value: metric.known_subtotal }, definition))}>{value === null ? metric.state === 'not_applicable' ? '不适用' : '未知' : <>{metricText({ value }, { ...definition, unit: '' })}<span className="rd-card-unit">{definition.unit}</span></>}</strong></span>{weighted && definition.key === 'weighted_tardiness_hours' && <small className="rd-weighted-basis">按计算时保存的批次优先级加权 · 已知 {countText(metric.known_count)} / {countText(metric.total_count)} 批{metric.unknown_count > 0 && ' · ' + countText(metric.unknown_count) + ' 批待确认'}</small>}</span>;
         })}</span>
-        <span className="rd-card-completion">{candidate.persisted_status === 'completed' ? completion : <><C.Status candidate={candidate} />{candidate.source && candidate.source.reason && <small>{candidate.source.reason.message}</small>}</>}</span>
+        <span className="rd-card-completion">{completion}</span>
       </C.Button>
     </section>; })}</div>;
   }
@@ -108,10 +95,9 @@
     return candidate ? <section className="rd-candidate-facts" aria-label="当前候选的完整保存依据"><h3>{candidate.label || '当前候选'} · 保存依据</h3>
       <p>{candidate.selection_role.map(role => roles[role] || (G.objective(role) ? G.objectiveLabel(role) + '代表方案' : null)).filter(Boolean).join(' · ')}</p>
       <C.GenerationMetadata value={candidate} runRef={data.run.run_ref} />
-      <Coverage candidate={candidate} />{candidate.source && candidate.source.reason && <p>{candidate.source.reason.message}</p>}
+      <Coverage candidate={candidate} />
       {candidate.representative_objectives.map(name => <div key={name} className="rd-saved-score-scope"><strong>{G.objectiveLabel(name)}的保存评价范围</strong><C.ScoringScope value={candidate.evaluations[name].scoring_scope} /></div>)}
       <CandidateBasis candidate={candidate} definitions={data.metric_definitions} onCompletion={onCompletion} onProcess={onProcess} />
-      {candidate.equivalent_source_ref && <CandidateReuse candidate={candidate} data={data} />}
     </section> : null;
   }
   function Details({ data, selectedRef }) {
@@ -229,7 +215,7 @@
       if (intent.tab !== tab || read.error) { rangeReturnFocus.current = null; return; }
       if (data && workspaceRef.current) { const entry = workspaceRef.current.querySelector('[data-resource-range-entry]'); rangeReturnFocus.current = null; if (entry) entry.focus(); }
     }, [data, read.error, tab]);
-    const history = window.APSResourceSession.useQuery(signal => N.adoptions(selected.candidate_ref, runRef, signal), [selected && selected.candidate_ref, runRef, revision, result && result.meta.snapshot_ref], !!selected && selected.persisted_status === 'completed' && historyOpen);
+    const history = window.APSResourceSession.useQuery(signal => N.adoptions(selected.candidate_ref, runRef, signal), [selected && selected.candidate_ref, runRef, revision, result && result.meta.snapshot_ref], !!selected && historyOpen);
     const processQuery = leafQuery('process');
     const remembered = data ? comparisonContext(data, { ...initialContext, metric_view: metricView, comparison_tab: tab, selected_batch_ref: selectedBatchRef, detail_queries: detailQueries }) : initialContext;
     window.WorkbenchPageContext.useSnapshot(remembered, !!data);
@@ -317,12 +303,12 @@
         <C.ErrorBox error={rangeError} /><C.Reasons rows={result.warnings} />{!data.catalog_complete && <p className="rc-notice">排产正在运行，已保存 {data.candidates.length} 个候选。刷新查看新增候选。</p>}
         <CandidateTable data={data} selectedRef={data.scope.selected_candidate_ref} referenceRef={data.scope.reference.candidate_ref} onSelect={choose} busy={read.loading} />
         <window.RunDecisionRecommendation.Panel data={data} onSelect={choose} onSupport={support} />
-        <div className="rd-choice"><div className="rd-current-context">{selected && <div className="rd-selected-name"><span className="rc-muted">查看：</span><strong>{selected.label || '候选名称未填写'}</strong>{selected.persisted_status !== 'completed' && <C.Status candidate={selected} />}</div>}
+        <div className="rd-choice"><div className="rd-current-context">{selected && <div className="rd-selected-name"><span className="rc-muted">查看：</span><strong>{selected.label || '候选名称未填写'}</strong></div>}
           <label className="rd-reference-choice" ref={referenceChoice}>对照方案<select aria-label="候选比较基准" value={data.scope.comparison_mode === 'admission_official' ? 'admission_official' : data.scope.reference_state === 'available' ? data.scope.reference.candidate_ref : ''} onChange={event => event.target.value === 'admission_official' ? mode('admission_official') : reference(data.candidates.find(row => row.candidate_ref === event.target.value))}>
-            {data.scope.comparison_mode === 'candidates' && data.scope.reference_state === 'selection_required' && <option value="">请选择对照方案</option>}{data.candidates.filter(row => row.persisted_status === 'completed').map(row => <option key={row.candidate_ref} value={row.candidate_ref}>{row.label || '候选名称未填写'}</option>)}<option value="admission_official">{data.scope.comparison_mode === 'admission_official' && data.scope.reference_state === 'available' ? data.baseline.label : '排产时的正式计划'}</option></select></label>
+            {data.scope.comparison_mode === 'candidates' && data.scope.reference_state === 'selection_required' && <option value="">请选择对照方案</option>}{data.candidates.map(row => <option key={row.candidate_ref} value={row.candidate_ref}>{row.label || '候选名称未填写'}</option>)}<option value="admission_official">{data.scope.comparison_mode === 'admission_official' && data.scope.reference_state === 'available' ? data.baseline.label : '排产时的正式计划'}</option></select></label>
           {data.scope.comparison_mode === 'admission_official' && data.scope.reference_state !== 'available' && <span className="rd-official-baseline">{referenceNotice(data)}</span>}</div>{selected && <div className="rc-tools rd-current-actions">
-          <C.Button icon="chart-gantt" disabled={selected.persisted_status !== 'completed'} onClick={() => gantt(selected)}>看甘特</C.Button>{renderTrial({ candidateRef: selected.candidate_ref, scope: data.scope, query: '', disabled: selected.persisted_status !== 'completed' })}
-          {selected.persisted_status === 'completed' && <div className="rd-adoption-status">{renderAdoption(selected.candidate_ref, { candidateDisplay: { candidate_ref: selected.candidate_ref, label: selected.label || '候选名称未填写', batch_count: data.scope.batch_refs.length, operation_count: data.scope.operation_refs.length }, candidateCatalog: data.candidates })}</div>}</div>}</div>
+          <C.Button icon="chart-gantt" onClick={() => gantt(selected)}>看甘特</C.Button>{renderTrial({ candidateRef: selected.candidate_ref, scope: data.scope, query: '', disabled: false })}
+          <div className="rd-adoption-status">{renderAdoption(selected.candidate_ref, { candidateDisplay: { candidate_ref: selected.candidate_ref, label: selected.label || '候选名称未填写', batch_count: data.scope.batch_refs.length, operation_count: data.scope.operation_refs.length }, candidateCatalog: data.candidates })}</div></div>}</div>
         <section className="rd-candidate-section" aria-label="方案对比结果"><div className="rc-heading rd-result-nav">
           <div className="rc-tabs rd-result-tabs" role="tablist" aria-label="方案对比明细" onKeyDown={event => {
             const index = Math.max(0, comparisonTabs.findIndex(row => row[0] === primaryTab)), next = event.key === 'ArrowRight' ? (index + 1) % comparisonTabs.length : event.key === 'ArrowLeft' ? (index + comparisonTabs.length - 1) % comparisonTabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? comparisonTabs.length - 1 : null;
@@ -336,13 +322,13 @@
             {panel === 'metrics' ? <><FullReadStatus read={fullRead} paused={fullPaused} onCancel={() => setFullPaused(true)} onReload={reload} />{fullData && <Details data={fullData} selectedRef={data.scope.selected_candidate_ref} />}</>
               : panel === 'process' ? <window.RunDecisionProcess.Pane result={result} query={processQuery} onQuery={processQueryChange} enabled={tab === panel} />
               : panel === 'completion' ? selected ? <window.RunDecisionCompletion.Pane result={result} query={completionQuery} onQuery={completionQueryChange} onSupport={support} enabled={tab === panel} /> : <p className="rc-empty">选择当前方案查看工序安排。</p>
-              : selected && selected.persisted_status === 'completed' ? panel === 'resources' ? <window.RunDecisionResources.Pane result={result} query={leafQuery(panel)} onQuery={value => detailQuery(panel, value)} onView={resourceView} onRange={changeRange} onDrill={drill} enabled={tab === panel} />
+              : selected ? panel === 'resources' ? <window.RunDecisionResources.Pane result={result} query={leafQuery(panel)} onQuery={value => detailQuery(panel, value)} onView={resourceView} onRange={changeRange} onDrill={drill} enabled={tab === panel} />
                 : ['preparation', 'changeovers'].includes(panel) ? <window.RunDecisionPreparation.Pane result={result} section={panel} query={leafQuery(panel)} onQuery={value => detailQuery(panel, value)} onDrill={drill} enabled={tab === panel} />
                   : <window.RunDecisionDetails.Pane result={result} section={panel === 'differences' ? 'differences' : 'delivery'} query={leafQuery(panel)} onQuery={value => detailQuery(panel, value)} selectedBatchRef={selectedBatchRef} onSelectBatch={selectBatch} chainQuery={leafQuery(panel === 'differences' ? 'difference-chain' : 'delivery-chain')} onChainQuery={value => chainQuery(panel, value)} onDrill={drill} onChooseReference={() => { const target = referenceChoice.current && referenceChoice.current.querySelector('select'); if (target) target.focus(); }} enabled={tab === panel} />
-                : <div className="rc-empty"><p>{selected ? (selected.label || '当前候选') + '：' + window.WorkbenchTerms.candidate_statuses[selected.persisted_status] : '请选择候选查看明细。'}</p>{selected && selected.source && selected.source.reason && <p>{selected.source.reason.message}</p>}</div>}
+                : <div className="rc-empty"><p>请选择候选查看明细。</p></div>}
           </div>)}
         </div></section>
-        {selected && selected.persisted_status === 'completed' && <details className="rd-official" open={historyOpen} onToggle={event => setHistoryOpen(event.currentTarget.open)}><summary>此方案的采用记录</summary><C.ErrorBox error={history.error} />{history.loading && <p role="status">正在读取此方案的采用记录。</p>}{history.result && <window.RunCandidateAnalysis.History data={history.result.data} onPlan={plan => onNavigate('analysis', { ...historyOrigin, plan_ref: plan.plan_ref, return_decision_context: remembered })} />}</details>}
+        {selected && <details className="rd-official" open={historyOpen} onToggle={event => setHistoryOpen(event.currentTarget.open)}><summary>此方案的采用记录</summary><C.ErrorBox error={history.error} />{history.loading && <p role="status">正在读取此方案的采用记录。</p>}{history.result && <window.RunCandidateAnalysis.History data={history.result.data} onPlan={plan => onNavigate('analysis', { ...historyOrigin, plan_ref: plan.plan_ref, return_decision_context: remembered })} />}</details>}
         <details className="rd-official rd-data-source" open={sourceOpen} onToggle={event => { setSourceOpen(event.currentTarget.open); if (event.currentTarget.open) setFullPaused(false); }}><summary>数据来源</summary>{sourceOpen && <><FullReadStatus read={fullRead} paused={fullPaused} onCancel={() => setFullPaused(true)} onReload={reload} />{fullSelected && <CandidateFacts data={fullData} candidate={fullSelected} onCompletion={openCompletion} onProcess={openProcess} />}</>}<dl className="rc-meta"><div><dt>开始计算</dt><dd>{M.timeLabel(data.run.accepted_at)}</dd></div><div><dt>计算结束</dt><dd>{M.timeLabel(data.run.finished_at)}</dd></div><div><dt>候选搜索</dt><dd><RunCoverage data={data} /></dd></div><div><dt>资料依据</dt><dd>排产时选中的批次和工序、保存的候选安排与推荐原因</dd></div><div><dt>资源和切换比较范围</dt><dd>{windowTitle}</dd></div><div><dt>本次刷新时间</dt><dd>{window.WorkbenchFormat.dateTime(result.meta.as_of, { seconds: true, fractions: true })}</dd></div></dl><window.WorkbenchReference entries={{ '排产记录': runRef, '当前查看候选': data.scope.selected_candidate_ref, '比较基准': data.scope.reference.candidate_ref }} /></details>
       </>}</div>;
   }

@@ -33,7 +33,7 @@ def official_point_work(conn, version, *, evidence=None, context=None):
         raise WorkbenchCommandRejected("point_evidence_unproven", "零工时工序缺少可核对的原始采用记录，这里不当成正常零工时工序读。请刷新后重试。") from exc
 
 
-def annotate_plan_points(conn, rows, *, source_table, context=None, intervals=None):
+def annotate_plan_points(conn, rows, *, context=None, intervals=None):
     from datetime import datetime
 
     from data.repositories.schedule_time_sql import parse_dt_for_sql
@@ -44,8 +44,6 @@ def annotate_plan_points(conn, rows, *, source_table, context=None, intervals=No
         start, end = original["start_time"], original["end_time"]
         low, high = intervals[index] if intervals is not None else (parse_dt_for_sql(start), parse_dt_for_sql(end))
         if low is not None and high is not None and low == high:
-            if source_table != "schedule":
-                raise WorkbenchCommandRejected("point_evidence_unproven", "旧候选方案或试调行没有零工时工序的采用记录，读不出来。请刷新后重试。")
             version = original["version"]
             if version not in versions:
                 versions[version] = context.point_work(version) if context is not None else official_point_work(conn, version)

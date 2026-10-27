@@ -47,7 +47,6 @@ class PlanReadContext:
     def read_scope(self):
         with read_evidence_scope(self.conn), self.references.read_bindings(
             history_reader=self.repo.history_rows,
-            scenario_reader=self.repo.get_scenario_context,
         ):
             yield self
 
@@ -65,8 +64,7 @@ class PlanReadContext:
     @staticmethod
     def query(entry):
         identity, locator = entry.plan_identity, entry.locator
-        return {"version": locator.version, "source_table": identity.source_table,
-                "candidate_id": identity.candidate_id, "scenario_id": locator.scenario_id}
+        return {"version": locator.version, "source_table": identity.source_table}
 
     @staticmethod
     def source_key(query):
@@ -84,10 +82,7 @@ class PlanReadContext:
     def seed_source_rows(self, rows, **query):
         """Accept raw rows already captured by this transaction's source owner."""
         key = self.source_key(query)
-        if query["source_table"] == "adjustment_scenario_rows":
-            valid = all(row["scenario_id"] == query["scenario_id"] for row in rows)
-        else:
-            valid = all(row["version"] == query["version"] for row in rows)
+        valid = all(row["version"] == query["version"] for row in rows)
         if not valid:
             raise WorkbenchCommandRejected("plan_binding_invalid", "安排原件与所选计划不一致，请刷新后重试。")
         if key in self.repo._source_rows:
@@ -241,9 +236,7 @@ class PlanReadContext:
     def row_times(self, plan_ref, row):
         if plan_ref not in self._plan_time_maps:
             locator, record = self.references._resolved_record(plan_ref)
-            candidate_id = int(record["owner_key"]) if record["source_table"] == "candidate_rows" else None
-            query = {"version": locator.version, "source_table": record["source_table"],
-                     "candidate_id": candidate_id, "scenario_id": locator.scenario_id}
+            query = {"version": locator.version, "source_table": record["source_table"]}
             self._plan_time_maps[plan_ref] = self._interval_map(query)
         return self._plan_time_maps[plan_ref][row["schedule_id"]]
 

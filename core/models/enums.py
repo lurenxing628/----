@@ -125,8 +125,6 @@ class BatchExternalContextOrigin(str, Enum):
     CREATION = "creation"
     TEMPLATE_COPY = "template_copy"
     INSTANCE_COPY = "instance_copy"
-    MIGRATION_V33 = "migration_v33"
-    ARCHIVE_PRE_V33 = "archive_pre_v33"  # In-memory interpretation of an authenticated pre-v33 run capture only.
 
 
 class PartOperationStatus(str, Enum):

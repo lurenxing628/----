@@ -1,6 +1,6 @@
 """Workbench-only plan spans; legacy SQL keeps its positive-interval default."""
 
-from core.models.schedule_plan_role import SOURCE_ADJUSTMENT_SCENARIO_ROWS, SOURCE_SCHEDULE
+from core.models.schedule_plan_role import SOURCE_SCHEDULE
 from core.models.workbench_command import WorkbenchCommandRejected
 from data.repositories.schedule_rows import ScheduleTimeSpanRow
 from data.repositories.schedule_time_sql import parse_dt_for_sql
@@ -18,42 +18,36 @@ def _interval(row):
 
 class PointPlanCatalogRepository(WorkbenchPlanCatalogRepository):
     def __init__(self, conn, logger=None, *, context=None):
-        super().__init__(conn, logger=logger,
-                         role_reader=context.references.read_role_options if context is not None else None)
+        super().__init__(conn, logger=logger)
         self.context = context
         self._source_rows = {}
         self._prepared_rows = {}
         self._parsed_intervals = {}
 
     @staticmethod
-    def _source_key(version, source_table, candidate_id, scenario_id):
-        return version, source_table, None if source_table == SOURCE_SCHEDULE else candidate_id, scenario_id
+    def _source_key(version, source_table=SOURCE_SCHEDULE):
+        return version, source_table
 
-    def source_rows(self, version, source_table, candidate_id, scenario_id=None):
-        key = self._source_key(version, source_table, candidate_id, scenario_id)
+    def source_rows(self, version, source_table=SOURCE_SCHEDULE):
+        key = self._source_key(version, source_table)
         if key not in self._source_rows:
             self._source_rows[key] = self.list_plan_storage_rows(
-                version=version, source_table=source_table, candidate_id=candidate_id,
-                scenario_id=scenario_id,
+                version=version, source_table=source_table,
             )
         return self._source_rows[key]
 
-    def prepared_rows(self, version, source_table, candidate_id, scenario_id=None):
-        key = self._source_key(version, source_table, candidate_id, scenario_id)
+    def prepared_rows(self, version, source_table=SOURCE_SCHEDULE):
+        key = self._source_key(version, source_table)
         if key not in self._prepared_rows:
-            raw = self.source_rows(version, source_table, candidate_id, scenario_id)
-            fields = ("id", "op_id", "machine_id", "operator_id", "start_time", "end_time", "lock_status")
-            rows = []
-            for row in raw:
-                prepared = {name: row[name] for name in fields}
-                prepared["version"] = version if source_table == SOURCE_ADJUSTMENT_SCENARIO_ROWS else row["version"]
-                rows.append(prepared)
+            raw = self.source_rows(version, source_table)
+            fields = ("id", "op_id", "machine_id", "operator_id", "start_time", "end_time", "lock_status", "version")
+            rows = [{name: row[name] for name in fields} for row in raw]
             intervals = [_interval(row) for row in rows]
             try:
                 if self.context is None:
-                    rows = annotate_plan_points(self.conn, rows, source_table=source_table, intervals=intervals)
+                    rows = annotate_plan_points(self.conn, rows, intervals=intervals)
                 else:
-                    rows = annotate_plan_points(self.conn, rows, source_table=source_table, context=self.context, intervals=intervals)
+                    rows = annotate_plan_points(self.conn, rows, context=self.context, intervals=intervals)
             except WorkbenchCommandRejected as exc:
                 if exc.status == 413:
                     raise
@@ -62,24 +56,21 @@ class PointPlanCatalogRepository(WorkbenchPlanCatalogRepository):
             self._prepared_rows[key] = rows
         return self._prepared_rows[key]
 
-    def parsed_intervals(self, version, source_table, candidate_id, scenario_id=None):
-        self.prepared_rows(version, source_table, candidate_id, scenario_id)
-        return self._parsed_intervals[self._source_key(version, source_table, candidate_id, scenario_id)]
+    def parsed_intervals(self, version, source_table=SOURCE_SCHEDULE):
+        self.prepared_rows(version, source_table)
+        return self._parsed_intervals[self._source_key(version, source_table)]
 
     def validate_detail_times(self, resolution):
-        self.prepared_rows(resolution.version, resolution.source_table, resolution.candidate_id, resolution.scenario_id)
+        self.prepared_rows(resolution.version, resolution.source_table)
 
-    def get_first_plan_identity_row(self, *, version, source_table, candidate_id, scenario_id=None):
-        rows = self.source_rows(version, source_table, candidate_id, scenario_id)
+    def get_first_plan_identity_row(self, *, version, source_table=SOURCE_SCHEDULE):
+        rows = self.source_rows(version, source_table)
         return {"source_row_id": rows[0]["id"], "lock_status": rows[0]["lock_status"]} if rows else None
 
-    def has_candidate_rows(self, *, version, candidate_id):
-        return bool(self.source_rows(version, "candidate_rows", candidate_id))
-
-    def get_plan_time_span(self, *, version, source_table, candidate_id, scenario_id=None):
-        key = self._source_key(version, source_table, candidate_id, scenario_id)
+    def get_plan_time_span(self, *, version, source_table=SOURCE_SCHEDULE):
+        key = self._source_key(version, source_table)
         if key not in self._spans:
-            rows = self.prepared_rows(version, source_table, candidate_id, scenario_id)
+            rows = self.prepared_rows(version, source_table)
             intervals = self._parsed_intervals[key]
             if not rows:
                 self._spans[key] = None
@@ -95,20 +86,18 @@ class PointPlanCatalogRepository(WorkbenchPlanCatalogRepository):
 class PlanMetadataRepository(WorkbenchPlanCatalogRepository):
     """Validate and aggregate plan metadata without admitting its full details."""
 
-    def __init__(self, conn, logger=None, *, role_reader=None):
-        super().__init__(conn, logger=logger, role_reader=role_reader)
+    def __init__(self, conn, logger=None):
+        super().__init__(conn, logger=logger)
         self._metadata_spans = {}
 
-    def get_first_plan_identity_row(self, *, version, source_table, candidate_id, scenario_id=None):
-        return self.first_raw_plan_identity_row(version=version, source_table=source_table,
-                                                candidate_id=candidate_id, scenario_id=scenario_id)
+    def get_first_plan_identity_row(self, *, version, source_table=SOURCE_SCHEDULE):
+        return self.first_raw_plan_identity_row(version=version, source_table=source_table)
 
-    def get_plan_time_span(self, *, version, source_table, candidate_id, scenario_id=None):
-        key = (version, source_table, candidate_id, scenario_id)
+    def get_plan_time_span(self, *, version, source_table=SOURCE_SCHEDULE):
+        key = (version, source_table)
         if key not in self._metadata_spans:
             low, high, points, point_intervals = None, None, [], []
-            for row in self.iter_raw_plan_rows(version=version, source_table=source_table,
-                                               candidate_id=candidate_id, scenario_id=scenario_id):
+            for row in self.iter_raw_plan_rows(version=version, source_table=source_table):
                 start, end = _interval(row)
                 low = start if low is None else min(low, start)
                 high = end if high is None else max(high, end)
@@ -116,7 +105,7 @@ class PlanMetadataRepository(WorkbenchPlanCatalogRepository):
                     points.append(row)
                     point_intervals.append((start, end))
             try:
-                annotate_plan_points(self.conn, points, source_table=source_table, intervals=point_intervals)
+                annotate_plan_points(self.conn, points, intervals=point_intervals)
             except WorkbenchCommandRejected as exc:
                 if exc.status == 413:
                     raise
@@ -128,5 +117,4 @@ class PlanMetadataRepository(WorkbenchPlanCatalogRepository):
         return self._metadata_spans[key]
 
     def validate_detail_times(self, resolution):
-        self.get_plan_time_span(version=resolution.version, source_table=resolution.source_table,
-                                candidate_id=resolution.candidate_id, scenario_id=resolution.scenario_id)
+        self.get_plan_time_span(version=resolution.version, source_table=resolution.source_table)

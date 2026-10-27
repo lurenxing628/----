@@ -177,8 +177,8 @@ class GenerationFacts:
             return None
         values = {key: number(row.get(key), "execution_at_generation." + key, gaps, integer=True)
                   for key in ("target_quantity", "known_completed_quantity", "remaining_quantity")}
-        domains = {"execution_state": ("complete", "paused", "exception", "partial", "started", "unreported"),
-                   "data_quality": ("invalid", "legacy_incomplete", "incomplete", "complete"), "target_basis": ("piece", "batch")}
+        domains = {"execution_state": ("complete", "partial", "started", "unreported"),
+                   "data_quality": ("invalid", "incomplete", "complete"), "target_basis": ("piece", "batch")}
         for key, allowed in domains.items():
             value = row.get(key)
             values[key] = value if type(value) is str and value in allowed else None

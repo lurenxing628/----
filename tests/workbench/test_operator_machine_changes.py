@@ -147,7 +147,7 @@ def test_relation_import_applies_implicit_primary_change_once_and_keeps_untouche
     assert sum(statement.startswith("SELECT * FROM OperatorMachine WHERE operator_id IN") for statement in sql) == 1
     assert not any(statement == "SELECT * FROM OperatorMachine ORDER BY operator_id,machine_id" for statement in sql)
 
-    conn.execute("UPDATE OperatorMachine SET skill_level='mystery',is_primary='no' WHERE machine_id='M2'")
+    conn.execute("UPDATE OperatorMachine SET skill_level='high',is_primary='no' WHERE machine_id='M2'")
     conn.commit()
     content = file_bytes([("O1", "M2", "", "是")],
                          headers=("工号", "设备编号", "技能等级", "主操设备"))
@@ -155,7 +155,12 @@ def test_relation_import_applies_implicit_primary_change_once_and_keeps_untouche
     assert list(preview.as_dict()["rows"][0]["changes"]) == ["is_primary"]
     with TransactionManager(conn).transaction():
         service.confirm_import(preview, content, file_format="csv")
-    assert _rows(conn)[1] == ("M2", "mystery", "yes")
+    assert _rows(conn)[1] == ("M2", "high", "yes")
+
+    conn.execute("UPDATE OperatorMachine SET skill_level='mystery',is_primary='no' WHERE machine_id='M2'")
+    conn.commit()
+    with pytest.raises(ValueError, match="mystery"):
+        service.preview_import(content, file_format="csv")
 
 
 def test_relation_export_uses_toolbar_scope_and_preserves_column_filters(resource_conn):

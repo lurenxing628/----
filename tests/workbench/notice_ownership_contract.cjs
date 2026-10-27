@@ -69,7 +69,7 @@ async function contract(h, assert) {
   const fields = w.FieldEditorFields;
   w.FieldEditorFields = () => null; // This regression concerns the form/footer ownership, not the field inputs.
   const task = { task_ref: h.reference(1), plan_ref: h.reference(2), operation_ref: h.reference(3), execution: { reports: [], write_context: null } };
-  const retained = { baseline: { task_ref: h.reference(4), plan_ref: task.plan_ref, report_ref: null, revision_ref: null, legacy_ref: null },
+  const retained = { baseline: { task_ref: h.reference(4), plan_ref: task.plan_ref, report_ref: null, revision_ref: null },
     draft: w.FieldContract.draft(null), initialDraft: w.FieldContract.draft(null), suggestions: {} };
   once(h.render(w.FieldEditor, { task, retained, action: 'create', adapter: {}, command: idle }), '原记录或任务已变化，暂存内容未写入；请取消后重新核对。', 2);
   w.FieldEditorFields = fields;

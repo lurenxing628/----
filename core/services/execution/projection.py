@@ -7,15 +7,12 @@ from core.models.workbench_execution import ExecutionProjection, ProductionRepor
 from core.models.workbench_execution_input import closed_write_context, public_ref, reject
 
 from .quality import classify_quality, gap, operation_target
-from .totals import merge_legacy_totals, quantity_consistency, report_totals
+from .totals import quantity_consistency, report_totals
 
 
 def projection_resource_refs(projection: ExecutionProjection) -> Set[str]:
-    refs = {ref for report in projection.reports
+    return {ref for report in projection.reports
             for ref in (report.actual_machine_ref, report.actual_operator_ref) if ref}
-    refs.update(fact[field] for fact in projection.legacy_facts
-                for field in ("actual_machine_ref", "actual_operator_ref") if fact[field])
-    return refs
 
 
 def report_dto(history, *, operation_ref, report_ref):
@@ -40,40 +37,36 @@ def report_dto(history, *, operation_ref, report_ref):
         previous = row["values"]
     return ProductionReport(
         **{key: latest[key] for key in ("report_ref", "report_no", "operation_ref", "recorded_against_task_ref",
-                                        "recorded_against_plan_ref", "source", "legacy_fact_ref", "recorded_at",
+                                        "recorded_against_plan_ref", "source", "recorded_at",
                                         "revision_ref", "local_operator", "declared_operator")},
         **latest["values"], correction_history=corrections, write_context=closed_write_context())
 
 
-def _execution_state(reports, totals, evidence, complete_reports):
-    if evidence.finishes or complete_reports:
+def _execution_state(reports, totals, complete_reports):
+    if complete_reports:
         return "complete"
-    if evidence.state in ("pause", "exception"):
-        return "paused" if evidence.state == "pause" else "exception"
     if totals.known > 0 or any(report.actual_end for report in reports):
         return "partial"
     return "started" if reports or totals.starts else "unreported"
 
 
-def _completion(reports, evidence, complete_reports):
-    times = list(evidence.finish_times)
-    if complete_reports:
-        times.extend(report.actual_end for report in reports if report.actual_end)
-    basis = "legacy_finish_event" if evidence.finishes else "complete_reports" if complete_reports else None
-    return max(times) if times else None, basis
+def _completion(reports, complete_reports):
+    if not complete_reports:
+        return None, None
+    times = [report.actual_end for report in reports if report.actual_end]
+    return max(times) if times else None, "complete_reports"
 
 
-def project_execution(operation, reports, evidence, *, current_task, comparison_task, plan_identity, unresolved=False):
+def project_execution(operation, reports, *, current_task, comparison_task, plan_identity):
     """No writes, synthesized reports, time-derived hours or scheduler invocations."""
-    target, basis, gaps = operation_target(operation, unresolved)
+    target, basis, gaps = operation_target(operation)
     totals = report_totals(reports, operation.get("source"))
-    merge_legacy_totals(totals, evidence)
-    gaps.extend(evidence.gaps + totals.gaps + quantity_consistency(totals, target, evidence.finishes))
+    gaps.extend(totals.gaps + quantity_consistency(totals, target))
     quantity_complete = target is not None and totals.known == target and totals.unknown == 0
     complete_reports = quantity_complete and totals.records_complete
-    state = _execution_state(reports, totals, evidence, complete_reports)
-    quality = classify_quality(gaps, legacy_uncovered=totals.legacy_uncovered, has_records=bool(reports or evidence.records))
-    finish, completion_basis = _completion(reports, evidence, complete_reports)
+    state = _execution_state(reports, totals, complete_reports)
+    quality = classify_quality(gaps, has_records=bool(reports))
+    finish, completion_basis = _completion(reports, complete_reports)
     remaining = None if target is None or totals.unknown or quality == "invalid" else target - totals.known
     if state not in ("complete", "unreported"):
         gaps.append(gap("remaining_plan_unavailable", "这道工序还没做完的部分暂无确认的安排，系统没有按剩余数量推算时长。"))
@@ -84,5 +77,5 @@ def project_execution(operation, reports, evidence, *, current_task, comparison_
         unknown_record_count=totals.unknown, records_complete=totals.records_complete,
         first_actual_start=min(totals.starts) if totals.starts else None,
         confirmed_finish=finish, execution_state=state, completion_basis=completion_basis,
-        data_quality=quality, reports=reports, legacy_facts=evidence.records,
+        data_quality=quality, reports=reports,
         remaining_quantity=remaining, remaining_plan=None, data_gaps=gaps, write_context=closed_write_context())

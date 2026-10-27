@@ -157,10 +157,10 @@ class WorkbenchRunRepository:
             WHERE request_key=?""", (request_key,)).fetchone()
         return None if row is None else tuple(row)
 
-    def insert(self, *, request_key, input_ref, settings, facts_hash, facts_json, projections, baseline, now, run_ref):
+    def insert(self, *, request_key, input_ref, settings, facts_json, projections, baseline, now, run_ref):
         self.conn.execute("""INSERT INTO WorkbenchRunJobs
-            (run_ref,request_key,input_ref,normalized_input_json,facts_hash,facts_json,execution_json,baseline_json,accepted_at,state,stage)
-            VALUES (?,?,?,?,?,?,?,?,?,'queued','queued')""", (run_ref, request_key, input_ref, canonical_json(settings), facts_hash,
+            (run_ref,request_key,input_ref,normalized_input_json,facts_json,execution_json,baseline_json,accepted_at,state,stage)
+            VALUES (?,?,?,?,?,?,?,?,'queued','queued')""", (run_ref, request_key, input_ref, canonical_json(settings),
                            facts_json, canonical_json([item.to_dict() for item in projections]), canonical_json(baseline), now))
         return run_ref
 

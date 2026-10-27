@@ -37,8 +37,8 @@ _TABLES = {
         receipt_ref TEXT NOT NULL UNIQUE CHECK(length(receipt_ref) = 32 AND receipt_ref NOT GLOB '*[^0-9a-f]*'),
         action TEXT NOT NULL,
         context_ref TEXT NOT NULL,
-        input_hash TEXT NOT NULL CHECK(length(input_hash) = 64 AND input_hash NOT GLOB '*[^0-9a-f]*'),
         outcome_json TEXT NOT NULL,
+        input_json TEXT NOT NULL,
         committed_at_utc TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
     )""",
 }
@@ -119,30 +119,12 @@ def identity_triggers(kind: str, table: str, columns: Tuple[str, ...], alternate
     return result
 
 
-def metadata_objects(*, legacy: bool = False) -> Dict[str, str]:
+def metadata_objects() -> Dict[str, str]:
     objects = dict(_TABLES)
-    if not legacy:
-        objects["WorkbenchCommandReceipts"] = objects["WorkbenchCommandReceipts"].replace(
-            "input_hash TEXT NOT NULL CHECK", "input_hash TEXT CHECK").replace(
-            "outcome_json TEXT NOT NULL,", "outcome_json TEXT NOT NULL,\n        input_json TEXT,")
     objects.update(_INDEXES)
     for kind, (table, columns) in RESOURCE_TABLES.items():
         objects.update(identity_triggers(kind, table, columns))
     return objects
-
-
-def install_metadata(conn) -> None:
-    for sql in metadata_objects().values():
-        conn.execute(sql)
-    for kind, (table, columns) in RESOURCE_TABLES.items():
-        key = entity_key_sql(columns, "source")
-        alternate = _alternate_key_sql(kind, "source")
-        if conn.execute(f'SELECT 1 FROM "{table}" AS source WHERE {key} IS NULL LIMIT 1').fetchone():
-            raise RuntimeError(f"{table} 存在缺失的业务标识，不能安全建立永久引用；未修正原数据。")
-        conn.execute(f"""INSERT INTO WorkbenchEntityRefs(ref, kind, entity_key, alternate_key)
-            SELECT lower(hex(randomblob(24))), ?, {key}, {alternate} FROM "{table}" AS source
-            WHERE NOT EXISTS (SELECT 1 FROM WorkbenchEntityRefs AS existing
-                WHERE existing.kind = ? AND existing.entity_key = {key} AND existing.active = 1)""", (kind, kind))
 
 
 _IF_NOT_EXISTS_RE = re.compile(r"\bIF\s+NOT\s+EXISTS\b", re.I)
@@ -235,24 +217,12 @@ def canonical_sql(sql: str) -> str:
     return text
 
 
-def schema_contract_matches(conn, actual_sql: str, current_sql: str, legacy_sql: str, *, allow_legacy=True) -> bool:
-    """A declared historical DDL is accepted only while its upgrade is pending."""
-    actual = canonical_sql(actual_sql)
-    if actual == canonical_sql(current_sql):
-        return True
-    if not allow_legacy or actual != canonical_sql(legacy_sql):
-        return False
-    row = conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()
-    return row is not None and 0 <= int(row[0]) < 40
-
-
-def workbench_metadata_contract_issues(conn, *, structure=None, allow_legacy=True) -> List[str]:
+def workbench_metadata_contract_issues(conn, *, structure=None) -> List[str]:
     actual = schema_objects(conn, structure=structure)
-    legacy = metadata_objects(legacy=True)
     issues = []
     for name, sql in metadata_objects().items():
         if name not in actual:
             issues.append("missing_workbench_metadata: " + name)
-        elif not schema_contract_matches(conn, actual[name], sql, legacy[name], allow_legacy=allow_legacy):
+        elif canonical_sql(actual[name]) != canonical_sql(sql):
             issues.append("bad_workbench_metadata: " + name)
     return issues

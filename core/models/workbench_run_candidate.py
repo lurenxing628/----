@@ -43,7 +43,7 @@ class RunCandidateCatalogScope:
 
     def __post_init__(self):
         reference(self.run_ref)
-        if (self.status not in ("all", "completed", "partial", "failed", "skipped")
+        if (self.status not in ("all", "completed", "partial")
                 or self.sort not in ("sequence", "label", "task_count") or self.order not in ("asc", "desc")
                 or type(self.page) is not int or not 1 <= self.page <= MAX_CANDIDATES
                 or type(self.size) is not int or not 1 <= self.size <= 50):

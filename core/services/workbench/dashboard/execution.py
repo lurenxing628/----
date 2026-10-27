@@ -2,7 +2,6 @@
 
 from core.services.workbench.facts.execution_values import minutes
 from core.services.workbench.facts.preflight_checks import number
-from data.repositories.workbench_execution_source_repo import EMPTY_SOURCE_CONTENT
 
 from .projection import category, observation
 
@@ -37,8 +36,6 @@ def _risk_codes(task, projection, hours, now):
         codes.append("feedback_pending")
     if late is not None and late > 10:
         codes.append("finish_late")
-    if projection["execution_state"] in ("paused", "exception"):
-        codes.append("execution_" + projection["execution_state"])
     if hours["overrun"]:
         codes.append("processing_hours_overrun")
     return codes, missing, late
@@ -51,14 +48,13 @@ def _source(task, p, hours, codes, late):
                   "confirmed_finish": p["confirmed_finish"], "first_actual_start": p["first_actual_start"],
                   "data_quality": p["data_quality"], "data_gaps": p["data_gaps"], "hours": hours,
                   "finish_deviation_minutes": late, "risk_codes": codes,
-                  "report_refs": [row["report_ref"] for row in p["reports"]],
-                  "legacy_fact_refs": [row["legacy_fact_ref"] for row in p["legacy_facts"]]}
+                  "report_refs": [row["report_ref"] for row in p["reports"]]}
 
 
 def _uncertain(projection, operation, hours):
     if projection["data_quality"] == "invalid":
         return True
-    if not (projection["reports"] or projection["legacy_facts"]):
+    if not projection["reports"]:
         return False
     if operation["source"] == "external":
         # 外协不按工时评估：确认完工才算评估过；未完工和自制一样算还评估不全（超期未回厂由外协风险跟进）。
@@ -66,7 +62,7 @@ def _uncertain(projection, operation, hours):
     return hours["overrun"] is None
 
 
-def _operation(facts, task, raw_task, unresolved):
+def _operation(facts, task, raw_task):
     ref = task["operation_ref"]
     p, operation = facts.execution[ref], facts.execution_facts["operations"][ref]
     hours = _hours(p, operation)
@@ -85,11 +81,7 @@ def _operation(facts, task, raw_task, unresolved):
                                             for report_ref in histories if report_ref in facts.execution_facts["voids"]},
                                   "current_task": facts.execution_facts["current_tasks"].get(ref),
                                   "comparison_task": facts.execution_facts["comparison_tasks"].get(ref),
-                                  "plan": facts.execution_facts["plan"],
-                                  "unresolved": ref in unresolved,
-                                  "legacy": facts.execution_facts["legacy"].get(ref),
-                                  "legacy_source": {"state": facts.execution_facts["legacy_source"]["states"].get(ref, EMPTY_SOURCE_CONTENT),
-                                                    "changes": facts.execution_facts["legacy_source"]["changes"].get(ref)}})
+                                  "plan": facts.execution_facts["plan"]})
     return item, uncertain
 
 
@@ -99,9 +91,8 @@ def actual(facts):
     if facts.execution is None:
         return [], category("unavailable", issues=facts.execution_issues)
     items, unknown = [], 0
-    unresolved = set(facts.execution_facts["unresolved"])
     for task, raw_task in zip(facts.tasks, facts.task_rows):
-        item, uncertain = _operation(facts, task, raw_task, unresolved)
+        item, uncertain = _operation(facts, task, raw_task)
         items.append(item)
         unknown += uncertain
     return items, category("loaded" if items else "no_data", assessed=len(items) - unknown, unknown=unknown)

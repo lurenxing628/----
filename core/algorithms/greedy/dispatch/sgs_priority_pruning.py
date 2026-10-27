@@ -20,14 +20,11 @@ from datetime import datetime
 from types import MappingProxyType
 
 from core.algorithm_contracts.value_domains import EXTERNAL
-from core.algorithm_runtime.calendar_timing_memo import native_timing_calendar
 from core.algorithm_runtime.native_snapshot import UNSUPPORTED, scalar_snapshot
 from core.errors import ValidationError
-from core.shared.strict_parse import is_exact_finite_number
 
 from .sgs_due_span import external_candidate_window
 from .sgs_priority_keys import ValidatedGraphPriorityKeys
-from .sgs_score_cache import plain_record_class
 from .sgs_scoring import parse_due_date
 
 _FIELDS = ("id", "seq", "batch_id", "piece_id", "source", "machine_id", "operator_id", "op_type_name",
@@ -52,16 +49,10 @@ class GraphPriorityPruning:
                    eligible_resources=cache.eligible_resources,
                    calendar=cache._timing.calendar, calendar_days=cache.calendar_days, preparation=cache.preparation)
 
-    def __init__(self, graph_state, batches, hours, *, eligible_resources=None, calendar=None, calendar_days=None, preparation=None):
-        if preparation is None:
-            records = list(batches.values()) + [op for _batch_id, op in graph_state["op_by_id"].values()]
-            self._plain_classes = {kind: plain_record_class(kind) for kind in {type(record) for record in records}}
-            self._calendar_days = (calendar.add_calendar_days if calendar is not None
-                                   and native_timing_calendar(calendar, include_calendar_days=True) else None)
-        else:
-            self._plain_classes = preparation.plain_classes
-            self._calendar_days = calendar_days
-        self._records = preparation.pruning_records if preparation is not None else {}
+    def __init__(self, graph_state, batches, hours, *, eligible_resources=None, calendar=None, calendar_days=None, preparation):
+        self._plain_classes = preparation.plain_classes
+        self._calendar_days = calendar_days
+        self._records = preparation.pruning_records
         self._candidate_records = {}
         self._preparation = preparation
         self.key_width = 0
@@ -69,13 +60,11 @@ class GraphPriorityPruning:
         self.fixed_resources = True
         self._eligible_resources = eligible_resources
         self._calendar = calendar
-        self._has_external = False
         self.supported = self._prepare(graph_state, batches, hours)
 
     def _record(self, record):
         token = id(record)
-        records = (self._records if self._preparation is None or token in self._preparation.records_by_token
-                   else self._candidate_records)
+        records = self._records if token in self._preparation.records_by_token else self._candidate_records
         if token not in records:
             records[token] = prepare_pruning_record(record, self._plain_classes)
         return records[token]
@@ -84,12 +73,13 @@ class GraphPriorityPruning:
         if graph is None or not graph.get("score_enabled"):
             return False
         keys = graph["graph_priority_key_by_op_id"]
-        widths = {len(key) for key in keys.values() if type(key) is tuple}
+        if type(keys) is not ValidatedGraphPriorityKeys:
+            return False
+        widths = {len(key) for key in keys.values()}
         if len(widths) != 1:
             return False
         self.key_width = widths.pop()
-        if not self.key_width or (type(keys) is not ValidatedGraphPriorityKeys
-                                  and not all(self._key_valid(key) for key in keys.values())):
+        if not self.key_width:
             return False
         for batch in batches.values():
             if not self._record(batch):
@@ -107,7 +97,7 @@ class GraphPriorityPruning:
             if op.source == EXTERNAL:
                 if not self._certified_external(op):
                     return False
-                self._has_external, self.fixed_resources = True, False
+                self.fixed_resources = False
                 continue
             if not self._certified_internal(op_id, hours):
                 return False
@@ -149,27 +139,17 @@ class GraphPriorityPruning:
             return None
         return False
 
-    def _key_valid(self, key):
-        return type(key) is tuple and len(key) == self.key_width and all(is_exact_finite_number(value) for value in key)
-
     def intact(self):
         """Both ready-set narrowing paths require the same current input and timing proof."""
-        if not self.supported:
-            return False
-        if self._preparation is None and self._has_external and not native_timing_calendar(self._calendar, include_calendar_days=True):
-            self.supported = False
         return self.supported
 
     def frontier(self, candidates, graph):
         if len(candidates) < 2 or not self.intact():
             return None
         keys = graph["graph_priority_key_by_op_id"]
-        admitted = type(keys) is ValidatedGraphPriorityKeys
         selected, rank = [], None
         for item in candidates:
-            key = keys.get(item[1].id)
-            if key is None or (not admitted and not self._key_valid(key)):
-                return None
+            key = keys[item[1].id]
             if rank is None or key < rank:
                 selected, rank = [item], key
             elif key == rank:

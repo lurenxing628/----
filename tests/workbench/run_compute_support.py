@@ -4,10 +4,6 @@ from datetime import datetime
 
 import pytest
 
-from core.infrastructure.workbench_execution_ledger_schema import install_execution_ledger
-from core.infrastructure.workbench_execution_void_schema import install_execution_voids
-from core.infrastructure.workbench_metadata_schema import install_metadata
-from core.infrastructure.workbench_plan_identity_schema import install_plan_identity
 from core.models.schedule_config_runtime_fields import default_snapshot_values
 from core.services.workbench.execution.ledger import ExecutionLedgerService
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
@@ -58,12 +54,6 @@ class RunCase(LedgerCase):
 @pytest.fixture(name="run_case")
 def run_case(schema_conn):
     conn = schema_conn
-    conn.execute("BEGIN")
-    install_metadata(conn)
-    install_plan_identity(conn)
-    install_execution_ledger(conn)
-    install_execution_voids(conn)
-    conn.commit()
     # These fixtures model an explicit historical 08:00-16:00 factory shift.
     # Unconfigured split-day defaults are exercised by calendar/material tests.
     conn.execute("INSERT INTO WorkbenchCalendarDefaults(singleton,periods_json) VALUES (1,?)",

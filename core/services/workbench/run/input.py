@@ -8,10 +8,6 @@ from typing import Any, Dict, List, Sequence
 from core.models.workbench_execution import ExecutionProjection
 from core.models.workbench_preflight import local_date, normalize_preflight_input
 from core.services.scheduler.run.operation_effort import build_operation_efforts
-from core.services.scheduler.run.schedule_execution_reservations import (
-    ExecutionResourceCalendar,
-    build_execution_resource_reservations,
-)
 from core.services.scheduler.run.schedule_input_builder import build_algo_operations
 from core.services.scheduler.run.schedule_input_contracts import ScheduleRunInput
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
@@ -39,7 +35,6 @@ class CandidateRunInput(ScheduleRunInput):
     normalized_input: Dict[str, Any] = field(default_factory=dict)
     dispositions: List[Dict[str, Any]] = field(default_factory=list)
     preflight_facts: Any = None
-    execution_reservations: List[Any] = field(default_factory=list)
     latest_plan_rows: Dict[int, Any] = field(default_factory=dict)
     piece_scope: Any = None
 
@@ -111,24 +106,19 @@ def _prepare(conn, settings, facts, raw_batches, batches, operations, projection
                     if baseline is None else baseline["version"] or 0)
     start = datetime.combine(local_date(settings["start_date"]), datetime.min.time())
     guards = execution_guards(conn, facts, operations, batches, projections, prev_version, piece_scope=piece_scope)
-    execution_facts, fixed, completed, execution_seeds, snapshot = guards
-    cycles = external_execution_cycles(facts, batches, operations, execution_seeds, set(fixed) | set(completed))
-    guarded_ids = set(fixed) | set(completed) | set(cycles)
+    execution_facts, completed, execution_seeds, snapshot = guards
+    cycles = external_execution_cycles(facts, batches, operations, execution_seeds, set(completed))
+    guarded_ids = set(completed) | set(cycles)
     dispositions, mutable, releases = (
         classify_rows(facts, settings, raw_batches, operations, projections,
-                      set(fixed) | set(completed), piece_scope=piece_scope, external_cycles=cycles)
+                      set(completed), piece_scope=piece_scope, external_cycles=cycles)
         if admitted is _CLASSIFY_CURRENT else admitted_classification(operations, admitted, guarded_ids))
     algo_ops, runtime_mutable = _algorithm_scope(facts, batches, operations, mutable, guarded_ids, cycles, releases)
-    reservations = build_execution_resource_reservations(
-        facts=execution_facts, selected_op_ids={op.id for op in operations}, start_dt=start, capture=facts.capture,
-    )
     calendar = facts.calendar()
-    if reservations:
-        calendar = ExecutionResourceCalendar(calendar, reservations)
     runtime = build_runtime(
         conn, cfg=cfg, prev_version=prev_version, start_dt=start, batches=batches, operations=operations,
-        mutable=runtime_mutable, algo_ops=algo_ops, fixed_ids=fixed, completed_ids=completed,
-        execution_seeds=execution_seeds, reservations=reservations,
+        mutable=runtime_mutable, algo_ops=algo_ops, completed_ids=completed,
+        execution_seeds=execution_seeds,
         hold_window=hold_window(settings, snapshot=base_config)[0] if held is None else None,
         facts=facts, piece_scope=piece_scope,
         for_adoption=for_adoption, held=held,
@@ -148,7 +138,7 @@ def _prepare(conn, settings, facts, raw_batches, batches, operations, projection
         batches=batches, operations=operations, missing_internal_resource_op_ids=missing_ids,
         algo_ops=algo_ops, prev_version=prev_version,
         frozen_op_ids=frozen, seed_results=seeds, execution_facts=execution_facts,
-        execution_fixed_op_ids=fixed, execution_completed_op_ids=completed, execution_seed_results=execution_seeds,
+        execution_completed_op_ids=completed, execution_seed_results=execution_seeds,
         execution_snapshot_revision=snapshot.revision,
         execution_snapshot_op_ids=list(snapshot.op_ids), execution_snapshot_op_count=snapshot.op_count,
         schedule_output_allowed_op_ids={op.id for op in mutable} | guarded_ids,
@@ -157,7 +147,7 @@ def _prepare(conn, settings, facts, raw_batches, batches, operations, projection
         downtime_map=downtime, resource_pool=pool, optimizer_seed_version=seed_version,
         normalized_input=settings, dispositions=dispositions,
         operation_efforts=efforts,
-        preflight_facts=facts, execution_reservations=reservations,
+        preflight_facts=facts,
         latest_plan_rows=facts.latest_plan_rows(prev_version),
         operation_sources={op.id: op.source for op in operations},
         piece_scope=piece_scope,

@@ -121,16 +121,6 @@ def resource_objects() -> Dict[str, str]:
     return objects
 
 
-def install_resources(conn) -> None:
-    for sql in resource_objects().values():
-        conn.execute(sql)
-    for kind, (table, key) in RESOURCE_ENTITY_TABLES.items():
-        conn.execute(f"""INSERT INTO WorkbenchEntityRefs(ref, kind, entity_key, alternate_key)
-            SELECT lower(hex(randomblob(24))), ?, source.{key}, source.name FROM {table} AS source
-            WHERE NOT EXISTS (SELECT 1 FROM WorkbenchEntityRefs AS r
-                WHERE r.kind = ? AND r.entity_key = source.{key} AND r.active = 1)""", (kind, kind))
-
-
 def workbench_resource_contract_issues(conn, *, structure=None) -> List[str]:
     actual = schema_objects(conn, structure=structure)
     return [("missing_workbench_resource: " if name not in actual else "bad_workbench_resource: ") + name

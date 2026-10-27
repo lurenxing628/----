@@ -4,15 +4,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Mapping, Optional, Sequence, Tuple
 
-from core.models.operation_execution_event import (
-    OperationExecutionEvent,
-    parse_operation_event_time,
-    validate_operation_execution_event_sequence,
-)
-from core.models.operation_execution_scope import OperationExecutionScope
+from core.models.operation_execution_scope import EXECUTION_STATUS_NOT_STARTED, OperationExecutionScope
 from core.models.workbench_execution import ExecutionProjection
-from data.repositories.operation_execution_event_repo import OperationExecutionEventRepo
-from data.repositories.operation_execution_state_builder import fold_operation_execution_events
 
 from .execution_ledger_adapter import adapt_ledger_facts, ledger_read_snapshot
 from .operation_execution_scope_read import scopes_by_op_id_for_plan_rows
@@ -22,20 +15,16 @@ from .operation_execution_scope_read import scopes_by_op_id_for_plan_rows
 class ExecutionFact:
     op_id: int
     batch_id: Optional[str]
-    actual_status: str
-    actual_start_time: Optional[datetime]
-    actual_end_time: Optional[datetime]
-    actual_machine_id: Optional[str]
-    actual_operator_id: Optional[str]
-    state_revision: str
-    latest_exception_impact_minutes: Optional[int] = None
-    latest_exception_handling_status: Optional[str] = None
-    latest_exception_suggest_reschedule: bool = False
+    actual_status: str = EXECUTION_STATUS_NOT_STARTED
+    actual_start_time: Optional[datetime] = None
+    actual_end_time: Optional[datetime] = None
+    actual_machine_id: Optional[str] = None
+    actual_operator_id: Optional[str] = None
+    state_revision: str = ""
     schedule_version: Optional[int] = None
     schedule_id: Optional[int] = None
     source_table: Optional[str] = None
     effective_plan_role: Optional[str] = None
-    scenario_id: Optional[str] = None
     ledger_operation_ref: Optional[str] = None
     ledger_execution_state: Optional[str] = None
     remaining_quantity: Optional[int] = None
@@ -45,21 +34,19 @@ class ExecutionFact:
     execution_protection_reasons: Tuple[str, ...] = ()
     execution_protection_content: Optional[Dict[str, Any]] = None
 
+    def __post_init__(self) -> None:
+        if not self.state_revision:
+            object.__setattr__(self, "state_revision", f"{self.op_id}:0:0")
 
-def _fact_from_events(scope: OperationExecutionScope, events: Sequence[OperationExecutionEvent]) -> ExecutionFact:
-    folded = fold_operation_execution_events(op_id=scope.op_id, batch_id=scope.batch_id, events=events)
-    exception = folded.latest_exception
+
+def _initial_fact(scope: OperationExecutionScope) -> ExecutionFact:
     return ExecutionFact(
-        op_id=scope.op_id, batch_id=folded.batch_id, actual_status=folded.current_status,
-        actual_start_time=None if folded.actual_start_time is None else parse_operation_event_time(folded.actual_start_time),
-        actual_end_time=None if folded.actual_end_time is None else parse_operation_event_time(folded.actual_end_time),
-        actual_machine_id=folded.actual_machine_id, actual_operator_id=folded.actual_operator_id,
-        state_revision=folded.state_revision,
-        latest_exception_impact_minutes=None if exception is None else exception.impact_minutes,
-        latest_exception_handling_status=None if exception is None else exception.handling_status,
-        latest_exception_suggest_reschedule=False if exception is None else bool(exception.suggest_reschedule),
-        schedule_version=scope.schedule_version, schedule_id=scope.schedule_id,
-        source_table=scope.source_table, effective_plan_role=scope.effective_plan_role, scenario_id=scope.scenario_id,
+        op_id=scope.op_id,
+        batch_id=scope.batch_id,
+        schedule_version=scope.schedule_version,
+        schedule_id=scope.schedule_id,
+        source_table=scope.source_table,
+        effective_plan_role=scope.effective_plan_role,
     )
 
 
@@ -69,11 +56,8 @@ class ExecutionFactProvider:
     具体计划页和重排保护必须按计划身份读取。
     """
 
-    def __init__(self, conn, logger=None, *, capture=None, ledger=None):
+    def __init__(self, conn, *, ledger=None):
         self.conn = conn
-        self.logger = logger
-        self.event_repo = OperationExecutionEventRepo(conn, logger=logger)
-        self.capture: Any = capture
         self.ledger = ledger
 
     def facts_by_scope(
@@ -82,33 +66,8 @@ class ExecutionFactProvider:
     ) -> Dict[OperationExecutionScope, ExecutionFact]:
         normalized = list(dict.fromkeys(scopes))
         with ledger_read_snapshot(self.conn, ledger=self.ledger) as ledger:
-            facts = self._legacy_facts(normalized)
+            facts = {scope: _initial_fact(scope) for scope in normalized}
             return adapt_ledger_facts(ledger, facts, execution_projections=execution_projections)
-
-    def _legacy_facts(self, normalized: Sequence[OperationExecutionScope]) -> Dict[OperationExecutionScope, ExecutionFact]:
-        if self.capture is not None:
-            return self._captured_facts(normalized)
-        events_by_scope = self.event_repo.list_events_by_scopes(normalized)
-        return {scope: _fact_from_events(scope, events_by_scope.get(scope, ())) for scope in normalized}
-
-    def _captured_facts(self, scopes):
-        capture = self.capture
-        if capture.execution_event_rows is None:
-            capture.execution_event_rows = {}
-            for row in capture.table("OperationExecutionEvents"):
-                scope = OperationExecutionScope(
-                    schedule_version=row["schedule_version"], schedule_id=row["schedule_id"], op_id=row["op_id"],
-                    batch_id=row["batch_id"], source_table=row["source_table"],
-                    effective_plan_role=row["effective_plan_role"], scenario_id=row["scenario_id"],
-                )
-                capture.execution_event_rows.setdefault(scope, []).append(row)
-        for scope in scopes:
-            if scope in capture.execution_facts:
-                continue
-            events = [OperationExecutionEvent.from_row(row) for row in capture.execution_event_rows.get(scope, ())]
-            validate_operation_execution_event_sequence(events)
-            capture.execution_facts[scope] = _fact_from_events(scope, events)
-        return {scope: capture.execution_facts[scope] for scope in scopes}
 
     def facts_by_op_id_for_plan_rows(
         self,

@@ -43,9 +43,8 @@
   }
   function Status({ candidate }) {
     return <><span className={'pill ' + (candidate.status === 'completed' && candidate.completeness === 'complete' ? 'ok' : 'warn')} data-candidate-status={candidate.status}>
-      <span className="dot" />{window.WorkbenchTerms.candidate_statuses[candidate.status]}
-      {candidate.completeness === 'unknown' && ' · 工序安排待确认'}</span>
-      {candidate.status === 'partial' && <small data-candidate-persisted-status={candidate.persisted_status}>计算状态：{window.WorkbenchTerms.candidate_statuses[candidate.persisted_status] || '未记录'}</small>}</>;
+      <span className="dot" />{window.WorkbenchTerms.candidate_statuses[candidate.status]}</span>
+      {candidate.status === 'partial' && <small data-candidate-persisted-status={candidate.persisted_status}>计算状态：{window.WorkbenchTerms.candidate_statuses[candidate.persisted_status]}</small>}</>;
   }
   function Catalog({ result, selectedRef, busy, query, onQuery, onSelect }) {
     const d = result && result.data;

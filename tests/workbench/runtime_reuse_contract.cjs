@@ -708,11 +708,11 @@ async function main() {
   assert.equal(narrowPlan.tasks.length, 1); assert.equal(narrowPlan.rows[0].tasks.length, 1);
   assert.strictEqual(narrowPlan.locations.get('second').item, widePlan.locations.get('second').item);
   assert.equal(graphBuilds, 0); assert.strictEqual(selectedPlan.taskIndex, planFacts.taskIndex);
-  const execution = (reports, legacy = []) => ({ execution_state: 'complete', reports, legacy_facts: legacy, data_gaps: [], remaining_quantity: 0, remaining_plan: null });
+  const execution = reports => ({ execution_state: 'complete', reports, data_gaps: [], remaining_quantity: 0, remaining_plan: null });
   const report = (id, start, end, hours) => ({ report_ref: id, report_no: id, actual_start: stamp(start), actual_end: stamp(end),
     actual_machine_ref: 'machine', actual_operator_ref: null, effective_processing_hours: hours });
   const actualData = { resources, gantt_graph: unavailableGraph(), axis_span: { start: stamp(8), end: stamp(12) }, availability: { state: 'available' }, items: [
-    { task: firstTask, deviation: { finish_late: true }, execution: execution([report('known', 8, 10, 2), report('unknown', 9, 11, null)], [{ actual_machine_ref: 'machine' }]) },
+    { task: firstTask, deviation: { finish_late: true }, execution: execution([report('known', 8, 10, 2), report('unknown', 9, 11, null)]) },
     { task: secondTask, deviation: { finish_late: false }, execution: execution([report('other', 10, 11, 1)]) }
   ] };
   const actualFacts = AM.prepare(actualData, stamp(12)), actualTimes = timeReads, actualGroup = AM.groupPrepared(actualFacts, 'machine');
@@ -720,8 +720,8 @@ async function main() {
   const allSelected = AM.selectPrepared(actualGroup, fullView), firstSelected = AM.selectPrepared(actualGroup, { ...fullView, query: 'first' });
   assert.equal(graphBuilds, 0); assert.strictEqual(firstSelected.taskIndex, actualFacts.taskIndex);
   const allActual = AM.layoutPrepared(allSelected, {}), firstActual = AM.layoutPrepared(firstSelected, {});
-  assert.deepEqual([allActual.groups[0].reportCount, allActual.groups[0].knownHours, allActual.groups[0].unknownHours, allActual.groups[0].legacyCount], [3, 3, 1, 1]);
-  assert.deepEqual([firstActual.groups[0].reportCount, firstActual.groups[0].knownHours, firstActual.groups[0].unknownHours, firstActual.groups[0].legacyCount], [2, 2, 1, 1]);
+  assert.deepEqual([allActual.groups[0].reportCount, allActual.groups[0].knownHours, allActual.groups[0].unknownHours], [3, 3, 1]);
+  assert.deepEqual([firstActual.groups[0].reportCount, firstActual.groups[0].knownHours, firstActual.groups[0].unknownHours], [2, 2, 1]);
   const firstRow = firstActual.rows.find(row => row.kind === 'actual');
   assert.strictEqual(firstRow.marks, allActual.rows.find(row => row.key === firstRow.key).marks, 'Visible layouts share prepared marks');
   const collapsedActual = AM.layoutPrepared(allSelected, { machine: true });
@@ -733,101 +733,6 @@ async function main() {
   const initialActual = actualWindow.initial(allActual); assert(Number.isFinite(initialActual.zoom));
   assert.equal(actualWindow.anchor(allActual, 'first', 'known'), ((actualFacts.facts[0].reports[0].start + actualFacts.facts[0].reports[0].end) / 2 - allActual.start) / (allActual.end - allActual.start));
   actualWindow.anchor(firstActual, null, null); assert.equal(timeReads, actualTimes, 'Default windows and zoom anchors reuse the model time facts');
-
-  // Legacy spans are display facts, never synthesized reports or elapsed-time hours.
-  load(preparedContext, 'FieldDraftModel.js'); load(preparedContext, 'WorkbenchFormat.js');
-  Object.assign(preparedContext.window.FieldContract, { quantity: String, date: String });
-  const legacyEvents = [
-    { legacy_fact_ref: 'v3-start', recorded_against_task_ref: 'scope-v3', event_type: 'start', event_time: '2026/10/12 8：00', actual_machine_ref: 'legacy-machine', actual_operator_ref: 'legacy-operator' },
-    { legacy_fact_ref: 'v3-finish', recorded_against_task_ref: 'scope-v3', event_type: 'finish', event_time: '2026-10-12  9:00', quantity_done: 10, actual_machine_ref: null, actual_operator_ref: null },
-    { legacy_fact_ref: 'v4-start', recorded_against_task_ref: 'scope-v4', event_type: 'start', event_time: '2026-10-12 10:00', actual_machine_ref: 'legacy-machine', actual_operator_ref: 'legacy-operator' },
-    { legacy_fact_ref: 'v4-finish', recorded_against_task_ref: 'scope-v4', event_type: 'finish', event_time: '2026-10-12 11:00', quantity_done: 10, actual_machine_ref: null, actual_operator_ref: null }
-  ];
-  const historicalTask = { ...task('scope-v4', 7, 12), quantity: 10, batch_quantity: 10 };
-  const historicalItem = { task: historicalTask, deviation: { complete: true, finish_deviation_minutes: -60 }, execution: {
-    ...execution([], legacyEvents), known_completed_quantity: 10, target_quantity: 10, unknown_record_count: 0, confirmed_finish: stamp(11) } };
-  const historicalData = { ...actualData, resources: resources.concat([{ ref: 'legacy-machine', label: '原设备' }, { ref: 'legacy-operator', label: '原人员' }]), items: [historicalItem] };
-  const expectedHistory = [[8, 9], [10, 11]].map(([start, end]) => ['legacy', Date.parse(stamp(start) + 'Z'), Date.parse(stamp(end) + 'Z')]);
-  const historicalFacts = AM.prepare(historicalData, stamp(12)), historicalTimes = timeReads;
-  assert.equal(historicalFacts.facts[0].legacyMarks.length, 2);
-  assert.strictEqual(historicalItem.execution.reports.length, 0);
-  let historicalLayout;
-  for (const [mode, groupId] of [['machine', 'legacy-machine'], ['operator', 'legacy-operator'], ['batch', historicalTask.batch_id]]) {
-    const grouped = AM.groupPrepared(historicalFacts, mode), selected = AM.selectPrepared(grouped, fullView), layout = AM.layoutPrepared(selected, {});
-    const group = layout.groups.find(group => group.id === groupId), member = group.members.get(historicalTask.task_ref);
-    assert.deepEqual([group.reportCount, group.knownHours, group.unknownHours], [0, null, 0]);
-    assert.equal(member.rows.length, 1); assert.equal(member.rows[0].reports.length, 0);
-    const spans = member.rows[0].marks.filter(mark => mark.legacy);
-    assert.deepEqual(Array.from(spans, mark => [mark.kind, mark.start, mark.end]), expectedHistory);
-    assert(spans[0].end < spans[1].start, 'The unworked hour stays a real gap, not one merged historical bar');
-    assert.equal(spans[0].actual_machine_ref, 'legacy-machine'); assert.equal(spans[0].actual_operator_ref, 'legacy-operator');
-    const filtered = AM.layoutPrepared(AM.selectPrepared(grouped, { ...fullView, query: 'scope-v4' }), {});
-    assert.strictEqual(filtered.rows.find(row => row.key === member.rows[0].key).marks, member.rows[0].marks);
-    AM.layoutPrepared(selected, { [groupId]: true });
-    if (mode === 'batch') historicalLayout = layout;
-  }
-  assert.equal(timeReads, historicalTimes, 'Legacy grouping, filters and collapsed layouts reuse all parsed history times');
-  const linked = { ...report('linked-v3', 8, 9, null), legacy_fact_ref: 'v3-finish', recorded_against_task_ref: 'scope-v4',
-    actual_machine_ref: 'legacy-machine', actual_operator_ref: 'legacy-operator' };
-  const mixedItem = { ...historicalItem, execution: { ...historicalItem.execution, reports: [linked] } };
-  const mixedFacts = AM.prepare({ ...historicalData, items: [mixedItem] }, stamp(12));
-  assert.deepEqual(Array.from(mixedFacts.facts[0].legacyMarks, segment => segment.legacy.legacy_fact_ref), ['v4-finish'],
-    'Linking v3 from the current v4 task covers only the referenced original scope');
-  const mixedLayout = AM.layoutPrepared(AM.selectPrepared(AM.groupPrepared(mixedFacts, 'batch'), fullView), {});
-  const mixedRow = mixedLayout.rows.find(row => row.kind === 'actual');
-  assert.equal(mixedRow.reports.length, 1); assert.strictEqual(mixedRow.reports[0], linked);
-  assert.deepEqual(Array.from(mixedRow.marks, mark => mark.kind), ['plan', 'actual', 'legacy']);
-  assert.deepEqual([mixedLayout.groups[0].reportCount, mixedLayout.groups[0].knownHours, mixedLayout.groups[0].unknownHours], [1, null, 1]);
-  const restored = AM.prepare({ ...historicalData, items: [{ ...historicalItem, execution: { ...historicalItem.execution, voided_reports: [{ report: linked }] } }] }, stamp(12));
-  assert.equal(restored.facts[0].legacyMarks.length, 2, 'Removing the linked active report restores its historical span');
-  const withLegacy = (legacy, data_gaps = []) => AM.prepare({ ...historicalData, items: [{ ...historicalItem,
-    execution: { ...historicalItem.execution, legacy_facts: legacy, data_gaps } }] }, stamp(12));
-  assert.equal(withLegacy(legacyEvents, [{ code: 'invalid_legacy_sequence' }]).facts[0].legacyMarks.length, 0);
-  assert.equal(withLegacy([legacyEvents[1]]).facts[0].legacyMarks.length, 0);
-  assert.equal(withLegacy([{ ...legacyEvents[0], event_time: stamp(10) }, legacyEvents[1]]).facts[0].legacyMarks.length, 0);
-  assert.equal(withLegacy([{ ...legacyEvents[0], event_time: 'not a time' }, legacyEvents[1]]).facts[0].legacyMarks.length, 0);
-  const unboundHistory = withLegacy(legacyEvents.slice(0, 2).map(event => ({ ...event, actual_machine_ref: null, actual_operator_ref: null })));
-  assert.equal(unboundHistory.facts[0].legacyMarks[0].actual_machine_ref, null, 'A current planned machine never supplies an unknown historical resource');
-  const unresolvedHistory = withLegacy(legacyEvents, [{ code: 'legacy_resource_identity_unresolved', legacy_fact_ref: 'v3-start', fields: ['actual_machine_ref'] }]);
-  assert.equal(unresolvedHistory.facts[0].legacyMarks[0].actual_machine_ref, null);
-  const pointFacts = withLegacy([legacyEvents[0], { ...legacyEvents[1], event_time: legacyEvents[0].event_time }]);
-  const pointLayout = AM.layoutPrepared(AM.selectPrepared(AM.groupPrepared(pointFacts, 'batch'), fullView), {}), historicalPoint = pointFacts.facts[0].legacyMarks[0].mark;
-  assert.equal(historicalPoint.kind, 'legacy-point');
-  const historicalBox = actualWindow.markBox(historicalPoint, pointLayout, 1000);
-  assert.equal(historicalBox.hitWidth, 24);
-  assert.strictEqual(actualWindow.hitMark([historicalPoint], pointLayout, 1000, 0, historicalBox.x + 10, historicalPoint.y + 12), historicalPoint);
-
-  const historyRowsHooks = hooks(); preparedContext.React = historyRowsHooks.React;
-  Object.assign(preparedContext.window, { ResourceControls: { Button: 'button' }, PointGantt: { Marker: 'history-point' } });
-  load(preparedContext, 'ActualGanttRows.jsx');
-  const graphActive = { critical: new Set(), related: new Set(), target: null }, historySelections = [];
-  const historyRowsProps = { model: historicalLayout, view: { ...fullView, mode: 'batch' }, width: 1000, viewport: 1000, left: 0, top: 0, height: 500,
-    labelWidth: 292, dense: false, active: graphActive, onSelect: (...args) => historySelections.push(args), onHover() {}, onChainTarget() {}, patch() {} };
-  const historyTree = historyRowsHooks.render(() => preparedContext.window.ActualGanttRows(historyRowsProps));
-  assert.equal(find(historyTree, 'span', props => props.className === 'fg-wait'), null, 'The empty-report placeholder never masks real history');
-  assert(find(historyTree, 'span', props => props.children.includes('0 次报工 · 历史现场记录')));
-  const historicalBarProps = find(historyTree, preparedContext.window.ActualGanttBar, props => props.mark.kind === 'legacy');
-  const historicalBar = preparedContext.window.ActualGanttBar(historicalBarProps), barButton = find(historicalBar, 'button');
-  assert(barButton.title.includes('历史事件记录 · 有效工时未记录')); assert(barButton.title.includes('有效工时：未知'));
-  barButton.onClick({ detail: 0 }); assert.strictEqual(historySelections[0][0], historicalItem); assert.equal(historySelections[0][1], undefined);
-  const historicalPointRow = pointLayout.rows.find(row => row.kind === 'actual');
-  const pointMarker = preparedContext.window.ActualGanttBar({ ...historicalBarProps, mark: historicalPoint, row: historicalPointRow, model: pointLayout });
-  assert.equal(pointMarker.type, 'history-point'); assert.equal(pointMarker.props.task.start, stamp(8)); assert.notEqual(pointMarker.props.task.start, historicalTask.start);
-  assert.equal(pointMarker.props['data-report-ref'], undefined); historyRowsHooks.unmount();
-  let historyPaint, historyPalette; const historyDenseHooks = hooks(), paintedHistoryPoints = [];
-  preparedContext.React = historyDenseHooks.React; preparedContext.getComputedStyle = () => ({ getPropertyValue: key => key });
-  preparedContext.window.GanttPresentation = { useCanvasPaint(ref, paint, palette) { historyPaint = paint; historyPalette = palette; } };
-  preparedContext.window.PointGanttModel.paint = (_, x) => paintedHistoryPoints.push(x);
-  load(preparedContext, 'ActualGanttCanvas.jsx');
-  const denseProps = { ...historyRowsProps, row: historicalPointRow, marks: historicalPointRow.marks, visibleMarks: historicalPointRow.marks,
-    model: pointLayout, selected: null, graphActive, renderMark: (mark, canvasPainted) => ({ type: 'history-overlay', props: { mark, canvasPainted, children: [] } }) };
-  const denseTree = historyDenseHooks.render(() => preparedContext.window.ActualGanttCanvas.DenseRow(denseProps));
-  const historyColors = historyPalette({}); assert(historyColors.legacy.fill); assert(historyColors['legacy-point'].fill);
-  historyPaint({ save() {}, restore() {}, setLineDash() {}, fillRect() {}, strokeRect() {} }, 1000, 88, historyColors);
-  assert.equal(paintedHistoryPoints.length, 1);
-  assert.equal(find(denseTree, 'history-overlay').canvasPainted, true); assert.strictEqual(find(denseTree, 'history-overlay').mark, historicalPoint);
-  assert(find(denseTree, 'canvas')['aria-label'].includes('方向键切换色块'));
-  historyDenseHooks.unmount();
 
   // Candidate and baseline search share their fixed facts, including hide/show of the same baseline.
   preparedContext.window.WorkbenchTerms = {};
@@ -999,8 +904,7 @@ async function main() {
 
   // Field navigation carries a locator only when the current cohort and field query can contain it.
   let navigationHooks = hooks(); const navigationEvents = [], navigationSnapshots = [], selectedRef = '7'.repeat(48);
-  const plannedOperator = '9'.repeat(48), reportedMachine = 'a'.repeat(48), reportedOperator = 'b'.repeat(48),
-    historicalMachine = 'c'.repeat(48), historicalOperator = 'd'.repeat(48);
+  const plannedOperator = '9'.repeat(48), reportedMachine = 'a'.repeat(48), reportedOperator = 'b'.repeat(48);
   actualWindow.WorkbenchPageContext.useSnapshot = value => { if (value) navigationSnapshots.push(value); };
   const navigationTask = { task_ref: selectedRef, operation_ref: '8'.repeat(48), batch_id: 'B1', sequence: 10, process_label: '加工', piece_id: 27,
     start: '2026-10-12T08:00:00', end: '2026-10-12T10:00:00', machine_ref: actualResource, operator_ref: plannedOperator, quantity: 10, batch_quantity: 10 };
@@ -1008,14 +912,11 @@ async function main() {
     execution: { execution_state: 'partial', known_completed_quantity: 0, remaining_quantity: 10, confirmed_finish: null, data_gaps: [],
       reports: [{ report_ref: 'e'.repeat(48), report_no: 'RG-SEARCH-42', actual_start: navigationTask.start, actual_end: navigationTask.end,
         actual_machine_ref: reportedMachine, actual_operator_ref: reportedOperator, effective_processing_hours: 1 }],
-      legacy_facts: [{ legacy_fact_ref: 'f'.repeat(48), recorded_against_task_ref: selectedRef, event_type: 'finish', event_time: navigationTask.end,
-        quantity_done: 10, actual_machine_ref: historicalMachine, actual_operator_ref: historicalOperator }],
       remaining_plan: { start: '2026-10-12T12:00:00', end: '2026-10-12T14:00:00', machine_ref: otherResource, operator_ref: null } } };
   actualWindow.ActualGanttAPI.load = async input => ({ meta: { as_of: '2026-10-12T12:00:00', snapshot_ref: 'navigation-snapshot' }, data: {
       scope: input, plan: { plan_ref: actualPlan, display_name: '正式计划', kind: 'official', is_current_official: true, version: 1 },
       resources: [{ ref: actualResource, label: '当前设备' }, { ref: plannedOperator, label: '计划人员' }, { ref: otherResource, label: '剩余设备专名' },
-        { ref: reportedMachine, label: '实报设备' }, { ref: reportedOperator, label: '实报人员' },
-        { ref: historicalMachine, label: '历史设备' }, { ref: historicalOperator, label: '历史人员' }],
+        { ref: reportedMachine, label: '实报设备' }, { ref: reportedOperator, label: '实报人员' }],
       items: input.batch_ids.includes('NONE') ? [] : [navigationItem], task_count: input.batch_ids.includes('NONE') ? 0 : 1, availability: { state: 'available' },
       axis_span: { start: navigationTask.start, end: '2026-10-12T16:00:00' }, execution_summary: { complete: 0, reported: 1, pending: 0, average_finish_deviation_minutes: null }, gantt_graph: {} } });
   const navigationProps = { initialContext: { plan_ref: actualPlan, task_ref: selectedRef, scope: { batch_ids: [], plan_finish_date_from: '2026-10-12', plan_finish_date_to: '2026-10-13' } },
@@ -1040,7 +941,7 @@ async function main() {
   fieldTarget = goField();
   assert.equal(Object.prototype.hasOwnProperty.call(fieldTarget, 'task_ref'), false); assert.equal(Object.prototype.hasOwnProperty.call(fieldTarget, 'operation_ref'), false);
   assert.equal(fieldTarget.scope.query, '剩余设备专名'); assert.equal(fieldTarget.return_to.context.task_ref, selectedRef);
-  for (const query of [' B1 ', '10', '加工', '27', '当前设备', '计划人员', '实报设备', '实报人员', ' rg-search-42 ', '历史设备', '历史人员']) {
+  for (const query of [' B1 ', '10', '加工', '27', '当前设备', '计划人员', '实报设备', '实报人员', ' rg-search-42 ']) {
     find(navigationTree, actualWindow.ActualGanttControls.Toolbar).patch({ query }); navigationTree = await renderNavigation();
     assert.equal(find(navigationTree, 'actual-rows').model.items.length, 1, query + ' matches the selected task');
     fieldTarget = goField();
@@ -1352,121 +1253,35 @@ async function main() {
   toolbarHooks.render(() => toolbarWindow.ActualGanttControls.Toolbar({ ...toolbarProps, width: 1000 })); assert.equal(deadlineVisits, 3);
   assert.deepEqual(find(toolbar, 'select').children.flat().map(option => option.props.children.join('')), ['全部工序 (3)', '已晚完成 (1)', '到期未确认完成 (2)', '剩余安排预计晚完成 (1)']);
   // A first historical supplement preserves the selected original scope's
-  // start/end, including legacy separators, padding and minute storage. It never takes the
-  // aggregate start from another plan or replaces known time with now.
   const fieldContext = vm.createContext({ window: { APSResourceContract: { failure: message => new Error(message) },
     WorkbenchTerms: { execution_states: {}, report_actions: {} }, WorkbenchFormat: {} } });
   load(fieldContext, 'WorkbenchFormat.js'); load(fieldContext, 'FieldContract.js'); load(fieldContext, 'FieldDraftModel.js');
   const field = fieldContext.window.FieldDraftModel, contract = fieldContext.window.FieldContract;
-  const legacy = { legacy_fact_ref: 'selected-finish', event_type: 'finish', recorded_against_task_ref: 'selected-plan', event_time: '2026-09-09  10:00', quantity_done: 10 };
-  const legacyTask = { task_ref: 'current-task', operation_ref: 'current-operation', plan_ref: 'current-plan', execution: {
-    write_context: { write_token: null, capabilities: {}, blocked_reasons: [] }, first_actual_start: '2026-09-01T00:00:00', known_completed_quantity: 10, target_quantity: 10, remaining_quantity: 0, unknown_record_count: 0, data_gaps: [], legacy_facts: [
-      { legacy_fact_ref: 'other-start', event_type: 'start', recorded_against_task_ref: 'other-plan', event_time: '2026-09-01 00:00:00', actual_machine_ref: 'other-machine', actual_operator_ref: 'other-operator' },
-      { legacy_fact_ref: 'selected-start', event_type: 'start', recorded_against_task_ref: 'selected-plan', event_time: '2026-09-08  08:00', actual_machine_ref: 'original-machine', actual_operator_ref: 'original-operator' },
-      legacy
-    ] } };
-  const knownLegacy = field.legacyValues(legacyTask, legacy.legacy_fact_ref);
-  const initialized = field.initialize({ task: legacyTask, legacy, record: null, action: 'create', knownLegacy, now: new Date('2030-01-01T00:00:00Z') });
-  assert.equal(initialized.draft.actual_start, '2026-09-08T08:00:00');
-  assert.equal(initialized.draft.actual_end, '2026-09-09T10:00:00');
-  assert.equal(initialized.draft.actual_machine_ref, 'original-machine');
-  assert.equal(initialized.draft.actual_operator_ref, 'original-operator');
-  assert.equal(contract.input(initialized.draft, null, 'create').actual_end, '2026-09-09T10:00:00');
-  for (const [start, end] of [
-    ['2026/09/08 08:00', '2026/09/09 10:00'],
-    ['2026-09-08 08：00', '2026-09-09 10：00'],
-    ['2026-9-8 8:0', '2026-9-9 10:0'],
-    ['2026-09- 8 08:00', '2026-09- 9 10:00']
-  ]) {
-    legacyTask.execution.legacy_facts[1].event_time = start;
-    legacy.event_time = end;
-    const normalized = field.initialize({ task: legacyTask, legacy, record: null, action: 'create' });
-    const values = contract.input(normalized.draft, null, 'create');
-    assert.equal(values.actual_start, '2026-09-08T08:00:00');
-    assert.equal(values.actual_end, '2026-09-09T10:00:00');
-  }
-  const noStart = { legacy_fact_ref: 'no-start-finish', event_type: 'finish', recorded_against_task_ref: 'no-start', event_time: '2026-09-09', quantity_done: 10 };
-  legacyTask.execution.legacy_facts.push(noStart);
-  const noStartDraft = field.initialize({ task: legacyTask, record: null, action: 'create', legacy: noStart }).draft;
-  assert.equal(noStartDraft.actual_start, ''); assert.equal(noStartDraft.actual_end, '2026-09-09T00:00:00');
-  assert.equal(Object.prototype.hasOwnProperty.call(knownLegacy, 'effective_processing_hours'), false);
-  assert.equal(Object.prototype.hasOwnProperty.call(knownLegacy, 'remark'), false);
-  const unresolvedValues = field.legacyValues({ ...legacyTask, execution: { ...legacyTask.execution, data_gaps: [
-    { code: 'legacy_resource_identity_unresolved', legacy_fact_ref: 'selected-start', fields: ['actual_machine_ref'] }
-  ] } }, legacy.legacy_fact_ref);
-  assert.equal(Object.prototype.hasOwnProperty.call(unresolvedValues, 'actual_machine_ref'), false); assert.equal(unresolvedValues.actual_operator_ref, 'original-operator');
+  const currentTask = { task_ref: 'current-task', operation_ref: 'current-operation', plan_ref: 'current-plan',
+    start: '2026-09-08T08:00:00', end: '2026-09-09T10:00:00', machine_ref: 'original-machine', operator_ref: 'original-operator',
+    execution: { write_context: { write_token: null, capabilities: {}, blocked_reasons: [] }, first_actual_start: '2026-09-01T00:00:00',
+      known_completed_quantity: 10, target_quantity: 10, remaining_quantity: 0, unknown_record_count: 0, data_gaps: [],
+      reports: [{ recorded_against_task_ref: 'current-task', report_no: 'R1', actual_start: '2026-09-08T08:00:00', actual_end: '2026-09-09T10:00:00' }] } };
+  const initialized = field.initialize({ task: currentTask, record: null, action: 'create', now: new Date('2030-01-01T00:00:00Z') });
+  assert.equal(initialized.draft.actual_start, '2026-09-09T10:00:00');
+  assert.equal(initialized.draft.actual_end, '2030-01-01T08:00:00');
+  assert.equal(initialized.draft.actual_machine_ref, '');
+  assert.equal(initialized.draft.actual_operator_ref, '');
+  assert.equal(contract.input(initialized.draft, null, 'create').actual_end, '2030-01-01T08:00:00');
   const fieldHooks = hooks(); fieldContext.React = fieldHooks.React;
   fieldContext.window.FieldControls = { Button: 'button', ErrorBox: 'error', Feedback: 'feedback' };
   fieldContext.window.ResourceControls = { Field: 'field', Choice: 'choice' };
   load(fieldContext, 'FieldEditorFields.jsx'); load(fieldContext, 'FieldEditor.jsx');
-  const renderFieldInputs = (overrides = {}) => {
-    const props = { task: legacyTask, record: null, legacy, action: 'create', adapter: {}, draft: initialized.draft, suggestions: {}, disabled: false, first: {}, change() {}, ...overrides };
-    props.knownLegacy = field.legacyValues(props.task, props.legacy ? props.legacy.legacy_fact_ref : props.record && props.record.legacy_fact_ref);
-    return fieldContext.window.FieldEditorFields(props);
-  };
+  const renderFieldInputs = (overrides = {}) => fieldContext.window.FieldEditorFields({
+    task: currentTask, record: null, action: 'create', adapter: {}, draft: initialized.draft, suggestions: {}, disabled: false, first: {}, change() {}, ...overrides
+  });
   const fieldInput = (tree, label) => find(tree, 'input', props => props['aria-label'] === label);
-  const knownTree = renderFieldInputs();
-  assert.equal(fieldInput(knownTree, '本次完成数量').disabled, true);
-  assert.equal(find(knownTree, 'output', props => props['aria-label'] === '已知累计').children[0], 10, 'An already counted legacy quantity is not previewed as 20');
-  assert.equal(find(knownTree, 'button', props => props.children.includes('填 0')).disabled, true);
-  assert.equal(find(knownTree, 'button', props => props.children.includes('填剩余数')).disabled, true, 'The remaining shortcut cannot change a protected quantity');
-  assert(find(knownTree, 'small', props => props.children.includes(' · 旧完工数量受保护，本次保留原累计数量')));
-  assert.equal(fieldInput(knownTree, '有效工时（小时）').disabled, false);
-  assert.equal(find(knownTree, 'textarea', props => props['aria-label'] === '作业备注').disabled, false);
-  const knownRecord = { legacy_fact_ref: legacy.legacy_fact_ref, completed_quantity: 10, actual_start: initialized.draft.actual_start, actual_end: initialized.draft.actual_end,
+  const regularRecord = { completed_quantity: 0, actual_start: initialized.draft.actual_start, actual_end: initialized.draft.actual_end,
     effective_processing_hours: 1, actual_machine_ref: 'original-machine', actual_operator_ref: 'original-operator', remark: '原备注' };
-  const knownCorrection = renderFieldInputs({ record: knownRecord, legacy: null, action: 'correct', draft: contract.draft(knownRecord) });
-  assert.equal(fieldInput(knownCorrection, '本次完成数量').disabled, true);
-  assert.equal(fieldInput(knownCorrection, '有效工时（小时）').disabled, false);
-  assert.equal(find(knownCorrection, 'textarea', props => props['aria-label'] === '作业备注').disabled, false);
-  const deviatedRecord = { ...knownRecord, completed_quantity: 9 };
-  assert.equal(fieldInput(renderFieldInputs({ record: deviatedRecord, legacy: null, action: 'correct', draft: contract.draft(deviatedRecord) }), '本次完成数量').disabled, false,
-    'A historical record which already deviates from the protected fact can still be repaired');
-  const missingQuantityRecord = { ...knownRecord, completed_quantity: null };
-  for (const action of ['correct', 'supplement']) {
-    const repairedQuantity = renderFieldInputs({ record: missingQuantityRecord, legacy: null, action,
-      draft: { ...contract.draft(missingQuantityRecord), completed_quantity: '10' } });
-    assert.equal(fieldInput(repairedQuantity, '本次完成数量').disabled, false);
-    assert.equal(find(repairedQuantity, 'output', props => props['aria-label'] === '已知累计').children[0], 10,
-      'Repairing a linked report quantity replaces the counted legacy quantity instead of adding it twice');
-  }
-  const unknownLegacy = { ...noStart, legacy_fact_ref: 'unknown-finish', quantity_done: null };
-  const unknownTask = { ...legacyTask, execution: { ...legacyTask.execution, known_completed_quantity: 0, legacy_facts: [unknownLegacy] } };
-  const unknownValues = field.legacyValues(unknownTask, unknownLegacy.legacy_fact_ref);
-  assert.equal(Object.prototype.hasOwnProperty.call(unknownValues, 'completed_quantity'), false);
-  unknownLegacy.quantity_done = undefined;
-  assert.equal(Object.prototype.hasOwnProperty.call(field.legacyValues(unknownTask, unknownLegacy.legacy_fact_ref), 'completed_quantity'), false);
-  unknownLegacy.quantity_done = null;
-  const unknownDraft = field.initialize({ task: unknownTask, legacy: unknownLegacy, record: null, action: 'create', knownLegacy: unknownValues }).draft;
-  assert.equal(unknownDraft.completed_quantity, '');
-  const unknownTree = renderFieldInputs({ task: unknownTask, legacy: unknownLegacy, draft: { ...unknownDraft, completed_quantity: '10' } });
-  assert.equal(fieldInput(unknownTree, '本次完成数量').disabled, false);
-  assert.equal(fieldInput(unknownTree, '有效工时（小时）').disabled, false);
-  assert.equal(find(unknownTree, 'textarea', props => props['aria-label'] === '作业备注').disabled, false);
-  assert.equal(find(unknownTree, 'output', props => props['aria-label'] === '已知累计').children[0], 10);
-  assert.equal(find(unknownTree, 'button', props => props.children.includes('填剩余数')).disabled, false);
-  const unknownRecord = { ...knownRecord, legacy_fact_ref: unknownLegacy.legacy_fact_ref };
-  const unknownCorrection = renderFieldInputs({ task: { ...unknownTask, execution: { ...unknownTask.execution, known_completed_quantity: 10 } },
-    record: unknownRecord, legacy: null, action: 'correct', draft: { ...contract.draft(unknownRecord), completed_quantity: '9' } });
-  assert.equal(fieldInput(unknownCorrection, '本次完成数量').disabled, false);
-  assert.equal(find(unknownCorrection, 'output', props => props['aria-label'] === '已知累计').children[0], 9);
-  const regularRecord = { ...knownRecord, legacy_fact_ref: null, completed_quantity: 0 };
-  assert.equal(fieldInput(renderFieldInputs({ record: regularRecord, legacy: null, action: 'correct', draft: contract.draft(regularRecord) }), '本次完成数量').disabled, false);
-  assert.equal(fieldInput(renderFieldInputs({ record: regularRecord, legacy: null, action: 'supplement', draft: contract.draft(regularRecord) }), '本次完成数量').disabled, true,
+  assert.equal(fieldInput(renderFieldInputs({ record: regularRecord, action: 'correct', draft: contract.draft(regularRecord) }), '本次完成数量').disabled, false);
+  assert.equal(fieldInput(renderFieldInputs({ record: regularRecord, action: 'supplement', draft: contract.draft(regularRecord) }), '本次完成数量').disabled, true,
     'Supplement still protects an ordinary report whose known quantity is zero');
-  let legacyPreparations = 0, legacyScopeScans = 0, editableFocuses = 0;
-  const prepareLegacyValues = field.legacyValues;
-  field.legacyValues = (...args) => { legacyPreparations++; return prepareLegacyValues(...args); };
-  legacyTask.execution.legacy_facts.filter = function (...args) { legacyScopeScans++; return Array.prototype.filter.apply(this, args); };
-  const editorProps = { task: legacyTask, record: null, legacy, action: 'create', adapter: {}, command: { phase: 'editing', locked: false, clearRejection: () => false }, onDraft: () => {} };
-  const renderLegacyEditor = () => fieldHooks.render(() => fieldContext.window.FieldEditor(editorProps));
-  const editorTree = renderLegacyEditor(), editorFields = find(editorTree, fieldContext.window.FieldEditorFields);
-  find(editorTree, 'form').ref.current = { scrollIntoView() {}, querySelector: () => ({ focus() { editableFocuses++; } }) };
-  editorFields.first.current = { disabled: true, focus() { assert.fail('A protected quantity is not the initial focus target'); } };
-  fieldHooks.flush(); editorFields.change('remark', '补齐工时'); const changedEditor = renderLegacyEditor();
-  assert.strictEqual(find(changedEditor, fieldContext.window.FieldEditorFields).knownLegacy, editorFields.knownLegacy);
-  assert.deepEqual([legacyPreparations, legacyScopeScans, editableFocuses], [1, 1, 1], 'The editor prepares legacy protection once and shares it with initialization and fields');
-  delete legacyTask.execution.legacy_facts.filter; field.legacyValues = prepareLegacyValues; fieldHooks.unmount();
+  fieldHooks.unmount();
 
   // Closing a completed file command consumes it once and refreshes without the old snapshot.
   const fieldWorkspaceHooks = hooks(), fieldWorkspaceReads = []; let fieldResets = 0;

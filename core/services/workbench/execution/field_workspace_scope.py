@@ -8,7 +8,7 @@ from core.shared.strict_json import load_strict_json
 
 from .actual_gantt_scope import matches_execution_resource
 
-STATES = ('unreported', 'started', 'partial', 'paused', 'exception', 'complete')
+STATES = ('unreported', 'started', 'partial', 'complete')
 FILTERS = ('plan_ref', 'query', 'state', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'range_start', 'range_end', 'batch_ids')
 PARAMETERS = FILTERS + ('page', 'size', 'snapshot_ref', 'source', 'task_ref', 'operation_ref')
 
@@ -93,14 +93,12 @@ def page_input(value):
     return tuple(result)
 
 
-def matches(task, scope, labels):
+def matches(task, scope):
     if scope.get('query'):
         searchable = [task['batch_id'], task['operation_label'], task['part_name'], task['piece_id'],
                       task['planned_machine_label'], task['planned_operator_label']]
         for report in task['execution']['reports']:
             searchable.extend(report[key] for key in ('report_no', 'actual_machine_label', 'actual_operator_label'))
-        for fact in task['execution']['legacy_facts']:
-            searchable.extend(labels.get(fact[key]) for key in ('actual_machine_ref', 'actual_operator_ref'))
         if scope['query'].casefold() not in ' '.join(value for value in searchable if isinstance(value, str)).casefold():
             return False
     return _matches_resource(task, scope)

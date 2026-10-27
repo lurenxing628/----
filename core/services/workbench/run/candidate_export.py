@@ -17,11 +17,10 @@ HEADERS = ("记录类型", "排产编号", "候选方案编号", "候选方案�
            "任务来源", "排产时保持原安排", "设备名称", "人员名称", "供应商名称", "排产时报工状态", "未安排原因", "数据缺项")
 # 存的是英文代号，写进导出格子时换成用户看得懂的说法；代号本身留在接口里不动。
 RECORD_KINDS = {"task": "工序安排", "unplanned_operation": "未安排工序", "candidate": "空范围"}
-CANDIDATE_STATUS = {"completed": "已排完", "partial": "部分排完", "failed": "没排成", "skipped": "本次跳过"}
-COMPLETENESS = {"complete": "完整", "partial": "不完整", "no_result": "没有结果", "unknown": "暂无数据"}
+CANDIDATE_STATUS = {"completed": "已排完", "partial": "部分排完"}
+COMPLETENESS = {"complete": "完整", "partial": "不完整"}
 TASK_SOURCES = {"internal": "自制", "external": "外协"}
-REPORT_STATES = {"unreported": "待报工", "started": "已开工", "partial": "部分完成",
-                 "paused": "已暂停", "exception": "异常", "complete": "已完工"}
+REPORT_STATES = {"unreported": "待报工", "started": "已开工", "partial": "部分完成", "complete": "已完工"}
 
 
 def _text(texts, value):

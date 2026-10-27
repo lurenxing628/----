@@ -81,7 +81,7 @@ class WorkbenchRunService:
         run_ref = new_run_ref()
         accepted_at = self.clock().isoformat(timespec="microseconds")
         facts_text = prepared.capture.content()
-        capture = {"input": prepared.settings, "facts_text": facts_text, "facts_hash": None,
+        capture = {"input": prepared.settings, "facts_text": facts_text,
                    "execution": [row.to_dict() for row in prepared.execution_projections],
                    "baseline": prepared.baseline, "run_options": prepared.run_options}
         facts = GenerationFacts(capture)
@@ -158,7 +158,7 @@ class WorkbenchRunService:
         def mutate(admission):
             prepared = admission.prepared
             ref = self.repo.insert(request_key=request_key, input_ref=input_ref, settings=prepared.settings,
-                facts_hash=None, facts_json=admission.capture["facts_text"],
+                facts_json=admission.capture["facts_text"],
                 projections=prepared.execution_projections, baseline=prepared.baseline,
                 now=admission.accepted_at, run_ref=admission.run_ref)
             self.repo.insert_admission_read_model(ref, admission.read_models["scope"], admission.read_models["decision"])

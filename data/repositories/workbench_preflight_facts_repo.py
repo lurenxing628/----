@@ -13,7 +13,7 @@ from .sqlite_rows import raw_projection
 
 PREFLIGHT_TABLES = ("Batches", "BatchOperations", "BatchExternalContexts", "Parts", "PartOperations", "ExternalGroups", "BatchMaterials", "BatchMaterialReviews", "BatchMaterialStages", "BatchMaterialArrivals", "BatchQuantitySplits",
                     "Machines", "MachineOpTypes", "Operators", "OperatorMachine", "OperatorSkill", "OpTypes", "Suppliers",
-                    "WorkbenchSupplierOpTypes", "WorkbenchOperatorProfiles", "OperationExecutionEvents", "Schedule",
+                    "WorkbenchSupplierOpTypes", "WorkbenchOperatorProfiles", "Schedule",
                     "WorkbenchEntityRefs", "WorkbenchPlanSourceRefs", "ScheduleConfig")
 
 

@@ -11,10 +11,12 @@ from .database_bootstrap import (
     build_schema_exec_script as _build_schema_exec_script,
 )
 from .migration_common import fallback_log
-from .migration_runner import migrate_with_backup, preflight_migration_contract
 from .migration_state import (
     CURRENT_SCHEMA_VERSION,
     MigrationContractError,
+)
+from .migration_state import (
+    build_outdated_schema_version_error as _build_outdated_schema_version_error,
 )
 from .migration_state import (
     ensure_current_schema_contract as _ensure_current_schema_contract,
@@ -125,19 +127,20 @@ def _ensure_no_user_tables_db_can_bootstrap(
             [
                 f"检测到数据库没有任何业务表（SchemaVersion={int(initial_version)}）。",
                 "只有普通首次启动允许初始化全新空库；恢复校验不会用当前 schema.sql 静默补齐成新库。",
-                "请恢复完整备份，或先用能正确迁移该数据库的程序版本修复结构后再重试。",
+                "请恢复完整备份，或重建与当前程序版本匹配的数据库后再重试。",
             ]
         )
     )
 
 
 def ensure_schema(
-    db_path: str, logger=None, schema_path: Optional[str] = None, backup_dir: Optional[str] = None, *, full_data: bool = False
+    db_path: str, logger=None, schema_path: Optional[str] = None, *, full_data: bool = False
 ) -> None:
     """
-    确保数据库表结构存在。
+    确保数据库表结构存在且符合当前版本契约。
 
-    新库按声明建表，当前版本普通启动只验证结构；迁移及 full_data=True 的外部恢复验证完整数据合同。
+    新库按声明建表并直接提升至 CURRENT_SCHEMA_VERSION；当前版本验证结构（full_data=True 时验证完整数据合同）；
+    低版本非空库直接抛 MigrationContractError 阻断启动，不执行历史增量迁移。
     """
     schema_path = resolve_schema_path(schema_path)
 
@@ -146,25 +149,29 @@ def ensure_schema(
         try:
             sql = load_schema_sql(schema_path)
 
-            # 仅在库中不存在任何业务表时才执行 schema.sql 建表。
-            # 旧 schema 的空表库不能走这里，否则 CREATE TABLE IF NOT EXISTS
-            # 不会修正既有表结构，后续索引/新列依赖会直接失败。
             initial_version = _get_schema_version(conn)
             _ensure_schema_version_not_newer(initial_version, supported_version=CURRENT_SCHEMA_VERSION)
             if initial_version == CURRENT_SCHEMA_VERSION:
                 # One unchanged current-schema validation owns one transaction.
                 conn.execute("BEGIN")
                 _ensure_current_schema_contract(conn, schema_version=initial_version, schema_sql=sql, full_data=full_data)
+                current_version = initial_version
             elif _has_no_user_tables(conn):
                 _ensure_no_user_tables_db_can_bootstrap(conn, initial_version, full_data=full_data)
                 conn.executescript(_build_schema_exec_script(sql))
-
-            # 确保 SchemaVersion 表存在，并获取当前版本
-            if initial_version > 0:
-                current_version = initial_version
-            else:
                 current_version = _ensure_schema_version(conn, logger=logger, schema_sql=sql, full_data=full_data)
                 _ensure_schema_version_not_newer(current_version, supported_version=CURRENT_SCHEMA_VERSION)
+            elif initial_version <= 0:
+                current_version = _ensure_schema_version(conn, logger=logger, schema_sql=sql, full_data=full_data)
+                _ensure_schema_version_not_newer(current_version, supported_version=CURRENT_SCHEMA_VERSION)
+            else:
+                current_version = initial_version
+
+            if current_version < CURRENT_SCHEMA_VERSION:
+                err = _build_outdated_schema_version_error(current_version, supported_version=CURRENT_SCHEMA_VERSION)
+                fallback_log(logger, "error", str(err))
+                raise err
+
             conn.commit()
             fallback_log(logger, "info", "数据库结构检查完成（已确保所有表存在）。")
         except Exception as init_exc:
@@ -176,25 +183,3 @@ def ensure_schema(
             conn.close()
         except Exception as e:
             fallback_log(logger, "warning", f"数据库连接关闭失败：{e}")
-
-    # 需要迁移（ALTER TABLE / 数据清洗等）：迁移前先备份，失败可回滚
-    if current_version < CURRENT_SCHEMA_VERSION:
-        try:
-            preflight_migration_contract(
-                db_path,
-                to_version=CURRENT_SCHEMA_VERSION,
-                schema_sql=sql,
-                connection_factory=get_connection,
-            )
-        except MigrationContractError as e:
-            fallback_log(logger, "error", str(e))
-            raise
-        migrate_with_backup(
-            db_path,
-            from_version=current_version,
-            to_version=CURRENT_SCHEMA_VERSION,
-            backup_dir=backup_dir,
-            schema_sql=sql,
-            logger=logger,
-            connection_factory=get_connection,
-        )

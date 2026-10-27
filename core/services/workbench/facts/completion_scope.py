@@ -101,15 +101,12 @@ def completion_groups(candidates: Sequence[Mapping[str, Any]]) -> Sequence[Dict[
     """Group equal completed batch sets; arrangement equality remains separate."""
     groups = {}
     for candidate in candidates:
-        scope = candidate["completion_scope"]
-        available = scope["source_available"] and candidate["persisted_status"] == "completed"
-        refs = tuple(sorted(scope["complete_batch_refs"])) if available else ()
-        key = available, refs
-        if key not in groups:
-            groups[key] = {"source_available": available, "complete_batch_refs": list(refs), "candidate_refs": []}
-        groups[key]["candidate_refs"].append(candidate["candidate_ref"])
+        refs = tuple(sorted(candidate["completion_scope"]["complete_batch_refs"]))
+        if refs not in groups:
+            groups[refs] = {"source_available": True, "complete_batch_refs": list(refs), "candidate_refs": []}
+        groups[refs]["candidate_refs"].append(candidate["candidate_ref"])
     result = list(groups.values())
     for group in result:
         group["candidate_refs"].sort()
-    result.sort(key=lambda row: (not row["source_available"], row["complete_batch_refs"], row["candidate_refs"]))
+    result.sort(key=lambda row: (row["complete_batch_refs"], row["candidate_refs"]))
     return result

@@ -14,7 +14,6 @@ from pathlib import Path
 import pytest
 
 from core.infrastructure.transaction import TransactionManager
-from core.infrastructure.workbench_process_workflow_schema import install_process_workflow
 from core.models.content import content_text
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.process.mutations import WorkbenchProcessMutationService
@@ -30,11 +29,10 @@ KEY = "process-command-00000001"
 @pytest.fixture(name="stage_conn")
 def stage_database(schema_conn):
     with TransactionManager(schema_conn).transaction(begin_immediate=True):
-        install_process_workflow(schema_conn)
-    seed_process(schema_conn)
+        seed_process(schema_conn)
     schema_conn.execute("ALTER TABLE PartOperations ADD COLUMN private_legacy TEXT")
     schema_conn.execute("UPDATE PartOperations SET private_legacy=' keep hidden ',created_at='2000-01-01 00:00:00'")
-    schema_conn.execute("INSERT INTO Suppliers(supplier_id,name,op_type_id,default_days) VALUES ('PROC-S2','second',NULL,4.5)")
+    schema_conn.execute("INSERT INTO Suppliers(supplier_id,name,default_days) VALUES ('PROC-S2','second',4.5)")
     schema_conn.execute("INSERT INTO WorkbenchSupplierOpTypes VALUES ('PROC-S2','PROC-EX')")
     schema_conn.execute("""INSERT INTO BatchOperations(op_code,batch_id,seq,op_type_name,source,setup_hours,unit_hours)
         VALUES ('STAGE-OLD','PROC-B',10,'historical','internal',7,8)""")
@@ -352,7 +350,6 @@ def profile_source_contents():
     files = [Path(__file__), root / "schema.sql", root / "core/infrastructure/workbench_metadata_schema.py",
              root / "core/infrastructure/workbench_process_schema.py", root / "core/services/process/workflow_state.py",
              root / "core/models/workbench_process_commands.py", root / "core/infrastructure/migration_state.py",
-             root / "core/infrastructure/migrations/__init__.py", root / "core/infrastructure/migrations/v24.py",
              root / "core/infrastructure/workbench_plan_identity_schema.py"]
     files.extend(sorted((root / "core/services/workbench/process").rglob("*.py")))
     files.append(root / "core/services/workbench/facts/process_file_xml.py")

@@ -23,6 +23,6 @@ def execution_projections(facts, operations, *, prepared=None):
 
 
 def is_protected(projection, op):
-    return bool(projection["reports"] or projection["legacy_facts"]
+    return bool(projection["reports"]
                 or projection["first_actual_start"] or projection["confirmed_finish"]
                 or projection["execution_state"] != "unreported" or op["status"] in ("processing", "completed"))

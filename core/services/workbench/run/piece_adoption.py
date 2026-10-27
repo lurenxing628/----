@@ -95,7 +95,7 @@ def _prepare_piece_validation_context(conn, prepared):
         "quantities": {work.op_id: work.target_quantity for work in scope.operations},
         "actual_intervals": actual_intervals,
         "downtime": adoption_downtimes(prepared),
-        "actual": prepared.execution_fixed_op_ids | prepared.execution_completed_op_ids,
+        "actual": prepared.execution_completed_op_ids,
     }
 
 

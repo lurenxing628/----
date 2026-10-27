@@ -1,13 +1,12 @@
-"""正式方案可派工反馈，历史和对比方案拒绝写入。"""
+"""正式方案可派工反馈，历史版本和对比方案回退拒绝写入。"""
 
 from __future__ import annotations
+
+import pytest
 
 from core.infrastructure.database import ensure_schema, get_connection
 from core.models.schedule_plan_role import (
     ROLE_ADOPTED,
-    ROLE_BASELINE_BEST,
-    ROLE_CRITICAL_BEST,
-    SOURCE_CANDIDATE_ROWS,
     SOURCE_SCHEDULE,
 )
 from core.services.common.plan_query import SchedulePlanQueryService
@@ -22,9 +21,6 @@ EXPECTED_PLAN_IDENTITY_KEYS = (
     "plan_resolution_status",
     "source_table",
     "source_row_id",
-    "candidate_id",
-    "candidate_key",
-    "scenario_id",
     "schedule_result_status",
     "result_summary_parse_failed",
     "result_summary_parse_reason",
@@ -32,7 +28,6 @@ EXPECTED_PLAN_IDENTITY_KEYS = (
     "label",
     "user_label",
     "is_official",
-    "is_preview",
     "is_current_executable_version",
     "is_current_executable_official_version",
     "is_superseded_by_newer_version",
@@ -45,7 +40,7 @@ EXPECTED_PLAN_IDENTITY_KEYS = (
 
 def _connect_fresh_schema(tmp_path):
     db_path = tmp_path / "aps.db"
-    ensure_schema(str(db_path), schema_path=str(SCHEMA_PATH), backup_dir=str(tmp_path / "backups"))
+    ensure_schema(str(db_path), schema_path=str(SCHEMA_PATH))
     return get_connection(str(db_path))
 
 
@@ -80,86 +75,9 @@ def _seed_base(conn) -> None:
     )
 
 
-def _seed_candidates(conn) -> None:
-    adopted_id = conn.execute(
-        "INSERT INTO ScheduleCandidate(version,candidate_key,candidate_label,candidate_kind,status,graph_enabled,detail_saved) "
-        "VALUES (?,'adopted',?,'baseline','completed','no','no')", (VERSION, '最终采用'),
-    ).lastrowid
-    baseline_id = conn.execute(
-        "INSERT INTO ScheduleCandidate(version,candidate_key,candidate_label,candidate_kind,status,graph_enabled,detail_saved) "
-        "VALUES (?,'baseline_best','原算法候选','baseline','completed','no','yes')", (VERSION,),
-    ).lastrowid
-    assert adopted_id is not None and baseline_id is not None
-    conn.executemany(
-        "INSERT INTO ScheduleCandidateRows(version,candidate_id,op_id,machine_id,operator_id,start_time,end_time,lock_status) "
-        "VALUES (?,?,?,?,?,?,?,'locked')",
-        [(VERSION, baseline_id, *row) for row in [
-            (10, 'M-CANDIDATE', 'O-CANDIDATE', '2026-05-05 13:00:00', '2026-05-05 14:00:00')
-        ]],
-    )
-    conn.executemany(
-        "INSERT INTO ScheduleCandidateSelection(version,role,candidate_id,source_table) VALUES (?,?,?,?)",
-        [(VERSION, ROLE_ADOPTED, adopted_id, SOURCE_SCHEDULE),
-         (VERSION, ROLE_BASELINE_BEST, baseline_id, SOURCE_CANDIDATE_ROWS)],
-    )
-
-
-def _seed_scenario(conn) -> str:
-    scenario_id = "scenario-plain"
-    conn.execute(
-        """
-        INSERT INTO ScheduleAdjustmentScenario(
-            scenario_id, source_draft_id, base_version, base_plan_role,
-            base_source_table, base_candidate_id, base_candidate_key,
-            scenario_name, status, validation_status, issue_count, row_count, created_by
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            scenario_id,
-            "draft-plain",
-            VERSION,
-            ROLE_ADOPTED,
-            SOURCE_SCHEDULE,
-            None,
-            "adopted",
-            "",
-            "active",
-            "valid",
-            0,
-            1,
-            "pytest",
-        ),
-    )
-    conn.execute(
-        """
-        INSERT INTO ScheduleAdjustmentScenarioRow(
-            scenario_id, source_table, source_row_id, op_id, machine_id, operator_id,
-            start_time, end_time, lock_status, is_changed
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            scenario_id,
-            SOURCE_SCHEDULE,
-            80,
-            10,
-            "M-CANDIDATE",
-            "O-CANDIDATE",
-            "2026-05-06 08:00:00",
-            "2026-05-06 09:00:00",
-            "unlocked",
-            "yes",
-        ),
-    )
-    return scenario_id
-
-
 def _seed_db(tmp_path):
     conn = _connect_fresh_schema(tmp_path)
     _seed_base(conn)
-    _seed_candidates(conn)
-    _seed_scenario(conn)
     conn.commit()
     return conn
 
@@ -189,7 +107,6 @@ def test_current_adopted_plan_identity_can_dispatch_and_write_feedback(tmp_path)
         assert identity["source_row_id"] == 80
         assert identity["user_label"] == "正式采用方案"
         assert identity["is_official"] is True
-        assert identity["is_preview"] is False
         assert identity["is_current_executable_version"] is True
         assert identity["is_current_executable_official_version"] is True
         assert identity["is_superseded_by_newer_version"] is False
@@ -202,7 +119,7 @@ def test_current_adopted_plan_identity_can_dispatch_and_write_feedback(tmp_path)
         conn.close()
 
 
-def test_history_candidate_fallback_and_same_source_comparison_cannot_write_feedback(tmp_path) -> None:
+def test_history_and_comparison_role_fallback_cannot_write_feedback(tmp_path) -> None:
     conn = _seed_db(tmp_path)
     try:
         service = SchedulePlanQueryService(conn)
@@ -212,46 +129,8 @@ def test_history_candidate_fallback_and_same_source_comparison_cannot_write_feed
             {"is_superseded_by_newer_version": True, "can_dispatch": False, "can_write_feedback": False},
         )
 
-        candidate_identity = _identity_dict(service.resolve_plan(VERSION, ROLE_BASELINE_BEST))
-        _assert_identity_fields(
-            candidate_identity,
-            {
-                "user_label": "对比参考方案",
-                "source_table": SOURCE_CANDIDATE_ROWS,
-                "detail_saved": True,
-                "can_dispatch": False,
-                "can_write_feedback": False,
-            },
-        )
-
-        conn.execute(
-            """
-            UPDATE ScheduleCandidateSelection
-               SET source_table = ?
-             WHERE version = ? AND role = ?
-            """,
-            (SOURCE_SCHEDULE, VERSION, ROLE_BASELINE_BEST),
-        )
-        conn.commit()
-        same_source_identity = _identity_dict(service.resolve_plan(VERSION, ROLE_BASELINE_BEST))
-        _assert_identity_fields(
-            same_source_identity,
-            {
-                "source_table": SOURCE_SCHEDULE,
-                "user_label": "对比参考方案",
-                "can_dispatch": False,
-                "can_write_feedback": False,
-            },
-        )
-
-        fallback_identity = _identity_dict(service.resolve_plan(VERSION, ROLE_CRITICAL_BEST))
-        _assert_identity_fields(
-            fallback_identity,
-            {
-                "plan_resolution_status": "fallback_to_adopted",
-                "effective_plan_role": ROLE_ADOPTED,
-                "can_write_feedback": False,
-            },
-        )
+        for role in ("baseline_best", "critical_best"):
+            with pytest.raises(ValueError, match="未知的排产方案角色"):
+                service.resolve_plan(VERSION, role)
     finally:
         conn.close()

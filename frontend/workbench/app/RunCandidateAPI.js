@@ -36,7 +36,7 @@
     const G = window.RunGenerationContract;
     check(shape(v, ['candidate_ref', 'run_ref', 'label', 'status', 'persisted_status', 'task_count', 'completeness', 'metrics', 'metric_scopes', 'capabilities', 'blocked_reasons', 'data_gaps'].concat(G.metadataKeys))
       && ref(v.candidate_ref) && ref(v.run_ref) && (!runRef || v.run_ref === runRef) && nullableText(v.label) && count(v.task_count) && v.task_count <= 20000
-      && v.persisted_status === 'completed' && ['complete', 'partial', 'unknown'].includes(v.completeness)
+      && v.persisted_status === 'completed' && ['complete', 'partial'].includes(v.completeness)
       && v.status === (v.completeness === 'partial' ? 'partial' : 'completed')
       && shape(v.metrics, metricKeys) && metricKeys.every(k => k === 'elapsed_seconds' ? G.catalogElapsed(v.metrics[k]) : metric(v.metrics[k]))
       && shape(v.metric_scopes, ['delivery', 'resources']) && v.metric_scopes.delivery === 'completed_batches_only' && v.metric_scopes.resources === 'scheduled_results_only'
@@ -46,14 +46,14 @@
   function validateIdentity(v, candidateRef) {
     const data = v.data;
     check(shape(data, ['candidate_ref', 'run_ref', 'label', 'status']) && ref(candidateRef) && data.candidate_ref === candidateRef
-      && ref(data.run_ref) && nullableText(data.label) && ['completed', 'failed', 'skipped'].includes(data.status), '候选身份与所选方案不一致，请重新打开。');
+      && ref(data.run_ref) && nullableText(data.label) && data.status === 'completed', '候选身份与所选方案不一致，请重新打开。');
     return data;
   }
   function catalogScope(query) {
     check(shape(query, [], ['page', 'size', 'status', 'sort', 'order', 'snapshot_ref']));
     const q = { page: 1, size: 20, status: 'all', sort: 'sequence', order: 'asc', ...query };
     check(Number.isInteger(q.page) && q.page >= 1 && q.page <= 256 && Number.isInteger(q.size) && q.size >= 1 && q.size <= 50
-      && ['all', 'completed', 'partial', 'failed', 'skipped'].includes(q.status) && ['sequence', 'label', 'task_count'].includes(q.sort)
+      && ['all', 'completed', 'partial'].includes(q.status) && ['sequence', 'label', 'task_count'].includes(q.sort)
       && ['asc', 'desc'].includes(q.order) && (q.snapshot_ref === undefined || token(q.snapshot_ref)));
     if (q.snapshot_ref === undefined) delete q.snapshot_ref;
     return q;
@@ -89,7 +89,7 @@
     const e = v.execution_at_generation;
     if (e === null) return v.quantity === null;
     if (!shape(e, executionKeys.concat(baseline ? ['first_actual_start', 'confirmed_finish', 'unknown_record_count', 'records_complete', 'quantity_complete',
-      'completion_basis', 'report_count', 'legacy_fact_count', 'legacy_unavailable_field_count'] : []))
+      'completion_basis', 'report_count'] : []))
       || !['target_quantity', 'known_completed_quantity', 'remaining_quantity'].every(k => nullableNumber(e[k]))
       || !['execution_state', 'data_quality', 'target_basis'].every(k => nullableText(e[k]))) return false;
     const proven = !v.data_gaps.some(g => g.field === 'piece_id') && e.target_basis === (v.piece_id === null ? 'batch' : 'piece');

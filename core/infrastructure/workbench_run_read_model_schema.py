@@ -1,8 +1,7 @@
-"""Immutable projections of the original run archive, installed by v41 only."""
+"""Immutable projections of the original run archive."""
 
-from .schema_structure import SchemaStructure, schema_objects
+from .schema_structure import schema_objects
 from .workbench_metadata_schema import canonical_sql
-from .workbench_run_schema import workbench_run_contract_issues
 
 READ_MODEL_TABLES = ("WorkbenchRunAdmissionReadModels", "WorkbenchRunDecisionReadModels", "WorkbenchRunCandidateReadModels")
 _REF = "TEXT NOT NULL CHECK(length({0})=48 AND {0} NOT GLOB '*[^0-9a-f]*')"
@@ -49,22 +48,3 @@ def contract_issues(conn, *, structure=None):
     return [("missing_run_read_model:" if name not in actual else "invalid_run_read_model:") + name
             for name, sql in objects().items()
             if name not in actual or canonical_sql(sql) != canonical_sql(actual[name])]
-
-
-def install(conn):
-    if not conn.in_transaction:
-        raise RuntimeError("Run read models require the caller's migration transaction.")
-    structure = SchemaStructure(conn)
-    definitions = objects()
-    if structure.objects.keys() & definitions.keys():
-        issues = contract_issues(conn, structure=structure)
-        if issues:
-            raise RuntimeError("Cannot repair partial run read models: " + "; ".join(issues))
-        return
-    issues = workbench_run_contract_issues(conn, structure=structure, allow_legacy=False)
-    if not structure.has_table("WorkbenchCommandReceipts"):
-        issues.append("missing_table:WorkbenchCommandReceipts")
-    if issues:
-        raise RuntimeError("Run read model prerequisites are incomplete: " + "; ".join(issues))
-    for sql in definitions.values():
-        conn.execute(sql)

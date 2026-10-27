@@ -102,12 +102,10 @@ def test_complete_create_change_save_and_reopen(trial_case, kind, monkeypatch):
     assert_legacy_retained(before, snapshot(case.conn))
     repo = WorkbenchTrialRepository(case.conn)
     stored_header = repo.scenario_header(saved["scenario_ref"])
-    assert stored_header is not None
-    assert stored_header["snapshot_hash"] is None
+    assert stored_header is not None and "snapshot_hash" not in stored_header
     stored_draft = repo.draft_header(draft["draft_ref"])
-    assert stored_draft is not None
-    assert stored_draft["admission_hash"] is None
-    assert all(row["original_hash"] is None for row in repo.draft_rows(draft["draft_ref"]))
+    assert stored_draft is not None and "admission_hash" not in stored_draft
+    assert all("original_hash" not in row for row in repo.draft_rows(draft["draft_ref"]))
     if kind == "official":
         stored_rows = deepcopy(list(repo.iter_scenario_rows(saved["scenario_ref"])))
 

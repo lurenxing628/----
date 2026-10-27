@@ -4,7 +4,6 @@ import csv
 import io
 
 from tests.workbench.piece_chain_support import adopt_candidate, piece_layout
-from tests.workbench.plan_catalog_support import candidate, scenario
 from tests.workbench.point_downstream_support import ACTUAL, FIELD, app_for, read
 from tests.workbench.run_candidate_support import compute
 from tests.workbench.test_piece_chain_end_to_end import workspace
@@ -25,8 +24,6 @@ def setup(case):
     case.conn.commit()
     for version in (1, 2, 3, 4):
         case.plan(version, [ids[None, 10]], end="2026-09-09T08:45:00")
-    candidate(case.conn, 3, "critical_best", op_id=ids[None, 10])
-    scenario(case.conn, "es-original-scene", 3, op_id=ids[None, 10])
     case.conn.commit()
     receipt = case.command("create", case.task(4, ids[None, 10]), case.values(
         3, actual_end="2026-09-09T08:45:00", effective_processing_hours=.75))

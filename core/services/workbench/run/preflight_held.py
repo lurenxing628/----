@@ -10,7 +10,7 @@ from collections import defaultdict
 from datetime import datetime
 
 from core.errors import AppError
-from core.models.operation_execution_event import parse_operation_event_time
+from core.models.operation_execution_scope import parse_operation_event_time
 from core.models.workbench_preflight import issue, local_date
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.services.scheduler.run.schedule_payload_contract import arrangement_row

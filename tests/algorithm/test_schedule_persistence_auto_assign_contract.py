@@ -4,20 +4,17 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set
 
 import pytest
 
 from core.algorithm_contracts.types import ScheduleResult
 from core.errors import ValidationError
-from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema
 from core.models.batch_operation import BatchOperation
 from core.services.scheduler.run.schedule_payload_contract import (
     build_validated_schedule_payload,
 )
 from tests._support.algo_operations import make_batch_operation, make_schedule_result
-from tests._support.migration_schema_helpers import load_legacy_migration_schema
 from tests._support.paths import REPO_ROOT
 
 
@@ -278,125 +275,3 @@ def test_schedule_schema_rejects_duplicate_version_op_rows() -> None:
     finally:
         conn.close()
 
-
-def test_schedule_unique_migration_rejects_existing_duplicate_rows(tmp_path: Path) -> None:
-    db_path = tmp_path / "legacy_duplicate_schedule.db"
-    conn = sqlite3.connect(str(db_path))
-    try:
-        conn.executescript(
-            """
-            CREATE TABLE SchemaVersion (
-                id INTEGER PRIMARY KEY CHECK (id = 1),
-                version INTEGER NOT NULL,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            );
-            INSERT INTO SchemaVersion (id, version) VALUES (1, 6);
-            CREATE TABLE Schedule (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                op_id INTEGER NOT NULL,
-                start_time DATETIME NOT NULL,
-                end_time DATETIME NOT NULL,
-                version INTEGER DEFAULT 1
-            );
-            INSERT INTO Schedule (op_id, start_time, end_time, version)
-            VALUES (1, '2026-01-01 08:00:00', '2026-01-01 09:00:00', 21);
-            INSERT INTO Schedule (op_id, start_time, end_time, version)
-            VALUES (1, '2026-01-01 10:00:00', '2026-01-01 11:00:00', 21);
-            """
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-    with pytest.raises(RuntimeError, match="重复排程"):
-        ensure_schema(str(db_path), logger=None, schema_path=str(REPO_ROOT / "schema.sql"), backup_dir=None)
-
-
-def test_schedule_unique_migration_creates_index_and_preserves_rows(tmp_path: Path) -> None:
-    db_path = tmp_path / "legacy_v6_schedule_unique.db"
-    backup_dir = tmp_path / "backups"
-    backup_dir.mkdir(parents=True, exist_ok=True)
-
-    conn = sqlite3.connect(str(db_path), check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    try:
-        load_legacy_migration_schema(conn, version=6)
-        _seed_common(
-            conn,
-            [
-                (1, "internal", "op1", "MC_A", "OP_A"),
-                (2, "internal", "op2", "MC_B", "OP_B"),
-            ],
-        )
-        conn.executemany(
-            """
-            INSERT INTO Schedule (op_id, machine_id, operator_id, start_time, end_time, lock_status, version)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            [
-                (1, "MC_A", "OP_A", "2026-01-01 08:00:00", "2026-01-01 09:00:00", "unlocked", 31),
-                (2, "MC_B", "OP_B", "2026-01-01 09:00:00", "2026-01-01 10:00:00", "unlocked", 31),
-                (1, "MC_A", "OP_A", "2026-01-02 08:00:00", "2026-01-02 09:00:00", "unlocked", 32),
-            ],
-        )
-        assert conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_schedule_version_op_unique'"
-        ).fetchone() is None
-        conn.executemany(
-            "INSERT INTO ScheduleHistory(version,strategy,batch_count,op_count,result_status,result_summary) "
-            "VALUES (?,'priority_first',1,2,'success','{}')", [(31,), (32,)],
-        )
-        before_rows = [tuple(row) for row in conn.execute("SELECT * FROM Schedule ORDER BY id")]
-        conn.commit()
-    finally:
-        conn.close()
-
-    ensure_schema(str(db_path), logger=None, schema_path=str(REPO_ROOT / "schema.sql"), backup_dir=str(backup_dir))
-
-    conn = sqlite3.connect(str(db_path), check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    try:
-        version_row = conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()
-        assert version_row is not None
-        assert int(version_row["version"]) == CURRENT_SCHEMA_VERSION
-
-        index_row = conn.execute(
-            """
-            SELECT 1
-            FROM sqlite_master
-            WHERE type='index'
-              AND name='idx_schedule_version_op_unique'
-              AND tbl_name='Schedule'
-            LIMIT 1
-            """
-        ).fetchone()
-        assert index_row is not None
-
-        rows = conn.execute("SELECT op_id, version FROM Schedule ORDER BY version, op_id, id").fetchall()
-        assert [(int(row["op_id"]), int(row["version"])) for row in rows] == [
-            (1, 31),
-            (2, 31),
-            (1, 32),
-        ]
-        assert [tuple(row) for row in conn.execute("SELECT * FROM Schedule ORDER BY id")] == before_rows
-
-        with pytest.raises(sqlite3.IntegrityError):
-            conn.execute(
-                """
-                INSERT INTO Schedule (op_id, machine_id, operator_id, start_time, end_time, lock_status, version)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    1,
-                    "MC_A",
-                    "OP_A",
-                    "2026-01-03 08:00:00",
-                    "2026-01-03 09:00:00",
-                    "unlocked",
-                    31,
-                ),
-            )
-    finally:
-        conn.close()

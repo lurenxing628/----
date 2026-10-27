@@ -138,8 +138,8 @@
 .rw-evidence-facts dt {color:var(--ui-info-muted);}
 .rw-evidence-facts dd {margin:0;min-width:0;}
 .rw-evidence-list {padding-left:20px;margin:0;}
-/* 工序详情抽屉：单条记录的折叠证据与老式现场记录都要能在 320px 抽屉里折行；记录分页行紧凑（按钮 mini 档在 20-controls 覆盖合同里）。 */
-.rw-workbench .rw-record-evidence,.rw-workbench .rw-legacy-record {overflow-wrap:anywhere;}
+/* 工序详情抽屉：单条记录的折叠证据要能在 320px 抽屉里折行；记录分页行紧凑（按钮 mini 档在 20-controls 覆盖合同里）。 */
+.rw-workbench .rw-record-evidence {overflow-wrap:anywhere;}
 .rw-workbench .rw-detail-pager {margin-top:var(--space-2);}
 .rw-workbench .rw-detail-pager .wb-pager {padding:0;flex-wrap:wrap;gap:var(--space-2);}
 .rw-workbench .rw-detail-pager .wb-pager select {--wb-field-height:var(--wb-control-mini-height);}

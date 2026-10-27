@@ -61,8 +61,7 @@ def _lineage_reasons(lineage, template):
 def _execution_reasons(candidate, as_of):
     projection = candidate.execution
     if not projection.reports:
-        # One missing-report reason already explains the derived quantity/time gaps.
-        return _legacy_reasons(projection)
+        return []
     reasons = []
     if candidate.operation_source != "internal" or projection.completion_basis != "complete_reports":
         reasons.append(issue("processing_basis_unconfirmed", "尚未确认该工序按自制逐次报工核算加工工时。"))
@@ -78,18 +77,6 @@ def _execution_reasons(candidate, as_of):
         reasons.append(issue("completion_time_unknown", "完工时间暂无数据，排不进最近 20 条完工记录。"))
     elif datetime.fromisoformat(projection.confirmed_finish) > as_of:
         reasons.append(issue("outside_as_of", "完工时间晚于这次读取的时间。"))
-    return reasons + _legacy_reasons(projection)
-
-
-def _legacy_reasons(projection):
-    if any(row["code"] == "legacy_source_changed" for row in projection.data_gaps):
-        raise WorkbenchCommandRejected("calibration_source_changed", "历史报工与归档不一致，请核对来源后刷新。")
-    reasons = []
-    for kind, code, message in (("pause", "pause_contamination", "这条记录中间有暂停，已知会影响工时，没有算进完工记录。"),
-                                ("exception", "known_exception", "这条记录报过异常，没有算进完工记录。")):
-        refs = [row["legacy_fact_ref"] for row in projection.legacy_facts if row["event_type"] == kind]
-        if refs:
-            reasons.append({**issue(code, message), "legacy_fact_refs": refs})
     return reasons
 
 
@@ -134,7 +121,6 @@ def _sample_origin(candidate, *, lineage_origin, lineage_events):
         report.pop("write_context")
     state = {"source_ref": projection.operation_ref,
              "report_revision_refs": revision_refs,
-             "legacy_fact_refs": [row["legacy_fact_ref"] for row in projection.legacy_facts],
              "data_gaps": projection.data_gaps,
              "quantity": projection.known_completed_quantity, "finish": projection.confirmed_finish,
              "lineage": vars(lineage) if lineage else None, "operation_source": candidate.operation_source}
@@ -149,7 +135,7 @@ def _sample_origin(candidate, *, lineage_origin, lineage_events):
             "sample_revision": content_text(state), "report_refs": [row.report_ref for row in projection.reports],
             "report_revision_refs": revision_refs,
             "confirmed_finish": projection.confirmed_finish,
-            "reports": reports, "legacy_facts": projection.legacy_facts, "data_gaps": projection.data_gaps}
+            "reports": reports, "data_gaps": projection.data_gaps}
 
 
 def review_sample(candidate, *, template, as_of, lineage_origin, lineage_events):

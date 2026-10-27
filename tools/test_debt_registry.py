@@ -75,18 +75,6 @@ P0_TEST_DEBT_SEED_METADATA: Dict[str, Dict[str, Any]] = {
         "owner": "personnel.operator_machine",
         "exit_condition": "更新测试 patch 目标或改成公开入口验证，让该 nodeid 定向 pytest 普通通过，并从正式 full pytest 债务基线移除。",
     },
-    "tests/excel_data_io/test_operator_machine_exception_paths.py::test_normalize_skill_level_stored_only_falls_back_for_value_error": {
-        "debt_id": "test-debt:operator-machine-normalize-skill-level-stored-stale-patch",
-        "reason": "测试仍在 patch 已不存在的 normalize_skill_level 旧入口，无法验证落库存储技能等级归一化合同。",
-        "domain": "personnel.operator_machine",
-        "style": "stale_patch_target",
-        "root": {
-            "module": "core.services.personnel.operator_machine_normalizers",
-            "function": "normalize_skill_level_stored",
-        },
-        "owner": "personnel.operator_machine",
-        "exit_condition": "更新测试 patch 目标或改成公开入口验证，让该 nodeid 定向 pytest 普通通过，并从正式 full pytest 债务基线移除。",
-    },
     "tests/excel_data_io/test_operator_machine_exception_paths.py::test_resolve_write_values_only_converts_validation_error": {
         "debt_id": "test-debt:operator-machine-resolve-write-values-return-contract",
         "reason": "测试仍期待写入解析错误时返回 None，但当前合同是返回旧值和错误消息、调用方跳过写入。",

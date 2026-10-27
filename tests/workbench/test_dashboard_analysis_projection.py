@@ -43,7 +43,7 @@ def test_analysis_preserves_actual_values_unknowns_and_evidence_references(dashb
     assert task["plan_ref"] == original["plan_ref"]
     assert task["operation_ref"] == original["operation_ref"]
     assert (task["start"], task["end"]) == (original["planned_start"], original["planned_end"])
-    assert row["source"]["report_refs"] and row["source"]["legacy_fact_refs"] == original["legacy_fact_refs"]
+    assert row["source"]["report_refs"]
     if quantity is None:
         assert row["source"]["data_quality"] == "incomplete"
         assert row["source"]["data_gaps"]

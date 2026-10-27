@@ -13,7 +13,7 @@ from core.models.schedule_config_runtime_fields import default_snapshot_values
 from tests.workbench.run_jobs_support import JobCase
 
 BASE = "/api/workbench/v1/scheduling/runs"
-PRIVATE = {"request_key", "input_ref", "facts_json", "facts_hash", "execution_json", "baseline_json", "normalized_input_json",
+PRIVATE = {"request_key", "input_ref", "facts_json", "execution_json", "baseline_json", "normalized_input_json",
            "artifact_json", "payload_json", "candidate_key", "source_key", "entity_key", "op_id", "version", "executor_ref"}
 
 
@@ -27,7 +27,7 @@ def connect(path):
 @pytest.fixture(name="history_case")
 def history_case(tmp_path):
     path = tmp_path / "bq-run-history.sqlite"
-    ensure_schema(str(path), schema_path=str(Path(__file__).resolve().parents[2] / "schema.sql"), backup_dir=None)
+    ensure_schema(str(path), schema_path=str(Path(__file__).resolve().parents[2] / "schema.sql"))
     conn = connect(path)
     assert conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()[0] == CURRENT_SCHEMA_VERSION
     assert current_schema_contract_issues(conn, schema_version=CURRENT_SCHEMA_VERSION, schema_sql=load_schema_sql()) == []

@@ -76,7 +76,7 @@ def validate_manifest(run, rows, receipt):
         index[ref] = row
     for row in rows:
         item = index.get(row["candidate_ref"])
-        if item is None or item.get("task_count") != row["task_count"] or item.get("status") != row["status"]:
+        if item is None or item.get("task_count") != row["task_count"] or item.get("status") != row["status"] or row["status"] != "completed":
             corrupt()
     if run["state"] in ("complete", "partial") and (not rows or receipt.get("result_persisted") is not True):
         corrupt()
@@ -112,10 +112,6 @@ def scheduled_ids(row):
 
 
 def completion(row, disposition, scheduled_op_ids):
-    if row["status"] in ("failed", "skipped"):
-        if row["task_count"]:
-            corrupt()
-        return "no_result"
     ids = scheduled_op_ids
     expected = {item["op_id"] for item in disposition.values() if item["status"] != "skipped"}
     # Protected baseline rows outside the selected batches may legitimately be retained.
@@ -150,15 +146,12 @@ def metrics(artifact):
 
 def candidate_summary(row, disposition, *, scheduled_op_ids):
     artifact, gaps = row["artifact"], []
-    if artifact.get("status") != row["status"] or artifact.get("sequence") != row["sequence"]:
+    if row["status"] != "completed" or artifact.get("status") != row["status"] or artifact.get("sequence") != row["sequence"]:
         corrupt()
     label = text(artifact.get("label"), "label", gaps)
     completeness = completion(row, disposition, scheduled_op_ids)
-    status = "partial" if row["status"] == "completed" and completeness == "partial" else row["status"]
+    status = "partial" if completeness == "partial" else row["status"]
     reasons = blocked_reasons()
-    if row["status"] != "completed":
-        reasons.append({"capability": "preview", "code": "candidate_" + row["status"],
-                        "message": "该候选未生成任务安排；可查看记录和导出空范围，未包装成完整方案。"})
     return {"candidate_ref": row["candidate_ref"], "run_ref": row["run_ref"], "label": label,
             "status": status, "persisted_status": row["status"], "task_count": row["task_count"],
             "completeness": completeness, "metrics": metrics(artifact),

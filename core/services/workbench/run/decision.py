@@ -64,7 +64,7 @@ def _enriched_candidates(source, candidates, keys):
         candidate["metrics"].update(source.changeovers.metrics(key))
         candidate["metrics"].update(operation_changes(
             source.scope["operation_refs"], source.baseline["state"] == "available",
-            selected_available=candidate["persisted_status"] == "completed", deferred_refs=source.deferred_refs,
+            selected_available=True, deferred_refs=source.deferred_refs,
             reference_deferred_refs=reference_deferred, reference_groups=source.analysis_groups("reference"),
             selected_groups=source.analysis_groups(key), task_intervals=source.task_intervals(key),
             reference_task_intervals=source.task_intervals("reference")))
@@ -105,9 +105,6 @@ def _set_deltas(source, candidates, previous, definitions):
         candidate["deltas"] = {definition["key"]: metric_delta(definition, candidate["metrics"][definition["key"]],
             previous.get(definition["key"], {}), work_scope_comparable=same_work)
             for definition in definitions if definition["key"] in candidate["metrics"]}
-        if candidate["persisted_status"] != "completed":
-            candidate["deltas"] = {key: {**delta, "value": None, "state": "unavailable", "direction": "neutral"}
-                                   for key, delta in candidate["deltas"].items()}
 
 
 def _public_metrics(values):

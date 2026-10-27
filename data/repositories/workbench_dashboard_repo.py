@@ -84,8 +84,8 @@ class WorkbenchDashboardRepository:
             )
         history_ref = uuid.uuid4().hex + uuid.uuid4().hex[:16]
         self.conn.execute(
-            "INSERT INTO " + self.history_table + "(history_ref,item_ref,sequence,action,before_json,after_json,source_json,source_facts_json,source_hash,reason,local_operator,recorded_at,request_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO " + self.history_table + "(history_ref,item_ref,sequence,action,before_json,after_json,source_json,source_facts_json,reason,local_operator,recorded_at,request_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (history_ref, ref, sequence, action, before_text, after_text, source_text,
-             facts_text, None, reason, actor, stamp, request_key),
+             facts_text, reason, actor, stamp, request_key),
         )
         return history_ref

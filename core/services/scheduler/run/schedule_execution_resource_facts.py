@@ -21,30 +21,16 @@ def execution_conflict(reason: str) -> AppError:
     )
 
 
-def _validate_event_plan_identities(capture) -> None:
-    schedules = capture.index("Schedule", "id")
-    operations = capture.index("BatchOperations", "id")
-    for event in capture.table("OperationExecutionEvents"):
-        if (event["source_table"] != SOURCE_SCHEDULE or event["effective_plan_role"] != ROLE_ADOPTED
-                or event["scenario_id"] is not None):
-            continue
-        row, op = schedules.get(event["schedule_id"]), operations.get(event["op_id"])
-        if (row is None or op is None or event["schedule_version"] != row["version"]
-                or event["op_id"] != row["op_id"] or event["batch_id"] != op["batch_id"]):
-            raise execution_conflict("execution_scope_missing")
-
-
 def collect_resource_execution_facts(
     conn: sqlite3.Connection, *, prev_version: int,
     execution_projections: Sequence[ExecutionProjection],
     capture, ledger=None,
 ) -> Tuple[Dict[int, ExecutionFact], Dict[int, Dict[str, Any]], ExecutionSnapshot]:
     try:
-        _validate_event_plan_identities(capture)
         plan_rows = capture.latest_plan_rows(prev_version)
-        facts = ExecutionFactProvider(conn, capture=capture, ledger=ledger).facts_by_op_id_for_plan_rows(
+        facts = ExecutionFactProvider(conn, ledger=ledger).facts_by_op_id_for_plan_rows(
             list(plan_rows.values()),
-            {"source_table": SOURCE_SCHEDULE, "effective_plan_role": ROLE_ADOPTED, "scenario_id": None},
+            {"source_table": SOURCE_SCHEDULE, "effective_plan_role": ROLE_ADOPTED},
             execution_projections=execution_projections,
         )
         snapshot = build_execution_snapshot(facts, plan_rows=plan_rows)

@@ -31,7 +31,7 @@ def test_exit_backup_maintenance(db_path, tmp_path, monkeypatch) -> None:
     from flask import Flask
 
     from core.infrastructure.backup import maintenance_window
-    from core.infrastructure.database import ensure_schema, get_connection
+    from core.infrastructure.database import get_connection
     from data.repositories.system_config_repo import SystemConfigRepository
     from web.bootstrap import factory as factory_mod
     from web.bootstrap.launcher_shutdown import RuntimeExitBackupManager

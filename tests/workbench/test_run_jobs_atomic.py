@@ -102,7 +102,7 @@ def test_owned_file_compute_matches_thread_snapshot_types_and_payload(tmp_path, 
     source.execute("INSERT INTO Facts VALUES (?,?,?)", (date(2026, 10, 17), datetime(2026, 10, 17, 8, 0, 0, 123456), "原内容"))
     source.commit()
     row = {"run_ref": "a" * 48, "execution_json": "[]", "normalized_input_json": '{"scope":"same"}',
-           "baseline_json": "{}", "facts_json": "{}", "facts_hash": None}
+           "baseline_json": "{}", "facts_json": "{}"}
     worker = WorkbenchRunWorker(source)
     monkeypatch.setattr(worker, "_check_facts", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(worker_module, "GenerationFacts", lambda _capture: SimpleNamespace(operations={"b" * 48: 1}))

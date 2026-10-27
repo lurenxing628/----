@@ -108,17 +108,11 @@ def test_structurally_damaged_calendar_blocks_trial_instead_of_skipping_calendar
     assert (exc.value.code, exc.value.status) == ("calendar_unproven", 422)
 
 
-@pytest.mark.parametrize("state", ["new_complete"])
-def test_fixed_and_unique_execution_projection_protect_changes(trial_case, state):
+def test_fixed_and_unique_execution_projection_protect_changes(trial_case):
     case = trial_case
     draft = create(case)
-    if state == "legacy_finish":
-        case.event(case.op_id, "start")
-        case.event(case.op_id, "finish")
-    else:
-        values = case.values(quantity=3 if state == "new_complete" else 1,
-                             effective_processing_hours=1, actual_end="2026-09-09T10:00:00" if state == "new_complete" else None)
-        case.command("create", case.task(1, case.op_id), values)
+    values = case.values(quantity=3, effective_processing_hours=1, actual_end="2026-09-09T10:00:00")
+    case.command("create", case.task(1, case.op_id), values)
     case.conn.execute("INSERT INTO WorkbenchOperatorProfiles(operator_id,skills_declared) VALUES ('O1',1)")
     case.conn.execute("DELETE FROM OperatorMachine WHERE operator_id='O1' AND machine_id='M1'")
     case.conn.commit()
@@ -133,8 +127,9 @@ def test_fixed_and_unique_execution_projection_protect_changes(trial_case, state
     assert snapshot(case.conn) == before
 
 
-def _mixed_external_cycle(case, *, legacy_start="2026-09-09T11:00:00", legacy_finish=None,
-                          legacy_machine_id=None, legacy_operator_id=None):
+def _mixed_external_cycle(case, *, second_start=None, first_machine_ref=None):
+    from tests.workbench.plan_adoption_baseline_support import mutate_json
+
     case.conn.execute("UPDATE OpTypes SET category='both' WHERE op_type_id='T1'")
     case.conn.execute("INSERT INTO Suppliers(supplier_id,name) VALUES ('S1','Supplier')")
     case.conn.execute("INSERT INTO WorkbenchSupplierOpTypes(supplier_id,op_type_id) VALUES ('S1','T1')")
@@ -163,38 +158,41 @@ def _mixed_external_cycle(case, *, legacy_start="2026-09-09T11:00:00", legacy_fi
     case.command('create', case.task(1, members[0]), case.values(3, actual_start='2026-09-09T11:00:00',
         actual_end='2026-09-10T11:30:00', effective_processing_hours=1,
         actual_machine_ref=None, actual_operator_ref=None))
-    schedule_id = case.conn.execute('SELECT id FROM Schedule WHERE op_id=?', (members[1],)).fetchone()[0]
-    previous = f'{members[1]}:0:0'
-    for count, (event_type, event_time) in enumerate([('start', legacy_start)] + ([('finish', legacy_finish)] if legacy_finish else [])):
-        event_id = case.conn.execute("INSERT INTO OperationExecutionEvents "
-            "(schedule_version,schedule_id,op_id,batch_id,source_table,effective_plan_role,event_type,reported_status,event_time,"
-            "actual_machine_id,actual_operator_id,quantity_done,created_by,idempotency_key,request_fingerprint,previous_state_revision) "
-            "VALUES (1,?,?,'B1','schedule','adopted',?,?,?,?,?,?,'old-operator',?,'old-fingerprint',?)",
-            (schedule_id, members[1], event_type, 'processing' if event_type == 'start' else 'completed', event_time,
-             legacy_machine_id, legacy_operator_id, None if event_type == 'start' else 3,
-             f'legacy-external-{event_type}', previous)).lastrowid
-        previous = f'{members[1]}:{count + 1}:{event_id}'
-    case.conn.commit()
+    if second_start is not None:
+        case.command('create', case.task(1, members[1]), case.values(3, actual_start='2026-09-09T11:00:00',
+            actual_end='2026-09-10T11:30:00', effective_processing_hours=1,
+            actual_machine_ref=None, actual_operator_ref=None))
+        op_ref = case.conn.execute("SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND source_key=? AND active=1",
+                                   (str(members[1]),)).fetchone()[0]
+        mutate_json(case.conn, "WorkbenchProductionReportRevisions", "values_json",
+                    lambda value: value.update(actual_start=second_start),
+                    "report_ref IN (SELECT report_ref FROM WorkbenchProductionReports WHERE operation_ref=?)", (op_ref,))
+    if first_machine_ref is not None:
+        op_ref = case.conn.execute("SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND source_key=? AND active=1",
+                                   (str(members[0]),)).fetchone()[0]
+        mutate_json(case.conn, "WorkbenchProductionReportRevisions", "values_json",
+                    lambda value: value.update(actual_machine_ref=first_machine_ref),
+                    "report_ref IN (SELECT report_ref FROM WorkbenchProductionReports WHERE operation_ref=?)", (op_ref,))
     return members, movable
 
 
-def test_confirmed_merged_return_replaces_legacy_estimate_in_real_trial_adoption(trial_case):
+def test_confirmed_merged_return_replaces_estimate_in_real_trial_adoption(trial_case):
     case = trial_case
     members, _ = _mixed_external_cycle(case)
     settings = case.settings('B2')
     checked, _ = PreflightService(case.conn).evaluate(settings)
     assert checked['blockers'] == []
     prepared = prepare_run_input(case.conn, settings, case.projections('B2'))
-    assert prepared.normalized_batch_ids == ['B2'] and not prepared.execution_fixed_op_ids
+    assert prepared.normalized_batch_ids == ['B2'] and not prepared.execution_completed_op_ids
     assert compute_run(case.conn, settings, case.projections('B2')).state == 'complete'
     retained = {table: list(case.conn.execute('SELECT * FROM ' + table)) for table in
-                ('OperationExecutionEvents', 'WorkbenchProductionReports', 'WorkbenchProductionReportRevisions')}
+                ('WorkbenchProductionReports', 'WorkbenchProductionReportRevisions')}
     draft = create(case, {'base': {'plan_ref': case.plan_ref(1)}})
     group = [task for task in draft['tasks'] if task['sequence'] in (2, 3)]
     assert {task['execution_anchor']['end'] for task in group} == {'2026-09-10T11:30:00'}
-    started = next(task for task in group if task['sequence'] == 3)
-    assert started['execution_anchor']['basis'] == 'started_actuals'
-    assert '同组已确认回厂时间' in started['execution_anchor']['message']
+    derived = next(task for task in group if task['sequence'] == 3)
+    assert derived['execution_anchor']['basis'] == 'merged_external_actuals'
+    assert '合并外协组已有实际记录' in derived['execution_anchor']['message']
     assert draft['validation']['constraints_status'] == 'valid', draft['validation']
     index = next(index for index, task in enumerate(draft['tasks']) if task['batch_id'] == 'B2')
     draft = change(case, draft, task=index, start='2026-09-11T08:00:00',
@@ -213,23 +211,20 @@ def test_confirmed_merged_return_replaces_legacy_estimate_in_real_trial_adoption
     ref = case.conn.execute("SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND source_key=? AND active=1",
                             (str(members[1]),)).fetchone()[0]
     projection = case.ledger.project_operations([ref])[0]
-    assert projection.execution_state == 'started' and projection.confirmed_finish is None
+    assert projection.execution_state == 'unreported' and projection.confirmed_finish is None
     assert projection.known_completed_quantity == 0
     refreshed = prepare_run_input(case.conn, case.settings('B1', 'B2'), case.projections())
-    assert members[1] in refreshed.execution_fixed_op_ids
+    assert members[1] in refreshed.frozen_op_ids
     assert members[0] in refreshed.execution_completed_op_ids and case.op_id in refreshed.execution_completed_op_ids
-    assert refreshed.execution_facts[members[1]].actual_status == 'processing'
-    assert refreshed.execution_facts[members[1]].actual_start_time == datetime(2026, 9, 9, 11)
-    assert refreshed.execution_facts[members[1]].actual_end_time is None
+    seeds = {seed['op_id']: (seed['start_time'], seed['end_time']) for seed in refreshed.seed_results}
+    assert seeds[members[1]] == (datetime(2026, 9, 9, 11), datetime(2026, 9, 10, 11, 30))
     for table, old in retained.items():
         assert list(case.conn.execute('SELECT * FROM ' + table)) == old
 
 
 def test_unselected_external_orphan_resource_blocks_preflight_and_input(trial_case):
     case = trial_case
-    case.conn.execute("PRAGMA foreign_keys=OFF")
-    _mixed_external_cycle(case, legacy_machine_id='unknown-original')
-    case.conn.execute("PRAGMA foreign_keys=ON")
+    _mixed_external_cycle(case, first_machine_ref=case.ref('machine', 'M1'))
     settings = case.settings('B2')
     checked, _ = PreflightService(case.conn).evaluate(settings)
     assert any(item['code'] == 'external_actual_resource_conflict' for item in checked['blockers'])
@@ -239,11 +234,11 @@ def test_unselected_external_orphan_resource_blocks_preflight_and_input(trial_ca
 
 def test_merged_external_cycle_preflight_reports_mismatched_started_member(trial_case):
     case = trial_case
-    _mixed_external_cycle(case, legacy_start='2026-09-09T11:15:00')
+    _mixed_external_cycle(case, second_start='2026-09-09T11:15:00')
     checked, _ = PreflightService(case.conn).evaluate(case.settings('B1', 'B2'))
     differ = [item for item in checked['blockers'] if item['code'] == 'external_cycle_actuals_differ']
     assert len(differ) == 1
-    assert '尚未登记实际完工' in differ[0]['message']
+    assert '2026-09-09 11:15:00 至 2026-09-10 11:30:00' in differ[0]['message']
 
 
 def test_inactive_operation_ref_does_not_fabricate_self_overlap_with_official_schedule(trial_case):
@@ -266,9 +261,9 @@ def _report(start, end, hours, machine: Optional[str] = "MR1", operator: Optiona
             "actual_machine_ref": machine, "actual_operator_ref": operator}
 
 
-def _reservation_codes(*, unit_hours, reports=(), legacy_facts=(), finish="2026-09-09T10:00:00",
+def _reservation_codes(*, unit_hours, reports=(), finish="2026-09-09T10:00:00",
                        window=("2026-09-09T09:00:00", "2026-09-09T12:00:00"), data_gaps=()):
-    execution = {"execution_state": "complete", "reports": list(reports), "legacy_facts": list(legacy_facts),
+    execution = {"execution_state": "complete", "reports": list(reports),
                  "first_actual_start": "2026-09-09T10:00:00", "confirmed_finish": finish, "target_quantity": 3,
                  "data_gaps": list(data_gaps)}
     live = {"facts": {"tables": {
@@ -284,8 +279,6 @@ def test_completed_point_work_zero_duration_reports_hold_no_resources():
     point = "2026-09-09T10:00:00"
     assert _reservation_codes(unit_hours=0, reports=[
         _report(point, point, 0), _report(point, point, 0, machine=None, operator=None)]) == []
-    legacy = {"actual_machine_ref": None, "actual_operator_ref": None, "effective_processing_hours": None}
-    assert _reservation_codes(unit_hours=0, legacy_facts=[legacy]) == []
     mixed = [_report(point, point, 0, machine=None, operator=None),
              _report(point, "2026-09-09T11:00:00", 1)]
     assert _reservation_codes(unit_hours=0, reports=mixed, finish="2026-09-09T11:00:00") == [
@@ -293,20 +286,3 @@ def test_completed_point_work_zero_duration_reports_hold_no_resources():
     # 正工时工序的零时长报工不是合法点报工，占用区间无法证明。
     assert _reservation_codes(unit_hours=1, reports=[_report(point, point, 0)]) == [
         "execution_resource_interval_unknown", "execution_resource_interval_unknown"]
-
-
-def test_completed_legacy_finish_may_omit_resources_recorded_by_its_start_event():
-    started = {"event_type": "start", "actual_machine_ref": "MR1", "actual_operator_ref": "OR1",
-               "effective_processing_hours": None}
-    finished = {"event_type": "finish", "actual_machine_ref": None, "actual_operator_ref": None,
-                "effective_processing_hours": None}
-    finish = "2026-09-09T11:00:00"
-    assert _reservation_codes(unit_hours=1, legacy_facts=[started, finished], finish=finish,
-                              window=("2026-09-09T12:00:00", "2026-09-09T13:00:00")) == []
-    # 开工事件记下的设备人员仍按整道工序的实际起止占用。
-    assert _reservation_codes(unit_hours=1, legacy_facts=[started, finished], finish=finish) == [
-        "execution_resource_overlap", "execution_resource_overlap"]
-    # 旧记录的设备身份对不上现在的资料时，占用仍算不清。
-    unresolved = {"code": "legacy_resource_identity_unresolved", "fields": ["actual_machine_ref"]}
-    assert _reservation_codes(unit_hours=1, legacy_facts=[started, finished], finish=finish, data_gaps=[unresolved],
-                              window=("2026-09-09T12:00:00", "2026-09-09T13:00:00")) == ["execution_resource_unknown"]

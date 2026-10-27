@@ -136,7 +136,7 @@ class DashboardFacts:
             self.plan_issues = [source_issue("no_official_plan", "当前没有正式计划，未改读候选结果。")]
             return
         self.raw["ScheduleHistory"] = sorted(context.history_rows(version), key=lambda row: row["id"])
-        self.raw["Schedule"] = context.source_rows(version=version, source_table="schedule", candidate_id=None, scenario_id=None)
+        self.raw["Schedule"] = context.source_rows(version=version, source_table="schedule")
         try:
             ref = context.references.get_plan_ref(WorkbenchPlanLocator(version, "adopted"))
             _, entry, span = context.selected(ref)
@@ -173,7 +173,7 @@ class DashboardFacts:
     def _load_execution(self):
         # 只在 plan_state == "loaded" 时调用，正式计划这时已经读出。
         plan = cast(Dict[str, Any], self.plan)
-        ledger = ExecutionLedgerService(self.conn, clock=lambda: self.now)
+        ledger = ExecutionLedgerService(self.conn)
         try:
             facts = ledger.load_many([task["operation_ref"] for task in self.tasks], comparison_plan_ref=plan["plan_ref"])
             self.raw["execution_operation_sources"] = {ref: row["source"] for ref, row in facts["operations"].items()}

@@ -1,9 +1,8 @@
-"""schema.sql 生成器：手写源只有 DDL 模块与迁移链，schema.sql 是它们的导出物。
+"""schema.sql 生成器：手写源只有 core/infrastructure 的 DDL 模块，schema.sql 是它们的导出物。
 
-做法：把冻结的 tests/migration_db/fixtures/schema-v4.sql 装进临时库，写入 SchemaVersion=4，
-走生产的 ensure_schema 迁移到 CURRENT_SCHEMA_VERSION，再按 sqlite_master 的创建顺序导出全部 DDL。
-输出 = 固定头（生成说明、PRAGMA foreign_keys、SchemaVersion 表与版本 0 初始行）+ 逐条 CREATE ... IF NOT EXISTS
-       + 末尾的新库种子行（各 DDL 模块声明的 *_initialization_sql，目前是两张时钟表的单例行）。
+做法：在临时库中创建 SchemaVersion 表，依次执行 core_objects() 与各子系统 *_schema.py 的 DDL，
+写入新库种子行并将 SchemaVersion 设为 CURRENT_SCHEMA_VERSION，通过 ensure_current_schema_contract
+自检后，按 sqlite_master 的创建顺序导出全部 DDL。
 
 用法：
     python -m tools.generate_schema_sql --check    # 与已提交的 schema.sql 逐字节比较，不等退出码 1
@@ -18,22 +17,90 @@ import sqlite3
 import sys
 import tempfile
 from pathlib import Path
-from typing import List, Optional, Sequence
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema, get_connection  # noqa: E402
-from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_initialization_sql  # noqa: E402
-from core.infrastructure.workbench_plan_identity_schema import plan_identity_initialization_sql  # noqa: E402
+from core.infrastructure.batch_external_context_schema import objects as batch_external_context_objects  # noqa: E402
+from core.infrastructure.calendar_periods_schema import objects as calendar_periods_objects  # noqa: E402
+from core.infrastructure.core_schema import core_objects  # noqa: E402
+from core.infrastructure.database import CURRENT_SCHEMA_VERSION, get_connection  # noqa: E402
+from core.infrastructure.efficiency_indexes_schema import ADDED as efficiency_indexes  # noqa: E402
+from core.infrastructure.machine_capabilities_schema import objects as machine_capabilities_objects  # noqa: E402
+from core.infrastructure.material_stages_schema import objects as material_stages_objects  # noqa: E402
+from core.infrastructure.migration_state import ensure_current_schema_contract  # noqa: E402
+from core.infrastructure.single_pass_indexes_schema import ADDED as single_pass_indexes  # noqa: E402
+from core.infrastructure.workbench_calibration_adoption_schema import (  # noqa: E402
+    objects as calibration_adoption_objects,
+)
+from core.infrastructure.workbench_dashboard_external_schema import (  # noqa: E402
+    workbench_dashboard_external_objects,
+)
+from core.infrastructure.workbench_dashboard_schema import workbench_dashboard_objects  # noqa: E402
+from core.infrastructure.workbench_execution_ledger_schema import (  # noqa: E402
+    execution_ledger_initialization_sql,
+    execution_ledger_objects,
+)
+from core.infrastructure.workbench_execution_void_schema import execution_void_objects  # noqa: E402
+from core.infrastructure.workbench_lineage_lookup_schema import lineage_lookup_objects  # noqa: E402
+from core.infrastructure.workbench_metadata_schema import metadata_objects  # noqa: E402
+from core.infrastructure.workbench_outsourcing_schema import workbench_outsourcing_objects  # noqa: E402
+from core.infrastructure.workbench_outsourcing_source_schema import (  # noqa: E402
+    workbench_outsourcing_source_objects,
+)
+from core.infrastructure.workbench_plan_identity_schema import (  # noqa: E402
+    plan_identity_initialization_sql,
+    plan_identity_objects,
+)
+from core.infrastructure.workbench_plan_identity_write_guard import (  # noqa: E402
+    plan_identity_write_guard_objects,
+)
+from core.infrastructure.workbench_process_schema import process_objects  # noqa: E402
+from core.infrastructure.workbench_process_workflow_schema import workflow_objects  # noqa: E402
+from core.infrastructure.workbench_resource_schema import resource_objects  # noqa: E402
+from core.infrastructure.workbench_run_read_model_schema import objects as run_read_model_objects  # noqa: E402
+from core.infrastructure.workbench_run_schema import workbench_run_objects  # noqa: E402
+from core.infrastructure.workbench_template_lineage_schema import template_lineage_objects  # noqa: E402
+from core.infrastructure.workbench_trial_schema import workbench_trial_objects  # noqa: E402
 
-DEFAULT_ORIGIN = REPO_ROOT / "tests" / "migration_db" / "fixtures" / "schema-v4.sql"
 DEFAULT_OUTPUT = REPO_ROOT / "schema.sql"
-ORIGIN_VERSION = 4
 HEADER = (
-    "-- 本文件由 python -m tools.generate_schema_sql --write 生成：手写源是 core/infrastructure 的 DDL 模块与迁移链，请勿手改。\n"
-    "-- 校验：python -m tools.generate_schema_sql --check；门禁合同见 tests/migration_db/test_generate_schema_sql.py。\n"
+    "-- 本文件由 python -m tools.generate_schema_sql --write 生成：手写源是 core/infrastructure 的 DDL 模块，请勿手改。\n"
+    "-- 校验：python -m tools.generate_schema_sql --check。\n"
+)
+SCHEMA_VERSION_DDL = """CREATE TABLE SchemaVersion (
+    id          INTEGER PRIMARY KEY CHECK (id = 1),
+    version     INTEGER NOT NULL,
+    updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+)"""
+DDL_SOURCES: Tuple[Callable[[], Dict[str, str]], ...] = (
+    core_objects,
+    metadata_objects,
+    resource_objects,
+    process_objects,
+    workflow_objects,
+    plan_identity_objects,
+    plan_identity_write_guard_objects,
+    execution_ledger_objects,
+    execution_void_objects,
+    workbench_run_objects,
+    run_read_model_objects,
+    template_lineage_objects,
+    lineage_lookup_objects,
+    workbench_trial_objects,
+    calibration_adoption_objects,
+    workbench_dashboard_objects,
+    workbench_outsourcing_objects,
+    workbench_dashboard_external_objects,
+    workbench_outsourcing_source_objects,
+    batch_external_context_objects,
+    calendar_periods_objects,
+    machine_capabilities_objects,
+    material_stages_objects,
+    lambda: single_pass_indexes,
+    lambda: efficiency_indexes,
 )
 # 新库种子行：由拥有该表的 DDL 模块声明，放在全部 DDL 之后执行（引用的表此时都已存在，时钟表上没有触发器）。
 SEED_STATEMENT_SOURCES = (plan_identity_initialization_sql, execution_ledger_initialization_sql)
@@ -46,29 +113,30 @@ _IF_NOT_EXISTS_PREFIXES = (
 )
 
 
-def build_migrated_database(work_dir: Path, *, origin: Path = DEFAULT_ORIGIN, schema_path: Optional[Path] = None) -> Path:
-    """v4 起点 + 生产迁移链 → CURRENT_SCHEMA_VERSION 的库文件。schema_path 只用于迁移器的缺表提示文案。"""
-    db_path = work_dir / "generated.db"
-    conn = get_connection(str(db_path))
-    try:
-        conn.executescript(origin.read_text(encoding="utf-8"))
-        conn.executescript(
-            f"DELETE FROM SchemaVersion; INSERT INTO SchemaVersion (id, version) VALUES (1, {ORIGIN_VERSION});"
-        )
-        conn.commit()
-    finally:
-        conn.close()
-    hint = schema_path if schema_path is not None and schema_path.exists() else origin
-    ensure_schema(str(db_path), schema_path=str(hint), backup_dir=str(work_dir / "backups"))
-    return db_path
-
-
 def _with_if_not_exists(sql: str) -> str:
     text = sql.strip()
     for prefix, replacement in _IF_NOT_EXISTS_PREFIXES:
         if text[: len(prefix)].upper() == prefix:
             return replacement + text[len(prefix):]
     raise ValueError("无法识别的 DDL 语句：" + text[:80])
+
+
+def build_baseline_database(work_dir: Path) -> Path:
+    """直接由 DDL 模块构建 CURRENT_SCHEMA_VERSION 基线库。"""
+    db_path = work_dir / "generated.db"
+    conn = get_connection(str(db_path))
+    try:
+        conn.execute(SCHEMA_VERSION_DDL)
+        conn.execute("INSERT INTO SchemaVersion (id, version) VALUES (1, ?)", (CURRENT_SCHEMA_VERSION,))
+        for source in DDL_SOURCES:
+            for sql in source().values():
+                conn.execute(sql)
+        for seed in SEED_STATEMENT_SOURCES:
+            conn.execute(seed())
+        conn.commit()
+    finally:
+        conn.close()
+    return db_path
 
 
 def render_schema_sql(db_path: Path) -> str:
@@ -79,10 +147,10 @@ def render_schema_sql(db_path: Path) -> str:
     finally:
         conn.close()
     if version != CURRENT_SCHEMA_VERSION:
-        raise RuntimeError(f"迁移链停在 v{version}，与 CURRENT_SCHEMA_VERSION={CURRENT_SCHEMA_VERSION} 不一致，拒绝生成")
+        raise RuntimeError(f"基线库版本 v{version} 与 CURRENT_SCHEMA_VERSION={CURRENT_SCHEMA_VERSION} 不一致，拒绝生成")
     version_ddl = [sql for _kind, name, sql in rows if name == "SchemaVersion"]
     if len(version_ddl) != 1:
-        raise RuntimeError("迁移后的库缺少唯一的 SchemaVersion 表定义")
+        raise RuntimeError("基线库缺少唯一的 SchemaVersion 表定义")
     parts: List[str] = [HEADER, "PRAGMA foreign_keys = ON;\n", _with_if_not_exists(version_ddl[0]) + ";\n",
                         "INSERT OR IGNORE INTO SchemaVersion (id, version) VALUES (1, 0);\n"]
     for _kind, name, sql in rows:
@@ -91,12 +159,20 @@ def render_schema_sql(db_path: Path) -> str:
         parts.append(_with_if_not_exists(sql) + ";\n")
     for source in SEED_STATEMENT_SOURCES:
         parts.append(source().strip() + "\n")
-    return "".join(parts)
+    rendered = "".join(parts)
+    check_conn = get_connection(str(db_path))
+    try:
+        ensure_current_schema_contract(
+            check_conn, schema_version=CURRENT_SCHEMA_VERSION, schema_sql=rendered, full_data=True
+        )
+    finally:
+        check_conn.close()
+    return rendered
 
 
-def generate_schema_text(*, origin: Path = DEFAULT_ORIGIN, schema_path: Optional[Path] = DEFAULT_OUTPUT) -> str:
+def generate_schema_text() -> str:
     with tempfile.TemporaryDirectory(prefix="aps-schema-gen-") as tmp:
-        return render_schema_sql(build_migrated_database(Path(tmp), origin=origin, schema_path=schema_path))
+        return render_schema_sql(build_baseline_database(Path(tmp)))
 
 
 def _read(path: Path) -> Optional[str]:
@@ -107,15 +183,14 @@ def _read(path: Path) -> Optional[str]:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description="从 v4 起点 + 迁移链生成 schema.sql，或校验已提交文件是否与生成结果一致")
+    parser = argparse.ArgumentParser(description="从 DDL 模块生成 schema.sql，或校验已提交文件是否与生成结果一致")
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--check", action="store_true", help="逐字节比较生成结果与 --output 文件，不等退出码 1")
     mode.add_argument("--write", action="store_true", help="生成并覆盖 --output 文件")
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT), help="schema.sql 路径（默认仓库根）")
-    parser.add_argument("--origin", default=str(DEFAULT_ORIGIN), help="冻结起点 schema-v4.sql 路径")
     args = parser.parse_args(list(argv) if argv is not None else None)
-    output, origin = Path(args.output), Path(args.origin)
-    generated = generate_schema_text(origin=origin, schema_path=output)
+    output = Path(args.output)
+    generated = generate_schema_text()
     if args.write:
         with open(output, "w", encoding="utf-8", newline="\n") as handle:
             handle.write(generated)
@@ -123,11 +198,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 0
     committed = _read(output)
     if committed == generated:
-        print(f"[generate-schema-sql] {output} 与迁移链导出结果一致（v{CURRENT_SCHEMA_VERSION}）")
+        print(f"[generate-schema-sql] {output} 与 DDL 模块导出结果一致（v{CURRENT_SCHEMA_VERSION}）")
         return 0
     diff = list(difflib.unified_diff((committed or "").splitlines(), generated.splitlines(),
                                      fromfile=str(output), tofile="generated", lineterm="", n=2))
-    print(f"[generate-schema-sql] {output} 与迁移链导出结果不一致；请运行 --write 后提交。差异（前 60 行）：", file=sys.stderr)
+    print(f"[generate-schema-sql] {output} 与 DDL 模块导出结果不一致；请运行 --write 后提交。差异（前 60 行）：", file=sys.stderr)
     for line in diff[:60]:
         print("  " + line, file=sys.stderr)
     if len(diff) > 60:

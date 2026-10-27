@@ -21,7 +21,6 @@ def test_bounded_cohort_matches_single_load_with_revisions_voids_and_legacy(ledg
 
     case = ledger_case
     ids = three_operations(case)
-    case.event(ids[2], "start", version=2)
     case.command("create", case.task(2, ids[0]), case.values(3))
     second = case.command("create", case.task(2, ids[1]), case.values(1))["data"]["rows"][0]
     case.command("correct", second["report_ref"], {"original_revision_ref": second["revision_ref"],
@@ -63,7 +62,7 @@ def test_bounded_cohort_matches_single_load_with_revisions_voids_and_legacy(ledg
     assert content_text(typed(facts)) == content_text(typed(single))
     assert [row.to_dict() for row in projected] == [row.to_dict() for row in expected]
     assert len(projected[1].reports[0].correction_history) == 2
-    assert len(projected[2].voided_reports) == 1 and projected[2].legacy_facts
+    assert len(projected[2].voided_reports) == 1
 
 
 def test_large_cohort_reads_task_plan_once_and_keeps_requested_duplicate_guard(ledger_case, monkeypatch):

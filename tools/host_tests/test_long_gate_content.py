@@ -214,7 +214,6 @@ class LongGateContentTests(unittest.TestCase):
             for relative in (
                 "tests/workbench/decision_comparison_contract.cjs",
                 "frontend/workbench/app/RunDecisionProcessChart.jsx",
-                "tests/workbench/fixtures/schema-v24.sql",
                 "tests/workbench/fixtures/decision_candidate_baseline.json",
                 "scripts/workbench/ds-projection.cjs",
             )

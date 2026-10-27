@@ -21,7 +21,7 @@ PLAN_INTENT = {"reason": "台账夹具正式计划", "declared_operator": "fixtu
 
 def current_database(path):
     """A fixture database built exactly as production creates a new one."""
-    ensure_schema(str(path), schema_path=str(REPO_ROOT / "schema.sql"), backup_dir=None)
+    ensure_schema(str(path), schema_path=str(REPO_ROOT / "schema.sql"))
     conn = sqlite3.connect(str(path))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
@@ -125,22 +125,6 @@ class LedgerCase:
         self.count += 1
         return self.writer.execute(action, ref, payload, request_key=key or f"ledger-command-{self.count:08d}",
             validate_context=validate_context or (lambda *_: None))
-
-    def event(self, op_id, event_type, *, version=1, quantity=None, time=None,
-              source="schedule", role="adopted", scenario=None, batch_id="B1", operator="O1"):
-        schedule = self.conn.execute("SELECT id FROM Schedule WHERE version=? AND op_id=?", (version, op_id)).fetchone()[0]
-        count, last = self.conn.execute("SELECT count(*),coalesce(max(id),0) FROM OperationExecutionEvents WHERE schedule_id=?", (schedule,)).fetchone()
-        status = {"start": "processing", "finish": "completed", "pause": "paused", "resume": "processing", "exception": "exception"}[event_type]
-        event = self.conn.execute("""INSERT INTO OperationExecutionEvents
-            (schedule_version,schedule_id,op_id,batch_id,source_table,effective_plan_role,event_type,reported_status,event_time,
-             actual_machine_id,actual_operator_id,quantity_done,created_by,idempotency_key,request_fingerprint,previous_state_revision,reason_code,severity,scenario_id)
-            VALUES (?,?,?,?,?,?,?,?,?,'M1',?,?,'old-operator',?,'old-fingerprint',?,?,?,?)""",
-            (version, schedule, op_id, batch_id, source, role, event_type, status, time or (START if event_type == "start" else END), operator, quantity,
-             f"old-{schedule}-{count}-{event_type}", f"{op_id}:{count}:{last}",
-             "other" if event_type in ("pause", "exception") else None, "low" if event_type == "exception" else None, scenario)).lastrowid
-        self.conn.commit()
-        return event
-
 
 @pytest.fixture(name="ledger_case")
 def ledger_case(tmp_path):

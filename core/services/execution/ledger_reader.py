@@ -16,19 +16,9 @@ from core.models.workbench_execution_input import MAX_FACT_ROWS, MAX_OPERATIONS,
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from data.repositories.execution_ledger_scope_repo import ExecutionLedgerScopeRepository
 from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
-from data.repositories.workbench_execution_source_repo import WorkbenchExecutionSourceRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
-from .legacy import legacy_evidence
 from .projection import project_execution, report_dto
-from .quality import gap
-
-
-def _attach_source_changes(projection, source):
-    changes = source["changes"].get(projection.operation_ref, [])
-    gaps = [gap("legacy_source_changed", "这条旧记录的来源数据后来被改过，界面仍按当时保存下来的内容显示，原完工记录没有撤销。", **change)
-            for change in changes]
-    return replace(projection, data_gaps=projection.data_gaps + gaps) if gaps else projection
 
 
 def _capped(read, refs, message):
@@ -57,7 +47,6 @@ class ExecutionLedgerReader:
         self._snapshot_resources = None
         self._snapshot_comparison_plans = None
         self._snapshot_facts = None
-        self._snapshot_legacy_evidence = None
 
     # ---- judgement over repository facts ----
 
@@ -124,7 +113,7 @@ class ExecutionLedgerReader:
         return [stored[ref] for ref in refs if stored[ref] is not None]
 
     def scope_task_rows(self, schedule_ids):
-        """Permanent legacy-scope bindings, reusing admitted official task mappings."""
+        """Permanent scope bindings, reusing admitted official task mappings."""
         stored = self._snapshot_facts["scope_tasks"] if self._snapshot_facts is not None else {}
         wanted = set(schedule_ids)
         pending = wanted.difference(stored)
@@ -134,7 +123,7 @@ class ExecutionLedgerReader:
             current_ref = self._snapshot_plan["plan_ref"] if self._snapshot_plan else None
             for plan_ref, tasks in self._snapshot_task_maps.items():
                 locator = bindings.get(plan_ref)
-                if plan_ref != current_ref and (locator is None or locator.plan_role != "adopted" or locator.scenario_id is not None):
+                if plan_ref != current_ref and (locator is None or locator.plan_role != "adopted"):
                     continue
                 for operation_ref, task in tasks.items():
                     if task is None or task["schedule_id"] not in pending or task["schedule_id"] in stored:
@@ -197,9 +186,7 @@ class ExecutionLedgerReader:
             self._snapshot_plan, self._snapshot_plan_read = None, False
             self._snapshot_operations, self._snapshot_task_maps, self._snapshot_resources = {}, {}, {}
             self._snapshot_comparison_plans = {}
-            self._snapshot_legacy_evidence = {}
-            self._snapshot_facts = {"loaded": set(), "reports": {}, "report_heads": {}, "voids": {}, "legacy": {},
-                                    "legacy_source": {"states": {}, "changes": {}}, "unresolved": set(), "scope_tasks": {}}
+            self._snapshot_facts = {"loaded": set(), "reports": {}, "report_heads": {}, "voids": {}, "scope_tasks": {}}
             try:
                 yield dict(self._snapshot_clock)
             finally:
@@ -208,7 +195,6 @@ class ExecutionLedgerReader:
                 self._snapshot_operations = self._snapshot_task_maps = self._snapshot_resources = None
                 self._snapshot_comparison_plans = None
                 self._snapshot_facts = None
-                self._snapshot_legacy_evidence = None
 
     def _current_plan(self):
         if self._snapshot_clock is None:
@@ -229,45 +215,33 @@ class ExecutionLedgerReader:
                 admitted[comparison_plan_ref] = WorkbenchPlanIdentityRepository(self.conn).resolve_plan(comparison_plan_ref)
         stored = self._snapshot_facts
         if stored is None:
-            stored = {"loaded": set(), "reports": {}, "report_heads": {}, "voids": {}, "legacy": {},
-                      "legacy_source": {"states": {}, "changes": {}}, "unresolved": set(), "scope_tasks": {}}
+            stored = {"loaded": set(), "reports": {}, "report_heads": {}, "voids": {}, "scope_tasks": {}}
         missing = {ref: row for ref, row in operations.items() if ref not in stored["loaded"]}
         if missing:
-            legacy = _capped(self.repo.legacy, missing, "历史现场记录超过读取上限，请缩小范围。")
-            source = WorkbenchExecutionSourceRepository(self.conn).read(legacy)
             reports, report_heads, report_count = self.repo.reports(missing, MAX_FACT_ROWS)
             if report_count > MAX_FACT_ROWS:
                 reject("报工及更正历史超过读取上限，请缩小范围。", "query_too_large", 413)
             voids = _capped(self.repo.report_voids, missing, "报工撤销历史超过读取上限，请缩小范围。")
-            stored["legacy"].update(legacy)
             stored["reports"].update(reports)
             stored["report_heads"].update(report_heads)
             stored["voids"].update(voids)
-            for key in ("states", "changes"):
-                stored["legacy_source"][key].update(source[key])
-            stored["unresolved"].update(self.repo.unresolved_operations(missing))
             stored["loaded"].update(missing)
-        legacy = {ref: stored["legacy"][ref] for ref in operations if ref in stored["legacy"]}
         reports = {ref: stored["reports"][ref] for ref in operations if ref in stored["reports"]}
         report_heads = {ref: stored["report_heads"][ref] for ref in operations if ref in stored["report_heads"]}
         report_refs = {report_ref for group in reports.values() for report_ref in group}
         voids = {ref: stored["voids"][ref] for ref in report_refs if ref in stored["voids"]}
         orphan_count = sum(len(refs) for refs in report_heads.values()) - len(report_refs)
-        if (sum(len(rows) for rows in legacy.values()) > MAX_FACT_ROWS
-                or sum(len(rows) for group in reports.values() for rows in group.values()) + orphan_count > MAX_FACT_ROWS
+        if (sum(len(rows) for group in reports.values() for rows in group.values()) + orphan_count > MAX_FACT_ROWS
                 or len(voids) > MAX_FACT_ROWS):
             reject("报工及历史记录超过读取上限，请缩小范围。", "query_too_large", 413)
-        source = {key: {ref: values[ref] for ref in operations if ref in values}
-                  for key, values in stored["legacy_source"].items()}
         current_plan_ref = plan["plan_ref"] if plan else None
         current_tasks = self.task_map(operations, current_plan_ref)
         comparison_tasks = (current_tasks
                             if comparison_plan_ref is not None and comparison_plan_ref == current_plan_ref
                             else self.task_map(operations, comparison_plan_ref))
         return {"operations": operations, "reports": reports, "report_heads": report_heads, "voids": voids,
-                "legacy": legacy, "legacy_source": source,
                 "current_tasks": current_tasks, "comparison_tasks": comparison_tasks, "plan": plan,
-                "unresolved": stored["unresolved"].intersection(operations), "clock": self.revision_clock()}
+                "clock": self.revision_clock()}
 
     def load_many(self, operation_refs, *, comparison_plan_ref=None):
         """Read a complete cohort in bounded batches under one ledger snapshot.
@@ -291,21 +265,12 @@ class ExecutionLedgerReader:
             for start in range(MAX_OPERATIONS, len(refs), MAX_OPERATIONS):
                 batch = self.load(refs[start:start + MAX_OPERATIONS],
                                   comparison_plan_ref=comparison_plan_ref, _admitted_refs=True)
-                for key in ("operations", "reports", "report_heads", "voids", "legacy", "current_tasks", "comparison_tasks"):
+                for key in ("operations", "reports", "report_heads", "voids", "current_tasks", "comparison_tasks"):
                     result[key].update(batch[key])
-                for key in ("states", "changes"):
-                    result["legacy_source"][key].update(batch["legacy_source"][key])
-                result["unresolved"].update(batch["unresolved"])
             return result
 
     def project_loaded(self, facts):
-        now = self.clock()
-        if not isinstance(now, datetime) or now.tzinfo is not None:
-            raise ValueError("Ledger clock must return naive factory-local datetime.")
         result = []
-        evidence_by_operation = self._snapshot_legacy_evidence
-        if evidence_by_operation is None:
-            evidence_by_operation = {}
         voids = facts["voids"]
         for ref, op in facts["operations"].items():
             histories = facts["reports"].get(ref, {})
@@ -318,14 +283,12 @@ class ExecutionLedgerReader:
                 voided = [{"report": report.to_dict(), "void_fact": {key: value for key, value in voids[report.report_ref].items()
                            if key != "request_key"}} for report in reports if report.report_ref in voids]
                 reports = [report for report in reports if report.report_ref not in voids]
-            if ref not in evidence_by_operation:
-                evidence_by_operation[ref] = legacy_evidence(facts["legacy"].get(ref, []), now)
-            projection = project_execution(op, reports, evidence_by_operation[ref],
+            projection = project_execution(op, reports,
                 current_task=facts["current_tasks"].get(ref), comparison_task=facts["comparison_tasks"].get(ref),
-                plan_identity=facts["plan"], unresolved=ref in facts["unresolved"])
+                plan_identity=facts["plan"])
             if voided:
                 projection = replace(projection, voided_reports=voided)
-            result.append(_attach_source_changes(projection, facts["legacy_source"]))
+            result.append(projection)
         return result
 
     def project_operations(self, operation_refs):

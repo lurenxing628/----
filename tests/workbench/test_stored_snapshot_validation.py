@@ -38,12 +38,9 @@ def test_saved_execution_requires_exact_projection_and_report_fields(ledger_case
     before = content_text(original)
     assert [row.to_dict() for row in restore_execution_projections([original])] == [original]
     assert content_text(original) == before
-    legacy = dict(original)
-    legacy.pop("voided_reports")
-    assert restore_execution_projections([legacy])[0].voided_reports == []
 
     invalid = []
-    for field in ("execution_state", "target_quantity"):
+    for field in ("execution_state", "target_quantity", "voided_reports"):
         row = deepcopy(original)
         row.pop(field)
         invalid.append(row)

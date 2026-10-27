@@ -13,8 +13,10 @@ from typing import MutableMapping
 from core.models.resource_capabilities import machine_type_index, supports_source
 from core.services.capacity.plan_calendar_intervals import instant
 from core.services.common.normalization_matrix import skill_level_rank
-from core.services.workbench.trial.archived_external_context import archived_contexts
-from core.shared.boolean_normalize import to_yes_no
+from core.services.personnel.operator_machine_normalizers import (
+    normalize_skill_level_stored,
+    normalize_yes_no_stored,
+)
 
 from .conditions_source import ConditionSource
 
@@ -221,10 +223,6 @@ def _materials(projection, batches, operations):
     contexts = source.original_table("BatchExternalContexts")
     external = {row["id"]: ref for ref, row in operations.items() if row.get("source") == "external"}
     context_path = "tables.BatchExternalContexts"
-    if external and contexts is None:
-        contexts = archived_contexts(source.original_archive, set(external))
-        if contexts is not None:
-            context_path = "tables"
     if external:
         projection.declare(category, "external_contexts", context_path, contexts is not None, origin="original")
         captured = {row.get("operation_id") for row in contexts or []}
@@ -237,14 +235,14 @@ def _materials(projection, batches, operations):
         ref = external.get(row.get("operation_id"))
         if ref is None:
             continue
-        path = context_path + "[" + str(index) + "]" if context_path != "tables" else "tables"
+        path = context_path + "[" + str(index) + "]"
         label = operations[ref].get("op_code", ref)
         for field in ("part_no", "sequence", "start_sequence", "end_sequence", "merge_mode", "total_days", "group_ref"):
-            projection.add(category, ref, label, field, row.get(field, _MISSING), path + "." + field if context_path != "tables" else path,
+            projection.add(category, ref, label, field, row.get(field, _MISSING), path + "." + field,
                 "external_contexts", origin="original", nullable=field in ("start_sequence", "end_sequence", "merge_mode", "total_days", "group_ref"))
         supplier_ref = _reference(source, "supplier", row["supplier_id"], original=True) if "supplier_id" in row else _MISSING
         projection.add(category, ref, label, "supplier_id", supplier_ref,
-                       path + ".supplier_id" if context_path != "tables" else path, "external_contexts", origin="original", nullable=True)
+                       path + ".supplier_id", "external_contexts", origin="original", nullable=True)
     suppliers = source.table("Suppliers")
     selected_suppliers = {row.get("supplier_id") for row in operations.values() if row.get("source") == "external"}
     selected_suppliers.update(row.get("supplier_id") for row in contexts or [] if row.get("operation_id") in external)
@@ -260,6 +258,20 @@ def _materials(projection, batches, operations):
             ref = _reference(source, "supplier", row["supplier_id"])
             projection.fields(category, _ref_key(ref, row["supplier_id"]), row.get("name", row["supplier_id"]), row,
                 ("status", "default_days"), "tables.Suppliers[" + str(index) + "]", "suppliers")
+
+
+def _stored_is_primary(value):
+    try:
+        return normalize_yes_no_stored(value)
+    except ValueError:
+        return _MISSING
+
+
+def _stored_skill_rank(value):
+    try:
+        return skill_level_rank(normalize_skill_level_stored(value))
+    except ValueError:
+        return _MISSING
 
 
 def _resources(projection, operations):
@@ -332,7 +344,8 @@ def _resources(projection, operations):
         entity = _ref_key(machine, row["machine_id"]) + ":operator:" + _ref_key(operator, row["operator_id"])
         path = "tables.OperatorMachine[" + str(index) + "]"
         projection.add(category, entity, row["operator_id"] + " / " + row["machine_id"], "authorization", True, path, "authorizations")
-        for field, value in (("is_primary", to_yes_no(row.get("is_primary"), default="no")), ("skill_rank", skill_level_rank(row.get("skill_level")))):
+        for field, value in (("is_primary", _stored_is_primary(row.get("is_primary"))),
+                             ("skill_rank", _stored_skill_rank(row.get("skill_level")))):
             projection.add(category, entity, row["operator_id"], field, value, path + "." + ("skill_level" if field == "skill_rank" else field), "authorizations")
     return result, known
 
@@ -381,8 +394,8 @@ def _execution(projection, operations, resources):
                        "execution", origin="execution", reason=_reason("execution_not_saved", "选中工序的原报工投影未保存。"))
     for execution_index, (ref, row) in enumerate((execution or {}).items()):
         path = "[" + str(execution_index) + "]" if source.kind == "run" else ref
-        reports = (row.get("reports") or []) + (row.get("legacy_facts") or [])
-        busy = row.get("execution_state") in ("partial", "started", "processing", "paused") and any(
+        reports = row.get("reports") or []
+        busy = row.get("execution_state") in ("partial", "started") and any(
             report.get("actual_machine_ref") in refs or report.get("actual_operator_ref") in refs for report in reports)
         if ref not in operations and not busy:
             continue
@@ -402,17 +415,14 @@ def _execution(projection, operations, resources):
             "quantity_complete", "records_complete", "first_actual_start", "confirmed_finish", "execution_state"),
             path, "execution", origin="execution", nullable=("first_actual_start", "confirmed_finish"))
         # Actual report identity and journal times are bookkeeping. Their physical content is retained.
-        for report_kind in ("reports", "legacy_facts"):
-            physical = sorted(enumerate(row.get(report_kind) or []), key=lambda item: repr(tuple(item[1].get(field) for field in (
-                "actual_start", "actual_end", "event_time", "actual_machine_ref", "actual_operator_ref", "completed_quantity", "quantity_done"))))
-            fields = ("actual_start", "actual_end", "actual_machine_ref", "actual_operator_ref", "completed_quantity", "effective_processing_hours") if report_kind == "reports" else (
-                "event_type", "reported_status", "event_time", "quantity_done", "quantity_scrapped", "actual_machine_ref", "actual_operator_ref")
-            for ordinal, (index, report) in enumerate(physical):
-                entity = ref + ":" + report_kind + ":" + str(ordinal)
-                projection.fields(category, entity, label, report, fields,
-                    path + "." + report_kind + "[" + str(index) + "]", "execution", origin="execution",
-                    nullable=("actual_end", "actual_machine_ref", "actual_operator_ref", "effective_processing_hours", "reported_status",
-                              "quantity_done", "quantity_scrapped"))
+        physical = sorted(enumerate(row.get("reports") or []), key=lambda item: repr(tuple(item[1].get(field) for field in (
+            "actual_start", "actual_end", "actual_machine_ref", "actual_operator_ref", "completed_quantity"))))
+        fields = ("actual_start", "actual_end", "actual_machine_ref", "actual_operator_ref", "completed_quantity", "effective_processing_hours")
+        for ordinal, (index, report) in enumerate(physical):
+            entity = ref + ":reports:" + str(ordinal)
+            projection.fields(category, entity, label, report, fields,
+                path + ".reports[" + str(index) + "]", "execution", origin="execution",
+                nullable=("actual_end", "actual_machine_ref", "actual_operator_ref", "effective_processing_hours"))
     schedule = source.table("Schedule")
     baseline = source.baseline
     known = schedule is not None and type(baseline) is dict and "version" in baseline

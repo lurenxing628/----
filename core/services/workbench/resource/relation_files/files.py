@@ -193,8 +193,8 @@ class WorkbenchRelationFileService:
         for code in codes:
             for link in preparation.authorizations("operator", code):
                 current[code][link["machine_id"]] = {
-                    "skill_level": normalize_skill_level_stored(link.get("skill_level")),
-                    "is_primary": normalize_yes_no_stored(link.get("is_primary")),
+                    "skill_level": normalize_skill_level_stored(link["skill_level"]),
+                    "is_primary": normalize_yes_no_stored(link["is_primary"]),
                 }
         return current
 
@@ -368,8 +368,8 @@ class WorkbenchRelationFileService:
             rows.append({
                 "operator_code": link["operator_id"],
                 "machine_code": link["machine_id"],
-                "skill_level": EXPORT_LABELS["skill_level"][normalize_skill_level_stored(link.get("skill_level"))],
-                "is_primary": EXPORT_LABELS["is_primary"][normalize_yes_no_stored(link.get("is_primary"))],
+                "skill_level": EXPORT_LABELS["skill_level"][normalize_skill_level_stored(link["skill_level"])],
+                "is_primary": EXPORT_LABELS["is_primary"][normalize_yes_no_stored(link["is_primary"])],
             })
         if self.reader._snapshot_metrics is not None:
             metrics = self.reader._table_reader().metrics

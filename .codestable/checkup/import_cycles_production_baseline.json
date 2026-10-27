@@ -14,35 +14,9 @@
  ],
  "file_cycle_semantics": "explicit import edges plus implicit parent-package __init__ loading edges",
  "hard_dir_cycles": [],
- "hard_file_cycles": [
-  {
-   "members": [
-    "core.infrastructure.migrations",
-    "core.infrastructure.migrations.v16",
-    "core.infrastructure.migrations.v18",
-    "core.infrastructure.migrations.v19",
-    "core.infrastructure.migrations.v38",
-    "core.infrastructure.migrations.v4"
-   ],
-   "edges": [
-    "core.infrastructure.migrations -> core.infrastructure.migrations.v16",
-    "core.infrastructure.migrations -> core.infrastructure.migrations.v18",
-    "core.infrastructure.migrations -> core.infrastructure.migrations.v19",
-    "core.infrastructure.migrations -> core.infrastructure.migrations.v38",
-    "core.infrastructure.migrations -> core.infrastructure.migrations.v4",
-    "core.infrastructure.migrations.v16 -> core.infrastructure.migrations",
-    "core.infrastructure.migrations.v18 -> core.infrastructure.migrations",
-    "core.infrastructure.migrations.v18 -> core.infrastructure.migrations.v16",
-    "core.infrastructure.migrations.v19 -> core.infrastructure.migrations",
-    "core.infrastructure.migrations.v19 -> core.infrastructure.migrations.v16",
-    "core.infrastructure.migrations.v19 -> core.infrastructure.migrations.v18",
-    "core.infrastructure.migrations.v38 -> core.infrastructure.migrations",
-    "core.infrastructure.migrations.v4 -> core.infrastructure.migrations"
-   ]
-  }
- ],
+ "hard_file_cycles": [],
  "unresolved_dynamic_imports": [
   "core/plugins/manager.py|103|lazy|spec_from_file_location(module_name)",
-  "data/repositories/__init__.py|110|lazy|module_name"
+  "data/repositories/__init__.py|107|lazy|module_name"
  ]
 }

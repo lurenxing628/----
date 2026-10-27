@@ -129,20 +129,6 @@ class WorkbenchExecutionRepository(BaseRepository):
                 result.setdefault(row["operation_ref"], {}).setdefault(row["report_ref"], []).append(row)
         return result, heads, count
 
-    def legacy(self, refs, limit):
-        """Legacy facts grouped by operation; (result, count) with the same cap semantics as reports."""
-        result, count = {}, 0
-        for chunk in chunks(list(refs)):
-            marks = ",".join("?" for _ in chunk)
-            rows = self.fetchall(f"SELECT * FROM WorkbenchExecutionLegacyFacts WHERE operation_ref IN ({marks}) ORDER BY id LIMIT ?",
-                                 chunk + [limit + 1 - count])
-            count += len(rows)
-            if count > limit:
-                break
-            for row in rows:
-                result.setdefault(row["operation_ref"], []).append(row)
-        return result, count
-
     def report_voids(self, refs, limit):
         """Void facts keyed by report_ref; (result, count) with the same cap semantics as reports."""
         result, count = {}, 0
@@ -157,16 +143,6 @@ class WorkbenchExecutionRepository(BaseRepository):
                 break
             result.update((row["report_ref"], row) for row in rows)
         return result, count
-
-    def unresolved_operations(self, operations):
-        ids = {row["id"]: ref for ref, row in operations.items() if row["id"] is not None}
-        result = set()
-        for chunk in chunks(list(ids)):
-            marks = ",".join("?" for _ in chunk)
-            rows = self.fetchall(f"""SELECT DISTINCT op_id FROM WorkbenchExecutionLegacyFacts
-                WHERE (operation_ref IS NULL OR recorded_against_task_ref IS NULL) AND op_id IN ({marks})""", chunk)
-            result.update(ids[row["op_id"]] for row in rows)
-        return result
 
     def report_header(self, *, report_ref):
         return self.fetchone("SELECT * FROM WorkbenchProductionReports WHERE report_ref=?", (report_ref,))

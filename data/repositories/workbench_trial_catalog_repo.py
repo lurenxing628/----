@@ -30,11 +30,11 @@ def _query(scope):
         if scope.status != "all":
             where.append("d.status=?")
             params.append(scope.status)
-        columns = _BASE_COLUMNS + ",d.status,d.revision,d.created_at,d.updated_at,d.local_operator,d.admission_hash,s.scenario_ref,s.name AS saved_name"
+        columns = _BASE_COLUMNS + ",d.status,d.revision,d.created_at,d.updated_at,d.local_operator,s.scenario_ref,s.name AS saved_name"
         source = "WorkbenchTrialDrafts d LEFT JOIN WorkbenchTrialScenarios s ON s.draft_ref=d.draft_ref " + _BASE_JOINS
         order = "d.updated_at DESC,d.draft_ref ASC"
     else:
-        columns = _BASE_COLUMNS + ",s.scenario_ref,s.name,s.revision,s.saved_at,s.local_operator,s.snapshot_hash"
+        columns = _BASE_COLUMNS + ",s.scenario_ref,s.name,s.revision,s.saved_at,s.local_operator"
         source = "WorkbenchTrialScenarios s JOIN WorkbenchTrialDrafts d ON d.draft_ref=s.draft_ref " + _BASE_JOINS
         order = "s.saved_at DESC,s.scenario_ref ASC"
     return "SELECT " + columns + " FROM " + source + " WHERE " + (" AND ".join(where) if where else "1=1") + " ORDER BY " + order, params

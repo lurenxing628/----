@@ -19,26 +19,6 @@
       "count": 1
     },
     {
-      "path": "core/infrastructure/migrations/v16.py",
-      "kind": "private_symbol",
-      "count": 2
-    },
-    {
-      "path": "core/infrastructure/migrations/v18.py",
-      "kind": "private_symbol",
-      "count": 4
-    },
-    {
-      "path": "core/infrastructure/migrations/v19.py",
-      "kind": "private_symbol",
-      "count": 4
-    },
-    {
-      "path": "core/infrastructure/workbench_plan_identity_write_guard.py",
-      "kind": "private_symbol",
-      "count": 1
-    },
-    {
       "path": "core/services/common/plan_query.py",
       "kind": "private_symbol",
       "count": 1
@@ -94,11 +74,6 @@
       "count": 1
     },
     {
-      "path": "core/services/scheduler/run/schedule_execution_reservations.py",
-      "kind": "private_symbol",
-      "count": 3
-    },
-    {
       "path": "core/services/scheduler/run/schedule_optimizer_steps.py",
       "kind": "private_symbol",
       "count": 2
@@ -141,7 +116,7 @@
     {
       "path": "core/services/workbench/plan/queries.py",
       "kind": "private_symbol",
-      "count": 2
+      "count": 1
     },
     {
       "path": "core/services/workbench/report/exports.py",
@@ -179,11 +154,6 @@
       "count": 2
     },
     {
-      "path": "core/services/workbench/run/piece_adoption_execution.py",
-      "kind": "private_symbol",
-      "count": 1
-    },
-    {
       "path": "core/services/workbench/trial/adoption_input.py",
       "kind": "private_symbol",
       "count": 1
@@ -210,11 +180,6 @@
     },
     {
       "path": "web/routes/workbench/calendars.py",
-      "kind": "private_symbol",
-      "count": 1
-    },
-    {
-      "path": "web/routes/workbench/legacy_navigation_plan.py",
       "kind": "private_symbol",
       "count": 1
     },

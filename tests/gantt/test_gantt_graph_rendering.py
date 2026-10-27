@@ -112,7 +112,7 @@ return true;
 def test_plan_gantt_source_preserves_unavailable_reason_and_plan_identity():
     result = run_current_js(r"""
 const plan=h.processFixture();
-Object.assign(plan.plan,{kind:'scenario',version:null,display_name:'机加试调'});
+Object.assign(plan.plan,{kind:'official',version:null,display_name:'正式计划 A'});
 plan.projections.baseline.reason='采纳凭据未记录，无法读取原安排。';
 plan.provenance.reason='生成来源凭据不完整，暂时无法核对。';
 let tree=h.render(h.runtime.PlanGanttSource,{data:plan});
@@ -120,12 +120,11 @@ const source=tree=>h.walk(tree).find(node=>node.props['data-gantt-comparison-sou
 assert(h.text(source(tree)).includes(plan.projections.baseline.reason),'Unavailable evidence must not be described as no original plan');
 assert(h.text(source(tree)).includes(plan.provenance.reason),'The generation source must retain its own unavailable reason');
 assert(!h.text(source(tree)).includes('vnull'),'A plan without an official version must not invent a version label');
-assert(h.text(source(tree)).includes('当前安排：试调方案 · 机加试调'));
-plan.projections.baseline={state:'available',basis:'scenario_base',items:[],
-  baseline_plan:{kind:'candidate',version:null,display_name:'候选 A'}};
+assert(h.text(source(tree)).includes('当前安排：正式计划 · 正式计划 A'));
+plan.projections.baseline={state:'available',basis:'official_base',items:[],
+  baseline_plan:{kind:'official',version:1,display_name:'对照计划'}};
 tree=h.render(h.runtime.PlanGanttSource,{data:plan});
-assert(h.text(source(tree)).includes('原安排：候选方案 · 候选 A'));
-assert(!h.text(source(tree)).includes('正式计划'),'A candidate used as the scenario basis must retain its real identity');
+assert(h.text(source(tree)).includes('原安排：正式计划 · 对照计划 · v1'));
 assert(!h.text(source(tree)).includes('vnull'));
 return true;
 """)
@@ -139,7 +138,7 @@ const ref=h.reference(100),task={task_ref:ref,plan_ref:ref,operation_ref:ref,
   piece_id:null,quantity:1,batch_quantity:1,quantity_basis:'run_admission',quantity_reason:null,batch_id:'B1',operation_label:'精加工',
   execution:{operation_ref:ref,comparison_task_ref:ref,execution_state:'unreported',data_quality:'complete',target_quantity:1,
     known_completed_quantity:0,remaining_quantity:1,records_complete:true,quantity_complete:false,unknown_record_count:0,
-    data_gaps:[],reports:[],legacy_facts:[],voided_reports:[],write_context:{write_token:null,capabilities:{},blocked_reasons:[]},completion_basis:null}};
+    data_gaps:[],reports:[],voided_reports:[],write_context:{write_token:null,capabilities:{},blocked_reasons:[]},completion_basis:null}};
 const response={ok:true,schema_version:1,meta:{source:'production',time_basis:'factory_local',snapshot_ref:ref,as_of:'2026-10-12T08:00:00'},data:{task}};
 const query=h.runtime.APSResourceSession.useQuery;
 try {

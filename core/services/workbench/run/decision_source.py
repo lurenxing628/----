@@ -79,7 +79,7 @@ class DecisionSource:
         self.reference_ref = (reference_candidate_ref or self.basis["selected_candidate_ref"]) if comparison_mode == "candidates" else None
         self.selected_ref = selected_candidate_ref or self.basis["selected_candidate_ref"]
         self._candidate_reference(self.reference_ref)
-        self._candidate_reference(self.selected_ref, require_result=False)
+        self._candidate_reference(self.selected_ref)
         self._projected, self._task_intervals, self._analysis, self._candidate_records = {}, {}, {}, {}
         self._raw_tasks, self._candidate_sources, self._scheduled_op_ids = {}, {}, {}
         self._candidate_records.update({row["candidate_ref"]: row for row in prepared.get("rows", ())})
@@ -150,7 +150,7 @@ class DecisionSource:
     def candidate_record(self, candidate_ref: str):
         if candidate_ref not in self._candidate_records:
             candidate = self.store.candidate(candidate_ref)
-            saved = self._candidate_reference(candidate_ref, require_result=False)
+            saved = self._candidate_reference(candidate_ref)
             if candidate["run_ref"] != self.run["run_ref"] or any(candidate[name] != saved[name] for name in ("status", "task_count", "sequence")):
                 corrupt()
             self._candidate_records[candidate_ref] = candidate
@@ -203,12 +203,12 @@ class DecisionSource:
         return decode_model(self.repo.decision_read_model(self.run["run_ref"], ("process",)), ("process",))["process"]
 
     @overload
-    def _candidate_reference(self, candidate_ref: None, *, require_result: bool = True) -> None: ...
+    def _candidate_reference(self, candidate_ref: None) -> None: ...
 
     @overload
-    def _candidate_reference(self, candidate_ref: str, *, require_result: bool = True) -> Dict[str, Any]: ...
+    def _candidate_reference(self, candidate_ref: str) -> Dict[str, Any]: ...
 
-    def _candidate_reference(self, candidate_ref: Optional[str], *, require_result: bool = True) -> Optional[Dict[str, Any]]:
+    def _candidate_reference(self, candidate_ref: Optional[str]) -> Optional[Dict[str, Any]]:
         if candidate_ref is None:
             return
         reference(candidate_ref)
@@ -217,8 +217,6 @@ class DecisionSource:
             if self.store.candidate_run(candidate_ref) != self.run["run_ref"]:
                 reject("invalid_input", "比较候选属于另一轮排产，请选择本次排产中的方案。", 422)
             corrupt()
-        if require_result and candidate["status"] != "completed":
-            reject("invalid_input", "该候选尚未产出任务安排，请选择已产出的方案。", 422)
         return candidate
 
     def _scope(self, range_start, range_end):
@@ -274,7 +272,7 @@ class DecisionSource:
         return self.saved_projection(key, "delivery")
 
     def delivery_detail(self, candidate_ref):
-        self._candidate_reference(candidate_ref, require_result=False)
+        self._candidate_reference(candidate_ref)
         return self.saved_projection(candidate_ref, "delivery_detail")
 
     def result_available(self, candidate_ref):

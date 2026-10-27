@@ -8,10 +8,34 @@ import openpyxl
 import pytest
 
 from core.errors import ValidationError
+from core.infrastructure.transaction import TransactionManager
 from core.services.report.date_range_limits import ensure_report_date_range_within_limit
 from core.services.report.exporters.xlsx import export_execution_review_xlsx
 from core.services.workbench.plan.read_context import PlanReadContext
-from tests.workbench.template_lineage_support import ledger_fixture as _ledger_fixture  # noqa: F401
+from tests.workbench.execution_ledger_support import LedgerCase, current_database
+
+
+class _ReviewLedgerCase(LedgerCase):
+    op_id: int
+
+
+@pytest.fixture(name="ledger_case")
+def _ledger_fixture(tmp_path):
+    conn = current_database(tmp_path / "plan-vs-actual-review.sqlite")
+    with TransactionManager(conn).transaction():
+        conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T1','Turning')")
+        conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M1','Lathe','T1')")
+        conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('O1','Operator')")
+        conn.execute("INSERT INTO OperatorMachine(operator_id,machine_id) VALUES ('O1','M1')")
+        conn.execute("INSERT INTO Parts(part_no,part_name) VALUES ('P1','Part')")
+        conn.execute("INSERT INTO Batches(batch_id,part_no,quantity) VALUES ('B1','P1',10)")
+        case = _ReviewLedgerCase(conn)
+        case.op_id = case.op()
+    case.plan(1, [case.op_id])
+    try:
+        yield case
+    finally:
+        conn.close()
 
 EXPECTED_HEADERS = [
     "批次",
@@ -22,14 +46,6 @@ EXPECTED_HEADERS = [
     "计划结束",
     "实际结束",
     "完工偏差",
-    "暂停时长",
-    "异常原因",
-    "严重程度",
-    "预计影响时间",
-    "影响设备",
-    "影响人员",
-    "处理状态",
-    "是否建议重新排程",
     "计划资源",
     "实际资源",
     "现场反馈状态",
@@ -117,32 +133,13 @@ def test_workbench_report_bounds_finish_cohort_before_detail_admission(ledger_ca
     empty = client.get(url, query_string={'resource_type': 'machine', 'resource_ref': historical_ref,
         'plan_finish_date_from': '2026-09-20', 'plan_finish_date_to': '2026-09-20'})
     assert empty.status_code == 200 and empty.get_json()['data']['summary']['operations'] == 0
-    # A replacement with the same business code cannot identify which old
-    # resource instance a preserved event actually used.
-    case.conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M2','Replacement lathe','T1')")
-    schedule_id = case.conn.execute('SELECT id FROM Schedule WHERE version=2 AND op_id=?', (others[0],)).fetchone()[0]
-    case.conn.execute("""INSERT INTO OperationExecutionEvents
-        (schedule_version,schedule_id,op_id,batch_id,source_table,effective_plan_role,event_type,reported_status,
-         event_time,actual_machine_id,idempotency_key,request_fingerprint,previous_state_revision,created_by)
-        VALUES (2,?,?,'B2','schedule','adopted','start','processing','2026-09-09T08:00:00',
-                'M2','unresolved-resource-review','unresolved-resource-review',?,'old-operator')""",
-        (schedule_id, others[0], str(others[0]) + ':0:0'))
-    case.conn.commit()
-    before = case.conn.total_changes
-    uncertain = {'batch_ref': other_ref, 'resource_type': 'machine', 'resource_ref': historical_ref}
-    unresolved = client.get(url, query_string=uncertain)
-    assert unresolved.status_code == 409 and unresolved.get_json()['error']['code'] == 'execution_resource_unavailable'
-    unresolved = client.get(url, query_string={**uncertain, 'resource_ref': 'unassigned'})
-    assert unresolved.status_code == 409 and unresolved.get_json()['error']['code'] == 'execution_resource_unavailable'
-    planned = client.get(url, query_string={**uncertain, 'resource_ref': case.ref('machine', 'M3')})
-    assert planned.status_code == 200 and planned.get_json()['data']['summary']['operations'] == 2
-    people = client.get(url, query_string={**uncertain, 'resource_type': 'operator', 'resource_ref': 'unassigned'})
-    assert people.status_code == 200 and people.get_json()['data']['summary']['operations'] == 1
-    unreported = client.get(url, query_string={**uncertain, 'focus': 'unreported'})
-    assert unreported.status_code == 200 and unreported.get_json()['data']['summary']['operations'] == 0
-    assert case.conn.total_changes == before
     case.command('create', case.task(2, others[0]), {'effective_processing_hours': 0})
     before = case.conn.total_changes
+    uncertain = {'batch_ref': other_ref, 'resource_type': 'machine', 'resource_ref': historical_ref}
+    planned = client.get(url, query_string={**uncertain, 'resource_ref': case.ref('machine', 'M3')})
+    assert planned.status_code == 200 and planned.get_json()['data']['summary']['operations'] == 2
+    unreported = client.get(url, query_string={**uncertain, 'focus': 'unreported'})
+    assert unreported.status_code == 200 and unreported.get_json()['data']['summary']['operations'] == 0
     omitted = client.get(url, query_string={**uncertain, 'resource_ref': 'unassigned'})
     assert omitted.status_code == 200 and omitted.get_json()['data']['summary']['operations'] == 1
     assert case.conn.total_changes == before
@@ -322,19 +319,9 @@ def test_execution_review_xlsx_uses_canonical_labels_when_legacy_export_aliases_
         "planned_end_time_label": "2026-05-01 09:00:00",
         "actual_end_time_label": "2026-05-01 09:05:00",
         "end_deviation_label": "晚了 5 分钟",
-        "pause_duration_label": "15 分钟",
-        "exception_reason_label": "设备问题",
-        "exception_severity_label": "严重",
-        "exception_impact_minutes_label": "预计影响 30 分钟",
-        "exception_affected_machine_label": "影响设备",
-        "exception_affected_operator_label": "影响人员",
-        "exception_handling_status_label": "处理中",
-        "exception_suggest_reschedule_label": "建议重新排程",
         "planned_resource_label": "计划资源",
         "actual_resource_label": "实际资源",
         "feedback_status_label": "已完工",
-        "exception_affected_machine_export_label": "旧影响设备",
-        "exception_affected_operator_export_label": "旧影响人员",
         "planned_resource_export_label": "旧计划资源",
         "actual_resource_export_label": "旧实际资源",
     }
@@ -343,12 +330,10 @@ def test_execution_review_xlsx_uses_canonical_labels_when_legacy_export_aliases_
     try:
         ws = wb["计划和现场实际"]
         assert [cell.value for cell in ws[1]] == EXPECTED_HEADERS
-        assert ws["M2"].value == "影响设备"
-        assert ws["N2"].value == "影响人员"
-        assert ws["Q2"].value == "计划资源"
-        assert ws["R2"].value == "实际资源"
+        assert ws["I2"].value == "计划资源"
+        assert ws["J2"].value == "实际资源"
         all_values = _all_workbook_values(wb)
-        for token in ("旧影响设备", "旧影响人员", "旧计划资源", "旧实际资源"):
+        for token in ("旧计划资源", "旧实际资源"):
             assert token not in all_values
     finally:
         wb.close()
@@ -369,6 +354,6 @@ def test_standalone_execution_xlsx_stream_keeps_canonical_headers():
     try:
         sheet = workbook["计划和现场实际"]
         assert [cell.value for cell in sheet[1]] == EXPECTED_HEADERS
-        assert sheet["R2"].value == "二号设备 / 李四"
+        assert sheet["J2"].value == "二号设备 / 李四"
     finally:
         workbook.close()

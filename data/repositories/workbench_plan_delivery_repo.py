@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Sequence
 
 from .schedule_plan_query_repo import SchedulePlanQueryRepository
 
@@ -25,7 +25,3 @@ class WorkbenchPlanDeliveryRepository(SchedulePlanQueryRepository):
     def list_operation_batch_ids(self, operation_ids: Sequence[int]) -> List[Dict[str, Any]]:
         marks = ",".join("?" for _ in operation_ids)
         return self.fetchall("SELECT id AS op_id, batch_id FROM BatchOperations WHERE id IN (" + marks + ")", list(operation_ids))
-
-    def get_candidate_summary(self, version: Any, candidate_id: Any) -> Optional[Dict[str, Any]]:
-        return self.fetchone("SELECT summary_json FROM ScheduleCandidate WHERE version = ? AND id = ?",
-                             (version, candidate_id))

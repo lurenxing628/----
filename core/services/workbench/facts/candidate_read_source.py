@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Optional
 
 from core.models.workbench_run_candidate import reference
 
@@ -26,7 +25,7 @@ class CandidateReadSource:
     tasks: list
     unplanned: list
     catalog: list
-    scheduled_op_ids: Optional[set]
+    scheduled_op_ids: set
     # validate_manifest rejects a missing receipt whenever its candidate rows exist.
     receipt: dict
 
@@ -80,7 +79,7 @@ def read_candidate_source(store, candidate_ref, *, prepared=None):
         if candidate.get("candidate_ref") != candidate_ref or candidate.get("run_ref") != run_ref:
             corrupt()
         saved = next((row for row in rows if row["candidate_ref"] == candidate_ref), None)
-        if (saved is None or saved.get("run_ref", run_ref) != run_ref or
+        if (saved is None or saved.get("run_ref", run_ref) != run_ref or saved.get("status") != "completed" or
                 any(saved.get(key) != candidate.get(key) for key in ("status", "task_count", "sequence"))):
             corrupt()
         capture = prepared["capture"]
@@ -88,7 +87,6 @@ def read_candidate_source(store, candidate_ref, *, prepared=None):
         disposition = prepared["disposition"]
         raw_tasks = prepared.get("raw_tasks")
         tasks = prepared.get("tasks")
-        ids = prepared["scheduled_op_ids"] if tasks is not None else None
         if raw_tasks is None:
             if tasks is not None:
                 corrupt()
@@ -97,6 +95,9 @@ def read_candidate_source(store, candidate_ref, *, prepared=None):
         if len(raw_tasks) != candidate["task_count"]:
             corrupt()
         tasks, _, ids = tasks_projection_with_intervals(raw_tasks, candidate, facts)
+    else:
+        assert prepared is not None
+        ids = prepared["scheduled_op_ids"]
     unplanned = unplanned_projection(disposition, tasks, facts)
     return CandidateReadSource(run, candidate, disposition, capture, facts, raw_tasks, tasks, unplanned, rows, ids,
                                receipt=receipt)

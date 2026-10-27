@@ -12,7 +12,7 @@ _COLUMNS = (
 
 
 def capture_select(operation_sql, origin):
-    """Fixed SQL fragments supplied only by this module and its migration."""
+    """Fixed SQL fragments supplied only by this module."""
     return """SELECT o.id,b.part_no,o.seq,t.id,t.status,t.ext_group_id,
         g.part_no,g.start_seq,g.end_seq,g.merge_mode,g.total_days,g.supplier_id,r.ref,tr.ref,
         '""" + origin + """',CURRENT_TIMESTAMP
@@ -37,7 +37,7 @@ def objects():
             group_id TEXT, group_part_no TEXT, start_sequence INTEGER, end_sequence INTEGER,
             merge_mode TEXT, total_days REAL, supplier_id TEXT, group_ref TEXT,
             template_operation_ref TEXT,
-            origin TEXT NOT NULL CHECK(origin IN ('creation','template_copy','instance_copy','migration_v33')),
+            origin TEXT NOT NULL CHECK(origin IN ('creation','template_copy','instance_copy')),
             captured_at TEXT NOT NULL,
             FOREIGN KEY(operation_id) REFERENCES BatchOperations(id) ON DELETE CASCADE)""",
         "batch_external_context_created": """CREATE TRIGGER batch_external_context_created
@@ -59,19 +59,3 @@ def contract_issues(conn, *, structure=None):
         if tuple(col["name"] for col in structure.table_info("BatchExternalContexts")) != _COLUMNS:
             issues.append("invalid_batch_external_context:BatchExternalContexts")
     return issues
-
-
-def install(conn):
-    if not conn.in_transaction:
-        raise RuntimeError("Batch external context installation requires a migration transaction.")
-    structure = SchemaStructure(conn)
-    definitions = objects()
-    if structure.objects.keys() & definitions.keys():
-        issues = contract_issues(conn, structure=structure)
-        if issues:
-            raise RuntimeError("Cannot repair partial batch external contexts: " + ";".join(issues))
-        return
-    for sql in definitions.values():
-        conn.execute(sql)
-    # This is the context visible at upgrade time, never claimed to be the context at birth.
-    conn.execute("INSERT INTO BatchExternalContexts(" + ",".join(_COLUMNS) + ") " + capture_select("BatchOperations", "migration_v33"))

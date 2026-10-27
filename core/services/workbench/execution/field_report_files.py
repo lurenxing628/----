@@ -93,9 +93,6 @@ class FieldReportFileService:
                 payload['actual_' + kind + '_ref'] = selected
         payload.update(source='excel')
         payload['report_no'] = value['report_no'] or self._source_report_number(row, reports, payload, source_ref)
-        existing = reports.by_no.get(payload['report_no'])
-        if existing and existing.get('legacy_fact_ref'):
-            payload.update(legacy_fact_ref=existing['legacy_fact_ref'], reason='Excel 核对已关联的历史完工记录')
         return {'action': 'create', 'ref': task_ref, 'payload': payload}
 
     @staticmethod

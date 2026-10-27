@@ -127,12 +127,8 @@ def candidate_comparison_public_summary(candidate_comparison: CandidateCompariso
         "target_objectives": list(candidate_comparison.target_objectives),
         "planned_candidate_count": len(candidates),
         "completed_candidate_count": len(candidates),
-        "failed_candidate_count": 0,
-        "skipped_candidate_count": 0,
-        "reused_candidate_count": 0,
         "time_budget_reached": candidate_comparison.time_budget_reached,
         "run_time_budget_seconds": candidate_comparison.run_time_budget_seconds,
-        "skipped_candidate_labels": [],
         "selection_policy_version": selection.selection_policy_version,
         "selection_reason_code": selection.reason_code,
         "selection": selection.to_dict(),
@@ -145,34 +141,10 @@ def candidate_comparison_public_summary(candidate_comparison: CandidateCompariso
 def candidate_comparison_minimal_summary(raw: Any) -> Dict[str, Any]:
     if not isinstance(raw, dict):
         return {}
-    if is_unified_generation(raw):
-        return _unified_comparison_small_summary(raw)
-    keys = (
-        "enabled",
-        "planned_candidate_count",
-        "completed_candidate_count",
-        "failed_candidate_count",
-        "skipped_candidate_count",
-        "time_budget_reached",
-        "run_time_budget_seconds",
-        "skipped_candidate_labels",
-        "baseline_missing_or_failed",
-        "selection_policy",
-        "selection_reason_code",
-    )
-    out: Dict[str, Any] = {}
-    for key in keys:
-        if key in raw:
-            out[key] = raw.get(key)
-    return out
-
-
-def _unified_comparison_small_summary(raw: Dict[str, Any]) -> Dict[str, Any]:
     keys = (
         "enabled", "generation_policy_version", "primary_objective", "target_objectives",
-        "planned_candidate_count", "completed_candidate_count", "failed_candidate_count",
-        "skipped_candidate_count", "reused_candidate_count", "time_budget_reached", "run_time_budget_seconds",
-        "skipped_candidate_labels", "selection_policy_version", "selection_reason_code",
+        "planned_candidate_count", "completed_candidate_count", "time_budget_reached",
+        "run_time_budget_seconds", "selection_policy_version", "selection_reason_code",
     )
     return {key: raw[key] for key in keys if key in raw}
 

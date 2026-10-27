@@ -247,7 +247,6 @@ def create_app_core(
         app.config["DATABASE_PATH"],
         app.logger,
         schema_path=schema_path if os.path.exists(schema_path) else None,
-        backup_dir=app.config.get("BACKUP_DIR"),
     )
     launcher_log_warning(app.logger, "启动阶段 schema_complete pid=%s duration=%.3fs。",
                          os.getpid(), time.perf_counter() - schema_started,

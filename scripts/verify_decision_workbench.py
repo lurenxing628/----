@@ -363,7 +363,7 @@ def _preparation_fixture_plan():
                       "additional_types": ["DP-T-B"]}],
         "parts": [{"part_no": "DP-P", "part_name": "准备需求验收零件"},
                   {"part_no": "DP-XP", "part_name": "外协周期验收零件"}],
-        "supplier": {"supplier_id": "DP-S", "name": "准备验收供应商", "op_type_id": "DP-T-X", "default_days": 0.25},
+        "supplier": {"supplier_id": "DP-S", "name": "准备验收供应商", "op_type_ids": ["DP-T-X"], "default_days": 0.25},
         "batches": [
             {"batch_id": "DP-NORMAL", "part_no": "DP-P", "quantity": 10, "priority": "urgent", "machine_id": "DP-M1",
              "operations": [operation(1, "A", 2, 0.5), operation(2, "A", 0.25, 0.075),
@@ -397,7 +397,9 @@ def _seed_preparation_case(conn, plan):
         insert_row(conn, "OpTypes", row)
     for row in plan["parts"]:
         insert_row(conn, "Parts", row)
-    insert_row(conn, "Suppliers", plan["supplier"])
+    insert_row(conn, "Suppliers", {key: value for key, value in plan["supplier"].items() if key != "op_type_ids"})
+    for kind in plan["supplier"]["op_type_ids"]:
+        insert_row(conn, "WorkbenchSupplierOpTypes", {"supplier_id": plan["supplier"]["supplier_id"], "op_type_id": kind})
     for number, row in enumerate(plan["machines"], 1):
         insert_row(conn, "Machines", {key: value for key, value in row.items() if key != "additional_types"})
         for kind in row["additional_types"]:
@@ -498,7 +500,7 @@ def preparation_fixtures(args):
             "OperatorSkill", "OpTypes", "Suppliers", "WorkbenchSupplierOpTypes", "Materials", "BatchMaterials",
             "BatchMaterialArrivals", "BatchMaterialReviews", "BatchMaterialStages", "BatchExternalContexts",
             "WorkCalendar", "OperatorCalendar", "MachineDowntimes", "WorkbenchCalendarDefaults",
-            "OperationExecutionEvents", "WorkbenchProductionReports", "WorkbenchExecutionLegacyFacts")
+            "WorkbenchProductionReports")
         old_sources = {name: {tuple(row) for row in conn.execute("SELECT * FROM " + name)} for name in source_tables}
         keys = tuple(plan["runtime_config"])
         config = dict(conn.execute("SELECT config_key,config_value FROM ScheduleConfig WHERE config_key IN (?,?,?)", keys))
@@ -2148,7 +2150,7 @@ def preparation_export_labels():
                             archived_changeover_events="保存设备序列按实际工种永久身份相邻比较")
     labels["state"] = {"complete": "完整", "partial": "部分", "unavailable": "缺少资料", "not_applicable": "范围无适用对象",
         "completed": "已完成", "failed": "失败", "skipped": "跳过", "queued": "待计算", "running": "计算中",
-        "unknown": "缺少资料", "no_result": "尚无结果", "comparable": "可比较", "different_coverage": "覆盖范围不同",
+        "unknown": "缺少资料", "comparable": "可比较", "different_coverage": "覆盖范围不同",
         "better": "改善", "worse": "增加代价", "equal": "相同", "neutral": "中性变化",
         "available": "已保存", "absent": "受理时无正式计划", "selection_required": "需要选择基准"}
     return labels

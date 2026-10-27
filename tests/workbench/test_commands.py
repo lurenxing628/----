@@ -66,12 +66,12 @@ def test_one_intent_replays_exact_result_before_expired_guard(schema_conn):
             validate_write_context(context["write_token"], "content-source", "content.check",
                                    {"value": {"$sqlite_blob": "AA=="}, "date": date(2026, 5, 1)})
     row = WorkbenchCommandService(schema_conn).repo.get(KEY)
-    assert row["input_hash"] is None and row["input_json"] is not None
+    assert row["input_json"] is not None
     with pytest.raises(WorkbenchCommandRejected) as changed:
         run(schema_conn, guard=expired, normalized_input={**INPUT, "name": "Another name"})
     assert changed.value.code == "request_key_conflict"
-    # Every receipt stores its original intent; a missing one is a damaged archive and nothing is re-run.
-    schema_conn.execute("UPDATE WorkbenchCommandReceipts SET input_json=NULL WHERE request_key=?", (KEY,))
+    # Every receipt stores its original intent; a corrupted one is a damaged archive and nothing is re-run.
+    schema_conn.execute("UPDATE WorkbenchCommandReceipts SET input_json='{invalid' WHERE request_key=?", (KEY,))
     schema_conn.commit()
     before = schema_conn.total_changes
     with pytest.raises(WorkbenchCommandUncertain):

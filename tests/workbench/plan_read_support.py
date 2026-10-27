@@ -7,10 +7,9 @@ from pathlib import Path
 import pytest
 from flask import Blueprint, Flask, g
 
-from core.infrastructure.workbench_plan_identity_schema import install_plan_identity
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
-from tests.workbench.plan_catalog_support import candidate, history, scenario, seed_operation, selection
+from tests.workbench.plan_catalog_support import history, seed_operation
 from web.routes.workbench.plan_reads import register_plan_read_routes
 
 BASE = "/api/workbench/v1/plans"
@@ -34,16 +33,8 @@ def seed_plans(conn):
     conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('PRIVATE-O1','Operator one')")
     for version in (1, 2, 3):
         history(conn, version, op_id=op)
-    adopted = candidate(conn, 3, "adopted", source="schedule")
-    selection(conn, 3, "baseline_best", adopted)
-    candidate(conn, 3, "critical_best", op_id=op)
-    for key, status in (("PRIVATE-ACTIVE", "active"), ("PRIVATE-EXPIRED", "expired"), ("PRIVATE-PUBLISHED", "published")):
-        scenario(conn, key, 3, op_id=op, status=status, candidate_id=adopted, candidate_key="adopted")
-        conn.execute("UPDATE ScheduleAdjustmentScenario SET scenario_name=? WHERE scenario_id=?", (status + " display", key))
     conn.execute("UPDATE Schedule SET start_time=?,end_time=?,machine_id='PRIVATE-M1',operator_id='PRIVATE-O1' WHERE version=3",
                  (NIGHT_START, NIGHT_END))
-    conn.execute("UPDATE ScheduleCandidateRows SET start_time='2026-09-11 01:00:00',end_time='2026-09-11 03:00:00'")
-    conn.execute("UPDATE ScheduleAdjustmentScenarioRow SET start_time='2026-09-12 23:00:00',end_time='2026-09-13 02:00:00'")
     conn.commit()
     return op
 
@@ -72,9 +63,9 @@ class PlanReadApi:
         finally:
             conn.close()
 
-    def ref(self, version=3, role="adopted", scenario_id=None):
+    def ref(self, version=3, role="adopted"):
         with self.db() as conn:
-            return WorkbenchPlanIdentityRepository(conn).get_plan_ref(WorkbenchPlanLocator(version, role, scenario_id))
+            return WorkbenchPlanIdentityRepository(conn).get_plan_ref(WorkbenchPlanLocator(version, role))
 
     def get(self, suffix="", **query):
         return self.client.get(BASE + suffix, query_string=query)
@@ -121,7 +112,6 @@ def plan_read_api(tmp_path):
     conn = connect(path)
     try:
         conn.executescript((Path(__file__).resolve().parents[2] / "schema.sql").read_text(encoding="utf-8"))
-        install_plan_identity(conn)
         conn.commit()
         seed_plans(conn)
     finally:

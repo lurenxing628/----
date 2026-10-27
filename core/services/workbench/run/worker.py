@@ -99,8 +99,7 @@ class WorkbenchRunWorker:
             computation = compute_candidate_run(snapshot, normalized_input, projections, capture=current_capture,
                                                 dispositions=admission["dispositions"])
             capture = {"input": normalized_input, "execution": raw_execution,
-                       "baseline": stored_json(row["baseline_json"]), "facts_text": row["facts_json"],
-                       "facts_hash": row["facts_hash"]}
+                       "baseline": stored_json(row["baseline_json"]), "facts_text": row["facts_json"]}
             facts = GenerationFacts(capture)
             identities = {op_id: ref for ref, op_id in facts.operations.items()}
             return prepare_run_result(computation, identities, run=row, capture=capture, admission=admission, facts=facts)

@@ -39,8 +39,6 @@ class FieldWorkspaceService:
         refs = {row[key] for p in projections.values() for row in p['reports'] + [item['report'] for item in p['voided_reports']]
                 for key in ('actual_machine_ref', 'actual_operator_ref') if row[key]}
         refs.update(task[key] for task in plan_tasks for key in ('machine_ref', 'operator_ref') if task[key])
-        refs.update(row[key] for p in projections.values() for row in p['legacy_facts']
-                    for key in ('actual_machine_ref', 'actual_operator_ref') if row[key])
         labels, codes = {}, {}
         for row in self.ledger.resources(refs):
             labels[row['ref']] = row['label']
@@ -74,7 +72,7 @@ class FieldWorkspaceService:
             task = self._task(row, projections[row['operation_ref']], labels, names)
             # 报工页据此对外协工序不提供实际设备、人员选择；写入时仍以服务端校验为准。
             task['source'] = facts['operations'][row['operation_ref']]['source']
-            if matches(task, count_scope, labels):
+            if matches(task, count_scope):
                 scope_tasks.append(task)
                 if not scope.get('state') or task['execution']['execution_state'] == scope['state']:
                     tasks.append(task)
@@ -119,8 +117,7 @@ class FieldWorkspaceService:
         for task in counted:
             state_counts[task['execution']['execution_state']] += 1
         reports = [report for task in counted for report in task['execution']['reports']]
-        legacy = [fact for task in counted for fact in task['execution']['legacy_facts']]
-        hours = hour_totals(reports + legacy)
+        hours = hour_totals(reports)
         if scope_tasks is None:
             report_count, complete_count = len(reports), state_counts['complete']
         else:

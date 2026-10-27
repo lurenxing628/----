@@ -41,8 +41,8 @@ class PlanCatalogScope:
     size: int = 20
 
     def __post_init__(self):
-        if self.collection not in ("history", "scenario"):
-            invalid_scope("计划列表只能选历史版本或已保存的试调方案。")
+        if self.collection != "history":
+            invalid_scope("计划列表只支持历史版本。")
         if type(self.size) is not int or not 1 <= self.size <= 50:
             invalid_scope("计划列表每页只能是 1 至 50 条。")
 

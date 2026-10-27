@@ -30,7 +30,7 @@ IDENTITY_LABELS = SUMMARY_IDENTITY_LABELS
 CELL_TEXTS = {
     "data_quality": DATA_QUALITY_TEXT,
     "completion_basis": COMPLETION_BASIS_TEXT,
-    "recorded_at_time_basis": {"factory_local": "现场记录时间", "legacy_storage": "历史系统导入的原始时间"},
+    "recorded_at_time_basis": {"factory_local": "现场记录时间"},
     "source": {"manual": "手工填写", "excel": "Excel 导入"},
 }
 

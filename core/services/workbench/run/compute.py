@@ -50,17 +50,16 @@ def _candidate_payloads(conn, schedule_input, comparison, *, selected_payload):
         piece_context = (prepare_piece_validation_context(conn, schedule_input)
                          if any(op.piece_id is not None for op in schedule_input.operations) else None)
         for candidate in comparison.candidates:
-            if candidate.status == "completed":
-                payloads[candidate.candidate_key] = validate_candidate(
-                    schedule_input, candidate.results, list(candidate.summary.errors),
-                    prepared_payload=(selected_payload if candidate.candidate_key == comparison.selection.selected_candidate_key else None),
-                    context=validation_context,
+            payloads[candidate.candidate_key] = validate_candidate(
+                schedule_input, candidate.results, list(candidate.summary.errors),
+                prepared_payload=(selected_payload if candidate.candidate_key == comparison.selection.selected_candidate_key else None),
+                context=validation_context,
+            )
+            if piece_context is not None:
+                validate_piece_candidate(
+                    conn, prepared=schedule_input,
+                    payload=payloads[candidate.candidate_key], context=piece_context,
                 )
-                if piece_context is not None:
-                    validate_piece_candidate(
-                        conn, prepared=schedule_input,
-                        payload=payloads[candidate.candidate_key], context=piece_context,
-                    )
     return payloads
 
 

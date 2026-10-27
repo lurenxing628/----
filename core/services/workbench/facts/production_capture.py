@@ -55,7 +55,6 @@ class ProductionFactsCapture:
         self.conn = conn
         self.execution_service: Any = None
         self.runtime_resources = None
-        self.execution_event_rows = None
         self.execution_facts = {}
         self.schema = sorted((kind, name, table, sql)
                              for name, (kind, table, sql) in schema_contract_memo(conn).structure.objects.items())

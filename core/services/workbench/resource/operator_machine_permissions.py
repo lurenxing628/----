@@ -4,7 +4,10 @@ from core.errors import ValidationError
 from core.models.operator_machine import OperatorMachine
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_resource_action import ResourceActionPreview, check_resource_preview, resource_refs
-from core.services.personnel.operator_machine_normalizers import normalize_yes_no_stored
+from core.services.personnel.operator_machine_normalizers import (
+    normalize_skill_level_stored,
+    normalize_yes_no_stored,
+)
 from core.services.personnel.operator_machine_service import OperatorMachineService
 
 from .queries import WorkbenchResourceQueryService
@@ -98,6 +101,7 @@ class WorkbenchOperatorMachinePermissions:
             for key, values in (("skill_level", ("beginner", "normal", "expert")), ("is_primary", ("yes", "no"))):
                 if row[key] not in values and (key not in previous or row[key] != previous[key]):
                     raise ValidationError("请选择有效的技能等级和主操标记。", field="machine_permissions")
+            normalize_skill_level_stored(row["skill_level"])
             result.append(row)
         if sum(normalize_yes_no_stored(row["is_primary"]) == "yes" for row in result) > 1:
             raise ValidationError("同一人员只能设置一台主操设备。", field="machine_permissions")

@@ -41,8 +41,8 @@
     const query = parameters(scope, ['collection', 'size', 'cursor', 'snapshot_ref']);
     if (!own(query, 'collection')) query.collection = 'history';
     if (!own(query, 'size')) query.size = 20;
-    if (!['history', 'scenario'].includes(query.collection) || !Number.isSafeInteger(query.size) || query.size < 1 || query.size > 50)
-      throw C.failure('计划列表只能按历史版本或试调方案查看，每页 1 至 50 条。这次没有读取，请点「刷新」重试。');
+    if (query.collection !== 'history' || !Number.isSafeInteger(query.size) || query.size < 1 || query.size > 50)
+      throw C.failure('计划列表只能按历史版本查看，每页 1 至 50 条。这次没有读取，请点「刷新」重试。');
     return query;
   }
   function workspaceScope(planRef, scope = {}) {
@@ -69,14 +69,14 @@
   function plan(value) {
     if (!exact(value, ['plan_ref', 'version', 'kind', 'is_current_official', 'display_name', 'completeness', 'capabilities', 'blocked_reasons'])
         || !nullableRef(value.plan_ref) || !(value.version === null || int64(value.version))
-        || !['official', 'candidate', 'scenario'].includes(value.kind) || typeof value.is_current_official !== 'boolean'
+        || value.kind !== 'official' || typeof value.is_current_official !== 'boolean'
         || !label(value.display_name) || !['complete', 'partial', 'invalid', 'unknown'].includes(value.completeness)
         || !exact(value.capabilities, ['view', 'export', 'edit_draft', 'adopt', 'report_actual']) || typeof value.capabilities.view !== 'boolean'
         || value.capabilities.export !== value.capabilities.view
         || !['edit_draft', 'adopt', 'report_actual'].every(key => value.capabilities[key] === false) || !issues(value.blocked_reasons)) return false;
     const view = value.capabilities.view;
     return (view ? ref(value.plan_ref) && int64(value.version) && value.blocked_reasons.length === 0 && value.completeness !== 'invalid'
-      : value.blocked_reasons.length > 0) && (!value.is_current_official || value.kind === 'official' && view);
+      : value.blocked_reasons.length > 0) && (!value.is_current_official || view);
   }
   function uniqueRefs(rows, key) {
     if (!Array.isArray(rows) || rows.some(row => !object(row) || !own(row, key))) return false;
@@ -89,13 +89,12 @@
     const d = result.data, p = d && d.page;
     if (!exact(d, ['plans', 'page']) || !Array.isArray(d.plans) || !d.plans.every(plan) || !uniqueRefs(d.plans, 'plan_ref')
         || !exact(p, ['collection', 'size', 'unit', 'has_more', 'next_cursor']) || p.collection !== query.collection || p.size !== query.size
-        || p.unit !== (query.collection === 'history' ? 'version' : 'scenario') || typeof p.has_more !== 'boolean'
+        || p.unit !== 'version' || typeof p.has_more !== 'boolean'
         || (p.has_more ? !token(p.next_cursor) || !d.plans.length || p.next_cursor === query.cursor : p.next_cursor !== null)
-        || d.plans.some(row => (row.kind === 'scenario') !== (query.collection === 'scenario'))
         || d.plans.filter(row => row.is_current_official).length > 1)
       throw C.failure('计划列表的类型或分页与查询不一致，请刷新。');
     // A history page counts versions, not role entries; null versions cannot be grouped by guessed identity.
-    const units = query.collection === 'scenario' ? d.plans.length : new Set(d.plans.filter(row => row.version !== null).map(row => String(row.version))).size
+    const units = new Set(d.plans.filter(row => row.version !== null).map(row => String(row.version))).size
       + d.plans.filter(row => row.version === null).length;
     if (units > query.size) throw C.failure('计划列表条数超过每页上限，请刷新。');
     return result;
@@ -148,7 +147,7 @@
   function baseline(value, data) {
     if (!object(value)) return false;
     if (value.state === 'unavailable') return exact(value, ['state', 'reason_code', 'reason', 'baseline_plan', 'items', 'item_count', 'items_complete'])
-      && ['not_recorded', 'baseline_binding_invalid', 'baseline_unavailable', 'scenario_unavailable', 'baseline_task_invalid',
+      && ['not_recorded', 'baseline_binding_invalid', 'baseline_unavailable', 'baseline_task_invalid',
         'no_adoption_baseline', 'adoption_evidence_missing', 'adoption_source_archived', 'adoption_snapshot_invalid',
         'adoption_baseline_archived', 'adoption_reference_invalid', 'adoption_baseline_drift', 'adoption_plan_drift'].includes(value.reason_code)
       && label(value.reason) && value.baseline_plan === null && Array.isArray(value.items) && value.items.length === 0
@@ -156,11 +155,9 @@
     const fields = ['start', 'end', 'machine_ref', 'operator_ref'], s = value.comparison_scope;
     if (!exact(value, ['state', 'reason_code', 'reason', 'basis', 'baseline_plan', 'comparison_scope', 'compared_fields', 'items', 'item_count', 'items_complete'])
         || value.state !== 'available' || value.reason_code !== null || value.reason !== null
-        || !['scenario_base', 'candidate_adoption', 'trial_adoption'].includes(value.basis)
-        || data.plan.kind !== (value.basis === 'scenario_base' ? 'scenario' : 'official')
+        || !['candidate_adoption', 'trial_adoption'].includes(value.basis)
         || !plan(value.baseline_plan) || !value.baseline_plan.capabilities.view
-        || value.basis !== 'scenario_base' && (value.baseline_plan.kind !== 'official' || value.baseline_plan.is_current_official)
-        || value.baseline_plan.kind === 'scenario' || value.baseline_plan.plan_ref === data.plan.plan_ref
+        || value.baseline_plan.is_current_official || value.baseline_plan.plan_ref === data.plan.plan_ref
         || !exact(s, ['scope', 'selection', 'boundary', 'alignment', 'time_basis', 'task_times']) || !same(s.scope, data.scope)
         || s.selection !== 'either_side_overlap' || s.boundary !== 'half_open' || s.alignment !== 'operation_ref'
         || s.time_basis !== 'factory_local' || s.task_times !== 'unclipped' || !sameArray(value.compared_fields, fields)

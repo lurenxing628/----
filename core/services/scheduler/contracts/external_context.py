@@ -63,12 +63,6 @@ def group_from_context(row):
             "start_sequence": row["start_sequence"], "end_sequence": row["end_sequence"]}
 
 
-def origin_notice(row):
-    if row and row["origin"] == BatchExternalContextOrigin.MIGRATION_V33.value:
-        return "外协周期按升级时的有效资料保留；更早的原始周期没有可核实记录。"
-    return None
-
-
 _SUPPLIER_CONFLICT = "合并外协段的供应商与保存的规则不一致。请核对整段供应商后，从工艺模板预览更新批次工序。"
 
 

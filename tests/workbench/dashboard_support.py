@@ -7,11 +7,6 @@ from pathlib import Path
 import pytest
 from flask import Blueprint, Flask, g, jsonify
 
-from core.infrastructure.workbench_dashboard_schema import install_workbench_dashboard_schema
-from core.infrastructure.workbench_execution_ledger_schema import install_execution_ledger
-from core.infrastructure.workbench_execution_void_schema import install_execution_voids
-from core.infrastructure.workbench_metadata_schema import install_metadata
-from core.infrastructure.workbench_plan_identity_schema import install_plan_identity
 from core.models.workbench_dashboard import DashboardQuery
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.dashboard.commands import WorkbenchDashboardCommandService
@@ -81,11 +76,6 @@ def dashboard_case(tmp_path):
     conn = connect(path)
     conn.executescript((Path(__file__).resolve().parents[2] / "schema.sql").read_text(encoding="utf-8"))
     conn.execute("BEGIN")
-    install_metadata(conn)
-    install_plan_identity(conn)
-    install_execution_ledger(conn)
-    install_execution_voids(conn)
-    install_workbench_dashboard_schema(conn)
     conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('DT1','Turning')")
     conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('DM1','Lathe','DT1')")
     conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('DO1','Operator')")
@@ -120,7 +110,7 @@ def close_payload(**patch):
 
 def source_rows(conn):
     names = ("Batches", "BatchOperations", "BatchMaterials", "Materials", "Schedule", "ScheduleHistory",
-             "MachineDowntimes", "OperationExecutionEvents", "WorkbenchProductionReports", "WorkbenchProductionReportRevisions")
+             "MachineDowntimes", "WorkbenchProductionReports", "WorkbenchProductionReportRevisions")
     def typed_row(row):
         return tuple((type(value).__name__, value.hex() if type(value) in (bytes, float) else value) for value in row)
     return {name: [typed_row(row) for row in conn.execute('SELECT * FROM "' + name + '" ORDER BY rowid')] for name in names}

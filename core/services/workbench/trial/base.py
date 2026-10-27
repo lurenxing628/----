@@ -33,7 +33,6 @@ from core.services.workbench.plan.read_context import PlanReadContext
 from core.services.workbench.run.piece_adoption_trial import trial_piece_predecessors
 from data.repositories.workbench_trial_repo import new_ref
 
-from .archived_external_context import archived_contexts
 from .effort import operation_types
 from .execution_anchors import attach_execution_anchors
 from .facts import ProductionFactsCapture, entity_maps, live_context
@@ -88,18 +87,12 @@ def _plan(conn, ref, capture):
 def _plan_capture(conn, ref, capture):
     context = PlanReadContext(conn)
     with context.read_scope():
-        locator, binding = context.references._resolved_record(ref)
-        source = binding["source_table"]
-        table, kind = {"schedule": ("Schedule", "schedule_row"),
-                       "candidate_rows": ("ScheduleCandidateRows", "candidate_row"),
-                       "adjustment_scenario_rows": ("ScheduleAdjustmentScenarioRow", "scenario_row")}[source]
-        query = {"version": locator.version, "source_table": source,
-                 "candidate_id": int(binding["owner_key"]) if source == "candidate_rows" else None,
-                 "scenario_id": locator.scenario_id}
+        locator, _binding = context.references._resolved_record(ref)
+        source = SOURCE_SCHEDULE
+        table, kind = "Schedule", "schedule_row"
+        query = {"version": locator.version, "source_table": source}
         if table in capture.table_names:
-            selected = [row for row in capture.table(table) if (
-                row["scenario_id"] == locator.scenario_id if source == "adjustment_scenario_rows" else
-                row["version"] == locator.version and (source != "candidate_rows" or row["candidate_id"] == query["candidate_id"]))]
+            selected = [row for row in capture.table(table) if row["version"] == locator.version]
             context.seed_source_rows(selected, **query)
         _, entry, _ = context.selected(ref)
         identity = entry.plan_identity
@@ -128,15 +121,13 @@ def _plan_capture(conn, ref, capture):
                                detail=item, interval=intervals[item["schedule_id"]]))
             result[-1]["original"]["part"] = parts.get(batch["part_no"])
             if result[-1]["current"]["start"] == result[-1]["current"]["end"]:
-                if source != "schedule":
-                    reject("point_evidence_unproven", "这道零工时工序来自旧候选方案或模拟结果，没有可核对的依据。")
                 if point_work is None:
                     point_work = context.point_work(locator.version)
                 _attach_point_work(result[-1], point_work[item["op_id"]])
         operations = {int(row["source_key"]): row["ref"] for row in capture.table("WorkbenchPlanSourceRefs")
                       if row["kind"] == "operation" and row["active"] == 1}
         issues = [] if entry.completeness == "complete" else [issue("trial_base_incomplete", "基础方案不完整，暂无法评估交期。")]
-        history = context.history(locator.version) if source == SOURCE_SCHEDULE else None
+        history = context.history(locator.version)
         delivery_record = ({"source": source, "summary": history["result_summary"], "result_status": history["result_status"]}
                            if history is not None else {"source": source})
         deferred, deferred_issues = archived_deferred_operation_evidence(delivery_record)
@@ -152,7 +143,7 @@ def _plan_capture(conn, ref, capture):
 
 
 def _formal_effort_source(conn, ref, version, record, rows):
-    if record["source"] != SOURCE_SCHEDULE:
+    if "summary" not in record:
         return {"operation_effort": None}
     history = {"version": version, "result_summary": record["summary"], "result_status": record["result_status"]}
     source = decision_baseline_source_resolver(conn)(plan_ref=ref, version=version, history=history)
@@ -242,13 +233,9 @@ def prepare_base(conn, intent, *, execution_service):
     return admission, rows, live
 
 
-def _original_external_facts(rows, original_tables, live):
+def _original_external_facts(original_tables, live):
     contexts = (archived_table(original_tables, "BatchExternalContexts") if original_tables is not None
                 else live["facts"]["tables"].get("BatchExternalContexts"))
-    if contexts is None and original_tables is not None:
-        selected = {row["original"]["operation"]["id"] for row in rows
-                    if row["original"]["operation"]["source"] == "external"}
-        contexts = archived_contexts(original_tables, selected)
     by_operation = {item["operation_id"]: item for item in contexts or []}
     operations = (archived_table(original_tables, "BatchOperations") if original_tables is not None
                   else live["facts"]["tables"]["BatchOperations"])
@@ -259,7 +246,7 @@ def _attach_original_context(rows, source, key, live, facts):
     original_execution = ({row["operation_ref"]: row for row in source["capture"]["execution"]}
                           if key == "candidate_ref" else live["execution"])
     original_tables = facts.archive if facts is not None else None
-    by_operation, members = _original_external_facts(rows, original_tables, live)
+    by_operation, members = _original_external_facts(original_tables, live)
     for row in rows:
         original = row["original"]
         original.setdefault("execution", original_execution.get(row["operation_ref"]))

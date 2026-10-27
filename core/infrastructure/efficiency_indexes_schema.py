@@ -14,9 +14,6 @@ ADDED = {
         + ",".join(run_history_sort_expressions(stem + "_at")) + ",run_ref)"
        for stem in ("accepted", "started", "finished")},
     "idx_material_stage_operation": "CREATE INDEX IF NOT EXISTS idx_material_stage_operation ON BatchMaterialStages(operation_id)",
-    "idx_schedule_adjustment_change_op": "CREATE INDEX IF NOT EXISTS idx_schedule_adjustment_change_op ON ScheduleAdjustmentChange(op_id)",
-    "idx_schedule_adjustment_scenario_row_op_id": "CREATE INDEX IF NOT EXISTS idx_schedule_adjustment_scenario_row_op_id "
-        "ON ScheduleAdjustmentScenarioRow(op_id)",
 }
 _DECLARED = {name: canonical_sql(sql) for name, sql in ADDED.items()}
 

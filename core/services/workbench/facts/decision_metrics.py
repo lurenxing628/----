@@ -123,15 +123,12 @@ def delivery_metric_values(summary):
 def candidate_metrics(candidate, tasks, facts, batch_refs, *, delivery_items, operation_scope):
     refs, deferred, skipped = operation_scope
     expected = refs - deferred
-    has_result = candidate["status"] == "completed"
     scheduled = {row["operation_ref"] for row in tasks} & expected
     missing = expected - scheduled
-    state = "unavailable" if not has_result else "partial" if missing or skipped else "complete"
-    schedulable = {"state": state, "expected_count": len(expected), "scheduled_count": len(scheduled) if has_result else None,
-                   "missing_count": len(missing) if has_result else None, "skipped_count": len(skipped), "deferred_count": len(deferred)}
+    state = "partial" if missing or skipped else "complete"
+    schedulable = {"state": state, "expected_count": len(expected), "scheduled_count": len(scheduled),
+                   "missing_count": len(missing), "skipped_count": len(skipped), "deferred_count": len(deferred)}
     coverage, values = delivery_coverage(delivery_items)
-    if not has_result:
-        coverage["state"] = "unavailable"
     saved = saved_metrics(candidate["artifact"])
     for definition in metric_definitions():
         key = definition["key"]
@@ -142,7 +139,7 @@ def candidate_metrics(candidate, tasks, facts, batch_refs, *, delivery_items, op
             values[key] = metric_value(None, total=0, state="not_applicable", scope=definition["scope"],
                                        reason=item["reason"])
             continue
-        value = item["value"] if has_result else None
+        value = item["value"]
         values[key] = metric_value(value, unknown=int(value is None), scope=definition["scope"],
                                    reason=item["reason"] if value is None else None)
         if key == "weighted_tardiness_hours":
@@ -158,9 +155,7 @@ def candidate_metrics(candidate, tasks, facts, batch_refs, *, delivery_items, op
                 values[key]["reason"] = {"code": "algorithm_batch_scope_missing", "message": "排产存档缺少算法交付评价的批次范围。"}
     for key, value in (("expected_operation_count", len(expected)), ("scheduled_operation_count", len(scheduled)),
                        ("unplanned_operation_count", len(missing)), ("deferred_operation_count", len(deferred))):
-        known = has_result or key in ("expected_operation_count", "deferred_operation_count")
-        values[key] = metric_value(value if known else None, total=len(refs), unknown=0 if known else len(refs),
-                                   state="complete" if known else "unavailable")
+        values[key] = metric_value(value, total=len(refs), unknown=0, state="complete")
     return {"schedulable": schedulable, "delivery": coverage}, values
 
 

@@ -172,7 +172,7 @@ def require_unreferenced(relations):
 
 
 def group_protected(group, batch):
-    return bool(group["plan_reference_count"] or group["events"] or group["execution_protected"] or group["outsourcing_receipts"]
+    return bool(group["plan_reference_count"] or group["execution_protected"] or group["outsourcing_receipts"]
                 or batch["status"] in ("scheduled", "processing", "completed")
                 or any(row["status"] != "pending" for row in group["operations"]))
 
@@ -194,7 +194,7 @@ def _index_outsourcing_receipts(facts, result):
 
 
 def index_relations(facts):
-    result = {row["batch_id"]: {"operations": [], "plan_reference_count": 0, "events": [], "reports": [], "materials": [],
+    result = {row["batch_id"]: {"operations": [], "plan_reference_count": 0, "reports": [], "materials": [],
                               "outsourcing_receipts": [], "quantity_splits": [], "execution_protected": False} for row in facts["Batches"]}
     _index_outsourcing_receipts(facts, result)
     for row in facts["BatchQuantitySplits"]:
@@ -207,7 +207,6 @@ def index_relations(facts):
         group["operations"].append(row)
         group["plan_reference_count"] += facts["plan_reference_counts"].get(row["id"], 0)
         projected = projections[facts["operation_refs"][row["id"]]]
-        group["events"].extend(projected.legacy_facts)
         group["reports"].extend(projected.reports)
         group["execution_protected"] |= protects_execution(projected)
     for row in facts["BatchMaterials"]:

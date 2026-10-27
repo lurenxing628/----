@@ -11,7 +11,7 @@ from core.algorithm_runtime.operation_effort import external_operation_effort, i
 from core.models.batch import Batch
 from core.models.batch_operation import BatchOperation
 from core.models.enums import OperationQuantityBasis, OperationRequirementRole, OperationSetupState, SourceType
-from core.models.operation_execution_event import EXECUTION_STATUS_COMPLETED
+from core.models.operation_execution_scope import EXECUTION_STATUS_COMPLETED
 from core.models.workbench_execution import ExecutionProjection
 
 if TYPE_CHECKING:

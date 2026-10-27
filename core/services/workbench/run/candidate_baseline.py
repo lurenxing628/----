@@ -41,9 +41,7 @@ def _comparison_labels(facts, ref):
     execution = facts.execution[ref]
     labels["execution_at_generation"].update({key: execution[key] for key in (
         "first_actual_start", "confirmed_finish", "unknown_record_count", "records_complete", "quantity_complete", "completion_basis")})
-    labels["execution_at_generation"].update(
-        report_count=len(execution["reports"]), legacy_fact_count=len(execution["legacy_facts"]),
-        legacy_unavailable_field_count=sum(len(row["unavailable_fields"]) for row in execution["legacy_facts"]))
+    labels["execution_at_generation"]["report_count"] = len(execution["reports"])
     return labels
 
 

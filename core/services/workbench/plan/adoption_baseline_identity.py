@@ -63,12 +63,11 @@ def _live_sources(conn, captured, *, context):
 
 
 def verify_arranged(conn, plan_ref, version, tables, arranged, *, context):
-    rows = context.source_rows(version=version, source_table="schedule", candidate_id=None, scenario_id=None) if context is not None else schedule_rows(conn, version)
+    rows = context.source_rows(version=version, source_table="schedule") if context is not None else schedule_rows(conn, version)
     originals, current = indexed(arranged, "op_id"), indexed(rows, "op_id")
     if set(originals) != set(current):
         fail("adoption_plan_drift", "selected_complete_operation_set")
-    intervals = context.peek_source_intervals(version=version, source_table="schedule", candidate_id=None,
-                                             scenario_id=None) if context is not None else None
+    intervals = context.peek_source_intervals(version=version, source_table="schedule") if context is not None else None
     if intervals is not None and not {row["id"] for row in rows} <= set(intervals):
         intervals = None
     for op_id, original in originals.items():
@@ -128,7 +127,7 @@ def baseline_tasks(conn, baseline, tables, facts, *, point_annotator, context):
         fail("adoption_reference_invalid", "baseline.plan_ref")
     if locator != WorkbenchPlanLocator(version, "adopted"):
         fail("adoption_reference_invalid", "baseline.official_locator")
-    rows = context.source_rows(version=version, source_table="schedule", candidate_id=None, scenario_id=None)
+    rows = context.source_rows(version=version, source_table="schedule")
     facts["observed_baseline_rows"] = rows
     captured = baseline["rows"]
     if not {row["id"] for row in captured} <= {row["id"] for row in rows}:

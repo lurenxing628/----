@@ -6,40 +6,18 @@ from core.models.schedule_plan_identity import PlanIdentity
 from core.models.schedule_plan_role import (
     COMPLETED_RESULT_STATUSES,
     ROLE_ADOPTED,
-    SOURCE_ADJUSTMENT_SCENARIO_ROWS,
-    SOURCE_CANDIDATE_ROWS,
     SOURCE_SCHEDULE,
     plan_role_label,
 )
 from core.models.scheduler_history_parser import ResultSummaryParseResult
-
-_VALID_PLAN_SOURCE_TABLES = frozenset((SOURCE_SCHEDULE, SOURCE_CANDIDATE_ROWS, SOURCE_ADJUSTMENT_SCENARIO_ROWS))
 
 
 def _text(value: Any) -> str:
     return str(value or "").strip()
 
 
-def _identity_user_label(
-    *,
-    requested_role: str,
-    status: str,
-    source_table: str,
-    is_scenario_preview: bool,
-    is_superseded: bool,
-    scenario_display_name: str,
-) -> str:
-    if is_scenario_preview:
-        return scenario_display_name or "试调方案（未命名）"
-    if requested_role != ROLE_ADOPTED or status in ("resolved_comparison", "fallback_to_adopted", "missing_detail"):
-        return "对比参考方案"
-    if source_table == SOURCE_SCHEDULE:
-        return "历史正式方案（已被新版本替代）" if is_superseded else plan_role_label(ROLE_ADOPTED)
-    return "对比参考方案"
-
-
-def _is_preview_plan(*, scenario_id: Optional[str], source_table: str, status: str) -> bool:
-    return bool(scenario_id) or source_table == SOURCE_ADJUSTMENT_SCENARIO_ROWS or status == "scenario_preview"
+def _identity_user_label(*, is_superseded: bool) -> str:
+    return "历史正式方案（已被新版本替代）" if is_superseded else plan_role_label(ROLE_ADOPTED)
 
 
 def _is_current_version(version: Optional[int], latest_version: Optional[int]) -> bool:
@@ -48,32 +26,6 @@ def _is_current_version(version: Optional[int], latest_version: Optional[int]) -
 
 def _is_superseded_version(version: Optional[int], latest_version: Optional[int]) -> bool:
     return bool(version is not None and latest_version is not None and version < latest_version)
-
-
-def _is_official_plan(
-    *,
-    source_table: str,
-    requested_role: str,
-    effective_role: str,
-    status: str,
-    is_preview: bool,
-    is_simulation: bool,
-) -> bool:
-    return (
-        source_table == SOURCE_SCHEDULE
-        and requested_role == ROLE_ADOPTED
-        and effective_role == ROLE_ADOPTED
-        and status == "resolved_adopted"
-        and not is_preview
-        and not is_simulation
-    )
-
-
-def _valid_source(value: Any) -> str:
-    source = _text(value)
-    if source not in _VALID_PLAN_SOURCE_TABLES:
-        raise ValueError("计划身份缺少有效的数据来源，不能当作正式排程。")
-    return source
 
 
 def _result_status(value: Any) -> Optional[str]:
@@ -105,50 +57,28 @@ def _is_current_official_plan(
     )
 
 
-def _detail_saved(source: str, source_row_id: Optional[int], value: Any) -> bool:
-    explicit_saved = str(value or "").strip().lower() == "yes"
-    return bool(explicit_saved or (source == SOURCE_SCHEDULE and source_row_id is not None))
+def _detail_saved(source_row_id: Optional[int]) -> bool:
+    return source_row_id is not None
 
 
 def build_plan_identity(
     *,
     version: Optional[int],
-    requested_role: Optional[str],
-    effective_role: str,
-    status: str,
-    source_table: str,
     source_row_id: Optional[int],
-    candidate_id: Optional[int],
-    candidate_key: Optional[str],
-    scenario_id: Optional[str],
-    scenario_display_name: str,
     schedule_result_status: Optional[str],
     result_summary: Optional[str],
     latest_official_version: Optional[int],
     schedule_lock_status: Optional[str],
-    detail_saved: Any,
     summary_parse: ResultSummaryParseResult,
 ) -> PlanIdentity:
-    requested = _text(requested_role)
-    effective = _text(effective_role)
-    resolution_status = _text(status)
-    source = _valid_source(source_table)
-    is_preview = _is_preview_plan(scenario_id=scenario_id, source_table=source, status=resolution_status)
     summary_unavailable, summary_reason = _summary_unavailable(result_summary, summary_parse)
     # is_simulation 是派工/反馈的灵魂线；摘要解析失败时按模拟方案处理，禁止写现场事实。
-    is_simulation = is_preview or summary_parse.parse_failed or bool(
+    is_simulation = summary_parse.parse_failed or bool(
         summary_parse.payload and summary_parse.payload.get("is_simulation")
     )
     is_current = _is_current_version(version, latest_official_version)
     is_superseded = _is_superseded_version(version, latest_official_version)
-    is_official = _is_official_plan(
-        source_table=source,
-        requested_role=requested,
-        effective_role=effective,
-        status=resolution_status,
-        is_preview=is_preview,
-        is_simulation=is_simulation,
-    )
+    is_official = not is_simulation
     result_status = _result_status(schedule_result_status)
     is_current_official = _is_current_official_plan(
         is_official=is_official,
@@ -157,25 +87,15 @@ def build_plan_identity(
         source_row_id=source_row_id,
         summary_available=not summary_unavailable,
     )
-    user_label = _identity_user_label(
-        requested_role=requested,
-        status=resolution_status,
-        source_table=source,
-        is_scenario_preview=is_preview,
-        is_superseded=is_superseded,
-        scenario_display_name=scenario_display_name,
-    )
-    label = plan_role_label(effective) if not is_preview else user_label
+    user_label = _identity_user_label(is_superseded=is_superseded)
+    label = plan_role_label(ROLE_ADOPTED)
     return PlanIdentity(
         version=version,
-        requested_plan_role=requested,
-        effective_plan_role=effective,
-        plan_resolution_status=resolution_status,
-        source_table=source,
+        requested_plan_role=ROLE_ADOPTED,
+        effective_plan_role=ROLE_ADOPTED,
+        plan_resolution_status="resolved_adopted",
+        source_table=SOURCE_SCHEDULE,
         source_row_id=source_row_id,
-        candidate_id=candidate_id,
-        candidate_key=candidate_key,
-        scenario_id=scenario_id,
         schedule_result_status=result_status,
         result_summary_parse_failed=summary_unavailable,
         result_summary_parse_reason=summary_reason,
@@ -183,12 +103,11 @@ def build_plan_identity(
         label=label,
         user_label=user_label,
         is_official=is_official,
-        is_preview=is_preview,
         is_current_executable_version=is_current,
         is_current_executable_official_version=is_current_official,
         is_superseded_by_newer_version=is_superseded,
         schedule_lock_status=schedule_lock_status,
         can_dispatch=is_current_official,
         can_write_feedback=is_current_official,
-        detail_saved=_detail_saved(source, source_row_id, detail_saved),
+        detail_saved=_detail_saved(source_row_id),
     )

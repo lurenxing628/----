@@ -70,7 +70,7 @@ class CalibrationFacts:
     def __init__(self, conn, *, as_of):
         self.repo = WorkbenchCalibrationQueryRepository(conn)
         self.as_of = as_of
-        self.ledger = ExecutionLedgerService(conn, clock=lambda: self.as_of)
+        self.ledger = ExecutionLedgerService(conn)
         self.lineage = TemplateLineageQuery(conn)
 
     @contextmanager
@@ -97,7 +97,7 @@ class CalibrationFacts:
         if bind_snapshot is not None:
             content = plain_plan_facts({"templates": [row.to_dict() for row in templates],
                 "instances": instances, "lineage": {key: value for key, value in lineage.items() if key != "lineages"},
-                "execution": {**facts, "unresolved": sorted(facts["unresolved"])}})
+                "execution": facts})
             snapshot = bind_snapshot(content)
         validate_report_histories(facts, self.as_of)
         projections = {row.operation_ref: row for row in self.ledger.project_loaded(facts, contexts=False)}

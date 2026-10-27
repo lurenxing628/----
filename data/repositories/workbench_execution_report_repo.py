@@ -54,7 +54,7 @@ class WorkbenchExecutionReportRepository:
             raise RuntimeError("Report persistence requires the outer command transaction.")
         if row["sequence"] == 1:
             fields = ("report_ref", "report_no", "operation_ref", "recorded_against_task_ref", "recorded_against_plan_ref",
-                      "source", "legacy_fact_ref", "recorded_at")
+                      "source", "recorded_at")
             self.conn.execute("INSERT INTO WorkbenchProductionReports (" + ",".join(fields) + ") VALUES (" +
                               ",".join("?" for _ in fields) + ")", [row[key] for key in fields])
         self.conn.execute("""INSERT INTO WorkbenchProductionReportRevisions

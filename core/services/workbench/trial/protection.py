@@ -126,7 +126,7 @@ class TrialProtection:
         if execution["data_quality"] == "invalid":
             return issue("execution_unproven", "这道工序的报工记录有问题，不能用试调改安排。请到现场记录核对后重试。", ref)
         for facts in (execution, original["execution"]):
-            if (facts["execution_state"] != "unreported" or facts["reports"] or facts["legacy_facts"]
+            if (facts["execution_state"] != "unreported" or facts["reports"]
                     or facts["first_actual_start"] or facts["confirmed_finish"]):
                 return issue("execution_protected", "这道工序已经开工、报工或完工，不能用试调改安排。", ref)
         return None

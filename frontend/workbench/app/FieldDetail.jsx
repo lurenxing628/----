@@ -77,8 +77,7 @@
     if (!task) return <div className="field-error"><ErrorBox error={request.error} /><Button icon="refresh-cw" onClick={() => request.error && request.error.code === 'snapshot_stale' && onRefresh ? onRefresh() : request.reload()} disabled={command.locked}>刷新详情</Button>
       {editor && <Button onClick={onCloseEditor} disabled={command.locked}>取消暂存编辑</Button>}</div>;
     const report = editor && p.reports.find(row => row.report_ref === editor.reportRef);
-    const legacy = editor && p.legacy_facts.find(row => row.legacy_fact_ref === editor.legacyRef);
-    const missingOriginal = editor && (editor.reportRef && !report || editor.legacyRef && !legacy);
+    const missingOriginal = editor && editor.reportRef && !report;
     return <section ref={detail} className="field-detail" aria-label={'逐次报工 ' + task.batch_id}>
       <div className="field-detail-heading"><h3 className="field-detail-title">{task.batch_id} · {task.operation_label} · {C.pieceLabel(task)}</h3><State value={p.execution_state} /><span className="field-note">计划应做 {C.quantity(task.quantity)} 件 · 批次 {C.quantity(task.batch_quantity)} 件{task.quantity_reason ? ' · ' + C.quantityReasons[task.quantity_reason] : ''}</span>
         <Button icon="clock-3" aria-expanded={timeline} onClick={() => setTimeline(value => !value)}>作业时间线</Button>
@@ -89,7 +88,6 @@
             return_to: { view: 'field', context: { plan_ref: task.plan_ref, task_ref: taskRef, scope } } });
         }}>现场实际甘特</Button>}</div>
       {timeline && <Timeline task={task} />}
-      {p.completion_basis === 'legacy_finish_event' && <div className="field-note">完工状态来自历史完工记录。</div>}
       <Issues issues={p.data_gaps} />
       <div className="field-scroll wb-table-frame" data-sticky-head data-sticky-actions tabIndex="0" aria-label="逐次报工表格滚动区"><table className="field-table wb-table" aria-label="逐次报工记录"><caption className="wb-visually-hidden">本工序每次报工的数量、实际起止、有效工时、资源和更正操作</caption><colgroup>{['no', 'quantity', 'start', 'end', 'hours', 'resource', 'remark', 'actions'].map(key => <col key={key} className={'field-report-col-' + key} />)}</colgroup>
         <thead><tr>{['报工编号', '本次数量', '实际开工', '本次完工', '有效工时（小时）', '实际设备 / 人员', '备注', '操作'].map((name, index) => <th key={name} scope="col" className={index === 7 ? 'wb-col-actions' : undefined}>{name}</th>)}</tr></thead>
@@ -102,15 +100,13 @@
           {!p.reports.length && <tr><td colSpan="8"><window.WorkbenchListControls.EmptyState title="暂无逐次报工" hint="可新增本次报工。" /></td></tr>}</tbody></table></div>
       {missingOriginal && <div className="field-note"><p role="alert">原记录已失效，暂存编辑无法保存。请刷新后重选。</p><Button onClick={onCloseEditor} disabled={command.locked}>取消暂存编辑</Button></div>}
       {editor && !missingOriginal && editor.action === 'report_void' && report && <window.FieldVoidEditor key={'void:' + editor.reportRef} task={task} record={report} adapter={adapter} command={command} retained={retained} onDraft={onDraft} onClose={onCloseEditor} onDone={onDone} />}
-      {editor && editor.action !== 'report_void' && !missingOriginal && (editor.action === 'create' || report) && <window.FieldEditor key={editor.action + ':' + (editor.reportRef || editor.legacyRef || taskRef)} task={task} record={report} legacy={legacy} action={editor.action} adapter={adapter} command={command} retained={retained} onDraft={onDraft} onClose={onCloseEditor} onDone={onDone} />}
+      {editor && editor.action !== 'report_void' && !missingOriginal && (editor.action === 'create' || report) && <window.FieldEditor key={editor.action + ':' + (editor.reportRef || taskRef)} task={task} record={report} action={editor.action} adapter={adapter} command={command} retained={retained} onDraft={onDraft} onClose={onCloseEditor} onDone={onDone} />}
       {p.voided_reports.length > 0 && <details className="field-note"><summary>已撤销报工 · {p.voided_reports.length} 条</summary>{p.voided_reports.map(item => <section key={item.void_fact.void_fact_ref}>
         <h4>{item.report.report_no} · 已撤销</h4><p>{C.date(item.void_fact.recorded_at)} · {item.void_fact.local_operator}{item.void_fact.declared_operator ? ' · 经办人 ' + item.void_fact.declared_operator : ''} · {item.void_fact.reason}</p>
         <p>原数量 {C.display(item.report.completed_quantity)} 件 · 原有效工时 {C.hours(item.report.effective_processing_hours)} 小时</p>
         <div className="field-history"><dl><dt>原实际起止</dt><dd>{C.date(item.report.actual_start)} 至 {C.date(item.report.actual_end)}</dd>
           <dt>原设备 / 人员</dt><dd>{C.display(item.report.actual_machine_label)} / {C.display(item.report.actual_operator_label)}</dd><dt>原备注</dt><dd>{C.display(item.report.remark)}</dd></dl></div><History record={item.report} />
       </section>)}</details>}
-      {p.legacy_facts.length > 0 && <details className="field-note"><summary>历史现场记录 · {p.legacy_facts.length} 条</summary>{p.legacy_facts.map((fact, index) => <div key={fact.legacy_fact_ref || index}>{C.date(fact.event_time)} · {({ start: '开工', finish: '完工', pause: '暂停', resume: '恢复', exception: '异常' })[fact.event_type] || '历史记录'} · {C.display(fact.remark)}
-        {fact.event_type === 'finish' && !p.reports.some(row => row.legacy_fact_ref === fact.legacy_fact_ref) && <Button icon="plus" disabled={command.locked || !!editor} reason={C.blocked(p.write_context, 'create')} onClick={() => onEdit({ taskRef, legacyRef: fact.legacy_fact_ref, action: 'create' })}>补齐原始完工记录</Button>}</div>)}</details>}
     </section>;
   }
   window.FieldDetail = FieldDetail;

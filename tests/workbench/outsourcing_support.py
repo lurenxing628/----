@@ -69,7 +69,7 @@ class OutsourcingCase:
 @pytest.fixture(name="outsourcing_case")
 def outsourcing_case(tmp_path):
     path = tmp_path / "outsourcing.sqlite"
-    ensure_schema(str(path), schema_path=str(REPO_ROOT / "schema.sql"), backup_dir=None)
+    ensure_schema(str(path), schema_path=str(REPO_ROOT / "schema.sql"))
     conn = get_connection(str(path))
     conn.execute("INSERT INTO OpTypes(op_type_id,name,category) VALUES ('XT1','Heat treatment','external')")
     conn.execute("INSERT INTO Suppliers(supplier_id,name,default_days) VALUES ('XS1','Supplier',2)")

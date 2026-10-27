@@ -1,4 +1,4 @@
-"""新建库与旧版本完整迁移所得结构一致。"""
+"""新建库与 DDL 模块基线库结构一致，且低版本库阻断启动。"""
 
 from __future__ import annotations
 
@@ -7,12 +7,18 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema, get_connection
+import pytest
+
+from core.infrastructure.database import (
+    CURRENT_SCHEMA_VERSION,
+    MigrationContractError,
+    ensure_schema,
+    get_connection,
+)
 from tests._support.paths import REPO_ROOT
+from tools.generate_schema_sql import build_baseline_database, generate_schema_text
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
-ORIGIN_V4_PATH = Path(__file__).parent / "fixtures" / "schema-v4.sql"
-ORIGIN_VERSION = 4
 
 _WS_RE = re.compile(r"\s+")
 _IF_NOT_EXISTS_RE = re.compile(r"\bIF\s+NOT\s+EXISTS\b", re.IGNORECASE)
@@ -126,65 +132,50 @@ def snapshot_structure(conn: sqlite3.Connection) -> Dict[str, Any]:
     }
 
 
-def diff_structures(fresh: Dict[str, Any], migrated: Dict[str, Any]) -> List[str]:
+def diff_structures(fresh: Dict[str, Any], baseline: Dict[str, Any]) -> List[str]:
     diffs: List[str] = []
-    fresh_tables, migrated_tables = fresh["tables"], migrated["tables"]
-    for name in sorted(set(fresh_tables) - set(migrated_tables)):
-        diffs.append(f"表 {name}：新库有、迁移链没有（缺迁移）")
-    for name in sorted(set(migrated_tables) - set(fresh_tables)):
-        diffs.append(f"表 {name}：迁移链有、新库没有（schema.sql 漏表）")
-    for name in sorted(set(fresh_tables) & set(migrated_tables)):
-        left, right = fresh_tables[name], migrated_tables[name]
+    fresh_tables, baseline_tables = fresh["tables"], baseline["tables"]
+    for name in sorted(set(fresh_tables) - set(baseline_tables)):
+        diffs.append(f"表 {name}：新库有、基线库没有")
+    for name in sorted(set(baseline_tables) - set(fresh_tables)):
+        diffs.append(f"表 {name}：基线库有、新库没有（schema.sql 漏表）")
+    for name in sorted(set(fresh_tables) & set(baseline_tables)):
+        left, right = fresh_tables[name], baseline_tables[name]
         left_cols = {col[0]: col for col in left["columns"]}
         right_cols = {col[0]: col for col in right["columns"]}
         for col in sorted(set(left_cols) - set(right_cols)):
-            diffs.append(f"表 {name} 列 {col}：新库有、迁移链没有")
+            diffs.append(f"表 {name} 列 {col}：新库有、基线库没有")
         for col in sorted(set(right_cols) - set(left_cols)):
-            diffs.append(f"表 {name} 列 {col}：迁移链有、新库没有")
+            diffs.append(f"表 {name} 列 {col}：基线库有、新库没有")
         for col in sorted(set(left_cols) & set(right_cols)):
             if left_cols[col] != right_cols[col]:
-                diffs.append(f"表 {name} 列 {col}：定义不同 新库={left_cols[col]} 迁移链={right_cols[col]}")
+                diffs.append(f"表 {name} 列 {col}：定义不同 新库={left_cols[col]} 基线库={right_cols[col]}")
         if left["foreign_keys"] != right["foreign_keys"]:
-            diffs.append(f"表 {name}：外键不同 新库={left['foreign_keys']} 迁移链={right['foreign_keys']}")
+            diffs.append(f"表 {name}：外键不同 新库={left['foreign_keys']} 基线库={right['foreign_keys']}")
         for key in sorted(set(left["indexes"]) - set(right["indexes"])):
-            diffs.append(f"表 {name} 索引 {key}：新库有、迁移链没有")
+            diffs.append(f"表 {name} 索引 {key}：新库有、基线库没有")
         for key in sorted(set(right["indexes"]) - set(left["indexes"])):
-            diffs.append(f"表 {name} 索引 {key}：迁移链有、新库没有")
+            diffs.append(f"表 {name} 索引 {key}：基线库有、新库没有")
         for key in sorted(set(left["indexes"]) & set(right["indexes"])):
             if left["indexes"][key] != right["indexes"][key]:
-                diffs.append(f"表 {name} 索引 {key}：定义不同 新库={left['indexes'][key]} 迁移链={right['indexes'][key]}")
+                diffs.append(f"表 {name} 索引 {key}：定义不同 新库={left['indexes'][key]} 基线库={right['indexes'][key]}")
         if left["checks"] != right["checks"]:
-            diffs.append(f"表 {name}：CHECK 约束不同 新库={left['checks']} 迁移链={right['checks']}")
+            diffs.append(f"表 {name}：CHECK 约束不同 新库={left['checks']} 基线库={right['checks']}")
     for kind in ("triggers", "views"):
-        left_objs, right_objs = fresh[kind], migrated[kind]
+        left_objs, right_objs = fresh[kind], baseline[kind]
         for name in sorted(set(left_objs) - set(right_objs)):
-            diffs.append(f"{kind[:-1]} {name}：新库有、迁移链没有")
+            diffs.append(f"{kind[:-1]} {name}：新库有、基线库没有")
         for name in sorted(set(right_objs) - set(left_objs)):
-            diffs.append(f"{kind[:-1]} {name}：迁移链有、新库没有")
+            diffs.append(f"{kind[:-1]} {name}：基线库有、新库没有")
         for name in sorted(set(left_objs) & set(right_objs)):
             if left_objs[name] != right_objs[name]:
-                diffs.append(f"{kind[:-1]} {name}：定义不同\n    新库={left_objs[name]}\n    迁移链={right_objs[name]}")
+                diffs.append(f"{kind[:-1]} {name}：定义不同\n    新库={left_objs[name]}\n    基线库={right_objs[name]}")
     return diffs
 
 
 def build_fresh_database(tmp_path: Path) -> Path:
     db_path = tmp_path / "fresh.db"
-    ensure_schema(str(db_path), schema_path=str(SCHEMA_PATH), backup_dir=str(tmp_path / "fresh_backups"))
-    return db_path
-
-
-def build_migrated_database(tmp_path: Path) -> Path:
-    db_path = tmp_path / "migrated.db"
-    conn = get_connection(str(db_path))
-    try:
-        conn.executescript(ORIGIN_V4_PATH.read_text(encoding="utf-8"))
-        conn.executescript(
-            f"DELETE FROM SchemaVersion; INSERT INTO SchemaVersion (id, version) VALUES (1, {ORIGIN_VERSION});"
-        )
-        conn.commit()
-    finally:
-        conn.close()
-    ensure_schema(str(db_path), schema_path=str(SCHEMA_PATH), backup_dir=str(tmp_path / "migrated_backups"))
+    ensure_schema(str(db_path), schema_path=str(SCHEMA_PATH))
     return db_path
 
 
@@ -192,19 +183,56 @@ def _version(conn: sqlite3.Connection) -> int:
     return int(conn.execute("SELECT version FROM SchemaVersion WHERE id = 1").fetchone()[0])
 
 
-def test_fresh_schema_matches_v4_origin_migrated_to_current(tmp_path: Path) -> None:
+def test_fresh_schema_matches_ddl_baseline_and_generated_schema_text(tmp_path: Path) -> None:
+    assert generate_schema_text() == SCHEMA_PATH.read_text(encoding="utf-8")
     fresh_path = build_fresh_database(tmp_path)
-    migrated_path = build_migrated_database(tmp_path)
+    baseline_path = build_baseline_database(tmp_path)
     fresh_conn = get_connection(str(fresh_path))
-    migrated_conn = get_connection(str(migrated_path))
+    baseline_conn = get_connection(str(baseline_path))
     try:
         assert _version(fresh_conn) == CURRENT_SCHEMA_VERSION
-        assert _version(migrated_conn) == CURRENT_SCHEMA_VERSION
-        diffs = diff_structures(snapshot_structure(fresh_conn), snapshot_structure(migrated_conn))
+        assert _version(baseline_conn) == CURRENT_SCHEMA_VERSION
+        diffs = diff_structures(snapshot_structure(fresh_conn), snapshot_structure(baseline_conn))
     finally:
         fresh_conn.close()
-        migrated_conn.close()
+        baseline_conn.close()
     assert not diffs, (
-        f"schema.sql 新库与 v{ORIGIN_VERSION} 起点迁移到 v{CURRENT_SCHEMA_VERSION} 的库结构不一致，共 {len(diffs)} 项：\n"
+        f"schema.sql 新库与 DDL 模块基线库结构不一致，共 {len(diffs)} 项：\n"
         + "\n".join(f"  - {item}" for item in diffs)
     )
+
+
+@pytest.mark.parametrize("outdated_version", [4, 43])
+def test_outdated_schema_version_is_rejected_without_silent_migration(tmp_path: Path, outdated_version: int) -> None:
+    db_path = build_fresh_database(tmp_path / f"v{outdated_version}")
+    conn = get_connection(str(db_path))
+    try:
+        conn.execute("UPDATE SchemaVersion SET version = ? WHERE id = 1", (outdated_version,))
+        conn.commit()
+    finally:
+        conn.close()
+
+    with pytest.raises(MigrationContractError, match=f"SchemaVersion={outdated_version}"):
+        ensure_schema(str(db_path), schema_path=str(SCHEMA_PATH))
+
+
+def test_unversioned_non_empty_legacy_db_is_rejected_with_zero_writes(tmp_path: Path) -> None:
+    db_path = tmp_path / "unversioned_legacy.db"
+    conn = get_connection(str(db_path))
+    try:
+        conn.execute("CREATE TABLE Operators (operator_id TEXT PRIMARY KEY, name TEXT NOT NULL)")
+        conn.execute("INSERT INTO Operators (operator_id, name) VALUES ('OP1', '张三')")
+        conn.commit()
+    finally:
+        conn.close()
+
+    with pytest.raises(MigrationContractError, match="SchemaVersion=0"):
+        ensure_schema(str(db_path), schema_path=str(SCHEMA_PATH))
+
+    conn = get_connection(str(db_path))
+    try:
+        tables = [row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+        assert tables == ["Operators"]
+        assert "SchemaVersion" not in tables
+    finally:
+        conn.close()

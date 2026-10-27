@@ -5,7 +5,7 @@ from core.services.scheduler.execution.execution_fact_provider import ExecutionF
 from core.services.scheduler.execution.execution_plan_identity import current_execution_plan
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
-PLAN_FIELDS = {"source_table": "schedule", "effective_plan_role": "adopted", "scenario_id": None}
+PLAN_FIELDS = {"source_table": "schedule", "effective_plan_role": "adopted"}
 
 
 def plan_rows(conn, version):
@@ -23,7 +23,6 @@ def read_facts(conn, version=1):
 
 
 def formal_rows(conn):
-    tables = ("Schedule", "ScheduleHistory", "ScheduleVersionSeq", "ScheduleCandidate", "ScheduleCandidateRows",
-              "ScheduleCandidateSelection", "BatchOperations", "OperationExecutionEvents")
+    tables = ("Schedule", "ScheduleHistory", "ScheduleVersionSeq", "BatchOperations")
     return {table: [tuple(row) for row in conn.execute("SELECT * FROM " + table + " ORDER BY rowid")]
             for table in tables}

@@ -43,7 +43,7 @@ CALENDAR_TABLES = (
 )
 _ARTIFACT_FIELDS = (
     "candidate_key", "sequence", "status", "label", "kind", "objective", "objective_name", "score", "health",
-    "algo_mode", "used_strategy", "dispatch_mode", "dispatch_rule", "failure_reason", "reused_from_candidate_key",
+    "algo_mode", "used_strategy", "dispatch_mode", "dispatch_rule",
     "generation_policy_version", "target_objectives", "representative_objectives", "evaluations", "origin", "first_found_elapsed_ms",
     "search_evidence_ref", "elapsed_seconds", "time_budget_seconds", "graph_critical_weight", "graph_impact_weight",
     "graph_downstream_weight", "sort_strategy",
@@ -322,8 +322,7 @@ def build_decision_read_models(run, capture, receipt, candidates, prepared_candi
         if tasks is None:
             tasks = project_validated_tasks(packet["raw_tasks"], candidate, facts, intervals,
                                             prepared_tasks=packet.get("prepared_tasks"))
-        available = candidate["status"] == "completed"
-        delivery = project_decision_delivery(facts, tasks, batch_refs, candidate=candidate, available=available,
+        delivery = project_decision_delivery(facts, tasks, batch_refs, candidate=candidate, available=True,
             deferred_ids=deferred_ids, intervals=intervals)
         summary = project_candidate_summary(candidate, tasks, facts, batch_refs, basis, candidates, delivery,
                                             operation_scope=operation_scope)
@@ -331,14 +330,14 @@ def build_decision_read_models(run, capture, receipt, candidates, prepared_candi
                        catalog=candidate_summary(candidate, disposition, scheduled_op_ids=packet["scheduled_op_ids"]),
                        scheduled_operation_refs=sorted({row["operation_ref"] for row in tasks}),
                        resource_views=_resource_views(tasks, refs, intervals))
-        prepared = project_decision_preparation(facts, refs, efforts, tasks, run_ref=run["run_ref"], available=available,
+        prepared = project_decision_preparation(facts, refs, efforts, tasks, run_ref=run["run_ref"], available=True,
             deferred_refs=deferred, standards=standards, requirements_available=True)
-        work = preparation_work_items(facts, prepared["rows"], disposition, available=available)
-        completion = project_completion_summary(delivery, work, available=available, schedulable_coverage=summary["coverage"]["schedulable"])
+        work = preparation_work_items(facts, prepared["rows"], disposition, available=True)
+        completion = project_completion_summary(delivery, work, available=True, schedulable_coverage=summary["coverage"]["schedulable"])
         detail = project_delivery_detail(
             candidate, facts, tasks, capture["input"], intervals=intervals,
             deferred_ids=receipt_deferred_ids,
-            precomputed_delivery=delivery if available and deferred_ids == receipt_deferred_ids else None,
+            precomputed_delivery=delivery if deferred_ids == receipt_deferred_ids else None,
         )
         candidate_models.append({"candidate_ref": ref, "run_ref": run["run_ref"], "projection_version": PROJECTION_VERSION,
             "summary": members.encode(summary), "preparation": members.encode(prepared["summary"]),

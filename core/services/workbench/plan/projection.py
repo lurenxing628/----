@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from core.models.schedule_plan_role import ROLE_ADOPTED
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.facts.zero_duration import point_event_dto
 from core.shared.strict_parse import is_exact_positive_int
@@ -12,9 +11,6 @@ _REASONS = {
     "summary_invalid": "这次排产的摘要无效，确认不了计划是否完整。请刷新后重试。",
     "summary_missing": "这次排产的摘要缺失，确认不了计划是否完整。请刷新后重试。",
     "plan_unavailable": "这个计划的类型关系或明细无效，暂时看不了。请刷新计划列表后重试。",
-    "history_missing": "这个试调方案依据的那次排产已经没有了，暂时看不了。",
-    "scenario_not_active": "这个试调方案已发布、过期或作废，不能再拿来查看。请回「试调」重新选一个。",
-    "scenario_unavailable": "这个试调方案依据的计划关系或明细无效，暂时看不了。",
     "plan_binding_invalid": "这个计划的类型或它依据的计划已经变了，暂时看不了。请刷新计划列表后重试。",
     "identity_missing": "计划编号缺失，请刷新计划列表。",
     "identity_invalid": "这个计划的编号和当前记录对不上，暂时看不了。请刷新计划列表后重试。",
@@ -49,9 +45,8 @@ def project_plan(entry, plan_ref):
 
 def project_unavailable_plan(locator, plan_ref, display_name, reason_codes):
     """A disabled header; a missing permanent identity stays null, never allocated."""
-    kind = "scenario" if locator.scenario_id is not None else "official" if locator.plan_role == ROLE_ADOPTED else "candidate"
     version = wire_positive_int64(locator.version)
-    return {"plan_ref": plan_ref, "version": version, "kind": kind,
+    return {"plan_ref": plan_ref, "version": version, "kind": "official",
             "is_current_official": False, "display_name": display_name, "completeness": "invalid",
             "capabilities": {"view": False, "export": False, "edit_draft": False, "adopt": False, "report_actual": False},
             "blocked_reasons": _public_reasons(reason_codes)}
@@ -127,8 +122,6 @@ def read_adopted_task_facts(conn, plan_ref, *, context):
 
 def adopted_source_record(plan_ref, *, context):
     locator = context.resolve(plan_ref)
-    if locator.scenario_id is not None or locator.plan_role != ROLE_ADOPTED:
-        return None
     return context.adoption_source(plan_ref, locator.version, context.history(locator.version), recorded=None)
 
 

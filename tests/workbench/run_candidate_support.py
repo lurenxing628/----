@@ -18,7 +18,7 @@ from tests.workbench.run_jobs_support import JobCase
 from web.routes.workbench.run_candidates import register_run_candidate_routes
 
 BASE = "/api/workbench/v1/scheduling"
-PRIVATE = {"version", "op_id", "candidate_key", "raw", "facts_json", "facts_hash", "artifact_json", "payload_json",
+PRIVATE = {"version", "op_id", "candidate_key", "raw", "facts_json", "artifact_json", "payload_json",
            "machine_id", "operator_id", "supplier_id", "plan_ref", "task_ref", "source_key", "entity_key", "history"}
 
 
@@ -32,7 +32,7 @@ def connect(path):
 @pytest.fixture(name="candidate_case")
 def candidate_case(tmp_path):
     path = tmp_path / "bl-candidates.sqlite"
-    ensure_schema(str(path), schema_path=str(Path(__file__).resolve().parents[2] / "schema.sql"), backup_dir=None)
+    ensure_schema(str(path), schema_path=str(Path(__file__).resolve().parents[2] / "schema.sql"))
     conn = connect(path)
     assert conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()[0] == CURRENT_SCHEMA_VERSION
     assert current_schema_contract_issues(conn, schema_version=CURRENT_SCHEMA_VERSION, schema_sql=load_schema_sql()) == []
@@ -91,7 +91,7 @@ def install_representatives(monkeypatch, count):
         winners = {target: plans[index].candidate_key for index, group in enumerate(groups) for target in group}
         selection = replace(outcome.selection, selected_candidate_key=plans[0].candidate_key, selected_plan=plans[0],
                             objective_winners=winners)
-        return replace(outcome, candidates=plans, selection=selection, planned_count=count, completed_count=count)
+        return replace(outcome, candidates=plans, selection=selection)
 
     monkeypatch.setattr(compute_module, "run_candidate_comparison", representatives)
 

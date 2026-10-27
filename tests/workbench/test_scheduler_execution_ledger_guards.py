@@ -1,4 +1,4 @@
-"""真实历史执行事实经当前 worker 与采用路径保持不变。"""
+"""真实执行事实经当前 worker 与采用路径保持不变。"""
 
 import json
 import sqlite3
@@ -21,10 +21,6 @@ from core.services.scheduler.execution.execution_ledger_guard import (
     ensure_ledger_execution_schedulable,
     fact_resource_segments,
     ledger_fact_changes,
-)
-from core.services.scheduler.run.schedule_execution_persistence_guard import (
-    _schedule_resource_intervals,
-    _validate_unselected_resource_overlap,
 )
 from core.services.scheduler.run.schedule_payload_contract import ValidatedScheduleRow
 from core.services.scheduler.run.schedule_seed_contracts import coerce_seed_result_item
@@ -75,52 +71,42 @@ def _assert_kept_worker_tasks(case, result, expected_times):
         assert next(row for row in artifact["results"] if row["op_id"] == case.op_id)["seed_source"] == "execution_fact"
 
 
-def test_normal_old_finish_can_be_supplemented_and_used_by_real_replan(candidate_case):
+def test_incomplete_report_can_be_supplemented_and_used_by_real_replan(candidate_case):
     case = candidate_case
     source_run, refs = compute(case)
     original_effort = _saved_effort(case, source_run)
-    adopted = service(case.conn).adopt(refs[0], preview(case, refs[0]), "legacy-first-adoption-001", INTENT)
+    adopted = service(case.conn).adopt(refs[0], preview(case, refs[0]), "first-adoption-001", INTENT)
     version = adopted["data"]["official_plan"]["version"]
-    schedule = case.conn.execute("SELECT id FROM Schedule WHERE version=? AND op_id=?", (version, case.op_id)).fetchone()[0]
-    start_event_id = case.conn.execute("""INSERT INTO OperationExecutionEvents
-        (schedule_version,schedule_id,op_id,batch_id,source_table,effective_plan_role,
-         event_type,reported_status,event_time,actual_machine_id,actual_operator_id,
-         created_by,idempotency_key,request_fingerprint,previous_state_revision)
-        VALUES (?,?,?,'B1','schedule','adopted','start','processing','2026-09-09T08:00:00',
-                'M1','O1','original-operator','legacy-normal-start-001','legacy-start-fingerprint',?)""",
-        (version, schedule, case.op_id, f"{case.op_id}:0:0")).lastrowid
+    api = FieldAPI(case)
+    task = api.task()
+    api.create({"actual_start": "2026-09-09T08:00:00", "actual_end": "2026-09-09T10:00:00",
+                "actual_machine_ref": case.ref("machine", "M1"),
+                "actual_operator_ref": case.ref("operator", "O1")}, task)
     case.batch("B2")
     case.operation("B2")
     case.conn.commit()
     execution = next(row for row in case.projections("B1", "B2") if row.operation_ref == original_effort["operation_ref"])
-    assert execution.execution_state == "started" and execution.target_quantity == 3 and execution.target_basis == "batch"
+    assert execution.execution_state == "partial" and execution.target_quantity == 3 and execution.target_basis == "batch"
     assert execution.remaining_quantity is None
     receipt_count = case.conn.execute("SELECT count(*) FROM WorkbenchRunReceipts").fetchone()[0]
     blockers = PreflightService(case.conn).evaluate(case.settings("B1", "B2"))[0]["blockers"]
     assert [row["code"] for row in blockers] == ["execution_review_required"]
     assert case.conn.execute("SELECT count(*) FROM WorkbenchRunReceipts").fetchone()[0] == receipt_count
-    case.conn.execute("""INSERT INTO OperationExecutionEvents
-        (schedule_version,schedule_id,op_id,batch_id,source_table,effective_plan_role,
-         event_type,reported_status,event_time,quantity_done,
-         created_by,idempotency_key,request_fingerprint,previous_state_revision)
-        VALUES (?,?,?,'B1','schedule','adopted','finish','completed','2026-09-09T10:00:00',
-                3,'original-operator','legacy-normal-finish-001','legacy-finish-fingerprint',?)""",
-        (version, schedule, case.op_id, f"{case.op_id}:1:{start_event_id}"))
-    case.conn.commit()
-    original = formal_rows(case.conn)["OperationExecutionEvents"]
-    ensure_ledger_execution_schedulable(read_facts(case.conn, version))
-    api = FieldAPI(case)
-    task = api.task()
-    legacy = task["execution"]["legacy_facts"][-1]
-    assert legacy["actual_machine_ref"] is None and legacy["actual_operator_ref"] is None
+    original = formal_rows(case.conn)["Schedule"]
+    record = api.task()["execution"]["reports"][0]
     OperatorMachineRepository(case.conn).remove("O1", "M1")
     case.conn.commit()
-    api.create(case.values(3, legacy_fact_ref=legacy["legacy_fact_ref"], reason="保留原实际，只补有效工时"), task)
+    case.command("supplement", record["report_ref"], {
+        "original_revision_ref": record["revision_ref"],
+        "reason": "保留原实际，补齐完工数量与有效工时",
+        "completed_quantity": 3,
+        "effective_processing_hours": 1.5,
+    })
     assert api.task()["execution"]["data_quality"] == "complete"
     ensure_ledger_execution_schedulable(read_facts(case.conn, version))
     OperatorMachineRepository(case.conn).add("O1", "M1", "normal", "no")
     case.conn.commit()
-    accepted = case.accept(key="legacy-supplement-replan-001", settings=case.settings("B1", "B2"))
+    accepted = case.accept(key="supplement-replan-001", settings=case.settings("B1", "B2"))
     result = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
     _assert_kept_worker_tasks(case, result, ("2026-09-09T08:00:00", "2026-09-09T10:00:00"))
     completed_effort = _saved_effort(case, result["run_ref"])
@@ -131,7 +117,7 @@ def test_normal_old_finish_can_be_supplemented_and_used_by_real_replan(candidate
     hours = ("setup_standard_hours", "processing_standard_hours", "required_standard_hours")
     assert [completed_effort[key] for key in hours] == [original_effort[key] for key in hours] == [0, 0.75, 0.75]
     assert _saved_effort(case, source_run) == original_effort
-    assert formal_rows(case.conn)["OperationExecutionEvents"] == original
+    assert formal_rows(case.conn)["Schedule"] == original
 
 
 def _merged_reports_in_two_parts(case):
@@ -229,7 +215,7 @@ def test_completed_ledger_keeps_each_report_resource_pair_and_rejects_unrepresen
     assert fact.execution_effective_intervals == tuple(segment[:2] for segment in expected)
     reversed_projection = replace(projection, reports=list(reversed(projection.reports)))
     reversed_changes = ledger_fact_changes(
-        fact, reversed_projection, resources, source="internal", setup_hours=0.0, unit_hours=0.25,
+        reversed_projection, resources, source="internal", setup_hours=0.0, unit_hours=0.25,
     )
     assert reversed_changes is not None
     assert reversed_changes["actual_operator_id"] == "O1" and not reversed_changes["execution_protection_reasons"]
@@ -246,12 +232,6 @@ def test_completed_ledger_keeps_each_report_resource_pair_and_rejects_unrepresen
         changed_resources = dict(resources)
         changed_resources[operator_ref] = dict(resources[operator_ref], **patch)
         invalid.append((projection, changed_resources, "execution_ledger_actual_resource_unavailable"))
-    invalid.append((replace(projection, legacy_facts=[{
-        "actual_machine_ref": case.ref("machine", "M2"), "actual_operator_ref": None,
-    }]), resources, "execution_ledger_actual_resource_missing_or_multiple"))
-    invalid.append((replace(projection, legacy_facts=[{
-        "actual_machine_ref": None, "actual_machine_id": "missing-machine", "actual_operator_ref": None,
-    }]), resources, "execution_ledger_actual_resource_missing_or_multiple"))
     duplicate = replace(projection.reports[-1], actual_start=projection.reports[0].actual_start,
                         actual_end=projection.reports[0].actual_end)
     invalid.append((replace(projection, reports=projection.reports[:2] + [duplicate]), resources,
@@ -261,7 +241,7 @@ def test_completed_ledger_keeps_each_report_resource_pair_and_rejects_unrepresen
                     "execution_ledger_intervals_not_representable"))
     for damaged, current_resources, reason in invalid:
         changes = ledger_fact_changes(
-            fact, damaged, current_resources, source="internal", setup_hours=0.0, unit_hours=0.25,
+            damaged, current_resources, source="internal", setup_hours=0.0, unit_hours=0.25,
         )
         assert changes is not None
         assert reason in changes["execution_protection_reasons"]
@@ -269,9 +249,9 @@ def test_completed_ledger_keeps_each_report_resource_pair_and_rejects_unrepresen
             ensure_ledger_execution_schedulable({case.op_id: replace(fact, **changes)})
         assert exc.value.details is not None
         assert exc.value.details["reason"] == "execution_ledger_requires_reconciliation"
-    truncated = replace(projection, completion_basis="legacy_finish_event", reports=projection.reports[:2])
+    truncated = replace(projection, reports=projection.reports[:2])
     changes = ledger_fact_changes(
-        fact, truncated, resources, source="internal", setup_hours=0.0, unit_hours=0.25,
+        truncated, resources, source="internal", setup_hours=0.0, unit_hours=0.25,
     )
     assert changes is not None
     assert changes["execution_effective_intervals"] == tuple(segment[:2] for segment in expected[:2])
@@ -326,24 +306,6 @@ def test_segment_metadata_survives_seed_coercion_and_occupies_only_its_actual_re
     assert exc.value.code == "candidate_resource_overlap"
     concurrent = replace(concurrent, operator_id="O1")
     _resource_overlaps([actual, concurrent], prepared.execution_facts)
-    intervals = _schedule_resource_intervals([actual], prepared.execution_facts)
-    assert intervals["operator", "O2"] == ([segments[1][0]], [segments[1][1]])
-    reservation = SimpleNamespace(op_id=concurrent.op_id, machine_id="M2", operator_id="O2",
-                                  start_time=concurrent.start_time, end_time=concurrent.end_time)
-    with pytest.raises(AppError) as exc:
-        _validate_unselected_resource_overlap(payload=SimpleNamespace(schedule_rows=[actual]),
-            reservations=[reservation], execution_facts=prepared.execution_facts)
-    assert exc.value.details is not None
-    assert exc.value.details["reason"] == "unselected_execution_resource_overlap"
-    reservation.operator_id = "O1"
-    _validate_unselected_resource_overlap(payload=SimpleNamespace(schedule_rows=[actual]),
-        reservations=[reservation], execution_facts=prepared.execution_facts)
-    point_event = ValidatedScheduleRow(case.op_id + 101, "M2", "O2",
-                                       datetime(2026, 9, 9, 9, 30), datetime(2026, 9, 9, 9, 30), "internal")
-    _validate_unselected_resource_overlap(payload=SimpleNamespace(schedule_rows=[point_event]),
-        reservations=[SimpleNamespace(op_id=concurrent.op_id, machine_id="M2", operator_id="O2",
-                                      start_time=concurrent.start_time, end_time=concurrent.end_time)],
-        execution_facts=prepared.execution_facts)
 
 
 def test_segmented_completion_runs_and_adopts_with_full_scope_then_protects_resource_interval_binding(candidate_case):
@@ -407,7 +369,7 @@ def test_completed_zero_duration_point_report_can_replan_and_adopt(candidate_cas
     assert fact.execution_protection_content is not None
     resources = fact.execution_protection_content["resources"]
     non_point_changes = ledger_fact_changes(
-        fact, projection, resources, source="internal", setup_hours=0.0, unit_hours=0.25,
+        projection, resources, source="internal", setup_hours=0.0, unit_hours=0.25,
     )
     assert non_point_changes is not None
     assert "execution_ledger_actual_interval_missing" in non_point_changes["execution_protection_reasons"]
@@ -416,7 +378,7 @@ def test_completed_zero_duration_point_report_can_replan_and_adopt(candidate_cas
     positive_report = replace(projection.reports[0], actual_end="2026-09-09T09:00:00", effective_processing_hours=1.0)
     positive_projection = replace(projection, confirmed_finish="2026-09-09T09:00:00", reports=[positive_report])
     positive_changes = ledger_fact_changes(
-        fact, positive_projection, resources, source="internal", setup_hours=0.0, unit_hours=0.0,
+        positive_projection, resources, source="internal", setup_hours=0.0, unit_hours=0.0,
     )
     assert positive_changes is not None
     assert not positive_changes["execution_protection_reasons"]
@@ -534,48 +496,3 @@ def test_mixed_zero_and_positive_duration_point_reports_replan_and_adopt(candida
     assert (new_task["start_time"], new_task["end_time"]) == ("2026-09-09T08:00:00", "2026-09-09T08:45:00")
     adopted = service(case.conn).adopt(ref, preview(case, ref), "mixed-point-replan-adoption", INTENT)
     assert adopted["result"] == "committed"
-
-
-def test_completed_zero_duration_legacy_finish_point_can_replan_and_adopt(candidate_case):
-    case = candidate_case
-    first_ref = point_candidate(case, setup=0, unit=0, quantity=3)
-    version = adopt_point(case, first_ref, key="legacy-point-first-adoption")["version"]
-    schedule = case.conn.execute(
-        "SELECT id FROM Schedule WHERE version=? AND op_id=?", (version, case.op_id),
-    ).fetchone()[0]
-    start_event_id = case.conn.execute("""INSERT INTO OperationExecutionEvents
-        (schedule_version,schedule_id,op_id,batch_id,source_table,effective_plan_role,
-         event_type,reported_status,event_time,actual_machine_id,actual_operator_id,
-         created_by,idempotency_key,request_fingerprint,previous_state_revision)
-        VALUES (?,?,?,'B1','schedule','adopted','start','processing','2026-09-09T08:00:00',
-                'M1','O1','original-operator','legacy-point-start-001','legacy-point-start-fp',?)""",
-        (version, schedule, case.op_id, f"{case.op_id}:0:0")).lastrowid
-    case.conn.execute("""INSERT INTO OperationExecutionEvents
-        (schedule_version,schedule_id,op_id,batch_id,source_table,effective_plan_role,
-         event_type,reported_status,event_time,quantity_done,
-         created_by,idempotency_key,request_fingerprint,previous_state_revision)
-        VALUES (?,?,?,'B1','schedule','adopted','finish','completed','2026-09-09T08:00:00',
-                3,'original-operator','legacy-point-finish-001','legacy-point-finish-fp',?)""",
-        (version, schedule, case.op_id, f"{case.op_id}:1:{start_event_id}"))
-    case.conn.commit()
-
-    projection = case.projections("B1")[0]
-    assert not projection.reports and projection.completion_basis == "legacy_finish_event"
-    facts = read_facts(case.conn, version)
-    fact = facts[case.op_id]
-    ensure_ledger_execution_schedulable(facts)
-    assert fact.execution_effective_intervals == ((datetime(2026, 9, 9, 8), datetime(2026, 9, 9, 8)),)
-
-    case.batch("B2")
-    new_op = case.operation("B2")
-    case.conn.commit()
-    accepted = case.accept(key="legacy-point-full-scope-replan", settings=case.settings("B1", "B2"))
-    result = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
-    _assert_kept_worker_tasks(case, result, ("2026-09-09T08:00:00", "2026-09-09T08:00:00"))
-    ref = result["candidates"][0]["candidate_ref"]
-    tasks = [json.loads(row[0]) for row in case.conn.execute(
-        "SELECT payload_json FROM WorkbenchRunCandidateTasks WHERE candidate_ref=?", (ref,))]
-    new_task = next(row for row in tasks if row["op_id"] == new_op)
-    assert (new_task["start_time"], new_task["end_time"]) == ("2026-09-09T08:00:00", "2026-09-09T08:45:00")
-    replan_plan = adopt_point(case, ref, key="legacy-point-replan-adoption")
-    assert replan_plan["version"] == version + 1

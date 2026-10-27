@@ -2,10 +2,9 @@
 
 The legacy persistence guard's flat same-batch seq comparison is deliberately
 not used here. Fresh shared guardrails retain exact actual intervals/resources,
-all revisions, the whole official snapshot and unselected resource reservations.
+all revisions and the whole official snapshot.
 """
 
-from core.services.scheduler.run.schedule_execution_persistence_guard import _validate_unselected_resource_overlap
 from core.services.scheduler.run.schedule_input_seed_metadata import MERGED_EXECUTION_GROUP_SOURCE
 from core.services.workbench.facts.piece_scope import block
 from core.shared.local_datetime import parse_local_datetime as parse_dt
@@ -13,15 +12,13 @@ from core.shared.local_datetime import parse_local_datetime as parse_dt
 
 def validate_piece_execution(prepared, payload, *, purpose):
     _protected_arrangements(prepared, payload, purpose=purpose)
-    _validate_unselected_resource_overlap(payload=payload, reservations=prepared.execution_reservations,
-                                          execution_facts=prepared.execution_facts)
 
 
 def _protected_arrangements(prepared, payload, *, purpose):
     rows = {row.op_id: row for row in payload.schedule_rows}
     seeds = prepared.seed_results
     by_seed = {seed["op_id"]: seed for seed in seeds}
-    actual = prepared.execution_fixed_op_ids | prepared.execution_completed_op_ids
+    actual = prepared.execution_completed_op_ids
     protected = prepared.frozen_op_ids | actual
     if len(seeds) != len(by_seed) or set(by_seed) != protected or not protected <= set(rows):
         block("piece_protected_seed_missing", "每道受保护工序都要保留原来的一条安排，现在对不上，本次没有采用。请回「执行排产」重新排一次。")
@@ -35,16 +32,11 @@ def _protected_arrangements(prepared, payload, *, purpose):
 
 
 def _quantities(scope, refs, projections):
-    piece_batches = {work.batch_id for work in scope.operations if work.piece_id is not None}
     for work in scope.operations:
         item = projections[refs[work.op_id]]
         basis = "batch" if work.piece_id is None else "piece"
         if item.target_basis != basis or item.target_quantity != work.target_quantity:
             block("piece_quantity_unknown", "报工记录的目标数量和共同工序或分件工序对不上，本次没有采用。请到现场记录核对后重新排产。")
-        if (work.batch_id not in piece_batches and item.execution_state == "complete"
-                and item.completion_basis == "legacy_finish_event" and not item.reports
-                and item.data_quality != "invalid" and item.known_completed_quantity <= work.target_quantity):
-            continue
         if (item.data_quality == "invalid" or item.unknown_record_count
                 or item.known_completed_quantity > work.target_quantity or item.remaining_quantity is None
                 or item.remaining_quantity != work.target_quantity - item.known_completed_quantity):

@@ -1,4 +1,4 @@
-"""Read-only bridge from permanent ledger identities to legacy execution scopes."""
+"""Read-only bridge from permanent ledger identities to execution scopes."""
 
 from contextlib import ExitStack, contextmanager
 from dataclasses import replace
@@ -89,17 +89,16 @@ def _load_projections(ledger, refs, execution_projections):
     return projections, plan, ledger.revision_clock()["ledger_revision"]
 
 
-def _adapt_scope_facts(legacy_facts, tasks, projections, plan, ledger_revision, resources, refs_by_op):
-    result = dict(legacy_facts)
+def _adapt_scope_facts(facts, tasks, projections, plan, ledger_revision, resources, refs_by_op):
+    result = dict(facts)
     for scope, task in tasks.items():
         projection = projections[task["operation_ref"]]
         if plan and scope.schedule_version == plan["version"] and (
             projection.current_task_ref != task["task_ref"]
         ):
             raise _unavailable("execution_ledger_current_task_mismatch", op_id=scope.op_id)
-        fact = legacy_facts[scope]
+        fact = facts[scope]
         changes = ledger_fact_changes(
-            fact,
             projection,
             resources,
             source=task["source"],
@@ -118,22 +117,22 @@ def _adapt_scope_facts(legacy_facts, tasks, projections, plan, ledger_revision, 
     return result
 
 
-def adapt_ledger_facts(ledger, legacy_facts, *, execution_projections):
+def adapt_ledger_facts(ledger, facts, *, execution_projections):
     try:
         _require_reported_operation_scopes(ledger)
-        scopes = [scope for scope in legacy_facts if scope.source_table == SOURCE_SCHEDULE
-                  and scope.effective_plan_role == ROLE_ADOPTED and scope.scenario_id is None]
+        scopes = [scope for scope in facts if scope.source_table == SOURCE_SCHEDULE
+                  and scope.effective_plan_role == ROLE_ADOPTED]
         if not scopes:
             if execution_projections:
                 raise _unavailable("execution_ledger_projection_scope_mismatch")
-            return legacy_facts
+            return facts
         tasks = _scope_tasks(ledger, scopes)
         refs = list(dict.fromkeys(task["operation_ref"] for task in tasks.values()))
         projections, plan, ledger_revision = _load_projections(ledger, refs, execution_projections)
         refs_by_op = {op_ref: projection_resource_refs(row) for op_ref, row in projections.items()}
         resource_refs = {ref for refs_set in refs_by_op.values() for ref in refs_set}
         resources = {row["ref"]: row for row in ledger.resources(resource_refs)}
-        return _adapt_scope_facts(legacy_facts, tasks, projections, plan, ledger_revision, resources, refs_by_op)
+        return _adapt_scope_facts(facts, tasks, projections, plan, ledger_revision, resources, refs_by_op)
     except WorkbenchCommandRejected as exc:
         raise _unavailable(exc.code) from exc
 

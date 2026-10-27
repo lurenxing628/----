@@ -108,10 +108,10 @@ class CandidateStore:
         row = self.repo.job_capture(run_ref)
         if row is None:
             corrupt()
-        for size in row[5:]:
+        for size in row[4:]:
             bounded_size(size, MAX_FACT_BYTES)
         return {"input": stored_json(row[0]), "execution": stored_json(row[1], list),
-                "baseline": stored_json(row[2]), "facts_text": row[3], "facts_hash": row[4]}
+                "baseline": stored_json(row[2]), "facts_text": row[3]}
 
     def tasks(self, candidate_ref):
         result, total_bytes = [], 0

@@ -28,14 +28,14 @@
   // expanded：执行复盘页把图表当主体，直接展开，不再折叠；报表中心仍是可折叠的辅助区。
   function Charts({ data, open, onChange, onDrill, resourceView, onResourceView, expanded = false }) {
     if (!expanded && !open) return <details className="er-chart-disclosure" open={open} onToggle={event => onChange(event.currentTarget.open)}><summary>{title}</summary></details>;
-    const { DistributionChart, TrendChart } = window.ReviewChartViews, { hoursText } = window.ReportTable, legacy = window.WorkbenchTerms.legacy_field_records;
+    const { DistributionChart, TrendChart } = window.ReviewChartViews, { hoursText } = window.ReportTable;
     const points = data.charts.trend.map(row => ({ time: new Date(row.date + 'T00:00:00').getTime(), label: row.date,
       planned: row.planned, actual: row.actual }));
     const items = (rows, tone) => rows.map(row => ({ ...row, id: row.label, tone }));
     const body = <>
       <div className="er-overview-grid"><section className="er-section er-trend"><h3>计划与实际累计完工</h3><TrendChart points={points} label="范围内工序累计完工" /></section>
         <section className="er-section er-insights"><h3>记录要点</h3><p>已确认晚完成 {data.summary.finish_late} 道；到期未确认 {data.summary.unclosed_due} 道。</p>
-          <p>{legacy} {data.summary.events} 条；逐次报工 {data.summary.production_reports} 条；全部记录 {data.summary.records} 条。</p>
+          <p>逐次报工 {data.summary.production_reports} 条。</p>
           {!window.ReportEvidence.noFeedback(data.summary) && <p>有效加工工时 {hoursText(data.summary.effective_processing_hours)}；已知小计 {hoursText(data.summary.known_effective_processing_hours)}；工时未知 {data.summary.unknown_hour_events} 条。</p>}
           <div className="rw-actions">{[['finish_late', '晚完成明细'], ['unclosed', '未确认明细'], [data.scope.focus, '工序明细']].map(([focus, label]) =>
             <window.ResourceControls.Button key={label} icon="arrow-right" disabled={!onDrill} onClick={() => onDrill('delivery', { focus })}>{label}</window.ResourceControls.Button>)}</div></section></div>

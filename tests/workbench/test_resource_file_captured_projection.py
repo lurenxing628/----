@@ -54,7 +54,7 @@ def test_captured_file_projection_preserves_columns_without_dependency_reads(fil
     finally:
         conn.set_trace_callback(None)
     assert {field: row[field] for field in expected} == expected
-    # 旧单工种列与旧状态别名已删除；供应商能力只来自 WorkbenchSupplierOpTypes（种子里的 Suppliers.op_type_id 不参与）。
+    # 旧单工种列与旧状态别名已删除；供应商能力来自 WorkbenchSupplierOpTypes。
     assert not {"legacy_status", "op_type_code", "explicit_op_type_codes", "legacy_op_type_code"} & set(row)
     if kind in ("machine", "operator", "supplier"):
         assert row["created_at"] == "2020-02-03 12:05:06"

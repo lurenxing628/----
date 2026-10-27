@@ -49,8 +49,8 @@ class WorkbenchRunCandidateRepository(BaseRepository):
             ON m.candidate_ref=c.candidate_ref AND m.run_ref=c.run_ref WHERE c.candidate_ref=?""", (candidate_ref,))
 
     def job_capture(self, run_ref: str) -> Optional[Tuple[Any, ...]]:
-        """四份生产原件、兼容 facts_hash 和各原件实际字节数。"""
-        row = self.execute("""SELECT normalized_input_json,execution_json,baseline_json,facts_json,facts_hash,
+        """四份生产原件和各原件实际字节数。"""
+        row = self.execute("""SELECT normalized_input_json,execution_json,baseline_json,facts_json,
             length(CAST(normalized_input_json AS BLOB)),length(CAST(execution_json AS BLOB)),
             length(CAST(baseline_json AS BLOB)),length(CAST(facts_json AS BLOB))
             FROM WorkbenchRunJobs WHERE run_ref=?""", (run_ref,)).fetchone()

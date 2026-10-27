@@ -27,7 +27,7 @@ def _corrupt_input() -> NoReturn:
 
 class WorkbenchCommandRepository(BaseRepository):
     def get(self, request_key: str) -> Optional[Dict[str, Any]]:
-        return self.fetchone("SELECT request_key, receipt_ref, action, context_ref, input_hash, input_json, outcome_json FROM WorkbenchCommandReceipts WHERE request_key = ?", (request_key,))
+        return self.fetchone("SELECT request_key, receipt_ref, action, context_ref, input_json, outcome_json FROM WorkbenchCommandReceipts WHERE request_key = ?", (request_key,))
 
     def insert(self, *, request_key: str, receipt_ref: str, action: str, context_ref: str,
                input_json: str, outcome: WorkbenchCommandOutcome) -> Dict[str, Any]:

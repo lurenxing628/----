@@ -25,7 +25,7 @@
     data_quality: T.data_quality, risk: T.delivery_risks, due_state: T.due_states,
     due_issue: T.due_issues, completion_state: T.delivery_completion_states };
   const values = { yes: '齐套', no: '未齐套', partial: '部分完成', unreported: '待报工', started: '已开工', complete: '完整',
-    paused: '已暂停', exception: '异常', incomplete: '尚不完整', invalid: '待核对', legacy: '旧记录需核对', available: '已读取',
+    incomplete: '尚不完整', invalid: '待核对', available: '已读取',
     unknown: '未知', missing: '缺少来源', unavailable: '无法读取', on_time: T.delivery_risks.on_time, overdue: T.delivery_risks.overdue,
     manual: '手工', excel: 'Excel', internal: '自制', external: '外协', current: '当前', not_currently_evaluated: '现在没有评估',
     single: '单条', merged: '合并', outsourcing_receipt: '外协物流登记',

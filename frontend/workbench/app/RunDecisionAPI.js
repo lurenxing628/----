@@ -67,14 +67,13 @@
 
   const completionBatchCounts = ['complete_batch_count', 'incomplete_batch_count', 'ordinary_incomplete_batch_count', 'deferred_batch_count', 'unknown_batch_count'];
   function completion(value) {
-    // 批次计数恒为整数；两个工序计数只在工序安排记录未保存（source_available 为假）时为 null。
     return object(value) && value.scope === 'full_admission' && ['complete', 'partial', 'unavailable', 'not_applicable'].includes(value.state)
-      && typeof value.source_available === 'boolean' && completionBatchCounts.every(key => count(value[key]))
-      && ['unplanned_operation_count', 'deferred_operation_count'].every(key => value.source_available ? count(value[key]) : value[key] === null)
+      && value.source_available === true && completionBatchCounts.every(key => count(value[key]))
+      && ['unplanned_operation_count', 'deferred_operation_count'].every(key => count(value[key]))
       && object(value.sample_batch_refs) && ['complete', 'incomplete', 'deferred', 'unknown'].every(key => Array.isArray(value.sample_batch_refs[key]) && value.sample_batch_refs[key].length <= 3 && value.sample_batch_refs[key].every(ref))
       && object(value.remaining_work) && object(value.remaining_work.metrics)
       && preparationMetrics.every(key => window.EffortProjectionContract.metric(value.remaining_work.metrics[key]))
-      && ['operation_count', 'unplanned_operation_count', 'deferred_operation_count'].every(key => value.remaining_work[key] === null || count(value.remaining_work[key]));
+      && ['operation_count', 'unplanned_operation_count', 'deferred_operation_count'].every(key => count(value.remaining_work[key]));
   }
   function recommendation(data) {
     const value = data.recommendation, basis = data.selection_basis, comparison = value && value.current_comparison;
@@ -115,7 +114,7 @@
       && object(common.before) && object(common.after) && numeric(common.delay_delta_hours) && numeric(common.overdue_delta_count), '推荐方案的批次交付对比资料不完整，请点“刷新方案对比”。');
   }
   function completionGroups(data) {
-    check(Array.isArray(data.completion_groups) && data.completion_groups.every(group => object(group) && count(group.group_index) && typeof group.source_available === 'boolean'
+    check(Array.isArray(data.completion_groups) && data.completion_groups.every(group => object(group) && count(group.group_index) && group.source_available === true
       && count(group.complete_batch_count) && Array.isArray(group.sample_complete_batch_refs) && group.sample_complete_batch_refs.length <= 3 && group.sample_complete_batch_refs.every(ref)
       && Array.isArray(group.candidate_refs) && group.candidate_refs.every(ref)), '方案的批次安排分类资料不完整，请点“刷新方案对比”。');
     const grouped = data.completion_groups.flatMap(group => group.candidate_refs);
@@ -135,9 +134,9 @@
       candidates.add(row.candidate_ref);
       // 候选只由共同优化按业务方向生成（unified_search_v1）。
       check(A.shape(row, ['candidate_ref', 'label', 'kind', 'status', 'persisted_status', 'task_count', 'completeness', 'coverage', 'metrics',
-        'capabilities', 'selection_role', 'equivalent_source_ref', 'source', 'deltas'].concat(G.metadataKeys))
+        'capabilities', 'selection_role', 'deltas'].concat(G.metadataKeys))
         && G.metadata(row, runRef) && row.kind === 'business_objective' && row.persisted_status === 'completed'
-        && ['completed', 'partial'].includes(row.status) && row.equivalent_source_ref === null
+        && ['completed', 'partial'].includes(row.status)
         && new Set(row.selection_role).size === row.selection_role.length
         && row.selection_role.every(role => role === 'recommended' || G.objective(role)), '业务方向候选的保存资料不完整，请点“刷新方案对比”。');
       coreMetricKeys.forEach(key => {
@@ -212,7 +211,7 @@
       && Array.isArray(data.scope.batch_refs) && data.scope.batch_refs.every(ref) && object(data.scope.reference)
       && object(data.baseline) && data.baseline.kind === data.scope.reference.kind && data.baseline.state === data.scope.reference_state
       && A.shape(data.candidate, ['candidate_ref', 'label', 'persisted_status']) && data.candidate.candidate_ref === q.selected_candidate_ref
-      && (data.candidate.label === null || typeof data.candidate.label === 'string') && ['completed', 'failed', 'skipped'].includes(data.candidate.persisted_status)
+      && (data.candidate.label === null || typeof data.candidate.label === 'string') && data.candidate.persisted_status === 'completed'
       && data.metric_version === 'decision-preparation-v4', '批次安排资料与当前方案或比较范围不一致，请刷新批次清单。');
     if (q.comparison_mode === 'candidates') check(data.scope.reference.kind === 'candidate'
       && data.baseline.candidate_ref === data.scope.reference.candidate_ref
@@ -221,14 +220,14 @@
     else check(data.scope.reference.kind === 'admission_official'
       && (data.scope.reference_state === 'available' ? ref(data.scope.reference.baseline_ref) : data.scope.reference_state === 'absent' && data.scope.reference.baseline_ref === null), '批次安排使用的正式计划资料已变化，请刷新批次清单。');
     bindScope(payload, data, q);
-    const source = data.source, available = data.candidate.persisted_status === 'completed';
+    const source = data.source;
     check(A.shape(source, ['role', 'grain', 'candidate_ref', 'available', 'reason']) && source.role === 'completion_anchor'
-      && source.grain === 'full_admission_per_candidate_batch' && source.candidate_ref === q.selected_candidate_ref && source.available === available
-      && (available ? source.reason === null : issue(source.reason)), '所选方案的批次安排资料不完整，请刷新批次清单。');
+      && source.grain === 'full_admission_per_candidate_batch' && source.candidate_ref === q.selected_candidate_ref && source.available === true
+      && source.reason === null, '所选方案的批次安排资料不完整，请刷新批次清单。');
     check(A.shape(data.filters, ['section', 'completion_filter', 'sort', 'order'])
       && data.filters.section === 'completion-batches' && ['completion_filter', 'sort', 'order'].every(key => data.filters[key] === q[key]),
     '批次清单的方案、筛选或排序已变化，请刷新批次清单。');
-    check(completion(data.summary) && data.summary.source_available === available && (available || data.summary.state === 'unavailable'), '批次安排和待安排工时资料不完整，请刷新批次清单。');
+    check(completion(data.summary), '批次安排和待安排工时资料不完整，请刷新批次清单。');
     const cohort = new Set(data.scope.batch_refs);
     check(Object.values(data.summary.sample_batch_refs).every(values => values.every(value => cohort.has(value))), '批次清单与本次选择的批次不一致，请刷新批次清单。');
     const totalKey = { complete: 'complete_batch_count', unfinished: 'incomplete_batch_count', ordinary: 'ordinary_incomplete_batch_count', deferred: 'deferred_batch_count', unknown: 'unknown_batch_count' }[q.completion_filter];
@@ -238,7 +237,7 @@
       && Array.isArray(data.items) && data.items.length === Math.min(q.size, Math.max(0, total - (q.page - 1) * q.size)),
     '批次清单的记录条数或页码已变化，请刷新批次清单。');
     function remainingDrill(value, operationCount, batchRef) {
-      if (operationCount === null || operationCount === 0) { check(value === null, '待安排工序的定位资料已失效，请刷新批次清单。'); return; }
+      if (operationCount === 0) { check(value === null, '待安排工序的定位资料已失效，请刷新批次清单。'); return; }
       check(object(value) && value.comparison_tab === 'preparation' && value.selected_candidate_ref === q.selected_candidate_ref
         && A.shape(value.detail_query, ['work_scope'], batchRef ? ['batch_ref'] : []) && value.detail_query.work_scope === 'remaining'
         && (batchRef ? value.detail_query.batch_ref === batchRef : value.detail_query.batch_ref === undefined), '待安排工序的方案、批次或范围已变化，请刷新批次清单。');
@@ -246,11 +245,8 @@
       check(['range_start', 'range_end'].every(key => time(value[key]) && timeKey(value[key]) === timeKey(data.scope[key])), '待安排工序的比较时间范围已变化，请刷新批次清单。');
     }
     remainingDrill(data.summary.drill, data.summary.remaining_work.operation_count);
-    check(available ? data.summary.remaining_work.operation_count === data.summary.unplanned_operation_count + data.summary.deferred_operation_count
-      && ['unplanned_operation_count', 'deferred_operation_count'].every(key => data.summary.remaining_work[key] === data.summary[key])
-      : data.summary.unplanned_operation_count === null && data.summary.deferred_operation_count === null
-        && ['operation_count', 'unplanned_operation_count', 'deferred_operation_count'].every(key => data.summary.remaining_work[key] === null)
-        && preparationMetrics.every(key => data.summary.remaining_work.metrics[key].state === 'unavailable' && data.summary.remaining_work.metrics[key].value === null),
+    check(data.summary.remaining_work.operation_count === data.summary.unplanned_operation_count + data.summary.deferred_operation_count
+      && ['unplanned_operation_count', 'deferred_operation_count'].every(key => data.summary.remaining_work[key] === data.summary[key]),
     '所选方案的待安排工序资料不完整，请刷新批次清单。');
     data.items.forEach(row => {
       check(A.shape(row, ['batch_ref', 'batch_label', 'part_no', 'part_label', 'quantity', 'completion_state', 'schedule_complete', 'scheduled_operation_count',
@@ -261,10 +257,8 @@
         && A.shape(row.remaining_work, ['operation_count', 'metrics']) && object(row.remaining_work.metrics)
         && preparationMetrics.every(key => E.metric(row.remaining_work.metrics[key])) && Array.isArray(row.issues) && row.issues.every(value => typeof value === 'string'),
       '批次安排或待安排工时资料不完整，请刷新批次清单。');
-      check(available ? typeof row.schedule_complete === 'boolean' && ['scheduled_operation_count', 'unplanned_operation_count', 'deferred_operation_count'].every(key => count(row[key]))
-        && count(row.remaining_work.operation_count) && row.remaining_work.operation_count === row.unplanned_operation_count + row.deferred_operation_count
-        : row.completion_state === 'unknown' && row.schedule_complete === null && ['scheduled_operation_count', 'unplanned_operation_count', 'deferred_operation_count'].every(key => row[key] === null)
-          && row.remaining_work.operation_count === null && preparationMetrics.every(key => row.remaining_work.metrics[key].state === 'unavailable' && row.remaining_work.metrics[key].value === null),
+      check(typeof row.schedule_complete === 'boolean' && ['scheduled_operation_count', 'unplanned_operation_count', 'deferred_operation_count'].every(key => count(row[key]))
+        && count(row.remaining_work.operation_count) && row.remaining_work.operation_count === row.unplanned_operation_count + row.deferred_operation_count,
       '批次的工序安排数量与读取的资料不一致，请刷新批次清单。');
       check(q.completion_filter === 'all' || q.completion_filter === 'complete' && row.schedule_complete === true
         || q.completion_filter === 'unfinished' && row.schedule_complete !== true || q.completion_filter === 'ordinary' && row.completion_state === 'incomplete'

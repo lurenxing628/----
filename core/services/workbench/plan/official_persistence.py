@@ -28,7 +28,7 @@ def persist_official_plan_in_tx(conn, *, prepared, payload, baseline, audit, app
     version = history.allocate_next_version()
     # 锁定只标已开工、做完的工序（它们由报工记录保护）。因不重排时段保留的不锁：时段只管这一次排产
     # （另记在 material_policy 里，试调据此判断），否则一旦采用就钉死，以后填"不设"也放不开。
-    locked_ids = prepared.execution_fixed_op_ids | prepared.execution_completed_op_ids
+    locked_ids = prepared.execution_completed_op_ids
     rows = [{"op_id": row.op_id, "version": version, "machine_id": row.machine_id,
              "operator_id": row.operator_id, "start_time": row.start_time.isoformat(sep=" "),
              "end_time": row.end_time.isoformat(sep=" "),

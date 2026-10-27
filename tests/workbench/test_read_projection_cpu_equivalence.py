@@ -202,7 +202,7 @@ def test_admission_decodes_saved_execution_once_without_replaying_disposition_or
     assert first.selected == second.selected == set(scope)
     assert first.facts.execution[ref] is capture["execution"][0]
     assert calls and max(calls.values()) == 1
-    assert not set(calls) & {"WorkbenchProductionReports", "WorkbenchProductionReportRevisions", "WorkbenchExecutionLegacyFacts"}
+    assert not set(calls) & {"WorkbenchProductionReports", "WorkbenchProductionReportRevisions"}
 
 
 def test_archived_labels_and_arrangements_keep_saved_work_without_formula_replay(candidate_case, monkeypatch):

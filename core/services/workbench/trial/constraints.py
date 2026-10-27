@@ -5,7 +5,6 @@ from datetime import datetime
 from heapq import heappop, heappush
 
 from core.models.workbench_trial import issue, reject
-from core.services.execution.legacy import legacy_resource_refs
 from core.services.scheduler.execution.execution_ledger_guard import is_point_work
 from core.services.workbench.facts.zero_duration_evidence import trial_point_evidence
 
@@ -183,8 +182,8 @@ def _actual_index(live):
     ops_by_ref = {row["ref"]: ops.get(row["source_key"], {}) for row in tables["WorkbenchPlanSourceRefs"]
                   if row["kind"] == "operation"}
     for ref, execution in live["execution"].items():
-        reports, legacy = execution["reports"], execution["legacy_facts"]
-        if execution["execution_state"] == "unreported" and not reports and not legacy:
+        reports = execution["reports"]
+        if execution["execution_state"] == "unreported" and not reports:
             continue
         op = ops_by_ref.get(ref, {})
         if op.get("source") == "external":
@@ -204,26 +203,6 @@ def _actual_index(live):
                     issues.append(_resource_unknown())
                 else:
                     index[kind, resource].append((ref, execution, start_dt, end_dt))
-        if not legacy:
-            continue
-        # 旧事件的资源按整组解释：完工、暂停事件可以不重复开工事件已记的设备人员。
-        legacy_refs = {kind: legacy_resource_refs(legacy, "actual_" + kind + "_ref", gaps=execution["data_gaps"])
-                       for kind in ("machine", "operator")}
-        if reports:
-            # 有新报工时占用按报工算，旧事件只能是报工已覆盖的资源（与排产执行保护同一口径）。
-            for kind, refs in legacy_refs.items():
-                if None in refs or not refs <= {report["actual_" + kind + "_ref"] for report in reports}:
-                    issues.append(_resource_unknown())
-            continue
-        start_dt, end_dt = _actual_span(complete, execution["first_actual_start"], execution["confirmed_finish"])
-        if is_point and start_dt is not None and start_dt == end_dt:
-            continue
-        for kind, refs in legacy_refs.items():
-            if not refs or None in refs:
-                issues.append(_resource_unknown())
-                continue
-            for resource in refs:
-                index[kind, resource].append((ref, execution, start_dt, end_dt))
     return index, issues
 
 

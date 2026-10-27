@@ -130,7 +130,7 @@ def test_shared_process_projection_and_export_keep_actual_objectives_and_one_run
     source = SimpleNamespace(run={"run_ref": run_ref}, rows=[{"candidate_ref": row["candidate_ref"]} for row in candidates],
         saved_process=process, selected_ref=first_ref, scope={"selected_candidate_ref": first_ref,
         "reference": {"candidate_ref": viewer_ref}}, baseline={"candidate_ref": viewer_ref})
-    source._candidate_reference = lambda ref, require_result=True: next(row for row in candidates if row["candidate_ref"] == ref)
+    source._candidate_reference = lambda ref: next(row for row in candidates if row["candidate_ref"] == ref)
     source.saved_candidate_catalog = lambda ref, fields=None: {key: value for key, value in next(
         row for row in candidates if row["candidate_ref"] == ref).items() if fields is None or key in fields}
     initial_scope = deepcopy(source.scope)

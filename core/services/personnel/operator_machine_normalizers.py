@@ -9,37 +9,44 @@ _OPERATOR_PRIMARY_TRUE_ALIASES = ("主操", "主", "on")
 _OPERATOR_PRIMARY_FALSE_ALIASES = ("非主操", "非主", "off")
 
 
+def _require_stored_text(value: Any, field: str) -> str:
+    if value is None or isinstance(value, bool):
+        raise ValueError(f"Invalid stored {field}: {value!r}")
+    text = str(value).strip()
+    if not text:
+        raise ValueError(f"Invalid stored {field}: {value!r}")
+    return text
+
+
 def normalize_skill_level_stored(value: Any) -> str:
-    return normalize_skill_level_value(value, unknown_policy="default")
+    text = _require_stored_text(value, "skill_level")
+    return normalize_skill_level_value(text, unknown_policy="raise")
 
 
 def normalize_yes_no_stored(value: Any) -> str:
+    text = _require_stored_text(value, "is_primary")
     return normalize_yes_no_narrow_value(
-        value,
+        text,
         default=YesNo.NO.value,
-        unknown_policy="default",
+        unknown_policy="raise",
         true_aliases=_OPERATOR_PRIMARY_TRUE_ALIASES,
         false_aliases=_OPERATOR_PRIMARY_FALSE_ALIASES,
     )
 
 
-def _readside_text(value: Any) -> str:
-    return "" if value is None else str(value).strip()
-
-
 def _normalize_skill_field(out: Dict[str, Any], dirty_fields: List[str]) -> None:
-    raw_skill = out.get("skill_level")
-    raw_skill_text = _readside_text(raw_skill)
-    out["skill_level"] = normalize_skill_level_stored(raw_skill)
-    if raw_skill is None or raw_skill_text == "" or raw_skill_text.lower() != out["skill_level"]:
+    raw_skill = out["skill_level"]
+    normalized = normalize_skill_level_stored(raw_skill)
+    out["skill_level"] = normalized
+    if str(raw_skill).strip().lower() != normalized:
         dirty_fields.append("skill_level")
 
 
 def _normalize_primary_field(out: Dict[str, Any], dirty_fields: List[str]) -> None:
-    raw_primary = out.get("is_primary")
-    raw_primary_text = _readside_text(raw_primary)
-    out["is_primary"] = normalize_yes_no_stored(raw_primary)
-    if raw_primary is None or raw_primary_text == "" or raw_primary_text.lower() != out["is_primary"].lower():
+    raw_primary = out["is_primary"]
+    normalized = normalize_yes_no_stored(raw_primary)
+    out["is_primary"] = normalized
+    if str(raw_primary).strip().lower() != normalized:
         dirty_fields.append("is_primary")
 
 

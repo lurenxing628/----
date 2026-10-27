@@ -66,7 +66,6 @@
       <div>生成时报工：{execution ? M.executionField(row, 'execution_state') : '提交试排时的报工记录缺失'}</div>
       {execution && <><div>{['target_quantity', 'known_completed_quantity', 'remaining_quantity'].map(key => <div key={key}>{M.executionLabels[key]}：{M.executionField(row, key)}</div>)}</div>
         {execution.unknown_record_count > 0 && <div>缺少完成数量的报工记录：{execution.unknown_record_count} 条</div>}
-        {execution.legacy_unavailable_field_count > 0 && <div>历史报工未保存的字段：{execution.legacy_unavailable_field_count} 项</div>}
         <div>生成时报工数据质量：{M.executionField(row, 'data_quality')}</div></>}
       {row.reasons.filter(reason => !['execution_affected', 'resource_identity_unavailable'].includes(reason.code)).concat(row.data_gaps.filter(gap => !gap.field.startsWith('execution_at_generation'))).map((r, i) => <div key={i}>{r.message}</div>)}
     </div>;

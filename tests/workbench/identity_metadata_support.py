@@ -1,61 +1,20 @@
-"""Temporary SQLite fixtures for the v19/v20 identity contract."""
+"""Temporary SQLite fixtures for the workbench identity and metadata contract."""
 
 from __future__ import annotations
 
-import sqlite3
-from contextlib import contextmanager
-
 import pytest
 
-from core.infrastructure.migration_common import MigrationOutcome
 from core.infrastructure.migration_state import (
     CURRENT_SCHEMA_VERSION,
     current_schema_contract_issues,
     ensure_schema_version,
     get_schema_version,
     is_truly_empty_db,
-    set_schema_version,
 )
-from core.infrastructure.migrations import MIGRATIONS
 from core.infrastructure.schema_declaration import load_schema_sql
-from core.infrastructure.schema_structure import SchemaStructure
-from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_objects
-from core.infrastructure.workbench_lineage_lookup_schema import lineage_lookup_contract_issues, lineage_lookup_objects
-from core.infrastructure.workbench_metadata_schema import metadata_objects
-from core.infrastructure.workbench_plan_identity_schema import plan_identity_objects
-from core.infrastructure.workbench_process_schema import process_objects
-from core.infrastructure.workbench_process_workflow_schema import WORKFLOW_TABLES, workflow_objects
-from core.infrastructure.workbench_resource_schema import resource_objects
-from core.infrastructure.workbench_run_schema import RUN_TABLES, workbench_run_contract_issues, workbench_run_objects
-from core.infrastructure.workbench_template_lineage_schema import (
-    template_lineage_contract_issues,
-    template_lineage_objects,
-)
-from core.infrastructure.workbench_trial_schema import workbench_trial_contract_issues, workbench_trial_objects
+from core.infrastructure.workbench_run_schema import RUN_TABLES
 from tests._support.sqlite_snapshot import schema_snapshot as schema_snapshot
 from tests._support.sqlite_snapshot import table_rows as table_rows
-from tests.workbench.execution_ledger_migration_support import V27_TABLES
-from tests.workbench.flexible_migration_support import missing_issues as missing_flexible_issues
-from tests.workbench.legacy_migration_current_support import (
-    missing_v30_issues,
-    missing_v31_issues,
-    missing_v32_issues,
-    missing_v33_issues,
-)
-from tests.workbench.plan_identity_support import (
-    LEDGER_TABLES,
-    load_v24_schema,
-)
-from tests.workbench.plan_identity_support import (
-    legacy_schema as remove_plan_identities,
-)
-from tests.workbench.schema29_regression_support import missing_v29_issues
-
-RESOURCE_TABLE_NAMES = (
-    "WorkbenchMachineGroups", "WorkbenchMachineGroupMembers", "WorkbenchShiftProfiles",
-    "WorkbenchShiftPatternDays", "WorkbenchOperatorProfiles", "WorkbenchSupplierOpTypes",
-    "WorkbenchSupplierProfiles", "WorkbenchOpTypePolicies",
-)
 
 RESOURCE_CASES = {
     "part": ("Parts", ("part_no",)),
@@ -77,7 +36,7 @@ SEED_ROWS = {
     "Operators": dict(operator_id="O1", name="operator", status="active", remark="operator-note", team_id="T1"),
     "Machines": dict(machine_id="M1", name="lathe", op_type_id="OT1", category="precision", status="maintain",
                      remark="machine-note", team_id="T1"),
-    "Suppliers": dict(supplier_id="S1", name="supplier", op_type_id="OT1", default_days=3.25,
+    "Suppliers": dict(supplier_id="S1", name="supplier", default_days=3.25,
                       status="inactive", remark="supplier-note"),
     "Parts": dict(part_no="P1", part_name="part", route_raw="unparsed:route", route_parsed="no", remark="part-note"),
     "Materials": dict(material_id="MAT1", name="steel", spec="D25", unit="kg", stock_qty=12.375,
@@ -164,138 +123,17 @@ def business_snapshot(conn):
     }
 
 
-def remove_resources_for_v20(conn):
-    lookup = lineage_lookup_objects()
-    present = schema_snapshot(conn)
-    if set(lookup) & present.keys():
-        assert lineage_lookup_contract_issues(SchemaStructure(conn)) == []
-        for name in lookup:
-            conn.execute('DROP INDEX "' + name + '"')
-    for objects, contract in ((workbench_trial_objects(), workbench_trial_contract_issues),
-                              (template_lineage_objects(), template_lineage_contract_issues)):
-        present = schema_snapshot(conn)
-        if set(objects) & present.keys():
-            assert contract(conn) == []
-            assert all(not table_rows(conn, table) for table in V27_TABLES if table in objects)
-            for name in reversed(objects):
-                conn.execute('DROP ' + present[name][0].upper() + ' "' + name + '"')
-    run = workbench_run_objects()
-    present = schema_snapshot(conn)
-    if set(run) & present.keys():
-        assert workbench_run_contract_issues(conn) == []
-        assert all(not table_rows(conn, table) for table in RUN_TABLES)
-        for name in reversed(run):
-            conn.execute('DROP ' + present[name][0].upper() + ' "' + name + '"')
-    ledger = execution_ledger_objects()
-    present = schema_snapshot(conn)
-    if set(ledger) & present.keys():
-        assert set(ledger) <= present.keys()
-        assert table_rows(conn, "WorkbenchExecutionLedgerClock") == [(1, 1, 1)]
-        assert all(not table_rows(conn, table) for table in LEDGER_TABLES[1:])
-        for name in reversed(ledger):
-            conn.execute('DROP ' + present[name][0].upper() + ' "' + name + '"')
-    remove_plan_identities(conn)
-    assert all(not table_rows(conn, table) for table in WORKFLOW_TABLES)
-    for table in reversed(WORKFLOW_TABLES):
-        conn.execute(f'DROP TABLE "{table}"')
-    for name in process_objects():
-        conn.execute(f'DROP TRIGGER IF EXISTS "{name}"')
-    conn.execute("DELETE FROM WorkbenchEntityRefs WHERE kind IN ('template_operation','template_external_group')")
-    assert all(not table_rows(conn, table) for table in RESOURCE_TABLE_NAMES)
-    before = schema_snapshot(conn)
-    names = set(resource_objects())
-    assert names <= before.keys()
-    for object_type in ("trigger", "index"):
-        for name in sorted(names):
-            if before[name][0] == object_type:
-                conn.execute(f'DROP {object_type.upper()} "{name}"')
-    for table in reversed(RESOURCE_TABLE_NAMES):
-        conn.execute(f'DROP TABLE "{table}"')
-    assert schema_snapshot(conn) == {
-        name: value for name, value in before.items() if name not in names and value[1] not in RESOURCE_TABLE_NAMES
-    }
-    set_schema_version(conn, 20)
-    conn.commit()
-
-
-def remove_metadata_for_v19(conn):
-    remove_resources_for_v20(conn)
-    before = schema_snapshot(conn)
-    names = set(metadata_objects())
-    assert names <= before.keys()
-    for object_type in ("trigger", "index", "table"):
-        for name in sorted(names):
-            if before[name][0] == object_type:
-                conn.execute(f'DROP {object_type.upper()} "{name}"')
-    assert schema_snapshot(conn) == {
-        name: value for name, value in before.items() if name not in names and value[1] not in METADATA_TABLES
-    }
-    set_schema_version(conn, 19)
-    conn.commit()
-    assert set(current_schema_contract_issues(conn, schema_version=19, schema_sql=load_schema_sql())) == (
-        {"missing_workbench_metadata: " + name for name in names}
-        | {"missing_workbench_resource: " + name for name in resource_objects()}
-        | {"missing_workbench_process: " + name for name in process_objects()}
-        | {"missing_workbench_process_workflow: " + name for name in workflow_objects()}
-        | {"missing_workbench_plan_identity: " + name for name in plan_identity_objects()}
-        | {"missing_execution_ledger:" + name for name in execution_ledger_objects()}
-        | {"missing_run_schema:" + name for name in workbench_run_objects()}
-        | {"missing_template_lineage:" + name for name in template_lineage_objects()}
-        | {"missing_trial_schema:" + name for name in workbench_trial_objects()}
-        | {"missing_lineage_lookup:" + name for name in lineage_lookup_objects()}
-        | missing_v29_issues() | missing_v30_issues() | missing_v31_issues() | missing_v32_issues() | missing_v33_issues()
-        | missing_flexible_issues())
-
-
-@pytest.fixture(name="v19_conn")
-def legacy_identity_database(mem_conn):
-    conn = load_v24_schema(mem_conn)
-    remove_metadata_for_v19(conn)
-    return conn
-
-
-@pytest.fixture(name="identity_conn", params=("fresh", "v19"))
-def identity_database(request):
-    if request.param == "v19":
-        schema_conn = load_v24_schema(request.getfixturevalue("mem_conn"))
-        remove_metadata_for_v19(schema_conn)
-        seed_resources(schema_conn)
-        chain = tuple(range(20, CURRENT_SCHEMA_VERSION + 1))
-        assert CURRENT_SCHEMA_VERSION == chain[-1]
-        for version in chain:
-            assert get_schema_version(schema_conn) == version - 1
-            assert MIGRATIONS[version](schema_conn) == MigrationOutcome.APPLIED
-            if version == CURRENT_SCHEMA_VERSION:
-                assert current_schema_contract_issues(
-                    schema_conn, schema_version=version - 1, schema_sql=load_schema_sql()) == []
-            set_schema_version(schema_conn, version)
-    else:
-        schema_conn = request.getfixturevalue("schema_conn")
-        assert get_schema_version(schema_conn) == 0 and is_truly_empty_db(schema_conn)
-        assert table_rows(schema_conn, "WorkbenchPlanIdentityClock") == [(1, 1)]
-        assert table_rows(schema_conn, "WorkbenchExecutionLedgerClock") == [(1, 1, 1)]
-        ensure_schema_version(schema_conn, schema_sql=load_schema_sql())
-        assert get_schema_version(schema_conn) == CURRENT_SCHEMA_VERSION
-        seed_resources(schema_conn)
+@pytest.fixture(name="identity_conn")
+def identity_database(schema_conn):
+    assert get_schema_version(schema_conn) == 0 and is_truly_empty_db(schema_conn)
+    assert table_rows(schema_conn, "WorkbenchPlanIdentityClock") == [(1, 1)]
+    assert table_rows(schema_conn, "WorkbenchExecutionLedgerClock") == [(1, 1, 1)]
+    ensure_schema_version(schema_conn, schema_sql=load_schema_sql())
+    assert get_schema_version(schema_conn) == CURRENT_SCHEMA_VERSION
+    seed_resources(schema_conn)
     assert current_schema_contract_issues(
         schema_conn, schema_version=CURRENT_SCHEMA_VERSION, schema_sql=load_schema_sql()) == []
-    assert all(not table_rows(schema_conn, table) for table in RUN_TABLES + V27_TABLES)
+    assert all(not table_rows(schema_conn, table) for table in RUN_TABLES)
     schema_conn.commit()
     return schema_conn
 
-
-@contextmanager
-def connect_temp(path):
-    conn = sqlite3.connect(str(path))
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    try:
-        yield conn
-    finally:
-        conn.close()
-
-
-def copy_to_temp(conn, path):
-    assert not conn.in_transaction
-    with connect_temp(path) as target:
-        conn.backup(target)

@@ -57,13 +57,10 @@ _FORBIDDEN_KEY_RE = re.compile(
 
 # 内部调试容器名(并集)。
 FORBIDDEN_INTERNAL_VALUE_TOKENS = (
-    "adjustment_scenario_rows",
     "attempts_debug",
-    "candidate_rows",
     "graph_debug",
     "graph_nodes",
     "resource_debug",
-    "scheduler_candidate_selection",
     "top_level_debug",
 )
 

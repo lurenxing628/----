@@ -67,8 +67,8 @@ OPERATION_HEADERS += RUNTIME_OPERATION_HEADERS
 OPERATION_HEADERS += ("基准排产状态", "所选排产状态", "排产状态变化", "基准未排说明", "所选未排说明", "已确认变化字段",
                       "基准供方编号", "基准供方", "所选供方编号", "所选供方", "供方变化")
 _STATE = {"complete": "完整", "partial": "部分", "unavailable": "缺少资料", "not_applicable": "范围无适用对象",
-          "completed": "计算完成", "failed": "失败", "skipped": "跳过", "queued": "待计算", "running": "计算中",
-          "unknown": "缺少资料", "no_result": "尚无结果", "comparable": "可比较", "different_coverage": "覆盖范围不同",
+          "completed": "计算完成", "failed": "失败", "queued": "待计算", "running": "计算中",
+          "unknown": "缺少资料", "comparable": "可比较", "different_coverage": "覆盖范围不同",
           "better": "改善", "worse": "增加代价", "equal": "相同", "neutral": "中性变化"}
 _STATE.update(available="已保存", absent="排产时无正式计划", selection_required="需要选择基准")
 _DETAIL_STATE = {"specified": "有交期", "unspecified": "未设置交期", "invalid": "交期无效", "complete": "工序已排齐",

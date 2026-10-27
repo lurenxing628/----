@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import sys
 from datetime import date, datetime
 
@@ -64,7 +63,7 @@ def test_greedy_scheduler_weighted_order_uses_start_dt_base_date(monkeypatch):
     captured = {}
 
     def _fake_dispatch_batch_order(*args, **kwargs):
-        captured["sorted_batch_ids"] = [str(getattr(op, "batch_id", "") or "") for op in kwargs["sorted_ops"]]
+        captured["sorted_batch_ids"] = [op.batch_id for op in kwargs["sorted_ops"]]
         return int(kwargs.get("scheduled_count", 0)), int(kwargs.get("failed_count", 0))
 
     monkeypatch.setattr(greedy_scheduler_module, "dispatch_batch_order", _fake_dispatch_batch_order)

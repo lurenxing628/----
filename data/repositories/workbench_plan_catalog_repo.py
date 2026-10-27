@@ -2,14 +2,8 @@
 
 History seek order is version DESC (distinct versions); the head of each selected
 version is schedule_time DESC, id DESC, matching the existing identity query.
-Scenario seek order is scenario_id COLLATE BINARY ASC, deliberately independent
-of the full catalog's chronological order. Neither page uses OFFSET or COUNT.
-One lookahead header/key is read, but its details are never inspected.
-
-Use a fresh instance per page under the caller's read snapshot. Header, role and
-span caches are request-local; no database/global cache or schema changes. The
-lean history projection intentionally omits schedule_row_count: identity only
-needs version/status/summary, and counting rows would touch unnecessary details.
+No page uses OFFSET or COUNT. One lookahead header/key is read, but its details
+are never inspected.
 """
 
 from __future__ import annotations
@@ -18,12 +12,9 @@ import sqlite3
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from core.infrastructure.connection_guards import schema_contract_memo
-from core.models.schedule_plan_role import (
-    SOURCE_CANDIDATE_ROWS,
-    SOURCE_SCHEDULE,
-)
+from core.models.schedule_plan_role import SOURCE_SCHEDULE
 
-from .schedule_plan_query_repo import SCENARIO_HEADER_COLUMNS_SQL, SchedulePlanQueryRepository
+from .schedule_plan_query_repo import SchedulePlanQueryRepository
 from .schedule_rows import ScheduleTimeSpanRow
 
 DEFAULT_PLAN_PAGE_SIZE = 20
@@ -45,22 +36,14 @@ def validate_before_version(value: Optional[int]) -> None:
         raise ValueError("历史页版本边界必须是 SQLite 范围内的正整数。")
 
 
-def validate_after_scenario_id(value: Optional[str]) -> None:
-    if value is not None and (not isinstance(value, str) or not value or "\x00" in value):
-        raise ValueError("场景页边界必须是非空且不含空字符的内部场景编号。")
-
-
 class WorkbenchPlanCatalogRepository(SchedulePlanQueryRepository):
     """Strict-query repository restricted to one catalog page, not full history."""
 
-    def __init__(self, conn: sqlite3.Connection, logger=None, *, role_reader=None):
+    def __init__(self, conn: sqlite3.Connection, logger=None):
         super().__init__(conn, logger=logger)
-        self._role_reader = role_reader
         self._histories: Dict[int, Optional[Dict[str, Any]]] = {}
         self._history_rows: Dict[int, List[Dict[str, Any]]] = {}
-        self._roles: Dict[int, List[Dict[str, Any]]] = {}
-        self._scenarios: Dict[str, Optional[Dict[str, Any]]] = {}
-        self._spans: Dict[Tuple[int, str, Optional[int], Optional[str]], Optional[ScheduleTimeSpanRow]] = {}
+        self._spans: Dict[Tuple[int, str], Optional[ScheduleTimeSpanRow]] = {}
         self._storage_columns: Dict[str, List[str]] = {}
         self._latest_version: Optional[int] = None
         self._latest_version_loaded = False
@@ -91,23 +74,6 @@ class WorkbenchPlanCatalogRepository(SchedulePlanQueryRepository):
                 raise RuntimeError("目录读取期间排产历史消失；调用方必须提供一致读快照。")
             rows.append(row)
         return rows, len(keys) > page_size
-
-    def scenario_page(
-        self, *, page_size: int, after_scenario_id: Optional[str],
-    ) -> Tuple[List[Dict[str, Any]], bool]:
-        validate_page_size(page_size)
-        validate_after_scenario_id(after_scenario_id)
-        where, params = ("", []) if after_scenario_id is None else (
-            "WHERE scenario_id COLLATE BINARY > ?", [after_scenario_id],
-        )
-        rows = self.fetchall(
-            "SELECT " + SCENARIO_HEADER_COLUMNS_SQL + " FROM ScheduleAdjustmentScenario "
-            f"{where} ORDER BY scenario_id COLLATE BINARY ASC LIMIT ?",
-            params + [page_size + 1],
-        )
-        selected = rows[:page_size]
-        self._scenarios.update((str(row["scenario_id"]), row) for row in selected)
-        return selected, len(rows) > page_size
 
     def get_history_identity_row(self, version: int) -> Optional[Dict[str, Any]]:
         if version not in self._histories:
@@ -143,65 +109,45 @@ class WorkbenchPlanCatalogRepository(SchedulePlanQueryRepository):
             for row in rows:
                 self._history_rows[row["version"]].append(row)
 
-    def list_plan_role_options(self, version: int) -> List[Dict[str, Any]]:
-        if version not in self._roles:
-            self._roles[version] = (self._role_reader(version) if self._role_reader is not None else
-                                    super().list_plan_role_options(version))
-        return self._roles[version]
-
-    def get_scenario_context(self, scenario_id: str) -> Optional[Dict[str, Any]]:
-        if scenario_id not in self._scenarios:
-            self._scenarios[scenario_id] = super().get_scenario_context(scenario_id)
-        return self._scenarios[scenario_id]
-
     def get_plan_time_span(
-        self, *, version: int, source_table: str, candidate_id: Optional[int], scenario_id: Optional[str] = None,
+        self, *, version: int, source_table: str = SOURCE_SCHEDULE,
     ) -> Optional[ScheduleTimeSpanRow]:
-        key = (version, source_table, None if source_table == SOURCE_SCHEDULE else candidate_id, scenario_id)
+        key = (version, source_table)
         if key not in self._spans:
             self._spans[key] = super().get_plan_time_span(
-                version=version, source_table=source_table, candidate_id=candidate_id, scenario_id=scenario_id,
+                version=version, source_table=source_table,
             )
         return self._spans[key]
 
     def first_raw_plan_identity_row(
-        self, *, version: int, source_table: str, candidate_id: Optional[int], scenario_id: Optional[str] = None,
+        self, *, version: int, source_table: str = SOURCE_SCHEDULE,
     ) -> Optional[Dict[str, Any]]:
-        sql, extra = self._plan_rows_sql(source_table=source_table, candidate_id=candidate_id, scenario_id=scenario_id)
+        sql, extra = self._plan_rows_sql(source_table=source_table)
         return self.fetchone("SELECT id AS source_row_id, lock_status FROM (" + sql + ") raw ORDER BY id ASC LIMIT 1",
                              [version] + extra)
 
     def iter_raw_plan_rows(
-        self, *, version: int, source_table: str, candidate_id: Optional[int], scenario_id: Optional[str] = None,
+        self, *, version: int, source_table: str = SOURCE_SCHEDULE,
     ) -> Iterator[Dict[str, Any]]:
         """Stream plan rows in id order without declared DATE/TIMESTAMP conversion."""
-        sql, extra = self._plan_rows_sql(source_table=source_table, candidate_id=candidate_id, scenario_id=scenario_id)
+        sql, extra = self._plan_rows_sql(source_table=source_table)
         fields = ("id", "op_id", "machine_id", "operator_id", "start_time", "end_time", "lock_status", "version")
         selected = ", ".join("CASE WHEN 1 THEN raw." + field + " END AS " + field for field in fields)
         return self.iter_rows("SELECT " + selected + " FROM (" + sql + ") raw ORDER BY raw.id ASC", [version] + extra)
 
     def list_plan_storage_rows(
-        self, *, version: Any, source_table: str, candidate_id: Optional[int], scenario_id: Optional[str] = None,
+        self, *, version: Any, source_table: str = SOURCE_SCHEDULE,
     ) -> List[Dict[str, Any]]:
         """Capture every persisted field without declared DATE/TIMESTAMP conversion."""
-        _, extra = self._plan_rows_sql(
-            source_table=source_table, candidate_id=candidate_id, scenario_id=scenario_id,
-        )
-        if source_table == SOURCE_SCHEDULE:
-            table, joins, where = "Schedule", "", "r.version = ?"
-        elif source_table == SOURCE_CANDIDATE_ROWS:
-            table, joins, where = "ScheduleCandidateRows", "", "r.version = ? AND r.candidate_id = ?"
-        else:
-            table = "ScheduleAdjustmentScenarioRow"
-            joins = " JOIN ScheduleAdjustmentScenario s ON s.scenario_id = r.scenario_id"
-            where = "s.base_version = ? AND r.scenario_id = ? AND s.status = 'active'"
+        _, extra = self._plan_rows_sql(source_table=source_table)
+        table = "Schedule"
         if table not in self._storage_columns:
             self._storage_columns[table] = [str(row[1]) for row in schema_contract_memo(self.conn).structure.table_info(table)]
         expressions = []
         for name in self._storage_columns[table]:
             quoted = '"' + name.replace('"', '""') + '"'
             expressions.append(f"CASE WHEN 1 THEN r.{quoted} ELSE NULL END AS {quoted}")
-        sql = "SELECT " + ", ".join(expressions) + f' FROM "{table}" r{joins} WHERE {where}'
+        sql = "SELECT " + ", ".join(expressions) + ' FROM "Schedule" r WHERE r.version = ?'
         return self.fetchall(sql + " ORDER BY r.id ASC, r.rowid ASC", [version] + extra)
 
     def enrich_arrangements(self, arrangements, *, version, captured_machines=None):

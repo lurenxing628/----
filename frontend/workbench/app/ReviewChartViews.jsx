@@ -43,9 +43,8 @@
       <details className="aw-data"><summary>图表数据</summary><div className="aw-data-scroll wb-table-frame" tabIndex={0} role="region" aria-label="累计完工趋势数据"><table><caption className="wb-visually-hidden">{label}</caption><thead><tr><th scope="col">日期</th><th scope="col">计划累计完工（道）</th><th scope="col">已确认整道完工（道）</th></tr></thead><tbody>{points.map(row => <tr key={row.time}><th scope="row">{window.WorkbenchFormat.date(row.label)}</th><td>{row.planned}</td><td>{row.actual == null ? '未知' : row.actual}</td></tr>)}</tbody></table></div></details>
     </figure>;
   }
-  // 列名里的「历史现场记录」从词表取，所以做成函数，在渲染时再读。
-  const resourceColumns = () => [['resource_label', '实际资源'], ['operations', '涉及工序'], ['events', window.WorkbenchTerms.legacy_field_records + '数'],
-    ['production_reports', '逐次报工数'], ['records', '全部记录数'], ['effective_processing_hours', '有效加工工时（小时）'],
+  const resourceColumns = () => [['resource_label', '实际资源'], ['operations', '涉及工序'],
+    ['production_reports', '逐次报工数'], ['effective_processing_hours', '有效加工工时（小时）'],
     ['known_effective_processing_hours', '已知工时小计（小时）'], ['unknown_hour_events', '工时未知记录数']].map(([key, label]) => ({ key, label }));
   window.ReviewChartViews = { DistributionChart, TrendChart, resourceColumns };
 })();

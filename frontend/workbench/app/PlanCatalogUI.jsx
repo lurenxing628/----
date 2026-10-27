@@ -5,22 +5,22 @@
   function Identity({ plan }) {
     const unavailable = !plan.capabilities.view;
     const T = window.WorkbenchTerms;
-    const text = plan.is_current_official ? T.current_official : plan.kind === 'official' ? T.historical_official : plan.kind === 'candidate' ? T.candidate : T.trial_scenario;
+    const text = plan.is_current_official ? T.current_official : T.historical_official;
     return <span className={'plan-state ' + (unavailable ? 'unavailable' : plan.is_current_official ? 'official' : '')}>{text}{unavailable ? ' · 不可查看' : ''}</span>;
   }
   function Catalog({ selectedRef, onSelect, autoSelect, actions, navigation }) {
-    const [collection, setCollection] = React.useState('history'), [pages, setPages] = React.useState([{}]), [index, setIndex] = React.useState(0);
+    const [pages, setPages] = React.useState([{}]), [index, setIndex] = React.useState(0);
     const [paused, setPaused] = React.useState(false), [collapsed, setCollapsed] = React.useState(!!selectedRef);
     const attempted = React.useRef(false), section = React.useRef(null), restoreFocus = React.useRef(false);
-    const scope = React.useMemo(() => ({ collection, size: 20, ...pages[index] }), [collection, pages, index]);
+    const scope = React.useMemo(() => ({ collection: 'history', size: 20, ...pages[index] }), [pages, index]);
     const read = S.useQuery(signal => window.APSPlanAPI.catalog(scope, signal), [scope], !paused);
     const result = read.result, data = result && result.data;
     React.useEffect(() => {
-      if (attempted.current || !data || read.loading || read.error || collection !== 'history' || index !== 0) return;
+      if (attempted.current || !data || read.loading || read.error || index !== 0) return;
       attempted.current = true;
       const plan = autoSelect && !selectedRef ? window.PlanSelectionModel.defaultPlan(data.plans) : null;
       if (plan) { setCollapsed(true); onSelect(plan); }
-    }, [data, read.loading, read.error, autoSelect, selectedRef, collection, index]);
+    }, [data, read.loading, read.error, autoSelect, selectedRef, index]);
     React.useLayoutEffect(() => {
       if (collapsed && restoreFocus.current && section.current) {
         restoreFocus.current = false; section.current.querySelector('[aria-label="展开计划列表"]').focus();
@@ -30,7 +30,7 @@
       restoreFocus.current = !!(document.activeElement && document.activeElement.closest('.plan-catalog-scroll'));
       attempted.current = true; setCollapsed(true); onSelect(plan);
     }
-    function refresh(next = collection) { setCollection(next); setPages([{}]); setIndex(0); setPaused(false); read.reload(); }
+    function refresh() { setPages([{}]); setIndex(0); setPaused(false); read.reload(); }
     function next() {
       const page = { cursor: data.page.next_cursor, snapshot_ref: result.meta.snapshot_ref };
       setPages(current => current.slice(0, index + 1).map(item => ({ ...item, snapshot_ref: result.meta.snapshot_ref })).concat(page)); setIndex(index + 1);
@@ -41,7 +41,6 @@
         if (plan) choose(plan);
       }}><option value="" disabled>请选择计划</option>{selectedRef && (!data || !data.plans.some(plan => plan.plan_ref === selectedRef)) && <option value={selectedRef}>已选计划（在其他页）</option>}
         {data && data.plans.filter(plan => plan.plan_ref).map(plan => <option key={plan.plan_ref} value={plan.plan_ref} disabled={!plan.capabilities.view}>{plan.display_name}{plan.is_current_official ? ' · 当前正式' : ''}</option>)}</select></label>
-        {!collapsed && <window.PlanSegmentUI value={collection} options={[["history", "历史版本"], ["scenario", "试调方案"]]} label="计划列表范围" onChange={refresh} />}
         <div className="plan-catalog-actions">{actions}{!collapsed && <Button className="btn plan-icon" icon="refresh-cw" aria-label="刷新计划列表" busy={read.loading} onClick={() => refresh()} />}
           {read.loading && <Button icon="x" className="btn plan-icon" aria-label="取消列表读取" onClick={() => setPaused(true)} />}
           <Button icon="chevron-down" className={'btn plan-icon' + (collapsed ? '' : ' plan-up')} aria-label={collapsed ? '展开计划列表' : '收起计划列表'} aria-expanded={!collapsed} onClick={() => setCollapsed(!collapsed)} /></div>

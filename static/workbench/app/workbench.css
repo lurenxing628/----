@@ -6954,15 +6954,10 @@ html[data-density="compact"] .rd-workspace .rd-candidate-table{--wb-table-cell-p
 .rd-workspace .rd-candidate-table td:last-child>.wb-control{display:block;margin-top:var(--space-1)}
 .rd-workspace .rd-candidate-table .pill{font-size:var(--font-size-1)}
 .rd-workspace .rd-candidate-table .rd-badge{margin-top:var(--space-1)}
-.rd-workspace .rd-candidate-table .rd-source-reason{margin-top:var(--space-1)}
 .rd-workspace .rd-compact-value>strong{display:block;font-weight:500}.rd-workspace .rd-compact-value>small{margin:0}
 .rd-workspace .rd-candidate-basis{display:inline-block;max-width:100%;font-size:var(--font-size-1);margin-top:var(--space-1)}
 .rd-workspace .rd-candidate-basis>summary{color:var(--ui-info-muted)}.rd-workspace .rd-candidate-table .rd-badge+.rd-candidate-basis{margin-left:var(--space-1)}
 .rd-workspace .rd-candidate-basis>div>div{border-top:1px solid var(--ui-border);padding:var(--space-2) 0}.rd-workspace .rd-candidate-basis>div>div>strong{display:block;font-weight:500}
-.rd-workspace .rd-candidate-reuse{display:block}
-.rd-workspace .rd-candidate-reuse>div>section{border-top:1px solid var(--ui-border);padding:var(--space-2) 0}
-.rd-workspace .rd-candidate-reuse dl{margin:var(--space-1) 0}.rd-workspace .rd-candidate-reuse dt{color:var(--ui-info-muted)}
-.rd-workspace .rd-candidate-reuse dd{margin:0 0 var(--space-1);overflow-wrap:anywhere}.rd-workspace .rd-candidate-reuse code{font-size:inherit;overflow-wrap:anywhere}
 .rd-workspace .rd-metric-table{table-layout:auto;min-width:820px}
 .rd-workspace .rd-metric-table th:first-child{width:220px;min-width:220px;position:sticky;left:0;background:var(--ui-card-bg);z-index:1}
 .rd-workspace .rd-metric-table thead th:first-child{z-index:calc(var(--wb-z-sticky) + 1);background:var(--ui-surface-muted)}
@@ -7618,7 +7613,7 @@ body.aps-workbench .run-history-workspace .dh-topic-tabs button.btn[role="tab"][
     .field-states{display:flex;flex-basis:100%;gap:var(--space-1);flex-wrap:wrap}.field-states button{border:0;border-radius: var(--wb-radius-control);min-height:var(--wb-control-height);padding:5px var(--space-3);line-height:20px;background:transparent;color:var(--muted);cursor:pointer}.field-states button[aria-pressed=true]{background:var(--accent-soft);color:var(--accent);font-weight:600}
     .field-metrics{display:flex;gap:28px;padding:var(--space-3) 18px;background:var(--surface-2);border-bottom:1px solid var(--border);flex-wrap:wrap}.field-metrics span{color:var(--muted)}.field-metrics b{margin-left:var(--space-2);color:var(--text);font-variant-numeric:tabular-nums}
     .field-scroll{overflow:auto;min-width:0}.field-table{width:100%;border-collapse:collapse;table-layout:fixed}.field-table th{background:var(--surface-2);font-size:var(--font-size-1);color:var(--muted);text-align:left;font-weight:500}.field-table td,.field-table th{padding:11px var(--space-3);border-bottom:1px solid var(--border);overflow-wrap:anywhere;vertical-align:middle}.field-table td{font-variant-numeric:tabular-nums}.field-table small{display:block;color:var(--muted);margin-top:var(--space-1)}.field-table .field-selected>td{background:var(--accent-soft)}
-    .field-workspace .field-link{border:0;background:none;color:var(--ui-info-text);padding:0;font:inherit;cursor:pointer;text-align:left}.field-state{display:inline-flex;align-items:center;padding:var(--space-1) 7px;border-radius: var(--wb-radius-control);background:var(--surface-2);white-space:nowrap}.field-state.complete{color:var(--ui-success-text);background:var(--ui-success-bg)}.field-state.partial{color:var(--accent);background:var(--accent-soft)}.field-state.exception,.field-state.paused{color:var(--ui-warning-text);background:var(--ui-warning-bg)}
+    .field-workspace .field-link{border:0;background:none;color:var(--ui-info-text);padding:0;font:inherit;cursor:pointer;text-align:left}.field-state{display:inline-flex;align-items:center;padding:var(--space-1) 7px;border-radius: var(--wb-radius-control);background:var(--surface-2);white-space:nowrap}.field-state.complete{color:var(--ui-success-text);background:var(--ui-success-bg)}.field-state.partial{color:var(--accent);background:var(--accent-soft)}
     .field-detail{background:var(--surface);border-left:3px solid var(--accent);padding:0 var(--space-4) var(--space-4)}.field-detail-heading{padding:var(--space-3) 0}.field-detail .field-table{font-size:var(--font-size-1)}.field-note{color:var(--muted);padding:10px 0;overflow-wrap:anywhere}.field-empty{padding:38px 18px;color:var(--muted);text-align:center}.field-error{padding:var(--space-3) 18px}
     .field-editor{border-top:1px solid var(--border);background:var(--surface-2);padding:18px;margin-top:var(--space-3)}.field-entry-grid{display:grid;grid-template-columns:minmax(150px,1fr) minmax(320px,2fr) minmax(150px,1fr);gap:20px;margin:var(--space-4) 0}.field-entry-grid section+section{border-left:1px solid var(--border);padding-left:20px}.field-time-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-3)}.field-extra{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4);margin-top:var(--space-4)}.field-editor details{border-top:1px solid var(--border);padding-top:var(--space-3)}.field-editor summary{cursor:pointer}.field-editor .field-footer{justify-content:flex-end;padding:14px 0 0;border:0}.field-quantity-tools{display:flex;gap:var(--space-2);align-items:center;margin-top:var(--space-2)}
     .field-files-summary{display:flex;gap:22px;flex-wrap:wrap;padding:var(--space-4) 0}.field-workspace button:disabled{cursor:default;color:var(--ui-info-muted)}.field-history{padding:var(--space-3) 18px;background:var(--surface-2);overflow-wrap:anywhere}.field-history dl{display:grid;grid-template-columns:120px minmax(0,1fr);gap:var(--space-2)}.field-history dd{margin:0}.field-history>div{padding:var(--space-2) 0;border-top:1px solid var(--border)}
@@ -8048,8 +8043,8 @@ body.aps-workbench .wb-sr-only {position:absolute;width:1px;height:1px;overflow:
 .rw-evidence-facts dt {color:var(--ui-info-muted);}
 .rw-evidence-facts dd {margin:0;min-width:0;}
 .rw-evidence-list {padding-left:20px;margin:0;}
-/* 工序详情抽屉：单条记录的折叠证据与老式现场记录都要能在 320px 抽屉里折行；记录分页行紧凑（按钮 mini 档在 20-controls 覆盖合同里）。 */
-.rw-workbench .rw-record-evidence,.rw-workbench .rw-legacy-record {overflow-wrap:anywhere;}
+/* 工序详情抽屉：单条记录的折叠证据要能在 320px 抽屉里折行；记录分页行紧凑（按钮 mini 档在 20-controls 覆盖合同里）。 */
+.rw-workbench .rw-record-evidence {overflow-wrap:anywhere;}
 .rw-workbench .rw-detail-pager {margin-top:var(--space-2);}
 .rw-workbench .rw-detail-pager .wb-pager {padding:0;flex-wrap:wrap;gap:var(--space-2);}
 .rw-workbench .rw-detail-pager .wb-pager select {--wb-field-height:var(--wb-control-mini-height);}

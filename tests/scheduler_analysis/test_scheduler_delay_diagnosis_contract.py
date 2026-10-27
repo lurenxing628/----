@@ -7,10 +7,9 @@ import pytest
 from core.infrastructure.database import ensure_schema, get_connection
 from core.models.schedule_plan_role import (
     ROLE_ADOPTED,
-    ROLE_BASELINE_BEST,
 )
 from core.services.common.plan_query import SchedulePlanQueryService
-from data.repositories.schedule_plan_query_repo import SOURCE_CANDIDATE_ROWS, SOURCE_SCHEDULE
+from data.repositories.schedule_plan_query_repo import SOURCE_SCHEDULE
 from tests._support.paths import REPO_ROOT
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
@@ -20,7 +19,7 @@ AS_OF_TIME = "2026-05-05 12:00:00"
 
 def _connect(tmp_path):
     db_path = tmp_path / "aps.db"
-    ensure_schema(str(db_path), schema_path=str(SCHEMA_PATH), backup_dir=str(tmp_path / "backups"))
+    ensure_schema(str(db_path), schema_path=str(SCHEMA_PATH))
     return get_connection(str(db_path))
 
 
@@ -34,21 +33,12 @@ def _snapshot(conn):
         "Schedule",
         "ScheduleHistory",
         "ScheduleVersionSeq",
-        "ScheduleCandidate",
-        "ScheduleCandidateRows",
-        "ScheduleCandidateSelection",
-        "ScheduleAdjustmentDraft",
-        "ScheduleAdjustmentChange",
-        "ScheduleAdjustmentScenario",
-        "ScheduleAdjustmentScenarioRow",
         "Materials",
         "Batches",
         "BatchMaterials",
         "MachineDowntimes",
     ]
     existing = _table_names(conn)
-    if "OperationExecutionEvents" in existing:
-        tables.append("OperationExecutionEvents")
     return {
         table: [dict(row) for row in conn.execute(f"SELECT * FROM {table} ORDER BY 1").fetchall()]
         for table in tables
@@ -106,97 +96,16 @@ def _seed_base(conn) -> None:
     )
 
 
-def _seed_candidates(conn) -> int:
-    adopted_id = conn.execute(
-        "INSERT INTO ScheduleCandidate(version,candidate_key,candidate_label,candidate_kind,status,graph_enabled,detail_saved) "
-        "VALUES (?,'adopted',?,'baseline','completed','no','no')", (VERSION, '正式采用'),
-    ).lastrowid
-    baseline_id = conn.execute(
-        "INSERT INTO ScheduleCandidate(version,candidate_key,candidate_label,candidate_kind,status,graph_enabled,detail_saved) "
-        "VALUES (?,'baseline_best','原算法候选','baseline','completed','no','yes')", (VERSION,),
-    ).lastrowid
-    assert adopted_id is not None and baseline_id is not None
-    conn.executemany(
-        "INSERT INTO ScheduleCandidateRows(version,candidate_id,op_id,machine_id,operator_id,start_time,end_time,lock_status) "
-        "VALUES (?,?,?,?,?,?,?,'locked')",
-        [(VERSION, baseline_id, *row) for row in [
-            (10, 'M2', 'O2', '2026-05-04 12:00:00', '2026-05-04 13:00:00'),
-            (20, 'M2', 'O2', '2026-05-04 13:00:00', '2026-05-04 14:00:00')
-        ]],
-    )
-    conn.executemany(
-        "INSERT INTO ScheduleCandidateSelection(version,role,candidate_id,source_table) VALUES (?,?,?,?)",
-        [(VERSION, ROLE_ADOPTED, adopted_id, SOURCE_SCHEDULE),
-         (VERSION, ROLE_BASELINE_BEST, baseline_id, SOURCE_CANDIDATE_ROWS)],
-    )
-    return baseline_id
-
-
-def _seed_scenario(conn) -> str:
-    scenario_id = "delay-preview"
-    base = SchedulePlanQueryService(conn).resolve_existing_plan(VERSION, ROLE_ADOPTED)
-    conn.execute(
-        """
-        INSERT INTO ScheduleAdjustmentScenario(
-            scenario_id, source_draft_id, base_version, base_plan_role,
-            base_source_table, base_candidate_id, base_candidate_key,
-            scenario_name, status, validation_status, issue_count, row_count, created_by
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            scenario_id,
-            "draft-delay-preview",
-            VERSION,
-            ROLE_ADOPTED,
-            base.source_table,
-            base.candidate_id,
-            base.candidate_key,
-            "延期诊断预览",
-            "active",
-            "valid",
-            0,
-            1,
-            "pytest",
-        ),
-    )
-    conn.execute(
-        """
-        INSERT INTO ScheduleAdjustmentScenarioRow(
-            scenario_id, source_table, source_row_id, op_id, machine_id, operator_id,
-            start_time, end_time, lock_status, is_changed
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            scenario_id,
-            SOURCE_SCHEDULE,
-            120,
-            20,
-            "M2",
-            "O2",
-            "2026-05-04 15:00:00",
-            "2026-05-04 16:00:00",
-            "unlocked",
-            "yes",
-        ),
-    )
-    return scenario_id
-
-
 def _seed_db(tmp_path):
     conn = _connect(tmp_path)
     _seed_base(conn)
-    _seed_candidates(conn)
-    scenario_id = _seed_scenario(conn)
     conn.commit()
-    return conn, scenario_id
+    return conn
 
 
 def _overdue_rows(query, resolution):
     return query.list_plan_overdue_base_rows_for_resolution(
-        version=resolution.version, source_table=resolution.source_table,
-        candidate_id=resolution.candidate_id, scenario_id=resolution.scenario_id)
+        version=resolution.version, source_table=resolution.source_table)
 
 
 def test_overdue_bad_finish_time_has_its_own_bucket(tmp_path):
@@ -204,12 +113,12 @@ def test_overdue_bad_finish_time_has_its_own_bucket(tmp_path):
 
     from core.services.common.overdue_calculations import compute_overdue_bucket_groups
 
-    conn, _ = _seed_db(tmp_path)
+    conn = _seed_db(tmp_path)
     try:
         conn.execute("UPDATE Schedule SET end_time='坏结束时间' WHERE op_id IN (SELECT id FROM BatchOperations WHERE batch_id='B_SCHEDULED')")
         conn.commit()
         query = SchedulePlanQueryService(conn)
-        resolution = query.resolve_plan_view(VERSION, ROLE_ADOPTED)
+        resolution = query.resolve_plan(VERSION, ROLE_ADOPTED)
         scheduled, unscheduled, invalid = compute_overdue_bucket_groups(
             _overdue_rows(query, resolution), now_dt=datetime.fromisoformat(AS_OF_TIME))
         assert not scheduled
@@ -220,47 +129,20 @@ def test_overdue_bad_finish_time_has_its_own_bucket(tmp_path):
         conn.close()
 
 
-def test_overdue_candidate_source_remains_strict_and_read_only(tmp_path):
-    conn, _ = _seed_db(tmp_path)
+def test_overdue_official_source_remains_strict_and_rejects_retired_roles(tmp_path):
+    conn = _seed_db(tmp_path)
     try:
         query = SchedulePlanQueryService(conn)
         before = _snapshot(conn)
-        resolution = query.resolve_existing_plan(VERSION, ROLE_BASELINE_BEST)
-        assert resolution.source_table == SOURCE_CANDIDATE_ROWS
+        resolution = query.resolve_existing_plan(VERSION, ROLE_ADOPTED)
+        assert resolution.source_table == SOURCE_SCHEDULE
         rows = _overdue_rows(query, resolution)
-        assert next(row for row in rows if row['batch_id'] == 'B_SCHEDULED')['finish_time'] == '2026-05-04 14:00:00'
+        assert next(row for row in rows if row['batch_id'] == 'B_SCHEDULED')['finish_time'] == '2026-05-04 11:00:00'
         assert _snapshot(conn) == before
-        conn.execute('DELETE FROM ScheduleCandidateRows')
-        conn.commit()
-        with pytest.raises(ValueError, match='所选方案没有可查看的明细'):
-            query.resolve_existing_plan(VERSION, ROLE_BASELINE_BEST)
-        with pytest.raises(ValueError, match='方案对比明细没有找到对应排程'):
-            query.resolve_plan_view(VERSION, ROLE_BASELINE_BEST)
-        conn.execute('DELETE FROM ScheduleCandidateSelection')
-        conn.execute('DELETE FROM ScheduleCandidate')
-        conn.commit()
-        fallback = query.resolve_plan_view(VERSION, ROLE_BASELINE_BEST)
-        assert fallback.status == 'fallback_to_adopted'
-        with pytest.raises(ValueError, match='所选方案不存在'):
-            query.resolve_existing_plan(VERSION, ROLE_BASELINE_BEST)
-    finally:
-        conn.close()
-
-
-def test_overdue_scenario_source_remains_strict_and_read_only(tmp_path):
-    conn, scenario_id = _seed_db(tmp_path)
-    try:
-        query = SchedulePlanQueryService(conn)
-        before = _snapshot(conn)
-        resolution = query.resolve_plan_view(VERSION, ROLE_ADOPTED, scenario_id)
-        assert resolution.source_table == 'adjustment_scenario_rows'
-        rows = _overdue_rows(query, resolution)
-        assert next(row for row in rows if row['batch_id'] == 'B_SCHEDULED')['finish_time'] == '2026-05-04 16:00:00'
-        assert _snapshot(conn) == before
-        conn.execute('DELETE FROM ScheduleAdjustmentScenarioRow WHERE scenario_id=?', (scenario_id,))
-        conn.commit()
-        with pytest.raises(ValueError, match='模拟方案明细不存在'):
-            query.resolve_plan_view(VERSION, ROLE_ADOPTED, scenario_id)
+        with pytest.raises(ValueError, match='未知的排产方案角色'):
+            query.resolve_plan(VERSION, 'baseline_best')
+        with pytest.raises(ValueError, match='未知的排产方案角色'):
+            query.resolve_existing_plan(VERSION, 'baseline_best')
     finally:
         conn.close()
 
@@ -270,7 +152,7 @@ def test_overdue_allow_points_recognizes_zero_duration_point_event_batches(tmp_p
 
     from core.services.common.overdue_calculations import compute_overdue_bucket_groups
 
-    conn, _ = _seed_db(tmp_path)
+    conn = _seed_db(tmp_path)
     try:
         conn.executescript(
             """
@@ -294,12 +176,10 @@ def test_overdue_allow_points_recognizes_zero_duration_point_event_batches(tmp_p
         )
         conn.commit()
         query = SchedulePlanQueryService(conn)
-        resolution = query.resolve_plan_view(VERSION, ROLE_ADOPTED)
+        resolution = query.resolve_plan(VERSION, ROLE_ADOPTED)
         rows = query.list_plan_overdue_base_rows_for_resolution(
             version=resolution.version,
             source_table=resolution.source_table,
-            candidate_id=resolution.candidate_id,
-            scenario_id=resolution.scenario_id,
         )
         by_batch = {row["batch_id"]: row for row in rows}
         assert by_batch["B_PURE_POINT"]["finish_time"] == "2026-05-04 12:00:00"

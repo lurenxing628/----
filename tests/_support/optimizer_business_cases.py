@@ -177,7 +177,7 @@ def case_environment(data, objective, config=None):
             normalized_batch_ids=[row["batch_id"] for row in data["batches"]], t0=0.0,
             operations=batch_operations,
             missing_internal_resource_op_ids=set(),
-            prev_version=0, execution_facts={}, execution_fixed_op_ids=set(), execution_completed_op_ids=set(),
+            prev_version=0, execution_facts={}, execution_completed_op_ids=set(),
             execution_seed_results=[], execution_snapshot_revision="fixture", execution_snapshot_op_ids=[],
             execution_snapshot_op_count=0, schedule_output_allowed_op_ids={row["id"] for row in data["operations"]},
             payload_validation_operations=batch_operations, freeze_meta={}, downtime_meta={},

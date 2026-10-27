@@ -247,7 +247,6 @@ TEST_DEBT_MODE_VALUES = {"xfail", "fixed", "retired"}
 FULL_TEST_DEBT_ALLOWED_ACTIVE_XFAIL_NODEIDS = (
     "tests/excel_data_io/test_operator_machine_exception_paths.py::test_list_by_operator_propagates_unexpected_readside_normalization_errors",
     "tests/excel_data_io/test_operator_machine_exception_paths.py::test_normalize_skill_level_optional_only_converts_value_error",
-    "tests/excel_data_io/test_operator_machine_exception_paths.py::test_normalize_skill_level_stored_only_falls_back_for_value_error",
     "tests/excel_data_io/test_operator_machine_exception_paths.py::test_resolve_write_values_only_converts_validation_error",
     "tests/models_domain/test_query_services.py::test_operator_machine_query_service_lists_with_names_and_linkage_rows",
 )

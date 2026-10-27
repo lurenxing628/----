@@ -4,11 +4,9 @@ import sqlite3
 
 import pytest
 
-from core.infrastructure.migrations.v39 import run as retire_quota_locks
 from core.infrastructure.transaction import TransactionManager
-from core.infrastructure.workbench_calibration_adoption_legacy_schema import objects as legacy_objects
-from core.infrastructure.workbench_calibration_adoption_schema import contract_issues, objects
-from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
+from core.infrastructure.workbench_calibration_adoption_schema import contract_issues
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.process.template_hours import ProcessTemplateHours
 from core.services.process.workflow_state import record_confirmation
 from core.services.workbench.process.file_codec import encode_process_file
@@ -49,21 +47,6 @@ def confirm_hours(case):
             record_confirmation(case.conn, 'P1', stage)
 
 
-def install_old_lock(case, audit):
-    """Reconstruct the exact prior DDL with a real adopted row and matching lock."""
-    with TransactionManager(case.conn).transaction():
-        for name in objects():
-            if name != 'WorkbenchCalibrationAdoptions':
-                case.conn.execute('DROP TRIGGER "' + name + '"')
-        case.conn.execute('ALTER TABLE WorkbenchCalibrationAdoptions RENAME TO adoption_test_copy')
-        for sql in legacy_objects().values():
-            case.conn.execute(sql)
-        case.conn.execute('INSERT INTO WorkbenchCalibrationAdoptions SELECT * FROM adoption_test_copy')
-        case.conn.execute('DROP TABLE adoption_test_copy')
-        case.conn.execute('INSERT INTO WorkbenchCalibrationQuotaLocks VALUES (?,?,?,?)',
-                          (case.template_ref, audit['adoption_ref'], audit['new_unit_hours'], audit['adopted_at']))
-
-
 def import_hours(case, value, fmt):
     content = encode_process_file('hours', [{'business_code': 'P1', 'sequence': 1, 'unit_hours': value}], fmt).content
     files = WorkbenchProcessFileService(case.conn)
@@ -80,16 +63,11 @@ def import_hours(case, value, fmt):
     assert current(case)['unit_hours'] == value
 
 
-def test_old_lock_migration_then_all_writers_preserve_existing_batches_and_plans(ready_adoption_case):
+def test_all_writers_preserve_existing_batches_and_plans_after_adoption(ready_adoption_case):
     case = ready_adoption_case
-    audit = adopt(case)['data']
-    install_old_lock(case, audit)
+    adopt(case)
     before = snapshot(case.conn)
-    retire_quota_locks(case.conn)
-    after = snapshot(case.conn)
     assert not contract_issues(case.conn)
-    assert 'WorkbenchCalibrationQuotaLocks' not in after
-    assert {table: rows for table, rows in before.items() if table != 'WorkbenchCalibrationQuotaLocks'} == after
     ref, revision = case.template_ref, current(case)['revision']
     with TransactionManager(case.conn).transaction(begin_immediate=True):
         old = current(case)
@@ -208,18 +186,6 @@ def test_import_rechecks_changes_and_rolls_back_without_a_file_hash(ready_adopti
         with TransactionManager(case.conn).transaction(begin_immediate=True):
             files.confirm_import(preview, changed, discard_group_refs=[], confirm_zero_unit_hours=False)
     assert current(case)['unit_hours'] == 3
-
-
-def test_migration_failure_rolls_back_old_history_and_lock(ready_adoption_case, monkeypatch):
-    case = ready_adoption_case
-    install_old_lock(case, adopt(case)['data'])
-    before = snapshot(case.conn)
-    definitions = objects()
-    definitions['wb_calibration_adoption_no_replace'] = 'CREATE TRIGGER invalid_sql'
-    monkeypatch.setattr('core.infrastructure.migrations.v39.objects', lambda: definitions)
-    with pytest.raises(sqlite3.DatabaseError):
-        retire_quota_locks(case.conn)
-    assert snapshot(case.conn) == before
 
 
 def test_template_ref_integer_lookup_keeps_exact_text_keys_and_missing_lineage_rows(schema_conn):

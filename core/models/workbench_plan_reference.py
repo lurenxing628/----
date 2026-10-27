@@ -10,7 +10,6 @@ from typing import Optional, Tuple
 class WorkbenchPlanLocator:
     version: int
     plan_role: str
-    scenario_id: Optional[str] = None
 
 
 class WorkbenchPlanReferenceError(ValueError):

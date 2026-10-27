@@ -48,12 +48,12 @@ def read_plan_delivery(
 
 def _read_plan_delivery(conn, *, scope, identity, logger, context):
     repo = PlanDeliveryRepository(conn, logger=logger)
-    scenario = repo.validate_identity(scope, identity, context=context)
+    repo.validate_identity(scope, identity, context=context)
     _, entry, _ = context.selected(scope.plan_ref)
     rows = repo.task_rows(context=context, entry=entry)
     intervals = task_intervals(rows)
     keys = selected_batch_keys(rows, intervals, scope)
-    record = repo.completion_record(identity, scenario, context=context)
+    record = repo.completion_record(identity, context=context)
     deferred, deferred_issues = archived_deferred_operation_evidence(record)
     if scope.range_start is None and deferred:
         pending_keys, pending_issues = repo.deferred_batch_keys(deferred)
@@ -73,8 +73,7 @@ def _read_plan_delivery(conn, *, scope, identity, logger, context):
                         "due_boundary": "next_day_exclusive", "actual_completion": "not_evaluated",
                         "actual_delivery": "not_evaluated"}}
     facts = {"identity": {"version": identity.version, "role": identity.effective_plan_role,
-                          "source_table": identity.source_table, "candidate_id": identity.candidate_id,
-                          "candidate_key": identity.candidate_key, "scenario_id": identity.scenario_id},
+                          "source_table": identity.source_table},
              "scope": scope.scope(), "tasks": rows, "batches": batches, "operations": operations,
              "completion_record": record,
              "batch_identities": [(key, references[key].ref, references[key].revision) for key in keys]}
@@ -89,7 +88,7 @@ def _delivery_items(rows, operations, batches, intervals, references, record, de
         interval = intervals[row["schedule_id"]]
         if interval is not None:
             finish_by_batch[row["batch_id"]] = max(interval[1], finish_by_batch.get(row["batch_id"], interval[1]))
-    incomplete, uncertain = completion_evidence(record, len(rows), finish_by_batch)
+    incomplete, uncertain = completion_evidence(record, finish_by_batch)
     uncertain.extend(deferred_issues)
     for operation in operations:
         operations_by_batch[operation["batch_id"]].append(operation)

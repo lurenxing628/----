@@ -1,20 +1,19 @@
-"""Explicit run-ledger installation, owned by the caller's migration transaction."""
+"""Explicit run-ledger schema and contract validation."""
 
-from core.infrastructure.workbench_metadata_schema import schema_contract_matches, workbench_metadata_contract_issues
-from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
+from core.infrastructure.workbench_metadata_schema import canonical_sql
 
-from .schema_structure import SchemaStructure, schema_objects
+from .schema_structure import schema_objects
 
 RUN_TABLES = ("WorkbenchRunJobs", "WorkbenchRunReceipts", "WorkbenchRunCandidates", "WorkbenchRunCandidateTasks")
 _REF = "TEXT NOT NULL CHECK(length({0})=48 AND {0} NOT GLOB '*[^0-9a-f]*')"
 
 
-def workbench_run_objects(*, legacy=False):
+def workbench_run_objects():
     objects = {
         "WorkbenchRunJobs": """CREATE TABLE WorkbenchRunJobs (
             run_ref {} PRIMARY KEY, request_key TEXT NOT NULL UNIQUE,
             input_ref TEXT NOT NULL, normalized_input_json TEXT NOT NULL,
-            facts_hash TEXT NOT NULL, facts_json TEXT NOT NULL, execution_json TEXT NOT NULL,
+            facts_json TEXT NOT NULL, execution_json TEXT NOT NULL,
             baseline_json TEXT NOT NULL, accepted_at TEXT NOT NULL,
             state TEXT NOT NULL CHECK(state IN ('queued','running','complete','partial','failed','interrupted')),
             stage TEXT NOT NULL CHECK(stage IN ('queued','computing','finished','awaiting_reconciliation')),
@@ -35,7 +34,7 @@ def workbench_run_objects(*, legacy=False):
         "WorkbenchRunCandidates": """CREATE TABLE WorkbenchRunCandidates (
             candidate_ref {} PRIMARY KEY, run_ref TEXT NOT NULL, candidate_key TEXT NOT NULL,
             sequence INTEGER NOT NULL CHECK(typeof(sequence)='integer' AND sequence>=0),
-            status TEXT NOT NULL CHECK(status IN ('completed','failed','skipped')),
+            status TEXT NOT NULL CHECK(status='completed'),
             task_count INTEGER NOT NULL CHECK(typeof(task_count)='integer' AND task_count>=0),
             artifact_json TEXT NOT NULL, UNIQUE(run_ref,candidate_key), UNIQUE(run_ref,sequence),
             FOREIGN KEY(run_ref) REFERENCES WorkbenchRunJobs(run_ref)
@@ -49,14 +48,12 @@ def workbench_run_objects(*, legacy=False):
         )""".format(_REF.format("row_ref")),
         "idx_wb_run_state": "CREATE INDEX idx_wb_run_state ON WorkbenchRunJobs(state,accepted_at,run_ref)",
     }
-    if not legacy:
-        objects["WorkbenchRunJobs"] = objects["WorkbenchRunJobs"].replace("facts_hash TEXT NOT NULL", "facts_hash TEXT")
     for table in RUN_TABLES:
         stem = table[len("Workbench"):].lower()
         for event in (("DELETE",) if table == "WorkbenchRunJobs" else ("UPDATE", "DELETE")):
             name = "wb_" + stem + "_no_" + event.lower()
             objects[name] = f"CREATE TRIGGER {name} BEFORE {event} ON {table} BEGIN SELECT RAISE(ABORT,'run ledger is permanent'); END"
-    immutable = ("run_ref", "request_key", "input_ref", "normalized_input_json", "facts_hash", "facts_json", "execution_json", "baseline_json", "accepted_at")
+    immutable = ("run_ref", "request_key", "input_ref", "normalized_input_json", "facts_json", "execution_json", "baseline_json", "accepted_at")
     objects["wb_run_admission_immutable"] = """CREATE TRIGGER wb_run_admission_immutable
         BEFORE UPDATE ON WorkbenchRunJobs WHEN {}
         BEGIN SELECT RAISE(ABORT,'run admission is immutable'); END""".format(" OR ".join(f"NEW.{key} IS NOT OLD.{key}" for key in immutable))
@@ -69,34 +66,9 @@ def workbench_run_objects(*, legacy=False):
     return objects
 
 
-def workbench_run_contract_issues(conn, *, structure=None, allow_legacy=True):
+def workbench_run_contract_issues(conn, *, structure=None):
     """SELECT only, including when the ledger is absent or only partly present."""
     actual = schema_objects(conn, structure=structure)
-    legacy = workbench_run_objects(legacy=True)
     return [("missing_run_schema:" if name not in actual else "invalid_run_schema:") + name
             for name, sql in workbench_run_objects().items()
-            if name not in actual or not schema_contract_matches(
-                conn, actual[name], sql, legacy[name], allow_legacy=allow_legacy)]
-
-
-def install_workbench_run_schema(conn):
-    if not conn.in_transaction:
-        raise RuntimeError("install_workbench_run_schema requires the caller's migration transaction")
-    structure = SchemaStructure(conn)
-    objects = workbench_run_objects()
-    names = structure.objects.keys()
-    if names & objects.keys():
-        issues = workbench_run_contract_issues(conn, structure=structure)
-        if issues:
-            raise RuntimeError("Cannot repair partial run ledger: " + "; ".join(issues))
-        return
-    required = {"WorkbenchCommandReceipts", "WorkbenchPlanSourceRefs"}
-    if not required <= names:
-        raise RuntimeError("Run ledger prerequisites missing: " + ", ".join(sorted(required - names)))
-    issues = workbench_metadata_contract_issues(conn, structure=structure) + workbench_plan_identity_contract_issues(conn, structure=structure)
-    if issues:
-        raise RuntimeError("Run ledger prerequisites are incomplete: " + "; ".join(issues))
-    if conn.execute("SELECT 1 FROM WorkbenchCommandReceipts WHERE action='scheduling.run' LIMIT 1").fetchone():
-        raise RuntimeError("Run admissions remain but ledger is missing; restore a complete backup")
-    for sql in objects.values():
-        conn.execute(sql)
+            if name not in actual or canonical_sql(actual[name]) != canonical_sql(sql)]

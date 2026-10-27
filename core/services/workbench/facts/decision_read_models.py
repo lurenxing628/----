@@ -182,7 +182,7 @@ def _head_candidates(head, admission, header):
         reference(row.get("candidate_ref"), stored=True)
         count = row.get("task_count")
         if (row["candidate_ref"] in seen or type(count) is not int or count < 0 or
-                row.get("status") not in ("completed", "failed", "skipped")):
+                row.get("status") != "completed"):
             corrupt()
         seen.add(row["candidate_ref"])
     return candidates

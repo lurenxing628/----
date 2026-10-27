@@ -260,7 +260,7 @@ def _confirmation(row, content, prefix="", *, missing_original=False):
     result = {"state": "confirmed" if valid else "unconfirmed",
             "confirmed_at": row[prefix + "confirmed_at"] if valid else None,
             "confirmed_by": row[prefix + "confirmed_by"] if valid else None}
-    if recorded and (saved is None or missing_original):
+    if recorded and missing_original:
         result.update(history={"confirmed_at": row[prefix + "confirmed_at"], "confirmed_by": row[prefix + "confirmed_by"]},
                       content_state="missing_original", reason="历史确认缺少当时的工艺资料，请重新确认当前资料。")
     return result
@@ -413,7 +413,7 @@ def start_workflow(conn, part_no, *, contracts) -> dict:
     part, stored = _part(conn, part_no, contracts)
     if stored is None:
         WorkbenchProcessWorkflowRepository(conn).insert_workflow(part["ref"])
-        stored = {stage + "_" + key: None for stage in _STAGES for key in ("signature", "content_json", "confirmed_at", "confirmed_by")}
+        stored = {stage + "_" + key: None for stage in _STAGES for key in ("content_json", "confirmed_at", "confirmed_by")}
     return _view(stored, _facts(part, _load_facts(conn, part_no, stored=stored), stored))
 
 
@@ -429,8 +429,7 @@ def _save_operations(conn, part_ref, stage, per_op, records, states, stamp):
         else:
             repo.update_confirmation(part_ref=part_ref, operation_ref=ref, stage=stage, content_json=values[stage],
                                      confirmed_at=stamp)
-        records[(ref, stage)] = {"signature": old.get("signature") if old else None, "content_json": values[stage],
-                                "confirmed_at": stamp, "confirmed_by": None}
+        records[(ref, stage)] = {"content_json": values[stage], "confirmed_at": stamp, "confirmed_by": None}
 
 
 def record_confirmation(conn, part_no, stage, *, contracts=None, cross_part_by_group=None, old_operations=()) -> dict:
@@ -462,7 +461,7 @@ def record_confirmation(conn, part_no, stage, *, contracts=None, cross_part_by_g
     repo = WorkbenchProcessWorkflowRepository(conn)
     if stored is None:
         repo.insert_workflow(part["ref"])
-        stored = {name + "_" + key: None for name in _STAGES for key in ("signature", "content_json", "confirmed_at", "confirmed_by")}
+        stored = {name + "_" + key: None for name in _STAGES for key in ("content_json", "confirmed_at", "confirmed_by")}
     stamp = datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
     if stage == "route":
         repo.delete_confirmations_outside_active_route(part["ref"], part_no)

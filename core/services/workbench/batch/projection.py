@@ -12,7 +12,6 @@ from core.services.scheduler.contracts.external_context import (
     group_from_context,
     member_index,
     merged_supplier_problem,
-    origin_notice,
 )
 from core.services.workbench.process.projection import public_sequence
 from core.shared.strict_parse import is_exact_finite_number
@@ -176,7 +175,7 @@ class BatchProjection:
                 "piece_id": row["piece_id"], "label": row["op_type_name"], "source": row["source"], **execution,
                 "setup_hours": numbers["setup_hours"], "unit_hours": numbers["unit_hours"],
                 "external_days": numbers["ext_days"], **{kind + "_ref": item["ref"] if item else None for kind, item in resources.items()},
-                "resources": resources, "external_group": group, "external_context_notice": origin_notice(context), "issues": issues,
+                "resources": resources, "external_group": group, "external_context_notice": None, "issues": issues,
                 "editable": not protected and row["status"] == "pending" and row["source"] in OPERATION_SOURCES}
 
     def entity(self, row):
@@ -218,8 +217,8 @@ class BatchProjection:
                     "gap_count": sum(bool(op["issues"]) for op in ops), "plan_reference_count": facts["plan_reference_count"],
                     "outsourcing_reference_count": len(facts["outsourcing_receipts"]),
                     "quantity_split_reference_count": len(facts["quantity_splits"]),
-                    "execution_reference_count": len(facts["events"]) + len(facts["reports"]),
-                    "report_count": len(facts["reports"]), "legacy_fact_count": len(facts["events"]),
+                    "execution_reference_count": len(facts["reports"]),
+                    "report_count": len(facts["reports"]),
                     "material_requirement_count": len(facts["materials"])},
                 "all_operations_complete": all_complete, "issues": issues,
                 "write_context": None, "protected": facts["protected"]}

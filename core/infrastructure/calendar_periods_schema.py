@@ -34,22 +34,3 @@ def contract_issues(conn, *, structure=None):
         if "periods_json" not in {row[1] for row in structure.table_info(table)}:
             issues.append("missing_calendar_periods:" + table + ".periods_json")
     return issues
-
-
-def install(conn):
-    if not conn.in_transaction:
-        raise RuntimeError("Calendar period installation requires a migration transaction.")
-    structure = SchemaStructure(conn)
-    definitions = objects()
-    if structure.objects.keys() & definitions.keys() or any(
-        "periods_json" in {row[1] for row in structure.table_info(table)}
-        for table in ("WorkCalendar", "OperatorCalendar")
-    ):
-        issues = contract_issues(conn, structure=structure)
-        if issues:
-            raise RuntimeError("Cannot repair partial calendar periods: " + ";".join(issues))
-        return
-    for table in ("WorkCalendar", "OperatorCalendar"):
-        conn.execute("ALTER TABLE " + table + " ADD COLUMN periods_json TEXT")
-    for sql in definitions.values():
-        conn.execute(sql)

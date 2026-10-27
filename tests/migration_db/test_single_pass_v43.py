@@ -1,10 +1,10 @@
-"""Migration/restore own data contracts; current startup owns structure only."""
+"""Restore owns data contracts; current startup owns structure only."""
 
 import pytest
 
 from core.infrastructure import database
 from core.infrastructure.migration_state import MigrationContractError
-from core.infrastructure.single_pass_indexes_schema import ADDED, REMOVED
+from core.infrastructure.single_pass_indexes_schema import ADDED
 
 
 def _plan(conn):
@@ -15,7 +15,7 @@ def _plan(conn):
             VALUES (1,1,1,'2026-10-15 08:00:00','2026-10-15 09:00:00');""")
 
 
-def test_current_startup_omits_event_scan_and_probes_but_full_restore_checks_once(tmp_path, monkeypatch):
+def test_current_startup_checks_structure_only_and_full_restore_checks_history_head(tmp_path, monkeypatch):
     path = str(tmp_path / "current.db")
     database.ensure_schema(path)
     with database.get_connection(path) as conn:
@@ -30,42 +30,21 @@ def test_current_startup_omits_event_scan_and_probes_but_full_restore_checks_onc
 
     monkeypatch.setattr(database, "get_connection", observed)
     database.ensure_schema(path)
-    assert not any("FROM OperationExecutionEvents" in sql or "__schema_probe" in sql for sql in statements)
+    assert not any("__schema_probe" in sql for sql in statements)
     with pytest.raises(MigrationContractError, match="missing ScheduleHistory head"):
         database.ensure_schema(path, full_data=True)
-    assert sum(sql.lstrip().startswith("SELECT") and "FROM OperationExecutionEvents" in sql for sql in statements) == 1
     with connect(path) as conn:
         conn.execute("INSERT INTO ScheduleHistory(version,strategy) VALUES (1,'test')")
-        conn.execute("""INSERT INTO OperationExecutionEvents(schedule_version,schedule_id,op_id,batch_id,
-            source_table,effective_plan_role,event_type,reported_status,event_time,created_by,idempotency_key,
-            previous_state_revision) VALUES (1,1,1,'B','schedule','adopted','start','processing',
-            '2026-10-15 08:01:00','tester','bad-sequence','1:7:0')""")
-    statements.clear()
-    database.ensure_schema(path)
-    with pytest.raises(MigrationContractError, match="bad_sequence"):
-        database.ensure_schema(path, full_data=True)
-    assert sum(sql.lstrip().startswith("SELECT") and "FROM OperationExecutionEvents" in sql for sql in statements) == 1
+    database.ensure_schema(path, full_data=True)
 
 
-def test_v43_changes_only_declared_indexes_and_uses_single_column_lookups(tmp_path):
-    path = str(tmp_path / "old.db")
+def test_single_pass_indexes_are_present_and_used_for_single_column_lookups(tmp_path):
+    path = str(tmp_path / "current.db")
     database.ensure_schema(path)
     with database.get_connection(path) as conn:
-        _plan(conn)
-        conn.execute("INSERT INTO ScheduleHistory(version,strategy) VALUES (1,'test')")
-        for name in ADDED:
-            conn.execute('DROP INDEX "' + name + '"')
-        for sql in REMOVED.values():
-            conn.execute(sql)
-        conn.execute("UPDATE SchemaVersion SET version=42")
-        before = [tuple(row) for row in conn.execute("SELECT * FROM Schedule")]
-    database.ensure_schema(path, backup_dir=str(tmp_path / "backups"))
-    with database.get_connection(path) as conn:
-        assert [tuple(row) for row in conn.execute("SELECT * FROM Schedule")] == before
         indexes = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='index'")}
-        assert set(ADDED) <= indexes and not set(REMOVED) & indexes
-        assert {"idx_part_operations_part", "idx_batch_operations_batch", "idx_schedule_history_version",
-                "idx_schedule_candidate_rows_version_candidate"} <= indexes
+        assert set(ADDED) <= indexes
+        assert {"idx_part_operations_part", "idx_batch_operations_batch", "idx_schedule_history_version"} <= indexes
         for table, column, name in (("BatchMaterials", "batch_id", "idx_batch_materials_batch"),
                                     ("BatchOperations", "supplier_id", "idx_batch_operations_supplier"),
                                     ("PartOperations", "supplier_id", "idx_part_operations_supplier")):
@@ -89,7 +68,7 @@ def test_actual_restore_rolls_back_a_current_schema_backup_missing_its_history_h
     with database.get_connection(source) as conn:
         conn.execute("DELETE FROM ScheduleHistory")
     result = run_backup_restore(filename="external", backup_path=source, database_path=path,
-        backup_dir=str(tmp_path / "backups"), manager=manager, logger=logging.getLogger(__name__),
+        manager=manager, logger=logging.getLogger(__name__),
         ensure_schema_func=database.ensure_schema)
     assert result.result.code == "verify_failed_rolled_back"
     with database.get_connection(path) as conn:
@@ -119,7 +98,7 @@ def test_retained_sql_readers_parse_each_row_endpoint_once(tmp_path, monkeypatch
 
         monkeypatch.setattr(schedule_time_sql, "parse_dt_for_sql", counted)
         repo = SchedulePlanQueryRepository(conn)
-        common = {"version": 1, "source_table": "schedule", "candidate_id": None}
+        common = {"version": 1, "source_table": "schedule"}
         rows = repo.list_detail_rows_between(**common, start_time="2026-10-15 08:00:00", end_time="2026-10-15 10:00:00")
         assert len(rows) == 3 and len(calls) == 8  # Two query parameters, two endpoints for each row.
         calls.clear()

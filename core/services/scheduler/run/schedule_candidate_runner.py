@@ -72,11 +72,9 @@ def run_candidate_comparison(
         evidence_state="complete" if scope["is_complete"] and known else "partial",
     )
     return CandidateComparisonOutcome(
-        candidates=candidates, selection=selection, planned_count=len(candidates), completed_count=len(candidates),
-        failed_count=0, skipped_count=0, reused_count=0,
+        candidates=candidates, selection=selection,
         time_budget_reached=shared.process_facts["stop_reason"] == "time_budget",
-        selection_policy="business_objectives_v1", run_time_budget_seconds=total_budget,
-        skipped_candidate_labels=[], baseline_missing_or_failed=False,
+        run_time_budget_seconds=total_budget,
         generation_policy_version="unified_search_v1", primary_objective=primary,
         target_objectives=list(targets), unified_process=shared.process_facts["unified_process"],
     )

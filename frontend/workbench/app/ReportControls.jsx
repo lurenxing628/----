@@ -4,10 +4,9 @@
   function Button({ className = '', ...props }) {
     return <window.ResourceControls.Button {...props} className={'wb-action ' + className} />;
   }
-  // 排序列名在渲染时才读词表里的「历史现场记录」，避免加载顺序依赖。
   const names = () => ({ batch_label: '批次', planned_end: '计划完工', finish_deviation_minutes: '完工偏差（分钟）', effective_processing_hours: '有效工时（小时）',
-    event_time: '实际结束或记录时间', quantity_done: '本次数量或登记数量', resource_label: '资源', events: window.WorkbenchTerms.legacy_field_records + '数',
-    event_count: window.WorkbenchTerms.legacy_field_records + '数', data_quality: '完整性' });
+    event_time: '实际记录时间', completed_quantity: '本次完成数量', resource_label: '资源', production_reports: '逐次报工数',
+    production_report_count: '逐次报工数', data_quality: '完整性' });
   // 「清除某个筛选」按钮的可读名字，不用内部键名。
   const scopeNames = { plan_finish_date_from: '计划完工起日', plan_finish_date_to: '计划完工止日', batch_ref: '批次',
     query: '搜索', resource_type: '资源类型', resource_ref: '关联资源', focus: '分析范围' };

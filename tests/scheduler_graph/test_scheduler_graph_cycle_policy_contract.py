@@ -86,7 +86,7 @@ def _schedule_input(mode: str, *, block_on_cycle: str) -> ScheduleRunInput:
         optimizer_seed_version=6,
         prev_version=5,
         missing_internal_resource_op_ids=set(),
-        execution_facts={}, execution_fixed_op_ids=set(), execution_completed_op_ids=set(), execution_seed_results=[],
+        execution_facts={}, execution_completed_op_ids=set(), execution_seed_results=[],
     )
 
 

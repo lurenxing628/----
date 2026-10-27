@@ -63,7 +63,7 @@ assert.equal(M.finishDeviation(boundary), '延后 10 分钟');
 assert.equal(M.deadlines(boundary).finishLate, false, 'The shared rounded deviation controls the 10 minute boundary');
 const report = { report_ref: 'actual-on-other-resource', actual_start: '2026-09-09T08:10:00', actual_end: '2026-09-09T09:20:00' };
 function preparedRow(row) {
-  const item = { ...row.item, execution: { ...row.item.execution, reports: row.reports, legacy_facts: [] } };
+  const item = { ...row.item, execution: { ...row.item.execution, reports: row.reports } };
   const fact = M.prepare({ resources: [], items: [item], gantt_graph: { state: 'unavailable', reason: 'No captured process order', scope: 'full_plan', nodes: [], critical_task_refs: [], critical_edges: [] }, axis_span: { start: item.task.start, end: item.task.end } }, item.task.end).facts[0];
   return { ...row, marks: (row.baseline ? [fact.baseline] : []).concat(fact.reports.map(value => value.mark).filter(Boolean)) };
 }

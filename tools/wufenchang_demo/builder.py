@@ -83,11 +83,11 @@ def _pending_counts(database):
         counts = {name: conn.execute("SELECT count(*) FROM " + name).fetchone()[0]
                   for name in ("Parts", "Batches", "BatchOperations", "Machines", "Operators", "BatchMaterials",
                                "Schedule", "WorkbenchRunJobs", "WorkbenchRunCandidates", "WorkbenchProductionReports",
-                               "OperationExecutionEvents", "WorkbenchTrialDrafts", "WorkbenchTrialScenarios")}
+                               "WorkbenchTrialDrafts", "WorkbenchTrialScenarios")}
         invalid_statuses = sum(conn.execute("SELECT count(*) FROM " + table + " WHERE status <> 'pending'").fetchone()[0]
                                for table in ("Batches", "BatchOperations"))
         active_rows = sum(counts[name] for name in ("Schedule", "WorkbenchRunJobs", "WorkbenchRunCandidates",
-                         "WorkbenchProductionReports", "OperationExecutionEvents", "WorkbenchTrialDrafts", "WorkbenchTrialScenarios"))
+                         "WorkbenchProductionReports", "WorkbenchTrialDrafts", "WorkbenchTrialScenarios"))
         if invalid_statuses or active_rows:
             raise RuntimeError("构建库已包含排产或执行事实，不能作为首次排产数据交付。")
         return counts

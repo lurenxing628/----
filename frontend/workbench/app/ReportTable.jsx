@@ -9,7 +9,6 @@
   const hoursText = (value, missing = '未知') => value == null ? missing : window.WorkbenchFormat.hours(value, { digits: 3, trim: true });
   const minutes = (value, missing = '未知') => value == null ? missing : window.WorkbenchFormat.number(value, { digits: 2, trim: true }) + ' 分钟';
   const signedMinutes = value => (value > 0 ? '+' : '') + minutes(value);
-  const legacy = () => window.WorkbenchTerms.legacy_field_records;
   const hoursColumns = new Set(['effective_processing_hours', 'known_effective_processing_hours']);
   const defaultEmpty = { title: '当前筛选没有结果', hint: '调整计划完工日期、批次或搜索条件后重新查询。' };
   function CellText({ value, label }) {
@@ -40,9 +39,9 @@
     ];
     else if (data.topic === 'records') columns = [
       { key: 'batch_label', title: '批次 / 工序', width: 185, render: row => stack(row.batch_label, row.operation_label) },
-      { key: 'event_label', title: '记录来源 / 内容', width: 140, render: row => stack(row.record_kind_label, row.record_kind === 'production_report' ? row.report_no : row.event_label) },
-      { key: 'event_time', title: '实际时段 / 记录时间', width: 164, render: row => row.record_kind === 'production_report' ? stack(time(row.actual_start), time(row.actual_end)) : time(row.event_time, '未知') },
-      { key: 'quantity_done', title: '本次 / 登记数量', width: 130, render: row => text(row.quantity_done) },
+      { key: 'record_kind_label', title: '记录类型 / 单号', width: 140, render: row => stack(row.record_kind_label, row.report_no) },
+      { key: 'event_time', title: '实际时段 / 记录时间', width: 164, render: row => stack(time(row.actual_start), time(row.actual_end)) },
+      { key: 'completed_quantity', title: '本次完成数量', width: 130, render: row => text(row.completed_quantity) },
       { key: 'effective_processing_hours', title: '有效工时（小时）', width: 100, render: row => amount(row.effective_processing_hours) },
       { key: 'machine_label', title: '实际设备 / 人员', width: 148, render: row => stack(row.machine_label, row.operator_label) },
       { key: 'remark', title: '备注', width: 150, render: row => <CellText value={row.remark || '无'} label="备注" /> }, { key: 'action', title: '工序', width: 66, render: detail }
@@ -50,19 +49,17 @@
     else if (data.topic === 'quality') columns = [
       { key: 'batch_label', title: '批次 / 工序', width: 210, render: row => stack(row.batch_label, row.operation_label) },
       { key: 'execution_label', title: '执行情况', width: 135, render: status },
-      { key: 'event_count', title: legacy() + '数', width: 112 },
       { key: 'production_report_count', title: '逐次报工数', width: 110 },
-      { key: 'record_count', title: '全部记录数', width: 110 },
       { key: 'data_gaps', title: '数据缺口', render: row => <span className="rw-warning">{text(row.data_gaps)}</span> },
       { key: 'action', title: '详情', width: 66, render: detail }
     ];
     else columns = data.columns.filter(column => !column.key.endsWith('_ref')).map(column => ({ key: column.key, title: column.label,
-      render: row => <CellText value={hoursColumns.has(column.key) ? amount(row[column.key]) : text(row[column.key])} label={column.label} />, align: ['operations', 'batches', 'events', 'production_reports', 'records', 'effective_processing_hours', 'known_effective_processing_hours', 'unknown_hour_events'].includes(column.key) ? 'right' : 'left' }));
+      render: row => <CellText value={hoursColumns.has(column.key) ? amount(row[column.key]) : text(row[column.key])} label={column.label} />, align: ['operations', 'batches', 'production_reports', 'effective_processing_hours', 'known_effective_processing_hours', 'unknown_hour_events'].includes(column.key) ? 'right' : 'left' }));
     if (data.topic === 'records' && typeof onLocate === 'function') columns.push({ key: 'locate', title: '定位', width: 52,
-      render: row => <Button className="rw-icon-button" icon="chart-gantt" aria-label={'定位实际甘特 ' + (row.report_no || row.event_label)} disabled={busy} onClick={() => onLocate(row)} /> });
+      render: row => <Button className="rw-icon-button" icon="chart-gantt" aria-label={'定位实际甘特 ' + row.report_no} disabled={busy} onClick={() => onLocate(row)} /> });
     const visible = columns.filter(column => column.key !== 'action' || typeof onDetail === 'function');
     const fixedWidth = visible.every(column => typeof column.width === 'number') ? visible.reduce((sum, column) => sum + column.width, 0) : 0;
-    const recordsTitle = '逐次报工与' + legacy();
+    const recordsTitle = '逐次报工记录';
     return data.rows.length ? <window.ReportEvidence.TableFrame className={primary ? 'rw-primary-table' : ''} caption={data.topic === 'records' ? recordsTitle : '当前范围报表结果'}
       actionColumn={visible.findIndex(column => ['action', 'locate'].includes(column.key))} tabIndex={0} role="region" aria-label={primary ? '报表结果表格' : '报表明细表格'}><DataTable className={['machines', 'people'].includes(data.topic) ? 'rw-resource-table' : 'rw-table'}
       aria-label={data.topic === 'records' ? recordsTitle : '当前筛选范围的' + ({ delivery: '工序完成情况', quality: '数据完整性', machines: '设备工时', people: '人员工时' }[data.topic] || '报表结果')}
@@ -80,7 +77,9 @@
       ['完工偏差中位数', s.median_finish_minutes == null ? actual(null) : window.WorkbenchFormat.number(s.median_finish_minutes, { digits: 2, trim: true }),
         s.finish_sample ? '完工记录 ' + s.finish_sample + ' 道；90% 的记录完工偏差不超过 ' + minutes(s.p90_finish_minutes) : '暂无已确认完工记录', undefined, s.median_finish_minutes == null ? undefined : '分钟']
     ] : [['范围内工序', s.operations, s.reported_operations + ' 道有反馈；' + s.unreported + ' 道暂无反馈'],
-      ['逐次报工', s.production_reports, legacy() + ' ' + s.events + ' 条'], ['全部记录', s.records, legacy() + '与逐次报工合计'],
+      ['逐次报工', s.production_reports, '当前范围逐次报工'],
+      ['已知工时小计', s.known_effective_processing_hours == null ? actual(null) : amount(s.known_effective_processing_hours),
+        empty ? '暂无已登记工时' : '工时待补 ' + s.unknown_hour_events + ' 条', undefined, s.known_effective_processing_hours == null ? undefined : '小时'],
       ['有效加工工时', s.effective_processing_hours == null ? actual(null) : amount(s.effective_processing_hours),
         empty ? '暂无现场工时记录' : '已知小计 ' + hoursText(s.known_effective_processing_hours) + '；未知 ' + s.unknown_hour_events + ' 条', undefined, s.effective_processing_hours == null ? undefined : '小时']];
     return <MetricStrip columns={4} className="rw-metrics">{values.map(([label, value, helper, tone, unit]) => <Metric key={label} label={label} value={value} unit={unit} helper={helper} tone={tone} />)}</MetricStrip>;

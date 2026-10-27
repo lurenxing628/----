@@ -52,14 +52,7 @@ def test_report_preparation_batches_relatives_and_shares_unchanged_facts(ledger_
     case.plan(2, [case.op_id, middle, last])
     task = case.task(2, middle)
     case.command("create", task, case.values(1))
-    from core.services.execution import ledger_reader
-
-    read_groups, plans, legacy_preparations = [], [], []
-    original_legacy = ledger_reader.legacy_evidence
-
-    def legacy(rows, now):
-        legacy_preparations.append(rows)
-        return original_legacy(rows, now)
+    read_groups, plans = [], []
     original_read = WorkbenchExecutionRepository.reports
     original_plan = case.writer.ledger.current_plan_provider
 
@@ -73,12 +66,10 @@ def test_report_preparation_batches_relatives_and_shares_unchanged_facts(ledger_
 
     monkeypatch.setattr(WorkbenchExecutionRepository, "reports", reports)
     monkeypatch.setattr(case.writer.ledger, "current_plan_provider", plan)
-    monkeypatch.setattr(ledger_reader, "legacy_evidence", legacy)
     preparation = case.writer.prepare_batch([{"action": "create", "ref": task, "payload": case.values(1)}])
-    assert len(plans) == 1 and len(read_groups) == 2 and len(legacy_preparations) == 3
+    assert len(plans) == 1 and len(read_groups) == 2
     assert len(read_groups[0]) == 1 and len(read_groups[1]) == 2 and not read_groups[0] & read_groups[1]
     assert preparation.facts["operations"] is preparation.before["operations"]
-    assert preparation.facts["legacy"] is preparation.before["legacy"]
     assert preparation.facts["plan"] is preparation.before["plan"]
     assert preparation.facts["reports"] is not preparation.before["reports"]
     operation_ref = preparation.resolved[0]["operation_ref"]

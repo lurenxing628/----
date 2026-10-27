@@ -71,10 +71,10 @@
       && quantity(e.target_quantity) && quantity(e.remaining_quantity) && quantity(e.known_completed_quantity) && e.known_completed_quantity !== null
       && Number.isSafeInteger(e.unknown_record_count) && e.unknown_record_count >= 0 && typeof e.quantity_complete === 'boolean' && typeof e.records_complete === 'boolean'
       && ['batch', 'piece'].includes(e.target_basis) && own(window.ActualGanttModel.states, e.execution_state)
-      && [null, 'complete_reports', 'legacy_finish_event'].includes(e.completion_basis) && ['complete', 'incomplete', 'legacy_incomplete', 'invalid'].includes(e.data_quality)
+      && [null, 'complete_reports'].includes(e.completion_basis) && ['complete', 'incomplete', 'invalid'].includes(e.data_quality)
       && nullableTime(e.first_actual_start) && nullableTime(e.confirmed_finish) && (e.remaining_plan === null || interval(e.remaining_plan))
       && Array.isArray(e.reports) && e.reports.every(r => report(r, task.operation_ref)) && new Set(e.reports.map(r => r.report_ref)).size === e.reports.length
-      && Array.isArray(e.legacy_facts) && e.legacy_facts.every(fact => object(fact) && ref(fact.legacy_fact_ref) && nullableRef(fact.actual_machine_ref) && nullableRef(fact.actual_operator_ref)) && Array.isArray(e.data_gaps);
+      && Array.isArray(e.data_gaps);
   }
   function scopeMatches(value, query) {
     return object(value) && cohortKeys.every(key => {
@@ -101,7 +101,7 @@
       if (d.availability.state === 'available' ? !execution(e, t) : e !== null) fail('报工记录缺失或与计划任务不匹配。');
       if (!deviation(item.deviation, meta.as_of)) fail('执行偏差资料缺失或与原数据时刻不一致，请刷新重试。');
       const used = [t.machine_ref, t.operator_ref];
-      if (e) { count += e.reports.length; e.reports.concat(e.legacy_facts).forEach(r => used.push(r.actual_machine_ref, r.actual_operator_ref)); if (e.remaining_plan) used.push(e.remaining_plan.machine_ref, e.remaining_plan.operator_ref); }
+      if (e) { count += e.reports.length; e.reports.forEach(r => used.push(r.actual_machine_ref, r.actual_operator_ref)); if (e.remaining_plan) used.push(e.remaining_plan.machine_ref, e.remaining_plan.operator_ref); }
       if (used.some(r => r != null && (!ref(r) || !resourceRefs.has(r)))) fail('实际或计划资源清单不完整。');
     });
     if (!window.GanttGraph.validate(d.gantt_graph, { scope: 'full_plan', tasks: d.items.map(item => item.task), taskRef: 'task_ref', time: local,

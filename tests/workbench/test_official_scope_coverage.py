@@ -53,40 +53,27 @@ def _mixed_piece_quantities():
         ) for work in scope.operations
     }
     projections[refs[1]] = replace(
-        projections[refs[1]], execution_state="complete", completion_basis="legacy_finish_event",
-        quantity_complete=False, unknown_record_count=1, records_complete=False,
-        data_quality="legacy_incomplete", remaining_quantity=None,
+        projections[refs[1]], execution_state="complete", completion_basis="complete_reports",
+        known_completed_quantity=3, quantity_complete=True, unknown_record_count=0, records_complete=True,
+        data_quality="complete", remaining_quantity=0,
         first_actual_start="2026-09-09T08:00:00", confirmed_finish="2026-09-09T09:00:00",
     )
     return scope, refs, projections
 
 
-def test_nonpiece_legacy_completion_can_share_a_run_with_strict_piece_quantities():
+def test_nonpiece_completion_can_share_a_run_with_strict_piece_quantities():
     scope, refs, projections = _mixed_piece_quantities()
     _quantities(scope, refs, projections)
 
 
-@pytest.mark.parametrize("patch,code", [
-    ({"target_basis": "piece"}, "piece_quantity_unknown"),
-    ({"target_quantity": 4}, "piece_quantity_unknown"),
-    ({"data_quality": "invalid"}, "piece_execution_quantity_unproven"),
-    ({"known_completed_quantity": 4}, "piece_execution_quantity_unproven"),
-    ({"completion_basis": "complete_reports"}, "piece_execution_quantity_unproven"),
-])
-def test_legacy_completion_exception_keeps_target_and_data_quality_protections(patch, code):
-    scope, refs, projections = _mixed_piece_quantities()
-    projections[refs[1]] = replace(projections[refs[1]], **patch)
-    with pytest.raises(CandidateAdoptionBlocked) as exc:
-        _quantities(scope, refs, projections)
-    assert exc.value.code == code
-
-
-@pytest.mark.parametrize("op_id", [2, 3])
-def test_piece_batches_and_their_common_operations_still_require_known_completion_quantities(op_id):
+@pytest.mark.parametrize("op_id", [1, 2, 3])
+def test_all_operations_require_known_completion_quantities(op_id):
     scope, refs, projections = _mixed_piece_quantities()
     work = next(work for work in scope.operations if work.op_id == op_id)
     projections[refs[op_id]] = replace(
-        projections[refs[1]], operation_ref=refs[op_id], target_quantity=work.target_quantity,
+        projections[refs[op_id]], execution_state="complete", completion_basis="complete_reports",
+        quantity_complete=False, unknown_record_count=1, records_complete=False,
+        data_quality="incomplete", remaining_quantity=None, target_quantity=work.target_quantity,
         target_basis="piece" if work.piece_id is not None else "batch",
     )
     with pytest.raises(CandidateAdoptionBlocked) as exc:

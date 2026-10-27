@@ -3,7 +3,7 @@
   const C = window.RunCandidateControls, T = window.WorkbenchTerms;
   const supports = { batch: '查看批次', operation: '查看工序', preparation: '查看准备', changeover: '查看切换' };
   const states = { comparable: '可比较', different_coverage: '比较范围不同', unavailable: '资料待确认', not_applicable: '本范围不适用' };
-  const countText = value => value === null ? '未记录' : window.RunCandidateModel.number(value);
+  const countText = value => window.RunCandidateModel.number(value);
   function amount(value, item) {
     if (value === null) return item.state === 'not_applicable' ? states.not_applicable : '资料待确认';
     return item.unit === '%' ? window.WorkbenchFormat.percent(value)
@@ -69,7 +69,7 @@
       ['ordinary_incomplete_batch_count', '其他未排齐', '批'], ['deferred_batch_count', '仅因缺料未排齐', '批'],
       ['unknown_batch_count', '工序安排待确认', '批'], ['unplanned_operation_count', '其他未安排工序', '道'], ['deferred_operation_count', '缺料未安排工序', '道'],
     ].map(([key, label, unit]) => <div key={key}><dt>{label}</dt><dd>{countText(scope[key])} {unit}</dd></div>)}</dl>
-      {scope.source_available && scope.remaining_work.operation_count > 0 && scope.drill && <Support targets={[{ kind: 'preparation', label: '查看未安排工序', ref: null, candidate_ref: candidateRef, drill: scope.drill }]} onSupport={onSupport} />}
+      {scope.remaining_work.operation_count > 0 && scope.drill && <Support targets={[{ kind: 'preparation', label: '查看未安排工序', ref: null, candidate_ref: candidateRef, drill: scope.drill }]} onSupport={onSupport} />}
       <RemainingMetrics work={scope.remaining_work} definitions={data.metric_definitions} label="推荐方案剩余准备与加工需求" /></>;
   }
   // 方案对比页唯一挂载点只用紧凑版：推荐摘要一行，取舍与依据收进“推荐详情”。

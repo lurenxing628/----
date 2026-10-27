@@ -92,26 +92,10 @@ def matches_execution_resource(task, execution, kind, ref):
     if execution and execution["remaining_plan"]:
         owners.append(execution["remaining_plan"])
     values = [owner.get(field) for owner in owners]
-    unresolved = set()
     if execution:
         actual_field = "actual_" + field
-        unresolved = _unresolved_resource_facts(execution["data_gaps"], actual_field)
         values.extend(report.get(actual_field) for report in execution["reports"])
-        # Only an unresolved historical identity is excluded from the empty
-        # selection. Other records and the plan retain their explicit omissions.
-        values.extend(fact.get(actual_field) for fact in execution["legacy_facts"]
-                      if fact.get(actual_field) is not None or
-                      (None not in unresolved and fact.get("legacy_fact_ref") not in unresolved))
-    if ref in values:
-        return True
-    if unresolved:
-        raise WorkbenchCommandRejected("execution_resource_unavailable", "历史报工的设备或人员资料无法对应，请核对资源资料。")
-    return False
-
-
-def _unresolved_resource_facts(gaps, field):
-    return {gap.get("legacy_fact_ref") for gap in gaps if gap["code"] == "legacy_resource_identity_unresolved"
-            and (not gap.get("fields") or field in gap["fields"])}
+    return ref in values
 
 
 def search_text(item, names):
@@ -123,8 +107,6 @@ def search_text(item, names):
             terms.extend([report["report_no"], names.get(report["actual_machine_ref"], ""),
                           names.get(report["actual_operator_ref"], "")])
         remaining = execution["remaining_plan"]
-        for fact in execution["legacy_facts"]:
-            terms.extend([names.get(fact.get("actual_machine_ref"), ""), names.get(fact.get("actual_operator_ref"), "")])
         if remaining:
             terms.extend([names.get(remaining.get("machine_ref"), ""), names.get(remaining.get("operator_ref"), "")])
     return " ".join(terms).lower()

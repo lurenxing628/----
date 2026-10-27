@@ -106,9 +106,8 @@
     const scopeCaption = data ? M.scopeCaption(data) : '';
     window.WorkbenchCaption.useCaption(data && !read.loading && !read.error && !paused ? {
       reference: data.plan.plan_ref, label: '正式计划', name: data.plan.display_name,
-      status: data.plan.is_current_official ? window.WorkbenchTerms.current_official : data.plan.kind === 'official' ? window.WorkbenchTerms.historical_official
-        : data.plan.kind === 'candidate' ? window.WorkbenchTerms.candidate : window.WorkbenchTerms.trial_scenario,
-      ...(data.plan.kind === 'official' && data.plan.version !== null ? { version: window.WorkbenchTerms.plan_version(data.plan.version) } : {}),
+      status: data.plan.is_current_official ? window.WorkbenchTerms.current_official : window.WorkbenchTerms.historical_official,
+      ...(data.plan.version !== null ? { version: window.WorkbenchTerms.plan_version(data.plan.version) } : {}),
     } : null);
     return <div className="plana plan-workspace" data-plan-workspace>
       <section className="plan-scope wb-surface" aria-label="方案与范围">

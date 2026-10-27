@@ -92,13 +92,13 @@ async function requests() {
   await check('read-only public surface', () => assert.deepEqual(Object.keys(normal.api).sort(), ['catalog', 'export', 'workspace']));
   const opaque = ' cursor:/+?&= % unicode \u6d4b\u8bd5 ', token = 'Az09_-'.repeat(6).slice(0, 32);
   await check('opaque cursor and snapshot query escaping', async () => {
-    const payload = catalog(); payload.data.page = {collection: 'scenario', size: 1, unit: 'scenario', has_more: false, next_cursor: null};
-    payload.data.plans[0].kind = 'scenario'; payload.data.plans[0].is_current_official = false; payload.meta.snapshot_ref = token;
+    const payload = catalog(); payload.data.page = {collection: 'history', size: 1, unit: 'version', has_more: false, next_cursor: null};
+    payload.data.plans[0].is_current_official = false; payload.meta.snapshot_ref = token;
     const client = runtime(async url => {
-      assert.equal(url, endpoint + '?' + new URLSearchParams({collection: 'scenario', size: '1', cursor: opaque, snapshot_ref: token}));
+      assert.equal(url, endpoint + '?' + new URLSearchParams({collection: 'history', size: '1', cursor: opaque, snapshot_ref: token}));
       return response(payload);
     });
-    assert.deepEqual(await client.api.catalog({collection: 'scenario', size: 1, cursor: opaque, snapshot_ref: token}), payload); client.idle();
+    assert.deepEqual(await client.api.catalog({collection: 'history', size: 1, cursor: opaque, snapshot_ref: token}), payload); client.idle();
   });
   await check('workspace exact path and unbounded scope', async () => {
     const client = runtime(async url => { assert.equal(url, endpoint + '/' + P + '/workspace'); return response(workspace()); });
@@ -115,7 +115,7 @@ async function requests() {
   const noRequest = runtime(() => assert.fail('Invalid scope must be rejected before transport'));
   const beforeInvalid = calls.length;
   for (const scope of [null, [], 'history', new Date(), new Map(), Object.create({resource_ref: OTHER}),
-    {collection: 'all'}, {collection: undefined}, {size: null}, {size: '20'}, {size: 0}, {size: 51}, {size: 1.5},
+    {collection: 'all'}, {collection: 'scenario'}, {collection: undefined}, {size: null}, {size: '20'}, {size: 0}, {size: 51}, {size: 1.5},
     {page: 1}, {before_version: 2}, {after_scenario_id: 'x'}, {range_start: START}, {query: ''}, {source: 'demo'}, {filters: {}}, {cursor: ''}, {cursor: null},
     {cursor: 123}, {snapshot_ref: ''}, {snapshot_ref: undefined}, {[Symbol('filter')]: true}, Object.defineProperty({}, 'size', {value: 1})]) {
     await check('catalog invalid scope ' + cases.length, () => assert.rejects(noRequest.api.catalog(scope), rejected));
@@ -226,10 +226,10 @@ async function contracts() {
     row.capabilities.view = false; row.capabilities.export = false; row.completeness = 'unknown'; row.blocked_reasons = [issue()]; p.data.plans.push(clone(row));
     assert.strictEqual(C.catalog(p), p); assert.equal(row.plan_ref, null);
   });
-  await check('multiple roles share a version page unit', () => {
-    const p = catalog(); p.data.page.size = 1; const row = clone(p.data.plans[0]); row.plan_ref = OTHER; row.kind = 'candidate';
-    row.is_current_official = false; row.completeness = 'unknown'; p.data.plans.push(row); assert.strictEqual(C.catalog(p, {size: 1}), p);
-    row.version = 2; assert.throws(() => C.catalog(p, {size: 1}), rejected);
+  await check('version page unit rejects excess versions', () => {
+    const p = catalog(); p.data.page.size = 1; const row = clone(p.data.plans[0]); row.plan_ref = OTHER;
+    row.is_current_official = false; row.version = 2; p.data.plans.push(row);
+    assert.throws(() => C.catalog(p, {size: 1}), rejected);
   });
   for (const value of [1, Number.MAX_SAFE_INTEGER, '9007199254740992', '9007199254740993', '9223372036854775807']) {
     await check('exact int64 preserved ' + value, () => { const p = workspace(); p.data.plan.version = value; p.data.tasks[0].sequence = value;

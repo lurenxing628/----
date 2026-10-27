@@ -11,7 +11,7 @@ def retained_role(row, execution):
     anchor = (row["original"].get("execution_anchor") or {}).get("basis")
     if anchor == "completed_actuals" or execution["execution_state"] == "complete":
         return "completed"
-    if anchor is not None or execution["first_actual_start"] or execution["reports"] or execution["legacy_facts"]:
+    if anchor is not None or execution["first_actual_start"] or execution["reports"]:
         return "execution"
     return "retained"
 

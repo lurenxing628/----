@@ -13,7 +13,7 @@
     first_actual_start: '最早实际开工时间', confirmed_finish: '确认完工时间', unknown_record_count: '完成数量缺失记录数', records_complete: '报工记录资料', quantity_complete: '完成数量资料', completion_basis: '完成依据' };
   // 生成时的执行记录按项取词：执行状态与现场记录同一套叫法；数据质量的 complete 是“完整”，不能和执行状态的“已完工”混成一个词。
   const executionTexts = { execution_state: window.WorkbenchTerms.execution_states, data_quality: window.WorkbenchTerms.data_quality, target_basis: { piece: '件', batch: '批' },
-    completion_basis: { complete_reports: '逐次报工记录', legacy_finish_event: '历史完工记录' } };
+    completion_basis: { complete_reports: '逐次报工记录' } };
   function executionValue(value, key = 'execution_state') {
     if (Object.prototype.hasOwnProperty.call(executionTexts[key] || {}, value)) return executionTexts[key][value];
     if (['first_actual_start', 'confirmed_finish'].includes(key)) return timeLabel(value);

@@ -1,14 +1,11 @@
 """Resource and lifecycle constraints, rechecked under the outer command lock."""
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.algorithm_contracts.value_domains import OPERATION_SOURCES
-from core.models.operation_execution_event import parse_operation_event_time
 from core.models.resource_capabilities import machine_types
 from core.models.workbench_execution_input import reject
 from core.models.workbench_identity import WorkbenchEntityIdentity
-from core.services.execution.legacy import legacy_resource_refs
 from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_report_validation_repo import WorkbenchReportValidationRepository
@@ -85,8 +82,6 @@ def require_current(facts, operation_ref, task_ref=None):
         reject("工序已删除，请刷新重选。", "entity_not_found", 404)
     if operation["source"] not in OPERATION_SOURCES:
         reject("工序归属无法读取，请到基础资料确认自制或外协。", "constraint_conflict", 409)
-    if operation_ref in facts["unresolved"]:
-        reject("历史报工关联记录不明确，请核对后再登记。", "constraint_conflict", 409)
     if not current or not plan or not plan["capabilities"]["report_actual"]:
         reject("这道工序在正式计划里没有可登记的安排。请先排产。", "plan_not_writable", 409)
     if task_ref is not None and task_ref != current["task_ref"]:
@@ -94,58 +89,9 @@ def require_current(facts, operation_ref, task_ref=None):
     return current
 
 
-def _legacy_link_scope(legacy, legacy_fact_ref):
-    row = next((row for row in legacy if row["legacy_fact_ref"] == legacy_fact_ref), None)
-    if row is None or row["event_type"] != "finish" or not row["recorded_against_task_ref"]:
-        reject("指定的历史记录不是这道工序能明确补齐的完工记录。请重新选择要补齐的记录。", "constraint_conflict", 409)
-    return row, [fact for fact in legacy if fact["recorded_against_task_ref"] == row["recorded_against_task_ref"]]
-
-
-def prepare_legacy_link(
-        legacy: List[Dict[str, Any]], legacy_fact_ref: Optional[str]
-) -> Tuple[Dict[str, Any], Dict[str, Set[Optional[str]]]]:
-    """Prepare known facts and actual resource evidence from the selected historical scope."""
-    if legacy_fact_ref is None:
-        return {}, {}
-    row, scope = _legacy_link_scope(legacy, legacy_fact_ref)
-    try:
-        actual_end = parse_operation_event_time(row["event_time"]).isoformat(timespec="seconds")
-        starts = {parse_operation_event_time(fact["event_time"]).isoformat(timespec="seconds")
-                  for fact in scope if fact["event_type"] == "start"}
-    except ValueError:
-        reject("原完工记录的时间无法读取，请先核对历史记录。", "constraint_conflict", 409)
-    known = {"actual_end": actual_end, "completed_quantity": row["quantity_done"]}
-    if len(starts) > 1:
-        reject("原历史记录的开工先后不明确，请先核对历史记录。", "constraint_conflict", 409)
-    if starts:
-        known["actual_start"] = next(iter(starts))
-    resource_refs = {field: legacy_resource_refs(scope, field)
-                     for field in ("actual_machine_ref", "actual_operator_ref")}
-    for field, refs in resource_refs.items():
-        if len(refs) == 1 and None not in refs:
-            known[field] = next(iter(refs))
-    return known, resource_refs
-
-
-def validate_legacy_link(values, known, resource_refs):
-    for field in ("actual_end", "completed_quantity"):
-        if known.get(field) is not None and values.get(field) != known[field]:
-            reject("补填内容与原完工记录冲突，请核对后重试。", "constraint_conflict", 409)
-    if known.get("actual_start") is not None and values.get("actual_start") != known["actual_start"]:
-        reject("补填的实际开工与原历史记录不同，不能覆盖原开工时间。请核对后重试。", "constraint_conflict", 409)
-    for field, refs in resource_refs.items():
-        actual_ref = values.get(field)
-        if actual_ref is not None and None in refs:
-            reject("原历史记录的实际设备或人员身份不明确，不能用补齐改认其他资源。请先核对原始记录。",
-                   "constraint_conflict", 409)
-        if refs - {None} and refs != {actual_ref}:
-            reject("补填的实际设备或人员与原历史记录不同，不能覆盖原实际资源。请核对后重试。",
-                   "constraint_conflict", 409)
-
-
 def validate_projection_change(before, after):
     for item in after.data_gaps:
-        if item["code"] in ("quantity_exceeded", "invalid_legacy_sequence", "legacy_identity_unresolved", "operation_retired"):
+        if item["code"] in ("quantity_exceeded", "operation_retired"):
             reject(item["message"], "constraint_conflict", 409)
     if after.target_quantity is None and after.known_completed_quantity > before.known_completed_quantity:
         reject("这道工序的目标数量读不出来，判断不了有没有超报。请到批次管理核对数量。", "constraint_conflict", 409)
@@ -235,8 +181,6 @@ def _retained_resource_refs(projection):
             machines.add(report.actual_machine_ref)
         if report.actual_operator_ref is not None:
             operators.add(report.actual_operator_ref)
-    machines.update(legacy_resource_refs(projection.legacy_facts, "actual_machine_ref", gaps=projection.data_gaps))
-    operators.update(legacy_resource_refs(projection.legacy_facts, "actual_operator_ref", gaps=projection.data_gaps))
     return machines, operators
 
 
@@ -244,8 +188,6 @@ def _actual_period_basis(projection):
     """Deduplicate and join adjacent periods; keep overlaps and unknowns visible."""
     periods = {tuple(None if value is None else datetime.fromisoformat(value)
                      for value in (report.actual_start, report.actual_end)) for report in projection.reports}
-    if projection.completion_basis == "legacy_finish_event":
-        periods.add(_actual_period(projection))
     unresolved = frozenset((start, end) for start, end in periods if start is None or end is None or end <= start)
     coverage = []
     for start, end in sorted((start, end) for start, end in periods
@@ -264,8 +206,6 @@ def _report_resource_segments(projection):
 
 
 def _constraint_signature(projection):
-    # A linked report may only add hours to facts the old events already prove.
-    # Removing that detail must not look like withdrawing the actual execution.
     return (projection.execution_state, projection.first_actual_start, projection.confirmed_finish,
             projection.known_completed_quantity, projection.unknown_record_count, _actual_period_basis(projection),
             *_retained_resource_refs(projection))

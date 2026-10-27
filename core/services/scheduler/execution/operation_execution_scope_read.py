@@ -14,7 +14,6 @@ def scope_from_plan_row(row: Mapping[str, Any], plan_fields: Mapping[str, Any]) 
         batch_id=row["batch_id"],
         source_table=plan_fields["source_table"],
         effective_plan_role=plan_fields["effective_plan_role"],
-        scenario_id=plan_fields["scenario_id"],
     )
 
 

@@ -9,7 +9,10 @@ from core.models.enums import MachineStatus, OperatorStatus, YesNo
 from core.models.machine import Machine
 from core.models.resource_capabilities import machine_types
 from core.services.common.normalization_matrix import skill_level_rank
-from core.services.personnel.operator_machine_normalizers import normalize_yes_no_stored
+from core.services.personnel.operator_machine_normalizers import (
+    normalize_skill_level_stored,
+    normalize_yes_no_stored,
+)
 from core.services.personnel.operator_qualification import (
     OperatorQualificationService,
     require_explicit_auto_work_types,
@@ -105,8 +108,8 @@ def _build_operator_machine_maps(rows):
     operators_by_machine, machines_by_operator, pair_rank = {}, {}, {}
     for row in rows:
         oid, mid = row["operator_id"], row["machine_id"]
-        primary = normalize_yes_no_stored(row.get("is_primary")) == YesNo.YES.value
-        rank = (0 if primary else 1) * 10 + skill_level_rank(row.get("skill_level"))
+        primary = normalize_yes_no_stored(row["is_primary"]) == YesNo.YES.value
+        rank = (0 if primary else 1) * 10 + skill_level_rank(normalize_skill_level_stored(row["skill_level"]))
         operators_by_machine.setdefault(mid, []).append((rank, oid))
         machines_by_operator.setdefault(oid, []).append(mid)
         pair_rank[oid, mid] = rank

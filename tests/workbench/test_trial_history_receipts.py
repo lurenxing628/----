@@ -129,7 +129,6 @@ def test_real_adoptions_batch_history_reads(trial_case, monkeypatch):
             context = PlanReadContext(case.conn)
             with context.read_scope():
                 context.repo.prefetch_history_rows(versions)
-                context.references.role_rows(versions)
                 assert workbench_plan_identity_repo.WorkbenchPlanIdentityRepository(case.conn).read_revision() == context.references.read_revision()
                 for version, plan_ref in zip(versions, plan_refs):
                     histories = context.history_rows(version)
@@ -137,13 +136,10 @@ def test_real_adoptions_batch_history_reads(trial_case, monkeypatch):
                     identity = context.repo.get_history_identity_row(version)
                     assert identity is not None and identity["version"] == version
                     assert context.resolve(plan_ref).version == version
-                    assert context.repo.list_plan_role_options(version) == context.references.read_role_options(version)
     finally:
         case.conn.set_trace_callback(None)
     histories = [sql.upper() for sql in statements if "FROM SCHEDULEHISTORY" in sql.upper() and "RESULT_SUMMARY" in sql.upper()]
     assert len(histories) == 1 and "VERSION IN (" in histories[0]
-    role_queries = [sql.upper() for sql in statements if "FROM SCHEDULECANDIDATESELECTION S" in sql.upper()]
-    assert len(role_queries) == 1 and "S.VERSION IN (" in role_queries[0]
     assert schema_checks == [case.conn]
     assert not any("PRAGMA_SCHEMA_VERSION" in sql.upper() for sql in statements)
 
