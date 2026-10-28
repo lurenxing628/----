@@ -77,7 +77,7 @@ async function contract(h, assert) {
     effective: { is_working: true, window_start: '2026-10-10T08:00:00', window_end: '2026-10-10T16:00:00', periods: null } };
   once(h.render(w.CalendarDayDialog, { adapter: {}, day, source: 'production', command: idle }), missingContext, 1);
   const groupProps = { adapter: { command() {}, stagePreview() {} }, command: idle, onDirty() {},
-    result: { data: { operations: [], external_groups: [], workflow: { route: { state: 'confirmed' } }, capabilities: { stage_confirm: true } }, meta: { source: 'production' } } };
+    result: { data: { operations: [], external_groups: [], workflow: { route: { state: 'confirmed' } } }, meta: { source: 'production' } } };
   once(h.render(w.ProcessGroupEditor, groupProps), '请先新增、修改或解除外协段。', 2);
   // A retained leave prompt follows the draft. useState slots: useDraft 0-4 (draft 1), usePage 5-7, editing 8, picker 9, discard 10.
   const groupUnsaved = '本次外协段修改尚未保存。';

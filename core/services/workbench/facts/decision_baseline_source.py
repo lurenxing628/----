@@ -2,14 +2,13 @@
 
 from core.infrastructure.read_evidence import verified_read
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.plan.adoption_baseline import read_adoption_record
 from core.shared.strict_json import canonical_json
 
 from .adoption_baseline_sources import (
     read_adoption_operation_facts,
     trial_adoption_facts,
 )
-from .adoption_baseline_values import REASONS, AdoptionBaselineUnavailable
+from .adoption_baseline_values import REASONS, AdoptionBaselineUnavailable, read_adoption_record
 from .candidate_read_source import read_candidate_source
 from .candidate_store import CandidateStore
 from .material_deferral_evidence import archived_deferred_payload_evidence

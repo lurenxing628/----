@@ -408,8 +408,8 @@ async function contract(h, assert) {
 
   // Drive the actual polling effect with a virtual clock: no 32-second wall-clock sleep.
   const NativeDate = w.Date;
-  async function polling({ found = true, failed = false, knownRef = true, recovery = false, finishedAt = Infinity, replaced = false, failRecent = false } = {}) {
-    let now = 0, nextTimer = 0; const timers = new Map(), listeners = new Map(), lookups = [], posts = [], storage = new Map();
+  async function polling({ found = true, failed = false, knownRef = true, recovery = false, finishedAt = Infinity, replaced = false, failRecent = false, failPending = false } = {}) {
+    let now = 0, nextTimer = 0; const timers = new Map(), listeners = new Map(), lookups = [], posts = [], navigations = [], storage = new Map();
     const epoch = NativeDate.parse('2026-10-11T08:00:00'), intent = { schema_version: 2, input_ref: inputRef,
       request_key: 'run-' + 'b'.repeat(48), run_ref: knownRef ? runRef : null, data_context_ref: dataContext };
     storage.set(w.RunJobAPI.PENDING_KEY, JSON.stringify(intent));
@@ -420,7 +420,7 @@ async function contract(h, assert) {
     w.document.addEventListener = (name, fn) => listeners.set(name, fn);
     w.document.removeEventListener = (name, fn) => { if (listeners.get(name) === fn) listeners.delete(name); };
     w.localStorage = { getItem: key => storage.has(key) ? storage.get(key) : null, removeItem: key => storage.delete(key),
-      setItem: (key, value) => { if (failRecent && key === w.RunJobAPI.RECENT_KEY) throw new Error('QuotaExceededError'); storage.set(key, value); } };
+      setItem: (key, value) => { if ((failRecent && key === w.RunJobAPI.RECENT_KEY) || (failPending && key === w.RunJobAPI.PENDING_KEY)) throw new Error('QuotaExceededError'); storage.set(key, value); } };
     route = request => {
       if (request.method === 'POST') posts.push(request);
       assert.strictEqual(request.path, '/api/workbench/v1/scheduling/requests/' + intent.request_key);
@@ -433,12 +433,13 @@ async function contract(h, assert) {
         candidates: [{ candidate_ref: h.reference(5), label: '方案一', status: 'completed', task_count: 1, selected: true }] };
       return envelope({ found, run: found ? done ? complete : running : null, data_context_ref: dataContext, resolution: found ? 'found' : replaced ? 'context_replaced' : 'unresolved' });
     };
-    const state = hooks(), props = { preflight: null, onNavigate() {} };
+    const state = hooks(), props = { preflight: null, onNavigate: (...args) => navigations.push(args) };
     let view;
     const render = () => { view = state.render(w.RunJobPanel, props); state.flush(); };
     render(); await turns(); render();
-    return { lookups, posts, storage, view: () => view,
+    return { lookups, posts, navigations, storage, view: () => view,
       record: () => nodes(view).find(node => node.type === w.RunJobControls.Record).props,
+      async rereadStorage() { failRecent = false; failPending = false; nodes(view).find(node => node.type === w.RunJobControls.Button && text(node) === '刷新上次操作记录').props.onClick(); render(); await turns(); render(); },
       async advance(target) {
         while (true) {
           const next = [...timers].filter(([, value]) => value.at <= target).sort((a, b) => a[1].at - b[1].at || a[0] - b[0])[0];
@@ -458,6 +459,7 @@ async function contract(h, assert) {
   assert(detectedAt >= 32000 && detectedAt <= 34000, 'A known active run must be checked every 2 seconds and discover 32s completion by 34s; observed ' + detectedAt + 'ms');
   assert(live.lookups.slice(1).every((value, index) => value - live.lookups[index] === 2000));
   assert.strictEqual(live.record().run.state, 'complete'); assert.strictEqual(live.posts.length, 0);
+  h.equal(live.navigations, [['run', { run_ref: h.reference(3) }]]);
   const terminalLookups = live.lookups.length; await live.advance(120000);
   assert.strictEqual(live.lookups.length, terminalLookups, 'A terminal run must stop polling'); live.stop();
   for (const options of [{ found: false, knownRef: false }, { found: false }, { failed: true }]) {
@@ -480,14 +482,19 @@ async function contract(h, assert) {
   assert.strictEqual(recovery.record().retryPaused, false, 'A found recovery record must not be treated as an unresolved receipt');
   assert.strictEqual(recovery.record().run.recovery_required, true); assert.strictEqual(recovery.posts.length, 0); recovery.stop();
   // A verified terminal answer survives a failed local finish; the failure is a storage error, not a lookup failure.
-  for (const replaced of [false, true]) {
-    const unfinished = await polling({ finishedAt: 0, found: !replaced, replaced, failRecent: true }); await unfinished.advance(120000);
+  for (const options of [{ replaced: false, failRecent: true }, { replaced: true, failRecent: true }, { replaced: false, knownRef: false, failPending: true }]) {
+    const { replaced } = options, unfinished = await polling({ finishedAt: 0, found: !replaced, ...options }); await unfinished.advance(120000);
     const record = unfinished.record();
     assert.deepStrictEqual(unfinished.lookups, [0], 'A local finish failure stops polling instead of retrying the lookup');
     assert.strictEqual(record.resolution, replaced ? 'context_replaced' : 'found'); assert.strictEqual(record.verified, !replaced);
     assert.strictEqual(replaced ? record.run : record.run.state, replaced ? null : 'complete');
-    assert(nodes(unfinished.view()).some(node => node.props && node.props.role === 'alert' && text(node).startsWith('QuotaExceededError')), 'The finish failure is shown as a storage error');
-    assert(unfinished.storage.has(w.RunJobAPI.PENDING_KEY)); assert.strictEqual(unfinished.posts.length, 0); unfinished.stop();
+    assert(nodes(unfinished.view()).some(node => node.props && node.props.role === 'alert' && text(node).startsWith(options.failPending ? '存不下这次排产的操作记录' : 'QuotaExceededError')), 'The finish failure is shown as a storage error');
+    h.equal(unfinished.navigations, []);
+    assert(unfinished.storage.has(w.RunJobAPI.PENDING_KEY)); assert.strictEqual(unfinished.posts.length, 0);
+    await unfinished.rereadStorage();
+    assert(!unfinished.storage.has(w.RunJobAPI.PENDING_KEY), 'Rereading storage after recovery finishes the pending intent');
+    h.equal(unfinished.navigations, replaced ? [] : [['run', { run_ref: h.reference(3) }]]);
+    unfinished.stop();
   }
   return { preferences: 'read/write contracts', workspace: 'restore and save-before-check', run: 'preview-before-confirmed-accept',
     budget: 'effective initial value, preflight→preview, latest owner, close/unmount isolation, completed custom input and unchanged durable protocol',

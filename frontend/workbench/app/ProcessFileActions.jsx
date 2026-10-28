@@ -36,7 +36,7 @@
     React.useEffect(() => {
       if (!done || kind === 'hours' || notified.current === command.result.receipt_ref) return;
       notified.current = command.result.receipt_ref;
-      if (onCommitted) onCommitted(command.result);
+      onCommitted(command.result);
     }, [done, kind, command.result, onCommitted]);
     React.useEffect(() => {
       if (!data) return undefined;
@@ -49,7 +49,7 @@
       if (dirty && !force) { setDiscard(true); return; }
       if (done && kind === 'hours' && notified.current !== command.result.receipt_ref) {
         notified.current = command.result.receipt_ref;
-        if (onCommitted) onCommitted(command.result);
+        onCommitted(command.result);
       }
       if (command.reset()) onClose();
     }

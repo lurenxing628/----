@@ -4037,10 +4037,12 @@ function SMExport({
     }, {}) : item);
   }
   const equal = (a, b) => canonical(a) === canonical(b);
-  function raise(spec, fallback) {
-    if (!spec) throw fallback;
-    throw typeof spec === 'function' ? spec() : new Error(spec);
+  function raise(spec, fallback, extra) {
+    const err = !spec ? fallback : typeof spec === 'function' ? spec() : new Error(spec);
+    if (extra) Object.assign(err, extra);
+    throw err;
   }
+  const unflushedByKey = new Map();
   // 待确认意图的本机存储：统一读、校验、CAS 写、清除与同页事件通知，错误文案由各领域指定。
   function pendingStore({
     key,
@@ -4059,12 +4061,24 @@ function SMExport({
     writeError,
     removeError = writeError
   }) {
-    function read() {
+    function currentPending(target) {
+      const pending = unflushedByKey.get(key);
+      if (!pending) return null;
+      if (target && pending.target && pending.target !== target) {
+        unflushedByKey.delete(key);
+        return null;
+      }
+      if (target && !pending.target) pending.target = target;
+      return pending;
+    }
+    function readDisk(target, pending) {
       let text;
       try {
-        text = storage().getItem(key);
+        text = target.getItem(key);
       } catch (error) {
-        raise(readError, error);
+        raise(readError, error, pending ? {
+          saved: pending.value
+        } : undefined);
       }
       if (text === null) return null;
       let value = text;
@@ -4078,12 +4092,79 @@ function SMExport({
       if (validate && !validate(value)) raise(invalidError);
       return value;
     }
-    function write(value) {
-      if (value !== null && validateWrite && !validateWrite(value)) raise(invalidWriteError);
+    function effectiveRead() {
+      let target = null;
       try {
-        if (value === null) storage().removeItem(key);else storage().setItem(key, raw ? value : JSON.stringify(encode(value)));
+        target = storage();
       } catch (error) {
-        raise(value === null ? removeError : writeError, error);
+        const pending = currentPending(null);
+        raise(readError, error, pending ? {
+          saved: pending.value
+        } : undefined);
+      }
+      const pending = currentPending(target),
+        disk = readDisk(target, pending);
+      if (!pending) return {
+        target,
+        disk,
+        current: disk,
+        pending: null
+      };
+      if (!same(disk, pending.disk)) {
+        unflushedByKey.delete(key);
+        return {
+          target,
+          disk,
+          current: disk,
+          pending: null
+        };
+      }
+      return {
+        target,
+        disk,
+        current: pending.value,
+        pending
+      };
+    }
+    function read() {
+      const {
+        target,
+        current,
+        pending
+      } = effectiveRead();
+      if (pending) {
+        try {
+          if (current === null) target.removeItem(key);else target.setItem(key, raw ? current : JSON.stringify(encode(current)));
+          unflushedByKey.delete(key);
+        } catch (error) {
+          raise(current === null ? removeError : writeError, error, {
+            saved: current
+          });
+        }
+      }
+      return current;
+    }
+    function write(value, fallbackDisk) {
+      if (value !== null && validateWrite && !validateWrite(value)) raise(invalidWriteError);
+      let target = null;
+      try {
+        target = storage();
+        if (value === null) target.removeItem(key);else target.setItem(key, raw ? value : JSON.stringify(encode(value)));
+        unflushedByKey.delete(key);
+      } catch (error) {
+        if (fallbackDisk !== undefined) {
+          unflushedByKey.set(key, {
+            target: target && typeof target === 'object' ? target : null,
+            disk: fallbackDisk,
+            value
+          });
+          if (event) window.dispatchEvent(new CustomEvent(event, {
+            detail: value
+          }));
+        }
+        raise(value === null ? removeError : writeError, error, fallbackDisk !== undefined ? {
+          saved: value
+        } : undefined);
       }
       if (event) window.dispatchEvent(new CustomEvent(event, {
         detail: value
@@ -4091,8 +4172,33 @@ function SMExport({
       return value;
     }
     function save(value, previous) {
-      if (!same(read(), previous)) raise(conflictError);
-      return write(value);
+      const settling = previous !== null && (previous.phase === 'pending' || previous.run_ref === null) && (value === null || value.phase !== 'pending');
+      let disk, current;
+      try {
+        ({
+          disk,
+          current
+        } = effectiveRead());
+      } catch (error) {
+        if (settling && (value === null || !validateWrite || validateWrite(value))) {
+          let target = null;
+          try {
+            target = storage();
+          } catch (_) {}
+          unflushedByKey.set(key, {
+            target: target && typeof target === 'object' ? target : null,
+            disk: previous,
+            value
+          });
+          if (event) window.dispatchEvent(new CustomEvent(event, {
+            detail: value
+          }));
+          if (error && typeof error === 'object') error.saved = value;
+        }
+        throw error;
+      }
+      if (!same(current, previous)) raise(conflictError);
+      return write(value, settling ? disk : undefined);
     }
     return {
       read,
@@ -4742,6 +4848,7 @@ function SMExport({
           signal
         });
       },
+      pendingKey,
       readPending: pending.read,
       savePending(intent) {
         pending.write(intent);
@@ -4793,9 +4900,6 @@ function SMExport({
     if (!Array.isArray(rows) || rows.length > columns.length || !rows.every(row => C.object(row) && columns.some(column => column.key === row.field) && ['asc', 'desc'].includes(row.direction) && Object.keys(row).every(key => ['field', 'direction'].includes(key))) || new Set(rows.map(row => row.field)).size !== rows.length || Array.isArray(value) && scope.direction && scope.direction !== 'asc') throw C.failure('工艺排序不完整，请重新选择排序。');
     return rows;
   }
-  function capabilities(value) {
-    return C.object(value) && ['route_preview', 'create', 'delete', 'stage_confirm', 'import', 'export'].every(key => typeof value[key] === 'boolean');
-  }
   // 只校验工艺专属字段：通用实体合同已由 list()/detail() 开头的 C.query 校验过一次。
   function entity(value) {
     if (!ref(value.ref) || value.status !== null || !writeContext(value.write_context)) return false;
@@ -4841,7 +4945,6 @@ function SMExport({
   function groupCycle(row, groups) {
     if (row.external_days_source !== 'group') return null;
     const group = groups.get(row.external_group_ref);
-    if (!group || group.merge_mode !== 'merged' || !Number.isFinite(group.total_days) || group.total_days <= 0 || group.issues.length || row.external_days !== null || row.source !== 'external' || row.status !== 'active' || !within(row.sequence, group.start_sequence, group.end_sequence)) throw C.failure('工序周期和指定外协组不一致，请刷新后重试。');
     return '整段 ' + String(group.total_days) + ' 天 · 工序 ' + group.start_sequence + ' 至 ' + group.end_sequence;
   }
   function list(result, scope) {
@@ -4849,14 +4952,14 @@ function SMExport({
     const d = result.data,
       p = d.page,
       sort = ordering(scope);
-    if (!d.entities.every(entity) || !capabilities(d.capabilities) || d.create_context !== null && !writeContext(d.create_context) || !C.object(d.metrics) || !C.object(d.metrics.counts) || !stages.every(row => count(d.metrics.counts[row[2]])) || p.number !== scope.page || p.size !== scope.size || p.pages !== Math.max(1, Math.ceil(p.total / p.size)) && !(p.total === 0 && p.pages === 0) || p.sort.length !== sort.length || !p.sort.every((item, index) => C.object(item) && item.field === sort[index].field && item.direction === sort[index].direction)) throw C.failure('读到的工艺列表不完整，请刷新后重试。');
+    if (!d.entities.every(entity) || d.create_context !== null && !writeContext(d.create_context) || !C.object(d.metrics) || !C.object(d.metrics.counts) || !stages.every(row => count(d.metrics.counts[row[2]])) || p.number !== scope.page || p.size !== scope.size || p.pages !== Math.max(1, Math.ceil(p.total / p.size)) && !(p.total === 0 && p.pages === 0) || p.sort.length !== sort.length || !p.sort.every((item, index) => C.object(item) && item.field === sort[index].field && item.direction === sort[index].direction)) throw C.failure('读到的工艺列表不完整，请刷新后重试。');
     if (scope.snapshot_ref && result.meta.snapshot_ref !== scope.snapshot_ref) throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
     return result;
   }
   function detail(result, expectedRef) {
     C.query(result, 'entity');
     const d = result.data;
-    if (!entity(d) || d.ref !== expectedRef || !capabilities(d.capabilities) || !Array.isArray(d.operations) || !d.operations.every(operation) || !uniqueRefs(d.operations) || !Array.isArray(d.external_groups) || !d.external_groups.every(externalGroup) || !uniqueRefs(d.external_groups) || !cycleReferences(d)) throw C.failure('读到的工艺详情不完整或不是这个零件，请刷新后重试。');
+    if (!entity(d) || d.ref !== expectedRef || !Array.isArray(d.operations) || !d.operations.every(operation) || !uniqueRefs(d.operations) || !Array.isArray(d.external_groups) || !d.external_groups.every(externalGroup) || !uniqueRefs(d.external_groups) || !cycleReferences(d)) throw C.failure('读到的工艺详情不完整或不是这个零件，请刷新后重试。');
     return result;
   }
   // 信封（ok、schema_version、meta、warnings）已由 transport.js 的 envelope() 校验，下面两个预检只校验 data。
@@ -4907,11 +5010,6 @@ function SMExport({
     if (snapshot) body.snapshot_ref = snapshot;
     return body;
   }
-  function reason(value, action) {
-    if (!value) return '请先读取当前工艺能力。';
-    if (value[action] !== true) return action === 'stage_confirm' ? '当前不允许确认这一步，不能保存。' : '当前不允许此操作。';
-    return '';
-  }
   function sourceLabel(value) {
     return value === 'internal' ? '自制' : value === 'external' ? '外协' : '未归类';
   }
@@ -4952,7 +5050,6 @@ function SMExport({
     preview,
     stagePreview,
     previewBody,
-    reason,
     sourceLabel,
     valueText,
     workflowStateLabel,
@@ -5113,7 +5210,6 @@ function SMExport({
       });
     });
     return {
-      edges,
       adjacency
     };
   }
@@ -5160,7 +5256,6 @@ function SMExport({
       target,
       critical: index.critical,
       related: selected.related,
-      edges: selected.edges,
       adjacency: selected.adjacency
     };
   }
@@ -5261,8 +5356,9 @@ function SMExport({
       rows
     };
   }
-  function paths(active, model, width, viewport, options) {
-    const prepared = options && options.locationIndex || locationIndex(options && options.locations || locations(model, options));
+  function paths(active, model, width, viewport, {
+    locationIndex: prepared
+  }) {
     const points = prepared.locations,
       visible = new Set(),
       visibleEntries = [],
@@ -5294,7 +5390,7 @@ function SMExport({
       if (active.critical.has(ref)) criticalVisible++;
       if (active.related.has(ref)) relatedVisible++;
     }
-    const adjacency = active.adjacency || edgeFacts(active.edges).adjacency,
+    const adjacency = active.adjacency,
       drawnEdges = [];
     for (const ref of visible) for (const edge of adjacency.get(ref) || []) if (visible.has(edge.edge.to_task_ref)) drawnEdges.push(edge);
     drawnEdges.sort((a, b) => a.order - b.order);
@@ -5441,8 +5537,7 @@ function SMExport({
     const refs = rows.map(row => row[key]).filter(value => value !== null);
     return new Set(refs).size === refs.length;
   }
-  function catalog(result, scope = {}) {
-    const query = catalogScope(scope);
+  function catalog(result, query) {
     envelope(result, query);
     const d = result.data,
       p = d && d.page;
@@ -5625,8 +5720,7 @@ function SMExport({
     if (!exact(value, ['state', 'basis', 'issues']) || !Array.isArray(value.issues) || !value.issues.every(row => exact(row, ['code', 'message']) && typeof row.code === 'string' && !!row.code && typeof row.message === 'string' && !!row.message)) return false;
     return value.state === 'available' ? ['run_admission', 'trial_creation'].includes(value.basis) && !value.issues.length : value.state === 'unavailable' && value.basis === null && value.issues.length > 0;
   }
-  function workspace(result, planRef, scope = {}) {
-    const query = workspaceScope(planRef, scope);
+  function workspace(result, planRef, query) {
     envelope(result, query);
     const d = result.data;
     if (!exact(d, ['plan', 'scope', 'time_scope', 'plan_span', 'task_span', 'tasks', 'task_count', 'tasks_complete', 'resources', 'projections', 'gantt_graph', 'provenance']) || !provenance(d.provenance) || !plan(d.plan) || !d.plan.capabilities.view || d.plan.plan_ref !== planRef || !exact(d.scope, ['source', 'kind', 'plan_ref', 'range_start', 'range_end']) || d.scope.source !== 'production' || d.scope.kind !== 'plan_workspace' || d.scope.plan_ref !== planRef || d.scope.range_start !== (own(query, 'range_start') ? query.range_start : null) || d.scope.range_end !== (own(query, 'range_end') ? query.range_end : null) || !workspaceSpans(d, query) || !Array.isArray(d.tasks) || !Number.isSafeInteger(d.task_count) || d.task_count !== d.tasks.length || d.task_count > 10000 || d.tasks_complete !== true || !d.tasks.every(row => task(row, planRef, d.plan_span, own(query, 'range_start') ? d.time_scope : null)) || !uniqueRefs(d.tasks, 'task_ref') || !taskSpans(d, query) || !exact(d.projections, projections) || !baseline(d.projections.baseline, d)) throw C.failure('工序安排、时间范围或分析数据与所选计划不一致，请刷新。');
@@ -5694,32 +5788,71 @@ function SMExport({
     T = window.APSWorkbenchTransport;
   // Keep uncertain intent across workspace remounts using the same adapter identity.
   // Never persist write tokens or guesses about completion to browser storage.
-  const sessions = new WeakMap();
+  const sessions = new WeakMap(),
+    keyedSessions = new Map();
   function session(adapter) {
-    if (!sessions.has(adapter)) {
-      let state = {
-        phase: 'idle'
-      };
-      try {
-        const intent = adapter.readPending();
-        if (intent) state = {
-          phase: 'pending',
-          intent,
-          restored: true
-        };
-      } catch (error) {
-        state = {
-          phase: 'pending',
-          error
-        };
+    if (sessions.has(adapter)) return sessions.get(adapter);
+    let storage = null;
+    try {
+      if (window.sessionStorage && typeof window.sessionStorage === 'object') storage = window.sessionStorage;
+    } catch (_) {}
+    const key = adapter && typeof adapter.pendingKey === 'string' ? adapter.pendingKey : null;
+    if (key) {
+      const entry = keyedSessions.get(key);
+      if (entry && (!storage || !entry.storage || entry.storage === storage)) {
+        if (storage && !entry.storage) entry.storage = storage;
+        const existing = entry.store;
+        if (!existing.running) {
+          try {
+            const disk = adapter.readPending();
+            if (!(disk && existing.state.intent && disk.request_key === existing.state.intent.request_key) && !(!disk && !existing.state.intent)) existing.state = disk ? {
+              phase: 'pending',
+              intent: disk,
+              restored: true
+            } : {
+              phase: 'idle'
+            };
+          } catch (error) {
+            existing.state = existing.state.intent || ['rejected', 'done'].includes(existing.state.phase) ? {
+              ...existing.state,
+              error
+            } : {
+              phase: 'pending',
+              error
+            };
+          }
+        }
+        sessions.set(adapter, existing);
+        return existing;
       }
-      sessions.set(adapter, {
-        state,
-        listeners: new Set(),
-        running: false
-      });
     }
-    return sessions.get(adapter);
+    let state = {
+      phase: 'idle'
+    };
+    try {
+      const intent = adapter.readPending();
+      if (intent) state = {
+        phase: 'pending',
+        intent,
+        restored: true
+      };
+    } catch (error) {
+      state = {
+        phase: 'pending',
+        error
+      };
+    }
+    const store = {
+      state,
+      listeners: new Set(),
+      running: false
+    };
+    if (key) keyedSessions.set(key, {
+      storage,
+      store
+    });
+    sessions.set(adapter, store);
+    return store;
   }
   function publish(store, state) {
     store.state = state;
@@ -5845,11 +5978,30 @@ function SMExport({
       return () => window.removeEventListener('beforeunload', warn);
     }, [locked]);
     async function check() {
-      if (store.running || !store.state.intent) return;
-      const intent = store.state.intent;
+      if (store.running) return;
+      let intent = store.state.intent;
+      if (!intent && store.state.phase === 'pending') {
+        try {
+          intent = adapter.readPending();
+        } catch (error) {
+          publish(store, {
+            phase: 'pending',
+            error
+          });
+          return;
+        }
+        if (!intent) {
+          publish(store, {
+            phase: 'idle'
+          });
+          return;
+        }
+      }
+      if (!intent) return;
       store.running = true;
       publish(store, {
         ...store.state,
+        intent,
         phase: 'checking',
         error: null
       });
@@ -8961,17 +9113,24 @@ function SMExport({
   const C = window.APSResourceContract;
   const key = value => typeof value === 'string' && value.length > 0;
   const count = value => Number.isSafeInteger(value) && value >= 0;
-  function rule(value) {
+  function ruleSet(value) {
     if (value === null || value === undefined) return {
       mode: 'exclude',
-      values: []
+      keys: new Set()
     };
     if (!C.object(value) || !['include', 'exclude'].includes(value.mode) || !Array.isArray(value.values) || Object.keys(value).some(key => !['mode', 'values'].includes(key)) || !value.values.every(key)) throw C.failure('本列筛选规则不完整，请清除本列后重新选择。');
-    const values = Array.from(new Set(value.values)).sort();
-    if (values.length > 50000) throw C.failure('本列筛选超过 50000 个值，请先清除或减少原条件。');
+    const keys = new Set(value.values);
+    if (keys.size > 50000) throw C.failure('本列筛选超过 50000 个值，请先清除或减少原条件。');
     return {
       mode: value.mode,
-      values
+      keys
+    };
+  }
+  function rule(value) {
+    const selected = ruleSet(value);
+    return {
+      mode: selected.mode,
+      values: Array.from(selected.keys).sort()
     };
   }
   // 整组列筛选逐列规范（去重、排序）；外层对象和列名由调用方按各自的列清单先校验。
@@ -8983,21 +9142,25 @@ function SMExport({
   }
   // changed 只来自 facets() 已校验的选项编号或 selection() 已校验的全部匹配编号。
   function toggleKeys(value, changed, enabled) {
-    const selected = rule(value),
-      keys = new Set(selected.values);
+    const {
+      mode,
+      keys
+    } = ruleSet(value);
     changed.forEach(key => {
-      if (selected.mode === 'include' === enabled) keys.add(key);else keys.delete(key);
+      if (mode === 'include' === enabled) keys.add(key);else keys.delete(key);
     });
     if (keys.size > 50000) throw C.failure('本次选择会使本列筛选超过 50000 个值，原条件没有改动。请先清除或减少已选范围。');
     return {
-      mode: selected.mode,
+      mode,
       values: Array.from(keys).sort()
     };
   }
   function groupState(value, keys) {
-    const selected = rule(value),
-      set = new Set(selected.values);
-    const matches = keys.reduce((sum, key) => sum + (selected.mode === 'include' === set.has(key) ? 1 : 0), 0);
+    const {
+      mode,
+      keys: set
+    } = ruleSet(value);
+    const matches = keys.reduce((sum, key) => sum + (mode === 'include' === set.has(key) ? 1 : 0), 0);
     return {
       all: keys.length > 0 && matches === keys.length,
       mixed: matches > 0 && matches < keys.length
@@ -9011,8 +9174,8 @@ function SMExport({
     return result;
   }
   function active(value) {
-    const selected = rule(value);
-    return selected.mode === 'include' || selected.values.length > 0;
+    const selected = ruleSet(value);
+    return selected.mode === 'include' || selected.keys.size > 0;
   }
   function signature(value) {
     if (Array.isArray(value)) return '[' + value.map(signature).join(',') + ']';
@@ -9061,8 +9224,7 @@ function SMExport({
 (function () {
   'use strict';
 
-  const M = window.ResourceTableFilterModel,
-    C = window.APSResourceContract;
+  const M = window.ResourceTableFilterModel;
   const {
     Button,
     ErrorBox
@@ -9672,12 +9834,13 @@ function SMExport({
     }, holder);
     const sorted = !!sortActive && sort === column.key,
       next = !sorted ? 'asc' : direction === 'asc' ? 'desc' : null;
-    let filtered;
-    try {
-      filtered = M.active(filter);
-    } catch (_) {
-      filtered = true;
-    }
+    const filtered = React.useMemo(() => {
+      try {
+        return M.active(filter);
+      } catch (_) {
+        return true;
+      }
+    }, [filter]);
     function close(restore) {
       const owner = opened && opened.owner;
       setOpened(null);
@@ -9788,7 +9951,6 @@ function SMExport({
   const {
     Button,
     Icon,
-    ErrorBox,
     Issues,
     Status
   } = window.ResourceControls;
@@ -9900,8 +10062,7 @@ function SMExport({
       type: "button",
       className: "wb-resource-relation",
       onClick: () => onOpen(item.kind, item.ref),
-      "aria-label": '查看' + C.resourceName(item.kind) + ' ' + item.business_code + ' ' + item.label,
-      disabled: !onOpen
+      "aria-label": '查看' + C.resourceName(item.kind) + ' ' + item.business_code + ' ' + item.label
     }, /*#__PURE__*/React.createElement("span", {
       className: "wb-resource-relation-content"
     }, /*#__PURE__*/React.createElement("span", {
@@ -10914,7 +11075,7 @@ function SMExport({
     }, "\u91C7\u7528\u6700\u65B0\u914D\u7F6E\u5E76\u91CD\u65B0\u586B\u5199")), done && /*#__PURE__*/React.createElement(RefreshResult, {
       state: combinedRefresh,
       onRefresh: () => {
-        if (refreshState && refreshState.error && onRefresh) onRefresh();
+        if (refreshState && refreshState.error) onRefresh();
         if (request.error) request.reload();
       }
     }))));
@@ -12531,9 +12692,13 @@ function SMExport({
     if (!C.object(scope) || Object.keys(scope).some(key => !scopeKeys.includes(key)) || typeof scope.query !== 'string' || !Number.isSafeInteger(scope.page) || scope.page < 1 || !Number.isSafeInteger(scope.size) || scope.size < 1 || scope.size > 100 || ![undefined, ...P.stages.map(row => row[0])].includes(scope.stage) || !Array.isArray(scope.sort) || !C.object(scope.column_filters) || Object.keys(scope.column_filters).some(key => !P.columns.some(column => column.key === key))) throw C.failure('上次的查看范围或页码不正确，已按默认范围显示工艺列表。');
     P.ordering(scope);
     if (!Array.isArray(view.selected_refs) || !view.selected_refs.every(ref) || new Set(view.selected_refs).size !== view.selected_refs.length || view.entity_ref !== null && !ref(view.entity_ref)) throw C.failure('上次打开或勾选的零件已失效，已按默认范围显示工艺列表。');
-    const restored = JSON.parse(JSON.stringify(view));
-    restored.scope.column_filters = filters.rules(scope.column_filters);
-    return restored;
+    return {
+      ...view,
+      scope: {
+        ...scope,
+        column_filters: filters.rules(scope.column_filters)
+      }
+    };
   }
   window.APSProcessReadView = {
     read,
@@ -12585,9 +12750,13 @@ function SMExport({
       });
       if (checked.error || !checked.context || ['part', 'calendar'].includes(checked.context.kind)) throw C.failure('上次打开的详情对不上，已取消定位。');
     }
-    const restored = JSON.parse(JSON.stringify(view));
-    restored.scope.column_filters = window.ResourceTableFilterModel.rules(scope.column_filters === undefined ? {} : scope.column_filters);
-    return restored;
+    return {
+      ...view,
+      scope: {
+        ...scope,
+        column_filters: window.ResourceTableFilterModel.rules(scope.column_filters === undefined ? {} : scope.column_filters)
+      }
+    };
   }
   function navigation(context) {
     // 侧栏直接进入时 main.jsx 传空对象；资料页内部没有定位目标时传 undefined 或 null。
@@ -16811,6 +16980,7 @@ function SMExport({
     return {
       resourceAdapter: resources,
       choices: resources.choices,
+      pendingKey: base.pendingKey,
       lookup: base.lookup,
       readPending: base.readPending,
       savePending: base.savePending,
@@ -17262,7 +17432,7 @@ function SMExport({
     React.useEffect(() => {
       if (!done || notified.current === command.result.receipt_ref) return;
       notified.current = command.result.receipt_ref;
-      if (onCommitted) onCommitted(command.result);
+      onCommitted(command.result);
     }, [done, command.result, onCommitted]);
     React.useEffect(() => {
       if (!data) return undefined;
@@ -18019,7 +18189,7 @@ function SMExport({
     React.useEffect(() => {
       if (!done || kind === 'hours' || notified.current === command.result.receipt_ref) return;
       notified.current = command.result.receipt_ref;
-      if (onCommitted) onCommitted(command.result);
+      onCommitted(command.result);
     }, [done, kind, command.result, onCommitted]);
     React.useEffect(() => {
       if (!data) return undefined;
@@ -18043,7 +18213,7 @@ function SMExport({
       }
       if (done && kind === 'hours' && notified.current !== command.result.receipt_ref) {
         notified.current = command.result.receipt_ref;
-        if (onCommitted) onCommitted(command.result);
+        onCommitted(command.result);
       }
       if (command.reset()) onClose();
     }
@@ -18271,11 +18441,9 @@ function SMExport({
   'use strict';
 
   const {
-      Button
-    } = window.ResourceControls,
-    P = window.APSProcessContract;
+    Button
+  } = window.ResourceControls;
   function ProcessFileButtons({
-    capabilities,
     disabled,
     hoursOnly = false,
     routeOnly = false,
@@ -18285,12 +18453,10 @@ function SMExport({
       key: kind
     }, /*#__PURE__*/React.createElement(Button, {
       transfer: "import",
-      reason: P.reason(capabilities, 'import'),
       disabled: disabled,
       onClick: () => onAction(kind, 'import')
     }, '导入' + label), /*#__PURE__*/React.createElement(Button, {
       transfer: "export",
-      reason: P.reason(capabilities, 'export'),
       disabled: disabled,
       onClick: () => onAction(kind, 'export')
     }, '导出' + label))));
@@ -18750,7 +18916,7 @@ function SMExport({
   // so a 120-operation part can be fixed without paging blind; the first offending page rides on the error.
   function reason(model, stage) {
     const entity = model.base.data;
-    return model.review ? '请先核对最新资料。' : model.busy ? '正在读取最新资料。' : P.reason(entity.capabilities, 'stage_confirm') || (entity.workflow[stage === 'source' ? 'route' : 'source'].state !== 'confirmed' ? stage === 'source' ? '请先确认路线。' : '请先确认归属。' : '') || (stage === 'source' ? model.base.meta.source !== 'production' ? '当前不是生产数据，不能保存。' : '' : C.blocked(entity.write_context, 'process', stage + '_confirm', model.base.meta.source));
+    return model.review ? '请先核对最新资料。' : model.busy ? '正在读取最新资料。' : (entity.workflow[stage === 'source' ? 'route' : 'source'].state !== 'confirmed' ? stage === 'source' ? '请先确认路线。' : '请先确认归属。' : '') || (stage === 'source' ? model.base.meta.source !== 'production' ? '当前不是生产数据，不能保存。' : '' : C.blocked(entity.write_context, 'process', stage + '_confirm', model.base.meta.source));
   }
   window.ProcessStageEditor = {
     active,
@@ -19147,7 +19313,7 @@ function SMExport({
     const request = React.useRef(null);
     const blocked = disabled || command.locked || command.phase === 'done';
     const stageReason = E.reason(model, 'source'),
-      editBlocked = blocked || entity.workflow.route.state !== 'confirmed' || entity.capabilities.stage_confirm !== true;
+      editBlocked = blocked || entity.workflow.route.state !== 'confirmed';
     function invalidate() {
       if (request.current) request.current.abort();
       request.current = null;
@@ -19523,7 +19689,7 @@ function SMExport({
     const blocked = disabled || command.locked || command.phase === 'done',
       current = draft.groups.find(row => row.key === editing);
     const validPreview = preview && preview.draft === draft && preview.base === model.base && !model.review ? preview : null;
-    const reason = model.review ? '请先核对最新资料。' : entity.workflow.route.state !== 'confirmed' ? '请先确认路线。' : P.reason(entity.capabilities, 'stage_confirm') || (model.base.meta.source !== 'production' ? '请先读取可保存的工艺资料。' : '') || (!model.dirty ? '请先新增、修改或解除外协段。' : '');
+    const reason = model.review ? '请先核对最新资料。' : entity.workflow.route.state !== 'confirmed' ? '请先确认路线。' : (model.base.meta.source !== 'production' ? '请先读取可保存的工艺资料。' : '') || (!model.dirty ? '请先新增、修改或解除外协段。' : '');
     React.useEffect(() => () => {
       if (request.current) request.current.abort();
       onDirty('groups', false);
@@ -19950,7 +20116,7 @@ function SMExport({
     const groups = React.useMemo(() => P.groupIndex(entity.external_groups), [entity.external_groups]);
     const blocked = disabled || command.locked || command.phase === 'done',
       stageReason = E.reason(model, 'hours');
-    const editBlocked = blocked || entity.workflow.source.state !== 'confirmed' || entity.capabilities.stage_confirm !== true;
+    const editBlocked = blocked || entity.workflow.source.state !== 'confirmed';
     const originalTypes = new Map(entity.operations.map(row => [row.ref, row]));
     const changedTypes = model.review ? E.active(model.review.data).filter(row => {
       const old = originalTypes.get(row.ref);
@@ -20055,7 +20221,6 @@ function SMExport({
     }), /*#__PURE__*/React.createElement("span", null, "\u5171 ", active.length, " \u9053\u6709\u6548\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("span", {
       className: "tb-spacer"
     }), /*#__PURE__*/React.createElement(window.ProcessFileButtons, {
-      capabilities: entity.capabilities,
       disabled: blocked,
       hoursOnly: true,
       onAction: onFileAction
@@ -20108,7 +20273,7 @@ function SMExport({
       className: "tb-spacer"
     }), /*#__PURE__*/React.createElement(Button, {
       icon: "square-pen",
-      disabled: blocked || entity.workflow.route.state !== 'confirmed' || entity.capabilities.stage_confirm !== true,
+      disabled: blocked || entity.workflow.route.state !== 'confirmed',
       onClick: () => setGroupsOpen(true)
     }, "\u7BA1\u7406\u5916\u534F\u6BB5")), /*#__PURE__*/React.createElement("p", {
       className: "muted"
@@ -20418,8 +20583,6 @@ function SMExport({
     const paging = E.usePage(rows),
       locked = command.locked || command.phase === 'done';
     const blocked = disabled || locked;
-    // 只有带完整工艺接口的工艺详情才能打开路线录入（校准页的只读详情禁用了入口），这里的能力只看后端 capabilities。
-    const previewReason = P.reason(entity.capabilities, 'route_preview');
     // Read the op_type catalog once on entry so the row inputs can suggest real names. Free text stays allowed and
     // the server route preflight remains the only authority on what is recognized.
     const opTypeListId = React.useId();
@@ -20436,7 +20599,7 @@ function SMExport({
     React.useEffect(() => () => abort(), []);
     React.useEffect(() => {
       invalidate();
-    }, [adapter, result, disabled, active, command && command.error]);
+    }, [adapter, result, disabled, active, command.error]);
     React.useEffect(() => {
       if (result !== context) {
         if (!active && draftText === baselineDraft.current && !state.result && !state.error) acceptFresh(result);else {
@@ -20511,7 +20674,6 @@ function SMExport({
         setMode(next);
         return;
       }
-      if (previewReason) return;
       invalidate();
       setState({
         busy: true,
@@ -20620,7 +20782,7 @@ function SMExport({
       }
     }
     async function preflight() {
-      if (blocked || review || state.busy || previewReason) return;
+      if (blocked || review || state.busy) return;
       abort();
       const controller = new AbortController();
       request.current = controller;
@@ -20689,7 +20851,7 @@ function SMExport({
       }
     }
     const affected = state.result ? state.result.data.affected_groups : [];
-    const saveReason = P.reason(entity.capabilities, 'stage_confirm') || (review ? '请先核对最新资料。' : !state.result || !state.result.data.can_confirm_route ? '请先完成当前路线预检。' : !affected.every(row => discarded.includes(row.ref)) ? '请明确勾选解除所有受影响的外协组。' : C.blocked(state.result.data.write_context, 'process', 'route_confirm', state.result.meta.source));
+    const saveReason = review ? '请先核对最新资料。' : !state.result || !state.result.data.can_confirm_route ? '请先完成当前路线预检。' : !affected.every(row => discarded.includes(row.ref)) ? '请明确勾选解除所有受影响的外协组。' : C.blocked(state.result.data.write_context, 'process', 'route_confirm', state.result.meta.source);
     async function save() {
       if (blocked || saveReason) return;
       await command.submit('process', 'route_confirm', entity.ref, state.result.data.write_context, {
@@ -20714,7 +20876,6 @@ function SMExport({
         icon: "search",
         busy: state.busy,
         disabled: blocked || !!review,
-        reason: previewReason,
         onClick: preflight
       }, "\u9884\u68C0\u8DEF\u7EBF"), /*#__PURE__*/React.createElement(Button, {
         icon: "check",
@@ -20737,7 +20898,6 @@ function SMExport({
       "aria-pressed": mode === value,
       className: mode === value ? 'on' : '',
       disabled: blocked || !!review || state.busy,
-      reason: previewReason,
       onClick: () => switchMode(value)
     }, label))), /*#__PURE__*/React.createElement("p", {
       className: "muted"
@@ -21057,10 +21217,8 @@ function SMExport({
       icon: "square-pen",
       className: "btn primary",
       disabled: disabled,
-      reason: P.reason(entity.capabilities, 'route_preview'),
       onClick: onEntry
     }, "\u5F55\u5165\u8DEF\u7EBF"), /*#__PURE__*/React.createElement(window.ProcessFileButtons, {
-      capabilities: entity.capabilities,
       disabled: disabled,
       routeOnly: true,
       onAction: onFileAction
@@ -21220,7 +21378,7 @@ function SMExport({
       setEntryStarted(false);
     }
     function openFile(kind, mode, abandon = false) {
-      if (editingBlocked || !current || !['route', 'hours'].includes(kind) || !['import', 'export'].includes(mode) || P.reason(current.data.capabilities, mode)) return;
+      if (editingBlocked || !current || !['route', 'hours'].includes(kind) || !['import', 'export'].includes(mode)) return;
       if (!abandon) fileFocus.current = document.activeElement;
       if (hasDraft && !abandon) {
         setDiscard({
@@ -21616,7 +21774,6 @@ function SMExport({
     onSort,
     onFilter,
     matchingCount,
-    deleteReason,
     onClear,
     onRetry
   }) {
@@ -21757,8 +21914,6 @@ function SMExport({
       className: "mini",
       icon: "trash-2",
       disabled: disabled || loading,
-      reasonDisplay: "tooltip",
-      reason: deleteReason,
       "aria-label": '删除 ' + row.business_code,
       onClick: () => onDelete([row.ref])
     }, "\u5220\u9664"))))), !entities.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
@@ -21927,7 +22082,6 @@ function SMExport({
         adapter
       });
     }
-    const deleteReason = P.reason(data && data.capabilities, 'delete');
     const activeStage = scope.stage === undefined ? '' : scope.stage;
     const blocked = disabled || !!dialog || command.locked || !!recoveryError;
     function continueNavigation() {
@@ -22017,14 +22171,13 @@ function SMExport({
         flexWrap: 'wrap'
       }
     }, /*#__PURE__*/React.createElement(FileButtons, {
-      capabilities: data && data.capabilities,
-      disabled: blocked || list.loading,
+      disabled: blocked || list.loading || !data,
       onAction: (kind, mode) => action(mode, selected, kind)
     }), /*#__PURE__*/React.createElement(Button, {
       icon: "plus",
       className: "btn primary",
       disabled: blocked || list.loading,
-      reason: P.reason(data && data.capabilities, 'create') || A.createReason(data && data.create_context, list.result && list.result.meta.source),
+      reason: A.createReason(data && data.create_context, list.result && list.result.meta.source),
       onClick: () => action('create')
     }, "\u65B0\u589E\u96F6\u4EF6"))), /*#__PURE__*/React.createElement("div", {
       className: "toolbar"
@@ -22041,9 +22194,7 @@ function SMExport({
     }, "\u6E05\u9664\u9009\u62E9"), /*#__PURE__*/React.createElement(Button, {
       icon: "trash-2",
       className: "btn danger",
-      disabled: blocked || list.loading || !selected.length,
-      reasonDisplay: "tooltip",
-      reason: deleteReason,
+      disabled: blocked || list.loading || !data || !selected.length,
       onClick: () => action('bulk')
     }, "\u6279\u91CF\u5220\u9664"))), /*#__PURE__*/React.createElement(ErrorBox, {
       error: recoveryError
@@ -22060,7 +22211,6 @@ function SMExport({
         adapter
       }),
       onDelete: refs => action('bulk', refs),
-      deleteReason: deleteReason,
       disabled: blocked,
       loading: list.loading,
       error: list.error,
@@ -22160,8 +22310,12 @@ function SMExport({
     };
     return adapter;
   }
+  function nodeFor(item, intent) {
+    const kind = item.kind || intent && intent.kind;
+    return item.type === 'process' ? 'process' : item.type === 'calendar' ? 'calendar' : item.type === 'file_only' ? importOnlyNode[kind] : kind === 'op_type' ? intent && intent.category === 'external' ? 'op_ext' : 'op_int' : fileKinds.includes(kind) ? kind : 'material';
+  }
   function recovery(adapters) {
-    const pending = [{
+    const items = [{
       type: 'base',
       adapter: adapters.base
     }, ...fileKinds.map(kind => ({
@@ -22181,14 +22335,28 @@ function SMExport({
     }, {
       type: 'process',
       adapter: adapters.process
-    }].map(item => ({
-      ...item,
-      intent: item.adapter.readPending()
-    })).find(item => item.intent);
+    }];
+    let pending = null;
+    for (const item of items) {
+      let intent;
+      try {
+        intent = item.adapter.readPending();
+      } catch (error) {
+        error.node = nodeFor(item, null);
+        throw error;
+      }
+      if (intent) {
+        pending = {
+          ...item,
+          intent
+        };
+        break;
+      }
+    }
     if (!pending) return null;
     const intent = pending.intent,
-      kind = pending.kind || intent.kind;
-    const node = pending.type === 'process' ? 'process' : pending.type === 'calendar' ? 'calendar' : pending.type === 'file_only' ? importOnlyNode[kind] : kind === 'op_type' ? intent.category === 'external' ? 'op_ext' : 'op_int' : fileKinds.includes(kind) ? kind : 'material';
+      kind = pending.kind || intent.kind,
+      node = nodeFor(pending, intent);
     const auxiliary = pending.type === 'file' ? {
       type: intent.kind === kind + '_bulk' ? 'bulk' : 'import',
       kind,
@@ -22225,7 +22393,6 @@ function SMExport({
   }) {
     const [auxiliary, setAuxiliary] = React.useState(null),
       [revision, setRevision] = React.useState(0);
-    const [hostError, setHostError] = React.useState(null);
     const adapters = React.useMemo(() => {
       const base = window.APSResourceAPI.create(),
         calendar = window.APSResourceAPI.create('calendar');
@@ -22290,22 +22457,30 @@ function SMExport({
         };
       }
     });
+    const [hostError, setHostError] = React.useState(() => boot.error || null);
     const [deferred, setDeferred] = React.useState(() => !!boot.target.context && !!(boot.recovery || boot.error));
-    const [initialNode, setInitialNode] = React.useState(() => boot.recovery ? boot.recovery.node : boot.target.node || 'material');
+    const [initialNode, setInitialNode] = React.useState(() => boot.recovery ? boot.recovery.node : boot.error && boot.error.node ? boot.error.node : boot.target.node || 'material');
     const [navigationReady, setNavigationReady] = React.useState(false),
       [navigationKey, setNavigationKey] = React.useState(0);
-    React.useEffect(() => {
-      if (auxiliary) return;
+    function retryRecovery() {
+      if (auxiliary) return null;
       try {
         const pending = recovery(adapters);
+        setHostError(null);
         if (pending) {
           setInitialNode(pending.node);
           if (pending.auxiliary) setAuxiliary(pending.auxiliary);
         }
+        return pending;
       } catch (error) {
+        if (error.node) setInitialNode(error.node);
         setHostError(error);
+        return null;
       }
-    }, [adapters, auxiliary]);
+    }
+    React.useEffect(() => {
+      retryRecovery();
+    }, [adapters, auxiliary, navigationReady, revision]);
     function continueNavigation() {
       try {
         const pending = recovery(adapters);
@@ -22320,6 +22495,7 @@ function SMExport({
         setInitialNode(boot.target.node);
         setNavigationKey(value => value + 1);
       } catch (error) {
+        if (error.node) setInitialNode(error.node);
         setHostError(error);
       }
     }
@@ -22334,21 +22510,27 @@ function SMExport({
       if (typeof current.request.onClosed === 'function') current.request.onClosed();
     }
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(window.ResourceControls.ErrorBox, {
-      error: hostError || boot.target.error || boot.error
-    }), deferred && /*#__PURE__*/React.createElement("div", {
+      error: hostError || boot.target.error
+    }), deferred ? /*#__PURE__*/React.createElement("div", {
       role: "status",
       className: "match-note is-block wb-resource-live-note"
     }, /*#__PURE__*/React.createElement("p", null, "\u4E0A\u6B21\u64CD\u4F5C\u8FD8\u6CA1\u5904\u7406\u5B8C\uFF0C\u6682\u65F6\u6CA1\u6709\u8DF3\u8F6C\u5230\u6307\u5B9A\u8BB0\u5F55\u3002\u521A\u624D\u7684\u63D0\u4EA4\u6CA1\u6709\u88AB\u8986\u76D6\u3002"), /*#__PURE__*/React.createElement(window.ResourceControls.Button, {
       icon: "arrow-right",
       onClick: continueNavigation
-    }, "\u7EE7\u7EED\u8DF3\u8F6C")), /*#__PURE__*/React.createElement(ResourceWorkspace, {
+    }, "\u7EE7\u7EED\u8DF3\u8F6C")) : hostError ? /*#__PURE__*/React.createElement("div", {
+      role: "status",
+      className: "match-note is-block wb-resource-live-note"
+    }, /*#__PURE__*/React.createElement(window.ResourceControls.Button, {
+      icon: "refresh-cw",
+      onClick: retryRecovery
+    }, "\u5237\u65B0\u4E0A\u6B21\u64CD\u4F5C\u8BB0\u5F55")) : null, /*#__PURE__*/React.createElement(ResourceWorkspace, {
       key: initialNode + ':' + navigationKey,
       adapter: adapters.base,
       onNavigate: onNavigate,
       initialNode: initialNode,
       externalRevision: revision,
-      rememberEnabled: !auxiliary && !deferred && !hostError && !boot.error && !boot.target.error,
-      initialContext: deferred || boot.error ? undefined : boot.target.context,
+      rememberEnabled: !auxiliary && !deferred && !hostError && !boot.target.error,
+      initialContext: deferred || hostError ? undefined : boot.target.context,
       onNavigationReady: setNavigationReady,
       renderPart: ({
         onRefresh,
@@ -22617,7 +22799,7 @@ function SMExport({
     xlsx = {
       types: [window.APSWorkbenchTransport.types.xlsx]
     };
-  // 每次 create() 都是新的 adapter：resource-session 以 adapter 对象区分会话，批次页与分批面板各有自己的待确认状态。
+  // 批次页与分批面板共享 'batches' 会话键，保持待确认状态与已确认的拒绝/完成态在重挂载时一致。
   function create() {
     const api = window.APSResourceAPI.create('batches'),
       C = window.APSBatchContract;
@@ -22626,6 +22808,7 @@ function SMExport({
       return root + '/' + ref;
     };
     return {
+      pendingKey: api.pendingKey,
       readPending: api.readPending,
       savePending: api.savePending,
       clearPending: api.clearPending,
@@ -24500,7 +24683,11 @@ function SMExport({
     for (const values of Object.values(scope.column_filters)) {
       if (!Array.isArray(values) || values.length > 5000 || values.some(value => value !== null && typeof value !== 'string' && !(typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER))) throw C.failure('列筛选的取值不正确。' + refilter);
     }
-    return JSON.parse(JSON.stringify(scope));
+    const result = {};
+    for (const [key, item] of Object.entries(scope)) {
+      if (item !== undefined) result[key] = item;
+    }
+    return result;
   }
   function readContext(context) {
     // 侧栏直接进入时 main.jsx 传空对象，按默认范围显示。
@@ -26101,7 +26288,7 @@ function SMExport({
       "data-gantt-route-count": active.target ? true : undefined
     }, active.target ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("i", {
       className: "wb-gantt-route-swatch"
-    }), active.target.batch_id, " \xB7 ", active.target.piece_id === null ? '全部工艺分支' : '分件 ' + active.target.piece_id + ' 的完整工艺', " ", active.related.size, " \u9053", unseen > 0 && '（画面外 ' + unseen + ' 道）') : '指向工序查看前后关联，点击保留。'), onClear && /*#__PURE__*/React.createElement(window.ResourceControls.Button, {
+    }), active.target.batch_id, " \xB7 ", active.target.piece_id === null ? '全部工艺分支' : '分件 ' + active.target.piece_id + ' 的完整工艺', " ", active.related.size, " \u9053", unseen > 0 && '（画面外 ' + unseen + ' 道）') : '指向工序查看前后关联，点击保留。'), /*#__PURE__*/React.createElement(window.ResourceControls.Button, {
       className: "btn mini",
       style: {
         visibility: active.target ? 'visible' : 'hidden'
@@ -26221,7 +26408,7 @@ function SMExport({
         "data-outside": outside || undefined
       }, /*#__PURE__*/React.createElement(Button, {
         className: "btn gantt-route-select",
-        disabled: disabled || !onSelect,
+        disabled: disabled,
         "aria-current": node.task_ref === targetRef ? 'step' : undefined,
         "aria-label": '定位工序 ' + pieceLabel(node) + ' · ' + operationLabel(node),
         onClick: () => onSelect(node.task_ref),
@@ -26237,7 +26424,7 @@ function SMExport({
       }, /*#__PURE__*/React.createElement("span", null, "\u524D\u5E8F"), previous.map(parent => /*#__PURE__*/React.createElement(Button, {
         key: parent.task_ref,
         className: "linkbtn gantt-route-predecessor",
-        disabled: disabled || !onSelect,
+        disabled: disabled,
         onClick: () => onSelect(parent.task_ref),
         "aria-label": '定位前序 ' + pieceLabel(parent) + ' · ' + operationLabel(parent)
       }, pieceLabel(parent), " \xB7 ", operationLabel(parent)))));
@@ -27486,21 +27673,19 @@ function SMExport({
     }, children)) : /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h3", null, title), children);
   }
   function Route({
-    data,
     prepared,
     selected,
     onRelated,
     disabled,
     collapsible
   }) {
-    const loadedRefs = React.useMemo(() => prepared && prepared.loadedRefs || new Set(data.tasks.map(task => task.task_ref)), [prepared, data.tasks]);
     if (selected.before) return /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h3", null, "\u5B8C\u6574\u5DE5\u827A\u8DEF\u7EBF"), /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
     }, "\u5207\u6362\u5230\u5F53\u524D\u5B89\u6392\u67E5\u770B\u5B8C\u6574\u5DE5\u827A\u8DEF\u7EBF\u3002"));
     return /*#__PURE__*/React.createElement(window.GanttRouteList, {
       index: prepared.graph,
       targetRef: selected.task.task_ref,
-      loadedRefs: loadedRefs,
+      loadedRefs: prepared.loadedRefs,
       onSelect: onRelated,
       disabled: disabled,
       collapsible: collapsible
@@ -27593,7 +27778,6 @@ function SMExport({
       disabled: disabled || selected.before || task.plan_ref !== data.plan.plan_ref,
       label: '调整此工序'
     })))), task && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Route, {
-      data: data,
       prepared: prepared,
       selected: selected,
       onRelated: onRelated,
@@ -28197,10 +28381,10 @@ function SMExport({
         const node = prepared.graph.nodes.get(ref);
         if (!node) return;
         setRelatedRef(ref);
-        changeScope(P.workspaceScope(selection.plan_ref, {
+        changeScope({
           range_start: node.start,
           range_end: node.start === node.end ? window.WorkbenchDatePickerModel.nextInstant(node.end) : node.end
-        }));
+        });
       }
     }
     function applyRange(event) {
@@ -28610,6 +28794,7 @@ function SMExport({
     initial,
     readView,
     list,
+    pendingKey: api.pendingKey,
     readPending: api.readPending,
     savePending: api.savePending,
     clearPending: api.clearPending,
@@ -29603,7 +29788,7 @@ function SMExport({
       error: request.error
     }), /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
-      onClick: () => request.error && request.error.code === 'snapshot_stale' && onRefresh ? onRefresh() : request.reload(),
+      onClick: () => request.error && request.error.code === 'snapshot_stale' ? onRefresh() : request.reload(),
       disabled: command.locked
     }, "\u5237\u65B0\u8BE6\u60C5"), editor && /*#__PURE__*/React.createElement(Button, {
       onClick: onCloseEditor,
@@ -29635,7 +29820,7 @@ function SMExport({
         taskRef,
         action: 'create'
       })
-    }, "\u65B0\u589E\u672C\u6B21\u62A5\u5DE5"), onNavigate && /*#__PURE__*/React.createElement(Button, {
+    }, "\u65B0\u589E\u672C\u6B21\u62A5\u5DE5"), /*#__PURE__*/React.createElement(Button, {
       icon: "chart-gantt",
       disabled: command.locked || !!editor,
       onClick: () => {
@@ -30201,7 +30386,7 @@ function SMExport({
       className: "field-note wb-page-context"
     }, data ? data.plan ? data.plan.display_name : '暂无正式计划' : read.loading ? '正在读取计划' : '计划未读取'), /*#__PURE__*/React.createElement("span", {
       className: "field-space"
-    }), canReturn && onNavigate && /*#__PURE__*/React.createElement(Button, {
+    }), canReturn && /*#__PURE__*/React.createElement(Button, {
       icon: "arrow-left",
       disabled: blocked,
       onClick: () => onNavigate(returnTarget.view, returnTarget.context)
@@ -30958,10 +31143,9 @@ function SMExport({
       return JSON.stringify(value[key]) === JSON.stringify(expected);
     });
   }
-  function workspace(result, input) {
+  function workspace(result, query) {
     // 成功信封（meta 五键、warnings、as_of）已由 transport.read 校验；导出与刷新要钉住同一份快照。
-    const query = scope(input),
-      d = result.data,
+    const d = result.data,
       meta = result.meta;
     if (meta.snapshot_ref === null || query.snapshot_ref && query.snapshot_ref !== meta.snapshot_ref) fail('读到的现场实际甘特数据不完整，或者数据已更新。请刷新后重试。');
     if (!d.plan || d.plan.plan_ref !== query.plan_ref || !d.plan.capabilities.view || !span(d.plan_span) || !interval(d.axis_span) || !d.scope || d.scope.kind !== 'actual_gantt' || d.scope.source !== 'production' || !object(d.availability) || !['available', 'unavailable'].includes(d.availability.state) || !Array.isArray(d.items) || d.items.length !== d.task_count || d.task_count > 10000 || d.items_complete !== true || !executionSummary(d.execution_summary) || !Array.isArray(d.resources) || !d.resources.every(r => object(r) && ref(r.ref) && ['machine', 'operator', 'supplier'].includes(r.kind) && typeof r.business_code === 'string' && (r.label === null || typeof r.label === 'string')) || !object(d.critical_chain) || !Array.isArray(d.critical_chain.task_refs) || !Array.isArray(d.critical_chain.edges)) fail('读到的现场实际甘特范围不完整，请刷新重试。');
@@ -34145,17 +34329,11 @@ function SMExport({
     return shape(v, ['schema_version', 'input_ref', 'request_key', 'run_ref', 'data_context_ref']) && v.schema_version === 2 && contextRef(v.data_context_ref) && token(v.input_ref) && key(v.request_key) && (v.run_ref === null || ref(v.run_ref));
   }
   function pending(storage) {
-    if (storage === undefined) {
-      try {
-        storage = window.localStorage;
-      } catch (_) {
-        throw new Error('读不到上次排产的操作记录，请重新打开页面，不要重做。');
-      }
-    }
+    const targetStorage = storage === undefined ? () => window.localStorage : () => storage;
     const same = (a, b) => !!a && !!b && a.input_ref === b.input_ref && a.request_key === b.request_key && a.run_ref === b.run_ref && a.data_context_ref === b.data_context_ref;
     const store = T.pendingStore({
       key: PENDING_KEY,
-      storage: () => storage,
+      storage: targetStorage,
       validate: validIntent,
       validateWrite: null,
       same,
@@ -34168,7 +34346,7 @@ function SMExport({
     });
     const recentStore = T.pendingStore({
       key: RECENT_KEY,
-      storage: () => storage,
+      storage: targetStorage,
       validate: value => shape(value, ['intent', 'resolution']) && validIntent(value.intent) && ['found', 'context_replaced'].includes(value.resolution),
       validateWrite: null,
       corruptError: '最近排产记录读不到，请到排产记录页查看。',
@@ -34215,7 +34393,7 @@ function SMExport({
           intent,
           resolution
         });
-        storage.removeItem(PENDING_KEY);
+        targetStorage().removeItem(PENDING_KEY);
       },
       reject(intent) {
         check(validIntent(intent));
@@ -34834,30 +35012,36 @@ function SMExport({
             return;
           }
           const result = found.run;
-          if (pendingActive && !activeIntent.current.run_ref) {
-            try {
-              const saved = A.pending().attach(activeIntent.current, result.run_ref);
-              activeIntent.current = saved;
-              setIntent(saved);
-            } catch (e) {
-              setStorageError(e.message);
-              return;
-            }
-          }
           // 活跃任务保持正常读取频率；待恢复记录、未决结果和读取失败沿用退避。
           if (!result.recovery_required) attempt = 0;
           setRun(result);
           setVerified(true);
           unsettledSince = null;
           done = A.terminal(result);
+          if (pendingActive && !activeIntent.current.run_ref) {
+            const attached = {
+              ...activeIntent.current,
+              run_ref: result.run_ref
+            };
+            try {
+              A.pending().attach(activeIntent.current, result.run_ref);
+            } catch (e) {
+              activeIntent.current = attached;
+              setIntent(attached);
+              setStorageError(e.message);
+              return;
+            }
+            activeIntent.current = attached;
+            setIntent(attached);
+          }
           if (done && pendingActive) {
             try {
               A.pending().finish(activeIntent.current, 'found');
-              setPendingActive(false);
             } catch (e) {
               setStorageError(e.message);
               return;
             }
+            setPendingActive(false);
             onNavigate('run', {
               run_ref: result.run_ref
             });
@@ -35030,13 +35214,17 @@ function SMExport({
             }
           } catch (e) {
             if (window.APSWorkbenchTransport.rejected(e)) {
-              A.pending().reject(original);
               if (alive.current) {
                 activeIntent.current = null;
                 setIntent(null);
                 setPendingActive(false);
                 setRun(null);
                 fail(e);
+              }
+              try {
+                A.pending().reject(original);
+              } catch (storageErr) {
+                if (alive.current) setStorageError(storageErr.message);
               }
             } else if (alive.current) fail(null, window.WorkbenchTerms.outcomes.pending('排产'));
           }
@@ -35268,19 +35456,12 @@ function SMExport({
     }
   }
   function pending(storage) {
-    if (storage === undefined) {
-      try {
-        storage = window.localStorage;
-      } catch (_) {
-        throw new Error('读不到上次采用的操作记录，请重新打开页面。');
-      }
-    }
     const {
       read,
       save
     } = T.pendingStore({
       key: PENDING_KEY,
-      storage: () => storage,
+      storage: storage === undefined ? () => window.localStorage : () => storage,
       event: EVENT,
       validate: validIntent,
       same: (a, b) => JSON.stringify(a) === JSON.stringify(b),
@@ -35485,10 +35666,10 @@ function SMExport({
       footer: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
         onClick: onClose
       }, pending ? '关闭并保留上次操作' : result ? '关闭' : '取消'), intent && intent.phase === 'rejected' && /*#__PURE__*/React.createElement(Button, {
-        disabled: busy || !!storageError,
+        disabled: busy,
         onClick: onCancelRejected
       }, "\u7ED3\u675F\u672C\u6B21\u672A\u91C7\u7528"), pending && replacedInfo && /*#__PURE__*/React.createElement(Button, {
-        disabled: busy || !!storageError,
+        disabled: busy,
         onClick: onDismissReplaced
       }, "\u7ED3\u675F\u65E7\u6765\u6E90\u5F85\u786E\u8BA4\u8BB0\u5F55"), result ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
         icon: "check",
@@ -35587,7 +35768,7 @@ function SMExport({
         };
       } catch (e) {
         return {
-          intent: null,
+          intent: e.saved || null,
           error: e.message
         };
       }
@@ -35608,8 +35789,16 @@ function SMExport({
     const alive = React.useRef(false),
       lock = React.useRef(false),
       previewRequest = React.useRef(null),
-      active = React.useRef(intent);
+      active = React.useRef(intent),
+      current = React.useRef(null);
     active.current = intent;
+    current.current = {
+      candidateRef,
+      preview,
+      consent,
+      draft,
+      storageError
+    };
     React.useEffect(() => {
       alive.current = true;
       return () => {
@@ -35621,18 +35810,50 @@ function SMExport({
       try {
         const saved = event && event.type === A.EVENT ? event.detail : A.pending().read();
         if (saved !== active.current && JSON.stringify(saved) !== JSON.stringify(active.current)) {
+          const switched = !active.current || !saved || saved.request_key !== active.current.request_key;
+          const nextDraft = saved ? saved.input : empty();
           active.current = saved;
+          current.current = {
+            ...current.current,
+            preview: null,
+            consent: false,
+            draft: nextDraft,
+            storageError: ''
+          };
+          if (!alive.current) return;
           setIntent(saved);
           setResult(null);
           setPreview(null);
           setConsent(false);
           setReplacedInfo(null);
           setNotice('');
-          setDraft(saved ? saved.input : empty());
-          if (!saved) setError('');
+          setDraft(nextDraft);
+          if (switched) setError('');
+        } else {
+          current.current = {
+            ...current.current,
+            storageError: ''
+          };
         }
-        setStorageError('');
+        if (alive.current) setStorageError('');
       } catch (e) {
+        const changed = e.saved !== undefined && JSON.stringify(e.saved) !== JSON.stringify(active.current);
+        const nextDraft = changed ? e.saved ? e.saved.input : empty() : current.current.draft;
+        if (changed) active.current = e.saved;
+        current.current = {
+          ...current.current,
+          ...(changed ? {
+            preview: null,
+            consent: false,
+            draft: nextDraft
+          } : {}),
+          storageError: e.message
+        };
+        if (!alive.current) return;
+        if (changed) {
+          setIntent(e.saved);
+          setDraft(nextDraft);
+        }
         setStorageError(e.message);
       }
     }
@@ -35659,12 +35880,13 @@ function SMExport({
       if (!intent || intent.phase !== 'pending' || storageError || result) return undefined;
       let disposed = false;
       const controller = new AbortController();
+      const current = () => !disposed && alive.current && active.current && active.current.request_key === intent.request_key;
       async function query() {
         if (lock.current) return;
         setChecking(true);
         try {
           const found = await A.lookup(intent, controller.signal);
-          if (disposed) return;
+          if (!current()) return;
           if (found && found.resolution === 'context_replaced') {
             setReplacedInfo(found);
             setError('');
@@ -35674,7 +35896,7 @@ function SMExport({
             setNotice(window.WorkbenchTerms.outcomes.pending('采用'));
           }
         } catch (_) {
-          if (!disposed) setError('查询采用结果失败，采用可能已经生效。请点「查询结果」重试，不要重新采用。');
+          if (current()) setError('查询采用结果失败，采用可能已经生效。请点「查询结果」重试，不要重新采用。');
         } finally {
           if (!disposed) setChecking(false);
         }
@@ -35722,6 +35944,7 @@ function SMExport({
         return;
       }
       window.WorkbenchHandlerMemory.write(values.declared_operator);
+      const initialActive = active.current;
       lock.current = true;
       setBusy(true);
       setError('');
@@ -35738,9 +35961,15 @@ function SMExport({
             if (alive.current) setError('另一个页面正在确认采用，请稍后刷新上次操作记录。');
             return;
           }
-          if (!alive.current) return;
+          const latest = current.current;
+          if (!alive.current || latest.storageError || latest.preview !== preview || !latest.consent || (active.current ? active.current.candidate_ref : latest.candidateRef) !== preview.candidate_ref || latest.draft.reason !== draft.reason || latest.draft.declared_operator !== draft.declared_operator || JSON.stringify(active.current) !== JSON.stringify(initialActive) || active.current && active.current.phase === 'pending') return;
           const original = A.pending().begin(preview, values, active.current);
           active.current = original;
+          current.current = {
+            ...current.current,
+            preview: null,
+            consent: false
+          };
           setIntent(original);
           setDraft(values);
           setPreview(null);
@@ -35748,14 +35977,29 @@ function SMExport({
           try {
             acceptResult(await A.adopt(original, preview.write_context.write_token), original);
           } catch (e) {
+            if (JSON.stringify(active.current) !== JSON.stringify(original)) {
+              if (alive.current) readStorage();
+              return;
+            }
             if (window.APSWorkbenchTransport.rejected(e)) {
               // Only an authentic, definitive non-commit permits a new preview. Unknown responses keep the original key.
-              const rejected = A.pending().reject(original, e);
-              if (alive.current) {
+              const rejected = {
+                ...original,
+                phase: 'rejected'
+              };
+              try {
+                A.pending().reject(original, e);
                 active.current = rejected;
-                setIntent(rejected);
-                setError(e.message + ' 填写内容已保留，请重新预检并确认。');
+              } catch (storageErr) {
+                if (!alive.current) return;
+                if (JSON.stringify(active.current) !== JSON.stringify(rejected)) {
+                  readStorage();
+                  setStorageError(storageErr.message);
+                  return;
+                }
+                setStorageError(storageErr.message);
               }
+              if (alive.current && JSON.stringify(active.current) === JSON.stringify(rejected)) setError(e.message + ' 填写内容已保留，请重新预检并确认。');
             } else if (alive.current) setError(window.WorkbenchTerms.outcomes.pending('采用'));
           }
         });
@@ -35771,6 +36015,11 @@ function SMExport({
     }
     function close() {
       if (previewRequest.current) previewRequest.current.abort();
+      current.current = {
+        ...current.current,
+        preview: null,
+        consent: false
+      };
       setOpen(false);
       setPreview(null);
       setConsent(false);
@@ -35860,8 +36109,20 @@ function SMExport({
         refresh();
       },
       notice: [intent && intent.candidate_ref !== candidateRef ? '另一个候选方案还有没确认的采用操作，请先确认那条记录。' : '', notice || (intent && intent.phase === 'rejected' && !preview ? '上次采用被拒绝了，填写内容已保留。请重新预检并再次确认。' : '')].filter(Boolean).join(' '),
-      onChange: setDraft,
-      onConsent: setConsent,
+      onChange: value => {
+        current.current = {
+          ...current.current,
+          draft: value
+        };
+        setDraft(value);
+      },
+      onConsent: value => {
+        current.current = {
+          ...current.current,
+          consent: value
+        };
+        setConsent(value);
+      },
       onClose: close,
       onPreview: inspect,
       onConfirm: submit,
@@ -36852,7 +37113,6 @@ function SMExport({
     onCollapse
   }) {
     const M = window.RunCandidateModel;
-    const loadedRefs = React.useMemo(() => prepared && prepared.loadedRefs || new Set(data.tasks.map(row => row.row_ref)), [prepared, data.tasks]);
     const segments = task && data.tasks.filter(row => row.operation_ref === task.operation_ref);
     const compact = !!onCollapse,
       execution = task && task.execution_at_generation;
@@ -36918,7 +37178,7 @@ function SMExport({
     }, M.timeLabel(segment.start), " \u81F3 ", M.timeLabel(segment.end)), /*#__PURE__*/React.createElement("small", null, "\u8BBE\u5907 ", M.resourceLabel(segment, 'machine'), " \xB7 \u4EBA\u5458 ", M.resourceLabel(segment, 'operator')))))), /*#__PURE__*/React.createElement(window.GanttRouteList, {
       index: prepared.graph,
       targetRef: task.row_ref,
-      loadedRefs: loadedRefs,
+      loadedRefs: prepared.loadedRefs,
       onSelect: onRelated,
       collapsible: compact
     }), compact && /*#__PURE__*/React.createElement("details", {
@@ -50726,7 +50986,7 @@ function SMExport({
       "aria-label": expanded ? '收起甘特' : '展开甘特',
       "aria-expanded": expanded,
       onClick: toggleExpanded
-    }, expanded ? '收起' : '展开'), onToggleDetails && /*#__PURE__*/React.createElement(U.Button, {
+    }, expanded ? '收起' : '展开'), /*#__PURE__*/React.createElement(U.Button, {
       icon: detailsOpen ? 'panel-right-close' : 'panel-right-open',
       "aria-expanded": detailsOpen,
       "aria-controls": "trial-gantt-detail",
@@ -52075,10 +52335,10 @@ function SMExport({
       className: "wb-page-title"
     }, "\u8BD5\u8C03\u6392\u4EA7\u65B9\u6848"), /*#__PURE__*/React.createElement("header", {
       className: "tt-tools"
-    }, onNavigate && /*#__PURE__*/React.createElement(U.Button, {
+    }, /*#__PURE__*/React.createElement(U.Button, {
       icon: "chevron-left",
       onClick: () => onNavigate('analysis', base || {})
-    }, "\u8FD4\u56DE\u65B9\u6848"), onNavigate && initialTarget.return_decision_history_context && /*#__PURE__*/React.createElement(U.Button, {
+    }, "\u8FD4\u56DE\u65B9\u6848"), initialTarget.return_decision_history_context && /*#__PURE__*/React.createElement(U.Button, {
       icon: "history",
       onClick: () => onNavigate('analysis', window.DecisionHistoryAPI.historyContext(initialTarget))
     }, "\u8FD4\u56DE\u5386\u53F2\u8D70\u52BF"), /*#__PURE__*/React.createElement(U.Button, {
@@ -52494,6 +52754,11 @@ function SMExport({
       reason: '',
       declared_operator: remembered()
     });
+  function storageMessage(e, current = e && e.saved) {
+    if (current && current.phase === 'committed') return '已收到采用结果，但本机没能保存这次操作记录。';
+    if (current && current.phase === 'rejected') return '本次采用未通过，但本机没能保存这次操作记录。';
+    return e.message;
+  }
   function useSession({
     scenarioRef,
     data,
@@ -52508,8 +52773,8 @@ function SMExport({
         };
       } catch (e) {
         return {
-          saved: null,
-          error: e.message
+          saved: e.saved || null,
+          error: storageMessage(e)
         };
       }
     });
@@ -52546,7 +52811,11 @@ function SMExport({
     }
     current.current = {
       original,
-      disabled
+      disabled,
+      preview,
+      consent,
+      draft,
+      storageError
     };
     const identity = JSON.stringify(original);
     React.useEffect(() => {
@@ -52557,6 +52826,11 @@ function SMExport({
       };
     }, []);
     React.useEffect(() => {
+      current.current = {
+        ...current.current,
+        preview: null,
+        consent: false
+      };
       setPreview(null);
       setConsent(false);
       if (request.current) request.current.abort();
@@ -52565,15 +52839,52 @@ function SMExport({
       try {
         const value = event && event.type === EVENT ? event.detail : read();
         if (value !== active.current && !A.equal(value, active.current)) {
+          const switched = !active.current || !value || value.request_key !== active.current.request_key;
+          const nextDraft = value ? value.input : empty();
           active.current = value;
+          current.current = {
+            ...current.current,
+            preview: null,
+            consent: false,
+            draft: nextDraft,
+            storageError: ''
+          };
+          if (!mounted.current) return;
           setSaved(value);
           setPreview(null);
           setConsent(false);
-          setDraft(value ? value.input : empty());
+          setDraft(nextDraft);
+          if (switched || value.phase === 'committed') {
+            setError('');
+            setNotice('');
+          }
+        } else {
+          current.current = {
+            ...current.current,
+            storageError: ''
+          };
         }
-        setStorageError('');
+        if (mounted.current) setStorageError('');
       } catch (e) {
-        setStorageError(e.message);
+        const changed = e.saved !== undefined && !A.equal(e.saved, active.current);
+        const nextDraft = changed ? e.saved ? e.saved.input : empty() : current.current.draft;
+        if (changed) active.current = e.saved;
+        const msg = storageMessage(e, e.saved !== undefined ? e.saved : active.current);
+        current.current = {
+          ...current.current,
+          ...(changed ? {
+            preview: null,
+            consent: false,
+            draft: nextDraft
+          } : {}),
+          storageError: msg
+        };
+        if (!mounted.current) return;
+        if (changed) {
+          setSaved(e.saved);
+          setDraft(nextDraft);
+        }
+        setStorageError(msg);
       }
     }
     React.useEffect(() => {
@@ -52601,9 +52912,8 @@ function SMExport({
       }
     }, [result]);
     function accept(value, intent) {
-      if (!mounted.current) return;
       if (!A.equal(active.current, intent)) {
-        sync();
+        if (mounted.current) sync();
         return;
       }
       const committed = {
@@ -52614,11 +52924,18 @@ function SMExport({
       try {
         save(committed, intent);
         active.current = committed;
-        setSaved(committed);
+      } catch (e) {
+        if (!mounted.current) return;
+        if (!A.equal(active.current, committed)) {
+          sync();
+          setStorageError(e.message);
+          return;
+        }
+        setStorageError(storageMessage(e, active.current));
+      }
+      if (mounted.current && A.equal(active.current, committed)) {
         setError('');
         setNotice('');
-      } catch (e) {
-        setStorageError('已收到采用结果，但上次操作记录没存上。' + e.message);
       }
     }
     async function lookup(signal) {
@@ -52634,16 +52951,23 @@ function SMExport({
               sync();
               return;
             }
-            save(null, intent);
-            setError('');
-            setNotice('上次采用记录的数据来源已失效，已结束本机待确认记录。请对当前试调方案重新预检。');
-          } else {
+            try {
+              save(null, intent);
+            } catch (e) {
+              if (active.current !== null) sync();
+              setStorageError(e.message);
+            }
+            if (active.current === null) {
+              setError('');
+              setNotice('上次采用记录的数据来源已失效，已结束本机待确认记录。请对当前试调方案重新预检。');
+            }
+          } else if (A.equal(active.current, intent)) {
             setError('');
             setNotice(window.WorkbenchTerms.outcomes.pending('采用'));
           }
         } else accept(found, intent);
       } catch (e) {
-        if (mounted.current && !(signal && signal.aborted)) setError('上次采用的结果还没查到。' + e.message);
+        if (mounted.current && !(signal && signal.aborted) && A.equal(active.current, intent)) setError('上次采用的结果还没查到。' + e.message);
       } finally {
         if (mounted.current && !(signal && signal.aborted)) setChecking(false);
       }
@@ -52696,6 +53020,7 @@ function SMExport({
         return;
       }
       window.WorkbenchHandlerMemory.write(values.declared_operator);
+      const initialActive = active.current;
       lock.current = true;
       setBusy(true);
       setError('');
@@ -52712,9 +53037,19 @@ function SMExport({
             if (mounted.current) setError('另一个页面正在处理这次采用，请先在那个页面点「查询结果」。');
             return;
           }
-          if (!mounted.current || current.current.disabled || !A.equal(original, current.current.original)) return;
+          const latest = current.current;
+          if (!mounted.current || latest.disabled || latest.storageError || !latest.original || latest.preview !== preview || !latest.consent || !A.equal(active.current, initialActive) || active.current && active.current.phase !== 'rejected' || !A.equal(original, latest.original) || !A.equal(A.input({
+            confirm: true,
+            reason: latest.draft.reason,
+            declared_operator: latest.draft.declared_operator
+          }), values)) return;
           const intent = begin(preview, values, active.current);
           active.current = intent;
+          current.current = {
+            ...current.current,
+            preview: null,
+            consent: false
+          };
           setSaved(intent);
           setDraft(intent.input);
           setPreview(null);
@@ -52722,16 +53057,29 @@ function SMExport({
           try {
             accept(await A.adopt(intent, preview.write_context.write_token), intent);
           } catch (e) {
-            if (!mounted.current) return;
+            if (!A.equal(active.current, intent)) {
+              if (mounted.current) sync();
+              return;
+            }
             if (window.APSWorkbenchTransport.rejected(e)) {
-              const rejected = save({
+              const rejected = {
                 ...intent,
                 phase: 'rejected'
-              }, intent);
-              active.current = rejected;
-              setSaved(rejected);
-              setError(window.WorkbenchTerms.outcomes.rejected('采用', e.message));
-            } else setError(window.WorkbenchTerms.outcomes.unknown('采用'));
+              };
+              try {
+                save(rejected, intent);
+                active.current = rejected;
+              } catch (storageErr) {
+                if (!mounted.current) return;
+                if (!A.equal(active.current, rejected)) {
+                  sync();
+                  setStorageError(storageErr.message);
+                  return;
+                }
+                setStorageError(storageMessage(storageErr, active.current));
+              }
+              if (mounted.current && A.equal(active.current, rejected)) setError(window.WorkbenchTerms.outcomes.rejected('采用', e.message));
+            } else if (mounted.current) setError(window.WorkbenchTerms.outcomes.unknown('采用'));
           }
         });
       } catch (e) {
@@ -52748,6 +53096,11 @@ function SMExport({
       try {
         A.check(saved && saved.phase !== 'pending', '结果还不确定，不能丢弃这次操作记录。');
         save(null, saved);
+        current.current = {
+          ...current.current,
+          preview: null,
+          consent: false
+        };
         setOpen(false);
         setPreview(null);
         setConsent(false);
@@ -52760,6 +53113,11 @@ function SMExport({
     }
     function close() {
       if (request.current) request.current.abort();
+      current.current = {
+        ...current.current,
+        preview: null,
+        consent: false
+      };
       setOpen(false);
       setPreview(null);
       setConsent(false);
@@ -52783,9 +53141,20 @@ function SMExport({
       original,
       disabled,
       setOpen,
-      setConsent,
+      setConsent: value => {
+        current.current = {
+          ...current.current,
+          consent: value
+        };
+        setConsent(value);
+      },
       change: value => {
         if (!active.current) {
+          current.current = {
+            ...current.current,
+            draft: value,
+            consent: false
+          };
           setDraft(value);
           setConsent(false);
         }
@@ -52902,7 +53271,7 @@ function SMExport({
       footer: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
         onClick: s.close
       }, pending ? '关闭并保留这次操作' : s.result ? '关闭' : '取消'), rejected && /*#__PURE__*/React.createElement(Button, {
-        disabled: s.busy || !!s.storageError,
+        disabled: s.busy,
         onClick: s.finish
       }, "\u7ED3\u675F\u672C\u6B21\u672A\u91C7\u7528"), s.result ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
         icon: "refresh-cw",
@@ -52911,7 +53280,7 @@ function SMExport({
         onClick: s.lookup
       }, "\u67E5\u8BE2\u7ED3\u679C"), /*#__PURE__*/React.createElement(Button, {
         icon: "check",
-        disabled: s.busy || !!s.storageError,
+        disabled: s.busy,
         onClick: s.finish
       }, "\u5B8C\u6210"), /*#__PURE__*/React.createElement(Button, {
         icon: "arrow-right",
@@ -55145,19 +55514,18 @@ function SMExport({
       ...value.table
     });
   }
-  const _read = (wanted, signal) => window.APSWorkbenchTransport.read(base, encode(wanted), {
-    signal
-  });
-  const read = (value, signal) => _read(input(value), signal);
   async function readView(value, signal) {
     const wanted = input(value);
-    return _validate(await _read(wanted, signal), wanted);
-  }
-  function detail(value, query, signal) {
-    if (!ref(value) || !query.snapshot_ref) throw failure('所选记录或数据版本缺失。');
-    return window.APSWorkbenchTransport.read(base + '/' + value, encode(input(query)), {
+    return _validate(await window.APSWorkbenchTransport.read(base, encode(wanted), {
       signal
-    });
+    }), wanted);
+  }
+  async function detail(value, query, signal) {
+    const wanted = input(query);
+    if (!ref(value) || !wanted.snapshot_ref) throw failure('所选记录或数据版本缺失。');
+    return _validate(await window.APSWorkbenchTransport.read(base + '/' + value, encode(wanted), {
+      signal
+    }), wanted, value);
   }
   function validRow(row, meta) {
     return object(row) && ref(row.suggestion_ref) && row.suggestion_ref === row.template_operation_ref && row.operation_ref === row.suggestion_ref && ref(row.part_ref) && ['part_no', 'part_name', 'operation_label', 'template_snapshot', 'method_version', 'generated_at'].every(key => typeof row[key] === 'string') && Number.isInteger(row.sequence) && Number.isInteger(row.template_revision) && row.template_revision > 0 && ['old_unit_hours', 'suggested_unit_hours', 'deviation_percent', 'absolute_deviation_percent'].every(key => number(row[key])) && ['sample_count', 'eligible_sample_count', 'candidate_count', 'excluded_count'].every(key => count(row[key])) && row.sample_count <= 20 && row.sample_count <= row.eligible_sample_count && row.eligible_sample_count <= row.candidate_count && row.excluded_count === row.candidate_count - row.sample_count && Array.isArray(row.sample_refs) && row.sample_refs.length === row.sample_count && row.sample_refs.every(ref) && new Set(row.sample_refs).size === row.sample_count && Array.isArray(row.sample_revisions) && row.sample_revisions.length === row.sample_count && Array.isArray(row.exclusion_reasons) && Array.isArray(row.blocked_reasons) && object(row.capabilities) && typeof row.over_20_percent === 'boolean' && ['relative', 'old_zero', 'old_unknown', 'suggestion_unavailable', 'not_representable'].includes(row.deviation_basis) && ['insufficient_data', 'suggested'].includes(row.status) && row.status === 'insufficient_data' === (row.suggested_unit_hours === null) && (row.sample_count >= 5 || row.suggested_unit_hours === null) && row.snapshot_ref === meta.snapshot_ref && row.as_of === meta.as_of;
@@ -55189,7 +55557,6 @@ function SMExport({
     } else if (!Array.isArray(data.items) || !data.items.every(row => validRow(row, meta)) || !data.page || !count(data.page.total) || data.page.number !== wanted.page || data.page.size !== wanted.size || data.page.total !== data.summary.total || data.page.total_pages !== Math.ceil(data.page.total / wanted.size) || data.items.length !== Math.max(0, Math.min(wanted.size, data.page.total - (wanted.page - 1) * wanted.size))) throw failure('校准列表或分页数量不一致。');
     return result;
   }
-  const validate = (result, query, detailRef) => _validate(result, input(query), detailRef);
   function exportReason(data, format) {
     if (!data || !data.capabilities || data.capabilities.export !== true) return '当前来源暂不能导出。';
     if (!data.summary.total) return '当前筛选没有可导出的记录。';
@@ -55247,11 +55614,9 @@ function SMExport({
     });
   }
   window.CalibrationAPI = {
-    read,
     readView,
     detail,
     download,
-    validate,
     input,
     initial,
     sorts,
@@ -55652,7 +56017,7 @@ function SMExport({
     writeError: '无法保存这次采用操作的记录，没有开始新的采用。'
   });
   function begin(preview, previous) {
-    A.check(!previous || previous.phase === 'rejected', '上次操作的结果还没确认，不能开始新的采用。');
+    A.check(!previous || previous.phase === 'rejected' && previous.baseline.template_operation_ref === preview.suggestion.template_operation_ref, '上次操作的结果还没确认，不能开始新的采用。');
     return save({
       version: 1,
       request_key: window.APSWorkbenchTransport.requestKey('calibration'),
@@ -55663,6 +56028,11 @@ function SMExport({
         confirm: true
       }, true)
     }, previous);
+  }
+  function storageMessage(e, current = e && e.saved) {
+    if (current && current.phase === 'committed') return '已收到采用结果，但本机没能保存这次操作记录。';
+    if (current && current.phase === 'rejected') return '本次采用未通过，但本机没能保存这次操作记录。';
+    return e.message;
   }
   function useSession({
     detail,
@@ -55676,8 +56046,8 @@ function SMExport({
         };
       } catch (e) {
         return {
-          saved: null,
-          error: e.message
+          saved: e.saved || null,
+          error: storageMessage(e)
         };
       }
     });
@@ -55701,9 +56071,16 @@ function SMExport({
       lock = React.useRef(false),
       request = React.useRef(null),
       active = React.useRef(saved),
-      source = React.useRef(detail);
+      source = React.useRef(null);
     active.current = saved;
-    source.current = detail;
+    source.current = {
+      detail,
+      stale,
+      preview,
+      consent,
+      draft,
+      storageError
+    };
     const identity = detail ? JSON.stringify(A.binding(detail.suggestion)) : '';
     React.useEffect(() => {
       mounted.current = true;
@@ -55713,6 +56090,11 @@ function SMExport({
       };
     }, []);
     React.useEffect(() => {
+      source.current = {
+        ...source.current,
+        preview: null,
+        consent: false
+      };
       setPreview(null);
       setConsent(false);
       if (request.current) request.current.abort();
@@ -55721,25 +56103,64 @@ function SMExport({
       try {
         const value = event && event.type === EVENT ? event.detail : read();
         if (value !== active.current && !A.equal(value, active.current)) {
-          active.current = value;
-          setSaved(value);
-          setPreview(null);
-          setConsent(false);
-          setDraft(value ? {
+          const switched = !active.current || !value || value.request_key !== active.current.request_key;
+          const nextDraft = value ? {
             reason: value.input.reason,
             declared_operator: value.input.declared_operator
           } : {
             reason: '',
             declared_operator: ''
-          });
-          if (!value || value.phase === 'committed') {
+          };
+          active.current = value;
+          source.current = {
+            ...source.current,
+            preview: null,
+            consent: false,
+            draft: nextDraft,
+            storageError: ''
+          };
+          if (!mounted.current) return;
+          setSaved(value);
+          setPreview(null);
+          setConsent(false);
+          setDraft(nextDraft);
+          if (switched || value.phase === 'committed') {
             setError('');
             setNotice('');
           }
+        } else {
+          source.current = {
+            ...source.current,
+            storageError: ''
+          };
         }
-        setStorageError('');
+        if (mounted.current) setStorageError('');
       } catch (e) {
-        setStorageError(e.message);
+        const changed = e.saved !== undefined && !A.equal(e.saved, active.current);
+        const nextDraft = changed ? e.saved ? {
+          reason: e.saved.input.reason,
+          declared_operator: e.saved.input.declared_operator
+        } : {
+          reason: '',
+          declared_operator: ''
+        } : source.current.draft;
+        if (changed) active.current = e.saved;
+        const msg = storageMessage(e, e.saved !== undefined ? e.saved : active.current);
+        source.current = {
+          ...source.current,
+          ...(changed ? {
+            preview: null,
+            consent: false,
+            draft: nextDraft
+          } : {}),
+          storageError: msg
+        };
+        if (!mounted.current) return;
+        if (changed) {
+          setSaved(e.saved);
+          setDraft(nextDraft);
+        }
+        setStorageError(msg);
       }
     }
     React.useEffect(() => {
@@ -55754,6 +56175,10 @@ function SMExport({
       };
     }, []);
     function accept(value, original) {
+      if (!A.equal(active.current, original)) {
+        if (mounted.current) sync();
+        return;
+      }
       const committed = {
         ...original,
         phase: 'committed',
@@ -55762,13 +56187,15 @@ function SMExport({
       try {
         save(committed, original);
         active.current = committed;
-        if (mounted.current) {
-          setSaved(committed);
-          setError('');
-          setNotice('');
-        }
+        if (!mounted.current) return;
       } catch (e) {
-        if (mounted.current) setStorageError(e.message);
+        if (!mounted.current) return;
+        if (!A.equal(active.current, committed)) {
+          sync();
+          setStorageError(e.message);
+          return;
+        }
+        setStorageError(storageMessage(e, active.current));
       }
     }
     React.useEffect(() => {
@@ -55777,19 +56204,26 @@ function SMExport({
       const controller = new AbortController();
       setBusy(true);
       A.lookup(saved, controller.signal).then(value => {
-        if (disposed) return;
+        if (disposed || !A.equal(active.current, saved)) return;
         if (value) accept(value, saved);else setNotice('上次采用结果尚未确认，请稍后再次查询。');
       }).catch(e => {
-        if (!disposed) setError('上次操作的结果还没确认。' + e.message);
+        if (!disposed && A.equal(active.current, saved)) setError('上次操作的结果还没确认。' + e.message);
       }).finally(() => {
         if (!disposed) setBusy(false);
       });
       return () => {
         disposed = true;
         controller.abort();
+        if (!lock.current) setBusy(false);
       };
     }, [saved, revision, storageError]);
     function change(value) {
+      source.current = {
+        ...source.current,
+        draft: value,
+        preview: null,
+        consent: false
+      };
       setDraft(value);
       setPreview(null);
       setConsent(false);
@@ -55818,7 +56252,7 @@ function SMExport({
       request.current = controller;
       try {
         const value = await A.preview(detail.suggestion, values, controller.signal);
-        if (mounted.current && !controller.signal.aborted && A.equal(detail, source.current)) setPreview(value);
+        if (mounted.current && !controller.signal.aborted && !source.current.stale && A.equal(detail, source.current.detail)) setPreview(value);
       } catch (e) {
         if (mounted.current && !controller.signal.aborted) setError(e.message);
       } finally {
@@ -55828,6 +56262,7 @@ function SMExport({
     }
     async function submit() {
       if (lock.current || stale || storageError || !preview || !preview.validation.can_adopt || !consent || !detail || saved && saved.phase !== 'rejected' || !A.equal(A.binding(detail.suggestion), A.binding(preview.suggestion)) || !A.equal(A.input(draft), preview.input)) return;
+      const initialActive = active.current;
       lock.current = true;
       setBusy(true);
       setError('');
@@ -55844,23 +56279,45 @@ function SMExport({
             if (mounted.current) setError('另一个页面正在采用，请先在那边查询结果。');
             return;
           }
+          const latest = source.current;
+          if (!mounted.current || latest.stale || latest.storageError || !latest.detail || latest.preview !== preview || !latest.consent || !A.equal(active.current, initialActive) || active.current && (active.current.phase !== 'rejected' || active.current.baseline.template_operation_ref !== latest.detail.suggestion.template_operation_ref) || !A.equal(A.binding(latest.detail.suggestion), A.binding(preview.suggestion)) || !A.equal(A.input(latest.draft), preview.input)) return;
           const original = begin(preview, active.current);
           active.current = original;
+          source.current = {
+            ...source.current,
+            preview: null,
+            consent: false
+          };
           setSaved(original);
           setPreview(null);
           setConsent(false);
           try {
             accept(await A.adopt(original, preview.write_context.write_token), original);
           } catch (e) {
-            const rejected = window.APSWorkbenchTransport.rejected(e);
-            if (rejected) {
-              const value = save({
+            if (!A.equal(active.current, original)) {
+              if (mounted.current) sync();
+              return;
+            }
+            if (window.APSWorkbenchTransport.rejected(e)) {
+              const rejected = {
                 ...original,
                 phase: 'rejected'
-              }, original);
-              if (mounted.current) setSaved(value);
-            }
-            if (mounted.current) setError(rejected ? e.message + ' 本次没有采用；请点「刷新所选模板」后重新预检。' : window.WorkbenchTerms.outcomes.pending('采用'));
+              };
+              try {
+                save(rejected, original);
+                active.current = rejected;
+                if (!mounted.current) return;
+              } catch (storageErr) {
+                if (!mounted.current) return;
+                if (!A.equal(active.current, rejected)) {
+                  sync();
+                  setStorageError(storageErr.message);
+                  return;
+                }
+                setStorageError(storageMessage(storageErr, active.current));
+              }
+              if (mounted.current && A.equal(active.current, rejected)) setError(e.message + ' 本次没有采用；请点「刷新所选模板」后重新预检。');
+            } else if (mounted.current) setError(window.WorkbenchTerms.outcomes.pending('采用'));
           }
         });
       } catch (e) {
@@ -55877,6 +56334,11 @@ function SMExport({
       try {
         A.check(saved && saved.phase !== 'pending', '结果还不确定，不能丢弃这次操作。');
         save(null, saved);
+        source.current = {
+          ...source.current,
+          preview: null,
+          consent: false
+        };
         setOpen(false);
         setPreview(null);
         setConsent(false);
@@ -55901,7 +56363,13 @@ function SMExport({
       notice,
       storageError,
       setOpen,
-      setConsent,
+      setConsent: value => {
+        source.current = {
+          ...source.current,
+          consent: value
+        };
+        setConsent(value);
+      },
       change,
       inspect,
       submit,
@@ -55910,6 +56378,11 @@ function SMExport({
       sync,
       close: () => {
         if (request.current) request.current.abort();
+        source.current = {
+          ...source.current,
+          preview: null,
+          consent: false
+        };
         setOpen(false);
         setPreview(null);
         setConsent(false);
@@ -56044,7 +56517,7 @@ function SMExport({
         busy: s.busy,
         onClick: s.lookup
       }, window.WorkbenchTerms.actions.query_result) : /*#__PURE__*/React.createElement(React.Fragment, null, saved && /*#__PURE__*/React.createElement(Button, {
-        disabled: s.busy || !!s.storageError,
+        disabled: s.busy,
         onClick: s.finish
       }, "\u653E\u5F03\u4E0A\u6B21\u91C7\u7528\u8BB0\u5F55"), /*#__PURE__*/React.createElement(Button, {
         icon: "refresh-cw",
@@ -56417,6 +56890,7 @@ function SMExport({
 
   function Workspace({
     initialContext,
+    initialInput,
     onNavigate
   }) {
     const A = window.CalibrationAPI,
@@ -56432,7 +56906,7 @@ function SMExport({
       readPending: () => null
     }), []);
     const [part, setPart] = React.useState(null);
-    const [input, setInput] = React.useState(() => A.initial(initialContext));
+    const [input, setInput] = React.useState(initialInput);
     const [widths, setWidths] = React.useState(initialContext.table_widths || {});
     const [selected, setSelected] = React.useState(initialContext.selected || null),
       [sampleRef, setSample] = React.useState(initialContext.sample_ref || null);
@@ -56451,7 +56925,7 @@ function SMExport({
       ...input,
       snapshot_ref: result ? result.meta.snapshot_ref : input.snapshot_ref
     };
-    const detail = useRead(async signal => A.validate(await A.detail(selected, bound, signal), bound, selected), selected + ':' + JSON.stringify(bound) + ':' + revision, A, !!(selected && result && data.capabilities.view === true && !stale));
+    const detail = useRead(signal => A.detail(selected, bound, signal), selected + ':' + JSON.stringify(bound) + ':' + revision, A, !!(selected && result && data.capabilities.view === true && !stale));
     const isStale = failure => window.APSResourceContract.stale(failure, ['calibration_source_changed']);
     window.WorkbenchPageContext.useSnapshot(data ? {
       scope: Object.fromEntries(Object.entries(input).filter(([key]) => !['page', 'size', 'sort', 'direction', 'snapshot_ref'].includes(key))),
@@ -56715,8 +57189,9 @@ function SMExport({
   }
   function CalibrationWorkspace(props) {
     window.WorkbenchCaption.useCaption(null);
+    let initialInput;
     try {
-      window.CalibrationAPI.initial(props.initialContext);
+      initialInput = window.CalibrationAPI.initial(props.initialContext);
     } catch (error) {
       return /*#__PURE__*/React.createElement("section", {
         className: "calibration-live"
@@ -56728,7 +57203,8 @@ function SMExport({
     }
     return /*#__PURE__*/React.createElement(Workspace, {
       key: JSON.stringify(props.initialContext),
-      ...props
+      ...props,
+      initialInput: initialInput
     });
   }
   window.CalibrationWorkspace = CalibrationWorkspace;
@@ -60395,8 +60871,7 @@ function SystemLiveOverview({
   }
   const {
     read,
-    save,
-    write
+    save
   } = window.APSWorkbenchTransport.pendingStore({
     key: KEY,
     event: EVENT,
@@ -60416,7 +60891,7 @@ function SystemLiveOverview({
         };
       } catch (error) {
         return {
-          saved: null,
+          saved: error.saved || null,
           error
         };
       }
@@ -60433,10 +60908,20 @@ function SystemLiveOverview({
     function sync(event) {
       try {
         const v = event && event.type === EVENT ? event.detail : read();
-        active.current = v;
-        setSaved(v);
+        if (!C.equal(v, active.current)) {
+          active.current = v;
+          setSaved(v);
+          setError(null);
+          setNotice('');
+        }
         setStorageError(null);
       } catch (e) {
+        if (e.saved !== undefined && !C.equal(e.saved, active.current)) {
+          active.current = e.saved;
+          setSaved(e.saved);
+          setError(null);
+          setNotice('');
+        }
         setStorageError(e);
       }
     }
@@ -60455,18 +60940,26 @@ function SystemLiveOverview({
     }, []);
     // C.command/C.lookup already checked the receipt; a failed local write belongs to storageError.
     function accept(v, original) {
+      if (!C.equal(active.current, original)) {
+        if (mounted.current) sync();
+        return;
+      }
+      const confirmed = {
+        ...original,
+        phase: 'confirmed',
+        receipt: v
+      };
       try {
-        save({
-          ...original,
-          phase: 'confirmed',
-          receipt: v
-        }, original);
-        if (mounted.current) {
-          setError(null);
-          setNotice('请点「完成」查看最新登记。');
-        }
+        save(confirmed, original);
+        active.current = confirmed;
       } catch (e) {
-        if (mounted.current) setStorageError(e);
+        if (!mounted.current) return;
+        if (!C.equal(active.current, confirmed)) sync();
+        setStorageError(e);
+      }
+      if (mounted.current && C.equal(active.current, confirmed)) {
+        setError(null);
+        setNotice('请点「完成」查看最新登记。');
       }
     }
     async function lookup(preserveError = false) {
@@ -60477,9 +60970,9 @@ function SystemLiveOverview({
       if (!preserveError) setError(null);
       try {
         const v = await C.lookup(original);
-        if (v) accept(v, original);else if (mounted.current) setNotice('还是没有查到结果。请稍后再点「查询结果」，不要重复提交。');
+        if (v) accept(v, original);else if (mounted.current && C.equal(active.current, original)) setNotice('还是没有查到结果。请稍后再点「查询结果」，不要重复提交。');
       } catch (e) {
-        if (mounted.current) setError(e);
+        if (mounted.current && C.equal(active.current, original)) setError(e);
       } finally {
         running.current = false;
         if (mounted.current) setBusy(false);
@@ -60508,6 +61001,7 @@ function SystemLiveOverview({
             if (mounted.current) setError(new Error('另一个页面有还没确认的外协登记，请先在那里点「查询结果」。'));
             return;
           }
+          if (!mounted.current) return;
           // C.preview 已校验过这份预检结果。
           const d = preview.data;
           original = {
@@ -60519,16 +61013,39 @@ function SystemLiveOverview({
             target: d.target
           };
           save(original, null);
+          active.current = original;
           try {
             accept(await C.command(original, d.write_context.write_token), original);
           } catch (e) {
+            if (!C.equal(active.current, original)) {
+              if (mounted.current) sync();
+              return;
+            }
             // 明确被拒的登记什么都没写入：直接放弃这条待确认记录，表单回到可编辑状态，改好后重新预检提交。
             const rejected = window.APSWorkbenchTransport.rejected(e);
-            if (rejected) save(null, original);else needLookup = true;
-            // Rejection returns to the form; pending outcomes remain in Pending. Keep the reason in the error box.
-            if (mounted.current) {
-              setError(e);
-              setNotice(rejected ? window.WorkbenchTerms.outcomes.rejected('外协登记') : '');
+            if (rejected) {
+              try {
+                save(null, original);
+                active.current = null;
+              } catch (storageErr) {
+                if (!mounted.current) return;
+                if (active.current !== null) {
+                  sync();
+                  setStorageError(storageErr);
+                  return;
+                }
+                setStorageError(storageErr);
+              }
+              if (mounted.current && active.current === null) {
+                setError(e);
+                setNotice(window.WorkbenchTerms.outcomes.rejected('外协登记'));
+              }
+            } else {
+              needLookup = true;
+              if (mounted.current) {
+                setError(e);
+                setNotice('');
+              }
             }
           }
         });
@@ -60538,14 +61055,14 @@ function SystemLiveOverview({
         running.current = false;
         if (mounted.current) setBusy(false);
       }
-      if (needLookup && active.current && active.current.request_key === original.request_key && active.current.phase === 'pending') await lookup(true);
+      if (mounted.current && needLookup && active.current && active.current.request_key === original.request_key && active.current.phase === 'pending') await lookup(true);
     }
     function finish() {
       if (running.current) return false;
       try {
-        const v = read();
+        const v = active.current && active.current.phase !== 'pending' ? active.current : read();
         C.check(v && v.phase !== 'pending', '上次外协登记的结果还没有确认，不能丢弃这条记录。请先点「查询结果」。');
-        write(null);
+        save(null, v);
         setError(null);
         setNotice('');
         return true;
@@ -63485,8 +64002,7 @@ function SystemLiveOverview({
   }
   const {
     read,
-    save,
-    write
+    save
   } = window.APSWorkbenchTransport.pendingStore({
     key: KEY,
     event: EVENT,
@@ -63507,7 +64023,7 @@ function SystemLiveOverview({
         };
       } catch (error) {
         return {
-          saved: null,
+          saved: error.saved || null,
           error
         };
       }
@@ -63524,10 +64040,20 @@ function SystemLiveOverview({
     function sync(event) {
       try {
         const v = event && event.type === EVENT ? event.detail : read();
-        active.current = v;
-        setSaved(v);
+        if (!C.equal(v, active.current)) {
+          active.current = v;
+          setSaved(v);
+          setError(null);
+          setNotice('');
+        }
         setStorageError(null);
       } catch (e) {
+        if (e.saved !== undefined && !C.equal(e.saved, active.current)) {
+          active.current = e.saved;
+          setSaved(e.saved);
+          setError(null);
+          setNotice('');
+        }
         setStorageError(e);
       }
     }
@@ -63546,18 +64072,26 @@ function SystemLiveOverview({
     }, []);
     // C.command/C.lookup already checked the receipt; a failed local write belongs to storageError.
     function accept(v, original) {
+      if (!C.equal(active.current, original)) {
+        if (mounted.current) sync();
+        return;
+      }
+      const confirmed = {
+        ...original,
+        phase: 'confirmed',
+        receipt: v
+      };
       try {
-        save({
-          ...original,
-          phase: 'confirmed',
-          receipt: v
-        }, original);
-        if (mounted.current) {
-          setError(null);
-          setNotice('请点「完成」查看最新风险。');
-        }
+        save(confirmed, original);
+        active.current = confirmed;
       } catch (e) {
-        if (mounted.current) setStorageError(e);
+        if (!mounted.current) return;
+        if (!C.equal(active.current, confirmed)) sync();
+        setStorageError(e);
+      }
+      if (mounted.current && C.equal(active.current, confirmed)) {
+        setError(null);
+        setNotice('请点「完成」查看最新风险。');
       }
     }
     async function lookup(preserveError = false) {
@@ -63568,9 +64102,9 @@ function SystemLiveOverview({
       if (!preserveError) setError(null);
       try {
         const v = await C.lookup(original);
-        if (v) accept(v, original);else if (mounted.current) setNotice('还是没有查到结果。请稍后再点「查询结果」，不要重复提交。');
+        if (v) accept(v, original);else if (mounted.current && C.equal(active.current, original)) setNotice('还是没有查到结果。请稍后再点「查询结果」，不要重复提交。');
       } catch (e) {
-        if (mounted.current) setError(e);
+        if (mounted.current && C.equal(active.current, original)) setError(e);
       } finally {
         running.current = false;
         if (mounted.current) setBusy(false);
@@ -63599,6 +64133,7 @@ function SystemLiveOverview({
             if (mounted.current) setError(new Error('另一个页面正在处置，这里没有开始新的处置。请先完成那边的处置。'));
             return;
           }
+          if (!mounted.current) return;
           if (!item.write_context || item.write_context.capabilities[action] !== true) {
             if (mounted.current) setError(new Error('这条记录现在不能处置，请刷新后重试。'));
             return;
@@ -63616,15 +64151,37 @@ function SystemLiveOverview({
             risk: item.risk
           };
           save(original, null);
+          active.current = original;
           try {
             accept(await C.command(original, item.write_context.write_token), original);
           } catch (e) {
-            if (window.APSWorkbenchTransport.rejected(e)) save({
-              ...original,
-              phase: 'rejected'
-            }, original);else needLookup = true;
+            if (!C.equal(active.current, original)) {
+              if (mounted.current) sync();
+              return;
+            }
             // Receipt owns the rejected/pending outcome; the error box owns the failure reason.
-            if (mounted.current) setError(e);
+            if (window.APSWorkbenchTransport.rejected(e)) {
+              const rejected = {
+                ...original,
+                phase: 'rejected'
+              };
+              try {
+                save(rejected, original);
+                active.current = rejected;
+              } catch (storageErr) {
+                if (!mounted.current) return;
+                if (!C.equal(active.current, rejected)) {
+                  sync();
+                  setStorageError(storageErr);
+                  return;
+                }
+                setStorageError(storageErr);
+              }
+              if (mounted.current && C.equal(active.current, rejected)) setError(e);
+            } else {
+              needLookup = true;
+              if (mounted.current) setError(e);
+            }
           }
         });
       } catch (e) {
@@ -63634,14 +64191,14 @@ function SystemLiveOverview({
         if (mounted.current) setBusy(false);
       }
       // Only an unanswered command follows up; the lookup keeps the submit failure unless it finds a receipt or fails itself.
-      if (needLookup && active.current && active.current.request_key === original.request_key && active.current.phase === 'pending') await lookup(true);
+      if (mounted.current && needLookup && active.current && active.current.request_key === original.request_key && active.current.phase === 'pending') await lookup(true);
     }
     function finish() {
       if (running.current) return false;
       try {
-        const value = read();
+        const value = active.current && active.current.phase !== 'pending' ? active.current : read();
         C.check(value && value.phase !== 'pending', '上次处置的结果还没有确认，不能丢弃这条记录。请先点「查询结果」。');
-        write(null);
+        save(null, value);
         setError(null);
         setNotice('');
         return true;

@@ -74,7 +74,7 @@
       if (box.top < 0 || box.top > window.innerHeight - 120) detail.current.scrollIntoView({ block: 'start', inline: 'nearest' });
     }, [task, editor, nextDraft]);
     if (request.loading) return <div className="field-note" role="status">正在读取逐次报工…</div>;
-    if (!task) return <div className="field-error"><ErrorBox error={request.error} /><Button icon="refresh-cw" onClick={() => request.error && request.error.code === 'snapshot_stale' && onRefresh ? onRefresh() : request.reload()} disabled={command.locked}>刷新详情</Button>
+    if (!task) return <div className="field-error"><ErrorBox error={request.error} /><Button icon="refresh-cw" onClick={() => request.error && request.error.code === 'snapshot_stale' ? onRefresh() : request.reload()} disabled={command.locked}>刷新详情</Button>
       {editor && <Button onClick={onCloseEditor} disabled={command.locked}>取消暂存编辑</Button>}</div>;
     const report = editor && p.reports.find(row => row.report_ref === editor.reportRef);
     const missingOriginal = editor && editor.reportRef && !report;
@@ -82,11 +82,11 @@
       <div className="field-detail-heading"><h3 className="field-detail-title">{task.batch_id} · {task.operation_label} · {C.pieceLabel(task)}</h3><State value={p.execution_state} /><span className="field-note">计划应做 {C.quantity(task.quantity)} 件 · 批次 {C.quantity(task.batch_quantity)} 件{task.quantity_reason ? ' · ' + C.quantityReasons[task.quantity_reason] : ''}</span>
         <Button icon="clock-3" aria-expanded={timeline} onClick={() => setTimeline(value => !value)}>作业时间线</Button>
         <Button icon="plus" disabled={command.locked || !!editor || !!nextDraft} reason={p.execution_state === 'complete' ? '工序已完工，请补齐原记录或做更正。' : C.blocked(p.write_context, 'create')} onClick={() => onEdit({ taskRef, action: 'create' })}>新增本次报工</Button>
-        {onNavigate && <Button icon="chart-gantt" disabled={command.locked || !!editor} onClick={() => {
+        <Button icon="chart-gantt" disabled={command.locked || !!editor} onClick={() => {
           const common = { ...scope }; delete common.state;
           onNavigate('fieldgantt', { plan_ref: task.plan_ref, task_ref: taskRef, operation_ref: task.operation_ref, scope: common,
             return_to: { view: 'field', context: { plan_ref: task.plan_ref, task_ref: taskRef, scope } } });
-        }}>现场实际甘特</Button>}</div>
+        }}>现场实际甘特</Button></div>
       {timeline && <Timeline task={task} />}
       <Issues issues={p.data_gaps} />
       <div className="field-scroll wb-table-frame" data-sticky-head data-sticky-actions tabIndex="0" aria-label="逐次报工表格滚动区"><table className="field-table wb-table" aria-label="逐次报工记录"><caption className="wb-visually-hidden">本工序每次报工的数量、实际起止、有效工时、资源和更正操作</caption><colgroup>{['no', 'quantity', 'start', 'end', 'hours', 'resource', 'remark', 'actions'].map(key => <col key={key} className={'field-report-col-' + key} />)}</colgroup>

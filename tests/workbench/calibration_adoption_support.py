@@ -17,7 +17,6 @@ from web.routes.workbench.write_context import issue_write_context, validate_wri
 PREVIEW_INTENT = {"reason": "Adopt verified completed production samples", "declared_operator": "Declared reviewer"}
 INTENT = {**PREVIEW_INTENT, "confirm": True}
 KEY = "calibration-adoption-request-0001"
-BASE = "/api/workbench/v1/calibration/"
 
 
 def service(conn, **kwargs):
@@ -79,18 +78,3 @@ def snapshot(conn):
     tables = [row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
     return {table: [tuple(tuple(typed_value(value)) for value in row) for row in
                    conn.execute('SELECT * FROM "' + table + '" ORDER BY rowid')] for table in tables}
-
-
-def assert_preserved(before, after):
-    mutable = {"PartOperations", "WorkbenchEntityRefs", "WorkbenchCalibrationAdoptions",
-               "WorkbenchCommandReceipts"}
-    for table, rows in before.items():
-        if table not in mutable:
-            assert after[table] == rows, table
-
-
-def assert_rejected(response, code, status):
-    assert response.status_code == status, response.get_json()
-    payload = response.get_json()
-    assert payload["ok"] is False and payload["committed"] is False
-    assert payload["error"]["code"] == code, payload

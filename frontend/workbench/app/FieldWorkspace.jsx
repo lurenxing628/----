@@ -91,7 +91,7 @@
     const canReturn = !!returnTarget && ['analysis', 'gantt', 'fieldgantt', 'reports', 'review', 'dashboard'].includes(returnTarget.view);
     return <section className="plana field-workspace" data-field-workspace aria-label="现场记录">
       <div className="field-toolbar"><h2 className="wb-page-title">现场记录</h2><span className="field-note wb-page-context">{data ? data.plan ? data.plan.display_name : '暂无正式计划' : read.loading ? '正在读取计划' : '计划未读取'}</span><span className="field-space" />
-        {canReturn && onNavigate && <Button icon="arrow-left" disabled={blocked} onClick={() => onNavigate(returnTarget.view, returnTarget.context)}>返回</Button>}
+        {canReturn && <Button icon="arrow-left" disabled={blocked} onClick={() => onNavigate(returnTarget.view, returnTarget.context)}>返回</Button>}
         <Button icon="refresh-cw" aria-label="刷新现场记录" disabled={blocked || read.loading} onClick={refresh} />
         <Button transfer="import" disabled={blocked || !data} onClick={() => { command.reset(); setFiles(true); }}>报工文件</Button>
       </div>

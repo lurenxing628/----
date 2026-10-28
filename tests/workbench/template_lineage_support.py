@@ -5,14 +5,11 @@ from datetime import datetime, timedelta
 import pytest
 
 from core.infrastructure.transaction import TransactionManager
-from core.models.workbench_batch import normalize_operation_input
 from core.models.workbench_calibration import CalibrationQuery
 from core.services.scheduler.template_lineage import TemplateLineageWriter
 from core.services.scheduler.template_lineage_query import TemplateLineageQuery
 from core.services.workbench.batch.facts import BatchFacts
-from core.services.workbench.batch.operations import WorkbenchBatchOperationService
 from core.services.workbench.calibration.service import WorkbenchCalibrationService
-from core.services.workbench.commands import WorkbenchCommandService
 from data.repositories.workbench_template_lineage_repo import WorkbenchTemplateLineageRepository
 from tests.workbench.execution_ledger_support import NOW, LedgerCase, current_database
 
@@ -80,23 +77,6 @@ def origin(case, op_id):
 def lineage(case, op_id):
     ref = instance_for(case, op_id)["operation_ref"]
     return TemplateLineageQuery(case.conn).read([ref])
-
-
-def sync(case, code="COPY-001", *, key="template-sync-request-0001"):
-    ref = case.ref("batch", code)
-    service = WorkbenchBatchOperationService(case.conn)
-    payload = service.normalize_sync({})
-    return WorkbenchCommandService(case.conn).execute(request_key=key, action="batch.sync_confirm", context_ref=ref,
-        normalized_input=payload, guard=lambda: service.sync_preview_normalized(ref), mutate=lambda _: service.sync_normalized(ref))
-
-
-def edit(case, op_id, fields, *, key="template-edit-request-0001"):
-    instance = instance_for(case, op_id)
-    service = WorkbenchBatchOperationService(case.conn)
-    ref = case.ref("batch", instance["batch_id"])
-    payload = normalize_operation_input({"operation_ref": instance["operation_ref"], "fields": fields})
-    return WorkbenchCommandService(case.conn).execute(request_key=key, action="batch.operation_update", context_ref=ref,
-        normalized_input=payload, guard=lambda: service.prepare_update(ref, payload), mutate=service.apply_update)
 
 
 def completed(case, hours, *, prefix="COPY", version=2):

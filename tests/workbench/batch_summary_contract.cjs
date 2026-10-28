@@ -197,6 +197,45 @@ async function calendarRefreshContracts() {
       'A calendar-owned command reloads once; parent internal revision is not a second month invalidation');
     calendar.unmount(); workspace.unmount(); host.unmount();
   }
+  {
+    const env = calendarEnvironment(), w = env.window, host = env.h, workspace = hooks(), calendar = hooks();
+    const idle = { phase: 'idle', locked: false, reset: () => true };
+    let corrupt = true, pendingReads = 0, rootTree;
+    const rawQuery = w.APSResourceSession.useQuery;
+    w.APSResourceSession.useCommand = () => idle;
+    w.APSResourceSession.useSummary = (adapter, revision, enabled = true) => rawQuery(signal => adapter.summary(signal), [adapter, revision], enabled);
+    w.APSResourceSession.useCounts = (adapter, revision) => ({ summary: rawQuery(signal => adapter.summary(signal), [adapter, revision]) });
+    w.APSResourceAPI = { create(family) { return { family,
+      readPending() {
+        if (family === 'work_calendar_files') { pendingReads++; if (corrupt) throw new Error('记录已损坏'); }
+        return null;
+      },
+      async summary() { return { data: {} }; },
+      async query(path, month) { return monthPayload(month, 'ok'); }
+    }; } };
+    w.APSProcessAPI = { create: () => ({ readPending: () => null }) };
+    function renderCorrupt() {
+      env.context.React = host.React; rootTree = host.render(() => w.ResourceLive({})); host.flush();
+      const parent = find(rootTree, w.ResourceWorkspace);
+      env.context.React = workspace.React;
+      const parentTree = workspace.render(() => w.ResourceWorkspace(parent.props)); workspace.flush();
+      const calendarProps = find(parentTree, w.ResourceCalendar).props;
+      env.context.React = calendar.React;
+      calendar.render(() => w.ResourceCalendar(calendarProps)); calendar.flush();
+    }
+    const settleCorrupt = async () => { for (let index = 0; index < 4; index++) { renderCorrupt(); await turns(); } renderCorrupt(); };
+    await settleCorrupt();
+    const readsAfterBoot = pendingReads;
+    assert.equal(readsAfterBoot <= 3, true, 'Corrupt secondary pending record does not cause an infinite recovery loop');
+    await settleCorrupt();
+    assert.equal(pendingReads, readsAfterBoot, 'Subsequent renders with navigationReady=true do not re-trigger recovery');
+    assert.equal(find(rootTree, 'error-box').props.error.message, '记录已损坏');
+    corrupt = false;
+    find(rootTree, 'button', props => text(props.children) === '刷新上次操作记录').props.onClick();
+    await settleCorrupt();
+    assert.equal(find(rootTree, 'error-box').props.error, undefined);
+    calendar.unmount(); workspace.unmount(); host.unmount();
+  }
 }
 async function main() {
   const env = environment(), B = env.window.APSBatchContract;

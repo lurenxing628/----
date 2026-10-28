@@ -8,10 +8,6 @@ from core.services.process.template_source import SOURCE_MESSAGES, external_grou
 from core.shared.strict_parse import is_exact_non_negative_number
 
 
-def capabilities():
-    return {"route_preview": True, "create": True, "delete": True, "stage_confirm": True, "import": True, "export": True}
-
-
 def require_ref(value, label):
     if type(value) is not str or re.fullmatch(r"[0-9a-f]{48}", value) is None:
         raise WorkbenchCommandRejected("storage_failure", label + "记录找不到编号，请联系维护人员核对资料。", 500)

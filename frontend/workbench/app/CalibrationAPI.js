@@ -29,15 +29,14 @@
       || !Number.isFinite(value.table_widths[key]) || value.table_widths[key] < 56 || value.table_widths[key] > 16384))) throw failure('校准表格列宽记录无效。');
     return input({ ...value.scope, ...value.table });
   }
-  const _read = (wanted, signal) => window.APSWorkbenchTransport.read(base, encode(wanted), { signal });
-  const read = (value, signal) => _read(input(value), signal);
   async function readView(value, signal) {
     const wanted = input(value);
-    return _validate(await _read(wanted, signal), wanted);
+    return _validate(await window.APSWorkbenchTransport.read(base, encode(wanted), { signal }), wanted);
   }
-  function detail(value, query, signal) {
-    if (!ref(value) || !query.snapshot_ref) throw failure('所选记录或数据版本缺失。');
-    return window.APSWorkbenchTransport.read(base + '/' + value, encode(input(query)), { signal });
+  async function detail(value, query, signal) {
+    const wanted = input(query);
+    if (!ref(value) || !wanted.snapshot_ref) throw failure('所选记录或数据版本缺失。');
+    return _validate(await window.APSWorkbenchTransport.read(base + '/' + value, encode(wanted), { signal }), wanted, value);
   }
   function validRow(row, meta) {
     return object(row) && ref(row.suggestion_ref) && row.suggestion_ref === row.template_operation_ref && row.operation_ref === row.suggestion_ref
@@ -95,7 +94,6 @@
       || data.page.total_pages !== Math.ceil(data.page.total / wanted.size) || data.items.length !== Math.max(0, Math.min(wanted.size, data.page.total - (wanted.page - 1) * wanted.size))) throw failure('校准列表或分页数量不一致。');
     return result;
   }
-  const validate = (result, query, detailRef) => _validate(result, input(query), detailRef);
   function exportReason(data, format) {
     if (!data || !data.capabilities || data.capabilities.export !== true) return '当前来源暂不能导出。';
     if (!data.summary.total) return '当前筛选没有可导出的记录。';
@@ -131,7 +129,7 @@
     const { scope, column, ...query } = request;
     return window.APSWorkbenchTransport.read(base + (selection ? '/facet-selection/' : '/facets/') + column, { ...query, scope: JSON.stringify(scope) }, { signal });
   }
-  window.CalibrationAPI = { read, readView, detail, download, validate, input, initial, sorts, exportReason, failure, facetScope,
+  window.CalibrationAPI = { readView, detail, download, input, initial, sorts, exportReason, failure, facetScope,
     facets: (kind, request, signal) => facet(kind, request, signal, false),
     facetSelection: (kind, request, signal) => facet(kind, request, signal, true) };
 })();

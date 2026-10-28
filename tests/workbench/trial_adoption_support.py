@@ -53,21 +53,6 @@ def api(case, enabled=True, factory=sqlite3.Connection):
     return case.app.test_client()
 
 
-def assert_retained(before, after):
-    append_only = {"Schedule", "ScheduleHistory", "ScheduleVersionSeq", "OperationLogs",
-                   "WorkbenchCommandReceipts", "WorkbenchPlanSourceRefs", "WorkbenchTaskRefs"}
-    clocks = {"sqlite_sequence", "WorkbenchPlanIdentityClock"}
-    assert set(before) == set(after)
-    for name, rows in before.items():
-        if name == "WorkbenchDashboardItems":
-            assert_dashboard_task_appends(before, after)
-        elif name in append_only:
-            current = {row[0]: row for row in after[name]}
-            assert all(current.get(row[0]) == row for row in rows), name
-        elif name not in clocks:
-            assert after[name] == rows, name
-
-
 def _appended_source_rows(before, after, table):
     previous = {row[0]: row for row in before[table]}
     current = {row[0]: row for row in after[table]}

@@ -3,14 +3,18 @@
   const C = window.APSResourceContract;
   const key = value => typeof value === 'string' && value.length > 0;
   const count = value => Number.isSafeInteger(value) && value >= 0;
-  function rule(value) {
-    if (value === null || value === undefined) return { mode: 'exclude', values: [] };
+  function ruleSet(value) {
+    if (value === null || value === undefined) return { mode: 'exclude', keys: new Set() };
     if (!C.object(value) || !['include', 'exclude'].includes(value.mode) || !Array.isArray(value.values)
         || Object.keys(value).some(key => !['mode', 'values'].includes(key)) || !value.values.every(key))
       throw C.failure('本列筛选规则不完整，请清除本列后重新选择。');
-    const values = Array.from(new Set(value.values)).sort();
-    if (values.length > 50000) throw C.failure('本列筛选超过 50000 个值，请先清除或减少原条件。');
-    return { mode: value.mode, values };
+    const keys = new Set(value.values);
+    if (keys.size > 50000) throw C.failure('本列筛选超过 50000 个值，请先清除或减少原条件。');
+    return { mode: value.mode, keys };
+  }
+  function rule(value) {
+    const selected = ruleSet(value);
+    return { mode: selected.mode, values: Array.from(selected.keys).sort() };
   }
   // 整组列筛选逐列规范（去重、排序）；外层对象和列名由调用方按各自的列清单先校验。
   function rules(value) {
@@ -21,14 +25,14 @@
   }
   // changed 只来自 facets() 已校验的选项编号或 selection() 已校验的全部匹配编号。
   function toggleKeys(value, changed, enabled) {
-    const selected = rule(value), keys = new Set(selected.values);
-    changed.forEach(key => { if ((selected.mode === 'include') === enabled) keys.add(key); else keys.delete(key); });
+    const { mode, keys } = ruleSet(value);
+    changed.forEach(key => { if ((mode === 'include') === enabled) keys.add(key); else keys.delete(key); });
     if (keys.size > 50000) throw C.failure('本次选择会使本列筛选超过 50000 个值，原条件没有改动。请先清除或减少已选范围。');
-    return { mode: selected.mode, values: Array.from(keys).sort() };
+    return { mode, values: Array.from(keys).sort() };
   }
   function groupState(value, keys) {
-    const selected = rule(value), set = new Set(selected.values);
-    const matches = keys.reduce((sum, key) => sum + ((selected.mode === 'include') === set.has(key) ? 1 : 0), 0);
+    const { mode, keys: set } = ruleSet(value);
+    const matches = keys.reduce((sum, key) => sum + ((mode === 'include') === set.has(key) ? 1 : 0), 0);
     return { all: keys.length > 0 && matches === keys.length, mixed: matches > 0 && matches < keys.length };
   }
   function toolbarScope(scope) {
@@ -37,8 +41,8 @@
     return result;
   }
   function active(value) {
-    const selected = rule(value);
-    return selected.mode === 'include' || selected.values.length > 0;
+    const selected = ruleSet(value);
+    return selected.mode === 'include' || selected.keys.size > 0;
   }
   function signature(value) {
     if (Array.isArray(value)) return '[' + value.map(signature).join(',') + ']';

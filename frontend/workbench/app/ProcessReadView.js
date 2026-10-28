@@ -14,9 +14,10 @@
     P.ordering(scope);
     if (!Array.isArray(view.selected_refs) || !view.selected_refs.every(ref) || new Set(view.selected_refs).size !== view.selected_refs.length
         || view.entity_ref !== null && !ref(view.entity_ref)) throw C.failure('上次打开或勾选的零件已失效，已按默认范围显示工艺列表。');
-    const restored = JSON.parse(JSON.stringify(view));
-    restored.scope.column_filters = filters.rules(scope.column_filters);
-    return restored;
+    return {
+      ...view,
+      scope: { ...scope, column_filters: filters.rules(scope.column_filters) }
+    };
   }
   window.APSProcessReadView = { read, scopeKeys };
 })();

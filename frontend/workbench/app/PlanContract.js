@@ -83,8 +83,7 @@
     const refs = rows.map(row => row[key]).filter(value => value !== null);
     return new Set(refs).size === refs.length;
   }
-  function catalog(result, scope = {}) {
-    const query = catalogScope(scope);
+  function catalog(result, query) {
     envelope(result, query);
     const d = result.data, p = d && d.page;
     if (!exact(d, ['plans', 'page']) || !Array.isArray(d.plans) || !d.plans.every(plan) || !uniqueRefs(d.plans, 'plan_ref')
@@ -337,8 +336,7 @@
     return value.state === 'available' ? ['run_admission', 'trial_creation'].includes(value.basis) && !value.issues.length
       : value.state === 'unavailable' && value.basis === null && value.issues.length > 0;
   }
-  function workspace(result, planRef, scope = {}) {
-    const query = workspaceScope(planRef, scope);
+  function workspace(result, planRef, query) {
     envelope(result, query);
     const d = result.data;
     if (!exact(d, ['plan', 'scope', 'time_scope', 'plan_span', 'task_span', 'tasks', 'task_count', 'tasks_complete', 'resources', 'projections', 'gantt_graph', 'provenance'])

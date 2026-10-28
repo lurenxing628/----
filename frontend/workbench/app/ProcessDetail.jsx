@@ -38,7 +38,7 @@
     </div>;
   }
   function RouteView({ entity, disabled, onEntry, onFileAction }) {
-    return <section className="process-route-section"><div className="toolbar"><h3>工艺路线</h3><span className="tb-spacer" /><Button icon="square-pen" className="btn primary" disabled={disabled} reason={P.reason(entity.capabilities, 'route_preview')} onClick={onEntry}>录入路线</Button><window.ProcessFileButtons capabilities={entity.capabilities} disabled={disabled} routeOnly onAction={onFileAction} /></div>
+    return <section className="process-route-section"><div className="toolbar"><h3>工艺路线</h3><span className="tb-spacer" /><Button icon="square-pen" className="btn primary" disabled={disabled} onClick={onEntry}>录入路线</Button><window.ProcessFileButtons disabled={disabled} routeOnly onAction={onFileAction} /></div>
       <Operations entity={entity} hours={false} />
       <details className="process-original"><summary>原始导入资料与保存记录</summary><dl className="process-fields">{[['route_raw', '原始路线'], ['route_parsed', '解析状态'], ['remark', '零件备注']].map(([key, label]) => <div key={key}><dt>{label}</dt><dd>{key === 'route_parsed' ? entity.fields[key] === 'yes' ? '已解析' : entity.fields[key] === 'no' ? '未解析' : '解析状态未知' : E.value(entity.fields[key])}</dd></div>)}</dl><E.Confirmation record={entity.workflow.route} /><E.Groups rows={entity.external_groups} /></details></section>;
   }
@@ -105,7 +105,7 @@
       setDirty({}); setEntry(false); setEntryStarted(false);
     }
     function openFile(kind, mode, abandon = false) {
-      if (editingBlocked || !current || !['route', 'hours'].includes(kind) || !['import', 'export'].includes(mode) || P.reason(current.data.capabilities, mode)) return;
+      if (editingBlocked || !current || !['route', 'hours'].includes(kind) || !['import', 'export'].includes(mode)) return;
       if (!abandon) fileFocus.current = document.activeElement;
       if (hasDraft && !abandon) { setDiscard({ kind, mode }); return; }
       if (!command.reset()) return;

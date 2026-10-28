@@ -27,9 +27,6 @@
         || Array.isArray(value) && scope.direction && scope.direction !== 'asc') throw C.failure('工艺排序不完整，请重新选择排序。');
     return rows;
   }
-  function capabilities(value) {
-    return C.object(value) && ['route_preview', 'create', 'delete', 'stage_confirm', 'import', 'export'].every(key => typeof value[key] === 'boolean');
-  }
   // 只校验工艺专属字段：通用实体合同已由 list()/detail() 开头的 C.query 校验过一次。
   function entity(value) {
     if (!ref(value.ref) || value.status !== null || !writeContext(value.write_context)) return false;
@@ -90,15 +87,12 @@
   function groupCycle(row, groups) {
     if (row.external_days_source !== 'group') return null;
     const group = groups.get(row.external_group_ref);
-    if (!group || group.merge_mode !== 'merged' || !Number.isFinite(group.total_days) || group.total_days <= 0 || group.issues.length
-        || row.external_days !== null || row.source !== 'external' || row.status !== 'active' || !within(row.sequence, group.start_sequence, group.end_sequence))
-      throw C.failure('工序周期和指定外协组不一致，请刷新后重试。');
     return '整段 ' + String(group.total_days) + ' 天 · 工序 ' + group.start_sequence + ' 至 ' + group.end_sequence;
   }
   function list(result, scope) {
     C.query(result, 'list');
     const d = result.data, p = d.page, sort = ordering(scope);
-    if (!d.entities.every(entity) || !capabilities(d.capabilities)
+    if (!d.entities.every(entity)
         || d.create_context !== null && !writeContext(d.create_context)
         || !C.object(d.metrics) || !C.object(d.metrics.counts) || !stages.every(row => count(d.metrics.counts[row[2]]))
         || p.number !== scope.page || p.size !== scope.size
@@ -113,7 +107,7 @@
   function detail(result, expectedRef) {
     C.query(result, 'entity');
     const d = result.data;
-    if (!entity(d) || d.ref !== expectedRef || !capabilities(d.capabilities)
+    if (!entity(d) || d.ref !== expectedRef
         || !Array.isArray(d.operations) || !d.operations.every(operation) || !uniqueRefs(d.operations)
         || !Array.isArray(d.external_groups) || !d.external_groups.every(externalGroup) || !uniqueRefs(d.external_groups) || !cycleReferences(d))
       throw C.failure('读到的工艺详情不完整或不是这个零件，请刷新后重试。');
@@ -174,11 +168,6 @@
     if (snapshot) body.snapshot_ref = snapshot;
     return body;
   }
-  function reason(value, action) {
-    if (!value) return '请先读取当前工艺能力。';
-    if (value[action] !== true) return action === 'stage_confirm' ? '当前不允许确认这一步，不能保存。' : '当前不允许此操作。';
-    return '';
-  }
   function sourceLabel(value) { return value === 'internal' ? '自制' : value === 'external' ? '外协' : '未归类'; }
   // 数值按录入精度显示（最多四位小数），格式统一走 WorkbenchFormat；单位由表头交代，这里不拼。
   function valueText(value) { return value === null ? '未填写' : window.WorkbenchFormat.number(value, { digits: 4, trim: true }) + (value <= 0 ? ' · 请复核' : ''); }
@@ -193,5 +182,5 @@
     return '状态未明确';
   }
   function stageLabel(key) { return C.own(stageNames, key) ? stageNames[key] : '阶段未明确'; }
-  window.APSProcessContract = { stages, columns, ordering, externalGroup, groupIndex, groupCycle, list, detail, preview, stagePreview, previewBody, reason, sourceLabel, valueText, workflowStateLabel, stageLabel };
+  window.APSProcessContract = { stages, columns, ordering, externalGroup, groupIndex, groupCycle, list, detail, preview, stagePreview, previewBody, sourceLabel, valueText, workflowStateLabel, stageLabel };
 })();

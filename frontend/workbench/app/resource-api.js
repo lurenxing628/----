@@ -142,6 +142,7 @@
         throw unconfirmed('上次操作的结果还没确认，请保留当前页面并点「查询结果」。');
       },
       download(path, scope, signal, options = {}) { return T.download(absolute(path), scope, { types: fileTypes, timeout: 20000, ...options, signal }); },
+      pendingKey,
       readPending: pending.read,
       savePending(intent) { pending.write(intent); },
       clearPending() { pending.write(null); }

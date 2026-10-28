@@ -25,6 +25,7 @@
     return {
       resourceAdapter: resources,
       choices: resources.choices,
+      pendingKey: base.pendingKey,
       lookup: base.lookup,
       readPending: base.readPending,
       savePending: base.savePending,

@@ -1,7 +1,6 @@
 """BX-only helpers: temporary real v26 SQLite and actual admission/worker/engine."""
 
 import json
-import sqlite3
 
 from flask import Blueprint, g
 
@@ -85,16 +84,3 @@ def api(case, enabled=True, connection_factory=connect):
         g.db.close()
 
     return case.app.test_client()
-
-
-class CommitFailureConnection(sqlite3.Connection):
-    fail_commit = False
-    acknowledge_only = False
-
-    def commit(self):
-        if self.fail_commit:
-            self.fail_commit = False
-            if self.acknowledge_only:
-                super().commit()
-            raise sqlite3.OperationalError("injected COMMIT acknowledgement failure")
-        return super().commit()

@@ -1,20 +1,16 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
 from core.algorithm_contracts.types import OpForScheduleAlgo
 from core.algorithm_runtime.checkpoint_calendar import register_checkpoint_calendar
 from core.algorithms.greedy.scheduler import GreedyScheduler
 from core.models.batch import Batch
 from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
-from core.services.scheduler.graph.analysis_service import ScheduleGraphAnalysisService
-from core.services.scheduler.graph.types import OperationGraphNode
 from tests._support.algo_operations import make_algo_op, make_batch
 from tests._support.schedule_decode import config_snapshot
 
-GRAPH_READY_FLEXIBLE_MACHINE_CASE_SLUG = "graph-ready-flexible-machine-bottleneck-metric"
-GRAPH_READY_FLEXIBLE_MACHINE_CASE_GROUP = "graph_ready_metric"
 OBJECTIVE_NAME = "min_overdue"
 START_DT = datetime(2026, 1, 1, 8, 0, 0)
 BASE_BATCH_ORDER = ["B_LONG", "B_MED", "B_SHORT_A", "B_SHORT_B"]
@@ -154,82 +150,10 @@ def graph_ready_benchmark_context(*, include_bottleneck: bool = True) -> Dict[st
     }
 
 
-def flexible_machine_bottleneck_scores() -> Dict[str, float]:
-    metrics = ScheduleGraphAnalysisService().analyze_precedence(
-        [
-            _metric_node("op:busy", seq=10, duration_minutes=120, machine_id="MC-B"),
-            _metric_node("op:light", seq=20, duration_minutes=30, machine_id="MC-A"),
-            _metric_node("op:flex", seq=30, duration_minutes=60, candidate_machine_ids=("MC-A", "MC-B")),
-        ],
-        [],
-    ).node_metrics
-    return {
-        "busy": float(metrics["op:busy"]["bottleneck_machine_score"]),
-        "light": float(metrics["op:light"]["bottleneck_machine_score"]),
-        "flex": float(metrics["op:flex"]["bottleneck_machine_score"]),
-    }
-
-
-def run_graph_ready_flexible_machine_metric_case() -> Dict[str, Any]:
-    scores = flexible_machine_bottleneck_scores()
-    row = {
-        "case_group": GRAPH_READY_FLEXIBLE_MACHINE_CASE_GROUP,
-        "case_slug": GRAPH_READY_FLEXIBLE_MACHINE_CASE_SLUG,
-        "algorithm_profile": "graph_ready",
-        "candidate_origin": "graph_ready_metric",
-        "seed": 0,
-        "time_budget_seconds": 0,
-        "objective_name": OBJECTIVE_NAME,
-        "objective_score": [],
-        "baseline_objective_score": [],
-        "objective_score_matched": True,
-        "failed_ops": 0,
-        "baseline_failed_ops": 0,
-        "oracle_status": "not_run",
-        "gap_to_oracle_pct": None,
-        "runtime_ms": 0,
-        "candidate_profile_count": 0,
-        "evaluated_candidates": 0,
-        "accepted_distinct_candidates": 0,
-        "distinct_candidates": 0,
-        "same_fingerprint_rejections": 0,
-        "candidate_rejections": {},
-        "best_origin": "graph_ready_metric",
-        "bottleneck_scores": scores,
-        "comparison_to_meta_baseline": {
-            "metric": "bottleneck_scores",
-            "baseline_value": scores,
-            "actual_value": scores,
-            "status": "same",
-        },
-    }
-    row["status"] = "passed" if _flexible_machine_metric_row_passes(row) else "failed"
-    return row
-
-
 def _operation(op_id: int, batch_id: str, *, hours: float) -> OpForScheduleAlgo:
     return make_algo_op(
         id=op_id, op_code=f"OP-{batch_id}", batch_id=batch_id, seq=10, machine_id="MC-BENCH",
         operator_id="OP-BENCH", setup_hours=hours, unit_hours=0.0, op_type_id="OT-BENCH", op_type_name="BENCH",
-    )
-
-
-def _metric_node(
-    node_id: str,
-    *,
-    seq: int,
-    duration_minutes: int,
-    machine_id: Optional[str] = None,
-    candidate_machine_ids: Tuple[str, ...] = (),
-) -> OperationGraphNode:
-    return OperationGraphNode(
-        node_id=node_id,
-        batch_id="B_METRIC",
-        op_code=node_id.replace("op:", "METRIC-"),
-        seq=int(seq),
-        duration_minutes=int(duration_minutes),
-        machine_id=machine_id,
-        candidate_machine_ids=candidate_machine_ids,
     )
 
 
@@ -242,16 +166,4 @@ def _default_config() -> ScheduleConfigSnapshot:
         sort_strategy="priority_first", dispatch_mode="sgs", dispatch_rule="slack", auto_assign_enabled="no",
         objective=OBJECTIVE_NAME, algo_mode="greedy", time_budget_seconds=1, ortools_enabled="no",
         freeze_window_enabled="no", freeze_window_days=0,
-    )
-
-
-def _flexible_machine_metric_row_passes(row: Dict[str, Any]) -> bool:
-    scores = row.get("bottleneck_scores") if isinstance(row.get("bottleneck_scores"), dict) else {}
-    return (
-        int(row.get("failed_ops") or 0) == 0
-        and bool(row.get("objective_score_matched"))
-        and float(scores.get("busy") or 0.0) == 2.5
-        and float(scores.get("light") or 0.0) == 1.0
-        and float(scores.get("flex") or 0.0) == 0.707107
-        and float(scores.get("flex") or 0.0) < float(scores.get("light") or 0.0) < float(scores.get("busy") or 0.0)
     )

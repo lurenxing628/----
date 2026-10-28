@@ -1,12 +1,12 @@
 (function () {
   'use strict';
   const root = 'entities/batch', xlsx = { types: [window.APSWorkbenchTransport.types.xlsx] };
-  // 每次 create() 都是新的 adapter：resource-session 以 adapter 对象区分会话，批次页与分批面板各有自己的待确认状态。
+  // 批次页与分批面板共享 'batches' 会话键，保持待确认状态与已确认的拒绝/完成态在重挂载时一致。
   function create() {
     const api = window.APSResourceAPI.create('batches'), C = window.APSBatchContract;
     const entity = ref => { if (!C.ref(ref)) throw window.APSResourceContract.failure('这个批次已失效，请返回批次列表重新选择。'); return root + '/' + ref; };
     return {
-      readPending: api.readPending, savePending: api.savePending, clearPending: api.clearPending, lookup: api.lookup,
+      pendingKey: api.pendingKey, readPending: api.readPending, savePending: api.savePending, clearPending: api.clearPending, lookup: api.lookup,
       list(kind, scope, signal) { if (kind !== 'batch') throw window.APSResourceContract.failure('批次类别不正确。'); return api.preview(root + '/query', scope, signal); },
       detail(kind, ref, signal) { if (kind !== 'batch') throw window.APSResourceContract.failure('批次类别不正确。'); return api.query(entity(ref), {}, signal); },
       operationChoices(batchRef, operationRef, signal) { return api.query(root + '/choices', { batch_ref: batchRef, operation_ref: operationRef }, signal); },

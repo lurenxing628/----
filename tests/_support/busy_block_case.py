@@ -1,15 +1,11 @@
-"""Real SQLite calendars and a one-switch, pre-skip estimator oracle."""
+"""Real SQLite calendars for scheduler tests."""
 
 import sqlite3
-from contextlib import ExitStack, contextmanager
-from copy import deepcopy
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import patch
 
-from core.algorithm_runtime import internal_slot
 from core.services.scheduler.calendar.service import CalendarService
-from tests._support.algo_operations import make_algo_op, make_batch
 
 BASE = datetime(2026, 9, 8, 8)
 SCHEMA = (Path(__file__).resolve().parents[2] / "schema.sql").read_text(encoding="utf-8")
@@ -17,10 +13,6 @@ SCHEMA = (Path(__file__).resolve().parents[2] / "schema.sql").read_text(encoding
 
 def at(hours=0):
     return BASE + timedelta(hours=hours)
-
-
-def spans(*pairs):
-    return [(at(start), at(end)) for start, end in pairs]
 
 
 def day_row(day=0, **overrides):
@@ -63,52 +55,3 @@ def native_calendar(rows=(), operator_rows=(), calendar_type=CalendarService):
         assert conn.total_changes == before, "Scheduling wrote to the calendar fixture"
     finally:
         conn.close()
-
-
-def slot_case(hours=0.25, *, machine=(), operator=(), downtime=(), priority="normal", **overrides):
-    case = dict(
-        op=make_algo_op(machine_id="M1", operator_id="O1", setup_hours=hours, unit_hours=0.0, op_type_name="TURN"),
-        batch=make_batch(priority=priority),
-        machine_id="M1", operator_id="O1", base_time=BASE, prev_end=BASE,
-        machine_timeline=list(machine), operator_timeline=list(operator), machine_downtimes=list(downtime),
-        end_dt_exclusive=None, abort_after=None, last_op_type_by_machine={"M1": "MILL"},
-    )
-    case.update(overrides)
-    return case
-
-
-def legacy_shift(calendar, *, shift_to, **unused):
-    # Keep the production estimator, overlap lookup and native calendar unchanged.
-    return shift_to
-
-
-@contextmanager
-def counted_attempts(legacy=False):
-    with ExitStack() as stack:
-        if legacy:
-            stack.enter_context(patch.object(internal_slot, "advance_busy_block", side_effect=legacy_shift))
-        attempts = stack.enter_context(patch.object(
-            internal_slot, "_estimate_attempt", wraps=internal_slot._estimate_attempt,
-        ))
-        yield attempts
-
-
-def run_estimate(calendar, case, *, legacy=False):
-    before = deepcopy(case)
-    try:
-        with counted_attempts(legacy) as attempts:
-            result = internal_slot.estimate_internal_slot(calendar=calendar, **case)
-        return result, attempts.call_count
-    finally:
-        assert case == before, "Slot estimation changed its input"
-
-
-def equivalent_slot(case, *, rows=(), operator_rows=(), calendar_type=CalendarService):
-    outputs = []
-    for legacy in (True, False):
-        with native_calendar(rows, operator_rows, calendar_type) as calendar:
-            outputs.append(run_estimate(calendar, case, legacy=legacy))
-    (expected, old_count), (actual, new_count) = outputs
-    assert actual == expected, (case, expected, actual)
-    assert new_count <= old_count
-    return actual, old_count, new_count

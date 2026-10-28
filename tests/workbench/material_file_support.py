@@ -1,15 +1,8 @@
 """BytesIO fixtures and explicit CommandService integration for material files."""
 
 import csv
-import json
-import tracemalloc
 from datetime import datetime, timedelta
-from decimal import Decimal
 from io import BytesIO, StringIO
-from itertools import zip_longest
-from time import perf_counter
-from xml.etree import ElementTree
-from zipfile import ZipFile
 
 import openpyxl
 
@@ -17,7 +10,6 @@ from core.models.workbench_material_file import COLUMNS, HEADERS, MATERIAL_COLUM
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.material.bulk import WorkbenchMaterialBulkService
 from core.services.workbench.material.files import WorkbenchMaterialFileService
-from tests.workbench.identity_metadata_support import business_snapshot
 
 KEY = "material-file-test-000001"
 
@@ -61,152 +53,12 @@ def confirm_delete(conn, preview, refs, *, key=KEY, scope=None, guard=None, comm
     )
 
 
-def export_file(conn, file_format, **selection):
-    # 和下载路由一样：读快照里只读行，事务结束后再生成文件。
-    service = WorkbenchMaterialFileService(conn)
-    with service.reader.read_snapshot():
-        rows = service.export_rows(file_format, **selection)
-    return WorkbenchMaterialFileService.write_export(rows, file_format)
-
-
-def seed_many(conn, count):
-    conn.executemany("INSERT INTO Materials (material_id, name, stock_qty, status) VALUES (?, ?, ?, ?)",
-                     [(f"BULK{n:05d}", f"name{n:05d}", n / 4, "active") for n in range(count)])
-    conn.commit()
-
-
-def small_dimensions(content):
-    output = BytesIO()
-    with ZipFile(BytesIO(content)) as source, ZipFile(output, "w") as target:
-        for entry in source.infolist():
-            payload = source.read(entry.filename)
-            if entry.filename == "xl/worksheets/sheet1.xml":
-                tree = ElementTree.fromstring(payload)
-                tree.find("{http://schemas.openxmlformats.org/spreadsheetml/2006/main}dimension").set("ref", "A1")
-                payload = ElementTree.tostring(tree)
-            target.writestr(entry, payload)
-    return output.getvalue()
-
-
-def measure(operation, call, **details):
-    """Incremental Python allocation peak, not total RSS; timing includes tracing overhead."""
-    tracemalloc.start()
-    started = perf_counter()
-    try:
-        result = call()
-        elapsed = perf_counter() - started
-        _, peak = tracemalloc.get_traced_memory()
-    finally:
-        tracemalloc.stop()
-    metric = {"operation": operation, "elapsed_s": round(elapsed, 6), "python_peak_bytes": peak, **details}
-    if hasattr(result, "content"):
-        metric.update(file_bytes=len(result.content), rows=result.row_count)
-    print("MATERIAL_METRIC " + json.dumps(metric, sort_keys=True))
-    return result
-
-
-def seed_export_scale(conn):
-    """9999 diverse rows plus the shared MAT1 fixture: exactly 10000 materials."""
-    codes = ("000123", "2026-01-02", "=1+1", "+cmd", "-2", "@SUM(A1)", "'literal")
-    rows = []
-    for n in range(9999):
-        rows.append((codes[n] if n < len(codes) else f"BULK{n:05d}", f"同名{n % 17:02d}",
-                     None if n % 3 == 0 else r"\N", None if n % 5 == 0 else "kg",
-                     None if n % 7 == 0 else n / 4, ("active", "inactive", "legacy HOLD ", None)[n % 4],
-                     "=中文,\"文字\"\n第二行" if n % 2 else None, f"2000-01-{n % 28 + 1:02d} 01:02:03"))
-    conn.executemany("INSERT INTO Materials (material_id, name, spec, unit, stock_qty, status, remark, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", rows)
-    conn.commit()
-    return [dict(row) for row in conn.execute("SELECT * FROM Materials ORDER BY material_id")]
-
-
 def _local_created_at(value):
     """独立预期：Materials.created_at 由数据库按 UTC 写入，导出文件里显示的是加 8 小时后的时刻。"""
     if value is None:
         return None
     return (datetime.strptime(str(value)[:19].replace("T", " "), "%Y-%m-%d %H:%M:%S")
             + timedelta(hours=8)).strftime("%Y-%m-%d %H:%M:%S")
-
-
-def _expected_file_values(row, file_format):
-    result = []
-    for field, column in zip(COLUMNS, MATERIAL_COLUMNS):
-        value = _local_created_at(row[column]) if field == "created_at" else row[column]
-        if field == "status":
-            value = {"active": "启用", "inactive": "停用"}.get(value, value)
-        if field == "stock_qty":
-            # 两种格式都写成能原样还原的最短十进制文本：2.0 写成 2，不用科学计数法。
-            if value is not None:
-                value = str(value) if type(value) is int else format(Decimal(repr(value)).normalize(), "f")
-            elif file_format == "csv":
-                value = ""
-        else:
-            if value is None:
-                value = r"\N" if field in ("spec", "unit", "remark") else None
-            elif value.startswith("\\"):
-                value = "\\" + value
-            if file_format == "csv":
-                value = "'" + value if value is not None else ""
-        result.append(value)
-    return result
-
-
-def verify_download(download, expected, file_format):
-    """Independent reader/oracle: do not invoke the import parser (which has a 2000-row cap)."""
-    if file_format == "csv":
-        rows = csv.reader(StringIO(download.content.decode("utf-8-sig"), newline=""))
-        assert next(rows) == list(HEADERS)
-        count = 0
-        for count, (actual, source) in enumerate(zip_longest(rows, expected), 1):
-            assert actual is not None and source is not None, count
-            assert actual == _expected_file_values(source, file_format), count
-    else:
-        wb = openpyxl.load_workbook(BytesIO(download.content), read_only=True, data_only=False)
-        try:
-            rows = wb.worksheets[0].iter_rows(max_col=len(HEADERS))
-            assert [cell.value for cell in next(rows)] == list(HEADERS)
-            count = 0
-            for count, (actual, source) in enumerate(zip_longest(rows, expected), 1):
-                assert actual is not None and source is not None, count
-                assert all(cell.data_type != "f" for cell in actual), count
-                assert [cell.value for cell in actual] == _expected_file_values(source, file_format), count
-        finally:
-            wb.close()
-    assert count == len(expected) == download.row_count
-
-
-def exercise_scale_export(conn, file_format, selection):
-    rows = seed_export_scale(conn)
-    before, changes = business_snapshot(conn), conn.total_changes
-    if selection == "all":
-        expected, arguments = rows, {"scope": {}}
-    elif selection == "filtered":
-        expected = [row for row in rows if "bulk" in row["material_id"].lower() and row["status"] == "active"]
-        expected.sort(key=lambda row: row["name"], reverse=True)
-        arguments = {"scope": {"query": "BULK", "status": "active", "sort": "label", "direction": "desc"}}
-    else:
-        expected = list(reversed(rows[::3]))
-        refs = dict(conn.execute("SELECT entity_key, ref FROM WorkbenchEntityRefs WHERE kind = 'material' AND active = 1"))
-        arguments = {"selected_refs": [refs[row["material_id"]] for row in expected]}
-    assert len(rows) == 10000 and len(expected) > 2000
-    call = lambda: export_file(conn, file_format, **arguments)
-    download = measure("export_all", call, format=file_format) if selection == "all" else call()
-    verify_download(download, expected, file_format)
-    assert business_snapshot(conn) == before and conn.total_changes == changes
-    assert not conn.in_transaction
-
-
-class OnePassRows:
-    def __init__(self, rows):
-        self.rows = iter(rows)
-        self.iterations = 0
-
-    def __iter__(self):
-        self.iterations += 1
-        assert self.iterations == 1, "export rows must not be consumed twice"
-        return self.rows
-
-    def __len__(self):
-        raise AssertionError("an export stream has no len()")
 
 
 def codec_rows(rows):

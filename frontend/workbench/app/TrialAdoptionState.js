@@ -28,8 +28,13 @@
   }
   // A fresh draft starts from the handler this machine remembered, so the dirty guard compares against that prefill rather than an empty string.
   const remembered = () => window.WorkbenchHandlerMemory.read().value, empty = () => ({ reason: '', declared_operator: remembered() });
+  function storageMessage(e, current = e && e.saved) {
+    if (current && current.phase === 'committed') return '已收到采用结果，但本机没能保存这次操作记录。';
+    if (current && current.phase === 'rejected') return '本次采用未通过，但本机没能保存这次操作记录。';
+    return e.message;
+  }
   function useSession({ scenarioRef, data, disabled, onAdopted }) {
-    const [initial] = React.useState(() => { try { return { saved: read(), error: '' }; } catch (e) { return { saved: null, error: e.message }; } });
+    const [initial] = React.useState(() => { try { return { saved: read(), error: '' }; } catch (e) { return { saved: e.saved || null, error: storageMessage(e) }; } });
     const [saved, setSaved] = React.useState(initial.saved), [storageError, setStorageError] = React.useState(initial.error);
     const [draft, setDraft] = React.useState(() => initial.saved ? initial.saved.input : empty());
     const [open, setOpen] = React.useState(false), [preview, setPreview] = React.useState(null), [consent, setConsent] = React.useState(false);
@@ -41,15 +46,34 @@
     const callback = React.useRef(onAdopted), notified = React.useRef(null); callback.current = onAdopted; active.current = saved;
     let original = null, sourceError = '';
     try { original = A.source(scenarioRef, data); } catch (e) { sourceError = e.message; }
-    current.current = { original, disabled }; const identity = JSON.stringify(original);
+    current.current = { original, disabled, preview, consent, draft, storageError }; const identity = JSON.stringify(original);
     React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; if (request.current) request.current.abort(); }; }, []);
-    React.useEffect(() => { setPreview(null); setConsent(false); if (request.current) request.current.abort(); }, [identity, disabled]);
+    React.useEffect(() => { current.current = { ...current.current, preview: null, consent: false }; setPreview(null); setConsent(false); if (request.current) request.current.abort(); }, [identity, disabled]);
     function sync(event) {
       try {
         const value = event && event.type === EVENT ? event.detail : read();
-        if (value !== active.current && !A.equal(value, active.current)) { active.current = value; setSaved(value); setPreview(null); setConsent(false); setDraft(value ? value.input : empty()); }
-        setStorageError('');
-      } catch (e) { setStorageError(e.message); }
+        if (value !== active.current && !A.equal(value, active.current)) {
+          const switched = !active.current || !value || value.request_key !== active.current.request_key;
+          const nextDraft = value ? value.input : empty();
+          active.current = value;
+          current.current = { ...current.current, preview: null, consent: false, draft: nextDraft, storageError: '' };
+          if (!mounted.current) return;
+          setSaved(value); setPreview(null); setConsent(false); setDraft(nextDraft);
+          if (switched || value.phase === 'committed') { setError(''); setNotice(''); }
+        } else {
+          current.current = { ...current.current, storageError: '' };
+        }
+        if (mounted.current) setStorageError('');
+      } catch (e) {
+        const changed = e.saved !== undefined && !A.equal(e.saved, active.current);
+        const nextDraft = changed ? (e.saved ? e.saved.input : empty()) : current.current.draft;
+        if (changed) active.current = e.saved;
+        const msg = storageMessage(e, e.saved !== undefined ? e.saved : active.current);
+        current.current = { ...current.current, ...(changed ? { preview: null, consent: false, draft: nextDraft } : {}), storageError: msg };
+        if (!mounted.current) return;
+        if (changed) { setSaved(e.saved); setDraft(nextDraft); }
+        setStorageError(msg);
+      }
     }
     React.useEffect(() => {
       const changed = e => { if (!e.key || e.key === KEY) sync(e); };
@@ -64,11 +88,15 @@
       try { Promise.resolve(callback.current(result)).catch(failed); } catch (_) { failed(); }
     }, [result]);
     function accept(value, intent) {
-      if (!mounted.current) return;
-      if (!A.equal(active.current, intent)) { sync(); return; }
+      if (!A.equal(active.current, intent)) { if (mounted.current) sync(); return; }
       const committed = { ...intent, phase: 'committed', receipt: value };
-      try { save(committed, intent); active.current = committed; setSaved(committed); setError(''); setNotice(''); }
-      catch (e) { setStorageError('已收到采用结果，但上次操作记录没存上。' + e.message); }
+      try { save(committed, intent); active.current = committed; }
+      catch (e) {
+        if (!mounted.current) return;
+        if (!A.equal(active.current, committed)) { sync(); setStorageError(e.message); return; }
+        setStorageError(storageMessage(e, active.current));
+      }
+      if (mounted.current && A.equal(active.current, committed)) { setError(''); setNotice(''); }
     }
     async function lookup(signal) {
       const intent = active.current;
@@ -80,11 +108,17 @@
         if (found.state === 'not_observed') {
           if (found.may_be_in_flight === false) {
             if (!A.equal(active.current, intent)) { sync(); return; }
-            save(null, intent); setError('');
-            setNotice('上次采用记录的数据来源已失效，已结束本机待确认记录。请对当前试调方案重新预检。');
-          } else { setError(''); setNotice(window.WorkbenchTerms.outcomes.pending('采用')); }
+            try { save(null, intent); } catch (e) {
+              if (active.current !== null) sync();
+              setStorageError(e.message);
+            }
+            if (active.current === null) {
+              setError('');
+              setNotice('上次采用记录的数据来源已失效，已结束本机待确认记录。请对当前试调方案重新预检。');
+            }
+          } else if (A.equal(active.current, intent)) { setError(''); setNotice(window.WorkbenchTerms.outcomes.pending('采用')); }
         } else accept(found, intent);
-      } catch (e) { if (mounted.current && !(signal && signal.aborted)) setError('上次采用的结果还没查到。' + e.message); }
+      } catch (e) { if (mounted.current && !(signal && signal.aborted) && A.equal(active.current, intent)) setError('上次采用的结果还没查到。' + e.message); }
       finally { if (mounted.current && !(signal && signal.aborted)) setChecking(false); }
     }
     React.useEffect(() => {
@@ -109,21 +143,32 @@
       let values; try { values = A.input({ confirm: true, reason: draft.reason, declared_operator: draft.declared_operator }); }
       catch (e) { setError(e.message); return; }
       window.WorkbenchHandlerMemory.write(values.declared_operator);
+      const initialActive = active.current;
       lock.current = true; setBusy(true); setError(''); setNotice('');
       try {
         if (!navigator.locks || typeof navigator.locks.request !== 'function') { if (mounted.current) setError('当前浏览器不支持这项操作，请用 Chrome 打开。'); return; }
         await navigator.locks.request(KEY, { ifAvailable: true }, async acquired => {
           if (!acquired) { if (mounted.current) setError('另一个页面正在处理这次采用，请先在那个页面点「查询结果」。'); return; }
-          if (!mounted.current || current.current.disabled || !A.equal(original, current.current.original)) return;
+          const latest = current.current;
+          if (!mounted.current || latest.disabled || latest.storageError || !latest.original || latest.preview !== preview || !latest.consent
+            || !A.equal(active.current, initialActive) || active.current && active.current.phase !== 'rejected'
+            || !A.equal(original, latest.original)
+            || !A.equal(A.input({ confirm: true, reason: latest.draft.reason, declared_operator: latest.draft.declared_operator }), values)) return;
           const intent = begin(preview, values, active.current);
-          active.current = intent; setSaved(intent); setDraft(intent.input); setPreview(null); setConsent(false);
+          active.current = intent; current.current = { ...current.current, preview: null, consent: false }; setSaved(intent); setDraft(intent.input); setPreview(null); setConsent(false);
           try { accept(await A.adopt(intent, preview.write_context.write_token), intent); }
           catch (e) {
-            if (!mounted.current) return;
+            if (!A.equal(active.current, intent)) { if (mounted.current) sync(); return; }
             if (window.APSWorkbenchTransport.rejected(e)) {
-              const rejected = save({ ...intent, phase: 'rejected' }, intent); active.current = rejected; setSaved(rejected);
-              setError(window.WorkbenchTerms.outcomes.rejected('采用', e.message));
-            } else setError(window.WorkbenchTerms.outcomes.unknown('采用'));
+              const rejected = { ...intent, phase: 'rejected' };
+              try { save(rejected, intent); active.current = rejected; }
+              catch (storageErr) {
+                if (!mounted.current) return;
+                if (!A.equal(active.current, rejected)) { sync(); setStorageError(storageErr.message); return; }
+                setStorageError(storageMessage(storageErr, active.current));
+              }
+              if (mounted.current && A.equal(active.current, rejected)) setError(window.WorkbenchTerms.outcomes.rejected('采用', e.message));
+            } else if (mounted.current) setError(window.WorkbenchTerms.outcomes.unknown('采用'));
           }
         });
       } catch (e) { if (mounted.current) setStorageError(e.message); }
@@ -132,13 +177,14 @@
     function finish() {
       try {
         A.check(saved && saved.phase !== 'pending', '结果还不确定，不能丢弃这次操作记录。'); save(null, saved);
-        setOpen(false); setPreview(null); setConsent(false); setDraft(empty());
+        current.current = { ...current.current, preview: null, consent: false }; setOpen(false); setPreview(null); setConsent(false); setDraft(empty());
         setError(''); setNotice(saved.phase === 'committed' ? '这次采用结果已确认完成。' : '本次操作已结束，未采用。');
       } catch (e) { setStorageError(e.message); }
     }
-    function close() { if (request.current) request.current.abort(); setOpen(false); setPreview(null); setConsent(false); if (!active.current) { setError(''); setDraft(empty()); } }
+    function close() { if (request.current) request.current.abort(); current.current = { ...current.current, preview: null, consent: false }; setOpen(false); setPreview(null); setConsent(false); if (!active.current) { setError(''); setDraft(empty()); } }
     return { saved, result, draft, open, preview, consent, busy: busy || checking, error, notice, storageError, sourceError, original, disabled,
-      setOpen, setConsent, change: value => { if (!active.current) { setDraft(value); setConsent(false); } }, inspect, submit, lookup: () => lookup(), sync, close, finish };
+      setOpen, setConsent: value => { current.current = { ...current.current, consent: value }; setConsent(value); },
+      change: value => { if (!active.current) { current.current = { ...current.current, draft: value, consent: false }; setDraft(value); setConsent(false); } }, inspect, submit, lookup: () => lookup(), sync, close, finish };
   }
   window.TrialAdoptionState = { KEY, read, save, useSession };
 })();

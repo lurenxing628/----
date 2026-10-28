@@ -19,7 +19,3 @@ def production_storage(conn):
 def ledger_counts(conn):
     return tuple(conn.execute("SELECT COUNT(*) FROM " + table).fetchone()[0] for table in (
         "WorkbenchDashboardExternalStates", "WorkbenchDashboardExternalHistory", "WorkbenchCommandReceipts"))
-
-
-def external_items(case):
-    return [row for row in case.read()[0]["items"] if row["category"] == "external"]

@@ -1,11 +1,5 @@
 """Isolated templates with untouched batch facts for process read contracts."""
 
-import sqlite3
-
-import pytest
-
-from tests.workbench.identity_metadata_support import business_snapshot, schema_snapshot, table_rows
-
 
 def seed_process(conn):
     conn.executemany("INSERT INTO OpTypes(op_type_id,name,category) VALUES (?,?,?)", [
@@ -30,21 +24,3 @@ def seed_process(conn):
 
 def ref_for(conn, kind="part", code="PROC-001"):
     return conn.execute("SELECT ref FROM WorkbenchEntityRefs WHERE kind=? AND entity_key=? AND active=1", (kind, code)).fetchone()[0]
-
-
-def stored(conn):
-    return schema_snapshot(conn), business_snapshot(conn), table_rows(conn, "WorkbenchEntityRefs"), table_rows(conn, "WorkbenchCommandReceipts")
-
-
-@pytest.fixture(name="process_read_conn")
-def process_read_database(schema_conn):
-    seed_process(schema_conn)
-    return schema_conn
-
-
-@pytest.fixture(name="process_read_client")
-def process_read_application(app_client):
-    with sqlite3.connect(app_client.application.config["DATABASE_PATH"]) as conn:
-        conn.execute("PRAGMA foreign_keys=ON")
-        seed_process(conn)
-    return app_client

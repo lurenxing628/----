@@ -143,9 +143,9 @@ async function contracts() {
     const context = runtime(() => assert.fail('Delivery projections do not fetch'));
     const p = workspace(), projection = p.data.projections.delivery_risks, item = projection.items[0];
     item.delay_hours = 0.00000009; item.delay_days = 0.00000000375;
-    const before = JSON.stringify(p); assert.strictEqual(context.C.workspace(p, P), p); assert.equal(JSON.stringify(p), before);
-    item.batch_id = 'another-batch'; assert.throws(() => context.C.workspace(p, P), rejected);
-    item.batch_id = 'B-1'; item.delay_hours = '0'; assert.throws(() => context.C.workspace(p, P), rejected);
+    const before = JSON.stringify(p); assert.strictEqual(context.C.workspace(p, P, {}), p); assert.equal(JSON.stringify(p), before);
+    item.batch_id = 'another-batch'; assert.throws(() => context.C.workspace(p, P, {}), rejected);
+    item.batch_id = 'B-1'; item.delay_hours = '0'; assert.throws(() => context.C.workspace(p, P, {}), rejected);
     const missing = { ...item, completion_state: 'unknown', schedule_complete: false, risk: 'unknown', planned_finish: null,
       is_overdue: null, delay_hours: null, issues: ['no_admission_baseline'] };
     context.D.operationCounts.filter(key => key !== 'operation_count').forEach(key => { missing[key] = null; });
@@ -154,23 +154,23 @@ async function contracts() {
   const quantityFields = ['piece_id', 'quantity', 'batch_quantity', 'quantity_basis', 'quantity_reason'];
   await check('legacy quantities stay explicitly unknown without mutation', () => {
     const p = workspace(), before = JSON.stringify(p);
-    assert.strictEqual(C.workspace(p, P), p);
+    assert.strictEqual(C.workspace(p, P, {}), p);
     assert.deepEqual(quantityFields.map(key => p.data.tasks[0][key]), [null, null, null, 'unknown', 'plan_target_not_recorded']);
     assert.equal(JSON.stringify(p), before);
   });
   for (const key of quantityFields) await check('missing task quantity field ' + key, () => {
-    const p = workspace(); delete p.data.tasks[0][key]; assert.throws(() => C.workspace(p, P), rejected);
+    const p = workspace(); delete p.data.tasks[0][key]; assert.throws(() => C.workspace(p, P, {}), rejected);
   });
   for (const reason of ['plan_target_not_recorded', 'plan_target_unavailable']) await check('unknown piece work retains reason ' + reason, () => {
     const p = workspace(); Object.assign(p.data.tasks[0], {piece_id: 'piece-1', quantity_reason: reason});
-    assert.strictEqual(C.workspace(p, P), p);
+    assert.strictEqual(C.workspace(p, P, {}), p);
     assert.deepEqual(quantityFields.map(key => p.data.tasks[0][key]), ['piece-1', null, null, 'unknown', reason]);
   });
   for (const basis of ['run_admission', 'trial_creation']) for (const [piece, quantity, batch] of [
     [null, 0, 0], [null, 7, 7], ['piece-1', 1, 7], [null, '9007199254740993', '9007199254740993']]) {
     await check('captured task quantities preserved ' + basis + ' ' + piece + ' ' + quantity, () => {
       const p = workspace(); Object.assign(p.data.tasks[0], {piece_id: piece, quantity, batch_quantity: batch, quantity_basis: basis, quantity_reason: null});
-      const before = JSON.stringify(p); assert.strictEqual(C.workspace(p, P), p);
+      const before = JSON.stringify(p); assert.strictEqual(C.workspace(p, P, {}), p);
       assert.deepEqual(quantityFields.map(key => p.data.tasks[0][key]), [piece, quantity, batch, basis, null]);
       assert.equal(JSON.stringify(p), before);
     });
@@ -179,18 +179,18 @@ async function contracts() {
     {quantity: 0}, {batch_quantity: 7}, {quantity_reason: null}, {quantity_reason: ''}, {quantity_reason: 'not_recorded'},
     {quantity_basis: 'current_batch'}, {quantity_basis: 'run_admission', quantity_reason: null}]) {
     await check('invalid or fabricated legacy quantities ' + cases.length, () => {
-      const p = workspace(); Object.assign(p.data.tasks[0], patch); assert.throws(() => C.workspace(p, P), rejected);
+      const p = workspace(); Object.assign(p.data.tasks[0], patch); assert.throws(() => C.workspace(p, P, {}), rejected);
     });
   }
   for (const basis of ['run_admission', 'trial_creation']) {
     await check('invalid captured target remains explicit ' + basis, () => {
       const p = workspace(); Object.assign(p.data.tasks[0], {batch_quantity: 7, quantity_basis: basis, quantity_reason: 'plan_target_invalid'});
-      assert.strictEqual(C.workspace(p, P), p); assert.equal(p.data.tasks[0].quantity, null); assert.equal(p.data.tasks[0].batch_quantity, 7);
+      assert.strictEqual(C.workspace(p, P, {}), p); assert.equal(p.data.tasks[0].quantity, null); assert.equal(p.data.tasks[0].batch_quantity, 7);
     });
     for (const key of ['quantity', 'batch_quantity']) for (const value of [-1, 1.5, true, '7', '01', 9007199254740992, '9223372036854775808', NaN, Infinity]) {
       await check('invalid captured numeric field ' + basis + ' ' + key + ' ' + value, () => {
         const p = workspace(); Object.assign(p.data.tasks[0], {quantity: 7, batch_quantity: 7, quantity_basis: basis, quantity_reason: null, [key]: value});
-        assert.throws(() => C.workspace(p, P), rejected);
+        assert.throws(() => C.workspace(p, P, {}), rejected);
       });
     }
   }
@@ -211,29 +211,29 @@ async function contracts() {
     p => { p.capabilities.view = false; }, p => { p.capabilities.adopt = true; }, p => { p.capabilities.edit_draft = true; },
     p => { p.kind = 'candidate'; }, p => { p.kind = 'latest'; }, p => { p.completeness = 'invalid'; }, p => { p.blocked_reasons = [issue()]; },
     p => { p.schedule_id = 1; }, p => { p.display_name = ''; }]) {
-    await check('catalog invalid identity ' + cases.length, () => { const p = catalog(); mutate(p.data.plans[0]); assert.throws(() => C.catalog(p), rejected); });
+    await check('catalog invalid identity ' + cases.length, () => { const p = catalog(); mutate(p.data.plans[0]); assert.throws(() => C.catalog(p, C.catalogScope()), rejected); });
   }
   for (const mutate of [p => { p.page.collection = 'scenario'; }, p => { p.page.size = 1; }, p => { p.page.unit = 'task'; },
     p => { p.page.has_more = 'false'; }, p => { p.page.next_cursor = ''; }, p => { p.page.has_more = true; },
     p => { p.plans.push(clone(p.plans[0])); }, p => { p.page.seek = 1; }, p => { p.plans[0].kind = 'scenario'; }]) {
-    await check('catalog bad page ' + cases.length, () => { const p = catalog(); mutate(p.data); assert.throws(() => C.catalog(p), rejected); });
+    await check('catalog bad page ' + cases.length, () => { const p = catalog(); mutate(p.data); assert.throws(() => C.catalog(p, C.catalogScope()), rejected); });
   }
-  await check('opaque next cursor is not a permanent ref', () => { const p = catalog(); Object.assign(p.data.page, {has_more: true, next_cursor: 'next ? + /'}); assert.strictEqual(C.catalog(p), p); });
-  await check('snapshot mismatch is rejected', () => assert.throws(() => C.catalog(catalog(), {snapshot_ref: 'other'}), rejected));
-  await check('repeated cursor is rejected', () => { const p = catalog(); Object.assign(p.data.page, {has_more: true, next_cursor: 'same'}); assert.throws(() => C.catalog(p, {cursor: 'same'}), rejected); });
+  await check('opaque next cursor is not a permanent ref', () => { const p = catalog(); Object.assign(p.data.page, {has_more: true, next_cursor: 'next ? + /'}); assert.strictEqual(C.catalog(p, C.catalogScope()), p); });
+  await check('snapshot mismatch is rejected', () => assert.throws(() => C.catalog(catalog(), C.catalogScope({snapshot_ref: 'other'})), rejected));
+  await check('repeated cursor is rejected', () => { const p = catalog(); Object.assign(p.data.page, {has_more: true, next_cursor: 'same'}); assert.throws(() => C.catalog(p, C.catalogScope({cursor: 'same'})), rejected); });
   await check('disabled null references and invalid versions remain null', () => {
     const p = catalog(); const row = p.data.plans[0]; row.plan_ref = null; row.version = null; row.is_current_official = false;
     row.capabilities.view = false; row.capabilities.export = false; row.completeness = 'unknown'; row.blocked_reasons = [issue()]; p.data.plans.push(clone(row));
-    assert.strictEqual(C.catalog(p), p); assert.equal(row.plan_ref, null);
+    assert.strictEqual(C.catalog(p, C.catalogScope()), p); assert.equal(row.plan_ref, null);
   });
   await check('version page unit rejects excess versions', () => {
     const p = catalog(); p.data.page.size = 1; const row = clone(p.data.plans[0]); row.plan_ref = OTHER;
     row.is_current_official = false; row.version = 2; p.data.plans.push(row);
-    assert.throws(() => C.catalog(p, {size: 1}), rejected);
+    assert.throws(() => C.catalog(p, C.catalogScope({size: 1})), rejected);
   });
   for (const value of [1, Number.MAX_SAFE_INTEGER, '9007199254740992', '9007199254740993', '9223372036854775807']) {
     await check('exact int64 preserved ' + value, () => { const p = workspace(); p.data.plan.version = value; p.data.tasks[0].sequence = value;
-      assert.strictEqual(C.workspace(p, P), p); assert.strictEqual(p.data.plan.version, value); assert.strictEqual(p.data.tasks[0].sequence, value); });
+      assert.strictEqual(C.workspace(p, P, {}), p); assert.strictEqual(p.data.plan.version, value); assert.strictEqual(p.data.tasks[0].sequence, value); });
   }
   for (const mutate of [p => { p.plan.plan_ref = OTHER; }, p => { p.scope.plan_ref = OTHER; }, p => { p.scope.source = 'demo'; },
     p => { p.scope.kind = 'plan_catalog'; }, p => { p.scope.range_start = START; }, p => { p.scope.resource_ref = OTHER; },
@@ -243,15 +243,15 @@ async function contracts() {
     p => { delete p.tasks_complete; }, p => { p.tasks.push(clone(p.tasks[0])); p.task_count++; }, p => { p.tasks = []; p.task_count = 0; p.task_span = null; },
     p => { p.projections.calendar = []; }, p => { p.projections.calendar.state = 'complete'; }, p => { delete p.projections.baseline; },
     p => { p.projections.occupancy.reason = ''; }, p => { p.projections.delivery_risks.rows = []; }, p => { p.plan.capabilities.view = false; }]) {
-    await check('workspace malformed DTO ' + cases.length, () => { const p = workspace(); mutate(p.data); assert.throws(() => C.workspace(p, P), rejected); });
+    await check('workspace malformed DTO ' + cases.length, () => { const p = workspace(); mutate(p.data); assert.throws(() => C.workspace(p, P, {}), rejected); });
   }
   for (const mutate of [t => { t.plan_ref = OTHER; }, t => { t.task_ref = 'legacy'; }, t => { t.operation_ref = null; },
     t => { t.machine_ref = 'machine-1'; }, t => { t.operator_ref = 1; }, t => { delete t.supplier_ref; }, t => { t.batch_id = ''; },
     t => { t.process_label = ' '; }, t => { t.sequence = 9007199254740992; }, t => { t.sequence = '1e3'; },
     t => { t.start = END; }, t => { t.end = '2026-09-10T06:31:00'; }, t => { t.start += 'Z'; }, t => { t.op_id = 1; }]) {
-    await check('foreign or invalid task ' + cases.length, () => { const p = workspace(); mutate(p.data.tasks[0]); assert.throws(() => C.workspace(p, P), rejected); });
+    await check('foreign or invalid task ' + cases.length, () => { const p = workspace(); mutate(p.data.tasks[0]); assert.throws(() => C.workspace(p, P, {}), rejected); });
   }
-  await check('real projections remain unchanged', () => { const p = workspace(), before = JSON.stringify(p); assert.strictEqual(C.workspace(p, P), p); assert.equal(JSON.stringify(p), before); });
+  await check('real projections remain unchanged', () => { const p = workspace(), before = JSON.stringify(p); assert.strictEqual(C.workspace(p, P, {}), p); assert.equal(JSON.stringify(p), before); });
   await check('calendar-bound overlap retains night spans and unknown or legacy evidence', () => {
     const p = workspace(), d = p.data, calendar = d.projections.calendar;
     d.tasks.push({...d.tasks[0],task_ref:'e'.repeat(48),operation_ref:'f'.repeat(48),sequence:2,start:'2026-09-10T00:00:00',end:'2026-09-10T00:30:00'});
@@ -267,19 +267,19 @@ async function contracts() {
       segments:[{start:START,end:'2026-09-10T00:00:00',concurrent_operations:1},{start:'2026-09-10T00:00:00',end:'2026-09-10T00:30:00',concurrent_operations:2},{start:'2026-09-10T00:30:00',end:END,concurrent_operations:1}],
       metric_version:'decision-resource-v4',available_overlap_hours:0,conflict_segments:[],outside_calendar_basis:'reservation_span_outside_work_calendar',conflict_basis:'work_calendar_reservation_overlap'};
     d.projections.occupancy.resources=[row];
-    const before=JSON.stringify(p); assert.strictEqual(C.workspace(p,P),p); assert.equal(JSON.stringify(p),before);
-    row.has_overlap=true; assert.throws(()=>C.workspace(p,P),rejected); row.has_overlap=false;
+    const before=JSON.stringify(p); assert.strictEqual(C.workspace(p,P,{}),p); assert.equal(JSON.stringify(p),before);
+    row.has_overlap=true; assert.throws(()=>C.workspace(p,P,{}),rejected); row.has_overlap=false;
     const legacy=clone(p), old=legacy.data.projections.occupancy.resources[0];
     for(const key of ['metric_version','available_overlap_hours','conflict_segments','outside_calendar_basis','conflict_basis']) delete old[key];
-    old.has_overlap=true; assert.throws(()=>C.workspace(legacy,P),rejected,'Occupancy rows without the current resource metric version are rejected');
+    old.has_overlap=true; assert.throws(()=>C.workspace(legacy,P,{}),rejected,'Occupancy rows without the current resource metric version are rejected');
     calendar.state='partial'; Object.assign(calendar.resources[0],{state:'unavailable',windows:null,issues:[{code:'calendar_unavailable',message:'Calendar unavailable'}]});
     for(const key of Object.keys(capacity)) calendar.resources[0][key]=null;
     for(const key of ['downtime_scope_hours','downtime_available_hours','downtime_windows']) delete calendar.resources[0][key];
     d.projections.occupancy.state='unavailable'; row.state='unavailable'; row.issues=[{code:'calendar_unavailable',message:'Calendar unavailable'}];
     for(const key of ['available_hours','available_occupied_hours','outside_available_hours','capacity_shortfall_hours','utilization','has_overlap','capacity_insufficient','available_overlap_hours','conflict_segments']) row[key]=null;
-    assert.strictEqual(C.workspace(p,P),p,'Unknown calendars retain null conflict evidence');
+    assert.strictEqual(C.workspace(p,P,{}),p,'Unknown calendars retain null conflict evidence');
   });
-  await check('legacy not_loaded is rejected', () => { const p = workspace(); p.data.projections.calendar = {state: 'not_loaded', reason: 'Legacy'}; assert.throws(() => C.workspace(p, P), rejected); });
+  await check('legacy not_loaded is rejected', () => { const p = workspace(); p.data.projections.calendar = {state: 'not_loaded', reason: 'Legacy'}; assert.throws(() => C.workspace(p, P, {}), rejected); });
   await check('explicit range covering whole plan cannot hide empty or clipped results', () => {
     const p = workspace(), scope = {range_start: START, range_end: END};
     Object.assign(p.data.scope, scope); align(p); assert.strictEqual(C.workspace(p, P, scope), p);

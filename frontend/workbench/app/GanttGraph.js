@@ -84,7 +84,7 @@
       if (!adjacency.has(edge.from_task_ref)) adjacency.set(edge.from_task_ref, []);
       adjacency.get(edge.from_task_ref).push({ edge, order });
     });
-    return { edges, adjacency };
+    return { adjacency };
   }
   function selection(index, { enabled = false, targetRef = null } = {}) {
     const { graph } = index, target = index.nodes.get(targetRef) || null;
@@ -103,7 +103,7 @@
       selected = { batch: target.batch_id, piece: target.piece_id, related, ...edgeFacts(Array.from(edges.values())) };
       index.selected = selected;
     }
-    return { graph, target, critical: index.critical, related: selected.related, edges: selected.edges, adjacency: selected.adjacency };
+    return { graph, target, critical: index.critical, related: selected.related, adjacency: selected.adjacency };
   }
   function route(index, targetRef) {
     const target = index.nodes.get(targetRef);
@@ -158,8 +158,7 @@
     for (const row of rows) { bottom = Math.max(bottom, row.bottom); row.lastBottom = bottom; }
     return { locations: points, rows };
   }
-  function paths(active, model, width, viewport, options) {
-    const prepared = options && options.locationIndex || locationIndex(options && options.locations || locations(model, options));
+  function paths(active, model, width, viewport, { locationIndex: prepared }) {
     const points = prepared.locations, visible = new Set(), visibleEntries = [], span = model.end > model.start ? model.end - model.start : 1, scale = width / span;
     const x = value => (value - model.start) * scale;
     let low = 0, high = prepared.rows.length;
@@ -176,7 +175,7 @@
     for (const { ref } of visibleEntries) {
       visible.add(ref); if (active.critical.has(ref)) criticalVisible++; if (active.related.has(ref)) relatedVisible++;
     }
-    const adjacency = active.adjacency || edgeFacts(active.edges).adjacency, drawnEdges = [];
+    const adjacency = active.adjacency, drawnEdges = [];
     for (const ref of visible) for (const edge of adjacency.get(ref) || []) if (visible.has(edge.edge.to_task_ref)) drawnEdges.push(edge);
     drawnEdges.sort((a, b) => a.order - b.order);
     const drawn = drawnEdges.map(({ edge }) => {

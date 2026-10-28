@@ -3,12 +3,8 @@
 import sqlite3
 from contextlib import closing
 from io import BytesIO
-from urllib.parse import quote
 
-import pytest
 from flask import Blueprint
-
-from tests.workbench.material_file_support import file_bytes, verify_download
 
 BASE = "/api/workbench/v1"
 
@@ -21,14 +17,6 @@ def register_actions(app):
         register_material_action_routes(bp)
         app.register_blueprint(bp)
     return app.test_client()
-
-
-@pytest.fixture
-def material_actions_client(db_env):
-    # db_env has set every APS path before importing app; never use a user's DB.
-    from app import create_app
-
-    return register_actions(create_app())
 
 
 def database(client):
@@ -70,19 +58,6 @@ def list_context(client, scope=None, size=20):
     return {"scope": scope or {}, "page_size": size, "snapshot_ref": listed(client, scope, size)["meta"]["snapshot_ref"]}
 
 
-def bulk_preview(client, refs, scope=None):
-    response = client.post(BASE + "/entities/material/bulk-preview",
-                           json={"action": "delete", "refs": refs, **list_context(client, scope)})
-    assert response.status_code == 200, response.get_data(as_text=True)
-    return response.get_json()["data"]
-
-
-def import_preview(client, rows, fmt="csv", headers=("物料编号", "名称")):
-    response = upload(client, file_bytes(rows, fmt, headers), fmt)
-    assert response.status_code == 200, response.get_data(as_text=True)
-    return response.get_json()["data"]
-
-
 def upload(client, content, fmt="csv", **fields):
     return client.post(BASE + "/imports/material/preview", data={"file": (BytesIO(content), "local-input." + fmt),
                        "format": fmt, "mode": "upsert", **fields}, content_type="multipart/form-data")
@@ -111,19 +86,6 @@ def download(client, approved, fmt):
     return client.get(BASE + "/exports/material", query_string={"export_ref": approved["data"]["export_ref"], "format": fmt})
 
 
-def check_download(response, expected, fmt):
-    from core.models.workbench_action_values import FileDownload
-
-    assert response.status_code == 200, response.get_data(as_text=True)
-    assert response.headers["Cache-Control"] == "no-store"
-    assert "attachment" in response.headers["Content-Disposition"]
-    assert "filename*=UTF-8''" + quote("物料清单." + fmt) in response.headers["Content-Disposition"]
-    mime = "text/csv" if fmt == "csv" else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    assert response.mimetype == mime
-    verify_download(FileDownload("物料清单." + fmt, mime, response.data,
-                                         int(response.headers["X-Workbench-Row-Count"])), expected, fmt)
-
-
 def expire_contexts(client):
     from web import public_token_registry
 
@@ -131,13 +93,3 @@ def expire_contexts(client):
         for scope in public_token_registry._registry().values():
             for entry in scope["tokens"].values():
                 entry["expires_at"] = 0
-
-
-def assert_failure(response, code=None, *, committed=False):
-    assert response.status_code >= 400, response.get_data(as_text=True)
-    body = response.get_json()
-    assert body["ok"] is False and body["committed"] == committed
-    assert "data" not in body and response.headers["Cache-Control"] == "no-store"
-    if code:
-        assert body["error"]["code"] == code, body
-    return body

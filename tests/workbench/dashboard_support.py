@@ -102,12 +102,6 @@ def follow(**patch):
             "remark": "Verified against current formal schedule", **patch}
 
 
-def close_payload(**patch):
-    return {**follow(target_status="closed", completed_at="2026-09-10T11:00:00",
-                     completion_evidence="Confirmed rescheduling review with production supervisor",
-                     evidence_reference_text="Workshop record 2026-09-10-01"), **patch}
-
-
 def source_rows(conn):
     names = ("Batches", "BatchOperations", "BatchMaterials", "Materials", "Schedule", "ScheduleHistory",
              "MachineDowntimes", "WorkbenchProductionReports", "WorkbenchProductionReportRevisions")

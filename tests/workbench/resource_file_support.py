@@ -1,8 +1,6 @@
 """Temporary SQLite fixtures and independent byte oracles for resource files."""
 
 import csv
-import json
-import time
 from io import BytesIO, StringIO
 from uuid import uuid4
 
@@ -14,11 +12,8 @@ from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource.bulk import WorkbenchResourceBulkService
 from core.services.workbench.resource.files import WorkbenchResourceFileService
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
-from tests.workbench.identity_metadata_support import business_snapshot
 from tests.workbench.resource_entity_support import resource_database  # noqa: F401
 
-KINDS = ("op_type", "machine", "operator", "supplier")
-SCOPES = (("op_type", "internal"), ("op_type", "external"), ("machine", None), ("operator", None), ("supplier", None))
 TABLES = {"op_type": ("OpTypes", "op_type_id"), "machine": ("Machines", "machine_id"),
           "operator": ("Operators", "operator_id"), "supplier": ("Suppliers", "supplier_id")}
 
@@ -37,12 +32,6 @@ def raw(conn, kind, code):
     table, key = TABLES[kind]
     row = conn.execute(f"SELECT * FROM {table} WHERE {key}=?", (code,)).fetchone()
     return dict(row) if row else None
-
-
-def existing_raw(conn, kind, code):
-    row = raw(conn, kind, code)
-    assert row is not None
-    return row
 
 
 def snapshot(conn):
@@ -106,23 +95,3 @@ def exported(conn, kind, fmt, *, category=None, selected_refs=None, query=""):
     with TransactionManager(conn).transaction():
         rows = service.export_rows(fmt, scope=selected_scope, selected_refs=selected_refs)
     return service.write_export(rows, fmt, scope=selected_scope)
-
-
-def seed_many(conn, kind, count=10000):
-    table, key = TABLES[kind]
-    fields = [key, "name"] + (["category"] if kind == "op_type" else ["status"])
-    conn.executemany(f"INSERT INTO {table} ({','.join(fields)}) VALUES (?,?,?)",
-                     [(f"FILE{i:05d}", f"file row {i}", "internal" if kind == "op_type" else "active") for i in range(count)])
-    conn.commit()
-    return [row[0] for row in conn.execute("SELECT ref FROM WorkbenchEntityRefs WHERE kind=? AND active=1 AND entity_key LIKE 'FILE%' ORDER BY entity_key", (kind,))]
-
-
-def measure(label, function):
-    start = time.monotonic()
-    result = function()
-    print("RESOURCE_PERF", label, "seconds=", round(time.monotonic() - start, 3))
-    return result
-
-
-def assert_business_equal(conn, expected):
-    assert business_snapshot(conn) == expected

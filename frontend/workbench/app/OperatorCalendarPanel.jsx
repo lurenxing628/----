@@ -268,7 +268,7 @@
           <ErrorBox error={error} excludePaths={activePaths} /><Feedback command={command} excludePaths={error ? [] : activePaths} />
           {staleDraft && <div role="status"><p>这一天已被修改，旧草稿不会覆盖最新配置。采用最新配置会放弃本次未保存的内容。</p><Button disabled={command.locked || request.loading} onClick={() => { setDraft({ ...O.draftOf(current), date: current.date }); setEditBase(current); setError(null); command.reset(); }}>采用最新配置并重新填写</Button></div>}
           {done && <RefreshResult state={combinedRefresh} onRefresh={() => {
-            if (refreshState && refreshState.error && onRefresh) onRefresh();
+            if (refreshState && refreshState.error) onRefresh();
             if (request.error) request.reload();
           }} />}
         </div></Modal></div>;

@@ -67,11 +67,6 @@ def body(context, payload, key="batch-request-00000001"):
     return {"request_key": key, "write_token": context["write_token"], "input": payload}
 
 
-def create_input(client, code="NEW-001"):
-    return {"business_code": code, "part_ref": ref_for(client, "part", "P1"), "fields": {
-        "quantity": 2, "due_date": None, "priority": "normal", "ready_status": "no", "ready_date": None, "remark": None}}
-
-
 def post(client, action, payload, key="batch-request-00000001", ref=None, context=None):
     if action == "create":
         context = context or list_data(client)["data"]["create_context"]

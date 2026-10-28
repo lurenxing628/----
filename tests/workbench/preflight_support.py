@@ -94,13 +94,6 @@ def checked(client, **patch):
     return response.get_json()["data"]
 
 
-def add_op(conn, seq=2, **patch):
-    insert_row(conn, "BatchOperations", dict(op_code=f"PF-0000-{seq}", batch_id="PF-0000", seq=seq,
-               op_type_id="OT1", op_type_name="后序", source="internal", setup_hours=0, unit_hours=0.5,
-               machine_id="M1", operator_id="O1", **patch))
-    conn.commit()
-
-
 def deny_writes(action, _one, _two, _db, _trigger):
     return sqlite3.SQLITE_DENY if action in (sqlite3.SQLITE_INSERT, sqlite3.SQLITE_UPDATE, sqlite3.SQLITE_DELETE,
             sqlite3.SQLITE_CREATE_TABLE, sqlite3.SQLITE_ALTER_TABLE, sqlite3.SQLITE_DROP_TABLE) else sqlite3.SQLITE_OK

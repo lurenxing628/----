@@ -1,12 +1,12 @@
 (function () {
   'use strict';
-  function Workspace({ initialContext, onNavigate }) {
+  function Workspace({ initialContext, initialInput, onNavigate }) {
     const A = window.CalibrationAPI, C = window.CalibrationControls;
     const { Button, ErrorBox, useRead } = C;
     // 本页只读查看零件工艺：没有写入会话，不读取也不接续工艺页留下的待确认操作。
     const partAdapter = React.useMemo(() => ({ detail: window.APSProcessAPI.create().detail, readPending: () => null }), []);
     const [part, setPart] = React.useState(null);
-    const [input, setInput] = React.useState(() => A.initial(initialContext));
+    const [input, setInput] = React.useState(initialInput);
     const [widths, setWidths] = React.useState(initialContext.table_widths || {});
     const [selected, setSelected] = React.useState(initialContext.selected || null), [sampleRef, setSample] = React.useState(initialContext.sample_ref || null);
     const [revision, refresh] = React.useReducer(value => value + 1, 0), [format, setFormat] = React.useState('csv');
@@ -16,7 +16,7 @@
     const request = useRead(signal => A.readView(input, signal), identity, A);
     const result = request.result, data = result && result.data;
     const bound = { ...input, snapshot_ref: result ? result.meta.snapshot_ref : input.snapshot_ref };
-    const detail = useRead(async signal => A.validate(await A.detail(selected, bound, signal), bound, selected),
+    const detail = useRead(signal => A.detail(selected, bound, signal),
       selected + ':' + JSON.stringify(bound) + ':' + revision, A, !!(selected && result && data.capabilities.view === true && !stale));
     const isStale = failure => window.APSResourceContract.stale(failure, ['calibration_source_changed']);
     window.WorkbenchPageContext.useSnapshot(data ? {
@@ -90,9 +90,10 @@
   }
   function CalibrationWorkspace(props) {
     window.WorkbenchCaption.useCaption(null);
-    try { window.CalibrationAPI.initial(props.initialContext); }
+    let initialInput;
+    try { initialInput = window.CalibrationAPI.initial(props.initialContext); }
     catch (error) { return <section className="calibration-live"><h2 className="wb-page-title">工时定额校准</h2><window.ResourceControls.ErrorBox error={error} /></section>; }
-    return <Workspace key={JSON.stringify(props.initialContext)} {...props} />;
+    return <Workspace key={JSON.stringify(props.initialContext)} {...props} initialInput={initialInput} />;
   }
   window.CalibrationWorkspace = CalibrationWorkspace;
 })();

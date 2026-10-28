@@ -88,11 +88,6 @@ def enforce_readonly(monkeypatch):
     return seen
 
 
-def expire(api, namespace, token):
-    registry = api.client.application.extensions["aps_public_opaque_tokens"]
-    registry[namespace]["tokens"][token]["expires_at"] = 0
-
-
 def browser_contract(mode, raw, request=None, *, intent=None, refs=None):
     node = shutil.which("node")
     if node is None:

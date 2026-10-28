@@ -24,7 +24,7 @@
     if (filtered) return <EmptyState kind="filtered" title="当前筛选没有匹配的零件" action={<Button icon="x" onClick={onClear}>清除筛选</Button>} />;
     return <EmptyState kind="empty" title="暂无零件工艺" />;
   }
-  function ProcessTable({ entities, selected, setSelected, onOpen, onDelete, disabled, loading, error, scope, adapter, onSort, onFilter, matchingCount, deleteReason, onClear, onRetry }) {
+  function ProcessTable({ entities, selected, setSelected, onOpen, onDelete, disabled, loading, error, scope, adapter, onSort, onFilter, matchingCount, onClear, onRetry }) {
     const allRef = React.useRef(null), visible = entities.map(row => row.ref);
     const table = React.useRef(null), [widths, setWidths] = React.useState(null);
     const selectedSet = new Set(selected), all = !!visible.length && visible.every(ref => selectedSet.has(ref));
@@ -51,7 +51,7 @@
         <td><Button className="lnk" disabled={disabled || loading} aria-label={'查看 ' + row.business_code} onClick={() => onOpen(row.ref)} style={{ whiteSpace: 'normal', overflowWrap: 'anywhere', textAlign: 'left' }}>{row.business_code}</Button></td>
         <td>{row.label}{row.issues.length > 0 && <Issues issues={row.issues} />}</td><td className="r">{row.relationships.operation_count}</td><td><Pipeline entity={row} /></td>
         <td className="wb-col-actions"><div className="wb-actions" style={{ flexWrap: 'wrap' }}><Button className="linkbtn" icon="arrow-right" disabled={disabled || loading} aria-label={'浏览步骤 ' + row.business_code} onClick={() => onOpen(row.ref)}>{row.workflow.route.state !== 'confirmed' ? '确认路线' : ({ source: '确认归属', hours: '填写工时', ready: '已就绪 · 汇总' })[row.workflow.stage]}</Button>
-          <Button className="mini" icon="trash-2" disabled={disabled || loading} reasonDisplay="tooltip" reason={deleteReason} aria-label={'删除 ' + row.business_code} onClick={() => onDelete([row.ref])}>删除</Button></div></td>
+          <Button className="mini" icon="trash-2" disabled={disabled || loading} aria-label={'删除 ' + row.business_code} onClick={() => onDelete([row.ref])}>删除</Button></div></td>
       </tr>)}{!entities.length && <tr><td colSpan={P.columns.length + 2}><TableEmpty loading={loading} error={error} onClear={onClear} onRetry={onRetry}
         filtered={!!(scope.query || scope.stage || Object.keys(scope.column_filters).length)} /></td></tr>}</tbody>
     </table></div>;
@@ -125,7 +125,6 @@
       setDialog({ mode, fileKind, refs, scope: A.scope(scope), snapshot_ref: list.result.meta.snapshot_ref, page_size: data.page.size,
         source: list.result.meta.source, create_context: data.create_context, adapter });
     }
-    const deleteReason = P.reason(data && data.capabilities, 'delete');
     const activeStage = scope.stage === undefined ? '' : scope.stage;
     const blocked = disabled || !!dialog || command.locked || !!recoveryError;
     function continueNavigation() {
@@ -144,18 +143,18 @@
         <label className="search"><span className="ic"><Icon name="search" /></span><input type="search" aria-label="搜索图号、名称、路线" placeholder="搜索图号、名称、路线…" value={search} disabled={blocked} onChange={event => setSearch(event.target.value)} /></label>
         <Button type="submit" icon="search" disabled={blocked}>搜索</Button><Button icon="refresh-cw" aria-label="刷新工艺列表" disabled={blocked} busy={list.loading} onClick={() => filter({})} />
         <span className="tb-spacer" /><div className="wb-actions" style={{ flexWrap: 'wrap' }}>
-          <FileButtons capabilities={data && data.capabilities} disabled={blocked || list.loading}
+          <FileButtons disabled={blocked || list.loading || !data}
             onAction={(kind, mode) => action(mode, selected, kind)} />
-          <Button icon="plus" className="btn primary" disabled={blocked || list.loading} reason={P.reason(data && data.capabilities, 'create') || A.createReason(data && data.create_context, list.result && list.result.meta.source)} onClick={() => action('create')}>新增零件</Button>
+          <Button icon="plus" className="btn primary" disabled={blocked || list.loading} reason={A.createReason(data && data.create_context, list.result && list.result.meta.source)} onClick={() => action('create')}>新增零件</Button>
         </div>
       </form>
       <div className="toolbar"><span className="muted" aria-live="polite">已选 <b data-process-selection-count>{selected.length}</b> 项{selected.some(ref => !data || !data.entities.some(row => row.ref === ref)) ? ' · 含非当前页记录' : ''}</span>
         <Button icon="x" aria-label="清除所有选择" disabled={blocked || !selected.length} onClick={() => setSelected([])}>清除选择</Button>
-        <Button icon="trash-2" className="btn danger" disabled={blocked || list.loading || !selected.length} reasonDisplay="tooltip" reason={deleteReason} onClick={() => action('bulk')}>批量删除</Button>
+        <Button icon="trash-2" className="btn danger" disabled={blocked || list.loading || !data || !selected.length} onClick={() => action('bulk')}>批量删除</Button>
       </div></div>
       <ErrorBox error={recoveryError} />{!dialog && command.locked && <window.ResourceForms.Feedback command={command} />}
       {list.result && <Issues issues={list.result.warnings} />}
-      <ProcessTable entities={data ? data.entities : []} selected={selected} setSelected={setSelected} onOpen={ref => setDialog({ ref, adapter })} onDelete={refs => action('bulk', refs)} deleteReason={deleteReason}
+      <ProcessTable entities={data ? data.entities : []} selected={selected} setSelected={setSelected} onOpen={ref => setDialog({ ref, adapter })} onDelete={refs => action('bulk', refs)}
         disabled={blocked} loading={list.loading} error={list.error} scope={scope} adapter={adapter} onSort={sortBy} onFilter={columnFilter} matchingCount={data && data.page.total}
         onClear={clearFilters} onRetry={() => filter({})} />
       {data && <window.ResourceTables.Pager page={data.page} disabled={blocked || list.loading} onSize={size => filter({ size })}

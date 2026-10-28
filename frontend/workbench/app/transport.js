@@ -215,17 +215,29 @@
     return JSON.stringify(value, (_, item) => object(item) ? Object.keys(item).sort().reduce((out, key) => { out[key] = item[key]; return out; }, {}) : item);
   }
   const equal = (a, b) => canonical(a) === canonical(b);
-  function raise(spec, fallback) {
-    if (!spec) throw fallback;
-    throw typeof spec === 'function' ? spec() : new Error(spec);
+  function raise(spec, fallback, extra) {
+    const err = !spec ? fallback : typeof spec === 'function' ? spec() : new Error(spec);
+    if (extra) Object.assign(err, extra);
+    throw err;
   }
+  const unflushedByKey = new Map();
   // 待确认意图的本机存储：统一读、校验、CAS 写、清除与同页事件通知，错误文案由各领域指定。
   function pendingStore({ key, storage = () => window.localStorage, event, raw = false, validate, validateWrite = validate,
       encode = value => value, same = equal, readError, corruptError = readError, invalidError = corruptError,
       conflictError, invalidWriteError = invalidError, writeError, removeError = writeError }) {
-    function read() {
+    function currentPending(target) {
+      const pending = unflushedByKey.get(key);
+      if (!pending) return null;
+      if (target && pending.target && pending.target !== target) {
+        unflushedByKey.delete(key);
+        return null;
+      }
+      if (target && !pending.target) pending.target = target;
+      return pending;
+    }
+    function readDisk(target, pending) {
       let text;
-      try { text = storage().getItem(key); } catch (error) { raise(readError, error); }
+      try { text = target.getItem(key); } catch (error) { raise(readError, error, pending ? { saved: pending.value } : undefined); }
       if (text === null) return null;
       let value = text;
       if (!raw) {
@@ -234,18 +246,65 @@
       if (validate && !validate(value)) raise(invalidError);
       return value;
     }
-    function write(value) {
+    function effectiveRead() {
+      let target = null;
+      try { target = storage(); } catch (error) {
+        const pending = currentPending(null);
+        raise(readError, error, pending ? { saved: pending.value } : undefined);
+      }
+      const pending = currentPending(target), disk = readDisk(target, pending);
+      if (!pending) return { target, disk, current: disk, pending: null };
+      if (!same(disk, pending.disk)) {
+        unflushedByKey.delete(key);
+        return { target, disk, current: disk, pending: null };
+      }
+      return { target, disk, current: pending.value, pending };
+    }
+    function read() {
+      const { target, current, pending } = effectiveRead();
+      if (pending) {
+        try {
+          if (current === null) target.removeItem(key);
+          else target.setItem(key, raw ? current : JSON.stringify(encode(current)));
+          unflushedByKey.delete(key);
+        } catch (error) { raise(current === null ? removeError : writeError, error, { saved: current }); }
+      }
+      return current;
+    }
+    function write(value, fallbackDisk) {
       if (value !== null && validateWrite && !validateWrite(value)) raise(invalidWriteError);
+      let target = null;
       try {
-        if (value === null) storage().removeItem(key);
-        else storage().setItem(key, raw ? value : JSON.stringify(encode(value)));
-      } catch (error) { raise(value === null ? removeError : writeError, error); }
+        target = storage();
+        if (value === null) target.removeItem(key);
+        else target.setItem(key, raw ? value : JSON.stringify(encode(value)));
+        unflushedByKey.delete(key);
+      } catch (error) {
+        if (fallbackDisk !== undefined) {
+          unflushedByKey.set(key, { target: target && typeof target === 'object' ? target : null, disk: fallbackDisk, value });
+          if (event) window.dispatchEvent(new CustomEvent(event, { detail: value }));
+        }
+        raise(value === null ? removeError : writeError, error, fallbackDisk !== undefined ? { saved: value } : undefined);
+      }
       if (event) window.dispatchEvent(new CustomEvent(event, { detail: value }));
       return value;
     }
     function save(value, previous) {
-      if (!same(read(), previous)) raise(conflictError);
-      return write(value);
+      const settling = previous !== null && (previous.phase === 'pending' || previous.run_ref === null) && (value === null || value.phase !== 'pending');
+      let disk, current;
+      try { ({ disk, current } = effectiveRead()); }
+      catch (error) {
+        if (settling && (value === null || !validateWrite || validateWrite(value))) {
+          let target = null;
+          try { target = storage(); } catch (_) {}
+          unflushedByKey.set(key, { target: target && typeof target === 'object' ? target : null, disk: previous, value });
+          if (event) window.dispatchEvent(new CustomEvent(event, { detail: value }));
+          if (error && typeof error === 'object') error.saved = value;
+        }
+        throw error;
+      }
+      if (!same(current, previous)) raise(conflictError);
+      return write(value, settling ? disk : undefined);
     }
     return { read, write, save };
   }

@@ -31,9 +31,10 @@
       const checked = navigation({ source: 'production', ...view.detail });
       if (checked.error || !checked.context || ['part', 'calendar'].includes(checked.context.kind)) throw C.failure('上次打开的详情对不上，已取消定位。');
     }
-    const restored = JSON.parse(JSON.stringify(view));
-    restored.scope.column_filters = window.ResourceTableFilterModel.rules(scope.column_filters === undefined ? {} : scope.column_filters);
-    return restored;
+    return {
+      ...view,
+      scope: { ...scope, column_filters: window.ResourceTableFilterModel.rules(scope.column_filters === undefined ? {} : scope.column_filters) }
+    };
   }
   function navigation(context) {
     // 侧栏直接进入时 main.jsx 传空对象；资料页内部没有定位目标时传 undefined 或 null。

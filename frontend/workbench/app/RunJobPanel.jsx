@@ -79,16 +79,22 @@
             return;
           }
           const result = found.run;
-          if (pendingActive && !activeIntent.current.run_ref) {
-            try { const saved = A.pending().attach(activeIntent.current, result.run_ref); activeIntent.current = saved; setIntent(saved); }
-            catch (e) { setStorageError(e.message); return; }
-          }
           // 活跃任务保持正常读取频率；待恢复记录、未决结果和读取失败沿用退避。
           if (!result.recovery_required) attempt = 0;
           setRun(result); setVerified(true); unsettledSince = null; done = A.terminal(result);
+          if (pendingActive && !activeIntent.current.run_ref) {
+            const attached = { ...activeIntent.current, run_ref: result.run_ref };
+            try { A.pending().attach(activeIntent.current, result.run_ref); }
+            catch (e) {
+              activeIntent.current = attached; setIntent(attached);
+              setStorageError(e.message); return;
+            }
+            activeIntent.current = attached; setIntent(attached);
+          }
           if (done && pendingActive) {
-            try { A.pending().finish(activeIntent.current, 'found'); setPendingActive(false); }
+            try { A.pending().finish(activeIntent.current, 'found'); }
             catch (e) { setStorageError(e.message); return; }
+            setPendingActive(false);
             onNavigate('run', { run_ref: result.run_ref });
           }
         } catch (e) { if (current() && !localController.signal.aborted) { setLastChecked(Date.now()); setResolution('lookup_failed'); setVerified(false); fail(e, e.code === 'run_result_inconsistent' ? A.message(e) : '查询暂未成功，请点「查询结果」重试。'); unresolved(started); } }
@@ -190,8 +196,9 @@
             catch (_) { if (alive.current) setStorageError('排产已接收，但本机没能保存这次排产的编号。请不要重新提交，到排产记录页查看结果。'); }
           } catch (e) {
             if (window.APSWorkbenchTransport.rejected(e)) {
-              A.pending().reject(original);
               if (alive.current) { activeIntent.current = null; setIntent(null); setPendingActive(false); setRun(null); fail(e); }
+              try { A.pending().reject(original); }
+              catch (storageErr) { if (alive.current) setStorageError(storageErr.message); }
             } else if (alive.current) fail(null, window.WorkbenchTerms.outcomes.pending('排产'));
           }
         });

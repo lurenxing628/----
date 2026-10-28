@@ -172,7 +172,6 @@
   function reason(model, stage) {
     const entity = model.base.data;
     return model.review ? '请先核对最新资料。' : model.busy ? '正在读取最新资料。' :
-      P.reason(entity.capabilities, 'stage_confirm') ||
       (entity.workflow[stage === 'source' ? 'route' : 'source'].state !== 'confirmed' ? stage === 'source' ? '请先确认路线。' : '请先确认归属。' : '') ||
       (stage === 'source' ? model.base.meta.source !== 'production' ? '当前不是生产数据，不能保存。' : '' : C.blocked(entity.write_context, 'process', stage + '_confirm', model.base.meta.source));
   }

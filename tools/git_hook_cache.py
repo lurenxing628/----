@@ -43,20 +43,18 @@ class HookCacheError(RuntimeError):
     pass
 
 
-def _run_git(args: Sequence[str], *, text: bool = True) -> str:
+def _run_git(args: Sequence[str]) -> str:
     completed = subprocess.run(
         ["git", *list(args)],
         cwd=str(REPO_ROOT),
         capture_output=True,
-        text=text,
-        encoding="utf-8" if text else None,
-        errors="replace" if text else None,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     if completed.returncode != 0:
-        stderr = completed.stderr if text else bytes(completed.stderr or b"").decode("utf-8", errors="replace")
-        stdout = completed.stdout if text else bytes(completed.stdout or b"").decode("utf-8", errors="replace")
-        detail = str(stderr or stdout or "git command failed").strip()
+        detail = str(completed.stderr or completed.stdout or "git command failed").strip()
         raise HookCacheError(f"git {' '.join(args)} 失败：{detail}")
     return str(completed.stdout or "")
 

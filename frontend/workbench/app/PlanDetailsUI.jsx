@@ -35,10 +35,9 @@
     return collapsible ? <details className="wb-gantt-detail-section"><summary>{title}</summary><div className="wb-gantt-detail-section-body">{children}</div></details>
       : <section><h3>{title}</h3>{children}</section>;
   }
-  function Route({ data, prepared, selected, onRelated, disabled, collapsible }) {
-    const loadedRefs = React.useMemo(() => prepared && prepared.loadedRefs || new Set(data.tasks.map(task => task.task_ref)), [prepared, data.tasks]);
+  function Route({ prepared, selected, onRelated, disabled, collapsible }) {
     if (selected.before) return <section><h3>完整工艺路线</h3><p className="plan-muted">切换到当前安排查看完整工艺路线。</p></section>;
-    return <window.GanttRouteList index={prepared.graph} targetRef={selected.task.task_ref} loadedRefs={loadedRefs} onSelect={onRelated} disabled={disabled} collapsible={collapsible} />;
+    return <window.GanttRouteList index={prepared.graph} targetRef={selected.task.task_ref} loadedRefs={prepared.loadedRefs} onSelect={onRelated} disabled={disabled} collapsible={collapsible} />;
   }
   function TaskDetail({ data, prepared, selected, onSelect, onRelated, onCollapse, renderTrial, scope, query, disabled }) {
     const task = selected && selected.task, labels = prepared.labels;
@@ -81,7 +80,7 @@
           taskOrigin: { plan_ref: data.plan.plan_ref, operation_ref: task.operation_ref, task_ref: task.task_ref },
           disabled: disabled || selected.before || task.plan_ref !== data.plan.plan_ref, label: '调整此工序' })}</div>
       </>}</section>
-      {task && <><Route data={data} prepared={prepared} selected={selected} onRelated={onRelated} disabled={disabled} collapsible={compact} />
+      {task && <><Route prepared={prepared} selected={selected} onRelated={onRelated} disabled={disabled} collapsible={compact} />
       {compact && <DetailSection title="计划来源" collapsible><Facts items={[
         ['计划来源整批量', M.quantityLabel(task.batch_quantity, task.quantity_reason)],
         ['数量依据', task.quantity_reason ? M.quantityReasons[task.quantity_reason] : task.quantity_basis === 'run_admission' ? '来自上次排产候选方案的数据，已核对采用记录' : '来自新增试调草稿时的数据，已核对采用记录']

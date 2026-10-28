@@ -13,7 +13,7 @@
       && C.object(v.input) && !!C.facts(v.after) && !!C.target(v.target, true) && originalInput(v) && !Object.prototype.hasOwnProperty.call(v, 'write_token')
       && (v.phase !== 'confirmed' || !!C.receipt(v.receipt, v)); } catch (_) { return false; }
   }
-  const { read, save, write } = window.APSWorkbenchTransport.pendingStore({
+  const { read, save } = window.APSWorkbenchTransport.pendingStore({
     key: KEY, event: EVENT, validate: valid,
     readError: '上次操作记录读不出来，不能开始新的登记。请重新打开页面。',
     corruptError: '上次操作记录已损坏，不能开始新的登记。请不要再操作，联系维护人员。',
@@ -23,12 +23,20 @@
     writeError: '上次操作记录保存不了，不能开始登记。请重新打开页面。'
   });
   function useCommand() {
-    const [initial] = React.useState(() => { try { return { saved: read() }; } catch (error) { return { saved: null, error }; } });
+    const [initial] = React.useState(() => { try { return { saved: read() }; } catch (error) { return { saved: error.saved || null, error }; } });
     const [saved, setSaved] = React.useState(initial.saved), [storageError, setStorageError] = React.useState(initial.error || null);
     const [error, setError] = React.useState(null), [notice, setNotice] = React.useState(''), [busy, setBusy] = React.useState(false);
     const active = React.useRef(saved), running = React.useRef(false), mounted = React.useRef(false); active.current = saved;
-    function sync(event) { try { const v = event && event.type === EVENT ? event.detail : read();
-      active.current = v; setSaved(v); setStorageError(null); } catch (e) { setStorageError(e); } }
+    function sync(event) {
+      try {
+        const v = event && event.type === EVENT ? event.detail : read();
+        if (!C.equal(v, active.current)) { active.current = v; setSaved(v); setError(null); setNotice(''); }
+        setStorageError(null);
+      } catch (e) {
+        if (e.saved !== undefined && !C.equal(e.saved, active.current)) { active.current = e.saved; setSaved(e.saved); setError(null); setNotice(''); }
+        setStorageError(e);
+      }
+    }
     React.useEffect(() => {
       mounted.current = true; const changed = e => { if (!e.key || e.key === KEY) sync(e); };
       window.addEventListener('storage', changed); window.addEventListener(EVENT, changed);
@@ -36,14 +44,21 @@
     }, []);
     // C.command/C.lookup already checked the receipt; a failed local write belongs to storageError.
     function accept(v, original) {
-      try { save({ ...original, phase: 'confirmed', receipt: v }, original); if (mounted.current) { setError(null); setNotice('请点「完成」查看最新登记。'); } }
-      catch (e) { if (mounted.current) setStorageError(e); }
+      if (!C.equal(active.current, original)) { if (mounted.current) sync(); return; }
+      const confirmed = { ...original, phase: 'confirmed', receipt: v };
+      try { save(confirmed, original); active.current = confirmed; }
+      catch (e) {
+        if (!mounted.current) return;
+        if (!C.equal(active.current, confirmed)) sync();
+        setStorageError(e);
+      }
+      if (mounted.current && C.equal(active.current, confirmed)) { setError(null); setNotice('请点「完成」查看最新登记。'); }
     }
     async function lookup(preserveError = false) {
       if (running.current || !active.current || active.current.phase !== 'pending') return;
       const original = active.current; running.current = true; setBusy(true); if (!preserveError) setError(null);
-      try { const v = await C.lookup(original); if (v) accept(v, original); else if (mounted.current) setNotice('还是没有查到结果。请稍后再点「查询结果」，不要重复提交。'); }
-      catch (e) { if (mounted.current) setError(e); }
+      try { const v = await C.lookup(original); if (v) accept(v, original); else if (mounted.current && C.equal(active.current, original)) setNotice('还是没有查到结果。请稍后再点「查询结果」，不要重复提交。'); }
+      catch (e) { if (mounted.current && C.equal(active.current, original)) setError(e); }
       finally { running.current = false; if (mounted.current) setBusy(false); }
     }
     React.useEffect(() => { if (initial.saved && initial.saved.phase === 'pending') lookup(); }, []);
@@ -54,28 +69,42 @@
         if (!navigator.locks || typeof navigator.locks.request !== 'function') { if (mounted.current) setError(new Error('当前浏览器不支持，请用 Chrome 打开。')); return; }
         await navigator.locks.request(KEY, { ifAvailable: true }, async lock => {
           if (!lock) { if (mounted.current) setError(new Error('另一个页面有还没确认的外协登记，请先在那里点「查询结果」。')); return; }
+          if (!mounted.current) return;
           // C.preview 已校验过这份预检结果。
           const d = preview.data;
           original = { version: 1, phase: 'pending', request_key: window.APSWorkbenchTransport.requestKey('outsourcing'),
             input: d.input, after: d.after, target: d.target };
-          save(original, null);
+          save(original, null); active.current = original;
           try { accept(await C.command(original, d.write_context.write_token), original); }
           catch (e) {
+            if (!C.equal(active.current, original)) { if (mounted.current) sync(); return; }
             // 明确被拒的登记什么都没写入：直接放弃这条待确认记录，表单回到可编辑状态，改好后重新预检提交。
             const rejected = window.APSWorkbenchTransport.rejected(e);
-            if (rejected) save(null, original); else needLookup = true;
-            // Rejection returns to the form; pending outcomes remain in Pending. Keep the reason in the error box.
-            if (mounted.current) { setError(e); setNotice(rejected ? window.WorkbenchTerms.outcomes.rejected('外协登记') : ''); }
+            if (rejected) {
+              try { save(null, original); active.current = null; }
+              catch (storageErr) {
+                if (!mounted.current) return;
+                if (active.current !== null) { sync(); setStorageError(storageErr); return; }
+                setStorageError(storageErr);
+              }
+              if (mounted.current && active.current === null) { setError(e); setNotice(window.WorkbenchTerms.outcomes.rejected('外协登记')); }
+            } else {
+              needLookup = true;
+              if (mounted.current) { setError(e); setNotice(''); }
+            }
           }
         });
       } catch (e) { if (mounted.current) setStorageError(e); }
       finally { running.current = false; if (mounted.current) setBusy(false); }
-      if (needLookup && active.current && active.current.request_key === original.request_key && active.current.phase === 'pending') await lookup(true);
+      if (mounted.current && needLookup && active.current && active.current.request_key === original.request_key && active.current.phase === 'pending') await lookup(true);
     }
     function finish() {
       if (running.current) return false;
-      try { const v = read(); C.check(v && v.phase !== 'pending', '上次外协登记的结果还没有确认，不能丢弃这条记录。请先点「查询结果」。'); write(null); setError(null); setNotice(''); return true; }
-      catch (e) { setStorageError(e); return false; }
+      try {
+        const v = active.current && active.current.phase !== 'pending' ? active.current : read();
+        C.check(v && v.phase !== 'pending', '上次外协登记的结果还没有确认，不能丢弃这条记录。请先点「查询结果」。');
+        save(null, v); setError(null); setNotice(''); return true;
+      } catch (e) { setStorageError(e); return false; }
     }
     return { saved, storageError, error, notice, busy, sync, submit, lookup: () => lookup(), finish };
   }

@@ -85,8 +85,8 @@
       else {
         const node = prepared.graph.nodes.get(ref);
         if (!node) return;
-        setRelatedRef(ref); changeScope(P.workspaceScope(selection.plan_ref, { range_start: node.start,
-          range_end: node.start === node.end ? window.WorkbenchDatePickerModel.nextInstant(node.end) : node.end }));
+        setRelatedRef(ref); changeScope({ range_start: node.start,
+          range_end: node.start === node.end ? window.WorkbenchDatePickerModel.nextInstant(node.end) : node.end });
       }
     }
     function applyRange(event) {

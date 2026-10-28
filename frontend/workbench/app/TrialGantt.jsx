@@ -131,7 +131,7 @@
       <input type="search" aria-label="搜索试调工序" placeholder="批次 / 工序 / 资源" maxLength={200} value={query} onChange={e => { setQuery(e.target.value); setPage(1); }} />
       <TimelineZoom zoom={zoom} max={ZOOM_MAX} scope="试调" onZoom={setZoom} onFit={() => setZoom(1)} />
       <U.Button icon="chart-gantt" aria-label={expanded ? '收起甘特' : '展开甘特'} aria-expanded={expanded} onClick={toggleExpanded}>{expanded ? '收起' : '展开'}</U.Button>
-      {onToggleDetails && <U.Button icon={detailsOpen ? 'panel-right-close' : 'panel-right-open'} aria-expanded={detailsOpen} aria-controls="trial-gantt-detail" onClick={onToggleDetails}>{detailsOpen ? '收起详情' : '详情'}</U.Button>}</div>
+      <U.Button icon={detailsOpen ? 'panel-right-close' : 'panel-right-open'} aria-expanded={detailsOpen} aria-controls="trial-gantt-detail" onClick={onToggleDetails}>{detailsOpen ? '收起详情' : '详情'}</U.Button></div>
       {hiddenSelectedTask && <div className="tt-notice" role="status"><span>选中工序在当前筛选范围外。</span><U.Button icon="eye" onClick={showSelected}>显示并定位选中工序</U.Button></div>}
       <div className="tt-board" ref={board} onScroll={() => { setHover(null); measure(); }}><div className="tt-timeline" style={{ width: zoom === 1 ? '100%' : zoom * 100 + '%' }}>
         <div className="tt-axis"><div className="tt-corner">工序 / 资源</div><div className="tt-ticks" ref={axisHost}><window.GanttPresentationUI.Axis axis={axis} width={chart.width} /></div></div>

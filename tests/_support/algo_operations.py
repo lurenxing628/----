@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import fields
 from typing import Any, Dict
 
-from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult, ScheduleSummary
+from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
 from core.models.batch import Batch
 from core.models.batch_operation import BatchOperation
 
@@ -59,10 +59,3 @@ def make_schedule_result(**overrides: Any) -> ScheduleResult:
     op_id = overrides.get("op_id", 1)
     defaults = dict(op_id=op_id, op_code=f"OP{op_id}", batch_id="B1", seq=1)
     return _build(ScheduleResult, defaults, overrides)
-
-
-def make_schedule_summary(**overrides: Any) -> ScheduleSummary:
-    """排程摘要；默认是 0 道工序的成功摘要。"""
-    defaults = dict(success=True, total_ops=0, scheduled_ops=0, failed_ops=0, warnings=[], errors=[],
-                    duration_seconds=0.0, failure_details=[])
-    return _build(ScheduleSummary, defaults, overrides)

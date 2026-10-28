@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 import os
 import textwrap
 from typing import Any, Dict, List, Set, Tuple, cast
@@ -54,7 +53,7 @@ def load_ledger(required: bool = True) -> Dict[str, Any]:
     text = read_text_file("开发文档/技术债务治理台账.md")
     ledger = extract_json_code_block(text, LEDGER_BEGIN, LEDGER_END, "治理台账")
     validate_ledger(ledger)
-    return sort_ledger(copy.deepcopy(ledger))
+    return sort_ledger(ledger)
 
 
 def load_ledger_unvalidated(required: bool = True) -> Dict[str, Any]:
@@ -64,7 +63,7 @@ def load_ledger_unvalidated(required: bool = True) -> Dict[str, Any]:
         return default_ledger()
     text = read_text_file("开发文档/技术债务治理台账.md")
     ledger = extract_json_code_block(text, LEDGER_BEGIN, LEDGER_END, "治理台账")
-    return sort_ledger(copy.deepcopy(ledger))
+    return sort_ledger(ledger)
 
 
 def _validate_legacy_ledger_for_test_debt_import(ledger: Dict[str, Any]) -> None:
@@ -100,10 +99,10 @@ def load_ledger_for_test_debt_import() -> Dict[str, Any]:
         validate_ledger(ledger)
         if cast(Dict[str, Any], ledger.get("test_debt") or {}).get("entries"):
             raise QualityGateError("治理台账已存在 test_debt.entries，导入命令不得覆盖已有测试债务登记")
-        return sort_ledger(copy.deepcopy(ledger))
+        return sort_ledger(ledger)
     if schema_version == 1:
         _validate_legacy_ledger_for_test_debt_import(ledger)
-        return copy.deepcopy(ledger)
+        return ledger
     raise QualityGateError(f"治理台账 schema_version 不支持测试债务导入：{schema_version}")
 
 
@@ -177,7 +176,7 @@ def render_ledger_markdown(ledger: Dict[str, Any]) -> str:
 
 
 def save_ledger(ledger: Dict[str, Any]) -> None:
-    sorted_ledger = sort_ledger(copy.deepcopy(ledger))
+    sorted_ledger = sort_ledger(ledger)
     validate_ledger(sorted_ledger)
     rendered = render_ledger_markdown(sorted_ledger)
     relative = "开发文档/技术债务治理台账.md"
@@ -376,7 +375,7 @@ def _validate_silent_fallback_entries(silent_entries: List[Any], all_main_ids: S
                 _require_string(entry.get(historical_field), f"silent_fallback.entries[{index}].{historical_field}")
         if "handler_context_hash" in entry and not str(entry["handler_context_hash"]).startswith("sha1:"):
             raise QualityGateError(f"silent_fallback.entries[{index}].handler_context_hash 历史字段必须以 sha1: 开头")
-        _require_int(entry.get("except_ordinal"), f"silent_fallback.entries[{index}].except_ordinal")
+        except_ordinal = _require_int(entry.get("except_ordinal"), f"silent_fallback.entries[{index}].except_ordinal")
         _require_int(entry.get("line_start"), f"silent_fallback.entries[{index}].line_start")
         _require_int(entry.get("line_end"), f"silent_fallback.entries[{index}].line_end")
         _require_string(entry.get("fallback_kind"), f"silent_fallback.entries[{index}].fallback_kind")
@@ -384,7 +383,6 @@ def _validate_silent_fallback_entries(silent_entries: List[Any], all_main_ids: S
         if str(entry.get("fallback_kind")) not in FALLBACK_KIND_VALUES:
             raise QualityGateError("silent_fallback.entries[{}].fallback_kind 非法：{}".format(index, entry.get("fallback_kind")))
         _register_main_entry_id(all_main_ids, str(entry.get("id")))
-        except_ordinal = _require_int(entry.get("except_ordinal"), f"silent_fallback.entries[{index}].except_ordinal")
         unique_key = (
             str(entry.get("path")),
             str(entry.get("symbol") or ""),
@@ -581,7 +579,7 @@ def _ordered_silent_entries(ledger: Dict[str, Any]) -> List[Dict[str, Any]]:
         data = _ordered_common_fields(entry)
         for field_name in ("handler_signature", "handler_context", "handler_fingerprint", "handler_context_hash"):
             if field_name in entry:
-                data[field_name] = copy.deepcopy(entry.get(field_name))
+                data[field_name] = entry[field_name]
         data["except_ordinal"] = int(entry.get("except_ordinal") or 0)
         data["line_start"] = int(entry.get("line_start") or 0)
         data["line_end"] = int(entry.get("line_end") or 0)
@@ -660,21 +658,17 @@ def collect_main_entry_ids(ledger: Dict[str, Any]) -> Set[str]:
 
 
 def _ledger_semantics_equal(left: Dict[str, Any], right: Dict[str, Any]) -> bool:
-    left_copy = copy.deepcopy(left)
-    right_copy = copy.deepcopy(right)
-    left_copy["updated_at"] = "_"
-    right_copy["updated_at"] = "_"
-    return content_equal(left_copy, right_copy)
+    return content_equal(
+        {**left, "updated_at": "_"},
+        {**right, "updated_at": "_"},
+    )
 
 
 def finalize_ledger_update(ledger: Dict[str, Any]) -> Dict[str, Any]:
     current = load_ledger_unvalidated(required=False)
-    next_ledger = sort_ledger(copy.deepcopy(ledger))
-    current_sorted = sort_ledger(copy.deepcopy(current))
-    current_scope = cast(Dict[str, Any], current.get("silent_fallback") or {}).get("scope")
-    scope_already_current = current_scope == list(STARTUP_SCOPE_PATTERNS)
-    if scope_already_current and _ledger_semantics_equal(current_sorted, next_ledger):
-        next_ledger["updated_at"] = current_sorted.get("updated_at") or next_ledger.get("updated_at")
+    next_ledger = sort_ledger(ledger)
+    if _ledger_semantics_equal(current, next_ledger):
+        next_ledger["updated_at"] = current.get("updated_at") or next_ledger.get("updated_at")
     else:
         next_ledger["updated_at"] = now_shanghai_iso()
     validate_ledger(next_ledger)

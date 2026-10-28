@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const M = window.ResourceTableFilterModel, C = window.APSResourceContract;
+  const M = window.ResourceTableFilterModel;
   const { Button, ErrorBox } = window.ResourceControls;
   function initialRule(value) {
     try { return { value: M.rule(value), error: null }; }

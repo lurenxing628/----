@@ -86,9 +86,8 @@
     try { return JSON.stringify(input(v.input)) === JSON.stringify(v.input); } catch (_) { return false; }
   }
   function pending(storage) {
-    if (storage === undefined) { try { storage = window.localStorage; } catch (_) { throw new Error('读不到上次采用的操作记录，请重新打开页面。'); } }
     const { read, save } = T.pendingStore({
-      key: PENDING_KEY, storage: () => storage, event: EVENT, validate: validIntent,
+      key: PENDING_KEY, storage: storage === undefined ? () => window.localStorage : () => storage, event: EVENT, validate: validIntent,
       same: (a, b) => JSON.stringify(a) === JSON.stringify(b),
       readError: '读不到上次采用的操作记录，不要重新采用。',
       corruptError: '本机存的采用操作记录已损坏，已拦下新采用。请不要再操作，联系维护人员。',

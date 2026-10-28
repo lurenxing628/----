@@ -1191,7 +1191,7 @@ async function main() {
     if (this[0] && this[0].t) window.trialRowSorts++; return rowSort.call(this, compare);
   };`, trialGanttContext);
   let trialSelected = 'point';
-  const trialGanttRender = () => trialGanttHooks.render(() => trialGanttWindow.TrialGantt({ data: trialGanttData, selected: trialSelected, onSelect() {} }));
+  const trialGanttRender = () => trialGanttHooks.render(() => trialGanttWindow.TrialGantt({ data: trialGanttData, selected: trialSelected, onSelect() {}, detailsOpen: false, onToggleDetails() {} }));
   let trialGanttTree = trialGanttRender();
   assert.equal(trialBatchSets, 1); assert.equal(trialBatchChecks, 3);
   find(trialGanttTree, 'div', props => props.className === 'tt-board').ref.current = { scrollLeft: 100, clientWidth: 1000, querySelector: () => ({ getBoundingClientRect: () => ({ width: 100 }) }) };

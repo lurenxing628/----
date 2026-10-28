@@ -33,16 +33,25 @@
     };
     return adapter;
   }
+  function nodeFor(item, intent) {
+    const kind = item.kind || (intent && intent.kind);
+    return item.type === 'process' ? 'process' : item.type === 'calendar' ? 'calendar'
+      : item.type === 'file_only' ? importOnlyNode[kind] : kind === 'op_type'
+        ? intent && intent.category === 'external' ? 'op_ext' : 'op_int' : fileKinds.includes(kind) ? kind : 'material';
+  }
   function recovery(adapters) {
-    const pending = [{ type: 'base', adapter: adapters.base }, ...fileKinds.map(kind => ({ type: 'file', kind, adapter: adapters.files[kind] })),
+    const items = [{ type: 'base', adapter: adapters.base }, ...fileKinds.map(kind => ({ type: 'file', kind, adapter: adapters.files[kind] })),
       ...importOnlyKinds.map(kind => ({ type: 'file_only', kind, adapter: adapters.imports[kind] })),
-      { type: 'catalog', adapter: adapters.catalog }, { type: 'calendar', adapter: adapters.calendar }, { type: 'process', adapter: adapters.process }]
-      .map(item => ({ ...item, intent: item.adapter.readPending() })).find(item => item.intent);
+      { type: 'catalog', adapter: adapters.catalog }, { type: 'calendar', adapter: adapters.calendar }, { type: 'process', adapter: adapters.process }];
+    let pending = null;
+    for (const item of items) {
+      let intent;
+      try { intent = item.adapter.readPending(); }
+      catch (error) { error.node = nodeFor(item, null); throw error; }
+      if (intent) { pending = { ...item, intent }; break; }
+    }
     if (!pending) return null;
-    const intent = pending.intent, kind = pending.kind || intent.kind;
-    const node = pending.type === 'process' ? 'process' : pending.type === 'calendar' ? 'calendar'
-      : pending.type === 'file_only' ? importOnlyNode[kind] : kind === 'op_type'
-        ? intent.category === 'external' ? 'op_ext' : 'op_int' : fileKinds.includes(kind) ? kind : 'material';
+    const intent = pending.intent, kind = pending.kind || intent.kind, node = nodeFor(pending, intent);
     const auxiliary = pending.type === 'file' ? { type: intent.kind === kind + '_bulk' ? 'bulk' : 'import', kind,
       request: { refs: [], scope: intent.category ? { category: intent.category } : {}, recovery: true } }
       : pending.type === 'file_only' ? { type: 'import', kind, request: { refs: [], scope: {}, recovery: true } }
@@ -51,7 +60,6 @@
   }
   function ResourceLive({ onNavigate, initialContext }) {
     const [auxiliary, setAuxiliary] = React.useState(null), [revision, setRevision] = React.useState(0);
-    const [hostError, setHostError] = React.useState(null);
     const adapters = React.useMemo(() => {
       const base = window.APSResourceAPI.create(), calendar = window.APSResourceAPI.create('calendar');
       const files = Object.fromEntries(fileKinds.map(kind => [kind, fileAdapter(kind)])), catalog = window.APSResourceAPI.create('catalog');
@@ -88,16 +96,20 @@
       try { return { target, recovery: recovery(adapters) }; }
       catch (error) { return { target, error }; }
     });
+    const [hostError, setHostError] = React.useState(() => boot.error || null);
     const [deferred, setDeferred] = React.useState(() => !!boot.target.context && !!(boot.recovery || boot.error));
-    const [initialNode, setInitialNode] = React.useState(() => boot.recovery ? boot.recovery.node : boot.target.node || 'material');
+    const [initialNode, setInitialNode] = React.useState(() => boot.recovery ? boot.recovery.node : boot.error && boot.error.node ? boot.error.node : boot.target.node || 'material');
     const [navigationReady, setNavigationReady] = React.useState(false), [navigationKey, setNavigationKey] = React.useState(0);
-    React.useEffect(() => {
-      if (auxiliary) return;
+    function retryRecovery() {
+      if (auxiliary) return null;
       try {
         const pending = recovery(adapters);
+        setHostError(null);
         if (pending) { setInitialNode(pending.node); if (pending.auxiliary) setAuxiliary(pending.auxiliary); }
-      } catch (error) { setHostError(error); }
-    }, [adapters, auxiliary]);
+        return pending;
+      } catch (error) { if (error.node) setInitialNode(error.node); setHostError(error); return null; }
+    }
+    React.useEffect(() => { retryRecovery(); }, [adapters, auxiliary, navigationReady, revision]);
     function continueNavigation() {
       try {
         const pending = recovery(adapters);
@@ -107,7 +119,7 @@
         }
         if (auxiliary || !navigationReady) throw window.APSResourceContract.failure('请先关闭上次结果或处理未保存的草稿，再继续跳转。');
         setHostError(null); setDeferred(false); setInitialNode(boot.target.node); setNavigationKey(value => value + 1);
-      } catch (error) { setHostError(error); }
+      } catch (error) { if (error.node) setInitialNode(error.node); setHostError(error); }
     }
     function committed(result) {
       if (auxiliary && auxiliary.type === 'catalog') setAuxiliary(null);
@@ -120,12 +132,12 @@
       if (typeof current.request.onClosed === 'function') current.request.onClosed();
     }
     return <>
-      <window.ResourceControls.ErrorBox error={hostError || boot.target.error || boot.error} />
-      {deferred && <div role="status" className="match-note is-block wb-resource-live-note"><p>上次操作还没处理完，暂时没有跳转到指定记录。刚才的提交没有被覆盖。</p>
-        <window.ResourceControls.Button icon="arrow-right" onClick={continueNavigation}>继续跳转</window.ResourceControls.Button></div>}
+      <window.ResourceControls.ErrorBox error={hostError || boot.target.error} />
+      {deferred ? <div role="status" className="match-note is-block wb-resource-live-note"><p>上次操作还没处理完，暂时没有跳转到指定记录。刚才的提交没有被覆盖。</p>
+        <window.ResourceControls.Button icon="arrow-right" onClick={continueNavigation}>继续跳转</window.ResourceControls.Button></div> : hostError ? <div role="status" className="match-note is-block wb-resource-live-note"><window.ResourceControls.Button icon="refresh-cw" onClick={retryRecovery}>刷新上次操作记录</window.ResourceControls.Button></div> : null}
       <ResourceWorkspace key={initialNode + ':' + navigationKey} adapter={adapters.base} onNavigate={onNavigate} initialNode={initialNode} externalRevision={revision}
-        rememberEnabled={!auxiliary && !deferred && !hostError && !boot.error && !boot.target.error}
-        initialContext={deferred || boot.error ? undefined : boot.target.context} onNavigationReady={setNavigationReady}
+        rememberEnabled={!auxiliary && !deferred && !hostError && !boot.target.error}
+        initialContext={deferred || hostError ? undefined : boot.target.context} onNavigationReady={setNavigationReady}
         renderPart={({ onRefresh, initialContext, rememberEnabled }) => <window.ProcessWorkspace adapter={adapters.process} onCommitted={onRefresh} initialContext={initialContext} rememberEnabled={rememberEnabled} onNavigationReady={setNavigationReady} />}
         renderCalendar={({ onCommitted, externalRevision, initialContext, rememberEnabled, summaryState }) => <window.ResourceCalendar adapter={adapters.calendar} onCommitted={onCommitted} externalRevision={externalRevision} initialContext={initialContext} rememberEnabled={rememberEnabled} summaryState={summaryState} onNavigationReady={setNavigationReady}
           onOpenFile={(mode, context) => adapters.base.openCalendarFile(mode, { refs: [], scope: {}, ...context })} />} />

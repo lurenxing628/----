@@ -5,10 +5,14 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
 from core.models.workbench_run_adoption import ADOPT_ACTION
 from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES, reference, reject
-from core.services.workbench.facts.adoption_baseline_values import REASONS, AdoptionBaselineUnavailable
+from core.services.workbench.facts.adoption_baseline_values import (
+    REASONS,
+    AdoptionBaselineUnavailable,
+    read_adoption_record,
+)
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_values import bounded_size
-from core.services.workbench.plan.adoption_baseline import read_adoption_record, read_adoption_source
+from core.services.workbench.plan.adoption_baseline import read_adoption_source
 from core.services.workbench.plan.read_context import PlanReadContext
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_run_candidate_repo import WorkbenchRunCandidateRepository

@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   const C = window.APSResourceContract, S = window.APSResourceSession;
-  const { Button, Icon, ErrorBox, Issues, Status } = window.ResourceControls;
+  const { Button, Icon, Issues, Status } = window.ResourceControls;
   const kinds = { machines: 'machine', operators: 'operator', suppliers: 'supplier' };
   const names = { machines: '关联设备', operators: '关联人员', suppliers: '关联供应商' };
   const ref = value => typeof value === 'string' && /^[0-9a-f]{48}$/.test(value);
@@ -44,7 +44,7 @@
       {read.error && <window.WorkbenchControls.EmptyState kind="error" error={read.error} action={<Button icon="refresh-cw" onClick={refresh}>刷新{title}</Button>} />}
       {data && <><p className="muted wb-resource-association-basis">{data.basis.message}</p>
         <div className="wb-resource-association-list">{data.entities.map(item => <div key={item.ref}>
-          <button type="button" className="wb-resource-relation" onClick={() => onOpen(item.kind, item.ref)} aria-label={'查看' + C.resourceName(item.kind) + ' ' + item.business_code + ' ' + item.label} disabled={!onOpen}>
+          <button type="button" className="wb-resource-relation" onClick={() => onOpen(item.kind, item.ref)} aria-label={'查看' + C.resourceName(item.kind) + ' ' + item.business_code + ' ' + item.label}>
             <span className="wb-resource-relation-content"><span className="lnk">{item.business_code} · {item.label}</span>
               {item.fields.relation_source_label && <span className="muted">{item.fields.relation_source_label}</span>}
               {relation === 'operators' && <span className="muted">匹配设备授权 {count(item.fields.matching_machine_authorization_count) ? item.fields.matching_machine_authorization_count : '未知'} 项

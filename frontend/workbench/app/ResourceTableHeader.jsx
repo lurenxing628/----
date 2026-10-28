@@ -55,7 +55,7 @@
     const baseScope = scopeTransform(scope, column.key), scopeKey = M.signature(baseScope), identity = M.signature({ kind, column: column.key, scope: baseScope });
     const resize = useResize({ columnKey: column.key, kind, scopeKey, width, disabled, onResize }, holder);
     const sorted = !!sortActive && sort === column.key, next = !sorted ? 'asc' : direction === 'asc' ? 'desc' : null;
-    let filtered; try { filtered = M.active(filter); } catch (_) { filtered = true; }
+    const filtered = React.useMemo(() => { try { return M.active(filter); } catch (_) { return true; } }, [filter]);
     function close(restore) {
       const owner = opened && opened.owner; setOpened(null);
       if (restore && owner) requestAnimationFrame(() => { if (owner.isConnected && !owner.disabled) owner.focus({ preventScroll: true }); });

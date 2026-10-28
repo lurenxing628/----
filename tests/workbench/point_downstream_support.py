@@ -1,11 +1,8 @@
 """EK real EA adoption, production HTTP routes, and isolated temporary server."""
 
 import uuid
-from contextlib import contextmanager
-from threading import Thread
 
 from flask import Blueprint, Flask, g, request, send_from_directory
-from werkzeug.serving import make_server
 
 from core.infrastructure.database import get_connection
 from core.services.workbench.execution.actual_gantt import ActualGanttService
@@ -85,17 +82,3 @@ def report(client, identity, *, quantity=1, start='2026-09-09T08:00:00', end='20
     result = response.get_json()
     assert result['ok'] is True, result
     return result['data']['rows'][0]
-
-
-@contextmanager
-def serve(app):
-    server = make_server('127.0.0.1', 0, app, threaded=True)
-    thread = Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        yield 'http://127.0.0.1:' + str(server.server_port)
-    finally:
-        server.shutdown()
-        thread.join(timeout=5)
-        server.server_close()
-        assert not thread.is_alive()

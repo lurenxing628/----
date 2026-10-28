@@ -112,8 +112,8 @@
     const finishing = !!data && ['save', 'discard'].includes(modal), dialog = modal === 'create' || finishing;
     return <div className="plana trial-workspace" data-trial-workspace data-open-ref={key} data-open-kind={isScenario ? 'scenario' : 'draft'}>
       <h2 className="wb-page-title">试调排产方案</h2><header className="tt-tools">
-        {onNavigate && <U.Button icon="chevron-left" onClick={() => onNavigate('analysis', base || {})}>返回方案</U.Button>}
-        {onNavigate && initialTarget.return_decision_history_context && <U.Button icon="history" onClick={() => onNavigate('analysis', window.DecisionHistoryAPI.historyContext(initialTarget))}>返回历史走势</U.Button>}
+        <U.Button icon="chevron-left" onClick={() => onNavigate('analysis', base || {})}>返回方案</U.Button>
+        {initialTarget.return_decision_history_context && <U.Button icon="history" onClick={() => onNavigate('analysis', window.DecisionHistoryAPI.historyContext(initialTarget))}>返回历史走势</U.Button>}
         <U.Button icon="folder-open" onClick={() => setDirectory(!directory)} aria-expanded={directory}>草稿 / 试调方案列表</U.Button>
         <U.Button icon="plus" className="btn primary" disabled={commands.blocked} onClick={async () => { if (await guard()) setModal('create'); }}>新增试调</U.Button>
         {key && <U.Button icon="refresh-cw" aria-label="刷新当前试调" busy={read.busy} disabled={commands.busy || !!commands.key} onClick={reload}>刷新</U.Button>}

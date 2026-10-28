@@ -55,18 +55,17 @@ def build_parser():
 
 
 def _ensure_fresh(force, as_json):
-    # type: (bool, bool) -> None
+    # type: (bool, bool) -> bool
     from . import freshness
     if force or freshness.is_stale():
         reason = "强制 --rebuild" if force else "源码已变,快照过期"
         sys.stderr.write(f"[symbol-locator] {reason},重建静态图(~2s)...\n")
         if not freshness.rebuild():
-            sys.stderr.write("[symbol-locator] 重建失败,沿用旧快照\n")
-            hint = freshness.rebuild_error_hint()
-            if hint:
-                sys.stderr.write(f"[symbol-locator] {hint}\n")
+            sys.stderr.write(f"[symbol-locator] {freshness.rebuild_error_hint()}\n")
+            return False
     if not as_json:
         sys.stderr.write(f"[快照 {freshness.snapshot_label()}]\n")
+    return True
 
 
 def main(argv=None):
@@ -81,7 +80,8 @@ def main(argv=None):
         return 2
     if args.cmd == "build-index":
         return _build_scip_index(args.output, args.json)
-    _ensure_fresh(args.rebuild, args.json)
+    if not _ensure_fresh(args.rebuild, args.json):
+        return 2
     index = static_index.load()
     if args.cmd == "whereis":
         return render.render_whereis(args.symbol, index, as_json=args.json, at=args.at)

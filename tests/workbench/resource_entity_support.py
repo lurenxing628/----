@@ -10,13 +10,8 @@ from core.infrastructure.schema_declaration import load_schema_sql
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource.queries import WorkbenchResourceQueryService
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
-from tests.workbench.identity_metadata_support import (
-    business_snapshot,
-    insert_row,
-    schema_snapshot,
-    seed_resources,
-    table_rows,
-)
+from tests._support.sqlite_snapshot import table_rows
+from tests.workbench.identity_metadata_support import insert_row, seed_resources
 
 ENTITY_TABLES = {
     "op_type": ("OpTypes", "op_type_id", "OT1"),
@@ -33,14 +28,6 @@ NEW_TABLES = (
 FIXED_FIELDS = {
     "anchor_date": "2026-09-09", "cycle_days": 1,
     "pattern": [{"day_offset": 0, "is_rest": False, "shift_start": "07:15", "shift_end": "15:45"}],
-}
-ROTATING_FIELDS = {
-    "anchor_date": "2026-02-28", "cycle_days": 3,
-    "pattern": [
-        {"day_offset": 0, "is_rest": False, "shift_start": "06:10", "shift_end": "14:40"},
-        {"day_offset": 1, "is_rest": False, "shift_start": "22:25", "shift_end": "06:55"},
-        {"day_offset": 2, "is_rest": True, "shift_start": "00:00", "shift_end": "00:00"},
-    ],
 }
 
 
@@ -68,11 +55,6 @@ def resource_row(conn, kind, code=None):
     table, key, default = ENTITY_TABLES[kind]
     row = conn.execute(f'SELECT * FROM "{table}" WHERE "{key}"=?', (code or default,)).fetchone()
     return dict(row) if row else None
-
-
-def stored_state(conn):
-    return (schema_snapshot(conn), business_snapshot(conn), table_rows(conn, "WorkbenchEntityRefs"),
-            table_rows(conn, "WorkbenchCommandReceipts"))
 
 
 def run_resource(conn, kind, action, payload, *, code=None):
@@ -116,41 +98,3 @@ def create_catalog(conn, kind, code=None, fields=None):
     identity = identity_for(conn, kind, code)
     assert identity is not None
     return identity
-
-
-def explicit_operator(conn):
-    shift = create_catalog(conn, "shift_profile")
-    op_type = identity_for(conn, "op_type")
-    assert op_type is not None
-    run_resource(conn, "operator", "update", {
-        "fields": {"status": "leave"},
-        "relationships": {"shift_profile_ref": shift.ref, "skill_refs": [op_type.ref]},
-    })
-    return WorkbenchResourceQueryService(conn, "operator").current_with_identity(identity_for(conn, "operator"))
-
-
-def invalid_entity_inputs():
-    for kind in ("op_type", "machine", "operator"):
-        for payload in (None, [], True, {"unknown": 1}, {"fields": None}, {"fields": []},
-                        {"relationships": None}, {"relationships": []}, {"business_code": "changed"}):
-            yield pytest.param(kind, "update", payload, id=kind + "-shape-" + repr(payload))
-        for value in (None, "", " \t", True, float("nan"), 1, [], {}):
-            yield kind, "update", {"label": value}
-            yield kind, "create", {"business_code": value, "label": "name"}
-        for value in (True, 1, float("nan"), [], {}):
-            yield kind, "update", {"fields": {"remark": value}}
-        hidden = ("created_at", "team_id", "op_type_id", "default_hours", "name", "revision", "ref")
-        for field in hidden:
-            yield kind, "update", {"fields": {field: "forbidden"}}
-        for value in (None, "", "unknown", True, float("nan"), [], {}):
-            field = "category" if kind == "op_type" else "status"
-            yield kind, "update", {"fields": {field: value}}
-        yield kind, "delete", {"label": "not allowed"}
-    for key, kind in (("skill_refs", "operator"), ("shift_profile_ref", "operator"), ("group_ref", "machine"),
-                      ("op_type_ref", "machine")):
-        for value in ("", "OT1", "display name", True, float("nan"), {}, 1):
-            yield kind, "update", {"relationships": {key: value}}
-    for value in (None, [None], [True], ["f" * 48, "f" * 48], ["F" * 48], ["f" * 47], ["f" * 49]):
-        yield "operator", "update", {"relationships": {"skill_refs": value}}
-    yield "machine", "update", {"relationships": {"team_ref": "f" * 48}}
-    yield "operator", "update", {"relationships": {"machine_refs": []}}

@@ -86,7 +86,7 @@
     const preview = preflightResult && preflightResult.base === model.base && preflightResult.draft === draft ? preflightResult : null;
     const request = React.useRef(null);
     const blocked = disabled || command.locked || command.phase === 'done';
-    const stageReason = E.reason(model, 'source'), editBlocked = blocked || entity.workflow.route.state !== 'confirmed' || entity.capabilities.stage_confirm !== true;
+    const stageReason = E.reason(model, 'source'), editBlocked = blocked || entity.workflow.route.state !== 'confirmed';
     function invalidate() { if (request.current) request.current.abort(); request.current = null; setChecking(false); setPreview(null); setDiscarded([]); }
     React.useEffect(() => { invalidate(); }, [model.draft, model.base, model.review, disabled, command.error]);
     React.useEffect(() => () => { if (request.current) request.current.abort(); }, []);

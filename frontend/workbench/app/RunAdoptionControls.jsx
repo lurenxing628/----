@@ -30,8 +30,8 @@
     const canConfirm = valid && consent && draft.reason.trim() && draft.declared_operator.trim() && !pending && !storageError;
     return <Modal title={result ? '正式采用结果' : pending ? '查询上次采用结果' : '确认正式采用'} icon="check" onClose={onClose}
       footer={<><Button onClick={onClose}>{pending ? '关闭并保留上次操作' : result ? '关闭' : '取消'}</Button>
-        {intent && intent.phase === 'rejected' && <Button disabled={busy || !!storageError} onClick={onCancelRejected}>结束本次未采用</Button>}
-        {pending && replacedInfo && <Button disabled={busy || !!storageError} onClick={onDismissReplaced}>结束旧来源待确认记录</Button>}
+        {intent && intent.phase === 'rejected' && <Button disabled={busy} onClick={onCancelRejected}>结束本次未采用</Button>}
+        {pending && replacedInfo && <Button disabled={busy} onClick={onDismissReplaced}>结束旧来源待确认记录</Button>}
         {result ? <><Button icon="check" onClick={onFinish}>完成</Button><Button icon="arrow-right" className="btn primary"
           onClick={() => onNavigate('analysis', { plan_ref: result.data.official_plan.plan_ref })}>进入正式计划</Button></>
           : pending ? <Button icon="refresh-cw" busy={busy} onClick={onLookup}>{window.WorkbenchTerms.actions.query_result}</Button>

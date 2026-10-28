@@ -29,8 +29,7 @@
     const blocked = disabled || command.locked || command.phase === 'done', current = draft.groups.find(row => row.key === editing);
     const validPreview = preview && preview.draft === draft && preview.base === model.base && !model.review ? preview : null;
     const reason = model.review ? '请先核对最新资料。' : entity.workflow.route.state !== 'confirmed' ? '请先确认路线。'
-      : P.reason(entity.capabilities, 'stage_confirm')
-        || (model.base.meta.source !== 'production' ? '请先读取可保存的工艺资料。' : '') || (!model.dirty ? '请先新增、修改或解除外协段。' : '');
+      : (model.base.meta.source !== 'production' ? '请先读取可保存的工艺资料。' : '') || (!model.dirty ? '请先新增、修改或解除外协段。' : '');
     React.useEffect(() => () => { if (request.current) request.current.abort(); onDirty('groups', false); }, []);
     React.useEffect(() => {
       if (!validPreview || !reviewRoot.current) return undefined;

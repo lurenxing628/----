@@ -139,12 +139,10 @@
   function validIntent(v) { return shape(v, ['schema_version', 'input_ref', 'request_key', 'run_ref', 'data_context_ref']) && v.schema_version === 2 && contextRef(v.data_context_ref)
     && token(v.input_ref) && key(v.request_key) && (v.run_ref === null || ref(v.run_ref)); }
   function pending(storage) {
-    if (storage === undefined) {
-      try { storage = window.localStorage; } catch (_) { throw new Error('读不到上次排产的操作记录，请重新打开页面，不要重做。'); }
-    }
+    const targetStorage = storage === undefined ? () => window.localStorage : () => storage;
     const same = (a, b) => !!a && !!b && a.input_ref === b.input_ref && a.request_key === b.request_key && a.run_ref === b.run_ref && a.data_context_ref === b.data_context_ref;
     const store = T.pendingStore({
-      key: PENDING_KEY, storage: () => storage, validate: validIntent, validateWrite: null, same,
+      key: PENDING_KEY, storage: targetStorage, validate: validIntent, validateWrite: null, same,
       readError: '读不到上次排产的操作记录，请重新打开页面，不要重做。',
       corruptError: '本机存的排产操作记录已损坏，已拦下新排产。请不要再操作，联系维护人员。',
       invalidError: '本机存的排产操作记录不完整，已拦下新排产。请不要再操作，联系维护人员。',
@@ -153,7 +151,7 @@
       removeError: '本机无法更新上次操作记录。请不要再操作，联系维护人员。'
     });
     const recentStore = T.pendingStore({
-      key: RECENT_KEY, storage: () => storage,
+      key: RECENT_KEY, storage: targetStorage,
       validate: value => shape(value, ['intent', 'resolution']) && validIntent(value.intent) && ['found', 'context_replaced'].includes(value.resolution),
       validateWrite: null,
       corruptError: '最近排产记录读不到，请到排产记录页查看。',
@@ -182,7 +180,7 @@
         if (current === null) return;
         check(same(current, intent), '上次操作记录已变化，没有删除其他记录。');
         recentStore.write({ intent, resolution });
-        storage.removeItem(PENDING_KEY);
+        targetStorage().removeItem(PENDING_KEY);
       },
       reject(intent) {
         check(validIntent(intent));

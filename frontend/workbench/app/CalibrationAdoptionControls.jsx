@@ -40,7 +40,7 @@
     return <Modal title={result ? '模板采用结果' : pending ? '查询上次采用结果' : '预检并采用模板定额'} icon="check" onClose={s.close}
       footer={<><Button onClick={s.close}>{pending ? '关闭并保留上次操作' : '关闭'}</Button>
         {result ? <Button icon="check" onClick={s.finish}>完成</Button> : pending ? <Button icon="refresh-cw" busy={s.busy} onClick={s.lookup}>{window.WorkbenchTerms.actions.query_result}</Button> : <>
-          {saved && <Button disabled={s.busy || !!s.storageError} onClick={s.finish}>放弃上次采用记录</Button>}
+          {saved && <Button disabled={s.busy} onClick={s.finish}>放弃上次采用记录</Button>}
           <Button icon="refresh-cw" disabled={s.busy} onClick={refresh}>刷新所选模板</Button>
           <Button icon="search" busy={s.busy} disabled={blocked} onClick={s.inspect}>检查是否可采用</Button>
           <Button icon="check" className="btn primary" busy={s.busy} disabled={blocked || !preview || !preview.validation.can_adopt || !s.consent} onClick={s.submit}>确认采用</Button></>}</>}>

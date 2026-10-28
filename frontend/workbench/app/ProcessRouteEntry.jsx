@@ -48,8 +48,6 @@
     const [mergeReview, setMergeReview] = React.useState(null), [mergeChoices, setMergeChoices] = React.useState({});
     const paging = E.usePage(rows), locked = command.locked || command.phase === 'done';
     const blocked = disabled || locked;
-    // 只有带完整工艺接口的工艺详情才能打开路线录入（校准页的只读详情禁用了入口），这里的能力只看后端 capabilities。
-    const previewReason = P.reason(entity.capabilities, 'route_preview');
     // Read the op_type catalog once on entry so the row inputs can suggest real names. Free text stays allowed and
     // the server route preflight remains the only authority on what is recognized.
     const opTypeListId = React.useId();
@@ -59,7 +57,7 @@
       [opTypes.result]);
     function abort() { if (request.current) request.current.abort(); request.current = null; }
     React.useEffect(() => () => abort(), []);
-    React.useEffect(() => { invalidate(); }, [adapter, result, disabled, active, command && command.error]);
+    React.useEffect(() => { invalidate(); }, [adapter, result, disabled, active, command.error]);
     React.useEffect(() => {
       if (result !== context) {
         if (!active && draftText === baselineDraft.current && !state.result && !state.error) acceptFresh(result);
@@ -87,7 +85,6 @@
       if (!(mode === 'rows' ? D.serialize(rows) : routeRaw).trim()) {
         invalidate(); setRows([{ key: ++sequence.current, seq: '', op_type_name: '' }]); setRouteRaw(''); setMode(next); return;
       }
-      if (previewReason) return;
       invalidate(); setState({ busy: true, result: null, error: null });
       try {
         const parsed = await parsedDraft(context.meta.snapshot_ref);
@@ -123,7 +120,7 @@
       } catch (error) { setState({ busy: false, result: null, error }); }
     }
     async function preflight() {
-      if (blocked || review || state.busy || previewReason) return;
+      if (blocked || review || state.busy) return;
       abort(); const controller = new AbortController(); request.current = controller;
       setState({ busy: true, result: null, error: null });
       try {
@@ -146,19 +143,18 @@
       } finally { if (request.current === controller) request.current = null; }
     }
     const affected = state.result ? state.result.data.affected_groups : [];
-    const saveReason = P.reason(entity.capabilities, 'stage_confirm') ||
-      (review ? '请先核对最新资料。' : !state.result || !state.result.data.can_confirm_route ? '请先完成当前路线预检。' :
-        !affected.every(row => discarded.includes(row.ref)) ? '请明确勾选解除所有受影响的外协组。' : C.blocked(state.result.data.write_context, 'process', 'route_confirm', state.result.meta.source));
+    const saveReason = review ? '请先核对最新资料。' : !state.result || !state.result.data.can_confirm_route ? '请先完成当前路线预检。' :
+      !affected.every(row => discarded.includes(row.ref)) ? '请明确勾选解除所有受影响的外协组。' : C.blocked(state.result.data.write_context, 'process', 'route_confirm', state.result.meta.source);
     async function save() {
       if (blocked || saveReason) return;
       await command.submit('process', 'route_confirm', entity.ref, state.result.data.write_context, { route: state.route, discard_group_refs: discarded });
     }
     return <div className="process-route-entry"><Modal title={'录入工艺路线 · ' + entity.business_code} icon="chart-gantt" onClose={() => { if (!locked) close(); }} locked={locked} suspended={!active}
-      footer={<><Button onClick={close} disabled={locked}>取消</Button><Button icon="search" busy={state.busy} disabled={blocked || !!review} reason={previewReason} onClick={preflight}>预检路线</Button>
+      footer={<><Button onClick={close} disabled={locked}>取消</Button><Button icon="search" busy={state.busy} disabled={blocked || !!review} onClick={preflight}>预检路线</Button>
         <Button icon="check" className="btn primary" disabled={blocked} reason={saveReason} onClick={save}>确认保存路线</Button></>}>
       <div className="modal-b scroll">
         <div className="seg re-mode" role="group" aria-label="路线录入模式" style={{ marginBottom: 16 }}>
-          {[['text', '整条录入'], ['rows', '逐行表格']].map(([value, label]) => <Button key={value} aria-pressed={mode === value} className={mode === value ? 'on' : ''} disabled={blocked || !!review || state.busy} reason={previewReason} onClick={() => switchMode(value)}>{label}</Button>)}
+          {[['text', '整条录入'], ['rows', '逐行表格']].map(([value, label]) => <Button key={value} aria-pressed={mode === value} className={mode === value ? 'on' : ''} disabled={blocked || !!review || state.busy} onClick={() => switchMode(value)}>{label}</Button>)}
         </div>
         <p className="muted">整条和逐行维护的是同一条路线。可直接填写“10: 车削；20: 热处理；30: 精磨”；原来的“10车削20热处理”也能识别。名称含数字或空格时，保留工序号后的冒号即可。</p>
         {mode === 'text' ? <label className="field full">路线文字<textarea aria-label="路线文字" className="re-text" rows={5} value={routeRaw} disabled={blocked} onChange={event => { edited(); setRouteRaw(event.target.value); }} style={{ width: '100%', resize: 'vertical' }} /></label> : <>

@@ -99,7 +99,6 @@
   }
   function Detail({ data, prepared, task, onClose, onRelated, onCollapse }) {
     const M = window.RunCandidateModel;
-    const loadedRefs = React.useMemo(() => prepared && prepared.loadedRefs || new Set(data.tasks.map(row => row.row_ref)), [prepared, data.tasks]);
     const segments = task && data.tasks.filter(row => row.operation_ref === task.operation_ref);
     const compact = !!onCollapse, execution = task && task.execution_at_generation;
     const routineUnreported = execution && execution.execution_state === 'unreported' && ['complete', 'incomplete'].includes(execution.data_quality);
@@ -124,7 +123,7 @@
         <window.RunOperationEffort.Detail value={task.operation_effort} compact={compact} />
         {!compact && reference}
         {segments.length > 1 && <details className="wb-gantt-detail-section"><summary>本工序分段安排 · {segments.length} 段</summary><div className="wb-gantt-detail-section-body">{segments.map(segment => <div className="rc-saved-segment" key={segment.row_ref}><Button className="btn link" onClick={() => onRelated(segment.row_ref)}>{M.timeLabel(segment.start)} 至 {M.timeLabel(segment.end)}</Button><small>设备 {M.resourceLabel(segment, 'machine')} · 人员 {M.resourceLabel(segment, 'operator')}</small></div>)}</div></details>}
-        <window.GanttRouteList index={prepared.graph} targetRef={task.row_ref} loadedRefs={loadedRefs} onSelect={onRelated} collapsible={compact} />
+        <window.GanttRouteList index={prepared.graph} targetRef={task.row_ref} loadedRefs={prepared.loadedRefs} onSelect={onRelated} collapsible={compact} />
         {compact && <details className="wb-gantt-detail-section"><summary>来源与记录编号</summary><div className="wb-gantt-detail-section-body"><DetailFacts rows={facts.filter(([key]) => sourceKeys.has(key))} />{reference}</div></details>}
         <RecordSection className={compact ? 'wb-gantt-detail-section' : routineUnreported ? 'rc-reasons' : undefined}><RecordHeading>{data.reference ? '排产时的开工和完工记录' : '生成时的开工和完工记录'}</RecordHeading><div className={compact ? 'wb-gantt-detail-section-body' : undefined}>
           {task.execution_at_generation ? <DetailFacts rows={Object.keys(task.execution_at_generation).map(key => [M.executionLabels[key], M.executionField(task, key)])} /> : <p className="rc-muted">提交试排时的开工和完工记录缺失，请核对该工序的生成资料。</p>}

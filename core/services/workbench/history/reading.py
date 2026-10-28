@@ -3,7 +3,11 @@
 from core.infrastructure.connection_guards import schema_contract_memo
 from core.infrastructure.workbench_run_schema import workbench_run_contract_issues
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.facts.adoption_baseline_values import REASONS, AdoptionBaselineUnavailable
+from core.services.workbench.facts.adoption_baseline_values import (
+    REASONS,
+    AdoptionBaselineUnavailable,
+    read_adoption_record,
+)
 from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.candidate_projection import candidate_summary, dispositions, validate_manifest
 from core.services.workbench.facts.candidate_read_source import read_candidate_source
@@ -12,7 +16,6 @@ from core.services.workbench.facts.candidate_values import corrupt
 from core.services.workbench.facts.decision_baseline_source import candidate_evidence, trial_evidence
 from core.services.workbench.facts.decision_metrics import admission_operation_refs
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
-from core.services.workbench.plan.adoption_baseline import read_adoption_record
 from core.services.workbench.run.decision import decision_history_candidate
 from core.services.workbench.run.decision_source import DecisionSource
 

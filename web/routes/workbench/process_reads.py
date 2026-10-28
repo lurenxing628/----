@@ -9,7 +9,6 @@ from core.errors import AppError
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_query import ProcessPageRequest
 from core.models.workbench_process_table_query import DUPLICATE_QUERY_MESSAGE, ProcessTablePageRequest
-from core.services.workbench.process.projection import capabilities
 from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from core.shared.strict_json import load_strict_json
 from web.api_responses import query_success
@@ -53,7 +52,6 @@ def process_list():
     with reader.read_snapshot() as state:
         snapshot = bind_read_snapshot(query.scope(), state, token)
         data = reader.page(query)
-        data["capabilities"] = capabilities()
         data["create_context"] = issue_write_context("process:create", ["process.create"], state)
         if query.number > data["page"]["pages"]:
             raise WorkbenchCommandRejected("snapshot_stale", "翻页位置已失效，请回到第 1 页重新查询。")

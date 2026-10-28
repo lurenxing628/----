@@ -2,33 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
-from core.infrastructure.migration_state import (
-    CURRENT_SCHEMA_VERSION,
-    current_schema_contract_issues,
-    ensure_schema_version,
-    get_schema_version,
-    is_truly_empty_db,
-)
-from core.infrastructure.schema_declaration import load_schema_sql
-from core.infrastructure.workbench_run_schema import RUN_TABLES
-from tests._support.sqlite_snapshot import schema_snapshot as schema_snapshot
-from tests._support.sqlite_snapshot import table_rows as table_rows
-
-RESOURCE_CASES = {
-    "part": ("Parts", ("part_no",)),
-    "op_type": ("OpTypes", ("op_type_id",)),
-    "machine": ("Machines", ("machine_id",)),
-    "operator": ("Operators", ("operator_id",)),
-    "supplier": ("Suppliers", ("supplier_id",)),
-    "material": ("Materials", ("material_id",)),
-    "calendar": ("WorkCalendar", ("date",)),
-    "operator_calendar": ("OperatorCalendar", ("operator_id", "date")),
-    "batch": ("Batches", ("batch_id",)),
-    "resource_team": ("ResourceTeams", ("team_id",)),
-}
-METADATA_TABLES = ("WorkbenchEntityRefs", "WorkbenchCommandReceipts")
 STAMP = "2020-02-03 04:05:06"
 SEED_ROWS = {
     "ResourceTeams": dict(team_id="T1", name="team", status="inactive", remark="team-note"),
@@ -92,48 +65,4 @@ def seed_resources(conn, *, relations=False):
         insert_row(conn, table, payload)
     assert not conn.execute("PRAGMA foreign_key_check").fetchall()
     conn.commit()
-
-
-def resource_payload(kind):
-    table, columns = RESOURCE_CASES[kind]
-    payload = dict(SEED_ROWS[table])
-    payload[columns[-1]] = "2030-01-01" if "date" in columns else payload[columns[-1]] + "-test"
-    if "name" in payload:
-        payload["name"] += "-test"
-    return payload
-
-
-def resource_key(kind, payload):
-    values = tuple(payload[column] for column in RESOURCE_CASES[kind][1])
-    # Independent oracle; do not call the production encoder to predict its own output.
-    return values[0] if len(values) == 1 else ":".join(value.translate({37: "%25", 58: "%3A"}) for value in values)
-
-
-def where_key(kind, payload):
-    columns = RESOURCE_CASES[kind][1]
-    return " AND ".join('"' + column + '" = ?' for column in columns), tuple(payload[column] for column in columns)
-
-
-def business_snapshot(conn):
-    names = [row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")]
-    return {
-        name: (tuple(tuple(row) for row in conn.execute(f'PRAGMA table_info("{name}")')),
-               tuple(tuple(row) for row in conn.execute(f'SELECT rowid, * FROM "{name}" ORDER BY rowid')))
-        for name in names if name not in METADATA_TABLES + ("SchemaVersion",)
-    }
-
-
-@pytest.fixture(name="identity_conn")
-def identity_database(schema_conn):
-    assert get_schema_version(schema_conn) == 0 and is_truly_empty_db(schema_conn)
-    assert table_rows(schema_conn, "WorkbenchPlanIdentityClock") == [(1, 1)]
-    assert table_rows(schema_conn, "WorkbenchExecutionLedgerClock") == [(1, 1, 1)]
-    ensure_schema_version(schema_conn, schema_sql=load_schema_sql())
-    assert get_schema_version(schema_conn) == CURRENT_SCHEMA_VERSION
-    seed_resources(schema_conn)
-    assert current_schema_contract_issues(
-        schema_conn, schema_version=CURRENT_SCHEMA_VERSION, schema_sql=load_schema_sql()) == []
-    assert all(not table_rows(schema_conn, table) for table in RUN_TABLES)
-    schema_conn.commit()
-    return schema_conn
 

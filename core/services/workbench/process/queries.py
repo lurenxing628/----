@@ -12,7 +12,7 @@ from core.services.process.workflow_state import workflow_snapshot
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_process_query_repo import WorkbenchProcessQueryRepository
 
-from .projection import capabilities, project_group, project_operation, project_part, public_sequence
+from .projection import project_group, project_operation, project_part, public_sequence
 from .route_choices import changed_route_sequences, preview_existing_route, route_choice_context
 from .route_facts import ProcessRouteFacts
 
@@ -121,7 +121,7 @@ class WorkbenchProcessQueryService:
                 direction=query.direction,
             )
         )
-        return {**self.table().page(table_query), "capabilities": capabilities(), "create_context": None}
+        return {**self.table().page(table_query), "create_context": None}
 
     def detail(self, ref):
         if ref in self._details:
@@ -161,8 +161,7 @@ class WorkbenchProcessQueryService:
         missing = {key: {"state": "unconfirmed", "confirmed_at": None, "confirmed_by": None} for key in ("source", "hours")}
         entity.update({"operations": [project_operation(row, workflow["operations"].get(row["ref"], missing), source_facts,
                                                        groups.get(row["ext_group_id"])) for row in operations],
-                       "external_groups": list(groups.values()),
-                       "capabilities": capabilities()})
+                       "external_groups": list(groups.values())})
         if self._facts is not None:
             self._details[identity.ref] = entity
         return entity

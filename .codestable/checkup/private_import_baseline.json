@@ -81,7 +81,7 @@
     {
       "path": "core/services/scheduler/summary/schedule_summary.py",
       "kind": "private_symbol",
-      "count": 12
+      "count": 11
     },
     {
       "path": "core/services/scheduler/summary/summary_runtime_state.py",
@@ -151,7 +151,7 @@
     {
       "path": "core/services/workbench/run/piece_adoption.py",
       "kind": "private_symbol",
-      "count": 2
+      "count": 1
     },
     {
       "path": "core/services/workbench/trial/adoption_input.py",

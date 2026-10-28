@@ -37,7 +37,11 @@
       if (!Array.isArray(values) || values.length > 5000 || values.some(value => value !== null && typeof value !== 'string'
           && !(typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER))) throw C.failure('列筛选的取值不正确。' + refilter);
     }
-    return JSON.parse(JSON.stringify(scope));
+    const result = {};
+    for (const [key, item] of Object.entries(scope)) {
+      if (item !== undefined) result[key] = item;
+    }
+    return result;
   }
   function readContext(context) {
     // 侧栏直接进入时 main.jsx 传空对象，按默认范围显示。

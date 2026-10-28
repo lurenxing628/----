@@ -82,9 +82,9 @@
       return JSON.stringify(value[key]) === JSON.stringify(expected);
     });
   }
-  function workspace(result, input) {
+  function workspace(result, query) {
     // 成功信封（meta 五键、warnings、as_of）已由 transport.read 校验；导出与刷新要钉住同一份快照。
-    const query = scope(input), d = result.data, meta = result.meta;
+    const d = result.data, meta = result.meta;
     if (meta.snapshot_ref === null || query.snapshot_ref && query.snapshot_ref !== meta.snapshot_ref) fail('读到的现场实际甘特数据不完整，或者数据已更新。请刷新后重试。');
     if (!d.plan || d.plan.plan_ref !== query.plan_ref || !d.plan.capabilities.view || !span(d.plan_span) || !interval(d.axis_span)
       || !d.scope || d.scope.kind !== 'actual_gantt' || d.scope.source !== 'production' || !object(d.availability) || !['available', 'unavailable'].includes(d.availability.state)

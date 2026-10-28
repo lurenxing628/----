@@ -9,7 +9,7 @@
       <div className="wb-gantt-route-caption" data-gantt-route-count={active.target ? true : undefined}>{active.target
         ? <><i className="wb-gantt-route-swatch" />{active.target.batch_id} · {active.target.piece_id === null ? '全部工艺分支' : '分件 ' + active.target.piece_id + ' 的完整工艺'} {active.related.size} 道{unseen > 0 && '（画面外 ' + unseen + ' 道）'}</>
         : '指向工序查看前后关联，点击保留。'}</div>
-      {onClear && <window.ResourceControls.Button className="btn mini" style={{ visibility: active.target ? 'visible' : 'hidden' }} disabled={disabled || !active.target} onClick={onClear}>清除工艺聚焦</window.ResourceControls.Button>}
+      <window.ResourceControls.Button className="btn mini" style={{ visibility: active.target ? 'visible' : 'hidden' }} disabled={disabled || !active.target} onClick={onClear}>清除工艺聚焦</window.ResourceControls.Button>
     </div>;
   }
   function Lines({ geometry, width, height, labelWidth, top = 0, rowTop = null }) {

@@ -22,7 +22,7 @@
     React.useEffect(() => {
       if (!done || notified.current === command.result.receipt_ref) return;
       notified.current = command.result.receipt_ref;
-      if (onCommitted) onCommitted(command.result);
+      onCommitted(command.result);
     }, [done, command.result, onCommitted]);
     React.useEffect(() => {
       if (!data) return undefined;

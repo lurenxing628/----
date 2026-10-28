@@ -64,7 +64,7 @@
   function list(scope, signal) { return api.query('execution/tasks', queryScope(scope), signal); }
   window.FieldAPI = {
     initial, readView, list,
-    readPending: api.readPending, savePending: api.savePending, clearPending: api.clearPending, lookup: api.lookup,
+    pendingKey: api.pendingKey, readPending: api.readPending, savePending: api.savePending, clearPending: api.clearPending, lookup: api.lookup,
     detail(ref, scope, signal) { return api.query(target('tasks', ref), queryScope(scope), signal); },
     choices(kind, scope, signal) { return api.choices(kind, scope, signal); },
     previewVoid(ref, input, signal) { return api.preview(target('reports', ref) + '/void-preview', { input }, signal); },

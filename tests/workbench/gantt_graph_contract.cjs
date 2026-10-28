@@ -7,6 +7,7 @@ for (const file of ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'FieldContract.js
 const G = window.GanttGraph, ref = n => n.toString(16).padStart(48, '0'), clone = value => JSON.parse(JSON.stringify(value));
 const at = hour => '2026-10-12T' + String(hour).padStart(2, '0') + ':00:00';
 const refs = values => Array.from(values).sort(), expected = values => values.map(ref).sort();
+const edgesOf = value => Array.from(value.adjacency.values()).flat().sort((a, b) => a.order - b.order).map(item => item.edge);
 const specs = [
   [1, null, 8, 9, 'common-start'], [2, 'A', 9, 10, 'piece-a-before'], [3, 'A', 10, 10, 'piece-a-point'],
   [4, 'A', 10, 11, 'piece-a-after'], [5, 'B', 9, 11, 'piece-b'], [6, null, 11, 12, 'common-end'],
@@ -64,7 +65,7 @@ vm.runInContext(compile({ babel_path: path.join(root, 'frontend/workbench/protot
   sources: [{ path: 'GanttRouteList.jsx', code: fs.readFileSync(path.join(root, 'frontend/workbench/app/GanttRouteList.jsx'), 'utf8') }] }).outputs[0].code, context);
 const createGraph = G.create; let detailGraphBuilds = 0;
 G.create = value => { detailGraphBuilds++; return createGraph(value); };
-const routeList = window.GanttRouteList({ index: missingIndex, targetRef: ref(3), loadedRefs: new Set([ref(3)]) });
+const routeList = window.GanttRouteList({ index: missingIndex, targetRef: ref(3), loadedRefs: new Set([ref(3)]), onSelect() {} });
 G.create = createGraph;
 const routeText = value => Array.isArray(value) ? value.map(routeText).join('') : value && typeof value === 'object' ? routeText(value.props.children) : value == null || value === false ? '' : String(value);
 assert.equal(detailGraphBuilds, 0, 'The route consumes the existing prepared index without rebuilding it');
@@ -81,7 +82,7 @@ assert.equal(crossRoute.groups.reduce((sum, group) => sum + group.nodes.length, 
 const index = G.create(graph), active = G.selection(index, { targetRef: ref(3) });
 const fullRoute = G.route(index, ref(3));
 const samePiece = G.selection(index, { targetRef: ref(4) }), sameBatchRoute = G.route(index, ref(1));
-assert.strictEqual(samePiece.related, active.related); assert.strictEqual(samePiece.edges, active.edges);
+assert.strictEqual(samePiece.related, active.related);
 assert.strictEqual(samePiece.adjacency, active.adjacency); assert.strictEqual(samePiece.critical, active.critical);
 assert.strictEqual(sameBatchRoute.groups, fullRoute.groups); assert.strictEqual(sameBatchRoute.previous, fullRoute.previous);
 assert.equal(samePiece.target.task_ref, ref(4)); assert.equal(sameBatchRoute.target.task_ref, ref(1));
@@ -97,22 +98,23 @@ assert.deepEqual(clone(G.route(G.create(reversedSchedule), ref(3)).groups.find(g
 assert.deepEqual(refs(G.selection(index).critical), expected([7, 1, 2, 3, 4, 6]));
 assert.deepEqual(refs(active.related), expected([1, 2, 3, 4, 6]));
 assert.equal(active.target.task_ref, ref(3));
-assert.equal(active.edges.filter(item => item.kind === 'related').length, 4);
-assert(active.edges.every(item => item.kind === 'related'), 'Focus hides global edges instead of leaving unrelated lines');
-assert.equal(G.selection(index).edges.length, 0, 'Global lines start off while critical marks remain');
-assert(!active.edges.some(item => item.from_task_ref === ref(5) || item.to_task_ref === ref(5)));
-assert.equal(new Set(active.edges.map(item => item.from_task_ref + ':' + item.to_task_ref + ':' + item.edge_type)).size, active.edges.length,
+const activeEdges = edgesOf(active);
+assert.equal(activeEdges.filter(item => item.kind === 'related').length, 4);
+assert(activeEdges.every(item => item.kind === 'related'), 'Focus hides global edges instead of leaving unrelated lines');
+assert.equal(edgesOf(G.selection(index)).length, 0, 'Global lines start off while critical marks remain');
+assert(!activeEdges.some(item => item.from_task_ref === ref(5) || item.to_task_ref === ref(5)));
+assert.equal(new Set(activeEdges.map(item => item.from_task_ref + ':' + item.to_task_ref + ':' + item.edge_type)).size, activeEdges.length,
   'A process edge shared by critical and related chains must be drawn once with the related style');
 assert.deepEqual(refs(G.selection(index, { targetRef: ref(1) }).related), expected([1, 2, 3, 4, 5, 6]));
 assert.deepEqual(refs(G.selection(index, { targetRef: ref(7) }).related), expected([7]));
 const relatedOnly = G.selection(index, { enabled: false, targetRef: ref(3) });
-assert.equal(relatedOnly.critical.size, 6); assert.equal(relatedOnly.edges.length, 4);
+assert.equal(relatedOnly.critical.size, 6); assert.equal(edgesOf(relatedOnly).length, 4);
 assert.deepEqual(refs(relatedOnly.related), refs(active.related));
 
 // One visible connection per task pair: the active process route replaces an overlapping resource dependency.
 const resourceGraph = { ...graph, critical_edges: graph.critical_edges.map(item =>
   item.from_task_ref === ref(1) && item.to_task_ref === ref(2) ? { ...item, edge_type: 'machine' } : item) };
-const resourceIndex = G.create(resourceGraph), pair = value => value.edges.filter(item => item.from_task_ref === ref(1) && item.to_task_ref === ref(2));
+const resourceIndex = G.create(resourceGraph), pair = value => edgesOf(value).filter(item => item.from_task_ref === ref(1) && item.to_task_ref === ref(2));
 assert.equal(pair(G.selection(resourceIndex, { enabled: true }))[0].edge_type, 'machine', 'The default critical connection keeps its resource dash style');
 const highlightedPair = pair(G.selection(resourceIndex, { targetRef: ref(3) }));
 assert.equal(highlightedPair.length, 1, 'Resource and process edges must not paint over each other');
@@ -140,16 +142,15 @@ for (const candidate of [false, true]) {
     : window.PlanGanttModel.layoutPrepared(window.PlanGanttModel.selectPrepared(window.PlanGanttModel.groupPrepared(window.PlanGanttModel.prepare(data), 'machine'), query), width);
   const model = layout(''), options = { candidate }, viewport = { left: 0, top: 0, width, height: model.height };
   if (!candidate) assert.strictEqual(model.rows.find(row => row.id === ref(200)).occupancy, occupancy, 'Resource summary uses the existing occupancy projection');
-  const rendered = G.paths(active, model, width, viewport, options), positions = G.locations(model, options);
-  const locationIndex = G.locationIndex(positions), indexed = () => G.paths(active, model, width, viewport, { locationIndex });
-  assert.deepEqual(clone(indexed().paths), clone(rendered.paths));
+  const positions = G.locations(model, options), locationIndex = G.locationIndex(positions);
+  const indexed = () => G.paths(active, model, width, viewport, { locationIndex }), rendered = indexed();
   let positionScans = 0, criticalScans = 0, edgeScans = 0;
-  const positionIterator = positions[Symbol.iterator], criticalIterator = active.critical[Symbol.iterator], filter = active.edges.filter;
+  const positionIterator = positions[Symbol.iterator], criticalIterator = active.critical[Symbol.iterator], adjacencyIterator = active.adjacency[Symbol.iterator];
   positions[Symbol.iterator] = function () { positionScans++; return positionIterator.call(this); };
   active.critical[Symbol.iterator] = function () { criticalScans++; return criticalIterator.call(this); };
-  active.edges.filter = function (...args) { edgeScans++; return filter.apply(this, args); };
+  active.adjacency[Symbol.iterator] = function () { edgeScans++; return adjacencyIterator.call(this); };
   indexed(); G.paths(active, model, width, { ...viewport, top: 56, height: 56 }, { locationIndex });
-  delete positions[Symbol.iterator]; delete active.critical[Symbol.iterator]; delete active.edges.filter;
+  delete positions[Symbol.iterator]; delete active.critical[Symbol.iterator]; delete active.adjacency[Symbol.iterator];
   assert.equal(positionScans, 0); assert.equal(criticalScans, 0); assert.equal(edgeScans, 0);
   assert.equal(rendered.paths.length, 4); assert.equal(rendered.relatedVisible, 5); assert.equal(rendered.criticalVisible, 6);
   assert.equal(positions.get(ref(3)).start, positions.get(ref(3)).end, 'The zero-duration operation must keep its own coordinate');
@@ -157,12 +158,12 @@ for (const candidate of [false, true]) {
     'The zero-duration operation retains both incoming and outgoing connectors');
   assert(rendered.paths.every(item => !/NaN|Infinity|undefined/.test(item.d)));
 
-  const filtered = layout('piece-a'), filteredPaths = G.paths(active, filtered, width, { ...viewport, height: filtered.height }, options);
+  const filtered = layout('piece-a'), filteredPaths = G.paths(active, filtered, width, { ...viewport, height: filtered.height }, { locationIndex: G.locationIndex(G.locations(filtered, options)) });
   assert.deepEqual(refs(active.related), expected([1, 2, 3, 4, 6]), 'Display filtering must not change semantic membership');
   assert.equal(filteredPaths.relatedVisible, 3); assert.equal(filteredPaths.paths.length, 2);
   assert(filteredPaths.paths.every(item => filteredPaths.visible.has(item.from_task_ref) && filteredPaths.visible.has(item.to_task_ref)));
   const pointRow = model.rows.find(row => row.items.some(item => item.task[candidate ? 'row_ref' : 'task_ref'] === ref(3)));
-  const clipped = G.paths(active, model, width, { ...viewport, top: pointRow.top, height: pointRow.height }, options);
+  const clipped = G.paths(active, model, width, { ...viewport, top: pointRow.top, height: pointRow.height }, { locationIndex });
   assert.equal(clipped.relatedVisible, 1); assert.equal(clipped.paths.length, 0, 'Offscreen endpoint rows must not leave dangling connectors');
 }
 
@@ -186,8 +187,10 @@ function connector({ gap, fromTop = 0, toTop = 56, candidate = false, point = fa
     : [{ top: fromTop, height, point, items: [sourceItem] }, { top: toTop, height, items: [targetItem] }];
   const model = { start: 0, end: 500, rows, height: Math.max(fromTop, toTop) + height };
   const refs = new Set([source.task_ref, target.task_ref]);
-  return G.paths({ edges: [{ from_task_ref: source.task_ref, to_task_ref: target.task_ref }], critical: refs, related: refs },
-    model, 500, { left: 0, top: 0, width: 500, height: model.height }, { candidate }).paths[0].d;
+  const edge = { from_task_ref: source.task_ref, to_task_ref: target.task_ref };
+  const adjacency = new Map([[source.task_ref, [{ edge, order: 0 }]]]);
+  return G.paths({ adjacency, critical: refs, related: refs },
+    model, 500, { left: 0, top: 0, width: 500, height: model.height }, { locationIndex: G.locationIndex(G.locations(model, { candidate })) }).paths[0].d;
 }
 function route(path) { return path.split(' M')[0]; }
 function horizontalSteps(path) {

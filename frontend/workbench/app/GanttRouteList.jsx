@@ -25,13 +25,13 @@
               const start = F.dateTime(node.start), end = F.dateTime(node.end), sameDay = start.slice(0, 10) === end.slice(0, 10);
               return <li key={node.task_ref} className="gantt-route-node" data-gantt-route-node={node.task_ref} data-selected={node.task_ref === targetRef || undefined}
                 data-related={related || undefined} data-outside={outside || undefined}>
-                <Button className="btn gantt-route-select" disabled={disabled || !onSelect} aria-current={node.task_ref === targetRef ? 'step' : undefined}
+                <Button className="btn gantt-route-select" disabled={disabled} aria-current={node.task_ref === targetRef ? 'step' : undefined}
                   aria-label={'定位工序 ' + pieceLabel(node) + ' · ' + operationLabel(node)} onClick={() => onSelect(node.task_ref)}
                   title={F.dateTime(node.start, { seconds: true, fractions: true }) + ' 至 ' + F.dateTime(node.end, { seconds: true, fractions: true })}>
                   <strong>{operationLabel(node)}</strong><small>{start.slice(5)} → {end.slice(sameDay ? 11 : 5)}{outside && ' · 范围外'}</small>
                 </Button>
                 {!!previous.length && <div className="gantt-route-dependencies"><span>前序</span>{previous.map(parent =>
-                  <Button key={parent.task_ref} className="linkbtn gantt-route-predecessor" disabled={disabled || !onSelect} onClick={() => onSelect(parent.task_ref)}
+                  <Button key={parent.task_ref} className="linkbtn gantt-route-predecessor" disabled={disabled} onClick={() => onSelect(parent.task_ref)}
                     aria-label={'定位前序 ' + pieceLabel(parent) + ' · ' + operationLabel(parent)}>{pieceLabel(parent)} · {operationLabel(parent)}</Button>)}</div>}
               </li>;
             })}</ul></RouteGroup>)}

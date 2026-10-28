@@ -3,17 +3,36 @@
   const C = window.APSResourceContract, T = window.APSWorkbenchTransport;
   // Keep uncertain intent across workspace remounts using the same adapter identity.
   // Never persist write tokens or guesses about completion to browser storage.
-  const sessions = new WeakMap();
+  const sessions = new WeakMap(), keyedSessions = new Map();
   function session(adapter) {
-    if (!sessions.has(adapter)) {
-      let state = { phase: 'idle' };
-      try {
-        const intent = adapter.readPending();
-        if (intent) state = { phase: 'pending', intent, restored: true };
-      } catch (error) { state = { phase: 'pending', error }; }
-      sessions.set(adapter, { state, listeners: new Set(), running: false });
+    if (sessions.has(adapter)) return sessions.get(adapter);
+    let storage = null; try { if (window.sessionStorage && typeof window.sessionStorage === 'object') storage = window.sessionStorage; } catch (_) {}
+    const key = adapter && typeof adapter.pendingKey === 'string' ? adapter.pendingKey : null;
+    if (key) {
+      const entry = keyedSessions.get(key);
+      if (entry && (!storage || !entry.storage || entry.storage === storage)) {
+        if (storage && !entry.storage) entry.storage = storage;
+        const existing = entry.store;
+        if (!existing.running) {
+          try {
+            const disk = adapter.readPending();
+            if (!(disk && existing.state.intent && disk.request_key === existing.state.intent.request_key) && !(!disk && !existing.state.intent))
+              existing.state = disk ? { phase: 'pending', intent: disk, restored: true } : { phase: 'idle' };
+          } catch (error) { existing.state = existing.state.intent || ['rejected', 'done'].includes(existing.state.phase) ? { ...existing.state, error } : { phase: 'pending', error }; }
+        }
+        sessions.set(adapter, existing);
+        return existing;
+      }
     }
-    return sessions.get(adapter);
+    let state = { phase: 'idle' };
+    try {
+      const intent = adapter.readPending();
+      if (intent) state = { phase: 'pending', intent, restored: true };
+    } catch (error) { state = { phase: 'pending', error }; }
+    const store = { state, listeners: new Set(), running: false };
+    if (key) keyedSessions.set(key, { storage, store });
+    sessions.set(adapter, store);
+    return store;
   }
   function publish(store, state) {
     store.state = state; store.listeners.forEach(fn => fn(state));
@@ -63,9 +82,15 @@
       return () => window.removeEventListener('beforeunload', warn);
     }, [locked]);
     async function check() {
-      if (store.running || !store.state.intent) return;
-      const intent = store.state.intent;
-      store.running = true; publish(store, { ...store.state, phase: 'checking', error: null });
+      if (store.running) return;
+      let intent = store.state.intent;
+      if (!intent && store.state.phase === 'pending') {
+        try { intent = adapter.readPending(); }
+        catch (error) { publish(store, { phase: 'pending', error }); return; }
+        if (!intent) { publish(store, { phase: 'idle' }); return; }
+      }
+      if (!intent) return;
+      store.running = true; publish(store, { ...store.state, intent, phase: 'checking', error: null });
       try {
         const result = await adapter.lookup(intent.request_key);
         const status = C.receipt(result);
