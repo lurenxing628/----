@@ -5,11 +5,17 @@ the ordinary dynamic score. If it is penalized, score the full ready set, preser
 the feasibility-first contract. Small, tied and callback-bearing inputs are unchanged.
 """
 
+from __future__ import annotations
+
 import heapq
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .sgs_priority_pruning import GraphPriorityPruning
 
 
 class PriorityReadyQueue:
-    def __init__(self, graph, pruning):
+    def __init__(self, graph, pruning: GraphPriorityPruning):
         self.graph, self.pruning = graph, pruning
         self.keys = graph["graph_priority_key_by_op_id"]
         self.queued = set(graph["ready_op_ids"])

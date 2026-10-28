@@ -1,14 +1,21 @@
 """Public flat fields separate from full private domain conflict evidence."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from core.models.workbench_resource_file import file_columns
 from core.models.workbench_resource_status import public_resource_status
 from core.services.workbench.material.files import local_created_at
+
+if TYPE_CHECKING:
+    from .table_facts import ResourceTableFacts
 
 # 数据库里的创建/更新时间按 UTC 存，给用户看和写进文件前统一换算过来。
 _STORED_TIMES = ("created_at", "updated_at")
 
 
-def resource_export_state(facts, kind, code):
+def resource_export_state(facts: ResourceTableFacts, kind, code):
     """Use captured file fields without loading write-conflict dependencies."""
     raw = facts.raw_record(kind, code)
     if kind == "supplier":
@@ -39,9 +46,12 @@ def resource_export_state(facts, kind, code):
     return state
 
 
-def _supplier_export_state(facts, code, raw):
-    types = [{"op_type_id": facts.raw_related("op_type", key)["identity"]["entity_key"]}
-             for key in sorted({row["op_type_id"] for row in facts.grouped("capabilities", "supplier_id")[code]})]
+def _supplier_export_state(facts: ResourceTableFacts, code, raw):
+    types = []
+    for key in sorted({row["op_type_id"] for row in facts.grouped("capabilities", "supplier_id")[code]}):
+        related = facts.raw_related("op_type", key)
+        if related is not None:
+            types.append({"op_type_id": related["identity"]["entity_key"]})
     supplier = dict(raw, profile=facts.raw_lookup("supplier_profiles", "supplier_id").get(code), op_types=types)
     return {"supplier": supplier}
 

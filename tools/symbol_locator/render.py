@@ -6,7 +6,10 @@ from __future__ import annotations
 
 import difflib
 import json as _json
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
+
+if TYPE_CHECKING:
+    from .static_index import StaticIndex
 
 _MENU_MAX = 20  # 同名碰撞菜单最多列几条,超出折叠
 
@@ -24,8 +27,8 @@ def _loc_full(key, info):
     return f"{info['rel']}:{info['line']}  {qual}  (被调 {info.get('fan_in', 0)} · 调用 {info.get('fan_out', 0)})"
 
 
-def render_whereis(name, index, as_json=False, at=None):
-    # type: (str, object, bool, object) -> int
+def render_whereis(name, index: StaticIndex, as_json=False, at=None):
+    # type: (str, StaticIndex, bool, object) -> int
     keys = index.lookup_name(name)
     if not keys:
         return _not_found(name, index, as_json)
@@ -52,8 +55,8 @@ def render_whereis(name, index, as_json=False, at=None):
     return 0
 
 
-def _render_whereis_at(name, at, index, as_json=False):
-    # type: (str, object, object, bool) -> int
+def _render_whereis_at(name, at, index: StaticIndex, as_json=False):
+    # type: (str, object, StaticIndex, bool) -> int
     from . import jedi_resolver
     file_rel, line = at
     hits = jedi_resolver.resolve_at(file_rel, line, name)
@@ -87,8 +90,8 @@ def _render_whereis_at(name, at, index, as_json=False):
     return 0
 
 
-def render_relation(name, index, direction, as_json=False, deep=False):
-    # type: (str, object, str, bool, bool) -> int
+def render_relation(name, index: StaticIndex, direction, as_json=False, deep=False):
+    # type: (str, StaticIndex, str, bool, bool) -> int
     if deep:
         return _render_deep_relation(name, index, direction, as_json=as_json)
     keys = index.lookup_name(name)
@@ -182,8 +185,8 @@ def _print_blindspots(data, direction):
     print("  → 加 --deep 用 scip 全量精确枚举(含 tests)")
 
 
-def _not_found(name, index, as_json):
-    # type: (str, object, bool) -> int
+def _not_found(name, index: StaticIndex, as_json):
+    # type: (str, StaticIndex, bool) -> int
     near = difflib.get_close_matches(name, index.all_names(), n=5, cutoff=0.6)
     if as_json:
         print(_json.dumps({"symbol": name, "error": "not_found", "suggestions": near},
@@ -195,8 +198,8 @@ def _not_found(name, index, as_json):
     return 1
 
 
-def _whereis_matches(keys, index):
-    # type: (List[str], object) -> List[Dict]
+def _whereis_matches(keys, index: StaticIndex):
+    # type: (List[str], StaticIndex) -> List[Dict]
     matches = []
     for key in keys:
         info = index.info(key)

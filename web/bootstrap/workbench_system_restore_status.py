@@ -5,19 +5,25 @@ startup refuses a pending journal. That recovery server must keep the original
 launcher lock and must not construct the normal app, open SQLite or start workers.
 """
 
+from __future__ import annotations
+
 import json
 import re
 import uuid
+from typing import TYPE_CHECKING
 
 from werkzeug.wrappers import Response
 
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 
+if TYPE_CHECKING:
+    from .workbench_system_restore import WorkbenchSystemRestoreHost
+
 BASE = "/api/workbench/v1/system"
 RESTORE_STATUS_ENV = "aps.restore_host_status"
 
 
-def request_restore_status(environ, controller):
+def request_restore_status(environ, controller: WorkbenchSystemRestoreHost):
     """One host observation shared by the health and restore WSGI layers."""
     if RESTORE_STATUS_ENV not in environ:
         environ[RESTORE_STATUS_ENV] = controller.static_status()

@@ -1,6 +1,9 @@
 """Inspect stored global dates only, without filling defaults or extending a range."""
 
+from __future__ import annotations
+
 import re
+from typing import TYPE_CHECKING
 
 from core.errors import ValidationError
 from core.models.calendar_periods import decode_periods, period_hours
@@ -9,6 +12,9 @@ from core.shared.strict_parse import is_exact_non_negative_number
 
 from .overview_facts import plain
 from .overview_graph import text
+
+if TYPE_CHECKING:
+    from .overview_graph import MasterOverviewGraph
 
 VALUE_TEXT = {"workday": "工作日", "weekend": "周末", "holiday": "节假日", "yes": "允许", "no": "不允许"}
 
@@ -20,7 +26,7 @@ def _time(value):
     return int(hours) * 60 + int(minutes)
 
 
-def add_calendar(graph):
+def add_calendar(graph: MasterOverviewGraph):
     for row in graph.facts.rows("WorkCalendar"):
         day = plain(row["date"])
         entity = graph.add("calendar", row["date"], day, "全局工作日历")
@@ -45,7 +51,7 @@ def add_calendar(graph):
         graph.field(entity, "备注", row["remark"], "WorkCalendar.remark", required=False)
 
 
-def _window(graph, entity, row):
+def _window(graph: MasterOverviewGraph, entity, row):
     if row.get("periods_json") is not None:
         _periods(graph, entity, row)
         return
@@ -64,7 +70,7 @@ def _window(graph, entity, row):
         graph.field(entity, "班次起止时间", "未填写", "WorkCalendar.shift_start / shift_end", required=False)
 
 
-def _periods(graph, entity, row):
+def _periods(graph: MasterOverviewGraph, entity, row):
     try:
         periods = decode_periods(row["periods_json"])
     except ValidationError as exc:

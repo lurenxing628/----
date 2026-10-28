@@ -1,14 +1,19 @@
 """Bound large IG neighbourhood enumeration under common decode admission."""
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from .iterated_greedy_iteration import IGIteration
 from .iterated_greedy_joint import joint_orders, joint_removed
 from .iterated_greedy_moves import _insertion_positions, _park
 from .iterated_greedy_screen import InsertionScreen
 
+if TYPE_CHECKING:
+    from .iterated_greedy_large import LargeIteratedGreedySearch
+
 
 class NeighborhoodBudget:
-    def __init__(self, search, requested_size):
+    def __init__(self, search: LargeIteratedGreedySearch, requested_size):
         self.search = search
         self.size = max(1, requested_size)
         self.seconds = max(search.deadline - search.clock(), 0.0)
@@ -20,6 +25,8 @@ class NeighborhoodBudget:
 
 
 class LargeIGIteration(IGIteration):
+    search: LargeIteratedGreedySearch
+
     def _repair(self, reference, removed):
         search = self.search
         budget = NeighborhoodBudget(search, len(removed))
@@ -27,7 +34,8 @@ class LargeIGIteration(IGIteration):
         report = search.report["local_search"]
         report["neighborhoods"] += 1
         report["last_budget_ms"] = int(budget.seconds * 1000)
-        joint = search.rotation.selected.name == "resource_window" and budget.size >= 2
+        selected = search.rotation.selected
+        joint = selected is not None and selected.name == "resource_window" and budget.size >= 2
         if joint:
             removed = joint_removed(search, reference, removed, budget.size)
         report["last_destroy_size"] = len(removed)

@@ -1,5 +1,8 @@
 """可操作设备关系的文件路由。形状与资源文件家族一致，只是列目录和服务不同。"""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from flask import current_app, g, request
 
@@ -29,6 +32,9 @@ from .resource_action_context import (
     upload_body,
 )
 
+if TYPE_CHECKING:
+    from core.models.workbench_action_values import AtomicActionPreview
+
 BASE = "/api/workbench/v1/relation-files"
 
 
@@ -54,6 +60,7 @@ def relation_import_preview(kind):
 
 
 def _apply(kind, checked):
+    preview: AtomicActionPreview
     preview, content = checked
     original = preview.as_dict()["request"]
     return _service(kind).confirm_import(preview, content, file_format=original["format"], mode=original["mode"])

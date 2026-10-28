@@ -1,10 +1,19 @@
 """Preserve exact common/split predecessors in original and saved trial work."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked
 from core.models.workbench_trial import issue
 from core.services.workbench.facts.piece_scope import build_piece_adoption_scope
 from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
 from core.services.workbench.facts.stored_algo_inputs import stored_batch_operation
+
+if TYPE_CHECKING:
+    from core.services.workbench.facts.preflight_checks import PreflightChecks
+
+    from .preflight_facts import PreflightFacts
 
 
 def trial_piece_predecessors(rows, all_ops, operation_refs):
@@ -49,7 +58,8 @@ def _complete_or_deferred_scope(rows, expected, live, operations, settings):
         return True
     if settings.get("material_strategy") != "stage":
         return False
-    checks = live["preflight_facts"].checks()
+    facts: PreflightFacts = live["preflight_facts"]
+    checks: PreflightChecks = facts.checks()
     batches = {row["batch_id"]: row for row in live["facts"]["tables"]["Batches"]}
     deferred = []
     for op_id in missing:

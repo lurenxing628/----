@@ -5,8 +5,13 @@ thresholds adapt that idea to a SGS run that may complete only a few tasks.
 """
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from .iterated_greedy_neighborhoods import GeneratorRotation
 from .iterated_greedy_reference import restart_from_pool
+
+if TYPE_CHECKING:
+    from .iterated_greedy_large import LargeIteratedGreedySearch
 
 
 class LargeGeneratorRotation(GeneratorRotation):
@@ -21,7 +26,7 @@ class LargeGeneratorRotation(GeneratorRotation):
 
 
 class BudgetStagnation:
-    def __init__(self, search):
+    def __init__(self, search: LargeIteratedGreedySearch):
         self.search = search
         self.last_progress = search.clock()
         self.improvements = search.report["improvements"]
@@ -29,6 +34,9 @@ class BudgetStagnation:
 
     def reference(self):
         search, report = self.search, self.search.report["local_search"]
+        reference = search.reference
+        if reference is None:
+            raise RuntimeError("Iterated greedy iteration started without a reference solution.")
         now = search.clock()
         if search.non_improving == 0 or search.report["improvements"] != self.improvements:
             self.last_progress = now
@@ -38,12 +46,12 @@ class BudgetStagnation:
         waited = now - self.last_progress
         trigger = 0.15 * duration
         if search.non_improving < threshold or waited < trigger:
-            return search.reference
+            return reference
         self.last_progress = now
         self.explore_next = True
         search.non_improving = 0
         report["diversification_requests"] += 1
-        return restart_from_pool(search, search.reference)
+        return restart_from_pool(search, reference)
 
     def consume_exploration(self):
         explore, self.explore_next = self.explore_next, False

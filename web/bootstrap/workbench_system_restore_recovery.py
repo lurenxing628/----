@@ -1,12 +1,18 @@
 """Pre-database startup admission and a permanently read-only recovery host."""
 
+from __future__ import annotations
+
 import os
+from typing import TYPE_CHECKING, Optional
 
 from core.services.workbench.facts.system_journal import assert_system_maintenance_ready
 from web.runtime_host import RESTORE_HOST_EXTENSION, normalize_runtime_db_path
 
 from .workbench_request_lifecycle import lookup_workbench_request_lifecycle
 from .workbench_run_runtime_lock import RunRuntimeLockProof, RunRuntimeOwnershipError
+
+if TYPE_CHECKING:
+    from .workbench_system_restore import WorkbenchSystemRestoreHost
 
 RECOVERY = "workbench_system_restore_recovery"
 
@@ -71,7 +77,7 @@ class WorkbenchSystemRestoreRecoveryHost:
 def assert_exit_system_restore_ready(manager):
     # manager is the RuntimeExitBackupManager built after prepare_system_restore_startup set the journal dir.
     app = manager.app
-    host = app.extensions.get(RESTORE_HOST_EXTENSION)
+    host: Optional[WorkbenchSystemRestoreHost] = app.extensions.get(RESTORE_HOST_EXTENSION)
     if app.extensions.get(RECOVERY) or (host is not None and host.static_status()["restart_required"]):
         raise RuntimeError("Restore requires process restart; exit backup must not open the database")
     assert_system_maintenance_ready(manager.db_path, app.config["WORKBENCH_SYSTEM_JOURNAL_DIR"])

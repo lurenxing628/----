@@ -1,15 +1,22 @@
 """Batch requirements are explicit cross-page facts, never stock reservations."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from core.services.material.stage_availability import MaterialAvailability, covers_quantity
 from core.shared.strict_parse import is_exact_non_negative_number
 
 from .overview_graph import text
 
+if TYPE_CHECKING:
+    from .overview_graph import MasterOverviewGraph
+
 READY_TEXT = {"yes": "齐套", "no": "未齐套", "partial": "部分齐套"}
 MATERIAL_SOURCES = ("BatchMaterials", "BatchMaterialArrivals", "BatchMaterialReviews")
 
 
-def batch_relations(graph):
+def batch_relations(graph: MasterOverviewGraph):
     facts = graph.facts
     if not facts.available("Batches", "BatchMaterials"):
         for entity in graph.entities:
@@ -46,7 +53,7 @@ def batch_relations(graph):
         _requirement_fields(graph, material, row, batch, availability, readiness.get(row["batch_id"]))
 
 
-def _requirement_fields(graph, entity, row, batch, availability, readiness):
+def _requirement_fields(graph: MasterOverviewGraph, entity, row, batch, availability, readiness):
     code = batch["business_code"]
     evidence_key = batch["ref"] + ":" + str(row["id"])
     for key, label, positive in (("required_qty", "需求数量", True), ("available_qty", "已有到料数量", False)):
@@ -79,7 +86,7 @@ def _requirement_fields(graph, entity, row, batch, availability, readiness):
         item["target"] = batch["target"]
 
 
-def resource_profile_fields(graph):
+def resource_profile_fields(graph: MasterOverviewGraph):
     facts = graph.facts
     available = facts.available("WorkbenchMachineGroups", "WorkbenchMachineGroupMembers")
     if available:

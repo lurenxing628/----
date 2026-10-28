@@ -12,9 +12,12 @@ import re
 import shutil
 import subprocess
 import time
-from typing import Any, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 
 from .static_index import REPO_ROOT
+
+if TYPE_CHECKING:
+    from .static_index import StaticIndex
 
 SCIP_DIR = os.path.join(REPO_ROOT, ".codestable", "checkup", "latest", "scip")
 INDEX_FILE = os.path.join(SCIP_DIR, "index.scip")
@@ -237,8 +240,8 @@ def _definitions_for_name(docs, name, static_index):
     return _dedupe_rows(rows)
 
 
-def _static_definition_locations(name, static_index):
-    # type: (str, object) -> set
+def _static_definition_locations(name, static_index: StaticIndex):
+    # type: (str, StaticIndex) -> set
     result = set()
     for key in static_index.lookup_name(name):
         info = static_index.info(key)

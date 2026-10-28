@@ -6,8 +6,11 @@
 正式计划里的锁定标记不再起作用（见 input_runtime._freeze_hold_window），这里也不再按它核对。
 """
 
+from __future__ import annotations
+
 from collections import defaultdict
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from core.errors import AppError
 from core.models.operation_execution_scope import parse_operation_event_time
@@ -22,6 +25,9 @@ from core.services.workbench.facts.zero_duration import PointEventError, estimat
 from .candidate_adoption_constraints import arrangement_problem, calendar_duration_conflict, external_holds_resources
 from .input_config import window_label
 from .input_runtime import downtime_overlap, held_arrangements, held_machine_downtimes
+
+if TYPE_CHECKING:
+    from core.services.workbench.facts.preflight_checks import PreflightChecks
 
 _KEEP = "排产会原样保留这个安排，排出的方案都不能采用。"
 # 设备人员资格问题逐项说清楚；工种、自制外协、供应商等工序资料问题合成一句。
@@ -58,7 +64,7 @@ class _Held:
 
 
 class _Context:
-    def __init__(self, checks, calendar, downtimes, settings, batches, operations, finished):
+    def __init__(self, checks: PreflightChecks, calendar, downtimes, settings, batches, operations, finished):
         self.checks, self.calendar, self.downtimes, self.settings = checks, calendar, downtimes, settings
         self.finished = finished
         self.batches = {row["batch_id"]: row for row in batches}
@@ -76,7 +82,7 @@ class _Context:
         return days if number(days, positive=True) else None
 
 
-def _resource_problem(context, held, batch, raw):
+def _resource_problem(context: _Context, held: _Held, batch, raw):
     found = [item["code"] for item in context.checks.fields(batch, raw) + context.checks.resources(raw)]
     reasons = [_RESOURCE_REASONS[code] for code in found if code in _RESOURCE_REASONS]
     if len(reasons) < len(found):
@@ -87,7 +93,7 @@ def _resource_problem(context, held, batch, raw):
         + "、".join(reasons) + "。" + _KEEP + held.action("到资料总览核对设备、人员和工种"))
 
 
-def _release_problem(context, held, batch, raw, code):
+def _release_problem(context: _Context, held: _Held, batch, raw, code):
     if code == "candidate_before_ready_date":
         return issue("locked_before_ready_date", f"{held.text}，但这批的齐套日期是 {batch['ready_date']}，比原安排晚。"
                      + _KEEP + held.action("到批次管理核对齐套日期"))
@@ -96,7 +102,7 @@ def _release_problem(context, held, batch, raw, code):
     return issue("locked_material_late", f"{held.text}，但{late}。" + _KEEP + held.action("到批次管理核对物料到料"))
 
 
-def _timing_problem(context, held, op, batch):
+def _timing_problem(context: _Context, held: _Held, op, batch):
     seed = held.seed
     overlap = downtime_overlap(seed, context.downtimes)
     if overlap is not None:
@@ -112,7 +118,7 @@ def _timing_problem(context, held, op, batch):
     return None
 
 
-def _duration_conflict(context, seed, op, batch):
+def _duration_conflict(context: _Context, seed, op, batch):
     downtimes = context.downtimes.get(seed["machine_id"], ())
     try:
         return calendar_duration_conflict(context.calendar, arrangement_row(seed), stored_operation(op),
@@ -123,7 +129,7 @@ def _duration_conflict(context, seed, op, batch):
         return False  # 工时或数量读不出来由资料检查和分件范围检查拦下，这里不重复报成时间对不上
 
 
-def _point_problem(context, held, op, batch):
+def _point_problem(context: _Context, held: _Held, op, batch):
     """零工时安排与采用同口径：按现在的工时、班次和效率，这个时刻本身要成立。"""
     seed = held.seed
     try:
@@ -140,7 +146,7 @@ def _point_problem(context, held, op, batch):
                  + _KEEP + held.action("到批次管理核对这道工序的工时，或到工作日历核对这一天"))
 
 
-def _external_problem(context, held, op):
+def _external_problem(context: _Context, held: _Held, op):
     seed = held.seed
     if external_holds_resources(arrangement_row(seed)):
         return issue("locked_external_resource_conflict",
@@ -171,7 +177,7 @@ def _completed(facts, operations, projections):
     return result
 
 
-def _finish_problem(context, held, op):
+def _finish_problem(context: _Context, held: _Held, op):
     """与排产计算同口径（分件只比同一件和共同工序）：保留的安排早于同批已完工前道的实际完工，整次排产会被拦下。"""
     for done, finish in context.finished.get(op["batch_id"], ()):
         related = done["piece_id"] is None or op["piece_id"] is None or done["piece_id"] == op["piece_id"]
@@ -182,7 +188,7 @@ def _finish_problem(context, held, op):
     return None
 
 
-def _seed_problem(context, held, op):
+def _seed_problem(context: _Context, held: _Held, op):
     """与候选采用逐行复核同一顺序：先资料和资格、物料和齐套日期，再按自制外协核对占用和时长。"""
     finish = _finish_problem(context, held, op)
     if finish is not None:
@@ -200,7 +206,7 @@ def _seed_problem(context, held, op):
     return _external_problem(context, held, op)
 
 
-def _cycle_problem(held, cycle):
+def _cycle_problem(held: _Held, cycle):
     """合并外协组已有实际周期时，同组未报工成员的保留安排必须与它一致，否则排产会拒绝整次计算。"""
     start, end = datetime.fromisoformat(cycle["start"]), datetime.fromisoformat(cycle["end"])
     seed = held.seed
@@ -268,7 +274,7 @@ def held_arrangement_reasons(facts, checks, settings, version, batches, operatio
     return blockers, _skipped_freeze(meta, batches), _marks(seeds), held_obj
 
 
-def _seed_blockers(facts, context, seeds, by_id, window, cycles):
+def _seed_blockers(facts, context: _Context, seeds, by_id, window, cycles):
     blockers = []
     for seed in seeds:
         held = _Held(seed, window)

@@ -1,11 +1,17 @@
 """Bounded projections have the exact existing domain write-state shape."""
 
+from __future__ import annotations
+
 from dataclasses import asdict
+from typing import TYPE_CHECKING, Any
 
 from .state_projection import machine_write_state, operator_write_state, supplier_write_state
 
+if TYPE_CHECKING:
+    from .table_facts import ResourceTableFacts
 
-def resource_table_states(facts, kind, codes, *, dependencies=None, supplier_references=None):
+
+def resource_table_states(facts: ResourceTableFacts, kind, codes, *, dependencies=None, supplier_references=None):
     if kind == "supplier":
         references = facts.repo.page_relations(kind, codes) if supplier_references is None else supplier_references
         return {code: _supplier_state(facts, code, references) for code in codes}
@@ -22,7 +28,7 @@ def resource_table_states(facts, kind, codes, *, dependencies=None, supplier_ref
     return {code: _resource_state(facts, kind, code, counts[code], patterns) for code in codes}
 
 
-def _catalog_states(facts, kind, codes):
+def _catalog_states(facts: ResourceTableFacts, kind, codes):
     if kind == "machine_group":
         memberships, member_key = facts.grouped("groups", "group_id"), "machine_id"
         patterns = None
@@ -39,7 +45,7 @@ def _catalog_states(facts, kind, codes):
     return result
 
 
-def _resource_state(facts, kind, code, counts, patterns):
+def _resource_state(facts: ResourceTableFacts, kind, code, counts, patterns):
     raw = facts.raw_record(kind, code)
     profile_name, key = ("groups", "machine_id") if kind == "machine" else ("operator_profiles", "operator_id")
     profile = facts.raw_lookup(profile_name, key).get(code)
@@ -58,14 +64,15 @@ def _resource_state(facts, kind, code, counts, patterns):
                                 facts.raw_related("shift_profile", shift), patterns.get(shift, []))
 
 
-def _supplier_state(facts, code, references):
+def _supplier_state(facts: ResourceTableFacts, code, references):
     identity = facts.identity("supplier", code)
-    supplier = dict(facts.raw_record("supplier", code), ref=identity.ref, revision=identity.revision)
+    supplier: dict[str, Any] = dict(facts.raw_record("supplier", code), ref=identity.ref, revision=identity.revision)
     supplier["profile"] = facts.raw_lookup("supplier_profiles", "supplier_id").get(code)
     types = []
     for key in sorted({row["op_type_id"] for row in facts.grouped("capabilities", "supplier_id")[code]}):
         related = facts.raw_related("op_type", key)
-        types.append(dict(related["record"], ref=related["identity"]["ref"], revision=related["identity"]["revision"]))
+        if related is not None:
+            types.append(dict(related["record"], ref=related["identity"]["ref"], revision=related["identity"]["revision"]))
     supplier["op_types"] = types
     supplier["references"] = {name: rows.get(code, []) for name, rows in references.items()}
     return supplier_write_state(identity, supplier)

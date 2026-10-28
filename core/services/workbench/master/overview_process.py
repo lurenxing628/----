@@ -1,10 +1,17 @@
 """Route checks retain the current workflow's zero/unknown and merged-group rules."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.services.process.template_source import SOURCE_MESSAGES, TemplateSourceFacts
 from core.shared.strict_parse import is_exact_non_negative_number
 
 from .overview_graph import text
+
+if TYPE_CHECKING:
+    from .overview_graph import MasterOverviewGraph
 
 PARSED_TEXT = {"yes": "已解析", "no": "未解析"}
 MERGE_TEXT = {"merged": "合并设置", "separate": "分别设置"}
@@ -23,7 +30,7 @@ SOURCE_TITLES = {
 }
 
 
-def add_process(graph):
+def add_process(graph: MasterOverviewGraph):
     facts = graph.facts
     grouped = facts.grouped("PartOperations", "part_no")
     sources = (TemplateSourceFacts(facts.rows("PartOperations"), facts.rows("ExternalGroups"), facts.rows("Suppliers"),
@@ -55,7 +62,7 @@ def add_process(graph):
     _orphan_operations(graph, grouped)
 
 
-def _route(graph, route, row, operations, active, sources):
+def _route(graph: MasterOverviewGraph, route, row, operations, active, sources):
     graph.field(route, "原始路线", row["route_raw"], "Parts.route_raw", required=False)
     graph.field(route, "路线解析标记", PARSED_TEXT.get(row["route_parsed"], row["route_parsed"]), "Parts.route_parsed")
     graph.field(route, "有效工序数", len(active), "PartOperations.status=active")
@@ -81,7 +88,7 @@ def _route(graph, route, row, operations, active, sources):
         _operation(graph, route, op, op_ref, groups, state, sources)
 
 
-def _workflow_confirmation(graph, route, state):
+def _workflow_confirmation(graph: MasterOverviewGraph, route, state):
     if state is None:
         graph.unknown(route, "路线、归属与工时确认", "process.workflow_snapshot")
         return
@@ -102,7 +109,7 @@ def _workflow_confirmation(graph, route, state):
                     message, stage=stage, action=action)
 
 
-def _operation(graph, route, op, ref, groups, state, sources):
+def _operation(graph: MasterOverviewGraph, route, op, ref, groups, state, sources):
     prefix = "工序 " + text(op["seq"]) + " " + text(op["op_type_name"])
     source = op["source"]
     def issue(rule, title, evidence, stage="source"):
@@ -134,7 +141,7 @@ def _operation(graph, route, op, ref, groups, state, sources):
         _external(graph, route, op, ref, groups, prefix, issue)
 
 
-def _external(graph, route, op, ref, groups, prefix, issue):
+def _external(graph: MasterOverviewGraph, route, op, ref, groups, prefix, issue):
     graph.related(route, "supplier", op["supplier_id"], "工序供应商", "PartOperations.supplier_id", "使用它的路线", required=True, operation_ref=ref, stage="source")
     group = _external_group(graph, route, op, groups, prefix)
     merged = group and group["merge_mode"] == "merged"
@@ -147,7 +154,7 @@ def _external(graph, route, op, ref, groups, prefix, issue):
         graph.field(route, prefix + "保留的逐序周期（天）", op["ext_days"], "PartOperations.ext_days", required=False)
 
 
-def _external_group(graph, route, op, groups, prefix):
+def _external_group(graph: MasterOverviewGraph, route, op, groups, prefix):
     group = groups.get(op["ext_group_id"])
     if op["ext_group_id"] is not None and (group is None or group["part_no"] != op["part_no"]):
         group = None
@@ -157,7 +164,7 @@ def _external_group(graph, route, op, groups, prefix):
     return group
 
 
-def _orphan_operations(graph, grouped):
+def _orphan_operations(graph: MasterOverviewGraph, grouped):
     parts = graph.facts.index("Parts", "part_no")
     count = sum(len(rows) for key, rows in grouped.items() if key not in parts)
     if count:

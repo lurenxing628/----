@@ -1,5 +1,7 @@
 """Shared resource query snapshots for the live workbench and its choice controls."""
 
+from __future__ import annotations
+
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 
@@ -73,7 +75,7 @@ class WorkbenchResourceQueryService:
                  self._table_identities, self._identities_by_ref, self._resolved_by_ref,
                  self._snapshot_scope, self._report_revisions) = previous
 
-    def _metrics_reader(self):
+    def _metrics_reader(self) -> WorkbenchResourceMetricsService:
         return self._snapshot_metrics or WorkbenchResourceMetricsService(self.conn, self.logger)
 
     def state_fingerprint(self):

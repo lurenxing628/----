@@ -1,7 +1,13 @@
 """Attempt-local SGS handoff; formal placement still validates and occupies resources."""
 
+from __future__ import annotations
+
 from contextlib import contextmanager
 from contextvars import ContextVar
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from core.algorithms.greedy.dispatch.sgs_score_cache import SgsScoreCache
 
 # The SGS witness cache hands the selected candidate's scoring estimate and auto-assign
 # resources to formal placement in the same round; it never bypasses placement validation.
@@ -15,7 +21,7 @@ def sgs_handoff_scope(handoff):
         _HANDOFF.reset(token)
 
 
-def current_sgs_handoff():
+def current_sgs_handoff() -> Optional[SgsScoreCache]:
     return _HANDOFF.get()
 
 

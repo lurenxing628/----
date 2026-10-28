@@ -1,9 +1,16 @@
 """Resource fields follow existing explicit profiles, not inferred UI status."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from core.models.resource_capabilities import machine_type_index, supports_source
 from core.shared.strict_parse import is_exact_non_negative_number
 
 from .overview_graph import text
+
+if TYPE_CHECKING:
+    from .overview_graph import MasterOverviewGraph
 
 CATALOGS = (("opType", "OpTypes", "op_type_id"), ("equipment", "Machines", "machine_id"),
             ("personnel", "Operators", "operator_id"), ("material", "Materials", "material_id"),
@@ -17,7 +24,7 @@ def _shown(value, labels):
     return labels.get(value, value)
 
 
-def add_resources(graph):
+def add_resources(graph: MasterOverviewGraph):
     for domain, table, key in CATALOGS:
         for row in graph.facts.rows(table):
             entity = graph.add(domain, row[key], row[key], row["name"], category=row["category"] if domain == "opType" else None)
@@ -39,7 +46,7 @@ def add_resources(graph):
                     graph.issue(entity, "supplier.days", "供应商默认周期待核对", "默认周期现在是" + text(days) + "，应该填大于 0 的天数。")
 
 
-def _status(graph, entity, row, domain, table):
+def _status(graph: MasterOverviewGraph, entity, row, domain, table):
     raw = row["status"]
     graph.field(entity, "状态", _shown(raw, STATUS_TEXT), table + ".status")
     if raw == "active":
@@ -68,7 +75,7 @@ def _status(graph, entity, row, domain, table):
                 "资料里记的状态是「" + text(raw) + "」，系统不认识，判断不出是启用、停用、请假还是待复核。")
 
 
-def _op_type(graph, entity, row):
+def _op_type(graph: MasterOverviewGraph, entity, row):
     category = row["category"]
     graph.field(entity, "工种归属", {"internal": "自制", "external": "外协", "both": "自制、外协均可"}.get(category, category), "OpTypes.category",
                 valid=category in ("internal", "external", "both"))
@@ -87,7 +94,7 @@ def _op_type(graph, entity, row):
             graph.issue(entity, "policy.missing", "外协周期算法未设置", "请设置该工种的外协周期算法。")
 
 
-def _material(graph, entity, row):
+def _material(graph: MasterOverviewGraph, entity, row):
     for name, label in (("spec", "规格"), ("unit", "库存单位")):
         graph.field(entity, label, row[name], "Materials." + name)
         if not isinstance(row[name], str) or not row[name].strip():
@@ -98,7 +105,7 @@ def _material(graph, entity, row):
         graph.issue(entity, "material.stock", "库存数量待核对", "库存数量现在是" + text(value) + "，请填写有效数量，可填 0。")
 
 
-def resource_links(graph):
+def resource_links(graph: MasterOverviewGraph):
     facts = graph.facts
     machine_types = machine_type_index(facts.rows("Machines"), facts.rows("MachineOpTypes"))
     for row in facts.rows("Machines"):
@@ -119,7 +126,7 @@ def resource_links(graph):
     _op_resources(graph)
 
 
-def _explicit_links(graph, table, domain, owner, other_domain, other_key, label, reverse):
+def _explicit_links(graph: MasterOverviewGraph, table, domain, owner, other_domain, other_key, label, reverse):
     if not graph.facts.available(table):
         for entity in graph.entities:
             if entity["domain"] in (domain, other_domain):
@@ -136,7 +143,7 @@ def _explicit_links(graph, table, domain, owner, other_domain, other_key, label,
                 other["relations_complete"] = False
 
 
-def _qualification_fields(graph):
+def _qualification_fields(graph: MasterOverviewGraph):
     facts = graph.facts
     profiles = facts.index("WorkbenchOperatorProfiles", "operator_id")
     shifts = facts.index("WorkbenchShiftProfiles", "profile_id")
@@ -160,7 +167,7 @@ def _qualification_fields(graph):
                 _person_fields(graph, entity, row, profiles, shifts)
 
 
-def _person_fields(graph, entity, row, profiles, shifts):
+def _person_fields(graph: MasterOverviewGraph, entity, row, profiles, shifts):
     profile = profiles.get(row["operator_id"])
     if graph.facts.available("WorkbenchOperatorProfiles", "WorkbenchShiftProfiles"):
         shift = shifts.get(profile["shift_profile_id"]) if profile else None
@@ -185,7 +192,7 @@ def _person_fields(graph, entity, row, profiles, shifts):
                         "请为该人员设置可操作设备。")
 
 
-def _op_resources(graph):
+def _op_resources(graph: MasterOverviewGraph):
     for row in graph.facts.rows("OpTypes"):
         entity = graph.by_key[("opType", row["op_type_id"])]
         checks = []

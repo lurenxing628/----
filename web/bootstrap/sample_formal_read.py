@@ -1,5 +1,8 @@
 """Read full sample plans through the existing bounded public time-range API."""
+from __future__ import annotations
+
 from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
 from urllib.parse import urlencode
 
 from core.shared.strict_json import canonical_json
@@ -8,12 +11,15 @@ from web.api_responses import query_payload
 from .sample_constraint_checks import require
 from .sample_http import BASE, SampleAPIError
 
+if TYPE_CHECKING:
+    from .sample_http import SampleClient
+
 
 def _too_large(error):
     return error.status == 413 and error.body.get("error", {}).get("code") == "query_too_large"
 
 
-def _segment(client, path, low, high, rejected):
+def _segment(client: SampleClient, path, low, high, rejected):
     query = {"range_start": low.isoformat(), "range_end": high.isoformat()}
     scoped_path = path + "?" + urlencode(query)
     try:

@@ -1,6 +1,9 @@
 """One saved requirement ledger, allocated by each candidate's actual task rows."""
 
+from __future__ import annotations
+
 from functools import cached_property
+from typing import TYPE_CHECKING
 
 from core.services.workbench.facts.candidate_tasks import operation_labels
 from core.services.workbench.facts.decision_preparation import (
@@ -16,11 +19,14 @@ from core.services.workbench.facts.preparation_projection import (
 
 from .decision_impact import drill_target
 
+if TYPE_CHECKING:
+    from .decision_source import DecisionSource
+
 _HOURS = ("setup_standard_hours", "processing_standard_hours", "required_standard_hours")
 
 
 class DecisionPreparation:
-    def __init__(self, source):
+    def __init__(self, source: DecisionSource):
         self.source = source
         self._rows, self._rows_by_ref, self._summaries = {}, {}, {}
 

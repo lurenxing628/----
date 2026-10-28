@@ -1,5 +1,9 @@
 """Explicit report withdrawal through the same preview, receipt and ledger lock."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from core.models.workbench_command import WorkbenchCommandOutcome
 from core.models.workbench_execution_input import closed_write_context, normalize_report_void_input, reject
 from data.repositories.workbench_execution_report_repo import WorkbenchExecutionReportRepository, new_ref
@@ -15,6 +19,9 @@ from .production_report_validation import (
     validate_projection_change,
 )
 from .production_report_void_dependencies import adopted_quota_impacts
+
+if TYPE_CHECKING:
+    from .ledger import ExecutionLedgerService
 
 
 def _downstream_impacts(ledger, facts, before, after, report, dependencies):
@@ -35,7 +42,7 @@ def _cycle_warnings(dependencies, operation, before, after):
 
 
 class WorkbenchReportVoidService:
-    def __init__(self, ledger, commands, actor_provider):
+    def __init__(self, ledger: ExecutionLedgerService, commands, actor_provider):
         self.ledger, self.commands, self.actor_provider = ledger, commands, actor_provider
         self.conn = ledger.conn
 

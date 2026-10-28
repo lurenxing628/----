@@ -9,13 +9,20 @@
 - 本插件不提供实际求解器接入（求解器接入应作为独立插件/任务实现）。
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from core.plugins.registry import PluginRegistry
+
 PLUGIN_ID = "ortools_probe"
 PLUGIN_NAME = "深度优化环境检测"
 PLUGIN_VERSION = "1.0"
 PLUGIN_DEFAULT_ENABLED = "no"
 
 
-def register(registry):
+def register(registry: PluginRegistry):
     import ortools
 
     registry.register("dependency.ortools", {"version": getattr(ortools, "__version__", None)})
