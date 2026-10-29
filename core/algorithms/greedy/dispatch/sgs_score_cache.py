@@ -16,7 +16,6 @@ itself. External candidates are cheap and never cached.
 from __future__ import annotations
 
 from functools import partial
-from types import GetSetDescriptorType, MemberDescriptorType
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple
 
 from core.algorithm_contracts.value_domains import INTERNAL
@@ -33,15 +32,7 @@ if TYPE_CHECKING:
 
 _FIXED = "fixed"
 _AUTO = "auto"
-_HEAPTYPE = 1 << 9  # Py_TPFLAGS_HEAPTYPE: only Python-level classes can carry accessor hooks
 _UNCLASSIFIED = object()
-# Every operation and batch field the dispatch key can depend on; a class-level accessor hook
-# or descriptor on any of them means reads may vary between steps, so such records are never cached.
-_RECORD_FIELDS = (
-    "id", "seq", "batch_id", "piece_id", "source", "machine_id", "operator_id", "op_type_id", "op_type_name",
-    "setup_hours", "unit_hours", "quantity", "priority", "due_date", "ready_date", "material_ready_date", "ready_status", "created_at",
-    "ext_merge_mode", "ext_group_id", "ext_group_total_days", "ext_days",
-)
 Witness = Tuple[Any, ...]
 EligibleResources = Optional[Tuple[Tuple[str, ...], Tuple[str, ...]]]
 
@@ -59,26 +50,6 @@ def attach_sgs_score_cache(ctx: Any, *, state: ScheduleRunState, params: Any, re
         ctx.sgs_score_cache = ctx.native_preparation.score_cache_factory(
             state, auto_assign_enabled=bool(params.auto_assign_enabled), resource_pool=resource_pool,
         )
-
-
-def plain_record_class(cls: Any) -> bool:
-    """Instance attribute reads on ``cls`` are the builtin path: no accessor hooks, no field descriptors."""
-    if type(cls) is not type:
-        return False
-    from core.algorithm_runtime.static_attribute import static_class_attribute
-    if type(static_class_attribute(cls, "__dict__")) not in (GetSetDescriptorType, MemberDescriptorType):
-        return False
-    for klass in cls.__mro__[:-1]:
-        if not klass.__flags__ & _HEAPTYPE:
-            continue
-        fields = vars(klass)
-        if any(type(key) is not str for key in fields):
-            return False
-        if "__getattribute__" in fields or "__getattr__" in fields:
-            return False
-        if any(hasattr(type(fields.get(name)), "__get__") for name in _RECORD_FIELDS if fields.get(name) is not None):
-            return False
-    return True
 
 
 def _segments_witness(timeline: Any, resource_id: str) -> Optional[Tuple[int, int]]:
@@ -150,10 +121,9 @@ class SgsScoreCache:
         self._last_scan: Optional[Tuple[Any, Any]] = None
         self.pair_revalidated = 0
         self._entries: Dict[int, _Entry] = {}
-        # Per operation: False when it can never be cached (external, hooked record classes, no native
+        # Per operation: False when it can never be cached (external, no native
         # pool), else its eligible auto-assign resources or None for fixed resources.
         self._eligible: Dict[Tuple[int, Optional[str], Optional[str]], Any] = {}
-        self._plain_classes: Dict[type, bool] = preparation.plain_classes
         self.round = 0
         self.pair_hits = 0
         self.pair_misses = 0
@@ -177,8 +147,7 @@ class SgsScoreCache:
 
     def shared_slot_estimate(self, *, calendar, op, batch, machine_id, operator_id, prev_end, total_hours,
                              end_dt_exclusive, machine_downtimes, compute):
-        if (self._timing is None or self._shared_slots is None
-                or not self._plain(op) or not self._plain(batch)):
+        if self._timing is None or self._shared_slots is None:
             return compute()
         return self._shared_slots.resolve(
             state=self.state, calendar=self.timing_calendar(calendar), op=op, priority=batch.priority,
@@ -381,12 +350,7 @@ class SgsScoreCache:
         demand = types.demand if isinstance(types, MachineTypeState) else None
         return None if demand is None else demand.revision
 
-    def _plain(self, record: Any) -> bool:
-        return self._plain_classes.get(type(record), False)
-
     def _classify(self, op: OpForScheduleAlgo, batch: Batch, machine_id: Optional[str], operator_id: Optional[str]) -> Any:
-        if not self._plain(op) or not self._plain(batch):
-            return False
         if op.source != INTERNAL:
             return False
         if machine_id and operator_id:

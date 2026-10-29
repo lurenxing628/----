@@ -34,12 +34,12 @@ class ConditionSource:
         self.available = self.kind != "empty"
         self.archive = self.input = self.execution = self.baseline = None
         self.artifact = self.raw_tasks = self.trial_rows = self.saved = self.calendar = None
-        self.original_archive = self._original_calendar = None
-        self.original_facts = self.delivery_origin = self.trial_contexts = None
+        self.facts = self.original_facts = self.delivery_origin = self.trial_contexts = None
         self.operations, self.batches, self.entity_refs = {}, {}, {}
         self.original_entity_refs = {}
         self._input_paths = {}
         self._operation_paths, self._batch_paths, self._origins = {}, {}, {}
+        self._source_cache = {}
         if self.kind == "run":
             self._origins = {"environment": "capture.facts_text", "original": "capture.facts_text",
                              "input": "capture.input", "execution": "capture.execution", "tasks": "raw_tasks"}
@@ -71,8 +71,8 @@ class ConditionSource:
         self.artifact = candidate["artifact"] if candidate is not None else None
         self.raw_tasks = packet["raw_tasks"]
         self.entity_refs = self.original_entity_refs = facts.entity_refs
+        self.facts = facts
         self.calendar = ArchivedCalendar(self.archive, source_ref=self.ref, facts=facts)
-        self.original_archive, self._original_calendar = self.archive, self.calendar
         self._work_indexes(facts.tables["BatchOperations"], facts.tables["Batches"], facts.operations,
                            self._origins["original"])
         self._input_paths = {key: "capture.input." + key for key in self.input}
@@ -112,13 +112,10 @@ class ConditionSource:
             corrupt()
         if capture is not None and capture.get("facts_text") is not None:
             facts = GenerationFacts(capture)
-            self.original_archive = facts.archive
-            self._original_calendar = ArchivedCalendar(self.original_archive, source_ref=self.ref, facts=facts)
             operations, batches, refs = facts.tables["BatchOperations"], facts.tables["Batches"], facts.operations
             entity_refs = facts.entity_refs
             prefix = "head.admission.source.capture.facts_text"
         else:
-            self.original_archive, self._original_calendar = self.archive, self.calendar
             operations, batches = index_rows(self.table("BatchOperations"), "id"), index_rows(self.table("Batches"), "batch_id")
             refs, entity_refs = operation_ref_rows(self.table("WorkbenchPlanSourceRefs")), self.entity_refs
             prefix = self._origins["environment"]
@@ -166,7 +163,7 @@ class ConditionSource:
 
     def original_table(self, name):
         """Read original work relations without replacing trial environment facts."""
-        return self._original_calendar.table(name) if self._original_calendar is not None else None
+        return self.original_facts.table(name) if self.original_facts is not None else self.table(name)
 
     def input_path(self, key):
         """Return the saved field path, or None when that input was absent."""
@@ -174,9 +171,15 @@ class ConditionSource:
 
     def source(self, path, origin="environment"):
         """Locate saved fields, including original work indexed by permanent ref."""
+        key = (path, origin)
+        cached = self._source_cache.get(key)
+        if cached is not None:
+            return cached
         if self.kind == "empty":
             # 没有选中历史条目的一侧没有保存来源可指。
-            return {"kind": self.kind, "ref": None, "path": None}
+            result = {"kind": self.kind, "ref": None, "path": None}
+            self._source_cache[key] = result
+            return result
         if origin == "input" and path in self._input_paths:
             saved_path = self._input_paths[path]
         elif origin == "original" and path.startswith(("operations.", "batches.")):
@@ -194,4 +197,6 @@ class ConditionSource:
             if prefix is None:
                 raise ValueError("Unknown saved condition origin")
             saved_path = _join_path(prefix, path)
-        return {"kind": self.kind, "ref": self.ref, "path": saved_path}
+        result = {"kind": self.kind, "ref": self.ref, "path": saved_path}
+        self._source_cache[key] = result
+        return result

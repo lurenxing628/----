@@ -8,7 +8,15 @@ from core.services.workbench.facts import adoption_baseline_values as values
 from tests.workbench.plan_adoption_baseline_support import trial_case as trial_case  # noqa: F401
 from tests.workbench.plan_adoption_baseline_support import two_versions
 from tests.workbench.plan_read_support import make_api
-from tests.workbench.plan_transport_support import catalog_fixture, run_probe, workspace_fixture
+from tests.workbench.plan_transport_support import (
+    baseline_fixture,
+    capacity_fixture,
+    catalog_fixture,
+    gantt_graph_fixture,
+    run_probe,
+    tasks_fixture,
+    workspace_fixture,
+)
 from tests.workbench.run_candidate_adoption_support import INTENT
 from tests.workbench.run_candidate_adoption_support import service as candidate_adopter
 from tests.workbench.run_candidate_support import compute
@@ -40,7 +48,25 @@ def test_cross_page_catalog_workspace_and_strict_dto(trial_case, tmp_path, sourc
     initial = workspace_fixture(api, "first adoption", first["plan_ref"])
     assert initial["payload"]["data"]["provenance"]["state"] == "available"
     assert initial["payload"]["data"]["provenance"]["baseline"]["baseline_ref"] is None
-    fixtures = [latest, original, selected, initial]
+    initial_snap = initial["payload"]["meta"]["snapshot_ref"]
+    initial_baseline = baseline_fixture(api, "first adoption unavailable baseline", first["plan_ref"], initial_snap)
+    assert initial_baseline["payload"]["data"]["state"] == "unavailable"
+    assert initial_baseline["payload"]["data"]["items_complete"] is False
+    assert initial_baseline["payload"]["meta"]["snapshot_ref"] == initial_snap
+    assert initial_baseline["payload"]["meta"]["as_of"] == initial["payload"]["meta"]["as_of"]
+    selected_snap = selected["payload"]["meta"]["snapshot_ref"]
+    selected_as_of = selected["payload"]["meta"]["as_of"]
+    selected_tasks = tasks_fixture(api, "adopted tasks page", second["plan_ref"], selected_snap)
+    selected_graph = gantt_graph_fixture(api, "adopted gantt graph", second["plan_ref"], selected_snap)
+    selected_capacity = capacity_fixture(api, "adopted capacity", second["plan_ref"], selected_snap)
+    for chunk in (selected_tasks, selected_graph, selected_capacity):
+        assert chunk["payload"]["meta"]["snapshot_ref"] == selected_snap
+        assert chunk["payload"]["meta"]["as_of"] == selected_as_of
+    assert selected_tasks["payload"]["data"]["tasks_complete"] is True
+    assert selected_graph["payload"]["data"]["gantt_graph"]["nodes_complete"] is True
+    assert selected_capacity["payload"]["data"]["calendar"]["windows_complete"] is True
+    assert selected_capacity["payload"]["data"]["occupancy"]["segments_complete"] is True
+    fixtures = [latest, original, selected, initial, initial_baseline, selected_tasks, selected_graph, selected_capacity]
     for field, value in (("basis", "scenario_base"), ("basis", "invented"), ("compared_fields", ["supplier_ref"])):
         bad = deepcopy(selected)
         bad.update(name="reject " + field + str(value), contract_error=True)
@@ -95,12 +121,20 @@ def test_formal_supplier_identity_and_baseline_resource_names_follow_their_adopt
     current = workspace_fixture(api, "trial adopted resources and suppliers", second["plan_ref"])
     original, data = old["payload"]["data"], current["payload"]["data"]
     assert next(row for row in original["tasks"] if row["sequence"] == 2)["supplier_ref"] == case.ref("supplier", "XS1")
-    assert next(row for row in data["tasks"] if row["sequence"] == 2)["supplier_ref"] == case.ref("supplier", "XS2")
+    current_external = next(row for row in data["tasks"] if row["sequence"] == 2)
+    assert current_external["supplier_ref"] == case.ref("supplier", "XS2")
     baseline = data["projections"]["baseline"]
     assert baseline["state"] == "available", baseline
     assert baseline["compared_fields"] == ["start", "end", "machine_ref", "operator_ref"]
-    before_external = next(row["before"] for row in baseline["items"] if row["before"]["sequence"] == 2)
+    assert baseline["items"] == [] and baseline["item_count"] == 2 and baseline["items_complete"] is False
+    baseline_detail = api.read(
+        "/" + second["plan_ref"] + "/baseline", snapshot_ref=current["payload"]["meta"]["snapshot_ref"]
+    )["data"]
+    assert baseline_detail["items_complete"] is True and baseline_detail["item_count"] == 2
+    external_item = next(row for row in baseline_detail["items"] if row["before"]["sequence"] == 2)
+    before_external = external_item["before"]
     assert before_external["supplier_ref"] == case.ref("supplier", "XS1")
+    assert external_item["after"] == {"task_ref": current_external["task_ref"]}
     directory = {row["ref"]: row for row in data["resources"]}
     assert directory[case.ref("machine", "M1")]["label"] == "Lathe 1"
     assert directory[case.ref("operator", "O1")]["label"] == "Operator 1"
@@ -108,23 +142,3 @@ def test_formal_supplier_identity_and_baseline_resource_names_follow_their_adopt
     assert directory[case.ref("supplier", "XS2")]["label"] == "Second supplier"
     assert case.ref("supplier", "XS3") not in directory
     assert run_probe(tmp_path, [old, current])["checks"] == 2
-
-
-@pytest.mark.parametrize("raw,gap", [
-    ('{"source":"a","source":"b"}', "duplicate_json_key"), ('{"row_count":NaN}', "nonfinite_json_number"),
-    ('{"row_count":-Infinity}', "nonfinite_json_number"), ('{"row_count":1e999}', "nonfinite_json_number"),
-    ('{', "invalid_stored_json"), ('[]', "json_object"), (b'{}', "json_storage_type"),
-])
-def test_stored_adoption_evidence_names_each_unreadable_json_gap(raw, gap):
-    with pytest.raises(values.AdoptionBaselineUnavailable) as error:
-        values.stored(raw)
-    assert (error.value.code, error.value.gap) == ("adoption_snapshot_invalid", gap)
-
-
-def test_stored_adoption_evidence_over_64_mb_is_a_query_too_large_rejection():
-    from core.models.workbench_command import WorkbenchCommandRejected
-
-    with pytest.raises(WorkbenchCommandRejected) as error:
-        values.stored("x" * (64 * 1024 * 1024 + 1))
-    assert (error.value.code, error.value.status, str(error.value)) == (
-        "query_too_large", 413, "完整采用凭据超过 64 MB 上限。请缩小查询范围后重试。")

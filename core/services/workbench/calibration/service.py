@@ -5,6 +5,7 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution_input import public_ref
 
 from .facts import CalibrationFacts
+from .samples import ensure_sample_revision
 from .table import filter_rows
 
 
@@ -42,7 +43,8 @@ class WorkbenchCalibrationService(CalibrationFacts):
                 raise WorkbenchCommandRejected("entity_not_found", "这条建议不在当前筛选结果里。数据可能已更新，请刷新后重新选择。", 404)
             linked = facts["samples_by_template"].get(row["template_operation_ref"], [])
             unbound = facts["unbound_samples_by_part"].get(row["part_no"], [])
-            data.update(suggestion={**row, **snapshot}, samples=linked + unbound,
+            samples = [ensure_sample_revision(sample) for sample in linked + unbound]
+            data.update(suggestion={**row, **snapshot}, samples=samples,
                         candidate_scope_basis="template_ref_and_same_part_unbound")
         else:
             start = (query.number - 1) * query.size

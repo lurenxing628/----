@@ -121,8 +121,9 @@ assert(h.text(source(tree)).includes(plan.projections.baseline.reason),'Unavaila
 assert(h.text(source(tree)).includes(plan.provenance.reason),'The generation source must retain its own unavailable reason');
 assert(!h.text(source(tree)).includes('vnull'),'A plan without an official version must not invent a version label');
 assert(h.text(source(tree)).includes('当前安排：正式计划 · 正式计划 A'));
-plan.projections.baseline={state:'available',basis:'official_base',items:[],
+plan.projections.baseline={state:'available',basis:'official_base',items:[],item_count:1,items_complete:false,
   baseline_plan:{kind:'official',version:1,display_name:'对照计划'}};
+assert.equal(h.runtime.PlanGanttModel.prepare(plan).baselineLoaded,false);
 tree=h.render(h.runtime.PlanGanttSource,{data:plan});
 assert(h.text(source(tree)).includes('原安排：正式计划 · 对照计划 · v1'));
 assert(!h.text(source(tree)).includes('vnull'));
@@ -155,6 +156,45 @@ try {
   assert(nodes.some(node=>node.props['data-field-point']==='plan'));
   assert(!nodes.some(node=>node.props.className==='field-timeline-bar planned'),'A real point keeps the existing marker contract');
 } finally { h.runtime.APSResourceSession.useQuery=query; }
+return true;
+""")
+    assert result["result"] is True
+
+
+def test_gantt_graph_controls_disable_incomplete_graph_and_never_fabricate_zero_critical_tasks():
+    result = run_current_js(r"""
+const full=h.processFixture();
+const incomplete={...full,gantt_graph:{...full.gantt_graph,nodes:[],node_count:full.gantt_graph.nodes.length,
+  nodes_complete:false,critical_task_refs:[],critical_edges:[]}};
+const renderPlan=(data,extra={})=>h.render(h.runtime.PlanGantt,{
+  data,prepared:h.prepare(h.runtime.PlanGanttModel,data),query:'',selected:null,onSelect:()=>{},onQuery:()=>{},
+  asOf:'2026-05-11T12:00:00',...extra},{PlanGantt:{7:true}});
+const tools=tree=>h.walk(tree).find(node=>node.props.className==='wb-gantt-graph-tools');
+const checkbox=tree=>h.walk(tools(tree)).find(node=>node.type==='input'&&node.props.type==='checkbox');
+
+let tree=renderPlan(incomplete);
+assert.equal(checkbox(tree).props.disabled,true);
+assert.equal(checkbox(tree).props.checked,false);
+assert(!h.text(tools(tree)).includes('0 道关键任务'));
+assert(h.text(tools(tree)).includes('关键链与工序关联未加载'));
+assert(h.text(tools(tree)).includes('关键链与工序关联未加载。'));
+
+tree=renderPlan(incomplete,{graphLoading:true});
+assert.equal(checkbox(tree).props.disabled,true);
+assert(!h.text(tools(tree)).includes('0 道关键任务'));
+assert(h.text(tools(tree)).includes('关键链与工序关联加载中…'));
+assert(h.text(tools(tree)).includes('正在加载关键链与工序关联…'));
+
+tree=renderPlan(incomplete,{graphError:new Error('图读取失败')});
+assert.equal(checkbox(tree).props.disabled,true);
+assert(!h.text(tools(tree)).includes('0 道关键任务'));
+assert(h.text(tools(tree)).includes('关键链与工序关联读取失败'));
+assert(h.text(tools(tree)).includes('工序关联读取失败，请重试加载。'));
+
+tree=renderPlan(full);
+assert.equal(checkbox(tree).props.disabled,false);
+assert.equal(checkbox(tree).props.checked,true);
+assert(h.text(tools(tree)).includes(full.gantt_graph.critical_task_refs.length+' 道关键任务'));
 return true;
 """)
     assert result["result"] is True

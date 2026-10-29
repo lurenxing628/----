@@ -70,11 +70,13 @@
     }
     return result;
   }
-  function prepare(data) {
+  function prepare(data, baselineItems = null) {
     const labels = names(data), directory = new Map(data.resources.map(row => [row.ref, row]));
     const fact = (task, baseline) => ({ task, baseline, start: instant(task.start), end: instant(task.end), search: searchText(task, labels), point: window.PointContract.isPoint(task) });
     const items = data.tasks.map(task => fact(task, false)), comparison = data.projections.baseline;
-    const before = comparison.state === 'available' ? comparison.items.filter(item => item.before).map(item => fact(item.before, true)) : [];
+    const rawItems = Array.isArray(baselineItems) ? baselineItems : comparison.items;
+    const baselineLoaded = comparison.state === 'available' && (Array.isArray(baselineItems) || comparison.items_complete === true || comparison.items.length > 0);
+    const before = baselineLoaded ? rawItems.filter(item => item.before).map(item => fact(item.before, true)) : [];
     const taskIndex = new Map(items.map(item => [item.task.task_ref, item])), loadedRefs = new Set(items.map(item => item.task.task_ref)), resourceMembers = new Map();
     for (const item of items) for (const ref of [item.task.machine_ref, item.task.operator_ref]) {
       if (!ref) continue;
@@ -82,14 +84,14 @@
     }
     const beforeIndex = new Map(before.map(item => [item.task.task_ref, item]));
     const times = (task, index) => task ? index.get(task.task_ref) || { start: instant(task.start), end: instant(task.end) } : null;
-    const comparisons = new Map(comparison.state === 'available' ? comparison.items.map(item => [item.operation_ref,
+    const comparisons = new Map(baselineLoaded ? rawItems.map(item => [item.operation_ref,
       { ...item, beforeTime: times(item.before, beforeIndex), afterTime: times(item.after, taskIndex) }]) : []);
-    const changed = new Set(comparison.state === 'available' ? comparison.items.filter(item => item.change !== 'unchanged').map(item => item.operation_ref) : []);
+    const changed = new Set(baselineLoaded ? rawItems.filter(item => item.change !== 'unchanged').map(item => item.operation_ref) : []);
     const occupancy = new Map(data.projections.occupancy.resources.map(row => [row.resource_ref, { resource: row,
       segments: row.segments.filter(item => item.concurrent_operations > 1).map(item => ({ start: instant(item.start), end: instant(item.end) })) }]));
     // 计划工作区的 delivery_risks.items 已由 PlanContract 校验为数组；值班台时间轴的合成数据不带这一键。
     const deliveryRisks = data.projections.delivery_risks ? new Map(data.projections.delivery_risks.items.map(row => [row.batch_id, row])) : null;
-    return { labels, directory, items, before, taskIndex, loadedRefs, beforeIndex, comparisons, changed, occupancy, deliveryRisks, resourceMembers,
+    return { labels, directory, items, before, baselineLoaded, taskIndex, loadedRefs, beforeIndex, comparisons, changed, occupancy, deliveryRisks, resourceMembers,
       start: instant(data.plan_span.start), end: instant(data.plan_span.end) };
   }
   function groupPrepared(prepared, mode) {

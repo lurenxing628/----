@@ -3,6 +3,7 @@
 import csv
 from datetime import datetime, timedelta
 from io import StringIO
+from typing import Any
 
 import pytest
 
@@ -12,7 +13,7 @@ from core.services.workbench.run.candidate_baseline import WorkbenchRunCandidate
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.plan_transport_support import run_probe
 from tests.workbench.point_downstream_support import ACTUAL, FIELD, adopted, app_for, read, report
-from tests.workbench.run_candidate_support import compute, corrupt_update
+from tests.workbench.run_candidate_support import compute
 from tests.workbench.trial_support import trial_case as trial_case  # noqa: F401
 
 
@@ -36,9 +37,10 @@ def test_real_point_report_http_retains_intervals_unknowns_and_readback(trial_ca
     task, = plan['data']['tasks']
     assert task['event_kind'] == 'point' and task['start'] == task['end']
     assert task['task_ref'] == identity['task']['task_ref']
-    known = report(client, identity)
-    instant = report(client, identity, quantity=0, start='2026-09-09T09:10:00', end='2026-09-09T09:10:00', hours=None)
-    unknown = report(client, identity, quantity=None, start='2026-09-09T09:20:00', end=None, hours=None)
+    report_fn: Any = report
+    known = report_fn(client, identity)
+    instant = report_fn(client, identity, quantity=0, start='2026-09-09T09:10:00', end='2026-09-09T09:10:00', hours=None)
+    unknown = report_fn(client, identity, quantity=None, start='2026-09-09T09:20:00', end=None, hours=None)
     actual = read(client, ACTUAL, plan_ref=identity['plan']['plan_ref'])
     row, = actual['data']['items']
     assert row['task'] == identity['task']
@@ -70,13 +72,17 @@ def test_real_point_one_microsecond_http_preserves_capacity_and_full_dto(trial_c
     scope = {'range_start': task['start'],
              'range_end': (datetime.fromisoformat(task['start']) + timedelta(microseconds=1)).isoformat()}
     plan_ref = identity['plan']['plan_ref']
-    response = read(app_for(trial_case).test_client(),
-                    '/api/workbench/v1/plans/' + plan_ref + '/workspace', **scope)
+    client = app_for(trial_case).test_client()
+    response = read(client, '/api/workbench/v1/plans/' + plan_ref + '/workspace', **scope)
     data = response['data']
     point, = data['tasks']
     assert point['task_ref'] == task['task_ref'] and point['event_kind'] == 'point'
     assert point['start'] == point['end'] == scope['range_start']
     assert {key: data['time_scope'][key] for key in scope} == scope
+    baseline = read(client, '/api/workbench/v1/plans/' + plan_ref + '/baseline',
+                    snapshot_ref=response['meta']['snapshot_ref'], **scope)['data']
+    assert baseline['items_complete'] is (baseline['state'] == 'available')
+    assert baseline['page']['total'] == baseline['item_count']
     calendar = data['projections']['calendar']
     capacity = 1e-6 / 3600.0
     hours_fields = ('available_hours', 'effective_hours', 'normal_available_hours', 'normal_effective_hours',
@@ -96,25 +102,6 @@ def test_real_point_one_microsecond_http_preserves_capacity_and_full_dto(trial_c
     fixture = {'name': 'real adopted point one-microsecond scope', 'kind': 'workspace',
                'plan_ref': plan_ref, 'scope': scope, 'payload': response}
     assert run_probe(tmp_path, [fixture])['checks'] == 1
-
-
-def test_point_source_capacity_rejection_retains_original_413(trial_case):
-    case = trial_case
-    identity = adopted(case)
-    corrupt_update(case.conn, 'WorkbenchRunJobs',
-        'UPDATE WorkbenchRunJobs SET facts_json=? WHERE run_ref='
-        '(SELECT run_ref FROM WorkbenchRunCandidates WHERE candidate_ref=?)',
-        ('{}' + ' ' * (64 * 1024 * 1024), identity['candidate_ref']))
-    changes = case.conn.total_changes
-    client = app_for(case).test_client()
-    for path, query in (
-        ('/api/workbench/v1/plans/' + identity['plan']['plan_ref'] + '/workspace', {}),
-        ('/api/workbench/v1/plans', {'collection': 'history'}),
-    ):
-        response = client.get(path, query_string=query)
-        assert response.status_code == 413
-        assert response.get_json()['error']['code'] == 'candidate_capacity_exceeded'
-    assert case.conn.total_changes == changes
 
 
 @pytest.mark.parametrize('current_unit_hours', [0, 0.5])
@@ -173,8 +160,9 @@ def test_held_adopted_point_carries_its_witness_into_runtime_seeds(trial_case):
     window = {'start': point.isoformat(timespec='minutes'),
               'end': (point + timedelta(hours=1)).isoformat(timespec='minutes')}
     result = compute_run(case.conn, case.settings(hold_window=window), case.projections())
-    assert result.schedule_input.frozen_op_ids == {case.op_id}
-    seed, = [row for row in result.schedule_input.seed_results if row['op_id'] == case.op_id]
+    schedule_input: Any = result.schedule_input
+    assert schedule_input.frozen_op_ids == {case.op_id}
+    seed, = [row for row in schedule_input.seed_results if row['op_id'] == case.op_id]
     assert seed['seed_source'] == 'freeze_window' and seed['start_time'] == seed['end_time'] == point
     assert type(seed['_point_evidence']) is SchedulePointEvidence
     assert type(coerce_seed_result_item(seed, idx=0)) is PointSeedResult

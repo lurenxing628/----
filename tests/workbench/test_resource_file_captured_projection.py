@@ -4,7 +4,6 @@ import re
 
 import pytest
 
-from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.resource.file_projection import flat_resource
 from core.services.workbench.resource.metrics import WorkbenchResourceMetricsService
 from core.services.workbench.resource.states import ResourceChangePreparation
@@ -66,14 +65,3 @@ def test_captured_file_projection_preserves_columns_without_dependency_reads(fil
                                          "created_at": "2020-02-03 12:05:06"}]
     assert not any(re.search(r"\b(?:PartOperations|BatchOperations|ExternalGroups|Schedule|WorkbenchShiftPatternDays)\b",
                              query, re.IGNORECASE) for query in reads)
-
-
-def test_export_checks_only_referenced_resource_identities(file_resource_conn):
-    conn = file_resource_conn
-    conn.execute("UPDATE WorkbenchEntityRefs SET active=0 WHERE kind='op_type' AND entity_key='OT2'")
-    conn.commit()
-    preparation = _preparation(conn)
-    assert preparation.export_state("operator", "O1")["skills"][0]["op_type_id"] == "OT1"
-    with pytest.raises(WorkbenchCommandRejected) as failure:
-        preparation.export_state("machine", "M1")
-    assert failure.value.code == "storage_failure"

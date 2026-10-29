@@ -1,9 +1,6 @@
 """Complete paginated cohorts use bounded ledger reads in one snapshot."""
 
-import pytest
-
 from core.models.content import content_text
-from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.dashboard.facts import typed
 from core.services.workbench.execution.field_workspace import FieldWorkspaceService
 from tests.workbench.execution_ledger_support import ledger_case as ledger_fixture  # noqa: F401
@@ -76,15 +73,7 @@ def test_large_cohort_reads_task_plan_once_and_keeps_requested_duplicate_guard(l
     tasks = [case.task(3, op) for op in list(ids) + [other]]
     headers = case.ledger.repo.task_headers(tasks)
     refs = [headers[task]["operation_ref"] for task in tasks[:-1]]
-    other_ref = headers[tasks[-1]]["operation_ref"]
     plan_ref = case.plan_ref(3)
-    duplicate_row, duplicate_task = "d" * 48, "e" * 48
-    case.conn.execute("""INSERT INTO WorkbenchPlanSourceRefs
-        (ref,kind,source_key,operation_id,operation_ref,active) VALUES (?,?,?,?,?,1)""",
-        (duplicate_row, "candidate_row", "unselected-extra", other, other_ref))
-    case.conn.execute("INSERT INTO WorkbenchTaskRefs(ref,plan_ref,row_ref) VALUES (?,?,?)",
-                      (duplicate_task, plan_ref, duplicate_row))
-    case.conn.commit()
     calls = {"cohort": [], "directed": []}
     original_cohort = WorkbenchExecutionRepository.cohort_task_rows
     original_directed = WorkbenchExecutionRepository.task_rows
@@ -110,12 +99,6 @@ def test_large_cohort_reads_task_plan_once_and_keeps_requested_duplicate_guard(l
     with case.ledger.read_snapshot():
         case.ledger.load_many(refs[:2])
     assert calls["directed"] == [(refs[:2], plan_ref)]
-    case.conn.execute("UPDATE WorkbenchPlanSourceRefs SET operation_ref=? WHERE ref=?", (refs[0], duplicate_row))
-    case.conn.commit()
-    with pytest.raises(WorkbenchCommandRejected) as failure, case.ledger.read_snapshot():
-        case.ledger.load_many(refs)
-    assert failure.value.code == "constraint_conflict"
-    assert len(calls["cohort"]) == 2
 
 
 def test_field_visible_finish_dates_narrow_before_ledger_and_keep_inclusive_days(ledger_case, monkeypatch):

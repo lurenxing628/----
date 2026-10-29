@@ -5,7 +5,6 @@ from core.models.workbench_plan_reference import WorkbenchPlanLocator, Workbench
 from core.services.workbench.facts.adoption_baseline_values import (
     fail,
     indexed,
-    raw_table_rows,
     require,
     schedule_rows,
 )
@@ -19,11 +18,6 @@ def verify_capture(baseline, tables, *, admission_proof=None):
     version = baseline["version"]
     if (version is not None and admission_proof is not None
             and admission_proof.baseline is baseline and admission_proof.tables is tables):
-        # Admission already proved exact raw baseline/Schedule equality, strict
-        # history versions and the official ref. Both row views were decoded by
-        # the same lossless transform, so that complete equality is retained.
-        # The empty-history case deliberately keeps the full path below: it
-        # also detects malformed Schedule rows whose stored version is NULL.
         require(bool(baseline["rows"]), "baseline_complete_row_count")
         _captured_official(baseline, tables)
         return
@@ -31,12 +25,10 @@ def verify_capture(baseline, tables, *, admission_proof=None):
     require(all(type(row.get("version")) is int and row["version"] > 0 for row in history), "archived_history_versions")
     require(version == max((row["version"] for row in history), default=None), "archived_official_baseline")
     require(version is None or type(version) is int, "baseline_version_type")
-    archived = sorted((row for row in tables["Schedule"] if row["version"] == version), key=lambda row: row["id"])
-    require(same(archived, baseline["rows"]), "baseline_matches_archived_schedule")
     if version is None:
         require(baseline["plan_ref"] is None and not baseline["rows"], "empty_baseline")
         return
-    require(bool(archived), "baseline_complete_row_count")
+    require(bool(baseline["rows"]), "baseline_complete_row_count")
     _captured_official(baseline, tables)
 
 
@@ -52,17 +44,18 @@ def _live_sources(conn, captured, *, context):
     by_ref = indexed(captured, "ref")
     keys, live = list(by_ref), {}
     if context is not None:
-        live = indexed(raw_table_rows(context.source_identities(keys), "WorkbenchPlanSourceRefs"), "ref")
+        live = indexed(context.source_identities(keys), "ref")
     else:
         repo = WorkbenchPlanBaselineRepository(conn)
         for start in range(0, len(keys), 400):
             chunk = keys[start:start + 400]
-            live.update(indexed(raw_table_rows(repo.raw_source_refs_by_refs(chunk), "WorkbenchPlanSourceRefs"), "ref"))
+            live.update(indexed(repo.source_refs_by_refs(chunk), "ref"))
     if not same(by_ref, live):
         fail("adoption_reference_invalid", "captured_source_instances")
 
 
-def verify_arranged(conn, plan_ref, version, tables, arranged, *, context):
+def verify_arranged(conn, plan_ref, version, tables, arranged, *, context,
+                    arranged_times=None, indexed_tables=None, verified_out=None):
     rows = context.source_rows(version=version) if context is not None else schedule_rows(conn, version)
     originals, current = indexed(arranged, "op_id"), indexed(rows, "op_id")
     if set(originals) != set(current):
@@ -73,21 +66,29 @@ def verify_arranged(conn, plan_ref, version, tables, arranged, *, context):
     for op_id, original in originals.items():
         row = current[op_id]
         known_times = intervals[row["id"]] if intervals is not None else None
-        if not _arrangement_matches(row, original, known_times=known_times):
+        original_times = arranged_times.get(op_id) if arranged_times is not None else None
+        if not _arrangement_matches(row, original, known_times=known_times, original_times=original_times):
             fail("adoption_plan_drift", "selected_saved_arrangement")
     references = context.references if context is not None else WorkbenchPlanIdentityRepository(conn)
     try:
-        references.get_task_refs(plan_ref, ((row["id"], row["op_id"], row["version"]) for row in rows))
+        task_refs = references.get_task_refs(plan_ref, ((row["id"], row["op_id"], row["version"]) for row in rows))
         operations = references.get_operation_refs(current)
     except WorkbenchPlanReferenceError:
         fail("adoption_reference_invalid", "selected_complete_task_identity")
     keys = {str(key) for key in current}
-    sources = [row for row in tables["WorkbenchPlanSourceRefs"] if row["kind"] == "operation"
-               and row["active"] == 1 and row["source_key"] in keys]
+    if indexed_tables is not None and indexed_tables.get("source_refs_id") == id(tables["WorkbenchPlanSourceRefs"]):
+        op_sources = indexed_tables["operation_sources"]
+        sources = [op_sources[key] for key in keys if key in op_sources]
+    else:
+        sources = [row for row in tables["WorkbenchPlanSourceRefs"] if row["kind"] == "operation"
+                   and row["active"] == 1 and row["source_key"] in keys]
     require(len(sources) == len(current), "captured_selected_operations")
     if {int(row["source_key"]): row["ref"] for row in sources} != operations:
         fail("adoption_reference_invalid", "selected_original_operation_instances")
     _live_sources(conn, sources, context=context)
+    if verified_out is not None:
+        verified_out["selected_task_refs"] = task_refs
+        verified_out["verified_operation_keys"] = frozenset(keys)
     return rows
 
 
@@ -103,14 +104,23 @@ def _resources_match(row, original):
                 {"machine_id": actual[0], "operator_id": actual[1]})
 
 
-def _arrangement_matches(row, original, *, known_times=None):
+def _arrangement_matches(row, original, *, known_times=None, original_times=None):
     if not _resources_match(row, original):
         return False
     for index, key in enumerate(("start_time", "end_time")):
         if type(row[key]) is not str or type(original[key]) is not str:
             return False
+        if original_times is not None and (
+            row[key] == original[key]
+            or row[key] == original_times[index]
+            or (len(row[key]) == len(original_times[index]) and row[key].replace(" ", "T", 1) == original_times[index])
+        ):
+            continue
         current = known_times[index].replace(" ", "T") if known_times is not None else public_time(row[key])
-        if current != public_time(original[key]):
+        if known_times is not None and row[key] == original[key]:
+            continue
+        expected = original_times[index] if original_times is not None else public_time(original[key])
+        if current != expected:
             return False
     return True
 
@@ -193,7 +203,7 @@ def _task_bindings(conn, baseline, tables, *, context):
         fail("adoption_reference_invalid", "baseline.current_task_binding")
     if current_tasks != task_refs or current_ops != operations:
         fail("adoption_reference_invalid", "baseline.original_task_ref")
-    current = raw_table_rows(context.task_identities(ref), "WorkbenchTaskRefs")
+    current = context.task_identities(ref)
     if not same(indexed(current, "row_ref"), tasks):
         fail("adoption_reference_invalid", "baseline.full_current_task_membership")
     return task_refs, operations

@@ -4,6 +4,7 @@ import csv
 import json
 from datetime import datetime
 from io import BytesIO, StringIO
+from typing import Optional
 
 import pytest
 from openpyxl import load_workbook
@@ -30,7 +31,8 @@ from tests.workbench.run_candidate_support import candidate_case as _candidate_c
 from tests.workbench.run_candidate_support import compute
 
 
-def batch_delivery(due="2026-10-13", *, finish="2026-10-13T12:00:00", missing=False, deferred=False, part_name="零件"):
+def batch_delivery(due: Optional[str] = "2026-10-13", *, finish="2026-10-13T12:00:00", missing=False,
+                   deferred=False, part_name: Optional[str] = "零件"):
     batch = {"batch_id": "B1", "part_no": "P1", "part_name": part_name, "due_date": due,
              "quantity": 3, "priority": "urgent"}
     rows = [{"schedule_id": 1, "op_id": 1, "batch_id": "B1", "start_time": "2026-10-13T08:00:00", "end_time": finish}]

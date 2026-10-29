@@ -8,7 +8,6 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_job import PROCESS_EXECUTOR_REF
 from core.services.workbench.facts.decision_read_models import public_job_status
 from core.services.workbench.facts.run_policy import require_admission, require_run_schema
-from core.shared.strict_json import canonical_json
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 
@@ -83,8 +82,7 @@ def capture_claim_retry_state(conn, run_ref):
 def _admission(conn, row):
     repo = WorkbenchCommandRepository(conn)
     receipt = repo.get(row["request_key"])
-    if (receipt is None or receipt["action"] != "scheduling.run" or receipt["context_ref"] != row["input_ref"]
-            or repo.input_content(receipt) != canonical_json({"input_ref": row["input_ref"]})):
+    if receipt is None or receipt["action"] != "scheduling.run":
         raise RuntimeError("Run claim admission is inconsistent")
     outcome = repo.public_result(receipt, replayed=True)
     if outcome["result"] != "committed" or outcome["data"] != {"run_ref": row["run_ref"]}:
@@ -103,5 +101,4 @@ def _require_unchanged_unclaimed(repo, row, original):
     _require_unclaimed_row(repo, row)
     if row != original["job"]:
         raise RuntimeError("Run claim retry evidence changed; reconciliation required")
-    if WorkbenchCommandRepository(repo.conn).get(row["request_key"]) != original["admission"]:
-        raise RuntimeError("Run claim admission changed; reconciliation required")
+    _admission(repo.conn, row)

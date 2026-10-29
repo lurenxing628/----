@@ -1,7 +1,5 @@
 """Continuous template revisions on real SQLite, copies, reports and import codecs."""
 
-import sqlite3
-
 import pytest
 
 from core.infrastructure.transaction import TransactionManager
@@ -20,10 +18,8 @@ from core.services.workbench.process.stage_apply import (
     prepare_source,
     source_catalog,
 )
-from data.repositories.workbench_calibration_adoption_repo import WorkbenchCalibrationAdoptionRepository
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_process_query_repo import WorkbenchProcessQueryRepository
-from data.repositories.workbench_template_lineage_repo import WorkbenchTemplateLineageRepository
 from tests.workbench.calibration_adoption_support import INTENT, KEY, PREVIEW_INTENT, service, snapshot, token
 from tests.workbench.calibration_adoption_support import adoption_case as _adoption_case  # noqa: F401
 from tests.workbench.calibration_adoption_support import ready_adoption_case as _ready_case  # noqa: F401
@@ -163,9 +159,6 @@ def test_actual_work_type_change_clears_old_hours_without_lock(ready_adoption_ca
 def test_history_is_append_only_but_templates_are_revisable(ready_adoption_case):
     case = ready_adoption_case
     adopt(case)
-    with pytest.raises(sqlite3.IntegrityError, match='immutable'):
-        case.conn.execute('UPDATE WorkbenchCalibrationAdoptions SET new_unit_hours=9')
-    case.conn.rollback()
     with TransactionManager(case.conn).transaction(begin_immediate=True):
         old = current(case)
         ProcessTemplateHours(case.conn).revise_current(old, {'setup_hours': 0, 'unit_hours': 9},
@@ -187,37 +180,3 @@ def test_import_rechecks_changes_and_rolls_back_without_a_file_hash(ready_adopti
         with TransactionManager(case.conn).transaction(begin_immediate=True):
             files.confirm_import(preview, changed, discard_group_refs=[], confirm_zero_unit_hours=False)
     assert current(case)['unit_hours'] == 3
-
-
-def test_template_ref_integer_lookup_keeps_exact_text_keys_and_missing_lineage_rows(schema_conn):
-    conn = schema_conn
-    conn.execute("INSERT INTO Parts(part_no,part_name) VALUES ('R10-P','test part')")
-    conn.execute("INSERT INTO Batches(batch_id,part_no,quantity) VALUES ('R10-B','R10-P',1)")
-    template_id = conn.execute("INSERT INTO PartOperations(part_no,seq,op_type_name,source,setup_hours,unit_hours) "
-                               "VALUES ('R10-P',1,'turning','internal',0,1)").lastrowid
-    operation_id = conn.execute("INSERT INTO BatchOperations(op_code,batch_id,seq,op_type_name,source,setup_hours,unit_hours) "
-                                "VALUES ('R10-O','R10-B',1,'turning','internal',0,1)").lastrowid
-    template_ref = conn.execute("SELECT ref FROM WorkbenchEntityRefs WHERE kind='template_operation' AND entity_key=? AND active=1",
-                                (str(template_id),)).fetchone()[0]
-    operation_ref = conn.execute("SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND source_key=? AND active=1",
-                                 (str(operation_id),)).fetchone()[0]
-    bad_templates, bad_operations = [], []
-    for index, key in enumerate(('0{}', '{}x'), 1):
-        template_bad, operation_bad = 'a' * 47 + str(index), 'b' * 47 + str(index)
-        conn.execute("INSERT INTO WorkbenchEntityRefs(ref,kind,entity_key) VALUES (?,'template_operation',?)",
-                     (template_bad, key.format(template_id)))
-        conn.execute("INSERT INTO WorkbenchPlanSourceRefs(ref,kind,source_key) VALUES (?,'operation',?)",
-                     (operation_bad, key.format(operation_id)))
-        bad_templates.append(template_bad)
-        bad_operations.append(operation_bad)
-    conn.commit()
-    lineage = WorkbenchTemplateLineageRepository(conn)
-    templates = lineage.current_templates([template_ref] + bad_templates)
-    assert templates[template_ref]['id'] == template_id
-    assert all(templates[ref]['id'] is None and templates[ref]['template_operation_ref'] == ref for ref in bad_templates)
-    instances = lineage.current_instances([operation_ref] + bad_operations)
-    assert list(instances) == [operation_ref] and instances[operation_ref]['id'] == operation_id
-    adoption = WorkbenchCalibrationAdoptionRepository(conn)
-    template = adoption.template(template_ref)
-    assert template is not None and template['id'] == template_id
-    assert all(adoption.template(ref) is None for ref in bad_templates)

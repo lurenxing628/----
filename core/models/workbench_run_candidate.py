@@ -13,6 +13,8 @@ MAX_COLLECTION_BYTES = 128 * 1024 * 1024
 MAX_RESPONSE_BYTES = 32 * 1024 * 1024
 MAX_CANDIDATES = 256
 MAX_TASKS = 20000
+_REF_RE = re.compile(r"[0-9a-f]{48}")
+_LOCAL_TIME_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?")
 
 
 def reject(code, message, status=409) -> NoReturn:
@@ -20,14 +22,14 @@ def reject(code, message, status=409) -> NoReturn:
 
 
 def reference(value, *, stored=False):
-    if type(value) is not str or re.fullmatch(r"[0-9a-f]{48}", value) is None:
+    if type(value) is not str or _REF_RE.fullmatch(value) is None:
         reject("candidate_binding_invalid" if stored else "invalid_input",
                "候选方案或相关记录已失效，请刷新后重新选择。", 500 if stored else 400)
     return value
 
 
 def local_time(value):
-    if type(value) is not str or re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?", value) is None:
+    if type(value) is not str or _LOCAL_TIME_RE.fullmatch(value) is None:
         raise ValueError("Expected factory-local ISO datetime")
     return datetime.fromisoformat(value)
 

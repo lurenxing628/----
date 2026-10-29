@@ -25,7 +25,6 @@ from .summary_runtime_state import (
     _build_summary_warnings,
     _merge_fallback_warnings,
 )
-from .summary_size_guard import apply_summary_size_guard
 
 __all__ = ["build_result_summary"]
 
@@ -72,5 +71,4 @@ def build_result_summary(*, ctx: SummaryBuildContext) -> Dict[str, Any]:
         completion_status=completion_status,
         time_cost_ms=time_cost_ms,
     )
-    result_summary_obj = apply_summary_size_guard(result_summary_obj)
     return result_summary_obj

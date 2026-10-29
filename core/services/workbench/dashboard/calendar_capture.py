@@ -5,13 +5,12 @@ and later resource analysis project that snapshot with the same calendar factory
 only interval indexes, states and compact pressure metrics survive each streamed projection.
 """
 
-from core.services.capacity.plan_calendar_intervals import instant
 from core.services.capacity.plan_calendar_io import CalendarFacts, ProjectionLimit, snapshot_values
 from core.services.capacity.plan_calendar_issues import issue
 from core.services.capacity.plan_calendar_limits import MAX_CALENDAR_DATES
 from core.services.capacity.plan_calendar_windows import policy_projection
 from core.services.workbench.facts.current_resource_calendar import calendar_from_sources
-from core.services.workbench.facts.resource_intervals import resource_identity_issues, task_interval
+from core.services.workbench.facts.resource_intervals import resource_identity_issues
 from core.services.workbench.facts.resource_pressure import pressure_from_index
 from core.services.workbench.facts.resource_projection import ResourceTaskIndex, resource_cohort
 from core.services.workbench.plan.calendar import range_days
@@ -24,7 +23,7 @@ def _state(states):
         value == "unavailable" for value in states) else "partial"
 
 
-def _check_tasks(rows, start, end, constraints):
+def _check_tasks(rows, start, end, constraints, *, dt_intervals):
     unknown = set()
     for row in rows:
         source = "internal" if row.get("_point_work") else str(row["source"]).strip().lower()
@@ -33,7 +32,8 @@ def _check_tasks(rows, start, end, constraints):
         if source != "internal":
             unknown.add(row["op_id"])
             continue
-        constraints.check(row, max(start, instant(row["start_time"])), min(end, instant(row["end_time"])))
+        row_start, row_end = dt_intervals[row["schedule_id"]]
+        constraints.check(row, max(start, row_start), min(end, row_end), row_start=row_start, row_end=row_end)
     return sorted(unknown)
 
 
@@ -52,9 +52,10 @@ class ResourcePressureMetrics:
     resources capture could not stream, plus the daily rows of one requested resource.
     """
 
-    def __init__(self, plan_tasks, time_scope, factory):
+    def __init__(self, plan_tasks, time_scope, factory, *, dt_intervals):
         # Projected official tasks paired one-to-one with their stored rows.
         self._plan_tasks = plan_tasks
+        self._dt_intervals = dt_intervals
         self.start, self.end = time_scope["range_start"], time_scope["range_end"]
         self.factory = factory
         self.summaries = {}
@@ -67,7 +68,10 @@ class ResourcePressureMetrics:
                                 **{kind: {"ref": task[kind + "_ref"], "label": raw[kind + "_name"]}
                                    if task[kind + "_ref"] is not None else None for kind in ("machine", "operator")})
                            for task, raw in zip(tasks, rows)]
-            self._intervals = {task["row_ref"]: task_interval(task) for task in self._tasks}
+            self._intervals = {
+                task["row_ref"]: self._dt_intervals[raw["schedule_id"]]
+                for task, raw in zip(self._tasks, rows)
+            }
         return self._tasks, self._intervals
 
     def _cohort_members(self):
@@ -132,17 +136,19 @@ class ResourcePressureMetrics:
         return result
 
 
-def _constraint_projection(calendar, ids, resources, identities, rows, start, end, schema_version, plan_ref, time_scope, plan_tasks):
+def _constraint_projection(
+    calendar, ids, resources, identities, rows, start, end, schema_version, plan_ref, time_scope, plan_tasks, *, dt_intervals
+):
     factory = calendar_from_sources(calendar["sources"], schema_version=schema_version, identities=identities,
                                     plan_ref=plan_ref, scope=time_scope)
-    metrics = ResourcePressureMetrics(plan_tasks, time_scope, factory)
+    metrics = ResourcePressureMetrics(plan_tasks, time_scope, factory, dt_intervals=dt_intervals)
     specs = {(kind, key): {"kind": kind, "saved_id": key,
                           "ref": public_resource(kind, key, resources, None)["resource_ref"]}
              for kind in ("machine", "operator") for key in ids[kind]}
     states = {}
     if factory is None:
         constraints = TaskConstraints(calendar)
-        unknown = _check_tasks(rows, start, end, constraints)
+        unknown = _check_tasks(rows, start, end, constraints, dt_intervals=dt_intervals)
         return constraints, unknown, ["unavailable" for _ in specs], metrics
 
     def lookup(kind, key):
@@ -158,7 +164,7 @@ def _constraint_projection(calendar, ids, resources, identities, rows, start, en
         calendar_lookup=lookup,
         point_calendar=factory.engine,
     )
-    unknown = _check_tasks(rows, start, end, constraints)
+    unknown = _check_tasks(rows, start, end, constraints, dt_intervals=dt_intervals)
     remaining = [(key, spec) for key, spec in specs.items() if key not in states]
     for (key, spec), (_, projected) in zip(remaining, factory.iter_resources(
             [spec for _, spec in remaining], start, end)):
@@ -169,6 +175,7 @@ def _constraint_projection(calendar, ids, resources, identities, rows, start, en
 
 def capture_resource_pressure(conn, *, entry, scope, resources, identities, plan_span, context, captured_calendar, plan_tasks):
     rows, start, end, time_scope, binding = context.calendar_selection(entry, scope, resources, plan_span)
+    dt_intervals = context.datetime_intervals(entry)
     first, last, dates = range_days(start, end)
     if any(row.get("_point_work") for row in rows):
         last = max(last, end.date())
@@ -183,7 +190,8 @@ def capture_resource_pressure(conn, *, entry, scope, resources, identities, plan
     except ProjectionLimit as exc:
         calendar["reason"] = str(exc)
     constraints, unknown, states, metrics = _constraint_projection(calendar, ids, resources, identities, rows, start, end,
-                                                                  captured_calendar.schema_rows, scope.plan_ref, time_scope, plan_tasks)
+                                                                  captured_calendar.schema_rows, scope.plan_ref, time_scope, plan_tasks,
+                                                                  dt_intervals=dt_intervals)
     if calendar["sources"] is not None:
         # 保存的日历表结构坏了（factory.engine 为 None）时全局班表同样算不出，不再拿空引擎去投影；坏日期等内容错误由引擎投影成不可用。
         global_state = (policy_projection(constraints.point_calendar, first, last, start, end)["state"]

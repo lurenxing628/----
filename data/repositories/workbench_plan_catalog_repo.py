@@ -11,8 +11,6 @@ from __future__ import annotations
 import sqlite3
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
-from core.infrastructure.connection_guards import schema_contract_memo
-
 from .schedule_plan_query_repo import SCHEDULE_PLAN_ROWS_SQL, SchedulePlanQueryRepository
 from .schedule_rows import ScheduleTimeSpanRow
 
@@ -43,7 +41,6 @@ class WorkbenchPlanCatalogRepository(SchedulePlanQueryRepository):
         self._histories: Dict[int, Optional[Dict[str, Any]]] = {}
         self._history_rows: Dict[int, List[Dict[str, Any]]] = {}
         self._spans: Dict[int, Optional[ScheduleTimeSpanRow]] = {}
-        self._storage_columns: Dict[str, List[str]] = {}
         self._latest_version: Optional[int] = None
         self._latest_version_loaded = False
 
@@ -89,22 +86,17 @@ class WorkbenchPlanCatalogRepository(SchedulePlanQueryRepository):
         pending = [version for version in dict.fromkeys(versions) if version not in self._history_rows]
         if not pending:
             return
-        if "ScheduleHistory" not in self._storage_columns:
-            self._storage_columns["ScheduleHistory"] = [str(row[1]) for row in schema_contract_memo(self.conn).structure.table_info("ScheduleHistory")]
-        selected = ",".join('CASE WHEN 1 THEN "' + name.replace('"', '""') + '" END AS "' + name.replace('"', '""') + '"'
-                            for name in self._storage_columns["ScheduleHistory"])
+        selected = "id, +schedule_time AS schedule_time, version, strategy, batch_count, op_count, result_status, result_summary, created_by"
         for start in range(0, len(pending), 400):
             chunk = pending[start:start + 400]
             if len(chunk) == 1:
-                self._history_rows[chunk[0]] = self.fetchall("SELECT " + selected +
-                    " FROM ScheduleHistory WHERE version=? ORDER BY schedule_time DESC,id DESC LIMIT 2", chunk)
+                self._history_rows[chunk[0]] = self.fetchall(
+                    f"SELECT {selected} FROM ScheduleHistory WHERE version=? ORDER BY schedule_time DESC,id DESC LIMIT 2", chunk)
                 continue
             self._history_rows.update((version, []) for version in chunk)
             marks = ",".join("?" for _ in chunk)
-            rows = self.fetchall("SELECT " + selected + " FROM ScheduleHistory WHERE id IN (SELECT id FROM (SELECT id,"
-                "ROW_NUMBER() OVER (PARTITION BY version ORDER BY schedule_time DESC,id DESC) AS history_position "
-                "FROM ScheduleHistory WHERE version IN (" + marks + ")) WHERE history_position <= 2) "
-                "ORDER BY version,schedule_time DESC,id DESC", chunk)
+            rows = self.fetchall(
+                f"SELECT {selected} FROM ScheduleHistory WHERE version IN ({marks}) ORDER BY version,schedule_time DESC,id DESC", chunk)
             for row in rows:
                 self._history_rows[row["version"]].append(row)
 
@@ -123,30 +115,18 @@ class WorkbenchPlanCatalogRepository(SchedulePlanQueryRepository):
             (version,),
         )
 
-    def iter_raw_plan_rows(
-        self, *, version: int,
-    ) -> Iterator[Dict[str, Any]]:
+    def iter_raw_plan_rows(self, *, version: int) -> Iterator[Dict[str, Any]]:
         """Stream plan rows in id order without declared DATE/TIMESTAMP conversion."""
-        fields = ("id", "op_id", "machine_id", "operator_id", "start_time", "end_time", "lock_status", "version")
-        selected = ", ".join("CASE WHEN 1 THEN raw." + field + " END AS " + field for field in fields)
         return self.iter_rows(
-            "SELECT " + selected + " FROM (" + SCHEDULE_PLAN_ROWS_SQL + ") raw ORDER BY raw.id ASC",
-            (version,),
-        )
+            "SELECT id, op_id, machine_id, operator_id, +start_time AS start_time, "
+            "+end_time AS end_time, lock_status, version FROM Schedule WHERE version = ? ORDER BY id ASC", (version,))
 
-    def list_plan_storage_rows(
-        self, *, version: Any,
-    ) -> List[Dict[str, Any]]:
+    def list_plan_storage_rows(self, *, version: Any) -> List[Dict[str, Any]]:
         """Capture every persisted field without declared DATE/TIMESTAMP conversion."""
-        table = "Schedule"
-        if table not in self._storage_columns:
-            self._storage_columns[table] = [str(row[1]) for row in schema_contract_memo(self.conn).structure.table_info(table)]
-        expressions = []
-        for name in self._storage_columns[table]:
-            quoted = '"' + name.replace('"', '""') + '"'
-            expressions.append(f"CASE WHEN 1 THEN r.{quoted} ELSE NULL END AS {quoted}")
-        sql = "SELECT " + ", ".join(expressions) + ' FROM "Schedule" r WHERE r.version = ?'
-        return self.fetchall(sql + " ORDER BY r.id ASC, r.rowid ASC", (version,))
+        return self.fetchall(
+            "SELECT r.id, r.op_id, r.machine_id, r.operator_id, +r.start_time AS start_time, "
+            '+r.end_time AS end_time, r.lock_status, r.version, +r.created_at AS created_at FROM "Schedule" r '
+            "WHERE r.version = ? ORDER BY r.id ASC, r.rowid ASC", (version,))
 
     def enrich_arrangements(self, arrangements, *, captured_machines=None):
         """Enrich captured arrangements; supplied machines are complete, including missing keys."""

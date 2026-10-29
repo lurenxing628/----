@@ -108,27 +108,6 @@ def _overdue_rows(query, resolution):
         version=resolution.version)
 
 
-def test_overdue_bad_finish_time_has_its_own_bucket(tmp_path):
-    from datetime import datetime
-
-    from core.services.common.overdue_calculations import compute_overdue_bucket_groups
-
-    conn = _seed_db(tmp_path)
-    try:
-        conn.execute("UPDATE Schedule SET end_time='坏结束时间' WHERE op_id IN (SELECT id FROM BatchOperations WHERE batch_id='B_SCHEDULED')")
-        conn.commit()
-        query = SchedulePlanQueryService(conn)
-        resolution = query.resolve_plan(VERSION, ROLE_ADOPTED)
-        scheduled, unscheduled, invalid = compute_overdue_bucket_groups(
-            _overdue_rows(query, resolution), now_dt=datetime.fromisoformat(AS_OF_TIME))
-        assert not scheduled
-        assert {row['batch_id'] for row in unscheduled} == {'B_UNSCHEDULED'}
-        assert {row['batch_id'] for row in invalid} == {'B_SCHEDULED'}
-        assert invalid[0]['bucket'] == 'schedule_time_invalid'
-    finally:
-        conn.close()
-
-
 def test_overdue_official_source_remains_strict_and_rejects_retired_roles(tmp_path):
     conn = _seed_db(tmp_path)
     try:

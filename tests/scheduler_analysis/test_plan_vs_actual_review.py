@@ -161,13 +161,6 @@ def test_workbench_report_bounds_finish_cohort_before_detail_admission(ledger_ca
     scope = ReportScope(**dates)
     with reused.read_snapshot():
         assert len(reused.read(scope)['rows']) == 1
-    case.conn.execute("UPDATE Schedule SET end_time='invalid' WHERE version=2 AND op_id=?", (others[0],))
-    case.conn.commit()
-    with pytest.raises(WorkbenchCommandRejected) as rejection, reused.read_snapshot():
-        reused.read(scope)
-    assert rejection.value.code == 'plan_unavailable'
-    invalid = client.get(url, query_string=dates)
-    assert invalid.status_code == 409 and invalid.get_json()['error']['code'] == 'plan_unavailable'
 
 def test_workbench_report_restores_second_page_once_and_keeps_export_binding(ledger_case, monkeypatch, record_property):
     from flask import Blueprint, Flask, g

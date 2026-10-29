@@ -12,24 +12,10 @@ from collections import deque
 from copy import copy
 from typing import Any, Dict
 
-from core.algorithm_runtime.native_snapshot import make_class_guard
-from core.algorithm_runtime.resource_demand import ResourceDemand
-from core.algorithm_runtime.resource_quality import MachineTypeState
-from core.algorithm_runtime.run_state import ScheduleRunState
-
-_STATE_GUARD = make_class_guard(ScheduleRunState)
-_TYPES_GUARD = make_class_guard(MachineTypeState)
-_DEMAND_GUARD = make_class_guard(ResourceDemand)
 _GRAPH_SETS = ("completed_or_fixed_op_ids", "blocked_op_ids", "ready_op_ids")
 
 
-def _supported(state, checkpoint, final):
-    for candidate in (state, checkpoint.state, final.state):
-        if not _STATE_GUARD(candidate) or not _TYPES_GUARD(candidate.last_op_type_by_machine):
-            return False
-    demand = state.last_op_type_by_machine.demand
-    if demand is not None and not _DEMAND_GUARD(demand):
-        return False
+def _supported(checkpoint, final):
     # A complete capture must belong to the same reference trajectory, not just
     # an input signature shared by two different operation orders.
     return (final.picked_op_ids[:checkpoint.position] == checkpoint.picked_op_ids
@@ -110,7 +96,7 @@ def install_reconverged_tail(checkpoint, final, *, state, next_idx, graph_state)
     partly installed trial result. The caller exits the dispatch loop immediately
     after a successful install.
     """
-    if not _supported(state, checkpoint, final):
+    if not _supported(checkpoint, final):
         return False
     suffix = final.state.results[len(checkpoint.state.results):]
     progress = _prepare_progress(final, graph_state, suffix)

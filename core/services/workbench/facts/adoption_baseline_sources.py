@@ -7,19 +7,52 @@ from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.infrastructure.read_evidence import verified_read
 from core.models.content import same
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.facts.candidate_archive import load_adoption_candidate
+from core.services.workbench.facts.candidate_archive import load_adoption_candidate_with_key
 from core.services.workbench.facts.candidate_baseline import AdmissionBaseline, unpack_blob
 from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.candidate_projection import baseline_capture, candidate_origin
+from core.services.workbench.facts.candidate_store import cache_get, cache_memo, cached_generation_facts
 from core.services.workbench.facts.candidate_tasks import task_resource
 from core.services.workbench.facts.candidate_values import gap
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
+from data.repositories.schedule_time_sql import parse_dt_for_sql
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 
-from .adoption_baseline_values import fail, require
+from .adoption_baseline_values import fail, indexed, require
 
 _TABLES = ("Schedule", "ScheduleHistory", "WorkbenchPlanSourceRefs", "WorkbenchTaskRefs",
            "WorkbenchEntityRefs", "BatchOperations", "Batches")
+_CANDIDATE_SOURCE_CACHE = {}
+
+
+def _precompute_arranged_times(arranged):
+    result = {}
+    for row in arranged:
+        if type(row) is not dict:
+            continue
+        op_id, start, end = row.get("op_id"), row.get("start_time"), row.get("end_time")
+        if type(op_id) is int and type(start) is str and type(end) is str:
+            s_sql, e_sql = parse_dt_for_sql(start), parse_dt_for_sql(end)
+            if s_sql is not None and e_sql is not None:
+                result[op_id] = (s_sql.replace(" ", "T"), e_sql.replace(" ", "T"))
+    return result
+
+
+def _precompute_indexed_tables(tables):
+    source_refs = tables["WorkbenchPlanSourceRefs"]
+    batch_ops = tables["BatchOperations"]
+    batches = tables["Batches"]
+    return {
+        "BatchOperations": indexed(batch_ops, "id"),
+        "Batches": indexed(batches, "batch_id"),
+        "operation_sources": indexed(
+            [row for row in source_refs if type(row) is dict and row.get("kind") == "operation" and row.get("active") == 1],
+            "source_key",
+        ),
+        "source_refs_id": id(source_refs),
+        "batch_operations_id": id(batch_ops),
+        "batches_id": id(batches),
+    }
 
 
 @dataclass(frozen=True)
@@ -65,13 +98,26 @@ def _candidate_source(conn, audit):
     candidate_ref, run_ref = audit["candidate_ref"], audit["run_ref"]
     _source_exists(conn, "WorkbenchRunJobs", "run_ref", run_ref)
     _source_exists(conn, "WorkbenchRunCandidates", "candidate_ref", candidate_ref)
-    run, candidate, scope, tasks, capture, _, facts = load_adoption_candidate(conn, candidate_ref)
-    tables = _candidate_tables(facts)
-    AdmissionBaseline(capture, facts, scope)
-    prepared = CandidateAdmissionProof(decoded_baseline(capture["baseline"]), tables)
+    run, candidate, scope, tasks, capture, _, facts, raw_key = load_adoption_candidate_with_key(
+        conn, candidate_ref, copy_on_read=False
+    )
+    cached = cache_get(_CANDIDATE_SOURCE_CACHE, raw_key) if raw_key is not None else None
+    if cached is not None:
+        tables, prepared, arranged, arranged_times, indexed_tables = cached
+    else:
+        tables = _candidate_tables(facts)
+        AdmissionBaseline(capture, facts, scope)
+        prepared = CandidateAdmissionProof(decoded_baseline(capture["baseline"]), tables)
+        arranged = [row["payload"] for row in tasks]
+        arranged_times = _precompute_arranged_times(arranged)
+        indexed_tables = _precompute_indexed_tables(tables)
+        if raw_key is not None:
+            cache_memo(_CANDIDATE_SOURCE_CACHE, raw_key, (tables, prepared, arranged, arranged_times, indexed_tables))
+    provenance = candidate_origin(candidate, run, capture)
     evidence = {"baseline": capture["baseline"], "tables": tables,
-                "arranged": [row["payload"] for row in tasks], "generation_facts": facts,
-                "provenance": candidate_origin(candidate, run, capture),
+                "arranged": arranged, "arranged_times": arranged_times, "indexed_tables": indexed_tables,
+                "generation_facts": facts,
+                "provenance": provenance,
                 "candidate": candidate, "tasks": tasks, "admission_proof": prepared}
     return candidate, capture, evidence
 
@@ -127,11 +173,13 @@ def _trial_source(conn, audit):
     _scenario_row_bindings(conn, saved)
     arranged = [{"op_id": row["original"]["operation"]["id"], **row["current"],
                  "start_time": row["current"]["start"], "end_time": row["current"]["end"]} for row in rows]
+    arranged_times = _precompute_arranged_times(arranged)
+    indexed_tables = _precompute_indexed_tables(tables)
     origin = {"source_kind": "trial_adoption", "source_ref": scenario_ref, "source_label": saved["name"],
               "run_ref": None, "accepted_at": head["created_at"], "finished_at": saved["saved_at"],
               "algorithm": None, "baseline": baseline_capture(admission["baseline"], head["created_at"],
                                                                 kind="trial_creation_official")}
-    return prepared, (admission["baseline"], tables, arranged, origin)
+    return prepared, (admission["baseline"], tables, arranged, origin, arranged_times, indexed_tables)
 
 
 def _scenario_row_bindings(conn, saved):
@@ -180,7 +228,7 @@ def prepare_trial_adoption_facts(source):
     admission = head["admission"]
     assigned = _TrialResourceFacts(admission["facts"])
     capture = admission["source"].get("capture")
-    resources = GenerationFacts(capture) if capture is not None else assigned
+    resources = assigned if capture is None else cached_generation_facts(capture)
     operations = {row["original"]["operation"]["id"]: row["original"]["operation"] for row in rows}
     return TrialAdoptionFacts(source, resources, assigned, operations)
 

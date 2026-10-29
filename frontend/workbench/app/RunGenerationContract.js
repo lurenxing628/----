@@ -16,6 +16,7 @@
     min_changeover: ['failed_ops', 'changeover_count', 'overdue_count', 'total_tardiness_hours', 'weighted_tardiness_hours', 'makespan_hours']
   };
   const metadataKeys = ['generation_policy_version', 'representative_objectives', 'evaluations', 'origin', 'first_found_elapsed_ms', 'search_evidence_ref'];
+  const summaryKeys = ['generation_policy_version', 'representative_objectives', 'origin', 'first_found_elapsed_ms', 'search_evidence_ref'];
   const unified = value => object(value) && value.generation_policy_version === 'unified_search_v1';
   const budget = value => Number.isInteger(value) && value >= 1;
   const objective = value => text(value) && Object.prototype.hasOwnProperty.call(labels, value);
@@ -59,6 +60,11 @@
       && value.representative_objectives.every(name => Object.prototype.hasOwnProperty.call(value.evaluations, name))
       && origin(value.origin) && number(value.first_found_elapsed_ms) && evidence(value.search_evidence_ref, runRef);
   }
+  function metadataSummary(value, runRef) {
+    return unified(value)
+      && objectives(value.representative_objectives) && value.representative_objectives.length > 0
+      && origin(value.origin) && number(value.first_found_elapsed_ms) && evidence(value.search_evidence_ref, runRef);
+  }
   function catalogElapsed(value) {
     return shape(value, ['value', 'state', 'reason']) && value.value === null && value.state === 'not_applicable'
       && shape(value.reason, ['field', 'code', 'message']) && value.reason.field === 'elapsed_seconds'
@@ -68,6 +74,15 @@
     const fields = ['mode', 'mode_label', 'strategy', 'strategy_label'];
     return shape(value, fields.concat(metadataKeys, ['primary_objective', 'target_objectives'])) && fields.every(key => value[key] === null || text(value[key]))
       && metadata(value, runRef) && objective(value.primary_objective) && sameArray(value.target_objectives, targets(value.primary_objective));
+  }
+  function algorithmSummary(value, runRef) {
+    const fields = ['mode', 'mode_label', 'strategy', 'strategy_label'];
+    return shape(value, fields.concat(summaryKeys, ['primary_objective', 'target_objectives']))
+      && fields.every(key => value[key] === null || text(value[key]))
+      && metadataSummary(value, runRef)
+      && objective(value.primary_objective)
+      && sameArray(value.target_objectives, targets(value.primary_objective))
+      && value.representative_objectives.every(name => value.target_objectives.includes(name));
   }
   function selectionBasis(value, candidates) {
     const fields = ['generation_policy_version', 'selection_policy_version', 'primary_objective', 'target_objectives', 'selected_candidate_ref',
@@ -93,6 +108,6 @@
         && sameArray(value.objective_field_order[name], fieldOrders[name]);
     }) && value.selected_score.length === value.objective_field_order[value.primary_objective].length;
   }
-  window.RunGenerationContract = { metadataKeys, budget, objective, objectives, objectiveLabel, fieldOrders, sameArray,
-    score, runOptions, scoringScope, evaluations, origin, evidence, metadata, catalogElapsed, algorithm, selectionBasis };
+  window.RunGenerationContract = { metadataKeys, summaryKeys, budget, objective, objectives, objectiveLabel, fieldOrders, sameArray,
+    score, runOptions, scoringScope, evaluations, origin, evidence, metadata, metadataSummary, catalogElapsed, algorithm, algorithmSummary, selectionBasis };
 })();

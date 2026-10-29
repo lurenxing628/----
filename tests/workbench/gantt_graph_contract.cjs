@@ -50,8 +50,20 @@ const unavailable = { state: 'unavailable', reason: '生成时未记录工艺关
 assert(valid(unavailable));
 assert(!valid({ ...unavailable, reason: '' }));
 assert(!valid({ ...unavailable, nodes: graph.nodes }));
-const largeGraph = { ...graph, nodes: Array.from({ length: 10001 }, (_, index) => ({ ...graph.nodes[0], task_ref: ref(index + 1000), operation_ref: ref(index + 20000), predecessor_operation_refs: [] })), critical_task_refs: [], critical_edges: [] };
+const summaryGraph = { state: 'available', reason: null, scope: 'full_plan', nodes: [], node_count: tasks.length, nodes_complete: false, critical_task_refs: [], critical_edges: [] };
+assert(valid(summaryGraph));
+assert(!valid({ ...summaryGraph, node_count: 0 }));
+assert(!valid({ ...summaryGraph, node_count: 10001 }));
+assert(valid({ ...summaryGraph, node_count: 10001 }, { tasks: [tasks[0]], completeCount: undefined }));
+assert(!valid({ ...summaryGraph, nodes: [graph.nodes[0]] }));
+assert(!valid({ ...summaryGraph, scope: 'full_candidate' }, { scope: 'full_candidate' }));
+assert(valid({ ...graph, node_count: graph.nodes.length, nodes_complete: true }));
+assert(!valid({ ...graph, node_count: graph.nodes.length - 1, nodes_complete: true }));
+assert(valid({ ...unavailable, node_count: 0, nodes_complete: false }));
+assert(!valid({ ...unavailable, node_count: 1, nodes_complete: false }));
+const largeGraph = { ...graph, nodes: Array.from({ length: 10001 }, (_, index) => index === 0 ? graph.nodes[0] : ({ ...graph.nodes[0], task_ref: ref(index + 1000), operation_ref: ref(index + 20000), predecessor_operation_refs: [] })), critical_task_refs: [], critical_edges: [] };
 assert(valid(largeGraph, { tasks: [], completeCount: undefined }), 'The complete relation graph is independent of the 10000 visible-task limit');
+assert(valid({ ...largeGraph, node_count: 10001, nodes_complete: true }, { tasks: [tasks[0]], completeCount: undefined }));
 assert.equal(G.create(largeGraph).nodes.size, 10001);
 const missingGraph = clone(graph); missingGraph.nodes[2].predecessor_operation_refs.push(ref(999));
 assert(valid(missingGraph), 'An unarranged predecessor remains an explicit operation reference');
@@ -168,8 +180,16 @@ for (const candidate of [false, true]) {
 }
 
 // The original plan can reuse an operation/task identity, but must never replace the current endpoint coordinates.
-data.projections.baseline = { state: 'available', items: [{ operation_ref: tasks[3].operation_ref, change: 'moved',
-  before: { ...tasks[3], start: at(7), end: at(8), machine_ref: ref(202) } }] };
+const baselineItems = [{ operation_ref: tasks[3].operation_ref, change: 'moved',
+  before: { ...tasks[3], start: at(7), end: at(8), machine_ref: ref(202) } }];
+data.projections.baseline = { state: 'available', items: [], item_count: 1, items_complete: false };
+const unloadedPlan = window.PlanGanttModel.prepare(data);
+assert.equal(unloadedPlan.baselineLoaded, false);
+assert.equal(unloadedPlan.before.length, 0);
+const onDemandPlan = window.PlanGanttModel.prepare(data, baselineItems);
+assert.equal(onDemandPlan.baselineLoaded, true);
+assert.equal(onDemandPlan.before.length, 1);
+data.projections.baseline = { state: 'available', items: baselineItems };
 const comparison = window.PlanGanttModel.layoutPrepared(window.PlanGanttModel.selectPrepared(window.PlanGanttModel.groupPrepared(window.PlanGanttModel.prepare(data), 'machine'), '', false, true), width);
 assert(comparison.rows.filter(row => row.before).every(row => row.occupancy === null), 'Baseline rows must not present current-plan utilization');
 const current = G.locations(comparison).get(ref(4));

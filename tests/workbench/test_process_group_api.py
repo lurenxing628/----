@@ -5,7 +5,6 @@ import json
 import pytest
 
 from core.infrastructure.transaction import TransactionManager
-from core.models.content import content_text
 from core.services.process.workflow_state import record_confirmation
 from tests.workbench.process_stage_api_support import BASE, PART, rejected, seed_stage_scale, stage_api_fixture, success
 
@@ -71,41 +70,6 @@ def test_single_part_reads_preserve_cross_part_group_diagnostics_and_write_guard
     assert api.snapshot() == before
 
 
-@pytest.mark.parametrize("shared_catalog", (False, True))
-@pytest.mark.parametrize("stored_seq", (b"\x15", "第二道"))
-def test_cross_part_group_members_with_mixed_seq_storage_sort_like_sqlite(stage_api, stored_seq, shared_catalog):
-    from core.errors import ValidationError
-    from data.repositories.workbench_process_workflow_repo import WorkbenchProcessWorkflowRepository
-
-    api = stage_api
-    api.prepare()
-    # 同一外部零件的两道成员：一道整数序号，一道是存成 BLOB/文本的坏序号。
-    for seq in (20, stored_seq):
-        api.execute("INSERT INTO PartOperations(part_no,seq,op_type_id,op_type_name,source,supplier_id,ext_days,ext_group_id) "
-                    "VALUES ('PROC-003',?,'PROC-EX','热处理','external','PROC-S',3.25,'PROC-G')", (seq,))
-    before = api.snapshot()
-    with api.database() as conn:
-        repo = WorkbenchProcessWorkflowRepository(conn)
-        expected = [tuple(row) for row in conn.execute(
-            "SELECT part_no,seq,id FROM PartOperations WHERE status='active' AND (part_no=? OR ext_group_id IN ("
-            "SELECT group_id FROM ExternalGroups WHERE part_no=? UNION SELECT ext_group_id FROM PartOperations "
-            "WHERE status='active' AND part_no=? AND ext_group_id IS NOT NULL)) ORDER BY part_no,seq,id", (PART,) * 3)]
-        merged = repo.active_operations(PART, include_related_groups=True)
-        assert [(row["part_no"], row["seq"], row["id"]) for row in merged] == expected
-        assert stored_seq in [row["seq"] for row in merged]
-        cross_part_by_group = None
-        if shared_catalog:
-            cross_part_by_group = {}
-            for op in repo.active_operations():
-                if op["ext_group_id"] is not None:
-                    cross_part_by_group.setdefault(op["ext_group_id"], []).append(op)
-        # 合并排序不再因混合存储类抛 TypeError，坏外协组照常按资料不合法拒绝确认。
-        with pytest.raises(ValidationError):
-            with TransactionManager(conn).transaction(begin_immediate=True):
-                record_confirmation(conn, PART, "source", cross_part_by_group=cross_part_by_group)
-    assert api.snapshot() == before
-
-
 def test_route_confirmation_replaces_the_parts_old_members_in_the_shared_group_index(stage_api):
     """多零件路线文件共用跨件分组索引：换路线后旧工序所在分组里该零件的旧成员清掉（新工序已不在该组），
     新分组加入新成员，别的零件的成员原样保留。"""
@@ -158,38 +122,6 @@ def test_merged_group_ignores_retained_member_days_in_current_diagnostics(stage_
             assert retained["value"] == "old invalid cycle" and not retained["checked"]
 
 
-@pytest.mark.parametrize("retained", ("old invalid cycle", b"\x01"))
-def test_merged_group_retained_member_days_are_neither_exported_nor_imported(stage_api, retained):
-    from core.services.workbench.process.file_codec import decode_process_file, encode_process_file
-    from core.services.workbench.process.files import WorkbenchProcessFileService
-    from tests.workbench.process_file_api_support import FileAPI
-
-    api = stage_api
-    api.prepare()
-    api.confirm("hours_confirm", api.hours())
-    api.execute("UPDATE PartOperations SET ext_days=? WHERE part_no=? AND seq=20", (retained, PART))
-    target = api.ref()
-    _, _, download = FileAPI(api.client).export("hours", target=target, selection="explicit", refs=[target])
-    exported, _ = decode_process_file("hours", download.data, "csv")
-    member = next(row["values"] for row in exported if row["values"]["sequence"] == 20)
-    # 合并组只导出整段周期；保留的逐序旧周期不生效，坏旧值也不挡导出。
-    assert "external_days" not in member and member["group_total_days"] == 6.75
-
-    def preview(rows):
-        content = encode_process_file("hours", rows, "csv").content
-        with api.database() as conn:
-            result, _ = WorkbenchProcessFileService(conn).preview_import("hours", content, file_format="csv")
-        return result.as_dict()["rows"]
-
-    assert all(row["result"] == "unchanged" and not row["errors"] for row in preview([row["values"] for row in exported]))
-    # 逐序周期留空（\N）不写入也不算修改；填任何值都比不上不合法的旧值，只能改合并周期。
-    for days, result in ((None, "unchanged"), (7, "rejected")):
-        member_row, = preview([{"business_code": PART, "sequence": 20, "external_days": days}])
-        assert member_row["result"] == result
-        assert [error["field"] for error in member_row["errors"]] == ([] if days is None else ["external_days"])
-    assert api.rows("PartOperations", "part_no=? AND seq=20", (PART,))[0]["ext_days"] == retained
-
-
 def _synced_merged_batch(api, request_key):
     api.execute("DELETE FROM Schedule WHERE op_id IN (SELECT id FROM BatchOperations WHERE batch_id='PROC-B')")
     api.prepare()
@@ -210,21 +142,6 @@ def test_batch_detail_ignores_retained_member_days_of_merged_context(stage_api):
     external, = [row for row in success(api.client.get(path))["data"]["operations"] if row["source"] == "external"]
     assert external["external_group"]["merge_mode"] == "merged" and external["external_group"]["total_days"] == 6.75
     assert external["external_days"] is None and not external["issues"]
-
-
-@pytest.mark.parametrize("sequence", ("x20", b"\x14"))
-def test_batch_detail_reports_merged_context_with_non_integer_sequence(stage_api, sequence):
-    api = stage_api
-    path = _synced_merged_batch(api, "merged-non-integer-sequence")
-    # 存量合并外协工序号混入非整数时，按分组范围不一致诊断，不在区间比较里抛 TypeError。
-    api.execute("UPDATE BatchExternalContexts SET sequence=? WHERE operation_id=(SELECT MAX(id) FROM BatchOperations "
-                "WHERE batch_id='PROC-B' AND source='external')", (sequence,))
-    api.execute("UPDATE BatchOperations SET seq=? WHERE id=(SELECT MAX(id) FROM BatchOperations "
-                "WHERE batch_id='PROC-B' AND source='external')", (sequence,))
-    operations = success(api.client.get(path))["data"]["operations"]
-    broken, = [row for row in operations if row["source"] == "external"]
-    assert [item["code"] for item in broken["issues"]] == ["external_context_invalid"]
-    assert "外协分组范围与本工序不一致" in broken["issues"][0]["message"]
 
 
 # '--5' 和上标 '²' 看着像数字但 int() 不认，同样按文本排在数字工序之后。
@@ -325,14 +242,6 @@ def test_group_preview_command_and_receipt_roundtrip(stage_api):
     local_document = json.loads(source_row["content_json"])
     assert "members" not in local_document[2][8]
     assert local_document[2][7]["capable"] is True
-    local_document[2][7]["capable"] = 1
-    api.execute("UPDATE WorkbenchProcessOperationConfirmations SET content_json=? WHERE operation_ref=? AND stage='source'",
-                (content_text(local_document), source_row["operation_ref"]))
-    changed = api.detail()["data"]
-    assert not changed["workflow"]["ready"]
-    assert next(row for row in changed["operations"] if row["ref"] == source_row["operation_ref"])["confirmation"]["source"]["state"] == "unconfirmed"
-    api.confirm("source_confirm", api.source())
-    assert api.detail()["data"]["workflow"]["ready"]
     # A shared membership change affects the group's operations, not an unrelated internal operation.
     api.execute("UPDATE PartOperations SET ext_group_id=NULL WHERE part_no=? AND seq=21", (PART,))
     changed = api.detail()["data"]

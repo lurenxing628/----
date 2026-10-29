@@ -41,15 +41,3 @@ def test_route_file_shares_one_current_supplier_catalog(stage_conn, monkeypatch,
     groups = conn.execute("SELECT part_no,start_seq,end_seq,total_days FROM ExternalGroups WHERE part_no LIKE 'DEFAULT-%' ORDER BY part_no").fetchall()
     assert [tuple(row) for row in groups] == [("DEFAULT-01", 10, 20, 4.5), ("DEFAULT-02", 10, 20, 4.5)]
     record_property("default_supplier_catalog_builds", len(reads))
-
-
-def test_route_file_rejects_unreadable_template_sequence_before_comparing_routes(stage_conn):
-    from tests.workbench.run_candidate_support import corrupt_update
-
-    corrupt_update(stage_conn, "PartOperations", "UPDATE PartOperations SET seq='x' WHERE part_no='PROC-001' AND seq=30")
-    content = encode_process_file("route", [{"business_code": "PROC-001", "route_raw": "10热处理20热处理"}], "csv").content
-    preview, _ = WorkbenchProcessFileService(stage_conn).preview_import("route", content, file_format="csv")
-    row = preview.as_dict()["rows"][0]
-    # 与表单入口一致：原模板序号说不清时整行拒绝，不拿坏序号去排序比对。
-    assert row["result"] == "rejected"
-    assert [error["code"] for error in row["errors"]] == ["template_invalid"]

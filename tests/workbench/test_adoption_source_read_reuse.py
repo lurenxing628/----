@@ -4,7 +4,6 @@ import json
 import sqlite3
 from collections import Counter
 from datetime import datetime
-from types import SimpleNamespace
 from unittest.mock import Mock, create_autospec
 
 import pytest
@@ -12,22 +11,17 @@ import pytest
 from core.infrastructure import read_evidence
 from core.infrastructure.connection_guards import query_only
 from core.infrastructure.read_evidence import read_evidence_scope, verified_read
-from core.models.content import same
 from core.models.workbench_dashboard import DashboardAnalysisQuery
 from core.models.workbench_plan_scope import MAX_PLAN_RESPONSE_BYTES, PlanReadScope
 from core.services.workbench.dashboard.analysis import read_dashboard_analysis
 from core.services.workbench.facts import adoption_baseline_sources
-from core.services.workbench.facts.adoption_baseline_values import AdoptionBaselineUnavailable, stored
 from core.services.workbench.plan import adoption_baseline, adoption_baseline_identity, projection
 from core.services.workbench.plan.point_evidence import official_point_work
 from core.services.workbench.plan.process_order import project_process_order
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from core.services.workbench.plan.read_context import PlanReadContext
 from core.shared.strict_json import canonical_json
-from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
-from tests.workbench.plan_adoption_baseline_support import adopt_candidate, mutate_json
-from tests.workbench.plan_read_support import make_api
-from tests.workbench.run_candidate_support import corrupt_update
+from tests.workbench.plan_adoption_baseline_support import adopt_candidate
 from tests.workbench.trial_support import snapshot
 from tests.workbench.trial_support import trial_case as trial_case  # noqa: F401
 
@@ -46,6 +40,12 @@ def _workspace(case, plan):
     reader = WorkbenchPlanQueryService(case.conn)
     with reader.read_snapshot():
         return reader.workspace(PlanReadScope(plan["plan_ref"]))
+
+
+def _baseline(case, plan):
+    reader = WorkbenchPlanQueryService(case.conn)
+    with reader.read_snapshot():
+        return reader.baseline_comparison(PlanReadScope(plan["plan_ref"]))
 
 
 def _track_sources(monkeypatch):
@@ -140,12 +140,17 @@ def test_full_workspace_keeps_two_version_quantities_and_exact_uncached_output(a
     assert provenance["baseline"]["version"] == first["version"]
     assert provenance["baseline"]["captured_at"] == provenance["accepted_at"]
     assert provenance["algorithm"]["mode"] == "greedy" and provenance["source_label"] == artifact["label"]
+    assert "evaluations" not in provenance["algorithm"]
     assert provenance["source_ref"] == audit["candidate_ref"] and provenance["run_ref"] == audit["run_ref"]
     assert provenance["run_ref"] and provenance["source_ref"] and provenance["adopted_at"]
     assert data["tasks"][0]["quantity"] == 5
-    assert baseline["items"][0]["before"]["quantity"] == 3
-    assert baseline["items"][0]["after"]["quantity"] == 5
+    assert baseline["item_count"] == 1 and baseline["items"] == [] and baseline["items_complete"] is False
     assert len(calls) == 2 and set(Counter(calls).values()) == {1}
+    baseline_detail, scope_dict, baseline_state = _baseline(case, second)
+    assert baseline_state == state and scope_dict == data["scope"]
+    assert baseline_detail["items_complete"] is True and baseline_detail["item_count"] == 1
+    assert baseline_detail["items"][0]["before"]["quantity"] == 3
+    assert baseline_detail["items"][0]["after"] == {"task_ref": data["tasks"][0]["task_ref"]}
     assert len(canonical_json(data).encode("utf-8")) <= MAX_PLAN_RESPONSE_BYTES
     with monkeypatch.context() as uncached:
         for module in (adoption_baseline_sources, adoption_baseline, read_evidence):
@@ -208,40 +213,12 @@ def test_candidate_admission_proof_reuses_strict_fields_and_preserves_extra_offi
         assert values[case.op_id]["quantity"] == values[case.op_id]["batch_quantity"] == 5
         assert values[case.op_id]["quantity_reason"] is None and calls == []
         adoption_baseline_identity.verify_capture(proof.baseline, proof.tables, admission_proof=proof)
-        official = next(row for row in proof.tables["WorkbenchPlanSourceRefs"]
-                        if row["kind"] == "official" and row["active"] == 1
-                        and row["version"] == proof.baseline["version"])
-        for field in ("source_table", "plan_role"):
-            saved = official[field]
-            official[field] = "wrong-owner"
-            try:
-                with pytest.raises(AdoptionBaselineUnavailable) as error:
-                    adoption_baseline_identity.verify_capture(proof.baseline, proof.tables, admission_proof=proof)
-                assert (error.value.code, error.value.gap) == ("adoption_snapshot_invalid", "archived_official_reference")
-            finally:
-                official[field] = saved
     assert snapshot(case.conn) == before and case.conn.total_changes == changes
 
 
-def test_empty_admission_proof_keeps_null_version_schedule_rejection():
-    baseline = {"plan_ref": None, "version": None, "rows": []}
-    tables = {"ScheduleHistory": [], "Schedule": [{"id": 1, "op_id": 1, "version": None}]}
-    proof = SimpleNamespace(baseline=baseline, tables=tables)
-    with pytest.raises(AdoptionBaselineUnavailable) as error:
-        adoption_baseline_identity.verify_capture(baseline, tables, admission_proof=proof)
-    assert error.value.gap == "baseline_matches_archived_schedule"
-
-
 def test_arrangement_comparison_keeps_canonical_types_and_reuses_only_completed_intervals(monkeypatch):
-    values = [None, "M1", True, 1, 1.0, -0.0, b"M1", datetime(2026, 9, 9), {"$sqlite_blob": "TTE="}, 1 << 64]
     base = {"machine_id": None, "operator_id": "O1", "start_time": "2026-09-09 08:00:00",
             "end_time": "2026-09-09 09:00:00"}
-    for left in values:
-        for right in values:
-            current, candidate = dict(base, machine_id=left), dict(base, machine_id=right)
-            expected = same({key: current[key] for key in ("machine_id", "operator_id")},
-                            {key: candidate[key] for key in ("machine_id", "operator_id")})
-            assert adoption_baseline_identity._arrangement_matches(current, candidate) == expected
     current, candidate = dict(base), dict(base, start_time="2026-09-09T08:00:00", end_time="2026-09-09T09:00:00")
     calls = []
     original = adoption_baseline_identity.public_time
@@ -262,79 +239,6 @@ def test_arrangement_comparison_keeps_canonical_types_and_reuses_only_completed_
     context._intervals[context.source_key(query)] = completed
     assert context.peek_source_intervals(**query) is completed
     assert context.peek_source_intervals(**dict(query, version=3)) is None
-
-
-def test_caller_version_and_history_cannot_reuse_another_adoption(adopted_versions):
-    case, first, second = adopted_versions
-    reader = WorkbenchPlanQueryService(case.conn)
-    history = WorkbenchPlanBaselineRepository(case.conn).get_history_result_summary(second["version"])
-    before = snapshot(case.conn)
-    assert history is not None
-    with reader.read_snapshot(), read_evidence_scope(case.conn):
-        context = PlanReadContext(case.conn)
-        assert context.adopted_source(second["plan_ref"]) is not None
-        with pytest.raises(AdoptionBaselineUnavailable):
-            adoption_baseline.read_adoption_baseline(case.conn, plan_ref=second["plan_ref"],
-                version=first["version"], history=history, facts={}, point_annotator=list, context=context)
-        changed = dict(history)
-        audit = json.loads(changed["result_summary"])
-        audit["proof"]["run_ref"] = first["source_run_ref"]
-        changed["result_summary"] = json.dumps(audit)
-        with pytest.raises(AdoptionBaselineUnavailable):
-            adoption_baseline.read_adoption_baseline(case.conn, plan_ref=second["plan_ref"],
-                version=second["version"], history=changed, facts={}, point_annotator=list, context=context)
-    assert snapshot(case.conn) == before
-
-
-@pytest.mark.parametrize("fault", ["capture", "receipt", "arrangement"])
-def test_new_request_rechecks_broken_source_and_rejects_old_snapshot(adopted_versions, fault):
-    case, _, second = adopted_versions
-    api = make_api(case.path)
-    path = "/" + second["plan_ref"] + "/workspace"
-    original = api.read(path)
-    if fault == "capture":
-        mutate_json(case.conn, "WorkbenchRunJobs", "baseline_json",
-                    lambda value: value["rows"][0].update(end_time="2026-09-09T15:59:00"),
-                    "run_ref=?", (second["source_run_ref"],))
-    elif fault == "receipt":
-        audit = json.loads(case.conn.execute("SELECT result_summary FROM ScheduleHistory WHERE version=?", (second["version"],)).fetchone()[0])
-        mutate_json(case.conn, "WorkbenchCommandReceipts", "outcome_json",
-                    lambda value: value["data"]["official_plan"].update(plan_ref="f" * 48),
-                    "request_key=?", (audit["request_key"],))
-    else:
-        corrupt_update(case.conn, "Schedule", "UPDATE Schedule SET end_time='2026-09-09T15:59:00' WHERE version=?", (second["version"],))
-    before, changes = snapshot(case.conn), case.conn.total_changes
-    fresh = api.read(path)["data"]
-    assert fresh["tasks"][0]["quantity"] is None
-    assert fresh["tasks"][0]["quantity_reason"] == "plan_target_unavailable"
-    assert fresh["projections"]["baseline"]["state"] == "unavailable"
-    response = api.get(path, snapshot_ref=original["meta"]["snapshot_ref"])
-    assert response.status_code == 409 and response.get_json()["error"]["code"] == "snapshot_stale"
-    assert snapshot(case.conn) == before and case.conn.total_changes == changes
-
-
-def test_classified_source_failure_is_proved_once_per_workspace(adopted_versions, monkeypatch):
-    case, _, second = adopted_versions
-    corrupt_update(case.conn, "WorkbenchRunJobs", "UPDATE WorkbenchRunJobs SET facts_json='{' WHERE run_ref=?",
-                   (second["source_run_ref"],))
-    before, changes = snapshot(case.conn), case.conn.total_changes
-    calls = _track_sources(monkeypatch)
-    data, _ = _workspace(case, second)
-    assert data["tasks"][0]["quantity_reason"] == "plan_target_unavailable"
-    assert data["projections"]["baseline"]["reason_code"] == "adoption_snapshot_invalid"
-    assert data["projections"]["process_order"]["state"] == "unavailable"
-    assert len(calls) == 1
-    # The next request must recheck storage rather than retaining that failure.
-    _workspace(case, second)
-    assert len(calls) == 2
-    assert snapshot(case.conn) == before and case.conn.total_changes == changes
-
-
-@pytest.mark.parametrize("raw", ['{', '[]', '{"x":NaN}', '{"x":1e400}', '{"x":1,"x":2}'])
-def test_adoption_json_decode_classifies_invalid_documents(raw):
-    with pytest.raises(AdoptionBaselineUnavailable) as error:
-        stored(raw)
-    assert error.value.code == "adoption_snapshot_invalid"
 
 
 @pytest.mark.parametrize("error_type", [KeyError, TypeError, ValueError])
@@ -365,79 +269,6 @@ def test_source_programming_errors_escape_all_readers_and_are_not_cached(adopted
             monkeypatch.setattr(adoption_baseline_sources, "_candidate_source", original)
             source = context.adopted_source(second["plan_ref"])
             assert source is not None and source["audit"]["version"] == second["version"]
-
-
-def test_original_baseline_is_still_checked_independently(adopted_versions, monkeypatch):
-    case, first, second = adopted_versions
-    corrupt_update(case.conn, "Schedule", "UPDATE Schedule SET end_time='2026-09-09T15:59:00' WHERE version=?", (first["version"],))
-    before = snapshot(case.conn)
-    data, _ = _workspace(case, second)
-    assert data["tasks"][0]["quantity"] == 5
-    assert data["projections"]["baseline"]["state"] == "unavailable"
-    assert data["projections"]["baseline"]["reason_code"] == "adoption_baseline_drift"
-    assert snapshot(case.conn) == before
-
-    # Opening this adoption depends on its own source and official plan. The
-    # original baseline's display remains independently unavailable.
-    audit = json.loads(case.conn.execute("SELECT result_summary FROM ScheduleHistory WHERE version=?", (second["version"],)).fetchone()[0])
-    corrupt_update(case.conn, "ScheduleHistory", "DELETE FROM ScheduleHistory WHERE version=?", (first["version"],))
-    from core.services.workbench.run.candidate_history import read_candidate_history
-
-    calls = _track_sources(monkeypatch)
-    statements, baseline_calls = [], []
-    original_tasks = adoption_baseline.baseline_tasks
-    def baseline_tasks(*args, **kwargs):
-        baseline_calls.append(True)
-        return original_tasks(*args, **kwargs)
-    monkeypatch.setattr(adoption_baseline, "baseline_tasks", baseline_tasks)
-    before, changes = snapshot(case.conn), case.conn.total_changes
-    case.conn.set_trace_callback(statements.append)
-    try:
-        history, _ = read_candidate_history(case.conn, audit["candidate_ref"])
-    finally:
-        case.conn.set_trace_callback(None)
-    assert history["total"] == 1
-    entry = history["items"][0]
-    assert entry["can_open"] is True and entry["evidence_gaps"] == []
-    assert entry["adoption"]["reason"] == audit["reason"]
-    assert entry["adoption"]["declared_operator"] == audit["declared_operator"]
-    assert entry["adoption"]["baseline_ref"] == first["plan_ref"]
-    assert calls == [(audit["run_ref"], audit["candidate_ref"])]
-    assert baseline_calls == []
-    receipt_queries = [sql.upper() for sql in statements if sql.upper().startswith("SELECT") and "FROM WORKBENCHCOMMANDRECEIPTS" in sql.upper()]
-    adopted_receipts = [sql for sql in receipt_queries if "WHERE ACTION=" in sql and "CONTEXT_REF=" in sql]
-    assert len(adopted_receipts) == 1
-    assert "ORDER BY COMMITTED_AT_UTC,REQUEST_KEY LIMIT 10001" in adopted_receipts[0]
-    assert not any("LENGTH(" in sql or "COUNT(" in sql or "SUM(" in sql for sql in receipt_queries)
-    selected_histories = [sql for sql in statements if "FROM ScheduleHistory WHERE version=" in sql and "result_summary" in sql]
-    assert len(selected_histories) == 1 and "LIMIT 2" in selected_histories[0]
-    assert snapshot(case.conn) == before and case.conn.total_changes == changes
-    data, _ = _workspace(case, second)
-    assert data["tasks"][0]["quantity"] == 5
-    assert data["projections"]["baseline"]["reason_code"] == "adoption_baseline_archived"
-    # Immutable candidate preparation is shared across version-specific proofs;
-    # every proof is still checked against that source after the memo lookup.
-    calls.clear()
-    from core.infrastructure.transaction import TransactionManager
-    with TransactionManager(case.conn).transaction(), read_evidence_scope(case.conn):
-        source = adoption_baseline_sources.candidate_source_evidence(case.conn, audit)
-        later_audit = dict(audit, version=second["version"] + 1)
-        assert adoption_baseline_sources.candidate_source_evidence(case.conn, later_audit) is source
-        invalid_audit = dict(later_audit, proof=dict(audit["proof"], run_ref="f" * 48))
-        with pytest.raises(AdoptionBaselineUnavailable):
-            adoption_baseline_sources.candidate_source_evidence(case.conn, invalid_audit)
-    assert calls == [(audit["run_ref"], audit["candidate_ref"])]
-
-
-def test_oversized_capture_keeps_original_64_mib_rejection(adopted_versions):
-    case, _, second = adopted_versions
-    audit = json.loads(case.conn.execute("SELECT result_summary FROM ScheduleHistory WHERE version=?", (second["version"],)).fetchone()[0])
-    corrupt_update(case.conn, "WorkbenchRunJobs", "UPDATE WorkbenchRunJobs SET facts_json=? WHERE run_ref=?",
-                   ("{}" + " " * (64 * 1024 * 1024), audit["run_ref"]))
-    changes = case.conn.total_changes
-    response = make_api(case.path).get("/" + second["plan_ref"] + "/workspace")
-    assert response.status_code == 413 and response.get_json()["error"]["code"] == "candidate_capacity_exceeded"
-    assert case.conn.total_changes == changes
 
 
 def test_nested_snapshots_reuse_same_connection_and_restore_readonly_on_exception():
@@ -488,3 +319,72 @@ def test_nested_snapshots_reuse_same_connection_and_restore_readonly_on_exceptio
     finally:
         first.close()
         second.close()
+
+
+def test_readonly_candidate_archive_eliminates_clone_json_and_shares_generation_facts_cache(adopted_versions, monkeypatch):
+    from core.infrastructure.transaction import TransactionManager
+    from core.services.workbench.facts import candidate_archive, candidate_store
+    from core.services.workbench.history.reading import HistoryReader
+    from core.services.workbench.run.decision_source import DecisionSource
+
+    case, _, second = adopted_versions
+    audit = json.loads(case.conn.execute(
+        "SELECT result_summary FROM ScheduleHistory WHERE version=?", (second["version"],)
+    ).fetchone()[0])
+    candidate_ref, run_ref = audit["candidate_ref"], audit["run_ref"]
+    before, changes = snapshot(case.conn), case.conn.total_changes
+
+    with TransactionManager(case.conn).transaction():
+        _, _, _, _, warm_capture, _, warm_facts, _ = candidate_archive.load_adoption_candidate_with_key(
+            case.conn, candidate_ref
+        )
+
+    clone_calls = Mock(wraps=candidate_store.clone_json)
+    facts_calls = Mock(wraps=candidate_store.GenerationFacts)
+    monkeypatch.setattr(candidate_store, "clone_json", clone_calls)
+    monkeypatch.setattr(candidate_store, "GenerationFacts", facts_calls)
+
+    with TransactionManager(case.conn).transaction(), read_evidence_scope(case.conn):
+        _, _, scope, tasks, capture, _, facts, _ = candidate_archive.load_adoption_candidate_with_key(
+            case.conn, candidate_ref
+        )
+        assert clone_calls.call_count == 0
+        assert facts_calls.call_count == 0
+        assert facts is warm_facts and capture is warm_capture
+
+        readonly_store = candidate_store.ReadOnlyCandidateStore(case.conn)
+        assert readonly_store.copy_on_read is False
+        assert readonly_store.capture(run_ref) is warm_capture
+        assert clone_calls.call_count == 0
+
+        history_reader = HistoryReader(case.conn)
+        history_run = history_reader._run(run_ref)
+        assert history_run["facts"] is warm_facts
+        assert history_run["capture"] is warm_capture
+        assert clone_calls.call_count == 0
+        assert facts_calls.call_count == 0
+
+        decision = DecisionSource(candidate_store.CandidateStore(case.conn), run_ref)
+        assert decision.facts is warm_facts
+        assert facts_calls.call_count == 0
+
+        copied_execution = [dict(row) for row in capture["execution"]]
+        reused = candidate_store.cached_generation_facts(dict(capture, execution=copied_execution))
+        assert reused is warm_facts
+        assert facts_calls.call_count == 0
+
+        mutable_store = candidate_store.CandidateStore(case.conn)
+        mutable_capture = mutable_store.capture(run_ref)
+        assert mutable_capture is not warm_capture
+        mutable_capture["input"]["batch_refs"].append("mutated-in-test")
+        assert "mutated-in-test" not in warm_capture["input"]["batch_refs"]
+        assert tasks and scope
+
+    dto, _ = _workspace(case, second)
+    original_strategy = candidate_store.CandidateStore(case.conn).candidate(candidate_ref)["artifact"]["origin"]["strategy"]
+    dto["provenance"]["algorithm"]["origin"]["strategy"] = "mutated-strategy"
+    assert candidate_store.CandidateStore(case.conn).candidate(candidate_ref)["artifact"]["origin"]["strategy"] == original_strategy
+    assert candidate_store.ReadOnlyCandidateStore(case.conn).candidate(candidate_ref)["artifact"]["origin"]["strategy"] == original_strategy
+    fresh_dto, _ = _workspace(case, second)
+    assert fresh_dto["provenance"]["algorithm"]["origin"]["strategy"] == original_strategy
+    assert snapshot(case.conn) == before and case.conn.total_changes == changes

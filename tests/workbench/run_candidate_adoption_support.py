@@ -1,13 +1,10 @@
 """BX-only helpers: temporary real v26 SQLite and actual admission/worker/engine."""
 
-import json
-
 from flask import Blueprint, g
 
 from core.services.workbench.run.candidate_adoption import WorkbenchRunCandidateAdoptionService
-from core.shared.strict_json import canonical_json
 from tests.workbench.run_candidate_support import candidate_case as candidate_case  # noqa: F401
-from tests.workbench.run_candidate_support import compute, connect, corrupt_update
+from tests.workbench.run_candidate_support import compute, connect
 from tests.workbench.trial_adoption_support import assert_dashboard_task_appends
 from web.routes.workbench.materials import command_receipt
 from web.routes.workbench.run_candidate_adoption import register_run_candidate_adoption_routes
@@ -57,15 +54,6 @@ def assert_retained(before, after):
             assert all(current.get(row[0]) == row for row in rows), name
         elif name not in mutable_clocks:
             assert after[name] == rows, name
-
-
-def rewrite_candidate(case, ref, change):
-    tasks = [(row[0], json.loads(row[1])) for row in case.conn.execute(
-        "SELECT row_ref,payload_json FROM WorkbenchRunCandidateTasks WHERE candidate_ref=? ORDER BY ordinal", (ref,))]
-    for row_ref, payload in tasks:
-        change(payload)
-        corrupt_update(case.conn, "WorkbenchRunCandidateTasks", "UPDATE WorkbenchRunCandidateTasks SET payload_json=? WHERE row_ref=?",
-                       (canonical_json(payload), row_ref))
 
 
 def api(case, enabled=True, connection_factory=connect):

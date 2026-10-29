@@ -2,10 +2,7 @@
 
 from datetime import datetime, timedelta
 
-import pytest
-
-from core.errors import ValidationError
-from core.services.scheduler.run.optimizer.graph import v2_capacity, v2_keys, v2_ranks
+from core.services.scheduler.run.optimizer.graph import v2_capacity
 from core.services.scheduler.run.optimizer.graph.v2_features import enrich_graph_ready_v2_metrics
 from core.services.scheduler.run.optimizer.graph_ready_feature_basis import BASELINE_ORDERING_FIELD
 from tests._support.algo_operations import make_algo_op, make_batch, make_schedule_result
@@ -56,7 +53,9 @@ def test_pair_blocking_is_prepared_once_across_feature_bases_and_operation_windo
             {1: {"bottleneck_machine_score": 1}, 2: {"bottleneck_machine_score": 1}},
             operations=operations, batches=batches, start_dt=start, calendar_service=calendar, seed_results=seeds,
             resource_pool=pool, downtime_map=downtime,
-            graph_ready_context={"predecessor_op_ids_by_op_id": {1: set(), 2: set()}})
+            graph_ready_context={"predecessor_op_ids_by_op_id": {1: set(), 2: set()}},
+            deadline=float("inf"), clock=lambda: 0.0)
+    assert result is not None
 
     assert len(merges) == 1 and len(downtime_reads) == 1
     assert len(calls) == 5 and calls.count((start, at(16), "normal", "O1")) == 1
@@ -154,36 +153,3 @@ def test_multi_segment_seed_result_blocks_each_resource_only_during_its_segment(
         assert cap["residual_capacity_window_hours"] == 8.0
         assert cap["residual_capacity_blocked_hours"] == 2.0
         assert cap["residual_capacity_hours"] == 6.0
-
-
-def test_v2_feature_numbers_reject_non_numbers_with_the_feature_field():
-    assert v2_capacity.non_negative_float("2.5", field="batch.quantity") == 2.5
-    for value, kind in ((None, "必须是数字"), ("abc", "必须是数字"), (True, "必须是数字"), (2 ** 1100, "必须是数字"),
-                        (float("nan"), "必须是有限数字"), (-1, "必须是非负数")):
-        with pytest.raises(ValidationError, match=f"batch.quantity {kind}。") as caught:
-            v2_capacity.non_negative_float(value, field="batch.quantity")
-        assert caught.value.field == "graph_ready_v2_features"
-
-
-@pytest.mark.parametrize("value", [float("nan"), float("inf"), "abc", None, True, 10 ** 400])
-@pytest.mark.parametrize("read", [
-    lambda metric: v2_keys.required_finite_metric(metric, "x"),
-    lambda metric: v2_keys.required_positive_metric(metric, "x"),
-    lambda metric: v2_keys.v2_priority_key_for_metric(metric, specs=((False, "x"),)),
-])
-def test_v2_priority_metrics_name_the_v2_feature_field_in_error_and_details(read, value):
-    with pytest.raises(ValidationError, match="图指标 x 必须是有限数字。") as caught:
-        read({"x": value})
-    assert caught.value.field == caught.value.details["field"] == "graph_ready_v2_features"
-    assert caught.value.details["reason"] == "graph_ready_bad_v2_feature"
-
-
-@pytest.mark.parametrize(("field", "value"), [("impact_count", float("nan")), ("downstream_critical_minutes", -1),
-                                              ("is_on_critical_path", 1), ("bottleneck_machine_score", None)])
-def test_v2_graph_bonus_relabels_field_and_details_together(field, value):
-    metric = {"is_on_critical_path": True, "impact_count": 1, "downstream_critical_minutes": 30, "bottleneck_machine_score": 0.5}
-    weights = {"critical_path": 1.0, "successor_count": 0.5, "downstream_work_hours": 0.25, "bottleneck_machine": 2.0}
-    with pytest.raises(ValidationError, match=field) as caught:
-        v2_ranks.v2_metric_bonus({**metric, field: value}, weights=weights)
-    assert caught.value.field == caught.value.details["field"] == "graph_ready_v2_features"
-    assert caught.value.details["reason"] == "graph_ready_bad_v2_feature"

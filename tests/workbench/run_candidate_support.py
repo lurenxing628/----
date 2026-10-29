@@ -5,6 +5,7 @@ import sqlite3
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import pytest
 from flask import Blueprint, Flask, g
@@ -46,7 +47,7 @@ def candidate_case(tmp_path):
     conn.execute("INSERT INTO Parts(part_no,part_name) VALUES ('P1','Original part')")
     for key, value in default_snapshot_values().items():
         conn.execute("INSERT OR REPLACE INTO ScheduleConfig(config_key,config_value) VALUES (?,?)", (key, str(value)))
-    case = JobCase(conn)
+    case: Any = JobCase(conn)
     case.path = path
     case.batch("B1")
     case.op_id = case.operation()
@@ -172,25 +173,6 @@ def retained(conn):
         assert conn.total_changes == changes
 
 
-def corrupt_update(conn, table, sql, args=()):
-    """Fixture-only corruption with the permanent schema restored before any read."""
-    triggers = list(conn.execute("SELECT name,sql FROM sqlite_master WHERE type='trigger' AND tbl_name=?", (table,)))
-    for row in triggers:
-        conn.execute('DROP TRIGGER "' + row[0] + '"')
-    conn.execute(sql, args)
-    for row in triggers:
-        conn.execute(row[1])
-    conn.commit()
-
-
-def edit_artifact(case, ref, edit):
-    raw = case.conn.execute("SELECT artifact_json FROM WorkbenchRunCandidates WHERE candidate_ref=?", (ref,)).fetchone()[0]
-    artifact = json.loads(raw)
-    edit(artifact)
-    corrupt_update(case.conn, "WorkbenchRunCandidates", "UPDATE WorkbenchRunCandidates SET artifact_json=? WHERE candidate_ref=?",
-                   (json.dumps(artifact, ensure_ascii=False), ref))
-
-
 def candidate_artifact_view(artifact, tasks):
     """Test/oracle view of arrangements; never rewrite the immutable archive."""
     rows = [{key: value for key, value in task.items() if key != "locked"} for task in tasks]
@@ -206,13 +188,3 @@ def stored_candidate_artifact(conn, ref):
     tasks = [json.loads(row[0]) for row in conn.execute(
         "SELECT payload_json FROM WorkbenchRunCandidateTasks WHERE candidate_ref=? ORDER BY ordinal", (ref,))]
     return candidate_artifact_view(json.loads(raw), tasks)
-
-
-def edit_capture(case, field, edit):
-    assert field in ("facts_json", "execution_json", "normalized_input_json", "baseline_json")
-    raw = case.conn.execute("SELECT " + field + " FROM WorkbenchRunJobs").fetchone()[0]
-    value = json.loads(raw)
-    edit(value)
-    encoded = json.dumps(value, ensure_ascii=False)
-    sql = "UPDATE WorkbenchRunJobs SET " + field + "=?"
-    corrupt_update(case.conn, "WorkbenchRunJobs", sql, (encoded,))

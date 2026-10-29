@@ -31,3 +31,23 @@ def catalog_fixture(api, name, **scope):
 def workspace_fixture(api, name, ref, **scope):
     return {"name": name, "kind": "workspace", "plan_ref": ref, "scope": scope,
             "payload": api.read("/" + ref + "/workspace", **scope)}
+
+def baseline_fixture(api, name, ref, snapshot_ref, **scope):
+    query = {"snapshot_ref": snapshot_ref, "page": 1, **scope}
+    return {"name": name, "kind": "baseline", "plan_ref": ref, "scope": query,
+            "payload": api.read("/" + ref + "/baseline", **query)}
+
+def tasks_fixture(api, name, ref, snapshot_ref, **scope):
+    query = {"snapshot_ref": snapshot_ref, "page": 1, **scope}
+    return {"name": name, "kind": "tasks", "plan_ref": ref, "scope": query,
+            "payload": api.read("/" + ref + "/tasks", **query)}
+
+def gantt_graph_fixture(api, name, ref, snapshot_ref, **scope):
+    query = {"snapshot_ref": snapshot_ref, **scope}
+    return {"name": name, "kind": "gantt_graph", "plan_ref": ref, "scope": query,
+            "payload": api.read("/" + ref + "/gantt-graph", **query)}
+
+def capacity_fixture(api, name, ref, snapshot_ref, **scope):
+    query = {"snapshot_ref": snapshot_ref, **scope}
+    return {"name": name, "kind": "capacity", "plan_ref": ref, "scope": query,
+            "payload": api.read("/" + ref + "/capacity", **query)}

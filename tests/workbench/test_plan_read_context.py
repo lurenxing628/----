@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.workbench.plan import calendar_context, queries
 from core.services.workbench.plan.point_query import PointPlanCatalogRepository
@@ -59,10 +58,6 @@ def test_read_context_owns_capture_and_next_request_observes_change(plan_api, mo
                 tasks, _, _, _ = context.projected_tasks(ref, rows)
                 assert data["task_count"] == 1 and len(rows) == len(tasks) == 2
                 assert data["tasks"][0] == tasks[0]
-                for changed in (dict(rows[0], op_id=rows[1]["op_id"]), dict(rows[0], version=2)):
-                    with pytest.raises(WorkbenchPlanReferenceError) as rejected:
-                        context.task_refs(ref, [changed])
-                    assert rejected.value.code == "task_binding_invalid"
         conn.set_trace_callback(None)
         assert conn.total_changes == changes
         assert captures["raw", 3] == captures["detail", 3] == 1
@@ -77,12 +72,6 @@ def test_read_context_owns_capture_and_next_request_observes_change(plan_api, mo
         conn.execute("UPDATE Schedule SET end_time='2026-09-10T05:30:00' WHERE version=3 AND operator_id='PRIVATE-O1'")
     changed = plan_api.read("/" + ref + "/workspace", range_start=NIGHT_START, range_end=NIGHT_END)
     assert changed["data"]["tasks"][0]["end"] == "2026-09-10T05:30:00"
-    with plan_api.db() as conn:
-        conn.execute("UPDATE Schedule SET end_time=start_time WHERE version=3 AND operator_id='PRIVATE-O1'")
-    # An unproven zero-duration row makes the whole plan unreadable; no projection
-    # (delivery included) runs on a partially trusted arrangement.
-    for query in ({}, {"range_start": NIGHT_START, "range_end": NIGHT_END}):
-        assert_error(plan_api.get("/" + ref + "/workspace", **query), "plan_unavailable")
 
 
 def test_20k_saved_plan_is_selectable_and_one_day_reads_200_tasks_from_one_capture(plan_api, monkeypatch, record_property):

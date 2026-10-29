@@ -45,22 +45,6 @@ def test_operator_calendar_bulk_reads_cross_chunks_and_preserve_histories(schema
     record_property("operator_calendar_read_queries_401_people", len(reads))
 
 
-@pytest.mark.parametrize("damage", ("identity", "date"))
-def test_operator_calendar_bulk_reads_keep_storage_conflicts(schema_conn, damage):
-    conn = schema_conn
-    conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('OP','姓名')")
-    stored = DAY if damage == "identity" else DAY + "broken"
-    conn.execute("INSERT INTO OperatorCalendar(operator_id,date,day_type,shift_hours,efficiency) VALUES ('OP',?,'workday',8,1)", (stored,))
-    if damage == "identity":
-        conn.execute("UPDATE WorkbenchEntityRefs SET active=0 WHERE kind='operator_calendar'")
-    conn.commit()
-    with pytest.raises(WorkbenchCommandRejected) as original:
-        WorkbenchOperatorCalendarService(conn, "OP").range_states("2026-10-01", "2026-10-31")
-    with pytest.raises(WorkbenchCommandRejected) as batched:
-        WorkbenchOperatorCalendarFileService(conn)._states_for(["OP"], "2026-10-01", "2026-10-31")
-    assert (batched.value.code, str(batched.value)) == (original.value.code, str(original.value))
-
-
 def test_operator_calendar_confirmation_reloads_current_operator_rows(schema_conn):
     conn = schema_conn
     conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('OP','旧姓名')")

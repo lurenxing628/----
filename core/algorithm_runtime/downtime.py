@@ -48,7 +48,7 @@ class SegmentOverlapIndex:
     - len() 返回原始段数（含无效段），与旧 _max_shift_count 的口径一致。
     """
 
-    __slots__ = ("_segments", "_starts", "_prefix_max_ends", "_scanned_once", "_covered_starts", "_covered_ends", "_append_native", "_coverage_native")
+    __slots__ = ("_segments", "_starts", "_prefix_max_ends", "_scanned_once", "_covered_starts", "_covered_ends")
 
     def __init__(self, segments: Sequence[Tuple[datetime, datetime]]) -> None:
         # Every constructor passes a sequence (reuse snapshots are tuples; slot inputs are already lists).
@@ -58,8 +58,6 @@ class SegmentOverlapIndex:
         self._scanned_once = False
         self._covered_starts: Optional[Tuple[datetime, ...]] = None
         self._covered_ends: Tuple[datetime, ...] = ()
-        self._append_native: Optional[bool] = None if type(segments) is tuple else False
-        self._coverage_native: Optional[bool] = None
 
     def __len__(self) -> int:
         return len(self._segments)
@@ -112,8 +110,6 @@ class SegmentOverlapIndex:
         derived._prefix_max_ends = self._prefix_max_ends
         derived._covered_starts = self._covered_starts
         derived._covered_ends = self._covered_ends
-        derived._append_native = True
-        derived._coverage_native = True
         if end > start:
             assert self._starts is not None
             derived._starts = self._starts + (start,)
@@ -123,17 +119,11 @@ class SegmentOverlapIndex:
         return derived
 
     def _can_append_snapshot(self, snapshot: Tuple[Tuple[datetime, datetime], ...]) -> bool:
-        if (self._starts is None or type(snapshot) is not tuple
-                or len(snapshot) != len(self._segments) + 1 or not _plain_segment(snapshot[-1])):
+        if (self._starts is None or type(self._segments) is not tuple or type(snapshot) is not tuple
+                or len(snapshot) != len(self._segments) + 1):
             return False
-        if self._append_native is None:
-            self._append_native = all(_plain_segment(segment) for segment in self._segments)
-        if not self._append_native:
+        if not all(map(operator.is_, snapshot, self._segments)) and snapshot[:-1] != self._segments:
             return False
-        if not all(map(operator.is_, snapshot, self._segments)):
-            prefix = snapshot[:-1]
-            if not all(_plain_segment(segment) for segment in prefix) or prefix != self._segments:
-                return False
         start, end = snapshot[-1]
         return end <= start or not self._starts or start >= self._starts[-1]
 
@@ -172,22 +162,7 @@ class SegmentOverlapIndex:
         return None
 
     def has_native_coverage(self) -> bool:
-        """Certify callback-free coverage under this index's immutable-input contract.
-
-        Only called after the ordinary first coverage query. Custom containers or
-        datetime subclasses retain the original one-step behavior. Reused SGS
-        indexes own tuple snapshots; changed timelines create a different index.
-        """
-        if self._coverage_native is None:
-            self._coverage_native = type(self._segments) in (tuple, list) and all(
-                _plain_segment(segment) for segment in self._segments
-            )
-        return self._coverage_native
-
-
-def _plain_segment(segment: Tuple[datetime, datetime]) -> bool:
-    return (type(segment) is tuple and len(segment) == 2
-            and all(type(value) is datetime and value.tzinfo is None for value in segment))
+        return True
 
 
 def _drop_invalid_segments(

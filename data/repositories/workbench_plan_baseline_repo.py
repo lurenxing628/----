@@ -1,7 +1,5 @@
-"""Official-plan and adoption-baseline evidence reads: raw rows, history heads, source refs.
+"""Official-plan and adoption-baseline evidence reads: rows, history heads, source refs.
 
-Raw reads keep SQLite storage classes (unary + and synthetic aliases bypass both
-DECLTYPES and COLNAMES conversion) and are limited to a fixed table allowlist.
 Only facts are returned; the service layer classifies every gap itself.
 """
 
@@ -9,15 +7,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from core.infrastructure.connection_guards import schema_contract_memo
-
 from .base_repo import BaseRepository
-
-_RAW_TABLES = {
-    "Schedule": '"Schedule"',
-    "WorkbenchPlanSourceRefs": '"WorkbenchPlanSourceRefs"',
-    "WorkbenchTaskRefs": '"WorkbenchTaskRefs"',
-}
 
 _SOURCE_LOOKUPS = {
     ("WorkbenchRunJobs", "run_ref"): "SELECT 1 FROM WorkbenchRunJobs WHERE run_ref=?",
@@ -27,41 +17,21 @@ _SOURCE_LOOKUPS = {
 }
 
 
-def _quote(name: str) -> str:
-    return '"' + name.replace('"', '""') + '"'
-
-
 class WorkbenchPlanBaselineRepository(BaseRepository):
-    # ---- raw storage-class reads (allowlisted tables) ----
-    def _raw_select(self, table: str) -> Optional[Tuple[List[str], str]]:
-        """(columns, "SELECT +col AS raw_i,... FROM <table>") or None when the table has no columns."""
-        source = _RAW_TABLES[table]
-        columns = [str(row[1]) for row in schema_contract_memo(self.conn).structure.table_info(table)]
-        if not columns:
-            return None
-        # Unary + and synthetic aliases bypass both DECLTYPES and COLNAMES conversion.
-        fields = ",".join("+" + _quote(name) + " AS raw_" + str(i) for i, name in enumerate(columns))
-        return columns, "SELECT " + fields + " FROM " + source
+    def schedule_rows_by_version(self, version: Any) -> List[Dict[str, Any]]:
+        """Whole Schedule rows of one version in rowid order."""
+        return self.fetchall("SELECT * FROM Schedule WHERE version = ? ORDER BY rowid", (version,))
 
-    def _raw_rows(self, columns: List[str], sql: str, params: Sequence[Any]) -> List[Dict[str, Any]]:
-        return [dict(zip(columns, row)) for row in self.execute(sql, params)]
+    def task_refs_by_plan(self, plan_ref: str) -> List[Dict[str, Any]]:
+        """Whole WorkbenchTaskRefs rows of one plan in rowid order."""
+        return self.fetchall("SELECT * FROM WorkbenchTaskRefs WHERE plan_ref = ? ORDER BY rowid", (plan_ref,))
 
-    def raw_schedule_rows_by_version(self, version: Any) -> Optional[List[Dict[str, Any]]]:
-        """Whole Schedule rows of one version in rowid order; None if the table is absent."""
-        selected = self._raw_select("Schedule")
-        if selected is None:
-            return None
-        columns, select = selected
-        return self._raw_rows(columns, select + " WHERE version=? ORDER BY rowid", (version,))
-
-    def raw_source_refs_by_refs(self, refs: Sequence[str]) -> Optional[List[Dict[str, Any]]]:
-        """Whole WorkbenchPlanSourceRefs rows whose ref is in ``refs``; None if the table is absent."""
-        selected = self._raw_select("WorkbenchPlanSourceRefs")
-        if selected is None:
-            return None
-        columns, select = selected
+    def source_refs_by_refs(self, refs: Sequence[str]) -> List[Dict[str, Any]]:
+        """Whole WorkbenchPlanSourceRefs rows whose ref is in ``refs`` in rowid order."""
+        if not refs:
+            return []
         marks = ",".join("?" for _ in refs)
-        return self._raw_rows(columns, select + " WHERE ref IN (" + marks + ") ORDER BY rowid", list(refs))
+        return self.fetchall("SELECT * FROM WorkbenchPlanSourceRefs WHERE ref IN (" + marks + ") ORDER BY rowid", list(refs))
 
     # ---- adoption source and lineage facts ----
     def source_exists(self, table: str, field: str, ref: Any) -> bool:

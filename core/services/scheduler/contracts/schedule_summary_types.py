@@ -96,28 +96,3 @@ class AlgorithmSummaryState:
     resource_pool_enabled: bool
     resource_pool_attempted: bool
     fallback_state: FallbackState
-
-
-@dataclass(frozen=True)
-class TruncationTier:
-    trace_limit: int
-    warning_limit: int
-    attempt_limit: int
-    selected_ids_limit: Optional[int] = None
-    overdue_items_limit: Optional[int] = None
-    near_due_items_limit: Optional[int] = None
-    errors_limit: Optional[int] = None
-    missing_resource_limit: Optional[int] = None
-
-
-DEFAULT_TRUNCATION_TIERS: Tuple[TruncationTier, ...] = (
-    TruncationTier(80, 50, 12, errors_limit=500, missing_resource_limit=500),
-    TruncationTier(20, 20, 12, errors_limit=200, missing_resource_limit=200),
-    TruncationTier(0, 20, 12, errors_limit=100, missing_resource_limit=100),
-    TruncationTier(0, 10, 6, errors_limit=50, missing_resource_limit=50),
-    TruncationTier(0, 0, 6, 2000, 500, near_due_items_limit=500, errors_limit=50, missing_resource_limit=50),
-    TruncationTier(0, 0, 6, 1000, 200, near_due_items_limit=200, errors_limit=30, missing_resource_limit=30),
-    TruncationTier(0, 0, 6, 200, 50, near_due_items_limit=50, errors_limit=20, missing_resource_limit=20),
-    TruncationTier(0, 0, 6, 50, 20, near_due_items_limit=20, errors_limit=10, missing_resource_limit=10),
-    TruncationTier(0, 0, 0, 0, 0, near_due_items_limit=0, errors_limit=10, missing_resource_limit=10),
-)

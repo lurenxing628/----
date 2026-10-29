@@ -18,12 +18,13 @@ def unavailable_graph(scope, reason):
             "critical_task_refs": [], "critical_edges": []}
 
 
-def build_gantt_graph(tasks, relations, *, scope):
+def build_gantt_graph(tasks, relations, *, scope, task_intervals):
     by_operation = {task["operation_ref"]: task["task_ref"] for task in tasks}
     previous = {task["task_ref"]: [by_operation[parent] for parent in relations[task["operation_ref"]]
                                  if parent in by_operation] for task in tasks}
     rows = [{"op_code": task["task_ref"], "operation_ref": task["operation_ref"],
-             "start_time": task["start"], "end_time": task["end"],
+             "start_time": task_intervals[task["task_ref"]][0],
+             "end_time": task_intervals[task["task_ref"]][1],
              "machine_id": task.get("machine_ref"), "operator_id": task.get("operator_ref")}
             for task in tasks]
     critical = compute_critical_chain_from_dependencies(rows, previous)
@@ -36,9 +37,29 @@ def build_gantt_graph(tasks, relations, *, scope):
                                for edge in critical["edges"]]}
 
 
-def candidate_gantt_graph(tasks, facts, raw_tasks):
+def project_scoped_gantt_graph(full_graph, scoped_batch_ids):
+    if full_graph.get("state") != "available":
+        return full_graph
+    critical_refs = set(full_graph.get("critical_task_refs", ()))
+    batches = set(scoped_batch_ids) | {
+        node["batch_id"] for node in full_graph["nodes"] if node["task_ref"] in critical_refs
+    }
+    nodes = [
+        dict(node, predecessor_operation_refs=list(node["predecessor_operation_refs"]))
+        for node in full_graph["nodes"]
+        if node["batch_id"] in batches
+    ]
+    return dict(
+        full_graph,
+        nodes=nodes,
+        critical_task_refs=list(full_graph["critical_task_refs"]),
+        critical_edges=[dict(edge) for edge in full_graph["critical_edges"]],
+    )
+
+
+def candidate_gantt_graph(tasks, facts, raw_tasks, *, task_intervals):
     if not tasks:
-        return build_gantt_graph([], {}, scope="full_candidate")
+        return build_gantt_graph([], {}, scope="full_candidate", task_intervals={})
     try:
         batch_ids = {facts.tables["BatchOperations"][facts.operations[task["operation_ref"]]]["batch_id"] for task in tasks}
         operations = {key: row for key, row in facts.tables["BatchOperations"].items() if row["batch_id"] in batch_ids}
@@ -56,6 +77,6 @@ def candidate_gantt_graph(tasks, facts, raw_tasks):
                           "sequence": task["sequence"], "process_label": task["process_label"],
                           "start": task["start"], "end": task["end"],
                           "machine_ref": arrangement["machine_id"], "operator_ref": arrangement["operator_id"]})
-        return build_gantt_graph(nodes, relations, scope="full_candidate")
+        return build_gantt_graph(nodes, relations, scope="full_candidate", task_intervals=task_intervals)
     except (PieceAdoptionBlocked, KeyError):
         return unavailable_graph("full_candidate", "此候选方案未保存完整的工艺前后关系，暂时无法显示关联线和关键链。")

@@ -28,10 +28,6 @@ from .working_hours import WorkingHoursPrefix
 # 约 291 万天（datetime.max）处会抛裸 OverflowError，isfinite/非负守卫拦不住有限
 # 正巨值（如录入笔误 9999999），故与既有 NaN/Inf/负数守卫对称地补一条量级上界。
 MAX_CALENDAR_DAYS = 36500.0
-# Engine members whose identity certifies native timing; certificates and the per-decode memo both rely on it.
-NATIVE_TIMING_METHODS = ("get_efficiency", "adjust_to_working_time", "add_working_hours", "add_effective_hours", "_add_hours", "policy_for_datetime",
-                         "_policy_for_date", "_effective_segments", "_allowed_segments",
-                         "certified_slot_window", "working_hours_between", "default_periods")
 _NORMAL_PRIORITY = BatchPriority.NORMAL.value
 
 
@@ -113,8 +109,7 @@ class CalendarEngine:
 
     @staticmethod
     def _normalize_text(value: Any) -> Optional[str]:
-        # Only native strings bypass the general NaN/custom-object checks.
-        if type(value) is str:
+        if isinstance(value, str):
             return value if value.strip() else None
         return normalize_text(value)
 
@@ -270,7 +265,7 @@ class CalendarEngine:
           次日凌晨的时间点应归属到“前一天”的工作窗内。
         """
         today = dt.date()
-        today_str = _native_date_isoformat(today) if type(today) is date else today.isoformat()
+        today_str = _native_date_isoformat(today)
         p_today = self._policy_for_date(today_str, operator_id=operator_id)
         if any(start <= dt < end for start, end in p_today.work_windows()):
             return p_today
@@ -445,5 +440,5 @@ class CalendarEngine:
 
 
 # Subclasses that only change how calendar rows are resolved keep the engine's pure timing surface.
-register_calendar_timing_guard(CalendarEngine, make_lineage_timing_guard(CalendarEngine, NATIVE_TIMING_METHODS),
-                               calendar_days_guard=make_lineage_timing_guard(CalendarEngine, ("add_calendar_days",)))
+register_calendar_timing_guard(CalendarEngine, make_lineage_timing_guard(CalendarEngine),
+                               calendar_days_guard=make_lineage_timing_guard(CalendarEngine))

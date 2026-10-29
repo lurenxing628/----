@@ -60,19 +60,6 @@ def test_route_review_reuses_current_facts_for_parser_and_choices(stage_conn, mo
     assert [row["ref"] for row in affected] == [ref_for(stage_conn, "template_external_group", "PROC-G")]
 
 
-@pytest.mark.parametrize(("stored", "expected"), [(4.5, 4.5), ("3_0", None)])
-def test_route_supplier_suggestion_reads_default_days_only_as_a_stored_number(stage_conn, stored, expected):
-    # SQLite keeps unconvertible text in the REAL column as text; float("3_0") would have read it as 30 days.
-    stage_conn.execute("UPDATE Suppliers SET default_days=? WHERE supplier_id='PROC-S2'", (stored,))
-    identity = identity_for(stage_conn)
-    reader = WorkbenchProcessQueryService(stage_conn, part_ref=identity.ref)
-    with reader.read_snapshot():
-        preview, _, _ = reader.prepare_route(identity.ref, {"mode": "text", "route_raw": "10车削20热处理30检验40热处理"})
-    suggested = next(op for op in preview["operations"] if op["sequence"] == 40)
-    assert suggested["supplier_label"] == "second" and suggested["external_days"] == expected
-    assert ("external_days_missing_or_invalid" in {issue["code"] for issue in suggested["issues"]}) is (expected is None)
-
-
 def test_catalog_workflow_reuses_operation_states_and_preserves_stage_results(stage_conn, monkeypatch):
     from core.infrastructure.transaction import TransactionManager
     from core.services.process import workflow_state

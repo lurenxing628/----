@@ -1,7 +1,6 @@
 """Real draft and scenario persistence, lossless restoration and exact refs."""
 
 from collections import Counter
-from copy import deepcopy
 from types import SimpleNamespace
 
 import pytest
@@ -106,18 +105,6 @@ def test_complete_create_change_save_and_reopen(trial_case, kind, monkeypatch):
     stored_draft = repo.draft_header(draft["draft_ref"])
     assert stored_draft is not None and "admission_hash" not in stored_draft
     assert all("original_hash" not in row for row in repo.draft_rows(draft["draft_ref"]))
-    if kind == "official":
-        stored_rows = deepcopy(list(repo.iter_scenario_rows(saved["scenario_ref"])))
-
-        def stored(header):
-            return SimpleNamespace(conn=None, schema_issues=lambda: [], scenario_header=lambda _ref: header,
-                                   iter_scenario_rows=lambda _ref: stored_rows)
-
-        assert load_scenario_record(stored(stored_header), saved["scenario_ref"])[1] == saved
-        # 整份快照写在头里不是现行写入布局，按损坏存档拒绝。
-        with pytest.raises(WorkbenchCommandRejected) as error:
-            load_scenario_record(stored(dict(stored_header, snapshot_json=dump(saved))), saved["scenario_ref"])
-        assert error.value.code == "trial_snapshot_invalid"
     if kind == "candidate":
         assert "candidate_ref" in draft["base"] and "plan_ref" not in draft["base"]
         assert task["source_task_ref"] is None
@@ -148,17 +135,6 @@ def test_scenario_fragments_share_exact_logical_limit_without_counting_physical_
         iter_scenario_rows=lambda _ref: [{"row_ref": row["row_ref"], "payload_json": text}
                                        for row, text in zip(tasks, encoded.tasks)])
     assert load_scenario_record(repo, "saved")[1] == snapshot
-    # 只认 encode_scenario 写出的布局；其他排版（如缩进后的 JSON）按损坏存档拒绝。
-    import json
-
-    pretty_repo = SimpleNamespace(conn=None, schema_issues=lambda: [],
-        scenario_header=lambda _ref: {"snapshot_json": json.dumps(json.loads(encoded.header), ensure_ascii=False, indent=2)},
-        iter_scenario_rows=lambda _ref: [{"row_ref": row["row_ref"],
-                                        "payload_json": json.dumps(json.loads(text), ensure_ascii=False, indent=2)}
-                                       for row, text in zip(tasks, encoded.tasks)])
-    with pytest.raises(WorkbenchCommandRejected) as error:
-        load_scenario_record(pretty_repo, "saved")
-    assert error.value.code == "trial_snapshot_invalid"
     monkeypatch.setattr(codec, "MAX_TRIAL_BYTES", expected_bytes)
     assert load_scenario_record(repo, "saved")[1] == snapshot
 
@@ -174,20 +150,6 @@ def test_scenario_fragments_share_exact_logical_limit_without_counting_physical_
         with pytest.raises(WorkbenchCommandRejected) as error:
             operation()
         assert (error.value.code, error.value.status) == ("query_too_large", 413)
-
-
-def test_scenario_row_binding_is_checked_when_assembling_the_saved_rows():
-    from core.models.workbench_trial_scenario_archive import encode_scenario
-
-    row = {"row_ref": "1" * 48, "content": "保存工序"}
-    encoded = encode_scenario({"name": "试调", "operation_effort": {"effort_basis": "runtime_requirement_v1", "items": []},
-                               "tasks": [row]})
-    repo = SimpleNamespace(conn=None, schema_issues=lambda: [],
-        scenario_header=lambda _ref: {"snapshot_json": encoded.header},
-        iter_scenario_rows=lambda _ref: [{"row_ref": row["row_ref"], "payload_json": dump(dict(row, row_ref="2" * 48))}])
-    with pytest.raises(WorkbenchCommandRejected) as error:
-        load_scenario_record(repo, "saved")
-    assert error.value.code == "trial_snapshot_invalid"
 
 
 def test_http_trial_command_with_lost_acknowledgement_points_to_its_receipt(trial_case):

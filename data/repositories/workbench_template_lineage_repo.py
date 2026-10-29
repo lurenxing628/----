@@ -13,22 +13,11 @@ from core.infrastructure.workbench_template_lineage_schema import (
 from core.models.workbench_template_lineage import (
     COPY_COLUMNS,
     EVIDENCE_VERSION,
-    STATE_COLUMNS,
 )
 
 from .base_repo import BaseRepository
 from .workbench_execution_repo import chunks
 
-
-def _size_expression(columns):
-    return "+".join('COALESCE(length(CAST("' + column + '" AS BLOB)),0)' for column in columns)
-
-
-# Fixed evidence tables only; the size SQL is expanded here instead of from caller-supplied names.
-EVIDENCE_SIZE_SQL = {
-    "origins": _size_expression(("template_snapshot", "instance_snapshot")),
-    "events": _size_expression(STATE_COLUMNS + ("operation_ref", "reason", "recorded_at_utc")),
-}
 _LINEAGE_OBJECT_NAMES = frozenset(template_lineage_objects())
 
 INSTANCE_SELECT = """SELECT o.*, r.ref AS operation_ref, br.ref AS batch_ref, pr.ref AS part_ref, b.quantity"""
@@ -88,8 +77,8 @@ class WorkbenchTemplateLineageRepository(BaseRepository):
     def origin_rows(self, refs):
         for chunk in chunks(refs):
             marks = ",".join("?" for _ in chunk)
-            yield from self.iter_rows("SELECT *, " + EVIDENCE_SIZE_SQL["origins"] +
-                " AS _lineage_bytes FROM WorkbenchTemplateLineageOrigins WHERE operation_ref IN (" + marks + ")", chunk)
+            yield from self.iter_rows(
+                "SELECT *, 0 AS _lineage_bytes FROM WorkbenchTemplateLineageOrigins WHERE operation_ref IN (" + marks + ")", chunk)
 
     def event_chunks(self, refs, limit):
         """Stream body rows, with one global budget across all ref chunks."""
@@ -103,8 +92,8 @@ class WorkbenchTemplateLineageRepository(BaseRepository):
 
         for chunk in chunks(refs):
             marks = ",".join("?" for _ in chunk)
-            rows = self.iter_rows("SELECT *, " + EVIDENCE_SIZE_SQL["events"] +
-                " AS _lineage_bytes FROM WorkbenchTemplateLineageEvents WHERE operation_ref IN (" + marks +
+            rows = self.iter_rows(
+                "SELECT *, 0 AS _lineage_bytes FROM WorkbenchTemplateLineageEvents WHERE operation_ref IN (" + marks +
                 ") ORDER BY event_id LIMIT ?", chunk + [limit - total + 1])
             yield counted(rows)
             if total > limit:

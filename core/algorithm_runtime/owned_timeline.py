@@ -1,10 +1,8 @@
 """Run-owned segment sequences with a complete public mutation protocol."""
 
 from collections.abc import MutableSequence
-from datetime import datetime
 from typing import Any
 
-from .native_snapshot import make_class_guard
 from .slot_reuse_timeline import SlotReuseTimeline
 
 
@@ -15,8 +13,6 @@ class OwnedSegments(MutableSequence):
         self._values = list(values)
         self._identity = object()
         self._revision = 0
-        self._checked_revision = -1
-        self._native = False
 
     def __len__(self):
         return len(self._values)
@@ -40,14 +36,10 @@ class OwnedSegments(MutableSequence):
             self._revision += 1
 
     def insert(self, index, value):
-        native_before = self._checked_revision == self._revision and self._native
         try:
             self._values.insert(index, value)
         finally:
             self._revision += 1
-        if native_before:
-            self._native = self._native_item(value)
-            self._checked_revision = self._revision
 
     def sort(self, *, key=None, reverse=False):
         try:
@@ -78,28 +70,11 @@ class OwnedSegments(MutableSequence):
         return repr(self._values)
 
     def certificate(self):
-        if self._checked_revision != self._revision:
-            self._native = all(self._native_item(value) for value in self._values)
-            self._checked_revision = self._revision
-        return (self._identity, self._revision) if self._native else None
-
-    @staticmethod
-    def _native_item(value):
-        return _native_segment(value)
+        return self._identity, self._revision
 
 
 class OwnedTypeEntries(OwnedSegments):
     """The same mutation protocol for actual (start, end, op_id, type) rows."""
-
-    @staticmethod
-    def _native_item(value):
-        return (type(value) is tuple and len(value) == 4 and type(value[2]) is int and type(value[3]) is str
-                and all(type(item) is datetime and item.tzinfo is None for item in value[:2]))
-
-
-def _native_segment(value):
-    return (type(value) is tuple and len(value) == 2
-            and all(type(item) is datetime and item.tzinfo is None for item in value))
 
 
 class OwnedTimeline(SlotReuseTimeline):
@@ -121,36 +96,18 @@ class OwnedTimeline(SlotReuseTimeline):
             self[key] = value
 
 
-_SEGMENTS_GUARD = make_class_guard(OwnedSegments)
-_SEGMENT_PROTOCOL_NAMES = frozenset(
-    key for base in OwnedSegments.__mro__ for key, value in vars(base).items()
-    if callable(value) or isinstance(value, (property, staticmethod, classmethod))
-    or key in ("__getattribute__", "__getattr__", "__dict__"))
-_NATIVE_SEGMENT_CERTIFICATE = OwnedSegments.certificate
-
-
 def owned_segment_certificate(values):
-    """Only unchanged native owners may replace a content comparison by a revision."""
-    if type(values) is not OwnedSegments or not _SEGMENTS_GUARD(values):
+    """Only native owners may replace a content comparison by a revision."""
+    if not isinstance(values, OwnedSegments):
         return None
     return values.certificate()
 
 
 def owned_segment_round_reader(values):
-    """Certify the protocol once for a closed native SGS scoring round.
-
-    The owner must discard this reader at the next round. Every public data mutation
-    still changes its revision, and new instance-level method overrides invalidate it.
-    """
-    if type(values) is not OwnedSegments or not _SEGMENTS_GUARD(values):
+    """Return a revision reader for a closed SGS scoring round."""
+    if not isinstance(values, OwnedSegments):
         return None
-
-    def read():
-        if type(values) is not OwnedSegments or not vars(values).keys().isdisjoint(_SEGMENT_PROTOCOL_NAMES):
-            return None
-        return _NATIVE_SEGMENT_CERTIFICATE(values)
-
-    return read
+    return values.certificate
 
 
 def clone_timeline(mapping):

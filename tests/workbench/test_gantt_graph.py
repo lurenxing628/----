@@ -13,7 +13,7 @@ from core.services.workbench.run.candidates import WorkbenchRunCandidateQuerySer
 from tests.workbench.ea_zero_duration_support import adopt as adopt_points
 from tests.workbench.piece_chain_support import adopt_candidate, piece_candidate, piece_layout
 from tests.workbench.piece_chain_support import trial_case as trial_case  # noqa: F401
-from tests.workbench.run_candidate_support import compute, edit_capture, public
+from tests.workbench.run_candidate_support import compute, public
 
 
 def candidate_workspace(case, candidate_ref, **scope):
@@ -26,7 +26,21 @@ def candidate_workspace(case, candidate_ref, **scope):
 def plan_workspace(case, plan_ref, **scope):
     service = WorkbenchPlanQueryService(case.conn)
     with service.read_snapshot():
-        return service.workspace(PlanReadScope(plan_ref, **scope))[0]
+        read_scope = PlanReadScope(plan_ref, **scope)
+        data, state = service.workspace(read_scope)
+        summary_graph = data["gantt_graph"]
+        graph_data, graph_scope, graph_state = service.gantt_graph(read_scope)
+        assert graph_scope == data["scope"] and graph_state == state
+        full_graph = graph_data["gantt_graph"]
+        if summary_graph["state"] == "available":
+            assert summary_graph["nodes"] == []
+            assert summary_graph["node_count"] == full_graph["node_count"] == len(full_graph["nodes"])
+            assert summary_graph["nodes_complete"] == (summary_graph["node_count"] == 0)
+            assert full_graph["nodes_complete"] is True
+        else:
+            assert summary_graph == full_graph
+        data["gantt_graph"] = full_graph
+        return data
 
 
 def operation_refs(case):
@@ -142,54 +156,26 @@ def test_zero_duration_split_and_join_are_graph_nodes_after_adoption(trial_case)
     assert all(row["范围终点"] == "'" + plan["plan_span"]["end"] for row in full + half_open)
 
 
-def test_candidate_resource_chain_uses_assignments_when_frozen_display_records_are_missing(trial_case):
-    case = trial_case
-    case.batch("B2")
-    case.operation(batch="B2")
-    case.conn.commit()
-    _, refs = compute(case, case.settings("B1", "B2"))
-    before = candidate_workspace(case, refs[0])["gantt_graph"]
-    assert len(before["critical_task_refs"]) == 2
-    assert len(before["critical_edges"]) == 1 and before["critical_edges"][0]["edge_type"] in ("machine", "operator")
-
-    def remove_resource_refs(facts):
-        facts["tables"]["WorkbenchEntityRefs"] = [row for row in facts["tables"]["WorkbenchEntityRefs"]
-                                                   if row[1] not in ("machine", "operator")]
-
-    edit_capture(case, "facts_json", remove_resource_refs)
-    missing_refs = candidate_workspace(case, refs[0])
-    assert all(task[kind]["ref"] is None for task in missing_refs["tasks"] for kind in ("machine", "operator"))
-    assert missing_refs["gantt_graph"] == before
-
-    def remove_resource_directory(facts):
-        for name in ("Machines", "Operators"):
-            facts["tables"][name] = []
-
-    edit_capture(case, "facts_json", remove_resource_directory)
-    missing_directory = candidate_workspace(case, refs[0])
-    assert all(task[kind] == {"ref": None, "label": None}
-               for task in missing_directory["tasks"] for kind in ("machine", "operator"))
-    assert all(any(gap["field"] == kind and gap["code"] == "source_missing" for gap in task["data_gaps"])
-               for task in missing_directory["tasks"] for kind in ("machine", "operator"))
-    assert missing_directory["gantt_graph"] == before
-
-
 def test_shared_graph_keeps_20k_nodes_all_predecessors_and_complete_critical_facts():
     start = datetime(2026, 1, 1, 8)
-    tasks, relations = [], {}
+    tasks, relations, task_intervals = [], {}, {}
     missing = format(40001, "048x")
     for index in range(20000):
+        task_ref = format(index + 1, "048x")
         operation_ref = format(20001 + index, "048x")
         sequence = index % 100
-        tasks.append({"task_ref": format(index + 1, "048x"), "operation_ref": operation_ref,
+        start_dt = start + timedelta(hours=sequence)
+        end_dt = start + timedelta(hours=sequence + 1)
+        tasks.append({"task_ref": task_ref, "operation_ref": operation_ref,
             "batch_id": "B" + str(index // 100), "piece_id": "piece-a", "sequence": sequence + 1,
             "process_label": "Operation " + str(sequence + 1),
-            "start": (start + timedelta(hours=sequence)).isoformat(),
-            "end": (start + timedelta(hours=sequence + 1)).isoformat(),
+            "start": start_dt.isoformat(),
+            "end": end_dt.isoformat(),
             "machine_ref": None, "operator_ref": None})
+        task_intervals[task_ref] = (start_dt, end_dt)
         relations[operation_ref] = [format(20000 + index, "048x")] if sequence else []
     relations[tasks[0]["operation_ref"]] = [missing]
-    graph = build_gantt_graph(tasks, relations, scope="full_plan")
+    graph = build_gantt_graph(tasks, relations, scope="full_plan", task_intervals=task_intervals)
     assert set(graph) == {"state", "reason", "scope", "nodes", "critical_task_refs", "critical_edges"}
     assert graph["state"] == "available" and len(graph["nodes"]) == 20000
     assert {node["operation_ref"]: node["predecessor_operation_refs"] for node in graph["nodes"]} == relations

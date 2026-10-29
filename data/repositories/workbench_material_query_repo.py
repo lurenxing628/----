@@ -63,13 +63,10 @@ class WorkbenchMaterialQueryRepository(BaseRepository):
             GROUP BY material_id ORDER BY material_id""")
 
     def metrics(self, query, status) -> Dict[str, Any]:
-        """Status and stock counts over the toolbar scope (text query + status) only.
-
-        damaged_code names one row whose stored status is neither active nor inactive; the service rejects it."""
+        """Status and stock counts over the toolbar scope (text query + status) only."""
         where, params = self._where(query, status)
         return cast(Dict[str, Any], self.fetchone("""SELECT COUNT(*) AS total,
             COALESCE(SUM(CASE WHEN m.status='active' THEN 1 ELSE 0 END),0) AS active,
             COALESCE(SUM(CASE WHEN m.status='inactive' THEN 1 ELSE 0 END),0) AS inactive,
-            MIN(CASE WHEN m.status IS NULL OR m.status NOT IN ('active','inactive') THEN m.material_id END) AS damaged_code,
             COALESCE(SUM(CASE WHEN m.stock_qty IS NULL THEN 1 ELSE 0 END),0) AS stock_unknown
             FROM Materials AS m""" + where, params))

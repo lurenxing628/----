@@ -2,8 +2,7 @@
 
 from core.models.content import content_text
 from core.models.workbench_trial import reference, reject
-from core.models.workbench_trial_catalog import MAX_CATALOG_BYTES, MAX_CATALOG_ROWS, TrialCatalogScope
-from core.models.workbench_trial_codec import dump
+from core.models.workbench_trial_catalog import MAX_CATALOG_ROWS, TrialCatalogScope
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.facts.trial_policy import require_trial_schema
 from data.repositories.workbench_trial_catalog_repo import WorkbenchTrialCatalogRepository
@@ -24,14 +23,12 @@ class WorkbenchTrialCatalogService:
 
 
 def _bounded_page(repo, scope):
-    """One page plus the complete header content; retain the directory row/byte caps."""
-    selected, directory, total, byte_count = [], [], 0, 0
+    """One page plus the complete header content; retain the directory row cap."""
+    selected, directory, total = [], [], 0
     offset = (scope.page - 1) * scope.size
     for row in repo.iter_rows(scope, MAX_CATALOG_ROWS):
         total += 1
-        encoded = dump(row).encode("utf-8")
-        byte_count += len(encoded)
-        if total > MAX_CATALOG_ROWS or byte_count > MAX_CATALOG_BYTES:
+        if total > MAX_CATALOG_ROWS:
             reject("query_too_large", "完整目录超过100000条或32 MiB摘要上限，请用状态或明确来源缩小范围；未截断。", 413)
         directory.append(row)
         if offset < total <= offset + scope.size:

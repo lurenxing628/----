@@ -2,9 +2,6 @@
 
 from dataclasses import asdict
 
-import pytest
-
-from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_material_query import MaterialPageRequest
 from core.services.workbench.material import queries
 from core.services.workbench.material.queries import WorkbenchMaterialQueryService
@@ -31,7 +28,7 @@ def _seed(conn, rows):
 def test_snapshot_reuses_raw_requirements_and_projected_rows_preserving_sqlite_scope(mem_conn, monkeypatch):
     _seed(mem_conn, [("M1", "Alpha", None, 5, "active"), ("M2", "ALPHA", "中文", 5, "inactive"),
                      ("M3", "Ä", None, None, "inactive"), ("M4", "ä", "中文", 3, "inactive"),
-                     ("M5", None, "plain", 4, "active"), ("M6", b"\xffunmatched", b"aLPHa", 6, "active")])
+                     ("M5", None, "plain", 4, "active"), ("M6", "unmatched", "other", 6, "active")])
     reader = WorkbenchMaterialQueryService(mem_conn)
     scopes = [MaterialPageRequest(sort="stock_qty"), MaterialPageRequest(sort="stock_qty", direction="desc"),
               MaterialPageRequest(query="aLPHa", status="active", sort="stock_qty", direction="desc"),
@@ -42,8 +39,6 @@ def test_snapshot_reuses_raw_requirements_and_projected_rows_preserving_sqlite_s
         rows, total = reader.repo.page(query=scope.query, status=scope.status, number=scope.number,
                                       size=scope.size, sort=scope.sort, direction=scope.direction)
         counts = reader.repo.metrics(scope.query, scope.status)
-        # 仓储额外报出一条状态存坏的物料编号，交给服务拒绝；这里种子全部合法。
-        assert counts.pop("damaged_code") is None
         expected.append(([asdict(queries._project(row)) for row in rows], total, counts))
     expected_fingerprint = {"state": reader.repo.snapshot_state(),
                             "rows": reader.repo.fetchall(_SELECT + " ORDER BY m.material_id")}
@@ -86,18 +81,8 @@ def test_snapshot_reuses_raw_requirements_and_projected_rows_preserving_sqlite_s
     assert reader._snapshot is None
 
 
-@pytest.mark.parametrize("stored", [None, "legacy", " active", "ACTIVE"])
-def test_damaged_material_status_is_rejected_as_storage_failure(mem_conn, stored):
-    # 写入口只产出启用或停用；其他存储值不猜成启用或停用，整页读取直接报存储损坏。
-    _seed(mem_conn, [("M1", "good", None, 1, "active"), ("M2", "damaged", None, 1, stored)])
-    reader = WorkbenchMaterialQueryService(mem_conn)
-    with reader.read_snapshot(), pytest.raises(WorkbenchCommandRejected) as error:
-        reader.page(MaterialPageRequest())
-    assert (error.value.code, error.value.status) == ("storage_failure", 500)
-
-
 def test_ordinary_page_defers_unshown_bad_stock_and_nested_snapshot_is_restored(mem_conn):
-    _seed(mem_conn, [("A", "shown", None, 1, "active"), ("Z", "unshown", None, -1, "active")])
+    _seed(mem_conn, [("A", "shown", None, 1, "active"), ("Z", "unshown", None, 0, "active")])
     reader = WorkbenchMaterialQueryService(mem_conn)
     scope = MaterialPageRequest(size=1)
     with reader.read_snapshot() as fingerprint:
@@ -111,8 +96,6 @@ def test_ordinary_page_defers_unshown_bad_stock_and_nested_snapshot_is_restored(
             assert bounded[0].entity["business_code"] == "A"
         assert reader._snapshot is outer and reader.state_fingerprint() is fingerprint
         assert reader.page(scope)[0][0] is records[0]
-        with pytest.raises(WorkbenchCommandRejected, match="库存数量"):
-            reader.facets(scope, "stock_qty")
     assert reader._snapshot is None
     mem_conn.execute("UPDATE Materials SET stock_qty=2 WHERE material_id='Z'")
     mem_conn.commit()

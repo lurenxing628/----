@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 
-from core.errors import AppError, ErrorCode
 from data.repositories import SystemConfigRepository
 
 
@@ -17,11 +15,6 @@ class SystemConfigSnapshot:
     auto_log_cleanup_enabled: str
     auto_log_cleanup_keep_days: int
     auto_log_cleanup_interval_minutes: int
-
-
-def _corrupt(key: str) -> AppError:
-    return AppError(ErrorCode.DB_QUERY_ERROR, "系统配置里保存了无法识别的值，配置已损坏，请联系维护人员核对数据库。",
-                    details={"config_key": key})
 
 
 class SystemConfigService:
@@ -43,38 +36,23 @@ class SystemConfigService:
         self.repo = SystemConfigRepository(conn, logger=logger)
 
     def _read_snapshot(self, backup_keep_days_default: int, stored_values) -> SystemConfigSnapshot:
-        # 这些值只由维护设置保存，写入口只写 yes/no 和范围内的整数；没保存过的键才用默认值，其他值都是存储损坏。
         def _get_yes_no(key: str, default: str) -> str:
             raw = stored_values.get(key)
-            if raw is None:
-                return default
-            if raw not in ("yes", "no"):
-                raise _corrupt(key)
-            return raw
+            return default if raw is None else str(raw)
 
-        def _get_int(key: str, default: int, min_v: int, max_v: int) -> int:
+        def _get_int(key: str, default: int) -> int:
             raw = stored_values.get(key)
-            if raw is None:
-                return int(default)
-            if re.fullmatch(r"[1-9][0-9]*", raw) is None or not min_v <= int(raw) <= max_v:
-                raise _corrupt(key)
-            return int(raw)
+            return int(default) if raw is None else int(raw)
 
         return SystemConfigSnapshot(
             auto_backup_enabled=_get_yes_no("auto_backup_enabled", default="no"),
-            auto_backup_interval_minutes=_get_int(
-                "auto_backup_interval_minutes", default=60, min_v=self.MIN_INTERVAL_MINUTES, max_v=self.MAX_INTERVAL_MINUTES
-            ),
+            auto_backup_interval_minutes=_get_int("auto_backup_interval_minutes", default=60),
             auto_backup_cleanup_enabled=_get_yes_no("auto_backup_cleanup_enabled", default="no"),
-            auto_backup_keep_days=_get_int("auto_backup_keep_days", default=int(backup_keep_days_default), min_v=self.MIN_KEEP_DAYS, max_v=self.MAX_KEEP_DAYS),
-            auto_backup_cleanup_interval_minutes=_get_int(
-                "auto_backup_cleanup_interval_minutes", default=1440, min_v=self.MIN_INTERVAL_MINUTES, max_v=self.MAX_INTERVAL_MINUTES
-            ),
+            auto_backup_keep_days=_get_int("auto_backup_keep_days", default=int(backup_keep_days_default)),
+            auto_backup_cleanup_interval_minutes=_get_int("auto_backup_cleanup_interval_minutes", default=1440),
             auto_log_cleanup_enabled=_get_yes_no("auto_log_cleanup_enabled", default="no"),
-            auto_log_cleanup_keep_days=_get_int("auto_log_cleanup_keep_days", default=30, min_v=self.MIN_KEEP_DAYS, max_v=self.MAX_KEEP_DAYS),
-            auto_log_cleanup_interval_minutes=_get_int(
-                "auto_log_cleanup_interval_minutes", default=60, min_v=self.MIN_INTERVAL_MINUTES, max_v=self.MAX_INTERVAL_MINUTES
-            ),
+            auto_log_cleanup_keep_days=_get_int("auto_log_cleanup_keep_days", default=30),
+            auto_log_cleanup_interval_minutes=_get_int("auto_log_cleanup_interval_minutes", default=60),
         )
 
     def snapshot_with_storage(self, backup_keep_days_default: int):

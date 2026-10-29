@@ -34,16 +34,6 @@ class FrozenDict(dict):
         self._readonly()
 
 
-def _freeze_json_like(value: Any) -> Any:
-    if isinstance(value, FrozenDict):
-        return value
-    if isinstance(value, Mapping):
-        return FrozenDict({str(k): _freeze_json_like(v) for k, v in value.items()})
-    if isinstance(value, (list, tuple)):
-        return tuple(_freeze_json_like(item) for item in value)
-    return value
-
-
 def _compact_text_tuple(values: Any) -> Tuple[str, ...]:
     compact = []
     for item in values:
@@ -82,7 +72,7 @@ class OperationGraphNode:
         if self.duration_minutes < 0:
             raise ValueError("OperationGraphNode.duration_minutes 不能为负数。")
         object.__setattr__(self, "candidate_machine_ids", _compact_text_tuple(self.candidate_machine_ids))
-        object.__setattr__(self, "raw", _freeze_json_like(self.raw))
+        object.__setattr__(self, "raw", dict(self.raw))
 
 
 @dataclass(frozen=True)

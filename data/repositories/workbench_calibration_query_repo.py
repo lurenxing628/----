@@ -36,10 +36,14 @@ class WorkbenchCalibrationQueryRepository(BaseRepository):
         result = []
         for chunk in chunks(sorted(set(part_numbers))):
             marks = ",".join("?" for _ in chunk)
-            rows = self.fetchall("""SELECT bo.op_code, bo.batch_id, bo.source, b.part_no,
-                r.ref AS operation_ref FROM BatchOperations bo JOIN Batches b ON b.batch_id=bo.batch_id
+            rows = self.fetchall("""SELECT bo.*, b.part_no, b.quantity, b.quantity AS batch_quantity,
+                r.ref AS operation_ref, r.active AS identity_active,
+                br.ref AS batch_ref, pr.ref AS part_ref
+                FROM BatchOperations bo JOIN Batches b ON b.batch_id=bo.batch_id
                 LEFT JOIN WorkbenchPlanSourceRefs r ON r.kind='operation' AND r.active=1
                     AND r.source_key=CAST(bo.id AS TEXT)
+                LEFT JOIN WorkbenchEntityRefs br ON br.kind='batch' AND br.active=1 AND br.entity_key=b.batch_id
+                LEFT JOIN WorkbenchEntityRefs pr ON pr.kind='part' AND pr.active=1 AND pr.entity_key=b.part_no
                 WHERE b.part_no IN (""" + marks + ") ORDER BY b.part_no,bo.id LIMIT ?", chunk + [limit + 1 - len(result)])
             result.extend(rows)
             if len(result) > limit:

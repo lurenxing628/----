@@ -8,7 +8,17 @@ from typing import Any, Dict
 
 from core.errors import ValidationError
 
-from .plan_calendar_intervals import IntervalIndex, hours, instant, public_intervals, union, union_sorted, wire
+from .plan_calendar_intervals import (
+    HOUR_MICROSECONDS,
+    IntervalIndex,
+    hours,
+    instant,
+    interval_microseconds,
+    public_intervals,
+    union,
+    union_sorted,
+    wire,
+)
 from .plan_calendar_issues import issue
 
 _MEASURES = ("available_hours", "effective_hours", "normal_available_hours", "normal_effective_hours",
@@ -56,7 +66,7 @@ def measures(windows, durations):
                 result[mode + "effective_hours"] += duration * row["efficiency"]
     if any(not math.isfinite(value) for value in result.values()):
         raise ValueError("Nonfinite calendar capacity")
-    return {key: value / 3600.0 for key, value in result.items()}
+    return {key: value / HOUR_MICROSECONDS for key, value in result.items()}
 
 
 def policy_projection(engine, first_day, last_day, start, end, operator_id=None) -> Dict[str, Any]:
@@ -89,11 +99,11 @@ def policy_projection(engine, first_day, last_day, start, end, operator_id=None)
         # profile is broken. Only uncovered, potentially affected time is unknown.
         overriding = IntervalIndex([(row["start"], row["end"]) for row in windows
                                     if row["policy_date"] > day.isoformat()])
-        if low < high and overriding.hours_between(low, high) + 1e-9 < (high - low).total_seconds() / 3600:
+        if low < high and overriding.hours_between(low, high) + 1e-9 < interval_microseconds(low, high) / HOUR_MICROSECONDS:
             result = unavailable(basis, "calendar_invalid")
             result["issues"][0]["policy_date"] = day.isoformat()
             return result
-    durations = [(row["end"] - row["start"]).total_seconds() for row in windows]
+    durations = [interval_microseconds(row["start"], row["end"]) for row in windows]
     try:
         capacity = measures(windows, durations)
     except ValueError:
@@ -161,12 +171,12 @@ def _subtract_windows(windows, downtime):
             if cursor < low:
                 stop = min(low, end)
                 result.append(dict(row, start=wire(cursor), end=wire(stop)))
-                durations.append((stop - cursor).total_seconds())
+                durations.append(interval_microseconds(cursor, stop))
             cursor = max(cursor, high)
             k += 1
         if cursor < end:
             result.append(dict(row, start=wire(cursor), end=wire(end)))
-            durations.append((end - cursor).total_seconds())
+            durations.append(interval_microseconds(cursor, end))
     return result, durations
 
 

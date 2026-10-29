@@ -111,10 +111,8 @@ class WorkbenchReportFacts:
         facts = {"plan": plan, "scope": scope, "span": span, "rows": rows,
                  "ledger": ledger, "resources": resources,
                  "operation_refs": operation_refs, "task_refs": task_refs, "choices": choices}
-        # 只判断数据变没变：一次写成文本取摘要，不先 plain_plan_facts() 复制整份计划行和台账。
         facts["fingerprint"] = content_text({
-            "revision": self.plans.references.read_revision(), "plan": plan, "rows": rows,
-            "ledger": ledger["snapshot_facts"], "resources": resources,
-            "operation_refs": facts["operation_refs"], "task_refs": facts["task_refs"], "choices": choices,
+            "plan_ref": scope.plan_ref, "plan_revision": self.plans.references.read_revision(),
+            "ledger": ledger["snapshot_facts"], "resources": choice_resources, "choices": choices,
         })
         return facts

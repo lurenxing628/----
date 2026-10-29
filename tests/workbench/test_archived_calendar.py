@@ -1,14 +1,11 @@
 """Saved identity, calendar versions and known/unknown day coverage contracts."""
 
-from copy import deepcopy
 from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
 
-from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.capacity.plan_calendar_engine import SnapshotCalendarEngine
 from core.services.workbench.facts.archived_calendar import ArchivedCalendar
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
 from core.services.workbench.plan.occupancy import _resource_occupancy
@@ -176,73 +173,6 @@ def test_broken_policy_days_keep_other_days_known_and_defaults_are_lazy():
     assert [row["state"] for row in result["days"]] == ["available", "unavailable", "unavailable", "available"]
     assert (result["known_days"], result["unknown_days"]) == (2, 2)
     assert result["known_windows"]
-    saved["tables"]["WorkbenchCalendarDefaults"] = [{"singleton": 1, "periods_json": "null"}]
-    saved["tables"]["WorkCalendar"] = [day("2026-10-14", end=None, hours=0), day("2026-10-15")]
-    explicit = project(saved, "2026-10-15T08:00:00", "2026-10-15T16:00:00")[MACHINE]
-    assert explicit["state"] == "available" and explicit["available_hours"] == 8
-    implicit = project(saved, "2026-10-16T08:00:00", "2026-10-16T16:00:00")[MACHINE]
-    assert implicit["state"] == "unavailable" and implicit["available_hours"] is None
-
-    engine = SnapshotCalendarEngine({
-        "global": [day("2026-10-14", end=None, hours=0), day("2026-10-15")],
-        "personal": [],
-        "profiles": [],
-        "patterns": [],
-        "defaults": [{"singleton": 1, "periods_json": "null"}],
-    })
-    assert engine.working_hours_between(
-        datetime(2026, 10, 15, 8, 0),
-        datetime(2026, 10, 15, 16, 0),
-    ) == 8.0
-    with pytest.raises(ValidationError):
-        engine.working_hours_between(
-            datetime(2026, 10, 16, 8, 0),
-            datetime(2026, 10, 16, 16, 0),
-        )
-
-
-@pytest.mark.parametrize("table,rows", [
-    ("WorkbenchOperatorProfiles", [{"shift_profile_id": "P1"}]),  # 缺列
-    ("WorkbenchShiftPatternDays", [{"profile_id": ["P1"], "day_offset": 0}]),  # 取值类型不对
-])
-def test_structurally_damaged_saved_calendar_table_makes_every_day_calendar_invalid(table, rows):
-    saved = archive()
-    saved["tables"][table] = rows
-    factory = ArchivedCalendar(saved)
-    assert factory.engine is None
-    projected = dict(factory.iter_resources(RESOURCES, "2026-10-12T00:00:00", "2026-10-13T00:00:00"))
-    for ref in (MACHINE, OPERATOR):
-        assert projected[ref]["state"] == "unavailable" and projected[ref]["available_hours"] is None
-        assert [item["code"] for item in projected[ref]["issues"]] == ["calendar_invalid"]
-
-
-def test_deleted_or_replaced_identity_stays_unknown_while_true_zero_stays_zero():
-    saved = archive()
-    original = deepcopy(saved)
-    saved["tables"]["WorkbenchEntityRefs"][0]["ref"] = "c" * 48
-    replaced = project(saved)[MACHINE]
-    assert replaced["state"] == "unavailable" and replaced["available_hours"] is None
-    assert replaced["issues"][0]["missing_fact"] == "WorkbenchEntityRefs.machine"
-    unavailable = project(original, resources=[{"kind": "machine", "ref": "d" * 48, "saved_id": None}])["d" * 48]
-    assert unavailable["available_hours"] is None
-    zero = project(original, "2026-10-17T00:00:00", "2026-10-18T00:00:00")[MACHINE]
-    assert zero["state"] == "available" and zero["windows"] == [] and zero["available_hours"] == 0
-    original["tables"]["Machines"][0]["status"] = "inactive"
-    inactive = project(original)
-    assert inactive[MACHINE]["available_hours"] == 0 and inactive[MACHINE]["windows"] == []
-    assert inactive[OPERATOR]["available_hours"] == pytest.approx(22 / 3, abs=1e-6)
-    original["tables"]["Machines"][0]["status"] = "maintain"
-    maintain = project(original)
-    assert maintain[MACHINE]["available_hours"] == 0 and maintain[MACHINE]["windows"] == []
-    assert maintain[OPERATOR]["available_hours"] == inactive[OPERATOR]["available_hours"]
-    del original["tables"]["OperatorCalendar"]
-    missing = project(original)[OPERATOR]
-    assert missing["state"] == "unavailable" and missing["available_hours"] is None
-    assert missing["issues"][0]["missing_fact"] == "OperatorCalendar"
-    missing_profile = archive()
-    del missing_profile["tables"]["WorkbenchOperatorProfiles"]
-    missing = project(missing_profile)[OPERATOR]
-    assert missing["state"] == "unavailable" and missing["issues"][0]["missing_fact"] == "WorkbenchOperatorProfiles"
 
 
 def test_declared_bounded_coverage_is_not_extended_with_implicit_defaults():

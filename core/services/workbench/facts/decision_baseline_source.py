@@ -167,7 +167,7 @@ def _decision_baseline_source_resolver(conn, *, candidate_provider):
     snapshot; metadata and point witnesses retain their saved source context.
     """
     sources = {}
-    candidates = CandidateStore(conn)
+    candidates = CandidateStore(conn, copy_on_read=False)
 
     def resolve(*, plan_ref, version, history):
         key = ("decision_baseline_source", plan_ref, version, history.get("version"), history.get("result_summary"))

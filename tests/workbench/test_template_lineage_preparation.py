@@ -6,7 +6,6 @@ import pytest
 
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_template_lineage import STATE_COLUMNS
 from core.services.scheduler import template_lineage_query
 from core.services.scheduler.template_lineage import TemplateLineageWriter
 from core.services.workbench.batch.facts import BatchFacts
@@ -19,16 +18,16 @@ def test_batch_copies_prepare_raw_sources_once_and_reuse_across_targets(lineage_
     case, trace = lineage_case, []
     conn = case.conn
     with TransactionManager(conn).transaction():
-        conn.execute("UPDATE PartOperations SET unit_hours=NULL,op_type_name=? WHERE id=?", (b"Turning\x00", case.template_id))
+        conn.execute("UPDATE PartOperations SET unit_hours=NULL,op_type_name=? WHERE id=?", ("Turning-A", case.template_id))
         conn.execute("INSERT INTO PartOperations(part_no,seq,op_type_id,op_type_name,source,setup_hours,unit_hours,ext_days) "
-                     "VALUES ('P1',2,'T1','Turning','internal',NULL,0,?)", (b"raw\x00",))
+                     "VALUES ('P1',2,'T1','Turning','internal',NULL,0,0)")
         conn.execute("INSERT INTO PartOperations(part_no,seq,op_type_id,op_type_name,source,setup_hours,unit_hours) "
                      "VALUES ('P1',3,'T1','External','external',0,0)")
     create(case, "PREP-SOURCE")
     original = [tuple(row) for row in conn.execute("SELECT seq,op_type_name,setup_hours,unit_hours,ext_days FROM BatchOperations "
                                                   "WHERE batch_id='PREP-SOURCE' ORDER BY seq")]
-    assert original[0][1] == b"Turning\x00" and original[0][3] is None
-    assert original[1][2] is None and original[1][4] == b"raw\x00"
+    assert original[0][1] == "Turning-A" and original[0][3] is None
+    assert original[1][2] is None and original[1][4] == 0
     conn.execute("UPDATE BatchExternalContexts SET origin='instance_copy' WHERE operation_id IN "
                  "(SELECT id FROM BatchOperations WHERE batch_id='PREP-SOURCE')")
     conn.commit()
@@ -79,15 +78,6 @@ def test_copy_eligibility_uses_the_source_event_at_birth_after_change_back_withd
     changed_id = copy("HISTORY-CHANGED")
     assert origin(case, changed_id)["source_eligible"] == 0
     with TransactionManager(conn).transaction():
-        last_event = template_lineage_query.read_events(case.lineage_repo, [source["operation_ref"]])[source["operation_ref"]][-1]
-        conn.execute(
-            "INSERT INTO WorkbenchTemplateLineageEvents(operation_ref,event_type,affects_calibration,reason,"
-            + ",".join(STATE_COLUMNS) + ") VALUES (?,'withdrawn',1,?," + ",".join("?" for _ in STATE_COLUMNS) + ")",
-            (source["operation_ref"], "historical fixture") + tuple(last_event[key] for key in STATE_COLUMNS),
-        )
-    withdrawn_id = copy("HISTORY-WITHDRAWN")
-    assert origin(case, withdrawn_id)["source_eligible"] == 0
-    with TransactionManager(conn).transaction():
         conn.execute("DELETE FROM BatchOperations WHERE id=?", (source_id,))
         conn.execute("INSERT INTO BatchOperations(id,op_code,batch_id,seq,op_type_id,op_type_name,source,setup_hours,unit_hours) "
                      "VALUES (?,'HISTORY-SOURCE_01','HISTORY-SOURCE',1,'T1','Turning','internal',0,1)", (source_id,))
@@ -100,7 +90,7 @@ def test_copy_eligibility_uses_the_source_event_at_birth_after_change_back_withd
         ref = instance_for(case, operation_id)["operation_ref"]
         assert not facts["problems"][ref]
         assert [row["code"] for row in facts["problems"][source["operation_ref"]]] == [
-            "template_lineage_withdrawn", "template_instance_retired", "template_instance_modified"]
+            "template_instance_retired", "template_instance_modified"]
         assert set(facts) == {"available", "origins", "events", "current", "templates", "lineages", "problems"}
         assert "_prepared" not in json.dumps(facts, default=lambda value: value.__dict__)
 

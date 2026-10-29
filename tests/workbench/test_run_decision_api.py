@@ -4,6 +4,7 @@ import csv
 import io
 import json
 from copy import deepcopy
+from typing import Any, Dict
 
 import pytest
 from openpyxl import load_workbook
@@ -299,7 +300,7 @@ def test_explicit_comparison_navigation_preserves_identity_and_complete_window()
     for view in ("analysis", "gantt"):
         navigation = {"version": 1, "view": view, "context": context}
         assert read_navigation(view, MultiDict({"nav": json.dumps(navigation)})) == navigation
-    formal = {key: value for key, value in context.items() if key != "reference_candidate_ref"}
+    formal: Dict[str, Any] = {key: value for key, value in context.items() if key != "reference_candidate_ref"}
     formal.update(comparison_mode="admission_official", reference_view=True, plan_ref="d" * 48,
                   operation_ref="e" * 48, comparison_tab="differences", metric_view="all")
     navigation = {"version": 1, "view": "gantt", "context": formal}
@@ -359,7 +360,6 @@ def test_explicit_comparison_navigation_preserves_identity_and_complete_window()
 
 
 def test_unsaved_recommendation_does_not_invent_missing_saved_selection_evidence():
-    from core.models.workbench_command import WorkbenchCommandRejected
     from core.services.workbench.facts.decision_selection import selection_basis
 
     # 排队、计算中、失败的运行没有候选，也没有保存推荐。
@@ -367,28 +367,3 @@ def test_unsaved_recommendation_does_not_invent_missing_saved_selection_evidence
     assert basis["selected_candidate_ref"] is None and basis["evidence_state"] == "unavailable"
     assert basis["explanation"]["headline"] == "本次排产尚未保存推荐方案。"
     assert basis["explanation"]["issues"] == []
-    # 有候选的运行（完成或部分完成）必定写了推荐依据；有候选却没有推荐依据是存储损坏。
-    candidate = {"candidate_ref": "a" * 48, "status": "completed", "artifact": {"candidate_key": "business_1", "label": "Candidate"}}
-    with pytest.raises(WorkbenchCommandRejected) as exc:
-        selection_basis(None, [candidate])
-    assert (exc.value.code, exc.value.status) == ("candidate_artifact_invalid", 500)
-
-
-_NAVIGATION_MALFORMED = "页面地址里的定位或范围不对，页面没有打开；系统没有恢复上次选择，也没有换记录或放宽范围。请从侧栏重新进入。"
-_NAVIGATION_NON_FINITE = "页面地址里的数字不是有效数字，页面没有打开。请从侧栏重新进入。"
-
-
-@pytest.mark.parametrize("raw,message", [
-    ('{"version": 1, "version": 1, "view": "analysis", "context": {}}',
-     "页面地址里的定位内容有重复项，页面没有打开；系统没有替你挑一个继续。请从侧栏重新进入。"),
-    ('{"version": 1, "view": "analysis", "context": {"range_start": NaN}}', _NAVIGATION_NON_FINITE),
-    ('{"version": 1, "view": "analysis", "context": {"range_start": -Infinity}}', _NAVIGATION_NON_FINITE),
-    ('{"version": 1e999, "view": "analysis", "context": {}}', _NAVIGATION_NON_FINITE),
-    ('{"version": 1, "view": "analysis", "context": {}', _NAVIGATION_MALFORMED),
-], ids=("duplicate", "nan", "infinity", "overflow", "syntax"))
-def test_navigation_json_rejects_duplicate_keys_and_non_finite_numbers(raw, message):
-    from werkzeug.datastructures import MultiDict
-
-    with pytest.raises(WorkbenchNavigationInvalid) as raised:
-        read_navigation("analysis", MultiDict({"nav": raw}))
-    assert str(raised.value) == message

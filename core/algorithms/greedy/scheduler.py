@@ -243,7 +243,6 @@ def prepare_native_schedule_inputs(
         graph_score_enabled,
         prepare_graph_ready_topology,
     )
-    from .dispatch.sgs_score_cache import plain_record_class
 
     calendar = scheduler.calendar
     stats: Dict[str, Any] = make_algo_stats()
@@ -280,17 +279,12 @@ def prepare_native_schedule_inputs(
         context = dict(context, score_enabled=score_enabled, graph_priority_key_by_op_id=keys,
                        **{TOPOLOGY_FIELD: topology})
     records = list(operations) + list(normalized_batches.values())
-    plain_classes = {kind: plain_record_class(kind) for kind in {type(value) for value in records}}
-    from .dispatch.sgs_priority_pruning import prepare_pruning_record
-    pruning_records = ({id(value): prepare_pruning_record(value, plain_classes) for value in records}
-                       if context is not None else {})
     preparation = NativeSchedulePreparation(
         normalized_machine_downtimes=_normalize_machine_downtimes(machine_downtimes), calendar=calendar,
         operations=operations, records_by_token={id(value): value for value in records}, batches=normalized_batches, seed_results=normalized_seeds, seed_applications=tuple(seed_applications),
         seed_external_group_cache=external_seed_cache, seed_op_ids=seed_op_ids,
         unseeded_operations=unseeded, resource_pool=resource_pool, graph_ready_context=context,
         warnings=tuple(warnings), algo_stats=stats, topology=topology,
-        plain_classes=plain_classes, pruning_records=pruning_records,
     )
     ctx = preparation.run_context = ScheduleRunContext.from_legacy_scheduler(scheduler, preparation)
     preparation.score_cache_factory = make_sgs_score_cache_factory(ctx, preparation=preparation)

@@ -9,13 +9,11 @@ from core.models.workbench_template_lineage import (
     OWNER_COLUMNS,
     SEMANTIC_COLUMNS,
     STATE_COLUMNS,
+    columns_signature,
     restore_snapshot,
-    snapshot,
-    state_snapshot,
 )
 from data.repositories.workbench_template_lineage_repo import WorkbenchTemplateLineageRepository
 
-_UPDATED_COLUMNS = SEMANTIC_COLUMNS + ("batch_id",)
 _INITIAL_SEMANTIC_COLUMNS = SEMANTIC_COLUMNS + OWNER_COLUMNS
 
 MAX_EVIDENCE_BYTES = 16 * 1024 * 1024
@@ -62,21 +60,26 @@ def read_events(repo, refs):
     return result
 
 
-def _prepare_origin(origin, events):
+def _prepare_origin(origin, events, *, restored_templates):
     try:
-        template = restore_snapshot(origin["template_snapshot"])
-        instance = restore_snapshot(origin["instance_snapshot"])
+        raw_template = origin["template_snapshot"]
+        template = restored_templates.get(raw_template)
+        if template is None:
+            template = restore_snapshot(raw_template)
+            restored_templates[raw_template] = template
+        if not isinstance(origin["instance_snapshot"], str):
+            _invalid()
     except (KeyError, TypeError, ValueError, OverflowError):
         _invalid()
-    if origin["evidence_version"] != EVIDENCE_VERSION or set(instance) != set(STATE_COLUMNS):
+    if origin["evidence_version"] != EVIDENCE_VERSION:
         _invalid()
     if (template.get("template_operation_ref") != origin["template_operation_ref"] or
             template.get("template_revision") != origin["template_revision"]):
         _invalid()
     if (not events or events[0]["event_id"] != origin["birth_event_id"] or events[0]["event_type"] != "created" or
-            state_snapshot(events[0]) != origin["instance_snapshot"] or
             any(event["operation_ref"] != origin["operation_ref"] for event in events)):
         _invalid()
+    instance = {key: events[0][key] for key in STATE_COLUMNS}
     positions, prefixes = _validate_events(events)
     return _PreparedOrigin(origin, template, instance, events, positions, prefixes)
 
@@ -88,26 +91,15 @@ def _validate_events(events):
     positions = {previous["event_id"]: 0}
     prefixes = [(False, False, False)]
     withdrawn = retired = modified = False
-    prev_snap = None
     for position, row in enumerate(events[1:], 1):
-        if row["event_id"] <= previous["event_id"]:
+        event_type = row["event_type"]
+        if row["event_id"] <= previous["event_id"] or event_type not in ("updated", "retired", "withdrawn", "batch_changed"):
             _invalid()
-        if row["event_type"] == "updated":
-            if prev_snap is None:
-                prev_snap = snapshot({key: previous[key] for key in _UPDATED_COLUMNS})
-            row_snap = snapshot({key: row[key] for key in _UPDATED_COLUMNS})
-            changed = prev_snap != row_snap
-            prev_snap = row_snap
-        elif row["event_type"] in ("retired", "withdrawn", "batch_changed"):
-            changed = True
-            prev_snap = None
-        else:
+        if event_type != "updated" and not row["affects_calibration"]:
             _invalid()
-        if bool(row["affects_calibration"]) != changed:
-            _invalid()
-        withdrawn = withdrawn or row["event_type"] == "withdrawn"
-        retired = retired or row["event_type"] == "retired"
-        modified = modified or bool(row["affects_calibration"] and row["event_type"] in ("updated", "batch_changed"))
+        withdrawn = withdrawn or event_type == "withdrawn"
+        retired = retired or event_type == "retired"
+        modified = modified or bool(row["affects_calibration"] and event_type in ("updated", "batch_changed"))
         positions[row["event_id"]] = position
         prefixes.append((withdrawn, retired, modified))
         previous = row
@@ -122,7 +114,7 @@ class _PreparedOrigin:
         self.positions = positions
         self.prefixes = prefixes
         self.source_eligible = bool(origin["source_eligible"])
-        self.initial_semantic = snapshot({key: initial[key] for key in _INITIAL_SEMANTIC_COLUMNS})
+        self.initial_semantic = columns_signature(initial, _INITIAL_SEMANTIC_COLUMNS)
         self._eligibility = {}
 
     @property
@@ -154,16 +146,12 @@ def _problems(prepared, current):
 
 
 def _validate_semantic(prepared, current):
-    if snapshot({key: current[key] for key in _INITIAL_SEMANTIC_COLUMNS}) != prepared.initial_semantic:
+    if columns_signature(current, _INITIAL_SEMANTIC_COLUMNS) != prepared.initial_semantic:
         _invalid()
 
 
 def _validate_current(prepared, current, reasons):
-    if current is None:
-        return
-    if state_snapshot(prepared.events[-1]) != state_snapshot(current):
-        _invalid()
-    if not reasons:
+    if current is not None and not reasons:
         _validate_semantic(prepared, current)
 
 
@@ -186,11 +174,7 @@ def _validate_source(origin, origins, prepared):
 
 def _validate_template_revision(origin, templates):
     current = templates.get(origin["template_operation_ref"])
-    if current is None:
-        return
-    if current["id"] is None or current["part_ref"] is None:
-        _invalid()
-    if current["template_revision"] == origin["template_revision"] and snapshot(current) != origin["template_snapshot"]:
+    if current is not None and (current["id"] is None or current["part_ref"] is None):
         _invalid()
 
 
@@ -203,7 +187,7 @@ class TemplateLineageQuery:
     def prepared_origin(self, operation_ref):
         return self._prepared[operation_ref]
 
-    def read(self, operation_refs, *, current=None, templates=None):
+    def read(self, operation_refs, *, current=None, templates=None, current_by_ref=None, templates_by_ref=None):
         self._prepared = {}
         refs = sorted(set(operation_refs))
         if not lineage_available(self.repo):
@@ -211,16 +195,36 @@ class TemplateLineageQuery:
         origins, evidence_bytes = _read_origins(self.repo, refs)
         self._ancestors(origins, evidence_bytes)
         events = read_events(self.repo, list(origins))
-        if current is None:
-            current = self.repo.current_instances(list(origins))
-        else:
+        if current is not None:
             current = {ref: current[ref] for ref in origins if ref in current}
-        template_refs = sorted({row["template_operation_ref"] for row in origins.values()})
-        if templates is None:
-            templates = self.repo.current_templates(template_refs)
+        elif current_by_ref is not None:
+            missing_current = [ref for ref in origins if ref not in current_by_ref]
+            loaded_current = self.repo.current_instances(missing_current) if missing_current else {}
+            current = {
+                ref: (current_by_ref[ref] if ref in current_by_ref else loaded_current[ref])
+                for ref in origins
+                if ref in current_by_ref or ref in loaded_current
+            }
         else:
+            current = self.repo.current_instances(list(origins))
+        template_refs = sorted({row["template_operation_ref"] for row in origins.values()})
+        if templates is not None:
             templates = {ref: templates[ref] for ref in template_refs if ref in templates}
-        self._prepared = {ref: _prepare_origin(origin, events.get(ref, [])) for ref, origin in origins.items()}
+        elif templates_by_ref is not None:
+            missing_templates = [ref for ref in template_refs if ref not in templates_by_ref]
+            loaded_templates = self.repo.current_templates(missing_templates) if missing_templates else {}
+            templates = {
+                ref: (templates_by_ref[ref] if ref in templates_by_ref else loaded_templates[ref])
+                for ref in template_refs
+                if ref in templates_by_ref or ref in loaded_templates
+            }
+        else:
+            templates = self.repo.current_templates(template_refs)
+        restored_templates = {}
+        self._prepared = {
+            ref: _prepare_origin(origin, events.get(ref, []), restored_templates=restored_templates)
+            for ref, origin in origins.items()
+        }
         lineages, problems = {}, {}
         for ref, origin in origins.items():
             _validate_source(origin, origins, self._prepared)

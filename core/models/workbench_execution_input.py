@@ -13,6 +13,8 @@ REQUIRED_FIELDS = REPORT_FIELDS[:-1]
 MAX_OPERATIONS = 10000
 MAX_FACT_ROWS = 50000
 MAX_REPORT_BYTES = 16 * 1024 * 1024
+_REF_RE = re.compile(r"[0-9a-f]{48}")
+_FACTORY_TIME_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
 
 
 def reject(message: str, code: str = "invalid_input", status: int = 422) -> NoReturn:
@@ -20,13 +22,13 @@ def reject(message: str, code: str = "invalid_input", status: int = 422) -> NoRe
 
 
 def public_ref(value: object) -> str:
-    if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{48}", value) is None:
+    if not isinstance(value, str) or _REF_RE.fullmatch(value) is None:
         reject("这条记录已失效，请刷新后重新选择。", status=400)
     return value
 
 
 def factory_time(value: object) -> datetime:
-    if not isinstance(value, str) or re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", value) is None:
+    if not isinstance(value, str) or _FACTORY_TIME_RE.fullmatch(value) is None:
         reject("实际时间格式不对，请按 2026-09-13 08:30:00 这样填写。")
     try:
         return datetime.strptime(value, "%Y-%m-%dT%H:%M:%S")

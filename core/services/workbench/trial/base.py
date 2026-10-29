@@ -14,17 +14,15 @@ from core.services.scheduler.contracts.external_context import (
     merged_supplier_problem,
 )
 from core.services.workbench.facts.candidate_archive import require_candidate_scope
-from core.services.workbench.facts.candidate_facts import GenerationFacts, archived_table
+from core.services.workbench.facts.candidate_facts import archived_table
 from core.services.workbench.facts.candidate_projection import (
     candidate_summary,
-    completed_dispositions,
     validate_manifest,
 )
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_tasks import validate_saved_tasks
 from core.services.workbench.facts.decision_baseline import same_saved_arrangements
 from core.services.workbench.facts.decision_baseline_source import decision_baseline_source_resolver
-from core.services.workbench.facts.decision_metrics import admission_operation_refs
 from core.services.workbench.facts.material_deferral_evidence import archived_deferred_operation_evidence
 from core.services.workbench.facts.preflight_checks import stored_date
 from core.services.workbench.facts.zero_duration_evidence import point_basis
@@ -169,7 +167,7 @@ def _candidate(conn, ref):
         # A candidate that passes manifest validation has a saved receipt.
         receipt = cast(Dict[str, Any], receipt)
         capture = store.capture(run_ref)
-        facts = GenerationFacts(capture)
+        facts = store.generation_facts(capture)
         rows = store.tasks(ref)
         prepared_tasks = {}
         rows, _, scheduled_op_ids = validate_saved_tasks(rows, candidate, facts, prepared_tasks=prepared_tasks)
@@ -186,7 +184,7 @@ def _candidate(conn, ref):
             if result[-1]["current"]["start"] == result[-1]["current"]["end"]:
                 _attach_point_work(result[-1], prepared["point_work"])
             result[-1]["original"]["part"] = facts.tables["Parts"].get(batch["part_no"])
-        scope = completed_dispositions(receipt, expected_refs=admission_operation_refs(facts, capture["input"]))
+        scope = store.dispositions(receipt, facts, capture)
         summary = candidate_summary(candidate, scope, scheduled_op_ids=scheduled_op_ids)
         issues = []
         try:

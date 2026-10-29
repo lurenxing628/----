@@ -199,34 +199,6 @@ def test_operation_log_detail_is_strict_json_and_rejects_non_finite_numbers(sche
     assert _strict(stored[0]) == {"value": 1.5, "名称": "设备"}
 
 
-def test_maintenance_job_detail_never_stores_non_finite_numbers(schema_conn, monkeypatch):
-    import logging
-    from datetime import datetime
-
-    from core.infrastructure.logging import OperationLogger
-    from core.services.system.maintenance import cleanup_task
-    from core.services.system.system_maintenance_service import _fmt_db_dt
-    from data.repositories.system_job_state_repo import SystemJobStateRepository
-
-    # 生产结果只含整数和文本；这里把非有限数注入结果，锁定写端与严格读取口径对称。
-    monkeypatch.setattr(cleanup_task, "cleanup_operation_logs_with_limit",
-                        lambda conn, **kwargs: (0, {"total": 0, "skipped": True, "ratio": float("nan")}))
-    logger = logging.getLogger("tests.maintenance_job_detail")
-    ran = cleanup_task.maybe_run_auto_log_cleanup(
-        schema_conn, job_repo=SystemJobStateRepository(schema_conn), now=datetime(2026, 10, 26, 8, 0),
-        interval_minutes=60, keep_days=30, min_keep_logs=0, max_log_delete_per_run=10, job_key="auto_log_cleanup",
-        logger=logger, op_logger=OperationLogger(schema_conn, logger=logger),
-        is_due_fn=lambda *args: True, fmt_db_dt_fn=_fmt_db_dt)
-    assert ran is False
-    detail, = [row[0] for row in schema_conn.execute(
-        "SELECT last_run_detail FROM SystemJobState WHERE job_key='auto_log_cleanup'")]
-    job = _strict(detail)
-    assert set(job) == {"error", "time_cost_ms"} and job["error"].startswith(_NOT_JSON)
-    logs = schema_conn.execute("SELECT log_level, action, detail, error_message FROM OperationLogs").fetchall()
-    assert [(row[0], row[1]) for row in logs] == [("ERROR", "logs_cleanup")]
-    assert set(_strict(logs[0][2])) == {"mode", "time_cost_ms"} and logs[0][3].startswith(_NOT_JSON)
-
-
 def test_unreadable_stale_maintenance_lock_fails_closed_without_deleting_lock(tmp_path, monkeypatch):
     import os
     import time

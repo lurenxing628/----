@@ -12,28 +12,15 @@ def record_content(rows):
 
 
 def shared_content(rows, names):
-    """Replace repeated field values by stable, content-bound catalog indices.
-
-    Rows are already ordered by their permanent dictionary key. Catalog order
-    follows that order, and equality uses the existing lossless canonical
-    codec. Object identity only avoids recoding an object within this call;
-    equal values with distinct allocations receive the same catalog index.
-    """
+    """Replace repeated field values by stable, content-bound catalog indices."""
     catalogs = {}
     for name in names:
-        values, by_content, by_object = [], {}, {}
+        values, by_content = [], {}
         for row in rows:
-            value = row[name]
-            identity = id(value)
-            if identity in by_object:
-                index = by_object[identity]
-            else:
-                text = content_text(value)
-                if text not in by_content:
-                    by_content[text] = len(values)
-                    values.append(text)
-                index = by_content[text]
-                by_object[identity] = index
-            row[name] = index
+            text = content_text(row[name])
+            if text not in by_content:
+                by_content[text] = len(values)
+                values.append(text)
+            row[name] = by_content[text]
         catalogs[name] = values
     return catalogs

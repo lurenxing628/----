@@ -2,9 +2,17 @@
 
 from bisect import bisect_left, bisect_right
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from core.shared.local_datetime import format_local_datetime, parse_local_datetime
+
+_MICROSECOND = timedelta(microseconds=1)
+_SECOND_MICROSECONDS = 1_000_000.0
+HOUR_MICROSECONDS = 3_600_000_000.0
+
+
+def interval_microseconds(start: datetime, end: datetime) -> int:
+    return (end - start) // _MICROSECOND
 
 
 def instant(value):
@@ -53,7 +61,7 @@ def intersection(left, right):
 
 
 def hours(intervals):
-    return sum((end - start).total_seconds() for start, end in intervals) / 3600.0
+    return sum(interval_microseconds(start, end) for start, end in intervals) / HOUR_MICROSECONDS
 
 
 def segments(intervals):
@@ -91,24 +99,24 @@ class IntervalIndex:
     def _build_prefix(self, intervals):
         self.intervals = list(intervals)
         self.starts = []
-        self.prefix = [0.0]
+        self.prefix = [0]
         for start, end in self.intervals:
             self.starts.append(start)
-            self.prefix.append(self.prefix[-1] + (end - start).total_seconds())
+            self.prefix.append(self.prefix[-1] + interval_microseconds(start, end))
 
     def _at_index(self, index, at):
         if index < 0:
-            return 0.0
+            return 0
         start, end = self.intervals[index]
         if at >= end:
             return self.prefix[index + 1]
-        return self.prefix[index] + (at - start).total_seconds()
+        return self.prefix[index] + interval_microseconds(start, at)
 
     def _before(self, at):
         return self._at_index(bisect_right(self.starts, at) - 1, at)
 
     def prefix_values_at_sorted(self, points):
-        """Consume caller-ordered points as cumulative seconds, including repeats."""
+        """Consume caller-ordered points as cumulative microseconds, including repeats."""
         index = -1
         for at in points:
             while index + 1 < len(self.starts) and self.starts[index + 1] <= at:
@@ -116,7 +124,7 @@ class IntervalIndex:
             yield self._at_index(index, at)
 
     def hours_between(self, start, end):
-        return (self._before(end) - self._before(start)) / 3600.0
+        return (self._before(end) - self._before(start)) / HOUR_MICROSECONDS
 
     def seconds_and_count_between(self, start, end):
         """Return overlap seconds and the number of intersecting stored intervals."""
@@ -128,12 +136,12 @@ class IntervalIndex:
             first += 1
         if first >= last:
             return 0.0, 0
-        seconds = self.prefix[last] - self.prefix[first]
+        microseconds = self.prefix[last] - self.prefix[first]
         if start > self.intervals[first][0]:
-            seconds -= (start - self.intervals[first][0]).total_seconds()
+            microseconds -= interval_microseconds(self.intervals[first][0], start)
         if end < self.intervals[last - 1][1]:
-            seconds -= (self.intervals[last - 1][1] - end).total_seconds()
-        return seconds, last - first
+            microseconds -= interval_microseconds(end, self.intervals[last - 1][1])
+        return microseconds / _SECOND_MICROSECONDS, last - first
 
     def contains(self, at, *, ending=False):
         """A finish may touch a period's end; a start must be inside [start,end)."""

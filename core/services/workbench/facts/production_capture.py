@@ -80,11 +80,15 @@ class ProductionFactsCapture:
         """Apply the original registered SQLite codecs once, preserving the raw archive."""
         if name not in self._business_tables:
             originals = self.table(name)
-            codecs, inputs = self.repo.converters[name], self.repo.codec_inputs[name]
+            codecs = self.repo.converters[name]
             self._business_tables[name] = originals if not codecs else [
-                {**row, **{column: convert(value) if value is not None and len(value) else None
-                           for (column, convert), value in zip(codecs.items(), encoded)}}
-                for row, encoded in zip(originals, inputs)]
+                {**row, **{
+                    column: convert(value.encode("utf-8") if isinstance(value, str) else value)
+                    if isinstance(value, (str, bytes)) and value else None
+                    for column, convert in codecs.items()
+                    for value in (row[column],)
+                }}
+                for row in originals]
         return self._business_tables[name]
 
     def index(self, name, key):

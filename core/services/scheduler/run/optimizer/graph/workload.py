@@ -4,7 +4,7 @@ from __future__ import annotations
 import heapq
 import math
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, NoReturn, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, NoReturn, Optional, Set, Tuple
 
 from core.algorithm_contracts.value_domains import EXTERNAL, MERGED
 from core.algorithm_runtime.piece_input import external_group_key
@@ -16,19 +16,28 @@ def operation_workload_signals(
     operations: Dict[int, Any], *, batches: Dict[str, Any],
     start_dt: datetime, graph_ready_context: Any,
     seed_results: List[Any], calendar_service: Any, work_buckets: Any,
-) -> Tuple[Dict[int, float], Dict[int, float]]:
+    deadline: float, clock: Callable[[], float],
+) -> Optional[Tuple[Dict[int, float], Dict[int, float]]]:
     """Count each reachable work bucket once; release follows longest predecessor path.
 
     These are gross precedence estimates, not a resource-feasible schedule. Fixed
     predecessors with seed evidence use their completion; other fixed work is
     already completed under the graph dispatch contract.
     """
+    if clock() >= deadline:
+        return None
     buckets, members, work = work_buckets
     links, release = _bucket_releases(
         operations, batches, buckets, graph_ready_context["predecessor_op_ids_by_op_id"], start_dt, seed_results,
     )
+    if clock() >= deadline:
+        return None
     ordered = _topological_order(links)
-    _advance_releases(operations, batches, members, work, links, release, ordered, calendar_service)
+    if not _advance_releases(
+        operations, batches, members, work, links, release, ordered, calendar_service,
+        deadline=deadline, clock=clock,
+    ):
+        return None
     burden = _remaining_burdens(work, links, ordered)
     return ({op_id: burden[bucket] for op_id, bucket in buckets.items()},
             {op_id: (release[bucket] - start_dt).total_seconds() / 3600.0 for op_id, bucket in buckets.items()})
@@ -100,14 +109,20 @@ def _bucket_releases(
     return links, release
 
 
-def _advance_releases(operations, batches, members, work, links, release, ordered, calendar_service):
+def _advance_releases(
+    operations, batches, members, work, links, release, ordered, calendar_service,
+    *, deadline: float, clock: Callable[[], float],
+) -> bool:
     for bucket in ordered:
         if not links[bucket]:
             continue
+        if clock() >= deadline:
+            return False
         op = operations[members[bucket][0]]
         finish = _gross_finish(op, batches[str(op.batch_id)], release[bucket], work[bucket], calendar_service)
         for child in links[bucket]:
             release[child] = max(release[child], finish)
+    return True
 
 
 def _remaining_burdens(work, links, ordered):

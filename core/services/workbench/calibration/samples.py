@@ -113,6 +113,13 @@ def _processing_values(projection):
             "unit_hours": float(ratio) if ratio is not None else None}, reasons
 
 
+def ensure_sample_revision(sample):
+    revision = sample["sample_revision"]
+    if type(revision) is not str:
+        sample["sample_revision"] = content_text(revision)
+    return sample
+
+
 def _sample_origin(candidate, *, lineage_origin, lineage_events):
     projection, lineage = candidate.execution, candidate.lineage
     revision_refs = [row.revision_ref for row in projection.reports]
@@ -132,7 +139,7 @@ def _sample_origin(candidate, *, lineage_origin, lineage_events):
             "template_operation_ref": lineage.template_operation_ref if lineage else None,
             "template_revision": lineage.template_revision if lineage else None,
             "lineage_evidence_ref": lineage.evidence_ref if lineage else None,
-            "sample_revision": content_text(state), "report_refs": [row.report_ref for row in projection.reports],
+            "sample_revision": state, "report_refs": [row.report_ref for row in projection.reports],
             "report_revision_refs": revision_refs,
             "confirmed_finish": projection.confirmed_finish,
             "reports": reports, "data_gaps": projection.data_gaps}

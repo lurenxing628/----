@@ -67,7 +67,7 @@ class TaskConstraints:
     def _add(self, code, op_id):
         self.issues[code].add(op_id)
 
-    def check(self, row, start, end):
+    def check(self, row, start, end, *, row_start, row_end):
         op_id = row["op_id"]
         if not self.available:
             self._add("assignment_calendar_unavailable", op_id)
@@ -94,7 +94,7 @@ class TaskConstraints:
             # capacity denominator. Night-shift personnel do not fail this check
             # merely because their machine's display calendar is a day shift.
             if not point and kind == "operator" and priority in ("normal", "urgent", "critical"):
-                self._check_calendar(kind, key, priority, row, start, end)
+                self._check_calendar(kind, key, priority, row, start, end, row_start=row_start, row_end=row_end)
         if not point:
             self._check_downtime(row, start, end)
         self._check_type_and_qualification(row)
@@ -135,7 +135,7 @@ class TaskConstraints:
         elif index.hours_between(start, end) > 1e-9:
             self._add("assignment_machine_downtime", row["op_id"])
 
-    def _check_calendar(self, kind, key, priority, row, start, end):
+    def _check_calendar(self, kind, key, priority, row, start, end, *, row_start, row_end):
         op_id = row["op_id"]
         mode = "normal" if priority == "normal" else "urgent"
         cache_key = kind, key, mode
@@ -152,8 +152,8 @@ class TaskConstraints:
         if index is None:
             self._add("assignment_calendar_unavailable", op_id)
         # Native jobs pause between work periods. View clipping is not a real job boundary.
-        elif ((not index.contains(start) and start == instant(row["start_time"]))
-              or (not index.contains(end, ending=True) and end == instant(row["end_time"]))):
+        elif ((not index.contains(start) and start == row_start)
+              or (not index.contains(end, ending=True) and end == row_end)):
             self._add("assignment_outside_calendar", op_id)
 
     def _check_type_and_qualification(self, row):

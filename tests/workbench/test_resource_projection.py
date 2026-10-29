@@ -117,15 +117,16 @@ def test_normalized_interval_index_reuses_union_and_preserves_half_open_finish_b
     from bisect import bisect_right
     from datetime import timedelta
 
+    from core.services.capacity.plan_calendar_intervals import HOUR_MICROSECONDS, interval_microseconds
     from core.services.capacity.resource_utilization_metrics import METRIC_VERSION, _WeightedIndex
 
     def original_before(index, point):
         position = bisect_right(index.starts, point) - 1
         if position < 0:
-            return 0.0
+            return 0
         row = (index.rows if isinstance(index, _WeightedIndex) else index.intervals)[position]
-        seconds = (min(point, row[1]) - row[0]).total_seconds()
-        return index.prefix[position] + (seconds * row[2] if len(row) == 3 else seconds)
+        microseconds = interval_microseconds(row[0], min(point, row[1]))
+        return index.prefix[position] + (microseconds * row[2] if len(row) == 3 else microseconds)
 
     fractional = [(first + timedelta(microseconds=17), boundary + timedelta(microseconds=31)),
                   (second + timedelta(microseconds=41), last + timedelta(microseconds=59))]
@@ -134,11 +135,12 @@ def test_normalized_interval_index_reuses_union_and_preserves_half_open_finish_b
     indexes = [IntervalIndex.from_normalized([]), _WeightedIndex([]), IntervalIndex.from_normalized(fractional),
                _WeightedIndex([(low, high, count) for (low, high), count in zip(fractional, (3, 2))])]
     for index in indexes:
+        assert all(isinstance(value, int) for value in index.prefix)
         for point in points:
             assert index._before(point) == original_before(index, point)
             assert index.hours_between(point, point) == 0
         for low, high in ((first, points[-1]), (fractional[0][1], fractional[1][0]), (points[2], points[6])):
-            assert index.hours_between(low, high) == (original_before(index, high) - original_before(index, low)) / 3600.0
+            assert index.hours_between(low, high) == (original_before(index, high) - original_before(index, low)) / HOUR_MICROSECONDS
 
     usage = ResourceUtilizationMetrics.from_normalized_availability(
         [(fractional[0][0], fractional[1][1]), (points[2], fractional[0][1])], fractional)
@@ -251,6 +253,7 @@ def test_partial_calendar_preserves_known_subtotals_and_does_not_label_unknown_d
     minute_index = ResourceTaskIndex(minute_rows, first, last)
     minute_window = minute_index.window(MACHINE, minute_calendar)
     minute_filter = minute_index.day_filter_summary(MACHINE, minute_calendar)
+    assert minute_filter is not None
     assert minute_filter == _period_summary(minute_index.period_facts(MACHINE, minute_calendar),
                                            minute_window["daily_peak_utilization"])
     assert minute_window["conflict"] is None and minute_filter["conflict"] is False
@@ -296,6 +299,7 @@ def test_unknown_workload_and_absent_arrangements_keep_capacity_and_idle_semanti
     partial_index = ResourceTaskIndex(rows, start, end, task_intervals=parsed)
     partial = partial_index.window(MACHINE, saved)
     partial_filter = partial_index.day_filter_summary(MACHINE, saved)
+    assert partial_filter is not None
     assert partial_filter == _period_summary(partial_index.period_facts(MACHINE, saved), partial["daily_peak_utilization"])
     assert partial["unknown_days"] == 0 and partial_filter["unknown_period_count"] == 1
     assert partial["available_hours"] == 2 and partial["state"] == "partial"
@@ -490,3 +494,112 @@ def test_selected_plan_conflict_segments_keep_night_reservations_and_three_opera
     assert rest["overlap_hours"] == 1 and rest["available_overlap_hours"] == 0
     assert rest["has_overlap"] is False and rest["capacity_insufficient"] is False and rest["conflict_segments"] == []
     assert rest["outside_available_hours"] == 1 and rest["outside_calendar_basis"] == "reservation_span_outside_work_calendar"
+
+
+def test_multiday_prefix_accumulation_preserves_exact_in_calendar_and_zero_capacity_invariants():
+    import json
+    import subprocess
+    from datetime import datetime, timedelta
+    from pathlib import Path
+
+    from tests.workbench.node_runtime_support import node_runtime
+
+    base = datetime(2026, 10, 14)
+    range_start = base.isoformat()
+    range_end = (base + timedelta(days=12)).isoformat()
+    # Day 0 has an early out-of-calendar piece and fractional durations so cumulative prefix baselines diverge.
+    rows = [
+        task("d0-outside", "op:d0-out", (base + timedelta(hours=6, microseconds=100_000)).isoformat(),
+             (base + timedelta(hours=8, microseconds=100_000)).isoformat()),
+        task("d0-inside", "op:d0-in", (base + timedelta(hours=8, microseconds=100_000)).isoformat(),
+             (base + timedelta(hours=15, minutes=23, seconds=17, microseconds=300_000)).isoformat()),
+    ]
+    days_payload = [
+        day_calendar(base.isoformat(), (base + timedelta(days=1)).isoformat(),
+                     [((base + timedelta(hours=8)).isoformat(), (base + timedelta(hours=16)).isoformat())])
+    ]
+    # Days 1..9 have tasks 100% inside calendar windows with fractional durations that previously drifted by +-1..16 ULP.
+    spans_sec = (11600.3, 13432.7, 9876.1, 14210.9, 10543.2, 12999.8, 8765.4, 15123.6, 11111.1)
+    for offset, sec in enumerate(spans_sec, start=1):
+        day_dt = base + timedelta(days=offset)
+        next_dt = day_dt + timedelta(days=1)
+        w1_start, w1_end = day_dt + timedelta(hours=8), day_dt + timedelta(hours=12)
+        w2_start, w2_end = day_dt + timedelta(hours=13), day_dt + timedelta(hours=18)
+        days_payload.append(day_calendar(
+            day_dt.isoformat(), next_dt.isoformat(),
+            [(w1_start.isoformat(), w1_end.isoformat()), (w2_start.isoformat(), w2_end.isoformat())],
+        ))
+        first_dur = timedelta(seconds=round(sec * 0.45, 6))
+        second_dur = timedelta(seconds=round(sec * 0.55, 6))
+        t1_start = w1_start + timedelta(microseconds=100_000)
+        t2_start = w2_start + timedelta(microseconds=200_000)
+        rows.append(task(f"d{offset}-1", f"op:d{offset}-1", t1_start.isoformat(), (t1_start + first_dur).isoformat()))
+        rows.append(task(f"d{offset}-2", f"op:d{offset}-2", t2_start.isoformat(), (t2_start + second_dur).isoformat()))
+
+    # Day 10: zero-capacity rest day with no tasks; Day 11: zero-capacity rest day with a 2h reservation span.
+    day10, day11, day12 = base + timedelta(days=10), base + timedelta(days=11), base + timedelta(days=12)
+    days_payload.append(day_calendar(day10.isoformat(), day11.isoformat(), []))
+    days_payload.append(day_calendar(day11.isoformat(), day12.isoformat(), []))
+    rows.append(task("d11-rest", "op:d11-rest", (day11 + timedelta(hours=9)).isoformat(), (day11 + timedelta(hours=11)).isoformat()))
+
+    saved = calendar(*days_payload)
+    index = ResourceTaskIndex(rows, range_start, range_end)
+    whole, day_rows = index.window_with_days(MACHINE, saved)
+    shift_rows = index.periods(MACHINE, saved, grain="shift")
+    week_rows = index.periods(MACHINE, saved, grain="week")
+
+    for day_row in day_rows[1:10]:
+        assert day_row["outside_calendar_hours"] == 0.0
+        assert day_row["known_outside_calendar_hours"] == 0.0
+        assert day_row["overlap_hours"] == 0.0
+        assert day_row["known_overlap_hours"] == 0.0
+        assert day_row["span_overlap_hours"] == 0.0
+        assert day_row["known_span_overlap_hours"] == 0.0
+        assert day_row["zero_capacity_task"] is False
+
+    for shift_row in shift_rows[1:-1]:
+        assert shift_row["outside_calendar_hours"] == 0.0
+        assert shift_row["known_outside_calendar_hours"] == 0.0
+        assert shift_row["overlap_hours"] == 0.0
+        assert shift_row["known_overlap_hours"] == 0.0
+        assert shift_row["zero_capacity_task"] is False
+    assert shift_rows[-1]["outside_calendar_hours"] == 2.0
+    assert shift_rows[-1]["zero_capacity_task"] is None
+
+    assert day_rows[10]["available_hours"] == 0.0
+    assert day_rows[10]["outside_calendar_hours"] == 0.0
+    assert day_rows[10]["known_outside_calendar_hours"] == 0.0
+    assert day_rows[10]["zero_capacity_task"] is False
+    assert day_rows[10]["zero_capacity_reason"] is None
+
+    assert day_rows[11]["available_hours"] == 0.0
+    assert day_rows[11]["outside_calendar_hours"] == 2.0
+    assert day_rows[11]["known_outside_calendar_hours"] == 2.0
+    assert day_rows[11]["zero_capacity_task"] is None
+    assert day_rows[11]["zero_capacity_reason"]["code"] == "actual_work_fragments_not_recorded"
+
+    summary_payload = resource_summary([whole])
+    root = Path(__file__).resolve().parents[2]
+    program = r"""
+const fs = require('node:fs'), vm = require('node:vm'), path = require('node:path');
+const w = {}, context = vm.createContext({window: w});
+vm.runInContext(fs.readFileSync(path.join(process.cwd(), 'frontend/workbench/app/ResourceProjectionContract.js'), 'utf8'), context);
+const payload = JSON.parse(fs.readFileSync(0, 'utf8'));
+for (const item of payload.windows) {
+  if (!w.ResourceProjectionContract.window(item)) {
+    throw new Error('window contract rejected: ' + JSON.stringify(item));
+  }
+}
+if (!w.ResourceProjectionContract.summary(payload.summary)) {
+  throw new Error('summary contract rejected: ' + JSON.stringify(payload.summary));
+}
+"""
+    check = subprocess.run(
+        [node_runtime(), "-e", program],
+        input=json.dumps({"windows": [whole, *day_rows, *shift_rows, *week_rows], "summary": summary_payload}),
+        text=True,
+        capture_output=True,
+        cwd=root,
+        timeout=30,
+    )
+    assert check.returncode == 0, check.stdout + check.stderr

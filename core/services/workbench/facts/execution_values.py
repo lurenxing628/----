@@ -26,6 +26,8 @@ def local_time(value):
 
 
 def minutes(planned, actual):
+    if planned is None or actual is None:
+        return None
     return _minutes_between(local_dt(planned), local_dt(actual))
 
 
@@ -38,9 +40,10 @@ def execution_deviation(planned_end, projection, as_of):
               "unclosed": False, "late_open": False, "finish_late": False, "forecast_late": False}
     if projection is None:
         return result
-    planned, clock = local_dt(planned_end), local_dt(as_of)
+    planned = local_dt(planned_end)
+    clock = local_dt(as_of)
     complete = projection["execution_state"] == "complete"
-    confirmed = local_dt(projection["confirmed_finish"])
+    confirmed = local_dt(projection["confirmed_finish"]) if complete else None
     remaining = projection["remaining_plan"] if not complete else None
     forecast = local_dt(remaining["end"]) if remaining else None
     due = planned is not None and clock is not None and planned <= clock

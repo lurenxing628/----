@@ -8,7 +8,6 @@ from core.services.workbench.facts.adoption_baseline_values import (
     AdoptionBaselineUnavailable,
     read_adoption_record,
 )
-from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.candidate_projection import candidate_summary, dispositions, validate_manifest
 from core.services.workbench.facts.candidate_read_source import read_candidate_source
 from core.services.workbench.facts.candidate_store import CandidateStore
@@ -50,7 +49,7 @@ class _HistoryCandidateStore(CandidateStore):
     """Keep CandidateStore's checks while sharing archived bytes across events."""
 
     def __init__(self, conn):
-        super().__init__(conn)
+        super().__init__(conn, copy_on_read=False)
         self._saved = {}
 
     def run(self, run_ref):
@@ -147,7 +146,7 @@ class HistoryReader:
             rows = self.store.candidates(run_ref)
             validate_manifest(run, rows, receipt)
             capture = self.store.capture(run_ref)
-            facts = GenerationFacts(capture)
+            facts = self.store.generation_facts(capture)
             disposition = dispositions(receipt, expected_refs=admission_operation_refs(facts, capture["input"]))
             return {**prepared, "run": run, "receipt": receipt, "rows": rows, "capture": capture,
                     "facts": facts, "disposition": disposition, "candidate_sources": {}}
@@ -255,8 +254,8 @@ class HistoryReader:
             selected_candidate_ref=candidate_ref, range_start=range_start, range_end=range_end,
             resource_view="full_candidate", prepared=self._runs.get(run_ref, self._run_prepared.get(run_ref))))
 
-    def decision(self, run_ref, range_start, range_end, *, candidate_ref):
+    def decision(self, run_ref, range_start, range_end, *, candidate_ref, metric_keys=None):
         """Read this event's metrics under the workspace's common resource cohort."""
-        key = (run_ref, candidate_ref, range_start, range_end)
+        key = (run_ref, candidate_ref, range_start, range_end, None if metric_keys is None else tuple(metric_keys))
         return _cached(self._decisions, key, lambda: decision_history_candidate(self.run_source(run_ref, candidate_ref,
-            range_start=range_start, range_end=range_end)))
+            range_start=range_start, range_end=range_end), metric_keys=metric_keys))

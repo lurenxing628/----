@@ -2,7 +2,7 @@
 
 from core.infrastructure.connection_guards import schema_contract_memo
 from core.models.enums import SOURCE_TYPE_VALUES, SourceType, read_source_type
-from core.models.workbench_dashboard import MAX_BYTES, MAX_FACT_ROWS, bounded
+from core.models.workbench_dashboard import MAX_FACT_ROWS, MAX_ROWS, bounded
 
 from .calendar_facts_repo import DOWNTIME_STATUS_SQL
 from .schedule_time_sql import parse_dt_for_sql
@@ -16,17 +16,15 @@ _FROM = {name: ' FROM "' + name + '"' for name in TABLES}
 def rows(conn, sql, params=(), *, select=None, limit=None):
     cursor = conn.execute(sql, params)
     names = [column[0] for column in cursor.description]
-    result, size = [], 0
+    result = []
     for row in cursor:
         item = dict(zip(names, row))
         if select is not None and not select(item):
             continue
-        size += sum(len(value) if type(value) is bytes else len(value.encode("utf-8")) if type(value) is str else 16 for value in row)
-        bounded(range(size), MAX_BYTES)
         result.append(item)
         if limit is not None and len(result) >= limit:
             break
-    return result
+    return bounded(result, MAX_FACT_ROWS if limit is None else max(limit, MAX_ROWS))
 
 
 def source_gap_rows(conn, limit):
@@ -37,8 +35,8 @@ def source_gap_rows(conn, limit):
             row["source_kind"] == SourceType.EXTERNAL.value and row["source"] != SourceType.EXTERNAL.value)
 
     return rows(conn, """SELECT r.ref AS operation_ref, b.ref AS batch_ref,
-        m.outsourcing_ref, CASE WHEN 1 THEN o.op_code END AS business_code,
-        CASE WHEN 1 THEN o.source END AS source
+        m.outsourcing_ref, +o.op_code AS business_code,
+        +o.source AS source
         FROM BatchOperations o
         LEFT JOIN WorkbenchPlanSourceRefs r ON r.kind='operation' AND r.active=1 AND r.source_key=CAST(o.id AS TEXT)
         LEFT JOIN WorkbenchEntityRefs b ON b.kind='batch' AND b.active=1 AND b.entity_key=o.batch_id
@@ -54,7 +52,7 @@ class DashboardSourceRepository:
 
     def _select_list(self, name):
         columns = [row[1] for row in self.structure.table_info(name)]
-        return ",".join('CASE WHEN 1 THEN "' + column + '" END AS "' + column + '"' for column in columns)
+        return ",".join('+"' + column + '" AS "' + column + '"' for column in columns)
 
     def table(self, name):
         return bounded(rows(self.conn, "SELECT " + self._select_list(name) + _FROM[name] + " ORDER BY rowid LIMIT ?", (MAX_FACT_ROWS + 1,)), MAX_FACT_ROWS)
@@ -68,24 +66,15 @@ class DashboardSourceRepository:
                    selected + " AS __calendar_selected",
                    "CASE WHEN " + selected + " THEN TRIM(CAST(md.start_time AS TEXT)) END AS __calendar_start",
                    "CASE WHEN " + selected + " THEN TRIM(CAST(md.end_time AS TEXT)) END AS __calendar_end"]
-        for field in ("start_time", "end_time"):
-            stem = "__calendar_" + field
-            private.extend(("CASE typeof(md." + field + ") WHEN 'null' THEN 0 WHEN 'integer' THEN 1 "
-                            "WHEN 'real' THEN 1 WHEN 'text' THEN 2 ELSE 3 END AS " + stem + "_rank",
-                            "CASE WHEN typeof(md." + field + ")='text' THEN CAST(md." + field + " AS BLOB) "
-                            "ELSE md." + field + " END AS " + stem + "_value"))
         cursor = None
         try:
             cursor = self.conn.execute("SELECT " + self._select_list("MachineDowntimes") + "," + ",".join(private) +
                                       " FROM MachineDowntimes md ORDER BY rowid LIMIT ?", (MAX_FACT_ROWS + 1,))
             names = [column[0] for column in cursor.description]
             boundary = len(names) - len(private)
-            captured, prepared, size = [], [], 0
+            captured, prepared = [], []
             for row in cursor:
                 raw = dict(zip(names[:boundary], row[:boundary]))
-                size += sum(len(value) if type(value) is bytes else len(value.encode("utf-8")) if type(value) is str else 16
-                            for value in row[:boundary])
-                bounded(range(size), MAX_BYTES)
                 captured.append(raw)
                 interval = dict(zip(names[boundary:], row[boundary:]))
                 if interval.pop("__calendar_selected"):

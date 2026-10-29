@@ -76,15 +76,9 @@ def _read(conn, values, *, all_rows):
 
         entries = [entry(row) for row in page_rows]
         selected, reference = entry(selected_descriptor), entry(reference_descriptor)
-        pair = condition_pair(reader, reference_descriptor, selected_descriptor, selected, query, pairs)
-        conditions = dict(pair["conditions"])
-        if not all_rows:
-            # The first detail page answers what changed; native files retain
-            # their original full ordering and the same complete condition set.
-            priority = {"different": 0, "unknown": 1, "equal": 2}
-            conditions["rows"] = sorted(conditions["rows"], key=lambda row: priority[row["state"]])
-        conditions["rows"], conditions["page"] = _page(conditions["rows"], query["condition_page"],
-            query["condition_size"], all_rows=all_rows)
+        pair = condition_pair(reader, reference_descriptor, selected_descriptor, selected, query, pairs,
+                              include_rows=True, all_rows=all_rows)
+        conditions = pair["conditions"]
         deltas = {}
         for key in query["metric_keys"]:
             if selected is not None and reference is not None:

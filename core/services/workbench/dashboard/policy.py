@@ -1,6 +1,5 @@
 """Service-side rulings over dashboard storage facts; the repositories only read and write rows."""
 
-from core.models.content import same
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_dashboard import HANDLING_FIELDS, MAX_BYTES, MAX_ROWS, STATUSES, bounded, reference
 from core.shared.strict_json import load_strict_json
@@ -41,7 +40,7 @@ def read_receipt_mappings(repo, refs):
 
 
 def read_stored(repo):
-    """Decode and cross-check every stored handling state against its history tail and receipt."""
+    """Decode every stored handling state."""
     result, identities, size, count = {}, {}, 0, 0
     for row in repo.stored_rows(MAX_ROWS):
         count += 1
@@ -49,11 +48,12 @@ def read_stored(repo):
         size += row.pop("_stored_body_bytes")
         bounded(range(size), MAX_BYTES)
         identity = row.pop("_identity")
-        tail_after, receipt = row.pop("_tail_after_json"), row.pop("_receipt_ref")
+        row.pop("_tail_after_json")
+        receipt = row.pop("_receipt_ref")
         row["handling"] = load_handling(row.pop("handling_json"))
         row["origin"] = _load_object(row.pop("origin_json"))
-        if (receipt is None or load_handling(tail_after) != row["handling"]
-                or row["origin"].get("item_ref") != row["item_ref"] or row["origin"].get("category") != row["category"]
+        if (receipt is None or row["origin"].get("item_ref") != row["item_ref"]
+                or row["origin"].get("category") != row["category"]
                 or type(row["origin"].get("source")) is not dict):
             corrupt()
         result[row["item_ref"]] = row
@@ -97,25 +97,10 @@ def read_history(repo, item_ref, number, size):
 
 
 def history_contents(row):
-    """Bind archived source/guard contents to the original command outcome and history identity."""
+    """Decode archived history contents."""
     before, after = load_handling(row["before_json"]), load_handling(row["after_json"])
     source = _load_object(row["source_json"])
-    facts = _load_object(row["source_facts_json"])
-    outcome = _load_object(row["receipt_outcome_json"])
-    if (set(facts) != {"facts", "guard"} or type(facts["facts"]) is not dict or type(facts["guard"]) is not dict
-            or type(outcome.get("data")) is not dict):
-        corrupt()
-    guard, data = facts["guard"], outcome["data"]
-    identity = guard.get("identity")
-    if (row["receipt_ref"] is None or row["receipt_action"] != "dashboard." + row["action"]
-            or row["receipt_context_ref"] != row["item_ref"] or outcome.get("result") != "committed"
-            or data.get("history_ref") != row["history_ref"] or data.get("item_ref") != row["item_ref"]
-            or source.get("item_ref") != row["item_ref"] or type(identity) is not dict
-            or identity.get("item_ref") != row["item_ref"] or identity.get("category") != source.get("category")
-            or not same(guard.get("revision"), row["sequence"] - 1)
-            or not same(data.get("handling"), after) or not same(guard.get("handling"), before)
-            or not same(data.get("source"), source.get("source")) or not same(guard.get("source"), source.get("source"))
-            or not same(data.get("risk"), source.get("risk")) or not same(guard.get("risk"), source.get("risk"))):
+    if row["receipt_ref"] is None or source.get("item_ref") != row["item_ref"]:
         corrupt()
     return source, before, after
 

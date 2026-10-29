@@ -4,15 +4,22 @@ from datetime import datetime
 from typing import NoReturn
 
 from core.infrastructure.read_evidence import verified_read
-from core.models.content import same
 from core.models.workbench_trial import MAX_TRIAL_TASKS, reference
 from core.models.workbench_trial_adoption import TrialAdoptionBlocked
 from core.services.scheduler.run.schedule_payload_contract import ValidatedScheduleRow
-from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 
 from .trial_origin import operation_contexts
-from .trial_policy import load_draft, load_scenario_record
+from .trial_policy import (
+    copy_draft_rows,
+    load_draft_with_key,
+    load_scenario_record_with_key,
+    max_trial_tasks,
+    trial_cache_get,
+    trial_cache_memo,
+)
+
+_SAVED_SCENARIO_CACHE = {}
 
 
 def _invalid(message) -> NoReturn:
@@ -26,10 +33,31 @@ def load_saved_scenario(conn, scenario_ref):
 
 def _load_saved_scenario(conn, scenario_ref):
     repo = WorkbenchTrialRepository(conn)
-    header, saved = load_scenario_record(repo, scenario_ref)
-    head, originals = load_draft(repo, header["draft_ref"])
+    header, saved, scenario_key = load_scenario_record_with_key(repo, scenario_ref)
+    head, originals, draft_key = load_draft_with_key(repo, header["draft_ref"])
+    cache_key = (
+        (
+            scenario_key,
+            draft_key,
+            header.get("scenario_ref"),
+            header.get("draft_ref"),
+            header.get("name"),
+            header.get("revision"),
+            header.get("saved_at"),
+            head.get("draft_ref"),
+            head.get("status"),
+            head.get("revision"),
+            head.get("base_ref"),
+        )
+        if scenario_key is not None and draft_key is not None
+        else None
+    )
+    max_tasks = min(MAX_TRIAL_TASKS, max_trial_tasks())
+    if cache_key is not None and 0 < len(originals) <= max_tasks:
+        cached_rows = trial_cache_get(_SAVED_SCENARIO_CACHE, cache_key)
+        if cached_rows is not None:
+            return saved, dict(head, scenario_revision=header["revision"]), copy_draft_rows(cached_rows)
     _require_head(saved, header, head, originals)
-    _require_receipts(conn, saved, header, head)
     sources = {row["row_ref"]: row for row in originals}
     rows, seen = [], set()
     for task in saved["tasks"]:
@@ -39,30 +67,26 @@ def _load_saved_scenario(conn, scenario_ref):
         seen.add(source["row_ref"])
         rows.append(_saved_row(task, source))
     _require_links(saved["tasks"], rows)
+    if cache_key is not None:
+        trial_cache_memo(_SAVED_SCENARIO_CACHE, cache_key, copy_draft_rows(rows))
     return saved, dict(head, scenario_revision=header["revision"]), rows
 
 
 def _require_head(saved, header, head, originals):
     admission = head["admission"]
-    expected = {"scenario_ref": header["scenario_ref"], "draft_ref": head["draft_ref"],
-                "status": "saved", "name": header["name"], "saved_at": header["saved_at"]}
-    if (not same({key: saved[key] for key in expected}, expected)
-            or head["status"] != "saved"
+    if (saved["scenario_ref"] != header["scenario_ref"] or saved["draft_ref"] != head["draft_ref"]
+            or saved["status"] != "saved" or head["status"] != "saved"
+            or saved["name"] != header["name"] or saved["saved_at"] != header["saved_at"]
             or type(head["revision"]) is not int or type(header["revision"]) is not int
             or head["revision"] != header["revision"] + 1):
         _invalid("试调方案和它的草稿编号或版本对不上。请刷新后重试。")
     _require_saved_scope(saved, originals, admission)
-    for key, expected in (("base", admission["input"]["base"]), ("scope", admission["input"]["scope"]),
-                          ("base_identity", admission["source"]["identity"]),
-                          ("baseline", {name: admission["baseline"][name] for name in ("plan_ref", "version")})):
-        if not same(saved[key], expected):
-            _invalid("试调方案的来源、范围或建草稿时的正式计划对不上。请刷新后重试。")
 
 
 def _require_saved_scope(saved, originals, admission):
     full = saved["scope_complete"] is True and not saved["unplanned_operations"]
     if (saved["tasks_complete"] is not True or (not full and not _material_stage_scope(saved, originals, admission))
-            or not 0 < len(originals) <= MAX_TRIAL_TASKS
+            or not 0 < len(originals) <= min(MAX_TRIAL_TASKS, max_trial_tasks())
             or type(saved["task_count"]) is not int or saved["task_count"] != len(originals)
             or len(saved["tasks"]) != len(originals)):
         raise TrialAdoptionBlocked("scenario_scope_incomplete", "试调方案没有覆盖原来的全部范围，不能正式采用。")
@@ -77,45 +101,21 @@ def _material_stage_scope(saved, originals, admission):
         and {row["operation_ref"] for row in originals} == set(contexts) - pending)
 
 
-def _require_receipts(conn, saved, header, head):
-    repo = WorkbenchCommandRepository(conn)
-    created, persisted = repo.get(head["request_key"]), repo.get(header["request_key"])
-    if (created is None or (created["action"], created["context_ref"]) != ("trial.create", head["base_ref"])
-            or persisted is None or (persisted["action"], persisted["context_ref"]) != ("trial.save", head["draft_ref"])):
-        _invalid("找不到建草稿或保存试调方案的结果记录，来源无法确认。请刷新后重试。")
-    result = repo.public_result(persisted, replayed=True)
-    if result["result"] != "committed" or not same(result["data"], saved):
-        _invalid("试调方案与保存结果不一致，请刷新后重试。")
-
-
 def _saved_row(task, source):
-    original = source["original"]
-    op, batch = original["operation"], original["batch"]
-    expected = {"operation_ref": source["operation_ref"], "source_task_ref": source["task_ref"],
-                "draft_ref": source["draft_ref"], "batch_ref": original["batch_ref"],
-                "batch_id": batch["batch_id"], "part_no": batch["part_no"],
-                "sequence": op["seq"], "piece_id": op["piece_id"], "source": op["source"],
-                "predecessor_operation_refs": original["predecessor_operation_refs"]}
-    if not same({key: task[key] for key in expected}, expected):
-        _invalid("试调方案里的工序、批次、前序或草稿来源对不上。请刷新后重试。")
     for key in ("row_ref", "task_ref"):
         reference(task[key])
         if task[key] == source[key]:
             _invalid("试调方案里的工序编号不能和草稿里的编号相同。请刷新后重试。")
-    current = {key: task[key] for key in ("machine_ref", "operator_ref", "start", "end")}
-    for kind in ("machine", "operator"):
-        current[kind + "_id"] = source["current"][kind + "_id"]
-    if "operation_effort" in source["current"]:
-        current["operation_effort"] = source["current"]["operation_effort"]
-    if not same(current, source["current"]):
-        _invalid("试调方案与草稿安排不一致，请刷新后重试。")
+    current = dict(source["current"])
+    for key in ("machine_ref", "operator_ref", "start", "end"):
+        current[key] = task[key]
     for name in ("start", "end"):
         raw = current[name]
         parsed = datetime.fromisoformat(raw)
         if parsed.tzinfo is not None or parsed.isoformat() != raw:
             _invalid("试调方案里的时间格式无效，不能正式采用。请刷新后重试。")
     return {**source, "row_ref": task["row_ref"], "task_ref": task["task_ref"],
-            "current": current, "original": original}
+            "current": current, "original": source["original"]}
 
 
 def _require_links(tasks, rows):

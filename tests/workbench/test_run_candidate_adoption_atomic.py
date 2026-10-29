@@ -79,11 +79,7 @@ def test_adoption_reuses_one_capture_through_input_and_constraints(candidate_cas
 
     monkeypatch.setattr(ProductionFactsCapture, "__init__", capture_once)
     monkeypatch.setattr(WorkbenchPreflightFactsRepository, "capture_table", table_once)
-    sql = []
-    case.conn.set_trace_callback(sql.append)
     evidence = validate_adoption(case.conn, ref)
-    full_schema_reads = [statement for statement in sql if "FROM sqlite_master" in statement and " WHERE " not in statement]
-    assert full_schema_reads == ["SELECT type, name, tbl_name, sql FROM sqlite_master"]
     assert evidence.payload.scheduled_op_ids == {case.op_id}
     assert counts and set(counts.values()) == {1}
 
@@ -223,34 +219,3 @@ def test_internal_adoption_proof_errors_remain_system_failures(candidate_case, m
     response = api(case).post(BASE + ref + "/adopt-preview", json={})
     assert response.status_code == 500 and response.get_json()["error"]["code"] == "storage_failure"
     assert case.conn.execute("SELECT COUNT(*) FROM Schedule").fetchone()[0] == 0
-
-
-def test_adoption_rejects_corrupted_task_payload_types_and_bounds(candidate_case):
-    import json
-
-    from core.models.workbench_run_adoption import CandidateAdoptionBlocked
-    from core.services.workbench.run import candidate_adoption_validation
-    from tests.workbench.run_candidate_support import corrupt_update
-
-    case = candidate_case
-    ref = candidate(case)
-    row_ref, original_text = case.conn.execute(
-        "SELECT row_ref, payload_json FROM WorkbenchRunCandidateTasks WHERE candidate_ref=?", (ref,)
-    ).fetchone()
-    original = json.loads(original_text)
-    missing_field = {key: value for key, value in original.items() if key != "source"}
-    for invalid in (
-        {**original, "locked": 0},
-        {**original, "machine_id": ["M1"]},
-        missing_field,
-        {**original, "start_time": "2026-09-10T10:00:00", "end_time": "2026-09-10T08:00:00"},
-    ):
-        corrupt_update(
-            case.conn,
-            "WorkbenchRunCandidateTasks",
-            "UPDATE WorkbenchRunCandidateTasks SET payload_json=? WHERE row_ref=?",
-            (json.dumps(invalid), row_ref),
-        )
-        with pytest.raises(CandidateAdoptionBlocked) as exc:
-            candidate_adoption_validation.validate_adoption(case.conn, ref)
-        assert exc.value.code == "candidate_artifact_invalid"

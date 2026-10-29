@@ -7,19 +7,11 @@ The calendar does not change while one decode runs, so those answers are pure fu
 of their arguments, and measured decodes repeat 96-99% of them. The memo answers repeats
 from a dict and defers everything else to the real calendar with exactly the call the
 estimator would have made itself; exceptions propagate and are never memoized.
-
-Only calendars whose timing methods are proven native qualify. Each calendar type
-registers a guard that certifies neither the class lineage nor the instance overrides
-those methods, so an instrumented calendar keeps receiving every call. The guard is
-re-checked every SGS round by the owner of the memo.
 """
 
 import enum
-import operator
 from datetime import datetime
-from typing import Any, Callable, Dict, Optional, Sequence, Tuple
-
-from .static_attribute import static_attribute
+from typing import Any, Callable, Dict, Optional, Tuple
 
 
 class _Sentinel(enum.Enum):
@@ -32,49 +24,10 @@ _MISSING = _Sentinel.MISSING
 _LIMIT = 32768
 _GUARDS: Dict[type, Callable[[Any], bool]] = {}
 _CALENDAR_DAY_GUARDS: Dict[type, Callable[[Any], bool]] = {}
-TIMING_METHODS = ("get_efficiency", "adjust_to_working_time", "add_working_hours", "add_effective_hours", "certified_slot_window",
-                  "working_hours_between")
-ACCESSOR_HOOKS = ("__getattribute__", "__getattr__")
 
 
-def member_identity_guard(cls: type, names: Sequence[str]) -> Callable[[], bool]:
-    """True while every named member of ``cls`` is the object captured now and its lineage is intact."""
-    original = tuple(map(cls.__dict__.get, names))
-    lineage = cls.__mro__
-
-    def unchanged() -> bool:
-        return cls.__mro__ is lineage and all(map(operator.is_, map(cls.__dict__.get, names), original))
-
-    return unchanged
-
-
-def make_lineage_timing_guard(base: type, methods: Sequence[str]) -> Callable[[Any], bool]:
-    """Instances of ``base`` or of subclasses that override none of ``methods`` or the accessor hooks."""
-    names = tuple(methods) + ACCESSOR_HOOKS
-    base_unchanged = member_identity_guard(base, names + ("__dict__",))
-    overrides = frozenset(names)
-    instance_overrides = frozenset(methods)
-
-    def supported(calendar: Any) -> bool:
-        kind = type(calendar)
-        if type(kind) is not type:
-            return False
-        for entry in kind.__mro__:
-            if entry is base:
-                break
-            if not entry.__dict__.keys().isdisjoint(overrides):
-                return False
-        else:
-            return False
-        if not base_unchanged():
-            return False
-        try:
-            instance_dict = object.__getattribute__(calendar, "__dict__")
-        except AttributeError:
-            return True
-        return type(instance_dict) is dict and instance_dict.keys().isdisjoint(instance_overrides)
-
-    return supported
+def make_lineage_timing_guard(base: type) -> Callable[[Any], bool]:
+    return lambda calendar: isinstance(calendar, base)
 
 
 def register_calendar_timing_guard(
@@ -86,10 +39,7 @@ def register_calendar_timing_guard(
 
 def native_timing_calendar(calendar: Any, *, include_calendar_days: bool = False) -> bool:
     """The nearest registered guard in the calendar's lineage certifies its timing methods as native."""
-    kind = type(calendar)
-    if type(kind) is not type:
-        return False
-    for entry in kind.__mro__:
+    for entry in type(calendar).__mro__:
         guard = _GUARDS.get(entry)
         if guard is not None:
             if not guard(calendar):
@@ -185,12 +135,13 @@ class MemoizedTimingCalendar:
         return _remember(self._window, key, self._certify(dt, priority, operator_id))
 
     def _certify(self, dt: datetime, priority: Any, operator_id: Any) -> Optional[Tuple[datetime, datetime]]:
-        if static_attribute(self.calendar, "certified_slot_window") is None:
+        certify = getattr(self.calendar, "certified_slot_window", None)
+        if certify is None:
             return None
-        return self.calendar.certified_slot_window(dt, priority=priority, operator_id=operator_id)
+        return certify(dt, priority=priority, operator_id=operator_id)
 
 
 __all__ = [
-    "ACCESSOR_HOOKS", "MemoizedTimingCalendar", "TIMING_METHODS", "make_lineage_timing_guard", "member_identity_guard",
+    "MemoizedTimingCalendar", "make_lineage_timing_guard",
     "native_timing_calendar", "register_calendar_timing_guard",
 ]

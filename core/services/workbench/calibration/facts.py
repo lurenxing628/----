@@ -12,10 +12,8 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution_input import public_ref
 from core.services.scheduler.template_lineage_query import TemplateLineageQuery
 from core.services.workbench.execution.ledger import ExecutionLedgerService
-from core.services.workbench.facts.plan_serialization import plain_plan_facts
 from data.repositories.workbench_calibration_query_repo import WorkbenchCalibrationQueryRepository
 
-from .integrity import validate_report_histories
 from .template_lineage_calibration import project_lineage_calibration
 
 
@@ -24,7 +22,15 @@ def require_calibration_schema(repo):
         raise WorkbenchCommandRejected("calibration_source_unavailable", "模板永久身份或修订结构未就绪，本次读取没有补表或补身份。")
 
 
-def read_templates(repo, query):
+def _lineage_template_row(row):
+    result = {key: value for key, value in row.items() if key not in ("operation_ref", "revision", "part_name")}
+    result["template_operation_ref"] = row["operation_ref"]
+    result["template_revision"] = row["revision"]
+    result["part_ref"] = row["part_ref"]
+    return result
+
+
+def read_templates(repo, query, *, lineage_templates):
     part_no = None
     if query.part_ref is not None:
         part = repo.part_identity(query.part_ref)
@@ -44,6 +50,7 @@ def read_templates(repo, query):
         if row["part_ref"] not in seen_part_refs:
             public_ref(row["part_ref"])
             seen_part_refs.add(row["part_ref"])
+        lineage_templates[row["operation_ref"]] = _lineage_template_row(row)
         source = row["source"] if row["source"] in OPERATION_SOURCES else "unknown"
         if query.source not in (None, source):
             continue
@@ -88,18 +95,24 @@ class CalibrationFacts:
 
     def read(self, query, *, clock=None, bind_snapshot=None):
         with self.read_snapshot(clock=clock):
-            templates = read_templates(self.repo, query)
+            templates_by_ref = {}
+            templates = read_templates(self.repo, query, lineage_templates=templates_by_ref)
             instances = read_candidate_instances(self.repo, [row.part_no for row in templates])
+            self.ledger.seed_operations(instances)
+            current_by_ref = {row["operation_ref"]: row for row in instances}
             refs = [row["operation_ref"] for row in instances]
             facts = self.ledger.load(refs)
-            lineage = self.lineage.read(refs)
+            lineage = self.lineage.read(
+                refs,
+                current_by_ref=current_by_ref,
+                templates_by_ref=templates_by_ref,
+            )
         snapshot = None
         if bind_snapshot is not None:
-            content = plain_plan_facts({"templates": [row.to_dict() for row in templates],
+            content = {"templates": [row.to_dict() for row in templates],
                 "instances": instances, "lineage": {key: value for key, value in lineage.items() if key != "lineages"},
-                "execution": facts})
+                "execution": facts}
             snapshot = bind_snapshot(content)
-        validate_report_histories(facts, self.as_of)
         projections = {row.operation_ref: row for row in self.ledger.project_loaded(facts, contexts=False)}
         result = project_lineage_calibration(templates, instances, projections, lineage, as_of=self.as_of)
         return {**result, "snapshot": snapshot}

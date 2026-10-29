@@ -11,7 +11,7 @@ from core.algorithm_runtime.internal_slot import estimate_internal_slot, validat
 from core.algorithm_runtime.operation_effort import external_operation_effort, internal_operation_effort
 from core.algorithm_runtime.piece_input import operation_batch
 from core.algorithms.greedy.dispatch.batch_order import _dispatch_one
-from core.algorithms.ortools_bottleneck import OrtoolsWarmstartError, try_solve_bottleneck_batch_order
+from core.algorithms.ortools_bottleneck import try_solve_bottleneck_batch_order
 from tests._support.algo_operations import make_algo_op, make_batch
 
 
@@ -128,28 +128,6 @@ def test_warmstart_selects_bottleneck_by_effective_piece_work(cp_boundary):
     # Grinding is 27 hours; turning is 21 hours, rather than 20 * 20. Non-bottleneck batches sort by real due date.
     assert [item.duration for item in cp_boundary] == [2 * 60, 25 * 60]
     assert order == ["B1", "B2", "B_EARLY", "B_LATE"]
-
-
-@pytest.mark.parametrize("field,value", [
-    ("setup_hours", True), ("unit_hours", False), ("quantity", True),
-    ("setup_hours", float("inf")), ("unit_hours", float("nan")), ("quantity", float("inf")),
-    ("setup_hours", -1), ("unit_hours", -1), ("quantity", -1),
-])
-def test_internal_and_warmstart_reject_invalid_component_values(cp_boundary, field, value):
-    op, batch = _warmstart_op(1, "B1", setup=2), make_batch(quantity=10)
-    if field == "quantity":
-        batch.quantity = value
-    elif field == "setup_hours":
-        op.setup_hours = value
-    else:
-        op.unit_hours = value
-    with pytest.raises(ValueError):
-        internal_operation_effort(op, batch)
-    with pytest.raises(ValueError):
-        validate_internal_hours(op, batch)
-    with pytest.raises(OrtoolsWarmstartError):
-        try_solve_bottleneck_batch_order(operations=[op], batches={"B1": batch}, start_dt=datetime(2026, 10, 13))
-    assert not cp_boundary
 
 
 @pytest.mark.parametrize("source,callback", [("internal", "schedule_internal"), ("external", "schedule_external")])

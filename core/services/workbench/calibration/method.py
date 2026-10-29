@@ -15,7 +15,7 @@ from core.models.workbench_calibration import (
     write_blockers,
 )
 
-from .samples import number, quantize
+from .samples import ensure_sample_revision, number, quantize
 
 _RAW_SUGGESTION = "_raw_suggested_unit_hours"
 
@@ -40,6 +40,8 @@ def _exclusion_counts(samples):
 
 def summarize_samples(samples):
     selected, eligible_count = _select_recent(samples)
+    for row in selected:
+        ensure_sample_revision(row)
     values = [Decimal(str(row["effective_processing_hours"])) / Decimal(row["completed_quantity"]) for row in selected]
     raw_suggested = median(values) if len(values) >= MIN_SAMPLES else None
     suggested = quantize(raw_suggested)

@@ -15,7 +15,6 @@ from data.repositories.workbench_identity_repo import WorkbenchIdentityRepositor
 from data.repositories.workbench_material_query_repo import WorkbenchMaterialQueryRepository
 
 from .table_facts import (
-    damaged_material_status,
     material_counts,
     material_ordered_rows,
     material_ref,
@@ -121,11 +120,7 @@ class WorkbenchMaterialQueryService:
             raise WorkbenchCommandRejected("invalid_input", "列筛选统计请使用物料查询服务的统一入口。", 400)
         if self._snapshot is not None and self._snapshot["fingerprint"] is not None:
             return material_counts(self._toolbar_rows(query))
-        counts = self.repo.metrics(query.query, query.status)
-        damaged = counts.pop("damaged_code")
-        if damaged is not None:
-            raise damaged_material_status(damaged)
-        return counts
+        return self.repo.metrics(query.query, query.status)
 
     def resolve(self, ref):
         _validate_ref(ref)

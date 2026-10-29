@@ -13,7 +13,3 @@ class TrialAdoptionHistoryRepository:
     def receipt_row(self, key):
         row = self.conn.execute("SELECT * FROM WorkbenchCommandReceipts WHERE request_key=?", (key,)).fetchone()
         return None if row is None else dict(row)
-
-    def receipt_action(self, request_key):
-        row = self.conn.execute("SELECT action,context_ref FROM WorkbenchCommandReceipts WHERE request_key=?", (request_key,)).fetchone()
-        return None if row is None else tuple(row)

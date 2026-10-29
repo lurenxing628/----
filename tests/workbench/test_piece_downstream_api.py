@@ -3,6 +3,8 @@
 import csv
 import io
 
+from core.models.workbench_plan_scope import PlanReadScope
+from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from tests.workbench.piece_chain_support import adopt_candidate, piece_layout
 from tests.workbench.point_downstream_support import ACTUAL, FIELD, app_for, read
 from tests.workbench.run_candidate_support import compute
@@ -37,9 +39,16 @@ def setup(case):
 def verify_chain(client, case, plan):
     before = snapshot(case.conn)
     formal = workspace(case.conn, plan['plan_ref'])
+    svc = WorkbenchPlanQueryService(case.conn)
+    with svc.read_snapshot():
+        formal_graph = svc.gantt_graph(PlanReadScope(plan['plan_ref']))[0]['gantt_graph']
     field = read(client, FIELD + '/tasks', plan_ref=plan['plan_ref'])
     actual = read(client, ACTUAL, plan_ref=plan['plan_ref'])
-    assert actual['data']['gantt_graph'] == formal['gantt_graph']
+    assert formal['gantt_graph']['nodes_complete'] is False
+    assert formal['gantt_graph']['node_count'] == len(formal_graph['nodes'])
+    assert actual['data']['gantt_graph'] == {
+        k: v for k, v in formal_graph.items() if k not in ('node_count', 'nodes_complete')
+    }
     original = {t['task_ref']: t for t in formal['tasks']}
     actual_items = {i['task']['task_ref']: i for i in actual['data']['items']}
     assert set(original) == set(actual_items) == {t['task_ref'] for t in field['data']['tasks']}

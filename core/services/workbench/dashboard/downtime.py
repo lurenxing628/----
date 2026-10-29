@@ -45,9 +45,9 @@ def _overlaps(windows, identities, low, high):
     return details
 
 
-def _task(task, raw_task, resource_rows, index):
+def _task(task, raw_task, resource_rows, index, *, interval):
     key = raw_task["machine_id"]
-    low, high = instant(task["start"]), instant(task["end"])
+    low, high = interval
     resource = resource_rows.get(key)
     bad = key in index["invalid"] or resource is None or raw_task["source"] != "internal"
     amount = index["indexes"][key].hours_between(low, high) if key in index["indexes"] else 0.0
@@ -81,13 +81,13 @@ def downtime_overlap_count(facts):
         for key, windows in index["windows"].items()
     }
     overlaps, intersections = 0, 0
-    for task, raw_task in zip(facts.tasks, facts.task_rows):
+    for raw_task in facts.task_rows:
         if raw_task["source"] == "external":
             continue
         key = raw_task["machine_id"]
         if key not in index["indexes"]:
             continue
-        low, high = instant(task["start"]), instant(task["end"])
+        low, high = facts.task_intervals[raw_task["schedule_id"]]
         if index["indexes"][key].hours_between(low, high):
             overlaps += 1
             starts, ends = bounds[key]
@@ -105,7 +105,10 @@ def downtime(facts):
     for task, raw_task in zip(facts.tasks, facts.task_rows):
         if raw_task["source"] == "external":
             continue
-        item, bad, count = _task(task, raw_task, resource_rows, index)
+        item, bad, count = _task(
+            task, raw_task, resource_rows, index,
+            interval=facts.task_intervals[raw_task["schedule_id"]],
+        )
         result.append(item)
         unknown += bad
         intersections += count

@@ -28,9 +28,9 @@ def _hours(projection, operation):
             "setup_or_elapsed_hours_included": False}
 
 
-def _risk_codes(task, projection, hours, now):
+def _risk_codes(task, projection, hours, now_iso):
     late = minutes(task["end"], projection["confirmed_finish"])
-    missing = task["start"] <= now.isoformat(timespec="seconds") and projection["first_actual_start"] is None and projection["execution_state"] != "complete"
+    missing = task["start"] <= now_iso and projection["first_actual_start"] is None and projection["execution_state"] != "complete"
     codes = []
     if missing:
         codes.append("feedback_pending")
@@ -62,11 +62,11 @@ def _uncertain(projection, operation, hours):
     return hours["overrun"] is None
 
 
-def _operation(facts, task, raw_task):
+def _operation(facts, task, raw_task, now_iso):
     ref = task["operation_ref"]
     p, operation = facts.execution[ref], facts.execution_facts["operations"][ref]
     hours = _hours(p, operation)
-    codes, missing, late = _risk_codes(task, p, hours, facts.now)
+    codes, missing, late = _risk_codes(task, p, hours, now_iso)
     uncertain = _uncertain(p, operation, hours)
     active = True if codes else None if uncertain else False
     source = _source(task, p, hours, codes, late)
@@ -90,9 +90,10 @@ def actual(facts):
         return [], category(facts.plan_state, issues=facts.plan_issues)
     if facts.execution is None:
         return [], category("unavailable", issues=facts.execution_issues)
+    now_iso = facts.now.isoformat(timespec="seconds")
     items, unknown = [], 0
     for task, raw_task in zip(facts.tasks, facts.task_rows):
-        item, uncertain = _operation(facts, task, raw_task)
+        item, uncertain = _operation(facts, task, raw_task, now_iso)
         items.append(item)
         unknown += uncertain
     return items, category("loaded" if items else "no_data", assessed=len(items) - unknown, unknown=unknown)

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from typing import Dict, Tuple, Union, cast
+from typing import Any, Dict, Tuple, Union, cast
 
 from core.infrastructure.transaction import TransactionManager
 from core.models.schedule_plan_role import ROLE_ADOPTED, plan_role_label
@@ -14,7 +14,6 @@ from core.services.common.bounded_plan_query import PagePlanQueryService
 from core.services.common.plan_query import SchedulePlanResolution
 from core.services.scheduler.workbench_plan_catalog import PlanCatalogEntry, _role_entry
 from core.services.workbench.facts.candidate_tasks import task_span
-from core.services.workbench.facts.plan_serialization import plain_plan_facts
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
@@ -26,6 +25,8 @@ from .projection import (
 )
 from .read_context import PlanReadContext
 from .workspace_dto import resource_directory, workspace_projections
+
+TASK_PAGE_SIZE = 5000
 
 
 def selected_plan(context, locator):
@@ -115,11 +116,89 @@ class WorkbenchPlanQueryService:
             _, entry, span = context.selected(plan_ref)
             return cast(SchedulePlanResolution, entry.resolution), entry, span
 
-    def workspace(self, scope, *, context=None):
+    def workspace(self, scope, *, context=None, include_all_tasks=False):
         context = context if context is not None else PlanReadContext(
             self.conn, self.logger, references=self.references, entities=self.entities)
         with context.read_scope():
-            return self._workspace(scope, context=context)
+            return self._workspace(scope, context=context, include_all_tasks=include_all_tasks)
+
+    def baseline_comparison(
+        self, scope, *, page=1, size=5000, context=None,
+    ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+        context = context if context is not None else PlanReadContext(
+            self.conn, self.logger, references=self.references, entities=self.entities)
+        with context.read_scope():
+            data, state = self._workspace(scope, context=context, include_baseline_items=True)
+            baseline_data = data["projections"]["baseline"]
+            total = baseline_data["item_count"]
+            pages = max(1, (total + size - 1) // size) if total > 0 else 1
+            if page > pages:
+                raise WorkbenchCommandRejected("invalid_input", "原安排对比页码超出范围，请刷新后重试。", 400)
+            sliced = baseline_data["items"][(page - 1) * size : page * size]
+            result: Dict[str, Any] = dict(
+                baseline_data,
+                items=sliced,
+                items_complete=(baseline_data["state"] == "available" and len(sliced) == total),
+                page={"number": page, "size": size, "total": total, "pages": pages, "has_more": page < pages},
+            )
+            return result, scope.scope(), state
+
+    def tasks_page(
+        self, scope, *, page=1, size=TASK_PAGE_SIZE, context=None,
+    ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+        context = context if context is not None else PlanReadContext(
+            self.conn, self.logger, references=self.references, entities=self.entities)
+        with context.read_scope():
+            data, state = self._workspace(scope, context=context, include_all_tasks=True)
+            all_tasks = data["tasks"]
+            total = data["task_count"]
+            pages = max(1, (total + size - 1) // size) if total > 0 else 1
+            if page > pages:
+                raise WorkbenchCommandRejected("invalid_input", "工序安排页码超出范围，请刷新后重试。", 400)
+            sliced = all_tasks[(page - 1) * size : page * size]
+            result: Dict[str, Any] = {
+                "plan": data["plan"],
+                "scope": data["scope"],
+                "time_scope": data["time_scope"],
+                "plan_span": data["plan_span"],
+                "task_span": data["task_span"],
+                "tasks": sliced,
+                "task_count": total,
+                "tasks_complete": len(sliced) == total,
+                "page": {"number": page, "size": size, "total": total, "pages": pages, "has_more": page < pages},
+            }
+            return result, scope.scope(), state
+
+    def gantt_graph(
+        self, scope, *, context=None,
+    ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+        context = context if context is not None else PlanReadContext(
+            self.conn, self.logger, references=self.references, entities=self.entities)
+        with context.read_scope():
+            data, state = self._workspace(scope, context=context, include_gantt_graph=True)
+            result: Dict[str, Any] = {
+                "plan_ref": scope.plan_ref,
+                "scope": data["scope"],
+                "process_order": data["projections"]["process_order"],
+                "gantt_graph": data["gantt_graph"],
+            }
+            return result, scope.scope(), state
+
+    def capacity_projections(
+        self, scope, *, context=None,
+    ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+        context = context if context is not None else PlanReadContext(
+            self.conn, self.logger, references=self.references, entities=self.entities)
+        with context.read_scope():
+            data, state = self._workspace(scope, context=context, include_capacity_details=True)
+            result: Dict[str, Any] = {
+                "plan_ref": scope.plan_ref,
+                "scope": data["scope"],
+                "time_scope": data["time_scope"],
+                "calendar": data["projections"]["calendar"],
+                "occupancy": data["projections"]["occupancy"],
+            }
+            return result, scope.scope(), state
 
     def execution_workspace(self, scope):
         """Read complete scoped plan tasks without unrelated comparison/dashboard DTOs."""
@@ -131,29 +210,44 @@ class WorkbenchPlanQueryService:
             data = {"plan": project_plan(entry, scope.plan_ref), "scope": scope.scope(),
                     "time_scope": scope.time_scope(span), "plan_span": span, "task_span": task_span(tasks),
                     "tasks": tasks, "task_count": len(tasks), "tasks_complete": True}
-            state = {"plan_revision": self.references.read_revision(), "data": data, "resources": resource_state}
+            state = {"plan_revision": self.references.read_revision(), "resources": resource_state}
             return data, state
 
-    def _workspace(self, scope, *, context):
+    def _workspace(
+        self,
+        scope,
+        *,
+        context,
+        include_baseline_items=False,
+        include_gantt_graph=False,
+        include_capacity_details=False,
+        include_all_tasks=False,
+    ):
         _, entry, span = context.selected(scope.plan_ref)
         # Complete comparison/delivery projections share one metadata capture.
         context.detail_rows(entry)
         rows = context.scoped_rows(entry, scope)
         if len(rows) > MAX_PLAN_TASKS:
             raise WorkbenchCommandRejected("query_too_large", "本次范围的安排超过 10000 条，请缩小时间范围后重试。", 413)
-        tasks, task_facts, resources, resource_state = context.projected_tasks(scope.plan_ref, rows)
+        all_tasks, task_facts, resources, resource_state = context.projected_tasks(scope.plan_ref, rows)
+        sliced_tasks = all_tasks if include_all_tasks else all_tasks[:TASK_PAGE_SIZE]
         projections, facts, gantt_graph, provenance = workspace_projections(
-            self.conn, entry=entry, scope=scope, resources=resources, plan_span=span, logger=self.logger, context=context,
+            self.conn, entry=entry, scope=scope, resources=resources, plan_span=span,
+            logger=self.logger, context=context, include_baseline_items=include_baseline_items,
+            include_gantt_graph=include_gantt_graph, include_capacity_details=include_capacity_details,
         )
-        baseline_facts = facts.get("baseline", {})
-        source_resources = (task_facts["resource_directory"] + baseline_facts.get("resource_directory", [])
-                            + baseline_facts.get("adoption", {}).get("resource_directory", []))
+        source_resources = task_facts["resource_directory"] + facts.pop("resource_directory", [])
+        compared_tasks = facts.pop("compared_tasks", [])
         data = {"plan": project_plan(entry, scope.plan_ref), "scope": scope.scope(),
-                "time_scope": scope.time_scope(span), "plan_span": span, "task_span": task_span(tasks),
-                "tasks": tasks, "task_count": len(tasks), "tasks_complete": True,
-                "resources": resource_directory(rows, resources, tasks=tasks, baseline=projections.get("baseline"),
-                                                archived=source_resources), "projections": projections,
+                "time_scope": scope.time_scope(span), "plan_span": span, "task_span": task_span(all_tasks),
+                "tasks": sliced_tasks, "task_count": len(all_tasks), "tasks_complete": len(sliced_tasks) == len(all_tasks),
+                "resources": resource_directory(rows, resources, tasks=all_tasks, baseline=projections.get("baseline"),
+                                                compared_tasks=compared_tasks, archived=source_resources),
+                "projections": projections,
                 "gantt_graph": gantt_graph, "provenance": provenance}
-        state = {"plan_revision": self.references.read_revision(), "data": data,
-                 "resources": resource_state, "projection_facts": plain_plan_facts(facts)}
+        state = {
+            "plan_revision": self.references.read_revision(),
+            "resources": resource_state,
+            "projection_facts": facts,
+        }
         return data, state

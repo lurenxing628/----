@@ -3,6 +3,10 @@
 GET /plans?collection=history&size=20[&cursor=opaque]
 GET /plans/<plan_ref> is an alias of the workspace read, sharing its exact scope.
 GET /plans/<plan_ref>/workspace[?range_start=local&range_end=local&snapshot_ref=opaque]
+GET /plans/<plan_ref>/tasks?snapshot_ref=opaque[&range_start=local&range_end=local&page=1&size=5000]
+GET /plans/<plan_ref>/gantt-graph?snapshot_ref=opaque[&range_start=local&range_end=local]
+GET /plans/<plan_ref>/capacity?snapshot_ref=opaque[&range_start=local&range_end=local]
+GET /plans/<plan_ref>/baseline?snapshot_ref=opaque[&range_start=local&range_end=local&page=1&size=5000]
 GET /plans/<plan_ref>/export?format=csv|xlsx&snapshot_ref=opaque[&range_start=local&range_end=local]
 The scope is exact; unknown parameters (including unsupported filters) are refused.
 """
@@ -93,6 +97,78 @@ def plan_workspace(plan_ref):
 
 
 @api_endpoint
+def plan_baseline(plan_ref):
+    _arguments(("range_start", "range_end", "snapshot_ref", "page", "size"))
+    token = request.args.get("snapshot_ref")
+    if not token:
+        raise WorkbenchCommandRejected("invalid_input", "缺少当前计划的数据版本编号，请刷新页面后重试。", 400)
+    page_raw, size_raw = request.args.get("page", "1"), request.args.get("size", "5000")
+    if re.fullmatch(r"[1-9][0-9]{0,5}", page_raw) is None or re.fullmatch(r"[1-9][0-9]{0,3}", size_raw) is None:
+        raise WorkbenchCommandRejected("invalid_input", "原安排对比的分页参数不正确，请刷新页面后重试。", 400)
+    page, size = int(page_raw), int(size_raw)
+    if size > 5000:
+        raise WorkbenchCommandRejected("invalid_input", "原安排对比每页最多读取 5000 条，请缩小每页数量后重试。", 400)
+    scope = PlanReadScope(plan_ref, request.args.get("range_start"), request.args.get("range_end"))
+    reader = WorkbenchPlanQueryService(g.db, current_app.logger)
+    with PLAN_READ_SLOTS.slot():
+        with reader.read_snapshot():
+            data, scope_dict, state = reader.baseline_comparison(scope, page=page, size=size)
+    snapshot = bind_read_snapshot(scope_dict, state, token)
+    return _response(data, snapshot)
+
+
+@api_endpoint
+def plan_tasks(plan_ref):
+    _arguments(("range_start", "range_end", "snapshot_ref", "page", "size"))
+    token = request.args.get("snapshot_ref")
+    if not token:
+        raise WorkbenchCommandRejected("invalid_input", "缺少当前计划的数据版本编号，请刷新页面后重试。", 400)
+    page_raw, size_raw = request.args.get("page", "1"), request.args.get("size", "5000")
+    if re.fullmatch(r"[1-9][0-9]{0,5}", page_raw) is None or re.fullmatch(r"[1-9][0-9]{0,3}", size_raw) is None:
+        raise WorkbenchCommandRejected("invalid_input", "工序安排的分页参数不正确，请刷新页面后重试。", 400)
+    page, size = int(page_raw), int(size_raw)
+    if size > 5000:
+        raise WorkbenchCommandRejected("invalid_input", "工序安排每页最多读取 5000 条，请缩小每页数量后重试。", 400)
+    scope = PlanReadScope(plan_ref, request.args.get("range_start"), request.args.get("range_end"))
+    reader = WorkbenchPlanQueryService(g.db, current_app.logger)
+    with PLAN_READ_SLOTS.slot():
+        with reader.read_snapshot():
+            data, scope_dict, state = reader.tasks_page(scope, page=page, size=size)
+    snapshot = bind_read_snapshot(scope_dict, state, token)
+    return _response(data, snapshot)
+
+
+@api_endpoint
+def plan_gantt_graph(plan_ref):
+    _arguments(("range_start", "range_end", "snapshot_ref"))
+    token = request.args.get("snapshot_ref")
+    if not token:
+        raise WorkbenchCommandRejected("invalid_input", "缺少当前计划的数据版本编号，请刷新页面后重试。", 400)
+    scope = PlanReadScope(plan_ref, request.args.get("range_start"), request.args.get("range_end"))
+    reader = WorkbenchPlanQueryService(g.db, current_app.logger)
+    with PLAN_READ_SLOTS.slot():
+        with reader.read_snapshot():
+            data, scope_dict, state = reader.gantt_graph(scope)
+    snapshot = bind_read_snapshot(scope_dict, state, token)
+    return _response(data, snapshot)
+
+
+@api_endpoint
+def plan_capacity(plan_ref):
+    _arguments(("range_start", "range_end", "snapshot_ref"))
+    token = request.args.get("snapshot_ref")
+    if not token:
+        raise WorkbenchCommandRejected("invalid_input", "缺少当前计划的数据版本编号，请刷新页面后重试。", 400)
+    scope = PlanReadScope(plan_ref, request.args.get("range_start"), request.args.get("range_end"))
+    reader = WorkbenchPlanQueryService(g.db, current_app.logger)
+    with PLAN_READ_SLOTS.slot():
+        with reader.read_snapshot():
+            data, scope_dict, state = reader.capacity_projections(scope)
+    snapshot = bind_read_snapshot(scope_dict, state, token)
+    return _response(data, snapshot)
+
+
+@api_endpoint
 def plan_export(plan_ref):
     _arguments(("format", "range_start", "range_end", "snapshot_ref"))
     fmt, token = request.args.get("format"), request.args.get("snapshot_ref")
@@ -102,7 +178,7 @@ def plan_export(plan_ref):
     reader = WorkbenchPlanQueryService(g.db, current_app.logger)
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():
-            data, state = reader.workspace(scope)
+            data, state = reader.workspace(scope, include_all_tasks=True)
     snapshot = bind_read_snapshot(data["scope"], state, token)
     # 读事务和读额度都已释放：大小检查和生成文件只用已读出的计划，不再占着读锁。
     download = write_plan_export(data, snapshot, fmt)
@@ -120,4 +196,8 @@ def register_plan_read_routes(bp):
     bp.add_url_rule("/api/workbench/v1/plans", view_func=plan_list, methods=["GET"])
     bp.add_url_rule("/api/workbench/v1/plans/<plan_ref>", endpoint="plan_detail", view_func=plan_workspace, methods=["GET"])
     bp.add_url_rule("/api/workbench/v1/plans/<plan_ref>/workspace", view_func=plan_workspace, methods=["GET"])
+    bp.add_url_rule("/api/workbench/v1/plans/<plan_ref>/tasks", view_func=plan_tasks, methods=["GET"])
+    bp.add_url_rule("/api/workbench/v1/plans/<plan_ref>/gantt-graph", view_func=plan_gantt_graph, methods=["GET"])
+    bp.add_url_rule("/api/workbench/v1/plans/<plan_ref>/capacity", view_func=plan_capacity, methods=["GET"])
+    bp.add_url_rule("/api/workbench/v1/plans/<plan_ref>/baseline", view_func=plan_baseline, methods=["GET"])
     bp.add_url_rule("/api/workbench/v1/plans/<plan_ref>/export", view_func=plan_export, methods=["GET"])

@@ -854,22 +854,10 @@
   "adopted_plan_workspace": {
     "gantt_graph": {
       "critical_edges": [],
-      "critical_task_refs": [
-        "48ccdb9111581dbc855e71c8e472219ec71ec4fdc06a9993"
-      ],
-      "nodes": [
-        {
-          "batch_id": "B1",
-          "end": "2026-09-09T08:45:00",
-          "operation_ref": "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2",
-          "piece_id": null,
-          "process_label": "Turning",
-          "sequence": 1,
-          "start": "2026-09-09T08:00:00",
-          "task_ref": "48ccdb9111581dbc855e71c8e472219ec71ec4fdc06a9993",
-          "predecessor_operation_refs": []
-        }
-      ],
+      "critical_task_refs": [],
+      "node_count": 1,
+      "nodes": [],
+      "nodes_complete": false,
       "reason": null,
       "scope": "full_plan",
       "state": "available"
@@ -915,17 +903,7 @@
           "state": "available",
           "urgent_available_hours": 0.75,
           "urgent_effective_hours": 0.75,
-          "windows": [
-            {
-              "allow_normal": true,
-              "allow_urgent": true,
-              "efficiency": 1.0,
-              "end": "2026-09-09T08:45:00",
-              "policy_date": "2026-09-09",
-              "provenance": "domain_default",
-              "start": "2026-09-09T08:00:00"
-            }
-          ]
+          "windows": []
         },
         "issues": [],
         "plan_ref": "b5fa8d4ba9c6d4ecd2d4c39090c5e07ef038017c956fc022",
@@ -947,17 +925,7 @@
             "status": "active",
             "urgent_available_hours": 0.75,
             "urgent_effective_hours": 0.75,
-            "windows": [
-              {
-                "allow_normal": true,
-                "allow_urgent": true,
-                "efficiency": 1.0,
-                "end": "2026-09-09T08:45:00",
-                "policy_date": "2026-09-09",
-                "provenance": "domain_default",
-                "start": "2026-09-09T08:00:00"
-              }
-            ]
+            "windows": []
           },
           {
             "available_hours": 0.75,
@@ -976,17 +944,7 @@
             "status": "active",
             "urgent_available_hours": 0.75,
             "urgent_effective_hours": 0.75,
-            "windows": [
-              {
-                "allow_normal": true,
-                "allow_urgent": true,
-                "efficiency": 1.0,
-                "end": "2026-09-09T08:45:00",
-                "policy_date": "2026-09-09",
-                "provenance": "domain_default",
-                "start": "2026-09-09T08:00:00"
-              }
-            ]
+            "windows": []
           }
         ],
         "state": "available",
@@ -996,7 +954,8 @@
           "range_start": "2026-09-09T08:00:00",
           "selection": "overlap",
           "time_basis": "factory_local"
-        }
+        },
+        "windows_complete": false
       },
       "delivery_risks": {
         "basis": {
@@ -1110,13 +1069,7 @@
             "outside_calendar_basis": "reservation_span_outside_work_calendar",
             "overlap_hours": 0.0,
             "resource_ref": "2891ebde288ee3a1a5a3d516b9f7e35d4c1dfb528aa6b7ac",
-            "segments": [
-              {
-                "concurrent_operations": 1,
-                "end": "2026-09-09T08:45:00",
-                "start": "2026-09-09T08:00:00"
-              }
-            ],
+            "segments": [],
             "state": "available",
             "utilization": 1.0
           },
@@ -1142,17 +1095,12 @@
             "outside_calendar_basis": "reservation_span_outside_work_calendar",
             "overlap_hours": 0.0,
             "resource_ref": "c37404cfd3a536f26720c47060690483159e24265a0a8046",
-            "segments": [
-              {
-                "concurrent_operations": 1,
-                "end": "2026-09-09T08:45:00",
-                "start": "2026-09-09T08:00:00"
-              }
-            ],
+            "segments": [],
             "state": "available",
             "utilization": 1.0
           }
         ],
+        "segments_complete": false,
         "state": "available",
         "time_scope": {
           "boundary": "half_open",
@@ -1172,95 +1120,6 @@
       "accepted_at": "2026-09-10T12:00:00.000000",
       "adopted_at": "2026-10-15T02:32:12",
       "algorithm": {
-        "evaluations": {
-          "min_changeover": {
-            "field_order": [
-              "failed_ops",
-              "changeover_count",
-              "overdue_count",
-              "total_tardiness_hours",
-              "weighted_tardiness_hours",
-              "makespan_hours"
-            ],
-            "score": [
-              0,
-              0.0,
-              0.0,
-              0.0,
-              0.0,
-              0.75
-            ],
-            "scoring_scope": {
-              "complete_batch_refs": [
-                "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
-              ],
-              "components_known": true,
-              "is_complete": true,
-              "objective_scope": "all_batches",
-              "scheduled_operation_refs": [
-                "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2"
-              ]
-            }
-          },
-          "min_overdue": {
-            "field_order": [
-              "failed_ops",
-              "overdue_count",
-              "weighted_tardiness_hours",
-              "total_tardiness_hours",
-              "makespan_hours",
-              "changeover_count"
-            ],
-            "score": [
-              0,
-              0.0,
-              0.0,
-              0.0,
-              0.75,
-              0.0
-            ],
-            "scoring_scope": {
-              "complete_batch_refs": [
-                "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
-              ],
-              "components_known": true,
-              "is_complete": true,
-              "objective_scope": "all_batches",
-              "scheduled_operation_refs": [
-                "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2"
-              ]
-            }
-          },
-          "min_tardiness": {
-            "field_order": [
-              "failed_ops",
-              "total_tardiness_hours",
-              "overdue_count",
-              "weighted_tardiness_hours",
-              "makespan_hours",
-              "changeover_count"
-            ],
-            "score": [
-              0,
-              0.0,
-              0.0,
-              0.0,
-              0.75,
-              0.0
-            ],
-            "scoring_scope": {
-              "complete_batch_refs": [
-                "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
-              ],
-              "components_known": true,
-              "is_complete": true,
-              "objective_scope": "all_batches",
-              "scheduled_operation_refs": [
-                "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2"
-              ]
-            }
-          }
-        },
         "first_found_elapsed_ms": 1,
         "generation_policy_version": "unified_search_v1",
         "mode": "greedy",

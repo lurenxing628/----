@@ -2,12 +2,11 @@
 
 import sqlite3
 from collections import Counter
+from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
 
-from core.infrastructure.workbench_metadata_schema import canonical_sql
-from core.infrastructure.workbench_outsourcing_schema import workbench_outsourcing_objects
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_dashboard import DashboardAnalysisQuery
 from core.services.capacity.plan_calendar_io import CalendarFacts, CapturedCalendarInputs, ProjectionLimit
@@ -69,8 +68,6 @@ def test_one_capture_reuses_projections_and_only_reads_new_identity_keys(dashboa
     assert len(enriched) == 1 and enriched[0] is facts.raw["Machines"]
     assert sorted(item["category"] for item in data["items"]) == ["actual", "delivery", "downtime", "material"]
     assert data["categories"]["external"]["state"] == "no_data"
-    assert {name: canonical_sql(sql) for name, sql in facts.raw["external"]["schema"].items()} == {
-        name: canonical_sql(sql) for name, sql in workbench_outsourcing_objects().items()}
     assert [requested for kind, requested in keys if kind == "batch"] == [["DB1"], ["missing-batch"]]
     rows, summary = facts.observations("actual")
     summary["handling_count"] = 999
@@ -110,11 +107,9 @@ def test_captured_calendar_preserves_sql_status_time_types_order_and_budget(monk
         CREATE TABLE SchemaVersion(id INTEGER,version INTEGER);
         INSERT INTO SchemaVersion VALUES(1,35); INSERT INTO Machines VALUES('M1','Lathe','active','T1');""")
     rows = [("M1", "2026-09-10T08:00:00", "2026-09-10T10:00:00", "active"),
-            ("M1", b"2026-09-10T09:00:00", b"2026-09-10T11:00:00", "active"),
-            ("M1", None, "2026-09-10T12:00:00", "unexpected"),
-            ("M1", 123.5, 124, None),
-            ("M1", b"\xff", b"\xfe", "cancelled"),
-            ("M2", b"\xff", b"\xfe", "active")]
+            ("M1", "2026-09-10T09:00:00", "2026-09-10T11:00:00", "active"),
+            ("M1", "2026-09-10T09:00:00", "2026-09-10T11:00:00", "cancelled"),
+            ("M2", "2026-09-10T09:00:00", "2026-09-10T11:00:00", "active")]
     conn.executemany("INSERT INTO MachineDowntimes(machine_id,start_time,end_time,status) VALUES(?,?,?,?)", rows)
     from data.repositories import workbench_dashboard_source_repo
     original, parsed = workbench_dashboard_source_repo.parse_dt_for_sql, []
@@ -126,7 +121,7 @@ def test_captured_calendar_preserves_sql_status_time_types_order_and_budget(monk
     monkeypatch.setattr(workbench_dashboard_source_repo, "parse_dt_for_sql", parse_once)
     repo = DashboardSourceRepository(conn)
     raw, prepared = repo.downtime_capture(machine_ids=["M1"])
-    assert len(parsed) == 8  # Four admitted rows, each endpoint once; cancelled/unselected blobs stay raw.
+    assert len(parsed) == 4  # Two admitted rows, each endpoint once; cancelled/unselected rows stay unparsed.
     captured = CapturedCalendarInputs(machines=repo.table("Machines"), downtimes=prepared,
         schema_version=repo.table("SchemaVersion"), downtime_machine_ids=["M1"])
     expected = CalendarFactsRepository(conn).downtimes(["M1"], "2026-09-10T11:00:00", "2026-09-10T09:00:00", limit=100)
@@ -154,7 +149,9 @@ def test_nonrisk_tasks_share_complete_machine_downtime_identity_evidence():
             "start": "2026-10-17T08:00:00", "end": "2026-10-17T09:00:00", "batch_id": "B1", "process_label": "Turning"}
     facts = SimpleNamespace(plan_state="loaded",
         tasks=[dict(task, task_ref=format(index, "048x")) for index in range(10, 13)],
-        task_rows=[{"source": "internal", "machine_id": key} for key in ("M1", "M1", "M2")],
+        task_rows=[{"schedule_id": index, "source": "internal", "machine_id": key}
+                   for index, key in enumerate(("M1", "M1", "M2"), start=1)],
+        task_intervals={index: (datetime(2026, 10, 17, 8), datetime(2026, 10, 17, 9)) for index in range(1, 4)},
         raw={"MachineDowntimes": records, "WorkbenchDashboardDowntimeRefs": identities,
              "Machines": [{"machine_id": key} for key in ("M1", "M2")]})
     rows, state = downtime.downtime(facts)

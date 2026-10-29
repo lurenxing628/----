@@ -32,11 +32,8 @@ def _selected_bytes(selected, rows):
         if before != selected["signature"]:
             raise WorkbenchCommandRejected("snapshot_stale", "备份文件有变化，没有开始下载。请刷新页面后重新点「下载备份」。")
         data = read_fixed_bytes(path)
-        after = backup_signature(path)
     except OSError as exc:
         raise WorkbenchCommandRejected("entity_not_found", "所选备份已经不在或读不出来，没有开始下载。请刷新页面后重新选择备份。", 404) from exc
-    if after != before or len(data) != before["size"]:
-        raise WorkbenchCommandRejected("snapshot_stale", "下载过程中备份文件发生变化，没有给出文件。请刷新页面后重新点「下载备份」。")
     if not data.startswith(b"SQLite format 3\x00"):
         raise WorkbenchCommandRejected("backup_format_invalid", "所选文件不是本软件能识别的备份，没有给出文件。请刷新页面后重新选择备份。", 422)
     return data, name

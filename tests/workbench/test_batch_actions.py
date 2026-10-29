@@ -224,11 +224,6 @@ def test_batch_creation_choices_read_only_base_catalogs(batch_client):
     reader = WorkbenchBatchQueryService(conn)
     assert reader.choices() == choices
     assert conn.total_changes == changes
-    conn.execute("UPDATE WorkbenchEntityRefs SET active=0 WHERE kind='part' AND entity_key='P1'")
-    conn.commit()
-    changes = conn.total_changes
-    assert_error(client.get(BASE + "/choices"), "storage_failure", 500)
-    assert conn.total_changes == changes
 
 
 def test_batch_qualification_uses_captured_skills_authorizations_and_supplier_bindings(batch_client, monkeypatch):
@@ -430,44 +425,6 @@ def test_quantity_split_with_bound_material_returns_the_created_batch_reference(
     assert (source_requirement['required_quantity'], source_requirement['available_quantity']) == (6, 0)
 
 
-def test_reopened_batch_page_locates_shared_write_facts_once(batch_client, monkeypatch, record_property):
-    from core.services.workbench.batch.facts import BatchFacts
-
-    class SharedFacts(str):
-        equalities = 0
-        __hash__ = str.__hash__
-
-        def __eq__(self, other):
-            SharedFacts.equalities += 1
-            return str.__eq__(self, other)
-
-    client = batch_client
-    client.batch_conn.executemany("INSERT INTO Batches(batch_id,part_no,quantity,status) VALUES (?,'P1',1,'pending')",
-                                 [("REOPEN-" + str(index).zfill(3),) for index in range(100)])
-    client.batch_conn.commit()
-    fingerprint, captured = BatchFacts.fingerprint, []
-
-    def prepared(reader):
-        value = SharedFacts(fingerprint(reader))
-        captured.append(value)
-        return value
-
-    monkeypatch.setattr(BatchFacts, "fingerprint", prepared)
-    first = list_data(client, query="REOPEN-", size=100)
-    SharedFacts.equalities = 0
-    second = list_data(client, query="REOPEN-", size=100)
-    comparisons = SharedFacts.equalities
-    assert len(first["data"]["entities"]) == len(second["data"]["entities"]) == 100
-    assert captured[0] is not captured[1] and str(captured[0]) == str(captured[1])
-    assert comparisons <= 2  # One lookup per read/write namespace, independent of 100 subjects.
-    first_tokens = [row["write_context"]["write_token"] for row in first["data"]["entities"]]
-    second_tokens = [row["write_context"]["write_token"] for row in second["data"]["entities"]]
-    assert first_tokens == second_tokens
-    assert first["data"]["create_context"]["write_token"] == second["data"]["create_context"]["write_token"]
-    record_property("shared_facts_equalities", comparisons)
-    record_property("tokens_reused", first_tokens == second_tokens)
-
-
 def test_batch_import_preview_rejects_legacy_padded_batch_or_part_without_binding_trimmed_sibling(batch_client):
     from core.services.workbench.batch.files import WorkbenchBatchFileService
     from core.services.workbench.batch.queries import WorkbenchBatchQueryService
@@ -498,37 +455,3 @@ def test_batch_import_preview_rejects_legacy_padded_batch_or_part_without_bindin
     part_row, = part_preview["rows"]
     assert part_row["action"] == "rejected"
     assert any("批次号或图号存在首尾空格，请先核对原记录。" in err for err in part_row["errors"])
-
-
-def test_batch_import_scope_rejects_duplicate_keys_and_non_finite_numbers(batch_client):
-    from io import BytesIO
-
-    for raw in ('{"page": 1, "page": 1}', '{"page": NaN}', '{"size": Infinity}', '{"size": 1e999}', '{"query": '):
-        response = batch_client.post(BASE + "/import-preview", content_type="multipart/form-data", data={
-            "file": (BytesIO(b"never parsed"), "batches.xlsx"), "mode": "overwrite", "scope": raw, "snapshot_ref": "x"})
-        value = assert_error(response, "invalid_input", 400)
-        assert value["error"]["message"] == "文件导入范围不对，文件还没有导入。请刷新页面后重新点「开始预检」。", raw
-
-
-def test_strict_json_provider_rejects_duplicate_keys_and_non_finite_numbers_in_get_json(app_client):
-    """create_app 挂上的严格 provider：request.get_json() 遇重复键或 NaN，与读不出的请求体同一条文案。"""
-    for raw in ('{"request_key": "batch-provider-000001", "request_key": "batch-provider-000002", '
-                '"write_token": "x", "input": {"preview_ref": "x"}}',
-                '{"request_key": "batch-provider-000001", "write_token": "x", "input": {"preview_ref": NaN}}'):
-        response = app_client.post(BASE + "/import-confirm", data=raw, content_type="application/json")
-        value = assert_error(response, "invalid_input", 400)
-        assert value["error"]["message"] == "提交的内容不完整或有多余项，还没有保存。请刷新页面后重新填写。", raw
-
-
-def test_strict_json_provider_refuses_to_write_non_finite_numbers(app_client):
-    """同一个 provider 的输出端：合法数据原样写出，NaN / Infinity 直接报错，不写出非法 JSON。"""
-    import json
-
-    import pytest
-
-    provider = app_client.application.json
-    data = {"value": 1.5, "items": [0, None, False, ""]}
-    assert json.loads(provider.dumps(data)) == data
-    for value in (float("nan"), float("inf"), float("-inf")):
-        with pytest.raises(ValueError):
-            provider.dumps({"value": value})

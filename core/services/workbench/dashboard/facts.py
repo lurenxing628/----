@@ -11,7 +11,6 @@ from core.models.workbench_plan_reference import WorkbenchPlanLocator, Workbench
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.capacity.plan_calendar_io import CapturedCalendarInputs
 from core.services.workbench.execution.ledger import ExecutionLedgerService
-from core.services.workbench.facts.plan_serialization import plain_plan_facts
 from core.services.workbench.plan.calendar_context import resource_ids
 from core.services.workbench.plan.delivery import read_plan_delivery
 from core.services.workbench.plan.projection import project_plan
@@ -27,16 +26,7 @@ UNAVAILABLE = {"identity_missing", "plan_binding_invalid", "task_binding_invalid
 
 
 def typed(value: Any) -> Any:
-    kind = type(value)
-    if value is None or kind is str or kind is bool or kind is int:
-        return value
-    if isinstance(value, set):
-        return sorted(typed(item) for item in value)
-    if isinstance(value, dict):
-        return {key: typed(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [typed(item) for item in value]
-    return plain_plan_facts(value)
+    return value
 
 
 def source_issue(code, message):
@@ -61,7 +51,7 @@ class DashboardFacts:
         self.raw, self.plan, self.delivery, self.tasks, self.execution = {}, None, None, [], None
         self.plan_state, self.plan_issues, self.execution_issues = "no_official_plan", [], []
         self.task_rows, self.execution_facts, self.delivery_facts = [], None, None
-        self._typed_execution_facts = None
+        self.task_intervals = {}
         self.pressure = {"state": "unavailable", "resource_count": None, "issues": []}
         self.candidates = {"state": "unavailable", "run_count": None, "issues": []}
         self._ledger = None
@@ -151,6 +141,7 @@ class DashboardFacts:
             self.task_rows = [dict(row, source=read_source_type(row["source"])) for row in original_rows]
             self.raw["plan_task_sources"] = [(row["schedule_id"], row["source"]) for row in original_rows]
             self.tasks, _, resources, resource_state = context.projected_tasks(ref, original_rows)
+            self.task_intervals = context.datetime_intervals(entry)
             self.raw["plan_resource_identities"] = resource_state
             self.raw["plan_identity_revision"] = context.references.read_revision()
             self.plan_state = "loaded"
@@ -167,7 +158,7 @@ class DashboardFacts:
             self._plan_failure(exc.code, str(exc))
 
     def _plan_failure(self, code, message):
-        self.plan_state, self.plan, self.tasks = "unavailable", None, []
+        self.plan_state, self.plan, self.tasks, self.task_intervals = "unavailable", None, [], {}
         self.plan_issues = [source_issue(code, message)]
 
     def _load_execution(self):
@@ -186,7 +177,6 @@ class DashboardFacts:
     def _project_execution(self, ledger, facts):
         try:
             self.execution_facts = facts
-            self._typed_execution_facts = None
             self.execution = {row.operation_ref: row.to_dict() for row in ledger.project_loaded(facts, contexts=False)}
             for task in self.tasks:
                 projection = self.execution[task["operation_ref"]]
@@ -203,10 +193,8 @@ class DashboardFacts:
 
     def snapshot_contents(self, *, view=None):
         """Encode original sources and their view state once, without nested source documents."""
-        if self._typed_execution_facts is None and self.execution_facts is not None:
-            self._typed_execution_facts = typed(self.execution_facts)
         return content_text({"raw": self.raw, "plan": self.plan, "state": self.plan_state,
                              "tasks": self.tasks, "task_rows": self.task_rows,
-                             "delivery": self.delivery_facts, "execution": self._typed_execution_facts,
+                             "delivery": self.delivery_facts, "execution": self.execution_facts,
                              "plan_issues": self.plan_issues, "execution_issues": self.execution_issues,
                              "view": view})

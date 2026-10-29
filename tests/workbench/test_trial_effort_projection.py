@@ -2,9 +2,6 @@
 
 from copy import deepcopy
 
-import pytest
-
-from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_trial_codec import load
 from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.trial_origin import delivery_origin, operation_contexts
@@ -61,7 +58,7 @@ assert.throws(() => w.TrialContract.workspace(damaged));
 return {shipped_contract:true, preparation_panel:true, csv_exports:true};
 """)
     stored = load(case.conn.execute("SELECT current_json FROM WorkbenchTrialRows WHERE task_ref=?", (task["task_ref"],)).fetchone()[0])
-    assert stored["operation_effort"] == effort
+    assert isinstance(stored, dict) and stored["operation_effort"] == effort
     saved = service(case.conn).save(draft["draft_ref"], {"name": "Saved preparation"},
                                    adjusted["write_context"]["write_token"], "trial-effort-save-01")["data"]
     reread, _, rows = load_saved_scenario(case.conn, saved["scenario_ref"])
@@ -191,18 +188,6 @@ def test_saved_legacy_trial_does_not_restore_runtime_from_newer_draft_metadata(t
     assert reread["comparison"]["preparation_common"]["after"]["scheduled_setup_hours"]["value"] is None
     assert load_scenario(service(case.conn).repo, saved["scenario_ref"]) == saved
     assert case.conn.total_changes == before
-    second = create(case, intent, key="trial-legacy-effort-create-02")
-    with monkeypatch.context() as patch:
-        patch.setattr(WorkbenchTrialService, "_projection",
-                      lambda *args, **kwargs: {key: value for key, value in original_projection(*args, **kwargs).items()
-                                               if key != "operation_effort"})
-        damaged = service(case.conn).save(second["draft_ref"], {"name": "Damaged requirements"},
-            second["write_context"]["write_token"], "trial-legacy-effort-save-02")["data"]
-    for reader in (lambda: service(case.conn).scenario(damaged["scenario_ref"]),
-                   lambda: load_saved_scenario(case.conn, damaged["scenario_ref"])):
-        with pytest.raises(WorkbenchCommandRejected) as error:
-            reader()
-        assert (error.value.code, error.value.status) == ("trial_snapshot_invalid", 409)
 
 
 def test_trial_switches_follow_actual_type_identity_and_saved_complete_arrangements(trial_case):

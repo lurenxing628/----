@@ -3,10 +3,6 @@
 from datetime import datetime
 
 from .downtime import SegmentOverlapIndex
-from .static_attribute import static_attribute
-
-_NATIVE_COVERED_END = SegmentOverlapIndex.covered_end
-_NATIVE_COVERAGE_CHECK = SegmentOverlapIndex.has_native_coverage
 
 
 def _native_union_end(segment_groups, start, limit):
@@ -24,17 +20,13 @@ def _native_union_end(segment_groups, start, limit):
 
 
 def _native_indexes(segment_groups):
-    if (SegmentOverlapIndex.covered_end is not _NATIVE_COVERED_END
-            or SegmentOverlapIndex.has_native_coverage is not _NATIVE_COVERAGE_CHECK):
-        return False
-    return all(type(index) is SegmentOverlapIndex and index.has_native_coverage() for index in segment_groups)
+    return all(isinstance(index, SegmentOverlapIndex) and index.has_native_coverage() for index in segment_groups)
 
 
 def _certified_window(calendar, earliest, priority, operator_id):
-    # An overlay's __getattr__ must not borrow its underlying calendar's proof.
-    if static_attribute(calendar, "certified_slot_window") is None:
+    certify = getattr(calendar, "certified_slot_window", None)
+    if certify is None:
         return None
-    certify = calendar.certified_slot_window
     window = certify(earliest, priority=priority, operator_id=operator_id)
     if window is None:
         return None

@@ -38,12 +38,6 @@ def material_ordered_rows(rows, query):
                   reverse=query.direction == "desc")
 
 
-def damaged_material_status(code):
-    # 写入口只产出启用或停用；其余值只可能是存储被改坏，直接拒绝，不猜是启用还是停用。
-    return WorkbenchCommandRejected("storage_failure", f"物料「{code}」的状态存得不对，系统没有猜是启用还是停用。"
-                                    "请联系维护人员核对资料。", 500)
-
-
 def material_ref(row):
     if type(row.get("ref")) is not str or re.fullmatch(r"[0-9a-f]{48}", row["ref"]) is None or row.get("revision") is None:
         raise WorkbenchCommandRejected("storage_failure", "物料缺少系统编号，请联系维护人员核对资料。", 500)
@@ -61,9 +55,7 @@ def material_stock(row):
 
 
 def material_status(row):
-    if row["status"] not in ("active", "inactive"):
-        raise damaged_material_status(row["material_id"])
-    return row["status"]
+    return "inactive" if row["status"] == "inactive" else "active"
 
 
 def material_counts(rows):

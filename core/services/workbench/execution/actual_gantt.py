@@ -7,7 +7,6 @@ from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.workbench.facts.execution_values import execution_deviation
-from core.services.workbench.facts.plan_serialization import plain_plan_facts
 from core.services.workbench.plan.calendar import project_plan_calendar
 from core.services.workbench.plan.calendar_context import selected_context
 from core.services.workbench.plan.process_order import project_process_order
@@ -26,14 +25,15 @@ MAX_ACTUAL_REPORTS = 50000
 
 def bind_axis_time(data, as_of, snapshot_ref):
     """The visible clock is derived from the pinned as_of, not the browser clock."""
-    clock = datetime.fromisoformat(as_of).replace(minute=0, second=0, microsecond=0)
+    clock_dt = datetime.fromisoformat(as_of)
+    clock = clock_dt.replace(minute=0, second=0, microsecond=0)
     start = clock.isoformat(timespec="seconds")
     end = (clock + timedelta(hours=1)).isoformat(timespec="seconds")
     data["axis_span"] = {"start": min(data["axis_span"]["start"], start), "end": max(data["axis_span"]["end"], end)}
     if "critical_chain" in data:
         data["critical_chain"]["snapshot_ref"] = snapshot_ref
     for item in data["items"]:
-        item["deviation"] = execution_deviation(item["task"]["end"], item["execution"], as_of)
+        item["deviation"] = execution_deviation(item["task"]["end"], item["execution"], clock_dt)
     data["execution_summary"] = _execution_summary(data)
     return data
 
@@ -127,8 +127,16 @@ class ActualGanttService:
         planned = {"plan": project_plan(entry, scope.plan_ref), "plan_span": span, "tasks": tasks,
                    "resources": resource_directory(rows, resources, tasks=tasks, archived=task_facts["resource_directory"]),
                    "projections": {"calendar": calendar}}
-        return planned, {"plan_revision": context.references.read_revision(), "resources": resource_state,
-                         "calendar": plain_plan_facts(calendar_facts)}
+        cal_sources = calendar_facts.get("sources") or {}
+        return planned, {
+            "plan_revision": context.references.read_revision(),
+            "resources": resource_state,
+            "calendar": (
+                calendar_facts.get("state"),
+                calendar_facts.get("reason"),
+                {k: v for k, v in cal_sources.items() if k != "operations"},
+            ),
+        }
 
     def _execution(self, planned, scope):
         availability = {"state": "available", "reason_code": None, "reason": None}
@@ -171,9 +179,12 @@ class ActualGanttService:
                     "semantics": {"cohort": "plan_finish_date_and_plan_overlap", "resources": "planned_or_actual_or_recorded_remaining",
                                   "reports": "all_effective_reports_of_selected_operations", "local_filters": "search_late_selected",
                                   "export": "full_snapshot_cohort_or_explicit_local_view", "time_basis": "factory_local"}}
-            state = content_text({"plan": plan_state, "execution": projection["snapshot_facts"] if projection else None,
-                                  "tasks": [item["task"] for item in items], "resources": resources,
-                                  "gantt_graph": gantt_graph, "availability": availability})
+            exec_facts = projection["snapshot_facts"] if projection else None
+            state = content_text({
+                "plan": plan_state,
+                "execution": exec_facts,
+                "availability": availability,
+            })
             if include_chain:
                 data["critical_chain"] = plan_chain(scope.plan_ref,
                     {item["task"]["task_ref"] for item in items}, target_task_ref=chain_target, context=context)

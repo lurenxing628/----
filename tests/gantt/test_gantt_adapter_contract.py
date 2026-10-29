@@ -57,6 +57,9 @@ const G=h.runtime.RunGenerationContract, candidateAlgorithm={mode:'greedy',mode_
   origin:{search_objective:'min_overdue',phase:'construct',origin:'greedy',dispatch_mode:null,dispatch_rule:null,strategy:'priority_first',repair_decision:null},
   first_found_elapsed_ms:1,search_evidence_ref:{run_ref:h.reference(302),source_event_id:null}};
 assert(G.algorithm(candidateAlgorithm,h.reference(302)),'The candidate workspace fixture uses the saved unified algorithm shape');
+const {evaluations:_evals,...candidateAlgorithmSummary}=candidateAlgorithm;
+assert(G.algorithmSummary(candidateAlgorithmSummary,h.reference(302)),'Adopted plan provenance uses the compact algorithm summary without evaluations');
+assert(!G.algorithmSummary(candidateAlgorithm,h.reference(302)),'Algorithm summary rejects inline evaluations');
 const generation=h.render(h.runtime.RunCandidateControls.Generation,{data:{
   candidate:{label:'候选A',status:'completed',completeness:'complete',candidate_ref:h.reference(301),data_gaps:[],blocked_reasons:[],
     metrics:Object.fromEntries(h.runtime.RunCandidateAPI.metricKeys.map(key=>[key,{value:0,reason:null}]))},

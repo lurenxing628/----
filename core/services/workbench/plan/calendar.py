@@ -46,11 +46,11 @@ def _unavailable_result(scope, time_scope, context, code):
     global_cal = unavailable("global_calendar", code)
     dto = {"state": "unavailable", "plan_ref": scope.plan_ref, "time_scope": time_scope,
            "global": global_cal, "resources": None,
-           "issues": global_cal["issues"]}
+           "issues": global_cal["issues"], "windows_complete": False}
     return dto, {"context": context, "state": "unavailable", "reason": code, "sources": None, "resources": None}
 
 
-def project_plan_calendar(conn, *, scope, resources, selected):
+def project_plan_calendar(conn, *, scope, resources, selected, include_windows: bool = True):
     """selected/resources must already belong to the plan, selected in this transaction."""
     rows, start, end, time_scope, context = selected
     first, last, dates = range_days(start, end)
@@ -75,8 +75,22 @@ def project_plan_calendar(conn, *, scope, resources, selected):
     states = [global_calendar["state"]] + [item["state"] for item in public]
     state = "available" if all(item == "available" for item in states) else "unavailable" if all(
         item == "unavailable" for item in states) else "partial"
-    dto = {"state": state, "plan_ref": scope.plan_ref, "time_scope": time_scope,
-           "global": global_calendar, "resources": public, "issues": []}
+    if include_windows:
+        dto = {"state": state, "plan_ref": scope.plan_ref, "time_scope": time_scope,
+               "global": global_calendar, "resources": public, "issues": [],
+               "windows_complete": state != "unavailable"}
+    else:
+        has_windows = bool(global_calendar.get("windows")) or any(
+            bool(item.get("windows")) or bool(item.get("downtime_windows")) for item in public
+        )
+        global_dto = dict(global_calendar, windows=[]) if global_calendar["state"] == "available" else dict(global_calendar)
+        public_dto = [
+            dict(item, windows=[], downtime_windows=[]) if item["state"] == "available" else dict(item)
+            for item in public
+        ]
+        dto = {"state": state, "plan_ref": scope.plan_ref, "time_scope": time_scope,
+               "global": global_dto, "resources": public_dto, "issues": [],
+               "windows_complete": not has_windows and state != "unavailable"}
     facts = {"context": context, "state": state, "sources": snapshot_values(reader.rows), "resources": private,
              "fact_count": reader.count, "policy_cells": dates * (1 + len(ids["operator"]))}
     return dto, facts

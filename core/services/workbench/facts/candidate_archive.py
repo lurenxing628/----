@@ -6,10 +6,8 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 
-from .candidate_facts import GenerationFacts
-from .candidate_projection import candidate_summary, completed_dispositions, scheduled_ids, validate_manifest
+from .candidate_projection import candidate_summary, validate_manifest
 from .candidate_store import CandidateStore
-from .decision_metrics import admission_operation_refs
 from .preflight_dependencies import material_deferred_ids
 from .run_policy import require_admission
 
@@ -25,23 +23,31 @@ def require_adoption_schema(conn):
 
 
 def load_adoption_candidate(conn, candidate_ref):
-    store = CandidateStore(conn)
+    run, candidate, scope, tasks, capture, ids, facts, _ = load_adoption_candidate_with_key(
+        conn, candidate_ref, copy_on_read=False
+    )
+    return run, candidate, scope, tasks, capture, ids, facts
+
+
+def load_adoption_candidate_with_key(conn, candidate_ref, *, copy_on_read=False):
+    store = CandidateStore(conn, copy_on_read=copy_on_read)
     run_ref = store.candidate_run(candidate_ref)
     run = store.run(run_ref)
     repo = WorkbenchRunRepository(conn)
-    require_admission(repo, repo.head(run_ref))
+    head = repo.head(run_ref)
+    require_admission(repo, head)
     receipt = store.receipt(run)
     candidates = store.candidates(run_ref)
     validate_manifest(run, candidates, receipt)
     candidate = next(row for row in candidates if row["candidate_ref"] == candidate_ref)
     capture = store.capture(run_ref)
-    facts = GenerationFacts(capture)
-    scope = completed_dispositions(receipt, expected_refs=admission_operation_refs(facts, capture["input"]))
-    ids = require_candidate_scope(run, candidate, scope, capture, scheduled_op_ids=scheduled_ids(candidate))
+    facts = store.generation_facts(capture)
+    scope = store.dispositions(receipt, facts, capture)
+    ids = require_candidate_scope(run, candidate, scope, capture, scheduled_op_ids=store.scheduled_op_ids(candidate))
     tasks = store.tasks(candidate_ref)
     if len(tasks) != len(ids):
         raise CandidateAdoptionBlocked("candidate_artifact_invalid", "这个候选方案的工序明细条数对不上，不能采用。请重新排产后再试。")
-    return run, candidate, scope, tasks, capture, ids, facts
+    return run, candidate, scope, tasks, capture, ids, facts, store.build_adoption_raw_key(candidate_ref, head)
 
 
 def require_candidate_scope(run, candidate, scope, capture, *, scheduled_op_ids):

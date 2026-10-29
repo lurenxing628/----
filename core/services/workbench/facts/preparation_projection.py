@@ -99,7 +99,9 @@ def preparation_summary(rows, *, available=True, requirements_available=None):
         roles[role] = {"count": len(selected), **{field: metric_summary(standard_rows, field, available=requirements_available)
                       for field in ("setup_standard_hours", "processing_standard_hours", "required_standard_hours")}}
     coverage = {name: [row["operation_ref"] for row in by_allocation[name]] for name in ALLOCATIONS}
-    return {"metrics": values, "role_totals": roles, "coverage": coverage}
+    pending_in_order = [row for row in internal if row["allocation_state"] in _GROUPS["pending"]]
+    demand = metric_summary(pending_in_order, "required_standard_hours", available=requirements_available)
+    return {"metrics": values, "role_totals": roles, "coverage": coverage, "demand": demand}
 
 
 def preparation_delta(selected, previous):

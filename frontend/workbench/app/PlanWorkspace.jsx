@@ -31,9 +31,13 @@
       const facts = M.prepare(data); facts.graph = window.GanttGraph.create(data.gantt_graph); return facts;
     }, [data]);
     const chosen = selected && selected.result === result ? selected : null;
+    const pendingBefore = Boolean(initialTask.current && initialTask.current.side === 'before' && data
+      && data.projections.baseline.state === 'available' && data.projections.baseline.items_complete === false
+      && data.projections.baseline.item_count > 0 && window.APSPlanAPI && typeof window.APSPlanAPI.baseline === 'function');
     React.useEffect(() => {
       if (!data || read.loading || read.error) return;
       const target = relatedRef ? { ref: relatedRef, side: 'current' } : initialTask.current;
+      if (!relatedRef && pendingBefore) return;
       // The saved task belongs to this session's first successful read only.
       initialTask.current = null;
       if (!target) return;
@@ -47,7 +51,8 @@
     }, [relatedRef, result, read.loading, read.error]);
     const remembered = { ...initialContext, ...(selection ? { plan_ref: selection.plan_ref } : {}), query, projection_tab: projectionTab, projection_page: projectionPage };
     for (const key of ['range_start', 'range_end', 'snapshot_ref', 'selected_task_ref', 'selected_task_side']) delete remembered[key];
-    Object.assign(remembered, scope, chosen ? { selected_task_ref: chosen.task.task_ref, selected_task_side: chosen.before ? 'before' : 'current' } : {});
+    Object.assign(remembered, scope, chosen ? { selected_task_ref: chosen.task.task_ref, selected_task_side: chosen.before ? 'before' : 'current' }
+      : pendingBefore ? { selected_task_ref: initialTask.current.ref, selected_task_side: 'before' } : {});
     window.WorkbenchPageContext.useSnapshot(remembered, !!data && !read.loading && !read.error && !paused);
     function choose(plan) {
       initialTask.current = null;
@@ -79,11 +84,11 @@
     }
     function selectRelated(ref) {
       initialTask.current = null;
-      const fact = prepared.taskIndex.get(ref), task = fact && fact.task;
+      const fact = effectivePrepared.taskIndex.get(ref), task = fact && fact.task;
       setQuery(''); setRangeError(null);
       if (task) setSelected({ task, before: false, result, locate: true });
       else {
-        const node = prepared.graph.nodes.get(ref);
+        const node = effectivePrepared.graph.nodes.get(ref);
         if (!node) return;
         setRelatedRef(ref); changeScope({ range_start: node.start,
           range_end: node.start === node.end ? window.WorkbenchDatePickerModel.nextInstant(node.end) : node.end });
@@ -109,6 +114,146 @@
       status: data.plan.is_current_official ? window.WorkbenchTerms.current_official : window.WorkbenchTerms.historical_official,
       ...(data.plan.version !== null ? { version: window.WorkbenchTerms.plan_version(data.plan.version) } : {}),
     } : null);
+    const [baselineState, setBaselineState] = React.useState(() => ({
+      result: null, items: null, loading: false, error: null,
+      needed: false
+    }));
+    const activeBaselineItems = baselineState.result === result ? baselineState.items : null;
+    const baselineLoading = baselineState.result === result ? baselineState.loading : false;
+    const baselineError = baselineState.result === result ? baselineState.error : null;
+    const baselineNeeded = baselineState.result === result ? baselineState.needed : false;
+    const restoringBefore = Boolean(initialTask.current && initialTask.current.side === 'before' && (baselineLoading || baselineError));
+    const shouldLoadBaseline = Boolean(data && !read.loading && !read.error && !paused
+      && data.projections.baseline.state === 'available'
+      && data.projections.baseline.items_complete === false
+      && data.projections.baseline.item_count > 0
+      && !Array.isArray(activeBaselineItems)
+      && !baselineError
+      && window.APSPlanAPI && typeof window.APSPlanAPI.baseline === 'function'
+      && (baselineNeeded || chosen && (view !== 'gantt' || detailsOpen) || initialTask.current && initialTask.current.side === 'before'));
+    const requestBaseline = React.useCallback(() => {
+      setBaselineState(current => current.needed && current.result === result && !current.error ? current : {
+        result, items: current.result === result ? current.items : null, loading: false, error: null, needed: true
+      });
+    }, [result, false]);
+    React.useEffect(() => {
+      if (!shouldLoadBaseline) return;
+      const controller = new AbortController();
+      setBaselineState(current => ({ result, items: current.result === result ? current.items : null, loading: true, error: null, needed: true }));
+      const query = { ...scope, snapshot_ref: result.meta.snapshot_ref };
+      window.APSPlanAPI.baseline(data.plan.plan_ref, query, data, controller.signal).then(response => {
+        if (controller.signal.aborted) return;
+        const items = response.data.items;
+        setBaselineState({ result, items, loading: false, error: null, needed: true });
+        if (initialTask.current && initialTask.current.side === 'before') {
+          const target = initialTask.current;
+          initialTask.current = null;
+          const original = items.find(row => row.before && row.before.task_ref === target.ref);
+          if (original && original.before) setSelected({ task: original.before, before: true, result, ...(view === 'gantt' && original.before_in_scope ? { locate: true } : {}) });
+          else setRangeError(C.failure('要恢复的原安排已不存在。'));
+        }
+      }, error => {
+        if (controller.signal.aborted || error && error.name === 'AbortError') return;
+        setBaselineState({ result, items: null, loading: false, error, needed: true });
+      });
+      return () => controller.abort();
+    }, [result, shouldLoadBaseline]);
+    const [graphState, setGraphState] = React.useState(() => ({
+      result: null, graph: null, index: null, loading: false, error: null
+    }));
+    const activeGanttGraph = graphState.result === result ? graphState.graph : null;
+    const activeGraphIndex = graphState.result === result ? graphState.index : null;
+    const graphLoading = graphState.result === result ? graphState.loading : false;
+    const graphError = graphState.result === result ? graphState.error : null;
+    const shouldLoadGraph = Boolean(data && !read.loading && !read.error && !paused
+      && data.gantt_graph.state === 'available'
+      && data.gantt_graph.nodes_complete === false
+      && !activeGanttGraph
+      && !graphError
+      && window.APSPlanAPI && typeof window.APSPlanAPI.ganttGraph === 'function'
+      && (view === 'gantt' || chosen && !chosen.before || relatedRef));
+    const requestGraph = React.useCallback(() => {
+      setGraphState(current => ({
+        result, graph: current.result === result ? current.graph : null,
+        index: current.result === result ? current.index : null, loading: false, error: null
+      }));
+    }, [result]);
+    React.useEffect(() => {
+      if (!shouldLoadGraph) return;
+      const controller = new AbortController();
+      setGraphState(current => ({
+        result, graph: current.result === result ? current.graph : null,
+        index: current.result === result ? current.index : null, loading: true, error: null
+      }));
+      const query = { ...scope, snapshot_ref: result.meta.snapshot_ref };
+      window.APSPlanAPI.ganttGraph(data.plan.plan_ref, query, data, controller.signal).then(response => {
+        if (controller.signal.aborted) return;
+        const nextGraph = response.data.gantt_graph;
+        setGraphState({ result, graph: nextGraph, index: window.GanttGraph.create(nextGraph), loading: false, error: null });
+      }, error => {
+        if (controller.signal.aborted || error && error.name === 'AbortError') return;
+        setGraphState({ result, graph: null, index: null, loading: false, error });
+      });
+      return () => controller.abort();
+    }, [result, shouldLoadGraph]);
+    const [capacityState, setCapacityState] = React.useState(() => ({
+      result: null, calendar: null, occupancy: null, loading: false, error: null
+    }));
+    const activeCalendar = capacityState.result === result ? capacityState.calendar : null;
+    const activeOccupancy = capacityState.result === result ? capacityState.occupancy : null;
+    const capacityLoading = capacityState.result === result ? capacityState.loading : false;
+    const capacityError = capacityState.result === result ? capacityState.error : null;
+    const shouldLoadCapacity = Boolean(data && !read.loading && !read.error && !paused
+      && data.projections.calendar.state !== 'unavailable'
+      && data.projections.calendar.windows_complete === false
+      && !activeCalendar
+      && !capacityError
+      && window.APSPlanAPI && typeof window.APSPlanAPI.capacity === 'function'
+      && view !== 'gantt' && projectionTab === 'calendar');
+    const requestCapacity = React.useCallback(() => {
+      setCapacityState(current => ({
+        result, calendar: current.result === result ? current.calendar : null,
+        occupancy: current.result === result ? current.occupancy : null, loading: false, error: null
+      }));
+    }, [result]);
+    React.useEffect(() => {
+      if (!shouldLoadCapacity) return;
+      const controller = new AbortController();
+      setCapacityState(current => ({
+        result, calendar: current.result === result ? current.calendar : null,
+        occupancy: current.result === result ? current.occupancy : null, loading: true, error: null
+      }));
+      const query = { ...scope, snapshot_ref: result.meta.snapshot_ref };
+      window.APSPlanAPI.capacity(data.plan.plan_ref, query, data, controller.signal).then(response => {
+        if (controller.signal.aborted) return;
+        setCapacityState({ result, calendar: response.data.calendar, occupancy: response.data.occupancy, loading: false, error: null });
+      }, error => {
+        if (controller.signal.aborted || error && error.name === 'AbortError') return;
+        setCapacityState({ result, calendar: null, occupancy: null, loading: false, error });
+      });
+      return () => controller.abort();
+    }, [result, shouldLoadCapacity]);
+    const effectiveData = React.useMemo(() => {
+      if (!data || (!Array.isArray(activeBaselineItems) && !activeGanttGraph && !activeCalendar && !activeOccupancy)) return data;
+      return {
+        ...data,
+        ...(activeGanttGraph ? { gantt_graph: activeGanttGraph } : {}),
+        projections: {
+          ...data.projections,
+          ...(Array.isArray(activeBaselineItems) ? { baseline: { ...data.projections.baseline, items: activeBaselineItems, items_complete: true } } : {}),
+          ...(activeCalendar ? { calendar: activeCalendar } : {}),
+          ...(activeOccupancy ? { occupancy: activeOccupancy } : {})
+        }
+      };
+    }, [result, activeBaselineItems, activeGanttGraph, activeCalendar, activeOccupancy]);
+    const effectivePrepared = React.useMemo(() => {
+      if (!prepared || (!Array.isArray(activeBaselineItems) && !activeGraphIndex && !activeCalendar && !activeOccupancy)) return prepared;
+      const facts = Array.isArray(activeBaselineItems) || activeCalendar || activeOccupancy
+        ? M.prepare(effectiveData, activeBaselineItems)
+        : { ...prepared };
+      facts.graph = activeGraphIndex || prepared.graph;
+      return facts;
+    }, [prepared, effectiveData, activeBaselineItems, activeGraphIndex, activeCalendar, activeOccupancy]);
     return <div className="plana plan-workspace" data-plan-workspace>
       <section className="plan-scope wb-surface" aria-label="方案与范围">
       <Catalog selectedRef={selection && selection.plan_ref} onSelect={choose} autoSelect={Object.keys(initialContext).length === 0}
@@ -137,23 +282,27 @@
         ]} />
         <window.WorkbenchReference entries={{ '计划编号': data.plan.plan_ref, '来源编号': data.provenance.source_ref, '排产记录编号': data.provenance.run_ref, '数据版本编号': result.meta.snapshot_ref }} />
       </div></details>}
-      {(rangeError || read.error || result && result.warnings.length > 0 || !data || paused) && <div className="wb-surface-body plan-read-state">
-      <ErrorBox error={rangeError} /><ErrorBox error={read.error} />
+      {(rangeError || read.error || restoringBefore || result && result.warnings.length > 0 || !data || paused) && <div className="wb-surface-body plan-read-state">
+      <ErrorBox error={rangeError} /><ErrorBox error={read.error} />{restoringBefore && <ErrorBox error={baselineError} />}
+      {restoringBefore && baselineLoading && !baselineError && <p className="plan-muted">正在加载原安排对照…</p>}
       {result && <Issues issues={result.warnings} />}
       {!data && !read.error && <window.WorkbenchControls.EmptyState kind={read.loading ? 'loading' : 'empty'} title={read.loading ? '正在读取所选计划、工序安排和分析结果…' : paused ? '计划读取已取消。' : '请在计划列表里选一个可查看的计划。'} />}
+      {restoringBefore && baselineError && <Button icon="refresh-cw" onClick={requestBaseline}>重试加载原安排</Button>}
       {(read.error || paused) && <Button icon="refresh-cw" onClick={refresh}>刷新重试</Button>}</div>}
       {data && <div className="statline wb-metrics" style={{ '--wb-columns': 4 }}>
           {[[data.task_count, '已安排工序', 'primary'], [risks.length, '关联批次', 'primary'], [risks.filter(row => row.risk === 'overdue').length, '预计超期批次', 'warn'], [risks.filter(row => row.risk === 'unknown').length, '交付待确认批次', 'warn']].map(([value, label, tone]) =>
             <div className="stat wb-metric" key={label} data-tone={tone === 'warn' && value === 0 ? 'neutral' : tone}><span className="sl wb-metric-label">{label}</span><span className="sv wb-metric-value">{value}</span></div>)}
         </div>}</section>
       {data && <div className={'plan-main' + (view === 'gantt' ? ' wb-gantt-detail-layout' : '')} data-details-open={(view === 'gantt' ? detailsOpen : !!chosen) || undefined}><div className={view === 'gantt' ? 'wb-gantt-main-column' : undefined}>
-          {view === 'gantt' && <window.PlanGantt key={'gantt:' + data.plan.plan_ref} data={data} prepared={prepared} asOf={result.meta.as_of} selected={chosen} onSelect={selectTask} query={query} onQuery={setQuery} initialMode={initialContext.resource_kind} initialBaseline={!!initialTask.current && initialTask.current.side === 'before'}
+          {view === 'gantt' && <window.PlanGantt key={'gantt:' + data.plan.plan_ref} data={effectiveData} prepared={effectivePrepared} asOf={result.meta.as_of} selected={chosen} onSelect={selectTask} query={query} onQuery={setQuery} initialMode={initialContext.resource_kind} initialBaseline={!!initialTask.current && initialTask.current.side === 'before'} onRequestBaseline={requestBaseline} baselineLoading={baselineLoading} baselineError={baselineError} graphLoading={graphLoading} graphError={graphError} onRetryGraph={requestGraph}
             toolbarActions={<span ref={detailsToggle}><Button icon={detailsOpen ? 'panel-right-close' : 'panel-right-open'} aria-expanded={detailsOpen} aria-controls="plan-gantt-detail" onClick={() => setDetailsOpen(!detailsOpen)}>{detailsOpen ? '收起详情' : '详情'}</Button></span>} />}
-          {view !== 'gantt' && <ProjectionTables prepared={prepared} key={'risk:' + result.meta.snapshot_ref} data={data} tab={projectionTab} onTab={setProjectionTab} page={projectionPage} onPage={setProjectionPage} onResource={openResource} onBatch={batch => { setQuery(batch); const task = data.tasks.find(row => row.batch_id === batch); if (task) selectTask(task, false, true); }} />}
-          {view === 'delay' && <Conflicts prepared={prepared} key={'conflicts:' + result.meta.snapshot_ref} data={data} />}
-        </div>{(view === 'gantt' ? detailsOpen : !!chosen) && <TaskDetail data={data} prepared={prepared} selected={chosen} onSelect={selectTask} onRelated={selectRelated}
+          {view !== 'gantt' && <ProjectionTables prepared={effectivePrepared} key={'risk:' + result.meta.snapshot_ref} data={effectiveData} tab={projectionTab} onTab={setProjectionTab} page={projectionPage} onPage={setProjectionPage} onResource={openResource} onBatch={batch => { setQuery(batch); const task = data.tasks.find(row => row.batch_id === batch); if (task) selectTask(task, false, true); }} capacityLoading={capacityLoading} capacityError={capacityError} onRetryCapacity={requestCapacity} />}
+          {view === 'delay' && <Conflicts prepared={effectivePrepared} key={'conflicts:' + result.meta.snapshot_ref} data={effectiveData} />}
+        </div>{(view === 'gantt' ? detailsOpen : !!chosen) && <TaskDetail data={effectiveData} prepared={effectivePrepared} selected={chosen} onSelect={selectTask} onRelated={selectRelated}
           onCollapse={view === 'gantt' ? collapseDetails : undefined}
-          renderTrial={renderTrial} scope={scope} query={query} disabled={!ready || read.loading || !!read.error} />}</div>}
+          renderTrial={renderTrial} scope={scope} query={query} disabled={!ready || read.loading || !!read.error}
+          baselineLoading={baselineLoading} baselineError={baselineError} onRetryBaseline={requestBaseline}
+          graphLoading={graphLoading} graphError={graphError} onRetryGraph={requestGraph} />}</div>}
     </div>;
   }
   function PlanWorkspace(props) {

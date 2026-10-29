@@ -18,14 +18,46 @@ from typing import Any, Callable, NoReturn, Optional, Tuple
 Reject = Callable[[], NoReturn]
 
 
-class _Rejected(Exception):
-    def __init__(self, reject: Reject):
-        super().__init__()
-        self.reject = reject
+class _DuplicateKey(Exception):
+    pass
+
+
+class _NonFinite(Exception):
+    pass
+
+
+def _unique(pairs: Any) -> dict:
+    value = dict(pairs)
+    if len(value) != len(pairs):
+        raise _DuplicateKey()
+    return value
+
+
+def _finite(text: str) -> float:
+    number = float(text)
+    if not math.isfinite(number):
+        raise _NonFinite()
+    return number
+
+
+def _constant(_text: str) -> NoReturn:
+    raise _NonFinite()
+
+
+_STRICT_DECODER = json.JSONDecoder(object_pairs_hook=_unique, parse_float=_finite, parse_constant=_constant)
 
 
 def canonical_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+
+def clone_json(value: Any) -> Any:
+    kind = type(value)
+    if kind is dict:
+        return {k: clone_json(v) for k, v in value.items()}
+    if kind is list:
+        return [clone_json(v) for v in value]
+    return value
 
 
 def load_strict_json(
@@ -47,22 +79,6 @@ def load_strict_json(
     """
     duplicate = on_duplicate or on_malformed
     nonfinite = on_nonfinite or on_malformed
-
-    def unique(pairs):
-        value = dict(pairs)
-        if len(value) != len(pairs):
-            raise _Rejected(duplicate)
-        return value
-
-    def finite(text):
-        number = float(text)
-        if not math.isfinite(number):
-            raise _Rejected(nonfinite)
-        return number
-
-    def constant(_text):
-        raise _Rejected(nonfinite)
-
     if type(raw) is not str and type(raw) is not bytes:
         on_malformed()
     if limit is not None:
@@ -70,10 +86,14 @@ def load_strict_json(
         if len(raw if isinstance(raw, bytes) else raw.encode("utf-8", "surrogatepass")) > max_bytes:
             on_too_large()
     try:
-        text = raw.decode("utf-8") if type(raw) is bytes else raw
-        value = json.loads(text, object_pairs_hook=unique, parse_float=finite, parse_constant=constant)
-    except _Rejected as exc:
-        rejected = exc.reject
+        text = raw.decode("utf-8") if isinstance(raw, bytes) else raw
+        if text.startswith("\ufeff"):
+            raise ValueError("Unexpected UTF-8 BOM")
+        value = _STRICT_DECODER.decode(text)
+    except _DuplicateKey:
+        rejected = duplicate
+    except _NonFinite:
+        rejected = nonfinite
     except (ValueError, RecursionError):
         on_malformed()
     else:

@@ -5,9 +5,7 @@ from typing import Any, Dict, Iterable, Optional, Tuple
 
 from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
 from core.algorithms.evaluation import ScheduleMetrics
-from core.errors import ValidationError
 from core.models.objective import objective_metric_keys
-from core.shared.strict_parse import finite_float, is_non_finite_number
 
 
 @dataclass(frozen=True)
@@ -53,7 +51,6 @@ def build_candidate_fingerprint(
     seen_output_fingerprints: Iterable[Tuple[Any, ...]],
     identity: Optional[CandidateFingerprint] = None,
 ) -> CandidateFingerprint:
-    _validate_candidate(candidate)
     if identity is not None:
         return identity.with_context(parent_fingerprint=parent_fingerprint,
                                      seen_output_fingerprints=seen_output_fingerprints)
@@ -75,16 +72,11 @@ def score_strictly_better(candidate_score: Any, parent_score: Any) -> bool:
     return candidate < parent
 
 
-def _validate_candidate(candidate: Dict[str, Any]) -> None:
-    if not isinstance(candidate, dict):
-        raise ValidationError("候选内容只能从候选 dict 生成。", field="candidate_fingerprint")
-    if not isinstance(candidate.get("results"), list):
-        raise ValidationError("候选内容缺少正式解码结果。", field="candidate_fingerprint")
-
-
 def _evaluation_key(candidate: Dict[str, Any], *, objective_name: str) -> Tuple[Any, ...]:
     metrics: ScheduleMetrics = candidate["metrics"]
-    metric_signature = _objective_metric_signature(metrics, objective_name=objective_name)
+    metric_signature = tuple(
+        (key, round(float(getattr(metrics, key)), 6)) for key in objective_metric_keys(objective_name)
+    )
     summary: ScheduleSummary = candidate["summary"]
     completion = metrics.completion
     completion_summary = (
@@ -92,31 +84,15 @@ def _evaluation_key(candidate: Dict[str, Any], *, objective_name: str) -> Tuple[
         completion.unexpected_result_count, completion.complete_batch_count,
         completion.objective_scope, completion.components_known,
     )
-    entry_id = candidate["archive_ref"].entry_id
-    if type(entry_id) is not int:
-        raise ValidationError("候选结果须先取得共享档案身份。", field="candidate_fingerprint")
-    return (entry_id, objective_name,
+    return (candidate["archive_ref"].entry_id, objective_name,
             (summary.success, summary.total_ops, summary.scheduled_ops, summary.failed_ops),
-            completion_summary, tuple(metric_signature.items()), _score_tuple(candidate.get("score")))
-
-
-def _objective_metric_signature(metrics: ScheduleMetrics, *, objective_name: str) -> Dict[str, Any]:
-    return {key: _finite_float(getattr(metrics, key), field_name=key) for key in objective_metric_keys(objective_name)}
-
-
-def _finite_float(value: Any, *, field_name: str) -> float:
-    number = finite_float(value)
-    if number is None:
-        if is_non_finite_number(value):
-            raise ValidationError(f"候选内容指标 {field_name} 必须是有限数字：{value!r}", field="candidate_fingerprint")
-        raise ValidationError(f"候选结果指标 {field_name} 须使用数字。", field="candidate_fingerprint")
-    return float(round(number, 6))
+            completion_summary, metric_signature, _score_tuple(candidate.get("score")))
 
 
 def _score_tuple(score: Any) -> Tuple[float, ...]:
     if not isinstance(score, (list, tuple)) or not score:
         return ()
-    return tuple(_finite_float(item, field_name="score") for item in score)
+    return tuple(round(float(item), 6) for item in score)
 
 
 __all__ = [

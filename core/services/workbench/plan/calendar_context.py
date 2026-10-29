@@ -4,7 +4,6 @@ from collections import namedtuple
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.capacity.plan_calendar_intervals import instant
-from core.services.workbench.facts.plan_serialization import plain_plan_facts
 
 SelectedPlanContext = namedtuple("SelectedPlanContext", "rows start end time_scope binding")
 
@@ -19,7 +18,7 @@ def selected_context(conn, entry, scope, rows, resources, plan_span):
     time_scope = scope.time_scope(plan_span)
     start, end = instant(time_scope["range_start"]), instant(time_scope["range_end"])
     binding = _context_binding(entry, scope, rows, resources, time_scope)
-    return SelectedPlanContext(rows, start, end, time_scope, plain_plan_facts(binding))
+    return SelectedPlanContext(rows, start, end, time_scope, binding)
 
 
 def _context_binding(entry, scope, selected, resources, time_scope):

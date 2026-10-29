@@ -60,6 +60,10 @@ class ExecutionLedgerReader:
             reject("报工或计划状态资料缺失，请联系维护人员核对。", "execution_ledger_unavailable", 409)
         return clock
 
+    def seed_operations(self, rows):
+        stored = cast(Dict[str, Any], self._snapshot_operations)
+        stored.update((row["operation_ref"], row) for row in rows)
+
     def operation_rows(self, refs):
         values = list(dict.fromkeys(public_ref(ref) for ref in refs))
         return self._operation_rows(values)

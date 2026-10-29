@@ -68,6 +68,6 @@ def _merge_sample_buckets(merged: Dict[str, Any], src: Mapping[str, Any]) -> Non
                 continue
             existing = bucket_out.get(key)
             existing_list = existing if isinstance(existing, list) else []
-            # 合并结果自带新列表；样本条目只读，下游只会整桶丢弃（summary_size_guard），不改条目本身。
+            # 合并结果自带新列表；样本条目只读，下游不改条目本身。
             existing_list.extend(value)
             bucket_out[str(key)] = existing_list

@@ -133,19 +133,7 @@ def candidate_comparison_public_summary(candidate_comparison: CandidateCompariso
     }
 
 
-def candidate_comparison_minimal_summary(raw: Any) -> Dict[str, Any]:
-    if not isinstance(raw, dict):
-        return {}
-    keys = (
-        "enabled", "generation_policy_version", "primary_objective", "target_objectives",
-        "planned_candidate_count", "completed_candidate_count", "time_budget_reached",
-        "run_time_budget_seconds", "selection_policy_version", "selection_reason_code",
-    )
-    return {key: raw[key] for key in keys if key in raw}
-
-
 __all__ = [
-    "candidate_comparison_minimal_summary",
     "candidate_comparison_public_summary",
     "candidate_graph_enabled",
     "candidate_metrics_summary",

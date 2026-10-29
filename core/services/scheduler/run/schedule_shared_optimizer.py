@@ -18,6 +18,7 @@ from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
 from .optimizer.candidate_profile import build_candidate_profile
 from .optimizer.config import is_ortools_enabled, resolve_optimizer_config
 from .optimizer.graph.ready import (
+    SharedGraphFeatures,
     build_graph_search_stages,
     prepare_shared_graph_features,
 )
@@ -204,15 +205,28 @@ def optimize_shared_schedule(
     shared_budget.charge_preparation(targets[0], "preparation", preparation_finished_at - started_at)
     session.run_action(primary, construction, initial=True)
     initial_construction_count = construction.index
-    prepared_features = None
+    prepared_features: Optional[SharedGraphFeatures] = None
     feature_preparation_calls = 0
+    graph_features_attempted = False
     graph_enabled = (
         cfg.graph_analysis_mode == "on"
         and graph_ready_context is not None
         and (piece or graph_ready_context.get("score_enabled") is not False)
     )
-    if config.algo_mode == "improve" and graph_enabled and runtime.clock() < deadline:
-        feature_preparation_calls = 1
+
+    def prepare_graph_features() -> Optional[SharedGraphFeatures]:
+        nonlocal prepared_features, feature_preparation_calls, graph_features_attempted
+        if graph_features_attempted:
+            return prepared_features
+        if (
+            config.algo_mode != "improve"
+            or not graph_enabled
+            or shared_budget.should_stop() is not None
+            or not shared_budget.can_afford_decode("sgs_full")
+        ):
+            return None
+        graph_features_attempted = True
+        feature_preparation_calls += 1
         feature_started_at = runtime.clock()
         try:
             prepared_features = prepare_shared_graph_features(
@@ -221,10 +235,12 @@ def optimize_shared_schedule(
                 graph_ready_context=cast(Dict[str, Any], graph_ready_context))
         finally:
             shared_budget.charge_preparation(targets[0], "graph_features", runtime.clock() - feature_started_at)
+        return prepared_features
 
     def prepare_view(view: GoalView) -> None:
         if view.prepared:
             return
+        features = prepare_graph_features()
         view_started_at = runtime.clock()
         session.search_objective, session.phase = view.objective, "prepare_view"
         session.sync(view)
@@ -253,14 +269,18 @@ def optimize_shared_schedule(
                 base_params=config.strategy_params, build_order=build_order, dispatch_rule_cfg=config.dispatch_rule,
                 objective_name=view.objective, rng_factory=runtime.rng_factory,
                 batch_order_enabled="batch_order" in dispatch_modes, search_report_state=view.report, state=view.state))
-        if prepared_features is not None and runtime.clock() < deadline:
+        if (
+            features is not None
+            and shared_budget.should_stop() is None
+            and shared_budget.can_afford_decode("sgs_full")
+        ):
             view.graph_bundle = build_graph_search_stages(
                 **decode_common, algo_ops_to_schedule=algo_ops_to_schedule, best=view.state.best,
                 version=version, base_strategy=config.strategy_enum, base_params=config.strategy_params,
                 build_order=build_order, dispatch_rule_cfg=config.dispatch_rule, objective_name=view.objective,
                 attempts=view.state.attempts, improvement_trace=view.state.improvement_trace,
                 graph_ready_context=cast(Dict[str, Any], graph_ready_context),
-                search_report_state=view.report, prepared_features=prepared_features)
+                search_report_state=view.report, prepared_features=features)
             view.stages.extend(view.graph_bundle.stages)
         shared_budget.charge_preparation(view.objective, "prepare_view", runtime.clock() - view_started_at)
 

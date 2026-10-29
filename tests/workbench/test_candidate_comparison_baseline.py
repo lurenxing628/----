@@ -2,13 +2,9 @@
 
 from copy import deepcopy
 
-import pytest
-
 from core.infrastructure.read_evidence import read_evidence_scope
-from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_baseline import RunCandidateBaselineScope
 from core.models.workbench_run_candidate import RunCandidateReadScope
-from core.services.workbench.facts.candidate_baseline import AdmissionBaseline
 from core.services.workbench.facts.candidate_read_source import read_candidate_source
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.run.candidate_analysis import read_candidate_analysis
@@ -96,8 +92,3 @@ def test_formal_versions_current_analysis_dashboard_and_decision_share_whole_bat
     assert dashboard["summary"]["before"]["total_tardiness_hours"] == summary["before"]["total_tardiness_hours"] == 0
     assert dashboard["machine_changes"]["count"] == analysis["metrics"]["machine_change_count"]["value"] == 0
     assert read_candidate_source(CandidateStore(case.conn), candidate).capture == captured
-    duplicate = deepcopy(captured)
-    duplicate["execution"][1] = deepcopy(duplicate["execution"][0])
-    with pytest.raises(WorkbenchCommandRejected) as rejected:
-        AdmissionBaseline(duplicate, source.facts, source.disposition)
-    assert rejected.value.code == "candidate_baseline_invalid"

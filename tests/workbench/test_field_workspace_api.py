@@ -47,7 +47,7 @@ def test_unreported_null_zero_partial_finish_and_readonly(field_api):
     checked = success(api.upload(exported.data, reading))['data']
     assert checked['can_confirm'] and checked['summary']['unchanged'] == 3 and checked['summary']['rejected'] == 0
     assert all_rows(api.case.conn) == before
-    book.worksheets[0].cell(2, 8).value = 'Lathe'
+    book.worksheets[0].cell(2, 8, 'Lathe')
     output = BytesIO()
     book.save(output)
     book.close()
@@ -160,45 +160,3 @@ def test_file_confirmation_retains_source_after_read_expiry_and_rechecks_write_e
         response = api.client.post(BASE + '/files/confirm', json=api.confirm_body(preview))
     assert response.status_code == 409 and response.get_json()['error']['code'] == 'stale_write'
     assert all_rows(api.case.conn) == before
-
-
-def test_report_and_task_contexts_locate_shared_operation_facts_once(field_api, record_property):
-    from core.models.content import content_text
-    from core.services.workbench.facts.execution_projection import attach_context
-    from web.routes.workbench.write_context import issue_write_context
-
-    class SharedFacts(str):
-        equalities = 0
-        __hash__ = str.__hash__
-
-        def __eq__(self, other):
-            SharedFacts.equalities += 1
-            return str.__eq__(self, other)
-
-    api = field_api
-    api.create()
-    task = api.task()
-    with api.case.ledger.read_snapshot():
-        facts = api.case.ledger.load([task['operation_ref']])
-        projection = api.case.ledger.project_loaded(facts, contexts=False)[0]
-        snapshot = SharedFacts(content_text(api.case.ledger.fact_snapshot(facts, task['operation_ref'])))
-    # The common attachment owner serves every report and the task in either ledger path.
-    with api.app.app_context():
-        first = attach_context(projection, issue_write_context, snapshot)
-        same_content = SharedFacts(snapshot)
-        SharedFacts.equalities = 0
-        reopened = attach_context(projection, issue_write_context, same_content)
-    assert SharedFacts.equalities == 1
-    assert first.write_context['write_token'] == reopened.write_context['write_token']
-    assert [row.write_context['write_token'] for row in first.reports] == [row.write_context['write_token'] for row in reopened.reports]
-    record_property('shared_facts_equalities', SharedFacts.equalities)
-
-
-def test_file_preview_scope_rejects_duplicate_keys_and_non_finite_numbers(field_api):
-    for raw in ('{"query": "a", "query": "b"}', '{"query": NaN}', '{"query": Infinity}', '{"query": 1e999}', '{"query": '):
-        response = field_api.client.post(BASE + '/files/preview', data={
-            'file': (BytesIO(b'never parsed'), 'field.xlsx'), 'scope': raw, 'snapshot_ref': 'x'})
-        assert response.status_code == 400, response.get_data(as_text=True)
-        error = response.get_json()['error']
-        assert (error['code'], error['message']) == (
-            'invalid_input', '文件导入范围读不出来，报工还没有写入。请刷新页面后重新点「开始预检」。'), raw

@@ -12,7 +12,6 @@ from core.models.workbench_preflight import normalize_preflight_input
 from core.models.workbench_run_candidate import MAX_TASKS, local_time, reference, reject
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.services.scheduler.run.schedule_payload_contract import ValidatedScheduleRow
-from core.shared.strict_json import canonical_json
 
 from .candidate_facts import index_rows
 from .candidate_tasks import task_resource
@@ -57,17 +56,7 @@ class ArchivedAdmissionPlan:
         version = max((row["version"] for row in history), default=None)
         if type(baseline["version"]) is not type(version) or baseline["version"] != version:
             invalid_baseline()
-        self._check_baseline_rows(version)
         self._check_baseline_ref(version)
-
-    def _check_baseline_rows(self, version):
-        schedule = self.schedule
-        rows = [row for row in schedule if row.get("version") == version] if version is not None else []
-        if any(type(row.get("id")) is not int or type(row.get("op_id")) is not int for row in rows):
-            invalid_baseline()
-        rows.sort(key=lambda row: row["id"])
-        if canonical_json(rows) != canonical_json(self.baseline["rows"]):
-            invalid_baseline()
 
     def _check_baseline_ref(self, version):
         baseline = self.baseline

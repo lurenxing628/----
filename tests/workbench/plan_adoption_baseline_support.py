@@ -1,7 +1,5 @@
 """DA-only helpers: real engine/adoptions in temporary file SQLite, never production."""
 
-import json
-
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.workbench.plan.baseline import build_plan_baseline
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
@@ -9,7 +7,6 @@ from core.services.workbench.plan.read_context import PlanReadContext
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.run_candidate_adoption_support import INTENT
 from tests.workbench.run_candidate_adoption_support import service as candidate_service
-from tests.workbench.run_candidate_support import corrupt_update
 from tests.workbench.trial_adoption_support import saved_scenario
 from tests.workbench.trial_adoption_support import service as trial_service
 from tests.workbench.trial_support import trial_case as trial_case  # noqa: F401
@@ -57,11 +54,3 @@ def two_versions(case, source="trial"):
         second = adopt_candidate(case, "second")
     assert (first["version"], second["version"]) == (1, 2)
     return first, second
-
-
-def mutate_json(conn, table, column, edit, where="1=1", args=()):
-    text = conn.execute("SELECT " + column + " FROM " + table + " WHERE " + where, args).fetchone()[0]
-    value = json.loads(text)
-    edit(value)
-    corrupt_update(conn, table, "UPDATE " + table + " SET " + column + "=? WHERE " + where,
-                   (json.dumps(value, ensure_ascii=False),) + tuple(args))

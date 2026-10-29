@@ -39,8 +39,9 @@ def _occupancy_groups(rows, start, end, constraints):
         if source != "internal":
             unknown.add(row["op_id"])
             continue
-        low, high = max(start, instant(row["start_time"])), min(end, instant(row["end_time"]))
-        constraints.check(row, low, high)
+        row_start, row_end = instant(row["start_time"]), instant(row["end_time"])
+        low, high = max(start, row_start), min(end, row_end)
+        constraints.check(row, low, high, row_start=row_start, row_end=row_end)
         for kind in ("machine", "operator"):
             key = row[kind + "_id"]
             if key not in (None, ""):
@@ -107,7 +108,7 @@ def _capacity_measures(metrics):
             "outside_available_hours": outside, "capacity_shortfall_hours": shortage}, utilization, shortage > 1e-9
 
 
-def project_plan_occupancy(*, scope, resources, calendar_facts, selected):
+def project_plan_occupancy(*, scope, resources, calendar_facts, selected, include_segments: bool = True):
     """calendar_facts is the private result of project_plan_calendar over the same selection."""
     rows, start, end, time_scope, context = selected
     constraints = TaskConstraints(calendar_facts)
@@ -125,7 +126,16 @@ def project_plan_occupancy(*, scope, resources, calendar_facts, selected):
         value == "unavailable" for value in states) else "partial"
     if unknown:
         state = "partial" if public else "unavailable"
-    dto = {"state": state, "plan_ref": scope.plan_ref, "time_scope": time_scope,
-           "basis": "selected_plan_only", "resources": public, "issues": issues}
+    if include_segments:
+        dto = {"state": state, "plan_ref": scope.plan_ref, "time_scope": time_scope,
+               "basis": "selected_plan_only", "resources": public, "issues": issues,
+               "segments_complete": True}
+    else:
+        has_single_segments = any(s["concurrent_operations"] == 1 for row in public for s in row["segments"])
+        public_dto = [dict(row, segments=[s for s in row["segments"] if s["concurrent_operations"] > 1])
+                      for row in public]
+        dto = {"state": state, "plan_ref": scope.plan_ref, "time_scope": time_scope,
+               "basis": "selected_plan_only", "resources": public_dto, "issues": issues,
+               "segments_complete": not has_single_segments}
     return dto, {"context": context, "constraints": constraints.private(), "unknown_source_operations": sorted(unknown),
-                 "calendar": calendar_facts, "occupancy": public}
+                 "occupancy": public}

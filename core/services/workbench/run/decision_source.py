@@ -6,7 +6,6 @@ from typing import Any, Dict, NamedTuple, Optional, overload
 from core.models.workbench_preflight import preflight_window
 from core.models.workbench_run_candidate import local_time, reference, reject
 from core.services.workbench.facts.candidate_baseline import invalid_baseline
-from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.candidate_projection import completed_dispositions, validate_manifest
 from core.services.workbench.facts.candidate_tasks import project_validated_tasks, validate_saved_tasks
 from core.services.workbench.facts.candidate_values import corrupt
@@ -89,6 +88,7 @@ class DecisionSource:
         for candidate_ref, source in prepared.get("candidate_sources", {}).items():
             self._candidate_records[candidate_ref] = source.candidate
             self._projected[candidate_ref] = source.tasks
+            self._task_intervals[candidate_ref] = source.task_intervals
             self._raw_tasks[candidate_ref] = source.raw_tasks
             self._scheduled_op_ids[candidate_ref] = source.scheduled_op_ids
             self._candidate_sources[candidate_ref] = source
@@ -107,7 +107,7 @@ class DecisionSource:
 
     @cached_property
     def facts(self):
-        return GenerationFacts(self.capture)
+        return self.store.generation_facts(self.capture)
 
     @cached_property
     def disposition(self) -> Dict[str, Dict[str, Any]]:
@@ -161,6 +161,8 @@ class DecisionSource:
         if key not in self._analysis:
             if key == "reference":
                 self._analysis[key] = self.official["tasks"] if self.comparison_mode == "admission_official" else []
+            elif key in self._projected:
+                self._analysis[key] = self._projected[key]
             else:
                 self._analysis[key] = analysis_arrangements(self._saved_projection(key, "arrangements"))
         return self._analysis[key]
@@ -260,6 +262,7 @@ class DecisionSource:
             packet = {"run": self.run, "rows": self.rows, "receipt": self.receipt,
                 "capture": self.capture, "facts": self.facts, "disposition": self.disposition,
                 "candidate": self.candidate_record(candidate_ref), "raw_tasks": self._raw_tasks[candidate_ref], "tasks": tasks,
+                "task_intervals": self._task_intervals[candidate_ref],
                 "scheduled_op_ids": self._scheduled_op_ids[candidate_ref]}
             self._candidate_sources[candidate_ref] = read_candidate_source(self.store, candidate_ref, prepared=packet)
         return self._candidate_sources[candidate_ref]

@@ -20,9 +20,13 @@
   function TimeValue({ value }) {
     return value ? <time title={M.timeLabel(value)}>{F.compactDateTime(value)}</time> : '暂无数据';
   }
-  function CalendarWindows({ windows }) {
+  function CalendarWindows({ windows, windowsComplete = true, loading = false, error = null, onRetry }) {
     const [open, setOpen] = React.useState(false), [page, setPage] = React.useState(0);
     if (windows === null) return '暂无数据';
+    if (!windowsComplete) {
+      if (error) return <span className="plan-muted">可排时段读取失败{onRetry && <> · <Button className="linkbtn" onClick={onRetry}>重试</Button></>}</span>;
+      return <span className="plan-muted">{loading ? '正在加载可排时段…' : '按需加载可排时段'}</span>;
+    }
     const pages = Math.ceil(windows.length / 10), current = Math.min(page, Math.max(0, pages - 1));
     return <div><Button className="linkbtn" aria-expanded={open} onClick={() => setOpen(!open)}>{windows.length} 段</Button>
       {open && <>{windows.slice(current * 10, current * 10 + 10).map((item, index) => <div key={index} title={M.timeLabel(item.start) + ' 至 ' + M.timeLabel(item.end)}>{F.compactRange(item.start, item.end)}
@@ -35,11 +39,19 @@
     return collapsible ? <details className="wb-gantt-detail-section"><summary>{title}</summary><div className="wb-gantt-detail-section-body">{children}</div></details>
       : <section><h3>{title}</h3>{children}</section>;
   }
-  function Route({ prepared, selected, onRelated, disabled, collapsible }) {
+  function Route({ prepared, selected, onRelated, disabled, collapsible, graphLoading, graphError, onRetryGraph }) {
     if (selected.before) return <section><h3>完整工艺路线</h3><p className="plan-muted">切换到当前安排查看完整工艺路线。</p></section>;
+    const graph = prepared.graph && prepared.graph.graph;
+    if (graph && graph.state === 'available' && graph.nodes_complete === false) {
+      return <DetailSection title="完整工艺路线" collapsible={collapsible}>
+        {graphError
+          ? <><p className="plan-muted">{graphError.message || '工序衔接图读取失败。'}</p>{onRetryGraph && <Button icon="refresh-cw" onClick={onRetryGraph}>重试工序衔接图</Button>}</>
+          : <p className="plan-muted">{graphLoading ? '正在读取完整工艺路线…' : '正在准备完整工艺路线…'}</p>}
+      </DetailSection>;
+    }
     return <window.GanttRouteList index={prepared.graph} targetRef={selected.task.task_ref} loadedRefs={prepared.loadedRefs} onSelect={onRelated} disabled={disabled} collapsible={collapsible} />;
   }
-  function TaskDetail({ data, prepared, selected, onSelect, onRelated, onCollapse, renderTrial, scope, query, disabled }) {
+  function TaskDetail({ data, prepared, selected, onSelect, onRelated, onCollapse, renderTrial, scope, query, disabled, baselineLoading, baselineError, onRetryBaseline, graphLoading, graphError, onRetryGraph }) {
     const task = selected && selected.task, labels = prepared.labels;
     const baseline = data.projections.baseline;
     const comparison = task && baseline.state === 'available' && prepared.comparisons.get(task.operation_ref);
@@ -80,12 +92,16 @@
           taskOrigin: { plan_ref: data.plan.plan_ref, operation_ref: task.operation_ref, task_ref: task.task_ref },
           disabled: disabled || selected.before || task.plan_ref !== data.plan.plan_ref, label: '调整此工序' })}</div>
       </>}</section>
-      {task && <><Route prepared={prepared} selected={selected} onRelated={onRelated} disabled={disabled} collapsible={compact} />
+      {task && <><Route prepared={prepared} selected={selected} onRelated={onRelated} disabled={disabled} collapsible={compact} graphLoading={graphLoading} graphError={graphError} onRetryGraph={onRetryGraph} />
       {compact && <DetailSection title="计划来源" collapsible><Facts items={[
         ['计划来源整批量', M.quantityLabel(task.batch_quantity, task.quantity_reason)],
         ['数量依据', task.quantity_reason ? M.quantityReasons[task.quantity_reason] : task.quantity_basis === 'run_admission' ? '来自上次排产候选方案的数据，已核对采用记录' : '来自新增试调草稿时的数据，已核对采用记录']
       ]} /></DetailSection>}
-      {baseline.state === 'available' && <DetailSection title="原安排对照" collapsible={compact}>{comparison ? <>
+      {baseline.state === 'available' && <DetailSection title="原安排对照" collapsible={compact}>{!prepared.baselineLoaded
+        ? baselineError
+          ? <><p className="plan-muted">{baselineError.message || '原安排对照读取失败。'}</p>{onRetryBaseline && <Button icon="refresh-cw" onClick={onRetryBaseline}>重试原安排对照</Button>}</>
+          : <p className="plan-muted">{baselineLoading ? '正在读取原安排对照…' : '未找到对应对照记录'}</p>
+        : comparison ? <>
         <Facts items={[
           ['变化', ({ added: '新增安排', removed: '移除安排', changed: '安排已变更', unchanged: '安排未变更' })[comparison.change]],
           ...changes,
@@ -155,15 +171,21 @@
       </tr>)}</tbody></table></div><window.WorkbenchControls.Pager label="重叠明细" page={current + 1} pages={Math.ceil(rows.length / 20)} total={rows.length} size={20} sizes={[20]} unit="段" onPage={next => setPage(next - 1)} /></> : <window.WorkbenchControls.EmptyState kind="empty" title={empty} />}
     </section>;
   }
-  function ProjectionTables({ data, prepared, onBatch, onResource, tab, onTab, page, onPage }) {
+  function ProjectionTables({ data, prepared, onBatch, onResource, tab, onTab, page, onPage, capacityLoading = false, capacityError = null, onRetryCapacity }) {
     const projections = data.projections, labels = prepared.labels;
     const rows = tab === 'risk' ? projections.delivery_risks.items : tab === 'load' ? projections.occupancy.resources : projections.calendar.resources || [];
     const pages = Math.max(1, Math.ceil(rows.length / 20)), current = Math.min(page, pages - 1);
     const visible = rows.slice(current * 20, current * 20 + 20);
     const projection = tab === 'risk' ? projections.delivery_risks : tab === 'load' ? projections.occupancy : projections.calendar;
+    const windowsComplete = projections.calendar.windows_complete !== false;
     return <section className="plan-projections" aria-label="计划分析">
       <window.PlanSegmentUI value={tab} options={[["risk", "交付风险"], ["load", "资源负荷"], ["calendar", "资源班表"]]} label="计划分析视图" onChange={value => { onTab(value); onPage(0); }} />
       {projection.state !== 'available' && <div className="plan-note">{projection.state === 'not_applicable' ? '当前范围未指定有效交期。' : projection.state === 'partial' ? '部分资料缺失，查看下方原因。' : '资料缺失，暂无法判断。'}</div>}
+      {tab === 'calendar' && !windowsComplete && (capacityError || capacityLoading) && <div className="wb-surface-body plan-read-state" data-plan-capacity-state={capacityError ? 'error' : 'loading'}>
+        {capacityError && <p className="plan-muted">{capacityError.message || '资源班表时段读取失败。'}</p>}
+        {capacityError && onRetryCapacity && <Button icon="refresh-cw" onClick={onRetryCapacity}>重试加载班表时段</Button>}
+        {!capacityError && capacityLoading && <p className="plan-muted">正在加载可排时段明细…</p>}
+      </div>}
       {tab === 'load' && <details className="plan-table-help"><summary>负荷怎么算</summary><div>
         <p>占用比例 = 班表内已占时间 ÷ 可排总时长。同一资源的重叠安排只计一次已占时间。</p>
         <p>班表内重叠表示同一资源在可排时段内同时安排多道工序的时间；跨班表的预留跨度保留在详情。</p>
@@ -187,7 +209,7 @@
             <td>{row.utilization === null ? '待确认' : <>{F.percent(row.utilization, 2)}<span className="plan-meter"><i style={{ width: row.utilization * 100 + '%' }} /></span></>}</td>
             <td>{row.has_overlap === true && <div className="plan-danger">班表内重叠 {F.hours(row.available_overlap_hours, 2)}</div>}{row.issues.length > 0 && <div className="plan-muted">{issueText(row.issues)}</div>}</td>
             <td><OccupancyDetails row={row} /></td></> :
-            <><td>{M.number(row.available_hours)}</td><td><CalendarWindows windows={row.windows} /></td>
+            <><td>{M.number(row.available_hours)}</td><td><CalendarWindows windows={row.windows} windowsComplete={windowsComplete} loading={capacityLoading} error={capacityError} onRetry={onRetryCapacity} /></td>
               <td><details className="plan-row-details"><summary>折算标准工时</summary><Facts items={[
                 ['普通件', row.normal_effective_hours === null ? '暂无数据' : F.hours(row.normal_effective_hours, 2)],
                 ['急件', row.urgent_effective_hours === null ? '暂无数据' : F.hours(row.urgent_effective_hours, 2)]

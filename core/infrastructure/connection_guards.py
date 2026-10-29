@@ -63,14 +63,11 @@ def main_database_path(conn: sqlite3.Connection) -> str:
     raise LookupError("connection has no main database")
 
 
-class SchemaContractMemo:
-    """同一命令或读请求内，共享一次结构捕获及各合同检查的结果。
+_SCHEMA_CACHE: dict = {}
 
-    实例绑定一个连接，随调用方的一次命令或读请求存活；下一请求新建实例。
-    存活期间不执行 DDL，也不改变已检查的连接设置。get_schema 复用同一份
-    SchemaStructure，get 复用本次调用内固定的连接事实，如 foreign_keys。
-    逐行保存共用叶子检查，结构和连接设置由首次入口检查。
-    """
+
+class SchemaContractMemo:
+    """同一命令或读请求内，共享一次结构捕获及各合同检查的结果。"""
 
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
@@ -90,7 +87,20 @@ class SchemaContractMemo:
 
     def get_schema(self, check):
         if check not in self._results:
-            self._results[check] = check(self.conn, structure=self.structure)
+            cached = _SCHEMA_CACHE.get(self.conn)
+            is_local = "<locals>" in check.__qualname__
+            if not is_local and cached is not None and check in cached["results"]:
+                self._results[check] = cached["results"][check]
+            else:
+                structure = self._structure or (cached["structure"] if cached is not None else None) or self.structure
+                result = check(self.conn, structure=structure)
+                self._results[check] = result
+                if not result and not is_local:
+                    if cached is None:
+                        if len(_SCHEMA_CACHE) >= 16:
+                            _SCHEMA_CACHE.pop(next(iter(_SCHEMA_CACHE)))
+                        cached = _SCHEMA_CACHE[self.conn] = {"structure": structure, "results": {}}
+                    cached["results"][check] = result
         return self._results[check]
 
 

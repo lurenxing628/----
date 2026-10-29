@@ -7,8 +7,6 @@ All retained receipts count toward receipt_count; stale sources only produce gap
 An unregistered operation is unknown, not a dispatched shipment or zero risk.
 """
 
-from core.infrastructure.connection_guards import schema_contract_memo
-from core.infrastructure.workbench_outsourcing_schema import workbench_outsourcing_objects
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_dashboard import bounded
 from core.models.workbench_outsourcing import STATES
@@ -100,9 +98,6 @@ def load_external(conn, now):
     """Capture receipt facts once for the dashboard summary and handling projection."""
     if not conn.in_transaction:
         raise RuntimeError("External dashboard reads require a caller-owned snapshot")
-    definitions = workbench_outsourcing_objects()
-    structure = schema_contract_memo(conn).structure
-    schema = {name: stored[2] for name, stored in structure.objects.items() if name in definitions}
     reader = WorkbenchOutsourcingService(conn, clock=lambda: now)
     result = summary()
     receipt_facts = reader.capture_receipts()
@@ -119,5 +114,5 @@ def load_external(conn, now):
     result["risk_count"] = None if gaps else result["known_risk_count"]
     if not result["receipt_count"] and not gaps:
         result["state"] = "no_data"
-    source_contents = {"schema": schema, "receipts": receipts, "targets": targets, "summary": result}
+    source_contents = {"receipts": receipts, "targets": targets, "summary": result}
     return result, source_contents, captured

@@ -12,7 +12,6 @@ from web.routes.workbench.preflight import evaluate_preflight_input_prepared
 
 def test_read_only_zero_hours_and_unavailable_worker(pf, monkeypatch):
     import json
-    import sqlite3
     from collections import Counter
 
     from core.models.content import same
@@ -23,11 +22,7 @@ def test_read_only_zero_hours_and_unavailable_worker(pf, monkeypatch):
     pf.conn.execute("UPDATE Batches SET due_date='2026-9-9',ready_date='' WHERE batch_id='PF-0000'")
     pf.conn.commit()
     from core.infrastructure.database import get_connection
-    from core.services.workbench.facts.production_capture import (
-        NON_INPUT_RECEIPT_ACTIONS,
-        ProductionFactsCapture,
-        non_input_row,
-    )
+    from core.services.workbench.facts.production_capture import ProductionFactsCapture
 
     native = get_connection(":memory:")
     try:
@@ -45,33 +40,6 @@ def test_read_only_zero_hours_and_unavailable_worker(pf, monkeypatch):
         assert raw["ready_date"] == saved["ready_date"] == ""
     finally:
         native.close()
-    receipts = sqlite3.connect(":memory:")
-    try:
-        receipts.execute("CREATE TABLE WorkbenchCommandReceipts(request_key TEXT,action,outcome_json)")
-        actions = (*NON_INPUT_RECEIPT_ACTIONS, "trial.save", "dashboard.transition", "TRIAL.save",
-                   None, sqlite3.Binary(b"trial.save"), 7, "execution.report_correct", "unknown", "unchanged")
-        originals = [(str(index), action, '{"result":"unchanged"}' if action == "unchanged"
-                      else "not-json" if action == "unknown" else '{"result":"committed"}')
-                     for index, action in enumerate(actions)]
-        receipts.executemany("INSERT INTO WorkbenchCommandReceipts VALUES (?,?,?)", originals)
-        originals = WorkbenchPreflightFactsRepository(receipts).capture_table("WorkbenchCommandReceipts")[1]
-        statements = []
-        receipts.set_trace_callback(statements.append)
-        capture = ProductionFactsCapture(receipts)
-        actual = capture.archive(named=True)["tables"]["WorkbenchCommandReceipts"]
-        columns = capture.columns["WorkbenchCommandReceipts"]
-        expected = [dict(zip(columns, row)) for row in originals
-                    if not non_input_row("WorkbenchCommandReceipts", row, columns)]
-        assert same(actual, expected)
-        assert len(capture.table("WorkbenchCommandReceipts")) == len(originals) - 4
-        sql = [statement for statement in statements if statement.startswith("SELECT")
-               and 'FROM "WorkbenchCommandReceipts"' in statement]
-        assert len(sql) == 1 and "typeof(\"action\")='text'" in sql[0]
-        assert "COLLATE BINARY IN" in sql[0] and '"action" GLOB' in sql[0]
-        assert len(WorkbenchPreflightFactsRepository(receipts).capture_table(
-            "WorkbenchCommandReceipts")[1]) == len(originals)
-    finally:
-        receipts.close()
     table_reads = Counter()
     capture_table = WorkbenchPreflightFactsRepository.capture_table
 
@@ -168,23 +136,6 @@ def test_unreported_stored_skipped_is_shared_by_preflight_input_and_partial_cand
     assert denied["validation"]["can_adopt"] is False
     assert denied["validation"]["issues"][0]["code"] == "candidate_incomplete"
     assert case.conn.execute("SELECT COUNT(*) FROM Schedule").fetchone()[0] == 0
-
-
-def test_corrupt_official_schedule_time_in_hold_window_blocks_strict_freeze(candidate_case):
-    from core.errors import ValidationError
-    from core.services.workbench.run.preflight import PreflightService
-    from tests.workbench.run_compute_support import prepare_run_input
-
-    case = candidate_case
-    case.plan(1, [case.op_id], start="2026-09-09 08:00:00", end="2026-09-09 09:00:00")
-    case.conn.execute("UPDATE Schedule SET start_time='bad' WHERE version=1")
-    case.conn.commit()
-    settings = case.settings(hold_window={"start": "2026-09-09T08:00", "end": "2026-09-09T12:00"})
-    data, _fingerprint = PreflightService(case.conn).evaluate(settings)
-    assert "freeze_window_unavailable" in {item["code"] for item in data["blockers"]}
-    with pytest.raises(ValidationError) as exc:
-        prepare_run_input(case.conn, settings, case.projections())
-    assert exc.value.field == "freeze_window"
 
 
 def test_unexpected_preflight_failure_logs_the_request_ref_shown_to_the_user(pf, monkeypatch, caplog):

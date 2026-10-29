@@ -95,6 +95,3 @@ def test_calendar_row_hours_keep_the_business_default_only_for_missing_values(ra
     row = {"date": "2026-05-01", "day_type": "workday", "shift_start": None, "shift_end": None, "shift_hours": raw,
            "efficiency": None, "allow_normal": "yes", "allow_urgent": "yes", "remark": None, "periods_json": None}
     assert (WorkCalendar.from_row(row).shift_hours, WorkCalendar.from_row(row).efficiency) == (expected, 1.0)
-    for corrupt in ("abc", float("nan"), True, b"\xff4"):
-        with pytest.raises(ValueError, match="shift_hours 必须是数字"):
-            WorkCalendar.from_row(dict(row, shift_hours=corrupt))

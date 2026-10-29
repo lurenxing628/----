@@ -47,27 +47,47 @@ def _core_candidates(source):
     return [source.saved_candidate(row["candidate_ref"]) for row in source.rows]
 
 
-def _enriched_candidates(source, candidates, keys):
+def _enriched_candidates(source, candidates, keys, *, metric_keys=None):
     names = {source.computation_key(key) for key in keys}
-    source.resources.prepare_keys(keys)
-    reference_deferred = source.reference_deferred_refs
+    wanted = None if metric_keys is None else set(metric_keys)
+    definitions = {row["key"]: row for row in metric_definitions()} if wanted is not None else {}
+    need_resources = wanted is None or any(
+        definitions[key]["source"] == "archived_resource_calendar" for key in wanted if key in definitions
+    )
+    need_preparation = wanted is None or any(
+        definitions[key]["source"] == "runtime_operation_effort" for key in wanted if key in definitions
+    )
+    need_changeovers = wanted is None or bool({"type_changeover_count", "changed_machine_count"} & wanted)
+    need_changes = wanted is None or bool({"changed_operation_count", "machine_change_count"} & wanted)
+    if need_resources:
+        source.resources.prepare_keys(keys)
+    reference_deferred = source.reference_deferred_refs if need_changes else None
     result = {}
     for candidate in candidates:
         key = candidate["candidate_ref"]
         if key not in names:
             continue
         candidate = {**candidate, "metrics": dict(candidate["metrics"]), "coverage": dict(candidate["coverage"])}
-        candidate["metrics"].update(source.resources.metrics(key))
-        candidate["coverage"]["resources"] = source.resources.overview_coverage(key)
-        candidate["metrics"].update(source.preparation.metrics(key))
-        candidate["coverage"]["preparation"] = source.preparation.public_coverage(key)
-        candidate["metrics"].update(source.changeovers.metrics(key))
-        candidate["metrics"].update(operation_changes(
-            source.scope["operation_refs"], source.baseline["state"] == "available",
-            selected_available=True, deferred_refs=source.deferred_refs,
-            reference_deferred_refs=reference_deferred, reference_groups=source.analysis_groups("reference"),
-            selected_groups=source.analysis_groups(key), task_intervals=source.task_intervals(key),
-            reference_task_intervals=source.task_intervals("reference")))
+        if need_resources:
+            candidate["metrics"].update(source.resources.metrics(key))
+            candidate["coverage"]["resources"] = (
+                source.resources.overview_coverage(key)
+                if wanted is None
+                else {kind: source.resources.summary(key, kind) for kind in ("machine", "operator")}
+            )
+        if need_preparation:
+            candidate["metrics"].update(source.preparation.metrics(key))
+            if wanted is None:
+                candidate["coverage"]["preparation"] = source.preparation.public_coverage(key)
+        if need_changeovers:
+            candidate["metrics"].update(source.changeovers.metrics(key))
+        if need_changes:
+            candidate["metrics"].update(operation_changes(
+                source.scope["operation_refs"], source.baseline["state"] == "available",
+                selected_available=True, deferred_refs=source.deferred_refs,
+                reference_deferred_refs=reference_deferred, reference_groups=source.analysis_groups("reference"),
+                selected_groups=source.analysis_groups(key), task_intervals=source.task_intervals(key),
+                reference_task_intervals=source.task_intervals("reference")))
         result[key] = candidate
     return result
 
@@ -141,12 +161,13 @@ def decision_overview(source):
     return data
 
 
-def decision_history_candidate(source):
+def decision_history_candidate(source, *, metric_keys=None):
     """Project one history event against the same all-candidate resource cohort."""
     candidate = source.saved_candidate(source.selected_ref)
-    candidates = _enriched_candidates(source, [candidate], [source.selected_ref])
+    candidates = _enriched_candidates(source, [candidate], [source.selected_ref], metric_keys=metric_keys)
     selected = candidates[source.selected_ref]
-    selected["metrics"] = _public_metrics(selected["metrics"])
+    if metric_keys is None:
+        selected["metrics"] = _public_metrics(selected["metrics"])
     return {"candidates": [selected], "resource_cohort": source.resource_cohort}
 
 

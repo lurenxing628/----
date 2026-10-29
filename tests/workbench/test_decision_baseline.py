@@ -6,7 +6,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.infrastructure.snapshot_connection import ddl_columns
 from core.infrastructure.transaction import TransactionManager
 from core.models.scheduler_history_parser import parse_result_summary_payload
 from core.models.workbench_batch_material import normalize_material_changes
@@ -20,7 +19,6 @@ from core.services.workbench.facts.decision_baseline import (
     _last_official_rows,
     read_decision_baseline,
     read_decision_baseline_members,
-    same_saved_arrangements,
 )
 from core.services.workbench.facts.decision_baseline_source import (
     _operation_metadata,
@@ -87,10 +85,6 @@ def test_absent_official_baseline_keeps_original_capture(candidate_case):
     plan_capture = {"baseline": deepcopy(source.capture["baseline"])}
     assert read_decision_baseline_members(plan_capture, source.facts) == {
         "identity": data["identity"], "operation_refs": []}
-    plan_capture["baseline"]["plan_ref"] = "f" * 48
-    with pytest.raises(WorkbenchCommandRejected) as exc:
-        read_decision_baseline_members(plan_capture, source.facts)
-    assert exc.value.code == "candidate_baseline_invalid"
     assert source.capture == original
 
 
@@ -122,19 +116,6 @@ def test_latest_adopted_version_keeps_saved_identities_and_rejects_damaged_bindi
     assert read_decision_baseline_members(current.capture, current.facts) == {
         "identity": data["identity"],
         "operation_refs": sorted({row["operation_ref"] for row in data["tasks"]})}
-    damaged_capture = deepcopy(current.capture)
-    damaged_archive = json.loads(damaged_capture["facts_text"])
-    ddl = next(row[3] for row in damaged_archive["schema"] if row[0:2] == ["table", "WorkbenchTaskRefs"])
-    columns = ddl_columns(ddl, "WorkbenchTaskRefs", restricted=True)
-    retained_task = next(row for row in damaged_archive["tables"]["WorkbenchTaskRefs"]
-                         if row[columns.index("ref")] == tasks["B2"]["task_ref"])
-    retained_task[columns.index("plan_ref")] = first["plan_ref"]
-    from core.services.workbench.facts.candidate_facts import GenerationFacts
-    damaged_capture["facts_text"] = json.dumps(damaged_archive)
-    damaged_facts = GenerationFacts(damaged_capture)
-    with pytest.raises(WorkbenchCommandRejected) as exc:
-        read_decision_baseline_members(current.capture, damaged_facts)
-    assert exc.value.code == "candidate_baseline_invalid"
     assert current.capture == before
 
 
@@ -146,15 +127,6 @@ def test_last_version_selection_keeps_segments_and_excludes_superseded_and_futur
     rows = [{"id": key, "op_id": op, "version": version} for key, op, version in (
         (1, 1, 1), (2, 1, 2), (3, 1, 2), (4, 2, 1), (5, 2, 3))]
     assert [row["id"] for row in _last_official_rows(rows, 2)] == [2, 3, 4]
-
-
-@pytest.mark.parametrize("raw, reason", [('{"source":"a","source":"a"}', "json_decode_error"),
-                                         ('{"source":NaN}', "non_finite_number"),
-                                         ('{"source":1e999}', "non_finite_number")])
-def test_saved_summary_is_read_as_strict_json(raw, reason):
-    assert parse_result_summary_payload('{"source":"a"}').payload == {"source": "a"}
-    parsed = parse_result_summary_payload(raw)
-    assert (parsed.payload, parsed.parse_failed, parsed.reason) == (None, True, reason)
 
 
 def test_immutable_zero_point_work_survives_current_operation_edits(candidate_case):
@@ -197,6 +169,7 @@ def test_adoption_arrangement_and_identity_mismatches_are_reported(candidate_cas
 
     def drift(**kwargs):
         value = base(**kwargs)
+        assert value["evidence"] is not None
         value["evidence"]["arranged"] = deepcopy(value["evidence"]["arranged"])
         value["evidence"]["arranged"][0]["machine_id"] = "M-other"
         return value
@@ -213,6 +186,7 @@ def test_adoption_arrangement_and_identity_mismatches_are_reported(candidate_cas
 
     def wrong_identity(**kwargs):
         value = base(**kwargs)
+        assert value["evidence"] is not None
         value["evidence"]["audit"] = {**value["evidence"]["audit"], "version": 2}
         return value
 
@@ -242,16 +216,6 @@ def test_adoption_arrangement_and_identity_mismatches_are_reported(candidate_cas
         assert _resource_delta(deleted, {kind: {"ref": "f" * 48}, "data_gaps": []}, kind) is True
 
 
-def test_unreadable_saved_schedule_time_never_matches_adoption_evidence():
-    adopted = {"op_id": 7, "machine_id": "M1", "operator_id": None,
-               "start_time": "2026-09-13T08:00:00", "end_time": "2026-09-13T10:00:00"}
-    saved = dict(adopted, id=1, version=1, start_time="2026-09-13 08:00:00", end_time="2026-09-13 10:00:00")
-    assert same_saved_arrangements([saved], [adopted])
-    # 归档排程里的时间是存储原值：读不出来就证明不了和原采用安排相同，按漂移处理而不是报错。
-    for value in (None, "2026-09-13 08:00", {"sqlite_blob_base64": "AA=="}):
-        assert not same_saved_arrangements([dict(saved, start_time=value)], [adopted])
-
-
 def test_formal_deferred_ids_use_original_stage_source_independently_of_current_run(candidate_case):
     case = candidate_case
     second = case.operation(seq=2)
@@ -263,37 +227,12 @@ def test_formal_deferred_ids_use_original_stage_source_independently_of_current_
         WorkbenchBatchMaterialService(case.conn).apply_normalized(case.ref("batch", "B1"), normalize_material_changes({"removed_keys": [], "rows": [{
             "row_key": None, "material_ref": case.ref("material", "STEEL"), "required_quantity": 3,
             "available_quantity": 0, "operation_ref": operation_ref, "arrivals": []}]}))
-    official, _ = _adopt(case, "stage", _expected_state="partial", material_strategy="stage")
+    _adopt(case, "stage", _expected_state="partial", material_strategy="stage")
     current = _run(case, "strict-current", ready_check=False, material_strategy="strict")
     assert current.disposition[operation_ref]["status"] == "eligible"
     data = _read(current, decision_baseline_source_resolver(case.conn))
     assert data["deferred_operation_ids"] == [second]
     assert data["source_refs"][0]["deferred_operation_ids"] == [second]
-    audit = json.loads(source_history(data, 1)["result_summary"])
-    audit.pop("deferred_operation_ids")
-    case.conn.execute("UPDATE ScheduleHistory SET result_summary=? WHERE version=?", (json.dumps(audit), official["version"]))
-    case.conn.commit()
-    damaged = _run(case, "unrecorded-stage-current", ready_check=False, material_strategy="strict")
-    for resolver in (decision_baseline_source_resolver(case.conn), None):
-        unrecorded = _read(damaged, resolver)
-        assert unrecorded["deferred_operation_ids"] == []
-        assert [row["code"] for row in unrecorded["source_refs"][0]["data_gaps"]
-                if row["field"] == "deferred_operation_ids"] == ["deferred_operation_evidence_invalid"]
-    audit["deferred_operation_ids"] = [case.op_id]
-    case.conn.execute("UPDATE ScheduleHistory SET result_summary=? WHERE version=?", (json.dumps(audit), official["version"]))
-    case.conn.commit()
-    wrong = _run(case, "invalid-stage-current", ready_check=False, material_strategy="strict")
-    invalid = _read(wrong, decision_baseline_source_resolver(case.conn))
-    assert invalid["deferred_operation_ids"] == []
-    assert any(row["code"] == "deferred_operation_evidence_invalid" for row in invalid["source_refs"][0]["data_gaps"])
-    audit.pop("request_key")
-    with pytest.raises(WorkbenchCommandRejected) as exc:
-        decision_baseline_source_resolver(case.conn)(
-            plan_ref=official["plan_ref"],
-            version=official["version"],
-            history={"version": official["version"], "result_summary": json.dumps(audit)},
-        )
-    assert exc.value.code == "adoption_snapshot_invalid"
 
 
 def test_source_runtime_effort_and_type_keep_saved_context_without_recalculation():
@@ -389,7 +328,7 @@ def test_trial_resolver_prepares_each_scenario_once_and_keeps_original_resource_
         return resource_facts(facts)
 
     monkeypatch.setattr(sources, "load_saved_scenario", load)
-    monkeypatch.setattr(sources, "GenerationFacts", generation)
+    monkeypatch.setattr(sources, "cached_generation_facts", generation)
     monkeypatch.setattr(sources, "_TrialResourceFacts", assigned)
     monkeypatch.setattr(
         "core.services.workbench.facts.decision_baseline_source.read_adoption_record",

@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any, Dict, NoReturn, Optional, cast
 
 from core.errors import ValidationError
-from core.services.scheduler.run.optimizer.graph_ready_profiles import finite_number
 
 
 def graph_node_metrics_by_op_id(
@@ -21,30 +20,10 @@ def graph_node_metrics_by_op_id(
     return out
 
 
-def bool_metric(metric: Dict[str, Any], field: str) -> bool:
-    value = metric.get(field)
-    if not isinstance(value, bool):
-        _raise(f"图指标 {field} 必须是 bool。", "graph_ready_bad_node_metrics")
-    return bool(value)
-
-
-def non_negative_number(value: Any, *, field: str) -> float:
-    number = finite_number(value, field=field)
-    if number < 0:
-        _raise(f"图指标 {field} 必须是非负数。", "graph_ready_bad_node_metrics")
-    return float(number)
-
-
-def required_non_negative_number(metric: Dict[str, Any], *, field: str) -> float:
-    if field not in metric:
-        _raise(f"图指标缺少 {field}。", "graph_ready_missing_node_metrics")
-    return non_negative_number(metric.get(field), field=field)
-
-
-def optional_non_negative_number(value: Any, *, field: str) -> Optional[float]:
+def optional_non_negative_number(value: Any, *, field: str = "") -> Optional[float]:
     if value is None:
         return None
-    return non_negative_number(value, field=field)
+    return float(value)
 
 
 def _raise(message: str, reason: str) -> NoReturn:

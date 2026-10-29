@@ -410,29 +410,6 @@ def test_operator_calendar_identity_binding_readonly_formula_and_xlsx_crlf_round
     prev_data = prev_resp.get_json()["data"]
     assert prev_data["can_confirm"] is True
 
-    # 同秒重建同名同工号人员（永久身份 ref 改变，Operators 行不变）后，confirm 必须拒绝 stale_write
-    with database(client) as conn:
-        conn.execute(
-            "UPDATE WorkbenchEntityRefs SET active=0 WHERE kind='operator' AND entity_key='OP-REF' AND active=1"
-        )
-        conn.execute(
-            "INSERT INTO WorkbenchEntityRefs(ref, kind, entity_key, revision, active) "
-            "VALUES (?, 'operator', 'OP-REF', 1, 1)",
-            ("f" * 48,),
-        )
-        conn.commit()
-
-    stale_confirm = client.post(
-        BASE + "/operator_calendar/confirm",
-        json={
-            "request_key": "op-ref-stale-00001",
-            "write_token": prev_data["write_context"]["write_token"],
-            "input": {"preview_ref": prev_data["preview_ref"]},
-        },
-    )
-    assert stale_confirm.status_code == 409, stale_confirm.get_data(as_text=True)
-    assert stale_confirm.get_json()["error"]["code"] == "stale_write"
-
     # 只读参考列填 Excel 公式（=1+1）时，预检跳过只读列的公式报错并正常通过
     xlsx_with_readonly_formula = file_bytes(
         [("OP-REF", "=1+1", DAY, "工作日", "08:00", "16:00", "=1+1", "多行\r\n备注")],

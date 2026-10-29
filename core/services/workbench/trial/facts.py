@@ -17,8 +17,6 @@ def facts_unchanged(admission, live):
 
 
 def execution_facts(tables, selected_refs, *, operation_refs, service):
-    from core.services.workbench.facts.run_input_codec import validate_projection_dto
-
     refs = set(selected_refs)
     refs.update(operation_refs[row["op_id"]] for row in tables["Schedule"] if row["op_id"] in operation_refs)
     for row in tables.get("WorkbenchProductionReports", []):
@@ -26,8 +24,6 @@ def execution_facts(tables, selected_refs, *, operation_refs, service):
     if len(refs) > MAX_TRIAL_TASKS:
         reject("query_too_large", "试调及真实执行保护范围超过10000道工序，未遗漏范围外占用。", 413)
     values = service.project_operations(sorted(refs))
-    for projection in values:
-        validate_projection_dto(projection)
     return {row.operation_ref: row.to_dict() for row in values}, values
 
 

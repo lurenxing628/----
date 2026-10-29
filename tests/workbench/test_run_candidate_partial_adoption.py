@@ -7,7 +7,6 @@ import pytest
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.run_candidate_adoption_support import BASE, INTENT, api, service, snapshot
-from tests.workbench.run_candidate_support import edit_artifact
 from tests.workbench.test_material_stage_release import add_requirement
 from tests.workbench.trial_support import connect
 from tests.workbench.trial_support import service as trial_service
@@ -65,16 +64,6 @@ def test_partial_run_candidate_creates_trial_without_false_scope_issue(trial_cas
     draft = svc.create(intent, preview["write_context"]["write_token"], "partial-candidate-real-trial")["data"]
     assert draft["tasks_complete"] is True and len(draft["tasks"]) == 1
     assert not any(row["code"] == "trial_base_incomplete" for row in draft["validation"]["issues"])
-    assert case.conn.execute("SELECT COUNT(*) FROM Schedule").fetchone()[0] == 0
-
-
-def test_incomplete_engine_summary_cannot_be_adopted(trial_case):
-    case = trial_case
-    ref = persisted_partial_run(case)["candidates"][0]["candidate_ref"]
-    edit_artifact(case, ref, lambda artifact: artifact["summary"].update(failed_ops=1, success=False))
-    blocked = service(case.conn).preview(ref)
-    assert blocked["validation"]["can_adopt"] is False
-    assert blocked["validation"]["issues"][0]["code"] == "candidate_unproven"
     assert case.conn.execute("SELECT COUNT(*) FROM Schedule").fetchone()[0] == 0
 
 

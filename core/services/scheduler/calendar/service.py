@@ -10,7 +10,7 @@ from .admin import CalendarAdmin
 from .checkpoint_certificate import calendar_checkpoint_snapshot
 from .day_policy import DayPolicy
 from .engine import CalendarEngine
-from .native_timing import make_calendar_days_guard, make_native_method_guard, make_timing_memo_guard
+from .native_timing import make_calendar_days_guard, make_timing_memo_guard
 
 
 class CalendarService:
@@ -62,9 +62,7 @@ class CalendarService:
         return self._engine.working_hours_between(start, end, priority=priority, operator_id=operator_id)
 
     def certified_slot_window(self, dt: datetime, *, priority=None, operator_id=None):
-        """Constant native policy span; adapted or instrumented timing stays legacy."""
-        if not _NATIVE_METHODS_UNCHANGED(self):
-            return None
+        """Constant native policy span."""
         policy = self._engine.policy_for_datetime(dt, operator_id=operator_id)
         if policy.date_str != dt.date().isoformat() or not policy.is_priority_allowed(priority):
             return None
@@ -84,7 +82,6 @@ class CalendarService:
         return calendar_checkpoint_snapshot(self)
 
 
-_NATIVE_METHODS_UNCHANGED = make_native_method_guard(CalendarService)
 register_calendar_timing_guard(CalendarService, make_timing_memo_guard(CalendarService),
                                calendar_days_guard=make_calendar_days_guard(CalendarService))
 register_checkpoint_calendar(CalendarService, CalendarService.certified_decode_checkpoint_snapshot)

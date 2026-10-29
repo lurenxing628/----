@@ -7,7 +7,7 @@ conditions. Experimental settings have their own projection and objective gate.
 
 from __future__ import annotations
 
-from collections import ChainMap, defaultdict
+from collections import defaultdict
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import MutableMapping
@@ -34,37 +34,123 @@ class _Projection:
         self.rows: MutableMapping = {}
         self.families: MutableMapping = {}
     def declare(self, category, family, path, known, *, origin="environment", reason=None):
-        provenance = self.source.source(path, origin)
-        self.families[family] = (known, provenance, reason)
+        self.families[family] = (bool(known), path, origin, reason)
         if not known:
             self.add(category, family, "保存资料", "availability", _MISSING, path, family, origin=origin, reason=reason)
-    def add(self, category, entity, label, field, value, path, family, *, origin="environment", nullable=False, reason=None, present=True):
-        self.rows[category, entity, field] = {"category": category, "entity": {"key": entity, "label": label}, "field": field, "family": family, "side": _side(self.source.source(path, origin), value, nullable=nullable, reason=reason, present=present)}
+    def add(self, category, entity, label, field, value, path, family, *, origin="environment", nullable=False, reason=None, present=True, dot_field=False):
+        known = bool(value is not _MISSING and (value is not None or nullable or not present))
+        clean_value = value if known else None
+        self.rows[category, entity, field] = (known, clean_value, bool(present), family, label, path, origin, reason, bool(dot_field))
     def fields(self, category, entity, label, row, fields, path, family, *, origin="environment", nullable=()):
         for field in fields:
-            self.add(category, entity, label, field, row.get(field, _MISSING), path + "." + field, family, origin=origin, nullable=field in nullable)
-    def absent(self, row):
-        known, source, reason = self.families.get(row["family"], (False, self.source.source(""), None))
-        return _side(source, None if known else _MISSING, present=False, reason=reason)
+            self.add(category, entity, label, field, row.get(field, _MISSING), path, family, origin=origin, nullable=field in nullable, dot_field=True)
+    def absent(self, family_key):
+        family = self.families.get(family_key)
+        if family is None:
+            known, source, reason = False, self.source.source(""), None
+        else:
+            known, path, origin, reason = family
+            source = self.source.source(path, origin)
+        return {"present": False, "state": "known" if known else "unknown", "value": None, "source": source, "reason": None if known else reason or _reason()}
 def _state(counts):
     return "different" if counts["different"] else "unknown" if counts["unknown"] else "equal"
-def _compare(before, after, categories):
-    rows = []
-    rank = {key: index for index, (key, _) in enumerate(categories)}
-    summary = dict.fromkeys(("equal", "different", "unknown"), 0)
-    category_counts = {key: dict(summary) for key, _ in categories}
-    for key in sorted(set(before.rows) | set(after.rows), key=lambda key: (rank.get(key[0], 99), key[1:])):
-        left, right = before.rows.get(key), after.rows.get(key)
-        row = left or right
-        previous, current = (left["side"] if left else before.absent(row)), (right["side"] if right else after.absent(row))
-        state = "unknown" if "unknown" in (previous["state"], current["state"]) else ("equal" if (previous["present"], previous["value"]) == (current["present"], current["value"]) else "different")
-        rows.append({key: row[key] for key in ("category", "entity", "field")})
-        rows[-1].update(state=state, before=previous, after=current)
+def _materialize_cell(projection: _Projection, row_tuple, field, fallback_family):
+    if row_tuple is None:
+        return projection.absent(fallback_family)
+    known, clean_value, present, _family, _label, path, origin, reason, dot_field = row_tuple
+    full_path = f"{path}.{field}" if dot_field else path
+    return {"present": present, "state": "known" if known else "unknown", "value": clean_value, "source": projection.source.source(full_path, origin), "reason": None if known else reason or _reason()}
+def _materialize_row(before: _Projection, after: _Projection, key, state):
+    category, entity, field = key
+    left, right = before.rows.get(key), after.rows.get(key)
+    row = left if left is not None else after.rows[key]
+    family, label = row[3], row[4]
+    return {"category": category, "entity": {"key": entity, "label": label}, "field": field, "state": state, "before": _materialize_cell(before, left, field, family), "after": _materialize_cell(after, right, field, family)}
+def _analyze_comparison(before: _Projection, after: _Projection, categories):
+    summary = {"equal": 0, "different": 0, "unknown": 0}
+    category_order = tuple(key for key, _ in categories)
+    category_counts = {key: {"equal": 0, "different": 0, "unknown": 0} for key in category_order}
+    buckets = {state: {key: [] for key in category_order} for state in ("different", "unknown", "equal")}
+    extra_buckets = {state: [] for state in ("different", "unknown", "equal")}
+    b_rows, a_rows = before.rows, after.rows
+    b_families, a_families = before.families, after.families
+    matched_in_a = 0
+    for key, left in b_rows.items():
+        right = a_rows.get(key)
+        b_known, b_val, b_present = left[0], left[1], left[2]
+        if right is not None:
+            matched_in_a += 1
+            a_known, a_val, a_present = right[0], right[1], right[2]
+        else:
+            a_family = a_families.get(left[3])
+            a_known = a_family[0] if a_family is not None else False
+            a_val, a_present = None, False
+        state = "unknown" if not (b_known and a_known) else ("equal" if b_present == a_present and b_val == a_val else "different")
         summary[state] += 1
-        if row["category"] in category_counts:
-            category_counts[row["category"]][state] += 1
+        cat = key[0]
+        if cat in category_counts:
+            category_counts[cat][state] += 1
+            buckets[state][cat].append(key)
+        else:
+            extra_buckets[state].append(key)
+    if matched_in_a < len(a_rows):
+        for key, right in a_rows.items():
+            if key in b_rows:
+                continue
+            a_known, a_val, a_present = right[0], right[1], right[2]
+            b_family = b_families.get(right[3])
+            b_known = b_family[0] if b_family is not None else False
+            b_val, b_present = None, False
+            state = "unknown" if not (b_known and a_known) else ("equal" if b_present == a_present and b_val == a_val else "different")
+            summary[state] += 1
+            cat = key[0]
+            if cat in category_counts:
+                category_counts[cat][state] += 1
+                buckets[state][cat].append(key)
+            else:
+                extra_buckets[state].append(key)
     groups = [{"key": key, "label": label, "state": _state(category_counts[key]), "summary": category_counts[key]} for key, label in categories]
-    return {"state": _state(summary), "summary": summary, "categories": groups, "rows": rows, "page": {"number": 1, "size": len(rows), "total": len(rows), "has_more": False}}
+    return {"state": _state(summary), "summary": summary, "categories": groups, "buckets": buckets, "extra_buckets": extra_buckets, "category_order": category_order, "total": sum(summary.values())}
+def _materialize_comparison(before: _Projection, after: _Projection, analysis, *, page=1, size=None, all_rows=True):
+    buckets, extra_buckets, category_order, total = analysis["buckets"], analysis["extra_buckets"], analysis["category_order"], analysis["total"]
+    rows = []
+    if all_rows:
+        for cat in category_order:
+            cat_items = [(key, state) for state in ("different", "unknown", "equal") for key in buckets[state][cat]]
+            cat_items.sort(key=lambda item: item[0])
+            for key, state in cat_items:
+                rows.append(_materialize_row(before, after, key, state))
+        extra_items = [(key, state) for state in ("different", "unknown", "equal") for key in extra_buckets[state]]
+        if extra_items:
+            extra_items.sort(key=lambda item: item[0][1:])
+            for key, state in extra_items:
+                rows.append(_materialize_row(before, after, key, state))
+        page_size = len(rows) if size is None else size
+        has_more = False
+    else:
+        page_size = 20 if size is None else size
+        start, end = (page - 1) * page_size, page * page_size
+        offset = 0
+        for state in ("different", "unknown", "equal"):
+            state_buckets = buckets[state]
+            for bucket, sort_key in (*((state_buckets[cat], None) for cat in category_order), (extra_buckets[state], lambda key: key[1:])):
+                count = len(bucket)
+                if not count:
+                    continue
+                next_offset = offset + count
+                if next_offset > start and offset < end:
+                    bucket_sorted = sorted(bucket) if sort_key is None else sorted(bucket, key=sort_key)
+                    for key in bucket_sorted[max(0, start - offset):min(count, end - offset)]:
+                        rows.append(_materialize_row(before, after, key, state))
+                offset = next_offset
+                if offset >= end:
+                    break
+            if offset >= end:
+                break
+        has_more = end < total
+    return {"state": analysis["state"], "summary": dict(analysis["summary"]), "categories": [dict(group, summary=dict(group["summary"])) for group in analysis["categories"]], "rows": rows, "page": {"number": page, "size": page_size, "total": total, "has_more": has_more}}
+def _compare(before, after, categories):
+    return _materialize_comparison(before, after, _analyze_comparison(before, after, categories), all_rows=True)
 def _reference(source, kind, key, *, original=False):
     if key is None:
         return None
@@ -74,7 +160,7 @@ def _ref_key(value, fallback):
     return value if type(value) is str else "unknown:" + str(fallback)
 def _ref_field(projection: _Projection, category, entity, label, row, field, kind, path, family, *, original=False):
     value = _reference(projection.source, kind, row[field], original=original) if field in row else _MISSING
-    projection.add(category, entity, label, field, value, path + "." + field, family, origin="original" if original else "environment", nullable=True)
+    projection.add(category, entity, label, field, value, path, family, origin="original" if original else "environment", nullable=True, dot_field=True)
 def _config(source: ConditionSource):
     rows = source.table("ScheduleConfig") or []
     return {row["config_key"]: (row.get("config_value", _MISSING), "tables.ScheduleConfig[" + str(index) + "].config_value") for index, row in enumerate(rows)}
@@ -116,11 +202,11 @@ def _work(projection: _Projection, batches, operations):
             value = row.get(field, _MISSING)
             # External work has a saved cycle, rather than factory standard hours. A missing column still leaves the archived requirement unproven.
             external = row.get("source") == "external"
-            projection.add("requirements", ref, label, field, None if external and value is not _MISSING else value, path + "." + field, "operation_facts", origin="original", nullable=external)
+            projection.add("requirements", ref, label, field, None if external and value is not _MISSING else value, path, "operation_facts", origin="original", nullable=external, dot_field=True)
         for field, kind in (("op_type_id", "op_type"), ("machine_id", "machine"), ("operator_id", "operator"), ("supplier_id", "supplier")):
             _ref_field(projection, "requirements", ref, label, row, field, kind, path, "operation_facts", original=True)
         if row.get("source") == "external":
-            projection.add("requirements", ref, label, "ext_days", row.get("ext_days", _MISSING), path + ".ext_days", "operation_facts", origin="original", nullable=True)
+            projection.add("requirements", ref, label, "ext_days", row.get("ext_days", _MISSING), path, "operation_facts", origin="original", nullable=True, dot_field=True)
 def _materials(projection: _Projection, batches, operations):
     source, category = projection.source, "materials_outsource"
     requirements = source.table("BatchMaterials")
@@ -326,33 +412,39 @@ def _execution(projection: _Projection, operations, resources):
     baseline = source.baseline
     known = schedule is not None and type(baseline) is dict and "version" in baseline
     projection.declare(category, "formal_arrangements", "tables.Schedule", known)
-    version = baseline.get("version") if baseline else None
-    latest = {}
-    for row in schedule or []:
-        if type(version) is int and row.get("version", 0) <= version:
-            latest[row["op_id"]] = max(row["version"], latest.get(row["op_id"], 0))
-    op_refs = {int(row["source_key"]): row["ref"] for row in source.table("WorkbenchPlanSourceRefs") or [] if row.get("kind") == "operation" and row.get("active") == 1}
-    op_refs.update({row.get("id"): ref for ref, row in source.operations.items()})
-    arranged = defaultdict(list)
-    relevant_refs = set(operations) | set(relevant)
-    for index, row in enumerate(schedule or []):
-        ref = op_refs.get(row.get("op_id"))
-        if ref in relevant_refs and row.get("version") == latest.get(row.get("op_id")):
-            arranged[ref].append((index, row))
-    for ref, rows in arranged.items():
-        for ordinal, (index, row) in enumerate(sorted(rows, key=lambda item: (item[1].get("start_time", ""), item[1].get("end_time", "")))):
-            entity, path, label = ref + ":formal:" + str(ordinal), "tables.Schedule[" + str(index) + "]", operations.get(ref, {}).get("op_code", ref)
-            if ref in outside:
-                start, end = row.get("start_time"), row.get("end_time")
-                duration = (instant(end) - instant(start)).total_seconds() / 3600 if start is not None and end is not None else _MISSING
-                projection.add(category, entity, label, "reserved_wall_hours", duration, path, "formal_arrangements")
-                continue
-            for field in ("start_time", "end_time"):
-                value = row.get(field, _MISSING)
-                value = instant(value).isoformat() if value is not _MISSING and value is not None else value
-                projection.add(category, entity, label, field, value, path + "." + field, "formal_arrangements")
-            for field, kind in (("machine_id", "machine"), ("operator_id", "operator")):
-                _ref_field(projection, category, entity, label, row, field, kind, path, "formal_arrangements")
+    if known and schedule and baseline:
+        version = baseline.get("version")
+        latest = {}
+        for row in schedule:
+            if type(version) is int and row.get("version", 0) <= version:
+                latest[row["op_id"]] = max(row["version"], latest.get(row["op_id"], 0))
+        if latest:
+            op_refs = dict(source.facts.operation_refs) if source.facts is not None else {
+                int(row["source_key"]): row["ref"]
+                for row in source.table("WorkbenchPlanSourceRefs") or []
+                if row.get("kind") == "operation" and row.get("active") == 1
+            }
+            op_refs.update({row.get("id"): ref for ref, row in source.operations.items()})
+            arranged = defaultdict(list)
+            relevant_refs = set(operations) | set(relevant)
+            for index, row in enumerate(schedule):
+                ref = op_refs.get(row.get("op_id"))
+                if ref in relevant_refs and row.get("version") == latest.get(row.get("op_id")):
+                    arranged[ref].append((index, row))
+            for ref, rows in arranged.items():
+                for ordinal, (index, row) in enumerate(sorted(rows, key=lambda item: (item[1].get("start_time", ""), item[1].get("end_time", "")))):
+                    entity, path, label = ref + ":formal:" + str(ordinal), "tables.Schedule[" + str(index) + "]", operations.get(ref, {}).get("op_code", ref)
+                    if ref in outside:
+                        start, end = row.get("start_time"), row.get("end_time")
+                        duration = (instant(end) - instant(start)).total_seconds() / 3600 if start is not None and end is not None else _MISSING
+                        projection.add(category, entity, label, "reserved_wall_hours", duration, path, "formal_arrangements")
+                        continue
+                    for field in ("start_time", "end_time"):
+                        value = row.get(field, _MISSING)
+                        value = instant(value).isoformat() if value is not _MISSING and value is not None else value
+                        projection.add(category, entity, label, field, value, path, "formal_arrangements", dot_field=True)
+                    for field, kind in (("machine_id", "machine"), ("operator_id", "operator")):
+                        _ref_field(projection, category, entity, label, row, field, kind, path, "formal_arrangements")
 def _freeze(projection: _Projection, operations):
     source, category = projection.source, "freeze"
     inputs = source.input or {}
@@ -444,13 +536,13 @@ def _experiments(source, packet):
     if source.available:
         for key in ("generation_policy_version", "selection_policy_version", "primary_objective", "target_objectives", "time_budget_seconds"):
             if key in inputs:
-                value, path = inputs[key], "capture.input." + key
+                value, path = inputs[key], source.input_path(key) or ("capture.input." + key)
             elif key in selection:
                 value, path = selection[key], "receipt.selection." + key
             elif key in artifact:
                 value, path = artifact[key], "candidate.artifact." + key
             else:
-                value, path = None, "capture.input." + key
+                value, path = None, source.input_path(key) or ((source._origins.get("input") or "capture.input") + "." + key)
             projection.add("algorithm", "run_options", "本次保存的优化策略和预算", key, value, path, "algorithm", present=key in inputs or key in selection or key in artifact)
     algo = ((artifact.get("summary") or {}).get("algo") or {})
     for prefix, values, path in (("chosen", artifact, "candidate.artifact"), ("actual_summary", algo, "candidate.artifact.summary.algo"), ("effective_config", algo.get("config_snapshot") or {}, "candidate.artifact.summary.algo.config_snapshot")):
@@ -486,14 +578,22 @@ def prepare_history_condition_side(prepared, window):
     conditions = _Projection(prepared["source"])
     if prepared["source"].available:
         _calendar(conditions, resources, known, window)
-    conditions.rows = ChainMap(conditions.rows, baseline.rows)
-    conditions.families = ChainMap(conditions.families, baseline.families)
+    conditions.rows = {**baseline.rows, **conditions.rows}
+    conditions.families = {**baseline.families, **conditions.families}
     return {"conditions": conditions, "configurations": prepared["configurations"], "objective": prepared["objective"]}
-def compare_prepared_history_conditions(before, after):
-    """Compare prepared sides without changing their shared projections."""
-    conditions = _compare(before["conditions"], after["conditions"], _CATEGORIES)
+def analyze_prepared_history_conditions(before, after):
+    """Analyze prepared sides without materializing full production condition rows."""
+    cond_analysis = _analyze_comparison(before["conditions"], after["conditions"], _CATEGORIES)
     configurations = _compare(before["configurations"], after["configurations"], (("algorithm", "算法实验设置"),))
     previous, current = before["objective"], after["objective"]
     objective_state = "unknown" if "unknown" in (previous["state"], current["state"]) else ("equal" if previous["value"] == current["value"] else "different")
     objective = {"category": "algorithm", "entity": {"key": "objective", "label": "优化目标"}, "state": objective_state, "field": "objective", "before": previous, "after": current}
-    return {"conditions": conditions, "configurations": configurations, "objective": objective, "gate": {"production_state": conditions["state"], "objective_state": objective_state, "state": "equal" if conditions["state"] == objective_state == "equal" else ("different" if "different" in (conditions["state"], objective_state) else "unknown")}}
+    return before, after, cond_analysis, configurations, objective
+def materialize_history_conditions(before, after, cond_analysis, *, condition_page=1, condition_size=None, all_rows=True):
+    """Materialize the requested page or all rows of production conditions."""
+    return _materialize_comparison(before["conditions"], after["conditions"], cond_analysis, page=condition_page, size=condition_size, all_rows=all_rows)
+def compare_prepared_history_conditions(before, after, *, condition_page=1, condition_size=None, all_rows=True):
+    """Compare prepared sides without changing their shared projections."""
+    before_side, after_side, cond_analysis, configurations, objective = analyze_prepared_history_conditions(before, after)
+    conditions = materialize_history_conditions(before_side, after_side, cond_analysis, condition_page=condition_page, condition_size=condition_size, all_rows=all_rows)
+    return {"conditions": conditions, "configurations": configurations, "objective": objective}

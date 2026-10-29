@@ -29,13 +29,11 @@ class NativeSchedulePreparation:
     graph_ready_context: Any
     warnings: Tuple[str, ...]
     algo_stats: Dict[str, Any]
-    plain_classes: Dict[type, bool]
     topology: Any
     score_cache_factory: Any = None
     resource_candidates: Dict[Any, Any] = field(default_factory=dict)
     resource_claims: Dict[int, Any] = field(default_factory=dict)
     piece_batches: Dict[int, Any] = field(default_factory=dict)
-    pruning_records: Dict[int, bool] = field(default_factory=dict)
     total_hours_by_op_id: Dict[int, float] = field(default_factory=dict)
     _variant_operations: List[OpForScheduleAlgo] = field(default_factory=list)
     # The run context points back at this preparation, so prepare_native_schedule_inputs sets it once.
@@ -69,26 +67,20 @@ class NativeSchedulePreparation:
         if token in self.resource_claims:
             return self.resource_claims[token]
         claim = None
-        if self.plain_classes.get(type(op), False):
-            values = vars(op)
-            op_id, batch_id, piece = values.get("id"), values.get("batch_id"), values.get("piece_id")
-            source = str(values.get("source", "internal") or "internal").strip().lower()
-            if (type(op_id) is int and op_id > 0 and type(batch_id) in (str, int) and batch_id
-                    and source == "internal" and (piece is None or (type(piece) is str and piece and piece.strip() == piece))):
-                pairs = frozenset(self.qualified_resource_pairs(op))
-                claim = ResourceClaim(token, op_id, str(batch_id).strip(), (str(batch_id).strip(), piece), pairs,
-                                      Counter(mid for mid, _ in pairs), Counter(oid for _, oid in pairs))
+        op_id, batch_id, piece = op.id, op.batch_id, op.piece_id
+        source = str(op.source or "internal").strip().lower()
+        if (type(op_id) is int and op_id > 0 and type(batch_id) in (str, int) and batch_id
+                and source == "internal" and (piece is None or (type(piece) is str and piece and piece.strip() == piece))):
+            pairs = frozenset(self.qualified_resource_pairs(op))
+            claim = ResourceClaim(token, op_id, str(batch_id).strip(), (str(batch_id).strip(), piece), pairs,
+                                  Counter(mid for mid, _ in pairs), Counter(oid for _, oid in pairs))
         if token in self.records_by_token:
             self.resource_claims[token] = claim
         return claim
 
     def register_operation_variant(self, base_op: OpForScheduleAlgo, variant_op: OpForScheduleAlgo) -> None:
-        base_token = id(base_op)
         variant_token = id(variant_op)
         self.records_by_token[variant_token] = variant_op
-        if base_token in self.pruning_records:
-            from .dispatch.sgs_priority_pruning import prepare_pruning_record
-            self.pruning_records[variant_token] = prepare_pruning_record(variant_op, self.plain_classes)
         if self._checkpoint_parts is not None:
             self._checkpoint_parts["operations"][variant_token] = input_record(variant_op, field="operations")
         else:

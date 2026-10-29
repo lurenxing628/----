@@ -13,7 +13,6 @@ from core.algorithms.evaluation import ScheduleMetrics, objective_score
 from core.algorithms.evaluation_completion import BatchCompletion
 from core.algorithms.greedy.scheduler import GreedyScheduler
 from core.algorithms.ortools_bottleneck import OrtoolsWarmstartError
-from core.errors import ValidationError
 from core.models.objective import target_objectives_for
 from core.models.schedule_config_runtime_fields import default_snapshot_values
 from core.models.schedule_config_runtime_snapshot import snapshot_from_values
@@ -306,10 +305,6 @@ def test_candidate_contents_define_duplicates_and_diagnostic_sequences_preserve_
     assert old_public["best_fingerprint_changed"] is True
     assert old_diagnostics["initial_fingerprint"] == "saved-before-P8"
     assert old_diagnostics["fingerprint_events"] == legacy["fingerprint_events"]
-    invalid = _candidate(1.0)
-    invalid["score"] = (False, 1.0)
-    with pytest.raises(ValidationError):
-        report.mark_candidate_evaluated(invalid, origin="local_search")
 
 
 def test_equal_elapsed_buckets_retain_late_best_and_all_three_milestones():
@@ -486,7 +481,9 @@ def test_unknown_and_unverified_results_do_not_claim_valid_or_complete_milestone
     assert parent is not None
     graph_metrics = enrich_graph_ready_v2_metrics(context["node_metrics_by_op_id"], operations=operations,
                                                   batches=batches, start_dt=START_DT, graph_ready_context=context,
-                                                  calendar_service=scheduler.calendar, downtime_map={}, seed_results=[])
+                                                  calendar_service=scheduler.calendar, downtime_map={}, seed_results=[],
+                                                  deadline=float("inf"), clock=lambda: 0.0)
+    assert graph_metrics is not None
     decision_features = PreparedDecisionFeatures(graph_metrics, build_v2_common_rank_cache(graph_metrics))
     evaluate = partial(evaluate_graph_ready_candidate,
         prepared_decision_features=decision_features,

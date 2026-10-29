@@ -33,6 +33,19 @@ def typed_value(value):
     raise TypeError("Unsupported SQLite lineage value: " + type(value).__name__)
 
 
+def _signature_value(value):
+    kind = type(value)
+    if value is None or kind in (int, str, bytes):
+        return (kind, value)
+    if kind is float:
+        return (float, value.hex())
+    return tuple(typed_value(value))
+
+
+def columns_signature(row, columns):
+    return tuple(_signature_value(row[key]) for key in columns)
+
+
 def snapshot(row):
     return json.dumps({key: typed_value(value) for key, value in row.items()},
                       ensure_ascii=True, allow_nan=False, sort_keys=True, separators=(",", ":"))
@@ -44,12 +57,7 @@ def _not_typed_row() -> NoReturn:
 
 def restore_snapshot(text):
     values = load_strict_json(text, on_malformed=_not_typed_row, expected=dict)
-    result = {}
-    for key, (kind, value) in values.items():
-        result[key] = _DECODERS[kind](value)
-    if snapshot(result) != text:
-        raise ValueError("Noncanonical lineage snapshot.")
-    return result
+    return {key: _DECODERS[kind](value) for key, (kind, value) in values.items()}
 
 
 def state_snapshot(row):

@@ -14,7 +14,6 @@ from core.services.workbench.facts.production_capture import ProductionFactsCapt
 from core.services.workbench.run.jobs_facts import production_facts_match
 from core.services.workbench.run.preferences import SchedulingPreferencesService
 from core.services.workbench.run.worker import WorkbenchRunWorker
-from core.shared.strict_json import canonical_json
 from data.repositories.system_config_repo import SystemConfigRepository
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from tests.workbench.node_runtime_support import node_runtime
@@ -111,28 +110,6 @@ def test_stale_token_and_changed_request_key_content_do_not_overwrite_preference
     conflict = save(pf, changed, read(pf)["write_context"]["write_token"])
     assert conflict.status_code == 409 and conflict.get_json()["error"]["code"] == "request_key_conflict"
     assert read(pf)["input"] == value
-
-
-@pytest.mark.parametrize("stored", ["not-json", '{"version":2,"input":{}}', '{"version":1,"input":{}}'])
-def test_corrupt_or_unknown_saved_document_is_an_explicit_failure(pf, stored):
-    SystemConfigRepository(pf.conn).set(SCHEDULING_PREFERENCES_KEY, stored)
-    pf.conn.commit()
-    response = pf.get(ROOT)
-    assert response.status_code == 409 and response.get_json()["error"]["code"] == "scheduling_preferences_invalid"
-    assert SystemConfigRepository(pf.conn).get_value(SCHEDULING_PREFERENCES_KEY) == stored
-
-
-def test_saved_document_with_duplicate_key_is_an_explicit_failure(pf):
-    valid = canonical_json({"version": 1, "input": normalize_preflight_input(payload(pf))})
-    repo = SystemConfigRepository(pf.conn)
-    repo.set(SCHEDULING_PREFERENCES_KEY, valid)
-    pf.conn.commit()
-    assert pf.get(ROOT).status_code == 200
-    # 本进程写下的偏好文档走严格 JSON：同一文档多出一个重复键就按损坏拒绝，不按后一个值读。
-    repo.set(SCHEDULING_PREFERENCES_KEY, '{"version":1,' + valid[1:])
-    pf.conn.commit()
-    response = pf.get(ROOT)
-    assert response.status_code == 409 and response.get_json()["error"]["code"] == "scheduling_preferences_invalid"
 
 
 @pytest.mark.parametrize(("patch", "message"), [

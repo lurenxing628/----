@@ -88,6 +88,34 @@ class DecisionPreparation:
     def metrics(self, key):
         return self.summary(key)["metrics"]
 
+    def demand_hours(self, key):
+        key = self.source.computation_key(key)
+        summary = self.summary(key)
+        demand = summary.get("demand")
+        if type(demand) is dict:
+            return demand["value"]
+        available = self.available(key)
+        requirements_available = (self.source.receipt or {}).get("operation_effort") is not None or available
+        if not requirements_available:
+            return None
+        coverage = summary.get("coverage") or {}
+        pending_refs = {
+            ref
+            for group in ("new_schedule", "unplanned", "deferred", "unknown")
+            for ref in coverage.get(group, ())
+        }
+        efforts = self.source.operation_efforts
+        total = 0
+        for ref in self.source.scope["operation_refs"]:
+            if ref not in pending_refs:
+                continue
+            item = efforts.get(ref)
+            hours = None if item is None else item.get("required_standard_hours")
+            if hours is None:
+                return None
+            total += hours
+        return total
+
     def compact(self, key, ref):
         key = self.source.computation_key(key)
         self.rows(key)
@@ -111,7 +139,7 @@ class DecisionPreparation:
         return {**{field: value for field, value in row.items() if field not in ("operation_ref", "arranged")},
                 "machine": values[0] if len(values) == 1 else None, "machines": values,
                 "machine_basis": "saved_arrangement" if tasks else "admission_requirement" if values else None,
-                "arrangements": [{field: task.get(field) for field in ("row_ref", "start", "end", "machine", "operator", "source", "interval_comparable")} for task in tasks]}
+                "arrangements": [{field: task.get(field, True) if field == "interval_comparable" else task.get(field) for field in ("row_ref", "start", "end", "machine", "operator", "source", "interval_comparable")} for task in tasks]}
 
     def impacts(self):
         before, after = ({row["operation_ref"]: row for row in self.rows(key)} for key in ("reference", self.source.selected_ref))

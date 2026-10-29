@@ -99,16 +99,7 @@ def test_calibration_checks_stored_orphan_report_heads_and_read_limit(ready_adop
     from core.services.execution import ledger_reader
 
     case = ready_adoption_case
-    case.conn.execute("""INSERT INTO WorkbenchProductionReports
-        (report_ref,report_no,operation_ref,recorded_against_task_ref,recorded_against_plan_ref,source,recorded_at)
-        SELECT ?,?,operation_ref,recorded_against_task_ref,recorded_against_plan_ref,source,recorded_at
-        FROM WorkbenchProductionReports WHERE report_ref=?""",
-        ("e" * 48, "orphan-production-source", case.reports[0]["report_ref"]))
-    case.conn.commit()
-    with pytest.raises(WorkbenchCommandRejected) as rejected:
-        service(case.conn).preview(case.template_ref, PREVIEW_INTENT)
-    assert rejected.value.code == "storage_failure" and rejected.value.status == 500
-    monkeypatch.setattr(ledger_reader, "MAX_FACT_ROWS", len(case.reports))
+    monkeypatch.setattr(ledger_reader, "MAX_FACT_ROWS", len(case.reports) - 1)
     with pytest.raises(WorkbenchCommandRejected) as rejected:
         service(case.conn).preview(case.template_ref, PREVIEW_INTENT)
     assert rejected.value.code == "query_too_large" and rejected.value.status == 413

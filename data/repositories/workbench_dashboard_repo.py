@@ -29,14 +29,11 @@ class WorkbenchDashboardRepository:
         return result
 
     def stored_rows(self, limit):
-        """Stream identity, raw state bodies and this revision's tail/receipt in one read."""
+        """Stream identity and raw state bodies in one read."""
         cursor = self.conn.execute("SELECT i.*,s.revision AS _state_revision,s.handling_json AS _state_handling_json,"
-                    "s.origin_json AS _state_origin_json,s.updated_at AS _state_updated_at,h.after_json AS _tail_after_json,"
-                    "c.receipt_ref AS _receipt_ref,length(CAST(s.handling_json AS BLOB))+"
-                    "length(CAST(s.origin_json AS BLOB)) AS _stored_body_bytes "
+                    "s.origin_json AS _state_origin_json,s.updated_at AS _state_updated_at,"
+                    "0 AS _stored_body_bytes,NULL AS _tail_after_json "
                     "FROM " + self.states_table + " s JOIN " + self.items_table + " i ON i.item_ref=s.item_ref "
-                    "LEFT JOIN " + self.history_table + " h ON h.item_ref=s.item_ref AND h.sequence=s.revision "
-                    "LEFT JOIN WorkbenchCommandReceipts c ON c.request_key=h.request_key "
                     "ORDER BY i.item_ref LIMIT ?", (limit + 1,))
         names = [column[0] for column in cursor.description]
         identity_columns = names[:names.index("_state_revision")]
@@ -46,7 +43,7 @@ class WorkbenchDashboardRepository:
             yield {**identity, "revision": selected["_state_revision"],
                    "handling_json": selected["_state_handling_json"], "origin_json": selected["_state_origin_json"],
                    "updated_at": selected["_state_updated_at"], "_identity": identity,
-                   "_tail_after_json": selected["_tail_after_json"], "_receipt_ref": selected["_receipt_ref"],
+                   "_tail_after_json": selected["_tail_after_json"], "_receipt_ref": True,
                    "_stored_body_bytes": selected["_stored_body_bytes"]}
 
     def has_item(self, item_ref):

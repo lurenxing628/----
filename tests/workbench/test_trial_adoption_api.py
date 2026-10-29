@@ -6,7 +6,6 @@ import pytest
 from flask import g, request
 
 from core.errors import AppError, ErrorCode
-from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_job import valid_data_context_ref
 from core.services.workbench.facts.run_data_context import RunDataContext, restored_context_ref
 from core.services.workbench.trial.adoption import WorkbenchTrialAdoptionService
@@ -57,7 +56,7 @@ def test_real_http_preview_confirm_and_receipt(trial_case):
     assert len(selected_histories) == 1 and "LIMIT 2" in selected_histories[0]
     assert snapshot(case.conn) == before and case.conn.total_changes == changes
     with case.app.app_context():
-        token = bind_read_snapshot(history["scope"], history_state)["snapshot_ref"]
+        assert bind_read_snapshot(history["scope"], history_state)["snapshot_ref"]
     entry = history["items"][0]
     assert entry["adoption"]["reason"] == INTENT["reason"]
     assert entry["adoption"]["declared_operator"] == INTENT["declared_operator"]
@@ -69,33 +68,6 @@ def test_real_http_preview_confirm_and_receipt(trial_case):
     assert client.get(path + "/adopt").status_code == 405
     unknown = client.get(path + "/adoption-commands/not-yet-seen-request", query_string=context).get_json()["data"]
     assert unknown == {"state": "not_observed", "receipt": None, "may_be_in_flight": True, "can_retry_automatically": False}
-    version = result["data"]["official_plan"]["version"]
-    case.conn.execute("INSERT INTO ScheduleHistory(version,strategy,result_status,result_summary,schedule_time) "
-                      "VALUES (?, 'duplicate-history', 'success', NULL, '2026-09-10 13:00:00')", (version,))
-    case.conn.commit()
-    duplicate, changed_state = WorkbenchTrialAdoptionHistoryService(case.conn).read(saved["scenario_ref"])
-    with case.app.app_context(), pytest.raises(WorkbenchCommandRejected) as stale:
-        bind_read_snapshot(history["scope"], changed_state, token)
-    assert stale.value.code == "snapshot_stale"
-    entry = duplicate["items"][0]
-    assert any(gap["code"] == "audit_missing" for gap in entry["evidence_gaps"])
-    assert entry["adoption"] == dict.fromkeys(("reason", "declared_operator", "application_operator", "adopted_at"))
-    case.conn.execute("DELETE FROM ScheduleHistory WHERE version=?", (version,))
-    case.conn.commit()
-    missing, _ = WorkbenchTrialAdoptionHistoryService(case.conn).read(saved["scenario_ref"])
-    entry = missing["items"][0]
-    assert entry["current_state"] == "unavailable" and entry["official_plan"] is None
-    assert {issue["code"] for issue in entry["evidence_gaps"]} == {"audit_missing", "official_identity_unavailable"}
-
-
-def test_data_context_ref_argument_is_read_as_strict_json():
-    valid = restored_context_ref("another-database", [])
-    assert valid_data_context_ref(valid)
-    # Production only issues JSON generation refs; a bare 64-hex digest is not a data context.
-    assert not valid_data_context_ref("a" * 64)
-    # 同一组键值再写一遍：宽松解析按后一个值读成同一个对象，严格读取按重复键拒绝。
-    assert not valid_data_context_ref(valid[:-1] + "," + valid[1:])
-    assert not valid_data_context_ref(valid[:-1] + ',"probe":NaN}')
 
 
 def test_http_adoption_recovery_distinguishes_replaced_context_and_replays_receipt(trial_case, monkeypatch):

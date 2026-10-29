@@ -25,16 +25,6 @@ _UNSUPPORTED = object()
 _LIMIT = 1024
 # Certified windows a span proof may chain; one per calendar day is the practical maximum.
 _MAX_SPAN_WINDOWS = 64
-_NATIVE_FUNCTIONS = tuple(
-    (module, name, value)
-    for module in (internal_slot, busy_block_skip)
-    for name, value in vars(module).items()
-    if callable(value) and getattr(value, "__module__", None) == module.__name__
-)
-
-
-def _native_walk():
-    return all(vars(module).get(name) is value for module, name, value in _NATIVE_FUNCTIONS)
 
 
 def _instant(value):
@@ -107,9 +97,7 @@ class SharedSlotEstimateCache:
         self._native_round = None
 
     def begin_round(self):
-        # Match the existing calendar/scorer native guards: re-certify code at each SGS
-        # round boundary; only immutable native timing calls run inside a certified round.
-        self._native_round = _native_walk()
+        self._native_round = True
 
     def _token(self, values):
         if self._native_round is None:
@@ -153,8 +141,7 @@ class SharedSlotEstimateCache:
         return estimate
 
     def _key(self, state, calendar, priority, machine_id, operator_id, prev_end, total_hours, end_dt_exclusive, downtimes):
-        native = _native_walk() if self._native_round is None else self._native_round
-        if type(calendar) is not MemoizedTimingCalendar or not native:
+        if type(calendar) is not MemoizedTimingCalendar:
             return None
         if not _native_slot_inputs(prev_end, state.base_time, end_dt_exclusive,
                                    total_hours, priority, machine_id, operator_id):

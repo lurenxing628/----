@@ -59,13 +59,17 @@ class ReadBudget:
 # Each batch view projects the complete ledger, even for a short page, one preview or
 # one file. One reader avoids per-row SQLite/GIL handoff contention between large scans;
 # every batch read route, list and file routes alike, queues on this single slot.
-BATCH_READ_SLOTS = ReadBudget(1)
+BATCH_READ_SLOTS = ReadBudget(2)
 
 # Plan-derived views (dashboard, field tasks) each rebuild the whole current official
-# plan and its ledger for any page. They queue on their own single slot: one such
-# rebuild at a time keeps its short read transaction from stretching under GIL
-# contention, while batch pages never wait behind a dashboard (or the reverse).
-PLAN_READ_SLOTS = ReadBudget(1)
+# plan and its ledger for any page. They queue on their own bounded slot pool: bounded
+# concurrency keeps short read transactions from stretching under GIL contention,
+# while batch pages never wait behind a dashboard (or the reverse).
+PLAN_READ_SLOTS = ReadBudget(2)
+
+# Calibration list, facets, detail and export project the template lineage and ledger
+# cohort. Bounding concurrent calibration reads prevents unbounded GIL contention.
+CALIBRATION_READ_SLOTS = ReadBudget(2)
 
 
 @contextmanager

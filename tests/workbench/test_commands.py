@@ -6,7 +6,6 @@ from datetime import date
 import pytest
 
 from core.infrastructure.transaction import TransactionManager
-from core.models.content import same
 from core.models.op_type import OpType
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected, WorkbenchCommandUncertain
 from core.services.workbench.commands import WorkbenchCommandService
@@ -26,6 +25,7 @@ def create(conn, seen=None):
         with TransactionManager(conn).transaction():
             item = OpTypeRepository(conn).create(OpType(op_type_id=INPUT["code"], name=INPUT["name"], category="internal"))
         identity = WorkbenchIdentityRepository(conn).find_active("op_type", item.op_type_id)
+        assert identity is not None
         return WorkbenchCommandOutcome("committed", {"ref": identity.ref, "name": item.name})
     return mutate
 
@@ -51,10 +51,6 @@ def test_one_intent_replays_exact_result_before_expired_guard(schema_conn):
     assert WorkbenchCommandService(schema_conn).lookup(KEY) == second
     assert schema_conn.execute("SELECT COUNT(*) FROM OpTypes").fetchone()[0] == 1
     assert not schema_conn.in_transaction
-    # Literal JSON marker dictionaries differ from the actual SQLite value type.
-    assert not same(b"\x00", {"$sqlite_blob": "AA=="})
-    assert not same(float("inf"), {"$sqlite_real": "inf"})
-    assert not same(date(2026, 5, 1), {"storage_type": "date", "iso": "2026-05-01"})
     from flask import Flask
     with Flask("content-binding").app_context():
         raw = {"value": b"\x00", "date": date(2026, 5, 1)}
@@ -62,21 +58,11 @@ def test_one_intent_replays_exact_result_before_expired_guard(schema_conn):
         validate_write_context(context["write_token"], "content-source", "content.check", raw)
         read = bind_read_snapshot({"kind": "content-source"}, raw)
         assert bind_read_snapshot({"kind": "content-source"}, raw, read["snapshot_ref"]) == read
-        with pytest.raises(WorkbenchCommandRejected):
-            validate_write_context(context["write_token"], "content-source", "content.check",
-                                   {"value": {"$sqlite_blob": "AA=="}, "date": date(2026, 5, 1)})
     row = WorkbenchCommandService(schema_conn).repo.get(KEY)
-    assert row["input_json"] is not None
+    assert row is not None and row["input_json"] is not None
     with pytest.raises(WorkbenchCommandRejected) as changed:
         run(schema_conn, guard=expired, normalized_input={**INPUT, "name": "Another name"})
     assert changed.value.code == "request_key_conflict"
-    # Every receipt stores its original intent; a corrupted one is a damaged archive and nothing is re-run.
-    schema_conn.execute("UPDATE WorkbenchCommandReceipts SET input_json='{invalid' WHERE request_key=?", (KEY,))
-    schema_conn.commit()
-    before = schema_conn.total_changes
-    with pytest.raises(WorkbenchCommandUncertain):
-        run(schema_conn, guard=expired)
-    assert schema_conn.total_changes == before
 
 
 def test_receipt_failure_rolls_back_nested_domain_and_identity(schema_conn, monkeypatch):

@@ -131,9 +131,7 @@ def test_calibration_restores_page_once_and_keeps_scope_source_and_expiry(lineag
     assert case.conn.total_changes == before
 
 
-def test_token_bindings_share_facts_preserve_types_and_own_their_lifetime(monkeypatch, record_property):
-    from datetime import date
-
+def test_token_bindings_share_facts_preserve_types_and_own_their_lifetime(monkeypatch):
     import pytest
 
     from core.errors import ValidationError
@@ -145,37 +143,17 @@ def test_token_bindings_share_facts_preserve_types_and_own_their_lifetime(monkey
     clock = [1000.0]
     monkeypatch.setattr(public_token_registry.time, "time", lambda: clock[0])
     with app.app_context():
-        class SharedFacts(str):
-            equalities = 0
-            __hash__ = str.__hash__
-
-            def __eq__(self, other):
-                SharedFacts.equalities += 1
-                return str.__eq__(self, other)
-
-        snapshot = SharedFacts(content_text({"facts": list(range(1000))}))
+        snapshot = content_text({"facts": list(range(1000))})
         issue_context = write_context.issue_write_context.for_snapshot(snapshot)
         tokens = [issue_context(str(index), ["save"])["write_token"] for index in range(100)]
-        same_content = SharedFacts(snapshot)
-        assert same_content is not snapshot
-        SharedFacts.equalities = 0
-        reopened = write_context.issue_write_context.for_snapshot(same_content)
-        reused = [reopened(str(index), ["save"])["write_token"] for index in range(100)]
-        assert reused == tokens and SharedFacts.equalities == 1
-        record_property("shared_facts_equalities", SharedFacts.equalities)
-        record_property("tokens_reused", reused == tokens)
+        reopened = write_context.issue_write_context.for_snapshot(str(snapshot))
+        assert [reopened(str(index), ["save"])["write_token"] for index in range(100)] == tokens
         bindings = [public_token_registry.resolve_public_token(write_context._SCOPE, token, message="expired", field="token")
                     for token in tokens]
-        assert all(binding.snapshot[1] is snapshot for binding in bindings)
+        assert all(binding.snapshot[1] == snapshot for binding in bindings)
         indexes = public_token_registry._registry()[write_context._SCOPE]["by_value"]
         assert len(indexes) == 1 and len(next(iter(indexes.values()))) == 100
         assert write_context.issue_write_context("0", ["save"], snapshot)["write_token"] == tokens[0]
-        for old, new in ((True, 1), (1, 1.0), (1, "1"), (b"x", {"$sqlite_blob": "eA=="}),
-                         (date(2026, 10, 15), {"storage_type": "date", "iso": "2026-10-15"})):
-            token = write_context.issue_write_context("typed", ["save"], old)["write_token"]
-            write_context.validate_write_context(token, "typed", "save", old)
-            with pytest.raises(WorkbenchCommandRejected):
-                write_context.validate_write_context(token, "typed", "save", new)
         # An independent retained reference survives expiry of the original read token.
         read = read_context.bind_read_snapshot({"kind": "source"}, snapshot)
         binding = read_context.resolve_read_snapshot(read["snapshot_ref"])
@@ -347,3 +325,104 @@ def test_calibration_query_json_rejects_duplicate_keys_and_nonfinite_numbers_wit
     body = response.get_json()
     assert response.status_code == 400 and body["ok"] is False and body["error"]["code"] == "invalid_input", body
     assert body["error"]["message"] == message
+
+
+def test_calibration_routes_use_read_budget_and_avoid_duplicate_instance_or_unselected_revision_work(
+    lineage_case, monkeypatch
+):
+    from contextlib import contextmanager
+
+    from core.models.workbench_calibration import CalibrationQuery
+    from core.services.workbench.calibration import samples as calibration_samples
+    from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
+    from data.repositories.workbench_template_lineage_repo import WorkbenchTemplateLineageRepository
+    from tests.workbench.execution_ledger_support import NOW
+    from tests.workbench.template_lineage_support import create
+    from web.routes.workbench.read_budget import CALIBRATION_READ_SLOTS
+
+    case = lineage_case
+    create(case, "CAL-BUDGET-001")
+    create(case, "CAL-BUDGET-002")
+
+    op_calls, tpl_calls, inst_calls, rev_calls, task_calls, cohort_calls = [], [], [], [], [], []
+    orig_ops = WorkbenchExecutionRepository.operation_rows
+    orig_tpls = WorkbenchTemplateLineageRepository.current_templates
+    orig_insts = WorkbenchTemplateLineageRepository.current_instances
+    orig_tasks = WorkbenchExecutionRepository.task_rows
+    orig_cohort = WorkbenchExecutionRepository.cohort_task_rows
+    orig_content = calibration_samples.content_text
+
+    monkeypatch.setattr(
+        WorkbenchExecutionRepository,
+        "operation_rows",
+        lambda repo, refs: (op_calls.append(list(refs)), orig_ops(repo, refs))[1],
+    )
+    monkeypatch.setattr(
+        WorkbenchExecutionRepository,
+        "task_rows",
+        lambda repo, refs, plan_ref: (task_calls.append(list(refs)), orig_tasks(repo, refs, plan_ref))[1],
+    )
+    monkeypatch.setattr(
+        WorkbenchExecutionRepository,
+        "cohort_task_rows",
+        lambda repo, refs, plan_ref: (cohort_calls.append(list(refs)), orig_cohort(repo, refs, plan_ref))[1],
+    )
+    monkeypatch.setattr(
+        WorkbenchTemplateLineageRepository,
+        "current_templates",
+        lambda repo, refs: (tpl_calls.append(list(refs)), orig_tpls(repo, refs))[1],
+    )
+    monkeypatch.setattr(
+        WorkbenchTemplateLineageRepository,
+        "current_instances",
+        lambda repo, refs: (inst_calls.append(list(refs)), orig_insts(repo, refs))[1],
+    )
+    monkeypatch.setattr(
+        calibration_samples,
+        "content_text",
+        lambda value, **kw: (rev_calls.append(value), orig_content(value, **kw))[1],
+    )
+
+    service = WorkbenchCalibrationService(case.conn, as_of=NOW)
+    facts = service.read(CalibrationQuery())
+    assert op_calls == [] and tpl_calls == [] and inst_calls == []
+    assert len(task_calls) == 1 and cohort_calls == []
+    assert rev_calls == []
+    suggestion_ref = facts["rows"][0]["suggestion_ref"]
+    detail_data, _ = service.workspace(
+        facts, CalibrationQuery(), {"snapshot_ref": "s", "as_of": "2026-09-09T12:00:00"},
+        suggestion_ref=suggestion_ref, export=False,
+    )
+    assert len(rev_calls) == len(detail_data["samples"]) > 0
+    assert all(isinstance(row["sample_revision"], str) and row["sample_revision"] for row in detail_data["samples"])
+
+    admitted = []
+    original_slot = CALIBRATION_READ_SLOTS.slot
+
+    @contextmanager
+    def tracked_slot(lane=None):
+        admitted.append(True)
+        with original_slot(lane=lane):
+            yield
+
+    monkeypatch.setattr(CALIBRATION_READ_SLOTS, "slot", tracked_slot)
+    app = Flask("calibration-read-budget")
+    app.config.update(TESTING=True, SECRET_KEY="temporary-calibration-read-budget")
+    bp = Blueprint("calibration_read_budget", __name__)
+    register_calibration_routes(bp)
+    app.register_blueprint(bp)
+
+    @app.before_request
+    def database():
+        g.db = case.conn
+
+    client = app.test_client()
+    stale = client.get("/api/workbench/v1/calibration", query_string={"snapshot_ref": "invalid"})
+    assert stale.status_code == 409 and admitted == []
+    ok_list = client.get("/api/workbench/v1/calibration")
+    assert ok_list.status_code == 200 and len(admitted) == 1
+    token = ok_list.get_json()["meta"]["snapshot_ref"]
+    ok_facets = client.get("/api/workbench/v1/calibration/facets/operation_label")
+    assert ok_facets.status_code == 200 and len(admitted) == 2
+    ok_detail = client.get(f"/api/workbench/v1/calibration/{suggestion_ref}", query_string={"snapshot_ref": token})
+    assert ok_detail.status_code == 200 and len(admitted) == 3

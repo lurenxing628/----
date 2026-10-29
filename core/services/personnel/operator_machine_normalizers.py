@@ -9,22 +9,14 @@ _OPERATOR_PRIMARY_TRUE_ALIASES = ("主操", "主", "on")
 _OPERATOR_PRIMARY_FALSE_ALIASES = ("非主操", "非主", "off")
 
 
-def _require_stored_text(value: Any, field: str) -> str:
-    if value is None or isinstance(value, bool):
-        raise ValueError(f"Invalid stored {field}: {value!r}")
-    text = str(value).strip()
-    if not text:
-        raise ValueError(f"Invalid stored {field}: {value!r}")
-    return text
-
-
 def normalize_skill_level_stored(value: Any) -> str:
-    text = _require_stored_text(value, "skill_level")
-    return normalize_skill_level_value(text)
+    return normalize_skill_level_value(value)
 
 
 def normalize_yes_no_stored(value: Any) -> str:
-    text = _require_stored_text(value, "is_primary")
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError(f"Invalid stored is_primary: {value!r}")
     return normalize_yes_no_narrow_value(
         text,
         default=YesNo.NO.value,

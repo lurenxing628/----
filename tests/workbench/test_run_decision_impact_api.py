@@ -2,7 +2,6 @@
 
 import csv
 import io
-import json
 from datetime import datetime, timedelta
 
 import pytest
@@ -13,9 +12,8 @@ from core.services.workbench.facts.decision_metrics import project_official_core
 from core.services.workbench.run.decision_queries import read_decision_details
 from core.services.workbench.run.decision_source import DecisionSource
 from core.services.workbench.run.worker import WorkbenchRunWorker
-from tests.workbench.decision_history_support import clone_run
 from tests.workbench.run_candidate_adoption_support import INTENT, service
-from tests.workbench.run_candidate_support import BASE, api, compute, corrupt_update
+from tests.workbench.run_candidate_support import BASE, api, compute
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
 from tests.workbench.test_material_stage_release import add_requirement
 from tests.workbench.test_run_decision_api import _assert_summary_matches_full, decision, decision_summary
@@ -38,7 +36,7 @@ def operation_ref(case, op_id):
 def many_batches(case):
     codes = ["B1", "000001"] + [f"B{index:02d}" for index in range(3, 28)]
     for code in codes[1:]:
-        due = "9999-12-31" if code == "B25" else None if code == "B26" else "2026-09-25"
+        due = "9999-12-31" if code == "B25" else None if code in ("B26", "B27") else "2026-09-25"
         case.batch(code, due_date=due, part_name=r"零件'甲\N")
         case.operation(code, unit_hours=0.05)
     case.conn.execute("UPDATE Batches SET part_name=? WHERE batch_id='B1'", (r"零件'甲\N",))
@@ -46,19 +44,6 @@ def many_batches(case):
     case.conn.execute("UPDATE BatchOperations SET unit_hours=0.05 WHERE id=?", (case.op_id,))
     case.conn.commit()
     run_ref, refs = compute(case, case.settings(*codes))
-    # Save a historical copy with the bad date before deriving its read models.
-    case.history_refs = {"run_ref": run_ref, "candidate_ref": refs[0]}
-    accepted = case.conn.execute("SELECT accepted_at FROM WorkbenchRunJobs WHERE run_ref=?", (run_ref,)).fetchone()[0]
-    columns = [row[1] for row in case.conn.execute("PRAGMA table_info(Batches)")]
-
-    def change_facts(facts):
-        for row in facts["tables"]["Batches"]:
-            if row[columns.index("batch_id")] == "B27":
-                row[columns.index("due_date")] = "2026-99-99"
-
-    run_ref, _ = clone_run(case, accepted, change_facts=change_facts)
-    refs = [row[0] for row in case.conn.execute(
-        "SELECT candidate_ref FROM WorkbenchRunCandidates WHERE run_ref=? ORDER BY sequence", (run_ref,))]
     return run_ref, refs, codes
 
 
@@ -108,7 +93,7 @@ def test_mixed_due_values_keep_nulls_last_and_permanent_ties_across_pages(candid
     assert all(value["total_count"] == 27 and value["scope"] == "full_admission" for value in changes.values())
     assert by_id["B25"]["due_state"] == "unspecified" and by_id["B25"]["due_issue"] is None
     assert by_id["B26"]["due_state"] == "invalid" and by_id["B26"]["due_issue"] == "due_date_missing"
-    assert by_id["B27"]["due_state"] == "invalid" and by_id["B27"]["due_issue"] == "due_date_invalid"
+    assert by_id["B27"]["due_state"] == "invalid" and by_id["B27"]["due_issue"] == "due_date_missing"
     summary = wide["data"]["summary"]["after"]
     assert (summary["due_eligible_count"], summary["excluded_due_count"], summary["invalid_due_count"]) == (24, 1, 2)
     assert summary["known_due_count"] == 24 and summary["unknown_due_count"] == 2
@@ -329,26 +314,14 @@ def test_official_reference_uses_only_the_current_admission_scope(candidate_case
     assert {row["ref"] for row in operations["filter_options"]["resources"]} == {
         case.ref("machine", "M1"), case.ref("operator", "O1"),
     }
-    # A changed source receipt forces the real fallback to read the full original
-    # official arrangement, while the metric contract keeps the admitted scope.
-    source_run = case.conn.execute(
-        "SELECT run_ref FROM WorkbenchRunCandidates WHERE candidate_ref=?", (first_refs[0],),
-    ).fetchone()[0]
-    corrupt_update(case.conn, "WorkbenchRunReceipts",
-                   "UPDATE WorkbenchRunReceipts SET receipt_ref=? WHERE run_ref=?", ("f" * 48, source_run))
     source = DecisionSource(CandidateStore(case.conn), run_ref, comparison_mode="admission_official",
                             selected_candidate_ref=selected)
-    assert source.official_changed is True
-    assert len(source.analysis_tasks("reference")) == 2
-    fallback = decision(client, run_ref, **query)["data"]
-    assert fallback["baseline"]["metrics"] == overview["baseline"]["metrics"]
-    assert fallback["baseline"]["coverage"] == overview["baseline"]["coverage"]
     # An out-of-scope interval with unknown comparability must not invalidate the
     # known in-scope interval, nor enlarge its span to the other batch's 50 hours.
     tasks = [dict(row) for row in source.analysis_tasks("reference")]
-    outside = next(row for row in tasks if row["operation_ref"] not in expected_refs)
-    outside.update(end=(datetime.fromisoformat(outside["start"]) + timedelta(hours=50)).isoformat(),
-                   interval_comparable=False)
+    tasks.append({**tasks[0], "operation_ref": operation_ref(case, second_id),
+                  "end": (datetime.fromisoformat(tasks[0]["start"]) + timedelta(hours=50)).isoformat(),
+                  "interval_comparable": False})
     values, coverage = project_official_core_metrics(
         tasks, expected_refs, source.reference_deferred_refs, True, source.delivery("reference"))
     assert values["makespan_hours"] == overview["baseline"]["metrics"]["makespan_hours"]

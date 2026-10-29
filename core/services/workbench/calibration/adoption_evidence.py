@@ -16,11 +16,11 @@ from core.models.workbench_template_lineage import snapshot
 
 from .adoption_policy import require_template
 from .facts import CalibrationFacts
-from .samples import number
+from .samples import ensure_sample_revision, number
 
 
 def _source_revisions(facts):
-    samples = [sample for groups in (facts["samples_by_template"], facts["unbound_samples_by_part"])
+    samples = [ensure_sample_revision(sample) for groups in (facts["samples_by_template"], facts["unbound_samples_by_part"])
                for group in groups.values() for sample in group]
     return [{key: sample[key] for key in ("sample_ref", "sample_revision", "eligible", "exclusion_reasons")}
             for sample in sorted(samples, key=lambda row: row["sample_ref"])]

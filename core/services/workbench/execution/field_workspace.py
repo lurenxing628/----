@@ -81,10 +81,7 @@ class FieldWorkspaceService:
         # Tokens have expiries and must not become part of the business fingerprint.
         state_facts = self.ledger.fact_snapshot(facts, refs[0]) if len(refs) == 1 else facts['clock']
         summary = self._summary(tasks, scope_tasks)
-        # 整份范围一次写成文本取摘要，不再逐层复制。这里的任务都没签令牌（contexts=False），write_context
-        # 只有固定的“未绑定”或旧计划“不能新增报工”两种，随数据而定；令牌只在 page/detail 给副本另签。
-        state = content_text({'scope': effective, 'plan': plan_state, 'execution': state_facts,
-                                   'data': tasks, 'summary': summary})
+        state = content_text({'scope': effective, 'plan': plan_state, 'execution': state_facts, 'parts': names, 'labels': labels})
         return {'plan': plan['plan'], 'scope': effective, 'tasks': tasks, 'summary': summary}, state, resource_codes
 
     @staticmethod

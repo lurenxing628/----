@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date, datetime, time, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from core.algorithm_contracts.date_parsers import parse_date
 from core.algorithm_contracts.priority_constants import PRIORITY_WEIGHT, normalize_priority
@@ -57,15 +57,27 @@ def enrich_graph_ready_v2_metrics(
     seed_results: List[Any],
     resource_pool: Optional[Dict[str, Any]] = None,
     graph_ready_context: Dict[str, Any],
-) -> Dict[int, Dict[str, Any]]:
+    deadline: float,
+    clock: Callable[[], float],
+) -> Optional[Dict[int, Dict[str, Any]]]:
+    if clock() >= deadline:
+        return None
     inputs = dict(batches=batches, start_dt=start_dt, calendar_service=calendar_service,
                   seed_results=seed_results, resource_pool=resource_pool,
                   graph_ready_context=graph_ready_context)
     inputs["prepared"] = _prepare_common_features(
         metrics_by_op_id, operations=operations, batches=batches, start_dt=start_dt,
         seed_results=seed_results, downtime_map=downtime_map)
-    out = _enrich_feature_basis(feature_basis=SUCCESSOR_WORKLOAD_BASIS, **inputs)
-    baseline = _enrich_feature_basis(feature_basis=BATCH_WORKLOAD_BASIS, **inputs)
+    out = _enrich_feature_basis(
+        feature_basis=SUCCESSOR_WORKLOAD_BASIS, deadline=deadline, clock=clock, **inputs
+    )
+    if out is None:
+        return None
+    baseline = _enrich_feature_basis(
+        feature_basis=BATCH_WORKLOAD_BASIS, deadline=deadline, clock=clock, **inputs
+    )
+    if baseline is None:
+        return None
     for op_id, row in out.items():
         row[BASELINE_ORDERING_FIELD] = baseline[op_id]
     return out
@@ -135,16 +147,25 @@ def _prepare_common_features(metrics, *, operations, batches, start_dt, seed_res
 
 def _enrich_feature_basis(*, batches, start_dt, calendar_service,
                           seed_results, resource_pool,
-                          graph_ready_context, feature_basis, prepared):
+                          graph_ready_context, feature_basis, prepared,
+                          deadline: float,
+                          clock: Callable[[], float]):
+    if clock() >= deadline:
+        return None
     op_by_id, metrics_by_op_id, duration_by_op_id = prepared["operations"], prepared["metrics"], prepared["durations"]
     out: Dict[int, Dict[str, Any]] = {}
-    remaining_by_op_id, ready_offset_hours_by_op_id = _workload_signals(
+    signals = _workload_signals(
         feature_basis, op_by_id, duration_by_op_id, batches=batches, start_dt=start_dt,
         graph_ready_context=graph_ready_context, seed_results=seed_results, calendar_service=calendar_service,
-        work_buckets=prepared["work_buckets"])
+        work_buckets=prepared["work_buckets"], deadline=deadline, clock=clock)
+    if signals is None:
+        return None
+    remaining_by_op_id, ready_offset_hours_by_op_id = signals
     base_row_by_op_id = prepared["base_row_by_op_id"]
     capacity_by_window = prepared["capacity_by_window"]
     for op_id in metrics_by_op_id:
+        if clock() >= deadline:
+            return None
         op = op_by_id[op_id]
         batch = prepared["batch_by_op_id"][op_id]
         remaining_hours = remaining_by_op_id[op_id]
@@ -232,12 +253,19 @@ def _ordering_deadline_hours(basis, start_dt, capacity_start_dt, due_exclusive):
                            due_exclusive=due_exclusive)
 
 
-def _workload_signals(basis, operations, durations, *, work_buckets, **kwargs):
+def _workload_signals(
+    basis, operations, durations, *, work_buckets,
+    deadline: float, clock: Callable[[], float], **kwargs,
+):
+    if clock() >= deadline:
+        return None
     if basis == BATCH_WORKLOAD_BASIS:
         return batch_ordering_workload_signals(operations, durations, work_buckets=work_buckets)
     if basis != SUCCESSOR_WORKLOAD_BASIS:
         raise ValidationError("GraphReady 候选特征语义不支持。", field="graph_ready_v2_features")
-    return operation_workload_signals(operations, work_buckets=work_buckets, **kwargs)
+    return operation_workload_signals(
+        operations, work_buckets=work_buckets, deadline=deadline, clock=clock, **kwargs
+    )
 
 
 def _duration_by_op_id_with_zero_total_trace(

@@ -4,30 +4,26 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Any, Callable, Dict, Tuple
 
-from core.errors import ValidationError
 from core.services.scheduler.run.optimizer.graph_ready_feature_basis import (
     BASELINE_ORDERING_FIELD,
     BASELINE_RANK_PREFIX,
 )
 from core.services.scheduler.run.optimizer.graph_ready_profiles import GraphReadyWeightProfile
 
-from .context import bool_metric, non_negative_number, required_non_negative_number
-from .v2_keys import required_finite_metric, required_non_negative_metric, required_positive_metric
-
 V2_COMMON_RANK_FIELDS = (
-    ("due_deadline_hours", lambda metric: required_finite_metric(metric, "due_deadline_hours")),
-    ("due_budget_hours", lambda metric: required_finite_metric(metric, "due_budget_hours")),
-    ("due_pressure", lambda metric: required_non_negative_metric(required_finite_metric(metric, "due_pressure"), "due_pressure")),
-    ("slack_hours", lambda metric: required_finite_metric(metric, "slack_hours")),
-    ("remaining_due_burden_hours", lambda metric: required_positive_metric(metric, "remaining_due_burden_hours")),
-    ("saveability", lambda metric: required_non_negative_metric(required_finite_metric(metric, "saveability"), "saveability")),
-    ("processing_time_rank", lambda metric: required_non_negative_metric(required_finite_metric(metric, "processing_time_rank"), "processing_time_rank")),
-    ("sacrifice_penalty", lambda metric: required_non_negative_metric(required_finite_metric(metric, "sacrifice_penalty"), "sacrifice_penalty")),
-    ("critical_ratio", lambda metric: required_finite_metric(metric, "critical_ratio")),
-    ("bottleneck_due_gate", lambda metric: required_non_negative_metric(required_finite_metric(metric, "bottleneck_due_gate"), "bottleneck_due_gate")),
-    ("weighted_processing_hours", lambda metric: required_non_negative_metric(required_finite_metric(metric, "weighted_processing_hours"), "weighted_processing_hours")),
-    ("weighted_due_pressure", lambda metric: required_non_negative_metric(required_finite_metric(metric, "weighted_due_pressure"), "weighted_due_pressure")),
-    ("changeover_family_rank", lambda metric: required_non_negative_metric(required_finite_metric(metric, "changeover_family_rank"), "changeover_family_rank")),
+    "due_deadline_hours",
+    "due_budget_hours",
+    "due_pressure",
+    "slack_hours",
+    "remaining_due_burden_hours",
+    "saveability",
+    "processing_time_rank",
+    "sacrifice_penalty",
+    "critical_ratio",
+    "bottleneck_due_gate",
+    "weighted_processing_hours",
+    "weighted_due_pressure",
+    "changeover_family_rank",
 )
 _BASIS_INVARIANT_RANK_FIELDS = frozenset({
     "due_deadline_hours_rank01",
@@ -38,34 +34,16 @@ _BASIS_INVARIANT_RANK_FIELDS = frozenset({
 
 
 def metric_bonus(metric: Dict[str, Any], *, weights: Dict[str, float]) -> float:
-    return (
-        _critical_path_bonus(metric, weights=weights)
-        + _weighted_metric(metric, source="impact_count", weight="successor_count", weights=weights)
-        + _downstream_work_bonus(metric, weights=weights)
-        + _weighted_metric(metric, source="bottleneck_machine_score", weight="bottleneck_machine", weights=weights)
+    return float(
+        (weights["critical_path"] if metric.get("is_on_critical_path") else 0.0)
+        + float(metric["impact_count"]) * weights["successor_count"]
+        + (float(metric["downstream_critical_minutes"]) / 60.0) * weights["downstream_work_hours"]
+        + float(metric["bottleneck_machine_score"]) * weights["bottleneck_machine"]
     )
 
 
-def _critical_path_bonus(metric: Dict[str, Any], *, weights: Dict[str, float]) -> float:
-    return float(weights["critical_path"] if bool_metric(metric, "is_on_critical_path") else 0.0)
-
-
-def _downstream_work_bonus(metric: Dict[str, Any], *, weights: Dict[str, float]) -> float:
-    hours = non_negative_number(metric.get("downstream_critical_minutes"), field="downstream_critical_minutes") / 60.0
-    return float(hours * weights["downstream_work_hours"])
-
-
-def _weighted_metric(metric: Dict[str, Any], *, source: str, weight: str, weights: Dict[str, float]) -> float:
-    value = required_non_negative_number(metric, field=source)
-    return float(value * weights[weight])
-
-
 def v2_metric_bonus(metric: Dict[str, Any], *, weights: Dict[str, float]) -> float:
-    try:
-        return metric_bonus(metric, weights=weights)
-    except ValidationError as exc:
-        # metric_bonus is shared with v1; relabel field and reason together so details.field matches exc.field.
-        raise ValidationError(exc.message, field="graph_ready_v2_features", details={"reason": "graph_ready_bad_v2_feature"}) from exc
+    return metric_bonus(metric, weights=weights)
 
 
 def normalized_v2_metrics_by_op_id(
@@ -93,7 +71,7 @@ def normalized_v2_metrics_by_op_id(
     _attach_rank01(
         out,
         field="graph_bonus",
-        value_getter=lambda metric: v2_metric_bonus(metric, weights=profile.effective_weights),
+        value_getter=lambda metric: metric_bonus(metric, weights=profile.effective_weights),
     )
     return out
 
@@ -101,17 +79,17 @@ def normalized_v2_metrics_by_op_id(
 def build_v2_common_rank_cache(metrics_by_op_id: Dict[int, Dict[str, Any]]) -> Dict[str, Dict[int, float]]:
     metrics = {int(op_id): metric for op_id, metric in metrics_by_op_id.items()}
     cache: Dict[str, Dict[int, float]] = {}
-    for field, value_getter in V2_COMMON_RANK_FIELDS:
-        values = {op_id: float(value_getter(metric)) for op_id, metric in metrics.items()}
+    for field in V2_COMMON_RANK_FIELDS:
+        values = {op_id: float(metric[field]) for op_id, metric in metrics.items()}
         cache[field + "_rank01"] = _rank01_by_op_id(values)
     if metrics and all(BASELINE_ORDERING_FIELD in row for row in metrics.values()):
         baseline = {op_id: row[BASELINE_ORDERING_FIELD] for op_id, row in metrics.items()}
-        for field, value_getter in V2_COMMON_RANK_FIELDS:
+        for field in V2_COMMON_RANK_FIELDS:
             rank_field = field + "_rank01"
             if rank_field in _BASIS_INVARIANT_RANK_FIELDS:
                 cache[BASELINE_RANK_PREFIX + rank_field] = cache[rank_field]
             else:
-                values = {op_id: float(value_getter(metric)) for op_id, metric in baseline.items()}
+                values = {op_id: float(metric[field]) for op_id, metric in baseline.items()}
                 cache[BASELINE_RANK_PREFIX + rank_field] = _rank01_by_op_id(values)
     return cache
 
@@ -121,14 +99,8 @@ def _attach_common_rank_cache(
     v2_common_rank_cache: Dict[str, Dict[int, float]],
 ) -> None:
     for rank_field, ranks_by_op_id in v2_common_rank_cache.items():
-        for op_id in metrics_by_op_id:
-            if op_id not in ranks_by_op_id:
-                raise ValidationError(
-                    f"GraphReady v2 图指标缺少 {rank_field} 缓存。",
-                    field="graph_ready_v2_features",
-                    details={"reason": "graph_ready_missing_v2_feature"},
-                )
-            metrics_by_op_id[op_id][rank_field] = float(ranks_by_op_id[op_id])
+        for op_id, metric in metrics_by_op_id.items():
+            metric[rank_field] = float(ranks_by_op_id[op_id])
 
 
 def _attach_rank01(

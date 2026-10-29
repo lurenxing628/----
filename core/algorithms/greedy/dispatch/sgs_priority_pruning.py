@@ -19,22 +19,13 @@ from datetime import datetime
 from types import MappingProxyType
 
 from core.algorithm_contracts.value_domains import EXTERNAL
-from core.algorithm_runtime.native_snapshot import UNSUPPORTED, scalar_snapshot
 from core.errors import ValidationError
 
 from .sgs_due_span import external_candidate_window
 from .sgs_priority_keys import ValidatedGraphPriorityKeys
 from .sgs_scoring import parse_due_date
 
-_FIELDS = ("id", "seq", "batch_id", "piece_id", "source", "machine_id", "operator_id", "op_type_name",
-           "setup_hours", "unit_hours", "quantity", "priority", "due_date", "ready_date", "material_ready_date", "ready_status",
-           "ext_merge_mode", "ext_group_id", "ext_group_total_days", "ext_days")
 _NO_PLACED_GROUPS = MappingProxyType({})
-
-
-def prepare_pruning_record(record, plain_classes):
-    kind = type(record)
-    return plain_classes.get(kind, False) and all(scalar_snapshot(getattr(record, name, None)) is not UNSUPPORTED for name in _FIELDS)
 
 
 class GraphPriorityPruning:
@@ -48,25 +39,14 @@ class GraphPriorityPruning:
                    eligible_resources=cache.eligible_resources,
                    calendar=cache._timing.calendar, calendar_days=cache.calendar_days, preparation=cache.preparation)
 
-    def __init__(self, graph_state, batches, *, eligible_resources=None, calendar=None, calendar_days=None, preparation):
-        self._plain_classes = preparation.plain_classes
+    def __init__(self, graph_state, batches, *, eligible_resources=None, calendar=None, calendar_days=None, preparation=None):
         self._calendar_days = calendar_days
-        self._records = preparation.pruning_records
-        self._candidate_records = {}
-        self._preparation = preparation
         self.key_width = 0
         # True only when every schedulable operation names both resources; tail reuse requires it.
         self.fixed_resources = True
         self._eligible_resources = eligible_resources
         self._calendar = calendar
         self.supported = self._prepare(graph_state, batches)
-
-    def _record(self, record):
-        token = id(record)
-        records = self._records if token in self._preparation.records_by_token else self._candidate_records
-        if token not in records:
-            records[token] = prepare_pruning_record(record, self._plain_classes)
-        return records[token]
 
     def _prepare(self, graph, batches):
         if graph is None or not graph.get("score_enabled"):
@@ -81,8 +61,6 @@ class GraphPriorityPruning:
         if not self.key_width:
             return False
         for batch in batches.values():
-            if not self._record(batch):
-                return False
             try:
                 parse_due_date(batch.due_date)
             except ValidationError:
@@ -91,8 +69,6 @@ class GraphPriorityPruning:
 
     def _certify_operations(self, graph):
         for _op_id, (_batch_id, op) in graph["op_by_id"].items():
-            if not self._record(op):
-                return False
             if op.source == EXTERNAL:
                 if not self._certified_external(op):
                     return False

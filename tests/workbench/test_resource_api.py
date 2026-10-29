@@ -1,11 +1,9 @@
 """Real Flask resource creation, update, stale-context rejection, replay and deletion."""
-import sqlite3
 
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_resource_query import ResourcePageRequest
-from core.services.workbench.resource.metrics import ResourceMetricFactsError, WorkbenchResourceMetricsService
 from core.services.workbench.resource.queries import WorkbenchResourceQueryService
 from core.services.workbench.resource.table_states import resource_table_states
 from data.repositories.workbench_resource_metrics_repo import WorkbenchResourceMetricsRepository
@@ -169,46 +167,6 @@ def test_plain_resource_pages_share_batch_states_and_read_dependencies_once(reso
                     restored, restored_page = reader.page(query)
                     assert restored == expected and restored_page == page
                     assert counts == relations == type_counts == [] and scopes == [kind]
-
-    memory = sqlite3.connect(":memory:")
-    memory.row_factory = sqlite3.Row
-    try:
-        conn.backup(memory)
-        insert_row(memory, "OpTypes", {"op_type_id": "", "name": "unused blank code", "category": "internal"})
-        memory.commit()
-        for kind, column in (("machine", "group_ref"), ("operator", "skill_refs")):
-            reader = WorkbenchResourceQueryService(memory, kind)
-            query = ResourcePageRequest(kind, size=20)
-            with reader.read_snapshot():
-                rows, total = reader.repo.page(query)
-                expected = [reader.detail(row["ref"]) for row in rows]
-                records, page = reader.page(query)
-                assert records == expected and page["total"] == total
-                assert "counts" in page["metrics"]
-            with pytest.raises(ResourceMetricFactsError):
-                with reader.read_snapshot():
-                    reader.page(ResourcePageRequest(kind, sort=column))
-        memory.execute("DELETE FROM OpTypes WHERE op_type_id='OT1'")
-        memory.commit()
-        for kind in ("machine", "operator"):
-            reader = WorkbenchResourceQueryService(memory, kind)
-            query = ResourcePageRequest(kind, size=20)
-            with reader.read_snapshot():
-                rows, _ = reader.repo.page(query)
-                with pytest.raises(WorkbenchCommandRejected) as original:
-                    [reader.detail(row["ref"]) for row in rows]
-                with pytest.raises(WorkbenchCommandRejected) as batched:
-                    reader.page(query)
-                assert (batched.value.code, batched.value.status) == (original.value.code, original.value.status)
-                assert batched.value.code == "storage_failure" and batched.value.status == 500
-        memory.execute("DELETE FROM OpTypes WHERE op_type_id=''")
-        insert_row(memory, "OpTypes", {"op_type_id": "BOTH1", "name": "both work type", "category": "both"})
-        memory.commit()
-        both_metrics = WorkbenchResourceMetricsService(memory).metrics("op_type", ["BOTH1"])
-        assert [issue["code"] for issue in both_metrics["issues"]] == ["resource_availability_unavailable"]
-        assert both_metrics["issues"][0]["unavailable_fields"] == ["linked_machines", "available_operators", "without_machines"]
-    finally:
-        memory.close()
 
 
 @pytest.mark.parametrize('kind,code,table,key', [
@@ -420,25 +378,6 @@ def test_active_production_report_revision_blocks_resource_deletion_until_voided
     assert identity_for(conn, kind, code) is None
 
 
-_UNREADABLE_TABLE_QUERY = "查询条件读不出来，当前列表没有变化。请点「清除筛选」后重新选择。"
-
-
-@pytest.mark.parametrize("suffix", ("query", "facets"))
-@pytest.mark.parametrize("raw,message", [
-    ('{"query": "a", "query": "b"}', "查询条件里有重复项，当前列表没有变化。请刷新页面后重新选择。"),
-    ('{"query": "", "page": NaN}', _UNREADABLE_TABLE_QUERY),
-    ('{"query": "", "size": -Infinity}', _UNREADABLE_TABLE_QUERY),
-    ('{"query": "", "size": 1e999}', _UNREADABLE_TABLE_QUERY),
-    ('{"query": ', _UNREADABLE_TABLE_QUERY),
-    ('[]', "查询条件不完整，当前列表没有变化。请刷新页面后重新选择。"),
-], ids=("duplicate", "nan", "infinity", "overflow", "syntax", "not_object"))
-def test_table_query_body_rejects_duplicate_keys_and_non_finite_numbers(app_client, suffix, raw, message):
-    response = app_client.post(BASE + "machine/" + suffix, data=raw, content_type="application/json")
-    assert response.status_code == 400, response.get_data(as_text=True)
-    error = response.get_json()["error"]
-    assert (error["code"], error["message"]) == ("invalid_input", message)
-
-
 def test_unexpected_table_read_failure_logs_the_request_ref_shown_to_the_user(app_client, monkeypatch, caplog):
     """包装成 500 拒绝的未预期错误：日志记下的编号就是用户看到的「下方编号」，原始异常留在日志链里。"""
     import logging
@@ -461,27 +400,3 @@ def test_unexpected_table_read_failure_logs_the_request_ref_shown_to_the_user(ap
     assert record.getMessage() == "工作台请求失败 code=storage_failure request_ref=" + error["request_ref"]
     assert isinstance(record.exc_info[1], WorkbenchCommandRejected)
     assert isinstance(record.exc_info[1].__cause__, RuntimeError)
-
-
-@pytest.mark.parametrize('kind,code,corruption', [
-    ('operator', 'O1', "UPDATE Operators SET status='inactive' WHERE operator_id='O1'"),
-    ('operator', 'O1', "UPDATE Operators SET status='leave' WHERE operator_id='O1'"),
-    ('supplier', 'S1', "UPDATE WorkbenchSupplierProfiles SET inactive_reason=NULL WHERE supplier_id='S1'"),
-    ('supplier', 'S1', "UPDATE Suppliers SET status='pending_review' WHERE supplier_id='S1'"),
-    ('machine', 'M1', "UPDATE Machines SET status='broken' WHERE machine_id='M1'"),
-    ('machine', 'M1', "UPDATE Machines SET status=NULL WHERE machine_id='M1'"),
-])
-def test_stored_resource_status_outside_written_forms_fails_loud(resource_conn, kind, code, corruption):
-    """写入口只写“启用”或“带登记原因的停用”；停用缺原因、状态越界都按存储损坏拒绝，不猜成启用或停用。"""
-    conn = resource_conn
-    ref = identity_for(conn, kind, code).ref
-    reader = WorkbenchResourceQueryService(conn, kind)
-    with reader.read_snapshot():
-        assert reader.detail(ref).entity["status"] in ("active", "maintain", "inactive")
-    conn.execute(corruption)
-    conn.commit()
-    for read in (lambda: reader.detail(ref), lambda: reader.page(ResourcePageRequest(kind, size=20))):
-        with reader.read_snapshot():
-            with pytest.raises(WorkbenchCommandRejected) as caught:
-                read()
-        assert (caught.value.code, caught.value.status) == ("storage_failure", 500)

@@ -73,9 +73,10 @@ def _comparison_items(before_tasks, after_tasks, scope):
 
 
 class _BaselineReader:
-    def __init__(self, conn, entry, scope, context):
+    def __init__(self, conn, entry, scope, context, *, include_items=False):
         self.conn, self.entry, self.scope = conn, entry, scope
         self.context, self.repo, self.references = context, context.repo, context.references
+        self.include_items = include_items
         self.facts = {"scope": scope.scope(), "selected_plan_ref": scope.plan_ref}
 
     def read(self):
@@ -111,20 +112,41 @@ class _BaselineReader:
 
     def _comparison(self, base_entry, base_ref, before, after, resource_state, basis):
         items = _comparison_items(before, after, self.scope)
-        data = {"state": "available", "reason_code": None, "reason": None,
-                "basis": basis, "baseline_plan": project_plan(base_entry, base_ref),
-                "comparison_scope": {"scope": self.scope.scope(), "selection": "either_side_overlap",
-                                     "boundary": "half_open", "alignment": "operation_ref",
-                                     "time_basis": "factory_local", "task_times": "unclipped"},
-                "compared_fields": list(_CHANGE_FIELDS), "items": items,
-                "item_count": len(items), "items_complete": True}
-        self.facts.update({"complete_comparison": data, "resources": resource_state})
         visible = [item for item in items if item["before_in_scope"] or item["after_in_scope"]]
-        return dict(data, items=visible, item_count=len(visible)), self.facts
+        self.facts["compared_tasks"] = [
+            task for item in visible for task in (item["before"], item["after"]) if task is not None
+        ]
+        data = {
+            "state": "available", "reason_code": None, "reason": None,
+            "basis": basis, "baseline_plan": project_plan(base_entry, base_ref),
+            "comparison_scope": {
+                "scope": self.scope.scope(), "selection": "either_side_overlap",
+                "boundary": "half_open", "alignment": "operation_ref",
+                "time_basis": "factory_local", "task_times": "unclipped",
+            },
+            "compared_fields": list(_CHANGE_FIELDS),
+            "items": [],
+            "item_count": len(visible),
+            "items_complete": len(visible) == 0,
+        }
+        self.facts.update({"complete_comparison": data, "resources": resource_state})
+        if not self.include_items:
+            return data, self.facts
+        compact_visible = [
+            dict(item, after={"task_ref": item["after"]["task_ref"]})
+            if item["after_in_scope"] and item["after"] is not None else item
+            for item in visible
+        ]
+        return dict(data, items=compact_visible, item_count=len(visible), items_complete=True), self.facts
 
 
 def build_plan_baseline(
-    conn, *, entry: PlanCatalogEntry, scope: PlanReadScope, context: PlanReadContext,
+    conn,
+    *,
+    entry: PlanCatalogEntry,
+    scope: PlanReadScope,
+    context: PlanReadContext,
+    include_items: bool = False,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """Return (public DTO, PRIVATE snapshot facts), never a snapshot token itself.
 
@@ -137,7 +159,7 @@ def build_plan_baseline(
     """
     if not conn.in_transaction:
         raise RuntimeError("Baseline reads require a caller-owned read transaction.")
-    reader = _BaselineReader(conn, entry, scope, context)
+    reader = _BaselineReader(conn, entry, scope, context, include_items=include_items)
     try:
         with context.read_scope():
             return reader.read()

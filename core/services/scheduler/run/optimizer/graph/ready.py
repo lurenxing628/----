@@ -68,7 +68,10 @@ def prepare_shared_graph_features(
         start_dt=start_dt, calendar_service=scheduler.calendar, downtime_map=downtime_map,
         seed_results=seed_sr_list, resource_pool=resource_pool,
         graph_ready_context=graph_ready_context,
+        deadline=deadline, clock=clock,
     )
+    if metrics is None or clock() >= deadline:
+        return None
     return SharedGraphFeatures(metrics, build_v2_common_rank_cache(metrics))
 
 

@@ -60,7 +60,7 @@ def _reference_workspace(source, batch_ref):
     if len(arranged) == len(all_tasks) and len(timed) == len(all_tasks) and all(row.get("interval_comparable", True) for row in timed):
         raw = [{"operation_ref": row["operation_ref"], "payload": {
             "machine_id": (row["machine"] or {}).get("ref"), "operator_id": (row["operator"] or {}).get("ref")}} for row in all_tasks]
-        graph = candidate_gantt_graph(all_tasks, source.facts, raw)
+        graph = candidate_gantt_graph(all_tasks, source.facts, raw, task_intervals=source.task_intervals("reference"))
         graph["scope"] = "admission_official"
     else:
         graph = unavailable_graph("admission_official", "正式归档包含多段安排或时间缺项，时间条保留各段事实。")

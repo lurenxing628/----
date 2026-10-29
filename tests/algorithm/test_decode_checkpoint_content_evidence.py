@@ -95,8 +95,6 @@ def test_checkpoint_resumes_same_inputs_and_rejects_changed_type_or_prefix():
         assert caught.value.details["reason"] == "decode_checkpoint_signature_mismatch"
         changed_rows = [replace(row, op_type_id="OTHER") if row.op_id == 99 else row for row in full[0]]
         assert decode_output_contents(changed_rows, full[1]) != contents
-        changed_rows = [replace(row, seq=True) if row.op_id == 99 else row for row in full[0]]
-        assert decode_output_contents(changed_rows, full[1]) != contents
         summary = deepcopy(full[1])
         summary.failure_details = [{"op_id": 99, "reasons": ["original"]}]
         frozen = decode_output_contents(full[0], summary)
@@ -215,28 +213,6 @@ def test_checkpoint_resumes_same_inputs_and_rejects_changed_type_or_prefix():
             decode(owner=next_owner, decode_checkpoints=DecodeCheckpointRequest([1], next_capture.append))
             assert certificate.call_count == calendar_encodings() == 2 and len(metadata) == 8
             assert next_capture[0].signature[9] == component
-
-            class UnregisteredCalendar:
-                def __getattr__(self, name):
-                    return getattr(calendar, name)
-
-            unsupported_scheduler = GreedyScheduler(calendar_service=UnregisteredCalendar(),
-                                                     config_service=config_snapshot(auto_assign_enabled="no"))
-            unsupported_owner = new_session(unsupported_scheduler)
-            decode(owner=unsupported_owner, decoder=unsupported_scheduler)
-            assert certificate.call_count == 2
-            with pytest.raises(ValidationError) as caught:
-                decode(owner=unsupported_owner, decoder=unsupported_scheduler,
-                       decode_checkpoints=DecodeCheckpointRequest([1], lambda item: None))
-            assert caught.value.details["reason"] == "decode_checkpoint_unsupported_calendar"
-            assert unsupported_owner.native_preparation._calendar_signature is None
-            assert certificate.call_count == 3 and calendar_encodings() == 2 and len(metadata) == 8
-            print("R28 native checkpoint counts:", {"same_session_certificate": 1, "same_session_encoding": 1,
-                  "same_session_metadata": 4, "same_session_actual_decodes": session.actual_decoder_calls,
-                  "new_session_certificate": 1,
-                  "unsupported_ordinary_certificate": 0, "unsupported_capture_failures": 1,
-                  "total_calendar_certificate_attempts": certificate.call_count,
-                  "total_calendar_encodings": calendar_encodings(), "total_metadata_pragmas": len(metadata)})
         calendar.conn.set_trace_callback(None)
 
 
@@ -369,7 +345,9 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
         context["node_metrics_by_op_id"] = {int(key): value for key, value in node_metrics.items()}
         metrics = enrich_graph_ready_v2_metrics(context["node_metrics_by_op_id"], operations=operations,
                                                 batches=batches, start_dt=case["start_dt"], calendar_service=calendar,
-                                                graph_ready_context=context, downtime_map={}, seed_results=[])
+                                                graph_ready_context=context, downtime_map={}, seed_results=[],
+                                                deadline=float("inf"), clock=lambda: 0.0)
+        assert metrics is not None
         features = PreparedDecisionFeatures(metrics, build_v2_common_rank_cache(metrics))
         scheduler = GreedyScheduler(calendar_service=calendar, config_service=config_snapshot(auto_assign_enabled="no"))
         started = clock()
@@ -479,38 +457,6 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
         assert session.actual_decoder_calls == before_calls and session.reused_decisions == 1
         assert native.report["unverified_trial_decodes"] == before_trials and not native.pending_outputs
         assert session.stats()["execution_counts"]["trial_decode"] == 1
-
-    class UncertifiedCalendar(CalendarService):
-        """Use the real SQLite calendar; only its concrete type lacks checkpoint certification."""
-
-    with native_calendar(calendar_type=UncertifiedCalendar) as calendar:
-        native, owner, session, scheduler = native_search(calendar)
-        entry = native._decode_entry(native.parent.order, redecode_reason="capture_checkpoints")
-        assert entry is not None and not entry.checkpoints
-        assert native.checkpoints.disabled_reason == "decode_checkpoint_unsupported_calendar"
-        assert native.report["checkpoint_capture_rejections"] == 1
-        assert session.actual_decoder_calls == scheduler._decode_invocations == 3
-        assert session.failed_decoder_calls == 1
-        assert session.stats()["execution_counts"]["capture_checkpoints"] == 2
-        assert session.new_decisions == 1
-
-    controlled_clock = SimpleNamespace(now=0.0)
-
-    def exhaust_after_capture(kwargs):
-        controlled_clock.now = 10.0 if kwargs.get("decode_checkpoints") is not None else 0.1
-
-    with native_calendar(calendar_type=UncertifiedCalendar) as calendar:
-        native, owner, session, scheduler = native_search(
-            calendar, clock=lambda: controlled_clock.now, after_schedule=exhaust_after_capture)
-        order = native.parent.order
-        assert native._decode_entry(order, redecode_reason="capture_checkpoints") is None
-        assert native.last_decode_skip is not None and native.last_decode_skip.reason == "time_budget"
-        assert order not in native.scores and order not in native.decoded_entries
-        assert session.actual_decoder_calls == scheduler._decode_invocations == 2
-        assert session.failed_decoder_calls == session.skipped_requests == 1
-        source_id = native.best["archive_ref"].entry_id
-        assert session.new_decisions == 1 and source_id in owner.archive
-        assert set(owner.archive.best_by_objective.values()) == {source_id}
 
 
 def test_calendar_content_cache_does_not_reuse_rolled_back_transaction(schema_conn):

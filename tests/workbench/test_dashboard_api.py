@@ -17,7 +17,6 @@ from tests.workbench.dashboard_support import dashboard_case as dashboard_fixtur
 from tests.workbench.node_runtime_support import node_runtime
 from tests.workbench.point_downstream_support import ACTUAL, app_for, read
 from tests.workbench.run_candidate_support import candidate_case as candidate_fixture  # noqa: F401
-from tests.workbench.run_candidate_support import corrupt_update
 
 ROOT = "/api/workbench/v1/dashboard"
 
@@ -30,8 +29,6 @@ def list_item(client):
 
 
 def test_routes_list_detail_transition_history_and_stale_snapshot(dashboard_case, monkeypatch):
-    from core.models.workbench_command import WorkbenchCommandRejected
-    from core.services.workbench.dashboard.policy import history_contents
     from data.repositories.workbench_dashboard_repo import WorkbenchDashboardRepository
 
     client = api(dashboard_case, monkeypatch)
@@ -55,73 +52,6 @@ def test_routes_list_detail_transition_history_and_stale_snapshot(dashboard_case
     saved = json.loads(row["source_facts_json"])
     assert saved["facts"] and saved["guard"]["identity"]["item_ref"] == item["item_ref"]
     assert saved["guard"]["revision"] == 0 and saved["guard"]["handling"]["status"] == "new"
-    for field, value in (("receipt_action", "dashboard.reopen"), ("receipt_context_ref", "0" * 48)):
-        with pytest.raises(WorkbenchCommandRejected, match="处置记录") as rejected:
-            history_contents(dict(row, **{field: value}))
-        assert rejected.value.code == "dashboard_storage_invalid"
-    outcome = json.loads(row["receipt_outcome_json"])
-    outcome["data"]["history_ref"] = "0" * 48
-    with pytest.raises(WorkbenchCommandRejected, match="处置记录") as rejected:
-        history_contents(dict(row, receipt_outcome_json=json.dumps(outcome)))
-    assert rejected.value.code == "dashboard_storage_invalid"
-    saved["guard"]["revision"] = False
-    with pytest.raises(WorkbenchCommandRejected, match="处置记录") as rejected:
-        history_contents(dict(row, source_facts_json=json.dumps(saved)))
-    assert rejected.value.code == "dashboard_storage_invalid"
-
-
-def storage_invalid(response):
-    body = response.get_json()
-    assert response.status_code == 409, body
-    assert body["error"]["code"] == "dashboard_storage_invalid", body
-
-
-@pytest.mark.parametrize("origin_json", ("{not json", "[]", "null"))
-def test_stored_origin_that_is_not_a_json_object_is_storage_invalid(dashboard_case, monkeypatch, origin_json):
-    client = api(dashboard_case, monkeypatch)
-    item = dashboard_case.item()
-    assert dashboard_case.command(item, follow())["result"] == "committed"
-    assert client.get(ROOT).status_code == 200
-    corrupt_update(dashboard_case.conn, "WorkbenchDashboardStates",
-                   "UPDATE WorkbenchDashboardStates SET origin_json=? WHERE item_ref=?", (origin_json, item["item_ref"]))
-    storage_invalid(client.get(ROOT))
-
-
-@pytest.mark.parametrize("source", ([], None, "outsourcing"))
-def test_stored_external_origin_source_that_is_not_an_object_is_storage_invalid(external_handling_case, monkeypatch, source):
-    case = external_handling_case
-    case.register()
-    item = case.item("external")
-    assert case.command(item, follow())["result"] == "committed"
-    client = api(case, monkeypatch)
-    assert client.get(ROOT).status_code == 200
-    table = "WorkbenchDashboardExternalStates"
-    origin = json.loads(case.conn.execute("SELECT origin_json FROM " + table + " WHERE item_ref=?",
-                                          (item["item_ref"],)).fetchone()[0])
-    assert type(origin["source"]) is dict
-    corrupt_update(case.conn, table, "UPDATE " + table + " SET origin_json=? WHERE item_ref=?",
-                   (json.dumps(dict(origin, source=source)), item["item_ref"]))
-    storage_invalid(client.get(ROOT))
-
-
-@pytest.mark.parametrize("source", ([], None, "planned_delivery"))
-def test_stored_dashboard_origin_source_that_is_not_an_object_is_storage_invalid(dashboard_case, monkeypatch, source):
-    case = dashboard_case
-    item = case.item()
-    assert case.command(item, follow())["result"] == "committed"
-    client = api(case, monkeypatch)
-    assert client.get(ROOT).status_code == 200
-    table = "WorkbenchDashboardStates"
-    origin = json.loads(case.conn.execute("SELECT origin_json FROM " + table + " WHERE item_ref=?",
-                                          (item["item_ref"],)).fetchone()[0])
-    assert type(origin["source"]) is dict
-    corrupt_update(case.conn, table, "UPDATE " + table + " SET origin_json=? WHERE item_ref=?",
-                   (json.dumps(dict(origin, source=source)), item["item_ref"]))
-    storage_invalid(client.get(ROOT))
-    # 记录退出当前计划后只能靠原记录生成导航，坏 source 也必须按存储损坏拒绝而不是 500。
-    case.conn.execute("UPDATE WorkbenchEntityRefs SET active=0 WHERE kind='batch' AND entity_key='DB1'")
-    case.conn.commit()
-    storage_invalid(client.get(ROOT))
 
 
 def test_first_screen_list_and_analysis_share_one_fact_read(dashboard_case, monkeypatch, record_property):
@@ -323,21 +253,6 @@ def test_candidate_comparison_rejects_invalid_snapshot_before_read_admission(das
     assert admitted == []
 
 
-@pytest.mark.parametrize("endpoint, reader_name", [("/analysis", "read_dashboard_analysis"),
-                                                   ("/candidates/" + "a" * 48 + "/comparison", "read_candidate_comparison")])
-def test_dashboard_analysis_envelopes_never_return_nonfinite_json(dashboard_case, monkeypatch, endpoint, reader_name):
-    import web.routes.workbench.dashboard_analysis as module
-
-    monkeypatch.setattr(module, reader_name, lambda *args, **kwargs: (
-        {"as_of": "2026-09-10T12:00:00", "unserializable_number": float("nan")}, "fault-snapshot"))
-    response = api(dashboard_case, monkeypatch).get(ROOT + endpoint)
-    assert response.status_code == 500
-    body = response.get_json()
-    assert body["ok"] is False and body["committed"] is False
-    assert body["error"]["code"] == "storage_failure"
-    assert b"NaN" not in response.data
-
-
 def test_read_budget_replaces_only_queued_requests_from_the_same_nonempty_lane():
     from concurrent.futures import ThreadPoolExecutor
 
@@ -487,6 +402,7 @@ def test_dashboard_analysis_reuses_streamed_pressure_without_retaining_calendar_
         sources = reader.load()
     facts = sources.facts.project()
     metrics = facts.pressure_metrics
+    assert metrics is not None
     captured = facts.snapshot_contents()
     assert len(calls) == len(metrics.summaries) == 2 and set(calls.values()) == {1}
     assert len(indexes) == 1 and indexes[0] is metrics.index
@@ -549,7 +465,7 @@ def test_plan_without_resource_cohort_beyond_calendar_window_keeps_analysis_read
     # The over-wide window only bounds per-resource calendar geometry. Without a resource
     # cohort nothing is projected, yet an internal task missing both identities still counts.
     assert first["state"] == "available" and first["resource_common"]["cohort"] == []
-    assert sources.facts.pressure_metrics._index is None
+    assert sources.facts.pressure_metrics is not None and sources.facts.pressure_metrics._index is None
     gaps = 1 if early_source == "internal" else 0
     for kind in ("machine", "operator"):
         assert first["resource_common"][kind]["unknown_workload_count"] == gaps

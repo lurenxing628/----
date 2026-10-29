@@ -3,7 +3,7 @@
 from contextlib import contextmanager
 from datetime import datetime
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Tuple, Union, cast
+from typing import TYPE_CHECKING, Any, Dict, List
 
 from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.workbench_command import WorkbenchCommandRejected
@@ -33,9 +33,7 @@ class PlanReadContext:
         self._adopted, self._task_memberships, self._task_resources, self._task_work = {}, {}, {}, {}
         self._projected_resources = {}
         self._intervals, self._datetime_intervals, self._plan_time_maps = {}, {}, {}
-        self._raw_source_selection: Union[Literal[False], Tuple[List[str], str], None] = False
         self._raw_sources = {}
-        self._raw_task_selection: Union[Literal[False], Tuple[List[str], str], None] = False
         self._raw_tasks = {}
 
     @cached_property
@@ -255,31 +253,21 @@ class PlanReadContext:
 
     def all_task_refs(self, plan_ref):
         if plan_ref not in self._task_memberships:
-            rows = cast(List[Dict[str, Any]], self.task_identities(plan_ref))
+            rows = self.task_identities(plan_ref)
             self._task_memberships[plan_ref] = {row["ref"] for row in rows}
         return self._task_memberships[plan_ref]
 
     def task_identities(self, plan_ref):
-        if self._raw_task_selection is False:
-            self._raw_task_selection = self._source_repo._raw_select("WorkbenchTaskRefs")
-        if self._raw_task_selection is None:
-            return None
         if plan_ref not in self._raw_tasks:
-            columns, select = self._raw_task_selection
-            self._raw_tasks[plan_ref] = self._source_repo._raw_rows(columns, select + " WHERE plan_ref=? ORDER BY rowid", [plan_ref])
+            self._raw_tasks[plan_ref] = self._source_repo.task_refs_by_plan(plan_ref)
         return self._raw_tasks[plan_ref]
 
     def source_identities(self, refs):
-        if self._raw_source_selection is False:
-            self._raw_source_selection = self._source_repo._raw_select("WorkbenchPlanSourceRefs")
-        if self._raw_source_selection is None:
-            return None
         keys = list(dict.fromkeys(refs))
         missing = [key for key in keys if key not in self._raw_sources]
-        columns, select = self._raw_source_selection
         for start in range(0, len(missing), 400):
             chunk = missing[start:start + 400]
-            rows = self._source_repo._raw_rows(columns, select + " WHERE ref IN (" + ",".join("?" for _ in chunk) + ") ORDER BY rowid", chunk)
+            rows = self._source_repo.source_refs_by_refs(chunk)
             found = {row["ref"]: row for row in rows}
             self._raw_sources.update((key, found.get(key)) for key in chunk)
         return [self._raw_sources[key] for key in keys if self._raw_sources[key] is not None]

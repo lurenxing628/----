@@ -97,6 +97,92 @@ def test_small_single_response_stays_a_real_single_snapshot():
     assert result["meta"]["snapshot_ref"] is not None
 
 
+def test_workspace_tasks_pagination_completes_within_single_snapshot():
+    base = BoundedClient(whole=True)
+    base.expected = [copy.deepcopy(base.expected[index % 4]) for index in range(5002)]
+    for index, row in enumerate(base.expected, 1):
+        row["operation_ref"] = f"{index:048x}"
+        row["sequence"] = index
+    base.rows = [
+        dict(
+            operation_ref=row["operation_ref"],
+            task_ref=f"{index + 10000:048x}",
+            plan_ref=PLAN,
+            start=row["start"],
+            end=row["end"],
+            machine_ref="m" * 48,
+            operator_ref="o" * 48,
+            supplier_ref=None,
+            batch_id=row["batch_label"],
+            **{key: row[key] for key in ("sequence", "process_label", "quantity", "batch_quantity", "piece_id")},
+        )
+        for index, row in enumerate(base.expected, 1)
+    ]
+
+    class PaginatedClient:
+        def __init__(self):
+            self.calls = []
+
+        def document(self, path):
+            self.calls.append(path)
+            parsed = urlsplit(path)
+            query = {key: values[0] for key, values in parse_qs(parsed.query).items()}
+            span = {"start": base.expected[0]["start"], "end": base.expected[-1]["end"], "end_inclusive": True}
+            scope = dict(source="production", kind="plan_workspace", plan_ref=PLAN, range_start=None, range_end=None)
+            time_scope = dict(
+                range_start=span["start"],
+                range_end=span["end"],
+                selection="overlap",
+                boundary="half_open",
+                time_basis="factory_local",
+            )
+            if parsed.path.endswith("/workspace"):
+                return {
+                    "ok": True,
+                    "schema_version": 1,
+                    "data": {
+                        "plan": {"plan_ref": PLAN, "kind": "official", "version": 1, "is_current_official": True},
+                        "plan_span": span,
+                        "tasks": copy.deepcopy(base.rows[:5000]),
+                        "task_count": len(base.rows),
+                        "tasks_complete": False,
+                        "scope": scope,
+                        "time_scope": time_scope,
+                        "resources": [{"kind": "machine", "ref": "m" * 48, "label": "machine"}],
+                        "projections": {
+                            "delivery_risks": {"scope": copy.deepcopy(scope), "items": []},
+                            "occupancy": {"scope": copy.deepcopy(scope), "busy_hours": len(base.rows)},
+                        },
+                    },
+                    "meta": {"source": "production", "as_of": "2026-10-10T12:00:00", "snapshot_ref": "snap-10k"},
+                }
+            assert parsed.path.endswith("/tasks")
+            assert query == {"snapshot_ref": "snap-10k", "page": "2", "size": "5000"}
+            return {
+                "ok": True,
+                "schema_version": 1,
+                "data": {
+                    "plan": {"plan_ref": PLAN, "kind": "official", "version": 1, "is_current_official": True},
+                    "plan_span": span,
+                    "task_span": span,
+                    "tasks": copy.deepcopy(base.rows[5000:]),
+                    "task_count": len(base.rows),
+                    "tasks_complete": False,
+                    "scope": scope,
+                    "time_scope": time_scope,
+                    "page": {"number": 2, "size": 5000, "total": len(base.rows), "pages": 2, "has_more": False},
+                },
+                "meta": {"source": "production", "as_of": "2026-10-10T12:00:00", "snapshot_ref": "snap-10k"},
+            }
+
+    client = PaginatedClient()
+    result = _formal(client, PLAN, base.expected)
+    assert len(client.calls) == 2
+    assert result["data"]["tasks_complete"] is True
+    assert len(result["data"]["tasks"]) == 5002
+    assert result["meta"]["snapshot_ref"] == "snap-10k"
+
+
 @pytest.mark.parametrize("fault,reason", [
     (lambda document: document["data"]["scope"].update(range_end="2026-10-11T00:00:00"), "范围对不上"),
     (lambda document: document["data"].update(task_count=999), "条数不符"),

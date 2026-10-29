@@ -3,7 +3,6 @@
 
 def execution_projections(facts, operations, *, prepared):
     from core.services.workbench.execution.ledger import ExecutionLedgerService
-    from core.services.workbench.facts.run_input_codec import validate_projection_dto
 
     refs = [facts.operation_ref(op) for op in operations]
     service = facts.execution_service or ExecutionLedgerService(facts.conn)
@@ -15,8 +14,6 @@ def execution_projections(facts, operations, *, prepared):
     result = {row.operation_ref: row.to_dict() for row in projections}
     if set(result) != set(refs) or len(projections) != len(refs):
         raise ValueError("ExecutionProjection did not cover the exact preflight operation scope")
-    for projection in projections:
-        validate_projection_dto(projection)
     prepared.extend(projections)
     return result
 

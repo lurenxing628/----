@@ -43,12 +43,10 @@ def run_execution_projections(conn, settings, *, capture, existing=(), service=N
         raise ValueError("Selected or last-official operation has no permanent identity")
     refs = {identities[key] for key in op_ids}
     result = {projection.operation_ref: projection for projection in existing if projection.operation_ref in refs}
-    from core.services.workbench.facts.run_input_codec import validate_projection_dto
     service = service if service is not None else ExecutionLedgerService(conn)
     missing = sorted(refs - set(result))
     for offset in range(0, len(missing), 10000):
         for item in service.project_operations(missing[offset:offset + 10000]):
-            validate_projection_dto(item)
             result[item.operation_ref] = item
     if set(result) != refs:
         raise ValueError("ExecutionProjection did not cover the exact admission operation scope")

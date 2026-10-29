@@ -53,6 +53,46 @@
       throw C.failure('读取的开始时间和结束时间要一起填，开始必须早于结束。请按 2026-09-13 08:30 这样填。');
     return query;
   }
+  function tasksScope(planRef, scope = {}) {
+    if (!ref(planRef)) throw C.failure('这条计划记录已失效，请回到计划列表重新选择。');
+    const query = parameters(scope, ['range_start', 'range_end', 'snapshot_ref', 'page', 'size']);
+    if (!own(query, 'snapshot_ref') || !token(query.snapshot_ref))
+      throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
+    const start = own(query, 'range_start'), end = own(query, 'range_end');
+    if (start !== end || start && (!localTime(query.range_start) || !localTime(query.range_end) || query.range_start >= query.range_end))
+      throw C.failure('读取的开始时间和结束时间要一起填，开始必须早于结束。请按 2026-09-13 08:30 这样填。');
+    if (!own(query, 'page')) query.page = 1;
+    if (!own(query, 'size')) query.size = 5000;
+    if (!Number.isSafeInteger(query.page) || query.page < 1 || !Number.isSafeInteger(query.size) || query.size < 1 || query.size > 5000)
+      throw C.failure('工序安排分页参数无效，请刷新后重试。');
+    return query;
+  }
+  function ganttGraphScope(planRef, scope = {}) {
+    const query = workspaceScope(planRef, scope);
+    if (!own(query, 'snapshot_ref') || !token(query.snapshot_ref))
+      throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
+    return query;
+  }
+  function capacityScope(planRef, scope = {}) {
+    const query = workspaceScope(planRef, scope);
+    if (!own(query, 'snapshot_ref') || !token(query.snapshot_ref))
+      throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
+    return query;
+  }
+  function baselineScope(planRef, scope = {}) {
+    if (!ref(planRef)) throw C.failure('这条计划记录已失效，请回到计划列表重新选择。');
+    const query = parameters(scope, ['range_start', 'range_end', 'snapshot_ref', 'page', 'size']);
+    if (!own(query, 'snapshot_ref') || !token(query.snapshot_ref))
+      throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
+    const start = own(query, 'range_start'), end = own(query, 'range_end');
+    if (start !== end || start && (!localTime(query.range_start) || !localTime(query.range_end) || query.range_start >= query.range_end))
+      throw C.failure('读取的开始时间和结束时间要一起填，开始必须早于结束。请按 2026-09-13 08:30 这样填。');
+    if (!own(query, 'page')) query.page = 1;
+    if (!own(query, 'size')) query.size = 5000;
+    if (!Number.isSafeInteger(query.page) || query.page < 1 || !Number.isSafeInteger(query.size) || query.size < 1 || query.size > 5000)
+      throw C.failure('原安排对照分页参数无效，请刷新后重试。');
+    return query;
+  }
   function exportScope(planRef, scope) {
     const query = parameters(scope, ['format', 'range_start', 'range_end', 'snapshot_ref']);
     if (!['csv', 'xlsx'].includes(query.format) || !own(query, 'snapshot_ref'))
@@ -125,6 +165,10 @@
   const sameArray = (a, b) => Array.isArray(a) && a.length === b.length && a.every((v, i) => v === b[i]);
   const inScope = (row, scope) => !!row && (scope.range_start === null || P.overlaps(row, scope.range_start, scope.range_end));
   const states = ['available', 'partial', 'unavailable'];
+  const baselineUnavailableReasons = ['not_recorded', 'baseline_binding_invalid', 'baseline_unavailable', 'baseline_task_invalid',
+    'no_adoption_baseline', 'adoption_evidence_missing', 'adoption_source_archived', 'adoption_snapshot_invalid',
+    'adoption_baseline_archived', 'adoption_reference_invalid', 'adoption_baseline_drift', 'adoption_plan_drift'];
+  const comparedFields = ['start', 'end', 'machine_ref', 'operator_ref'];
   function resourceDirectory(data) {
     if (!Array.isArray(data.resources) || !uniqueRefs(data.resources, 'ref')) return null;
     const byRef = new Map();
@@ -133,43 +177,55 @@
           || !ref(row.ref) || !label(row.business_code) || !nullableLabel(row.label)) return null;
       byRef.set(row.ref, row);
     }
-    const used = new Set();
-    const tasks = data.tasks.concat(data.projections.baseline.items.flatMap(row => [row.before, !row.after_in_scope && row.after].filter(Boolean)));
+    const used = new Set(), b = data.projections.baseline;
+    const tasks = data.tasks.concat(b.items.flatMap(row => [row.before, !row.after_in_scope && row.after].filter(Boolean)));
     for (const row of tasks) for (const kind of ['machine', 'operator', 'supplier']) {
       const value = row[kind + '_ref'];
       if (value === null) continue;
       if (!byRef.has(value) || byRef.get(value).kind !== kind) return null;
       used.add(value);
     }
-    return used.size === byRef.size ? byRef : null;
+    return data.tasks_complete === false || b.state === 'available' && b.items_complete === false || used.size === byRef.size ? byRef : null;
   }
-  function baseline(value, data) {
-    if (!object(value)) return false;
-    if (value.state === 'unavailable') return exact(value, ['state', 'reason_code', 'reason', 'baseline_plan', 'items', 'item_count', 'items_complete'])
-      && ['not_recorded', 'baseline_binding_invalid', 'baseline_unavailable', 'baseline_task_invalid',
-        'no_adoption_baseline', 'adoption_evidence_missing', 'adoption_source_archived', 'adoption_snapshot_invalid',
-        'adoption_baseline_archived', 'adoption_reference_invalid', 'adoption_baseline_drift', 'adoption_plan_drift'].includes(value.reason_code)
-      && label(value.reason) && value.baseline_plan === null && Array.isArray(value.items) && value.items.length === 0
-      && value.item_count === 0 && value.items_complete === false;
-    const fields = ['start', 'end', 'machine_ref', 'operator_ref'], s = value.comparison_scope;
-    if (!exact(value, ['state', 'reason_code', 'reason', 'basis', 'baseline_plan', 'comparison_scope', 'compared_fields', 'items', 'item_count', 'items_complete'])
-        || value.state !== 'available' || value.reason_code !== null || value.reason !== null
-        || !['candidate_adoption', 'trial_adoption'].includes(value.basis)
-        || !plan(value.baseline_plan) || !value.baseline_plan.capabilities.view
-        || value.baseline_plan.is_current_official || value.baseline_plan.plan_ref === data.plan.plan_ref
-        || !exact(s, ['scope', 'selection', 'boundary', 'alignment', 'time_basis', 'task_times']) || !same(s.scope, data.scope)
-        || s.selection !== 'either_side_overlap' || s.boundary !== 'half_open' || s.alignment !== 'operation_ref'
-        || s.time_basis !== 'factory_local' || s.task_times !== 'unclipped' || !sameArray(value.compared_fields, fields)
-        || !Array.isArray(value.items) || value.item_count !== value.items.length || value.item_count > 20000
-        || value.items_complete !== true || !uniqueRefs(value.items, 'operation_ref')) return false;
+  function baselineHeader(value, data) {
+    const s = value.comparison_scope;
+    return value.state === 'available' && value.reason_code === null && value.reason === null
+      && ['candidate_adoption', 'trial_adoption'].includes(value.basis)
+      && plan(value.baseline_plan) && value.baseline_plan.capabilities.view && !value.baseline_plan.is_current_official
+      && (!data || value.baseline_plan.plan_ref !== data.plan.plan_ref)
+      && exact(s, ['scope', 'selection', 'boundary', 'alignment', 'time_basis', 'task_times'])
+      && (!data || same(s.scope, data.scope))
+      && s.selection === 'either_side_overlap' && s.boundary === 'half_open' && s.alignment === 'operation_ref'
+      && s.time_basis === 'factory_local' && s.task_times === 'unclipped' && sameArray(value.compared_fields, comparedFields)
+      && Array.isArray(value.items) && count(value.item_count) && value.item_count <= 20000
+      && typeof value.items_complete === 'boolean';
+  }
+  function baselineRows(value, data, resolveAfter = false, complete = true) {
+    if (!uniqueRefs(value.items, 'operation_ref')) return false;
+    if (!data) {
+      return value.items.every(row => exact(row, ['operation_ref', 'change', 'changed_fields', 'before', 'after', 'before_in_scope', 'after_in_scope'])
+        && ref(row.operation_ref) && typeof row.before_in_scope === 'boolean' && typeof row.after_in_scope === 'boolean'
+        && (row.before_in_scope || row.after_in_scope)
+        && ['added', 'removed', 'changed', 'unchanged'].includes(row.change)
+        && Array.isArray(row.changed_fields) && row.changed_fields.every(key => comparedFields.includes(key))
+        && (row.before !== null || row.after !== null)
+        && (row.before === null || task(row.before, value.baseline_plan.plan_ref) && row.before.operation_ref === row.operation_ref)
+        && (row.after === null || row.after_in_scope && exact(row.after, ['task_ref']) && ref(row.after.task_ref)
+          || task(row.after, value.comparison_scope.scope.plan_ref) && row.after.operation_ref === row.operation_ref));
+    }
     const selected = new Map(data.tasks.map(row => [row.task_ref, row]));
     let afterCount = 0;
     for (const row of value.items) {
       if (!exact(row, ['operation_ref', 'change', 'changed_fields', 'before', 'after', 'before_in_scope', 'after_in_scope']) || !ref(row.operation_ref)) return false;
+      if (resolveAfter && row.after_in_scope === true && exact(row.after, ['task_ref'])) {
+        const matched = selected.get(row.after.task_ref);
+        if (!matched) return false;
+        row.after = matched;
+      }
       const before = row.before, after = row.after;
       if (before === null && after === null || before !== null && (!task(before, value.baseline_plan.plan_ref) || before.operation_ref !== row.operation_ref)
           || after !== null && (!task(after, data.plan.plan_ref) || after.operation_ref !== row.operation_ref)) return false;
-      const changed = before && after ? fields.filter(key => before[key] !== after[key]) : [];
+      const changed = before && after ? comparedFields.filter(key => before[key] !== after[key]) : [];
       const change = before === null ? 'added' : after === null ? 'removed' : changed.length ? 'changed' : 'unchanged';
       if (row.change !== change || !sameArray(row.changed_fields, changed)
           || row.before_in_scope !== inScope(before, data.scope) || row.after_in_scope !== inScope(after, data.scope)
@@ -179,7 +235,45 @@
         afterCount++;
       }
     }
-    return afterCount === data.tasks.length;
+    return complete ? afterCount === data.tasks.length : afterCount <= data.tasks.length;
+  }
+  function baseline(value, data = null) {
+    if (!object(value)) return false;
+    if (value.state === 'unavailable') return exact(value, ['state', 'reason_code', 'reason', 'baseline_plan', 'items', 'item_count', 'items_complete'])
+      && baselineUnavailableReasons.includes(value.reason_code)
+      && label(value.reason) && value.baseline_plan === null && Array.isArray(value.items) && value.items.length === 0
+      && value.item_count === 0 && value.items_complete === false;
+    if (!exact(value, ['state', 'reason_code', 'reason', 'basis', 'baseline_plan', 'comparison_scope', 'compared_fields', 'items', 'item_count', 'items_complete'])
+        || !baselineHeader(value, data || null)) return false;
+    if (!value.items_complete) return value.items.length === 0 && value.item_count > 0 && value.item_count <= 20000 && (!data || value.item_count >= data.tasks.length);
+    return value.item_count === value.items.length && baselineRows(value, data || null, false, true);
+  }
+  function baselinePage(result, workspaceData, query = {}) {
+    if (!object(query) || !own(query, 'snapshot_ref') || !token(query.snapshot_ref))
+      throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
+    envelope(result, query);
+    const d = result.data, p = d && d.page, data = workspaceData && workspaceData.data ? workspaceData.data : workspaceData;
+    if (workspaceData !== null && workspaceData !== undefined && (!object(data) || !object(data.plan) || !object(data.scope) || !Array.isArray(data.tasks)))
+      throw C.failure('原安排对照的分页或明细与所选计划不一致，请刷新。');
+    const validPage = exact(p, ['number', 'size', 'total', 'pages', 'has_more'])
+      && count(p.number) && p.number >= 1 && (!own(query, 'page') || p.number === query.page)
+      && count(p.size) && p.size >= 1 && p.size <= 5000 && (!own(query, 'size') || p.size === query.size)
+      && object(d) && count(p.total) && p.total === d.item_count && p.total <= 20000
+      && count(p.pages) && (p.total === 0 ? p.pages <= 1 : p.pages === Math.ceil(p.total / p.size))
+      && typeof p.has_more === 'boolean' && p.has_more === (p.number * p.size < p.total)
+      && Array.isArray(d.items) && d.items.length === Math.min(p.size, Math.max(0, p.total - (p.number - 1) * p.size))
+      && typeof d.items_complete === 'boolean'
+      && (d.state === 'unavailable' ? !d.items_complete : p.has_more ? !d.items_complete : p.number > 1 || d.items_complete);
+    if (!validPage) throw C.failure('原安排对照的分页或明细与所选计划不一致，请刷新。');
+    if (d.state === 'unavailable') {
+      const { page: _page, ...rest } = d;
+      if (!baseline(rest, data)) throw C.failure('原安排对照的分页或明细与所选计划不一致，请刷新。');
+      return result;
+    }
+    if (!exact(d, ['state', 'reason_code', 'reason', 'basis', 'baseline_plan', 'comparison_scope', 'compared_fields', 'items', 'item_count', 'items_complete', 'page'])
+        || !baselineHeader(d, data || null) || !baselineRows(d, data || null, true, d.items.length === d.item_count))
+      throw C.failure('原安排对照的分页或明细与所选计划不一致，请刷新。');
+    return result;
   }
   function projectionIssues(rows, assignment = false) {
     return Array.isArray(rows) && rows.every(row => {
@@ -195,7 +289,7 @@
       && localTime(row.start) && localTime(row.end) && row.start < row.end && row.start >= time.range_start && row.end <= time.range_end
       && (!index || rows[index - 1].end <= row.start) && validate(row));
   }
-  function calendarRow(row, time, resource = false) {
+  function calendarRow(row, time, resource = false, windowsComplete = true) {
     if (!object(row) || !['available', 'unavailable'].includes(row.state)) return false;
     const extra = resource ? ['kind', 'resource_ref', 'label'] : [];
     if (resource && own(row, 'status')) extra.push('status');
@@ -207,6 +301,8 @@
     if (own(row, 'status') && !(row.kind === 'machine' ? ['active', 'inactive', 'maintain'] : ['active', 'inactive']).includes(row.status)) return false;
     if (row.state === 'unavailable') return row.windows === null && row.issues.length > 0 && measures.every(key => row[key] === null);
     if (!measures.every(key => number(row[key])) || row.issues.length) return false;
+    if (!windowsComplete && (!Array.isArray(row.windows) || row.windows.length !== 0
+        || resource && (!Array.isArray(row.downtime_windows) || row.downtime_windows.length !== 0))) return false;
     if (!intervals(row.windows, time, ['policy_date', 'allow_normal', 'allow_urgent', 'efficiency', 'provenance'], window => day(window.policy_date)
       && typeof window.allow_normal === 'boolean' && typeof window.allow_urgent === 'boolean' && number(window.efficiency)
       && ['personal_calendar', 'work_calendar', 'domain_default', 'work_calendar_operator_shift', 'domain_default_operator_shift'].includes(window.provenance))) return false;
@@ -221,15 +317,16 @@
     });
   }
   function calendar(value, data, resourcesByRef) {
-    if (!exact(value, ['state', 'plan_ref', 'time_scope', 'global', 'resources', 'issues']) || !states.includes(value.state)
+    if (!exact(value, ['state', 'plan_ref', 'time_scope', 'global', 'resources', 'issues', 'windows_complete']) || !states.includes(value.state)
+        || typeof value.windows_complete !== 'boolean' || (value.state === 'unavailable' && value.windows_complete !== false)
         || value.plan_ref !== data.plan.plan_ref || !same(value.time_scope, data.time_scope) || !projectionIssues(value.issues)
-        || !calendarRow(value.global, data.time_scope)) return false;
+        || !calendarRow(value.global, data.time_scope, false, value.windows_complete)) return false;
     if (value.resources === null) return value.state === 'unavailable' && value.global.state === 'unavailable' && value.issues.length > 0;
-    if (!projectedResources(value.resources, resourcesByRef) || !value.resources.every(row => calendarRow(row, data.time_scope, true)) || value.issues.length) return false;
+    if (!projectedResources(value.resources, resourcesByRef) || !value.resources.every(row => calendarRow(row, data.time_scope, true, value.windows_complete)) || value.issues.length) return false;
     const all = [value.global, ...value.resources];
     return value.state === (all.every(row => row.state === 'available') ? 'available' : all.every(row => row.state === 'unavailable') ? 'unavailable' : 'partial');
   }
-  function occupancyRow(row, data, calendars) {
+  function occupancyRow(row, data, calendars, segmentsComplete = true) {
     const known = ['arranged_hours', 'occupied_hours', 'overlap_hours', 'excess_arranged_hours'];
     const capacity = ['available_hours', 'available_occupied_hours', 'outside_available_hours', 'capacity_shortfall_hours'];
     if (!exact(row, ['kind', 'resource_ref', 'label', ...known, ...capacity, 'state', 'operation_count', 'capacity_basis',
@@ -237,7 +334,10 @@
         'outside_calendar_basis', 'conflict_basis', 'conflict_segments']) || !['machine', 'operator'].includes(row.kind)
         || !['available', 'unavailable'].includes(row.state) || !known.every(key => number(row[key])) || !count(row.operation_count) || row.operation_count === 0
         || !projectionIssues(row.issues)
-        || !intervals(row.segments, data.time_scope, ['concurrent_operations'], segment => count(segment.concurrent_operations) && segment.concurrent_operations > 0)
+        || !(segmentsComplete
+          ? intervals(row.segments, data.time_scope, ['concurrent_operations'], segment => count(segment.concurrent_operations) && segment.concurrent_operations > 0)
+          : intervals(row.segments, data.time_scope, ['concurrent_operations'], segment => count(segment.concurrent_operations) && segment.concurrent_operations > 1)
+            && (row.overlap_hours > 0) === (row.segments.length > 0))
         || row.metric_version !== 'decision-resource-v4' || row.outside_calendar_basis !== 'reservation_span_outside_work_calendar'
         || row.conflict_basis !== 'work_calendar_reservation_overlap') return false;
     if (row.available_overlap_hours === null) {
@@ -255,13 +355,14 @@
       && typeof row.capacity_insufficient === 'boolean'
       && (row.available_hours === 0 ? row.utilization === null : number(row.utilization) && row.utilization <= 1);
   }
-  function occupancy(value, data, resourcesByRef) {
-    if (!exact(value, ['state', 'plan_ref', 'time_scope', 'basis', 'resources', 'issues']) || !states.includes(value.state)
+  function occupancy(value, data, resourcesByRef, calendarProjection = data.projections.calendar) {
+    if (!exact(value, ['state', 'plan_ref', 'time_scope', 'basis', 'resources', 'issues', 'segments_complete']) || !states.includes(value.state)
+        || typeof value.segments_complete !== 'boolean'
         || value.plan_ref !== data.plan.plan_ref || !same(value.time_scope, data.time_scope) || value.basis !== 'selected_plan_only'
         || !projectedResources(value.resources, resourcesByRef) || !projectionIssues(value.issues, true)) return false;
     // 日历投影不可用时 resources 为 null（见 calendar()），此时没有可对照的资源日历。
-    const resources = data.projections.calendar.resources, calendars = new Map(resources === null ? [] : resources.map(row => [row.resource_ref, row]));
-    if (!value.resources.every(row => occupancyRow(row, data, calendars))) return false;
+    const resources = calendarProjection.resources, calendars = new Map(resources === null ? [] : resources.map(row => [row.resource_ref, row]));
+    if (!value.resources.every(row => occupancyRow(row, data, calendars, value.segments_complete))) return false;
     const unknown = value.issues.some(row => row.code === 'assignment_source_unknown');
     const state = unknown ? value.resources.length ? 'partial' : 'unavailable' : value.resources.every(row => row.state === 'available')
       ? 'available' : value.resources.every(row => row.state === 'unavailable') ? 'unavailable' : 'partial';
@@ -289,8 +390,8 @@
     const batches = new Set(data.tasks.map(row => row.batch_id));
     const s = value.summary;
     const deliveryBatches = new Set(value.items.map(row => row.batch_id));
-    return [...batches].every(batchId => deliveryBatches.has(batchId)) && value.items.every(row => batches.has(row.batch_id)
-      || data.scope.range_start === null && row.completion_state === 'deferred' && row.deferred_operation_count > 0)
+    return [...batches].every(batchId => deliveryBatches.has(batchId)) && (data.tasks_complete === false || value.items.every(row => batches.has(row.batch_id)
+      || data.scope.range_start === null && row.completion_state === 'deferred' && row.deferred_operation_count > 0))
       && ['complete', 'incomplete', 'unknown'].includes(value.completeness)
       && window.DeliveryProjectionContract.summary(s) && s.batch_count === value.batch_count;
   }
@@ -304,13 +405,17 @@
   function taskSpans(data, query) {
     const explicit = own(query, 'range_start'), inclusive = data.plan_span.end_inclusive === true;
     const includesEnd = !explicit || query.range_start <= data.plan_span.end && query.range_end > data.plan_span.end;
-    if (inclusive && includesEnd && !data.tasks.some(row => P.isPoint(row) && row.end === data.plan_span.end)) return false;
+    if (inclusive && includesEnd && data.tasks_complete !== false && !data.tasks.some(row => P.isPoint(row) && row.end === data.plan_span.end)) return false;
     const whole = !explicit || query.range_start <= data.plan_span.start
       && (query.range_end > data.plan_span.end || !inclusive && query.range_end === data.plan_span.end);
-    if (!data.tasks.length) return data.task_span === null && !whole;
+    if (!data.tasks.length) return data.tasks_complete !== false && data.task_span === null && !whole;
     if (!span(data.task_span)) return false;
     let start = data.tasks[0].start, end = data.tasks[0].end;
     for (const row of data.tasks) { if (row.start < start) start = row.start; if (row.end > end) end = row.end; }
+    if (data.tasks_complete === false) {
+      return start >= data.task_span.start && end <= data.task_span.end
+        && (!whole || data.task_span.start === data.plan_span.start && data.task_span.end === data.plan_span.end);
+    }
     return data.task_span.start === start && data.task_span.end === end && (!whole
       || start === data.plan_span.start && end === data.plan_span.end);
   }
@@ -328,7 +433,7 @@
       && ['admission_official', 'trial_creation_official'].includes(origin.kind) && label(origin.captured_at)
       && (origin.captured_task_count === null || count(origin.captured_task_count))
       && (algorithm === null ? value.source_kind === 'trial_adoption'
-        : window.RunGenerationContract.algorithm(algorithm, value.run_ref));
+        : window.RunGenerationContract.algorithmSummary(algorithm, value.run_ref));
   }
   function processOrder(value) {
     if (!exact(value, ['state', 'basis', 'issues']) || !Array.isArray(value.issues)
@@ -336,17 +441,112 @@
     return value.state === 'available' ? ['run_admission', 'trial_creation'].includes(value.basis) && !value.issues.length
       : value.state === 'unavailable' && value.basis === null && value.issues.length > 0;
   }
-  function workspace(result, planRef, query) {
+  function tasksPage(result, workspaceData, query = {}) {
+    if (!object(query) || !own(query, 'snapshot_ref') || !token(query.snapshot_ref))
+      throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
+    envelope(result, query);
+    const d = result.data, p = d && d.page, data = workspaceData && workspaceData.data ? workspaceData.data : workspaceData;
+    if (workspaceData !== null && workspaceData !== undefined && (!object(data) || !object(data.plan) || !object(data.scope) || !object(data.time_scope) || !object(data.plan_span)))
+      throw C.failure('工序安排的分页或明细与所选计划不一致，请刷新。');
+    const planRef = data ? data.plan.plan_ref : d && d.plan && d.plan.plan_ref;
+    const valid = exact(d, ['plan', 'scope', 'time_scope', 'plan_span', 'task_span', 'tasks', 'task_count', 'tasks_complete', 'page'])
+      && plan(d.plan) && d.plan.capabilities.view && d.plan.plan_ref === planRef
+      && exact(d.scope, ['source', 'kind', 'plan_ref', 'range_start', 'range_end']) && d.scope.source === 'production'
+      && d.scope.kind === 'plan_workspace' && d.scope.plan_ref === planRef
+      && d.scope.range_start === (own(query, 'range_start') ? query.range_start : null)
+      && d.scope.range_end === (own(query, 'range_end') ? query.range_end : null) && workspaceSpans(d, query)
+      && (!data || same(d.scope, data.scope) && same(d.time_scope, data.time_scope) && same(d.plan_span, data.plan_span)
+        && (d.task_span === null ? data.task_span === null : same(d.task_span, data.task_span)) && d.task_count === data.task_count)
+      && exact(p, ['number', 'size', 'total', 'pages', 'has_more'])
+      && count(p.number) && p.number >= 1 && (!own(query, 'page') || p.number === query.page)
+      && count(p.size) && p.size >= 1 && p.size <= 5000 && (!own(query, 'size') || p.size === query.size)
+      && count(p.total) && count(d.task_count) && p.total === d.task_count && p.total <= 10000
+      && count(p.pages) && (p.total === 0 ? p.pages <= 1 : p.pages === Math.ceil(p.total / p.size))
+      && typeof p.has_more === 'boolean' && p.has_more === (p.number * p.size < p.total)
+      && Array.isArray(d.tasks) && d.tasks.length === Math.min(p.size, Math.max(0, p.total - (p.number - 1) * p.size))
+      && typeof d.tasks_complete === 'boolean'
+      && (p.has_more ? !d.tasks_complete : p.number > 1 || d.tasks_complete)
+      && (d.task_count === 0 ? d.task_span === null : span(d.task_span))
+      && d.tasks.every(row => task(row, planRef, d.plan_span, own(query, 'range_start') ? d.time_scope : null)
+        && (!d.task_span || row.start >= d.task_span.start && row.end <= d.task_span.end))
+      && uniqueRefs(d.tasks, 'task_ref');
+    if (!valid) throw C.failure('工序安排的分页或明细与所选计划不一致，请刷新。');
+    return result;
+  }
+  function ganttGraph(result, workspaceData, query = {}) {
+    if (!object(query) || !own(query, 'snapshot_ref') || !token(query.snapshot_ref))
+      throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
+    envelope(result, query);
+    const d = result.data, data = workspaceData && workspaceData.data ? workspaceData.data : workspaceData;
+    if (workspaceData !== null && workspaceData !== undefined && (!object(data) || !object(data.plan) || !object(data.scope) || !Array.isArray(data.tasks)))
+      throw C.failure('工序衔接图与所选计划不一致，请刷新。');
+    const planRef = data ? data.plan.plan_ref : d && d.plan_ref;
+    const tasks = data ? data.tasks : [];
+    const completeCount = data ? (data.scope.range_start === null ? data.task_count : (data.gantt_graph && data.gantt_graph.state === 'available' ? data.gantt_graph.node_count : undefined)) : undefined;
+    if (!exact(d, ['plan_ref', 'scope', 'process_order', 'gantt_graph'])
+        || !ref(d.plan_ref) || d.plan_ref !== planRef
+        || !exact(d.scope, ['source', 'kind', 'plan_ref', 'range_start', 'range_end']) || d.scope.source !== 'production'
+        || d.scope.kind !== 'plan_workspace' || d.scope.plan_ref !== planRef
+        || d.scope.range_start !== (own(query, 'range_start') ? query.range_start : null)
+        || d.scope.range_end !== (own(query, 'range_end') ? query.range_end : null)
+        || (data && !same(d.scope, data.scope))
+        || !processOrder(d.process_order)
+        || !object(d.gantt_graph) || Reflect.ownKeys(d.gantt_graph).length !== 8
+        || (d.gantt_graph.state === 'available' && d.gantt_graph.nodes_complete !== true)
+        || !window.GanttGraph.validate(d.gantt_graph, { scope: 'full_plan', tasks, taskRef: 'task_ref', time: localTime,
+          sequence: int64, processLabel: label, completeCount }))
+      throw C.failure('工序衔接图与所选计划不一致，请刷新。');
+    return result;
+  }
+  function capacity(result, workspaceData, query = {}) {
+    if (!object(query) || !own(query, 'snapshot_ref') || !token(query.snapshot_ref))
+      throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
+    envelope(result, query);
+    const d = result.data, data = workspaceData && workspaceData.data ? workspaceData.data : workspaceData;
+    if (workspaceData !== null && workspaceData !== undefined && (!object(data) || !object(data.plan) || !object(data.scope) || !object(data.time_scope)))
+      throw C.failure('资源班表或负荷数据与所选计划不一致，请刷新。');
+    const planRef = data ? data.plan.plan_ref : d && d.plan_ref;
+    if (!exact(d, ['plan_ref', 'scope', 'time_scope', 'calendar', 'occupancy'])
+        || !ref(d.plan_ref) || d.plan_ref !== planRef
+        || !exact(d.scope, ['source', 'kind', 'plan_ref', 'range_start', 'range_end']) || d.scope.source !== 'production'
+        || d.scope.kind !== 'plan_workspace' || d.scope.plan_ref !== planRef
+        || d.scope.range_start !== (own(query, 'range_start') ? query.range_start : null)
+        || d.scope.range_end !== (own(query, 'range_end') ? query.range_end : null)
+        || !exact(d.time_scope, ['range_start', 'range_end', 'selection', 'boundary', 'time_basis'])
+        || !localTime(d.time_scope.range_start) || !localTime(d.time_scope.range_end) || d.time_scope.range_start > d.time_scope.range_end
+        || (own(query, 'range_start') && (d.time_scope.range_start !== query.range_start || d.time_scope.range_end !== query.range_end))
+        || d.time_scope.selection !== 'overlap' || d.time_scope.boundary !== 'half_open' || d.time_scope.time_basis !== 'factory_local'
+        || (data && (!same(d.scope, data.scope) || !same(d.time_scope, data.time_scope))))
+      throw C.failure('资源班表或负荷数据与所选计划不一致，请刷新。');
+    const targetData = data || { plan: { plan_ref: planRef }, scope: d.scope, time_scope: d.time_scope, projections: { calendar: d.calendar } };
+    const resourcesByRef = data ? resourceDirectory(data) : new Map();
+    if (!data && object(d.calendar) && Array.isArray(d.calendar.resources)) {
+      for (const row of d.calendar.resources) {
+        if (object(row) && ['machine', 'operator'].includes(row.kind) && ref(row.resource_ref) && nullableLabel(row.label))
+          resourcesByRef.set(row.resource_ref, { kind: row.kind, ref: row.resource_ref, label: row.label });
+      }
+    }
+    if (!resourcesByRef || !calendar(d.calendar, targetData, resourcesByRef)
+        || (d.calendar.state === 'unavailable' ? d.calendar.windows_complete !== false : d.calendar.windows_complete !== true)
+        || !occupancy(d.occupancy, targetData, resourcesByRef, d.calendar)
+        || d.occupancy.segments_complete !== true)
+      throw C.failure('资源班表或负荷数据与所选计划不一致，请刷新。');
+    return result;
+  }
+  function workspace(result, planRef, query, options = {}) {
     envelope(result, query);
     const d = result.data;
+    const validTaskCount = count(d && d.task_count) && d.task_count <= 10000 && typeof d.tasks_complete === 'boolean'
+      && (options && options.allowIncompleteTasks && d.tasks_complete === false
+        ? Array.isArray(d.tasks) && d.tasks.length === 5000 && d.task_count > 5000
+        : d.tasks_complete === true && Array.isArray(d.tasks) && d.task_count === d.tasks.length);
     if (!exact(d, ['plan', 'scope', 'time_scope', 'plan_span', 'task_span', 'tasks', 'task_count', 'tasks_complete', 'resources', 'projections', 'gantt_graph', 'provenance'])
         || !provenance(d.provenance) || !plan(d.plan) || !d.plan.capabilities.view || d.plan.plan_ref !== planRef
         || !exact(d.scope, ['source', 'kind', 'plan_ref', 'range_start', 'range_end']) || d.scope.source !== 'production'
         || d.scope.kind !== 'plan_workspace' || d.scope.plan_ref !== planRef
         || d.scope.range_start !== (own(query, 'range_start') ? query.range_start : null)
         || d.scope.range_end !== (own(query, 'range_end') ? query.range_end : null) || !workspaceSpans(d, query)
-        || !Array.isArray(d.tasks) || !Number.isSafeInteger(d.task_count) || d.task_count !== d.tasks.length || d.task_count > 10000
-        || d.tasks_complete !== true || !d.tasks.every(row => task(row, planRef, d.plan_span, own(query, 'range_start') ? d.time_scope : null)) || !uniqueRefs(d.tasks, 'task_ref')
+        || !validTaskCount || !d.tasks.every(row => task(row, planRef, d.plan_span, own(query, 'range_start') ? d.time_scope : null)) || !uniqueRefs(d.tasks, 'task_ref')
         || !taskSpans(d, query) || !exact(d.projections, projections)
         || !baseline(d.projections.baseline, d))
       throw C.failure('工序安排、时间范围或分析数据与所选计划不一致，请刷新。');
@@ -356,9 +556,9 @@
         || !processOrder(d.projections.process_order)
         || !window.GanttGraph.validate(d.gantt_graph, { scope: 'full_plan', tasks: d.tasks, taskRef: 'task_ref', time: localTime,
           sequence: int64, processLabel: label,
-          completeCount: d.scope.range_start === null ? d.tasks.length : undefined }))
+          completeCount: d.scope.range_start === null ? d.task_count : undefined }))
       throw C.failure('工序安排、时间范围或分析数据与所选计划不一致，请刷新。');
     return result;
   }
-  window.APSPlanContract = { catalogScope, workspaceScope, exportScope, catalog, workspace };
+  window.APSPlanContract = { catalogScope, workspaceScope, tasksScope, ganttGraphScope, capacityScope, baselineScope, exportScope, catalog, workspace, tasksPage, ganttGraph, capacity, baseline, baselinePage };
 })();

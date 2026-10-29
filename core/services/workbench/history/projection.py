@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from .conditions import compare_prepared_history_conditions
+from .conditions import analyze_prepared_history_conditions, materialize_history_conditions
 from .metric_gate import gate_history_metric
 from .metrics import project_history_metrics
 
@@ -107,7 +107,7 @@ def _shared_window(entry, query):
     return {"start": window.get("start"), "end": window.get("end")}
 
 
-def condition_pair(reader, before_descriptor, after_descriptor, after, query, cache):
+def condition_pair(reader, before_descriptor, after_descriptor, after, query, cache, *, include_rows=True, all_rows=False):
     window = _shared_window(after, query)
     key = (before_descriptor["entry_ref"] if before_descriptor else None,
            after_descriptor["entry_ref"] if after_descriptor else None, window["start"], window["end"])
@@ -115,9 +115,17 @@ def condition_pair(reader, before_descriptor, after_descriptor, after, query, ca
         before = reader.read(before_descriptor) if before_descriptor is not None else missing_packet()
         selected = reader.read(after_descriptor) if after_descriptor is not None else missing_packet(
             "selection_required", "请选择实际历史条目。")
-        cache[key] = compare_prepared_history_conditions(reader.condition_side(before, window),
-                                                       reader.condition_side(selected, window))
-    return cache[key]
+        cache[key] = analyze_prepared_history_conditions(reader.condition_side(before, window),
+                                                         reader.condition_side(selected, window))
+    before_side, after_side, cond_analysis, configurations, objective = cache[key]
+    if not include_rows:
+        return {"conditions": {"state": cond_analysis["state"], "summary": cond_analysis["summary"]},
+                "configurations": configurations, "objective": objective}
+    conditions = materialize_history_conditions(before_side, after_side, cond_analysis,
+                                                condition_page=query["condition_page"],
+                                                condition_size=query["condition_size"],
+                                                all_rows=all_rows)
+    return {"conditions": conditions, "configurations": configurations, "objective": objective}
 
 
 def _observed_connection(before, after):
@@ -132,7 +140,8 @@ def trend_projection(reader, entries, descriptors, reference, reference_descript
     for entry in sorted(entries, key=chronological_key):
         state, allowed = "not_compared", {}
         if query["comparison"] == "same_conditions":
-            pair = condition_pair(reader, reference_descriptor, descriptors[entry["entry_ref"]], entry, query, cache)
+            pair = condition_pair(reader, reference_descriptor, descriptors[entry["entry_ref"]], entry, query, cache,
+                                  include_rows=False)
             state = pair["conditions"]["state"]
             for key in query["metric_keys"]:
                 allowed[key] = reference is not None and gate_history_metric(definitions[key], reference["metrics"][key],

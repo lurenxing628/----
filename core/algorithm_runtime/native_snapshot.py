@@ -1,7 +1,6 @@
 """Exact, side-effect-free content certificates for native scheduling inputs."""
 
 import math
-import operator
 from datetime import date, datetime, time
 from typing import Any
 
@@ -11,8 +10,6 @@ _SCALARS = (type(None), bool, int, str, date, datetime, time)
 
 def scalar_snapshot(value) -> Any:
     kind = type(value)
-    if type(kind) is not type:
-        return UNSUPPORTED
     if kind in _SCALARS:
         if kind in (datetime, time) and value.tzinfo is not None:
             return UNSUPPORTED
@@ -27,7 +24,7 @@ def content_snapshot(value, _depth=0) -> Any:
     if scalar is not UNSUPPORTED:
         return scalar
     kind = type(value)
-    if type(kind) is not type or kind not in (dict, list, tuple, set, frozenset) or _depth > 12:
+    if kind not in (dict, list, tuple, set, frozenset) or _depth > 12:
         return UNSUPPORTED
     if kind is dict:
         items = [(content_snapshot(key, _depth + 1), content_snapshot(item, _depth + 1)) for key, item in value.items()]
@@ -38,26 +35,3 @@ def content_snapshot(value, _depth=0) -> Any:
     if any(item is UNSUPPORTED for item in items):
         return UNSUPPORTED
     return kind, frozenset(items) if kind in (set, frozenset) else tuple(items)
-
-
-def make_class_guard(cls):
-    """Capture original descriptors, including attribute hooks and inheritance."""
-    lineage = cls.__mro__
-    layers = [(base, tuple(vars(base)), tuple(vars(base).values())) for base in lineage if base.__module__ != "builtins"]
-    shadowed = frozenset(key for base in lineage for key, value in vars(base).items()
-                        if callable(value) or isinstance(value, (property, staticmethod, classmethod))
-                        or key in ("__getattribute__", "__getattr__", "__dict__"))
-
-    def supported(instance):
-        if type(instance) is not cls or cls.__mro__ is not lineage:
-            return False
-        for base, keys, values in layers:
-            current = vars(base)
-            # copyreg lazily records [] when deepcopy first visits a non-slotted DTO.
-            if "__slotnames__" not in keys and type(current.get("__slotnames__")) is list and not current["__slotnames__"]:
-                current = {key: value for key, value in current.items() if key != "__slotnames__"}
-            if tuple(current) != keys or not all(map(operator.is_, current.values(), values)):
-                return False
-        return vars(instance).keys().isdisjoint(shadowed)
-
-    return supported

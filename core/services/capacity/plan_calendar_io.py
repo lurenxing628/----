@@ -1,6 +1,5 @@
 """Bounded snapshot-local reads; no per-resource/date SQL and no schema writes."""
 
-import math
 from collections import defaultdict
 
 from data.repositories.calendar_facts_repo import CalendarFactsRepository
@@ -54,9 +53,8 @@ class CapturedCalendarInputs:
         low, high, result = parse_dt_for_sql(start), parse_dt_for_sql(end), []
         for key in machine_ids:
             if key not in self._downtime_order:
-                self._downtime_order[key] = sorted(self._downtimes.get(key, ()), key=lambda item: (
-                    item[1]["__calendar_start_time_rank"], item[1]["__calendar_start_time_value"],
-                    item[1]["__calendar_end_time_rank"], item[1]["__calendar_end_time_value"]))
+                self._downtime_order[key] = sorted(self._downtimes.get(key, ()),
+                    key=lambda item: (item[0]["start_time"] or "", item[0]["end_time"] or "", item[0]["id"]))
             for row, prepared in self._downtime_order[key]:
                 overlaps = (prepared["__calendar_valid"] == 1 and low is not None and high is not None
                             and prepared["__calendar_start"] < high and prepared["__calendar_end"] > low)
@@ -68,12 +66,6 @@ class CapturedCalendarInputs:
 
 
 def snapshot_values(value):
-    if isinstance(value, float) and not math.isfinite(value):
-        return {"invalid_number": repr(value)}
-    if isinstance(value, dict):
-        return {key: snapshot_values(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [snapshot_values(item) for item in value]
     return value
 
 

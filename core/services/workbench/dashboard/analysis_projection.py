@@ -55,10 +55,11 @@ def _tasks(facts, *, selected_refs=None, slice_range=None):
     for task, raw in zip(tasks, raw_rows):
         if selected_refs is not None and task["task_ref"] not in selected_refs:
             continue
+        start_dt, end_dt = facts.task_intervals[raw["schedule_id"]]
         result.append({**task, "batch_ref": refs[task["batch_id"]]["ref"],
                        "machine_label": raw["machine_name"], "operator_label": raw["operator_name"],
                        "source": raw["source"] if type(raw["source"]) is str else None,
-                       "span_hours": (instant(task["end"]) - instant(task["start"])).total_seconds() / 3600})
+                       "span_hours": (end_dt - start_dt).total_seconds() / 3600})
     return result
 
 

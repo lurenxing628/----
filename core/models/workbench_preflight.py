@@ -14,6 +14,9 @@ INPUT_FIELDS = ("batch_refs", "start_date", "end_date", "ready_check", "missing_
 # 可选项：不带 material_strategy 按整批齐套；不带 hold_window 按交付设置推算不重排时段（见 hold_window_bounds）。
 OPTIONAL_FIELDS = frozenset(("material_strategy", "hold_window", "time_budget_seconds"))
 _HOLD_MESSAGE = "不重排时段要填完整的开始和结束时刻（精确到分），开始要早于结束，并且在排产日期范围内。"
+_REF_RE = re.compile(r"[0-9a-f]{48}")
+_DATE_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+_MINUTE_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}")
 
 
 def reject(message) -> NoReturn:
@@ -21,11 +24,11 @@ def reject(message) -> NoReturn:
 
 
 def public_ref(value):
-    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{48}", value) is not None
+    return isinstance(value, str) and _REF_RE.fullmatch(value) is not None
 
 
 def local_date(value):
-    if not isinstance(value, str) or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value) is None:
+    if not isinstance(value, str) or _DATE_RE.fullmatch(value) is None:
         reject("排产日期范围必须填完整日期。")
     try:
         parsed = date.fromisoformat(value)
@@ -68,7 +71,7 @@ def _batch_refs(refs):
 
 
 def _minute(value):
-    if not isinstance(value, str) or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}", value) is None:
+    if not isinstance(value, str) or _MINUTE_RE.fullmatch(value) is None:
         reject(_HOLD_MESSAGE)
     try:
         return datetime.fromisoformat(value)
@@ -98,7 +101,7 @@ def stored_hold_window_valid(value):
         start, end = (datetime.fromisoformat(value[key]) for key in ("start", "end"))
     except (TypeError, ValueError):
         return False
-    return all(re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}", value[key]) for key in ("start", "end")) and start < end
+    return all(_MINUTE_RE.fullmatch(value[key]) for key in ("start", "end")) and start < end
 
 
 def hold_window_bounds(value):

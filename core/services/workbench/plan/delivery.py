@@ -20,7 +20,6 @@ from core.services.workbench.facts.delivery_projection import (
     delivery_summary,
     project_delivery_batch,
     selected_batch_keys,
-    task_intervals,
 )
 from core.services.workbench.facts.material_deferral_evidence import archived_deferred_operation_evidence
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
@@ -51,7 +50,7 @@ def _read_plan_delivery(conn, *, scope, identity, logger, context):
     repo.validate_identity(scope, identity, context=context)
     _, entry, _ = context.selected(scope.plan_ref)
     rows = repo.task_rows(context=context, entry=entry)
-    intervals = task_intervals(rows)
+    intervals = context.datetime_intervals(entry)
     keys = selected_batch_keys(rows, intervals, scope)
     record = repo.completion_record(identity, context=context)
     deferred, deferred_issues = archived_deferred_operation_evidence(record)

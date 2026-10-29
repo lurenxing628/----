@@ -1078,7 +1078,10 @@ async function unifiedGenerationContracts() {
   assert.strictEqual(local.APSPlanContract.workspace(plan, raw.adopted_plan_workspace.plan.plan_ref, {}), plan);
   const algorithm = raw.candidate_workspace.generation.algorithm;
   assert.deepEqual(algorithm.target_objectives, ['min_overdue', 'min_tardiness', 'min_changeover'], '真实 canonical JSON 往返保留保存的主目标优先顺序');
-  assert.deepEqual(algorithm, raw.adopted_plan_workspace.provenance.algorithm, '真实候选和正式采用计划沿同一份共同算法元数据');
+  const { evaluations: _evaluations, ...algorithmSummary } = algorithm;
+  assert.deepEqual(algorithmSummary, raw.adopted_plan_workspace.provenance.algorithm, '真实候选和正式采用计划沿同一份共同算法元数据摘要');
+  const bloatedPlan = clone(plan); bloatedPlan.data.provenance.algorithm.evaluations = algorithm.evaluations;
+  assert.throws(() => local.APSPlanContract.workspace(bloatedPlan, raw.adopted_plan_workspace.plan.plan_ref, {}), undefined, '正式采用计划来源算法摘要不携带庞大评分明细');
   for (const value of [workspace, plan]) {
     const wrong = clone(value), item = wrong.data.generation ? wrong.data.generation.algorithm : wrong.data.provenance.algorithm;
     item.target_objectives.reverse();

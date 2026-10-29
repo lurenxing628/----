@@ -7,10 +7,9 @@ from core.models.workbench_run_candidate import reference
 
 from .candidate_effort import candidate_operation_effort_projection
 from .candidate_facts import GenerationFacts
-from .candidate_projection import completed_dispositions, validate_manifest
+from .candidate_projection import validate_manifest
 from .candidate_tasks import tasks_projection_with_intervals, unplanned_projection
 from .candidate_values import corrupt
-from .decision_metrics import admission_operation_refs
 from .gantt_graph import candidate_gantt_graph
 
 
@@ -28,6 +27,7 @@ class CandidateReadSource:
     scheduled_op_ids: set
     # validate_manifest rejects a missing receipt whenever its candidate rows exist.
     receipt: dict
+    task_intervals: dict
 
     @property
     def snapshot_identity(self):
@@ -37,7 +37,7 @@ class CandidateReadSource:
 
     @cached_property
     def gantt_graph(self):
-        return candidate_gantt_graph(self.tasks, self.facts, self.raw_tasks)
+        return candidate_gantt_graph(self.tasks, self.facts, self.raw_tasks, task_intervals=self.task_intervals)
 
     @cached_property
     def operation_effort_projection(self):
@@ -68,8 +68,8 @@ def read_candidate_source(store, candidate_ref, *, prepared=None):
         if candidate is None:
             corrupt()
         capture = store.capture(run_ref)
-        facts = GenerationFacts(capture)
-        disposition = completed_dispositions(receipt, expected_refs=admission_operation_refs(facts, capture["input"]))
+        facts = store.generation_facts(capture)
+        disposition = store.dispositions(receipt, facts, capture)
         raw_tasks = store.tasks(candidate_ref)
         tasks = None
     else:
@@ -83,10 +83,11 @@ def read_candidate_source(store, candidate_ref, *, prepared=None):
     if tasks is None:
         if len(raw_tasks) != candidate["task_count"]:
             corrupt()
-        tasks, _, ids = tasks_projection_with_intervals(raw_tasks, candidate, facts)
+        tasks, intervals, ids = tasks_projection_with_intervals(raw_tasks, candidate, facts)
     else:
         assert prepared is not None
         ids = prepared["scheduled_op_ids"]
+        intervals = prepared["task_intervals"]
     unplanned = unplanned_projection(disposition, tasks, facts)
     return CandidateReadSource(run, candidate, disposition, capture, facts, raw_tasks, tasks, unplanned, rows, ids,
-                               receipt=receipt)
+                               receipt=receipt, task_intervals=intervals)

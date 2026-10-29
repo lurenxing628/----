@@ -2968,6 +2968,7 @@ function SMExport({
     min_changeover: ['failed_ops', 'changeover_count', 'overdue_count', 'total_tardiness_hours', 'weighted_tardiness_hours', 'makespan_hours']
   };
   const metadataKeys = ['generation_policy_version', 'representative_objectives', 'evaluations', 'origin', 'first_found_elapsed_ms', 'search_evidence_ref'];
+  const summaryKeys = ['generation_policy_version', 'representative_objectives', 'origin', 'first_found_elapsed_ms', 'search_evidence_ref'];
   const unified = value => object(value) && value.generation_policy_version === 'unified_search_v1';
   const budget = value => Number.isInteger(value) && value >= 1;
   const objective = value => text(value) && Object.prototype.hasOwnProperty.call(labels, value);
@@ -2994,12 +2995,19 @@ function SMExport({
   function metadata(value, runRef) {
     return unified(value) && objectives(value.representative_objectives) && evaluations(value.evaluations) && value.representative_objectives.every(name => Object.prototype.hasOwnProperty.call(value.evaluations, name)) && origin(value.origin) && number(value.first_found_elapsed_ms) && evidence(value.search_evidence_ref, runRef);
   }
+  function metadataSummary(value, runRef) {
+    return unified(value) && objectives(value.representative_objectives) && value.representative_objectives.length > 0 && origin(value.origin) && number(value.first_found_elapsed_ms) && evidence(value.search_evidence_ref, runRef);
+  }
   function catalogElapsed(value) {
     return shape(value, ['value', 'state', 'reason']) && value.value === null && value.state === 'not_applicable' && shape(value.reason, ['field', 'code', 'message']) && value.reason.field === 'elapsed_seconds' && value.reason.code === 'shared_run_time' && text(value.reason.message);
   }
   function algorithm(value, runRef) {
     const fields = ['mode', 'mode_label', 'strategy', 'strategy_label'];
     return shape(value, fields.concat(metadataKeys, ['primary_objective', 'target_objectives'])) && fields.every(key => value[key] === null || text(value[key])) && metadata(value, runRef) && objective(value.primary_objective) && sameArray(value.target_objectives, targets(value.primary_objective));
+  }
+  function algorithmSummary(value, runRef) {
+    const fields = ['mode', 'mode_label', 'strategy', 'strategy_label'];
+    return shape(value, fields.concat(summaryKeys, ['primary_objective', 'target_objectives'])) && fields.every(key => value[key] === null || text(value[key])) && metadataSummary(value, runRef) && objective(value.primary_objective) && sameArray(value.target_objectives, targets(value.primary_objective)) && value.representative_objectives.every(name => value.target_objectives.includes(name));
   }
   function selectionBasis(value, candidates) {
     const fields = ['generation_policy_version', 'selection_policy_version', 'primary_objective', 'target_objectives', 'selected_candidate_ref', 'objective_winners', 'objective_winner_reasons', 'objective_field_order', 'selected_score', 'reason_code', 'scoring_scope', 'evidence_state', 'explanation'];
@@ -3017,6 +3025,7 @@ function SMExport({
   }
   window.RunGenerationContract = {
     metadataKeys,
+    summaryKeys,
     budget,
     objective,
     objectives,
@@ -3030,8 +3039,10 @@ function SMExport({
     origin,
     evidence,
     metadata,
+    metadataSummary,
     catalogElapsed,
     algorithm,
+    algorithmSummary,
     selectionBasis
   };
 })();
@@ -5099,9 +5110,12 @@ function SMExport({
     processLabel,
     completeCount
   }) {
-    if (!object(graph) || Reflect.ownKeys(graph).length !== 6 || graph.scope !== scope || !['available', 'unavailable'].includes(graph.state) || !['nodes', 'critical_task_refs', 'critical_edges'].every(key => Array.isArray(graph[key]))) return false;
-    if (graph.state === 'unavailable') return typeof graph.reason === 'string' && !!graph.reason.trim() && !graph.nodes.length && !graph.critical_task_refs.length && !graph.critical_edges.length;
-    if (graph.reason !== null || completeCount !== undefined && graph.nodes.length !== completeCount) return false;
+    const keyCount = object(graph) ? Reflect.ownKeys(graph).length : 0,
+      hasCounts = keyCount === 8;
+    if (keyCount !== 6 && !hasCounts || graph.scope !== scope || !['available', 'unavailable'].includes(graph.state) || !['nodes', 'critical_task_refs', 'critical_edges'].every(key => Array.isArray(graph[key])) || hasCounts && (!Number.isSafeInteger(graph.node_count) || graph.node_count < 0 || typeof graph.nodes_complete !== 'boolean')) return false;
+    if (graph.state === 'unavailable') return typeof graph.reason === 'string' && !!graph.reason.trim() && !graph.nodes.length && !graph.critical_task_refs.length && !graph.critical_edges.length && (!hasCounts || graph.node_count === 0 && graph.nodes_complete === false);
+    if (hasCounts && graph.nodes_complete === false) return scope === 'full_plan' && graph.reason === null && !graph.nodes.length && !graph.critical_task_refs.length && !graph.critical_edges.length && graph.node_count > 0 && (completeCount === undefined || graph.node_count === completeCount) && graph.node_count >= tasks.length;
+    if (graph.reason !== null || hasCounts && graph.node_count !== graph.nodes.length || completeCount !== undefined && graph.nodes.length !== completeCount) return false;
     const nodes = new Map();
     for (const node of graph.nodes) {
       if (!object(node) || !ref(node.task_ref) || !ref(node.operation_ref) || nodes.has(node.task_ref) || typeof node.batch_id !== 'string' || !node.batch_id.trim() || !(node.piece_id === null || typeof node.piece_id === 'string' && !!node.piece_id.trim()) || !sequence(node.sequence) || !processLabel(node.process_label) || !time(node.start) || !time(node.end) || node.end < node.start || !Array.isArray(node.predecessor_operation_refs) || !node.predecessor_operation_refs.every(ref) || new Set(node.predecessor_operation_refs).size !== node.predecessor_operation_refs.length || node.predecessor_operation_refs.includes(node.operation_ref)) return false;
@@ -5510,6 +5524,40 @@ function SMExport({
     if (start !== end || start && (!localTime(query.range_start) || !localTime(query.range_end) || query.range_start >= query.range_end)) throw C.failure('读取的开始时间和结束时间要一起填，开始必须早于结束。请按 2026-09-13 08:30 这样填。');
     return query;
   }
+  function tasksScope(planRef, scope = {}) {
+    if (!ref(planRef)) throw C.failure('这条计划记录已失效，请回到计划列表重新选择。');
+    const query = parameters(scope, ['range_start', 'range_end', 'snapshot_ref', 'page', 'size']);
+    if (!own(query, 'snapshot_ref') || !token(query.snapshot_ref)) throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
+    const start = own(query, 'range_start'),
+      end = own(query, 'range_end');
+    if (start !== end || start && (!localTime(query.range_start) || !localTime(query.range_end) || query.range_start >= query.range_end)) throw C.failure('读取的开始时间和结束时间要一起填，开始必须早于结束。请按 2026-09-13 08:30 这样填。');
+    if (!own(query, 'page')) query.page = 1;
+    if (!own(query, 'size')) query.size = 5000;
+    if (!Number.isSafeInteger(query.page) || query.page < 1 || !Number.isSafeInteger(query.size) || query.size < 1 || query.size > 5000) throw C.failure('工序安排分页参数无效，请刷新后重试。');
+    return query;
+  }
+  function ganttGraphScope(planRef, scope = {}) {
+    const query = workspaceScope(planRef, scope);
+    if (!own(query, 'snapshot_ref') || !token(query.snapshot_ref)) throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
+    return query;
+  }
+  function capacityScope(planRef, scope = {}) {
+    const query = workspaceScope(planRef, scope);
+    if (!own(query, 'snapshot_ref') || !token(query.snapshot_ref)) throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
+    return query;
+  }
+  function baselineScope(planRef, scope = {}) {
+    if (!ref(planRef)) throw C.failure('这条计划记录已失效，请回到计划列表重新选择。');
+    const query = parameters(scope, ['range_start', 'range_end', 'snapshot_ref', 'page', 'size']);
+    if (!own(query, 'snapshot_ref') || !token(query.snapshot_ref)) throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
+    const start = own(query, 'range_start'),
+      end = own(query, 'range_end');
+    if (start !== end || start && (!localTime(query.range_start) || !localTime(query.range_end) || query.range_start >= query.range_end)) throw C.failure('读取的开始时间和结束时间要一起填，开始必须早于结束。请按 2026-09-13 08:30 这样填。');
+    if (!own(query, 'page')) query.page = 1;
+    if (!own(query, 'size')) query.size = 5000;
+    if (!Number.isSafeInteger(query.page) || query.page < 1 || !Number.isSafeInteger(query.size) || query.size < 1 || query.size > 5000) throw C.failure('原安排对照分页参数无效，请刷新后重试。');
+    return query;
+  }
   function exportScope(planRef, scope) {
     const query = parameters(scope, ['format', 'range_start', 'range_end', 'snapshot_ref']);
     if (!['csv', 'xlsx'].includes(query.format) || !own(query, 'snapshot_ref')) throw C.failure('导出没有拿到文件格式或当前数据版本，这次没有导出。请刷新后重新点「导出」。');
@@ -5565,6 +5613,8 @@ function SMExport({
   const sameArray = (a, b) => Array.isArray(a) && a.length === b.length && a.every((v, i) => v === b[i]);
   const inScope = (row, scope) => !!row && (scope.range_start === null || P.overlaps(row, scope.range_start, scope.range_end));
   const states = ['available', 'partial', 'unavailable'];
+  const baselineUnavailableReasons = ['not_recorded', 'baseline_binding_invalid', 'baseline_unavailable', 'baseline_task_invalid', 'no_adoption_baseline', 'adoption_evidence_missing', 'adoption_source_archived', 'adoption_snapshot_invalid', 'adoption_baseline_archived', 'adoption_reference_invalid', 'adoption_baseline_drift', 'adoption_plan_drift'];
+  const comparedFields = ['start', 'end', 'machine_ref', 'operator_ref'];
   function resourceDirectory(data) {
     if (!Array.isArray(data.resources) || !uniqueRefs(data.resources, 'ref')) return null;
     const byRef = new Map();
@@ -5572,30 +5622,39 @@ function SMExport({
       if (!exact(row, ['kind', 'ref', 'business_code', 'label']) || !['machine', 'operator', 'supplier'].includes(row.kind) || !ref(row.ref) || !label(row.business_code) || !nullableLabel(row.label)) return null;
       byRef.set(row.ref, row);
     }
-    const used = new Set();
-    const tasks = data.tasks.concat(data.projections.baseline.items.flatMap(row => [row.before, !row.after_in_scope && row.after].filter(Boolean)));
+    const used = new Set(),
+      b = data.projections.baseline;
+    const tasks = data.tasks.concat(b.items.flatMap(row => [row.before, !row.after_in_scope && row.after].filter(Boolean)));
     for (const row of tasks) for (const kind of ['machine', 'operator', 'supplier']) {
       const value = row[kind + '_ref'];
       if (value === null) continue;
       if (!byRef.has(value) || byRef.get(value).kind !== kind) return null;
       used.add(value);
     }
-    return used.size === byRef.size ? byRef : null;
+    return data.tasks_complete === false || b.state === 'available' && b.items_complete === false || used.size === byRef.size ? byRef : null;
   }
-  function baseline(value, data) {
-    if (!object(value)) return false;
-    if (value.state === 'unavailable') return exact(value, ['state', 'reason_code', 'reason', 'baseline_plan', 'items', 'item_count', 'items_complete']) && ['not_recorded', 'baseline_binding_invalid', 'baseline_unavailable', 'baseline_task_invalid', 'no_adoption_baseline', 'adoption_evidence_missing', 'adoption_source_archived', 'adoption_snapshot_invalid', 'adoption_baseline_archived', 'adoption_reference_invalid', 'adoption_baseline_drift', 'adoption_plan_drift'].includes(value.reason_code) && label(value.reason) && value.baseline_plan === null && Array.isArray(value.items) && value.items.length === 0 && value.item_count === 0 && value.items_complete === false;
-    const fields = ['start', 'end', 'machine_ref', 'operator_ref'],
-      s = value.comparison_scope;
-    if (!exact(value, ['state', 'reason_code', 'reason', 'basis', 'baseline_plan', 'comparison_scope', 'compared_fields', 'items', 'item_count', 'items_complete']) || value.state !== 'available' || value.reason_code !== null || value.reason !== null || !['candidate_adoption', 'trial_adoption'].includes(value.basis) || !plan(value.baseline_plan) || !value.baseline_plan.capabilities.view || value.baseline_plan.is_current_official || value.baseline_plan.plan_ref === data.plan.plan_ref || !exact(s, ['scope', 'selection', 'boundary', 'alignment', 'time_basis', 'task_times']) || !same(s.scope, data.scope) || s.selection !== 'either_side_overlap' || s.boundary !== 'half_open' || s.alignment !== 'operation_ref' || s.time_basis !== 'factory_local' || s.task_times !== 'unclipped' || !sameArray(value.compared_fields, fields) || !Array.isArray(value.items) || value.item_count !== value.items.length || value.item_count > 20000 || value.items_complete !== true || !uniqueRefs(value.items, 'operation_ref')) return false;
+  function baselineHeader(value, data) {
+    const s = value.comparison_scope;
+    return value.state === 'available' && value.reason_code === null && value.reason === null && ['candidate_adoption', 'trial_adoption'].includes(value.basis) && plan(value.baseline_plan) && value.baseline_plan.capabilities.view && !value.baseline_plan.is_current_official && (!data || value.baseline_plan.plan_ref !== data.plan.plan_ref) && exact(s, ['scope', 'selection', 'boundary', 'alignment', 'time_basis', 'task_times']) && (!data || same(s.scope, data.scope)) && s.selection === 'either_side_overlap' && s.boundary === 'half_open' && s.alignment === 'operation_ref' && s.time_basis === 'factory_local' && s.task_times === 'unclipped' && sameArray(value.compared_fields, comparedFields) && Array.isArray(value.items) && count(value.item_count) && value.item_count <= 20000 && typeof value.items_complete === 'boolean';
+  }
+  function baselineRows(value, data, resolveAfter = false, complete = true) {
+    if (!uniqueRefs(value.items, 'operation_ref')) return false;
+    if (!data) {
+      return value.items.every(row => exact(row, ['operation_ref', 'change', 'changed_fields', 'before', 'after', 'before_in_scope', 'after_in_scope']) && ref(row.operation_ref) && typeof row.before_in_scope === 'boolean' && typeof row.after_in_scope === 'boolean' && (row.before_in_scope || row.after_in_scope) && ['added', 'removed', 'changed', 'unchanged'].includes(row.change) && Array.isArray(row.changed_fields) && row.changed_fields.every(key => comparedFields.includes(key)) && (row.before !== null || row.after !== null) && (row.before === null || task(row.before, value.baseline_plan.plan_ref) && row.before.operation_ref === row.operation_ref) && (row.after === null || row.after_in_scope && exact(row.after, ['task_ref']) && ref(row.after.task_ref) || task(row.after, value.comparison_scope.scope.plan_ref) && row.after.operation_ref === row.operation_ref));
+    }
     const selected = new Map(data.tasks.map(row => [row.task_ref, row]));
     let afterCount = 0;
     for (const row of value.items) {
       if (!exact(row, ['operation_ref', 'change', 'changed_fields', 'before', 'after', 'before_in_scope', 'after_in_scope']) || !ref(row.operation_ref)) return false;
+      if (resolveAfter && row.after_in_scope === true && exact(row.after, ['task_ref'])) {
+        const matched = selected.get(row.after.task_ref);
+        if (!matched) return false;
+        row.after = matched;
+      }
       const before = row.before,
         after = row.after;
       if (before === null && after === null || before !== null && (!task(before, value.baseline_plan.plan_ref) || before.operation_ref !== row.operation_ref) || after !== null && (!task(after, data.plan.plan_ref) || after.operation_ref !== row.operation_ref)) return false;
-      const changed = before && after ? fields.filter(key => before[key] !== after[key]) : [];
+      const changed = before && after ? comparedFields.filter(key => before[key] !== after[key]) : [];
       const change = before === null ? 'added' : after === null ? 'removed' : changed.length ? 'changed' : 'unchanged';
       if (row.change !== change || !sameArray(row.changed_fields, changed) || row.before_in_scope !== inScope(before, data.scope) || row.after_in_scope !== inScope(after, data.scope) || !row.before_in_scope && !row.after_in_scope) return false;
       if (row.after_in_scope) {
@@ -5603,7 +5662,34 @@ function SMExport({
         afterCount++;
       }
     }
-    return afterCount === data.tasks.length;
+    return complete ? afterCount === data.tasks.length : afterCount <= data.tasks.length;
+  }
+  function baseline(value, data = null) {
+    if (!object(value)) return false;
+    if (value.state === 'unavailable') return exact(value, ['state', 'reason_code', 'reason', 'baseline_plan', 'items', 'item_count', 'items_complete']) && baselineUnavailableReasons.includes(value.reason_code) && label(value.reason) && value.baseline_plan === null && Array.isArray(value.items) && value.items.length === 0 && value.item_count === 0 && value.items_complete === false;
+    if (!exact(value, ['state', 'reason_code', 'reason', 'basis', 'baseline_plan', 'comparison_scope', 'compared_fields', 'items', 'item_count', 'items_complete']) || !baselineHeader(value, data || null)) return false;
+    if (!value.items_complete) return value.items.length === 0 && value.item_count > 0 && value.item_count <= 20000 && (!data || value.item_count >= data.tasks.length);
+    return value.item_count === value.items.length && baselineRows(value, data || null, false, true);
+  }
+  function baselinePage(result, workspaceData, query = {}) {
+    if (!object(query) || !own(query, 'snapshot_ref') || !token(query.snapshot_ref)) throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
+    envelope(result, query);
+    const d = result.data,
+      p = d && d.page,
+      data = workspaceData && workspaceData.data ? workspaceData.data : workspaceData;
+    if (workspaceData !== null && workspaceData !== undefined && (!object(data) || !object(data.plan) || !object(data.scope) || !Array.isArray(data.tasks))) throw C.failure('原安排对照的分页或明细与所选计划不一致，请刷新。');
+    const validPage = exact(p, ['number', 'size', 'total', 'pages', 'has_more']) && count(p.number) && p.number >= 1 && (!own(query, 'page') || p.number === query.page) && count(p.size) && p.size >= 1 && p.size <= 5000 && (!own(query, 'size') || p.size === query.size) && object(d) && count(p.total) && p.total === d.item_count && p.total <= 20000 && count(p.pages) && (p.total === 0 ? p.pages <= 1 : p.pages === Math.ceil(p.total / p.size)) && typeof p.has_more === 'boolean' && p.has_more === p.number * p.size < p.total && Array.isArray(d.items) && d.items.length === Math.min(p.size, Math.max(0, p.total - (p.number - 1) * p.size)) && typeof d.items_complete === 'boolean' && (d.state === 'unavailable' ? !d.items_complete : p.has_more ? !d.items_complete : p.number > 1 || d.items_complete);
+    if (!validPage) throw C.failure('原安排对照的分页或明细与所选计划不一致，请刷新。');
+    if (d.state === 'unavailable') {
+      const {
+        page: _page,
+        ...rest
+      } = d;
+      if (!baseline(rest, data)) throw C.failure('原安排对照的分页或明细与所选计划不一致，请刷新。');
+      return result;
+    }
+    if (!exact(d, ['state', 'reason_code', 'reason', 'basis', 'baseline_plan', 'comparison_scope', 'compared_fields', 'items', 'item_count', 'items_complete', 'page']) || !baselineHeader(d, data || null) || !baselineRows(d, data || null, true, d.items.length === d.item_count)) throw C.failure('原安排对照的分页或明细与所选计划不一致，请刷新。');
+    return result;
   }
   function projectionIssues(rows, assignment = false) {
     return Array.isArray(rows) && rows.every(row => {
@@ -5616,7 +5702,7 @@ function SMExport({
   function intervals(rows, time, extra, validate) {
     return Array.isArray(rows) && rows.every((row, index) => exact(row, ['start', 'end', ...extra]) && localTime(row.start) && localTime(row.end) && row.start < row.end && row.start >= time.range_start && row.end <= time.range_end && (!index || rows[index - 1].end <= row.start) && validate(row));
   }
-  function calendarRow(row, time, resource = false) {
+  function calendarRow(row, time, resource = false, windowsComplete = true) {
     if (!object(row) || !['available', 'unavailable'].includes(row.state)) return false;
     const extra = resource ? ['kind', 'resource_ref', 'label'] : [];
     if (resource && own(row, 'status')) extra.push('status');
@@ -5625,6 +5711,7 @@ function SMExport({
     if (own(row, 'status') && !(row.kind === 'machine' ? ['active', 'inactive', 'maintain'] : ['active', 'inactive']).includes(row.status)) return false;
     if (row.state === 'unavailable') return row.windows === null && row.issues.length > 0 && measures.every(key => row[key] === null);
     if (!measures.every(key => number(row[key])) || row.issues.length) return false;
+    if (!windowsComplete && (!Array.isArray(row.windows) || row.windows.length !== 0 || resource && (!Array.isArray(row.downtime_windows) || row.downtime_windows.length !== 0))) return false;
     if (!intervals(row.windows, time, ['policy_date', 'allow_normal', 'allow_urgent', 'efficiency', 'provenance'], window => day(window.policy_date) && typeof window.allow_normal === 'boolean' && typeof window.allow_urgent === 'boolean' && number(window.efficiency) && ['personal_calendar', 'work_calendar', 'domain_default', 'work_calendar_operator_shift', 'domain_default_operator_shift'].includes(window.provenance))) return false;
     return !resource || own(row, 'status') && (row.status === 'active' || row.windows.length === 0) && number(row.downtime_scope_hours) && number(row.downtime_available_hours) && intervals(row.downtime_windows, time, [], () => true);
   }
@@ -5636,16 +5723,16 @@ function SMExport({
     });
   }
   function calendar(value, data, resourcesByRef) {
-    if (!exact(value, ['state', 'plan_ref', 'time_scope', 'global', 'resources', 'issues']) || !states.includes(value.state) || value.plan_ref !== data.plan.plan_ref || !same(value.time_scope, data.time_scope) || !projectionIssues(value.issues) || !calendarRow(value.global, data.time_scope)) return false;
+    if (!exact(value, ['state', 'plan_ref', 'time_scope', 'global', 'resources', 'issues', 'windows_complete']) || !states.includes(value.state) || typeof value.windows_complete !== 'boolean' || value.state === 'unavailable' && value.windows_complete !== false || value.plan_ref !== data.plan.plan_ref || !same(value.time_scope, data.time_scope) || !projectionIssues(value.issues) || !calendarRow(value.global, data.time_scope, false, value.windows_complete)) return false;
     if (value.resources === null) return value.state === 'unavailable' && value.global.state === 'unavailable' && value.issues.length > 0;
-    if (!projectedResources(value.resources, resourcesByRef) || !value.resources.every(row => calendarRow(row, data.time_scope, true)) || value.issues.length) return false;
+    if (!projectedResources(value.resources, resourcesByRef) || !value.resources.every(row => calendarRow(row, data.time_scope, true, value.windows_complete)) || value.issues.length) return false;
     const all = [value.global, ...value.resources];
     return value.state === (all.every(row => row.state === 'available') ? 'available' : all.every(row => row.state === 'unavailable') ? 'unavailable' : 'partial');
   }
-  function occupancyRow(row, data, calendars) {
+  function occupancyRow(row, data, calendars, segmentsComplete = true) {
     const known = ['arranged_hours', 'occupied_hours', 'overlap_hours', 'excess_arranged_hours'];
     const capacity = ['available_hours', 'available_occupied_hours', 'outside_available_hours', 'capacity_shortfall_hours'];
-    if (!exact(row, ['kind', 'resource_ref', 'label', ...known, ...capacity, 'state', 'operation_count', 'capacity_basis', 'utilization', 'has_overlap', 'capacity_insufficient', 'issues', 'segments', 'metric_version', 'available_overlap_hours', 'outside_calendar_basis', 'conflict_basis', 'conflict_segments']) || !['machine', 'operator'].includes(row.kind) || !['available', 'unavailable'].includes(row.state) || !known.every(key => number(row[key])) || !count(row.operation_count) || row.operation_count === 0 || !projectionIssues(row.issues) || !intervals(row.segments, data.time_scope, ['concurrent_operations'], segment => count(segment.concurrent_operations) && segment.concurrent_operations > 0) || row.metric_version !== 'decision-resource-v4' || row.outside_calendar_basis !== 'reservation_span_outside_work_calendar' || row.conflict_basis !== 'work_calendar_reservation_overlap') return false;
+    if (!exact(row, ['kind', 'resource_ref', 'label', ...known, ...capacity, 'state', 'operation_count', 'capacity_basis', 'utilization', 'has_overlap', 'capacity_insufficient', 'issues', 'segments', 'metric_version', 'available_overlap_hours', 'outside_calendar_basis', 'conflict_basis', 'conflict_segments']) || !['machine', 'operator'].includes(row.kind) || !['available', 'unavailable'].includes(row.state) || !known.every(key => number(row[key])) || !count(row.operation_count) || row.operation_count === 0 || !projectionIssues(row.issues) || !(segmentsComplete ? intervals(row.segments, data.time_scope, ['concurrent_operations'], segment => count(segment.concurrent_operations) && segment.concurrent_operations > 0) : intervals(row.segments, data.time_scope, ['concurrent_operations'], segment => count(segment.concurrent_operations) && segment.concurrent_operations > 1) && row.overlap_hours > 0 === row.segments.length > 0) || row.metric_version !== 'decision-resource-v4' || row.outside_calendar_basis !== 'reservation_span_outside_work_calendar' || row.conflict_basis !== 'work_calendar_reservation_overlap') return false;
     if (row.available_overlap_hours === null) {
       if (row.has_overlap !== null || row.conflict_segments !== null) return false;
     } else if (!number(row.available_overlap_hours) || row.has_overlap !== row.available_overlap_hours > 1e-9 || !intervals(row.conflict_segments, data.time_scope, ['concurrent_operations'], segment => count(segment.concurrent_operations) && segment.concurrent_operations > 1)) return false;
@@ -5655,12 +5742,12 @@ function SMExport({
     if (row.state === 'unavailable') return (!source || source.state === 'unavailable') && capacity.every(key => row[key] === null) && row.available_overlap_hours === null && row.utilization === null && row.capacity_insufficient === null && row.issues.length > 0;
     return source && source.state === 'available' && capacity.every(key => number(row[key])) && row.available_hours === source.available_hours && number(row.available_overlap_hours) && typeof row.capacity_insufficient === 'boolean' && (row.available_hours === 0 ? row.utilization === null : number(row.utilization) && row.utilization <= 1);
   }
-  function occupancy(value, data, resourcesByRef) {
-    if (!exact(value, ['state', 'plan_ref', 'time_scope', 'basis', 'resources', 'issues']) || !states.includes(value.state) || value.plan_ref !== data.plan.plan_ref || !same(value.time_scope, data.time_scope) || value.basis !== 'selected_plan_only' || !projectedResources(value.resources, resourcesByRef) || !projectionIssues(value.issues, true)) return false;
+  function occupancy(value, data, resourcesByRef, calendarProjection = data.projections.calendar) {
+    if (!exact(value, ['state', 'plan_ref', 'time_scope', 'basis', 'resources', 'issues', 'segments_complete']) || !states.includes(value.state) || typeof value.segments_complete !== 'boolean' || value.plan_ref !== data.plan.plan_ref || !same(value.time_scope, data.time_scope) || value.basis !== 'selected_plan_only' || !projectedResources(value.resources, resourcesByRef) || !projectionIssues(value.issues, true)) return false;
     // 日历投影不可用时 resources 为 null（见 calendar()），此时没有可对照的资源日历。
-    const resources = data.projections.calendar.resources,
+    const resources = calendarProjection.resources,
       calendars = new Map(resources === null ? [] : resources.map(row => [row.resource_ref, row]));
-    if (!value.resources.every(row => occupancyRow(row, data, calendars))) return false;
+    if (!value.resources.every(row => occupancyRow(row, data, calendars, value.segments_complete))) return false;
     const unknown = value.issues.some(row => row.code === 'assignment_source_unknown');
     const state = unknown ? value.resources.length ? 'partial' : 'unavailable' : value.resources.every(row => row.state === 'available') ? 'available' : value.resources.every(row => row.state === 'unavailable') ? 'unavailable' : 'partial';
     return value.state === state;
@@ -5687,7 +5774,7 @@ function SMExport({
     const batches = new Set(data.tasks.map(row => row.batch_id));
     const s = value.summary;
     const deliveryBatches = new Set(value.items.map(row => row.batch_id));
-    return [...batches].every(batchId => deliveryBatches.has(batchId)) && value.items.every(row => batches.has(row.batch_id) || data.scope.range_start === null && row.completion_state === 'deferred' && row.deferred_operation_count > 0) && ['complete', 'incomplete', 'unknown'].includes(value.completeness) && window.DeliveryProjectionContract.summary(s) && s.batch_count === value.batch_count;
+    return [...batches].every(batchId => deliveryBatches.has(batchId)) && (data.tasks_complete === false || value.items.every(row => batches.has(row.batch_id) || data.scope.range_start === null && row.completion_state === 'deferred' && row.deferred_operation_count > 0)) && ['complete', 'incomplete', 'unknown'].includes(value.completeness) && window.DeliveryProjectionContract.summary(s) && s.batch_count === value.batch_count;
   }
   function workspaceSpans(data, query) {
     const time = data.time_scope;
@@ -5697,15 +5784,18 @@ function SMExport({
     const explicit = own(query, 'range_start'),
       inclusive = data.plan_span.end_inclusive === true;
     const includesEnd = !explicit || query.range_start <= data.plan_span.end && query.range_end > data.plan_span.end;
-    if (inclusive && includesEnd && !data.tasks.some(row => P.isPoint(row) && row.end === data.plan_span.end)) return false;
+    if (inclusive && includesEnd && data.tasks_complete !== false && !data.tasks.some(row => P.isPoint(row) && row.end === data.plan_span.end)) return false;
     const whole = !explicit || query.range_start <= data.plan_span.start && (query.range_end > data.plan_span.end || !inclusive && query.range_end === data.plan_span.end);
-    if (!data.tasks.length) return data.task_span === null && !whole;
+    if (!data.tasks.length) return data.tasks_complete !== false && data.task_span === null && !whole;
     if (!span(data.task_span)) return false;
     let start = data.tasks[0].start,
       end = data.tasks[0].end;
     for (const row of data.tasks) {
       if (row.start < start) start = row.start;
       if (row.end > end) end = row.end;
+    }
+    if (data.tasks_complete === false) {
+      return start >= data.task_span.start && end <= data.task_span.end && (!whole || data.task_span.start === data.plan_span.start && data.task_span.end === data.plan_span.end);
     }
     return data.task_span.start === start && data.task_span.end === end && (!whole || start === data.plan_span.start && end === data.plan_span.end);
   }
@@ -5714,16 +5804,80 @@ function SMExport({
     if (value.state === 'unavailable') return label(value.reason) && ['source_kind', 'source_ref', 'source_label', 'run_ref', 'accepted_at', 'finished_at', 'adopted_at', 'algorithm', 'baseline'].every(key => value[key] === null);
     const origin = value.baseline,
       algorithm = value.algorithm;
-    return value.reason === null && ['candidate_adoption', 'trial_adoption'].includes(value.source_kind) && ref(value.source_ref) && nullableRef(value.run_ref) && nullableLabel(value.source_label) && ['accepted_at', 'finished_at', 'adopted_at'].every(key => nullableLabel(value[key])) && exact(origin, ['baseline_ref', 'version', 'kind', 'captured_at', 'captured_task_count']) && nullableRef(origin.baseline_ref) && (origin.version === null || int64(origin.version)) && ['admission_official', 'trial_creation_official'].includes(origin.kind) && label(origin.captured_at) && (origin.captured_task_count === null || count(origin.captured_task_count)) && (algorithm === null ? value.source_kind === 'trial_adoption' : window.RunGenerationContract.algorithm(algorithm, value.run_ref));
+    return value.reason === null && ['candidate_adoption', 'trial_adoption'].includes(value.source_kind) && ref(value.source_ref) && nullableRef(value.run_ref) && nullableLabel(value.source_label) && ['accepted_at', 'finished_at', 'adopted_at'].every(key => nullableLabel(value[key])) && exact(origin, ['baseline_ref', 'version', 'kind', 'captured_at', 'captured_task_count']) && nullableRef(origin.baseline_ref) && (origin.version === null || int64(origin.version)) && ['admission_official', 'trial_creation_official'].includes(origin.kind) && label(origin.captured_at) && (origin.captured_task_count === null || count(origin.captured_task_count)) && (algorithm === null ? value.source_kind === 'trial_adoption' : window.RunGenerationContract.algorithmSummary(algorithm, value.run_ref));
   }
   function processOrder(value) {
     if (!exact(value, ['state', 'basis', 'issues']) || !Array.isArray(value.issues) || !value.issues.every(row => exact(row, ['code', 'message']) && typeof row.code === 'string' && !!row.code && typeof row.message === 'string' && !!row.message)) return false;
     return value.state === 'available' ? ['run_admission', 'trial_creation'].includes(value.basis) && !value.issues.length : value.state === 'unavailable' && value.basis === null && value.issues.length > 0;
   }
-  function workspace(result, planRef, query) {
+  function tasksPage(result, workspaceData, query = {}) {
+    if (!object(query) || !own(query, 'snapshot_ref') || !token(query.snapshot_ref)) throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
+    envelope(result, query);
+    const d = result.data,
+      p = d && d.page,
+      data = workspaceData && workspaceData.data ? workspaceData.data : workspaceData;
+    if (workspaceData !== null && workspaceData !== undefined && (!object(data) || !object(data.plan) || !object(data.scope) || !object(data.time_scope) || !object(data.plan_span))) throw C.failure('工序安排的分页或明细与所选计划不一致，请刷新。');
+    const planRef = data ? data.plan.plan_ref : d && d.plan && d.plan.plan_ref;
+    const valid = exact(d, ['plan', 'scope', 'time_scope', 'plan_span', 'task_span', 'tasks', 'task_count', 'tasks_complete', 'page']) && plan(d.plan) && d.plan.capabilities.view && d.plan.plan_ref === planRef && exact(d.scope, ['source', 'kind', 'plan_ref', 'range_start', 'range_end']) && d.scope.source === 'production' && d.scope.kind === 'plan_workspace' && d.scope.plan_ref === planRef && d.scope.range_start === (own(query, 'range_start') ? query.range_start : null) && d.scope.range_end === (own(query, 'range_end') ? query.range_end : null) && workspaceSpans(d, query) && (!data || same(d.scope, data.scope) && same(d.time_scope, data.time_scope) && same(d.plan_span, data.plan_span) && (d.task_span === null ? data.task_span === null : same(d.task_span, data.task_span)) && d.task_count === data.task_count) && exact(p, ['number', 'size', 'total', 'pages', 'has_more']) && count(p.number) && p.number >= 1 && (!own(query, 'page') || p.number === query.page) && count(p.size) && p.size >= 1 && p.size <= 5000 && (!own(query, 'size') || p.size === query.size) && count(p.total) && count(d.task_count) && p.total === d.task_count && p.total <= 10000 && count(p.pages) && (p.total === 0 ? p.pages <= 1 : p.pages === Math.ceil(p.total / p.size)) && typeof p.has_more === 'boolean' && p.has_more === p.number * p.size < p.total && Array.isArray(d.tasks) && d.tasks.length === Math.min(p.size, Math.max(0, p.total - (p.number - 1) * p.size)) && typeof d.tasks_complete === 'boolean' && (p.has_more ? !d.tasks_complete : p.number > 1 || d.tasks_complete) && (d.task_count === 0 ? d.task_span === null : span(d.task_span)) && d.tasks.every(row => task(row, planRef, d.plan_span, own(query, 'range_start') ? d.time_scope : null) && (!d.task_span || row.start >= d.task_span.start && row.end <= d.task_span.end)) && uniqueRefs(d.tasks, 'task_ref');
+    if (!valid) throw C.failure('工序安排的分页或明细与所选计划不一致，请刷新。');
+    return result;
+  }
+  function ganttGraph(result, workspaceData, query = {}) {
+    if (!object(query) || !own(query, 'snapshot_ref') || !token(query.snapshot_ref)) throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
+    envelope(result, query);
+    const d = result.data,
+      data = workspaceData && workspaceData.data ? workspaceData.data : workspaceData;
+    if (workspaceData !== null && workspaceData !== undefined && (!object(data) || !object(data.plan) || !object(data.scope) || !Array.isArray(data.tasks))) throw C.failure('工序衔接图与所选计划不一致，请刷新。');
+    const planRef = data ? data.plan.plan_ref : d && d.plan_ref;
+    const tasks = data ? data.tasks : [];
+    const completeCount = data ? data.scope.range_start === null ? data.task_count : data.gantt_graph && data.gantt_graph.state === 'available' ? data.gantt_graph.node_count : undefined : undefined;
+    if (!exact(d, ['plan_ref', 'scope', 'process_order', 'gantt_graph']) || !ref(d.plan_ref) || d.plan_ref !== planRef || !exact(d.scope, ['source', 'kind', 'plan_ref', 'range_start', 'range_end']) || d.scope.source !== 'production' || d.scope.kind !== 'plan_workspace' || d.scope.plan_ref !== planRef || d.scope.range_start !== (own(query, 'range_start') ? query.range_start : null) || d.scope.range_end !== (own(query, 'range_end') ? query.range_end : null) || data && !same(d.scope, data.scope) || !processOrder(d.process_order) || !object(d.gantt_graph) || Reflect.ownKeys(d.gantt_graph).length !== 8 || d.gantt_graph.state === 'available' && d.gantt_graph.nodes_complete !== true || !window.GanttGraph.validate(d.gantt_graph, {
+      scope: 'full_plan',
+      tasks,
+      taskRef: 'task_ref',
+      time: localTime,
+      sequence: int64,
+      processLabel: label,
+      completeCount
+    })) throw C.failure('工序衔接图与所选计划不一致，请刷新。');
+    return result;
+  }
+  function capacity(result, workspaceData, query = {}) {
+    if (!object(query) || !own(query, 'snapshot_ref') || !token(query.snapshot_ref)) throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
+    envelope(result, query);
+    const d = result.data,
+      data = workspaceData && workspaceData.data ? workspaceData.data : workspaceData;
+    if (workspaceData !== null && workspaceData !== undefined && (!object(data) || !object(data.plan) || !object(data.scope) || !object(data.time_scope))) throw C.failure('资源班表或负荷数据与所选计划不一致，请刷新。');
+    const planRef = data ? data.plan.plan_ref : d && d.plan_ref;
+    if (!exact(d, ['plan_ref', 'scope', 'time_scope', 'calendar', 'occupancy']) || !ref(d.plan_ref) || d.plan_ref !== planRef || !exact(d.scope, ['source', 'kind', 'plan_ref', 'range_start', 'range_end']) || d.scope.source !== 'production' || d.scope.kind !== 'plan_workspace' || d.scope.plan_ref !== planRef || d.scope.range_start !== (own(query, 'range_start') ? query.range_start : null) || d.scope.range_end !== (own(query, 'range_end') ? query.range_end : null) || !exact(d.time_scope, ['range_start', 'range_end', 'selection', 'boundary', 'time_basis']) || !localTime(d.time_scope.range_start) || !localTime(d.time_scope.range_end) || d.time_scope.range_start > d.time_scope.range_end || own(query, 'range_start') && (d.time_scope.range_start !== query.range_start || d.time_scope.range_end !== query.range_end) || d.time_scope.selection !== 'overlap' || d.time_scope.boundary !== 'half_open' || d.time_scope.time_basis !== 'factory_local' || data && (!same(d.scope, data.scope) || !same(d.time_scope, data.time_scope))) throw C.failure('资源班表或负荷数据与所选计划不一致，请刷新。');
+    const targetData = data || {
+      plan: {
+        plan_ref: planRef
+      },
+      scope: d.scope,
+      time_scope: d.time_scope,
+      projections: {
+        calendar: d.calendar
+      }
+    };
+    const resourcesByRef = data ? resourceDirectory(data) : new Map();
+    if (!data && object(d.calendar) && Array.isArray(d.calendar.resources)) {
+      for (const row of d.calendar.resources) {
+        if (object(row) && ['machine', 'operator'].includes(row.kind) && ref(row.resource_ref) && nullableLabel(row.label)) resourcesByRef.set(row.resource_ref, {
+          kind: row.kind,
+          ref: row.resource_ref,
+          label: row.label
+        });
+      }
+    }
+    if (!resourcesByRef || !calendar(d.calendar, targetData, resourcesByRef) || (d.calendar.state === 'unavailable' ? d.calendar.windows_complete !== false : d.calendar.windows_complete !== true) || !occupancy(d.occupancy, targetData, resourcesByRef, d.calendar) || d.occupancy.segments_complete !== true) throw C.failure('资源班表或负荷数据与所选计划不一致，请刷新。');
+    return result;
+  }
+  function workspace(result, planRef, query, options = {}) {
     envelope(result, query);
     const d = result.data;
-    if (!exact(d, ['plan', 'scope', 'time_scope', 'plan_span', 'task_span', 'tasks', 'task_count', 'tasks_complete', 'resources', 'projections', 'gantt_graph', 'provenance']) || !provenance(d.provenance) || !plan(d.plan) || !d.plan.capabilities.view || d.plan.plan_ref !== planRef || !exact(d.scope, ['source', 'kind', 'plan_ref', 'range_start', 'range_end']) || d.scope.source !== 'production' || d.scope.kind !== 'plan_workspace' || d.scope.plan_ref !== planRef || d.scope.range_start !== (own(query, 'range_start') ? query.range_start : null) || d.scope.range_end !== (own(query, 'range_end') ? query.range_end : null) || !workspaceSpans(d, query) || !Array.isArray(d.tasks) || !Number.isSafeInteger(d.task_count) || d.task_count !== d.tasks.length || d.task_count > 10000 || d.tasks_complete !== true || !d.tasks.every(row => task(row, planRef, d.plan_span, own(query, 'range_start') ? d.time_scope : null)) || !uniqueRefs(d.tasks, 'task_ref') || !taskSpans(d, query) || !exact(d.projections, projections) || !baseline(d.projections.baseline, d)) throw C.failure('工序安排、时间范围或分析数据与所选计划不一致，请刷新。');
+    const validTaskCount = count(d && d.task_count) && d.task_count <= 10000 && typeof d.tasks_complete === 'boolean' && (options && options.allowIncompleteTasks && d.tasks_complete === false ? Array.isArray(d.tasks) && d.tasks.length === 5000 && d.task_count > 5000 : d.tasks_complete === true && Array.isArray(d.tasks) && d.task_count === d.tasks.length);
+    if (!exact(d, ['plan', 'scope', 'time_scope', 'plan_span', 'task_span', 'tasks', 'task_count', 'tasks_complete', 'resources', 'projections', 'gantt_graph', 'provenance']) || !provenance(d.provenance) || !plan(d.plan) || !d.plan.capabilities.view || d.plan.plan_ref !== planRef || !exact(d.scope, ['source', 'kind', 'plan_ref', 'range_start', 'range_end']) || d.scope.source !== 'production' || d.scope.kind !== 'plan_workspace' || d.scope.plan_ref !== planRef || d.scope.range_start !== (own(query, 'range_start') ? query.range_start : null) || d.scope.range_end !== (own(query, 'range_end') ? query.range_end : null) || !workspaceSpans(d, query) || !validTaskCount || !d.tasks.every(row => task(row, planRef, d.plan_span, own(query, 'range_start') ? d.time_scope : null)) || !uniqueRefs(d.tasks, 'task_ref') || !taskSpans(d, query) || !exact(d.projections, projections) || !baseline(d.projections.baseline, d)) throw C.failure('工序安排、时间范围或分析数据与所选计划不一致，请刷新。');
     const resourcesByRef = resourceDirectory(d);
     if (!resourcesByRef || !calendar(d.projections.calendar, d, resourcesByRef) || !occupancy(d.projections.occupancy, d, resourcesByRef) || !delivery(d.projections.delivery_risks, d) || !processOrder(d.projections.process_order) || !window.GanttGraph.validate(d.gantt_graph, {
       scope: 'full_plan',
@@ -5732,16 +5886,25 @@ function SMExport({
       time: localTime,
       sequence: int64,
       processLabel: label,
-      completeCount: d.scope.range_start === null ? d.tasks.length : undefined
+      completeCount: d.scope.range_start === null ? d.task_count : undefined
     })) throw C.failure('工序安排、时间范围或分析数据与所选计划不一致，请刷新。');
     return result;
   }
   window.APSPlanContract = {
     catalogScope,
     workspaceScope,
+    tasksScope,
+    ganttGraphScope,
+    capacityScope,
+    baselineScope,
     exportScope,
     catalog,
-    workspace
+    workspace,
+    tasksPage,
+    ganttGraph,
+    capacity,
+    baseline,
+    baselinePage
   };
 })();
 
@@ -5761,11 +5924,108 @@ function SMExport({
     },
     async workspace(planRef, scope = {}, signal) {
       const C = window.APSPlanContract,
+        T = window.APSWorkbenchTransport,
         query = C.workspaceScope(planRef, scope);
-      return C.workspace(await window.APSWorkbenchTransport.read('/api/workbench/v1/plans/' + planRef + '/workspace', query, {
+      const first = C.workspace(await T.read('/api/workbench/v1/plans/' + planRef + '/workspace', query, {
         signal,
         timeout: 20000
-      }), planRef, query);
+      }), planRef, query, {
+        allowIncompleteTasks: true
+      });
+      if (first.data.tasks_complete === false) {
+        const tasks = first.data.tasks.slice(),
+          pages = Math.ceil(first.data.task_count / 5000);
+        for (let page = 2; page <= pages; page++) {
+          const pageQuery = C.tasksScope(planRef, {
+            ...query,
+            snapshot_ref: first.meta.snapshot_ref,
+            page,
+            size: 5000
+          });
+          const next = C.tasksPage(await T.read('/api/workbench/v1/plans/' + planRef + '/tasks', pageQuery, {
+            signal,
+            timeout: 20000
+          }), first.data, pageQuery);
+          tasks.push(...next.data.tasks);
+        }
+        first.data.tasks = tasks;
+        first.data.tasks_complete = true;
+        return C.workspace(first, planRef, query);
+      }
+      return first;
+    },
+    async tasks(planRef, scope = {}, workspaceData = null, signal) {
+      if (signal === undefined && workspaceData && typeof workspaceData.aborted === 'boolean') {
+        signal = workspaceData;
+        workspaceData = null;
+      }
+      const C = window.APSPlanContract,
+        T = window.APSWorkbenchTransport,
+        query = C.tasksScope(planRef, scope);
+      return C.tasksPage(await T.read('/api/workbench/v1/plans/' + planRef + '/tasks', query, {
+        signal,
+        timeout: 20000
+      }), workspaceData, query);
+    },
+    async ganttGraph(planRef, scope = {}, workspaceData = null, signal) {
+      if (signal === undefined && workspaceData && typeof workspaceData.aborted === 'boolean') {
+        signal = workspaceData;
+        workspaceData = null;
+      }
+      const C = window.APSPlanContract,
+        T = window.APSWorkbenchTransport,
+        query = C.ganttGraphScope(planRef, scope);
+      return C.ganttGraph(await T.read('/api/workbench/v1/plans/' + planRef + '/gantt-graph', query, {
+        signal,
+        timeout: 20000
+      }), workspaceData, query);
+    },
+    async capacity(planRef, scope = {}, workspaceData = null, signal) {
+      if (signal === undefined && workspaceData && typeof workspaceData.aborted === 'boolean') {
+        signal = workspaceData;
+        workspaceData = null;
+      }
+      const C = window.APSPlanContract,
+        T = window.APSWorkbenchTransport,
+        query = C.capacityScope(planRef, scope);
+      return C.capacity(await T.read('/api/workbench/v1/plans/' + planRef + '/capacity', query, {
+        signal,
+        timeout: 20000
+      }), workspaceData, query);
+    },
+    async baseline(planRef, scope = {}, workspaceData = null, signal) {
+      if (signal === undefined && workspaceData && typeof workspaceData.aborted === 'boolean') {
+        signal = workspaceData;
+        workspaceData = null;
+      }
+      const C = window.APSPlanContract,
+        T = window.APSWorkbenchTransport,
+        query = C.baselineScope(planRef, scope);
+      const first = C.baselinePage(await T.read('/api/workbench/v1/plans/' + planRef + '/baseline', query, {
+        signal,
+        timeout: 20000
+      }), workspaceData, query);
+      if (scope && Object.prototype.hasOwnProperty.call(scope, 'page')) return first;
+      const items = first.data.items.slice();
+      let page = first.data.page.number;
+      while (first.data.page.has_more && page * query.size < first.data.page.total) {
+        page++;
+        const nextQuery = C.baselineScope(planRef, {
+          ...query,
+          page
+        });
+        const next = C.baselinePage(await T.read('/api/workbench/v1/plans/' + planRef + '/baseline', nextQuery, {
+          signal,
+          timeout: 20000
+        }), workspaceData, nextQuery);
+        items.push(...next.data.items);
+      }
+      delete first.data.page;
+      first.data.items = items;
+      first.data.items_complete = first.data.state === 'available';
+      const data = workspaceData && workspaceData.data ? workspaceData.data : workspaceData;
+      if (!C.baseline(first.data, data || null)) throw window.APSResourceContract.failure('原安排对照的分页或明细与所选计划不一致，请刷新。');
+      return first;
     },
     async export(planRef, scope, signal) {
       // 附件、文件类型与魔数、文件名及其后缀都由 transport.download 核对。
@@ -25605,7 +25865,7 @@ function SMExport({
     }
     return result;
   }
-  function prepare(data) {
+  function prepare(data, baselineItems = null) {
     const labels = names(data),
       directory = new Map(data.resources.map(row => [row.ref, row]));
     const fact = (task, baseline) => ({
@@ -25618,7 +25878,9 @@ function SMExport({
     });
     const items = data.tasks.map(task => fact(task, false)),
       comparison = data.projections.baseline;
-    const before = comparison.state === 'available' ? comparison.items.filter(item => item.before).map(item => fact(item.before, true)) : [];
+    const rawItems = Array.isArray(baselineItems) ? baselineItems : comparison.items;
+    const baselineLoaded = comparison.state === 'available' && (Array.isArray(baselineItems) || comparison.items_complete === true || comparison.items.length > 0);
+    const before = baselineLoaded ? rawItems.filter(item => item.before).map(item => fact(item.before, true)) : [];
     const taskIndex = new Map(items.map(item => [item.task.task_ref, item])),
       loadedRefs = new Set(items.map(item => item.task.task_ref)),
       resourceMembers = new Map();
@@ -25632,12 +25894,12 @@ function SMExport({
       start: instant(task.start),
       end: instant(task.end)
     } : null;
-    const comparisons = new Map(comparison.state === 'available' ? comparison.items.map(item => [item.operation_ref, {
+    const comparisons = new Map(baselineLoaded ? rawItems.map(item => [item.operation_ref, {
       ...item,
       beforeTime: times(item.before, beforeIndex),
       afterTime: times(item.after, taskIndex)
     }]) : []);
-    const changed = new Set(comparison.state === 'available' ? comparison.items.filter(item => item.change !== 'unchanged').map(item => item.operation_ref) : []);
+    const changed = new Set(baselineLoaded ? rawItems.filter(item => item.change !== 'unchanged').map(item => item.operation_ref) : []);
     const occupancy = new Map(data.projections.occupancy.resources.map(row => [row.resource_ref, {
       resource: row,
       segments: row.segments.filter(item => item.concurrent_operations > 1).map(item => ({
@@ -25652,6 +25914,7 @@ function SMExport({
       directory,
       items,
       before,
+      baselineLoaded,
       taskIndex,
       loadedRefs,
       beforeIndex,
@@ -26264,12 +26527,15 @@ function SMExport({
     active,
     geometry,
     onClear,
-    disabled = false
+    disabled = false,
+    loading = false,
+    error = null
   }) {
     if (graph.state === 'unavailable') return /*#__PURE__*/React.createElement("div", {
       className: "wb-gantt-graph-note",
       role: "status"
     }, "\u5DE5\u5E8F\u5173\u8054\u6682\u4E0D\u53EF\u7528\uFF1A", graph.reason);
+    const incomplete = graph.nodes_complete === false;
     const unseen = active.related.size - geometry.relatedVisible,
       criticalUnseen = active.critical.size - geometry.criticalVisible;
     return /*#__PURE__*/React.createElement("div", {
@@ -26278,22 +26544,22 @@ function SMExport({
       title: "\u5173\u952E\u4EFB\u52A1\u59CB\u7EC8\u7528\u91D1\u8272\u6807\u8BB0\u3002\u5F00\u542F\u540E\u663E\u793A\u5168\u90E8\u5173\u952E\u94FE\uFF1B\u6307\u5411\u6216\u9009\u4E2D\u5DE5\u5E8F\u65F6\u53EA\u663E\u793A\u8BE5\u5206\u4EF6\u5DE5\u827A\u3002"
     }, /*#__PURE__*/React.createElement("input", {
       type: "checkbox",
-      checked: enabled,
-      disabled: disabled,
+      checked: enabled && !incomplete,
+      disabled: disabled || incomplete,
       onChange: event => onChange(event.target.checked)
     }), "\u663E\u793A\u5173\u952E\u94FE\u8FDE\u7EBF"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
       className: "wb-gantt-chain-swatch"
-    }), active.critical.size, " \u9053\u5173\u952E\u4EFB\u52A1", criticalUnseen > 0 && '（画面外 ' + criticalUnseen + ' 道）'), /*#__PURE__*/React.createElement("div", {
+    }), incomplete ? error ? '关键链与工序关联读取失败' : loading ? '关键链与工序关联加载中…' : '关键链与工序关联未加载' : /*#__PURE__*/React.createElement(React.Fragment, null, active.critical.size, " \u9053\u5173\u952E\u4EFB\u52A1", criticalUnseen > 0 && '（画面外 ' + criticalUnseen + ' 道）')), /*#__PURE__*/React.createElement("div", {
       className: "wb-gantt-route-caption",
       "data-gantt-route-count": active.target ? true : undefined
-    }, active.target ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("i", {
+    }, incomplete ? error ? '工序关联读取失败，请重试加载。' : loading ? '正在加载关键链与工序关联…' : '关键链与工序关联未加载。' : active.target ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("i", {
       className: "wb-gantt-route-swatch"
     }), active.target.batch_id, " \xB7 ", active.target.piece_id === null ? '全部工艺分支' : '分件 ' + active.target.piece_id + ' 的完整工艺', " ", active.related.size, " \u9053", unseen > 0 && '（画面外 ' + unseen + ' 道）') : '指向工序查看前后关联，点击保留。'), /*#__PURE__*/React.createElement(window.ResourceControls.Button, {
       className: "btn mini",
       style: {
         visibility: active.target ? 'visible' : 'hidden'
       },
-      disabled: disabled || !active.target,
+      disabled: disabled || incomplete || !active.target,
       onClick: onClear
     }, "\u6E05\u9664\u5DE5\u827A\u805A\u7126"));
   }
@@ -26661,6 +26927,7 @@ function SMExport({
     V = window.GanttPresentation,
     {
       Button,
+      ErrorBox,
       Icon,
       TimelineZoom,
       timelineZoomKey
@@ -26845,7 +27112,13 @@ function SMExport({
     onQuery,
     toolbarActions,
     initialMode,
-    initialBaseline
+    initialBaseline,
+    onRequestBaseline,
+    baselineLoading,
+    baselineError,
+    graphLoading,
+    graphError,
+    onRetryGraph
   }) {
     const [mode, setMode] = React.useState(initialMode === 'operator' ? 'operator' : 'machine'),
       [baseline, setBaseline] = React.useState(initialBaseline),
@@ -26884,6 +27157,8 @@ function SMExport({
     }, [selected, showBaseline]);
     const displayBaseline = showBaseline && baseline,
       displayChangedOnly = showBaseline && changedOnly;
+    const effectiveBaseline = displayBaseline && facts.baselineLoaded,
+      effectiveChangedOnly = displayChangedOnly && facts.baselineLoaded;
     // Print uses a normalized axis for tick/point layout; CSS maps its percentages to the actual paper width.
     // It must not inherit a wide screen or expanded board's pixel width.
     const width = printing ? 640 : viewport * zoom,
@@ -26891,14 +27166,14 @@ function SMExport({
     const renderLeft = printing ? 0 : position.left,
       renderViewport = printing ? width : viewport;
     const grouped = React.useMemo(() => M.groupPrepared(facts, mode), [facts, mode]);
-    const prepared = React.useMemo(() => M.selectPrepared(grouped, query, displayChangedOnly, displayBaseline), [grouped, query, displayChangedOnly, displayBaseline]);
+    const prepared = React.useMemo(() => M.selectPrepared(grouped, query, effectiveChangedOnly, effectiveBaseline), [grouped, query, effectiveChangedOnly, effectiveBaseline]);
     const model = React.useMemo(() => M.layoutPrepared(prepared, width), [prepared, width]);
     const graph = facts.graph;
     const targetRef = hover && !hover.before ? hover.task.task_ref : selected && !selected.before ? selectedRef : null;
     const active = React.useMemo(() => window.GanttGraph.selection(graph, {
-      enabled: chainEnabled,
+      enabled: chainEnabled && data.gantt_graph.nodes_complete !== false,
       targetRef
-    }), [graph, chainEnabled, targetRef]);
+    }), [graph, chainEnabled, data.gantt_graph.nodes_complete, targetRef]);
     const graphLocations = React.useMemo(() => window.GanttGraph.locations(model), [model]);
     const locationIndex = React.useMemo(() => window.GanttGraph.locationIndex(graphLocations), [graphLocations]);
     const geometry = React.useMemo(() => window.GanttGraph.paths(active, model, width, {
@@ -27010,12 +27285,15 @@ function SMExport({
       if (!selected || !selected.locate || located.current === selected) return;
       const locations = selected.before ? model.baselineLocations : model.locations;
       if (!locations.has(selectedRef)) {
-        if (displayChangedOnly) setChangedOnly(false);
+        if (effectiveChangedOnly) setChangedOnly(false);
         return;
       }
       located.current = selected;
       locate(selectedRef, selected.before);
     }, [selected, model]);
+    React.useEffect(() => {
+      if ((displayBaseline || displayChangedOnly) && !facts.baselineLoaded && typeof onRequestBaseline === 'function') onRequestBaseline();
+    }, [displayBaseline, displayChangedOnly, facts.baselineLoaded, onRequestBaseline]);
     function select(task, beforeTask) {
       setHover(null);
       onSelect(task, beforeTask);
@@ -27072,7 +27350,11 @@ function SMExport({
       type: "checkbox",
       "aria-label": "\u663E\u793A\u539F\u5B89\u6392",
       checked: displayBaseline,
-      onChange: event => setBaseline(event.target.checked)
+      onChange: event => {
+        const next = event.target.checked;
+        setBaseline(next);
+        if (next && !facts.baselineLoaded && typeof onRequestBaseline === 'function') onRequestBaseline();
+      }
     }), "\u663E\u793A\u539F\u5B89\u6392"), showBaseline && /*#__PURE__*/React.createElement("label", {
       className: "plan-check",
       title: "\u7B5B\u9009\u8D77\u6B62\u65F6\u95F4\u3001\u8BBE\u5907\u6216\u4EBA\u5458\u53D1\u751F\u53D8\u5316\uFF0C\u4EE5\u53CA\u65B0\u589E\u3001\u79FB\u9664\u7684\u5DE5\u5E8F"
@@ -27080,7 +27362,11 @@ function SMExport({
       type: "checkbox",
       "aria-label": "\u53EA\u770B\u6709\u53D8\u5316\u7684\u5DE5\u5E8F",
       checked: displayChangedOnly,
-      onChange: event => setChangedOnly(event.target.checked)
+      onChange: event => {
+        const next = event.target.checked;
+        setChangedOnly(next);
+        if (next && !facts.baselineLoaded && typeof onRequestBaseline === 'function') onRequestBaseline();
+      }
     }), "\u53EA\u770B\u6709\u53D8\u5316\u7684\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("label", {
       className: "search plan-search"
     }, /*#__PURE__*/React.createElement("span", {
@@ -27123,12 +27409,34 @@ function SMExport({
       title: expanded ? '返回完整工作区' : '展开甘特工作区',
       "aria-expanded": expanded,
       onClick: toggle
-    }, expanded ? '收起' : '展开'), toolbarActions)), /*#__PURE__*/React.createElement(window.GanttGraphLayer.Controls, {
+    }, expanded ? '收起' : '展开'), toolbarActions)), (displayBaseline || displayChangedOnly) && !facts.baselineLoaded && (baselineError || baselineLoading) && /*#__PURE__*/React.createElement("div", {
+      className: "wb-surface-body plan-read-state",
+      "data-plan-baseline-state": baselineError ? 'error' : 'loading'
+    }, baselineError && /*#__PURE__*/React.createElement(ErrorBox, {
+      error: baselineError
+    }), baselineError && onRequestBaseline && /*#__PURE__*/React.createElement(Button, {
+      icon: "refresh-cw",
+      onClick: onRequestBaseline
+    }, "\u91CD\u8BD5\u52A0\u8F7D\u539F\u5B89\u6392"), !baselineError && baselineLoading && /*#__PURE__*/React.createElement("p", {
+      className: "plan-muted"
+    }, "\u6B63\u5728\u52A0\u8F7D\u539F\u5B89\u6392\u5BF9\u7167\u2026")), data.gantt_graph.state === 'available' && data.gantt_graph.nodes_complete === false && (graphError || graphLoading) && /*#__PURE__*/React.createElement("div", {
+      className: "wb-surface-body plan-read-state",
+      "data-plan-graph-state": graphError ? 'error' : 'loading'
+    }, graphError && /*#__PURE__*/React.createElement(ErrorBox, {
+      error: graphError
+    }), graphError && onRetryGraph && /*#__PURE__*/React.createElement(Button, {
+      icon: "refresh-cw",
+      onClick: onRetryGraph
+    }, "\u91CD\u8BD5\u52A0\u8F7D\u5DE5\u5E8F\u5173\u8054"), !graphError && graphLoading && /*#__PURE__*/React.createElement("p", {
+      className: "plan-muted"
+    }, "\u6B63\u5728\u52A0\u8F7D\u5173\u952E\u94FE\u4E0E\u5DE5\u5E8F\u5173\u8054\u2026")), /*#__PURE__*/React.createElement(window.GanttGraphLayer.Controls, {
       graph: data.gantt_graph,
       enabled: chainEnabled,
       onChange: setChainEnabled,
       active: active,
       geometry: geometry,
+      loading: graphLoading,
+      error: graphError,
       onClear: () => {
         setHover(null);
         onSelect(null);
@@ -27286,9 +27594,9 @@ function SMExport({
         width: position.width
       }
     }, /*#__PURE__*/React.createElement(window.WorkbenchControls.EmptyState, {
-      kind: query || displayChangedOnly ? 'filtered' : 'empty',
-      title: displayChangedOnly ? '当前范围没有匹配的变更安排。' : query ? '没有匹配安排，完整计划的时间范围保持不变。' : '该读取范围没有安排。',
-      action: query || displayChangedOnly ? /*#__PURE__*/React.createElement(Button, {
+      kind: query || effectiveChangedOnly ? 'filtered' : 'empty',
+      title: effectiveChangedOnly ? '当前范围没有匹配的变更安排。' : query ? '没有匹配安排，完整计划的时间范围保持不变。' : '该读取范围没有安排。',
+      action: query || effectiveChangedOnly ? /*#__PURE__*/React.createElement(Button, {
         onClick: () => {
           onQuery('');
           setChangedOnly(false);
@@ -27296,7 +27604,7 @@ function SMExport({
       }, "\u6E05\u9664\u7B5B\u9009") : undefined
     })))), /*#__PURE__*/React.createElement("div", {
       className: "plan-footer"
-    }, (query.trim() || displayChangedOnly) && /*#__PURE__*/React.createElement("span", {
+    }, (query.trim() || effectiveChangedOnly) && /*#__PURE__*/React.createElement("span", {
       "data-plan-search-count": true
     }, "\u5339\u914D ", model.tasks.length, " / ", data.task_count, " \u9053\u5B89\u6392"), /*#__PURE__*/React.createElement("span", {
       className: "plan-legend"
@@ -27314,7 +27622,7 @@ function SMExport({
       className: "plan-legend"
     }, /*#__PURE__*/React.createElement("i", {
       className: "plan-swatch conflict"
-    }), "\u8D44\u6E90\u51B2\u7A81"), displayBaseline && /*#__PURE__*/React.createElement("span", {
+    }), "\u8D44\u6E90\u51B2\u7A81"), effectiveBaseline && /*#__PURE__*/React.createElement("span", {
       className: "plan-legend"
     }, /*#__PURE__*/React.createElement("i", {
       className: "plan-swatch before"
@@ -27627,11 +27935,26 @@ function SMExport({
     }, F.compactDateTime(value)) : '暂无数据';
   }
   function CalendarWindows({
-    windows
+    windows,
+    windowsComplete = true,
+    loading = false,
+    error = null,
+    onRetry
   }) {
     const [open, setOpen] = React.useState(false),
       [page, setPage] = React.useState(0);
     if (windows === null) return '暂无数据';
+    if (!windowsComplete) {
+      if (error) return /*#__PURE__*/React.createElement("span", {
+        className: "plan-muted"
+      }, "\u53EF\u6392\u65F6\u6BB5\u8BFB\u53D6\u5931\u8D25", onRetry && /*#__PURE__*/React.createElement(React.Fragment, null, " \xB7 ", /*#__PURE__*/React.createElement(Button, {
+        className: "linkbtn",
+        onClick: onRetry
+      }, "\u91CD\u8BD5")));
+      return /*#__PURE__*/React.createElement("span", {
+        className: "plan-muted"
+      }, loading ? '正在加载可排时段…' : '按需加载可排时段');
+    }
     const pages = Math.ceil(windows.length / 10),
       current = Math.min(page, Math.max(0, pages - 1));
     return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Button, {
@@ -27677,11 +28000,28 @@ function SMExport({
     selected,
     onRelated,
     disabled,
-    collapsible
+    collapsible,
+    graphLoading,
+    graphError,
+    onRetryGraph
   }) {
     if (selected.before) return /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h3", null, "\u5B8C\u6574\u5DE5\u827A\u8DEF\u7EBF"), /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
     }, "\u5207\u6362\u5230\u5F53\u524D\u5B89\u6392\u67E5\u770B\u5B8C\u6574\u5DE5\u827A\u8DEF\u7EBF\u3002"));
+    const graph = prepared.graph && prepared.graph.graph;
+    if (graph && graph.state === 'available' && graph.nodes_complete === false) {
+      return /*#__PURE__*/React.createElement(DetailSection, {
+        title: "\u5B8C\u6574\u5DE5\u827A\u8DEF\u7EBF",
+        collapsible: collapsible
+      }, graphError ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+        className: "plan-muted"
+      }, graphError.message || '工序衔接图读取失败。'), onRetryGraph && /*#__PURE__*/React.createElement(Button, {
+        icon: "refresh-cw",
+        onClick: onRetryGraph
+      }, "\u91CD\u8BD5\u5DE5\u5E8F\u8854\u63A5\u56FE")) : /*#__PURE__*/React.createElement("p", {
+        className: "plan-muted"
+      }, graphLoading ? '正在读取完整工艺路线…' : '正在准备完整工艺路线…'));
+    }
     return /*#__PURE__*/React.createElement(window.GanttRouteList, {
       index: prepared.graph,
       targetRef: selected.task.task_ref,
@@ -27701,7 +28041,13 @@ function SMExport({
     renderTrial,
     scope,
     query,
-    disabled
+    disabled,
+    baselineLoading,
+    baselineError,
+    onRetryBaseline,
+    graphLoading,
+    graphError,
+    onRetryGraph
   }) {
     const task = selected && selected.task,
       labels = prepared.labels;
@@ -27782,7 +28128,10 @@ function SMExport({
       selected: selected,
       onRelated: onRelated,
       disabled: disabled,
-      collapsible: compact
+      collapsible: compact,
+      graphLoading: graphLoading,
+      graphError: graphError,
+      onRetryGraph: onRetryGraph
     }), compact && /*#__PURE__*/React.createElement(DetailSection, {
       title: "\u8BA1\u5212\u6765\u6E90",
       collapsible: true
@@ -27791,7 +28140,14 @@ function SMExport({
     })), baseline.state === 'available' && /*#__PURE__*/React.createElement(DetailSection, {
       title: "\u539F\u5B89\u6392\u5BF9\u7167",
       collapsible: compact
-    }, comparison ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Facts, {
+    }, !prepared.baselineLoaded ? baselineError ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+      className: "plan-muted"
+    }, baselineError.message || '原安排对照读取失败。'), onRetryBaseline && /*#__PURE__*/React.createElement(Button, {
+      icon: "refresh-cw",
+      onClick: onRetryBaseline
+    }, "\u91CD\u8BD5\u539F\u5B89\u6392\u5BF9\u7167")) : /*#__PURE__*/React.createElement("p", {
+      className: "plan-muted"
+    }, baselineLoading ? '正在读取原安排对照…' : '未找到对应对照记录') : comparison ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Facts, {
       items: [['变化', {
         added: '新增安排',
         removed: '移除安排',
@@ -27954,7 +28310,10 @@ function SMExport({
     tab,
     onTab,
     page,
-    onPage
+    onPage,
+    capacityLoading = false,
+    capacityError = null,
+    onRetryCapacity
   }) {
     const projections = data.projections,
       labels = prepared.labels;
@@ -27963,6 +28322,7 @@ function SMExport({
       current = Math.min(page, pages - 1);
     const visible = rows.slice(current * 20, current * 20 + 20);
     const projection = tab === 'risk' ? projections.delivery_risks : tab === 'load' ? projections.occupancy : projections.calendar;
+    const windowsComplete = projections.calendar.windows_complete !== false;
     return /*#__PURE__*/React.createElement("section", {
       className: "plan-projections",
       "aria-label": "\u8BA1\u5212\u5206\u6790"
@@ -27976,7 +28336,17 @@ function SMExport({
       }
     }), projection.state !== 'available' && /*#__PURE__*/React.createElement("div", {
       className: "plan-note"
-    }, projection.state === 'not_applicable' ? '当前范围未指定有效交期。' : projection.state === 'partial' ? '部分资料缺失，查看下方原因。' : '资料缺失，暂无法判断。'), tab === 'load' && /*#__PURE__*/React.createElement("details", {
+    }, projection.state === 'not_applicable' ? '当前范围未指定有效交期。' : projection.state === 'partial' ? '部分资料缺失，查看下方原因。' : '资料缺失，暂无法判断。'), tab === 'calendar' && !windowsComplete && (capacityError || capacityLoading) && /*#__PURE__*/React.createElement("div", {
+      className: "wb-surface-body plan-read-state",
+      "data-plan-capacity-state": capacityError ? 'error' : 'loading'
+    }, capacityError && /*#__PURE__*/React.createElement("p", {
+      className: "plan-muted"
+    }, capacityError.message || '资源班表时段读取失败。'), capacityError && onRetryCapacity && /*#__PURE__*/React.createElement(Button, {
+      icon: "refresh-cw",
+      onClick: onRetryCapacity
+    }, "\u91CD\u8BD5\u52A0\u8F7D\u73ED\u8868\u65F6\u6BB5"), !capacityError && capacityLoading && /*#__PURE__*/React.createElement("p", {
+      className: "plan-muted"
+    }, "\u6B63\u5728\u52A0\u8F7D\u53EF\u6392\u65F6\u6BB5\u660E\u7EC6\u2026")), tab === 'load' && /*#__PURE__*/React.createElement("details", {
       className: "plan-table-help"
     }, /*#__PURE__*/React.createElement("summary", null, "\u8D1F\u8377\u600E\u4E48\u7B97"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", null, "\u5360\u7528\u6BD4\u4F8B = \u73ED\u8868\u5185\u5DF2\u5360\u65F6\u95F4 \xF7 \u53EF\u6392\u603B\u65F6\u957F\u3002\u540C\u4E00\u8D44\u6E90\u7684\u91CD\u53E0\u5B89\u6392\u53EA\u8BA1\u4E00\u6B21\u5DF2\u5360\u65F6\u95F4\u3002"), /*#__PURE__*/React.createElement("p", null, "\u73ED\u8868\u5185\u91CD\u53E0\u8868\u793A\u540C\u4E00\u8D44\u6E90\u5728\u53EF\u6392\u65F6\u6BB5\u5185\u540C\u65F6\u5B89\u6392\u591A\u9053\u5DE5\u5E8F\u7684\u65F6\u95F4\uFF1B\u8DE8\u73ED\u8868\u7684\u9884\u7559\u8DE8\u5EA6\u4FDD\u7559\u5728\u8BE6\u60C5\u3002"))), tab === 'calendar' && /*#__PURE__*/React.createElement("details", {
       className: "plan-table-help"
@@ -28039,7 +28409,11 @@ function SMExport({
     }, issueText(row.issues))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(OccupancyDetails, {
       row: row
     }))) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("td", null, M.number(row.available_hours)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(CalendarWindows, {
-      windows: row.windows
+      windows: row.windows,
+      windowsComplete: windowsComplete,
+      loading: capacityLoading,
+      error: capacityError,
+      onRetry: onRetryCapacity
     })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("details", {
       className: "plan-row-details"
     }, /*#__PURE__*/React.createElement("summary", null, "\u6298\u7B97\u6807\u51C6\u5DE5\u65F6"), /*#__PURE__*/React.createElement(Facts, {
@@ -28243,12 +28617,14 @@ function SMExport({
       return facts;
     }, [data]);
     const chosen = selected && selected.result === result ? selected : null;
+    const pendingBefore = Boolean(initialTask.current && initialTask.current.side === 'before' && data && data.projections.baseline.state === 'available' && data.projections.baseline.items_complete === false && data.projections.baseline.item_count > 0 && window.APSPlanAPI && typeof window.APSPlanAPI.baseline === 'function');
     React.useEffect(() => {
       if (!data || read.loading || read.error) return;
       const target = relatedRef ? {
         ref: relatedRef,
         side: 'current'
       } : initialTask.current;
+      if (!relatedRef && pendingBefore) return;
       // The saved task belongs to this session's first successful read only.
       initialTask.current = null;
       if (!target) return;
@@ -28278,6 +28654,9 @@ function SMExport({
     Object.assign(remembered, scope, chosen ? {
       selected_task_ref: chosen.task.task_ref,
       selected_task_side: chosen.before ? 'before' : 'current'
+    } : pendingBefore ? {
+      selected_task_ref: initialTask.current.ref,
+      selected_task_side: 'before'
     } : {});
     window.WorkbenchPageContext.useSnapshot(remembered, !!data && !read.loading && !read.error && !paused);
     function choose(plan) {
@@ -28368,7 +28747,7 @@ function SMExport({
     }
     function selectRelated(ref) {
       initialTask.current = null;
-      const fact = prepared.taskIndex.get(ref),
+      const fact = effectivePrepared.taskIndex.get(ref),
         task = fact && fact.task;
       setQuery('');
       setRangeError(null);
@@ -28378,7 +28757,7 @@ function SMExport({
         result,
         locate: true
       });else {
-        const node = prepared.graph.nodes.get(ref);
+        const node = effectivePrepared.graph.nodes.get(ref);
         if (!node) return;
         setRelatedRef(ref);
         changeScope({
@@ -28417,6 +28796,223 @@ function SMExport({
         version: window.WorkbenchTerms.plan_version(data.plan.version)
       } : {})
     } : null);
+    const [baselineState, setBaselineState] = React.useState(() => ({
+      result: null,
+      items: null,
+      loading: false,
+      error: null,
+      needed: false
+    }));
+    const activeBaselineItems = baselineState.result === result ? baselineState.items : null;
+    const baselineLoading = baselineState.result === result ? baselineState.loading : false;
+    const baselineError = baselineState.result === result ? baselineState.error : null;
+    const baselineNeeded = baselineState.result === result ? baselineState.needed : false;
+    const restoringBefore = Boolean(initialTask.current && initialTask.current.side === 'before' && (baselineLoading || baselineError));
+    const shouldLoadBaseline = Boolean(data && !read.loading && !read.error && !paused && data.projections.baseline.state === 'available' && data.projections.baseline.items_complete === false && data.projections.baseline.item_count > 0 && !Array.isArray(activeBaselineItems) && !baselineError && window.APSPlanAPI && typeof window.APSPlanAPI.baseline === 'function' && (baselineNeeded || chosen && (view !== 'gantt' || detailsOpen) || initialTask.current && initialTask.current.side === 'before'));
+    const requestBaseline = React.useCallback(() => {
+      setBaselineState(current => current.needed && current.result === result && !current.error ? current : {
+        result,
+        items: current.result === result ? current.items : null,
+        loading: false,
+        error: null,
+        needed: true
+      });
+    }, [result, false]);
+    React.useEffect(() => {
+      if (!shouldLoadBaseline) return;
+      const controller = new AbortController();
+      setBaselineState(current => ({
+        result,
+        items: current.result === result ? current.items : null,
+        loading: true,
+        error: null,
+        needed: true
+      }));
+      const query = {
+        ...scope,
+        snapshot_ref: result.meta.snapshot_ref
+      };
+      window.APSPlanAPI.baseline(data.plan.plan_ref, query, data, controller.signal).then(response => {
+        if (controller.signal.aborted) return;
+        const items = response.data.items;
+        setBaselineState({
+          result,
+          items,
+          loading: false,
+          error: null,
+          needed: true
+        });
+        if (initialTask.current && initialTask.current.side === 'before') {
+          const target = initialTask.current;
+          initialTask.current = null;
+          const original = items.find(row => row.before && row.before.task_ref === target.ref);
+          if (original && original.before) setSelected({
+            task: original.before,
+            before: true,
+            result,
+            ...(view === 'gantt' && original.before_in_scope ? {
+              locate: true
+            } : {})
+          });else setRangeError(C.failure('要恢复的原安排已不存在。'));
+        }
+      }, error => {
+        if (controller.signal.aborted || error && error.name === 'AbortError') return;
+        setBaselineState({
+          result,
+          items: null,
+          loading: false,
+          error,
+          needed: true
+        });
+      });
+      return () => controller.abort();
+    }, [result, shouldLoadBaseline]);
+    const [graphState, setGraphState] = React.useState(() => ({
+      result: null,
+      graph: null,
+      index: null,
+      loading: false,
+      error: null
+    }));
+    const activeGanttGraph = graphState.result === result ? graphState.graph : null;
+    const activeGraphIndex = graphState.result === result ? graphState.index : null;
+    const graphLoading = graphState.result === result ? graphState.loading : false;
+    const graphError = graphState.result === result ? graphState.error : null;
+    const shouldLoadGraph = Boolean(data && !read.loading && !read.error && !paused && data.gantt_graph.state === 'available' && data.gantt_graph.nodes_complete === false && !activeGanttGraph && !graphError && window.APSPlanAPI && typeof window.APSPlanAPI.ganttGraph === 'function' && (view === 'gantt' || chosen && !chosen.before || relatedRef));
+    const requestGraph = React.useCallback(() => {
+      setGraphState(current => ({
+        result,
+        graph: current.result === result ? current.graph : null,
+        index: current.result === result ? current.index : null,
+        loading: false,
+        error: null
+      }));
+    }, [result]);
+    React.useEffect(() => {
+      if (!shouldLoadGraph) return;
+      const controller = new AbortController();
+      setGraphState(current => ({
+        result,
+        graph: current.result === result ? current.graph : null,
+        index: current.result === result ? current.index : null,
+        loading: true,
+        error: null
+      }));
+      const query = {
+        ...scope,
+        snapshot_ref: result.meta.snapshot_ref
+      };
+      window.APSPlanAPI.ganttGraph(data.plan.plan_ref, query, data, controller.signal).then(response => {
+        if (controller.signal.aborted) return;
+        const nextGraph = response.data.gantt_graph;
+        setGraphState({
+          result,
+          graph: nextGraph,
+          index: window.GanttGraph.create(nextGraph),
+          loading: false,
+          error: null
+        });
+      }, error => {
+        if (controller.signal.aborted || error && error.name === 'AbortError') return;
+        setGraphState({
+          result,
+          graph: null,
+          index: null,
+          loading: false,
+          error
+        });
+      });
+      return () => controller.abort();
+    }, [result, shouldLoadGraph]);
+    const [capacityState, setCapacityState] = React.useState(() => ({
+      result: null,
+      calendar: null,
+      occupancy: null,
+      loading: false,
+      error: null
+    }));
+    const activeCalendar = capacityState.result === result ? capacityState.calendar : null;
+    const activeOccupancy = capacityState.result === result ? capacityState.occupancy : null;
+    const capacityLoading = capacityState.result === result ? capacityState.loading : false;
+    const capacityError = capacityState.result === result ? capacityState.error : null;
+    const shouldLoadCapacity = Boolean(data && !read.loading && !read.error && !paused && data.projections.calendar.state !== 'unavailable' && data.projections.calendar.windows_complete === false && !activeCalendar && !capacityError && window.APSPlanAPI && typeof window.APSPlanAPI.capacity === 'function' && view !== 'gantt' && projectionTab === 'calendar');
+    const requestCapacity = React.useCallback(() => {
+      setCapacityState(current => ({
+        result,
+        calendar: current.result === result ? current.calendar : null,
+        occupancy: current.result === result ? current.occupancy : null,
+        loading: false,
+        error: null
+      }));
+    }, [result]);
+    React.useEffect(() => {
+      if (!shouldLoadCapacity) return;
+      const controller = new AbortController();
+      setCapacityState(current => ({
+        result,
+        calendar: current.result === result ? current.calendar : null,
+        occupancy: current.result === result ? current.occupancy : null,
+        loading: true,
+        error: null
+      }));
+      const query = {
+        ...scope,
+        snapshot_ref: result.meta.snapshot_ref
+      };
+      window.APSPlanAPI.capacity(data.plan.plan_ref, query, data, controller.signal).then(response => {
+        if (controller.signal.aborted) return;
+        setCapacityState({
+          result,
+          calendar: response.data.calendar,
+          occupancy: response.data.occupancy,
+          loading: false,
+          error: null
+        });
+      }, error => {
+        if (controller.signal.aborted || error && error.name === 'AbortError') return;
+        setCapacityState({
+          result,
+          calendar: null,
+          occupancy: null,
+          loading: false,
+          error
+        });
+      });
+      return () => controller.abort();
+    }, [result, shouldLoadCapacity]);
+    const effectiveData = React.useMemo(() => {
+      if (!data || !Array.isArray(activeBaselineItems) && !activeGanttGraph && !activeCalendar && !activeOccupancy) return data;
+      return {
+        ...data,
+        ...(activeGanttGraph ? {
+          gantt_graph: activeGanttGraph
+        } : {}),
+        projections: {
+          ...data.projections,
+          ...(Array.isArray(activeBaselineItems) ? {
+            baseline: {
+              ...data.projections.baseline,
+              items: activeBaselineItems,
+              items_complete: true
+            }
+          } : {}),
+          ...(activeCalendar ? {
+            calendar: activeCalendar
+          } : {}),
+          ...(activeOccupancy ? {
+            occupancy: activeOccupancy
+          } : {})
+        }
+      };
+    }, [result, activeBaselineItems, activeGanttGraph, activeCalendar, activeOccupancy]);
+    const effectivePrepared = React.useMemo(() => {
+      if (!prepared || !Array.isArray(activeBaselineItems) && !activeGraphIndex && !activeCalendar && !activeOccupancy) return prepared;
+      const facts = Array.isArray(activeBaselineItems) || activeCalendar || activeOccupancy ? M.prepare(effectiveData, activeBaselineItems) : {
+        ...prepared
+      };
+      facts.graph = activeGraphIndex || prepared.graph;
+      return facts;
+    }, [prepared, effectiveData, activeBaselineItems, activeGraphIndex, activeCalendar, activeOccupancy]);
     return /*#__PURE__*/React.createElement("div", {
       className: "plana plan-workspace",
       "data-plan-workspace": true
@@ -28524,18 +29120,25 @@ function SMExport({
         '排产记录编号': data.provenance.run_ref,
         '数据版本编号': result.meta.snapshot_ref
       }
-    }))), (rangeError || read.error || result && result.warnings.length > 0 || !data || paused) && /*#__PURE__*/React.createElement("div", {
+    }))), (rangeError || read.error || restoringBefore || result && result.warnings.length > 0 || !data || paused) && /*#__PURE__*/React.createElement("div", {
       className: "wb-surface-body plan-read-state"
     }, /*#__PURE__*/React.createElement(ErrorBox, {
       error: rangeError
     }), /*#__PURE__*/React.createElement(ErrorBox, {
       error: read.error
-    }), result && /*#__PURE__*/React.createElement(Issues, {
+    }), restoringBefore && /*#__PURE__*/React.createElement(ErrorBox, {
+      error: baselineError
+    }), restoringBefore && baselineLoading && !baselineError && /*#__PURE__*/React.createElement("p", {
+      className: "plan-muted"
+    }, "\u6B63\u5728\u52A0\u8F7D\u539F\u5B89\u6392\u5BF9\u7167\u2026"), result && /*#__PURE__*/React.createElement(Issues, {
       issues: result.warnings
     }), !data && !read.error && /*#__PURE__*/React.createElement(window.WorkbenchControls.EmptyState, {
       kind: read.loading ? 'loading' : 'empty',
       title: read.loading ? '正在读取所选计划、工序安排和分析结果…' : paused ? '计划读取已取消。' : '请在计划列表里选一个可查看的计划。'
-    }), (read.error || paused) && /*#__PURE__*/React.createElement(Button, {
+    }), restoringBefore && baselineError && /*#__PURE__*/React.createElement(Button, {
+      icon: "refresh-cw",
+      onClick: requestBaseline
+    }, "\u91CD\u8BD5\u52A0\u8F7D\u539F\u5B89\u6392"), (read.error || paused) && /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       onClick: refresh
     }, "\u5237\u65B0\u91CD\u8BD5")), data && /*#__PURE__*/React.createElement("div", {
@@ -28558,8 +29161,8 @@ function SMExport({
       className: view === 'gantt' ? 'wb-gantt-main-column' : undefined
     }, view === 'gantt' && /*#__PURE__*/React.createElement(window.PlanGantt, {
       key: 'gantt:' + data.plan.plan_ref,
-      data: data,
-      prepared: prepared,
+      data: effectiveData,
+      prepared: effectivePrepared,
       asOf: result.meta.as_of,
       selected: chosen,
       onSelect: selectTask,
@@ -28567,6 +29170,12 @@ function SMExport({
       onQuery: setQuery,
       initialMode: initialContext.resource_kind,
       initialBaseline: !!initialTask.current && initialTask.current.side === 'before',
+      onRequestBaseline: requestBaseline,
+      baselineLoading: baselineLoading,
+      baselineError: baselineError,
+      graphLoading: graphLoading,
+      graphError: graphError,
+      onRetryGraph: requestGraph,
       toolbarActions: /*#__PURE__*/React.createElement("span", {
         ref: detailsToggle
       }, /*#__PURE__*/React.createElement(Button, {
@@ -28576,9 +29185,9 @@ function SMExport({
         onClick: () => setDetailsOpen(!detailsOpen)
       }, detailsOpen ? '收起详情' : '详情'))
     }), view !== 'gantt' && /*#__PURE__*/React.createElement(ProjectionTables, {
-      prepared: prepared,
+      prepared: effectivePrepared,
       key: 'risk:' + result.meta.snapshot_ref,
-      data: data,
+      data: effectiveData,
       tab: projectionTab,
       onTab: setProjectionTab,
       page: projectionPage,
@@ -28588,14 +29197,17 @@ function SMExport({
         setQuery(batch);
         const task = data.tasks.find(row => row.batch_id === batch);
         if (task) selectTask(task, false, true);
-      }
+      },
+      capacityLoading: capacityLoading,
+      capacityError: capacityError,
+      onRetryCapacity: requestCapacity
     }), view === 'delay' && /*#__PURE__*/React.createElement(Conflicts, {
-      prepared: prepared,
+      prepared: effectivePrepared,
       key: 'conflicts:' + result.meta.snapshot_ref,
-      data: data
+      data: effectiveData
     })), (view === 'gantt' ? detailsOpen : !!chosen) && /*#__PURE__*/React.createElement(TaskDetail, {
-      data: data,
-      prepared: prepared,
+      data: effectiveData,
+      prepared: effectivePrepared,
       selected: chosen,
       onSelect: selectTask,
       onRelated: selectRelated,
@@ -28603,7 +29215,13 @@ function SMExport({
       renderTrial: renderTrial,
       scope: scope,
       query: query,
-      disabled: !ready || read.loading || !!read.error
+      disabled: !ready || read.loading || !!read.error,
+      baselineLoading: baselineLoading,
+      baselineError: baselineError,
+      onRetryBaseline: requestBaseline,
+      graphLoading: graphLoading,
+      graphError: graphError,
+      onRetryGraph: requestGraph
     })));
   }
   function PlanWorkspace(props) {

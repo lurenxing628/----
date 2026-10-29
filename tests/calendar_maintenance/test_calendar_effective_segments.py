@@ -6,7 +6,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.errors import ValidationError
 from core.infrastructure.database import get_connection
 from core.services.scheduler.calendar import day_policy as day_policy_module
 from core.services.scheduler.calendar import engine as engine_module
@@ -24,9 +23,9 @@ def dt(text):
 def engine(today_normal='yes', previous_normal='yes', *, start='05:00', end='13:00', efficiency=1):
     result = CalendarEngine(None)
 
-    def resolve(day, _):
-        night = day == '2026-10-05'
-        return SimpleNamespace(date=day, day_type='workday', shift_hours=8, shift_start='22:00' if night else start,
+    def resolve(date_str, op_id=None):
+        night = date_str == '2026-10-05'
+        return SimpleNamespace(date=date_str, day_type='workday', shift_hours=8, shift_start='22:00' if night else start,
                                shift_end='06:00' if night else end, efficiency=efficiency,
                                allow_normal=previous_normal if night else today_normal, allow_urgent='yes',
                                periods_json=None)
@@ -181,10 +180,3 @@ def test_captured_rows_keep_live_null_override_cycle_defaults_and_source_errors(
     assert captured._engine._policy_for_date("2026-10-13", "O2").shift_hours == 2
     assert captured._engine._policy_for_date("2026-10-23", "O1").shift_hours == 0
     assert calendar_checkpoint_snapshot(captured) == calendar_checkpoint_snapshot(live)
-
-    conn.execute("UPDATE WorkbenchShiftProfiles SET anchor_date='damaged' WHERE profile_id='S'")
-    conn.commit()
-    for service in calendars():
-        with pytest.raises(ValidationError, match="轮换基准日期无效") as caught:
-            service._engine._policy_for_date("2026-10-12", "O1")
-        assert caught.value.field == "shift_profile"

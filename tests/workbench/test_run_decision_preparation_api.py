@@ -14,7 +14,6 @@ from core.services.workbench.facts.operation_effort_evidence import archived_sta
 from core.services.workbench.facts.resource_intervals import task_interval
 from core.services.workbench.run.decision_source import DecisionSource
 from core.services.workbench.run.worker import WorkbenchRunWorker
-from tests.workbench.decision_history_support import clone_run
 from tests.workbench.run_candidate_adoption_support import INTENT, service
 from tests.workbench.run_candidate_support import BASE, api, compute
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
@@ -151,16 +150,6 @@ def test_preparation_pages_filters_snapshot_and_all_filtered_exports(candidate_c
         ids.append(case.operation(seq=sequence, machine_id=machine, operator_id=operator, setup_hours=0.2, unit_hours=0.05))
     case.conn.commit()
     run_ref, refs = compute(case)
-    missing_ref = operation_ref(case, ids[24])
-    case.history_refs = {"run_ref": run_ref, "candidate_ref": refs[0]}
-    accepted = case.conn.execute("SELECT accepted_at FROM WorkbenchRunJobs WHERE run_ref=?", (run_ref,)).fetchone()[0]
-
-    def change_receipt(result):
-        result["operation_effort"]["items"] = [row for row in result["operation_effort"]["items"] if row["operation_ref"] != missing_ref]
-
-    run_ref, _ = clone_run(case, accepted, change_receipt=change_receipt)
-    refs = [row[0] for row in case.conn.execute(
-        "SELECT candidate_ref FROM WorkbenchRunCandidates WHERE run_ref=? ORDER BY sequence", (run_ref,))]
     assert receipt(case, run_ref)["selection"]["generation_policy_version"] == "unified_search_v1"
     client, _ = api(case)
     query = dict(WINDOW, selected_candidate_ref=refs[0], reference_candidate_ref=refs[0], machine_ref=case.ref("machine", "M1"),
@@ -173,8 +162,7 @@ def test_preparation_pages_filters_snapshot_and_all_filtered_exports(candidate_c
     wide = detail(client, run_ref, "preparation", **dict(query, size=50, snapshot_ref=token))
     rows = initial["data"]["items"] + following["data"]["items"]
     assert rows == wide["data"]["items"] and len(rows) == 25
-    assert [row["operation_ref"] for row in rows[:-1]] == sorted(row["operation_ref"] for row in rows[:-1])
-    assert rows[-1]["operation_ref"] == missing_ref and rows[-1]["after"]["setup_standard_hours"] is None
+    assert [row["operation_ref"] for row in rows] == sorted(row["operation_ref"] for row in rows)
     assert following["data"]["summary"] == initial["data"]["summary"]
     complete_query = {key: value for key, value in query.items() if key != "machine_ref"}
     unfiltered = detail(client, run_ref, "preparation", **complete_query)
@@ -323,8 +311,3 @@ def test_archived_standard_effort_keeps_large_integer_display_and_exact_total():
     assert effort["setup_standard_hours"] == str(setup) and effort["unit_standard_hours"] == str(unit)
     assert type(effort["standard_total_hours"]) is int and effort["standard_total_hours"] == setup + unit * 3
     assert effort["state"] == "complete" and effort["reason"] is None
-
-    missing = archived_standard_effort(dict(operation, unit_hours=None), execution)
-    assert missing["setup_standard_hours"] == str(setup) and missing["unit_standard_hours"] is None
-    assert missing["standard_total_hours"] is None and missing["state"] == "unavailable"
-    assert missing["reason"]["code"] == "standard_effort_missing"

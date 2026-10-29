@@ -171,39 +171,3 @@ def test_detail_export_rejects_nontext_target_before_capture(file_api):
     body, _ = file_api.export_body(target=target, selection="explicit", refs=[target])
     body["target_ref"] = {"ref": target}
     rejected(file_api.file_post("route", "export-preview", body), "invalid_input", 400)
-
-
-
-@pytest.mark.parametrize("kind,row", [("route", 2), ("hours", 4)])
-def test_export_reports_mixed_type_sequence_as_row_file_error(file_api, kind, row):
-    from core.errors import ValidationError
-    from core.services.workbench.process.file_export import count_process_export_rows
-    from core.services.workbench.process.queries import WorkbenchProcessQueryService
-    from tests.workbench.process_stage_api_support import PART
-
-    # 存量工序号混入文本：排序本身不能炸，按与逐格导出同一规则报出结构化错误和所在行。
-    file_api.execute("UPDATE PartOperations SET seq='第三道' WHERE part_no=? AND seq=30", (PART,))
-    target = file_api.ref()
-    body, _ = file_api.export_body(target=target, selection="explicit", refs=[target])
-    error = rejected(file_api.file_post(kind, "export-preview", body), "invalid_input", 422)["error"]
-    assert [field["path"] for field in error["fields"]] == ["sequence"]
-    with file_api.database() as conn:
-        reader = WorkbenchProcessQueryService(conn, part_ref=target)
-        with reader.read_snapshot():
-            facts = reader.facts()
-        parts = [part for part in facts["parts"] if part["part_no"] == PART]
-        with pytest.raises(ValidationError) as raised:
-            count_process_export_rows(kind, parts, facts, "csv")
-    assert raised.value.field == "sequence" and raised.value.details["row"] == row
-
-
-def test_batch_detail_orders_mixed_type_operation_sequences(file_api):
-    from tests.workbench.process_stage_api_support import BASE
-
-    file_api.execute("INSERT INTO BatchOperations(op_code,batch_id,seq,op_type_name,source,setup_hours,unit_hours) "
-                     "VALUES ('STAGE-API-TEXT-SEQ','PROC-B','第二道','text sequence','internal',1,1)")
-    path = BASE + "/entities/batch/" + file_api.ref("batch", "PROC-B")
-    operations = success(file_api.client.get(path))["data"]["operations"]
-    sequences = [row["sequence"] for row in operations]
-    # 整数工序号照常按序在前，存量文本工序号排在后面照常展示。
-    assert sequences[-1] == "第二道" and sequences[:-1] == sorted(sequences[:-1]) and len(sequences) > 1

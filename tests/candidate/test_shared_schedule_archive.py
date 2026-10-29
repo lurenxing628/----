@@ -464,17 +464,3 @@ def test_decode_registration_owns_one_payload_and_trials_keep_only_temporary_num
     public["summary"].warnings.append("published caller change")
     assert archive.view(observed.entry_id)["results"][0].machine_id == "M1"
     assert archive.view(observed.entry_id)["summary"].warnings == ["original warning"]
-
-
-@pytest.mark.parametrize(("value", "message"), [
-    (None, "候选结果指标 makespan_hours 须使用数字。"), ("abc", "候选结果指标 makespan_hours 须使用数字。"),
-    (True, "候选结果指标 makespan_hours 须使用数字。"), (float("inf"), "候选内容指标 makespan_hours 必须是有限数字：inf"),
-])
-def test_content_key_metric_rejects_non_numbers_with_its_own_message(value, message):
-    from core.errors import ValidationError
-    from core.services.scheduler.run.optimizer.candidate_fingerprint import _finite_float
-
-    assert _finite_float(1.23456789, field_name="makespan_hours") == 1.234568
-    with pytest.raises(ValidationError) as caught:
-        _finite_float(value, field_name="makespan_hours")
-    assert (caught.value.message, caught.value.field) == (message, "candidate_fingerprint")

@@ -11,7 +11,14 @@ from datetime import timedelta
 from typing import Any, Dict, NamedTuple, Optional
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.capacity.plan_calendar_intervals import IntervalIndex, hours, instant, intersection, union
+from core.services.capacity.plan_calendar_intervals import (
+    HOUR_MICROSECONDS,
+    IntervalIndex,
+    hours,
+    instant,
+    intersection,
+    union,
+)
 from core.services.capacity.plan_calendar_limits import MAX_CALENDAR_DATES
 from core.services.capacity.resource_utilization_metrics import ResourceUtilizationMetrics
 
@@ -245,7 +252,7 @@ class _ResourceMeasurement:
             prepared = None
             if prepared_days is not None:
                 raw_day, current_known = next(prepared_days)
-                prepared = raw_day, (current_known - previous_known) / 3600.0
+                prepared = raw_day, (current_known - previous_known) / HOUR_MICROSECONDS
                 previous_known = current_known
             value = self.values(first, last, [day], prepared=prepared,
                                 retain=self.retain_statistics_values if prepared is not None else True)
@@ -334,7 +341,7 @@ class _ResourceMeasurement:
         known_calendar = any(day.available for day in days)
         tasks, reservations = [], []
         for (start, end, raw), task in zip(rows, natural["tasks"]):
-            span = (min(end, high) - max(start, low)).total_seconds() / 3600
+            span = hours([(max(start, low), min(end, high))])
             occupied = hours(intersection([(max(start, low), min(end, high))], windows))
             item = {**task, "span_hours": span, "occupied_hours": occupied if complete else None,
                     "known_occupied_hours": occupied if known_calendar else None, "locked": raw.get("locked")}

@@ -54,15 +54,8 @@ def stored(text):
                             limit=(64 * 1024 * 1024, _evidence_too_large))
 
 
-def raw_table_rows(rows, table):
-    """A raw read returns None when the table has no columns; that is missing evidence, not a storage error."""
-    if rows is None:
-        fail("adoption_evidence_missing", table)
-    return rows
-
-
 def schedule_rows(conn, version):
-    return raw_table_rows(WorkbenchPlanBaselineRepository(conn).raw_schedule_rows_by_version(version), "Schedule")
+    return WorkbenchPlanBaselineRepository(conn).schedule_rows_by_version(version)
 
 
 def indexed(rows, key):

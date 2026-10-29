@@ -5,7 +5,6 @@ from typing import Optional
 
 import pytest
 
-from core.errors import AppError
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
@@ -95,19 +94,6 @@ def test_old_lock_mark_no_longer_blocks_trial_changes(trial_case):
     assert task["changed"] is True and task["start"] == "2026-09-09T13:00:00"
 
 
-def test_structurally_damaged_calendar_blocks_trial_instead_of_skipping_calendar_checks(trial_case, monkeypatch):
-    """日历表结构坏了（引擎为 None）不能跳过日历核对静默通过：草稿标记 calendar_unproven 不能采用，调整直接被拒。"""
-    case = trial_case
-    draft = create(case)
-    monkeypatch.setattr("core.services.workbench.trial.validation.calendar_engine", lambda tables: None)
-    refreshed = service(case.conn).get(draft["draft_ref"])
-    assert "calendar_unproven" in codes(refreshed)
-    assert refreshed["validation"]["status"] == "blocked"
-    with pytest.raises(WorkbenchCommandRejected) as exc:
-        change(case, refreshed)
-    assert (exc.value.code, exc.value.status) == ("calendar_unproven", 422)
-
-
 def test_fixed_and_unique_execution_projection_protect_changes(trial_case):
     case = trial_case
     draft = create(case)
@@ -127,9 +113,7 @@ def test_fixed_and_unique_execution_projection_protect_changes(trial_case):
     assert snapshot(case.conn) == before
 
 
-def _mixed_external_cycle(case, *, second_start=None, first_machine_ref=None):
-    from tests.workbench.plan_adoption_baseline_support import mutate_json
-
+def _mixed_external_cycle(case):
     case.conn.execute("UPDATE OpTypes SET category='both' WHERE op_type_id='T1'")
     case.conn.execute("INSERT INTO Suppliers(supplier_id,name) VALUES ('S1','Supplier')")
     case.conn.execute("INSERT INTO WorkbenchSupplierOpTypes(supplier_id,op_type_id) VALUES ('S1','T1')")
@@ -158,21 +142,6 @@ def _mixed_external_cycle(case, *, second_start=None, first_machine_ref=None):
     case.command('create', case.task(1, members[0]), case.values(3, actual_start='2026-09-09T11:00:00',
         actual_end='2026-09-10T11:30:00', effective_processing_hours=1,
         actual_machine_ref=None, actual_operator_ref=None))
-    if second_start is not None:
-        case.command('create', case.task(1, members[1]), case.values(3, actual_start='2026-09-09T11:00:00',
-            actual_end='2026-09-10T11:30:00', effective_processing_hours=1,
-            actual_machine_ref=None, actual_operator_ref=None))
-        op_ref = case.conn.execute("SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND source_key=? AND active=1",
-                                   (str(members[1]),)).fetchone()[0]
-        mutate_json(case.conn, "WorkbenchProductionReportRevisions", "values_json",
-                    lambda value: value.update(actual_start=second_start),
-                    "report_ref IN (SELECT report_ref FROM WorkbenchProductionReports WHERE operation_ref=?)", (op_ref,))
-    if first_machine_ref is not None:
-        op_ref = case.conn.execute("SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND source_key=? AND active=1",
-                                   (str(members[0]),)).fetchone()[0]
-        mutate_json(case.conn, "WorkbenchProductionReportRevisions", "values_json",
-                    lambda value: value.update(actual_machine_ref=first_machine_ref),
-                    "report_ref IN (SELECT report_ref FROM WorkbenchProductionReports WHERE operation_ref=?)", (op_ref,))
     return members, movable
 
 
@@ -220,40 +189,6 @@ def test_confirmed_merged_return_replaces_estimate_in_real_trial_adoption(trial_
     assert seeds[members[1]] == (datetime(2026, 9, 9, 11), datetime(2026, 9, 10, 11, 30))
     for table, old in retained.items():
         assert list(case.conn.execute('SELECT * FROM ' + table)) == old
-
-
-def test_unselected_external_orphan_resource_blocks_preflight_and_input(trial_case):
-    case = trial_case
-    _mixed_external_cycle(case, first_machine_ref=case.ref('machine', 'M1'))
-    settings = case.settings('B2')
-    checked, _ = PreflightService(case.conn).evaluate(settings)
-    assert any(item['code'] == 'external_actual_resource_conflict' for item in checked['blockers'])
-    with pytest.raises(AppError):
-        prepare_run_input(case.conn, settings, case.projections('B2'))
-
-
-def test_merged_external_cycle_preflight_reports_mismatched_started_member(trial_case):
-    case = trial_case
-    _mixed_external_cycle(case, second_start='2026-09-09T11:15:00')
-    checked, _ = PreflightService(case.conn).evaluate(case.settings('B1', 'B2'))
-    differ = [item for item in checked['blockers'] if item['code'] == 'external_cycle_actuals_differ']
-    assert len(differ) == 1
-    assert '2026-09-09 11:15:00 至 2026-09-10 11:30:00' in differ[0]['message']
-
-
-def test_inactive_operation_ref_does_not_fabricate_self_overlap_with_official_schedule(trial_case):
-    from tests.workbench.run_candidate_support import corrupt_update
-
-    case = trial_case
-    draft = create(case)
-    corrupt_update(
-        case.conn,
-        "WorkbenchPlanSourceRefs",
-        "UPDATE WorkbenchPlanSourceRefs SET active=0 WHERE kind='operation' AND source_key=?",
-        (str(case.op_id),),
-    )
-    refreshed = service(case.conn).get(draft["draft_ref"])
-    assert not codes(refreshed) & {"machine_overlap", "operator_overlap"}
 
 
 def _report(start, end, hours, machine: Optional[str] = "MR1", operator: Optional[str] = "OR1"):

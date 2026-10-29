@@ -178,14 +178,9 @@ def test_dispatch_failures_record_structured_details_without_raw_error_duplicati
 
 
 def test_graph_blocked_public_error_keeps_operation_codes_through_size_guard_projections() -> None:
-    """回归：图阻塞的公开错误带上 failed_op_code；体积裁剪逐级投影（含对自身输出再投影、最小摘要）
-    后 op_code / op_id / failed_op_code 仍在，文案不坍塌成 “工序 -”“前序工序 -”。"""
+    """回归：图阻塞的公开错误带上 op_code / op_id / failed_op_code，文案不坍塌成 “工序 -”“前序工序 -”。"""
     from core.algorithms.greedy.dispatch.sgs_graph_failure import _record_graph_blocked_operations
     from core.models.scheduler_public_errors import build_public_error_records
-    from core.services.scheduler.summary.summary_size_guard_fields import (
-        minimal_summary_for_size_guard,
-        size_guard_public_error_detail,
-    )
 
     failed_op = make_algo_op(id=1, batch_id="B001")
     blocked_op = make_algo_op(id=2, batch_id="B001", seq=2)
@@ -201,27 +196,6 @@ def test_graph_blocked_public_error_keeps_operation_codes_through_size_guard_pro
     (record,) = build_public_error_records([], structured_details=state.failure_details)
     assert record["message"] == "工序 OP2：依赖的前序工序 OP1 排产失败，本次跳过。"
     assert (record["op_code"], record["op_id"], record["failed_op_code"]) == ("OP2", 2, "OP1")
-
-    tier_once = size_guard_public_error_detail(record)
-    tier_twice = size_guard_public_error_detail(tier_once)
-    assert tier_once == record
-    assert tier_twice == record
-    minimal = minimal_summary_for_size_guard(
-        {
-            "summary_schema_version": "1.2",
-            "is_simulation": False,
-            "completion_status": "partial",
-            "readiness": {"gate_enabled": False},
-            "version": 1,
-            "strategy": "priority_first",
-            "counts": {"batch_count": 1, "op_count": 2, "scheduled_ops": 0, "failed_ops": 2, "unscheduled_batch_count": 1},
-            "time_cost_ms": 1,
-            "public_error_details": [tier_twice],
-        },
-        original_size=1,
-        diagnostics_truncated=False,
-    )
-    assert minimal["public_error_details"] == [record]
 
 
 

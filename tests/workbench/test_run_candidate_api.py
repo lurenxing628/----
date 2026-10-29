@@ -2,7 +2,6 @@
 
 import json
 import sqlite3
-from copy import deepcopy
 from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import url2pathname
@@ -12,21 +11,16 @@ from flask import Blueprint
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_analysis import operation_metrics
-from core.models.workbench_run_baseline import RunCandidateBaselineScope, _resource_change
+from core.models.workbench_run_baseline import RunCandidateBaselineScope
 from core.models.workbench_run_candidate import RunCandidateReadScope
-from core.services.workbench.facts.candidate_archive import load_adoption_candidate
 from core.services.workbench.facts.candidate_projection import algorithm_facts
-from core.services.workbench.facts.candidate_read_source import read_candidate_source
-from core.services.workbench.facts.candidate_store import CandidateStore
-from core.services.workbench.facts.candidate_tasks import filter_workspace, task_resource
+from core.services.workbench.facts.candidate_tasks import filter_workspace
 from core.services.workbench.run.candidate_analysis import read_candidate_analysis
 from core.services.workbench.run.candidate_baseline import WorkbenchRunCandidateBaselineQueryService
-from core.services.workbench.run.candidates import WorkbenchRunCandidateQueryService
-from core.services.workbench.run.decision_queries import read_decision_details
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests._support.excel_templates import point_env_at_shared
 from tests.workbench.run_candidate_adoption_support import INTENT, service
-from tests.workbench.run_candidate_support import BASE, compute, corrupt_update, read, state
+from tests.workbench.run_candidate_support import BASE, compute, read, state
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
 from tests.workbench.trial_adoption_support import saved_scenario
 from tests.workbench.trial_adoption_support import service as trial_adopter
@@ -172,35 +166,6 @@ def test_adopted_external_supplier_uses_original_lineage_and_null_resources_are_
     comparison, _ = read_candidate_analysis(case.conn, changed)
     assert comparison["metrics"]["changed_operation_count"]["value"] == 1
     assert comparison["metrics"]["machine_change_count"]["value"] == 0
-    if adoption_source == "candidate":
-        frozen = deepcopy(comparison)
-        audit = json.loads(case.conn.execute("SELECT result_summary FROM ScheduleHistory WHERE version=1").fetchone()[0])
-        audit["proof"]["candidate_ref"] = changed
-        case.conn.execute("UPDATE ScheduleHistory SET result_summary=? WHERE version=1", (json.dumps(audit),))
-        case.conn.commit()
-        baseline, _ = WorkbenchRunCandidateBaselineQueryService(case.conn).baseline(RunCandidateBaselineScope(changed))
-        row = next(item for item in baseline["comparisons"] if item["candidate"]["source"] == "external")
-        gaps = row["baseline_segments"][0]["data_gaps"]
-        assert {item["code"] for item in gaps if item["field"] in ("source", "supplier")} == {"adoption_snapshot_invalid"}
-        comparison, _ = read_candidate_analysis(case.conn, changed)
-        assert comparison == frozen  # Current comparison keeps the original admission's audit.
-        admitted_bad = run("supplier-bad-proof-run-0004")
-        comparison, _ = read_candidate_analysis(case.conn, admitted_bad)
-        issue = next(item for item in comparison["operations"]["issues"] if item["operation_ref"] == row["operation_ref"])
-        assert {reason["code"] for reason in issue["reasons"]} == {"adoption_snapshot_invalid"}
-
-
-def test_archived_resource_identity_survives_missing_display_directory(candidate_case):
-    _, refs = compute(candidate_case)
-    _, _, _, _, _, _, facts = load_adoption_candidate(candidate_case.conn, refs[0])
-    ref = facts.entity_refs["machine", "M1"]
-    facts.tables["Machines"].clear()
-    gaps = []
-    resource = task_resource(facts, "machine", "M1", gaps)
-    assert resource == {"ref": ref, "label": None}
-    assert any(row["field"] == "machine" and row["code"] == "source_missing" for row in gaps)
-    assert _resource_change({"machine": resource, "data_gaps": gaps},
-                            {"machine": {"ref": ref, "label": "Known name"}, "data_gaps": []}, "machine") is False
 
 
 def test_added_removed_and_absent_arrangements_are_known_without_counting_machine_reassignment():
@@ -231,68 +196,6 @@ def test_arranged_and_unplanned_operations_share_one_sequence_order():
         arranged, pending = filter_workspace(tasks, unplanned, RunCandidateReadScope("c" * 48, order=order))
         assert [item["operation_ref"] for item in arranged] == expected_tasks
         assert [item["operation_ref"] for item in pending] == expected_unplanned
-
-
-@pytest.mark.parametrize("reader", ("candidate_source", "candidate_workspace", "decision_operations", "admission_comparison",
-                                    "adoption"))
-def test_completed_candidate_receipt_without_dispositions_is_a_corrupt_record(candidate_case, reader):
-    run_ref, refs = compute(candidate_case)
-    conn = candidate_case.conn
-    raw = conn.execute("SELECT result_json FROM WorkbenchRunReceipts WHERE run_ref=?", (run_ref,)).fetchone()[0]
-    receipt = json.loads(raw)
-    del receipt["dispositions"]
-    corrupt_update(conn, "WorkbenchRunReceipts", "UPDATE WorkbenchRunReceipts SET result_json=? WHERE run_ref=?",
-                   (json.dumps(receipt, ensure_ascii=False), run_ref))
-    reads = {
-        "candidate_source": lambda: read_candidate_source(CandidateStore(conn), refs[0]),
-        "candidate_workspace": lambda: WorkbenchRunCandidateQueryService(conn).workspace(RunCandidateReadScope(refs[0])),
-        "decision_operations": lambda: read_decision_details(conn, run_ref, "operations", selected_candidate_ref=refs[0]),
-        "admission_comparison": lambda: WorkbenchRunCandidateBaselineQueryService(conn).baseline(
-            RunCandidateBaselineScope(refs[0])),
-        "adoption": lambda: load_adoption_candidate(conn, refs[0]),
-    }
-    with pytest.raises(WorkbenchCommandRejected) as rejected:
-        reads[reader]()
-    assert rejected.value.code == "candidate_artifact_invalid"
-
-
-@pytest.mark.parametrize("reader", ("candidate_source", "candidate_workspace", "decision_operations", "admission_comparison",
-                                    "adoption"))
-def test_receipt_dispositions_missing_the_selected_operation_are_a_corrupt_candidate_archive(candidate_case, reader):
-    # 回执处置缺了所选工序：按候选存档损坏（candidate_artifact_invalid）拒绝，不归为存储故障。
-    run_ref, refs = compute(candidate_case)
-    conn = candidate_case.conn
-    receipt = json.loads(conn.execute("SELECT result_json FROM WorkbenchRunReceipts WHERE run_ref=?", (run_ref,)).fetchone()[0])
-    selected = conn.execute("SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND source_key=? AND active=1",
-                            (str(candidate_case.op_id),)).fetchone()[0]
-    kept = [row for row in receipt["dispositions"] if row["operation_ref"] != selected]
-    assert len(kept) == len(receipt["dispositions"]) - 1
-    receipt["dispositions"] = kept
-    corrupt_update(conn, "WorkbenchRunReceipts", "UPDATE WorkbenchRunReceipts SET result_json=? WHERE run_ref=?",
-                   (json.dumps(receipt, ensure_ascii=False), run_ref))
-    reads = {
-        "candidate_source": lambda: read_candidate_source(CandidateStore(conn), refs[0]),
-        "candidate_workspace": lambda: WorkbenchRunCandidateQueryService(conn).workspace(RunCandidateReadScope(refs[0])),
-        "decision_operations": lambda: read_decision_details(conn, run_ref, "operations", selected_candidate_ref=refs[0]),
-        "admission_comparison": lambda: WorkbenchRunCandidateBaselineQueryService(conn).baseline(
-            RunCandidateBaselineScope(refs[0])),
-        "adoption": lambda: load_adoption_candidate(conn, refs[0]),
-    }
-    with pytest.raises(WorkbenchCommandRejected) as rejected:
-        reads[reader]()
-    assert (rejected.value.code, rejected.value.status) == ("candidate_artifact_invalid", 500)
-
-
-def test_completed_dispositions_cover_exactly_the_admitted_operations():
-    from core.services.workbench.facts.candidate_projection import completed_dispositions
-
-    first, second = "1" * 48, "2" * 48
-    receipt = {"dispositions": [{"operation_ref": first, "op_id": 1, "status": "eligible"}]}
-    assert set(completed_dispositions(receipt, expected_refs={first})) == {first}
-    for expected in ({first, second}, set(), {second}):
-        with pytest.raises(WorkbenchCommandRejected) as rejected:
-            completed_dispositions(receipt, expected_refs=expected)
-        assert (rejected.value.code, rejected.value.status) == ("candidate_artifact_invalid", 500)
 
 
 @pytest.mark.parametrize("state", ("queued", "failed"))

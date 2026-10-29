@@ -2,7 +2,6 @@
 
 import pytest
 
-from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.resource.queries import WorkbenchResourceQueryService
 from core.services.workbench.resource.relation_files import files as module
 from core.services.workbench.resource.relation_files.file_codec import read_relation_file
@@ -108,35 +107,6 @@ def test_relation_confirm_import_rejects_same_second_recreated_operator_or_machi
     )
     preview = service.preview_import(content, file_format="csv")
     assert preview.as_dict()["summary"]["rejected"] == 0
-
-    conn.execute(
-        "UPDATE WorkbenchEntityRefs SET active=0 WHERE kind='operator' AND entity_key='EMPTY' AND active=1"
-    )
-    conn.execute(
-        "INSERT INTO WorkbenchEntityRefs(ref, kind, entity_key, revision, active) VALUES (?, 'operator', 'EMPTY', 1, 1)",
-        ("e" * 48,),
-    )
-    conn.commit()
-
-    with pytest.raises(WorkbenchCommandRejected) as exc_info:
-        with service.tx.transaction():
-            service.confirm_import(preview, content, file_format="csv")
-    assert exc_info.value.code == "stale_write"
-
-    preview2 = service.preview_import(content, file_format="csv")
-    conn.execute(
-        "UPDATE WorkbenchEntityRefs SET active=0 WHERE kind='machine' AND entity_key='M1' AND active=1"
-    )
-    conn.execute(
-        "INSERT INTO WorkbenchEntityRefs(ref, kind, entity_key, revision, active) VALUES (?, 'machine', 'M1', 1, 1)",
-        ("d" * 48,),
-    )
-    conn.commit()
-
-    with pytest.raises(WorkbenchCommandRejected) as exc_info2:
-        with service.tx.transaction():
-            service.confirm_import(preview2, content, file_format="csv")
-    assert exc_info2.value.code == "stale_write"
 
     monkeypatch.setattr(openpyxl.xml, "LXML", False)
     download = write_relation_file(

@@ -28,7 +28,7 @@ def decision_history():
         from core.services.workbench.history.queries import read_decision_history
 
         data, scope, state = read_decision_history(g.db, values)
-        snapshot = bind_read_snapshot(scope, state, token)
+    snapshot = bind_read_snapshot(scope, state, token)
     return query_success(data, snapshot)
 
 

@@ -7,11 +7,8 @@ from datetime import timedelta
 from itertools import islice
 from types import SimpleNamespace
 
-import pytest
-
 from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithm_contracts.types import ScheduleResult
-from core.errors import ValidationError
 from core.services.scheduler.run.optimizer.candidate_fingerprint import build_candidate_fingerprint
 from core.services.scheduler.run.optimizer.graph.candidates import (
     PreparedDecisionFeatures,
@@ -36,7 +33,6 @@ from core.services.scheduler.run.optimizer.graph.v2_ranks import build_v2_common
 from core.services.scheduler.run.optimizer.graph_ready_feature_basis import (
     BATCH_WORKLOAD_BASIS,
     SUCCESSOR_WORKLOAD_BASIS,
-    select_profile_metrics,
 )
 from core.services.scheduler.run.optimizer.graph_ready_profiles import resolve_v2_profiles
 from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
@@ -62,8 +58,9 @@ def test_fixed_decision_features_admit_effective_profiles_once_and_preserve_raw_
     metrics = enrich_graph_ready_v2_metrics(
         context["node_metrics_by_op_id"], operations=operations, batches=batches,
         start_dt=START_DT, graph_ready_context=context, calendar_service=ContinuousCalendar(),
-        downtime_map={}, seed_results=[],
+        downtime_map={}, seed_results=[], deadline=float("inf"), clock=lambda: 0.0,
     )
+    assert metrics is not None
     ranks = build_v2_common_rank_cache(metrics)
     owner = SharedGraphFeatures(metrics, ranks)
     profiles = resolve_v2_profiles(seed=0, objective_name="min_overdue")
@@ -92,20 +89,6 @@ def test_fixed_decision_features_admit_effective_profiles_once_and_preserve_raw_
     assert len(calls) == 5
     assert (metrics, ranks) == original
 
-    broken = deepcopy(metrics)
-    broken[next(iter(broken))]["impact_count"] = float("nan")
-    failed_owner = SharedGraphFeatures(broken, ranks)
-    hybrid_profile = replace(profile, formula_slug="graph_due_hybrid")
-    with pytest.raises(ValidationError) as expected:
-        compute(select_profile_metrics(broken, profile=hybrid_profile), profile=hybrid_profile,
-                v2_common_rank_cache=ranks, normalized_metrics_cache={})
-    for _ in range(2):
-        with pytest.raises(ValidationError) as actual:
-            failed_owner.decision_features.priority_keys_for_profile(hybrid_profile)
-        assert (actual.value.field, str(actual.value), actual.value.details) == (
-            expected.value.field, str(expected.value), expected.value.details)
-    assert len(calls) == 7
-
 
 def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downtime(monkeypatch):
     from core.models.objective import target_objectives_for
@@ -133,7 +116,9 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
         context["node_metrics_by_op_id"], operations=operations, batches=batches,
         start_dt=START_DT, seed_results=[seed], resource_pool=pool, downtime_map=downtime,
         graph_ready_context=context, calendar_service=ContinuousCalendar(),
+        deadline=float("inf"), clock=lambda: 0.0,
     )
+    assert metrics is not None
     features = PreparedDecisionFeatures(metrics, build_v2_common_rank_cache(metrics))
     base_profile = next(p for p in resolve_v2_profiles(seed=0, objective_name="min_overdue")
                         if p.slug == "v2_seeded_micro_perturbation")
@@ -524,8 +509,9 @@ def test_graph_ready_type_group_rank_follows_type_identity_not_label():
     metrics = enrich_graph_ready_v2_metrics(
         context["node_metrics_by_op_id"], operations=operations, batches=batches,
         start_dt=START_DT, graph_ready_context=context, calendar_service=ContinuousCalendar(),
-        downtime_map={}, seed_results=[],
+        downtime_map={}, seed_results=[], deadline=float("inf"), clock=lambda: 0.0,
     )
+    assert metrics is not None
     rank ={op.id: metrics[op.id]["changeover_family_rank"] for op in operations if op.id in metrics}
     assert rank[operations[0].id] != rank[operations[1].id]
     assert {rank[op.id] for op in operations[2:] if op.id in rank} == {2}

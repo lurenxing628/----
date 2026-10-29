@@ -75,7 +75,7 @@ def test_full_flask_app_actual_engine_run_and_only_temporary_sqlite(history_case
     monkeypatch.setattr(sqlite3, "connect", guard)
     from web.bootstrap.entrypoint import create_app_with_mode
     app = create_app_with_mode("default")
-    if not any(rule.rule == BASE and "GET" in rule.methods for rule in app.url_map.iter_rules()):
+    if not any(rule.rule == BASE and "GET" in (rule.methods or ()) for rule in app.url_map.iter_rules()):
         bp = Blueprint("bq_full_app_history", __name__)
         register_run_history_routes(bp)
         app.register_blueprint(bp)
@@ -108,7 +108,7 @@ def test_full_flask_app_actual_engine_run_and_only_temporary_sqlite(history_case
     assert workspace.get_json()["data"]["candidate"]["run_ref"] == accepted["run_ref"]
     assert workspace.get_json()["data"]["task_count"] == 1
     rules = [rule for rule in app.url_map.iter_rules() if rule.rule == BASE]
-    assert any("GET" in rule.methods for rule in rules)
+    assert any("GET" in (rule.methods or ()) for rule in rules)
     # The full app may still be awaiting the parent's explicit AV registration.
     assert not app.config.get("WORKBENCH_RUN_JOBS_ENABLED")
     assert dump(case.conn) == before and paths and str(case.path) in paths
@@ -174,70 +174,4 @@ conn.close()
     assert {row["run_ref"] for row in actual["data"]["runs"]} == set(refs)
     assert {row["state"] for row in actual["data"]["runs"]} == {"complete", "partial", "failed", "interrupted"}
     assert dump(case.conn) == before
-
-
-def test_history_conditions_strict_operator_machine_enum_parsing(history_case):
-    from copy import deepcopy
-
-    from core.infrastructure.read_evidence import read_evidence_scope
-    from core.infrastructure.snapshot_connection import ddl_columns
-    from core.services.workbench.facts.candidate_facts import GenerationFacts
-    from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
-    from core.services.workbench.history.catalog import read_history_catalog
-    from core.services.workbench.history.conditions import (
-        compare_prepared_history_conditions,
-        prepare_history_condition_side,
-        prepare_history_condition_source,
-    )
-    from core.services.workbench.history.reading import HistoryReader
-    from core.shared.strict_json import canonical_json
-
-    case = history_case
-    accepted = case.accept(new_run_ref())
-    result = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
-    assert result["state"] == "complete"
-    with TransactionManager(case.conn).transaction(), candidate_read_snapshot(case.conn), read_evidence_scope(case.conn):
-        descriptors, _ = read_history_catalog(case.conn)
-        descriptor = next(row for row in descriptors if row["entry_ref"] == "run:" + accepted["run_ref"])
-        packet = HistoryReader(case.conn, catalog=descriptors).read(descriptor)
-
-    def with_operator_machine(base_packet, is_primary, skill_level, suffix):
-        cloned = deepcopy(base_packet)
-        facts = json.loads(cloned["capture"]["facts_text"])
-        ddl = next(sql for kind, name, _, sql in facts["schema"] if kind == "table" and name == "OperatorMachine")
-        columns = ddl_columns(ddl, "OperatorMachine", restricted=True)
-        for row in facts["tables"]["OperatorMachine"]:
-            row[columns.index("is_primary")] = is_primary
-            row[columns.index("skill_level")] = skill_level
-        cloned["capture"]["facts_text"] = canonical_json(facts)
-        cloned["facts"] = GenerationFacts(cloned["capture"])
-        cloned.update(ref=suffix * 48, entry_ref="run:" + suffix * 48)
-        return cloned
-
-    window = {"start": "2026-09-09T08:00:00", "end": "2026-09-09T16:00:00"}
-    yes_packet = with_operator_machine(packet, "yes", "expert", "1")
-    alias_packet = with_operator_machine(packet, "主操", "高级", "2")
-    broken_packet = with_operator_machine(packet, "broken", "broken", "3")
-
-    equal_pair = compare_prepared_history_conditions(
-        prepare_history_condition_side(prepare_history_condition_source(yes_packet), window),
-        prepare_history_condition_side(prepare_history_condition_source(alias_packet), window),
-    )
-    auth_rows = {row["field"]: row for row in equal_pair["conditions"]["rows"]
-                 if row["category"] == "resource_qualifications" and row["field"] in ("is_primary", "skill_rank")}
-    assert auth_rows["is_primary"]["state"] == "equal"
-    assert auth_rows["is_primary"]["before"]["value"] == auth_rows["is_primary"]["after"]["value"] == "yes"
-    assert auth_rows["skill_rank"]["state"] == "equal"
-    assert auth_rows["skill_rank"]["before"]["value"] == auth_rows["skill_rank"]["after"]["value"] == 0
-
-    broken_pair = compare_prepared_history_conditions(
-        prepare_history_condition_side(prepare_history_condition_source(yes_packet), window),
-        prepare_history_condition_side(prepare_history_condition_source(broken_packet), window),
-    )
-    broken_rows = {row["field"]: row for row in broken_pair["conditions"]["rows"]
-                   if row["category"] == "resource_qualifications" and row["field"] in ("is_primary", "skill_rank")}
-    for field in ("is_primary", "skill_rank"):
-        assert broken_rows[field]["state"] == "unknown"
-        assert broken_rows[field]["after"]["state"] == "unknown"
-        assert broken_rows[field]["after"]["value"] is None
 

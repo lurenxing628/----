@@ -331,8 +331,9 @@ def _assert_controlled_worse_reference_keeps_source():
     graph_metrics = enrich_graph_ready_v2_metrics(
         context["node_metrics_by_op_id"], operations=operations, batches=batches, start_dt=START_DT,
         calendar_service=scheduler.calendar, resource_pool=pool, downtime_map={}, graph_ready_context=context,
-        seed_results=[],
+        seed_results=[], deadline=float("inf"), clock=lambda: 0.0,
     )
+    assert graph_metrics is not None
     profile = ig_decode_profile(next(p for p in resolve_v2_profiles(seed=0, objective_name="min_overdue") if p.slug == "balanced"))
     limits = IteratedGreedyLimits(due_date_seed=False, checkpoint_count=2, max_decodes=2, max_iterations=1)
     ig_report = new_iterated_greedy_report(limits, objective_name="min_overdue")
@@ -911,7 +912,8 @@ def test_shared_decode_ledger_reuses_effective_requests_and_restores_only_explic
     metrics_by_op_id = enrich_graph_ready_v2_metrics(context["node_metrics_by_op_id"], operations=operations,
                                                      batches=batches, start_dt=START_DT, graph_ready_context=context,
                                                      calendar_service=scheduler.calendar, downtime_map={},
-                                                     seed_results=[])
+                                                     seed_results=[], deadline=float("inf"), clock=lambda: 0.0)
+    assert metrics_by_op_id is not None
     decision_features = PreparedDecisionFeatures(metrics_by_op_id, build_v2_common_rank_cache(metrics_by_op_id))
     context = dict(context, score_enabled=True,
                    graph_priority_key_by_op_id=decision_features.priority_keys_for_profile(profile))
@@ -1243,7 +1245,8 @@ def test_shared_ig_sync_keeps_same_evidence_pointer_and_defers_new_parent():
         decision_metrics = enrich_graph_ready_v2_metrics(metrics, operations=operations, batches=batches,
                                                          start_dt=START_DT, graph_ready_context=_context,
                                                          calendar_service=scheduler.calendar, downtime_map={},
-                                                         seed_results=[])
+                                                         seed_results=[], deadline=float("inf"), clock=lambda: 0.0)
+        assert decision_metrics is not None
         profile = ig_decode_profile(next(p for p in resolve_v2_profiles(seed=0, objective_name="min_overdue") if p.slug == "balanced"))
         limits = IteratedGreedyLimits(due_date_seed=False)
         repair_pool = EliteRepairPool(
@@ -1458,3 +1461,141 @@ def test_shared_ig_sync_keeps_same_evidence_pointer_and_defers_new_parent():
     assert not any(entry_id in life.archive for entry_id in held_ids | {current_id})
     assert life.archive.current_by_objective == {objective: best_id for objective in life.archive.target_objectives}
     assert all(entries == () for entries in life.archive.starting_entries_by_objective.values())
+
+
+def test_graph_features_skipped_when_sgs_decode_unaffordable_and_aborted_on_deadline():
+    from core.services.scheduler.run import schedule_shared_optimizer
+    from core.services.scheduler.run.optimizer.graph import v2_features
+    from core.services.scheduler.run.optimizer.graph.ready import prepare_shared_graph_features
+
+    operations, batches, context, pool, downtime, seed = _linear_fixture()
+    values = default_snapshot_values()
+    values.update(
+        sort_strategy="fifo",
+        dispatch_mode="batch_order",
+        dispatch_rule="slack",
+        auto_assign_enabled="yes",
+        objective="min_overdue",
+        algo_mode="improve",
+        time_budget_seconds=10,
+        ortools_enabled="no",
+        freeze_window_enabled="no",
+        freeze_window_days=0,
+        graph_analysis_mode="on",
+    )
+    cfg = snapshot_from_values(values)
+
+    # 1. When initial construction consumes 9.86s out of a 10.0s budget (clock < deadline,
+    #    but remaining 0.14s < 9.86s * 1.25), prepare_shared_graph_features is never called.
+    timer = SimpleNamespace(value=100.0)
+    created = []
+
+    class SlowFirstDecodeScheduler(RecordingScheduler):
+        def schedule_prepared(self, prepared_inputs, **changes):
+            result = super().schedule_prepared(prepared_inputs, **changes)
+            if len(self.calls) == 1:
+                timer.value += 9.86
+            return result
+
+    def slow_factory(**kwargs):
+        scheduler = SlowFirstDecodeScheduler(**kwargs)
+        created.append(scheduler)
+        return scheduler
+
+    runtime = replace(_default_runtime(), scheduler_factory=slow_factory, clock=lambda: timer.value, rng_factory=Random)
+    budget = SearchBudget(clock=lambda: timer.value, started_at=100.0, deadline=110.0, assigned_seconds=10.0)
+
+    with patch.object(
+        schedule_shared_optimizer,
+        "prepare_shared_graph_features",
+        wraps=prepare_shared_graph_features,
+    ) as mocked_prepare_features:
+        shared = optimize_shared_schedule(
+            calendar_service=ContinuousCalendar(),
+            cfg=cfg,
+            algo_ops_to_schedule=operations,
+            batches=batches,
+            start_dt=START_DT,
+            end_date=None,
+            downtime_map=downtime,
+            seed_results=[asdict(seed)],
+            resource_pool=pool,
+            version=0,
+            readiness_gate_enabled=False,
+            graph_prepare=lambda: ScheduleGraphDispatchPreparation(None, None, context),
+            search_budget=budget,
+            _runtime=runtime,
+        )
+
+    assert mocked_prepare_features.call_count == 0
+    assert shared.process_facts["feature_preparation_calls"] == 0
+    assert "graph_features" not in shared.process_facts["unified_process"]["budget"]["phase_elapsed_seconds"]
+    assert len(created) == 1 and len(created[0].calls) == 1
+
+    # 2. When clock reaches deadline mid-loop inside enrich_graph_ready_v2_metrics,
+    #    it immediately aborts without evaluating residual capacity for remaining operations.
+    feature_timer = SimpleNamespace(value=200.0)
+    real_residual_capacity = v2_features.residual_capacity_for_operation
+
+    def expiring_residual_capacity(*args, **kwargs):
+        out = real_residual_capacity(*args, **kwargs)
+        feature_timer.value = 210.0
+        return out
+
+    scheduler = GreedyScheduler(calendar_service=ContinuousCalendar(), config_service=cfg)
+    with patch.object(
+        v2_features,
+        "residual_capacity_for_operation",
+        side_effect=expiring_residual_capacity,
+    ) as mocked_residual:
+        aborted = prepare_shared_graph_features(
+            graph_ready_context=context,
+            scheduler=scheduler,
+            algo_ops_to_schedule=operations,
+            batches=batches,
+            start_dt=START_DT,
+            downtime_map=downtime,
+            seed_sr_list=[seed],
+            resource_pool=pool,
+            deadline=210.0,
+            clock=lambda: feature_timer.value,
+        )
+    assert aborted is None
+    assert mocked_residual.call_count == 1
+
+    # 3. When clock reaches deadline during _advance_releases calendar derivation across a serial
+    #    chain, it immediately stops subsequent calendar calls and returns None before residual capacity.
+    chain_context = deepcopy(context)
+    chain_context["predecessor_op_ids_by_op_id"].update({1: {99}, 2: {1}, 3: {2}, 4: {3}})
+    chain_context["successor_op_ids_by_op_id"].update({99: {1}, 1: {2}, 2: {3}, 3: {4}, 4: set()})
+    release_timer = SimpleNamespace(value=300.0)
+    calendar_calls = 0
+
+    class ExpiringCalendar(ContinuousCalendar):
+        def add_working_hours(self, start_dt, hours, **kwargs):
+            nonlocal calendar_calls
+            calendar_calls += 1
+            release_timer.value = 310.0
+            return super().add_working_hours(start_dt, hours, **kwargs)
+
+    expiring_scheduler = GreedyScheduler(calendar_service=ExpiringCalendar(), config_service=cfg)
+    with patch.object(
+        v2_features,
+        "residual_capacity_for_operation",
+        wraps=real_residual_capacity,
+    ) as mocked_chain_residual:
+        aborted_in_release = prepare_shared_graph_features(
+            graph_ready_context=chain_context,
+            scheduler=expiring_scheduler,
+            algo_ops_to_schedule=operations,
+            batches=batches,
+            start_dt=START_DT,
+            downtime_map=downtime,
+            seed_sr_list=[seed],
+            resource_pool=pool,
+            deadline=310.0,
+            clock=lambda: release_timer.value,
+        )
+    assert aborted_in_release is None
+    assert calendar_calls == 1
+    assert mocked_chain_residual.call_count == 0

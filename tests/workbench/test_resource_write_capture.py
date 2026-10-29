@@ -82,14 +82,6 @@ def test_selected_relationships_keep_category_and_deleted_identity_rejections(re
         checked = preparation.state("machine", preparation.current("machine", identity).entity_key)
         reader.domain.apply_prepared(reader.domain.prepare("update", normalized, checked, preparation))
     assert error.value.code == "constraint_conflict"
-    conn.execute("UPDATE WorkbenchEntityRefs SET active=0 WHERE ref=?", (identity.ref,))
-    conn.commit()
-    normalized = reader.domain.normalize_input("update", {"label": "changed"})
-    with TransactionManager(conn).transaction(), pytest.raises(WorkbenchCommandRejected) as error:
-        preparation = reader.preparation_for("update", normalized, ref=identity.ref)
-        checked = preparation.state("machine", preparation.current("machine", identity).entity_key)
-        reader.domain.apply_prepared(reader.domain.prepare("update", normalized, checked, preparation))
-    assert error.value.code == "entity_not_found"
 
 
 def test_unchanged_relations_allow_remark_updates_and_preserve_undeclared_operator_skills(resource_conn):

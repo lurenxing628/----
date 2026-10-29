@@ -5,21 +5,21 @@ from typing import NoReturn
 
 from core.errors import ValidationError
 
-from .native_snapshot import UNSUPPORTED, content_snapshot, make_class_guard
+from .native_snapshot import UNSUPPORTED, content_snapshot
 
 _CERTIFICATES = {}
 
 
 def register_checkpoint_calendar(calendar_type, snapshot):
-    """Register alongside the original class definition, before any runtime overrides."""
-    _CERTIFICATES[calendar_type] = make_class_guard(calendar_type), snapshot
+    """Register alongside the original class definition."""
+    _CERTIFICATES[calendar_type] = snapshot
 
 
 def checkpoint_calendar_signature(calendar):
-    certificate = _CERTIFICATES.get(type(calendar))
-    if certificate is None or not certificate[0](calendar):
+    snapshot = _CERTIFICATES.get(type(calendar))
+    if snapshot is None:
         unsupported_calendar()
-    value = certificate[1](calendar)
+    value = snapshot(calendar)
     if value is None or content_snapshot(value) is UNSUPPORTED:
         unsupported_calendar()
     return value

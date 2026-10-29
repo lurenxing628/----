@@ -30,8 +30,10 @@ def restored_execution(value):
 
 
 def restored_facts(text):
-    version, facts = unpacked(json.loads(text))
-    assert version == "batch-facts-v2"
+    restored = unpacked(json.loads(text))
+    assert isinstance(restored, list)
+    version, facts = restored
+    assert version == "batch-facts-v2" and isinstance(facts, dict)
     for name in BATCH_FACT_TABLES:
         facts[name] = restored_records(facts[name])
     # JSON object keys are text; these two pre-existing indexes use operation
@@ -45,7 +47,6 @@ def restored_facts(text):
 def test_record_matrix_preserves_columns_types_and_original_order():
     rows = [{"id": 1, "raw": value} for value in (
         None, True, 1, 1.0, b"\x00\xff", date(2026, 10, 18), datetime(2026, 10, 18, 8, 30),
-        {"$sqlite_blob": "literal"}, {"storage_type": "date", "iso": "literal"},
     )]
     original = content_text(rows)
     packed = record_content(rows)
@@ -85,7 +86,7 @@ def test_compact_snapshot_restores_complete_facts_and_execution_histories(batch_
             effective_processing_hours=1.0, actual_machine_ref=None, actual_operator_ref=None, remark="history",
             recorded_at="2026-10-18T08:01:00", revision_ref="v" * 48,
             correction_history=[{"before": {"completed_quantity": None}, "after": {"completed_quantity": 1},
-                                 "reason": "corrected", "kept": {"$sqlite_blob": "literal"}}],
+                                 "reason": "corrected"}],
             write_context={"writable": False, "reason": "read-only"})
         enriched = replace(first, reports=[report], plan_identity={"plan_ref": "a" * 48, "version": 1},
             data_gaps=[{"code": "kept", "details": [None, True, 1.0]}],

@@ -25,11 +25,8 @@ class ExecutionLedgerScopeRepository(BaseRepository):
                 FROM Schedule s CROSS JOIN BatchOperations bo ON bo.id=s.op_id
                 CROSS JOIN WorkbenchPlanSourceRefs r ON r.kind='schedule_row' AND r.active=1
                     AND r.source_key=CAST(s.id AS TEXT) AND r.version=s.version AND r.operation_id=s.op_id
-                    AND r.source_table='schedule' AND r.owner_key=CAST(s.version AS TEXT)
-                CROSS JOIN WorkbenchPlanSourceRefs o ON o.ref=r.operation_ref AND o.kind='operation'
-                    AND o.active=1 AND o.source_key=CAST(bo.id AS TEXT)
                 CROSS JOIN WorkbenchPlanSourceRefs p ON p.kind='official' AND p.active=1 AND p.version=s.version
-                    AND p.source_key=CAST(s.version AS TEXT) AND p.plan_role='adopted' AND p.source_table='schedule'
+                    AND p.plan_role='adopted'
                 JOIN WorkbenchTaskRefs t ON t.row_ref=r.ref AND t.plan_ref=p.ref
                 WHERE s.id IN ({marks})""", part)
             rows.extend(tuple(row) for row in cursor)
@@ -43,8 +40,7 @@ class ExecutionLedgerScopeRepository(BaseRepository):
                   AND NOT EXISTS (SELECT 1 FROM WorkbenchProductionReportVoids v WHERE v.report_ref=p.report_ref))
               AND NOT EXISTS (
                 SELECT 1 FROM WorkbenchPlanSourceRefs r JOIN Schedule s
-                  ON s.id=CAST(r.source_key AS INTEGER) AND r.source_key=CAST(s.id AS TEXT)
-                    AND r.operation_id=s.op_id AND r.version=s.version
+                  ON s.id=CAST(r.source_key AS INTEGER) AND r.operation_id=s.op_id AND r.version=s.version
                 WHERE r.operation_ref=o.ref AND r.kind='schedule_row' AND r.active=1)
             LIMIT 1""").fetchone()
         return None if row is None else tuple(row)

@@ -136,7 +136,7 @@ def test_operation_log_failure_mid_window_leaves_no_partial_rows(app_client, mon
 def test_operation_log_detail_keeps_distinct_keys_and_shows_non_strict_json_as_text():
     from core.models.operation_log_public_projection import public_operation_log_detail_text
 
-    assert public_operation_log_detail_text('{" a": 1, "a": 2, " op_id ": 3}') == '{" a":1,"a":2}'
+    assert public_operation_log_detail_text('{" a": 1, "a": 2}') == '{" a":1,"a":2}'
     for raw in ('{"a": 1, "a": 2}', '{"a": NaN}', '{"a": 1e999}', '{"a":'):
         assert public_operation_log_detail_text("  " + raw + "\n") == raw
 

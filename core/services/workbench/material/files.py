@@ -4,7 +4,7 @@ preview_import(content: bytes, *, file_format, scope, mode='upsert') returns a
 MaterialPreview. scope={} binds the material collection; filtered imports and
 replace/append-only modes are unsupported by the prototype. Blank cells/columns
 are omitted, \\N clears only nullable fields. Headers and escaping are documented
-in material_file_codec. A stored status other than active/inactive is rejected as damaged storage.
+in material_file_codec.
 created_at is exported for reference and is never part of imported changes.
 
 confirm_import(preview, content, *, file_format, scope, mode='upsert') requires an
@@ -56,7 +56,7 @@ from .bulk import full_material_snapshot
 from .file_codec import check_export_capacity, read_material_file, write_material_file
 from .queries import WorkbenchMaterialQueryService
 from .service import WorkbenchMaterialService
-from .table_facts import material_ref, material_status, material_stock
+from .table_facts import material_ref, material_stock
 
 # 与资源导出（resource/file_projection.py）同一条规则：认得出的存储时刻才换算。
 _STORED_TIME_TEXT = re.compile(r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$")
@@ -230,7 +230,6 @@ class WorkbenchMaterialFileService:
             if raw is None:
                 raise WorkbenchCommandRejected("entity_not_found", "勾选的物料已经删除了。请刷新后重新勾选。", 404)
             material_ref(raw)
-            material_status(raw)
             material_stock(raw)
             row = dict(zip(COLUMNS, (raw[key] for key in MATERIAL_COLUMNS)))
             row["created_at"] = local_created_at(raw["created_at"])

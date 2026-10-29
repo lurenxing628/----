@@ -8,7 +8,14 @@ from bisect import bisect_right
 from itertools import tee
 from typing import Optional
 
-from .plan_calendar_intervals import IntervalIndex, intersection, segments, union_sorted
+from .plan_calendar_intervals import (
+    HOUR_MICROSECONDS,
+    IntervalIndex,
+    intersection,
+    interval_microseconds,
+    segments,
+    union_sorted,
+)
 
 METRIC_VERSION = "available_occupancy_v1"
 
@@ -17,23 +24,23 @@ class _WeightedIndex:
     def __init__(self, rows):
         self.rows = rows
         self.starts = [start for start, _, _ in rows]
-        self.prefix = [0.0]
+        self.prefix = [0]
         for start, end, count in rows:
-            self.prefix.append(self.prefix[-1] + (end - start).total_seconds() * count)
+            self.prefix.append(self.prefix[-1] + interval_microseconds(start, end) * count)
 
     def _at_index(self, index, at):
         if index < 0:
-            return 0.0
+            return 0
         start, end, count = self.rows[index]
         if at >= end:
             return self.prefix[index + 1]
-        return self.prefix[index] + (at - start).total_seconds() * count
+        return self.prefix[index] + interval_microseconds(start, at) * count
 
     def _before(self, at):
         return self._at_index(bisect_right(self.starts, at) - 1, at)
 
     def prefix_values_at_sorted(self, points):
-        """Consume caller-ordered points as cumulative seconds, including repeats."""
+        """Consume caller-ordered points as cumulative microseconds, including repeats."""
         index = -1
         for at in points:
             while index + 1 < len(self.starts) and self.starts[index + 1] <= at:
@@ -41,7 +48,7 @@ class _WeightedIndex:
             yield self._at_index(index, at)
 
     def hours_between(self, start, end):
-        return (self._before(end) - self._before(start)) / 3600.0
+        return (self._before(end) - self._before(start)) / HOUR_MICROSECONDS
 
 
 def _available_segments(swept, available):
@@ -118,7 +125,7 @@ class ResourceUtilizationMetrics:
         if previous is None:
             return
         for current in prefixes:
-            values = tuple((right - left) / 3600.0 for left, right in zip(previous, current))
+            values = tuple((right - left) / HOUR_MICROSECONDS for left, right in zip(previous, current))
             if self.calendar is None:
                 values += (None, None, None)
             yield self._window_result(*values, precision=precision)

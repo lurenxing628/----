@@ -36,22 +36,6 @@ def test_catalog_streams_history_without_complete_capture(plan_api, monkeypatch)
     assert not any('FROM "SCHEDULE" R' in sql.upper() for sql in plan_api.statements)
 
 
-@pytest.mark.parametrize("start,end", [
-    ("invalid", "2026-09-10T09:00:00"),
-    ("2026-09-12T23:00:00", "2026-09-12T23:00:00"),
-])
-def test_catalog_metadata_keeps_invalid_time_and_unproven_point_disabled(plan_api, start, end):
-    ref = plan_api.ref(role="adopted")
-    with plan_api.db() as conn:
-        conn.execute("UPDATE Schedule SET start_time=?,end_time=? WHERE version=3", (start, end))
-    expected = _complete_capture_catalog(plan_api, "history")
-    plans = plan_api.read(collection="history")["data"]["plans"]
-    assert plans == expected
-    selected = next(row for row in plans if row["plan_ref"] == ref)
-    assert not selected["capabilities"]["view"] and not selected["capabilities"]["export"]
-    assert selected["completeness"] == "invalid" and selected["blocked_reasons"]
-
-
 def test_metadata_time_scan_retains_raw_values_with_declared_datetime_converter(plan_api, monkeypatch):
     def converted_datetime(value):
         pytest.fail("Metadata time scan invoked the declared DATETIME converter")

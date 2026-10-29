@@ -4,7 +4,6 @@ from __future__ import annotations
 from typing import Any, Dict, Tuple
 
 from core.errors import ValidationError
-from core.services.scheduler.run.optimizer.graph_ready_profiles import finite_number
 
 _FORMULA_FIELDS = {
     "edd": ("due_deadline", "sacrifice_penalty", "processing_rank", "jitter"),
@@ -23,8 +22,6 @@ _FORMULA_FIELDS = {
     "type_group_reverse": ("-changeover_family_rank_rank01", "due_deadline", "processing_rank", "jitter"),
 }
 
-
-_INF = float("inf")
 _FIELD_TO_METRIC_KEY = {
     "due_deadline": "due_deadline_hours_rank01",
     "due_budget": "due_budget_hours_rank01",
@@ -61,50 +58,10 @@ def v2_formula_specs(formula: str) -> Tuple[Tuple[bool, str], ...]:
 
 
 def v2_priority_key_for_metric(metric: Dict[str, Any], *, specs: Tuple[Tuple[bool, str], ...]) -> Tuple[float, ...]:
-    result = []
-    for neg, key in specs:
-        val = metric.get(key)
-        if type(val) is not float or not (0.0 <= val < _INF):
-            val = required_non_negative_metric(required_finite_metric(metric, key), key)
-        result.append(-val if neg else val)
-    return tuple(result)
-
-
-def required_finite_metric(metric: Dict[str, Any], field: str) -> float:
-    if field not in metric:
-        raise ValidationError(
-            f"GraphReady v2 图指标缺少 {field}。",
-            field="graph_ready_v2_features",
-            details={"reason": "graph_ready_missing_v2_feature"},
-        )
-    return finite_number(metric[field], field=field, reason="graph_ready_bad_v2_feature", error_field="graph_ready_v2_features")
-
-
-def required_non_negative_metric(value: float, field: str) -> float:
-    if value < 0.0:
-        raise ValidationError(
-            f"GraphReady v2 图指标 {field} 必须是非负数。",
-            field="graph_ready_v2_features",
-            details={"reason": "graph_ready_bad_v2_feature"},
-        )
-    return value
-
-
-def required_positive_metric(metric: Dict[str, Any], field: str) -> float:
-    number = required_non_negative_metric(required_finite_metric(metric, field), field)
-    if number <= 0.0:
-        raise ValidationError(
-            f"GraphReady v2 图指标 {field} 必须大于 0。",
-            field="graph_ready_v2_features",
-            details={"reason": "graph_ready_bad_v2_feature"},
-        )
-    return number
+    return tuple(-float(metric[key]) if neg else float(metric[key]) for neg, key in specs)
 
 
 __all__ = [
-    "required_finite_metric",
-    "required_non_negative_metric",
-    "required_positive_metric",
     "v2_formula_specs",
     "v2_priority_key_for_metric",
     "validate_v2_formula",

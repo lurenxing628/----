@@ -88,7 +88,7 @@ class WorkbenchOutsourcingSourceRepository:
         """Stored row of the legacy source table for kind, every column verbatim; None when absent."""
         table, column = SOURCE_TABLES[kind]
         columns = [row[1] for row in schema_contract_memo(self.conn).structure.table_info(table)]
-        selected = ",".join('CASE WHEN 1 THEN "' + key + '" END AS "' + key + '"' for key in columns)
+        selected = ",".join('+"' + key + '" AS "' + key + '"' for key in columns)
         row = self.conn.execute('SELECT ' + selected + ' FROM "' + table + '" WHERE "' + column + '"=?', (value,)).fetchone()
         return dict(row) if row is not None else None
 
@@ -131,7 +131,7 @@ class WorkbenchOutsourcingSourceRepository:
             return
         table, column = SOURCE_TABLES[kind]
         columns = [row[1] for row in schema_contract_memo(self.conn).structure.table_info(table)]
-        selected = ",".join('CASE WHEN 1 THEN source."' + key.replace('"', '""') + '" END' for key in columns)
+        selected = ",".join('+source."' + key.replace('"', '""') + '"' for key in columns)
         for chunk in _chunks(keys, size=400):
             values = [key[2] for key in chunk]
             rows = self.conn.execute("WITH requested(request_index,request_key) AS (VALUES " + _requests(values) + ") "

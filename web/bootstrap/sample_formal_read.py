@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 from urllib.parse import urlencode
 
 from core.shared.strict_json import canonical_json
@@ -19,11 +19,43 @@ def _too_large(error):
     return error.status == 413 and error.body.get("error", {}).get("code") == "query_too_large"
 
 
+def _complete_tasks(client: SampleClient, path: str, document: dict, extra_query: Optional[dict] = None) -> dict:
+    data = document["data"]
+    if data.get("tasks_complete") is not False:
+        return document
+    total = data["task_count"]
+    tasks = list(data["tasks"])
+    token = document["meta"]["snapshot_ref"]
+    as_of = document["meta"]["as_of"]
+    require(bool(token) and bool(as_of), "正式计划工作区缺少快照，无法分页拉齐完整工序。")
+    size = 5000
+    pages = max(1, (total + size - 1) // size)
+    tasks_path = path[:-len("/workspace")] + "/tasks"
+    for page in range(2, pages + 1):
+        page_query = {**(extra_query or {}), "snapshot_ref": token, "page": page, "size": size}
+        page_doc = client.document(tasks_path + "?" + urlencode(page_query))
+        require(
+            page_doc["meta"]["snapshot_ref"] == token
+            and page_doc["meta"]["as_of"] == as_of
+            and page_doc["data"]["task_count"] == total,
+            "正式计划工序分页的快照或总条数与首屏工作区不一致。",
+        )
+        tasks.extend(page_doc["data"]["tasks"])
+    require(
+        len(tasks) == total and len({row["task_ref"] for row in tasks}) == total,
+        "正式计划工序分页合并后的总条数或唯一身份不符。",
+    )
+    data["tasks"] = tasks
+    data["tasks_complete"] = True
+    return document
+
+
 def _segment(client: SampleClient, path, low, high, rejected):
     query = {"range_start": low.isoformat(), "range_end": high.isoformat()}
     scoped_path = path + "?" + urlencode(query)
     try:
         document = client.document(scoped_path)
+        _complete_tasks(client, path, document, query)
     except SampleAPIError as error:
         if not _too_large(error):
             raise
@@ -98,7 +130,8 @@ def _assembled(plan_ref, expected, documents, rejected, low, high):
 def read_formal(client, plan_ref, expected):
     path = BASE + "/plans/" + plan_ref + "/workspace"
     try:
-        return client.document(path)
+        document = client.document(path)
+        return _complete_tasks(client, path, document)
     except SampleAPIError as error:
         if not _too_large(error):
             raise

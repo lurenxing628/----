@@ -6,11 +6,18 @@
   const connection = edge => edge.from_task_ref + ':' + edge.to_task_ref;
   // Workspaces validate this shared graph once, at their existing API boundary.
   function validate(graph, { scope, tasks, taskRef, time, sequence, processLabel, completeCount }) {
-    if (!object(graph) || Reflect.ownKeys(graph).length !== 6 || graph.scope !== scope || !['available', 'unavailable'].includes(graph.state)
-      || !['nodes', 'critical_task_refs', 'critical_edges'].every(key => Array.isArray(graph[key]))) return false;
+    const keyCount = object(graph) ? Reflect.ownKeys(graph).length : 0, hasCounts = keyCount === 8;
+    if ((keyCount !== 6 && !hasCounts) || graph.scope !== scope || !['available', 'unavailable'].includes(graph.state)
+      || !['nodes', 'critical_task_refs', 'critical_edges'].every(key => Array.isArray(graph[key]))
+      || hasCounts && (!Number.isSafeInteger(graph.node_count) || graph.node_count < 0 || typeof graph.nodes_complete !== 'boolean')) return false;
     if (graph.state === 'unavailable') return typeof graph.reason === 'string' && !!graph.reason.trim()
-      && !graph.nodes.length && !graph.critical_task_refs.length && !graph.critical_edges.length;
-    if (graph.reason !== null || completeCount !== undefined && graph.nodes.length !== completeCount) return false;
+      && !graph.nodes.length && !graph.critical_task_refs.length && !graph.critical_edges.length
+      && (!hasCounts || graph.node_count === 0 && graph.nodes_complete === false);
+    if (hasCounts && graph.nodes_complete === false) return scope === 'full_plan' && graph.reason === null
+      && !graph.nodes.length && !graph.critical_task_refs.length && !graph.critical_edges.length
+      && graph.node_count > 0 && (completeCount === undefined || graph.node_count === completeCount) && graph.node_count >= tasks.length;
+    if (graph.reason !== null || hasCounts && graph.node_count !== graph.nodes.length
+      || completeCount !== undefined && graph.nodes.length !== completeCount) return false;
     const nodes = new Map();
     for (const node of graph.nodes) {
       if (!object(node) || !ref(node.task_ref) || !ref(node.operation_ref) || nodes.has(node.task_ref)

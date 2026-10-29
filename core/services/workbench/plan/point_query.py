@@ -45,6 +45,8 @@ class PointPlanCatalogRepository(WorkbenchPlanCatalogRepository):
                 raise ValueError(str(exc)) from exc
             self._parsed_intervals[version] = intervals
             self._prepared_rows[version] = rows
+            if self.context is not None:
+                self.context._intervals[version] = {row["id"]: interval for row, interval in zip(rows, intervals)}
         return self._prepared_rows[version]
 
     def parsed_intervals(self, version):

@@ -358,9 +358,11 @@ async function main() {
   // Workspace-ownership check: the plan read's own validation is covered by plan_transport_probe; here only its answers are counted.
   routeWindow.APSPlanAPI = { async workspace(_plan, scope) {
     requests.push(JSON.parse(JSON.stringify(scope)));
-    const task = tasks.find(task => task.start === scope.range_start);
-    return { warnings: [], meta: { snapshot_ref: 'route-' + requests.length }, data: { ...planData, scope,
-      tasks: [task], task_count: 1, gantt_graph: graph, time_scope: scope } };
+    const task = tasks.find(task => task.start === scope.range_start) || tasks[0];
+    const effectiveScope = scope.range_start ? scope : timeScope;
+    return { warnings: [], meta: { snapshot_ref: 'route-' + requests.length }, data: { ...planData,
+      plan: { ...planData.plan, plan_ref: _plan }, scope,
+      tasks: [task], task_count: 1, gantt_graph: graph, time_scope: effectiveScope } };
   } };
   const routeProps = { view: 'gantt', renderTrial: () => null, initialContext: { plan_ref: planA, selected_task_ref: tasks[0].task_ref, range_start: tasks[0].start, range_end: tasks[0].end } };
   const settleRoute = async () => { let tree; for (let index = 0; index < 4; index++) { tree = routeHooks.render(() => routeWindow.PlanWorkspaceSession(routeProps)); routeHooks.flush(); await turns(); } return tree; };
@@ -374,7 +376,145 @@ async function main() {
   assert.equal(find(routeTree, 'task-detail').selected.task.task_ref, tasks[2].task_ref);
   const beforeLocal = requests.length; find(routeTree, 'task-detail').onRelated(tasks[2].task_ref); await settleRoute();
   assert.equal(requests.length, beforeLocal, 'Locating a loaded node uses its existing task without reading');
-  assert.equal(routeGraphBuilds, 3, 'The workspace prepares the graph once per successful result; local selection reuses it'); routeHooks.unmount();
+  assert.equal(routeGraphBuilds, 3, 'The workspace prepares the graph once per successful result; local selection reuses it');
+  let baselineCalls = 0, failBaseline = false, lastSnapshot = null;
+  routeWindow.WorkbenchPageContext.useSnapshot = (value, ready) => { if (ready) lastSnapshot = value; };
+  routeWindow.APSPlanAPI.baseline = async (_plan, scope, workspaceData) => {
+    baselineCalls++;
+    if (failBaseline) throw new Error('原安排读取失败');
+    assert.equal(scope.snapshot_ref, 'route-' + requests.length);
+    return { data: { items: [{ operation_ref: workspaceData.tasks[0].operation_ref, change: 'unchanged', changed_fields: [],
+      before: workspaceData.tasks[0], after: workspaceData.tasks[0], before_in_scope: true, after_in_scope: true }] } };
+  };
+  planData.projections.baseline = { state: 'available', items: [], item_count: 1, items_complete: false };
+  find(routeTree, 'task-detail').onRelated(tasks[0].task_ref); routeTree = await settleRoute();
+  assert.equal(baselineCalls, 1, 'Opening details on an available summary baseline fetches baseline items once');
+  assert.equal(find(routeTree, 'task-detail').prepared.baselineLoaded, true);
+  await settleRoute();
+  assert.equal(baselineCalls, 1, 'Subsequent renders reuse the loaded baseline items for the same workspace result');
+  find(routeTree, 'plan-gantt').onRequestBaseline(); routeTree = await settleRoute();
+  assert.equal(baselineCalls, 1);
+  find(routeTree, 'catalog').onSelect({ plan_ref: planB, display_name: '计划 B' }); routeTree = await settleRoute();
+  assert.equal(find(routeTree, 'plan-gantt').data.plan.plan_ref, planB);
+  assert.equal(baselineCalls, 1, 'Switching to Plan B without details open or Gantt baseline active does not fetch Plan B baseline');
+  failBaseline = true;
+  find(routeTree, 'plan-gantt').onRequestBaseline(); routeTree = await settleRoute();
+  assert.equal(baselineCalls, 2);
+  assert.equal(find(routeTree, 'plan-gantt').baselineError.message, '原安排读取失败');
+  assert.equal(find(routeTree, 'plan-gantt').prepared.baselineLoaded, false);
+  const ganttHooks = hooks();
+  Object.assign(routeWindow.ResourceControls, { Icon: 'icon', TimelineZoom: 'plan-zoom', timelineZoomKey: () => null });
+  Object.assign(routeWindow.WorkbenchControls, { usePrintLayout: () => false });
+  Object.assign(routeWindow, {
+    GanttPresentation: { axis: () => ({ ticks: [] }), taskLines: () => ({ primary: '路线工序', secondary: '' }) },
+    GanttPresentationUI: { useExpanded: () => ({ expanded: false, toggle() {} }), Axis: 'axis' },
+    GanttGraphLayer: { Controls: 'graph-controls', Lines: 'graph-lines' },
+    PlanGanttCanvas: { DenseRow: 'dense-row', Overview: 'overview' }
+  });
+  Object.assign(routeContext, { ResizeObserver: class { observe() {} disconnect() {} }, requestAnimationFrame: () => 1, cancelAnimationFrame() {} });
+  load(routeContext, 'PointGanttModel.js'); load(routeContext, 'PlanGantt.jsx');
+  const ganttProps = find(routeTree, 'plan-gantt');
+  const renderGantt = () => {
+    routeContext.React = ganttHooks.React;
+    const tree = ganttHooks.render(() => routeWindow.PlanGantt(ganttProps));
+    find(tree, 'div', props => props.className === 'plan-board').ref.current = { scrollLeft: 0, scrollTop: 0, clientWidth: 1000, clientHeight: 440 };
+    ganttHooks.flush();
+    return tree;
+  };
+  let ganttTree = renderGantt();
+  find(ganttTree, 'input', props => props['aria-label'] === '只看有变化的工序').onChange({ target: { checked: true } });
+  ganttTree = renderGantt();
+  assert(find(ganttTree, 'div', props => props['data-gantt-row-kind'] === 'current'), 'Unloaded failed baseline does not filter current Gantt tasks to zero');
+  assert.equal(find(ganttTree, 'empty'), null);
+  assert.equal(find(ganttTree, 'error').error.message, '原安排读取失败');
+  routeContext.React = routeHooks.React;
+  find(ganttTree, 'button', props => Array.isArray(props.children) && props.children.includes('重试加载原安排')).onClick();
+  routeTree = await settleRoute();
+  assert.equal(baselineCalls, 3, 'Retry button on PlanGantt triggers baseline reload');
+  ganttHooks.unmount();
+  for (const nonGanttView of ['analysis', 'delay']) {
+    const restoreHooks = hooks();
+    routeContext.React = restoreHooks.React;
+    failBaseline = true;
+    const restoreProps = { view: nonGanttView, renderTrial: () => null, initialContext: { plan_ref: planA, selected_task_ref: tasks[0].task_ref, selected_task_side: 'before' } };
+    const settleRestore = async () => { let tree; for (let index = 0; index < 4; index++) { tree = restoreHooks.render(() => routeWindow.PlanWorkspaceSession(restoreProps)); restoreHooks.flush(); await turns(); } return tree; };
+    let restoreTree = await settleRestore();
+    assert.equal(find(restoreTree, 'task-detail'), null);
+    assert.equal(lastSnapshot.selected_task_ref, tasks[0].task_ref);
+    assert.equal(lastSnapshot.selected_task_side, 'before');
+    const readState = find(restoreTree, 'div', props => typeof props.className === 'string' && props.className.includes('plan-read-state'));
+    assert(readState, 'Non-gantt view renders .plan-read-state when restoring before task fails');
+    assert.equal(find({ type: 'div', props: readState }, 'error', props => props.error).error.message, '原安排读取失败');
+    const retryBtn = find({ type: 'div', props: readState }, 'button', props => Array.isArray(props.children) && props.children.includes('重试加载原安排'));
+    assert(retryBtn, 'Non-gantt view renders retry baseline button in .plan-read-state');
+    failBaseline = false;
+    retryBtn.onClick();
+    restoreTree = await settleRestore();
+    assert.equal(find(restoreTree, 'task-detail').selected.task.task_ref, tasks[0].task_ref);
+    assert.equal(find(restoreTree, 'task-detail').selected.before, true);
+    restoreHooks.unmount();
+  }
+  planData.projections.baseline = { state: 'unavailable' };
+  routeWindow.PlanGantt = 'plan-gantt';
+  let graphCalls = 0, capacityCalls = 0;
+  routeWindow.APSPlanAPI.ganttGraph = async (_plan, q) => {
+    graphCalls++;
+    assert.equal(q.snapshot_ref, 'route-' + requests.length);
+    return { data: { plan_ref: _plan, scope: {}, process_order: { state: 'available', basis: 'run_admission', issues: [] },
+      gantt_graph: { ...graph, node_count: graph.nodes.length, nodes_complete: true } } };
+  };
+  routeWindow.APSPlanAPI.capacity = async (_plan, q) => {
+    capacityCalls++;
+    assert.equal(q.snapshot_ref, 'route-' + requests.length);
+    return { data: { plan_ref: _plan, scope: {}, time_scope: timeScope,
+      calendar: { state: 'available', windows_complete: true, resources: [{ resource_ref: ref(200), kind: 'machine', label: 'M1', available_hours: 8, windows: [{ start: tasks[0].start, end: tasks[0].end, allow_normal: true, allow_urgent: true, efficiency: 1 }], issues: [] }], issues: [] },
+      occupancy: { state: 'available', segments_complete: true, resources: [], issues: [] } } };
+  };
+  const summaryGraph = { state: 'available', reason: null, scope: 'full_plan', nodes: [], node_count: tasks.length, nodes_complete: false, critical_task_refs: [], critical_edges: [] };
+  routeWindow.APSPlanAPI.workspace = async (_plan, scope) => {
+    requests.push(JSON.parse(JSON.stringify(scope)));
+    const task = tasks.find(task => task.start === scope.range_start) || tasks[0];
+    const effectiveScope = scope.range_start ? scope : timeScope;
+    return { warnings: [], meta: { snapshot_ref: 'route-' + requests.length }, data: { ...planData,
+      plan: { ...planData.plan, plan_ref: _plan }, scope,
+      tasks: [task], task_count: 1, gantt_graph: summaryGraph, time_scope: effectiveScope,
+      projections: { ...planData.projections, calendar: { state: 'available', windows_complete: false, resources: [], issues: [] } } } };
+  };
+  const onDemandHooks = hooks();
+  routeContext.React = onDemandHooks.React;
+  const onDemandGanttProps = { view: 'gantt', renderTrial: () => null, initialContext: { plan_ref: planA } };
+  const settleOnDemand = async (props = onDemandGanttProps) => {
+    let tree;
+    for (let index = 0; index < 4; index++) { tree = onDemandHooks.render(() => routeWindow.PlanWorkspaceSession(props)); onDemandHooks.flush(); await turns(); }
+    return tree;
+  };
+  let onDemandTree = await settleOnDemand();
+  assert.equal(graphCalls, 1, 'Gantt view automatically loads incomplete gantt_graph once');
+  assert.equal(capacityCalls, 0, 'Gantt view does not load capacity windows');
+  assert.equal(find(onDemandTree, 'plan-gantt').data.gantt_graph.nodes_complete, true);
+  assert.equal(find(onDemandTree, 'plan-gantt').prepared.graph.nodes.size, tasks.length);
+  onDemandTree = await settleOnDemand({ view: 'analysis', renderTrial: () => null, initialContext: { plan_ref: planA } });
+  assert.equal(capacityCalls, 0, 'Analysis risk tab does not load capacity windows');
+  find(onDemandTree, 'projection-tables').onTab('calendar');
+  onDemandTree = await settleOnDemand({ view: 'analysis', renderTrial: () => null, initialContext: { plan_ref: planA } });
+  assert.equal(capacityCalls, 1, 'Switching to calendar tab loads capacity windows once');
+  assert.equal(find(onDemandTree, 'projection-tables').data.projections.calendar.windows_complete, true);
+  onDemandHooks.unmount();
+  const delayHooks = hooks();
+  routeContext.React = delayHooks.React;
+  const settleDelay = async (props = { view: 'delay', renderTrial: () => null, initialContext: { plan_ref: planA } }) => {
+    let tree;
+    for (let index = 0; index < 4; index++) { tree = delayHooks.render(() => routeWindow.PlanWorkspaceSession(props)); delayHooks.flush(); await turns(); }
+    return tree;
+  };
+  let delayTree = await settleDelay();
+  assert.equal(capacityCalls, 1, 'Delay risk tab does not load capacity windows');
+  find(delayTree, 'projection-tables').onTab('calendar');
+  delayTree = await settleDelay();
+  assert.equal(capacityCalls, 2, 'Switching to calendar tab in delay view loads capacity windows once');
+  assert.equal(find(delayTree, 'projection-tables').data.projections.calendar.windows_complete, true);
+  delayHooks.unmount();
+  routeHooks.unmount();
   }
 
   {

@@ -13,6 +13,7 @@ from core.shared.strict_json import load_strict_json
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint
+from .read_budget import CALIBRATION_READ_SLOTS
 from .read_context import bind_read_snapshot, current_snapshot_time, page_integer, resolve_read_snapshot
 from .request_json import rejecter
 
@@ -40,14 +41,15 @@ def _read(*, export=False, suggestion_ref=None):
     query, token = _arguments(export=export, detail=suggestion_ref is not None)
     binding = resolve_read_snapshot(token) if token is not None else None
     as_of = binding.as_of_time if binding is not None else None
-    service = WorkbenchCalibrationService(g.db, as_of=as_of)
-    facts = service.read(
-        query,
-        clock=current_snapshot_time if binding is None else None,
-        bind_snapshot=lambda content: bind_read_snapshot(query.scope(), content, token, as_of=service.as_of, binding=binding),
-    )
-    snapshot = facts["snapshot"]
-    data, rows = service.workspace(facts, query, snapshot, suggestion_ref=suggestion_ref, export=export)
+    with CALIBRATION_READ_SLOTS.slot():
+        service = WorkbenchCalibrationService(g.db, as_of=as_of)
+        facts = service.read(
+            query,
+            clock=current_snapshot_time if binding is None else None,
+            bind_snapshot=lambda content: bind_read_snapshot(query.scope(), content, token, as_of=service.as_of, binding=binding),
+        )
+        snapshot = facts["snapshot"]
+        data, rows = service.workspace(facts, query, snapshot, suggestion_ref=suggestion_ref, export=export)
     if export:
         file = export_calibration(data, rows, snapshot, request.args.get("format", "csv"))
         response = send_file(file.data, mimetype=file.content_type, as_attachment=True, download_name=file.filename, max_age=0)

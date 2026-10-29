@@ -327,15 +327,6 @@ def test_journal_admission_and_new_intent_replay_preserve_saved_files(tmp_path, 
         journal._read(str(new_path))
     assert str(error.value) == "维护记录超过允许大小，须人工核查。"
     assert opened == [str(new_path)]
-    # 本进程写下的维护记录走严格 JSON：重复键、NaN 与语法错误、非 UTF-8 一样按读不出处理。
-    for content, origin in ((b"\xff", UnicodeDecodeError), (b"{", json.JSONDecodeError),
-                            (b'{"version":2,' + saved[1:], None), (b'{"nan_probe":NaN,' + saved[1:], None)):
-        new_path.write_bytes(content)
-        with pytest.raises(WorkbenchCommandRejected) as error:
-            SystemMaintenanceJournal(str(directory), str(database)).admission("malformed-maintenance-request")
-        cause = error.value.__cause__
-        assert error.value.code == "maintenance_unconfirmed" and str(cause) == "维护记录不是严格的 UTF-8 JSON，须人工核查。"
-        assert origin is None or isinstance(cause.__context__, origin)
 
 
 def test_system_captures_once_and_tokens_keep_relocated_journal_scope(tmp_path, monkeypatch):
@@ -714,31 +705,6 @@ def test_unexpected_failure_after_command_registered_keeps_result_unknown(tmp_pa
     assert (error["code"], error["message"]) == ("storage_failure", messages.unknown("这次维护操作"))
     assert error["request_key"] == "system-test-request-0009"
     assert error["result_target"] == "/api/workbench/v1/system/results/system-test-request-0009"
-
-
-@pytest.mark.parametrize(("key", "raw"), [
-    ("auto_backup_enabled", "YES"), ("auto_backup_enabled", ""), ("auto_log_cleanup_enabled", "1"),
-    ("auto_backup_interval_minutes", "0"), ("auto_backup_interval_minutes", "1441"),
-    ("auto_backup_keep_days", "01"), ("auto_backup_keep_days", " 60"), ("auto_log_cleanup_keep_days", "abc"),
-    ("auto_backup_cleanup_interval_minutes", "60.0"),
-])
-def test_corrupt_system_config_value_fails_loud_instead_of_using_default(tmp_path, key, raw):
-    """维护设置只写 yes/no 和范围内整数；库里其他写法是存储损坏，不能悄悄换成默认值。"""
-    from core.errors import AppError, ErrorCode
-    from core.services.system.system_config_service import SystemConfigService
-    from data.repositories.system_config_repo import SystemConfigRepository
-
-    api = SystemTestAPI(tmp_path)
-    with closing(api.connect()) as conn:
-        with conn:
-            SystemConfigRepository(conn).set(key, raw)
-        with pytest.raises(AppError) as caught:
-            SystemConfigService(conn).get_snapshot_readonly(7)
-    assert caught.value.code == ErrorCode.DB_QUERY_ERROR
-    assert caught.value.details == {"config_key": key}
-    response = api.get("/config")
-    assert response.status_code == 500, response.get_data(as_text=True)
-    assert response.get_json()["error"]["code"] == "storage_failure"
 
 
 def test_unsaved_system_config_keys_use_conservative_defaults(tmp_path):

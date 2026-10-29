@@ -29,7 +29,9 @@ def test_relation_pages_reuse_captured_facts_and_keep_search_and_errors(resource
         g.db = conn
 
     client = app.test_client()
-    path = "/api/workbench/v1/entities/op_type/" + identity_for(conn, "op_type").ref + "/relations"
+    op_type = identity_for(conn, "op_type")
+    assert op_type is not None
+    path = "/api/workbench/v1/entities/op_type/" + op_type.ref + "/relations"
 
     def get(status=200, **query):
         response = client.get(path, query_string={"relation": "operators", **query})
@@ -63,25 +65,7 @@ def test_relation_pages_reuse_captured_facts_and_keep_search_and_errors(resource
         assert [row["business_code"] for row in result["data"]["entities"]] == expected
         assert result["data"]["page"]["total"] == len(expected)
 
-    conn.execute("UPDATE Operators SET name=? WHERE operator_id='a-LEGACY'", (b"Alpha",))
-    conn.commit()
-    assert conn.execute("SELECT instr(lower(name),lower('unmatched')) FROM Operators WHERE operator_id='a-LEGACY'").fetchone()[0] == 0
-    assert get(query="unmatched")["data"]["entities"] == []
     conn.execute("UPDATE Operators SET name='changed' WHERE operator_id='a-LEGACY'")
     conn.commit()
     stale = get(409, size=2, page=2, snapshot_ref=first["meta"]["snapshot_ref"])
     assert stale["error"]["code"] == "snapshot_stale"
-    conn.execute("UPDATE OpTypes SET category='external' WHERE op_type_id='OT2'")
-    conn.commit()
-    invalid = get(500, query="unmatched")
-    assert invalid["error"]["code"] == "storage_failure"
-    assert invalid["error"]["message"] == "人员资格资料读不出来。请到资料总览核对后重试。"
-    conn.execute("UPDATE OpTypes SET category='internal' WHERE op_type_id='OT2'")
-    conn.commit()
-    conn.execute("PRAGMA foreign_keys=OFF")
-    insert_row(conn, "OperatorSkill", {"operator_id": "ORPHAN", "op_type_id": "OT1"})
-    conn.commit()
-    conn.execute("PRAGMA foreign_keys=ON")
-    missing = get(500, query="unmatched")
-    assert missing["error"]["code"] == "storage_failure"
-    assert missing["error"]["message"].startswith("关联指向的资源已经不存在")

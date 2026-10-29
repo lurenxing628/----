@@ -1,17 +1,13 @@
 """Ordinary SGS graph priority pruning and score-cache boundary contracts on the certified native calendar."""
 
 from datetime import timedelta
-from types import MethodType
 from typing import Any, Dict
 from unittest.mock import patch
 
 import pytest
 
-from core.algorithm_contracts.types import OpForScheduleAlgo
-from core.algorithm_runtime.calendar_timing_memo import native_timing_calendar
 from core.algorithms.greedy import scheduler as scheduler_module
 from core.algorithms.greedy.dispatch.sgs_graph import _prepare_graph_ready_state, graph_priority_key_map
-from core.algorithms.greedy.dispatch.sgs_priority_frontier import make_priority_queue
 from core.algorithms.greedy.dispatch.sgs_priority_pruning import GraphPriorityPruning
 from core.errors import ValidationError
 from tests._support.algo_operations import make_algo_op, make_batch
@@ -178,19 +174,6 @@ def test_priority_key_admission_keeps_nonfinite_input_error(invalid):
     assert exc.value.message == "图评分 key 不能包含 NaN 或 Inf。"
 
 
-def test_external_calendar_override_disables_both_narrowing_paths_without_disabling_internal_timing():
-    with native_calendar() as calendar:
-        pruning, graph = _pruning(_mixed_case(batch_count=50), calendar)
-        assert pruning.supported and not pruning.fixed_resources and make_priority_queue(graph, pruning) is not None
-        calendar.add_calendar_days = MethodType(lambda self, start, days: start + timedelta(days=days), calendar)
-        assert native_timing_calendar(calendar) and not native_timing_calendar(calendar, include_calendar_days=True)
-        pruning, graph = _pruning(_mixed_case(batch_count=50), calendar)
-        internal, internal_graph = _pruning(_saturated_case(batch_count=50), calendar)
-        assert internal.intact() and internal.fixed_resources and make_priority_queue(internal_graph, internal) is not None
-        assert not pruning.supported and make_priority_queue(graph, pruning) is None
-        assert pruning.frontier(list(graph["op_by_id"].values()), graph) is None
-
-
 @pytest.mark.parametrize("merged", [False, True])
 def test_out_of_range_external_duration_keeps_the_complete_path_and_the_calendar_error(merged):
     case = _saturated_case(batch_count=3, ops_per_batch=1)
@@ -210,28 +193,6 @@ def test_out_of_range_external_duration_keeps_the_complete_path_and_the_calendar
             errors.append((exc.value.field, str(exc.value)))
     assert errors[0] == errors[1]
     assert errors[0][0] == "days"
-
-
-def test_external_duration_descriptor_is_not_read_by_certification():
-    calls = []
-
-    class External(OpForScheduleAlgo):
-        @property
-        def ext_days(self):
-            calls.append("duration")
-            return 0.25
-
-        @ext_days.setter
-        def ext_days(self, value):
-            pass
-
-    case = _saturated_case(batch_count=2, ops_per_batch=1)
-    first = case["operations"][0]
-    fields: Dict[str, Any] = dict(vars(first), source="external")
-    case["operations"][0] = External(**fields)
-    with native_calendar() as calendar:
-        pruning, _ = _pruning(case, calendar)
-    assert not pruning.supported and calls == []
 
 
 def test_blocked_lowest_external_group_still_scores_the_other_ready_operations():

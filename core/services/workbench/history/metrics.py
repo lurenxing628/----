@@ -16,10 +16,11 @@ from core.services.workbench.facts.decision_metrics import (
 from core.services.workbench.facts.preflight_checks import PreflightChecks
 from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
 from core.services.workbench.facts.preparation_projection import (
-    metric_summary as effort_metric,
+    PREPARATION_METRICS,
+    preparation_summary,
 )
 from core.services.workbench.facts.preparation_projection import (
-    preparation_summary,
+    metric_summary as effort_metric,
 )
 from core.services.workbench.facts.resource_intervals import task_interval
 from core.services.workbench.facts.resource_projection import resource_cohort
@@ -141,7 +142,8 @@ def _admission_count_values(packet, operation_refs, *, reader):
     return result
 
 
-def _run(reader, packet, window):
+def _run(reader, packet, window, *, metric_keys=None):
+    wanted = None if metric_keys is None else set(metric_keys)
     candidate = packet["candidate"]
     ref = candidate["candidate_ref"] if candidate is not None else None
     if candidate is None:
@@ -149,21 +151,47 @@ def _run(reader, packet, window):
         operation_refs = admission_operation_refs(facts, settings)
         batches = {ref: facts.tables["Batches"].get(key, {}) for (kind, key), ref in facts.entity_refs.items() if kind == "batch"}
         window.update(state="unavailable", reason=metric_reason("history_result_missing", "此事件尚未保存任务安排，资源集合与占用未知。"))
-        values = _admission_count_values(packet, operation_refs, reader=reader)
+        values = (_admission_count_values(packet, operation_refs, reader=reader)
+                  if wanted is None or {"expected_operation_count", "deferred_operation_count"} & wanted else {})
         return values, _scope(packet, settings["batch_refs"], operation_refs, batches=batches), "unavailable"
     source = reader.run_source(packet["ref"], ref, range_start=window["start"], range_end=window["end"])
-    data = reader.decision(packet["ref"], window["start"], window["end"], candidate_ref=ref)
+    data = reader.decision(packet["ref"], window["start"], window["end"], candidate_ref=ref, metric_keys=metric_keys)
     selected = next((item for item in data["candidates"] if item["candidate_ref"] == ref), None)
-    values = {} if selected is None else {key: dict(item) for key, item in selected["metrics"].items()}
+    values = {} if selected is None else {
+        key: dict(item) for key, item in selected["metrics"].items()
+        if wanted is None or key in wanted
+    }
     if selected is not None:
-        values.update(source.preparation.metrics(ref))
-        values.update(source.changeovers.metrics(ref))
-        tasks = source.tasks(ref)
-        scheduled_refs = sorted({task["operation_ref"] for task in tasks})
-        for definition in metric_definitions():
+        definitions = [
+            definition for definition in metric_definitions()
+            if (wanted is None or definition["key"] in wanted) and definition["key"] in values
+        ]
+        if wanted is None:
+            values.update(source.preparation.metrics(ref))
+            values.update(source.changeovers.metrics(ref))
+        scheduled_refs = (
+            sorted(source.scheduled_refs(ref))
+            if any(definition["scope"] == "full_candidate" for definition in definitions)
+            else None
+        )
+        tasks = (
+            source.analysis_tasks(ref)
+            if any(definition["scope"] == "saved_schedule_resources" for definition in definitions)
+            else None
+        )
+        covered_resources = (
+            {
+                kind: sorted({
+                    task[kind]["ref"] for task in tasks
+                    if task.get(kind) is not None and task[kind].get("ref") is not None
+                })
+                for kind in ("machine", "operator")
+            }
+            if tasks is not None
+            else {}
+        )
+        for definition in definitions:
             key = definition["key"]
-            if key not in values:
-                continue
             item = dict(values[key])
             if definition["scope"] == "full_admission" and definition["source"] not in (
                     "archived_delivery", "runtime_operation_effort"):
@@ -172,8 +200,7 @@ def _run(reader, packet, window):
                 item["covered_operation_refs"] = scheduled_refs
             elif definition["scope"] == "saved_schedule_resources":
                 kind = "machine" if key.startswith("machine_") else "operator"
-                item["covered_resource_refs"] = sorted({task[kind]["ref"] for task in tasks
-                    if task.get(kind) is not None and task[kind].get("ref") is not None})
+                item["covered_resource_refs"] = covered_resources[kind]
             if definition["scope"] == "fixed_resource_window" and key.endswith(("utilization_ratio", "balance_cv")):
                 kind = key.split("_", 1)[0]
                 summary = selected["coverage"]["resources"][kind]
@@ -181,12 +208,14 @@ def _run(reader, packet, window):
             values[key] = item
     window["cohort"] = {kind + "_refs": list(data["resource_cohort"][kind + "_refs"]) for kind in ("machine", "operator")}
     if selected is not None:
-        summaries = selected["coverage"]["resources"]
+        summaries = selected["coverage"].get("resources") or {
+            kind: source.resources.summary(ref, kind) for kind in ("machine", "operator")
+        }
         if any(summaries[kind]["state"] in ("partial", "unavailable") for kind in ("machine", "operator")):
             window.update(state="partial", reason=metric_reason("resource_evidence_incomplete", "部分归档班表或安排资料缺项。"))
     facts = packet["facts"]
     batches = {ref: facts.tables["Batches"].get(key, {}) for (kind, key), ref in facts.entity_refs.items() if kind == "batch"}
-    demand = _demand(source.preparation.rows(ref)) if selected is not None else None
+    demand = source.preparation.demand_hours(ref) if selected is not None else None
     scope = _scope(packet, source.scope["batch_refs"], source.scope["operation_refs"], batches=batches, demand=demand)
     return values, scope, "available" if selected is not None and candidate["status"] == "completed" else "unavailable"
 
@@ -218,14 +247,20 @@ def _trial_resources(packet, projected, window, calendar):
     return values
 
 
-def _trial(packet, window, *, reader):
+def _trial(packet, window, *, reader, metric_keys=None):
     # Drafts and saved scenarios are permanent, so a trial source always carries both.
+    wanted = None if metric_keys is None else set(metric_keys)
     saved, head, projected = packet["saved"], packet["head"], packet["rows"]
     comparison = saved["comparison"]
     condition = reader.condition_source(packet)
-    values = delivery_metric_values(comparison["delivery_summary"])
+    values = (
+        delivery_metric_values(comparison["delivery_summary"])
+        if wanted is None or {"overdue_count", "total_tardiness_hours"} & wanted
+        else {}
+    )
     efforts = _trial_preparation(saved, head, contexts=condition.trial_contexts)
-    values.update(preparation_summary(efforts)["metrics"])
+    if wanted is None or any(key in wanted for key, *_ in PREPARATION_METRICS):
+        values.update(preparation_summary(efforts)["metrics"])
     tasks = saved["tasks"]
     scheduled = {row["operation_ref"] for row in tasks}
     operations, batches = set(condition.operations), set(condition.batches)
@@ -248,6 +283,8 @@ def _trial(packet, window, *, reader):
                        ("deferred_operation_count", len(deferred) if deferred is not None else None),
                        ("changed_operation_count", comparison["changed_operations"]),
                        ("machine_change_count", comparison["moved_operations"])):
+        if wanted is not None and key not in wanted:
+            continue
         item = metric_value(value, total=len(operations) if value is not None else max(1, len(operations)),
                             unknown=max(1, len(operations)) if value is None else 0,
                             state="unavailable" if value is None else "complete", scope="complete_trial",
@@ -256,24 +293,29 @@ def _trial(packet, window, *, reader):
         item["covered_operation_refs"] = sorted(operations - deferred) if key == "expected_operation_count" and deferred is not None else (
             sorted(operations) if value is not None else None)
         values[key] = item
-    timed_tasks = [(task, task_interval(task)) for task in tasks]
-    valid_tasks = [task for task, interval in timed_tasks if interval is not None]
-    span = task_span(valid_tasks)
-    makespan = hours([(instant(span["start"]), instant(span["end"]))]) if span is not None else None
-    missing_times = len(tasks) - len(valid_tasks)
-    values["makespan_hours"] = metric_value(makespan if not missing_times else None, total=max(1, len(tasks)),
-        unknown=missing_times if tasks else 1, subtotal=makespan, scope="full_candidate",
-        reason=metric_reason("trial_arrangement_time_missing", "部分保存安排缺少可核对的时间区间，总时长保留已知跨度。") if missing_times or not tasks else None)
-    values["makespan_hours"]["covered_operation_refs"] = sorted({task["operation_ref"] for task in valid_tasks})
+    need_changeovers = wanted is None or bool({"type_changeover_count", "changed_machine_count"} & wanted)
+    need_makespan = wanted is None or "makespan_hours" in wanted
+    timed_tasks = [(task, task_interval(task)) for task in tasks] if (need_makespan or need_changeovers) else []
+    if need_makespan:
+        valid_tasks = [task for task, interval in timed_tasks if interval is not None]
+        span = task_span(valid_tasks)
+        makespan = hours([(instant(span["start"]), instant(span["end"]))]) if span is not None else None
+        missing_times = len(tasks) - len(valid_tasks)
+        values["makespan_hours"] = metric_value(makespan if not missing_times else None, total=max(1, len(tasks)),
+            unknown=missing_times if tasks else 1, subtotal=makespan, scope="full_candidate",
+            reason=metric_reason("trial_arrangement_time_missing", "部分保存安排缺少可核对的时间区间，总时长保留已知跨度。") if missing_times or not tasks else None)
+        values["makespan_hours"]["covered_operation_refs"] = sorted({task["operation_ref"] for task in valid_tasks})
     common = (trial_changeovers(projected, head["admission"], start=window["start"], end=window["end"],
                                next_operation_refs=operations, facts=condition.original_facts)
-              if window["start"] is not None else None)
+              if need_changeovers and window["start"] is not None else None)
     if common is not None:
         after = common["after"]
         arrangements = [task for task, interval in timed_tasks if task.get("source") != "external"
                         and not (interval is not None and interval[0] == interval[1])]
         covered_refs = sorted({row["operation_ref"] for row in arrangements})
         for key, field in (("type_changeover_count", "count"), ("changed_machine_count", "changed_machine_count")):
+            if wanted is not None and key not in wanted:
+                continue
             item = metric_value(after[field], total=max(len(arrangements), after["unknown_count"]), unknown=after["unknown_count"],
                                 subtotal=after["known_" + field], state=after["state"], scope=common["scope"],
                                 metric_version=common["metric_version"], reason=metric_reason("changeover_sequence_incomplete",
@@ -281,7 +323,8 @@ def _trial(packet, window, *, reader):
             item["covered_operation_refs"] = covered_refs
             values[key] = item
     if window["start"] is not None:
-        values.update(_trial_resources(packet, projected, window, condition.calendar))
+        resource_values = _trial_resources(packet, projected, window, condition.calendar)
+        values.update(resource_values if wanted is None else {key: item for key, item in resource_values.items() if key in wanted})
     else:
         window.update(state="unavailable", reason=metric_reason("history_resource_archive_missing", "资源窗口缺项，归档容量未知。"))
     scope = _scope(packet, batches, operations, batches=condition.batches, demand=_demand(efforts))
@@ -324,8 +367,8 @@ def project_history_metrics(reader, descriptor, query):
     cache_key = (packet["kind"], packet["ref"], candidate["candidate_ref"] if candidate else None,
                  window["start"], window["end"], window["days"], tuple(keys))
     if cache_key not in reader.history_metrics_cache:
-        values, scope, state = (_run(reader, packet, window) if packet["kind"] == "run" else
-                                _trial(packet, window, reader=reader))
+        values, scope, state = (_run(reader, packet, window, metric_keys=keys) if packet["kind"] == "run" else
+                                _trial(packet, window, reader=reader, metric_keys=keys))
         source_reason = issue if issue is not None else metric_reason("history_result_missing", "此事件未保存可用的结果来源。") if state == "unavailable" else None
         metrics = {key: _metric(values[key], definitions[key], packet, _path(packet, definitions[key])) if key in values
                    else _missing(definitions[key], packet, source_reason, path=_path(packet, definitions[key])) for key in keys}

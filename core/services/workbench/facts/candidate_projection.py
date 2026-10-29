@@ -4,6 +4,7 @@ from typing import Any, Dict
 
 from core.models.workbench_run_candidate import blocked_reasons, read_capabilities, reference
 from core.services.scheduler.config.config_field_spec import choice_label_map_for
+from core.shared.strict_json import clone_json
 
 from .candidate_values import corrupt, gap, number, text
 
@@ -169,6 +170,22 @@ def algorithm_facts(artifact):
             "primary_objective": artifact["objective_name"], "target_objectives": list(artifact["target_objectives"])}
 
 
+def algorithm_summary(artifact):
+    fields = business_candidate_fields(artifact)
+    summary_fields = {k: clone_json(v) for k, v in fields.items() if k != "evaluations"}
+    mode = text(artifact.get("algo_mode"), "algo_mode", [])
+    strategy = text(artifact.get("used_strategy"), "used_strategy", [])
+    return {
+        "mode": mode,
+        "mode_label": choice_label_map_for("algo_mode").get(mode) if mode is not None else None,
+        "strategy": strategy,
+        "strategy_label": choice_label_map_for("sort_strategy").get(strategy) if strategy is not None else None,
+        **summary_fields,
+        "primary_objective": artifact["objective_name"],
+        "target_objectives": list(artifact["target_objectives"]),
+    }
+
+
 def baseline_capture(baseline, captured_at, *, kind="admission_official"):
     rows = baseline.get("rows")
     version = baseline.get("version")
@@ -182,5 +199,5 @@ def candidate_origin(candidate, run, capture):
     return {"source_kind": "candidate_adoption", "source_ref": candidate["candidate_ref"],
             "source_label": text(candidate["artifact"].get("label"), "label", []),
             "run_ref": run["run_ref"], "accepted_at": run["accepted_at"], "finished_at": run["finished_at"],
-            "algorithm": algorithm_facts(candidate["artifact"]),
+            "algorithm": algorithm_summary(candidate["artifact"]),
             "baseline": baseline_capture(capture["baseline"], run["accepted_at"])}

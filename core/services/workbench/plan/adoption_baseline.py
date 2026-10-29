@@ -45,9 +45,11 @@ def _read_adoption_source(conn, *, plan_ref, version, recorded, context):
         prepared_candidate = candidate_source_evidence(conn, audit)
         baseline, tables, arranged, generation, origin = (prepared_candidate[key] for key in
             ("baseline", "tables", "arranged", "generation_facts", "provenance"))
+        arranged_times = prepared_candidate.get("arranged_times")
+        indexed_tables = prepared_candidate.get("indexed_tables")
     else:
         evidence, prepared_trial = trial_source_evidence(conn, audit)
-        baseline, tables, arranged, origin = evidence
+        baseline, tables, arranged, origin, arranged_times, indexed_tables = evidence
         generation = None
     admission_proof = prepared_candidate["admission_proof"] if prepared_candidate is not None else None
     baseline = admission_proof.baseline if admission_proof is not None else decoded_baseline(baseline)
@@ -55,10 +57,18 @@ def _read_adoption_source(conn, *, plan_ref, version, recorded, context):
             "adoption.recorded_baseline")
     verify_capture(baseline, tables, admission_proof=admission_proof)
     require(len(arranged) == audit["row_count"], "adoption.complete_row_count")
-    current = verify_arranged(conn, plan_ref, version, tables, arranged, context=context)
+    verified_out = {}
+    current = verify_arranged(
+        conn, plan_ref, version, tables, arranged,
+        context=context, arranged_times=arranged_times,
+        indexed_tables=indexed_tables, verified_out=verified_out,
+    )
     return {"basis": basis, "audit": audit, "receipt": receipt, "baseline": baseline,
             "tables": tables, "arranged": arranged, "selected": current, "generation_facts": generation,
             "candidate_source": prepared_candidate, "trial_source": prepared_trial,
+            "indexed_tables": indexed_tables,
+            "verified_operation_keys": verified_out.get("verified_operation_keys"),
+            "selected_task_refs": verified_out.get("selected_task_refs"),
             "provenance": {"state": "available", "reason": None, **origin, "adopted_at": audit.get("adopted_at")}}
 
 

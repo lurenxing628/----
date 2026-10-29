@@ -18,16 +18,6 @@ def _check_workspace_tasks(tasks, facts, plan_ref):
             reject("提交的计划任务和系统里记的不是同一条。请刷新后重试。", "constraint_conflict", 409)
 
 
-def _stable_projection_rows(rows):
-    result = []
-    for row in rows:
-        stable = {key: value for key, value in row.items() if key != "write_context"}
-        stable["reports"] = [{key: value for key, value in report.items() if key != "write_context"}
-                             for report in row["reports"]]
-        result.append(stable)
-    return result
-
-
 class ExecutionLedgerService(ExecutionLedgerReader):
     def __init__(self, conn, *, clock: Optional[Callable[[], datetime]] = None,
                  context_factory: Optional[ExecutionContextFactory] = None,
@@ -61,5 +51,4 @@ class ExecutionLedgerService(ExecutionLedgerReader):
             return {"available": True, "time_basis": "factory_local", "projections": plain,
                     "resources": {"machines": [row for row in resources if row["kind"] == "machine"],
                                   "operators": [row for row in resources if row["kind"] == "operator"]},
-                    "snapshot_facts": {**facts["clock"], "projections": _stable_projection_rows(plain),
-                                       "resources": resources}}
+                    "snapshot_facts": {"revisions": facts["clock"], "resources": resources}}

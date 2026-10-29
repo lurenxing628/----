@@ -7,7 +7,6 @@ from datetime import date, datetime, time
 from types import SimpleNamespace
 from typing import Any
 
-from core.algorithm_runtime.static_attribute import static_attribute, static_class_attribute
 from core.errors import ValidationError
 
 
@@ -34,28 +33,21 @@ def input_value(value: Any, *, field: str, depth: int = 0) -> Any:
 def input_record(record: Any, *, field: str) -> Any:
     """Snapshot plain records completely, including batch quantity, dates and priority."""
     kind = type(record)
-    if type(kind) is not type or static_class_attribute(kind, "__getattribute__") not in (
-            object.__getattribute__, SimpleNamespace.__getattribute__):
-        unsupported_input(field)
     is_dc = kind is not SimpleNamespace and is_dataclass(record)
-    if (kind is not SimpleNamespace and not is_dc) or static_class_attribute(kind, "__getattr__") is not None:
+    if kind is not SimpleNamespace and not is_dc:
         unsupported_input(field)
     try:
-        values = vars(record)
+        names = set(vars(record))
     except TypeError:
         unsupported_input(field)
-    if type(values) is not dict or any(type(key) is not str for key in values):
-        unsupported_input(field)
-    # A descriptor must not override the dictionary value used by this certificate.
-    if any(static_attribute(record, key) is not value for key, value in values.items()):
+    if any(type(key) is not str for key in names):
         unsupported_input(field)
     if is_dc:
-        missing = [member.name for member in fields(record) if member.name not in values]
-        if missing:
-            values = dict(values)
-            for name in missing:
-                values[name] = static_attribute(record, name)
-    encoded_dict = "dict", tuple((("str", key), input_value(values[key], field=field, depth=1)) for key in sorted(values))
+        names.update(member.name for member in fields(record))
+    encoded_dict = "dict", tuple(
+        (("str", key), input_value(getattr(record, key), field=field, depth=1))
+        for key in sorted(names)
+    )
     return kind.__module__, kind.__qualname__, encoded_dict
 
 
