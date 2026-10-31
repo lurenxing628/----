@@ -33,6 +33,8 @@ from tools.full_test_debt_shards import split_nodeids  # noqa: E402
 from tools.quality_gate_shared import (  # noqa: E402
     FORMAL_FULL_TEST_PYTEST_ARGS,
     QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL,
+    is_teardown_failure_report,
+    is_terminal_pytest_report,
     iter_quality_gate_required_tests,
     quality_gate_required_test_nodeid_matches,
 )
@@ -499,8 +501,9 @@ def _run_pytest_collect(pytest_args: Sequence[str]) -> Tuple[FullTestDebtCollect
     with contextlib.redirect_stderr(pytest_stderr):
         with contextlib.redirect_stdout(pytest_stdout):
             exitstatus = int(pytest.main(list(pytest_args), plugins=[collector]))
-        if collector.exitstatus is not None:
-            exitstatus = int(collector.exitstatus)
+    if exitstatus == 0 and collector.exitstatus not in (None, 0):
+        exitstatus = int(collector.exitstatus)
+    collector.exitstatus = exitstatus
     return collector, exitstatus
 
 
@@ -537,11 +540,11 @@ def _merge_exitstatus(collect_exitstatus: int, worker_payloads: Sequence[Mapping
     if int(collect_exitstatus) != 0:
         return int(collect_exitstatus)
     worker_exitstatuses = [int(payload.get("exitstatus") or 0) for payload in worker_payloads]
+    for status in worker_exitstatuses:
+        if status not in (0, 1):
+            return status
     if any(status == 1 for status in worker_exitstatuses):
         return 1
-    for status in worker_exitstatuses:
-        if status != 0:
-            return status
     return 0
 
 
@@ -559,12 +562,79 @@ def _sort_reports(reports: Sequence[Dict[str, Any]], collected_nodeids: Sequence
     return [dict(report) for _, report in indexed]
 
 
-def _worker_payload_errors(payload: Mapping[str, Any], collected_nodeids: Sequence[str]) -> List[Dict[str, Any]]:
+def _missing_terminal_report_errors(
+    collected_nodeids: Sequence[str],
+    reports: Sequence[Mapping[str, Any]],
+) -> List[Dict[str, Any]]:
+    terminal_nodeids = {
+        str(report.get("nodeid") or "")
+        for report in reports
+        if is_terminal_pytest_report(str(report.get("when") or ""), str(report.get("outcome") or ""))
+    }
+    return [
+        {
+            "nodeid": str(nodeid),
+            "outcome": "failed",
+            "longrepr": "collected nodeid is missing terminal pytest report",
+        }
+        for nodeid in collected_nodeids
+        if str(nodeid) not in terminal_nodeids
+    ]
+
+
+def _teardown_failed_nodeids(reports: Sequence[Mapping[str, Any]]) -> List[str]:
+    return sorted(
+        {
+            str(report.get("nodeid") or "")
+            for report in reports
+            if is_teardown_failure_report(str(report.get("when") or ""), str(report.get("outcome") or ""))
+            and str(report.get("nodeid") or "")
+        }
+    )
+
+
+def _worker_payload_errors(
+    payload: Mapping[str, Any],
+    collected_nodeids: Sequence[str],
+    *,
+    planned_nodeids: Sequence[str],
+    label: str,
+) -> List[Dict[str, Any]]:
     collected = {str(nodeid) for nodeid in collected_nodeids}
     errors: List[Dict[str, Any]] = []
+    planned_list = [str(nodeid) for nodeid in planned_nodeids]
+    worker_collected = [str(nodeid) for nodeid in list(payload.get("collected_nodeids") or [])]
+    if worker_collected != planned_list:
+        planned_set = set(planned_list)
+        worker_set = set(worker_collected)
+        missing = [nodeid for nodeid in planned_list if nodeid not in worker_set]
+        extra = [nodeid for nodeid in worker_collected if nodeid not in planned_set]
+        for nodeid in missing:
+            errors.append(
+                {
+                    "nodeid": nodeid,
+                    "outcome": "failed",
+                    "longrepr": f"worker {label} did not collect planned nodeid",
+                }
+            )
+        for nodeid in extra:
+            errors.append(
+                {
+                    "nodeid": nodeid,
+                    "outcome": "failed",
+                    "longrepr": f"worker {label} collected unexpected nodeid outside shard plan",
+                }
+            )
+        if not missing and not extra:
+            errors.append(
+                {
+                    "nodeid": label,
+                    "outcome": "failed",
+                    "longrepr": f"worker {label} collected_nodeids order or duplicate mismatch with planned job_nodeids",
+                }
+            )
+    allowed_for_worker = set(planned_list)
     for report in list(payload.get("reports") or []):
-        if not isinstance(report, dict):
-            continue
         nodeid = str(report.get("nodeid") or "")
         if nodeid and nodeid not in collected:
             errors.append(
@@ -572,6 +642,14 @@ def _worker_payload_errors(payload: Mapping[str, Any], collected_nodeids: Sequen
                     "nodeid": nodeid,
                     "outcome": "failed",
                     "longrepr": "worker report nodeid is outside collect-only nodeids",
+                }
+            )
+        elif nodeid and nodeid not in allowed_for_worker:
+            errors.append(
+                {
+                    "nodeid": nodeid,
+                    "outcome": "failed",
+                    "longrepr": f"worker {label} report nodeid is outside planned shard nodeids",
                 }
             )
     return errors
@@ -596,7 +674,7 @@ def _run_sharded_pytest(args: argparse.Namespace, *, cwd: Path) -> Tuple[FullTes
     for index, shard_nodeids in enumerate(parallel_shards, start=1):
         if shard_nodeids:
             parallel_jobs.append((f"parallel-{index}", shard_nodeids))
-    worker_payloads: List[Dict[str, Any]] = []
+    worker_runs: List[Tuple[str, List[str], Dict[str, Any]]] = []
     worker_output_errors: List[Dict[str, Any]] = []
     with tempfile.TemporaryDirectory(prefix="aps_full_test_debt_shards_") as tmp_dir:
         work_dir = Path(tmp_dir)
@@ -604,9 +682,10 @@ def _run_sharded_pytest(args: argparse.Namespace, *, cwd: Path) -> Tuple[FullTes
         def _start_jobs(jobs: Sequence[Tuple[str, Sequence[str]]]):
             processes = []
             for label, job_nodeids in jobs:
+                planned_list = [str(item) for item in job_nodeids]
                 payload_path = _worker_payload_path(work_dir, label)
                 nodeids_path = _worker_nodeids_path(work_dir, label)
-                _write_nodeids_file(nodeids_path, job_nodeids)
+                _write_nodeids_file(nodeids_path, planned_list)
                 command = [
                     sys.executable,
                     str(Path(__file__).resolve()),
@@ -621,10 +700,11 @@ def _run_sharded_pytest(args: argparse.Namespace, *, cwd: Path) -> Tuple[FullTes
                     "--",
                     *FORMAL_FULL_TEST_PYTEST_ARGS,
                 ]
-                _progress(f"sharded 模式：启动分片 {label}，{len(job_nodeids)} 个 nodeid")
+                _progress(f"sharded 模式：启动分片 {label}，{len(planned_list)} 个 nodeid")
                 processes.append(
                     (
                         label,
+                        planned_list,
                         payload_path,
                         subprocess.Popen(
                             command,
@@ -640,7 +720,7 @@ def _run_sharded_pytest(args: argparse.Namespace, *, cwd: Path) -> Tuple[FullTes
             return processes
 
         def _collect_processes(processes) -> None:
-            for label, payload_path, process in processes:
+            for label, planned_list, payload_path, process in processes:
                 stdout, stderr = process.communicate()
                 returncode = int(process.returncode or 0)
                 if stdout or stderr:
@@ -657,34 +737,59 @@ def _run_sharded_pytest(args: argparse.Namespace, *, cwd: Path) -> Tuple[FullTes
                     if isinstance(payload, dict):
                         if returncode != int(payload.get("exitstatus") or 0):
                             payload["exitstatus"] = returncode
-                        worker_payloads.append(payload)
+                        payload["reports"] = [
+                            dict(report) for report in list(payload.get("reports") or []) if isinstance(report, dict)
+                        ]
+                        payload["collection_errors"] = [
+                            dict(error)
+                            for error in list(payload.get("collection_errors") or [])
+                            if isinstance(error, dict)
+                        ]
+                        worker_runs.append((label, planned_list, payload))
                         continue
-                worker_payloads.append(
-                    {
-                        "schema_version": 1,
-                        "exitstatus": returncode,
-                        "collected_nodeids": [],
-                        "collection_errors": [
-                            {"nodeid": label, "outcome": "failed", "longrepr": "worker did not write payload"}
-                        ],
-                        "reports": [],
-                    }
+                worker_runs.append(
+                    (
+                        label,
+                        planned_list,
+                        {
+                            "schema_version": 1,
+                            "exitstatus": returncode,
+                            "collected_nodeids": [],
+                            "collection_errors": [
+                                {"nodeid": label, "outcome": "failed", "longrepr": "worker did not write payload"}
+                            ],
+                            "reports": [],
+                        },
+                    )
                 )
 
         _collect_processes(_start_jobs(serial_jobs))
         _collect_processes(_start_jobs(parallel_jobs))
 
+    worker_payloads = [payload for _label, _planned, payload in worker_runs]
     reports: List[Dict[str, Any]] = []
     collection_errors = [*list(collector.collection_errors), *worker_output_errors]
-    for payload in worker_payloads:
-        reports.extend(dict(report) for report in list(payload.get("reports") or []) if isinstance(report, dict))
-        collection_errors.extend(_worker_payload_errors(payload, collector.collected_nodeids))
+    for label, planned_list, payload in worker_runs:
+        reports.extend(payload["reports"])
         collection_errors.extend(
-            dict(error) for error in list(payload.get("collection_errors") or []) if isinstance(error, dict)
+            _worker_payload_errors(
+                payload,
+                collector.collected_nodeids,
+                planned_nodeids=planned_list,
+                label=label,
+            )
         )
+        collection_errors.extend(payload["collection_errors"])
+    existing_error_nodeids = {str(item.get("nodeid") or "") for item in collection_errors}
+    for error in _missing_terminal_report_errors(collector.collected_nodeids, reports):
+        if str(error.get("nodeid") or "") not in existing_error_nodeids:
+            collection_errors.append(error)
     collector.reports = _sort_reports(reports, collector.collected_nodeids)
     collector.collection_errors = sorted(collection_errors, key=lambda item: str(item.get("nodeid") or ""))
-    collector.exitstatus = _merge_exitstatus(collect_exitstatus, worker_payloads)
+    merged_exitstatus = _merge_exitstatus(collect_exitstatus, worker_payloads)
+    if (collector.collection_errors or _teardown_failed_nodeids(collector.reports)) and merged_exitstatus == 0:
+        merged_exitstatus = 1
+    collector.exitstatus = merged_exitstatus
     return collector, int(collector.exitstatus)
 
 
@@ -700,6 +805,8 @@ def _importable_baseline_blockers(payload: Dict[str, Any]) -> List[str]:
         blockers.append("main_style_isolation_candidate")
     if int(summary.get("collection_error_count") or 0) != 0:
         blockers.append("collection_error_count")
+    if _teardown_failed_nodeids(list(payload.get("reports") or [])):
+        blockers.append("teardown_failure")
     blockers.extend(["xfail_signal"] * bool(_xfail_signal_nodeids(payload)))
     return blockers
 
@@ -854,6 +961,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     else:
         _progress("开始执行 pytest 并收集 full-test-debt 结果")
         collector, exitstatus = _run_pytest_collect(list(args.pytest_args))
+        existing_error_nodeids = {str(item.get("nodeid") or "") for item in collector.collection_errors}
+        for error in _missing_terminal_report_errors(collector.collected_nodeids, collector.reports):
+            if str(error.get("nodeid") or "") not in existing_error_nodeids:
+                collector.collection_errors.append(error)
+        if (collector.collection_errors or _teardown_failed_nodeids(collector.reports)) and exitstatus == 0:
+            exitstatus = 1
+            collector.exitstatus = 1
 
     _progress(f"pytest 执行完成：exitstatus={exitstatus}；开始分类失败与构建 payload")
     payload = _build_payload(

@@ -69,12 +69,12 @@ class LongGateContentTests(unittest.TestCase):
             self.assertEqual(before["components"]["environment"]["values"]["SECRET_KEY"], {"present": True})
             self.assertNotIn("private-only-in-memory", canonical_content(before))
             self.assertEqual(before["components"]["environment"]["non_reusable_env_keys"], ["SECRET_KEY"])
-            unavailable = cache.decide_reuse(self.entry, before, repo_root=str(self.root))
+            unavailable = cache.evaluate_reuse(self.entry, before, repo_root=str(self.root))["decision"]
             self.assertEqual(unavailable["decision"], "run")
             self.assertTrue(unavailable["cache_unavailable"])
             self.assertEqual(unavailable["non_reusable_env_keys"], ["SECRET_KEY"])
             self.assertTrue(
-                cache.decide_failure_reuse(self.entry, before, repo_root=str(self.root))["cache_unavailable"]
+                cache.evaluate_failure_reuse(self.entry, before, repo_root=str(self.root))["decision"]["cache_unavailable"]
             )
             with self.assertRaises(ValueError):
                 cache.write_success(self.entry, before, self.result, ["result.bin"], repo_root=str(self.root))
@@ -87,6 +87,20 @@ class LongGateContentTests(unittest.TestCase):
             self.assertEqual(
                 fingerprint._runtime_probe_cache_key("node", "/node", {"PATH": "/bin", "SECRET_KEY": "a"}),
                 ("node", "/node", (("PATH", "/bin"), ("SECRET_KEY", "a"))),
+            )
+            self.assertEqual(
+                fingerprint._powershell_version(environment={"PATH": "", "APS_TEST_POWERSHELL": "missing-pwsh"}),
+                "__missing_powershell__:missing-pwsh",
+            )
+            self.assertEqual(
+                fingerprint.fingerprint_environment(
+                    ["node_executable_realpath", "node_version"],
+                    environment={"PATH": "", "WORKBENCH_NODE": "missing-node"},
+                )["values"],
+                {
+                    "node_executable_realpath": "__missing_node__:missing-node",
+                    "node_version": "__missing_node__:missing-node",
+                },
             )
             with self.assertRaises(fingerprint.LongGateFingerprintError):
                 fingerprint.fingerprint_environment(["API_TOKEN"], environment={"API_TOKEN": "private"})
@@ -117,23 +131,23 @@ class LongGateContentTests(unittest.TestCase):
         self.assertEqual(reused["decision"]["decision"], "reuse")
         self.assertEqual(reused["stdout"], saved["stdout_content"])
         self.output.write_bytes(b"\x00RESULT\xff")
-        self.assertIn("output files", cache.decide_reuse(self.entry, current, repo_root=str(self.root))["reason"])
+        self.assertIn("output files", cache.evaluate_reuse(self.entry, current, repo_root=str(self.root))["decision"]["reason"])
         self.output.write_bytes(b"\x00result\xff")
         log = self.root / saved["stdout_log_path"]
         log.write_bytes(b"changed\r\n")
-        self.assertIn("logs", cache.decide_reuse(self.entry, current, repo_root=str(self.root))["reason"])
+        self.assertIn("logs", cache.evaluate_reuse(self.entry, current, repo_root=str(self.root))["decision"]["reason"])
         log.write_bytes(saved["stdout_content"].encode("utf-8"))
         changed_entry = {**self.entry, "command": {**self.command, "args": ["python", "other.py"]}}
-        self.assertIn("command", cache.decide_reuse(changed_entry, current, repo_root=str(self.root))["reason"])
+        self.assertIn("command", cache.evaluate_reuse(changed_entry, current, repo_root=str(self.root))["decision"]["reason"])
         self.source.write_bytes(b"value=2\n\x00\xff")
-        self.assertIn("fingerprint", cache.decide_reuse(self.entry, self.current(), repo_root=str(self.root))["reason"])
+        self.assertIn("fingerprint", cache.evaluate_reuse(self.entry, self.current(), repo_root=str(self.root))["decision"]["reason"])
         saved["timed_out"] = True
         path.write_text(json.dumps(saved))
-        self.assertIn("timed out", cache.decide_reuse(self.entry, current, repo_root=str(self.root))["reason"])
+        self.assertIn("timed out", cache.evaluate_reuse(self.entry, current, repo_root=str(self.root))["decision"]["reason"])
         saved["timed_out"] = False
         saved["stdout_log_path"] = "../outside.log"
         path.write_text(json.dumps(saved))
-        self.assertIn("escapes repo root", cache.decide_reuse(self.entry, current, repo_root=str(self.root))["reason"])
+        self.assertIn("escapes repo root", cache.evaluate_reuse(self.entry, current, repo_root=str(self.root))["decision"]["reason"])
 
     def test_failure_reuse_retains_nonzero_returncode_and_original_logs(self):
         entry = {**self.entry, "output_result_files": []}
@@ -149,7 +163,7 @@ class LongGateContentTests(unittest.TestCase):
         cache.write_failure(entry, current, failed, repo_root=str(self.root))
         path, saved = self.saved("failure")
         self.assertEqual(
-            cache.decide_failure_reuse(entry, current, repo_root=str(self.root))["decision"], "cached_failure"
+            cache.evaluate_failure_reuse(entry, current, repo_root=str(self.root))["decision"]["decision"], "cached_failure"
         )
         self.assertEqual(saved["returncode"], 3)
         self.assertEqual(saved["run_id"], "original-run")
@@ -157,18 +171,18 @@ class LongGateContentTests(unittest.TestCase):
         saved["returncode"] = 0
         path.write_text(json.dumps(saved))
         self.assertIn(
-            "returncode was zero", cache.decide_failure_reuse(entry, current, repo_root=str(self.root))["reason"]
+            "returncode was zero", cache.evaluate_failure_reuse(entry, current, repo_root=str(self.root))["decision"]["reason"]
         )
         saved["returncode"] = 3
         saved["interrupted"] = True
         path.write_text(json.dumps(saved))
-        self.assertIn("interrupted", cache.decide_failure_reuse(entry, current, repo_root=str(self.root))["reason"])
+        self.assertIn("interrupted", cache.evaluate_failure_reuse(entry, current, repo_root=str(self.root))["decision"]["reason"])
         with self.assertRaises(ValueError):
             cache.write_failure(entry, current, {**failed, "timed_out": True}, repo_root=str(self.root))
         saved["interrupted"] = False
         path.write_text(json.dumps(saved))
         (self.root / saved["stderr_log_path"]).write_bytes(b"other error!\n")
-        self.assertIn("logs", cache.decide_failure_reuse(entry, current, repo_root=str(self.root))["reason"])
+        self.assertIn("logs", cache.evaluate_failure_reuse(entry, current, repo_root=str(self.root))["decision"]["reason"])
 
     def test_summary_references_owned_content_and_preserves_actual_results(self):
         current = self.current()
@@ -255,7 +269,7 @@ class LongGateContentTests(unittest.TestCase):
                 result = {**self.result, "stdout": payload["collect_stdout_content"] if entry is collect else "1 passed\n"}
                 cache.write_success(entry, self.current(entry), result, entry["output_result_files"],
                                     repo_root=str(self.root))
-                self.assertEqual(cache.decide_reuse(entry, self.current(entry), repo_root=str(self.root))["decision"],
+                self.assertEqual(cache.evaluate_reuse(entry, self.current(entry), repo_root=str(self.root))["decision"]["decision"],
                                  "reuse")
             for entry, sources in ((full, execution_sources), (collect, collect_sources)):
                 for relative, original in sources.items():
@@ -263,21 +277,21 @@ class LongGateContentTests(unittest.TestCase):
                         path = self.root / relative
                         try:
                             path.write_bytes(original + b"\nchanged\n")
-                            decision = cache.decide_reuse(entry, self.current(entry), repo_root=str(self.root))
+                            decision = cache.evaluate_reuse(entry, self.current(entry), repo_root=str(self.root))["decision"]
                             self.assertEqual(decision["decision"], "run")
                             self.assertIn("fingerprint", decision["reason"])
                         finally:
                             path.write_bytes(original)
                         self.assertEqual(
-                            cache.decide_reuse(entry, self.current(entry), repo_root=str(self.root))["decision"], "reuse"
+                            cache.evaluate_reuse(entry, self.current(entry), repo_root=str(self.root))["decision"]["decision"], "reuse"
                         )
             for relative in ("tests/workbench/__pycache__/contract.pyc", "scripts/workbench/__pycache__/compile.pyc"):
                 path = self.root / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(b"new bytecode")
-                self.assertEqual(cache.decide_reuse(full, self.current(full), repo_root=str(self.root))["decision"], "reuse")
+                self.assertEqual(cache.evaluate_reuse(full, self.current(full), repo_root=str(self.root))["decision"]["decision"], "reuse")
                 path.write_bytes(b"modified bytecode")
-                self.assertEqual(cache.decide_reuse(full, self.current(full), repo_root=str(self.root))["decision"], "reuse")
+                self.assertEqual(cache.evaluate_reuse(full, self.current(full), repo_root=str(self.root))["decision"]["decision"], "reuse")
 
     def test_legacy_digest_only_records_remain_readable_and_miss(self):
         legacy = self.root / "evidence" / "QualityGate" / "long_gate" / "results" / "host_content.success.json"
@@ -288,7 +302,7 @@ class LongGateContentTests(unittest.TestCase):
         old_log.parent.mkdir()
         old_log.write_bytes(b"historical output\n")
         current = self.current()
-        decision = cache.decide_reuse(self.entry, current, repo_root=str(self.root))
+        decision = cache.evaluate_reuse(self.entry, current, repo_root=str(self.root))["decision"]
         self.assertEqual(decision["decision"], "run")
         self.assertEqual(decision["previous_result_path"], str(legacy.relative_to(self.root)))
         self.assertIn("legacy", decision["reason"])
@@ -335,6 +349,43 @@ class LongGateContentTests(unittest.TestCase):
             verify_required_regressions_from_payload(bad, required_tests=["tests/example.py"])
         with self.assertRaises(RequiredRegressionProofError):
             verify_required_regressions_from_payload(full_payload, required_tests=["tests/missing.py"])
+
+    def test_node_resolution_and_fingerprint_skip_broken_path_node_and_bind_working_fallback(self):
+        from tests._support.node_runtime_support import resolve_node_binary
+
+        bad_dir = self.root / "bad_bin"
+        good_dir = self.root / "good_bin"
+        bad_dir.mkdir(parents=True, exist_ok=True)
+        good_dir.mkdir(parents=True, exist_ok=True)
+        bad_log = self.root / "bad_node_calls.log"
+        bad_node = bad_dir / "node"
+        good_node = good_dir / "node"
+        bad_node.write_text(f"#!/bin/sh\necho x >> {bad_log}\nexit 1\n", encoding="utf-8")
+        good_node.write_text("#!/bin/sh\necho v20.11.1\n", encoding="utf-8")
+        bad_node.chmod(0o755)
+        good_node.chmod(0o755)
+
+        env = {"PATH": f"{bad_dir}{os.pathsep}{good_dir}"}
+        resolved_test_node = resolve_node_binary(env)
+        env_fp = fingerprint.fingerprint_environment(["node_executable_realpath", "node_version"], environment=env)
+
+        expected_path = os.path.realpath(str(good_node))
+        self.assertEqual(os.path.realpath(resolved_test_node), expected_path)
+        self.assertEqual(
+            env_fp["values"],
+            {"node_executable_realpath": expected_path, "node_version": "v20.11.1"},
+        )
+        self.assertEqual(len(bad_log.read_text(encoding="utf-8").splitlines()), 1)
+
+        bad_only_env = {"PATH": str(bad_dir)}
+        fallback_test_node = resolve_node_binary(bad_only_env)
+        fallback_fp = fingerprint.fingerprint_environment(
+            ["node_executable_realpath", "node_version"],
+            environment=bad_only_env,
+        )["values"]
+        self.assertNotEqual(os.path.realpath(fallback_test_node), os.path.realpath(str(bad_node)))
+        self.assertEqual(os.path.realpath(fallback_test_node), fallback_fp["node_executable_realpath"])
+        self.assertTrue(fallback_fp["node_version"].startswith("v"))
 
 
 if __name__ == "__main__":

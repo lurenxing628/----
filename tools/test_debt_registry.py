@@ -11,16 +11,9 @@ from .quality_gate_shared import (
     TEST_DEBT_MODE_VALUES,
     QualityGateError,
     extract_json_code_block,
+    is_teardown_failure_report,
+    is_terminal_pytest_report,
     now_shanghai_iso,
-)
-from .test_registry import (
-    iter_required_tests as _iter_required_tests,
-)
-from .test_registry import (
-    iter_startup_regressions as _iter_startup_regressions,
-)
-from .test_registry import (
-    test_registry_content as _test_registry_content,
 )
 
 BASELINE_BEGIN = "<!-- APS-FULL-PYTEST-BASELINE:BEGIN -->"
@@ -181,18 +174,12 @@ def _validate_baseline_summary(
     return summary
 
 
-def _validate_candidate_nodeids_are_collected(
-    payload: Dict[str, Any],
-    classification_lists: Dict[str, List[str]],
-) -> None:
-    collected_nodeids = _require_string_list(payload.get("collected_nodeids"), "collected_nodeids")
-    if not set(classification_lists["candidate_test_debt"]).issubset(set(collected_nodeids)):
-        raise QualityGateError("candidate_test_debt 必须来自 collected_nodeids")
-
-
-def _validate_baseline_reports(payload: Dict[str, Any]) -> None:
+def _validate_baseline_reports(payload: Dict[str, Any], collected_nodeids: Sequence[str]) -> None:
+    collected_set = set(collected_nodeids)
     report_nodeids: Set[str] = set()
+    terminal_report_nodeids: Set[str] = set()
     failed_report_nodeids: Set[str] = set()
+    teardown_failed_nodeids: Set[str] = set()
     for index, raw_report in enumerate(_require_list(payload.get("reports"), "reports")):
         report = _require_dict(raw_report, f"reports[{index}]")
         for field_name in BASELINE_REQUIRED_REPORT_FIELDS:
@@ -200,17 +187,43 @@ def _validate_baseline_reports(payload: Dict[str, Any]) -> None:
                 raise QualityGateError(f"reports[{index}] 缺少字段 {field_name}")
         nodeid = _require_text(report.get("nodeid"), f"reports[{index}].nodeid")
         report_nodeids.add(nodeid)
-        _require_text(report.get("when"), f"reports[{index}].when")
+        when = _require_text(report.get("when"), f"reports[{index}].when")
         outcome = _require_text(report.get("outcome"), f"reports[{index}].outcome")
+        if is_terminal_pytest_report(when, outcome):
+            terminal_report_nodeids.add(nodeid)
         if outcome == "failed":
             failed_report_nodeids.add(nodeid)
+            if is_teardown_failure_report(when, outcome):
+                teardown_failed_nodeids.add(nodeid)
         _require_bool(report.get("xfail_marker_present"), f"reports[{index}].xfail_marker_present")
         _require_string(report.get("xfail_marker_reason"), f"reports[{index}].xfail_marker_reason")
         _require_bool(report.get("xfail_marker_strict"), f"reports[{index}].xfail_marker_strict")
         _require_bool(report.get("xfail_marker_run"), f"reports[{index}].xfail_marker_run")
         _require_string(report.get("wasxfail_reason"), f"reports[{index}].wasxfail_reason")
         _require_bool(report.get("strict_xpass"), f"reports[{index}].strict_xpass")
+    uncollected_reports = sorted(report_nodeids - collected_set)
+    if uncollected_reports:
+        raise QualityGateError(
+            "reports 存在未出现在 collected_nodeids 中的 nodeid："
+            + _format_nodeid_list(uncollected_reports)
+        )
+    missing_terminal_reports = [nodeid for nodeid in collected_nodeids if nodeid not in terminal_report_nodeids]
+    if missing_terminal_reports:
+        raise QualityGateError(
+            "collected_nodeids 每个 nodeid 都必须有合法的 pytest 终态报告，缺少："
+            + _format_nodeid_list(missing_terminal_reports)
+        )
+    if teardown_failed_nodeids:
+        raise QualityGateError(
+            "reports 存在 teardown 失败，不能通过测试债务证明："
+            + _format_nodeid_list(sorted(teardown_failed_nodeids))
+        )
     candidate_nodeids = set(_classification_list(payload, "candidate_test_debt"))
+    classified_failed_nodeids = {
+        nodeid
+        for key in BASELINE_CLASSIFICATION_KEYS
+        for nodeid in _classification_list(payload, key)
+    }
     missing_reports = sorted(candidate_nodeids - report_nodeids)
     if missing_reports:
         raise QualityGateError(
@@ -222,6 +235,12 @@ def _validate_baseline_reports(payload: Dict[str, Any]) -> None:
         raise QualityGateError(
             "candidate_test_debt 每个 nodeid 都必须有 outcome=failed 的 reports 证据，缺少："
             + _format_nodeid_list(missing_failed_reports)
+        )
+    unclassified_failed_reports = sorted(failed_report_nodeids - classified_failed_nodeids)
+    if unclassified_failed_reports:
+        raise QualityGateError(
+            "reports 存在未纳入 classifications 的失败 nodeid："
+            + _format_nodeid_list(unclassified_failed_reports)
         )
 
 
@@ -257,14 +276,13 @@ def _validate_baseline_machine_contract(payload: Dict[str, Any], *, require_impo
         raise QualityGateError("importable 与当前导入口径不一致")
     _require_plain_int(payload.get("exitstatus"), "exitstatus")
     _validate_formal_full_test_args(payload)
-    _require_list(payload.get("collected_nodeids"), "collected_nodeids")
+    collected_nodeids = _require_string_list(payload.get("collected_nodeids"), "collected_nodeids")
     _require_list(payload.get("collection_errors"), "collection_errors")
-    _validate_baseline_reports(payload)
+    _validate_baseline_reports(payload, collected_nodeids)
     _require_string_list(payload.get("importable_blockers"), "importable_blockers")
 
     classification_lists = _validate_baseline_classifications(payload)
     _validate_baseline_summary(payload, classification_lists)
-    _validate_candidate_nodeids_are_collected(payload, classification_lists)
 
     if require_importable:
         _require_git_sha(payload.get("head_sha"), "head_sha")
@@ -317,23 +335,17 @@ def baseline_candidate_nodeids(payload: Dict[str, Any]) -> List[str]:
     return sorted(_classification_list(payload, "candidate_test_debt"))
 
 
-def _count_or_actual_blocker(payload: Dict[str, Any], counts: Dict[str, Any], key: str) -> Optional[str]:
+def _count_or_actual_blocker(payload: Dict[str, Any], key: str) -> Optional[str]:
     nodeids = _classification_list(payload, key)
-    count = int(counts.get(key) or 0)
     if nodeids:
         return f"{key}（{len(nodeids)} 个）：{_format_nodeid_list(nodeids)}"
-    if count != 0:
-        return f"{key} 统计数为 {count}，但明细为空"
     return None
 
 
-def _collection_error_blocker(payload: Dict[str, Any], summary: Dict[str, Any]) -> Optional[str]:
+def _collection_error_blocker(payload: Dict[str, Any]) -> Optional[str]:
     errors = list(payload.get("collection_errors") or [])
-    count = int(summary.get("collection_error_count") or 0)
     if errors:
         return f"collection_errors 非空（{len(errors)} 个）：{_format_collection_error_items(errors)}"
-    if count != 0:
-        return f"collection_error_count 统计数为 {count}，但明细为空"
     return None
 
 
@@ -353,22 +365,14 @@ def _baseline_blockers(payload: Dict[str, Any], *, require_importable: bool) -> 
         _validate_baseline_machine_contract(payload, require_importable=require_importable)
     except QualityGateError as exc:
         return [str(exc)]
-    summary = dict(payload.get("summary") or {})
-    counts = dict(summary.get("classification_counts") or {})
     blockers = []
-    if str(payload.get("baseline_kind") or "") != "after_main_style_isolation":
-        blockers.append("baseline_kind")
-    if require_importable and payload.get("importable") is not True:
-        blockers.append("importable")
-    if not require_importable and payload.get("importable") is not False:
-        blockers.append("importable")
     if int(payload.get("exitstatus") or 0) not in {0, 1}:
         blockers.append("pytest_exitstatus")
     for key in ["required_or_quality_gate_self_failure", "main_style_isolation_candidate"]:
-        blocker = _count_or_actual_blocker(payload, counts, key)
+        blocker = _count_or_actual_blocker(payload, key)
         if blocker:
             blockers.append(blocker)
-    collection_blocker = _collection_error_blocker(payload, summary)
+    collection_blocker = _collection_error_blocker(payload)
     if collection_blocker:
         blockers.append(collection_blocker)
     xfail_signal_nodeids = _xfail_signal_nodeids(payload)
@@ -414,20 +418,6 @@ def _validate_candidate_nodeids(payload: Dict[str, Any], *, expected_nodeids: Se
     if candidate_nodeids != expected:
         raise QualityGateError(
             "candidate_test_debt 与待承接 baseline 候选集合不一致："
-            + _format_candidate_nodeid_diff(candidate_nodeids, expected)
-        )
-    summary = dict(payload.get("summary") or {})
-    counts = dict(summary.get("classification_counts") or {})
-    if int(counts.get("candidate_test_debt") or 0) != len(expected):
-        raise QualityGateError(
-            "candidate_test_debt 数量与待承接 baseline 候选集合不一致："
-            f"实际数量={int(counts.get('candidate_test_debt') or 0)}，期望数量={len(expected)}；"
-            + _format_candidate_nodeid_diff(candidate_nodeids, expected)
-        )
-    if int(summary.get("failed_nodeid_count") or 0) != len(expected):
-        raise QualityGateError(
-            "failed_nodeid_count 与待承接 baseline 候选集合不一致："
-            f"实际数量={int(summary.get('failed_nodeid_count') or 0)}，期望数量={len(expected)}；"
             + _format_candidate_nodeid_diff(candidate_nodeids, expected)
         )
 
@@ -542,7 +532,6 @@ def mark_test_debt_fixed(
     *,
     fixed_at: str,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    validate_ledger(ledger)
     target_debt_id = _require_text(debt_id, "debt_id")
     verified_at = _require_text(fixed_at, "fixed_at")
     entries = registered_test_debt_entries(ledger)
@@ -599,7 +588,6 @@ def retire_test_debt(
     retired_at: str,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """Retain a fixed debt's history after its actual test responsibility retires."""
-    validate_ledger(ledger)
     target_debt_id = _require_text(debt_id, "debt_id")
     retirement_reason = _require_text(reason, "reason")
     timestamp = _require_text(retired_at, "retired_at")
@@ -628,7 +616,6 @@ def retire_test_debt(
 
 
 def registered_test_debt_entries(ledger: Dict[str, Any]) -> List[Dict[str, Any]]:
-    validate_ledger(ledger)
     return [
         dict(entry)
         for entry in cast(List[Dict[str, Any]], cast(Dict[str, Any], ledger.get("test_debt") or {}).get("entries") or [])
@@ -644,53 +631,6 @@ def active_xfail_entries_by_nodeid(ledger: Optional[Dict[str, Any]] = None) -> D
     }
 
 
-def iter_required_tests() -> List[str]:
-    return _iter_required_tests()
-
-
-def iter_startup_regressions() -> List[str]:
-    return _iter_startup_regressions()
-
-
-def load_test_debt_registry(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    source_ledger = load_ledger(required=True) if ledger is None else ledger
-    entries = registered_test_debt_entries(source_ledger)
-    active_entries = [entry for entry in entries if str(entry.get("mode") or "") == "xfail"]
-    fixed_entries = [entry for entry in entries if str(entry.get("mode") or "") == "fixed"]
-    retired_entries = [entry for entry in entries if str(entry.get("mode") or "") == "retired"]
-    test_debt = _require_dict(source_ledger.get("test_debt"), "test_debt")
-    ratchet = _require_dict(test_debt.get("ratchet"), "test_debt.ratchet")
-    max_registered_xfail = _require_plain_int(
-        ratchet.get("max_registered_xfail"),
-        "test_debt.ratchet.max_registered_xfail",
-    )
-    active_entries.sort(key=lambda entry: str(entry["nodeid"]))
-    fixed_entries.sort(key=lambda entry: str(entry["nodeid"]))
-    retired_entries.sort(key=lambda entry: str(entry["nodeid"]))
-    active_nodeids = [str(entry["nodeid"]) for entry in active_entries]
-    return {
-        "required_tests": iter_required_tests(),
-        "startup_regressions": iter_startup_regressions(),
-        "active_xfail_count": len(active_entries),
-        "active_xfail_entries": active_entries,
-        "active_xfail_nodeids": active_nodeids,
-        "fixed_count": len(fixed_entries),
-        "fixed_entries": fixed_entries,
-        "retired_count": len(retired_entries),
-        "retired_entries": retired_entries,
-        "max_registered_xfail": max_registered_xfail,
-    }
-
-
-def test_debt_registry_content(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    registry = load_test_debt_registry(ledger)
-    return _test_registry_content(
-        required_tests=cast(List[str], registry["required_tests"]),
-        startup_regressions=cast(List[str], registry["startup_regressions"]),
-        active_xfail_entries=cast(List[Dict[str, Any]], registry["active_xfail_entries"]),
-    )
-
-
 __all__ = [
     "P0_TEST_DEBT_SEED_METADATA",
     "TEST_DEBT_FAMILY",
@@ -698,11 +638,7 @@ __all__ = [
     "baseline_candidate_nodeids",
     "build_test_debt_entries",
     "build_test_debt_ledger_from_baseline",
-    "test_debt_registry_content",
-    "iter_required_tests",
-    "iter_startup_regressions",
     "load_full_test_debt_baseline",
-    "load_test_debt_registry",
     "mark_test_debt_fixed",
     "retire_test_debt",
     "registered_test_debt_entries",

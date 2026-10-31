@@ -10,9 +10,6 @@ from tools.long_gate_fingerprint import RUNTIME_FINGERPRINT_KEYS
 
 def registry_test_environment_keys(targets: Optional[Sequence[str]] = None) -> List[str]:
     groups = test_registry.iter_required_regression_groups()
-    groups.extend(test_registry.iter_required_regression_groups(
-        test_registry.SUPPLEMENTAL_REGRESSION_GROUPS
-    ))
     selected = None if targets is None else set(test_registry.normalize_test_paths(targets))
     # Collection observes environment-dependent marks/parameters, not runtime probes.
     return sorted({

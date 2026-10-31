@@ -7,8 +7,10 @@ They are not quality gate proof and they are never written into evidence/.
 
 from __future__ import annotations
 
+import importlib.metadata
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -17,7 +19,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
+from tools.long_gate_fingerprint import (
+    _git_executable_realpath,
+    _git_version,
+    _powershell_executable_realpath,
+    _powershell_version,
+    _resolve_node_executable,
+)
 from tools.long_gate_schema import content_equal, read_file_content
+from tools.test_registry_data import REQUIRED_REGRESSION_COMMON_SCOPES, REQUIRED_REGRESSION_GROUPS
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CACHE_SCHEMA_VERSION = 2
@@ -32,10 +42,63 @@ HOOK_CACHE_TOOL_PATHS = (
 )
 DAILY_GATE_TOOL_PATHS = (
     ".pre-commit-config.yaml",
+    "pyproject.toml",
+    "pytest.ini",
+    ".flake8",
+    ".importlinter",
+    "conftest.py",
+    "tests/conftest.py",
     "scripts/run_daily_quality_gate.py",
     "tools/git_hook_cache.py",
     "tools/git_hook_checks.py",
     "tools/test_registry.py",
+    "tools/test_registry_data.py",
+)
+_DAILY_PYTHON_IDENT_KEYS = frozenset(
+    {
+        "python_executable_realpath",
+        "python_version",
+        "pytest_version",
+        "pytest_plugin_distribution_versions",
+    }
+)
+_DAILY_RUNTIME_PROBE_KEYS = frozenset(
+    {
+        "platform",
+        "git_executable_realpath",
+        "git_version",
+        "node_executable_realpath",
+        "node_version",
+        "powershell_executable_realpath",
+        "powershell_version",
+    }
+)
+DAILY_GATE_ENV_KEYS: Tuple[str, ...] = tuple(
+    dict.fromkeys(
+        key
+        for key in (
+            *REQUIRED_REGRESSION_COMMON_SCOPES.get("env_keys", ()),
+            *(
+                item
+                for group in REQUIRED_REGRESSION_GROUPS
+                for item in group.get("env_keys", ())
+            ),
+            "PYTHONHASHSEED",
+        )
+        if key not in _DAILY_PYTHON_IDENT_KEYS and key not in _DAILY_RUNTIME_PROBE_KEYS
+    )
+)
+_PYTEST_PLUGIN_VERSIONS_CACHE: Dict[Tuple[str, str, str], List[Dict[str, Any]]] = {}
+_PYTEST_PLUGIN_PROBE_CODE = (
+    "import importlib.metadata as m, json\n"
+    "rows = {}\n"
+    "for dist in m.distributions():\n"
+    "    name = str(dist.metadata['Name'] or '').strip()\n"
+    "    version = str(dist.version or '').strip()\n"
+    "    eps = [ep for ep in dist.entry_points if ep.group == 'pytest11']\n"
+    "    if name and ('pytest' in name.lower() or eps):\n"
+    "        rows[name.lower()] = {'name': name, 'version': version, 'plugins': sorted(str(ep.name) for ep in eps)}\n"
+    "print(json.dumps([rows[k] for k in sorted(rows)], ensure_ascii=False, sort_keys=True))\n"
 )
 
 
@@ -131,9 +194,10 @@ def _file_contents(paths: Iterable[str]) -> Dict[str, Optional[str]]:
 
 
 def _python_identity(executable: str) -> Dict[str, str]:
-    realpath = os.path.realpath(str(executable or sys.executable))
+    abspath = os.path.abspath(str(executable or sys.executable))
+    realpath = os.path.realpath(abspath)
     completed = subprocess.run(
-        [realpath, "-c", "import sys; print(sys.version.replace('\\n', ' '))"],
+        [abspath, "-c", "import sys; print(sys.version.replace('\\n', ' '))"],
         cwd=str(REPO_ROOT),
         capture_output=True,
         text=True,
@@ -142,7 +206,11 @@ def _python_identity(executable: str) -> Dict[str, str]:
         check=False,
     )
     version = str(completed.stdout or "").strip() if completed.returncode == 0 else ""
-    return {"executable_realpath": realpath, "version": version}
+    return {
+        "executable_abspath": abspath,
+        "executable_realpath": realpath,
+        "version": version,
+    }
 
 
 def _tool_version(executable: str, module: str) -> str:
@@ -325,6 +393,77 @@ def _daily_ref_contexts_cache_extra(ref_contexts: Optional[Sequence[Mapping[str,
     ))
 
 
+def _collect_in_process_pytest_plugins() -> List[Dict[str, Any]]:
+    rows: Dict[str, Dict[str, Any]] = {}
+    for dist in importlib.metadata.distributions():
+        name = str(dist.metadata["Name"] or "").strip()
+        version = str(dist.version or "").strip()
+        eps = [ep for ep in dist.entry_points if ep.group == "pytest11"]
+        if name and ("pytest" in name.lower() or eps):
+            rows[name.lower()] = {
+                "name": name,
+                "version": version,
+                "plugins": sorted(str(ep.name) for ep in eps),
+            }
+    return [rows[key] for key in sorted(rows)]
+
+
+def _pytest_plugin_versions(executable: str, env: Optional[Mapping[str, str]] = None) -> List[Dict[str, Any]]:
+    effective_env = dict(_hook_env() if env is None else env)
+    abspath = os.path.abspath(str(executable or sys.executable))
+    realpath = os.path.realpath(abspath)
+    pythonpath = str(effective_env.get("PYTHONPATH") or "")
+    cache_key = (os.path.normcase(abspath), os.path.normcase(realpath), pythonpath)
+    cached = _PYTEST_PLUGIN_VERSIONS_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+    if (
+        os.path.normcase(abspath) == os.path.normcase(os.path.abspath(sys.executable))
+        and pythonpath == str(os.environ.get("PYTHONPATH") or "")
+    ):
+        rows = _collect_in_process_pytest_plugins()
+        _PYTEST_PLUGIN_VERSIONS_CACHE[cache_key] = rows
+        return rows
+    completed = subprocess.run(
+        [abspath, "-c", _PYTEST_PLUGIN_PROBE_CODE],
+        cwd=str(REPO_ROOT),
+        env=effective_env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    if completed.returncode != 0:
+        return [{"error": f"returncode={completed.returncode};{str(completed.stderr or completed.stdout or '').strip()}"}]
+    try:
+        parsed = json.loads(str(completed.stdout or "").strip() or "[]")
+    except ValueError as exc:
+        return [{"error": f"invalid_json={exc}"}]
+    if not isinstance(parsed, list):
+        return [{"error": "invalid_payload"}]
+    rows = [dict(item) for item in parsed if isinstance(item, dict)]
+    _PYTEST_PLUGIN_VERSIONS_CACHE[cache_key] = rows
+    return rows
+
+
+def _daily_pytest_environment(env: Optional[Mapping[str, str]] = None) -> Dict[str, Any]:
+    effective_env = _hook_env() if env is None else env
+    values: Dict[str, Any] = {}
+    for key in DAILY_GATE_ENV_KEYS:
+        raw = effective_env.get(key)
+        values[key] = {"present": raw is not None} if key == "SECRET_KEY" else raw
+    values["platform"] = platform.platform()
+    values["git_executable_realpath"] = _git_executable_realpath(environment=effective_env)
+    values["git_version"] = _git_version(strict=False, environment=effective_env)
+    node_path, node_version = _resolve_node_executable(effective_env)
+    values["node_executable_realpath"] = node_path or node_version
+    values["node_version"] = node_version
+    values["powershell_executable_realpath"] = _powershell_executable_realpath(environment=effective_env)
+    values["powershell_version"] = _powershell_version(strict=False, environment=effective_env)
+    return values
+
+
 def daily_gate_cache_key(
     executable: str,
     *,
@@ -335,6 +474,7 @@ def daily_gate_cache_key(
 ) -> Dict[str, Any]:
     scope_extra = _daily_scope_cache_extra(scope_payload)
     contexts = _daily_ref_contexts_cache_extra(ref_contexts)
+    env = _hook_env()
     # Target refs execute in their committed worktrees; manual runs use this checkout.
     source_extra = {} if contexts else {"head_tree": head_tree_hash(), "git_status_short": git_status_lines()}
     key_payload = _cache_key_payload(
@@ -347,6 +487,8 @@ def daily_gate_cache_key(
             "remote_name": str(remote_name or ""),
             "remote_ref": str(remote_ref or ""),
             "ref_contexts": contexts,
+            "pytest_env": _daily_pytest_environment(env),
+            "pytest_plugins": _pytest_plugin_versions(executable, env),
             **scope_extra,
         },
     )

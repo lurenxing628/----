@@ -22,7 +22,6 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from tools import quality_gate_shared  # noqa: E402
-from tools.architecture_scan_cache import architecture_scan_cache_metadata  # noqa: E402
 from tools.long_gate_cache import evaluate_failure_reuse, evaluate_reuse  # noqa: E402
 from tools.long_gate_cache import resolve_cache_dir as resolve_long_gate_cache_dir
 from tools.long_gate_cache import write_failure as write_long_gate_failure
@@ -46,7 +45,6 @@ from tools.long_gate_manifest import (  # noqa: E402
     ENTRY_PYTEST_COLLECT_ALL,
     ENTRY_REQUIRED_REGRESSIONS,
     ENTRY_RUFF_CHECK_FULL,
-    ENTRY_STARTUP_RUNTIME_REGRESSIONS,
     build_manifest_from_quality_gate_plan,
     explain_long_gate_impact,
 )
@@ -74,9 +72,6 @@ from tools.quality_gate_support import (  # noqa: E402
     QUALITY_GATE_RECEIPTS_DIR_REL,
     QUALITY_GATE_REQUIRED_REGRESSIONS_REL,
     QUALITY_GATE_RUFF_CHECK_FULL_REL,
-    QUALITY_GATE_SELFTEST_PATH,
-    QUALITY_GATE_STARTUP_REGRESSION_ARGS,
-    QUALITY_GATE_STARTUP_RUNTIME_REGRESSIONS_REL,
     QUALITY_GATE_TOOL_PATHS,
     QualityGateError,
     apply_quality_gate_manifest_proof_fields,
@@ -93,18 +88,14 @@ from web.bootstrap.launcher_lock_result import read_runtime_lock_result  # noqa:
 from web.bootstrap.launcher_paths import resolve_runtime_state_paths  # noqa: E402
 from web.bootstrap.launcher_processes import _pid_matches_contract, _pid_state  # noqa: E402
 
-STARTUP_REGRESSION_ARGS = list(QUALITY_GATE_STARTUP_REGRESSION_ARGS)
 REQUIRED_TEST_ARGS = list(iter_quality_gate_required_tests())
-GUARD_TEST_ARGS = list(REQUIRED_TEST_ARGS)
 
 PYRIGHT_REQUIRED_VERSION = (1, 1, 406)
 PYRIGHT_GATE_CONFIG = QUALITY_GATE_PYRIGHT_GATE_CONFIG
 PYRIGHT_TOOLS_CONFIG = QUALITY_GATE_PYRIGHT_TOOLS_CONFIG
-QUALITY_GATE_SELFTEST = QUALITY_GATE_SELFTEST_PATH
 PYTEST_COLLECT_ALL_DISPLAY = "python -m pytest --collect-only -q tests"
 IMPORT_CYCLE_PRODUCTION_DISPLAY = quality_gate_shared.IMPORT_CYCLE_PRODUCTION_DISPLAY
 IMPORT_CYCLE_WITH_TESTS_DISPLAY = quality_gate_shared.IMPORT_CYCLE_WITH_TESTS_DISPLAY
-STARTUP_RUNTIME_REGRESSIONS_PROOF_SCHEMA_VERSION = 2
 REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION = 5
 STATIC_CHECK_PROOF_SCHEMA_VERSION = 2
 DEBT_LEDGER_SYNC_PROOF_SCHEMA_VERSION = 2
@@ -116,7 +107,6 @@ GENERATED_CLEAN_WORKTREE_EXCLUDED_PATHS = [
     QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL.replace("\\", "/"),
     QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL.replace("\\", "/"),
     "evidence/QualityGate/architecture_scan_cache.json",
-    QUALITY_GATE_STARTUP_RUNTIME_REGRESSIONS_REL.replace("\\", "/"),
     QUALITY_GATE_REQUIRED_REGRESSIONS_REL.replace("\\", "/"),
     "evidence/QualityGate/required_regressions/",
     QUALITY_GATE_DEBT_LEDGER_SYNC_REL.replace("\\", "/"),
@@ -146,6 +136,7 @@ class ResumeDecision:
     start_command_display: str = ""
     reusable_receipts: Tuple[Dict[str, Any], ...] = ()
     reusable_receipt_payloads: Tuple[Dict[str, Any], ...] = ()
+    reusable_log_texts: Tuple[Dict[str, str], ...] = ()
     validated_dirty_content: Optional[Dict[str, Any]] = None
 
 
@@ -203,8 +194,6 @@ def _run_command(
     )
     if process.stdout is None or process.stderr is None:  # pragma: no cover
         raise QualityGateError("无法捕获子命令 stdout/stderr")
-    assert process.stdout is not None
-    assert process.stderr is not None
     stdout_thread = threading.Thread(
         target=pump_stream,
         args=(process.stdout, stdout_chunks),
@@ -243,47 +232,18 @@ def _run_command(
     }
 
 
-def _run_command_with_env_overlay(
-    display: str,
-    args: Sequence[str],
-    *,
-    capture_output: bool,
-    env_overlay: Mapping[str, str],
-) -> Dict[str, Any]:
-    return _run_command(
-        display,
-        args,
-        capture_output=capture_output,
-        env_overlay=env_overlay,
-    )
-
-
-def _coerce_command_result(result: Any) -> Dict[str, Any]:
-    if isinstance(result, dict):
-        coerced = {
-            "stdout": str(result.get("stdout") or ""),
-            "stderr": str(result.get("stderr") or ""),
-            "returncode": int(result.get("returncode") or 0),
-            "stdout_log_path": str(result.get("stdout_log_path") or ""),
-            "stderr_log_path": str(result.get("stderr_log_path") or ""),
-        }
-        for field_name in ("timed_out", "interrupted", "partial_write"):
-            if field_name in result:
-                coerced[field_name] = bool(result.get(field_name))
-        # 测试可播种确定时长（duration_s/original_duration_s）让"慢条目排序"自测跨平台可控；
-        # 生产 _run_command 从不预置这两键，故保留对生产是 no-op。不保留则 _mark_command_timing
-        # 拿不到种子、回退 perf_counter 微秒级噪声——Windows 上噪声会把 collect/ruff 排序翻转。
-        for field_name in ("duration_s", "original_duration_s"):
-            if field_name in result:
-                coerced[field_name] = float(result.get(field_name) or 0.0)
-        return coerced
-    return {
-        "stdout": str(result or ""),
-        "stderr": "",
-        "returncode": 0,
-        "stdout_log_path": "",
-        "stderr_log_path": "",
+def _coerce_command_result(result: Mapping[str, Any]) -> Dict[str, Any]:
+    coerced: Dict[str, Any] = {
+        "stdout": str(result.get("stdout") or ""),
+        "stderr": str(result.get("stderr") or ""),
+        "returncode": int(result.get("returncode") or 0),
+        "stdout_log_path": str(result.get("stdout_log_path") or ""),
+        "stderr_log_path": str(result.get("stderr_log_path") or ""),
     }
+    for field_name in ("timed_out", "interrupted", "partial_write"):
+        if field_name in result:
+            coerced[field_name] = bool(result.get(field_name))
+    return coerced
 
 
 def _assert_command_succeeded(display: str, result: Dict[str, Any]) -> None:
@@ -484,63 +444,52 @@ def _write_command_output_logs(*, index: int, display: str, result: Dict[str, An
 def _load_resume_receipt_payload(
     receipt_entry: Dict[str, Any], command: Dict[str, Any], *,
     index: int, previous_run_id: str,
-) -> Tuple[Optional[Dict[str, Any]], str]:
+) -> Tuple[Optional[Dict[str, Any]], str, Dict[str, str]]:
     payload, error = quality_gate_shared._load_verified_quality_gate_receipt(
         REPO_ROOT, receipt_entry, command, index=index,
     )
     if error or payload is None:
-        return None, str(error or "旧 receipt 证据缺失")
+        return None, str(error or "旧 receipt 证据缺失"), {}
     normalized_command = _command_identity(command)
     error = quality_gate_shared._verify_receipt_header(
         payload, index=index, run_id=previous_run_id,
     )
     if error:
-        return None, error
+        return None, error, {}
     error = quality_gate_shared._verify_receipt_command_fields(payload, command, normalized_command)
     if error:
-        return None, error
+        return None, error, {}
     if int(payload.get("returncode") or 0) == 0:
         error = quality_gate_shared._verify_receipt_execution_fields(payload)
         if error:
-            return None, error
+            return None, error, {}
     expected_logs = _expected_command_log_rel_paths(index, str(command.get("display") or ""))
-    texts: Dict[str, str] = {}
     policy = quality_gate_shared._command_output_policy(command)
+    log_texts: Dict[str, str] = {}
     for stream in ("stdout", "stderr"):
         rel = str(payload.get(stream + "_log_path") or "").replace("\\", "/")
         if rel != expected_logs[stream + "_log_path"]:
-            return None, f"旧 receipt 日志路径不匹配：第 {index} 步"
+            return None, f"旧 receipt 日志路径不匹配：第 {index} 步", {}
         try:
             text = _read_repo_text(rel)
         except OSError:
-            return None, f"旧 receipt 日志缺失或不可读：{rel}"
+            return None, f"旧 receipt 日志缺失或不可读：{rel}", {}
         if payload.get(stream + "_content") != quality_gate_shared._normalize_command_output_for_policy(text, policy=policy):
-            return None, f"旧 receipt 输出原文不一致：{rel}"
-        texts[stream] = text
-    payload["_validated_log_texts"] = texts
-    return payload, ""
+            return None, f"旧 receipt 输出原文不一致：{rel}", {}
+        log_texts[stream] = text
+    return payload, "", log_texts
 
 
-def _result_from_receipt_logs(receipt_payload: Dict[str, Any]) -> Dict[str, Any]:
-    captured = receipt_payload.get("_validated_log_texts")
-    if isinstance(captured, dict):
-        return {"stdout": captured["stdout"], "stderr": captured["stderr"],
-                "returncode": int(receipt_payload.get("returncode") or 0)}
-    stdout_log_rel = str(receipt_payload.get("stdout_log_path") or "").replace("\\", "/")
-    stderr_log_rel = str(receipt_payload.get("stderr_log_path") or "").replace("\\", "/")
-    if not stdout_log_rel or not stderr_log_rel:
-        raise QualityGateError("旧 receipt 缺少 stdout/stderr 日志路径，不能续跑")
+def _result_from_receipt_logs(receipt_payload: Mapping[str, Any], log_texts: Mapping[str, str]) -> Dict[str, Any]:
     return {
-        "stdout": _read_repo_text(stdout_log_rel),
-        "stderr": _read_repo_text(stderr_log_rel),
+        "stdout": log_texts["stdout"],
+        "stderr": log_texts["stderr"],
         "returncode": int(receipt_payload.get("returncode") or 0),
     }
 
 
 def _strict_long_gate_fingerprint(entry: Dict[str, Any], *, file_snapshot: Optional[FingerprintFileSnapshot] = None) -> Dict[str, Any]:
     try:
-        if file_snapshot is None:
-            return fingerprint_entry(entry, REPO_ROOT, strict=True)
         return fingerprint_entry(entry, REPO_ROOT, strict=True, file_snapshot=file_snapshot)
     except LongGateFingerprintError as exc:
         raise QualityGateError(str(exc)) from exc
@@ -625,6 +574,7 @@ def _decide_resume_from_previous_failure(
     previous_receipts = list(manifest.get("command_receipts") or [])
     reusable_receipts: List[Dict[str, Any]] = []
     reusable_payloads: List[Dict[str, Any]] = []
+    reusable_log_texts: List[Dict[str, str]] = []
     if not previous_receipts:
         return ResumeDecision(False, "旧 receipt 缺失：manifest 中没有 command_receipts")
     for index, command in enumerate(command_plan, start=1):
@@ -635,15 +585,15 @@ def _decide_resume_from_previous_failure(
         if index > len(previous_receipts) or not isinstance(previous_receipts[index - 1], dict):
             return ResumeDecision(False, f"旧 receipt 缺失：第 {index} 步")
         receipt_entry = cast(Dict[str, Any], previous_receipts[index - 1])
-        receipt_payload, receipt_error = _load_resume_receipt_payload(
+        receipt_payload, receipt_error, log_texts = _load_resume_receipt_payload(
             receipt_entry,
             command,
             index=index,
             previous_run_id=previous_run_id,
         )
-        if receipt_error:
+        if receipt_error or receipt_payload is None:
             return ResumeDecision(False, receipt_error)
-        returncode = int((receipt_payload or {}).get("returncode") or 0)
+        returncode = int(receipt_payload.get("returncode") or 0)
         if returncode != 0:
             skip_count = len(reusable_receipts)
             if skip_count <= 0:
@@ -658,12 +608,14 @@ def _decide_resume_from_previous_failure(
                 start_command_display=str(command.get("display") or ""),
                 reusable_receipts=tuple(dict(item) for item in reusable_receipts),
                 reusable_receipt_payloads=tuple(dict(item) for item in reusable_payloads),
+                reusable_log_texts=tuple(reusable_log_texts),
                 validated_dirty_content=dict(current_dirty_fingerprint),
             )
         reusable_receipts.append(
             {"path": str(receipt_entry.get("path") or ""), "content": dict(receipt_entry["content"])}
         )
-        reusable_payloads.append(dict(receipt_payload or {}))
+        reusable_payloads.append(dict(receipt_payload))
+        reusable_log_texts.append(log_texts)
     return ResumeDecision(False, "旧记录没有可定位的失败命令 receipt")
 
 
@@ -715,12 +667,7 @@ def _write_command_receipt(command: Dict[str, Any], *, run_id: str, index: int, 
 def _mark_command_timing(result: Dict[str, Any], *, started_at: str, start_perf: float) -> float:
     # 用 perf_counter 而非 monotonic：Windows 上 monotonic 分辨率粗（~15ms），瞬时返回的
     # 命令会量到 duration_s=0.0；perf_counter 为高分辨率计时，快操作也能得到正时长。
-    # 若 result 已自带 duration_s（生产 _run_command 从不预置，仅测试播种确定时长用）则尊重之，
-    # 让"慢条目排序"类自测可控、不被微秒级测量噪声左右。
-    if "duration_s" in result:
-        duration_s = float(result["duration_s"])
-    else:
-        duration_s = time.perf_counter() - start_perf
+    duration_s = time.perf_counter() - start_perf
     result["started_at"] = started_at
     result["ended_at"] = datetime.now().isoformat(timespec="seconds")
     result["duration_s"] = duration_s
@@ -907,7 +854,6 @@ def _parse_ruff_version(text: str) -> Tuple[int, int, int]:
 
 
 def _assert_ruff_version(output: Dict[str, Any]) -> str:
-    output = _coerce_command_result(output)
     _assert_command_succeeded("python -m ruff --version", output)
     text = str(output.get("stdout") or "").strip()
     version = _parse_ruff_version(text)
@@ -924,7 +870,6 @@ def _parse_pyright_version(text: str) -> Tuple[int, int, int]:
 
 
 def _assert_pyright_version(output: Dict[str, Any]) -> str:
-    output = _coerce_command_result(output)
     _assert_command_succeeded("python -m pyright --version", output)
     text = str(output.get("stdout") or "").strip()
     version = _parse_pyright_version(text)
@@ -1091,15 +1036,16 @@ def _run_quality_gate_command_plan(
     total = len(command_plan)
     long_gate_entries = dict(long_gate_runtime_entries or {}) if long_gate_cache else {}
     skip_count = int(resume_decision.skip_count if resume_decision and resume_decision.enabled else 0)
-    if skip_count > 0:
-        reusable_receipts = list(resume_decision.reusable_receipts if resume_decision else ())
-        reusable_payloads = list(resume_decision.reusable_receipt_payloads if resume_decision else ())
+    if skip_count > 0 and resume_decision is not None:
+        reusable_receipts = resume_decision.reusable_receipts
+        reusable_payloads = resume_decision.reusable_receipt_payloads
+        reusable_log_texts = resume_decision.reusable_log_texts
         for index, command in enumerate(command_plan[:skip_count], start=1):
             display = str(command["display"])
             print(f"==> 第 {index}/{total} 步：[resume-skip] {display}", flush=True)
             command_started_at = datetime.now().isoformat(timespec="seconds")
             start_perf = time.perf_counter()
-            result = _result_from_receipt_logs(reusable_payloads[index - 1])
+            result = _result_from_receipt_logs(reusable_payloads[index - 1], reusable_log_texts[index - 1])
             result["execution_mode"] = "resumed_success_prefix"
             result["reused_from"] = {
                 "receipt_path": str(reusable_receipts[index - 1].get("path") or ""),
@@ -1142,27 +1088,24 @@ def _run_quality_gate_command_plan(
             decision = dict(long_gate_runtime_entry.get("decision") or {})
             if decision["decision"] == "reuse":
                 previous = reuse_evaluation["validated_success"]
-                if not isinstance(previous, dict):
-                    raise QualityGateError("long gate success cache 判定可复用，但缺少已验证结果")
-                cached_result = {
-                    "stdout": str(reuse_evaluation.get("stdout") or ""),
-                    "stderr": str(reuse_evaluation.get("stderr") or ""),
-                    "returncode": int(previous.get("returncode") or 0),
-                    "execution_mode": "reused_success_cache",
-                    "reused_from": {
-                        "result_path": str(decision.get("previous_result_path") or ""),
-                        "completed_at": str(previous.get("completed_at") or ""),
-                        "fingerprint": dict(previous.get("fingerprint") or {}),
-                        "duration_s": float(previous.get("duration_s") or 0.0),
-                    },
+                reused_from = {
+                    "result_path": str(decision.get("previous_result_path") or ""),
+                    "completed_at": str(previous.get("completed_at") or ""),
+                    "fingerprint": dict(previous.get("fingerprint") or {}),
+                    "duration_s": float(previous.get("duration_s") or 0.0),
                 }
-                result = _coerce_command_result(cached_result)
+                result = _coerce_command_result(
+                    {
+                        "stdout": str(reuse_evaluation.get("stdout") or ""),
+                        "stderr": str(reuse_evaluation.get("stderr") or ""),
+                        "returncode": int(previous.get("returncode") or 0),
+                    }
+                )
                 result["execution_mode"] = "reused_success_cache"
-                result["reused_from"] = dict(cached_result.get("reused_from") or {})
+                result["reused_from"] = reused_from
                 elapsed = _mark_command_timing(result, started_at=command_started_at, start_perf=start_perf)
                 result["duration_kind"] = "reuse_overhead"
-                if isinstance(result.get("reused_from"), dict):
-                    result["original_duration_s"] = float(result["reused_from"].get("duration_s") or 0.0)
+                result["original_duration_s"] = reused_from["duration_s"]
                 commands.append(command)
                 receipt_entry = _write_command_receipt(command, run_id=run_id, index=command_index, result=result)
                 command_receipts.append(receipt_entry)
@@ -1217,13 +1160,13 @@ def _run_quality_gate_command_plan(
                     cache_dir=long_gate_cache_dir,
                 )
             if cached_failure is not None:
+                reused_from = cached_failure["reused_from"]
                 result = _coerce_command_result(cached_failure)
                 result["execution_mode"] = "cached_failure"
-                result["reused_from"] = dict(cached_failure.get("reused_from") or {})
+                result["reused_from"] = reused_from
                 elapsed = _mark_command_timing(result, started_at=command_started_at, start_perf=start_perf)
                 result["duration_kind"] = "reuse_overhead"
-                if isinstance(result.get("reused_from"), dict):
-                    result["original_duration_s"] = float(result["reused_from"].get("duration_s") or 0.0)
+                result["original_duration_s"] = float(reused_from["duration_s"])
                 commands.append(command)
                 receipt_entry = _write_command_receipt(command, run_id=run_id, index=command_index, result=result)
                 command_receipts.append(receipt_entry)
@@ -1259,22 +1202,15 @@ def _run_quality_gate_command_plan(
                     result=result,
                 )
 
-        raw_result: Any = None
-        if raw_result is None:
-            raw_result = _run_command_with_env_overlay(
-                display,
-                _resolve_command_args(command),
-                capture_output=bool(command.get("capture_output")),
-                env_overlay=quality_gate_shared._normalize_env_overlay(command.get("env_overlay")),
-            )
+        raw_result = _run_command(
+            display,
+            _resolve_command_args(command),
+            capture_output=bool(command.get("capture_output")),
+            env_overlay=quality_gate_shared._normalize_env_overlay(command.get("env_overlay")),
+        )
         result = _coerce_command_result(raw_result)
         result.update(_write_command_output_logs(index=command_index, display=display, result=result))
-        if isinstance(raw_result, dict):
-            result["execution_mode"] = str(raw_result.get("execution_mode") or "executed")
-            if isinstance(raw_result.get("reused_from"), dict):
-                result["reused_from"] = dict(raw_result.get("reused_from") or {})
-        else:
-            result["execution_mode"] = "executed"
+        result["execution_mode"] = "executed"
         elapsed = _mark_command_timing(result, started_at=command_started_at, start_perf=start_perf)
         commands.append(command)
         receipt_entry = _write_command_receipt(command, run_id=run_id, index=command_index, result=result)
@@ -1372,7 +1308,7 @@ def _run_quality_gate_command_plan(
                 if bool(long_gate_entry.get("reuse_allowed")):
                     long_gate_fingerprint = _fingerprint_for_success_cache(
                         long_gate_entry,
-                        dict(long_gate_fingerprint or {}),
+                        long_gate_fingerprint,
                     )
                 output_file_paths = _prepare_long_gate_success_output_files(
                     long_gate_entry,
@@ -1381,13 +1317,13 @@ def _run_quality_gate_command_plan(
                     run_id=run_id,
                     command_index=command_index,
                     command_plan=command_plan,
-                    fingerprint=dict(long_gate_fingerprint or {}),
+                    fingerprint=long_gate_fingerprint,
                 )
                 if bool(long_gate_entry.get("reuse_allowed")):
-                    long_gate_runtime_entry["fingerprint"] = dict(long_gate_fingerprint)
+                    long_gate_runtime_entry["fingerprint"] = long_gate_fingerprint
                     decision_for_summary = long_gate_runtime_entry.get("decision")
                     if isinstance(decision_for_summary, dict):
-                        decision_for_summary["current_fingerprint"] = dict(long_gate_fingerprint)
+                        decision_for_summary["current_fingerprint"] = long_gate_fingerprint
                     cache_result = dict(result)
                     cache_result.pop("stdout_log_path", None)
                     cache_result.pop("stderr_log_path", None)
@@ -1395,7 +1331,7 @@ def _run_quality_gate_command_plan(
                         pending_long_gate_successes.append(
                             {
                                 "entry": dict(long_gate_entry),
-                                "fingerprint": dict(long_gate_fingerprint),
+                                "fingerprint": long_gate_fingerprint,
                                 "command_result": cache_result,
                                 "output_files": _abs_output_paths(output_file_paths),
                             }
@@ -1753,33 +1689,6 @@ def _write_long_gate_topic_proof(rel_path: str, payload: Dict[str, Any]) -> str:
     return rel_path
 
 
-def _write_startup_runtime_regressions_proof(
-    entry: Dict[str, Any],
-    result: Dict[str, Any],
-    *,
-    run_id: str,
-    command_index: int,
-    command_plan: Sequence[Dict[str, Any]],
-    fingerprint: Dict[str, Any],
-    cache_dir: str,
-) -> str:
-    if not str(result.get("stdout") or "").strip():
-        raise QualityGateError("startup runtime regressions stdout 为空，无法证明 pytest 实际执行结果")
-    payload = _build_long_gate_execution_proof(
-        entry, result, schema_version=STARTUP_RUNTIME_REGRESSIONS_PROOF_SCHEMA_VERSION,
-        log_entry_id=ENTRY_STARTUP_RUNTIME_REGRESSIONS, run_id=run_id, command_index=command_index,
-        command_plan=command_plan, fingerprint=fingerprint, cache_dir=cache_dir,
-    )
-    args = payload["args"]
-    targets = list(args[4:]) if args[:4] == ["python", "-m", "pytest", "-q"] else []
-    payload.update(
-        startup_target_count=len(targets), test_count=len(targets),
-        startup_target_paths=targets,
-        pytest_exit_code=payload["returncode"],
-    )
-    return _write_long_gate_topic_proof(QUALITY_GATE_STARTUP_RUNTIME_REGRESSIONS_REL.replace("\\", "/"), payload)
-
-
 def _write_required_regressions_proof(
     entry: Dict[str, Any],
     result: Dict[str, Any],
@@ -1848,7 +1757,6 @@ def _write_debt_ledger_sync_proof(
         ledger_counts={key: int(summary.get(key) or 0) for key in (
             "oversize_count", "complexity_count", "silent_fallback_count", "test_debt_count", "accepted_risk_count")},
         samples=dict(summary.get("samples") or {}),
-        architecture_scan_cache=architecture_scan_cache_metadata(REPO_ROOT),
     )
     return _write_long_gate_topic_proof(QUALITY_GATE_DEBT_LEDGER_SYNC_REL.replace("\\", "/"), payload)
 
@@ -1899,11 +1807,11 @@ def _write_static_check_proof(
 
 
 def _full_test_debt_failure_cache_is_allowed(
-    runtime_entry: Optional[Mapping[str, Any]],
+    runtime_entry: Mapping[str, Any],
     *,
     long_gate_cache_write_success: bool,
 ) -> bool:
-    if not long_gate_cache_write_success or not isinstance(runtime_entry, Mapping):
+    if not long_gate_cache_write_success:
         return False
     entry = dict(runtime_entry.get("entry") or {})
     if str(entry.get("entry_id") or "") != ENTRY_FULL_TEST_DEBT:
@@ -1918,7 +1826,7 @@ def _full_test_debt_failure_cache_is_allowed(
 
 
 def _maybe_write_full_test_debt_failure_cache(
-    runtime_entry: Optional[Mapping[str, Any]],
+    runtime_entry: Mapping[str, Any],
     *,
     result: Mapping[str, Any],
     receipt_path: str,
@@ -1932,7 +1840,6 @@ def _maybe_write_full_test_debt_failure_cache(
         return
     if str(result.get("execution_mode") or "executed") != "executed":
         return
-    assert runtime_entry is not None
     cache_result = dict(result)
     cache_result["receipt_path"] = str(receipt_path or "")
     write_long_gate_failure(
@@ -1962,9 +1869,7 @@ def _cached_full_test_debt_failure_result(
     runtime_entry["failure_decision"] = decision
     if str(decision.get("decision") or "") != "cached_failure":
         return None
-    previous = evaluation["validated_failure"]
-    if not isinstance(previous, dict):
-        raise QualityGateError("long gate failure cache 判定可复用，但缺少已验证失败结果")
+    previous = cast(Dict[str, Any], evaluation["validated_failure"])
     return {
         "stdout": str(evaluation.get("stdout") or ""),
         "stderr": str(evaluation.get("stderr") or ""),
@@ -1999,18 +1904,6 @@ def _prepare_long_gate_success_output_files(
             collect_stdout_log_path=str(result.get("stdout_log_path") or ""),
         )
         return [write_collect_nodeids(collect_payload, repo_root=REPO_ROOT)]
-    if entry_id == ENTRY_STARTUP_RUNTIME_REGRESSIONS:
-        return [
-            _write_startup_runtime_regressions_proof(
-                entry,
-                result,
-                run_id=run_id,
-                command_index=command_index,
-                command_plan=command_plan,
-                fingerprint=dict(fingerprint or {}),
-                cache_dir=cache_dir,
-            )
-        ]
     if entry_id == ENTRY_REQUIRED_REGRESSIONS:
         return _write_required_regressions_proof(
             entry,
@@ -2335,24 +2228,6 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     return parsed
 
 
-def _planned_long_gate_decision_forced(entry: Dict[str, Any], *, force_requested: bool) -> Dict[str, Any]:
-    reason = "long gate cache for this entry is not enabled yet"
-    invalidated_by: List[str] = []
-    if force_requested:
-        reason = f"{reason}; force rerun ignored because planned entries are not enabled"
-        invalidated_by.append("force rerun ignored for planned entry")
-    return {
-        "entry_id": str(entry.get("entry_id") or ""),
-        "decision": "planned_only",
-        "reuse_allowed": False,
-        "reason": reason,
-        "invalidated_by": invalidated_by,
-        "previous_completed_at": "",
-        "previous_result_path": "",
-        "current_fingerprint": {},
-    }
-
-
 def _disabled_long_gate_decision(entry: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "entry_id": str(entry.get("entry_id") or ""),
@@ -2505,7 +2380,7 @@ def _prepare_long_gate_cache_decisions(
     known_long_gate_entry_ids = {
         str(entry.get("entry_id") or "")
         for entry in list(manifest.get("entries") or [])
-        if bool(entry.get("long_gate_candidate")) or bool(entry.get("reuse_allowed"))
+        if bool(entry.get("reuse_allowed"))
     }
     unknown_forced = sorted(forced_entry_ids - known_long_gate_entry_ids)
     if unknown_forced:
@@ -2518,7 +2393,7 @@ def _prepare_long_gate_cache_decisions(
     metadata = long_gate_cache_metadata(REPO_ROOT, cache_dir=resolved_cache_dir) if cache_enabled else None
     for index, raw_entry in enumerate(list(manifest.get("entries") or []), start=1):
         entry = dict(raw_entry)
-        if not bool(entry.get("long_gate_candidate")) and not bool(entry.get("reuse_allowed")):
+        if not bool(entry.get("reuse_allowed")):
             continue
         entry_id = str(entry.get("entry_id") or "")
         force_requested = entry_id in forced_entry_ids
@@ -2526,7 +2401,7 @@ def _prepare_long_gate_cache_decisions(
         evaluation: Optional[Dict[str, Any]] = None
         if not cache_enabled:
             decision = _disabled_long_gate_decision(entry)
-        elif bool(entry.get("reuse_allowed")):
+        else:
             try:
                 fingerprint = _strict_long_gate_fingerprint(entry, file_snapshot=file_snapshot)
             except (LongGateFingerprintError, QualityGateError) as exc:
@@ -2549,8 +2424,6 @@ def _prepare_long_gate_cache_decisions(
                     evaluation = dict(evaluate_reuse(entry, fingerprint, repo_root=REPO_ROOT,
                                                      cache_dir=resolved_cache_dir, metadata=metadata))
                     decision = dict(evaluation["decision"])
-        else:
-            decision = _planned_long_gate_decision_forced(entry, force_requested=force_requested)
         summary_entry = build_summary_entry(index=index, entry=entry, decision=decision)
         summary_entries.append(summary_entry)
         if cache_enabled:
@@ -2592,10 +2465,8 @@ def _print_long_gate_cache_decisions(entries: Sequence[Dict[str, Any]], *, cache
                 print(f"  failure_kind: {failure_kind}", flush=True)
             print("  note: cache unavailable for this entry; old success cache will not be reused", flush=True)
             details = fingerprint_error.get("details")
-            if isinstance(details, Mapping):
-                for key in ("chrome_path", "chrome_source", "chrome_exit_code", "stderr_tail"):
-                    if key in details and str(details.get(key) or ""):
-                        print(f"  {key}: {details.get(key)}", flush=True)
+            if isinstance(details, Mapping) and str(details.get("stderr_tail") or ""):
+                print(f"  stderr_tail: {details.get('stderr_tail')}", flush=True)
         if entry.get("previous_result_path"):
             print(f"  previous_result: {entry.get('previous_result_path')}", flush=True)
         if entry.get("input_snapshot"):

@@ -48,14 +48,6 @@ def classify_nodeid(nodeid: str) -> ShardKind:
     return "parallel"
 
 
-# Heavy browser and performance tests were deleted, rather than excluded.
-PERF_FILE_PATTERNS: Tuple[str, ...] = ()
-
-def is_perf_nodeid(nodeid: str) -> bool:
-    path = nodeid_file(nodeid)
-    return any(fnmatch.fnmatch(path, pattern) for pattern in PERF_FILE_PATTERNS)
-
-
 def split_nodeids(nodeids: Sequence[str], shard_count: int) -> Tuple[List[str], List[List[str]]]:
     if shard_count < 1:
         raise ValueError("shard_count must be >= 1")

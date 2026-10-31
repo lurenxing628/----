@@ -5,7 +5,6 @@ import ast
 import importlib
 import importlib.util
 import json
-import re
 import sys
 from collections import defaultdict
 from dataclasses import dataclass
@@ -18,7 +17,6 @@ from .quality_gate_ledger import (
     silent_entry_content_equal,
     silent_entry_has_content,
     silent_entry_key,
-    validate_ledger,
 )
 from .quality_gate_shared import (
     _CLEANUP_KEYWORDS,
@@ -27,9 +25,7 @@ from .quality_gate_shared import (
     COMPLEXITY_THRESHOLD,
     FALLBACK_KIND_VALUES,
     FILE_SIZE_LIMIT,
-    REPOSITORY_BUNDLE_DRIFT_SCOPE_PATTERNS,
     STARTUP_SAMPLE_EXPECTATIONS,
-    WEB_HELPER_SCAN_SCOPE_PATTERNS,
     QualityGateError,
     collect_globbed_files,
     collect_startup_scope_files,
@@ -494,258 +490,6 @@ def validate_startup_samples(entries: Optional[Sequence[Dict[str, Any]]] = None)
     }
 
 
-def _scope_key(node: ast.AST) -> str:
-    parts = []
-    current = node
-    while hasattr(current, "_ast_parent"):
-        current = current._ast_parent  # type: ignore[attr-defined]
-        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            parts.append("{}@{}".format(current.name, int(getattr(current, "lineno", 0) or 0)))
-    if not parts:
-        return "<module>"
-    parts.reverse()
-    return "::".join(parts)
-
-
-def _is_g_db_expr(node: Optional[ast.AST]) -> bool:
-    return isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and str(node.value.id) == "g" and str(node.attr) == "db"
-
-
-def _resolve_request_conn_alias(value: Any, aliases: Dict[str, str]) -> Optional[str]:
-    if _is_g_db_expr(value):
-        return "g.db"
-    if isinstance(value, ast.Name):
-        alias_target = aliases.get(str(value.id))
-        if alias_target:
-            return alias_target
-        if str(value.id) == "conn":
-            return "conn"
-    return None
-
-
-def _keyword_arg_value(node: ast.Call, names: Set[str]) -> Optional[ast.AST]:
-    for keyword in node.keywords:
-        if str(keyword.arg or "") in names:
-            return keyword.value
-    return None
-
-
-def _collect_name_bindings(body: Sequence[ast.stmt]) -> List[Tuple[str, Any]]:
-    bindings = []
-    for stmt in body:
-        if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1:
-            target = stmt.targets[0]
-            if isinstance(target, ast.Name):
-                bindings.append((str(target.id), stmt.value))
-            continue
-        if isinstance(stmt, ast.ImportFrom):
-            module_prefix = ("." * int(getattr(stmt, "level", 0) or 0)) + str(getattr(stmt, "module", "") or "")
-            for alias in stmt.names:
-                if str(alias.name or "") == "*":
-                    continue
-                alias_name = str(alias.asname or alias.name.split(".")[-1])
-                qualified_name = f"{module_prefix}.{alias.name}" if module_prefix else str(alias.name)
-                bindings.append((alias_name, qualified_name))
-            continue
-        if isinstance(stmt, ast.Import):
-            for alias in stmt.names:
-                alias_name = str(alias.asname or alias.name.split(".")[-1])
-                bindings.append((alias_name, str(alias.name)))
-    return bindings
-
-
-def _resolve_alias_map(
-    assignments: Sequence[Tuple[str, Any]],
-    resolver: Callable[[Any, Dict[str, str]], Optional[str]],
-    *,
-    base_aliases: Optional[Dict[str, str]] = None,
-) -> Dict[str, str]:
-    aliases = dict(base_aliases or {})
-    changed = True
-    while changed:
-        changed = False
-        for alias_name, value in assignments:
-            resolved = resolver(value, aliases)
-            if not resolved or aliases.get(alias_name) == resolved:
-                continue
-            aliases[alias_name] = resolved
-            changed = True
-    return aliases
-
-
-def _collect_scoped_aliases(
-    tree: ast.AST,
-    resolver: Callable[[Any, Dict[str, str]], Optional[str]],
-) -> Dict[str, Dict[str, str]]:
-    module_assignments = _collect_name_bindings(list(getattr(tree, "body", []))) if isinstance(tree, ast.Module) else []
-    module_aliases = _resolve_alias_map(module_assignments, resolver)
-    scoped_aliases: Dict[str, Dict[str, str]] = {"<module>": dict(module_aliases)}
-    assignments_by_scope: Dict[str, List[Tuple[str, Any]]] = defaultdict(list)
-    for node in ast.walk(tree):
-        if not isinstance(node, (ast.Assign, ast.Import, ast.ImportFrom)):
-            continue
-        scope = _scope_key(node)
-        if scope == "<module>":
-            continue
-        if isinstance(node, ast.Assign):
-            assignments_by_scope[scope].extend(_collect_name_bindings([node]))
-            continue
-        assignments_by_scope[scope].extend(_collect_name_bindings([node]))
-    for scope, assignments in assignments_by_scope.items():
-        scoped_aliases[scope] = _resolve_alias_map(assignments, resolver, base_aliases=module_aliases)
-    return scoped_aliases
-
-
-def _resolve_assembly_alias(value: Any, aliases: Dict[str, str]) -> Optional[str]:
-    if isinstance(value, str):
-        target = value
-    elif isinstance(value, ast.Name):
-        alias_target = aliases.get(str(value.id))
-        if alias_target:
-            return alias_target
-        target = _call_target_name(value)
-    else:
-        target = _call_target_name(value)
-    tail = target.split(".")[-1]
-    if tail.endswith(("Service", "Repository")):
-        return target
-    return None
-
-
-def scan_direct_assembly_entries(
-    paths: Optional[Sequence[str]] = None,
-    context: Optional[ScanContext] = None,
-) -> List[Dict[str, Any]]:
-    scan_context = context or ScanContext()
-    if paths is None:
-        paths = scan_context.collect_globbed_files(WEB_HELPER_SCAN_SCOPE_PATTERNS)
-    entries = []
-    for rel_path in sorted(set([_normalized_scan_path(str(path)) for path in paths])):
-        tree = _ast_tree_for_file(rel_path, context=scan_context)
-        source_lines = scan_context.source_lines(rel_path)
-        scoped_aliases = _collect_scoped_aliases(tree, _resolve_assembly_alias)
-        scoped_conn_aliases = _collect_scoped_aliases(tree, _resolve_request_conn_alias)
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
-            aliases = scoped_aliases.get(_scope_key(node), scoped_aliases.get("<module>", {}))
-            if isinstance(node.func, ast.Name) and str(node.func.id) in aliases:
-                target = aliases[str(node.func.id)]
-            else:
-                target = _call_target_name(node.func)
-            tail = target.split(".")[-1]
-            first_arg = node.args[0] if node.args else _keyword_arg_value(node, {"conn", "db"})
-            conn_aliases = scoped_conn_aliases.get(_scope_key(node), scoped_conn_aliases.get("<module>", {}))
-            first_arg_source = _resolve_request_conn_alias(first_arg, conn_aliases)
-            conn_keyword_arg = _keyword_arg_value(node, {"conn", "db"})
-            conn_keyword_source = _resolve_request_conn_alias(conn_keyword_arg, conn_aliases)
-            rule = None
-            if tail.endswith(("Service", "Repository")) and (
-                first_arg_source == "g.db" or conn_keyword_source == "g.db"
-            ):
-                rule = "service_or_repository_g_db"
-            elif tail.endswith(("Service", "Repository")) and (first_arg_source == "conn" or conn_keyword_source == "conn"):
-                rule = "service_or_repository_conn"
-            elif (
-                (first_arg_source == "g.db" or conn_keyword_source == "g.db")
-                and not tail.endswith(("Service", "Repository"))
-                and (tail[:1].islower() or tail.startswith("_"))
-            ):
-                rule = "g_db_first_arg_helper"
-            if rule is None:
-                continue
-            line_no = int(getattr(node, "lineno", 0) or 0)
-            excerpt = source_lines[line_no - 1].strip() if 0 < line_no <= len(source_lines) else ""
-            entries.append(
-                {
-                    "path": rel_path,
-                    "line": line_no,
-                    "symbol": _find_enclosing_symbol(node),
-                    "rule": rule,
-                    "target": tail,
-                    "excerpt": excerpt,
-                }
-            )
-    return sorted(entries, key=entry_sort_key)
-
-
-def _is_repository_bundle_root_chain(chain: str) -> bool:
-    return chain.endswith("._repos") or chain.endswith(".repos")
-
-
-def _is_repository_bundle_chain(chain: str) -> bool:
-    return _is_repository_bundle_root_chain(chain) or "._repos." in chain or ".repos." in chain
-
-
-def _resolve_repository_bundle_alias(value: Any, aliases: Dict[str, str]) -> Optional[str]:
-    if isinstance(value, str):
-        chain = value
-    elif isinstance(value, ast.Name):
-        return aliases.get(str(value.id))
-    else:
-        chain = _call_target_name(value)
-    if _is_repository_bundle_root_chain(chain):
-        return chain
-    return None
-
-
-def _alias_resolved_chain(node: ast.Attribute, aliases: Dict[str, str]) -> Optional[str]:
-    chain = _call_target_name(node)
-    root, dot, remainder = chain.partition(".")
-    if not dot:
-        return None
-    source = aliases.get(root)
-    if not source:
-        return None
-    return source + "." + remainder
-
-
-def scan_repository_bundle_drift_entries(
-    paths: Optional[Sequence[str]] = None,
-    context: Optional[ScanContext] = None,
-) -> List[Dict[str, Any]]:
-    scan_context = context or ScanContext()
-    if paths is None:
-        paths = scan_context.collect_globbed_files(REPOSITORY_BUNDLE_DRIFT_SCOPE_PATTERNS)
-    entries = []
-    for rel_path in sorted(set([_normalized_scan_path(str(path)) for path in paths])):
-        source = scan_context.read_text(rel_path)
-        if "_repos" not in source and ".repos" not in source and "repos" not in source:
-            continue
-        tree = _ast_tree_for_file(rel_path, context=scan_context)
-        source_lines = scan_context.source_lines(rel_path)
-        scoped_aliases = _collect_scoped_aliases(tree, _resolve_repository_bundle_alias)
-        for node in ast.walk(tree):
-            scope_aliases = scoped_aliases.get(_scope_key(node), scoped_aliases.get("<module>", {}))
-            if isinstance(node, ast.Attribute):
-                chain = _call_target_name(node)
-                resolved_chain = _alias_resolved_chain(node, scope_aliases)
-                if not _is_repository_bundle_chain(chain) and not (resolved_chain and _is_repository_bundle_chain(resolved_chain)):
-                    continue
-            elif isinstance(node, ast.Return):
-                if isinstance(node.value, ast.Attribute) and _is_repository_bundle_chain(_call_target_name(node.value)):
-                    continue
-                resolved_chain = _resolve_repository_bundle_alias(cast(ast.AST, node.value), scope_aliases) if node.value is not None else None
-                if not resolved_chain:
-                    continue
-                chain = resolved_chain
-            else:
-                continue
-            line_no = int(getattr(node, "lineno", 0) or 0)
-            excerpt = source_lines[line_no - 1].strip() if 0 < line_no <= len(source_lines) else ""
-            entries.append(
-                {
-                    "path": rel_path,
-                    "line": line_no,
-                    "symbol": _find_enclosing_symbol(node),
-                    "chain": chain,
-                    "resolved_chain": resolved_chain if isinstance(node, ast.Attribute) else resolved_chain,
-                    "excerpt": excerpt,
-                }
-            )
-    return sorted(entries, key=entry_sort_key)
-
-
 def complexity_scan_map(
     paths: Sequence[str],
     include_all: bool = False,
@@ -854,7 +598,6 @@ def run_strict_silent_fallback_gate(*, emit_json: bool = False, quiet: bool = Tr
     """
 
     ledger = load_ledger(required=True)
-    validate_ledger(ledger)
 
     scan_entries = _strict_silent_fallback_scan_entries()
     validate_startup_samples()
@@ -978,8 +721,6 @@ __all__ = [
     "scan_oversize_entries",
     "scan_silent_fallback_fact_entries",
     "scan_silent_fallback_entries",
-    "scan_direct_assembly_entries",
-    "scan_repository_bundle_drift_entries",
     "validate_startup_samples",
     "complexity_scan_map",
     "run_strict_silent_fallback_gate",

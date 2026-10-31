@@ -36,10 +36,8 @@ ENTRY_FULL_TEST_DEBT = "full_test_debt"
 ENTRY_RUFF_CHECK_FULL = "ruff_check_full"
 ENTRY_PYRIGHT_GATE_FULL = "pyright_gate_full"
 ENTRY_PYRIGHT_TOOLS_FULL = "pyright_tools_full"
-ENTRY_ARCHITECTURE_FITNESS = "architecture_fitness"
 ENTRY_REQUIRED_REGRESSIONS = "required_regressions"
 ENTRY_DEBT_LEDGER_SYNC = "debt_ledger_sync"
-ENTRY_STARTUP_RUNTIME_REGRESSIONS = "startup_runtime_regressions"
 ENTRY_QUICKREF_VS_ROUTES = "quickref_vs_routes"
 ENTRY_IMPORT_CYCLES_PRODUCTION = "import_cycles_production"
 ENTRY_IMPORT_CYCLES_WITH_TESTS = "import_cycles_with_tests"
@@ -50,19 +48,6 @@ _VERSION_PROBE_ENTRY_IDS = {
     "python -m ruff --version": "ruff_version_probe",
     "python -m pyright --version": "pyright_version_probe",
     'python -c "import radon"': "radon_import_probe",
-}
-
-_LONG_ENTRY_TYPES = {
-    ENTRY_PYTEST_COLLECT_ALL,
-    ENTRY_FULL_TEST_DEBT,
-    ENTRY_RUFF_CHECK_FULL,
-    ENTRY_PYRIGHT_GATE_FULL,
-    ENTRY_PYRIGHT_TOOLS_FULL,
-    ENTRY_REQUIRED_REGRESSIONS,
-    ENTRY_DEBT_LEDGER_SYNC,
-    ENTRY_QUICKREF_VS_ROUTES,
-    ENTRY_IMPORT_CYCLES_PRODUCTION,
-    ENTRY_IMPORT_CYCLES_WITH_TESTS,
 }
 
 _CACHE_ENABLED_ENTRY_TYPES = {
@@ -718,6 +703,8 @@ def _scopes_for_entry(
                 "git_version",
                 "node_executable_realpath",
                 "node_version",
+                "powershell_executable_realpath",
+                "powershell_version",
                 "CI",
                 "NODE_OPTIONS",
                 "PYTHONPATH",
@@ -764,7 +751,6 @@ def _build_entry(
         normalized,
         repo_root=repo_root,
     )
-    long_gate_candidate = resolved_entry_type in _LONG_ENTRY_TYPES
     reuse_allowed = resolved_entry_type in _CACHE_ENABLED_ENTRY_TYPES
     entry = {
         "schema_version": LONG_GATE_SCHEMA_VERSION,
@@ -786,13 +772,8 @@ def _build_entry(
         "dependency_file_scopes": dependency_scopes,
         "env_keys": env_keys,
         "output_result_files": output_files,
-        "long_gate_candidate": long_gate_candidate,
-        "cache_status": "enabled" if reuse_allowed else ("planned" if long_gate_candidate else "disabled"),
+        "cache_status": "enabled" if reuse_allowed else "disabled",
         "reuse_allowed": reuse_allowed,
-        "force_invalidate_on": [],
-        "fingerprint": None,
-        "previous_success": None,
-        "last_success_fingerprint": None,
     }
     return entry
 
@@ -899,7 +880,7 @@ def explain_long_gate_impact(
     entries: List[Dict[str, Any]] = []
     for raw_entry in list(manifest.get("entries") or []):
         entry = dict(raw_entry)
-        if not bool(entry.get("long_gate_candidate")) and not bool(entry.get("reuse_allowed")):
+        if not bool(entry.get("reuse_allowed")):
             continue
         matches_by_category = {
             "input": _matches_for_scopes(normalized_paths, list(entry.get("input_file_scopes") or [])),
@@ -923,7 +904,6 @@ def explain_long_gate_impact(
                 "display": str(entry.get("display") or ""),
                 "cache_status": str(entry.get("cache_status") or ""),
                 "reuse_allowed": bool(entry.get("reuse_allowed")),
-                "long_gate_candidate": bool(entry.get("long_gate_candidate")),
                 "affected": affected,
                 "reason": _impact_reason(matched_categories, global_affected=global_affected),
                 "global_runner_tooling_affected": global_affected,
@@ -1032,8 +1012,6 @@ def _entry_label(entry: Mapping[str, Any]) -> str:
         return "UNKNOWN"
     if bool(entry.get("reuse_allowed")):
         return "CACHE-ENABLED"
-    if bool(entry.get("long_gate_candidate")):
-        return "LONG-CANDIDATE"
     return "PROBE"
 
 

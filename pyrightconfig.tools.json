@@ -13,7 +13,6 @@
     "tools/benchmark_full_test_debt_shards.py",
     "tools/verify_required_regressions_from_full_test_debt.py",
     "tools/architecture_scan_cache.py",
-    "tools/long_gate_full_test_debt.py",
     "tools/long_gate_cache.py",
     "tools/long_gate_collect.py",
     "tools/long_gate_fingerprint.py",

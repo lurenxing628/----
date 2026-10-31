@@ -28,11 +28,8 @@ from .quality_gate_scan import (
 from .quality_gate_shared import (
     COMPLEXITY_THRESHOLD,
     FILE_SIZE_LIMIT,
-    REPOSITORY_BUNDLE_DRIFT_SCOPE_PATTERNS,
     STARTUP_SCOPE_PATTERNS,
-    WEB_HELPER_SCAN_SCOPE_PATTERNS,
     QualityGateError,
-    collect_globbed_files,
     collect_quality_rule_files,
     collect_startup_scope_files,
     is_startup_scope_path,
@@ -612,24 +609,6 @@ def validate_ledger_against_current_scan(ledger: Dict[str, Any]) -> Dict[str, An
     return {"samples": sample_summary}
 
 
-def architecture_oversize_allowlist_map(ledger: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
-    return {str(entry.get("path")): dict(entry) for entry in cast(List[Dict[str, Any]], ledger.get("oversize_allowlist") or [])}
-
-
-def architecture_complexity_allowlist_map(ledger: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
-    return {
-        "{}:{}".format(entry.get("path"), entry.get("symbol")): dict(entry)
-        for entry in cast(List[Dict[str, Any]], ledger.get("complexity_allowlist") or [])
-    }
-
-
-def architecture_silent_allowlist_map(ledger: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
-    return {
-        str(entry.get("id")): dict(entry)
-        for entry in cast(Dict[str, Any], ledger.get("silent_fallback") or {}).get("entries") or []
-    }
-
-
 def _cached_architecture_aggregate(
     paths: Sequence[str],
     fact_kinds: Sequence[str],
@@ -720,24 +699,3 @@ def architecture_silent_scan_entries() -> List[Dict[str, Any]]:
 
 def architecture_validate_startup_samples() -> Dict[str, Any]:
     return _validate_startup_samples_from_entries(_cached_silent_scan_entries(collect_startup_scope_files()))
-
-
-def architecture_oversize_scan_map() -> Dict[str, Dict[str, Any]]:
-    aggregate = _cached_architecture_aggregate(collect_quality_rule_files(), ())
-    return {str(path): dict(entry) for path, entry in dict(aggregate.get("oversize_map") or {}).items()}
-
-
-def architecture_complexity_scan_map() -> Dict[str, Dict[str, Any]]:
-    aggregate = _cached_architecture_aggregate(collect_quality_rule_files(), ("complexity",))
-    return {str(key): dict(entry) for key, entry in dict(aggregate.get("complexity_map") or {}).items()}
-
-
-def architecture_web_helper_direct_assembly_entries() -> List[Dict[str, Any]]:
-    """web/*.py 顶层辅助模块里的直接装配（Service/Repository(g.db|conn)）。"""
-    aggregate = _cached_architecture_aggregate(collect_globbed_files(WEB_HELPER_SCAN_SCOPE_PATTERNS), ("assembly",))
-    return cast(List[Dict[str, Any]], aggregate.get("direct_assembly_entries") or [])
-
-
-def architecture_repository_bundle_drift_entries() -> List[Dict[str, Any]]:
-    aggregate = _cached_architecture_aggregate(collect_globbed_files(REPOSITORY_BUNDLE_DRIFT_SCOPE_PATTERNS), ("repository",))
-    return cast(List[Dict[str, Any]], aggregate.get("repository_bundle_drift_entries") or [])

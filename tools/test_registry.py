@@ -4,14 +4,10 @@ import os
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from tools.test_registry_data import (
-    QUALITY_GATE_GUARD_TESTS,
     QUALITY_GATE_REQUIRED_TESTS,
-    QUALITY_GATE_SELFTEST_PATH,
     QUALITY_GATE_STARTUP_REGRESSION_ARGS,
     REQUIRED_REGRESSION_COMMON_SCOPES,
     REQUIRED_REGRESSION_GROUPS,
-    SUPPLEMENTAL_REGRESSION_GROUPS,
-    TEST_ONLY_HELPER_IMPACT,
 )
 
 
@@ -47,51 +43,6 @@ def _normalize_env_keys(keys: Sequence[str]) -> List[str]:
         seen.add(key)
         out.append(key)
     return out
-
-
-def _is_test_only_helper_path(path: str) -> bool:
-    # P6：helper 可落在 tests/ 任意子目录(去掉旧的单层 count("/")==1 约束),仍须是 tests/ 下的 *_helpers.py。
-    normalized = _normalize_registry_path(path)
-    name = os.path.basename(normalized)
-    return (
-        normalized.startswith("tests/")
-        and normalized.count("/") >= 1
-        and normalized.endswith(".py")
-        and name.endswith("_helpers.py")
-        and name != "conftest.py"
-    )
-
-
-def _is_regular_helper_impact_target(path: str) -> bool:
-    normalized = _normalize_registry_path(path)
-    name = os.path.basename(normalized)
-    if normalized == "conftest.py" or normalized.endswith("/conftest.py"):
-        return False
-    # P6：target 可落在 tests/ 任意子目录(去掉旧的单层 count("/")==1 约束)。
-    if not normalized.startswith("tests/") or normalized.count("/") < 1 or not normalized.endswith(".py"):
-        return False
-    if name.endswith("_helpers.py"):
-        return False
-    return name.startswith("test_") or name.startswith("regression_")
-
-
-def iter_test_only_helper_impacts(
-    helper_impacts: Optional[Mapping[str, Sequence[str]]] = None,
-) -> Dict[str, List[str]]:
-    impacts = helper_impacts if helper_impacts is not None else TEST_ONLY_HELPER_IMPACT
-    rows: Dict[str, List[str]] = {}
-    for helper_path, target_paths in sorted(impacts.items()):
-        helper = _normalize_registry_path(helper_path)
-        if not _is_test_only_helper_path(helper):
-            raise ValueError("test-only helper impact helper must be tests/**/*_helpers.py: " + helper)
-        targets = normalize_test_paths(list(target_paths or []))
-        if not targets:
-            raise ValueError("test-only helper impact targets are empty: " + helper)
-        for target in targets:
-            if not _is_regular_helper_impact_target(target):
-                raise ValueError("test-only helper impact target must be a test file under tests/: " + target)
-        rows[helper] = targets
-    return rows
 
 
 def normalize_test_paths(paths: Sequence[str]) -> List[str]:
@@ -209,46 +160,15 @@ def validate_required_regression_group_coverage(
     }
 
 
-def test_registry_content(
-    *,
-    required_tests: Optional[Sequence[str]] = None,
-    startup_regressions: Optional[Sequence[str]] = None,
-    active_xfail_entries: Optional[Sequence[Dict[str, Any]]] = None,
-) -> Dict[str, Any]:
-    active_entries = []
-    for entry in list(active_xfail_entries or []):
-        active_entries.append(
-            {
-                "debt_id": str(entry.get("debt_id") or ""),
-                "nodeid": str(entry.get("nodeid") or ""),
-                "reason": str(entry.get("reason") or ""),
-            }
-        )
-    active_entries.sort(key=lambda item: (item["nodeid"], item["debt_id"]))
-    required_source = QUALITY_GATE_REQUIRED_TESTS if required_tests is None else required_tests
-    startup_source = QUALITY_GATE_STARTUP_REGRESSION_ARGS if startup_regressions is None else startup_regressions
-    return {
-        "required_tests": iter_required_tests(required_source),
-        "startup_regressions": iter_startup_regressions(startup_source),
-        "active_xfail_entries": active_entries,
-    }
-
-
 __all__ = [
-    "QUALITY_GATE_GUARD_TESTS",
     "QUALITY_GATE_REQUIRED_TESTS",
-    "QUALITY_GATE_SELFTEST_PATH",
     "QUALITY_GATE_STARTUP_REGRESSION_ARGS",
     "REQUIRED_REGRESSION_COMMON_SCOPES",
     "REQUIRED_REGRESSION_GROUPS",
-    "SUPPLEMENTAL_REGRESSION_GROUPS",
-    "TEST_ONLY_HELPER_IMPACT",
-    "test_registry_content",
     "iter_required_regression_common_scope_policy",
     "iter_required_regression_groups",
     "iter_required_tests",
     "iter_startup_regressions",
-    "iter_test_only_helper_impacts",
     "normalize_test_paths",
     "required_test_nodeid_matches",
     "validate_required_regression_group_coverage",

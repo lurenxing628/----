@@ -8,6 +8,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import venv
 from pathlib import Path
 
 import pytest
@@ -57,8 +58,9 @@ def test_runner_binds_dirty_source_and_resume_receipt_to_original_content(tmp_pa
     }
     assert entry["content"]["stdout_content"] == "[REDACTED]\r\nchecked\n"
     assert "fixture-private-only" not in (tmp_path / result["stdout_log_path"]).read_text()
-    accepted, error = runner._load_resume_receipt_payload(entry, command, index=1, previous_run_id="saved-run")
+    accepted, error, log_texts = runner._load_resume_receipt_payload(entry, command, index=1, previous_run_id="saved-run")
     assert accepted is not None and not error
+    assert log_texts == {"stdout": "[REDACTED]\r\nchecked\n", "stderr": ""}
     assert runner._load_resume_receipt_payload(entry, command, index=1, previous_run_id="other-run")[1]
     changed = copy.deepcopy(entry)
     changed["content"]["returncode"] = 1
@@ -66,6 +68,30 @@ def test_runner_binds_dirty_source_and_resume_receipt_to_original_content(tmp_pa
     stderr = tmp_path / result["stderr_log_path"]
     stderr.write_text("different output")
     assert runner._load_resume_receipt_payload(entry, command, index=1, previous_run_id="saved-run")[1]
+    (tmp_path / result["stdout_log_path"]).write_text("tampered stdout")
+    assert runner._result_from_receipt_logs(accepted, log_texts) == {
+        "stdout": "[REDACTED]\r\nchecked\n",
+        "stderr": "",
+        "returncode": 0,
+    }
+    resumed_commands, resumed_receipts, resumed_parsed = [], [], {}
+    runner._run_quality_gate_command_plan(
+        [command],
+        run_id="resumed-run",
+        commands=resumed_commands,
+        command_receipts=resumed_receipts,
+        parsed_command_results=resumed_parsed,
+        resume_decision=runner.ResumeDecision(
+            True,
+            "ok",
+            skip_count=1,
+            reusable_receipts=(entry,),
+            reusable_receipt_payloads=(accepted,),
+            reusable_log_texts=(log_texts,),
+        ),
+    )
+    assert resumed_receipts[0]["content"]["stdout_content"] == "[REDACTED]\r\nchecked\n"
+    assert resumed_receipts[0]["content"]["stderr_content"] == ""
     legacy = {"path": "evidence/QualityGate/receipts/original.json", "sha256": "historical"}
     assert runner._load_resume_receipt_payload(legacy, command, index=1, previous_run_id="saved-run")[1]
 
@@ -99,6 +125,73 @@ def test_hook_cache_and_daily_scope_compare_full_content_and_preserve_old_record
     assert extra["impact_pytest_target_paths"] == ["tests/test_a.py"]
     assert extra["ruff_target_paths"] == ["core/a.py"]
     assert not any("hash" in key for key in extra)
+
+    ref_contexts = [{"local_ref": "refs/heads/main", "local_sha": "a" * 40, "remote_ref": "refs/heads/main", "remote_sha": "b" * 40}]
+    base_key = hooks.daily_gate_cache_key(sys.executable, scope_payload=content, ref_contexts=ref_contexts)
+    assert "pytest.ini" in base_key["watched_files"] and "pyproject.toml" in base_key["watched_files"]
+    assert base_key["extra"]["pytest_plugins"]
+    (tmp_path / "pytest.ini").write_text("[pytest]\naddopts = -q\n", encoding="utf-8")
+    assert not content_equal(base_key, hooks.daily_gate_cache_key(sys.executable, scope_payload=content, ref_contexts=ref_contexts))
+    monkeypatch.setenv("PYTEST_ADDOPTS", "-k sample")
+    env_key = hooks.daily_gate_cache_key(sys.executable, scope_payload=content, ref_contexts=ref_contexts)
+    assert env_key["extra"]["pytest_env"]["PYTEST_ADDOPTS"] == "-k sample"
+
+    for env_name, env_value, expected_probe_key, expected_probe_prefix in (
+        ("WORKBENCH_NODE", "missing-node-runtime", "node_executable_realpath", "__missing_node__:missing-node-runtime"),
+        ("NODE_OPTIONS", "--max-old-space-size=512", None, None),
+        ("APS_TEST_POWERSHELL", "missing-pwsh-runtime", "powershell_executable_realpath", "__missing_powershell__:missing-pwsh-runtime"),
+    ):
+        before = hooks.daily_gate_cache_key(sys.executable, scope_payload=content, ref_contexts=ref_contexts)
+        monkeypatch.setenv(env_name, env_value)
+        after = hooks.daily_gate_cache_key(sys.executable, scope_payload=content, ref_contexts=ref_contexts)
+        assert after["extra"]["pytest_env"][env_name] == env_value
+        if expected_probe_key is not None:
+            assert after["extra"]["pytest_env"][expected_probe_key] == expected_probe_prefix
+        assert not content_equal(before, after)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX symlink venv probe regression")
+def test_daily_gate_cache_key_tracks_symlink_venv_pytest_plugin_versions(tmp_path, monkeypatch):
+    monkeypatch.setattr(hooks, "REPO_ROOT", tmp_path)
+    venv_dir = tmp_path / "symlink-venv"
+    venv.EnvBuilder(with_pip=False, symlinks=True).create(str(venv_dir))
+    venv_python = venv_dir / "bin" / "python"
+    site_packages = next(venv_dir.rglob("site-packages"))
+    dist_info = site_packages / "audit_hook_plugin-1.0.dist-info"
+    dist_info.mkdir(parents=True, exist_ok=True)
+    (dist_info / "entry_points.txt").write_text("[pytest11]\naudit_hook = audit_hook_plugin\n", encoding="utf-8")
+    metadata_file = dist_info / "METADATA"
+    metadata_file.write_text(
+        "Metadata-Version: 2.1\nName: audit-hook-plugin\nVersion: 1.0\n",
+        encoding="utf-8",
+    )
+
+    scope = daily.DailyGateScope(
+        daily.ChangedPathSet(["app.py"], True, "actual paths"),
+        daily.ImpactPlan(["tools/host_tests/test_gate_runner_and_hooks_content.py"], ["domain"], False, "actual targets"),
+        daily.RuffPlan(["app.py"], False, "actual ruff targets"),
+    )
+    content = daily.daily_gate_scope_payload(scope)
+    local_ref = "/".join(("refs", "heads", "main"))
+    ref_contexts = [{"local_ref": local_ref, "local_sha": "a" * 40, "remote_ref": local_ref, "remote_sha": "b" * 40}]
+
+    hooks._PYTEST_PLUGIN_VERSIONS_CACHE.clear()
+    key_v1 = hooks.daily_gate_cache_key(str(venv_python), scope_payload=content, ref_contexts=ref_contexts)
+    assert key_v1["python"]["executable_abspath"] == os.path.abspath(str(venv_python))
+    assert {"name": "audit-hook-plugin", "version": "1.0", "plugins": ["audit_hook"]} in key_v1["extra"]["pytest_plugins"]
+    cache_file = tmp_path / "daily-cache.v2.json"
+    hooks._write_pass_cache(cache_file, key_payload=key_v1, extra={})
+    assert hooks._cache_matches(cache_file, key_v1)
+
+    metadata_file.write_text(
+        "Metadata-Version: 2.1\nName: audit-hook-plugin\nVersion: 2.0\n",
+        encoding="utf-8",
+    )
+    hooks._PYTEST_PLUGIN_VERSIONS_CACHE.clear()
+    key_v2 = hooks.daily_gate_cache_key(str(venv_python), scope_payload=content, ref_contexts=ref_contexts)
+    assert {"name": "audit-hook-plugin", "version": "2.0", "plugins": ["audit_hook"]} in key_v2["extra"]["pytest_plugins"]
+    assert not content_equal(key_v1, key_v2)
+    assert not hooks._cache_matches(cache_file, key_v2)
 
 
 def test_daily_gate_runs_boundary_scanners_after_ruff_only_when_ruff_runs():
@@ -143,6 +236,7 @@ def _native_hook_fixture(tmp_path):
     for relative in (
         "tools/__init__.py", "tools/git_hook_checks.py", "tools/git_hook_cache.py",
         "tools/git_hook_blocked_paths.py", "tools/long_gate_schema.py", "tools/long_gate_paths.py",
+        "tools/long_gate_fingerprint.py", "tools/quality_gate_shared.py",
         "tools/install_git_hooks.py", "tools/native_pre_push.py", "tools/test_registry.py",
         "tools/test_registry_data.py", "scripts/__init__.py",
     ):

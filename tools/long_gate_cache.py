@@ -986,28 +986,6 @@ def evaluate_failure_reuse(
     )
 
 
-def decide_failure_reuse(
-    entry: Mapping[str, Any],
-    current_fingerprint: Mapping[str, Any],
-    *,
-    repo_root: Optional[str] = None,
-    cache_dir: Optional[str] = None,
-) -> Dict[str, Any]:
-    return dict(
-        evaluate_failure_reuse(entry, current_fingerprint, repo_root=repo_root, cache_dir=cache_dir)["decision"]
-    )
-
-
-def decide_reuse(
-    entry: Mapping[str, Any],
-    current_fingerprint: Mapping[str, Any],
-    *,
-    repo_root: Optional[str] = None,
-    cache_dir: Optional[str] = None,
-) -> Dict[str, Any]:
-    return dict(evaluate_reuse(entry, current_fingerprint, repo_root=repo_root, cache_dir=cache_dir)["decision"])
-
-
 def _log_paths_for_result(
     entry_id: str,
     *,
@@ -1053,25 +1031,24 @@ def _assert_output_files_cover_declared_paths(
         raise ValueError(f"long gate output file was not provided: {missing[0]}")
 
 
-def _assert_success_command_result(command_result: Mapping[str, Any]) -> None:
+def _assert_command_result(command_result: Mapping[str, Any], cache_kind: str) -> None:
     if "returncode" not in command_result:
-        raise ValueError("long gate success cache requires returncode")
+        raise ValueError(f"long gate {cache_kind} cache requires returncode")
     returncode_value = command_result.get("returncode")
     if not isinstance(returncode_value, int) or isinstance(returncode_value, bool):
-        raise ValueError("long gate success cache requires numeric returncode")
+        raise ValueError(f"long gate {cache_kind} cache requires numeric returncode")
     returncode = int(returncode_value)
-
-    if returncode != 0:
+    if cache_kind == "success" and returncode != 0:
         raise ValueError("long gate success cache requires returncode == 0")
-
+    if cache_kind == "failure" and returncode == 0:
+        raise ValueError("long gate failure cache requires returncode != 0")
     if "duration_s" in command_result:
         duration_value = command_result.get("duration_s")
         if not isinstance(duration_value, (int, float)) or isinstance(duration_value, bool):
-            raise ValueError("long gate success cache requires numeric duration_s")
-
+            raise ValueError(f"long gate {cache_kind} cache requires numeric duration_s")
     for field in ("timed_out", "interrupted", "partial_write"):
         if bool(command_result.get(field)):
-            raise ValueError(f"long gate success cache requires {field} == False")
+            raise ValueError(f"long gate {cache_kind} cache requires {field} == False")
 
 
 def _assert_cache_fingerprint(fingerprint: Mapping[str, Any], cache_kind: str) -> None:
@@ -1083,31 +1060,6 @@ def _assert_cache_fingerprint(fingerprint: Mapping[str, Any], cache_kind: str) -
     keys = _non_reusable_environment_keys(fingerprint)
     if keys:
         raise ValueError(f"long gate {cache_kind} cache is unavailable for environment keys: " + ", ".join(keys))
-
-
-def _assert_success_fingerprint(fingerprint: Mapping[str, Any]) -> None:
-    _assert_cache_fingerprint(fingerprint, "success")
-
-
-def _assert_failure_fingerprint(fingerprint: Mapping[str, Any]) -> None:
-    _assert_cache_fingerprint(fingerprint, "failure")
-
-
-def _assert_failure_command_result(command_result: Mapping[str, Any]) -> None:
-    if "returncode" not in command_result:
-        raise ValueError("long gate failure cache requires returncode")
-    returncode_value = command_result.get("returncode")
-    if not isinstance(returncode_value, int) or isinstance(returncode_value, bool):
-        raise ValueError("long gate failure cache requires numeric returncode")
-    if int(returncode_value) == 0:
-        raise ValueError("long gate failure cache requires returncode != 0")
-    if "duration_s" in command_result:
-        duration_value = command_result.get("duration_s")
-        if not isinstance(duration_value, (int, float)) or isinstance(duration_value, bool):
-            raise ValueError("long gate failure cache requires numeric duration_s")
-    for field in ("timed_out", "interrupted", "partial_write"):
-        if bool(command_result.get(field)):
-            raise ValueError(f"long gate failure cache requires {field} == False")
 
 
 def write_success(
@@ -1126,8 +1078,8 @@ def write_success(
         "stdout": sanitize_quality_gate_output(str(command_result.get("stdout") or "")),
         "stderr": sanitize_quality_gate_output(str(command_result.get("stderr") or "")),
     }
-    _assert_success_command_result(command_result)
-    _assert_success_fingerprint(fingerprint)
+    _assert_command_result(command_result, "success")
+    _assert_cache_fingerprint(fingerprint, "success")
     if not content_equal(
         fingerprint["components"].get("command"), normalize_quality_gate_command(entry.get("command") or entry)
     ):
@@ -1193,8 +1145,8 @@ def write_failure(
         "stdout": sanitize_quality_gate_output(str(command_result.get("stdout") or "")),
         "stderr": sanitize_quality_gate_output(str(command_result.get("stderr") or "")),
     }
-    _assert_failure_command_result(command_result)
-    _assert_failure_fingerprint(fingerprint)
+    _assert_command_result(command_result, "failure")
+    _assert_cache_fingerprint(fingerprint, "failure")
     if not content_equal(
         fingerprint["components"].get("command"), normalize_quality_gate_command(entry.get("command") or entry)
     ):

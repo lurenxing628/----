@@ -19,7 +19,6 @@ LONG_GATE_TOOLING_VERSION_PATHS = (
     "tools/long_gate_cache.py",
     "tools/long_gate_collect.py",
     "tools/long_gate_fingerprint.py",
-    "tools/long_gate_full_test_debt.py",
     "tools/long_gate_manifest.py",
     "tools/long_gate_manifest_environment.py",
     "tools/long_gate_paths.py",

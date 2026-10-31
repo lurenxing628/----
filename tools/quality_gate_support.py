@@ -30,15 +30,6 @@ from .quality_gate_ledger import (
     validate_ledger,
 )
 from .quality_gate_operations import (
-    architecture_complexity_allowlist_map,
-    architecture_complexity_scan_map,
-    architecture_oversize_allowlist_map,
-    architecture_oversize_scan_map,
-    architecture_repository_bundle_drift_entries,
-    architecture_silent_allowlist_map,
-    architecture_silent_scan_entries,
-    architecture_validate_startup_samples,
-    architecture_web_helper_direct_assembly_entries,
     delete_risk,
     refresh_auto_fields,
     refresh_migrate_inline_facts,
@@ -50,9 +41,7 @@ from .quality_gate_operations import (
 from .quality_gate_scan import (
     classify_silent_fallback,
     scan_complexity_entries,
-    scan_direct_assembly_entries,
     scan_oversize_entries,
-    scan_repository_bundle_drift_entries,
     scan_silent_fallback_entries,
     validate_startup_samples,
 )
@@ -74,7 +63,6 @@ from .quality_gate_shared import (
     QUALITY_GATE_FAILED_FULL_TEST_DEBT_REL,
     QUALITY_GATE_FULL_TEST_DEBT_NODE_CACHE_REL,
     QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL,
-    QUALITY_GATE_GUARD_TESTS,
     QUALITY_GATE_LOGS_DIR_REL,
     QUALITY_GATE_MANIFEST_REL,
     QUALITY_GATE_PROOF_SCHEMA_VERSION,
@@ -87,21 +75,16 @@ from .quality_gate_shared import (
     QUALITY_GATE_REQUIRED_REGRESSIONS_REL,
     QUALITY_GATE_REQUIRED_TESTS,
     QUALITY_GATE_RUFF_CHECK_FULL_REL,
-    QUALITY_GATE_SELFTEST_PATH,
     QUALITY_GATE_SOURCE_FILES,
     QUALITY_GATE_STARTUP_REGRESSION_ARGS,
-    QUALITY_GATE_STARTUP_RUNTIME_REGRESSIONS_REL,
     QUALITY_GATE_TOOL_PATHS,
     REPO_ROOT,
-    REPOSITORY_BUNDLE_DRIFT_SCOPE_PATTERNS,
     SP02_FACT_BEGIN,
     SP02_FACT_END,
     STAGE_RECORD_PATH,
     STARTUP_SAMPLE_EXPECTATIONS,
     STARTUP_SCOPE_PATTERNS,
-    TEST_ARCH_FITNESS_PATH,
     TEST_DEBT_MODE_VALUES,
-    WEB_HELPER_SCAN_SCOPE_PATTERNS,
     QualityGateError,
     SilentFallbackSample,
     apply_quality_gate_manifest_proof_fields,
@@ -130,12 +113,6 @@ from .quality_gate_shared import (
     slugify,
     verify_quality_gate_manifest,
     write_text_file,
-)
-from .test_debt_registry import (
-    iter_required_tests,
-    iter_startup_regressions,
-    load_test_debt_registry,
-    test_debt_registry_content,
 )
 from .test_registry import (
     iter_required_regression_groups,

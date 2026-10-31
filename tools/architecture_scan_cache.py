@@ -9,8 +9,8 @@ sha256 的扫描结果磁盘缓存（含 ~250 行缓存校验/合并机器）。
   scan_single_file_architecture_fact /
   architecture_scan_cache_metadata）按给定路径直扫或聚合；
 - 不再读写磁盘缓存文件；同次适应度检查显式共享扫描快照，跨次调用保持新鲜。
-- architecture_scan_cache_metadata 仍被 long_gate_fingerprint 与
-  run_quality_gate 回执使用，保存源码与实际版本或行为原文。
+- architecture_scan_cache_metadata 仍被 long_gate_fingerprint 使用，
+  保存源码与实际版本或行为原文。
 """
 
 from __future__ import annotations
@@ -27,8 +27,6 @@ from .quality_gate_scan import (
     ScanContext,
     _assign_silent_entry_ids,
     complexity_scan_map,
-    scan_direct_assembly_entries,
-    scan_repository_bundle_drift_entries,
     scan_silent_fallback_fact_entries,
 )
 from .quality_gate_shared import (
@@ -52,8 +50,6 @@ ARCHITECTURE_SCAN_SCANNER_VERSION_PATHS = (
 _FACT_KIND_FIELDS = {
     "silent": "silent_fallback_handlers_without_global_id",
     "complexity": "complexity_blocks_all",
-    "assembly": "direct_assembly_entries",
-    "repository": "repository_bundle_drift_entries",
 }
 _ALL_FACT_KINDS = tuple(_FACT_KIND_FIELDS)
 
@@ -148,12 +144,6 @@ def scan_single_file_architecture_fact(
             dict(entry) for entry in scan_silent_fallback_fact_entries([normalized], context=scan_context)
         ] if "silent" in kinds else [],
         "complexity_blocks_all": complexity_blocks,
-        "direct_assembly_entries": [
-            dict(entry) for entry in scan_direct_assembly_entries([normalized], context=scan_context)
-        ] if "assembly" in kinds else [],
-        "repository_bundle_drift_entries": [
-            dict(entry) for entry in scan_repository_bundle_drift_entries([normalized], context=scan_context)
-        ] if "repository" in kinds else [],
     }
 
 
@@ -174,15 +164,13 @@ def scan_files_with_cache(
 
 def aggregate_architecture_scan(
     file_facts: Sequence[Mapping[str, Any]],
-    mode: str = "architecture",
+    *,
     include_all_complexity: bool = False,
 ) -> Dict[str, Any]:
-    include_all = include_all_complexity or str(mode or "") == "include_all"
+    include_all = include_all_complexity
     silent_entries: List[Dict[str, Any]] = []
     oversize_entries: List[Dict[str, Any]] = []
     complexity_map: Dict[str, Dict[str, Any]] = {}
-    direct_assembly_entries: List[Dict[str, Any]] = []
-    repository_bundle_entries: List[Dict[str, Any]] = []
 
     for raw_fact in sorted(list(file_facts or []), key=lambda fact: str(fact.get("path") or "")):
         fact = dict(raw_fact)
@@ -207,26 +195,14 @@ def aggregate_architecture_scan(
             key = "{}:{}".format(block.get("path"), block.get("symbol"))
             complexity_map[key] = block
 
-        for entry in list(fact.get("direct_assembly_entries") or []):
-            if isinstance(entry, dict):
-                direct_assembly_entries.append(dict(entry))
-        for entry in list(fact.get("repository_bundle_drift_entries") or []):
-            if isinstance(entry, dict):
-                repository_bundle_entries.append(dict(entry))
-
     _assign_silent_entry_ids(silent_entries)
     silent_entries = sorted(silent_entries, key=entry_sort_key)
     oversize_entries = sorted(oversize_entries, key=entry_sort_key)
-    direct_assembly_entries = sorted(direct_assembly_entries, key=entry_sort_key)
-    repository_bundle_entries = sorted(repository_bundle_entries, key=entry_sort_key)
     return {
         "silent_fallback_entries": silent_entries,
         "oversize_entries": oversize_entries,
-        "oversize_map": {str(entry.get("path")): dict(entry) for entry in oversize_entries},
         "complexity_map": complexity_map,
         "complexity_entries": [dict(item) for _key, item in sorted(complexity_map.items())],
-        "direct_assembly_entries": direct_assembly_entries,
-        "repository_bundle_drift_entries": repository_bundle_entries,
     }
 
 

@@ -12,9 +12,7 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from tools.long_gate_schema import canonical_content, content_equal, read_file_content
 from tools.test_registry import (
-    QUALITY_GATE_GUARD_TESTS,
     QUALITY_GATE_REQUIRED_TESTS,
-    QUALITY_GATE_SELFTEST_PATH,
     QUALITY_GATE_STARTUP_REGRESSION_ARGS,
 )
 from tools.test_registry import (
@@ -30,8 +28,6 @@ from tools.test_registry import (
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 LEDGER_PATH = os.path.join(REPO_ROOT, "开发文档", "技术债务治理台账.md")
 STAGE_RECORD_PATH = os.path.join(REPO_ROOT, "开发文档", "阶段留痕与验收记录.md")
-# Compatibility export for callers of the retired gate meta selftests.
-TEST_ARCH_FITNESS_PATH = ""
 QUALITY_GATE_LEGACY_ROOT_REL = os.path.join("evidence", "QualityGate")
 QUALITY_GATE_ROOT_REL = os.path.join(QUALITY_GATE_LEGACY_ROOT_REL, "v4")
 QUALITY_GATE_MANIFEST_REL = os.path.join(QUALITY_GATE_ROOT_REL, "quality_gate_manifest.json")
@@ -61,12 +57,6 @@ QUALITY_GATE_FULL_TEST_DEBT_NODE_CACHE_REL = os.path.join(
     "QualityGate",
     "v4",
     "full_test_debt_node_cache.json",
-)
-QUALITY_GATE_STARTUP_RUNTIME_REGRESSIONS_REL = os.path.join(
-    "evidence",
-    "QualityGate",
-    "v4",
-    "startup_runtime_regressions.json",
 )
 QUALITY_GATE_REQUIRED_REGRESSIONS_REL = os.path.join(
     "evidence",
@@ -152,7 +142,6 @@ QUALITY_GATE_TOOL_PATHS = [
     "tools/benchmark_full_test_debt_shards.py",
     "tools/verify_required_regressions_from_full_test_debt.py",
     "tools/architecture_scan_cache.py",
-    "tools/long_gate_full_test_debt.py",
     "tools/long_gate_cache.py",
     "tools/long_gate_collect.py",
     "tools/long_gate_fingerprint.py",
@@ -230,11 +219,6 @@ CORE_DIRS = [
     "web/viewmodels",
 ]
 STARTUP_SCOPE_PATTERNS = ["web/bootstrap/**/*.py"]
-
-# web 顶层辅助模块（web/*.py）必须保持薄：不得直接装配 Service/Repository、不得自建 Excel 后端。
-# 路由层按 2026-09-18 旧路由退役后的设计直接装配服务，不在此规则范围内。
-WEB_HELPER_SCAN_SCOPE_PATTERNS = ["web/*.py"]
-REPOSITORY_BUNDLE_DRIFT_SCOPE_PATTERNS = ["core/services/scheduler/**/*.py", "core/services/batch/**/*.py", "tests/**/*.py", "tools/**/*.py", "web/routes/**/*.py"]
 
 FALLBACK_KIND_VALUES = {
     "silent_swallow",
@@ -713,6 +697,17 @@ def quality_gate_required_test_nodeid_matches(
     required_tests: Sequence[str] = QUALITY_GATE_REQUIRED_TESTS,
 ) -> bool:
     return _registry_required_test_nodeid_matches(nodeid, required_tests)
+
+
+def is_terminal_pytest_report(when: str, outcome: str) -> bool:
+    return (
+        (when == "call" and outcome in ("passed", "failed", "skipped"))
+        or (when == "setup" and outcome in ("skipped", "failed"))
+    )
+
+
+def is_teardown_failure_report(when: str, outcome: str) -> bool:
+    return when == "teardown" and outcome == "failed"
 
 
 def build_quality_gate_command_plan() -> List[Dict[str, Any]]:

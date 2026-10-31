@@ -33,6 +33,7 @@ from tools.boundary_baseline import (
     default_baseline_path,
     entries_to_counts,
     load_baseline,
+    refresh_growth_error,
     render_comparison,
     total_count,
     write_baseline,
@@ -294,12 +295,11 @@ def run_rule(rule: str, args: argparse.Namespace) -> int:
         except BoundaryBaselineError as exc:
             _error(str(exc))
             return 2
-        if previous is not None and total_count(current) > total_count(previous) and not args.allow_growth:
-            _error(
-                f"{rule} 刷新被拒绝：总命中数 {total_count(previous)} -> {total_count(current)} 增长；"
-                "请先消除新增债务，或人工核对后加 --allow-growth"
-            )
-            return 1
+        if not args.allow_growth:
+            growth_error = refresh_growth_error(rule, current, previous)
+            if growth_error is not None:
+                _error(growth_error)
+                return 1
         write_baseline(
             baseline_path,
             rule=rule,

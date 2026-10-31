@@ -10,16 +10,13 @@ import shutil
 import stat
 import subprocess
 import sys
-import tempfile
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple, cast
 
-from tools import architecture_scan_cache
 from tools.long_gate_paths import is_within_repo, real_repo_root
 from tools.long_gate_schema import LONG_GATE_FINGERPRINT_SCHEMA_VERSION, content_equal, read_file_content
 from tools.quality_gate_shared import (
     QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL,
     normalize_quality_gate_command,
-    sanitize_quality_gate_output,
 )
 
 _EXPECTED_COLLECT_NODEIDS_SCHEMA_VERSION = 2
@@ -36,14 +33,11 @@ RUNTIME_FINGERPRINT_KEYS = frozenset(
         "pyright_version",
         "platform",
         "node_executable_realpath",
+        "powershell_executable_realpath",
+        "powershell_version",
         "git_executable_realpath",
         "git_version",
         "node_version",
-        "node_browser_runtime_capability",
-        "chrome_executable_resolution",
-        "chrome_version",
-        "chrome_executable_identity",
-        "chrome_headless_preflight",
         "architecture_scan_cache_metadata",
     }
 )
@@ -295,17 +289,8 @@ def fingerprint_command(command: Mapping[str, Any]) -> Dict[str, Any]:
     return normalized
 
 
-def _pytest_version(*, strict: bool = False) -> str:
-    try:
-        return importlib.metadata.version("pytest")
-    except importlib.metadata.PackageNotFoundError as exc:
-        if strict:
-            raise LongGateFingerprintError("pytest distribution is required for long gate fingerprint") from exc
-        return "__missing_pytest_distribution__"
-
-
 def pytest_distribution_version(*, strict: bool = False) -> str:
-    return _pytest_version(strict=strict)
+    return _distribution_version("pytest", strict=strict)
 
 
 def _distribution_version(distribution: str, *, strict: bool = False) -> str:
@@ -371,122 +356,14 @@ def _git_version(*, strict: bool = False, environment: Optional[Mapping[str, str
     return value
 
 
-def _node_executable_realpath(environment: Optional[Mapping[str, str]] = None) -> str:
-    env = _effective_environment(environment)
-    node = shutil.which("node", path=env.get("PATH"))
-    if not node:
-        return "__missing_node__"
-    return os.path.realpath(node)
-
-
-def _node_version(*, strict: bool = False, environment: Optional[Mapping[str, str]] = None) -> str:
-    env = _effective_environment(environment)
-    node = shutil.which("node", path=env.get("PATH"))
-    if not node:
-        return "__missing_node__"
-    cache_key = _runtime_probe_cache_key("node_version", os.path.realpath(node), env)
+def _probe_node_version(resolved: str, env: Mapping[str, str]) -> Optional[str]:
+    cache_key = _runtime_probe_cache_key("node_version", resolved, env)
     cached = _RUNTIME_FINGERPRINT_CACHE.get(cache_key)
     if cached is not None:
         return cached
-    try:
-        completed = subprocess.run(
-            [node, "--version"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=5,
-            env=dict(env),
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        if strict:
-            raise LongGateFingerprintError(f"node version is required for long gate fingerprint: {exc}") from exc
-        return "__node_version_unavailable__"
-    if int(completed.returncode) != 0:
-        if strict:
-            detail = str(completed.stderr or completed.stdout or "").strip() or f"returncode={completed.returncode}"
-            raise LongGateFingerprintError(f"node version is required for long gate fingerprint: {detail}")
-        return "__node_version_unavailable__"
-    value = str(completed.stdout or "").strip()
-    _RUNTIME_FINGERPRINT_CACHE[cache_key] = value
-    return value
-
-
-def _node_browser_runtime_capability(*, strict: bool = False, environment: Optional[Mapping[str, str]] = None) -> Any:
-    env = _effective_environment(environment)
-    node = shutil.which("node", path=env.get("PATH"))
-    if not node:
-        return "__missing_node__"
-    cache_key = _runtime_probe_cache_key("node_browser_runtime_capability", os.path.realpath(node), env)
-    cached = _RUNTIME_FINGERPRINT_CACHE.get(cache_key)
-    if cached is not None:
-        return cached
-    capability_script = (
-        "const missing = [];"
-        "if (typeof fetch !== 'function') missing.push('fetch');"
-        "if (typeof WebSocket !== 'function') missing.push('WebSocket');"
-        "if (missing.length) { console.error('missing ' + missing.join(',')); process.exit(1); }"
-        "console.log('fetch/WebSocket available');"
-    )
-    try:
-        completed = subprocess.run(
-            [node, "-e", capability_script],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=5,
-            env=dict(env),
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        if strict:
-            raise LongGateFingerprintError(
-                f"node browser runtime capability is required for long gate fingerprint: {exc}"
-            ) from exc
-        return "__node_browser_runtime_capability_unavailable__"
-    payload = {
-        "returncode": int(completed.returncode),
-        "stdout": sanitize_quality_gate_output(str(completed.stdout or "")),
-        "stderr": sanitize_quality_gate_output(str(completed.stderr or "")),
-    }
-    if int(completed.returncode) != 0:
-        if strict:
-            raise LongGateFingerprintError(
-                "node browser runtime capability is required for long gate fingerprint: "
-                + json.dumps(payload, ensure_ascii=False, sort_keys=True)
-            )
-        return {"status": "failed", **payload}
-    value = {"status": "passed", **payload}
-    _RUNTIME_FINGERPRINT_CACHE[cache_key] = value
-    return value
-
-
-def _chrome_path(environment: Optional[Mapping[str, str]] = None) -> str:
-    source = environment if environment is not None else os.environ
-    return str(source.get("APS_CHROME_PATH") or "").strip()
-
-
-def _chrome_executable_resolution(*, strict: bool = False, environment: Optional[Mapping[str, str]] = None) -> str:
-    chrome_path = _chrome_path(environment)
-    if not chrome_path:
-        if strict:
-            raise LongGateFingerprintError("APS_CHROME_PATH is required for Chrome runtime fingerprint")
-        return "__chrome_path_missing__"
-    if not os.path.isfile(chrome_path):
-        if strict:
-            raise LongGateFingerprintError(f"APS_CHROME_PATH does not point to a file: {chrome_path}")
-        return "__chrome_path_not_file__:" + chrome_path
-    return os.path.realpath(chrome_path)
-
-
-def _chrome_version(*, strict: bool = False, environment: Optional[Mapping[str, str]] = None) -> Any:
-    resolved = _chrome_executable_resolution(strict=strict, environment=environment)
-    if resolved.startswith("__chrome_"):
-        return resolved
-    cache_key = _runtime_probe_cache_key("chrome_version", resolved, _effective_environment(environment))
-    cached = _RUNTIME_FINGERPRINT_CACHE.get(cache_key)
-    if cached is not None:
-        return cached
+    probe_env = dict(env)
+    node_dir = os.path.dirname(resolved)
+    probe_env["PATH"] = f"{node_dir}{os.pathsep}{probe_env.get('PATH', '')}"
     try:
         completed = subprocess.run(
             [resolved, "--version"],
@@ -494,92 +371,120 @@ def _chrome_version(*, strict: bool = False, environment: Optional[Mapping[str, 
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=10,
-            env=dict(_effective_environment(environment)),
+            timeout=5,
+            env=probe_env,
+            check=False,
         )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        if strict:
-            raise LongGateFingerprintError(f"Chrome version probe failed: {exc}") from exc
-        return "__chrome_version_unavailable__"
-    payload = {
-        "returncode": int(completed.returncode),
-        "stdout": sanitize_quality_gate_output(str(completed.stdout or "")),
-        "stderr": sanitize_quality_gate_output(str(completed.stderr or "")),
-    }
-    if int(completed.returncode) != 0:
-        if strict:
-            raise LongGateFingerprintError(
-                "Chrome version probe failed: " + json.dumps(payload, ensure_ascii=False, sort_keys=True)
-            )
-        return {"status": "failed", **payload}
-    value = {"status": "passed", **payload}
-    _RUNTIME_FINGERPRINT_CACHE[cache_key] = value
-    return value
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    value = str(completed.stdout or "").strip()
+    if int(completed.returncode) == 0 and value.startswith("v"):
+        _RUNTIME_FINGERPRINT_CACHE[cache_key] = value
+        return value
+    return None
 
 
-def _chrome_executable_identity(*, strict: bool = False, environment: Optional[Mapping[str, str]] = None) -> Any:
-    resolved = _chrome_executable_resolution(strict=strict, environment=environment)
-    if resolved.startswith("__chrome_"):
-        return resolved
-    try:
-        st = os.stat(resolved)
-        payload = {
-            "realpath": resolved,
-            "size": int(st.st_size),
-            "mtime_ns": int(getattr(st, "st_mtime_ns", int(st.st_mtime * 1000000000))),
-            "content_base64": read_file_content(resolved),
-        }
-    except OSError as exc:
-        if strict:
-            raise LongGateFingerprintError(f"Chrome identity probe failed: {exc}") from exc
-        return "__chrome_identity_unavailable__"
-    return payload
+def _resolve_node_executable(environment: Optional[Mapping[str, str]] = None) -> Tuple[Optional[str], str]:
+    env = _effective_environment(environment)
+    resolution_key = _runtime_probe_cache_key("node_resolution", "", env)
+    cached_resolution = _RUNTIME_FINGERPRINT_CACHE.get(resolution_key)
+    if cached_resolution is not None:
+        resolved_cached, version_cached = str(cached_resolution).split("\n", 1)
+        return resolved_cached, version_cached
+    path = env.get("PATH")
+    configured = (env.get("WORKBENCH_NODE") or "").strip()
+    if configured:
+        resolved_which = shutil.which(configured, path=path)
+        if resolved_which:
+            candidates = [resolved_which]
+        elif os.path.sep in configured or (os.path.altsep and os.path.altsep in configured) or configured.startswith("~"):
+            candidates = [os.path.expanduser(configured)]
+        else:
+            return None, "__missing_node__:" + configured
+        missing_marker = "__missing_node__:" + configured
+    else:
+        candidates = []
+        path_entries = [entry for entry in path.split(os.pathsep) if entry] if path is not None else [None]
+        for entry in path_entries:
+            resolved_which = shutil.which("node", path=entry)
+            if resolved_which:
+                candidates.append(resolved_which)
+        candidates.extend(
+            [
+                os.path.expanduser("~/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node"),
+                "/opt/homebrew/bin/node",
+                "/usr/local/bin/node",
+                os.path.expanduser("~/.nvm/current/bin/node"),
+            ]
+        )
+        candidates.extend(sorted(glob.glob(os.path.expanduser("~/.nvm/versions/node/*/bin/node")), reverse=True))
+        missing_marker = "__missing_node__"
+
+    seen: Set[str] = set()
+    for candidate in candidates:
+        resolved = os.path.realpath(os.path.expanduser(candidate))
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if not (os.path.isfile(resolved) and os.access(resolved, os.X_OK)):
+            continue
+        version = _probe_node_version(resolved, env)
+        if version is not None:
+            _RUNTIME_FINGERPRINT_CACHE[resolution_key] = f"{resolved}\n{version}"
+            return resolved, version
+    return None, missing_marker
 
 
-def _chrome_headless_preflight(*, strict: bool = False, environment: Optional[Mapping[str, str]] = None) -> Any:
-    resolved = _chrome_executable_resolution(strict=strict, environment=environment)
-    if resolved.startswith("__chrome_"):
-        return resolved
-    cache_key = _runtime_probe_cache_key("chrome_headless_preflight", resolved, _effective_environment(environment))
+def _powershell_executable_realpath(environment: Optional[Mapping[str, str]] = None) -> str:
+    env = _effective_environment(environment)
+    path = env.get("PATH")
+    configured = env.get("APS_TEST_POWERSHELL")
+    if configured:
+        resolved = shutil.which(configured, path=path)
+        if resolved:
+            return os.path.realpath(resolved)
+        if os.path.sep in configured or (os.path.altsep and os.path.altsep in configured):
+            candidate = os.path.realpath(configured)
+            if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                return candidate
+        return "__missing_powershell__:" + str(configured)
+    resolved = shutil.which("powershell", path=path) or shutil.which("pwsh", path=path)
+    if not resolved:
+        return "__missing_powershell__"
+    return os.path.realpath(resolved)
+
+
+def _powershell_version(*, strict: bool = False, environment: Optional[Mapping[str, str]] = None) -> str:
+    env = _effective_environment(environment)
+    powershell = _powershell_executable_realpath(environment=environment)
+    if powershell.startswith("__missing_powershell__"):
+        return powershell
+    cache_key = _runtime_probe_cache_key("powershell_version", powershell, env)
     cached = _RUNTIME_FINGERPRINT_CACHE.get(cache_key)
     if cached is not None:
         return cached
     try:
-        with tempfile.TemporaryDirectory(prefix="aps_chrome_preflight_") as tmp_dir:
-            completed = subprocess.run(
-                [
-                    resolved,
-                    "--headless=new",
-                    "--disable-gpu",
-                    "--no-first-run",
-                    "--no-default-browser-check",
-                    f"--user-data-dir={tmp_dir}",
-                    "about:blank",
-                    "--dump-dom",
-                ],
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=20,
-                env=dict(_effective_environment(environment)),
-            )
+        completed = subprocess.run(
+            [powershell, "-NoProfile", "-NonInteractive", "-Command", "$PSVersionTable.PSVersion.ToString()"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=5,
+            env=dict(env),
+        )
     except (OSError, subprocess.TimeoutExpired) as exc:
         if strict:
-            raise LongGateFingerprintError(f"Chrome headless preflight failed: {exc}") from exc
-        return "__chrome_headless_preflight_unavailable__"
-    payload = {
-        "returncode": int(completed.returncode),
-        "stdout": sanitize_quality_gate_output(str(completed.stdout or "")),
-        "stderr": sanitize_quality_gate_output(str(completed.stderr or "")),
-    }
+            raise LongGateFingerprintError(
+                f"powershell version is required for long gate fingerprint: {exc}"
+            ) from exc
+        return "__powershell_version_unavailable__"
     if int(completed.returncode) != 0:
         if strict:
-            raise LongGateFingerprintError(
-                "Chrome headless preflight failed: " + json.dumps(payload, ensure_ascii=False, sort_keys=True)
-            )
-        return {"status": "failed", **payload}
-    value = {"status": "passed", **payload}
+            detail = str(completed.stderr or completed.stdout or "").strip() or f"returncode={completed.returncode}"
+            raise LongGateFingerprintError(f"powershell version is required for long gate fingerprint: {detail}")
+        return "__powershell_version_unavailable__"
+    value = str(completed.stdout or "").strip()
     _RUNTIME_FINGERPRINT_CACHE[cache_key] = value
     return value
 
@@ -624,7 +529,7 @@ def _runtime_fingerprint_value(
     if key == "python_version":
         return sys.version.splitlines()[0].strip()
     if key == "pytest_version":
-        return _pytest_version(strict=strict)
+        return pytest_distribution_version(strict=strict)
     if key == "pytest_plugin_distribution_versions":
         return _pytest_plugin_distribution_versions(strict=strict)
     if key == "ruff_version":
@@ -633,25 +538,17 @@ def _runtime_fingerprint_value(
         return _distribution_version("pyright", strict=strict)
     if key == "platform":
         return platform.platform()
-    if key == "node_executable_realpath":
-        return _node_executable_realpath(environment=environment)
+    if key == "powershell_executable_realpath":
+        return _powershell_executable_realpath(environment=environment)
+    if key == "powershell_version":
+        return _powershell_version(strict=strict, environment=environment)
     if key == "git_executable_realpath":
         return _git_executable_realpath(environment=environment)
     if key == "git_version":
         return _git_version(strict=strict, environment=environment)
-    if key == "node_version":
-        return _node_version(strict=strict, environment=environment)
-    if key == "node_browser_runtime_capability":
-        return _node_browser_runtime_capability(strict=strict, environment=environment)
-    if key == "chrome_executable_resolution":
-        return _chrome_executable_resolution(strict=strict, environment=environment)
-    if key == "chrome_version":
-        return _chrome_version(strict=strict, environment=environment)
-    if key == "chrome_executable_identity":
-        return _chrome_executable_identity(strict=strict, environment=environment)
-    if key == "chrome_headless_preflight":
-        return _chrome_headless_preflight(strict=strict, environment=environment)
     if key == "architecture_scan_cache_metadata":
+        from tools import architecture_scan_cache
+
         return architecture_scan_cache.architecture_scan_cache_metadata(repo_root)
     source = environment if environment is not None else os.environ
     value = source.get(str(key))
@@ -671,7 +568,7 @@ PUBLIC_ENVIRONMENT_KEYS = frozenset(
         "APS_PORT",
         "APS_SHARED_DATA_ROOT",
         "APS_STATIC_VERSION",
-        "APS_CHROME_PATH",
+        "APS_TEST_POWERSHELL",
         "WERKZEUG_RUN_MAIN",
         "WORKBENCH_NODE",
         "NODE_PATH",
@@ -707,18 +604,28 @@ def fingerprint_environment(
     )
     if unsupported:
         raise LongGateFingerprintError("environment keys require a public allowlist entry: " + ", ".join(unsupported))
-    values = {
-        str(key): _runtime_fingerprint_value(
-            str(key),
-            strict=strict,
-            environment=environment,
-            repo_root=repo_root,
-        )
-        for key in list(keys or [])
-    }
+    key_list = [str(key) for key in list(keys or [])]
+    node_resolution = (
+        _resolve_node_executable(environment)
+        if ("node_executable_realpath" in key_list or "node_version" in key_list)
+        else None
+    )
+    values: Dict[str, Any] = {}
+    for key in key_list:
+        if node_resolution is not None and key == "node_executable_realpath":
+            values[key] = node_resolution[0] or node_resolution[1]
+        elif node_resolution is not None and key == "node_version":
+            values[key] = node_resolution[1]
+        else:
+            values[key] = _runtime_fingerprint_value(
+                key,
+                strict=strict,
+                environment=environment,
+                repo_root=repo_root,
+            )
     return {
         "schema_version": ENVIRONMENT_FINGERPRINT_SCHEMA_VERSION,
-        "keys": [str(key) for key in list(keys or [])],
+        "keys": key_list,
         "values": values,
         "non_reusable_env_keys": [key for key in values if key == "SECRET_KEY" and values[key]["present"]],
     }

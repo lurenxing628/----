@@ -4,7 +4,7 @@
 - 条目键为 (path, kind)，值为 count。
 - 当前有、基线无 → new；基线有、当前无 → stale（请从基线移除）；同键 count 变大 → increased。
 - 三者任一非空即门禁失败；count 变小允许，但提示刷新。
-- 刷新只能通过扫描器 --refresh；默认拒绝总命中数增长，除非显式 --allow-growth。
+- 刷新只能通过扫描器 --refresh；默认拒绝任何新增或计数增加的条目，除非显式 --allow-growth。
 """
 
 from __future__ import annotations
@@ -34,6 +34,10 @@ class BaselineComparison:
     @property
     def has_debt(self) -> bool:
         return bool(self.new or self.stale or self.increased)
+
+    @property
+    def has_growth(self) -> bool:
+        return bool(self.new or self.increased)
 
     @property
     def clean(self) -> bool:
@@ -145,3 +149,25 @@ def render_comparison(rule: str, comparison: BaselineComparison) -> List[str]:
 
 def total_count(counts: Dict[EntryKey, int]) -> int:
     return sum(int(value) for value in counts.values())
+
+
+def refresh_growth_error(
+    rule: str,
+    current: Dict[EntryKey, int],
+    previous: Optional[Dict[EntryKey, int]],
+) -> Optional[str]:
+    """基线刷新只允许保持或收敛存量；任何新增条目或单条目计数增长都拒绝（防删旧抵新）。"""
+    if previous is None:
+        return None
+    comparison = compare_counts(current, previous)
+    if not comparison.has_growth:
+        return None
+    details: List[str] = []
+    for (path, kind), count in sorted(comparison.new.items()):
+        details.append(f"  新增：{path} kind={kind} count={count}")
+    for (path, kind), (before, after) in sorted(comparison.increased.items()):
+        details.append(f"  增加：{path} kind={kind} {before} -> {after}")
+    return (
+        f"{rule} 刷新被拒绝：存在新增或计数增加的条目（总命中数 {total_count(previous)} -> {total_count(current)}）；"
+        "请先消除新增债务，或人工核对后加 --allow-growth\n" + "\n".join(details)
+    )

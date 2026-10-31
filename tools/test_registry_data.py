@@ -2,13 +2,6 @@
 
 from __future__ import annotations
 
-import os
-
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-
-# Gate meta selftests are retired; the compatibility constant names no test.
-QUALITY_GATE_SELFTEST_PATH = ""
-
 QUALITY_GATE_STARTUP_REGRESSION_ARGS = (
     'tests/app_runtime/test_app_new_ui_create_app_smoke.py',
     'tests/app_runtime/test_frontend_offline_static_assets.py',
@@ -180,7 +173,7 @@ _CALENDAR_TESTS = (
     'tests/calendar_maintenance/test_freeze_window_bounds.py',
 )
 
-QUALITY_GATE_GUARD_TESTS = (
+QUALITY_GATE_REQUIRED_TESTS = (
     *_SCHEDULER_TESTS,
     *_WORKBENCH_TESTS,
     *_RUNTIME_TESTS,
@@ -188,7 +181,6 @@ QUALITY_GATE_GUARD_TESTS = (
     *_DOMAIN_TESTS,
     *_CALENDAR_TESTS,
 )
-QUALITY_GATE_REQUIRED_TESTS = QUALITY_GATE_GUARD_TESTS
 
 _TEST_ENV_KEYS = ("APS_ENV", "APS_DB_PATH", "APS_LOG_DIR", "APS_BACKUP_DIR", "APS_EXCEL_TEMPLATE_DIR", "SECRET_KEY")
 
@@ -236,7 +228,7 @@ REQUIRED_REGRESSION_GROUPS = (
             'templates/workbench/**/*.html',
             'static/workbench/**/*',
         ),
-        env_keys=('WORKBENCH_NODE', 'NODE_PATH', 'NODE_OPTIONS'),
+        env_keys=('WORKBENCH_NODE', 'NODE_PATH', 'NODE_OPTIONS', 'node_executable_realpath', 'node_version'),
     ),
     _group(
         'runtime', 'Application startup, runtime identity, system pages, and host hooks', _RUNTIME_TESTS,
@@ -254,7 +246,7 @@ REQUIRED_REGRESSION_GROUPS = (
             'templates/**/*.html',
             'static/**/*',
         ),
-        env_keys=('APS_HOST', 'APS_PORT', 'APS_SHARED_DATA_ROOT', 'APS_STATIC_VERSION', 'WERKZEUG_RUN_MAIN'),
+        env_keys=('APS_HOST', 'APS_PORT', 'APS_SHARED_DATA_ROOT', 'APS_STATIC_VERSION', 'WERKZEUG_RUN_MAIN', 'APS_TEST_POWERSHELL', 'PATH', 'powershell_executable_realpath', 'powershell_version'),
     ),
     _group(
         'data_io', 'Configuration and atomic Excel imports', _DATA_IO_TESTS,
@@ -295,12 +287,6 @@ REQUIRED_REGRESSION_GROUPS = (
         ),
     ),
 )
-
-# Browser and supplemental test lanes were retired with their test files.
-SUPPLEMENTAL_REGRESSION_GROUPS = ()
-
-# Shared support changes select all retained groups; no second helper target inventory.
-TEST_ONLY_HELPER_IMPACT = {}
 
 REQUIRED_REGRESSION_COMMON_SCOPES = {
     "input_file_scopes": (
