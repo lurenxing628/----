@@ -27,8 +27,9 @@ def decision_history():
     with PLAN_READ_SLOTS.slot():
         from core.services.workbench.history.queries import read_decision_history
 
-        data, scope, state = read_decision_history(g.db, values)
-    snapshot = bind_read_snapshot(scope, state, token)
+        data, snapshot, _state = read_decision_history(
+            g.db, values, bind_snapshot=lambda scope, state: bind_read_snapshot(scope, state, token)
+        )
     return query_success(data, snapshot)
 
 
@@ -47,8 +48,12 @@ def decision_history_export():
         )
         from core.services.workbench.history.queries import read_history_all
 
-        data, scope, state = read_history_all(g.db, values)
-        snapshot = bind_read_snapshot(scope, state, token)
+        data, snapshot, _state = read_history_all(
+            g.db,
+            values,
+            section=section if fmt == "csv" else None,
+            bind_snapshot=lambda scope, state: bind_read_snapshot(scope, state, token),
+        )
     download = (write_decision_xlsx("history", data, snapshot, section) if fmt == "xlsx" else
                 write_history_export(data, snapshot, fmt, section))
     response = send_file(BytesIO(download.content), mimetype=download.mime_type, as_attachment=True,

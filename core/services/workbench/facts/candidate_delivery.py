@@ -3,7 +3,7 @@
 from collections import defaultdict
 
 from .candidate_values import corrupt
-from .delivery_projection import delivery_summary, project_delivery_batch, task_intervals
+from .delivery_projection import delivery_summary, project_delivery_batch
 from .preflight_dependencies import material_deferred_ids
 
 
@@ -93,12 +93,12 @@ def _items(keys, facts, rows, tasks, intervals, incomplete, uncertain, deferred,
     return result, missing
 
 
-def _project_items(candidate, facts, tasks, settings, deferred_ids, *, scope=None, visible=(), unplanned=None,
-                   intervals=None, precomputed=None):
+def _project_items(candidate, facts, tasks, settings, deferred_ids, *, intervals, scope=None, visible=(), unplanned=None,
+                   precomputed=None):
     rows, by_batch, uncertain = prepare_candidate_delivery_groups(tasks, facts)
     keys = _selected_keys(settings, facts, by_batch, visible, unplanned, scope, uncertain)
     incomplete = _incomplete_batch_ids(candidate)
-    items, missing = _items(keys, facts, rows, by_batch, task_intervals(rows) if intervals is None else intervals,
+    items, missing = _items(keys, facts, rows, by_batch, intervals,
                             incomplete, uncertain, deferred_ids, precomputed=precomputed)
     return items, missing, uncertain, len(keys)
 
@@ -115,10 +115,10 @@ def project_delivery_detail(candidate, facts, tasks, settings, *, intervals,
                           intervals=intervals, precomputed=precomputed)[0]
 
 
-def candidate_delivery_risks(candidate, facts, tasks, disposition, scope, settings, visible, unplanned):
+def candidate_delivery_risks(candidate, facts, tasks, disposition, scope, settings, visible, unplanned, *, intervals):
     """Select by display scope, but calculate every selected batch in full."""
     items, missing, uncertain, batch_count = _project_items(candidate, facts, tasks, settings,
-        material_deferred_ids(disposition.values(), settings), scope=scope, visible=visible, unplanned=unplanned)
+        material_deferred_ids(disposition.values(), settings), intervals=intervals, scope=scope, visible=visible, unplanned=unplanned)
     issues = [{"code": code, "message": "排产时记下的依据不完整，交付结论算不出来；系统没有拿当前资料凑。"}
               for code in sorted(uncertain)]
     if missing:

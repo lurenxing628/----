@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, NoReturn, Optional
 
+from core.infrastructure.sqlite_udf import remember_receipt_outcome
 from core.models.content import content_text, unpacked
 from core.models.workbench_command import WorkbenchCommandOutcome
 from core.shared.strict_json import canonical_json, load_strict_json
 
 from .base_repo import BaseRepository
-from .workbench_trial_repo import HISTORY_REFERENCE_FORMAT, WorkbenchTrialRepository
+from .workbench_trial_repo import HISTORY_REFERENCE_FORMAT, WorkbenchTrialRepository, history_reference
 
 
 def _corrupt_receipt() -> NoReturn:
@@ -36,12 +37,16 @@ class WorkbenchCommandRepository(BaseRepository):
             # Changes are permanent evidence. Keep this receipt's exact prefix
             # instead of storing every earlier validation body again.
             history = payload["data"]["change_history"]
-            data = dict(payload["data"], change_history=WorkbenchTrialRepository(self.conn).history_reference(context_ref))
+            data = dict(
+                payload["data"],
+                change_history=history_reference(context_ref, outcome.history_revision),
+            )
             payload = dict(payload, data=data)
         outcome_json = canonical_json(payload)
-        self.execute("""INSERT INTO WorkbenchCommandReceipts
-            (request_key, receipt_ref, action, context_ref, input_json, outcome_json)
-            VALUES (?, ?, ?, ?, ?, ?)""", (request_key, receipt_ref, action, context_ref, input_json, outcome_json))
+        with remember_receipt_outcome(outcome_json, outcome.result):
+            self.execute("""INSERT INTO WorkbenchCommandReceipts
+                (request_key, receipt_ref, action, context_ref, input_json, outcome_json)
+                VALUES (?, ?, ?, ?, ?, ?)""", (request_key, receipt_ref, action, context_ref, input_json, outcome_json))
         public = self._public_payload(json.loads(outcome_json), action, history=history)
         return {"ok": True, **public, "receipt_ref": receipt_ref, "replayed": False}
 

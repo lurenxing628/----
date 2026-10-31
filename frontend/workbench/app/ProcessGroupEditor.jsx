@@ -23,13 +23,26 @@
   }
   function ProcessGroupEditor({ adapter, result, command, disabled, onDirty, onClose }) {
     const model = E.useDraft({ result, adapter, stage: 'groups', build, reconcile, saved: 0, onDirty });
-    const entity = model.base.data, draft = model.draft, operations = E.active(entity), paging = E.usePage(operations);
+    const entity = model.base.data, draft = model.draft;
+    const operations = React.useMemo(() => E.active(entity), [entity]);
+    const externalOperations = React.useMemo(() => operations.filter(op => op.source === 'external'), [operations]);
+    const paging = E.usePage(operations);
     const [editing, setEditing] = React.useState(null), [picker, setPicker] = React.useState(null), [discard, setDiscard] = React.useState(false);
     const [preview, setPreview] = React.useState(null), [checking, setChecking] = React.useState(false), serial = React.useRef(0), request = React.useRef(null), reviewRoot = React.useRef(null);
     const blocked = disabled || command.locked || command.phase === 'done', current = draft.groups.find(row => row.key === editing);
     const validPreview = preview && preview.draft === draft && preview.base === model.base && !model.review ? preview : null;
     const reason = model.review ? '请先核对最新资料。' : entity.workflow.route.state !== 'confirmed' ? '请先确认路线。'
       : (model.base.meta.source !== 'production' ? '请先读取可保存的工艺资料。' : '') || (!model.dirty ? '请先新增、修改或解除外协段。' : '');
+    const membershipKey = draft.groups.map(row => row.key + ':' + row.operation_refs.join(',')).join('|');
+    const { membersByKey, elsewhereSet } = React.useMemo(() => {
+      const map = new Map(), elsewhere = new Set();
+      draft.groups.forEach(row => {
+        const refs = new Set(row.operation_refs);
+        map.set(row.key, externalOperations.filter(op => refs.has(op.ref)));
+        if (row.key !== editing) row.operation_refs.forEach(ref => elsewhere.add(ref));
+      });
+      return { membersByKey: map, elsewhereSet: elsewhere };
+    }, [externalOperations, membershipKey, editing]);
     React.useEffect(() => () => { if (request.current) request.current.abort(); onDirty('groups', false); }, []);
     React.useEffect(() => {
       if (!validPreview || !reviewRoot.current) return undefined;
@@ -39,11 +52,10 @@
     function edit(next) { if (request.current) request.current.abort(); setChecking(false); setPreview(null); model.edit(next); }
     function patch(values) { edit(old => ({ ...old, groups: old.groups.map(row => row.key === editing ? { ...row, ...values } : row) })); }
     function members(row) {
-      const refs = new Set(row.operation_refs);
-      return operations.filter(op => op.source === 'external' && refs.has(op.ref));
+      return membersByKey.get(row.key);
     }
     function start(group) {
-      const row = group ? { key: group.ref, ref: group.ref, operation_refs: operations.filter(op => op.external_group_ref === group.ref).map(op => op.ref),
+      const row = group ? { key: group.ref, ref: group.ref, operation_refs: externalOperations.filter(op => op.external_group_ref === group.ref).map(op => op.ref),
         supplier_ref: group.supplier_ref, supplier_label: group.supplier_label, total_days: group.total_days === null ? '' : String(group.total_days) }
         : { key: 'new-' + (++serial.current), ref: null, operation_refs: [], supplier_ref: null, supplier_label: null, total_days: '' };
       if (!draft.groups.some(item => item.key === row.key)) edit(old => ({ ...old, groups: old.groups.concat(row), discard_group_refs: old.discard_group_refs.filter(ref => ref !== row.ref) }));
@@ -92,7 +104,7 @@
           <Button disabled={blocked || checking} aria-label={'编辑本次第 ' + (index + 1) + ' 段'} onClick={() => setEditing(row.key)}>编辑</Button><Button disabled={blocked || checking} onClick={() => remove(row)}>撤销本次编辑</Button></div>)}</section>}
         {current && <section><h3>{current.ref ? '修改外协段' : '新外协段'}</h3><E.Search paging={paging} disabled={blocked || checking} />
           <div className="wb-table-frame"><table className="tbl wb-table wb-table--editable" aria-label="选择外协段工序"><thead><tr><th scope="col">加入此段</th><th scope="col">工序</th><th scope="col">归属 / 供应商</th></tr></thead>
-            <tbody>{paging.rows.map(row => { const elsewhere = draft.groups.some(group => group.key !== current.key && group.operation_refs.includes(row.ref));
+            <tbody>{paging.rows.map(row => { const elsewhere = elsewhereSet.has(row.ref);
               const occupied = row.external_group_ref && row.external_group_ref !== current.ref && !editedRefs.has(row.external_group_ref) && !removedRefs.has(row.external_group_ref);
               return <tr key={row.ref}><td><label><input type="checkbox" aria-label={'外协段包含工序 ' + row.sequence} checked={current.operation_refs.includes(row.ref)} disabled={blocked || checking || row.source !== 'external' || elsewhere || !!occupied}
                 onChange={event => patch({ operation_refs: event.target.checked ? current.operation_refs.concat(row.ref) : current.operation_refs.filter(ref => ref !== row.ref) })} />{row.source !== 'external' ? '自制工序' : elsewhere ? '已选入另一段' : occupied ? '先编辑或解除原段' : '选择'}</label></td><td>{row.sequence} · {row.label}</td><td>{P.sourceLabel(row.source)} · {row.source === 'internal' ? '不适用供应商' : row.supplier_label || '未选供应商'}</td></tr>; })}</tbody></table></div><E.Pager paging={paging} disabled={blocked || checking} />

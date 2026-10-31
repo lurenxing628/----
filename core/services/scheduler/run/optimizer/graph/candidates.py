@@ -4,15 +4,14 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from core.algorithm_contracts.sort_strategies import SortStrategy
-from core.errors import ValidationError
+from core.algorithms.greedy.dispatch.sgs_graph import graph_priority_key_map
+from core.algorithms.greedy.dispatch.sgs_priority_keys import ValidatedGraphPriorityKeys
 from core.services.scheduler.run.optimizer.graph_ready_feature_basis import (
     BASELINE_RANK_PREFIX,
     BATCH_WORKLOAD_BASIS,
     select_profile_metrics,
 )
 from core.services.scheduler.run.optimizer.graph_ready_profiles import (
-    GRAPH_READY_V2_ITERATED_GREEDY_ORIGIN,
-    GRAPH_READY_V2_REPAIRED_ORIGIN,
     GraphReadyWeightProfile,
     profile_payload,
 )
@@ -46,9 +45,9 @@ class PreparedDecisionFeatures:
         self.v2_common_rank_cache = v2_common_rank_cache
         self._baseline_metrics: Optional[Dict[int, Dict[str, Any]]] = None
         self._normalized_metrics_by_basis_seed: Dict[Tuple[str, int], Dict[int, Dict[str, Any]]] = {}
-        self._priority_keys_by_profile: Dict[Tuple[Any, ...], Dict[int, Tuple[float, ...]]] = {}
+        self._priority_keys_by_profile: Dict[Tuple[Any, ...], ValidatedGraphPriorityKeys] = {}
 
-    def _selected_metrics(self, profile: GraphReadyWeightProfile) -> Dict[int, Dict[str, Any]]:
+    def selected_metrics(self, profile: GraphReadyWeightProfile) -> Dict[int, Dict[str, Any]]:
         """The profile's feature set: a v2 basis selection (one shared baseline copy) or the shared metrics."""
         if _uses_v2_formula(profile) and profile.feature_basis == BATCH_WORKLOAD_BASIS:
             if self._baseline_metrics is None:
@@ -56,15 +55,16 @@ class PreparedDecisionFeatures:
             return self._baseline_metrics
         return select_profile_metrics(self.metrics_by_op_id, profile=profile)
 
-    def priority_keys_for_profile(self, profile: GraphReadyWeightProfile) -> Dict[int, Tuple[float, ...]]:
+    def priority_keys_for_profile(self, profile: GraphReadyWeightProfile) -> ValidatedGraphPriorityKeys:
+        """Keys admitted once against this feature set's operations; decodes reuse them and their weak order."""
         identity = _profile_identity(profile)
         cached = self._priority_keys_by_profile.get(identity)
         if cached is not None:
             return cached
-        keys = _priority_keys_for_profile(
-            self._selected_metrics(profile), profile=profile, v2_common_rank_cache=self.v2_common_rank_cache,
+        keys = graph_priority_key_map(_priority_keys_for_profile(
+            self.selected_metrics(profile), profile=profile, v2_common_rank_cache=self.v2_common_rank_cache,
             normalized_metrics_cache=self._normalized_metrics_by_basis_seed,
-        )
+        ), schedulable_ids=frozenset(self.metrics_by_op_id))
         self._priority_keys_by_profile[identity] = keys
         return keys
 
@@ -100,7 +100,6 @@ def evaluate_graph_ready_candidate(
     # Repair and iterated-greedy stages pass a decision together with the decoded parent it was
     # generated from (repair._repair_one_elite, _IteratedGreedySearch._decode); every other stage passes none.
     repair_decision = repair[0] if repair is not None else None
-    _validate_repair_decision(profile, order=order, repair_decision=repair_decision)
     operation_resources = None
     if repair is None:
         graph_priority_key_by_op_id = prepared_decision_features.priority_keys_for_profile(profile)
@@ -124,13 +123,14 @@ def evaluate_graph_ready_candidate(
         strategy=strategy, strategy_params=_candidate_params(params, profile_dict=full_profile_payload), start_dt=start_dt,
         end_date=end_date, batch_order_override=list(order),
         dispatch_mode="sgs", dispatch_rule=dispatch_rule,
-        readiness_gate_enabled=bool(readiness_gate_enabled), graph_enabled=True,
+        readiness_gate_enabled=readiness_gate_enabled, graph_enabled=True,
         graph_score_enabled=True,
         graph_priority_key_by_op_id=graph_priority_key_by_op_id, **decode_kwargs,
     )
     runtime_ms = max(int((clock() - t_candidate_begin) * 1000), 0)
     candidate = build_graph_ready_candidate_payload(
         res=decoded.results,
+        decoded_order=decoded.decoded_batch_order,
         summ=decoded.summary,
         used_strat=decoded.used_strategy,
         used_params=decoded.used_params,
@@ -156,25 +156,6 @@ def evaluate_graph_ready_candidate(
     return candidate
 
 
-# Origins that decode an explicit priority decision, with the policy each one must declare.
-_DECISION_ORIGIN_POLICIES = {GRAPH_READY_V2_REPAIRED_ORIGIN: "elite_repair", GRAPH_READY_V2_ITERATED_GREEDY_ORIGIN: "iterated_greedy"}
-
-
-def _validate_repair_decision(profile: GraphReadyWeightProfile, *, order: List[str],
-                              repair_decision: Optional[RepairDecision]) -> None:
-    expected_policy = _DECISION_ORIGIN_POLICIES.get(profile.candidate_origin)
-    if expected_policy is None:
-        repaired_correctly = repair_decision is None
-    else:
-        repaired_correctly = (repair_decision is not None and profile.candidate_policy == expected_policy
-                              and order == list(repair_decision.batch_order))
-    if not repaired_correctly:
-        raise ValidationError(
-            "GraphReady 修补来源必须对应同一份显式优先决策。", field="graph_ready_elite_repair",
-            details={"reason": "graph_ready_bad_repair_decision"},
-        )
-
-
 def _priority_keys_for_profile(
     metrics: Dict[int, Dict[str, Any]],
     *,
@@ -192,7 +173,7 @@ def _priority_keys_for_profile(
     )
     if not normalized:
         return {}
-    specs = v2_formula_specs(str(profile.formula_slug or "").strip())
+    specs = v2_formula_specs(profile.formula_slug)
     return {op_id: v2_priority_key_for_metric(metric, specs=specs) for op_id, metric in sorted(normalized.items())}
 
 
@@ -216,7 +197,7 @@ def _profile_rank_cache(v2_common_rank_cache: Dict[str, Dict[int, float]],
 
 
 def _uses_v2_formula(profile: GraphReadyWeightProfile) -> bool:
-    return str(profile.formula_version).startswith("graph_ready_v2")
+    return profile.formula_version.startswith("graph_ready_v2")
 
 
 def _candidate_params(params: Dict[str, Any], *, profile_dict: Dict[str, Any]) -> Dict[str, Any]:

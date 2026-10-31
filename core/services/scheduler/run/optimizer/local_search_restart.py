@@ -68,10 +68,7 @@ def _evaluate_restart_candidate(
     Evaluation failures propagate; common-session budget skips propagate to the caller with
     their request receipt.
     """
-    best_resource_pool = local_state.best.get("resource_pool")
-    candidate_resource_pool = (
-        best_resource_pool if isinstance(best_resource_pool, dict) else {}
-    ) or resource_pool
+    candidate_resource_pool = local_state.best.get("resource_pool") or resource_pool
     candidate = evaluate_local_search_candidate(
         strategy=strategy,
         params=params,

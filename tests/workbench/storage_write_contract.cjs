@@ -46,6 +46,14 @@ function storage() {
     removeItem(key) { writes.push(['remove', key]); if (this.failRemove) throw this.failRemove; data.delete(key); } };
 }
 const reset = () => { counters.reads = counters.parses = counters.validations = 0; contextParses = 0; };
+// Web Locks fixtures: a browser without Web Locks, a lock held by another page, and a lock that is granted.
+const noLocks = {}, contended = { locks: { request: async (_key, options, fn) => { assert.equal(options.ifAvailable, true); return fn(null); } } },
+  granted = { locks: { request: async (_key, _options, fn) => fn({}) } };
+w.navigator = granted;
+// A storage the browser refuses to open: every Storage method throws SecurityError.
+const securityError = () => new DOMException('The operation is insecure.', 'SecurityError');
+const refuse = target => { target.failGet = securityError(); target.failSet = securityError(); target.failRemove = securityError(); };
+const allow = target => { target.failGet = null; target.failSet = null; target.failRemove = null; };
 function hooks() {
   let cursor = 0; const slots = [], effects = [];
   const same = (a, b) => a && b && a.length === b.length && a.every((value, index) => value === b[index]);
@@ -63,22 +71,24 @@ function hooks() {
 }
 async function main() {
   // Run writes have one current-intent read; RECENT must succeed before PENDING is removed.
-  const runStore = storage(), pending = w.RunJobAPI.pending(runStore), inputRef = 'i'.repeat(32);
-  reset(); const intent = pending.begin(inputRef, null, dataContext); assert.equal(counters.reads, 1); assert.equal(counters.parses, 0);
+  const runStore = storage(); w.localStorage = runStore; const pending = w.RunJobAPI.pending(), inputRef = 'i'.repeat(32);
+  reset(); const intent = pending.begin(inputRef, dataContext); assert.equal(counters.reads, 1); assert.equal(counters.parses, 0);
   assert.equal(intent.schema_version, 2); assert.equal(intent.data_context_ref, dataContext); assert.equal(intent.request_key, 'run-' + '05'.repeat(24));
   reset(); const attached = pending.attach(intent, ref(1)); assert.equal(counters.reads, 1); assert.equal(counters.parses, 1);
   reset(); pending.finish(attached, 'found'); assert.equal(counters.reads, 1); assert.equal(counters.parses, 1);
   assert.deepEqual(runStore.writes.slice(-2), [['set', w.RunJobAPI.RECENT_KEY], ['remove', w.RunJobAPI.PENDING_KEY]]);
   assert.equal(pending.read(), null); assert.equal(pending.recent().resolution, 'found');
   // L07: a run cannot start without the preview's data source.
-  assert.throws(() => pending.begin(inputRef, null), /读到的排产数据不完整/); assert.equal(pending.read(), null);
-  const retry = pending.begin(inputRef, null, dataContext), quota = new Error('QuotaExceededError'); runStore.failSet = quota;
+  assert.throws(() => pending.begin(inputRef), /读到的排产数据不完整/); assert.equal(pending.read(), null);
+  const retry = pending.begin(inputRef, dataContext), quota = new Error('QuotaExceededError'); runStore.failSet = quota;
   assert.throws(() => pending.finish(retry, 'found'), error => error === quota);
   assert.equal(pending.read().request_key, retry.request_key, 'A failed RECENT write leaves PENDING intact');
   runStore.failSet = null; runStore.failRemove = new Error('removeItem unavailable');
-  assert.throws(() => pending.finish(retry, 'found'), /removeItem unavailable/);
-  assert.equal(pending.read().request_key, retry.request_key); assert.equal(pending.recent().intent.request_key, retry.request_key);
+  assert.throws(() => pending.finish(retry, 'found'), /无法更新/);
+  assert.throws(() => pending.read(), /无法更新/); assert.equal(pending.recent().intent.request_key, retry.request_key);
   assert.throws(() => pending.reject(retry), /无法更新/); runStore.failRemove = null;
+  assert.throws(() => pending.read(), /无法更新/, 'read() never writes; the unflushed removal stays reported');
+  await w.APSWorkbenchTransport.exclusive(w.RunJobAPI.PENDING_KEY, { wait: true }, () => pending.flush()); assert.equal(pending.read(), null);
   const late = Promise.resolve().then(() => pending.finish(retry, 'found'));
   const newer = { ...retry, request_key: 'run-' + 'f'.repeat(48) }; runStore.data.set(w.RunJobAPI.PENDING_KEY, JSON.stringify(newer));
   await assert.rejects(late, /记录已变化/); assert.equal(pending.read().request_key, newer.request_key);
@@ -88,7 +98,7 @@ async function main() {
   assert.throws(() => pending.read(), /排产操作记录不完整/, 'A legacy pending intent is rejected');
   runStore.data.set(w.RunJobAPI.PENDING_KEY, JSON.stringify(intent)); assert.equal(pending.read().request_key, intent.request_key, 'A current pending intent restores');
 
-  const maintenanceStore = storage(), maintenance = w.SystemMaintenanceAPI.pending(maintenanceStore);
+  w.localStorage = storage(); const maintenance = w.SystemMaintenanceAPI.pending();
   reset(); const maintenanceIntent = maintenance.begin('create'); assert.equal(counters.reads, 1); assert.equal(counters.parses, 0);
   assert.equal(maintenance.read().request_key, maintenanceIntent.request_key); maintenance.finish(maintenanceIntent);
   w.localStorage = storage(); reset(); const trialKey = w.TrialAPI.reserve(); assert.equal(counters.reads, 1);
@@ -128,7 +138,7 @@ async function main() {
     assert.equal(JSON.stringify(module.read()), JSON.stringify(row.value));
     if (row.name === 'DashboardSession' || row.name === 'OutsourcingSession') {
       const rejected = { ...row.value, phase: 'rejected' }; module.save(rejected, row.value); reset();
-      assert.equal(session.finish(), true); assert.deepEqual(counters, { reads: 1, parses: 1, validations: 1 });
+      assert.equal(await session.finish(), true); assert.deepEqual(counters, { reads: 1, parses: 1, validations: 1 });
     }
     w.localStorage.data.set(module.KEY, '{broken'); assert.throws(() => module.read(), /损坏/);
     host.unmount(); contract[row.leaf] = leaf;
@@ -201,8 +211,7 @@ async function main() {
 
   // Web Locks contention and a browser without Web Locks are operation errors, not damaged stored records:
   // nothing is written, storageError stays clear, and the same session submits once the other page releases the lock.
-  const noLocks = {}, contended = { locks: { request: async (_key, options, fn) => { assert.equal(options.ifAvailable, true); return fn(null); } } },
-    granted = { locks: { request: async (_key, _options, fn) => fn({}) } }, message = value => typeof value === 'string' ? value : value.message;
+  const message = value => typeof value === 'string' ? value : value.message;
   async function refused(render, navigator, submit, expected, calls) {
     w.navigator = navigator; await submit(render()); const session = render();
     assert.equal(session.error && message(session.error), expected); assert(!session.storageError, expected + ' is not a damaged stored record');
@@ -230,7 +239,7 @@ async function main() {
   renderTrial(); trialHost.flush(); renderTrial().change({ reason: values.reason, declared_operator: values.declared_operator });
   await renderTrial().inspect(); renderTrial().setConsent(true);
   assert.equal(renderTrial().preview.data_context_ref, dataContext);
-  await refused(renderTrial, noLocks, session => session.submit(), '当前浏览器不支持这项操作，请用 Chrome 打开。', trialAdopts);
+  await refused(renderTrial, noLocks, session => session.submit(), '当前浏览器不支持，请用 Chrome 打开。', trialAdopts);
   await refused(renderTrial, contended, session => session.submit(), '另一个页面正在处理这次采用，请先在那个页面点「查询结果」。', trialAdopts);
   w.navigator = granted; await renderTrial().submit(); assert.equal(trialAdopts.length, 1);
   assert.equal(renderTrial().error, w.WorkbenchTerms.outcomes.unknown('采用')); assert.equal(renderTrial().saved.phase, 'pending');
@@ -248,9 +257,9 @@ async function main() {
     remountHost.unmount();
   }
   w.localStorage.failSet = null;
-  renderTrial().sync(); assert.equal(renderTrial().storageError, ''); assert.equal(renderTrial().saved.phase, 'rejected');
+  await renderTrial().sync(); assert.equal(renderTrial().storageError, ''); assert.equal(renderTrial().saved.phase, 'rejected');
   assert.equal(JSON.parse(w.localStorage.data.get(w.TrialAdoptionState.KEY)).phase, 'rejected');
-  renderTrial().finish(); assert.equal(renderTrial().saved, null); assert.equal(renderTrial().storageError, '');
+  await renderTrial().finish(); assert.equal(renderTrial().saved, null); assert.equal(renderTrial().storageError, '');
   routes['POST /api/workbench/v1/trial/scenarios/*/adopt'] = () => { w.localStorage.failSet = quota; return trialReceipt(); };
   renderTrial().change({ reason: values.reason, declared_operator: values.declared_operator });
   await renderTrial().inspect(); renderTrial().setConsent(true); await renderTrial().submit();
@@ -264,8 +273,8 @@ async function main() {
     remountHost.unmount();
   }
   w.localStorage.failSet = null;
-  renderTrial().sync(); assert.equal(renderTrial().storageError, ''); assert.equal(renderTrial().saved.phase, 'committed');
-  renderTrial().finish(); assert.equal(renderTrial().saved, null); assert.equal(renderTrial().storageError, '');
+  await renderTrial().sync(); assert.equal(renderTrial().storageError, ''); assert.equal(renderTrial().saved.phase, 'committed');
+  await renderTrial().finish(); assert.equal(renderTrial().saved, null); assert.equal(renderTrial().storageError, '');
   trialHost.unmount();
   {
     const lookupHost = hooks(), renderLookup = () => lookupHost.render(() => w.TrialAdoptionState.useSession({ disabled: true, onAdopted() {} }));
@@ -317,7 +326,7 @@ async function main() {
   renderCalibration(); calibrationHost.flush(); renderCalibration().change(calibrationInput);
   await renderCalibration().inspect(); renderCalibration().setConsent(true);
   assert.equal(renderCalibration().preview.validation.can_adopt, true);
-  await refused(renderCalibration, noLocks, session => session.submit(), '当前浏览器不支持这一步，请用 Chrome 打开后重试。', calibrationAdopts);
+  await refused(renderCalibration, noLocks, session => session.submit(), '当前浏览器不支持，请用 Chrome 打开。', calibrationAdopts);
   await refused(renderCalibration, contended, session => session.submit(), '另一个页面正在采用，请先在那边查询结果。', calibrationAdopts);
   w.navigator = granted; await renderCalibration().submit(); assert.equal(calibrationAdopts.length, 1);
   assert.equal(calibrationAdopts[0].request_key, 'calibration-' + '05'.repeat(24));
@@ -364,10 +373,10 @@ async function main() {
     remountHost.unmount();
   }
   w.localStorage.failSet = null;
-  calibration.sync(); calibration = renderRace();
+  await calibration.sync(); calibration = renderRace();
   assert.equal(calibration.storageError, ''); assert.equal(calibration.saved.phase, 'committed');
   assert.equal(JSON.parse(w.localStorage.data.get(calibrationKey)).phase, 'committed');
-  calibration.finish(); calibration = renderRace();
+  await calibration.finish(); calibration = renderRace();
   assert.equal(calibration.saved, null); assert.equal(calibration.storageError, ''); assert.equal(w.localStorage.data.has(calibrationKey), false);
   routes[ADOPT] = stale(() => { w.localStorage.failSet = quota; });
   renderRace().change(calibrationInput); await renderRace().inspect(); renderRace().setConsent(true); await renderRace().submit();
@@ -382,10 +391,10 @@ async function main() {
     remountHost.unmount();
   }
   w.localStorage.failSet = null;
-  calibration.sync(); calibration = renderRace();
+  await calibration.sync(); calibration = renderRace();
   assert.equal(calibration.storageError, ''); assert.equal(calibration.saved.phase, 'rejected');
   assert.equal(JSON.parse(w.localStorage.data.get(calibrationKey)).phase, 'rejected');
-  calibration.finish(); calibration = renderRace();
+  await calibration.finish(); calibration = renderRace();
   assert.equal(calibration.saved, null); assert.equal(calibration.storageError, '');
   raceHost.unmount();
   {
@@ -427,16 +436,14 @@ async function main() {
     lookupHost.unmount();
   }
   {
-    const backing = storage(), prevLocal = Object.getOwnPropertyDescriptor(w, 'localStorage');
-    let failGetter = false;
-    Object.defineProperty(w, 'localStorage', { configurable: true, get() { if (failGetter) throw new Error('SecurityError'); return backing; }, set() {} });
+    const backing = storage(); w.localStorage = backing;
     w.navigator = granted;
     routes['POST /api/workbench/v1/scheduling/candidates/*/adopt-preview'] = () => envelope({
       ...candidate, validation: { status: 'valid', can_adopt: true, issues: [] },
       write_context: { write_token: 'w'.repeat(32), expires_at: '2026-10-22T10:00:00', capabilities: { 'scheduling.candidate.adopt': true }, blocked_reasons: [] }
     }, { as_of: '2026-10-22T09:00:00' });
-    routes['POST /api/workbench/v1/scheduling/candidates/*/adopt'] = stale(() => { failGetter = true; });
-    try {
+    routes['POST /api/workbench/v1/scheduling/candidates/*/adopt'] = stale(() => { refuse(backing); });
+    {
       const getterHost = hooks(), getterElement = w.RunAdoptionAction({ candidateRef: ref(10), candidateCatalog: [] });
       const renderGetter = () => getterHost.render(() => getterElement.type(getterElement.props));
       const getterDialog = () => renderGetter().props.children.find(child => child && child.type === 'dialog');
@@ -449,17 +456,15 @@ async function main() {
       await getterDialog().props.onConfirm();
       assert.equal(getterDialog().props.intent.phase, 'rejected');
       assert.equal(getterDialog().props.storageError, '读不到上次采用的操作记录，不要重新采用。');
-      failGetter = false;
-      getterDialog().props.onReadStorage();
+      allow(backing);
+      await getterDialog().props.onReadStorage();
       assert.equal(getterDialog().props.storageError, '');
       assert.equal(getterDialog().props.intent.phase, 'rejected');
       assert.equal(JSON.parse(backing.data.get(w.RunAdoptionAPI.PENDING_KEY)).phase, 'rejected');
-      getterDialog().props.onCancelRejected();
+      await getterDialog().props.onCancelRejected();
       assert.equal(getterDialog(), undefined);
       assert.equal(backing.data.has(w.RunAdoptionAPI.PENDING_KEY), false);
       getterHost.unmount();
-    } finally {
-      if (prevLocal) Object.defineProperty(w, 'localStorage', prevLocal);
     }
   }
   {
@@ -513,7 +518,9 @@ async function main() {
   {
     w.navigator = granted;
     for (const outcome of ['rejected', 'committed']) {
-      let calGate = deferred();
+      let calGate = deferred(), calReceiptChecks = 0;
+      const origCalReceipt = w.CalibrationAdoptionAPI.receipt;
+      w.CalibrationAdoptionAPI.receipt = (...args) => { calReceiptChecks++; return origCalReceipt(...args); };
       routes[PREVIEW] = () => calibrationPreview;
       routes[ADOPT] = call => calGate.promise.then(() => outcome === 'committed' ? calibrationReceipt(call.body) : stale()());
       w.localStorage = storage();
@@ -526,8 +533,13 @@ async function main() {
       calGate.resolve();
       await calSubmit;
       assert.equal(JSON.parse(w.localStorage.data.get(calibrationKey)).phase, outcome);
+      assert.equal(calReceiptChecks, 0, 'CalibrationAdoptionState does not re-validate the already checked receipt on accept/save');
+      if (outcome === 'committed') { assert.equal(w.CalibrationAdoptionState.read().phase, 'committed'); assert.equal(calReceiptChecks, 1, 'CalibrationAdoptionState.read still validates the stored receipt from disk'); }
+      w.CalibrationAdoptionAPI.receipt = origCalReceipt;
 
-      let trialGate = deferred();
+      let trialGate = deferred(), trialReceiptChecks = 0;
+      const origTrialReceipt = w.TrialAdoptionAPI.receipt;
+      w.TrialAdoptionAPI.receipt = (...args) => { trialReceiptChecks++; return origTrialReceipt(...args); };
       routes['POST /api/workbench/v1/trial/scenarios/*/adopt'] = () => trialGate.promise.then(() => outcome === 'committed' ? trialReceipt() : stale()());
       w.localStorage = storage();
       const trialUnmountHost = hooks();
@@ -539,6 +551,9 @@ async function main() {
       trialGate.resolve();
       await trialSubmit;
       assert.equal(JSON.parse(w.localStorage.data.get(w.TrialAdoptionState.KEY)).phase, outcome);
+      assert.equal(trialReceiptChecks, 0, 'TrialAdoptionState does not re-validate the already checked receipt on accept/save');
+      if (outcome === 'committed') { assert.equal(w.TrialAdoptionState.read().phase, 'committed'); assert.equal(trialReceiptChecks, 1, 'TrialAdoptionState.read still validates the stored receipt from disk'); }
+      w.TrialAdoptionAPI.receipt = origTrialReceipt;
     }
 
     let runGate = deferred();
@@ -596,7 +611,7 @@ async function main() {
     assert.equal(crossCandPosts[0].path, '/api/workbench/v1/scheduling/candidates/' + ref(5) + '/adopt');
     assert.equal(crossCandPosts[0].body.request_key, rejectedA.request_key);
     assert.equal(crossCandDialog().props.result.result, 'committed');
-    crossCandDialog().props.onFinish();
+    await crossCandDialog().props.onFinish();
     assert.equal(w.localStorage.data.has(w.RunAdoptionAPI.PENDING_KEY), false);
     crossCandHost.unmount();
   }
@@ -643,19 +658,19 @@ async function main() {
   const remountHost = hooks(), renderRemount = () => remountHost.render(() => w.DashboardSession.useCommand());
   let remounted = renderRemount(); remountHost.flush();
   assert.equal(remounted.saved.phase, 'confirmed'); assert.equal(remounted.storageError.message, '上次操作记录保存不了，不能开始处置。请重新打开页面。');
-  assert.equal(remounted.finish(), true); remounted = renderRemount();
+  assert.equal(await remounted.finish(), true); remounted = renderRemount();
   assert.equal(remounted.saved, null); assert.equal(remounted.storageError, null); assert.equal(w.localStorage.data.has(w.DashboardSession.KEY), false);
   w.localStorage.failSet = null; remountHost.unmount();
   dashboard = await dashboardRun(call => { w.localStorage.failSet = quota; return dashboardReceipt(call); });
   assert.equal(dashboard.storageError.message, '上次操作记录保存不了，不能开始处置。请重新打开页面。'); assert.equal(dashboard.error, null); assert.equal(dashboard.saved.phase, 'confirmed');
-  dashboard.sync(); assert.equal(JSON.parse(w.localStorage.data.get(w.DashboardSession.KEY)).phase, 'confirmed');
-  assert.equal(dashboard.finish(), true); assert.equal(w.localStorage.data.has(w.DashboardSession.KEY), false);
+  await dashboard.sync(); assert.equal(JSON.parse(w.localStorage.data.get(w.DashboardSession.KEY)).phase, 'confirmed');
+  assert.equal(await dashboard.finish(), true); assert.equal(w.localStorage.data.has(w.DashboardSession.KEY), false);
   dashboard = await dashboardRun(stale());
   assert.equal(dashboard.saved.phase, 'rejected'); assert.equal(dashboard.error.message, '来源资料已变化，请刷新后重试。'); assert.equal(dashboard.storageError, null);
   dashboard = await dashboardRun(stale(() => { w.localStorage.failSet = quota; }));
   assert.equal(dashboard.storageError.message, '上次操作记录保存不了，不能开始处置。请重新打开页面。'); assert.equal(dashboard.error.message, '来源资料已变化，请刷新后重试。'); assert.equal(dashboard.saved.phase, 'rejected');
-  dashboard.sync(); assert.equal(JSON.parse(w.localStorage.data.get(w.DashboardSession.KEY)).phase, 'rejected');
-  assert.equal(dashboard.finish(), true); assert.equal(w.localStorage.data.has(w.DashboardSession.KEY), false);
+  await dashboard.sync(); assert.equal(JSON.parse(w.localStorage.data.get(w.DashboardSession.KEY)).phase, 'rejected');
+  assert.equal(await dashboard.finish(), true); assert.equal(w.localStorage.data.has(w.DashboardSession.KEY), false);
   dashboard = await dashboardRun(stale(() => { w.localStorage.failGet = new Error('getItem unavailable'); }), false);
   assert.equal(dashboard.storageError.message, '上次操作记录读不出来，不能开始新的处置。请重新打开页面。'); assert.equal(dashboard.error.message, '来源资料已变化，请刷新后重试。'); assert.equal(dashboard.saved.phase, 'rejected');
   {
@@ -666,27 +681,23 @@ async function main() {
     remountFailGetHost.unmount();
   }
   w.localStorage.failGet = null;
-  dashboard.sync(); assert.equal(JSON.parse(w.localStorage.data.get(w.DashboardSession.KEY)).phase, 'rejected');
-  assert.equal(dashboard.finish(), true); assert.equal(w.localStorage.data.has(w.DashboardSession.KEY), false);
+  await dashboard.sync(); assert.equal(JSON.parse(w.localStorage.data.get(w.DashboardSession.KEY)).phase, 'rejected');
+  assert.equal(await dashboard.finish(), true); assert.equal(w.localStorage.data.has(w.DashboardSession.KEY), false);
   {
-    const backing = storage(), prevLocal = Object.getOwnPropertyDescriptor(w, 'localStorage');
-    let failGetter = false;
-    Object.defineProperty(w, 'localStorage', { configurable: true, get() { if (failGetter) throw new Error('SecurityError'); return backing; }, set() {} });
-    try {
+    const backing = storage(); w.localStorage = backing;
+    {
       const getterHost = hooks(), renderGetter = () => getterHost.render(() => w.DashboardSession.useCommand());
-      routes[ITEM_COMMAND] = stale(() => { failGetter = true; });
+      routes[ITEM_COMMAND] = stale(() => { refuse(backing); });
       renderGetter(); getterHost.flush(); await handle(dashboardItem)(renderGetter());
       const getterSession = renderGetter();
       assert.equal(getterSession.saved.phase, 'rejected');
       assert.equal(getterSession.storageError.message, '上次操作记录读不出来，不能开始新的处置。请重新打开页面。');
-      failGetter = false;
-      getterSession.sync();
+      allow(backing);
+      await getterSession.sync();
       assert.equal(JSON.parse(backing.data.get(w.DashboardSession.KEY)).phase, 'rejected');
-      assert.equal(getterSession.finish(), true);
+      assert.equal(await getterSession.finish(), true);
       assert.equal(backing.data.has(w.DashboardSession.KEY), false);
       getterHost.unmount();
-    } finally {
-      if (prevLocal) Object.defineProperty(w, 'localStorage', prevLocal);
     }
   }
   assert.equal(commandLookups.length, 2);
@@ -765,7 +776,7 @@ async function main() {
   assert.equal(outsourcing.saved, null); assert.equal(outsourcing.error.message, '来源资料已变化，请刷新后重试。'); assert.equal(outsourcing.storageError, null);
   outsourcing = await outsourcingRun(stale(() => { w.localStorage.failRemove = new Error('removeItem unavailable'); }));
   assert.equal(outsourcing.storageError.message, '上次操作记录保存不了，不能开始登记。请重新打开页面。'); assert.equal(outsourcing.error.message, '来源资料已变化，请刷新后重试。'); assert.equal(outsourcing.saved, null);
-  outsourcing.sync(); assert.equal(w.localStorage.data.has(w.OutsourcingSession.KEY), false);
+  await outsourcing.sync(); assert.equal(w.localStorage.data.has(w.OutsourcingSession.KEY), false);
   assert.equal(commandLookups.length, 1); delete w.navigator;
   // Late lookup() null-result or error after another tab replaced request_key in OutsourcingSession must not overwrite notice or error.
   {
@@ -927,7 +938,9 @@ async function main() {
     // Unmounting DashboardSession and OutsourcingSession while command is in flight still saves the terminal outcome to localStorage.
     w.navigator = granted;
     for (const outcome of ['confirmed', 'rejected']) {
-      let dashGate = deferred();
+      let dashGate = deferred(), dashReceiptChecks = 0;
+      const origDashReceipt = w.DashboardContract.receipt;
+      w.DashboardContract.receipt = (...args) => { dashReceiptChecks++; return origDashReceipt(...args); };
       routes[ITEM_COMMAND] = call => dashGate.promise.then(() => outcome === 'confirmed' ? dashboardReceipt(call) : stale()());
       w.localStorage = storage();
       const dashUnmountHost = hooks(), renderDashUnmount = () => dashUnmountHost.render(() => w.DashboardSession.useCommand());
@@ -938,8 +951,13 @@ async function main() {
       dashGate.resolve();
       await dashSubmit;
       assert.equal(JSON.parse(w.localStorage.data.get(w.DashboardSession.KEY)).phase, outcome);
+      assert.equal(dashReceiptChecks, 0, 'DashboardSession does not re-validate the already checked receipt on accept/save');
+      if (outcome === 'confirmed') { assert.equal(w.DashboardSession.read().phase, 'confirmed'); assert.equal(dashReceiptChecks, 1, 'DashboardSession.read still validates the stored receipt from disk'); }
+      w.DashboardContract.receipt = origDashReceipt;
 
-      let outGate = deferred();
+      let outGate = deferred(), outReceiptChecks = 0;
+      const origOutReceipt = w.OutsourcingContract.receipt;
+      w.OutsourcingContract.receipt = (...args) => { outReceiptChecks++; return origOutReceipt(...args); };
       routes[RECEIPT_COMMAND] = () => outGate.promise.then(() => outcome === 'confirmed' ? outsourcingReceipt() : stale()());
       w.localStorage = storage();
       const outUnmountHost = hooks(), renderOutUnmount = () => outUnmountHost.render(() => w.OutsourcingSession.useCommand());
@@ -949,9 +967,24 @@ async function main() {
       outUnmountHost.unmount();
       outGate.resolve();
       await outSubmit;
-      if (outcome === 'confirmed') assert.equal(JSON.parse(w.localStorage.data.get(w.OutsourcingSession.KEY)).phase, 'confirmed');
-      else assert.equal(w.localStorage.data.has(w.OutsourcingSession.KEY), false);
+      assert.equal(outReceiptChecks, 0, 'OutsourcingSession does not re-validate the already checked receipt on accept/save');
+      if (outcome === 'confirmed') {
+        assert.equal(JSON.parse(w.localStorage.data.get(w.OutsourcingSession.KEY)).phase, 'confirmed');
+        assert.equal(w.OutsourcingSession.read().phase, 'confirmed');
+        assert.equal(outReceiptChecks, 1, 'OutsourcingSession.read still validates the stored receipt from disk');
+      } else assert.equal(w.localStorage.data.has(w.OutsourcingSession.KEY), false);
+      w.OutsourcingContract.receipt = origOutReceipt;
     }
+    // HTTP 413 with committed:false is a definite rejection and releases/transitions pending without a lookup.
+    routes[RECEIPT_COMMAND] = () => respond(failure('capacity_exceeded', '提交内容超过容量限制。'), 413);
+    w.localStorage = storage();
+    const out413Host = hooks(), renderOut413 = () => out413Host.render(() => w.OutsourcingSession.useCommand());
+    renderOut413(); out413Host.flush();
+    await renderOut413().submit(checkedPreview);
+    assert.equal(renderOut413().saved, null);
+    assert.equal(renderOut413().error.status, 413);
+    assert.equal(w.localStorage.data.has(w.OutsourcingSession.KEY), false);
+    out413Host.unmount();
     delete w.navigator;
   }
   // APSResourceSession preserves terminal rejected state across APSResourceAPI.create(namespace) remounts when clearPending fails.

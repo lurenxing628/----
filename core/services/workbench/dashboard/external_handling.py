@@ -54,7 +54,7 @@ class DashboardExternalHandling:
     def read(self, summary, receipts):
         refs = list(receipts)
         mappings = read_receipt_mappings(self.repo, refs)
-        stored, _ = read_external_stored(self.repo, receipts)
+        stored = read_external_stored(self.repo, receipts)
         gaps = {row["source_ref"]: row for row in summary["evaluation_gaps"]}
         observations = []
         for ref in refs:
@@ -65,4 +65,4 @@ class DashboardExternalHandling:
                 observations.append((dict(item, item_ref=mapped["item_ref"]), saved, mapped))
         summary.update(handling_supported=True, handling_count=len(stored),
                        closed_count=sum(row["handling"]["status"] == "closed" for row in stored.values()))
-        return bounded(observations), stored, {"mappings": mappings}
+        return bounded(observations)

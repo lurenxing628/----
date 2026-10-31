@@ -14,9 +14,12 @@ BASE = "/api/workbench/v1/entities/material"
 
 
 def _database(client):
+    from core.infrastructure.sqlite_udf import register_schedule_time_sql_functions
+
     conn = sqlite3.connect(client.application.config["DATABASE_PATH"])
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
+    register_schedule_time_sql_functions(conn)
     return conn
 
 
@@ -211,3 +214,101 @@ def test_material_xlsx_export_import_preserves_cr_and_crlf(app_client, monkeypat
     response = confirm(app_client, preview, key="material-cr-import-confirm")
     assert response.status_code == 200, response.get_data(as_text=True)
     assert _detail(app_client, ref)["fields"] == expected
+
+
+def test_padded_existing_material_can_update_delete_and_bulk_delete_by_ref(app_client):
+    from core.services.workbench.material.bulk import WorkbenchMaterialBulkService
+    from tests.workbench.material_file_support import confirm_delete
+
+    with _database(app_client) as conn:
+        conn.executemany(
+            "INSERT INTO Materials(material_id,name,stock_qty) VALUES (?, ?, ?)",
+            [
+                (" MAT1 ", "padded", 7),
+                (" MAT2 ", "padded-bulk", 5),
+                ("MAT1", "plain", 11),
+                ("MAT2", "plain-bulk", 9),
+            ],
+        )
+        conn.commit()
+        refs = dict(
+            conn.execute(
+                "SELECT entity_key, ref FROM WorkbenchEntityRefs WHERE kind='material' AND active=1"
+            ).fetchall()
+        )
+
+    ref_mat1_padded = refs[" MAT1 "]
+    ref_mat1_plain = refs["MAT1"]
+    ref_mat2_padded = refs[" MAT2 "]
+
+    detail = _detail(app_client, ref_mat1_padded)
+    assert detail["business_code"] == " MAT1 " and detail["label"] == "padded"
+    updated = _write(
+        app_client,
+        ref_mat1_padded,
+        "update",
+        detail["write_context"],
+        {"label": "padded-updated", "fields": {"stock_qty": 8}},
+        "padded-mat1-update-00001",
+    )
+    assert updated.status_code == 200 and updated.get_json()["result"] == "committed"
+    fresh = _detail(app_client, ref_mat1_padded)
+    assert fresh["label"] == "padded-updated" and fresh["fields"]["stock_qty"] == 8
+    plain_detail = _detail(app_client, ref_mat1_plain)
+    assert plain_detail["label"] == "plain" and plain_detail["fields"]["stock_qty"] == 11
+
+    deleted = _write(
+        app_client,
+        ref_mat1_padded,
+        "delete",
+        fresh["write_context"],
+        {},
+        "padded-mat1-delete-00001",
+    )
+    assert deleted.status_code == 200 and deleted.get_json()["result"] == "committed"
+    assert app_client.get(BASE + "/" + ref_mat1_padded).status_code == 404
+    assert _detail(app_client, ref_mat1_plain)["fields"]["stock_qty"] == 11
+
+    with _database(app_client) as conn:
+        preview = WorkbenchMaterialBulkService(conn).preview_delete([ref_mat2_padded], scope={})
+        with app_client.application.app_context():
+            from web.routes.workbench.material_actions_context import issue_preview
+
+            issued = issue_preview(preview)
+            assert issued["can_confirm"] is True and issued["rows"][0]["result"] == "delete"
+        outcome = confirm_delete(conn, preview, [ref_mat2_padded], key="padded-mat2-bulk-delete-00001")
+        assert outcome["result"] == "committed" and outcome["data"]["deleted_count"] == 1
+        remaining = dict(conn.execute("SELECT material_id, stock_qty FROM Materials").fetchall())
+        assert remaining == {"MAT1": 11, "MAT2": 9}
+
+
+def test_resource_and_material_input_rejects_nul_character_before_diff_filtering(app_client):
+    from core.errors import ValidationError
+    from core.models.workbench_resource_input import resource_text
+    from core.services.workbench.facts.file_codec import read_resource_file
+    from core.services.workbench.material.file_codec import read_material_file
+
+    with pytest.raises(ValidationError):
+        resource_text("valid\x00nul", "remark", nullable=True)
+
+    # Legal multiline remarks without NUL remain accepted.
+    assert resource_text("line1\r\nline2\tvalue", "remark", nullable=True) == "line1\r\nline2\tvalue"
+
+    with pytest.raises(ValidationError):
+        read_resource_file("operator", file_bytes([("O1", "bad\x00name")], "csv", ("人员编号", "人员姓名")), "csv")
+
+    with pytest.raises(ValidationError):
+        read_material_file(file_bytes([("M1", "bad\x00mat")], "csv", ("物料编号", "物料名称")), "csv")
+
+    saved, _ = _create(app_client, code="M-NUL-1", request_key="api-nul-create-00001")
+    ref = saved["data"]["entity_ref"]
+    detail = _detail(app_client, ref)
+    rejected_update = _write(
+        app_client,
+        ref,
+        "update",
+        detail["write_context"],
+        {"label": "bad\x00label", "fields": {"remark": "keep-me"}},
+        "api-nul-update-00001",
+    )
+    assert rejected_update.status_code == 422

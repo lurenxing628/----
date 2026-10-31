@@ -188,9 +188,8 @@ def _clock_issues(conn) -> List[str]:
     return []
 
 
-def workbench_plan_identity_contract_issues(conn, *, structure=None) -> List[str]:
+def workbench_plan_identity_contract_issues(conn, *, structure: SchemaStructure) -> List[str]:
     """SELECT-only structure and required clock check, not business completeness."""
-    structure = structure if structure is not None else SchemaStructure(conn)
     issues = _structure_issues(structure=structure)
     return issues if issues else _clock_issues(conn)
 

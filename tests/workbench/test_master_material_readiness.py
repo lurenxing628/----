@@ -124,19 +124,22 @@ def test_overview_material_readiness_follows_arrival_day_and_quantity_review(ove
             return tomorrow
 
     monkeypatch.setattr(overview_facts, "date", Tomorrow)
-    response = client.get(BASE + "/entities/material/" + entity["ref"], query_string={
+    stale_day = client.get(BASE + "/entities/material/" + entity["ref"], query_string={
         "scope": json.dumps(SCOPE), "snapshot_ref": result["meta"]["snapshot_ref"], "section": "issues"})
-    assert response.status_code == 200, response.get_json()
-    assert response.get_json()["data"]["counts"]["issues"] == 0
-    # The original scope remains valid while each read follows current facts.
+    assert stale_day.status_code == 409 and stale_day.get_json()["error"]["code"] == "snapshot_stale"
+    result, entity = _overview(client)
+    assert entity["status"] == "checked" and entity["issue_count"] == 0
+    assert _section(client, result, entity, "issues") == []
     current = client.get(BASE, query_string={"scope": json.dumps(SCOPE), "snapshot_ref": result["meta"]["snapshot_ref"]})
     assert current.status_code == 200, current.get_json()
     download = client.get(BASE + "/export", query_string={"scope": json.dumps(SCOPE), "snapshot_ref": result["meta"]["snapshot_ref"]})
     assert download.status_code == 200 and int(download.headers["X-Workbench-Row-Count"]) == current.get_json()["data"]["page"]["total"]
     changed_scope = client.get(BASE, query_string={"scope": json.dumps({**SCOPE, "query": "other"}), "snapshot_ref": result["meta"]["snapshot_ref"]})
     assert changed_scope.status_code == 409 and changed_scope.get_json()["error"]["code"] == "snapshot_stale"
-    _, entity = _overview(client)
-    assert entity["status"] == "checked" and entity["issue_count"] == 0
+    client.batch_conn.execute("UPDATE Materials SET remark='updated' WHERE material_id='MAT1'")
+    client.batch_conn.commit()
+    stale_material = client.get(BASE, query_string={"scope": json.dumps(SCOPE), "snapshot_ref": result["meta"]["snapshot_ref"]})
+    assert stale_material.status_code == 409 and stale_material.get_json()["error"]["code"] == "snapshot_stale"
 
     response = post(client, "update", {"fields": {"quantity": 10}}, key="master-quantity-update-0001")
     assert response.status_code == 200, response.get_json()

@@ -56,22 +56,36 @@ def _read(export=False, operation_ref=None):
     scope, topic, page, token = arguments(export, operation_ref is not None)
     if operation_ref is not None:
         reference(operation_ref)
+    format_name = request.args.get("format", "csv") if export else None
+    if export and format_name not in ("csv", "xlsx"):
+        raise WorkbenchCommandRejected("invalid_input", "只能导出 CSV 或 XLSX，没有开始下载。请重新选择格式。", 400)
     reader = WorkbenchReportFacts(g.db, current_app.logger)
     as_of, binding = read_snapshot_time(token)
+    bound = {}
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():
-            facts = reader.read(scope)
-            snapshot = bind_read_snapshot(facts["scope"].scope(), facts["fingerprint"], token, as_of=as_of, binding=binding)
+            facts = reader.read(
+                scope,
+                bind_snapshot=lambda resolved_scope, fingerprint: bound.setdefault(
+                    "snapshot",
+                    bind_read_snapshot(resolved_scope, fingerprint, token, as_of=as_of, binding=binding),
+                ),
+                include_choices=not export and operation_ref is None,
+                operation_ref=operation_ref,
+            )
+            snapshot = bound["snapshot"]
             if operation_ref is not None:
                 data = report_detail(facts, snapshot, operation_ref)
             else:
-                data, rows, _ = report_workspace(facts, snapshot, topic, page)
+                data, rows, _ = report_workspace(
+                    facts, snapshot, topic, page, mode=format_name or "workspace"
+                )
                 data["columns"] = public_columns(topic)
                 if not export:
                     data["exports"] = {"url": "/api/workbench/v1/analytics/export", "formats": ["csv", "xlsx"], "scope": "all_filtered_rows"}
     if export:
         # 读事务和读额度都已释放：文件只用已读出的结果生成，编码再久也不挡别人提交写入。
-        return download_response(export_table(reader.engine, data, rows, snapshot, request.args.get("format", "csv")), snapshot)
+        return download_response(export_table(reader.engine, data, rows, snapshot, format_name), snapshot)
     return query_success(data, snapshot, byte_limit=8 * 1024 * 1024,
         too_large_message="这次要读的报表数据太多，系统没有给出不完整结果。请缩小筛选范围后点「刷新」。")
 

@@ -10,6 +10,10 @@ from .base_repo import BaseRepository
 class PartRepository(BaseRepository):
     """零件仓库（Parts）。"""
 
+    def exists(self, part_no: str) -> bool:
+        """检查指定图号是否已存在。"""
+        return self.fetchone("SELECT 1 FROM Parts WHERE part_no = ?", (part_no,)) is not None
+
     def create(self, part: Part) -> None:
         self.execute(
             "INSERT INTO Parts (part_no, part_name, route_raw, route_parsed, remark) VALUES (?, ?, ?, ?, ?)",

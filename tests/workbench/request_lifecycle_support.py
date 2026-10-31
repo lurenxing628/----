@@ -43,9 +43,12 @@ class LifecycleCase:
     def _bind(self):
         @self.app.before_request
         def open_db():
+            from core.infrastructure.sqlite_udf import register_schedule_time_sql_functions
+
             conn = sqlite3.connect(self.path, timeout=10, factory=self.connection_factory)
             track_workbench_request_connection(conn)
             conn.row_factory = sqlite3.Row
+            register_schedule_time_sql_functions(conn)
             conn.set_trace_callback(self.statements.append)
             g.db = conn
             self.opened.append(request.path)

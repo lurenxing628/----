@@ -43,31 +43,96 @@ class DecisionChangeovers:
             self._metrics[key] = values
         return self._metrics[key]
 
-    def _events(self, key, side):
-        source = self.source
+    def _raw_events(self, key, side, *, machine_ref=None):
         lookup = {task["row_ref"]: task for task in self.source.analysis_tasks(key)}
-        intervals = self.source.task_intervals(key)
-        range_start = local_time(source.scope["range_start"])
         result = []
         for value in self.projection(key)["events"]:
-            previous, current = (lookup[value[name + "_row_ref"]] for name in ("previous", "next"))
-            row = {**value, "event_ref": side + ":" + value["previous_row_ref"] + ":" + value["next_row_ref"],
-                   "event_side": side, "predecessor_outside_window": intervals[value["previous_row_ref"]][0] < range_start,
-                   "data_gaps": [] if value["state"] == "complete" else [{"code": "arrangement_conflict", "message": "此设备的实际安排存在重叠。"}],
-                   **{name: {"operation_ref": task["operation_ref"], "batch_ref": task["batch_ref"], "batch_label": task["batch_label"],
-                             "process_label": task["process_label"], "type_ref": task.get("process_type_ref"), "type_label": task.get("process_type_label")}
-                      for name, task in (("previous", previous), ("next", current))},
-                   "drill": {name: drill_target(source, tasks=[task], batch_ref=task["batch_ref"], operation_ref=task["operation_ref"], before=side == "reference")
-                             for name, task in (("previous", previous), ("next", current))}}
-            for drill in row["drill"].values():
-                if drill is not None:
-                    drill.update(resource_ref=value["machine_ref"], resource_kind="machine", resource_view=source.resource_view,
-                                 comparison_tab="changeovers")
-            result.append(row)
+            if machine_ref is not None and value["machine_ref"] != machine_ref:
+                continue
+            previous, current = lookup[value["previous_row_ref"]], lookup[value["next_row_ref"]]
+            result.append({
+                "event_ref": side + ":" + value["previous_row_ref"] + ":" + value["next_row_ref"],
+                "event_side": side,
+                "machine_ref": value["machine_ref"],
+                "machine_label": value["machine_label"],
+                "next_start": value["next_start"],
+                "next_batch_id": current["batch_label"],
+                "_value": value,
+                "_previous": previous,
+                "_next": current,
+                "_key": key,
+            })
         return result
 
-    def impacts(self):
-        return self._events("reference", "reference") + self._events(self.source.selected_ref, "selected")
+    def _materialize_event(self, raw_event, *, range_start, window_bounds):
+        source = self.source
+        value = raw_event["_value"]
+        side = raw_event["event_side"]
+        key = raw_event["_key"]
+        previous, current = raw_event["_previous"], raw_event["_next"]
+        intervals = source.task_intervals(key)
+        row = {
+            **value,
+            "event_ref": raw_event["event_ref"],
+            "event_side": side,
+            "predecessor_outside_window": intervals[value["previous_row_ref"]][0] < range_start,
+            "data_gaps": [] if value["state"] == "complete" else [{"code": "arrangement_conflict", "message": "此设备的实际安排存在重叠。"}],
+            **{
+                name: {
+                    "operation_ref": task["operation_ref"],
+                    "batch_ref": task["batch_ref"],
+                    "batch_label": task["batch_label"],
+                    "process_label": task["process_label"],
+                    "type_ref": task.get("process_type_ref"),
+                    "type_label": task.get("process_type_label"),
+                }
+                for name, task in (("previous", previous), ("next", current))
+            },
+            "drill": {
+                name: drill_target(
+                    source,
+                    tasks=[task],
+                    batch_ref=task["batch_ref"],
+                    operation_ref=task["operation_ref"],
+                    before=side == "reference",
+                    window_bounds=window_bounds,
+                    task_intervals=intervals,
+                )
+                for name, task in (("previous", previous), ("next", current))
+            },
+        }
+        for drill in row["drill"].values():
+            if drill is not None:
+                drill.update(
+                    resource_ref=value["machine_ref"],
+                    resource_kind="machine",
+                    resource_view=source.resource_view,
+                    comparison_tab="changeovers",
+                )
+        return row
+
+    def paged_impacts(self, filters, *, offset=0, size=20, all_rows=False):
+        side_filter = filters["event_side"]
+        machine_ref = filters["machine_ref"]
+        raw_rows = []
+        if side_filter in ("all", "reference"):
+            raw_rows.extend(self._raw_events("reference", "reference", machine_ref=machine_ref))
+        if side_filter in ("all", "selected"):
+            raw_rows.extend(self._raw_events(self.source.selected_ref, "selected", machine_ref=machine_ref))
+        sort_key = filters["sort"]
+        ordered, unknown = [], []
+        for row in sorted(raw_rows, key=lambda item: item["event_ref"]):
+            (unknown if row[sort_key] is None else ordered).append(row)
+        ordered.sort(key=lambda item: item[sort_key], reverse=filters["order"] == "desc")
+        sorted_rows = ordered + unknown
+        total = len(sorted_rows)
+        page_rows = sorted_rows if all_rows else sorted_rows[offset:offset + size]
+        if not page_rows:
+            return [], total
+        range_start = local_time(self.source.scope["range_start"])
+        window_bounds = (range_start, local_time(self.source.scope["range_end"]))
+        items = [self._materialize_event(row, range_start=range_start, window_bounds=window_bounds) for row in page_rows]
+        return items, total
 
     def public_summary(self):
         before, after = (self.metrics(key) for key in ("reference", self.source.selected_ref))

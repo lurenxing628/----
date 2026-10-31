@@ -1,6 +1,5 @@
 """Optional multiple daily work periods without reinterpreting legacy rows."""
 
-from .schema_probe import cached_structure
 from .schema_structure import SchemaStructure
 from .workbench_metadata_schema import canonical_sql
 
@@ -24,8 +23,7 @@ def objects():
     }
 
 
-def contract_issues(conn, *, structure=None):
-    structure = structure or cached_structure(conn) or SchemaStructure(conn)
+def contract_issues(conn, *, structure: SchemaStructure):
     actual = structure.sql
     issues = [("missing_calendar_periods:" if name not in actual else "invalid_calendar_periods:") + name
               for name, sql in objects().items()

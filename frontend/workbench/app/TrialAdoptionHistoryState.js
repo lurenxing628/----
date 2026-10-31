@@ -1,9 +1,10 @@
 (function () {
   'use strict';
   const KEY = 'trialAdoptionHistory', C = window.TrialContract;
+  const defaults = () => ({ tab: 'delivery', status: 'all', page: 1, size: 20 });
   function restore(scenarioRef) {
     const saved = history.state && history.state[KEY];
-    if (!saved || saved.scenario_ref !== scenarioRef) return { tab: 'delivery', status: 'all', page: 1, size: 20 };
+    if (!saved || saved.scenario_ref !== scenarioRef) return defaults();
     C.check(['delivery', 'capacity', 'preparation', 'history', 'adoptions', 'issues', 'tasks', 'unplanned'].includes(saved.tab)
       && window.TrialAdoptionHistoryAPI.states.includes(saved.status) && Number.isSafeInteger(saved.page) && saved.page > 0
       && [10, 20, 50].includes(saved.size) && (!saved.snapshot_ref || /^[A-Za-z0-9_-]{32}$/.test(saved.snapshot_ref)),
@@ -12,7 +13,9 @@
   }
   function remember(scenarioRef, patch) {
     if (!C.ref(scenarioRef)) return;
-    const saved = { ...restore(scenarioRef), ...patch, scenario_ref: scenarioRef };
+    let base;
+    try { base = restore(scenarioRef); } catch (_) { base = defaults(); }
+    const saved = { ...base, ...patch, scenario_ref: scenarioRef };
     history.replaceState({ ...history.state, [KEY]: saved }, '', location.href);
   }
   function openPlan(scenarioRef, planRef, navigate) {

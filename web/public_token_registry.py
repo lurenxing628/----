@@ -199,10 +199,21 @@ def resolve_public_token(scope: str, token: Any, *, message: str, field: str) ->
         return entry["value"]
 
 
+def drop_public_token(scope: str, token: str) -> None:
+    """Release a token whose owner discarded its binding.
+
+    The registry may already have expired or evicted it. next_expiry stays a valid lower bound,
+    as after the expiry drop in resolve_public_token.
+    """
+    with _LOCK:
+        _drop_token(_scope_state(scope), token)
+
+
 def issue_public_token_with_expiry(scope: str, value: Any, *, ttl_seconds: int,
                                    key: Any, group: Any = None) -> Tuple[str, float]:
     """Return the actual expiry, including when idempotent issuance reuses a token."""
     return PublicTokenIssuer(scope, group=group, ttl_seconds=ttl_seconds).issue_with_expiry(value, key=key)
 
 
-__all__ = ["PublicTokenIssuer", "issue_public_token", "resolve_public_token", "issue_public_token_with_expiry"]
+__all__ = ["PublicTokenIssuer", "issue_public_token", "resolve_public_token", "drop_public_token",
+           "issue_public_token_with_expiry"]

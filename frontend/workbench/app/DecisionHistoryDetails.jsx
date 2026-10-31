@@ -45,7 +45,10 @@
   const number = (value, unit = '', precision = 0) => value === null ? '未知' : A.numberText(value, unit, precision);
   const localTime = value => value === null ? '未记录' : F.dateTime(value, { seconds: true, fractions: true });
   function Reason({ value }) { return value ? <p className="dh-note">{value.message}</p> : null; }
-  function Raw({ value }) { return <pre className="dh-saved-value">{JSON.stringify(value, null, 2)}</pre>; }
+  function Raw({ value }) {
+    const text = React.useMemo(() => JSON.stringify(value, null, 2), [value]);
+    return <pre className="dh-saved-value">{text}</pre>;
+  }
   function SavedSide({ value, field }) {
     const saved = value.value;
     const preview = saved === null ? '空值' : saved === false ? '否' : saved === true ? '是'
@@ -121,13 +124,18 @@
     </div>;
   }
   function Sources({ data, result }) {
+    const [open, setOpen] = React.useState(false);
     const entry = data.selection.entry, reference = data.selection.reference;
-    return <details className="dh-source-details"><summary>数据来源</summary><div>历次排产 {data.totals.run} 次 · 已采用方案 {data.totals.official} 次</div><div>刷新时间：{F.dateTime(result.meta.as_of, { seconds: true, fractions: true })}</div><window.WorkbenchReference value={result.meta.snapshot_ref} label="历史快照" />
-      {entry && <><dl className="dh-detail-meta"><div><dt>原正式基准</dt><dd>{entry.baseline.version === null ? '版本未记录' : entry.baseline.version === 0 ? '当时无正式计划' : '第 ' + entry.baseline.version + ' 版'}</dd></div>
-        <div><dt>应排需求</dt><dd>{number(entry.scope.demand_hours, '小时', 3)}<Reason value={entry.scope.reason} /></dd></div><div><dt>时间来源</dt><dd>{timeBasisLabels[entry.time_basis] || plain(entry.time_basis)}</dd></div><div><dt>保存来源</dt><dd>{savedSourceLabels[entry.source.kind]}</dd></div></dl>
-        <Raw value={{ identity: entry.identity, times: entry.times, baseline: entry.baseline, source: entry.source, scope: entry.scope, reading_context: entry.reading_context, metrics: entry.metrics, issues: entry.issues }} /></>}
-      {reference && <><h4>对照记录来源</h4><Raw value={{ identity: reference.identity, times: reference.times, source: reference.source, scope: reference.scope, reading_context: reference.reading_context, metrics: reference.metrics }} /></>}
-      {entry && reference && <><h4>条件与指标依据</h4><Raw value={data.comparison} /></>}
+    const entrySource = React.useMemo(() => entry ? { identity: entry.identity, times: entry.times, baseline: entry.baseline, source: entry.source, scope: entry.scope, reading_context: entry.reading_context, metrics: entry.metrics, issues: entry.issues } : null, [entry]);
+    const referenceSource = React.useMemo(() => reference ? { identity: reference.identity, times: reference.times, source: reference.source, scope: reference.scope, reading_context: reference.reading_context, metrics: reference.metrics } : null, [reference]);
+    return <details className="dh-source-details" open={open} onToggle={event => setOpen(event.currentTarget.open)}><summary>数据来源</summary><div>历次排产 {data.totals.run} 次 · 已采用方案 {data.totals.official} 次</div><div>刷新时间：{F.dateTime(result.meta.as_of, { seconds: true, fractions: true })}</div><window.WorkbenchReference value={result.meta.snapshot_ref} label="历史快照" />
+      {entry && <dl className="dh-detail-meta"><div><dt>原正式基准</dt><dd>{entry.baseline.version === null ? '版本未记录' : entry.baseline.version === 0 ? '当时无正式计划' : '第 ' + entry.baseline.version + ' 版'}</dd></div>
+        <div><dt>应排需求</dt><dd>{number(entry.scope.demand_hours, '小时', 3)}<Reason value={entry.scope.reason} /></dd></div><div><dt>时间来源</dt><dd>{timeBasisLabels[entry.time_basis] || plain(entry.time_basis)}</dd></div><div><dt>保存来源</dt><dd>{savedSourceLabels[entry.source.kind]}</dd></div></dl>}
+      {open && <div className="dh-source-grid">
+        {entrySource && <Raw value={entrySource} />}
+        {referenceSource && <><h4>对照记录来源</h4><Raw value={referenceSource} /></>}
+        {entry && reference && <><h4>条件与指标依据</h4><Raw value={data.comparison} /></>}
+      </div>}
     </details>;
   }
   function Details({ data, onQuery, onOpen, busy, onEndComparison, conditionsOpen, onConditionsToggle }) {

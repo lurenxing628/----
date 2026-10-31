@@ -2,7 +2,7 @@
 
 import re
 from datetime import datetime
-from typing import NoReturn
+from typing import Dict, NoReturn, Optional
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.shared.strict_parse import ILLEGAL_XML_CHARS_RE, is_exact_non_negative_number
@@ -27,13 +27,18 @@ def public_ref(value: object) -> str:
     return value
 
 
-def factory_time(value: object) -> datetime:
+def factory_time(value: object, *, parsed_times: Optional[Dict[str, datetime]] = None) -> datetime:
+    if parsed_times is not None and type(value) is str and value in parsed_times:
+        return parsed_times[value]
     if not isinstance(value, str) or _FACTORY_TIME_RE.fullmatch(value) is None:
         reject("实际时间格式不对，请按 2026-09-13 08:30:00 这样填写。")
     try:
-        return datetime.strptime(value, "%Y-%m-%dT%H:%M:%S")
+        parsed = datetime.strptime(value, "%Y-%m-%dT%H:%M:%S")
     except ValueError:
         reject("实际时间不是有效日期。")
+    if parsed_times is not None:
+        parsed_times[value] = parsed
+    return parsed
 
 
 def _validate_quantity(value):
@@ -46,10 +51,10 @@ def _validate_hours(value):
         reject("有效加工小时请填 0 或正数；不填就留空。")
 
 
-def _validate_field(key, value):
+def _validate_field(key, value, *, parsed_times: Optional[Dict[str, datetime]] = None):
     if key in ("actual_start", "actual_end"):
         if value is not None:
-            factory_time(value)
+            factory_time(value, parsed_times=parsed_times)
     elif key == "completed_quantity":
         if value is not None:
             _validate_quantity(value)
@@ -82,7 +87,7 @@ def _validate_revision(result):
         reject("没有填写要补齐或更正的内容。")
 
 
-def normalize_report_input(action, payload):
+def normalize_report_input(action, payload, *, parsed_times: Optional[Dict[str, datetime]] = None):
     if action not in ("create", "supplement", "correct") or type(payload) is not dict:
         reject("报工动作或输入结构无效。", status=400)
     extra = {"declared_operator"}
@@ -91,7 +96,7 @@ def normalize_report_input(action, payload):
         reject("报工内容含有不支持的项，这次没有保存。请刷新页面后重试。", status=400)
     result = dict(payload)
     for key, value in result.items():
-        _validate_field(key, value)
+        _validate_field(key, value, parsed_times=parsed_times)
     if action == "create":
         _validate_create(result)
     else:
@@ -116,10 +121,14 @@ def normalize_report_void_input(report_ref, payload):
     return result
 
 
-def validate_actual_values(values, now):
+def validate_actual_values(values, now, *, parsed_times: Optional[Dict[str, datetime]] = None):
     if not isinstance(now, datetime) or now.tzinfo is not None:
         raise ValueError("Ledger clock must return naive factory-local datetime.")
-    times = {key: factory_time(values[key]) for key in ("actual_start", "actual_end") if values[key] is not None}
+    times = {
+        key: factory_time(values[key], parsed_times=parsed_times)
+        for key in ("actual_start", "actual_end")
+        if values[key] is not None
+    }
     if any(value > now for value in times.values()):
         reject("实际时间不能晚于当前时间。")
     if len(times) == 2:

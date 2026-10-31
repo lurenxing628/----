@@ -6,10 +6,6 @@ from typing import Any, Dict, NoReturn, Optional
 from core.shared.strict_json import load_strict_json
 
 
-class NonFiniteSummaryNumber(ValueError):
-    """排产摘要里包含 JSON 不支持的非有限数字。"""
-
-
 @dataclass(frozen=True)
 class ResultSummaryParseResult:
     payload: Optional[Dict[str, Any]]
@@ -40,4 +36,4 @@ def parse_result_summary_payload(raw_summary: Any) -> ResultSummaryParseResult:
     return ResultSummaryParseResult(parsed, False, "json")
 
 
-__all__ = ["NonFiniteSummaryNumber", "ResultSummaryParseResult", "parse_result_summary_payload"]
+__all__ = ["ResultSummaryParseResult", "parse_result_summary_payload"]

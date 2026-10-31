@@ -80,10 +80,8 @@ def test_due_exclusive_consistency() -> None:
         algo_mode="greedy",
         objective_name="min_overdue",
         time_budget_seconds=5,
-        best_score=None,
+        best_score=(0.0,),
         best_metrics=metrics,
-        attempts=[],
-        improvement_trace=[],
         frozen_op_ids=set(),
         scheduled_op_ids={1},
         freeze_meta={
@@ -93,6 +91,7 @@ def test_due_exclusive_consistency() -> None:
             "freeze_applied": False,
             "freeze_disabled_reason": "config_disabled",
         },
+        missing_internal_resource_op_ids=set(),
         downtime_meta={},
         simulate=False,
         t0=time.time(),
@@ -152,6 +151,73 @@ def test_due_exclusive_max_due_sentinel_end_to_end_not_overdue() -> None:
     assert scheduled == [], f"9999-12-31 哨兵交期不应进已排程逾期桶，实际={scheduled}"
     assert unscheduled == [], f"9999-12-31 哨兵交期不应进未排程逾期桶，实际={unscheduled}"
     assert invalid_time == [], f"9999-12-31 是合法哨兵交期，不应进异常桶，实际={invalid_time}"
+
+    from unittest.mock import patch
+
+    from core.models.schedule_config_runtime_fields import default_snapshot_values
+    from core.models.schedule_config_runtime_snapshot import snapshot_from_values
+    from core.services.scheduler.run.optimizer import neighborhood_move_support
+    from core.services.scheduler.run.optimizer.search_budget import SearchBudget
+    from core.services.scheduler.run.schedule_graph_report import ScheduleGraphDispatchPreparation
+    from core.services.scheduler.run.schedule_shared_optimizer import optimize_shared_schedule
+    from tests._support.optimizer_graph_ready_benchmark import (
+        START_DT,
+        ContinuousCalendar,
+        graph_ready_benchmark_batches,
+        graph_ready_benchmark_context,
+        graph_ready_benchmark_operations,
+    )
+
+    graph_ops = graph_ready_benchmark_operations()
+    graph_batches = graph_ready_benchmark_batches()
+    for b in graph_batches.values():
+        b.due_date = "9999-12-31"
+    graph_context = graph_ready_benchmark_context()
+    improve_cfg = snapshot_from_values(
+        dict(
+            default_snapshot_values(),
+            algo_mode="improve",
+            graph_analysis_mode="on",
+            objective="min_overdue",
+            time_budget_seconds=1,
+            freeze_window_enabled="no",
+            auto_assign_enabled="no",
+        )
+    )
+    with patch.object(
+        neighborhood_move_support,
+        "prepare_batch_due_dates",
+        wraps=neighborhood_move_support.prepare_batch_due_dates,
+    ) as prepare_due_spy, patch.object(
+        neighborhood_move_support,
+        "batch_due_date",
+        wraps=neighborhood_move_support.batch_due_date,
+    ) as batch_due_spy:
+        shared = optimize_shared_schedule(
+            calendar_service=ContinuousCalendar(),
+            cfg=improve_cfg,
+            algo_ops_to_schedule=graph_ops,
+            batches=graph_batches,
+            start_dt=START_DT,
+            end_date=None,
+            downtime_map={},
+            seed_results=[],
+            resource_pool=None,
+            version=0,
+            readiness_gate_enabled=False,
+            graph_prepare=lambda: ScheduleGraphDispatchPreparation(None, None, graph_context),
+            search_budget=SearchBudget(
+                clock=lambda: 0.0, started_at=0.0, deadline=1.0, assigned_seconds=1.0,
+            ),
+        )
+    assert len(shared.target_objectives) == 3
+    assert prepare_due_spy.call_count == 1
+    assert batch_due_spy.call_count == 0
+    assert shared.process_facts["feature_preparation_calls"] == 1
+    primary = shared.target_objectives[0]
+    best_candidate = shared.archive.materialize(shared.archive.best_by_objective[primary])
+    assert best_candidate["metrics"].overdue_count == 0
+    assert best_candidate["metrics"].total_tardiness_hours == 0.0
 
 
 def test_prepared_due_sources_keep_order_and_standalone_uses_current_inputs() -> None:

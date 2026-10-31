@@ -2,7 +2,6 @@
 
 from collections import defaultdict
 from datetime import timedelta
-from itertools import chain
 from typing import Any, Dict
 
 from core.models.workbench_run_candidate import local_time
@@ -45,6 +44,17 @@ def batch_impacts(source):
         expected_by_batch[batch_ref].add(op_ref)
     result = []
     available = source.result_available(source.selected_ref)
+    window_bounds = (local_time(source.scope["range_start"]), local_time(source.scope["range_end"]))
+    selected_intervals = source.task_intervals(source.selected_ref) if available else {}
+    reference_intervals = source.task_intervals("reference")
+    selected_batch_bounds = {
+        ref: _task_bounds(rows, selected_intervals)
+        for ref, rows in selected_by_batch.items()
+    }
+    reference_batch_bounds = {
+        ref: _task_bounds(rows, reference_intervals)
+        for ref, rows in reference_by_batch.items()
+    }
     for ref in source.scope["batch_refs"]:
         previous, current = old[ref], new[ref]
         labels = {key: current[key] for key in ("batch_ref", "batch_id", "part_no", "part_label", "priority", "quantity", "due_date", "due_state", "due_issue")}
@@ -64,8 +74,10 @@ def batch_impacts(source):
                        "operation_changes_state": "unavailable" if not changes or unknown == len(changes) else "partial" if unknown else "complete",
                        "unplanned_operation_refs": sorted(expected - scheduled - source.deferred_refs) if available else None,
                        "deferred_operation_refs": sorted(expected & source.deferred_refs) if available else None,
-                       "drill": {"selected": drill_target(source, tasks=selected_by_batch[ref], batch_ref=ref) if available else None,
-                                 "reference": drill_target(source, tasks=reference_by_batch[ref], batch_ref=ref, before=True)}})
+                       "drill": {"selected": drill_target(source, tasks=selected_by_batch[ref], batch_ref=ref,
+                                                          window_bounds=window_bounds, task_bounds=selected_batch_bounds.get(ref)) if available else None,
+                                 "reference": drill_target(source, tasks=reference_by_batch[ref], batch_ref=ref, before=True,
+                                                           window_bounds=window_bounds, task_bounds=reference_batch_bounds.get(ref))}})
     return result, batch_impact_summary(source, before=before, after=after)
 
 
@@ -95,10 +107,8 @@ def arrangement_view(rows, *, display=True):
     if not display and len(rows) == 1:
         return rows[0]
     if display:
-        fields = ("row_ref", "start", "end", "machine", "operator", "supplier", "source", "locked", "data_gaps")
-        segments = [{**{key: row.get(key) for key in fields}, **{key: row[key] for key in ("event_kind", "occupies_resources") if key in row}} for row in rows]
-        for segment, row in zip(segments, rows):
-            segment["interval_comparable"] = row.get("interval_comparable", True)
+        fields = ("row_ref", "start", "end", "machine", "operator", "supplier", "source", "locked", "data_gaps", "interval_comparable")
+        segments = [{**{key: row[key] for key in fields}, **{key: row[key] for key in ("event_kind", "occupies_resources") if key in row}} for row in rows]
         if len(segments) == 1:
             return segments[0]
     result: Dict[str, Any] = {"row_ref": None, "start": None, "end": None, "machine": None, "operator": None, "supplier": None, "source": None, "locked": None}
@@ -132,10 +142,10 @@ def operation_delta(before, after, *, before_status=None, after_status=None,
             fields.extend(key for key in ("start", "end", "source") if side.get(key) is not None)
             fields.extend(key for key in ("machine", "operator", "supplier") if (side.get(key) or {}).get("ref") is not None)
         return {**delta, "change_kinds": kinds, "changed_fields": fields}
-    old_interval = reference_task_intervals[before["row_ref"]] if before.get("row_ref") is not None else None
-    new_interval = task_intervals[after["row_ref"]] if after.get("row_ref") is not None else None
+    old_interval = reference_task_intervals[before["row_ref"]] if before["row_ref"] is not None else None
+    new_interval = task_intervals[after["row_ref"]] if after["row_ref"] is not None else None
     for index, field in enumerate(("start", "end")):
-        if before.get("interval_comparable", True) and after.get("interval_comparable", True) and before[field] is not None and after[field] is not None:
+        if before[field] is not None and after[field] is not None and before["interval_comparable"] and after["interval_comparable"]:
             old_time = old_interval[index] if old_interval is not None else None
             new_time = new_interval[index] if new_interval is not None else None
             if old_time is not None and new_time is not None:
@@ -201,76 +211,132 @@ def iter_operation_comparisons(operation_refs, reference_available, *, selected_
         yield ref, {"before": before, "after": after, "before_state": previous, "after_state": current, **delta}
 
 
-def operation_impacts(source):
+def operation_impacts(source, operation_refs=None):
+    refs = source.scope["operation_refs"] if operation_refs is None else list(operation_refs)
+    if not refs:
+        return []
     old, new = source.analysis_groups("reference"), source.analysis_groups(source.selected_ref)
     comparisons = source.operation_comparisons
-    reasons = {row["operation_ref"]: row["reason"] for row in unplanned_projection(source.disposition, source.analysis_tasks(source.selected_ref), source.facts)}
-    reference_reasons = ({row["operation_ref"]: row["reason"] for row in unplanned_projection(source.disposition, source.analysis_tasks("reference"), source.facts)}
-                        if source.comparison_mode == "candidates" else {})
+    need_after_reasons = any(comparisons[ref]["after_state"]["status"] in ("deferred", "missing") for ref in refs)
+    need_before_reasons = source.comparison_mode == "candidates" and any(
+        comparisons[ref]["before_state"]["status"] in ("deferred", "missing") for ref in refs
+    )
+    reasons = (
+        {row["operation_ref"]: row["reason"] for row in unplanned_projection(source.disposition, source.analysis_tasks(source.selected_ref), source.facts)}
+        if need_after_reasons else {}
+    )
+    reference_reasons = (
+        {row["operation_ref"]: row["reason"] for row in unplanned_projection(source.disposition, source.analysis_tasks("reference"), source.facts)}
+        if need_before_reasons else {}
+    )
     result = []
-    for ref in source.scope["operation_refs"]:
+    available = source.result_available(source.selected_ref)
+    window_bounds = (local_time(source.scope["range_start"]), local_time(source.scope["range_end"]))
+    selected_intervals = source.task_intervals(source.selected_ref) if available else {}
+    reference_intervals = source.task_intervals("reference")
+    for ref in refs:
         labels, operation = operation_labels(source.facts, ref)
-        delta = comparisons[ref]
+        delta = dict(
+            comparisons[ref],
+            before_state=dict(comparisons[ref]["before_state"]),
+            after_state=dict(comparisons[ref]["after_state"]),
+        )
         for side, saved in (("after", reasons), ("before", reference_reasons)):
             if delta[side + "_state"]["status"] in ("deferred", "missing") and ref in saved:
                 delta[side + "_state"]["reason"] = saved[ref]
         before, after = delta["before"], delta["after"]
         execution = source.facts.execution[ref]
         disposition = source.disposition[ref]
-        constraints = {"protected_at_admission": disposition.get("status") == "protected",
+        constraints = {"protected_at_admission": disposition["status"] == "protected",
                        "selected_locked": after["locked"] if after else None, "reference_locked": before["locked"] if before else None,
                        "lock_basis": "saved_arrangement_marker", "protection_basis": "admission_execution_and_dispositions",
                        **{key: execution.get(key) for key in ("execution_state", "known_completed_quantity", "remaining_quantity",
-                           "data_quality", "first_actual_start", "confirmed_finish")}, "reasons": disposition.get("issues", [])}
+                           "data_quality", "first_actual_start", "confirmed_finish")}, "reasons": [dict(item) for item in disposition["issues"]]}
         result.append({**{key: labels[key] for key in ("operation_ref", "batch_ref", "batch_label", "part_label", "sequence", "process_label", "piece_id", "quantity")},
                        "batch_id": labels["batch_label"], **delta,
                        "effort": archived_standard_effort(operation, execution),
                        "runtime_effort": {"before": source.preparation.compact("reference", ref), "after": source.preparation.compact(source.selected_ref, ref)},
                        "constraints": constraints, "data_gaps": labels["data_gaps"],
-                       "drill": {"selected": drill_target(source, tasks=new[ref], batch_ref=labels["batch_ref"], operation_ref=ref) if source.result_available(source.selected_ref) else None,
-                                 "reference": drill_target(source, tasks=old[ref], batch_ref=labels["batch_ref"], operation_ref=ref, before=True)}})
+                       "drill": {"selected": drill_target(source, tasks=new[ref], batch_ref=labels["batch_ref"], operation_ref=ref,
+                                                          window_bounds=window_bounds, task_intervals=selected_intervals) if available else None,
+                                 "reference": drill_target(source, tasks=old[ref], batch_ref=labels["batch_ref"], operation_ref=ref, before=True,
+                                                           window_bounds=window_bounds, task_intervals=reference_intervals)}})
     return result
 
 
-def drill_target(source, *, tasks, batch_ref, operation_ref=None, before=False, window=None):
+def _task_bounds(tasks, task_intervals):
+    intervals = []
+    for row in tasks:
+        if row["start"] is None or row["end"] is None:
+            continue
+        span = task_intervals.get(row["row_ref"]) if task_intervals is not None else None
+        intervals.append(span if span is not None else (local_time(row["start"]), local_time(row["end"])))
+    if not intervals:
+        return None
+    low, high = min(pair[0] for pair in intervals), max(pair[1] for pair in intervals)
+    if any(pair[0] == pair[1] == high for pair in intervals):
+        high += timedelta(microseconds=1)
+    return low, high
+
+
+def drill_target(source, *, tasks, batch_ref, operation_ref=None, before=False, window=None,
+                 window_bounds=None, task_intervals=None, task_bounds=None):
     if before and source.baseline["state"] != "available":
         return None
     candidate_ref = source.reference_ref if before and source.comparison_mode == "candidates" else source.selected_ref
     scope = source.scope
-    low, high = window if window is not None else (scope["range_start"], scope["range_end"])
-    start, end = local_time(low), local_time(high)
-    intervals = [(local_time(row["start"]), local_time(row["end"])) for row in tasks if row["start"] is not None and row["end"] is not None]
-    if intervals:
-        low, high = min(pair[0] for pair in intervals), max(pair[1] for pair in intervals)
-        if any(pair[0] == pair[1] == high for pair in intervals):
-            high += timedelta(microseconds=1)
-        start, end = min(start, low), max(end, high)
+    if window_bounds is not None:
+        start, end = window_bounds
+    else:
+        low, high = window if window is not None else (scope["range_start"], scope["range_end"])
+        start, end = local_time(low), local_time(high)
+    if task_bounds is None and tasks:
+        if task_intervals is None:
+            task_intervals = source.task_intervals("reference" if before else source.selected_ref)
+        task_bounds = _task_bounds(tasks, task_intervals)
+    if task_bounds is not None:
+        start, end = min(start, task_bounds[0]), max(end, task_bounds[1])
+    start_iso, end_iso = start.isoformat(), end.isoformat()
     result = {"run_ref": source.run["run_ref"], "candidate_ref": candidate_ref, "comparison_mode": source.comparison_mode,
-              "reference_candidate_ref": source.reference_ref, "range_start": start.isoformat(), "range_end": end.isoformat(),
+              "reference_candidate_ref": source.reference_ref, "range_start": start_iso, "range_end": end_iso,
               "batch_ref": batch_ref, "operation_ref": operation_ref,
-              "drill_range_adjusted": start.isoformat() != scope["range_start"] or end.isoformat() != scope["range_end"]}
+              "drill_range_adjusted": start_iso != scope["range_start"] or end_iso != scope["range_end"]}
     if before and source.comparison_mode == "admission_official":
         result.update(reference_view=True, plan_ref=source.baseline["plan_ref"])
     return {key: value for key, value in result.items() if value is not None}
 
 
-def filter_options(source, section):
-    delivery_rows = {row["batch_ref"]: row["batch_id"] for row in source.completion.delivery(source.selected_ref)}
-    batches = [{"ref": ref, "label": delivery_rows[ref]} for ref in source.scope["batch_refs"]]
+def option_resources(source, *, view="selected_batches", kinds=("machine", "operator")):
     resources = {}
-    if section == "operations":
-        batch_refs, operation_refs = set(source.scope["batch_refs"]), set(source.scope["operation_refs"])
-        before = (
-            [row for row in source.analysis_tasks("reference") if row["operation_ref"] in operation_refs]
-            if source.comparison_mode == "admission_official"
-            else ()
-        )
-        tasks = chain(before, chain.from_iterable(source.analysis_tasks(row["candidate_ref"]) for row in source.rows))
-        for task in tasks:
-            if task["batch_ref"] not in batch_refs or task["operation_ref"] not in operation_refs:
+    operation_refs = set(source.scope["operation_refs"])
+    batch_refs = set(source.scope["batch_refs"])
+    active_refs = {
+        ref for ref in (source.selected_ref, source.reference_ref if source.comparison_mode == "candidates" else None)
+        if ref is not None
+    }
+    task_sources = ["reference"] if source.comparison_mode == "admission_official" else []
+    for candidate in source.rows:
+        candidate_ref = candidate["candidate_ref"]
+        if candidate_ref in active_refs or candidate_ref in source._analysis:
+            task_sources.append(candidate_ref)
+        else:
+            view_data = source._candidate_models[candidate_ref]["summary"]["resource_views"][view]
+            for row in view_data["arranged_resources"]:
+                if row["kind"] in kinds and row["ref"] is not None:
+                    resources[row["ref"]] = {"ref": row["ref"], "label": row["label"], "kind": row["kind"]}
+    for key in task_sources:
+        for task in source.analysis_tasks(key):
+            if view == "selected_batches" and (task["batch_ref"] not in batch_refs or task["operation_ref"] not in operation_refs):
                 continue
-            for kind in ("machine", "operator"):
+            for kind in kinds:
                 value = task[kind]
                 if value is not None and value["ref"] is not None:
                     resources[value["ref"]] = {"ref": value["ref"], "label": value["label"], "kind": kind}
+    return resources
+
+
+def filter_options(source, section):
+    delivery_rows = {row["batch_ref"]: row["batch_id"] for row in source.completion.delivery(source.selected_ref)}
+    batches = [{"ref": ref, "label": delivery_rows[ref]} for ref in source.scope["batch_refs"]]
+    resources = option_resources(source, view="selected_batches", kinds=("machine", "operator")) if section == "operations" else {}
     return {"batches": batches, "resources": sorted(resources.values(), key=lambda item: (item["kind"], item["label"] or "", item["ref"]))}

@@ -2,16 +2,16 @@
 
 from datetime import date, datetime, timedelta
 
-from core.models.scheduler_history_parser import parse_result_summary_payload
+from core.models.scheduler_history_parser import ResultSummaryParseResult
 from core.models.workbench_preflight import stored_hold_window_valid
 from core.models.workbench_trial import issue, reject
 from core.services.workbench.facts.preflight_checks import stored_date
 
 
-def plan_material_policy(history):
-    raw = history["result_summary"] if history is not None else None
+def plan_material_policy(parsed: ResultSummaryParseResult):
+    """Read the policy from the caller's one parse of the plan's saved summary."""
     # Every official plan's adoption audit records the run's material policy and dates.
-    summary = parse_result_summary_payload(raw).payload
+    summary = parsed.payload
     if summary is None or "material_policy" not in summary:
         reject("material_policy_invalid", "原计划没有记录物料放行方式和排产起止日期，请核对排产记录。")
     policy = summary["material_policy"]

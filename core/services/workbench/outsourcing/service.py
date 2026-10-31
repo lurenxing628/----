@@ -11,6 +11,10 @@ from typing import Any, Dict, Optional, TypedDict, cast
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_outsourcing import MAX_ROWS, page, pagination, reference, reject
+from core.services.workbench.facts.source_revisions import (
+    OUTSOURCING_SOURCE_KEYS,
+    read_source_revisions,
+)
 from data.repositories.workbench_outsourcing_repo import WorkbenchOutsourcingRepository
 
 from .projection import fact, receipt
@@ -29,10 +33,6 @@ class WorkbenchOutsourcingService:
         self.sources = WorkbenchOutsourcingSourceService(conn)
 
     # ---- judgement over repository facts ----
-
-    def require_schema(self):
-        if self.repo.schema_issues():
-            reject("真实外协登记结构尚未完整接入；未补表或改动原资料。", "outsourcing_unavailable", 503)
 
     def header(self, ref):
         return self.header_from_row(self.repo.header(ref))
@@ -66,7 +66,6 @@ class WorkbenchOutsourcingService:
     @contextmanager
     def read_snapshot(self):
         with TransactionManager(self.conn).transaction():
-            self.require_schema()
             yield
 
     def now(self):
@@ -85,11 +84,15 @@ class WorkbenchOutsourcingService:
             rows["header"] = self.header_from_row(rows["header"])
         return cast(Dict[str, CapturedReceiptFacts], captured)
 
-    def entry_from_facts(self, header, latest, now, *, sources):
+    def entry_from_facts(self, header, latest, now, *, sources, include_snapshot: bool = True):
         """Resolve a receipt from header/latest already admitted in the caller's snapshot."""
         source, issues, state = None, [], "current"
         try:
-            source = sources.load(header["target"])
+            source = sources.load(
+                header["target"],
+                include_snapshot_facts=include_snapshot,
+                include_public=include_snapshot,
+            )
             if source["identity"] != header["identity"]:
                 state = "identity_drift"
                 issues = [{"code": "identity_drift", "message": "原登记的工序或所属批次已变化，请重新核对。"}]
@@ -100,6 +103,8 @@ class WorkbenchOutsourcingService:
             issues = [{"code": exc.code, "message": str(exc)}]
         result = receipt(header, latest, now, source_state=state, issues=issues)
         result["can_preview"] = state == "current"
+        if not include_snapshot:
+            return result, None
         snapshot = {"header": header, "latest_fact_ref": latest["fact_ref"], "source": source, "issues": issues}
         return result, snapshot
 
@@ -126,18 +131,36 @@ class WorkbenchOutsourcingService:
         if not self.conn.in_transaction:
             raise RuntimeError("Outsourcing list requires a caller-owned snapshot")
         now = as_of or self.now()
-        rows, snapshots = [], []
-        captured = self.capture_receipts(batch_ref)
-        sources = self.sources.capture([facts["header"]["target"] for facts in captured.values()])
-        for facts in captured.values():
-            item, snapshot = self.entry_from_facts(facts["header"], self.latest_from_row(facts["latest"]), now, sources=sources)
-            snapshots.append(snapshot)
-            if (status == "all" or (status == "awaiting" and item["awaiting_return"])
-                    or (status == "overdue" and item["overdue"])
-                    or (status == "returned" and not item["awaiting_return"])):
-                rows.append(item)
-        return {**page(rows, number, size), "content": snapshots,
-                "as_of": now.isoformat(timespec="seconds"), "tracking_basis": "manual_receipt_facts"}
+        as_of_text = now.isoformat(timespec="seconds")
+        matched = []
+        for ref, raw_latest in self.repo.latest_facts(self.refs(batch_ref)).items():
+            latest = self.latest_from_row(raw_latest)
+            awaiting_return = latest["returned"] is None
+            overdue = awaiting_return and latest["planned"] < as_of_text
+            if (status == "all" or (status == "awaiting" and awaiting_return)
+                    or (status == "overdue" and overdue)
+                    or (status == "returned" and not awaiting_return)):
+                matched.append((ref, latest))
+        paged = page(matched, number, size)
+        page_items = paged["items"]
+        if page_items:
+            raw_headers = self.repo.headers([ref for ref, _ in page_items])
+            resolved_items = [(self.header_from_row(raw_headers[ref]), latest) for ref, latest in page_items]
+            sources = self.sources.capture([header["target"] for header, _ in resolved_items])
+            rows = [
+                self.entry_from_facts(header, latest, now, sources=sources, include_snapshot=False)[0]
+                for header, latest in resolved_items
+            ]
+            clock = sources.repo.plan_identity_revision()
+        else:
+            rows = []
+            clock = self.sources.repo.plan_identity_revision()
+        content = {
+            "revisions": read_source_revisions(self.conn, OUTSOURCING_SOURCE_KEYS),
+            "clock": clock,
+        }
+        return {**paged, "items": rows, "content": content,
+                "as_of": as_of_text, "tracking_basis": "manual_receipt_facts"}
 
     def targets(self, *, batch_ref=None, query="", number=1, size=20):
         if batch_ref is not None:
@@ -148,8 +171,12 @@ class WorkbenchOutsourcingService:
         pagination(number, size)
         if not self.conn.in_transaction:
             raise RuntimeError("Outsourcing targets require a caller-owned snapshot")
-        target_rows, sources = self.sources.capture_targets(batch_ref, query)
-        rows = [item for item, source in sources.load_target_rows(target_rows)]
+        target_rows, entities = self.sources.target_rows(batch_ref, query)
+        paged = page(target_rows, number, size)
+        page_rows = paged["items"]
+        sources = self.sources.capture([self.sources.target_from_row(row) for row in page_rows], entities=entities)
+        rows = sources.load_target_rows(page_rows)
         clock = sources.repo.plan_identity_revision()
-        return {**page(rows, number, size), "content": {"rows": rows, "clock": clock, "query": query},
+        revisions = read_source_revisions(self.conn, OUTSOURCING_SOURCE_KEYS)
+        return {**paged, "items": rows, "content": {"revisions": revisions, "clock": clock, "query": query},
                 "grouping_basis": "explicit_receipt_membership", "dates_inferred": False}

@@ -8,7 +8,7 @@ from core.services.scheduler.schedule_lock import RUN_SCHEDULE_LOCK
 from core.services.workbench.facts.candidate_values import stored_json
 from core.services.workbench.facts.decision_read_model import build_failure_read_models
 from core.services.workbench.facts.decision_read_models import decode_model
-from core.services.workbench.facts.run_policy import require_admission, require_run_schema
+from core.services.workbench.facts.run_policy import require_admission
 from core.shared.strict_json import canonical_json
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 from data.repositories.workbench_run_result_repo import WorkbenchRunResultRepository
@@ -23,7 +23,6 @@ def recover_unfinished_runs(conn, *, executor_is_active=None, clock=None, run_re
     if conn.in_transaction:
         raise RuntimeError("Run recovery must own the outer transaction")
     repo = WorkbenchRunRepository(conn)
-    require_run_schema(repo)
     lock = RUN_SCHEDULE_LOCK
     if not lock.acquire(blocking=False):
         return {"recovered": [], "pending": [], "scheduling_busy": True}

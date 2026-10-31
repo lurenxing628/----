@@ -1,7 +1,7 @@
 """Compose public projections and keep their snapshot evidence off the wire."""
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.facts.gantt_graph import project_scoped_gantt_graph
+from core.services.workbench.facts.gantt_graph import project_scoped_gantt_graph, public_gantt_graph
 
 from .baseline import build_plan_baseline
 from .calendar import project_plan_calendar
@@ -10,7 +10,7 @@ from .occupancy import project_plan_occupancy
 from .process_order import project_process_order
 
 
-def resource_directory(rows, resources, *, tasks, baseline=None, compared_tasks=(), archived=()):
+def resource_directory(rows, resources, *, tasks, baseline=None, compared_tasks=(), archived=(), used_refs=()):
     directory = {}
     for row in rows:
         for kind in ("machine", "operator", "supplier"):
@@ -29,8 +29,12 @@ def resource_directory(rows, resources, *, tasks, baseline=None, compared_tasks=
         task for item in (baseline or {}).get("items", [])
         for task in (item["before"], item["after"]) if task is not None
     ]
-    used = {(kind, task[kind + "_ref"]) for task in list(tasks) + compared for kind in ("machine", "operator", "supplier")
-            if task.get(kind + "_ref") is not None}
+    used = set(used_refs) | {
+        (kind, task[kind + "_ref"])
+        for task in list(tasks) + compared
+        for kind in ("machine", "operator", "supplier")
+        if task.get(kind + "_ref") is not None
+    }
     for row in archived:
         directory.setdefault((row["kind"], row["ref"]), row)
     if not used <= set(directory):
@@ -39,34 +43,37 @@ def resource_directory(rows, resources, *, tasks, baseline=None, compared_tasks=
     return [directory[key] for key in sorted(directory)]
 
 
-def summarize_gantt_graph(gantt_graph: dict, *, include_nodes: bool = False) -> dict:
-    if gantt_graph.get("state") != "available":
+def summarize_gantt_graph(gantt_graph: dict, *, include_nodes: bool = False, scoped_batch_ids=None) -> dict:
+    if gantt_graph["state"] != "available":
         return {
-            "state": "unavailable",
-            "reason": gantt_graph.get("reason"),
-            "scope": gantt_graph.get("scope", "full_plan"),
-            "nodes": [],
+            **public_gantt_graph(gantt_graph),
             "node_count": 0,
             "nodes_complete": False,
-            "critical_task_refs": [],
-            "critical_edges": [],
         }
-    count = len(gantt_graph["nodes"])
+    if scoped_batch_ids is not None:
+        scoped = project_scoped_gantt_graph(gantt_graph, scoped_batch_ids, include_nodes=include_nodes)
+        if include_nodes:
+            return {
+                **scoped,
+                "node_count": len(scoped["nodes"]),
+                "nodes_complete": True,
+            }
+        return scoped
+    count = (
+        gantt_graph["node_count"]
+        if "node_count" in gantt_graph and not include_nodes
+        else len(gantt_graph["nodes"])
+    )
     if include_nodes:
         return {
-            "state": "available",
-            "reason": None,
-            "scope": gantt_graph.get("scope", "full_plan"),
-            "nodes": gantt_graph["nodes"],
+            **public_gantt_graph(gantt_graph),
             "node_count": count,
             "nodes_complete": True,
-            "critical_task_refs": gantt_graph["critical_task_refs"],
-            "critical_edges": gantt_graph["critical_edges"],
         }
     return {
         "state": "available",
         "reason": None,
-        "scope": gantt_graph.get("scope", "full_plan"),
+        "scope": gantt_graph["scope"],
         "nodes": [],
         "node_count": count,
         "nodes_complete": count == 0,
@@ -84,28 +91,26 @@ def workspace_projections(
     plan_span,
     logger,
     context,
-    include_baseline_items=False,
-    include_gantt_graph=False,
-    include_capacity_details=False,
 ):
     baseline, baseline_facts = build_plan_baseline(
-        conn, entry=entry, scope=scope, context=context, include_items=include_baseline_items,
+        conn, entry=entry, scope=scope, context=context, include_items=False,
     )
-    selected = context.calendar_selection(entry, scope, resources, plan_span)
+    selected = context.calendar_selection(entry, scope, plan_span)
     calendar, calendar_facts = project_plan_calendar(
-        conn, scope=scope, resources=resources, selected=selected, include_windows=include_capacity_details,
+        conn, scope=scope, resources=resources, selected=selected, include_windows=False,
     )
-    occupancy, _ = project_plan_occupancy(
+    occupancy = project_plan_occupancy(
         scope=scope, resources=resources, calendar_facts=calendar_facts, selected=selected,
-        include_segments=include_capacity_details,
+        include_segments=False, intervals=context.datetime_intervals(entry),
     )
-    delivery, delivery_facts = read_plan_delivery(conn, scope=scope, identity=entry.plan_identity, logger=logger, context=context)
+    delivery, _ = read_plan_delivery(conn, scope=scope, logger=logger, context=context)
     state = delivery["summary"]["state"]
     delivery = dict(delivery, state="available" if state == "complete" else state)
-    process_order, _, gantt_graph = project_process_order(conn, plan_ref=scope.plan_ref, context=context)
-    if scope.range_start is not None and gantt_graph.get("state") == "available":
-        gantt_graph = project_scoped_gantt_graph(gantt_graph, {row["batch_id"] for row in selected[0]})
-    gantt_graph = summarize_gantt_graph(gantt_graph, include_nodes=include_gantt_graph)
+    process_order, gantt_graph = project_process_order(
+        conn, plan_ref=scope.plan_ref, context=context, include_nodes=(scope.range_start is not None),
+    )
+    scoped_batches = {row["batch_id"] for row in selected[0]} if scope.range_start is not None else None
+    gantt_graph = summarize_gantt_graph(gantt_graph, include_nodes=False, scoped_batch_ids=scoped_batches)
     provenance = baseline_facts.get("provenance") or {
         "state": "unavailable", "reason": baseline.get("reason") or "此计划未记录可核对的生成来源。",
         "source_kind": None, "source_ref": None, "source_label": None, "run_ref": None,
@@ -113,16 +118,7 @@ def workspace_projections(
     }
     public = {"baseline": baseline, "calendar": calendar, "occupancy": occupancy,
               "delivery_risks": delivery, "process_order": process_order}
-    cal_sources = calendar_facts.get("sources") or {}
     facts = {
-        "baseline": (baseline.get("state"), baseline.get("reason_code"), baseline.get("reason")),
-        "calendar": (
-            calendar_facts.get("state"),
-            calendar_facts.get("reason"),
-            {k: v for k, v in cal_sources.items() if k != "operations"},
-        ),
-        "delivery": delivery_facts.get("batch_identities"),
-        "process_order": (process_order.get("state"), process_order.get("issues")),
         "resource_directory": (
             baseline_facts.get("resource_directory", [])
             + baseline_facts.get("adoption", {}).get("resource_directory", [])

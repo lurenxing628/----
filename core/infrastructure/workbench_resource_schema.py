@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Dict, List
 
-from .schema_structure import schema_objects
+from .schema_structure import SchemaStructure
 from .workbench_metadata_schema import canonical_sql, identity_triggers
 
 RESOURCE_ENTITY_TABLES = {
@@ -121,8 +121,8 @@ def resource_objects() -> Dict[str, str]:
     return objects
 
 
-def workbench_resource_contract_issues(conn, *, structure=None) -> List[str]:
-    actual = schema_objects(conn, structure=structure)
+def workbench_resource_contract_issues(conn, *, structure: SchemaStructure) -> List[str]:
+    actual = structure.sql
     return [("missing_workbench_resource: " if name not in actual else "bad_workbench_resource: ") + name
             for name, sql in resource_objects().items()
             if name not in actual or canonical_sql(actual[name]) != canonical_sql(sql)]

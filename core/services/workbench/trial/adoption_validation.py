@@ -1,7 +1,6 @@
 """Revalidate exact saved arrangements against current production in one snapshot."""
 
 from dataclasses import replace
-from datetime import datetime
 
 from core.errors import AppError, ValidationError
 from core.models.content import same
@@ -11,7 +10,6 @@ from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.models.workbench_trial_adoption import TrialAdoptionBlocked, TrialAdoptionEvidence
 from core.services.scheduler.execution.execution_ledger_adapter import ledger_read_snapshot
-from core.services.workbench.facts.candidate_archive import require_adoption_schema
 from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
@@ -37,14 +35,15 @@ _INPUT_PROBLEMS = {
 }
 
 
-def validate_trial_adoption(conn, scenario_ref):
+def validate_trial_adoption(conn, scenario_ref, *, data_context=None):
     try:
         with candidate_read_snapshot(conn), ledger_read_snapshot(conn) as execution_service:
-            require_adoption_schema(conn)
             saved, head, rows = load_saved_scenario(conn, scenario_ref)
             admission = head["admission"]
             capture = ProductionFactsCapture(conn)
-            live = live_context(conn, rows, admission, capture=capture, execution_service=execution_service)
+            live = live_context(
+                conn, rows, admission, capture=capture, execution_service=execution_service, data_context=data_context
+            )
             _current_baseline(admission, live)
             _original_work(rows, live)
             checked, settings, held = _scenario_validation(conn, saved, admission, rows, live)
@@ -57,8 +56,9 @@ def validate_trial_adoption(conn, scenario_ref):
             prepared = prepare_trial_adoption_input(conn, settings, projections, live, held=held, capture=capture)
             _complete_scope(rows, prepared)
             # Pending stage work follows the run's end date; the saved rows keep their own span.
-            prepared = replace(prepared, end_date_norm=_span_end(rows))
-            payload = validate_candidate(prepared, schedule_rows(rows), [])
+            intervals_by_row = live["trial_intervals"]["current_by_row"]
+            prepared = replace(prepared, end_date_norm=_span_end(rows, intervals_by_row))
+            payload = validate_candidate(prepared, schedule_rows(rows, intervals_by_row))
             if payload.scheduled_op_ids != prepared.schedule_output_allowed_op_ids:
                 raise TrialAdoptionBlocked("scenario_scope_incomplete", "试调方案没有覆盖所选批次的全部工序，正式计划没有改变。")
             _require_official_scope(prepared.latest_plan_rows, payload.scheduled_op_ids)
@@ -66,7 +66,7 @@ def validate_trial_adoption(conn, scenario_ref):
             proof = {"proof_version": "content_refs_v1", "scenario_ref": scenario_ref,
                      "draft_ref": head["draft_ref"], "scenario_revision": head["scenario_revision"],
                      "baseline_ref": live["baseline"]["plan_ref"], "baseline_version": live["baseline"]["version"]}
-            snapshot = {"proof": proof, "facts": live["facts"], "execution": live["execution"]}
+            snapshot = {"proof": proof, "revisions": live["revisions"], "data_context_ref": live["data_context_ref"]}
             return TrialAdoptionEvidence(scenario_ref, head["draft_ref"], live["baseline"], snapshot, prepared, payload,
                                          run_window(admission), proof=proof)
     except TrialAdoptionBlocked:
@@ -124,8 +124,8 @@ def _original_work(rows, live):
                 raise TrialAdoptionBlocked("scenario_resource_identity_changed", "试调方案中的设备或人员已删除或被替换。")
 
 
-def _span_end(rows):
-    return max(datetime.fromisoformat(row["current"]["end"]).date() for row in rows)
+def _span_end(rows, intervals_by_row):
+    return max(intervals_by_row[row["row_ref"]][1].date() for row in rows)
 
 
 def _complete_scope(rows, prepared):

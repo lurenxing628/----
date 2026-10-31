@@ -23,11 +23,6 @@ from core.algorithms.evaluation import compute_metrics, objective_score, prepare
 from core.algorithms.evaluation_completion import UNKNOWN_OBJECTIVE_VALUE
 from core.algorithms.greedy.scheduler import GreedyScheduler
 from core.models.objective import objective_metric_keys
-from core.services.scheduler.contracts.optimizer_public_safety import (
-    project_attempt_metrics,
-    project_public_metrics,
-    safe_non_negative_int,
-)
 from tests._support.algo_operations import make_algo_op, make_batch
 from tests._support.optimizer_graph_ready_benchmark import ContinuousCalendar as _ContinuousCalendar
 from tests._support.schedule_decode import config_snapshot, production_decode, production_session
@@ -50,7 +45,7 @@ def _batches(**priorities):
 
 
 def _failure(op_id, bid):
-    return {"code": "dispatch_operation_failed", "op_id": op_id, "batch_id": bid}
+    return {"code": "schedule_window_exceeded", "op_id": op_id, "batch_id": bid}
 
 
 OPERATIONS = [_op(1, "B1"), _op(2, "B2"), _op(3, "B3")]
@@ -185,16 +180,9 @@ def test_prepared_evaluation_keeps_completion_dynamic_and_prepares_static_facts_
     assert metrics[3].completion.unexpected_result_count == 1 and metrics[3].completion.objective_scope == "unknown"
 
 
-@pytest.mark.parametrize("project", [project_attempt_metrics, project_public_metrics])
-def test_public_projection_carries_the_completed_subset_scope_without_samples(project):
-    projected = project(_explained(b2_hours=26).to_dict())["completion"]
+def test_public_projection_carries_the_completed_subset_scope_without_samples():
+    projected = _explained(b2_hours=26).public_dict()["completion"]
     assert projected["objective_score_policy"] == "completed_batches_only"
     assert projected["objective_scope"] == "completed_batches_only"
     assert projected["incomplete_work_weight"] == 3.0
     assert "B1" not in json.dumps(projected)
-
-
-@pytest.mark.parametrize(("raw", "expected"), [(3, 3), (" 12 ", 12), ("²", None), ("-1", None), (True, None), (-2, None)])
-def test_public_count_projection_reads_only_decimal_digits_and_never_raises(raw, expected):
-    # 旧存档的计数可能是文本；“²”这类 isdigit 为真、int() 却读不了的字符不能让投影崩掉。
-    assert safe_non_negative_int(raw) == expected

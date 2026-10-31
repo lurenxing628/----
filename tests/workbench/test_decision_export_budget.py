@@ -31,6 +31,9 @@ def test_export_encodes_after_releasing_the_shared_plan_read_slot(monkeypatch, k
     def read(*_args, **_kwargs):
         assert active
         steps.append("read")
+        bind_snapshot = _kwargs.get("bind_snapshot")
+        if bind_snapshot is not None:
+            return {"saved": "rows"}, bind_snapshot({"saved": "scope"}, {"saved": "state"}), {"saved": "state"}
         return {"saved": "rows"}, {"saved": "scope"}, {"saved": "state"}
 
     def bind(scope, state, token):

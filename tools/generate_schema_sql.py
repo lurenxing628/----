@@ -62,6 +62,10 @@ from core.infrastructure.workbench_process_workflow_schema import workflow_objec
 from core.infrastructure.workbench_resource_schema import resource_objects  # noqa: E402
 from core.infrastructure.workbench_run_read_model_schema import objects as run_read_model_objects  # noqa: E402
 from core.infrastructure.workbench_run_schema import workbench_run_objects  # noqa: E402
+from core.infrastructure.workbench_source_revisions_schema import (  # noqa: E402
+    source_revisions_initialization_sql,
+    source_revisions_objects,
+)
 from core.infrastructure.workbench_template_lineage_schema import template_lineage_objects  # noqa: E402
 from core.infrastructure.workbench_trial_schema import workbench_trial_objects  # noqa: E402
 
@@ -99,11 +103,16 @@ DDL_SOURCES: Tuple[Callable[[], Dict[str, str]], ...] = (
     calendar_periods_objects,
     machine_capabilities_objects,
     material_stages_objects,
+    source_revisions_objects,
     lambda: single_pass_indexes,
     lambda: efficiency_indexes,
 )
 # 新库种子行：由拥有该表的 DDL 模块声明，放在全部 DDL 之后执行（引用的表此时都已存在，时钟表上没有触发器）。
-SEED_STATEMENT_SOURCES = (plan_identity_initialization_sql, execution_ledger_initialization_sql)
+SEED_STATEMENT_SOURCES = (
+    plan_identity_initialization_sql,
+    execution_ledger_initialization_sql,
+    source_revisions_initialization_sql,
+)
 _IF_NOT_EXISTS_PREFIXES = (
     ("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "),
     ("CREATE UNIQUE INDEX ", "CREATE UNIQUE INDEX IF NOT EXISTS "),

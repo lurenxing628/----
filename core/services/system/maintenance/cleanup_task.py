@@ -12,7 +12,12 @@ from core.infrastructure.transaction import TransactionManager
 from core.shared.strict_json import canonical_json
 from data.repositories.operation_log_repo import OperationLogRepository
 
-from .telemetry import write_job_state, write_oplog
+from .telemetry import (
+    classify_maintenance_result,
+    maintenance_oplog_level,
+    write_job_state,
+    write_oplog,
+)
 
 
 def _survey_backup_files(backup_dir: str) -> Tuple[list, Dict[str, Any]]:
@@ -59,7 +64,7 @@ def cleanup_backups_with_limit(
     cutoff = datetime.now() - timedelta(days=int(keep_days))
     min_keep = max(0, int(min_keep))
     if not os.path.exists(backup_dir):
-        return 0, {"cutoff": fmt_db_dt_fn(cutoff), "reason": "backup_dir_not_exists"}
+        return 0, {"cutoff": fmt_db_dt_fn(cutoff), "skipped": True, "reason": "backup_dir_not_exists"}
 
     survey, scan_meta = _survey_backup_files(backup_dir)
 
@@ -164,11 +169,13 @@ def maybe_run_auto_backup_cleanup(
             "time_cost_ms": time_cost_ms,
             **meta,
         }
+        status = classify_maintenance_result(detail, "auto_backup_cleanup")
+        detail["status"] = status
         write_oplog(
             conn,
             op_logger=op_logger,
             logger=logger,
-            level="info",
+            level=maintenance_oplog_level(status),
             module="system",
             action="cleanup",
             target_type="backup",
@@ -180,7 +187,7 @@ def maybe_run_auto_backup_cleanup(
             job_repo=job_repo,
             job_key=job_key,
             last_run_time=fmt_db_dt_fn(now),
-            last_run_detail=canonical_json({"removed_count": removed, "time_cost_ms": time_cost_ms, **meta}),
+            last_run_detail=canonical_json({"removed_count": removed, "status": status, "time_cost_ms": time_cost_ms, **meta}),
             logger=logger,
         )
         return True
@@ -249,11 +256,13 @@ def maybe_run_auto_log_cleanup(
             "time_cost_ms": time_cost_ms,
             **meta,
         }
+        status = classify_maintenance_result(detail, "auto_log_cleanup")
+        detail["status"] = status
         write_oplog(
             conn,
             op_logger=op_logger,
             logger=logger,
-            level="info",
+            level=maintenance_oplog_level(status),
             module="system",
             action="logs_cleanup",
             target_type="operation_log",
@@ -265,7 +274,7 @@ def maybe_run_auto_log_cleanup(
             job_repo=job_repo,
             job_key=job_key,
             last_run_time=fmt_db_dt_fn(now),
-            last_run_detail=canonical_json({"deleted_count": deleted, "time_cost_ms": time_cost_ms, **meta}),
+            last_run_detail=canonical_json({"deleted_count": deleted, "status": status, "time_cost_ms": time_cost_ms, **meta}),
             logger=logger,
         )
         return True

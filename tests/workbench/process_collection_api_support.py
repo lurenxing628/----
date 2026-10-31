@@ -1,7 +1,6 @@
 """Real process HTTP requests, complete SQLite oracles and browser contracts."""
 
 import json
-import shutil
 import subprocess
 import uuid
 from contextlib import contextmanager
@@ -10,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from core.services.workbench.process.queries import WorkbenchProcessQueryService
+from tests._support.node_runtime_support import node_runtime
 from tests.workbench.process_query_support import seed_process
 from tests.workbench.process_stage_api_support import BASE, StageAPI, rejected, seed_history, success
 
@@ -89,9 +89,7 @@ def enforce_readonly(monkeypatch):
 
 
 def browser_contract(mode, raw, request=None, *, intent=None, refs=None):
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("Node is required to run the existing browser contracts without Chrome")
+    node = node_runtime()
     script = """
 const fs = require('node:fs'), vm = require('node:vm');
 const input = JSON.parse(fs.readFileSync(0, 'utf8')), context = {};

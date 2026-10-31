@@ -1,4 +1,4 @@
-"""Run-journal rulings for schema availability and immutable admission lineage."""
+"""Run-journal rulings for immutable admission lineage."""
 
 from typing import NoReturn
 
@@ -8,11 +8,6 @@ from core.shared.strict_json import load_strict_json
 
 def _unreadable_receipt() -> NoReturn:
     raise ValueError("已保存的排产受理回执无法读取。")
-
-
-def require_run_schema(repo):
-    if repo.schema_issues():
-        raise WorkbenchCommandRejected("run_schema_unavailable", "排产记录结构不完整，请联系维护人员。", 503)
 
 
 def require_admission(repo, row):

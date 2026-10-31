@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict
 
+from core.algorithm_contracts.ordering import clean_resource_id
 from core.errors import AppError, ErrorCode
 from core.services.scheduler.execution.execution_fact_provider import ExecutionFact
 from core.services.scheduler.execution.execution_ledger_guard import ensure_ledger_execution_schedulable
@@ -21,7 +22,7 @@ def _time_equal(left: Any, right: Any) -> bool:
 
 
 def _resource_equal(left: Any, right: Any) -> bool:
-    return str(left or "").strip() == str(right or "").strip()
+    return clean_resource_id(left) == clean_resource_id(right)
 
 
 def _rows_by_op_id(payload: ValidatedSchedulePayload) -> Dict[int, ValidatedScheduleRow]:

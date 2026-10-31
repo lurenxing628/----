@@ -6,6 +6,7 @@ from functools import partial
 from itertools import groupby
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from core.algorithm_contracts.ordering import clean_resource_id
 from core.algorithm_runtime.internal_slot import validate_internal_hours
 from core.errors import AppError, ErrorCode, ValidationError
 from core.models.batch_operation import BatchOperation
@@ -154,10 +155,6 @@ def prepare_runtime_seeds(
     return frozen_op_ids, seed_results, algo_ops_to_schedule
 
 
-def _seed_resource(value: Any) -> str:
-    return str(value or "").strip()
-
-
 def _raise_downstream_seed_conflict(*, op_id: int, completed_op_id: int) -> None:
     raise AppError(
         ErrorCode.SCHEDULE_CONFLICT,
@@ -269,8 +266,8 @@ def _seed_conflicts(execution_seed: Dict[str, Any], freeze_seed: Dict[str, Any])
     return (
         execution_seed.get("start_time") != freeze_seed.get("start_time")
         or execution_seed.get("end_time") != freeze_seed.get("end_time")
-        or _seed_resource(execution_seed.get("machine_id")) != _seed_resource(freeze_seed.get("machine_id"))
-        or _seed_resource(execution_seed.get("operator_id")) != _seed_resource(freeze_seed.get("operator_id"))
+        or clean_resource_id(execution_seed.get("machine_id")) != clean_resource_id(freeze_seed.get("machine_id"))
+        or clean_resource_id(execution_seed.get("operator_id")) != clean_resource_id(freeze_seed.get("operator_id"))
     )
 
 

@@ -103,3 +103,72 @@ def test_calibration_checks_stored_orphan_report_heads_and_read_limit(ready_adop
     with pytest.raises(WorkbenchCommandRejected) as rejected:
         service(case.conn).preview(case.template_ref, PREVIEW_INTENT)
     assert rejected.value.code == "query_too_large" and rejected.value.status == 413
+
+
+def test_calibration_prebinds_snapshot_once_per_part_and_defers_report_dto_until_detail(ready_adoption_case, monkeypatch):
+    from core.models.workbench_calibration import CalibrationQuery
+    from core.models.workbench_execution import ProductionReport
+    from core.services.workbench.calibration.service import WorkbenchCalibrationService
+    from data.repositories.workbench_calibration_query_repo import WorkbenchCalibrationQueryRepository
+    from tests.workbench.execution_ledger_support import NOW
+
+    case = ready_adoption_case
+    part_ref = case.conn.execute(
+        "SELECT ref FROM WorkbenchEntityRefs WHERE kind='part' AND entity_key='P1' AND active=1"
+    ).fetchone()[0]
+    calls = Counter()
+    orig_part_identity = WorkbenchCalibrationQueryRepository.part_identity
+    orig_template_rows = WorkbenchCalibrationQueryRepository.template_rows
+    orig_report_to_dict = ProductionReport.to_dict
+
+    monkeypatch.setattr(
+        WorkbenchCalibrationQueryRepository,
+        "part_identity",
+        lambda repo, ref: (calls.__setitem__("part_identity", calls["part_identity"] + 1), orig_part_identity(repo, ref))[1],
+    )
+    monkeypatch.setattr(
+        WorkbenchCalibrationQueryRepository,
+        "template_rows",
+        lambda repo, part_no, limit: (calls.__setitem__("template_rows", calls["template_rows"] + 1), orig_template_rows(repo, part_no, limit))[1],
+    )
+    monkeypatch.setattr(
+        ProductionReport,
+        "to_dict",
+        lambda self: (calls.__setitem__("report_to_dict", calls["report_to_dict"] + 1), orig_report_to_dict(self))[1],
+    )
+
+    cal = WorkbenchCalibrationService(case.conn, as_of=NOW)
+    with pytest.raises(WorkbenchCommandRejected) as stale:
+        cal.read(
+            CalibrationQuery(part_ref=part_ref),
+            bind_snapshot=lambda _content: (_ for _ in ()).throw(
+                WorkbenchCommandRejected("snapshot_stale", "stale", 409)
+            ),
+        )
+    assert stale.value.code == "snapshot_stale"
+    assert calls["part_identity"] == 1 and calls["template_rows"] == 0
+
+    calls.clear()
+    from core.services.execution import projection as exec_projection
+
+    orig_build_history = exec_projection.build_correction_history
+    monkeypatch.setattr(
+        exec_projection,
+        "build_correction_history",
+        lambda *a, **kw: (calls.__setitem__("correction_history", calls["correction_history"] + 1), orig_build_history(*a, **kw))[1],
+    )
+    facts = cal.read(
+        CalibrationQuery(part_ref=part_ref),
+        bind_snapshot=lambda _content: {"snapshot_ref": "snap-1", "as_of": NOW.isoformat(timespec="seconds")},
+    )
+    assert calls["part_identity"] == 1 and calls["template_rows"] == 1
+    assert calls["report_to_dict"] == 0 and calls["correction_history"] == 0
+    list_data, _ = cal.workspace(facts, CalibrationQuery(part_ref=part_ref), facts["snapshot"], suggestion_ref=None, export=False)
+    assert calls["report_to_dict"] == 0 and calls["correction_history"] == 0 and len(list_data["items"]) == 1
+    detail_data, _ = cal.workspace(
+        facts, CalibrationQuery(part_ref=part_ref), facts["snapshot"], suggestion_ref=case.template_ref, export=False
+    )
+    assert calls["report_to_dict"] == sum(len(sample["reports"]) for sample in detail_data["samples"]) > 0
+    assert calls["correction_history"] == calls["report_to_dict"]
+    assert all(isinstance(sample["reports"][0], dict) for sample in detail_data["samples"] if sample["reports"])
+    assert all(len(report["correction_history"]) >= 1 for sample in detail_data["samples"] for report in sample["reports"])

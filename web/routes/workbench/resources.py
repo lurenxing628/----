@@ -7,13 +7,13 @@ from flask import current_app, g, request
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_resource_query import ResourcePageRequest
 from core.services.workbench.commands import WorkbenchCommandService
+from core.services.workbench.facts.source_revisions import RESOURCE_SOURCE_KEYS, read_source_revisions
 from core.services.workbench.resource.queries import WorkbenchResourceQueryService
 from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
-from .materials import _command_body
 from .read_context import bind_read_snapshot
-from .write_context import issue_write_context, validate_write_context
+from .write_context import command_body, issue_write_context, validate_write_context
 
 
 def _query(kind):
@@ -70,7 +70,7 @@ def resource_detail(kind, ref):
 
 @api_endpoint
 def resource_command(kind, action, ref=None):
-    body = _command_body()
+    body = command_body("资料")
     reader = WorkbenchResourceQueryService(g.db, kind, current_app.logger)
     normalized = reader.domain.normalize_input(action, body["input"])
     subject = kind + ":create" if ref is None else ref
@@ -100,7 +100,7 @@ def resource_summary():
     reader = WorkbenchResourceQueryService(g.db, "op_type", current_app.logger)
     with reader.read_snapshot(capture_fingerprint=False):
         data = reader.summary_projection()
-        snapshot = bind_read_snapshot({"kind": "resource_summary"}, data)
+        snapshot = bind_read_snapshot({"kind": "resource_summary"}, read_source_revisions(g.db, RESOURCE_SOURCE_KEYS))
     return query_success(data, snapshot)
 
 

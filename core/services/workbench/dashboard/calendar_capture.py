@@ -5,7 +5,7 @@ and later resource analysis project that snapshot with the same calendar factory
 only interval indexes, states and compact pressure metrics survive each streamed projection.
 """
 
-from core.services.capacity.plan_calendar_io import CalendarFacts, ProjectionLimit, snapshot_values
+from core.services.capacity.plan_calendar_io import CalendarFacts, ProjectionLimit
 from core.services.capacity.plan_calendar_issues import issue
 from core.services.capacity.plan_calendar_limits import MAX_CALENDAR_DATES
 from core.services.capacity.plan_calendar_windows import policy_projection
@@ -162,6 +162,7 @@ def _constraint_projection(
     constraints = TaskConstraints(
         calendar,
         calendar_lookup=lookup,
+        downtime_lookup=factory.downtime_index,
         point_calendar=factory.engine,
     )
     unknown = _check_tasks(rows, start, end, constraints, dt_intervals=dt_intervals)
@@ -174,19 +175,19 @@ def _constraint_projection(
 
 
 def capture_resource_pressure(conn, *, entry, scope, resources, identities, plan_span, context, captured_calendar, plan_tasks):
-    rows, start, end, time_scope, binding = context.calendar_selection(entry, scope, resources, plan_span)
+    rows, start, end, time_scope = context.calendar_selection(entry, scope, plan_span)
     dt_intervals = context.datetime_intervals(entry)
     first, last, dates = range_days(start, end)
     if any(row.get("_point_work") for row in rows):
         last = max(last, end.date())
         dates = (last - first).days + 1
     ids = {kind: resource_ids(rows, kind) for kind in ("machine", "operator")}
-    calendar = {"context": binding, "state": "unavailable", "sources": None, "resources": None}
+    calendar = {"state": "unavailable", "sources": None, "resources": None}
     try:
         if dates > MAX_CALENDAR_DATES:
             raise ProjectionLimit("calendar_range_limit")
         reader = _capture(conn, ids, rows, first, last, start, end, captured_calendar)
-        calendar.update(sources=snapshot_values(reader.rows), fact_count=reader.count)
+        calendar.update(sources=reader.rows, fact_count=reader.count)
     except ProjectionLimit as exc:
         calendar["reason"] = str(exc)
     constraints, unknown, states, metrics = _constraint_projection(calendar, ids, resources, identities, rows, start, end,
@@ -206,5 +207,5 @@ def capture_resource_pressure(conn, *, entry, scope, resources, identities, plan
     dto = {"state": state, "plan_ref": scope.plan_ref, "time_scope": time_scope, "basis": "selected_plan_only",
            "resource_count": sum(len(keys) for keys in ids.values()), "issues": issues,
            "calendar_state": calendar["state"]}
-    return dto, {"context": binding, "constraints": constraints.private(), "unknown_source_operations": unknown,
+    return dto, {"constraints": constraints.private(), "unknown_source_operations": unknown,
                  "calendar": calendar, "occupancy": None}, metrics

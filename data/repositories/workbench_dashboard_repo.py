@@ -31,8 +31,7 @@ class WorkbenchDashboardRepository:
     def stored_rows(self, limit):
         """Stream identity and raw state bodies in one read."""
         cursor = self.conn.execute("SELECT i.*,s.revision AS _state_revision,s.handling_json AS _state_handling_json,"
-                    "s.origin_json AS _state_origin_json,s.updated_at AS _state_updated_at,"
-                    "0 AS _stored_body_bytes,NULL AS _tail_after_json "
+                    "s.origin_json AS _state_origin_json,s.updated_at AS _state_updated_at "
                     "FROM " + self.states_table + " s JOIN " + self.items_table + " i ON i.item_ref=s.item_ref "
                     "ORDER BY i.item_ref LIMIT ?", (limit + 1,))
         names = [column[0] for column in cursor.description]
@@ -42,9 +41,7 @@ class WorkbenchDashboardRepository:
             identity = {name: selected[name] for name in identity_columns}
             yield {**identity, "revision": selected["_state_revision"],
                    "handling_json": selected["_state_handling_json"], "origin_json": selected["_state_origin_json"],
-                   "updated_at": selected["_state_updated_at"], "_identity": identity,
-                   "_tail_after_json": selected["_tail_after_json"], "_receipt_ref": True,
-                   "_stored_body_bytes": selected["_stored_body_bytes"]}
+                   "updated_at": selected["_state_updated_at"], "_identity": identity}
 
     def has_item(self, item_ref):
         return self.conn.execute("SELECT 1 FROM " + self.items_table + " WHERE item_ref=?", (item_ref,)).fetchone() is not None

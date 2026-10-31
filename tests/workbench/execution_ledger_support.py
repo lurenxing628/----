@@ -6,6 +6,7 @@ from datetime import datetime
 import pytest
 
 from core.infrastructure.database import ensure_schema
+from core.infrastructure.sqlite_udf import register_schedule_time_sql_functions
 from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandOutcome
 from core.services.workbench.execution.ledger import ExecutionLedgerService
@@ -25,6 +26,7 @@ def current_database(path):
     conn = sqlite3.connect(str(path))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
+    register_schedule_time_sql_functions(conn)
     return conn
 
 
@@ -33,12 +35,173 @@ def official_plan_ref(conn, version):
                         (version,)).fetchone()[0]
 
 
-def publish_official_plan(conn, version, rows, *, adopted_at=START, operator="local-os-user"):
+def _record_candidate_adoption_source(conn, version, rows, *, candidate_ref, run_ref, baseline_ref, previous, adopted_at, batches):
+    from core.models.workbench_preflight import normalize_preflight_input
+    from core.services.workbench.facts.production_capture import ProductionFactsCapture
+
+    run_request_key = "fixture-run-admit-" + format(version, "04d")
+    input_ref = "fixture-input-" + format(version, "04d")
+    times = [row[key] for row in rows for key in ("start_time", "end_time")]
+    batch_refs = {
+        batch_id: conn.execute(
+            "SELECT ref FROM WorkbenchEntityRefs WHERE kind='batch' AND entity_key=? AND active=1",
+            (batch_id,),
+        ).fetchone()[0]
+        for batch_id in sorted(batches)
+    }
+    settings = normalize_preflight_input({
+        "batch_refs": sorted(batch_refs.values()),
+        "start_date": min(times)[:10],
+        "end_date": max(times)[:10],
+        "ready_check": True,
+        "missing_resource_policy": "auto_assign",
+        "completed_policy": "preserve_actuals",
+    })
+    facts_text = ProductionFactsCapture(conn).content()
+    if previous is None:
+        baseline = {"plan_ref": None, "version": None, "rows": []}
+        prev_op_ids = set()
+    else:
+        prev_rows = [
+            dict(r)
+            for r in conn.execute(
+                'SELECT r.id, r.op_id, r.machine_id, r.operator_id, +r.start_time AS start_time, '
+                '+r.end_time AS end_time, r.lock_status, r.version, +r.created_at AS created_at '
+                'FROM "Schedule" r WHERE r.version <= ? ORDER BY r.id ASC, r.rowid ASC',
+                (previous,),
+            )
+        ]
+        baseline = {
+            "plan_ref": baseline_ref,
+            "version": previous,
+            "rows": [r for r in prev_rows if r["version"] == previous],
+        }
+        prev_op_ids = {r["op_id"] for r in prev_rows}
+    op_rows = list(
+        conn.execute(
+            "SELECT bo.id AS op_id, bo.batch_id, s.ref AS op_ref "
+            "FROM BatchOperations bo JOIN WorkbenchPlanSourceRefs s "
+            "ON s.kind='operation' AND s.active=1 AND CAST(bo.id AS TEXT)=s.source_key"
+        )
+    )
+    selected_ops = [r for r in op_rows if r["batch_id"] in batches]
+    exec_op_refs = sorted({r["op_ref"] for r in op_rows if r["batch_id"] in batches or r["op_id"] in prev_op_ids})
+    ledger_svc = ExecutionLedgerService(conn, clock=lambda: NOW)
+    projections = [
+        item
+        for start_idx in range(0, len(exec_op_refs), 5000)
+        for item in ledger_svc.project_operations(exec_op_refs[start_idx : start_idx + 5000])
+    ]
+    conn.execute(
+        "INSERT INTO WorkbenchRunJobs(run_ref,request_key,input_ref,normalized_input_json,facts_json,"
+        "execution_json,baseline_json,accepted_at,started_at,finished_at,state,stage) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,'complete','finished')",
+        (
+            run_ref,
+            run_request_key,
+            input_ref,
+            canonical_json(settings),
+            facts_text,
+            canonical_json([item.to_dict() for item in projections]),
+            canonical_json(baseline),
+            adopted_at,
+            adopted_at,
+            adopted_at,
+        ),
+    )
+    WorkbenchCommandRepository(conn).insert(
+        request_key=run_request_key,
+        receipt_ref=format(0xD0000000 + version, "032x"),
+        action="scheduling.run",
+        context_ref=input_ref,
+        input_json=content_text({"input_ref": input_ref}, json_input=True),
+        outcome=WorkbenchCommandOutcome("committed", {"run_ref": run_ref}),
+    )
+    dispositions = [
+        {
+            "operation_ref": r["op_ref"],
+            "op_id": r["op_id"],
+            "batch_id": r["batch_id"],
+            "batch_ref": batch_refs[r["batch_id"]],
+            "status": "eligible",
+        }
+        for r in selected_ops
+    ]
+    run_result = {
+        "state": "complete",
+        "result_persisted": True,
+        "candidates": [{"candidate_ref": candidate_ref, "task_count": len(rows), "status": "completed"}],
+        "dispositions": dispositions,
+    }
+    conn.execute(
+        "INSERT INTO WorkbenchRunReceipts(receipt_ref,run_ref,state,result_json,recorded_at) VALUES (?,?,?,?,?)",
+        (format(0xE0000000 + version, "048x"), run_ref, "complete", canonical_json(run_result), adopted_at),
+    )
+    scheduled_op_ids = [row["op_id"] for row in rows]
+    artifact = {
+        "status": "completed",
+        "sequence": 1,
+        "label": "方案 1",
+        "algo_mode": "greedy",
+        "used_strategy": "due_first",
+        "objective_name": "balanced",
+        "target_objectives": ["balanced"],
+        "generation_policy_version": "unified_search_v1",
+        "representative_objectives": ["balanced"],
+        "evaluations": {},
+        "origin": {"stage": "initial"},
+        "first_found_elapsed_ms": 1,
+        "search_evidence_ref": "ev-1",
+        "task_payload_source": "candidate_tasks_v1",
+        "validated_payload": {
+            "scheduled_op_ids": scheduled_op_ids,
+            "out_of_scope_op_ids": [],
+            "validation_errors": [],
+        },
+        "results": [{"op_id": op_id} for op_id in scheduled_op_ids],
+        "metrics": {"completion": {"incomplete_batch_ids": []}},
+        "summary": {
+            "success": True,
+            "errors": [],
+            "failed_ops": 0,
+            "total_ops": len(rows),
+            "scheduled_ops": len(rows),
+        },
+    }
+    conn.execute(
+        "INSERT INTO WorkbenchRunCandidates(candidate_ref,run_ref,candidate_key,sequence,status,task_count,artifact_json) "
+        "VALUES (?,?,?,1,'completed',?,?)",
+        (candidate_ref, run_ref, "cand-1", len(rows), canonical_json(artifact)),
+    )
+    op_ref_by_id = {r["op_id"]: r["op_ref"] for r in op_rows}
+    conn.executemany(
+        "INSERT INTO WorkbenchRunCandidateTasks(row_ref,candidate_ref,operation_ref,ordinal,payload_json) VALUES (?,?,?,?,?)",
+        [
+            (
+                format((0xF0000000 + version * 100000 + ordinal), "048x"),
+                candidate_ref,
+                op_ref_by_id[row["op_id"]],
+                ordinal,
+                canonical_json({
+                    "op_id": row["op_id"],
+                    "source": "internal",
+                    "machine_id": row["machine_id"],
+                    "operator_id": row["operator_id"],
+                    "start_time": row["start_time"],
+                    "end_time": row["end_time"],
+                }),
+            )
+            for ordinal, row in enumerate(rows)
+        ],
+    )
+
+
+def publish_official_plan(conn, version, rows, *, adopted_at=START, operator="local-os-user", record_source=False):
     """Publish an official version as a candidate adoption does: version, audit, rows and receipt.
 
-    ``rows`` are Schedule rows (op_id, machine_id, operator_id, start_time, end_time). The adopted
-    candidate is not part of these fixtures, so readers record the legal archived-source gap for it.
-    The caller owns the transaction.
+    ``rows`` are Schedule rows (op_id, machine_id, operator_id, start_time, end_time). Unless
+    ``record_source=True`` is requested, the adopted candidate is omitted so readers record the
+    legal archived-source gap for it. The caller owns the transaction.
     """
     candidate_ref, run_ref = format(0xC0000000 + version, "048x"), format(0xA0000000 + version, "048x")
     request_key = "fixture-plan-adopt-" + format(version, "04d")
@@ -55,6 +218,18 @@ def publish_official_plan(conn, version, rows, *, adopted_at=START, operator="lo
                                  "start_date": min(times)[:10], "end_date": max(times)[:10]},
              "deferred_operation_ids": []}
     batches = {conn.execute("SELECT batch_id FROM BatchOperations WHERE id=?", (row["op_id"],)).fetchone()[0] for row in rows}
+    if record_source:
+        _record_candidate_adoption_source(
+            conn,
+            version,
+            rows,
+            candidate_ref=candidate_ref,
+            run_ref=run_ref,
+            baseline_ref=baseline_ref,
+            previous=previous,
+            adopted_at=adopted_at,
+            batches=batches,
+        )
     conn.execute("INSERT INTO ScheduleVersionSeq(version) VALUES (?)", (version,))
     conn.execute("INSERT INTO ScheduleHistory(version,strategy,batch_count,op_count,result_status,result_summary,"
                  "schedule_time,created_by) VALUES (?,'manual',?,?,'success',?,?,?)",
@@ -86,9 +261,10 @@ class LedgerCase:
         return self.conn.execute("""INSERT INTO BatchOperations(op_code,batch_id,seq,piece_id,op_type_id,op_type_name,source)
             VALUES (?,?,?,?,'T1','Turning','internal')""", (code, batch, seq, piece)).lastrowid
 
-    def plan(self, version, ids, *, start=START, end=END):
+    def plan(self, version, ids, *, start=START, end=END, record_source=False):
         publish_official_plan(self.conn, version, [{"op_id": op_id, "machine_id": "M1", "operator_id": "O1",
-                                                    "start_time": start, "end_time": end} for op_id in ids])
+                                                    "start_time": start, "end_time": end} for op_id in ids],
+                              record_source=record_source)
         self.conn.commit()
 
     def plan_ref(self, version):

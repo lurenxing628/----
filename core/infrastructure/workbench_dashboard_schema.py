@@ -2,7 +2,7 @@
 
 from core.infrastructure.workbench_metadata_schema import canonical_sql
 
-from .schema_structure import SchemaStructure, schema_objects
+from .schema_structure import SchemaStructure
 
 _REF = "TEXT NOT NULL CHECK(length({0})=48 AND {0} NOT GLOB '*[^0-9a-f]*')"
 
@@ -76,9 +76,8 @@ def workbench_dashboard_objects():
     return result
 
 
-def workbench_dashboard_contract_issues(conn, *, structure=None):
-    structure = structure or SchemaStructure(conn)
-    actual = schema_objects(conn, structure=structure)
+def workbench_dashboard_contract_issues(conn, *, structure: SchemaStructure):
+    actual = structure.sql
     issues = [("missing_dashboard_schema:" if name not in actual else "invalid_dashboard_schema:") + name
               for name, sql in workbench_dashboard_objects().items()
               if name not in actual or canonical_sql(actual[name]) != canonical_sql(sql)]

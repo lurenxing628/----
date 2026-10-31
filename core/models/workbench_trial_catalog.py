@@ -6,7 +6,6 @@ from typing import Optional
 from core.models.workbench_trial import reference, reject
 
 MAX_CATALOG_ROWS = 100000
-MAX_CATALOG_BYTES = 32 * 1024 * 1024
 
 
 @dataclass(frozen=True)

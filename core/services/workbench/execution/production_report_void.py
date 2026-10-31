@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from core.models.workbench_command import WorkbenchCommandOutcome
 from core.models.workbench_execution_input import closed_write_context, normalize_report_void_input, reject
+from core.services.execution.projection import materialize_operation_history
 from data.repositories.workbench_execution_report_repo import WorkbenchExecutionReportRepository, new_ref
 
 from .production_report_dependencies import ReportDependencies
@@ -57,13 +58,14 @@ class WorkbenchReportVoidService:
         original = history[-1]
         if original["revision_ref"] != payload["original_revision_ref"]:
             reject("这条报工已更正，请刷新后重新核对撤销内容。", "context_stale", 409)
-        before = self.ledger.project_loaded(facts, contexts=False)[0]
+        before = self.ledger.project_loaded(facts, contexts=False, include_history=False)[0]
         existing = facts["voids"].get(payload["report_ref"])
         snapshot = {"input": payload,
                     "execution": self.ledger.fact_snapshot(facts, header["operation_ref"]),
                     "original_revision_ref": original["revision_ref"]}
         if existing:
             return {"target": original, "fact": existing, "before": before, "after": before,
+                    "facts": facts, "changed_facts": facts,
                     "impacts": [], "warnings": [], "snapshot": snapshot, "unchanged": True}
         require_current(facts, header["operation_ref"])
         actor = self.actor_provider()
@@ -73,7 +75,7 @@ class WorkbenchReportVoidService:
                     recorded_at=self.ledger.clock().isoformat(timespec="seconds"), receipt_ref=None)
         changed = dict(facts, voids=dict(facts["voids"]))
         changed["voids"][payload["report_ref"]] = fact
-        after = self.ledger.project_loaded(changed, contexts=False)[0]
+        after = self.ledger.project_loaded(changed, contexts=False, include_history=False)[0]
         validate_projection_change(before, after)
         # 执行事实没变（如只去掉了已被其它报工证明的工时）就不牵动前后道，也不会让合并外协组对不上。
         impacts, warnings = [], []
@@ -86,6 +88,7 @@ class WorkbenchReportVoidService:
         # 确认时按预检看到的提醒核对：同组别的工序在这期间改了报工、提醒变了，就要重新查看撤销影响。
         snapshot["dependencies"], snapshot["warnings"] = impacts, warnings
         return {"target": original, "fact": fact, "before": before, "after": after,
+                "facts": facts, "changed_facts": changed,
                 "impacts": impacts, "warnings": warnings, "snapshot": snapshot, "unchanged": False}
 
     def preview(self, report_ref, payload):
@@ -96,9 +99,25 @@ class WorkbenchReportVoidService:
             if not prepared["impacts"] and self.ledger.context_factory:
                 context = self.ledger.context_factory(report_ref, ["report_void"], prepared["snapshot"])
             target = prepared["target"]
+            op_ref = prepared["before"].operation_ref
+            histories = prepared["facts"]["reports"].get(op_ref, {})
+            before_full = materialize_operation_history(
+                prepared["before"],
+                histories,
+                prepared["facts"]["voids"],
+            ).to_dict()
+            after_full = (
+                before_full
+                if prepared["unchanged"]
+                else materialize_operation_history(
+                    prepared["after"],
+                    histories,
+                    prepared["changed_facts"]["voids"],
+                ).to_dict()
+            )
             return {"target_report": {"report_ref": report_ref, "report_no": target["report_no"],
                                       "original_revision_ref": target["revision_ref"], "values": target["values"]},
-                    "before": prepared["before"].to_dict(), "after": prepared["after"].to_dict(),
+                    "before": before_full, "after": after_full,
                     "downstream_impacts": prepared["impacts"], "can_confirm": not prepared["impacts"],
                     "warnings": prepared["warnings"],
                     "state": "voided" if prepared["unchanged"] else "active", "write_context": context,

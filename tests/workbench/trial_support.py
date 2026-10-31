@@ -8,6 +8,7 @@ import pytest
 from flask import Blueprint, Flask, g
 
 from core.infrastructure.database import ensure_schema
+from core.infrastructure.sqlite_udf import register_schedule_time_sql_functions
 from core.infrastructure.workbench_trial_schema import TRIAL_TABLES
 from core.models.content import same
 from core.models.schedule_config_runtime_fields import default_snapshot_values
@@ -25,6 +26,7 @@ def connect(path, factory=sqlite3.Connection):
     conn = sqlite3.connect(str(path), timeout=20, factory=factory)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
+    register_schedule_time_sql_functions(conn)
     return conn
 
 
@@ -95,7 +97,7 @@ def snapshot(conn):
 
 def assert_legacy_retained(before, after):
     for name in before:
-        if name not in set(TRIAL_TABLES) | {"WorkbenchCommandReceipts"}:
+        if name not in set(TRIAL_TABLES) | {"WorkbenchCommandReceipts", "WorkbenchSourceRevisions"}:
             assert same(before[name], after[name]), name
 
 

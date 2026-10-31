@@ -45,16 +45,14 @@ class WorkbenchBatchFileService:
         deletions = [preparation.prepare("delete", {}, row["entity_ref"]) for row in document["deleted"]]
         changes = [(row, preparation.prepare(row["action"], row["input"], row["entity_ref"]))
                    for row in document["rows"] if row["action"] not in ("skipped", "unchanged")]
-        for change in deletions:
-            self.domain.apply_prepared(change)
-        prepared = iter(changes)
+        self.domain.apply_prepared_many(deletions)
+        applied = iter(self.domain.apply_prepared_many([change for _row, change in changes]))
         outcomes = []
         for row in document["rows"]:
             if row["action"] in ("skipped", "unchanged"):
                 outcomes.append({"entity_ref": row["entity_ref"], "business_code": row["business_code"], "result": row["action"]})
             else:
-                _row, change = next(prepared)
-                result = self.domain.apply_prepared(change)
+                result = next(applied)
                 outcomes.append({**result.data, "result": result.result})
         changed = bool(document["deleted"]) or any(row["result"] == "committed" for row in outcomes)
         return WorkbenchCommandOutcome("committed" if changed else "unchanged", {"items": outcomes, "count": len(outcomes),

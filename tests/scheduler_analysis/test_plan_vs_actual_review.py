@@ -206,11 +206,21 @@ def test_workbench_report_restores_second_page_once_and_keeps_export_binding(led
         raise AssertionError('A detail read must not build the list workspace')
 
     detail_url = url + '/operations/' + direct['data']['rows'][0]['operation_ref']
+    from core.models.workbench_execution import ExecutionProjection
+
+    to_dict_calls, orig_to_dict = [], ExecutionProjection.to_dict
+
+    def counted_to_dict(self):
+        to_dict_calls.append(self.operation_ref)
+        return orig_to_dict(self)
+
     with monkeypatch.context() as patch:
         patch.setattr(report_queries, 'summary', unwanted_workspace)
         patch.setattr(report_queries, 'charts', unwanted_workspace)
+        patch.setattr(ExecutionProjection, 'to_dict', counted_to_dict)
         detail = client.get(detail_url, query_string={**query, 'snapshot_ref': token})
     assert detail.status_code == 200, detail.get_json()
+    assert to_dict_calls == [direct['data']['rows'][0]['operation_ref']]
     assert set(detail.get_json()['data']) == {'plan', 'detail'}
     assert detail.get_json()['data']['detail']['operation'] == direct['data']['rows'][0]
     excluded_scope = {'query': 'no matching operation'}
@@ -240,9 +250,9 @@ def test_workbench_report_restores_second_page_once_and_keeps_export_binding(led
     case.conn.commit()
     catalog_calls, catalog_read = [], reports_catalog.catalog_facts
 
-    def captured_catalog(reader, scope):
+    def captured_catalog(reader, scope, **kwargs):
         catalog_calls.append(scope)
-        return catalog_read(reader, scope)
+        return catalog_read(reader, scope, **kwargs)
 
     catalog_url = '/api/workbench/v1/reports/utilization'
     from contextlib import contextmanager
@@ -364,3 +374,88 @@ def test_standalone_execution_xlsx_stream_keeps_canonical_headers():
         assert sheet["J2"].value == "二号设备 / 李四"
     finally:
         workbook.close()
+
+
+def test_operation_detail_validates_sibling_report_chains_without_projecting_sibling_dtos(ledger_case, monkeypatch):
+    from flask import Blueprint, Flask, g
+
+    from core.models.workbench_execution import ExecutionProjection
+    from web.routes.workbench import reports as report_routes
+    from web.routes.workbench.reports import register_report_routes
+
+    case = ledger_case
+    other_op_id = case.op("OP2", seq=2)
+    case.plan(2, [case.op_id, other_op_id])
+    case.command("create", case.task(2, other_op_id), case.values(5))
+
+    app = Flask("sibling-report-chain-detail")
+    app.config.update(TESTING=True, SECRET_KEY="sibling-report-chain-test")
+    bp = Blueprint("sibling_report_chain_detail", __name__)
+    register_report_routes(bp)
+    app.register_blueprint(bp)
+
+    @app.before_request
+    def database():
+        g.db = case.conn
+
+    client, url = app.test_client(), "/api/workbench/v1/analytics"
+    listing = client.get(url)
+    assert listing.status_code == 200, listing.get_json()
+    listing_data = listing.get_json()
+    token = listing_data["meta"]["snapshot_ref"]
+    healthy_ref = case.conn.execute(
+        "SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND source_key=? AND active=1",
+        (str(case.op_id),),
+    ).fetchone()[0]
+    detail_url = f"{url}/operations/{healthy_ref}"
+
+    to_dict_calls, orig_to_dict = [], ExecutionProjection.to_dict
+
+    def counted_to_dict(self):
+        to_dict_calls.append(self.operation_ref)
+        return orig_to_dict(self)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(ExecutionProjection, "to_dict", counted_to_dict)
+        healthy_detail = client.get(detail_url, query_string={"snapshot_ref": token})
+    assert healthy_detail.status_code == 200, healthy_detail.get_json()
+    assert to_dict_calls == [healthy_ref]
+
+    rev1 = case.conn.execute(
+        "SELECT * FROM WorkbenchProductionReportRevisions WHERE sequence=1"
+    ).fetchone()
+    case.conn.execute(
+        """INSERT INTO WorkbenchProductionReportRevisions(
+            revision_ref, report_ref, sequence, previous_revision_ref, action,
+            values_json, reason, local_operator, declared_operator, recorded_at, request_key
+        ) VALUES (?, ?, 2, NULL, 'correct', ?, 'corrupted chain', ?, ?, ?, ?)""",
+        (
+            "f" * 48,
+            rev1["report_ref"],
+            rev1["values_json"],
+            rev1["local_operator"],
+            rev1["declared_operator"],
+            rev1["recorded_at"],
+            rev1["request_key"],
+        ),
+    )
+    case.conn.commit()
+
+    issued_tokens = []
+    orig_bind = report_routes.bind_read_snapshot
+
+    def capture_bind(*args, **kwargs):
+        result = orig_bind(*args, **kwargs)
+        issued_tokens.append(result["snapshot_ref"])
+        return result
+
+    with monkeypatch.context() as patch:
+        patch.setattr(report_routes, "bind_read_snapshot", capture_bind)
+        broken_list = client.get(url)
+    assert broken_list.status_code == 500
+    assert broken_list.get_json()["error"]["code"] == "storage_failure"
+    assert len(issued_tokens) == 1
+
+    broken_detail = client.get(detail_url, query_string={"snapshot_ref": issued_tokens[0]})
+    assert broken_detail.status_code == 500
+    assert broken_detail.get_json()["error"]["code"] == "storage_failure"

@@ -8,7 +8,7 @@ from core.errors import ValidationError
 from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench import messages
-from web.public_token_registry import PublicTokenIssuer, resolve_public_token
+from web.public_token_registry import PublicTokenIssuer, drop_public_token, resolve_public_token
 
 _SCOPE = "workbench-read-v1"
 
@@ -38,6 +38,10 @@ def resolve_read_snapshot(token):
         return resolve_public_token(_SCOPE, token, message=messages.STALE, field="snapshot_ref")
     except ValidationError as exc:
         raise WorkbenchCommandRejected("snapshot_stale", messages.STALE) from exc
+
+
+def drop_read_snapshot(token: str) -> None:
+    drop_public_token(_SCOPE, token)
 
 
 def read_snapshot_time(token) -> Tuple[datetime, Optional[ReadBinding]]:

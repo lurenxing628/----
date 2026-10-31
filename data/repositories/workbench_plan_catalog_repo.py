@@ -11,7 +11,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
-from .schedule_plan_query_repo import SCHEDULE_PLAN_ROWS_SQL, SchedulePlanQueryRepository
+from .schedule_plan_query_repo import SchedulePlanQueryRepository
 from .schedule_rows import ScheduleTimeSpanRow
 
 DEFAULT_PLAN_PAGE_SIZE = 20
@@ -106,14 +106,6 @@ class WorkbenchPlanCatalogRepository(SchedulePlanQueryRepository):
         if version not in self._spans:
             self._spans[version] = super().get_plan_time_span(version=version)
         return self._spans[version]
-
-    def first_raw_plan_identity_row(
-        self, *, version: int,
-    ) -> Optional[Dict[str, Any]]:
-        return self.fetchone(
-            "SELECT id AS source_row_id, lock_status FROM (" + SCHEDULE_PLAN_ROWS_SQL + ") raw ORDER BY id ASC LIMIT 1",
-            (version,),
-        )
 
     def iter_raw_plan_rows(self, *, version: int) -> Iterator[Dict[str, Any]]:
         """Stream plan rows in id order without declared DATE/TIMESTAMP conversion."""

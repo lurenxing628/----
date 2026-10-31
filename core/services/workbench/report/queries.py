@@ -15,25 +15,49 @@ SORTS = {"delivery": ("batch_label", "planned_end", "finish_deviation_minutes", 
          "people": ("resource_label", "production_reports", "effective_processing_hours")}
 
 
-def report_workspace(facts, snapshot, topic, page):
+def report_workspace(facts, snapshot, topic, page, *, mode="workspace"):
     operations, records, labels = project_cohort(facts, snapshot["as_of"])
-    resources = {
-        "machines": resource_rows(records, "machine"),
-        "people": resource_rows(records, "operator"),
-    }
-    rows = records if topic == "records" else resources[topic] if topic in resources else operations
-    ordered, visible, pagination = page.apply(rows, SORTS[topic])
-    choices = facts["choices"]
     scope_gaps = list(dict.fromkeys(gap for operation in operations for gap in operation["data_gaps"]))
-    data = {"plan": facts["plan"], "scope": facts["scope"].scope(), "topic": topic, "provenance": "当前正式计划与报工记录（逐次报工与更正）",
-            "time_scope": {"selection": "plan_finish_date", "boundary": "inclusive_dates", "time_basis": "factory_local"},
-            "rows": visible, "summary": summary(operations, records), "page": pagination,
-            "charts": charts(operations, snapshot["as_of"]), "resources": resources,
-            "capabilities": {"state": "partial" if any(row["data_quality"] != "complete" for row in operations) else "complete",
-                             "production_reports": True,
-                             "effective_processing_hours": True, "detail": True, "export": True},
-            "data_gaps": GAPS + scope_gaps, "choices": {kind: sorted(values.values(), key=lambda row: row["label"])
-                                          for kind, values in choices.items()}}
+    resources = (
+        {"machines": resource_rows(records, "machine"), "people": resource_rows(records, "operator")}
+        if mode == "workspace"
+        else None
+    )
+    if topic == "records":
+        rows = records
+    elif topic == "machines":
+        rows = resources["machines"] if resources is not None else resource_rows(records, "machine")
+    elif topic == "people":
+        rows = resources["people"] if resources is not None else resource_rows(records, "operator")
+    else:
+        rows = operations
+    ordered, visible, pagination = page.apply(rows, SORTS[topic])
+    data = {
+        "plan": facts["plan"],
+        "scope": facts["scope"].scope(),
+        "topic": topic,
+        "provenance": "当前正式计划与报工记录（逐次报工与更正）",
+        "time_scope": {"selection": "plan_finish_date", "boundary": "inclusive_dates", "time_basis": "factory_local"},
+        "rows": visible,
+        "page": pagination,
+        "data_gaps": GAPS + scope_gaps,
+    }
+    if mode in ("workspace", "xlsx"):
+        data["summary"] = summary(operations, records)
+    if mode == "workspace":
+        choices = facts["choices"]
+        data.update(
+            charts=charts(operations, snapshot["as_of"]),
+            resources=resources,
+            capabilities={
+                "state": "partial" if any(row["data_quality"] != "complete" for row in operations) else "complete",
+                "production_reports": True,
+                "effective_processing_hours": True,
+                "detail": True,
+                "export": True,
+            },
+            choices={kind: sorted(values.values(), key=lambda row: row["label"]) for kind, values in choices.items()},
+        )
     return data, ordered, labels
 
 

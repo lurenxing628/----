@@ -126,5 +126,5 @@ def recommendation_export_tables(data, snapshot):
 
 def recommendation_csv(data, snapshot):
     common = dict(zip(COMMON_HEADERS, common_export_columns(data, snapshot)))
-    return RECOMMENDATION_CSV_HEADERS, [[{**common, **row}.get(field) for field in RECOMMENDATION_CSV_HEADERS]
-        for rows in data["export_recommendation"].values() for row in rows]
+    return RECOMMENDATION_CSV_HEADERS, [[merged.get(field) for field in RECOMMENDATION_CSV_HEADERS]
+        for rows in data["export_recommendation"].values() for row in rows for merged in ({**common, **row},)]

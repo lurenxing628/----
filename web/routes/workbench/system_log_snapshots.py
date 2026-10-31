@@ -1,4 +1,4 @@
-"""Keep an immutable, sanitized log window for paging and its exact export."""
+"""Keep an immutable, bounded log window for paging and its exact export."""
 
 import time
 from dataclasses import dataclass
@@ -11,7 +11,7 @@ from core.services.workbench import messages
 from core.services.workbench.facts.run_data_context import restored_context_ref
 from core.shared.strict_json import canonical_json
 
-from .read_context import bind_read_snapshot
+from .read_context import bind_read_snapshot, drop_read_snapshot, resolve_read_snapshot
 from .system_context import database_scope, journal
 
 _EXTENSION = "workbench_system_log_snapshots_v1"
@@ -30,12 +30,17 @@ class _LogWindow:
     size_bytes: int
 
 
+def _drop_window(windows, token):
+    del windows[token]
+    drop_read_snapshot(token)
+
+
 def _windows():
     windows = current_app.extensions.setdefault(_EXTENSION, {})
     now = time.monotonic()
     for token in list(windows):
         if windows[token].expires_at <= now:
-            del windows[token]
+            _drop_window(windows, token)
     return windows
 
 
@@ -55,13 +60,17 @@ def retain_log_snapshot(scope, rows, sources):
     size = len(document.encode("utf-8"))
     if size > _MAX_BYTES:
         raise WorkbenchCommandRejected("snapshot_capacity_exceeded", "这段日志超过暂存容量，请缩小筛选范围后重新查询。", 503)
-    snapshot = bind_read_snapshot(_bound_scope(scope), document)
+    bound_scope = _bound_scope(scope)
     with _LOCK:
+        # Issue after expiry and under the window lock, so no eviction releases a reused token before its window is kept.
         windows = _windows()
+        snapshot = bind_read_snapshot(bound_scope, document)
         if snapshot["snapshot_ref"] not in windows:
             while windows and (len(windows) >= _MAX_WINDOWS or sum(item.size_bytes for item in windows.values()) + size > _MAX_BYTES):
-                del windows[min(windows, key=lambda token: windows[token].expires_at)]
-            windows[snapshot["snapshot_ref"]] = _LogWindow(document, rows, sources, time.monotonic() + _TTL_SECONDS, size)
+                _drop_window(windows, min(windows, key=lambda token: windows[token].expires_at))
+            # The registry keeps one text per content group; the window holds that same object so the budget counts what stays in memory.
+            text = resolve_read_snapshot(snapshot["snapshot_ref"]).fingerprint[1]
+            windows[snapshot["snapshot_ref"]] = _LogWindow(text, rows, sources, time.monotonic() + _TTL_SECONDS, size)
     return snapshot
 
 

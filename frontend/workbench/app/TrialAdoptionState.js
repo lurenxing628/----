@@ -1,17 +1,18 @@
 (function () {
   'use strict';
-  const A = window.TrialAdoptionAPI, KEY = 'aps_workbench_trial_adoption_pending_v1', EVENT = KEY + '_changed';
-  function valid(v) {
+  const A = window.TrialAdoptionAPI, T = window.APSWorkbenchTransport, KEY = 'aps_workbench_trial_adoption_pending_v1', EVENT = KEY + '_changed';
+  function valid(v, checkReceipt = true) {
     try {
       return A.shape(v, ['schema_version', 'scenario_ref', 'request_key', 'input', 'preview', 'phase'], v.phase === 'committed' ? ['receipt'] : [])
         && v.schema_version === 1 && A.key(v.request_key)
         && A.shape(v.preview, ['scenario_ref', 'draft_ref', 'baseline', 'task_count', 'scope_complete', 'data_context_ref'])
         && A.overview(v.preview) && v.scenario_ref === v.preview.scenario_ref
-        && A.equal(A.input(v.input), v.input) && ['pending', 'rejected', 'committed'].includes(v.phase) && (v.phase !== 'committed' || !!A.receipt(v.receipt, v));
+        && A.equal(A.input(v.input), v.input) && ['pending', 'rejected', 'committed'].includes(v.phase)
+        && (v.phase !== 'committed' || (checkReceipt ? !!A.receipt(v.receipt, v) : Boolean(v.receipt && typeof v.receipt === 'object')));
     } catch (_) { return false; }
   }
-  const { read, save } = window.APSWorkbenchTransport.pendingStore({
-    key: KEY, event: EVENT, validate: valid,
+  const { read, flush, save } = T.pendingStore({
+    key: KEY, event: EVENT, validate: valid, validateWrite: v => valid(v, false),
     readError: '读不到上次采用操作的记录，不能开始新的采用。请重新打开页面。',
     corruptError: '上次采用操作的记录已损坏。请不要再操作，联系维护人员。',
     invalidError: '上次采用操作的记录不完整。请不要再操作，联系维护人员。',
@@ -19,12 +20,14 @@
     invalidWriteError: '读到的采用数据不完整或对不上，这次没有确认采用。请刷新重试。',
     writeError: '存不下这次采用操作的记录，这次没有提交。请点「查询结果」确认上次操作。'
   });
+  // preview 是 A.preview 校验过的可采用预检，values 是 A.input 规整过的填写内容，previous 只会是 null 或被拒绝的上次记录；
+  // 写入时 save 再按存储格式整体校验一次。
   function begin(preview, values, previous) {
-    const scope = A.overview(preview), input = A.input(values);
-    A.check(!previous || valid(previous) && previous.phase === 'rejected' && A.sameScope(previous.preview, scope) && A.equal(previous.input, input),
+    const scope = A.overviewFields(preview);
+    A.check(!previous || A.sameScope(previous.preview, scope) && A.equal(previous.input, values),
       '上次提交的试调方案、原因和经办人已绑定，改了内容不能沿用同一个操作编号。');
-    const requestKey = previous ? previous.request_key : window.APSWorkbenchTransport.requestKey('trial-adoption');
-    return save({ schema_version: 1, scenario_ref: scope.scenario_ref, request_key: requestKey, input, preview: scope, phase: 'pending' }, previous);
+    const requestKey = previous ? previous.request_key : T.requestKey('trial-adoption');
+    return save({ schema_version: 1, scenario_ref: scope.scenario_ref, request_key: requestKey, input: values, preview: scope, phase: 'pending' }, previous);
   }
   // A fresh draft starts from the handler this machine remembered, so the dirty guard compares against that prefill rather than an empty string.
   const remembered = () => window.WorkbenchHandlerMemory.read().value, empty = () => ({ reason: '', declared_operator: remembered() });
@@ -49,9 +52,9 @@
     current.current = { original, disabled, preview, consent, draft, storageError }; const identity = JSON.stringify(original);
     React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; if (request.current) request.current.abort(); }; }, []);
     React.useEffect(() => { current.current = { ...current.current, preview: null, consent: false }; setPreview(null); setConsent(false); if (request.current) request.current.abort(); }, [identity, disabled]);
-    function sync(event) {
+    function sync(event, load = read) {
       try {
-        const value = event && event.type === EVENT ? event.detail : read();
+        const value = event && event.type === EVENT ? event.detail : load();
         if (value !== active.current && !A.equal(value, active.current)) {
           const switched = !active.current || !value || value.request_key !== active.current.request_key;
           const nextDraft = value ? value.input : empty();
@@ -87,6 +90,7 @@
       const failed = () => { if (mounted.current) setNotice('采用已确认，但相关页面没有更新成功。请重新打开正式计划。'); };
       try { Promise.resolve(callback.current(result)).catch(failed); } catch (_) { failed(); }
     }, [result]);
+    // 采用结论写回本机记录；调用方持有跨页锁。
     function accept(value, intent) {
       if (!A.equal(active.current, intent)) { if (mounted.current) sync(); return; }
       const committed = { ...intent, phase: 'committed', receipt: value };
@@ -106,7 +110,7 @@
         const found = await A.lookup(intent, signal);
         if (!mounted.current || signal && signal.aborted) return;
         if (found.state === 'not_observed') {
-          if (found.may_be_in_flight === false) {
+          if (found.may_be_in_flight === false) await T.exclusive(KEY, { wait: true }, () => {
             if (!A.equal(active.current, intent)) { sync(); return; }
             try { save(null, intent); } catch (e) {
               if (active.current !== null) sync();
@@ -116,8 +120,9 @@
               setError('');
               setNotice('上次采用记录的数据来源已失效，已结束本机待确认记录。请对当前试调方案重新预检。');
             }
-          } else if (A.equal(active.current, intent)) { setError(''); setNotice(window.WorkbenchTerms.outcomes.pending('采用')); }
-        } else accept(found, intent);
+          });
+          else if (A.equal(active.current, intent)) { setError(''); setNotice(window.WorkbenchTerms.outcomes.pending('采用')); }
+        } else await T.exclusive(KEY, { wait: true }, () => accept(found, intent));
       } catch (e) { if (mounted.current && !(signal && signal.aborted) && A.equal(active.current, intent)) setError('上次采用的结果还没查到。' + e.message); }
       finally { if (mounted.current && !(signal && signal.aborted)) setChecking(false); }
     }
@@ -139,27 +144,27 @@
     }
     async function submit() {
       if (lock.current || storageError || disabled || !original || !preview || !preview.validation.can_adopt || !consent
-        || !A.sameScope(original, A.overview(preview)) || saved && saved.phase !== 'rejected') return;
+        || !A.sameScope(original, preview) || saved && saved.phase !== 'rejected') return;
       let values; try { values = A.input({ confirm: true, reason: draft.reason, declared_operator: draft.declared_operator }); }
       catch (e) { setError(e.message); return; }
       window.WorkbenchHandlerMemory.write(values.declared_operator);
       const initialActive = active.current;
       lock.current = true; setBusy(true); setError(''); setNotice('');
       try {
-        if (!navigator.locks || typeof navigator.locks.request !== 'function') { if (mounted.current) setError('当前浏览器不支持这项操作，请用 Chrome 打开。'); return; }
-        await navigator.locks.request(KEY, { ifAvailable: true }, async acquired => {
-          if (!acquired) { if (mounted.current) setError('另一个页面正在处理这次采用，请先在那个页面点「查询结果」。'); return; }
+        // 采用记录、提交和结果写回在跨页互斥里串行，持锁跨过采用命令。
+        const { acquired } = await T.exclusive(KEY, {}, async () => {
           const latest = current.current;
           if (!mounted.current || latest.disabled || latest.storageError || !latest.original || latest.preview !== preview || !latest.consent
             || !A.equal(active.current, initialActive) || active.current && active.current.phase !== 'rejected'
             || !A.equal(original, latest.original)
             || !A.equal(A.input({ confirm: true, reason: latest.draft.reason, declared_operator: latest.draft.declared_operator }), values)) return;
-          const intent = begin(preview, values, active.current);
+          let intent;
+          try { intent = begin(preview, values, active.current); } catch (e) { setStorageError(e.message); return; }
           active.current = intent; current.current = { ...current.current, preview: null, consent: false }; setSaved(intent); setDraft(intent.input); setPreview(null); setConsent(false);
           try { accept(await A.adopt(intent, preview.write_context.write_token), intent); }
           catch (e) {
             if (!A.equal(active.current, intent)) { if (mounted.current) sync(); return; }
-            if (window.APSWorkbenchTransport.rejected(e)) {
+            if (T.rejected(e)) {
               const rejected = { ...intent, phase: 'rejected' };
               try { save(rejected, intent); active.current = rejected; }
               catch (storageErr) {
@@ -171,12 +176,14 @@
             } else if (mounted.current) setError(window.WorkbenchTerms.outcomes.unknown('采用'));
           }
         });
-      } catch (e) { if (mounted.current) setStorageError(e.message); }
+        if (!acquired && mounted.current) setError('另一个页面正在处理这次采用，请先在那个页面点「查询结果」。');
+      } catch (e) { if (mounted.current) setError(e.message); }
       finally { lock.current = false; if (mounted.current) { setBusy(false); refresh(); } }
     }
-    function finish() {
+    async function finish() {
       try {
-        A.check(saved && saved.phase !== 'pending', '结果还不确定，不能丢弃这次操作记录。'); save(null, saved);
+        A.check(saved && saved.phase !== 'pending', '结果还不确定，不能丢弃这次操作记录。');
+        await T.exclusive(KEY, { wait: true }, () => save(null, saved));
         current.current = { ...current.current, preview: null, consent: false }; setOpen(false); setPreview(null); setConsent(false); setDraft(empty());
         setError(''); setNotice(saved.phase === 'committed' ? '这次采用结果已确认完成。' : '本次操作已结束，未采用。');
       } catch (e) { setStorageError(e.message); }
@@ -184,7 +191,9 @@
     function close() { if (request.current) request.current.abort(); current.current = { ...current.current, preview: null, consent: false }; setOpen(false); setPreview(null); setConsent(false); if (!active.current) { setError(''); setDraft(empty()); } }
     return { saved, result, draft, open, preview, consent, busy: busy || checking, error, notice, storageError, sourceError, original, disabled,
       setOpen, setConsent: value => { current.current = { ...current.current, consent: value }; setConsent(value); },
-      change: value => { if (!active.current) { current.current = { ...current.current, draft: value, consent: false }; setDraft(value); setConsent(false); } }, inspect, submit, lookup: () => lookup(), sync, close, finish };
+      change: value => { if (!active.current) { current.current = { ...current.current, draft: value, consent: false }; setDraft(value); setConsent(false); } }, inspect, submit, lookup: () => lookup(),
+      // 「刷新上次操作记录」在跨页互斥里把本页没写进去的记录写回再读。
+      sync: () => T.exclusive(KEY, { wait: true }, () => sync(undefined, flush)).catch(e => setStorageError(e.message)), close, finish };
   }
   window.TrialAdoptionState = { KEY, read, save, useSession };
 })();

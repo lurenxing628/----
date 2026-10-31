@@ -53,7 +53,6 @@ def build_grasp_ig_candidate_specs(
         specs.append(
             {
                 "origin": GRASP_ORIGIN,
-                "restart_index": index,
                 "dispatch_mode": "batch_order",
                 "dispatch_rule": dispatch_rule_cfg,
                 "order": _grasp_order(base_order, rnd=rnd, rcl_size=rcl_size),
@@ -65,7 +64,6 @@ def build_grasp_ig_candidate_specs(
         specs.append(
             {
                 "origin": IG_ORIGIN,
-                "restart_index": index,
                 "dispatch_mode": "batch_order",
                 "dispatch_rule": dispatch_rule_cfg,
                 "order": _ig_order(parent_order, rnd=rnd, destruction_size=destruction_size),

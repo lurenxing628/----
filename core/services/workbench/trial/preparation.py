@@ -1,6 +1,6 @@
 """Trial projections read the same saved requirement and changeover facts."""
 
-from core.services.workbench.facts.candidate_facts import GenerationFacts
+from core.services.workbench.facts.candidate_store import cached_generation_facts
 from core.services.workbench.facts.changeovers import changeover_projection
 from core.services.workbench.facts.operation_effort_evidence import archived_standard_effort, saved_operation_efforts
 from core.services.workbench.facts.preparation_projection import (
@@ -13,7 +13,6 @@ from core.services.workbench.facts.preparation_projection import (
 )
 from core.services.workbench.facts.trial_origin import operation_contexts
 from core.services.workbench.facts.zero_duration import point_event_dto
-from core.services.workbench.facts.zero_duration_evidence import trial_point_evidence
 
 from .arrangements import same_arrangement
 from .effort import retained_role
@@ -84,19 +83,22 @@ def preparation_projection(rows, admission, current_ledger, *, current_evidence,
         "coverage": {name: summary["coverage"] for name, summary in summaries.items()}}
 
 
-def trial_changeovers(rows, admission, *, start=None, end=None, next_operation_refs=None, facts=None):
+def trial_changeovers(rows, admission, *, start=None, end=None, next_operation_refs=None, facts=None, after_only=False, trial_intervals):
     source = admission["source"]
     types = source.get("operation_types") or {}
     slot_types = source["trial_operation_types"]
     if "capture" in source:
-        facts = facts if facts is not None else GenerationFacts(source["capture"])
+        facts = facts if facts is not None else cached_generation_facts(source["capture"])
         machine_rows = facts.tables["Machines"].values()
     else:
         machine_rows = admission["facts"]["tables"]["Machines"]
     machines = {item["machine_id"]: item.get("name") for item in machine_rows}
     projected = {}
-    for side in ("original", "current"):
+    sides = ("current",) if after_only else ("original", "current")
+    for side in sides:
         tasks = []
+        row_intervals = trial_intervals["original_by_row"] if side == "original" else trial_intervals["current_by_row"]
+        side_intervals = trial_intervals["original_by_source_row"] if side == "original" else trial_intervals["current_by_row"]
         for row in rows:
             original = row["original"]
             arrangement = original["arrangement"] if side == "original" else row["current"]
@@ -107,11 +109,12 @@ def trial_changeovers(rows, admission, *, start=None, end=None, next_operation_r
                 "machine": {"ref": arrangement["machine_ref"], "label": machines.get(arrangement["machine_id"])},
                 "process_type_ref": kind.get("ref"), "process_type_label": kind.get("label")}
             if task["start"] == task["end"]:
-                witness = trial_point_evidence(original, arrangement)
-                task.update(point_event_dto(witness.at, witness.at))
+                span = row_intervals.get(row["row_ref"])
+                if span is not None and span[0] == span[1]:
+                    task.update(point_event_dto(span[0], span[1]))
             tasks.append(task)
         projected["before" if side == "original" else "after"] = changeover_projection(
-            tasks, start=start, end=end, next_operation_refs=next_operation_refs)
+            tasks, start=start, end=end, next_operation_refs=next_operation_refs, task_intervals=side_intervals)
     windowed = start is not None or end is not None
     return {"scope": "fixed_changeover_window" if windowed else "complete_trial",
             "metric_version": PREPARATION_METRIC_VERSION if windowed else "type_changeover_v1", **projected}

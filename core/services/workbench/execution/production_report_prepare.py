@@ -1,6 +1,7 @@
 """In-memory batch simulation. No SQL writes, including preview and import checks."""
 
-from typing import Any, Dict, NoReturn
+from datetime import datetime
+from typing import Any, Dict, NoReturn, Optional
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution_input import (
@@ -10,6 +11,7 @@ from core.models.workbench_execution_input import (
     reject,
     validate_actual_values,
 )
+from core.services.execution.projection import materialize_operation_history
 from data.repositories.workbench_execution_report_repo import new_ref
 
 from .production_report_dependencies import ReportDependencies
@@ -36,7 +38,7 @@ def _reject_row(error: WorkbenchCommandRejected, row_number: int) -> NoReturn:
                               operation_refs=error.operation_refs, conflicts=error.conflicts) from error
 
 
-def normalize_items(items):
+def normalize_items(items, *, parsed_times: Optional[Dict[str, datetime]] = None):
     if not isinstance(items, list) or not 1 <= len(items) <= 5000:
         reject("一次报工要填 1 到 5000 行。请调整行数后重新提交。", status=400)
     result = []
@@ -45,7 +47,7 @@ def normalize_items(items):
             if type(item) is not dict or set(item) != {"action", "ref", "payload"}:
                 reject("报工行的内容不完整。请核对标红的项后重新提交。", status=400)
             result.append({"action": item["action"], "ref": public_ref(item["ref"]),
-                           "payload": normalize_report_input(item["action"], item["payload"])})
+                           "payload": normalize_report_input(item["action"], item["payload"], parsed_times=parsed_times)})
         except WorkbenchCommandRejected as exc:
             _reject_row(exc, index)
     return result
@@ -75,8 +77,9 @@ def _new_row(item, operation_ref, task, *, actor, now, row_number) -> Dict[str, 
 
 
 class ReportBatchPreparation:
-    def __init__(self, ledger, items, actor):
+    def __init__(self, ledger, items, actor, *, parsed_times: Dict[str, datetime]):
         self.ledger, self.items, self.actor = ledger, items, actor
+        self.parsed_times = parsed_times
         self.conn = ledger.conn
         self.resources = ReportResourceValidator(self.conn)
         self.resolved = []
@@ -122,17 +125,28 @@ class ReportBatchPreparation:
         self.resolve()
         now = self.ledger.clock()
         self.now = now
-        before = {row.operation_ref: row for row in self.ledger.project_loaded(self.before, contexts=False)}
+        before = {
+            row.operation_ref: row
+            for row in self.ledger.project_loaded(self.before, contexts=False, include_history=False)
+        }
         self.before_projections = before
         for index, (item, resolved) in enumerate(zip(self.items, self.resolved), 1):
             try:
                 self._row(item, resolved, index, now)
             except WorkbenchCommandRejected as exc:
                 _reject_row(exc, index)
-        self.projections = self.ledger.project_loaded(self.facts, contexts=False)
+        changed_ops = {row["operation_ref"] for row in self.appended}
+        self.projections = [
+            self.ledger.project_operation(self.facts, ref, include_history=False) if ref in changed_ops else before[ref]
+            for ref in self.facts["operations"]
+        ]
         dependencies = ReportDependencies(self.ledger, self.projections)
-        facts_changed = {after.operation_ref: execution_facts_changed(before[after.operation_ref], after)
-                         for after in self.projections}
+        facts_changed = {
+            after.operation_ref: (
+                after.operation_ref in changed_ops and execution_facts_changed(before[after.operation_ref], after)
+            )
+            for after in self.projections
+        }
         dependencies.prepare(self.facts["operations"][after.operation_ref] for after in self.projections
                              if facts_changed[after.operation_ref])
         changed_by_operation = {}
@@ -188,7 +202,7 @@ class ReportBatchPreparation:
                        reason=item["payload"].get("reason", "Excel explicit sparse supplement"),
                        local_operator=self.actor, declared_operator=item["payload"]["declared_operator"],
                        revision_at=now.isoformat(timespec="seconds"), receipt_ref=None)
-        validate_actual_values(row["values"], now)
+        validate_actual_values(row["values"], now, parsed_times=self.parsed_times)
         self.resources.validate(self.facts["operations"][operation_ref], row["values"],
                                 previous_values=old["values"] if old else None)
         if old and row["values"] == old["values"]:
@@ -228,12 +242,20 @@ class ReportBatchPreparation:
         recheck_now = now < self.now
         for row in self.appended:
             if recheck_now:
-                validate_actual_values(row["values"], now)
+                validate_actual_values(row["values"], now, parsed_times=self.parsed_times)
             if row["sequence"] == 1:
                 row["recorded_at"] = stamp
             row["revision_at"], row["local_operator"] = stamp, self.actor
 
     def public(self):
+        projections = [
+            materialize_operation_history(
+                projection,
+                self.facts["reports"].get(projection.operation_ref, {}),
+                self.facts["voids"],
+            ).to_dict()
+            for projection in self.projections
+        ]
         return {"rows": self.rows, "summary": {"total": len(self.rows), "changed": len(self.appended),
                 "unchanged": len(self.rows) - len(self.appended)}, "can_confirm": True, "snapshot": self.snapshot,
-                "projections": [row.to_dict() for row in self.projections]}
+                "projections": projections}

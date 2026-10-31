@@ -44,11 +44,12 @@ def material_bulk_preview():
     body = json_body({"action", "refs", "scope", "snapshot_ref"}, {"page_size"})
     if body["action"] != "delete":
         raise WorkbenchCommandRejected("invalid_input", "批量操作只支持删除选中的物料，这次没有改动任何物料。请先勾选要删除的物料。", 400)
-    scope, query_scope, token = scope_input(body)
+    page_request, query_scope, token = scope_input(body)
     reader = WorkbenchMaterialQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as fingerprint:
         snapshot = bind_read_snapshot(query_scope, fingerprint, token)
-        preview = WorkbenchMaterialBulkService(g.db, current_app.logger).preview_delete(body["refs"], scope=scope)
+        preview = WorkbenchMaterialBulkService(g.db, current_app.logger).preview_delete(
+            body["refs"], scope=page_request)
         data = issue_preview(preview)
     return query_success(data, snapshot)
 

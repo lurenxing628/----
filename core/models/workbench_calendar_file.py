@@ -233,3 +233,14 @@ INSTRUCTIONS = {kind: instructions_text(table_descriptor(kind)) for kind in CALE
 @dataclass(frozen=True)
 class CalendarFilePreview(ResourceActionPreview):
     calendars: dict = field(default_factory=dict, repr=False, compare=False)
+
+    @classmethod
+    def build(cls, operation, request, rows, notices=(), *, source=None, calendars=None):
+        return super().build(
+            operation,
+            request,
+            rows,
+            notices,
+            source=source,
+            calendars={} if calendars is None else calendars,
+        )

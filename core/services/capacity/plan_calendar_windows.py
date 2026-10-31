@@ -7,6 +7,7 @@ from datetime import datetime, time, timedelta
 from typing import Any, Dict
 
 from core.errors import ValidationError
+from core.shared.strict_json import clone_json
 
 from .plan_calendar_intervals import (
     HOUR_MICROSECONDS,
@@ -14,7 +15,6 @@ from .plan_calendar_intervals import (
     hours,
     instant,
     interval_microseconds,
-    public_intervals,
     union,
     union_sorted,
     wire,
@@ -99,7 +99,8 @@ def policy_projection(engine, first_day, last_day, start, end, operator_id=None)
         # profile is broken. Only uncovered, potentially affected time is unknown.
         overriding = IntervalIndex([(row["start"], row["end"]) for row in windows
                                     if row["policy_date"] > day.isoformat()])
-        if low < high and overriding.hours_between(low, high) + 1e-9 < interval_microseconds(low, high) / HOUR_MICROSECONDS:
+        # Exact: whole microseconds over one divisor stay strictly ordered (1 µs ≫ float spacing).
+        if low < high and overriding.hours_between(low, high) < interval_microseconds(low, high) / HOUR_MICROSECONDS:
             result = unavailable(basis, "calendar_invalid")
             result["issues"][0]["policy_date"] = day.isoformat()
             return result
@@ -108,17 +109,73 @@ def policy_projection(engine, first_day, last_day, start, end, operator_id=None)
         capacity = measures(windows, durations)
     except ValueError:
         return unavailable(basis, "calendar_invalid")
-    for row in windows:
-        row["start"], row["end"] = wire(row["start"]), wire(row["end"])
     return dict(state="available", basis=basis, windows=windows, issues=[], **capacity)
+
+
+def public_windows(windows, wired=None):
+    if windows is None:
+        return None
+    if not windows:
+        return []
+    if wired is not None:
+        entry = wired.get(id(windows))
+        if entry is not None and entry[0] is windows:
+            return entry[1]
+    result = [dict(row, start=wire(row["start"]), end=wire(row["end"])) for row in windows]
+    if wired is not None:
+        wired[id(windows)] = (windows, result)
+    return result
+
+
+def public_projection(projection: Dict[str, Any], wired=None, *, include_windows: bool = True) -> Dict[str, Any]:
+    result = dict(projection)
+    if "source" in result:
+        result["source"] = clone_json(result["source"])
+    if "issues" in result:
+        result["issues"] = clone_json(result["issues"])
+    if result["state"] != "available":
+        return result
+    if include_windows:
+        result["windows"] = public_windows(result["windows"], wired)
+        if "downtime_windows" in result:
+            result["downtime_windows"] = public_windows(result["downtime_windows"])
+    else:
+        result["windows"] = []
+        if "downtime_windows" in result:
+            result["downtime_windows"] = []
+    return result
+
+
+def public_archived_calendar(calendar: Dict[str, Any]) -> Dict[str, Any]:
+    wired = {}
+    days = [
+        {**public_projection(day, wired), "start": wire(day["start"]), "end": wire(day["end"])}
+        for day in calendar["days"]
+    ]
+    known_windows = [window for day in days if day["state"] == "available" for window in day["windows"]]
+    result = {
+        **calendar,
+        "days": days,
+        "known_windows": known_windows,
+        "windows": known_windows if calendar["windows"] is not None else None,
+    }
+    if "source" in result:
+        result["source"] = clone_json(result["source"])
+    if "issues" in result:
+        result["issues"] = clone_json(result["issues"])
+    return result
 
 
 def available_intervals(projection, priority=None):
     if projection["state"] != "available":
         return None
-    flag = "allow_normal" if priority == "normal" else "allow_urgent"
-    return union_sorted((instant(row["start"]), instant(row["end"])) for row in projection["windows"]
-                         if (row[flag] if priority is not None else row["allow_normal"] or row["allow_urgent"]))
+    mode = None if priority is None else ("normal" if priority == "normal" else "urgent")
+    flag = "allow_normal" if mode == "normal" else "allow_urgent"
+    return union_sorted(
+        (row["start"], row["end"])
+        for row in projection["windows"]
+        if (row[flag] if mode is not None else row["allow_normal"] or row["allow_urgent"])
+    )
 
 
 def apply_resource(base: Dict[str, Any], raw, kind, downtime_rows, start, end) -> Dict[str, Any]:
@@ -148,11 +205,14 @@ def apply_resource(base: Dict[str, Any], raw, kind, downtime_rows, start, end) -
         if raw["status"] != "active":
             result.update(windows=[], **dict.fromkeys(_MEASURES, 0.0))
         return result
-    result["downtime_windows"] = public_intervals(downtime)
+    result["downtime_windows"] = [{"start": low, "end": high} for low, high in downtime]
     remaining, durations = _subtract_windows(base["windows"], downtime)
     remaining_measures = measures(remaining, durations)
     windows = remaining if raw["status"] == "active" else []
-    result.update(windows=windows, **(remaining_measures if raw["status"] == "active" else dict.fromkeys(_MEASURES, 0.0)))
+    result.update(
+        windows=windows,
+        **(remaining_measures if raw["status"] == "active" else dict.fromkeys(_MEASURES, 0.0)),
+    )
     result["downtime_scope_hours"] = hours(downtime)
     result["downtime_available_hours"] = base["available_hours"] - remaining_measures["available_hours"]
     return result
@@ -162,7 +222,7 @@ def _subtract_windows(windows, downtime):
     """Linear sweep; do not rescan the entire downtime list for every work day."""
     result, durations, j = [], [], 0
     for row in windows:
-        start, end = instant(row["start"]), instant(row["end"])
+        start, end = row["start"], row["end"]
         while j < len(downtime) and downtime[j][1] <= start:
             j += 1
         k, cursor = j, start
@@ -170,12 +230,12 @@ def _subtract_windows(windows, downtime):
             low, high = downtime[k]
             if cursor < low:
                 stop = min(low, end)
-                result.append(dict(row, start=wire(cursor), end=wire(stop)))
+                result.append(dict(row, start=cursor, end=stop))
                 durations.append(interval_microseconds(cursor, stop))
             cursor = max(cursor, high)
             k += 1
         if cursor < end:
-            result.append(dict(row, start=wire(cursor), end=wire(end)))
+            result.append(dict(row, start=cursor, end=end))
             durations.append(interval_microseconds(cursor, end))
     return result, durations
 
@@ -194,7 +254,7 @@ def project_resource_calendars(engine, facts, ids, first, last, start, end, *, g
             raw = records.get(key)
             if kind == "machine":
                 base = global_calendar
-            elif engine._personal_error is None and key not in personal_operators:
+            elif key not in personal_operators:
                 profile = engine.shift_profiles.get(key)
                 shift_key = None if profile is None else profile["shift_profile_id"]
                 if shift_key not in shift_bases:
@@ -205,6 +265,6 @@ def project_resource_calendars(engine, facts, ids, first, last, start, end, *, g
                     )
                 base = shift_bases[shift_key]
             else:
-                # 有个人日历的人逐人投影；个人日历表坏了时确认不了谁没有个人日历，每个人都走这里报日历无效。
+                # 有个人日历的人逐人投影。
                 base = policy_projection(engine, first, last, start, end, key)
             yield kind, key, raw, apply_resource(base, raw, kind, downtime[key] if kind == "machine" else [], start, end)

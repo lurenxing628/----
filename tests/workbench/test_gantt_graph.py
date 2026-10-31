@@ -95,14 +95,26 @@ def test_candidate_and_adopted_graph_keep_full_frozen_route_across_range_and_bom
     plan = plan_workspace(case, plan_ref)
     plan_graph = assert_mixed_graph(case, ids, plan, candidate=False)
 
+    from unittest.mock import Mock
+
+    from core.services.workbench.facts import candidate_tasks
+
     # Only show the initial common operation; graph relations still cover its successors.
     first = min(candidate["tasks"], key=lambda row: row["start"])
     scope = {"range_start": first["start"], "range_end": first["end"]}
+    original_task_dto = candidate_tasks._task_dto
+    task_dto_spy = Mock(wraps=original_task_dto)
     for reader, ref, full_graph in ((candidate_workspace, refs[0], candidate_graph),
                                    (plan_workspace, plan_ref, plan_graph)):
-        narrowed = reader(case, ref, **scope)
+        if reader is candidate_workspace:
+            candidate_tasks._task_dto = task_dto_spy
+        try:
+            narrowed = reader(case, ref, **scope)
+        finally:
+            candidate_tasks._task_dto = original_task_dto
         assert 0 < len(narrowed["tasks"]) < len(ids)
         assert narrowed["gantt_graph"] == full_graph
+    assert task_dto_spy.call_count == len(ids)
     case.conn.execute("UPDATE BatchOperations SET unit_hours=2,op_type_name='Current renamed operation'")
     case.conn.execute("UPDATE Batches SET quantity=4 WHERE batch_id='B1'")
     case.conn.commit()
@@ -183,3 +195,106 @@ def test_shared_graph_keeps_20k_nodes_all_predecessors_and_complete_critical_fac
     assert all(node["piece_id"] == "piece-a" for node in graph["nodes"])
     assert len(graph["critical_task_refs"]) == 100 and len(graph["critical_edges"]) == 99
     assert all(edge["edge_type"] == "process" for edge in graph["critical_edges"])
+
+
+def test_plan_and_candidate_public_dtos_isolate_in_process_caches_on_mutation(trial_case):
+    from copy import deepcopy
+
+    from core.services.workbench.execution.actual_gantt import ActualGanttService
+    from core.services.workbench.execution.actual_gantt_scope import ActualGanttScope
+    from core.services.workbench.facts.candidate_store import CandidateStore
+    from core.services.workbench.run.candidate_baseline import (
+        WorkbenchRunCandidateBaselineQueryService,
+    )
+    from core.services.workbench.run.decision_impact import operation_impacts
+    from core.services.workbench.run.decision_preparation import DecisionPreparation
+    from core.services.workbench.run.decision_source import DecisionSource
+
+    case = trial_case
+    _, run_ref, refs = piece_candidate(case)
+    candidate_ref = refs[0]
+
+    cand_first, _ = WorkbenchRunCandidateQueryService(case.conn).workspace(RunCandidateReadScope(candidate_ref))
+    cand_expected = deepcopy(cand_first)
+    cand_first["candidate"]["representative_objectives"].append("polluted-objective")
+    cand_first["candidate"]["evaluations"]["polluted"] = {"value": 999}
+    cand_first["candidate"]["origin"]["polluted"] = True
+    cand_first["generation"]["algorithm"]["evaluations"]["polluted"] = {"value": 999}
+    cand_first["generation"]["algorithm"]["origin"]["polluted"] = True
+    cand_first["generation"]["algorithm"]["target_objectives"].append("polluted-target")
+
+    cand_second, _ = WorkbenchRunCandidateQueryService(case.conn).workspace(RunCandidateReadScope(candidate_ref))
+    assert cand_second == cand_expected
+
+    plan_ref = adopt_candidate(case, candidate_ref)["data"]["official_plan"]["plan_ref"]
+
+    service_one = WorkbenchPlanQueryService(case.conn)
+    with service_one.read_snapshot():
+        graph_first, _, _ = service_one.gantt_graph(PlanReadScope(plan_ref))
+    graph_expected = deepcopy(graph_first)
+    graph_first["gantt_graph"]["nodes"][0]["process_label"] = "POLLUTED"
+    graph_first["gantt_graph"]["nodes"][0]["predecessor_operation_refs"].append("d" * 48)
+    graph_first["gantt_graph"]["critical_task_refs"].append("c" * 48)
+    graph_first["gantt_graph"]["critical_edges"][0]["edge_type"] = "polluted"
+    graph_first["gantt_graph"]["nodes"].clear()
+
+    service_two = WorkbenchPlanQueryService(case.conn)
+    with service_two.read_snapshot():
+        graph_second, _, _ = service_two.gantt_graph(PlanReadScope(plan_ref))
+    assert graph_second == graph_expected
+
+    actual_one = ActualGanttService(case.conn)
+    with actual_one.read_snapshot():
+        actual_first, _ = actual_one.workspace(ActualGanttScope(plan_ref))
+    actual_expected = deepcopy(actual_first)
+    actual_first["gantt_graph"]["nodes"][0]["process_label"] = "POLLUTED"
+    actual_first["gantt_graph"]["nodes"][0]["predecessor_operation_refs"].append("d" * 48)
+    actual_first["gantt_graph"]["critical_task_refs"].append("c" * 48)
+    actual_first["gantt_graph"]["critical_edges"][0]["edge_type"] = "polluted"
+    actual_first["gantt_graph"]["nodes"].clear()
+
+    actual_two = ActualGanttService(case.conn)
+    with actual_two.read_snapshot():
+        actual_second, _ = actual_two.workspace(ActualGanttScope(plan_ref))
+    assert actual_second == actual_expected
+
+    service_three = WorkbenchPlanQueryService(case.conn)
+    with service_three.read_snapshot():
+        graph_third, _, _ = service_three.gantt_graph(PlanReadScope(plan_ref))
+    assert graph_third == graph_expected
+
+    base_first, _ = WorkbenchRunCandidateBaselineQueryService(case.conn).baseline(RunCandidateReadScope(candidate_ref))
+    base_expected = deepcopy(base_first)
+    base_first["generation"]["input"]["batch_refs"].append("polluted")
+    base_first["generation"]["input"]["polluted"] = True
+    base_second, _ = WorkbenchRunCandidateBaselineQueryService(case.conn).baseline(RunCandidateReadScope(candidate_ref))
+    assert base_second == base_expected
+
+    decision_one = DecisionSource(CandidateStore(case.conn), run_ref)
+    prep_refs = decision_one.scope["operation_refs"]
+    prep_impacts_first = DecisionPreparation(decision_one).impacts(prep_refs)
+    prep_impacts_expected = deepcopy(prep_impacts_first)
+    prep_impacts_first[0]["after"]["evidence_source"]["run_ref"] = "POLLUTED"
+    prep_impacts_first[0]["after"]["data_gaps"].append({"field": "runtime_requirement", "code": "polluted", "message": "POLLUTED"})
+    prep_impacts_first[0]["after"]["standard"]["evidence_source"]["run_ref"] = "POLLUTED"
+    assert DecisionPreparation(DecisionSource(CandidateStore(case.conn), run_ref)).impacts(prep_refs) == prep_impacts_expected
+
+    impacts_first = operation_impacts(decision_one)
+    impacts_expected = deepcopy(impacts_first)
+    impacts_first[0]["constraints"]["reasons"].append({"code": "polluted"})
+
+    decision_two = DecisionSource(CandidateStore(case.conn), run_ref)
+    assert operation_impacts(decision_two) == impacts_expected
+
+    first_op_ref = decision_two.scope["operation_refs"][0]
+    decision_two.disposition[first_op_ref] = {
+        **decision_two.disposition[first_op_ref],
+        "issues": [{"code": "protected_issue", "message": "original"}],
+    }
+    disposition_expected = deepcopy(decision_two.disposition[first_op_ref])
+    impacts_with_issue = operation_impacts(decision_two, [first_op_ref])
+    impacts_with_issue_expected = deepcopy(impacts_with_issue)
+    impacts_with_issue[0]["constraints"]["reasons"][0]["message"] = "POLLUTED"
+    impacts_with_issue[0]["constraints"]["reasons"].append({"code": "polluted"})
+    assert decision_two.disposition[first_op_ref] == disposition_expected
+    assert operation_impacts(decision_two, [first_op_ref]) == impacts_with_issue_expected

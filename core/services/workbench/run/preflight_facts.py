@@ -3,11 +3,11 @@
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Optional
 
-from core.infrastructure.connection_guards import schema_contract_memo
-from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_contract_issues
+from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
+from core.services.workbench.facts.source_revisions import PREFLIGHT_SOURCE_KEYS, read_source_revisions
 
 if TYPE_CHECKING:
     from core.errors import ValidationError
@@ -36,10 +36,13 @@ class PreflightFacts:
         self.config_snapshot, self.config_error = None, None
         self._snapshot_depth = 0
 
+    def _fingerprint(self) -> str:
+        return content_text(["preflight-v2", read_source_revisions(self.conn, PREFLIGHT_SOURCE_KEYS)])
+
     @contextmanager
     def snapshot(self, *, fingerprint=True):
         if self._snapshot_depth > 0:
-            yield self.capture.content() if fingerprint else ""
+            yield self._fingerprint() if fingerprint else ""
             return
         with candidate_read_snapshot(self.conn):
             capture = self._shared_capture if self._shared_capture is not None else ProductionFactsCapture(self.conn)
@@ -47,7 +50,7 @@ class PreflightFacts:
             self._snapshot_depth += 1
             try:
                 with self.execution_snapshot():
-                    yield self.capture.content() if fingerprint else ""
+                    yield self._fingerprint() if fingerprint else ""
             finally:
                 self._snapshot_depth -= 1
 
@@ -55,9 +58,6 @@ class PreflightFacts:
     def execution_snapshot(self):
         from core.services.scheduler.execution.execution_ledger_adapter import ledger_read_snapshot
 
-        if schema_contract_memo(self.conn).get_schema(execution_ledger_contract_issues):
-            yield None
-            return
         with ledger_read_snapshot(self.conn, ledger=self.execution_service) as ledger:
             self.execution_service = ledger
             self.capture.execution_service = ledger

@@ -33,8 +33,12 @@ def _relation_query():
 def resource_relations(kind, ref):
     query = _relation_query()
     reader = WorkbenchResourceRelationService(g.db, current_app.logger)
-    with reader.read_snapshot(kind, ref, query) as (fingerprint, data):
-        snapshot = bind_read_snapshot(query.scope(ref), fingerprint, request.args.get("snapshot_ref"))
+    with reader.read_snapshot(
+        kind,
+        ref,
+        query,
+        bind_snapshot=lambda fingerprint: bind_read_snapshot(query.scope(ref), fingerprint, request.args.get("snapshot_ref")),
+    ) as (snapshot, data):
         return query_success(data, snapshot)
 
 

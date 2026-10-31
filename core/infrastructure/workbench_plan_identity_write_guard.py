@@ -2,7 +2,7 @@
 
 from typing import Dict, List
 
-from .schema_structure import schema_objects
+from .schema_structure import SchemaStructure
 from .workbench_metadata_schema import canonical_sql
 from .workbench_plan_identity_schema import workbench_plan_identity_contract_issues
 
@@ -17,10 +17,10 @@ def plan_identity_write_guard_objects() -> Dict[str, str]:
     return result
 
 
-def plan_identity_write_guard_contract_issues(conn, *, structure) -> List[str]:
+def plan_identity_write_guard_contract_issues(conn, *, structure: SchemaStructure) -> List[str]:
     """SELECT-only contract for the coordinator's new schema-version gate."""
     issues = workbench_plan_identity_contract_issues(conn, structure=structure)
-    actual = schema_objects(conn, structure=structure)
+    actual = structure.sql
     for name, sql in plan_identity_write_guard_objects().items():
         if name not in actual:
             issues.append("missing_workbench_plan_write_guard: " + name)

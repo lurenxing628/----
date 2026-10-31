@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const C = window.OutsourcingContract, KEY = 'aps_outsourcing_pending_v1', EVENT = KEY + '_changed';
+  const C = window.OutsourcingContract, T = window.APSWorkbenchTransport, KEY = 'aps_outsourcing_pending_v1', EVENT = KEY + '_changed';
   function originalInput(v) {
     const p = v.input, creating = Object.prototype.hasOwnProperty.call(p, 'target');
     const allowed = ['declared_operator', 'reason', creating ? 'target' : 'outsourcing_ref', ...C.fields];
@@ -8,13 +8,13 @@
       && p.declared_operator.length <= 200 && p.reason.length <= 2000 && C.fields.every(k => creating || Object.prototype.hasOwnProperty.call(p, k) ? p[k] === v.after[k] : true)
       && (creating ? C.equal(p.target, C.target(v.target)) : C.ref(p.outsourcing_ref));
   }
-  function valid(v) {
+  function valid(v, checkReceipt = true) {
     try { return v && v.version === 1 && /^outsourcing-[a-f0-9]{48}$/.test(v.request_key) && ['pending', 'confirmed', 'rejected'].includes(v.phase)
       && C.object(v.input) && !!C.facts(v.after) && !!C.target(v.target, true) && originalInput(v) && !Object.prototype.hasOwnProperty.call(v, 'write_token')
-      && (v.phase !== 'confirmed' || !!C.receipt(v.receipt, v)); } catch (_) { return false; }
+      && (v.phase !== 'confirmed' || (checkReceipt ? !!C.receipt(v.receipt, v) : C.object(v.receipt))); } catch (_) { return false; }
   }
-  const { read, save } = window.APSWorkbenchTransport.pendingStore({
-    key: KEY, event: EVENT, validate: valid,
+  const { read, flush, save } = T.pendingStore({
+    key: KEY, event: EVENT, validate: valid, validateWrite: v => valid(v, false),
     readError: '上次操作记录读不出来，不能开始新的登记。请重新打开页面。',
     corruptError: '上次操作记录已损坏，不能开始新的登记。请不要再操作，联系维护人员。',
     invalidError: '上次操作记录不完整，不能重新提交。请不要再操作，联系维护人员。',
@@ -27,9 +27,9 @@
     const [saved, setSaved] = React.useState(initial.saved), [storageError, setStorageError] = React.useState(initial.error || null);
     const [error, setError] = React.useState(null), [notice, setNotice] = React.useState(''), [busy, setBusy] = React.useState(false);
     const active = React.useRef(saved), running = React.useRef(false), mounted = React.useRef(false); active.current = saved;
-    function sync(event) {
+    function sync(event, load = read) {
       try {
-        const v = event && event.type === EVENT ? event.detail : read();
+        const v = event && event.type === EVENT ? event.detail : load();
         if (!C.equal(v, active.current)) { active.current = v; setSaved(v); setError(null); setNotice(''); }
         setStorageError(null);
       } catch (e) {
@@ -42,7 +42,7 @@
       window.addEventListener('storage', changed); window.addEventListener(EVENT, changed);
       return () => { mounted.current = false; window.removeEventListener('storage', changed); window.removeEventListener(EVENT, changed); };
     }, []);
-    // C.command/C.lookup already checked the receipt; a failed local write belongs to storageError.
+    // C.command/C.lookup already checked the receipt; a failed local write belongs to storageError. Callers hold the cross-page lock.
     function accept(v, original) {
       if (!C.equal(active.current, original)) { if (mounted.current) sync(); return; }
       const confirmed = { ...original, phase: 'confirmed', receipt: v };
@@ -57,7 +57,11 @@
     async function lookup(preserveError = false) {
       if (running.current || !active.current || active.current.phase !== 'pending') return;
       const original = active.current; running.current = true; setBusy(true); if (!preserveError) setError(null);
-      try { const v = await C.lookup(original); if (v) accept(v, original); else if (mounted.current && C.equal(active.current, original)) setNotice('还是没有查到结果。请稍后再点「查询结果」，不要重复提交。'); }
+      try {
+        const v = await C.lookup(original);
+        if (v) await T.exclusive(KEY, { wait: true }, () => accept(v, original));
+        else if (mounted.current && C.equal(active.current, original)) setNotice('还是没有查到结果。请稍后再点「查询结果」，不要重复提交。');
+      }
       catch (e) { if (mounted.current && C.equal(active.current, original)) setError(e); }
       finally { running.current = false; if (mounted.current) setBusy(false); }
     }
@@ -66,20 +70,20 @@
       if (running.current || storageError || active.current) return;
       running.current = true; setBusy(true); setError(null); setNotice(''); let original, needLookup = false;
       try {
-        if (!navigator.locks || typeof navigator.locks.request !== 'function') { if (mounted.current) setError(new Error('当前浏览器不支持，请用 Chrome 打开。')); return; }
-        await navigator.locks.request(KEY, { ifAvailable: true }, async lock => {
-          if (!lock) { if (mounted.current) setError(new Error('另一个页面有还没确认的外协登记，请先在那里点「查询结果」。')); return; }
+        // 新登记的本机记录、提交和结果写回在跨页互斥里串行，持锁跨过提交命令。
+        const { acquired } = await T.exclusive(KEY, {}, async () => {
           if (!mounted.current) return;
           // C.preview 已校验过这份预检结果。
           const d = preview.data;
-          original = { version: 1, phase: 'pending', request_key: window.APSWorkbenchTransport.requestKey('outsourcing'),
+          original = { version: 1, phase: 'pending', request_key: T.requestKey('outsourcing'),
             input: d.input, after: d.after, target: d.target };
-          save(original, null); active.current = original;
+          try { save(original, null); } catch (e) { setStorageError(e); return; }
+          active.current = original;
           try { accept(await C.command(original, d.write_context.write_token), original); }
           catch (e) {
             if (!C.equal(active.current, original)) { if (mounted.current) sync(); return; }
             // 明确被拒的登记什么都没写入：直接放弃这条待确认记录，表单回到可编辑状态，改好后重新预检提交。
-            const rejected = window.APSWorkbenchTransport.rejected(e);
+            const rejected = T.rejected(e);
             if (rejected) {
               try { save(null, original); active.current = null; }
               catch (storageErr) {
@@ -94,19 +98,24 @@
             }
           }
         });
-      } catch (e) { if (mounted.current) setStorageError(e); }
+        if (!acquired && mounted.current) setError(new Error('另一个页面有还没确认的外协登记，请先在那里点「查询结果」。'));
+      } catch (e) { if (mounted.current) setError(e); }
       finally { running.current = false; if (mounted.current) setBusy(false); }
       if (mounted.current && needLookup && active.current && active.current.request_key === original.request_key && active.current.phase === 'pending') await lookup(true);
     }
-    function finish() {
+    // 丢弃用户眼前这条已有结论的本机记录，写入在跨页互斥里做；返回是否已清掉。
+    async function finish() {
       if (running.current) return false;
       try {
         const v = active.current && active.current.phase !== 'pending' ? active.current : read();
         C.check(v && v.phase !== 'pending', '上次外协登记的结果还没有确认，不能丢弃这条记录。请先点「查询结果」。');
-        save(null, v); setError(null); setNotice(''); return true;
+        await T.exclusive(KEY, { wait: true }, () => save(null, v));
+        setError(null); setNotice(''); return true;
       } catch (e) { setStorageError(e); return false; }
     }
-    return { saved, storageError, error, notice, busy, sync, submit, lookup: () => lookup(), finish };
+    // 「刷新上次操作记录」在跨页互斥里把本页没写进去的记录写回再读。
+    const reload = () => T.exclusive(KEY, { wait: true }, () => sync(undefined, flush)).catch(setStorageError);
+    return { saved, storageError, error, notice, busy, sync: reload, submit, lookup: () => lookup(), finish };
   }
   function useRead(load, deps) { return window.APSResourceSession.useQuery(load, deps); }
   function memberConflict(first, row) {

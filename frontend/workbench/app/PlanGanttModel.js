@@ -13,20 +13,13 @@
   const quantityReasons = window.FieldContract.quantityReasons;
   const kindLabels = { machine: '设备', operator: '人员', batch: '批次' };
   function scopeCaption(data) {
-    if (!data) return '';
     const includesPlanEnd = data.scope.range_start === null && data.plan_span.end_inclusive === true;
     return includesPlanEnd && data.plan_span.start === data.plan_span.end
       ? `计划时刻：${timeLabel(data.plan_span.start)}`
       : `计划时间范围：${timeLabel(data.time_scope.range_start)} 至 ${timeLabel(data.time_scope.range_end)}（${includesPlanEnd ? '包含末端零工时工序' : '不含结束时刻'}）`;
   }
   function names(data) {
-    const result = new Map();
-    for (const row of data.resources) result.set(row.ref, row.label || row.business_code);
-    for (const key of ['calendar', 'occupancy']) {
-      const projection = data.projections[key];
-      for (const row of projection.resources || []) if (row.label) result.set(row.resource_ref, row.label);
-    }
-    return result;
+    return new Map(data.resources.map(row => [row.ref, row.label || row.business_code]));
   }
   function resourceLabel(task, mode, labels) {
     if (mode === 'batch') return task.batch_id;
@@ -70,77 +63,160 @@
     }
     return result;
   }
-  function prepare(data, baselineItems = null) {
+  function prepareTasks(data) {
     const labels = names(data), directory = new Map(data.resources.map(row => [row.ref, row]));
-    const fact = (task, baseline) => ({ task, baseline, start: instant(task.start), end: instant(task.end), search: searchText(task, labels), point: window.PointContract.isPoint(task) });
-    const items = data.tasks.map(task => fact(task, false)), comparison = data.projections.baseline;
-    const rawItems = Array.isArray(baselineItems) ? baselineItems : comparison.items;
-    const baselineLoaded = comparison.state === 'available' && (Array.isArray(baselineItems) || comparison.items_complete === true || comparison.items.length > 0);
-    const before = baselineLoaded ? rawItems.filter(item => item.before).map(item => fact(item.before, true)) : [];
+    const items = data.tasks.map(task => ({ task, baseline: false, start: instant(task.start), end: instant(task.end), search: searchText(task, labels), point: window.PointContract.isPoint(task) }));
     const taskIndex = new Map(items.map(item => [item.task.task_ref, item])), loadedRefs = new Set(items.map(item => item.task.task_ref)), resourceMembers = new Map();
     for (const item of items) for (const ref of [item.task.machine_ref, item.task.operator_ref]) {
       if (!ref) continue;
       if (!resourceMembers.has(ref)) resourceMembers.set(ref, []); resourceMembers.get(ref).push(item);
     }
+    // 计划工作区的 delivery_risks.items 已由 PlanContract 校验为数组；值班台时间轴的合成数据不带这一键。
+    const deliveryRisks = data.projections && data.projections.delivery_risks ? new Map(data.projections.delivery_risks.items.map(row => [row.batch_id, row])) : null;
+    return {
+      labels, directory, items, before: [], baselineLoaded: false, taskIndex, loadedRefs,
+      beforeIndex: new Map(), comparisons: new Map(), changed: new Set(), occupancy: new Map(),
+      deliveryRisks, resourceMembers, start: instant(data.plan_span.start), end: instant(data.plan_span.end)
+    };
+  }
+  function prepareBaseline(data, taskFacts, baselineItems = null) {
+    const { labels, taskIndex } = taskFacts;
+    const comparison = data.projections && data.projections.baseline;
+    const rawItems = Array.isArray(baselineItems) ? baselineItems : comparison && comparison.items;
+    const baselineLoaded = Boolean(comparison && comparison.state === 'available' && (Array.isArray(baselineItems) || comparison.items_complete === true));
+    const before = baselineLoaded ? rawItems.filter(item => item.before).map(item => ({
+      task: item.before, baseline: true, start: instant(item.before.start), end: instant(item.before.end),
+      search: searchText(item.before, labels), point: window.PointContract.isPoint(item.before)
+    })) : [];
     const beforeIndex = new Map(before.map(item => [item.task.task_ref, item]));
     const times = (task, index) => task ? index.get(task.task_ref) || { start: instant(task.start), end: instant(task.end) } : null;
     const comparisons = new Map(baselineLoaded ? rawItems.map(item => [item.operation_ref,
       { ...item, beforeTime: times(item.before, beforeIndex), afterTime: times(item.after, taskIndex) }]) : []);
     const changed = new Set(baselineLoaded ? rawItems.filter(item => item.change !== 'unchanged').map(item => item.operation_ref) : []);
-    const occupancy = new Map(data.projections.occupancy.resources.map(row => [row.resource_ref, { resource: row,
-      segments: row.segments.filter(item => item.concurrent_operations > 1).map(item => ({ start: instant(item.start), end: instant(item.end) })) }]));
-    // 计划工作区的 delivery_risks.items 已由 PlanContract 校验为数组；值班台时间轴的合成数据不带这一键。
-    const deliveryRisks = data.projections.delivery_risks ? new Map(data.projections.delivery_risks.items.map(row => [row.batch_id, row])) : null;
-    return { labels, directory, items, before, baselineLoaded, taskIndex, loadedRefs, beforeIndex, comparisons, changed, occupancy, deliveryRisks, resourceMembers,
-      start: instant(data.plan_span.start), end: instant(data.plan_span.end) };
+    return { before, baselineLoaded, beforeIndex, comparisons, changed };
+  }
+  function prepareOccupancy(data, previous, occupancyProjection, baseLabels) {
+    const occ = occupancyProjection || data.projections && data.projections.occupancy;
+    const labels = baseLabels;
+    const prevMap = previous && previous.occupancy;
+    const occupancy = new Map((occ && occ.resources || []).map(row => {
+      const raw = row.has_overlap ? row.conflict_segments : [];
+      const prev = prevMap && prevMap.get(row.resource_ref);
+      const prevSegments = prev && prev.segments;
+      const segments = prevSegments && prevSegments.length === raw.length
+        && raw.every((item, i) => prevSegments[i].rawStart === item.start && prevSegments[i].rawEnd === item.end)
+        ? prevSegments
+        : raw.map(item => {
+          const match = prevSegments && prevSegments.find(seg => seg.rawStart === item.start && seg.rawEnd === item.end);
+          return match || { start: instant(item.start), end: instant(item.end), rawStart: item.start, rawEnd: item.end };
+        });
+      return [row.resource_ref, { resource: row, segments }];
+    }));
+    return { labels, occupancy };
+  }
+  function combinePrepared(taskFacts, baselineFacts, occupancyFacts) {
+    return { ...taskFacts, ...baselineFacts, ...occupancyFacts };
   }
   function groupPrepared(prepared, mode) {
-    const { labels, directory, occupancy } = prepared, groups = new Map(), conflicts = new Set();
-    let start = prepared.start, end = prepared.end;
-    function add(item) {
+    const { items, labels, directory, occupancy, start, end, taskIndex, loadedRefs, deliveryRisks, resourceMembers } = prepared;
+    const groups = new Map(), conflicts = new Set();
+    for (const item of items) {
       const task = item.task, id = mode === 'batch' ? task.batch_id : task[mode + '_ref'] || 'unbound';
       if (!groups.has(id)) {
         const label = resourceLabel(task, mode, labels), resource = directory.get(id);
         groups.set(id, { id, label, code: resource && resource.business_code !== label ? resource.business_code : null, tasks: [], before: [] });
       }
-      groups.get(id)[item.baseline ? 'before' : 'tasks'].push(item);
-      if (item.baseline) { start = Math.min(start, item.start); end = Math.max(end, item.end); }
+      groups.get(id).tasks.push(item);
     }
-    prepared.items.forEach(add); prepared.before.forEach(add);
-    const G = window.PointGanttModel, bounds = G.bounds(prepared.start, prepared.end, prepared.items.some(item => item.point));
-    const comparisonBounds = G.bounds(start, end, prepared.items.some(item => item.point) || prepared.before.some(item => item.point));
+    const G = window.PointGanttModel, bounds = G.bounds(start, end, items.some(item => item.point));
     const facts = [];
     for (const group of groups.values()) {
       const overlap = new Set(), resource = occupancy.get(group.id), segments = resource ? resource.segments : [];
-      const currentNormal = tracks(group.tasks.filter(item => !item.point), overlap), oldNormal = tracks(group.before.filter(item => !item.point), new Set());
+      const currentNormal = tracks(group.tasks.filter(item => !item.point), overlap);
       for (const item of group.tasks) {
         if (item.point) continue;
         const hit = firstIntersecting(segments, item.start);
         if (hit < segments.length && segments[hit].start < item.end) conflicts.add(item.task.task_ref);
       }
-      facts.push({ group, currentNormal, oldNormal, currentPoints: G.prepareTracks(group.tasks.filter(item => item.point)),
-        oldPoints: G.prepareTracks(group.before.filter(item => item.point)), overlap: overlap.size, occupancy: resource && resource.resource });
+      facts.push({ group, currentNormal, oldNormal: [], currentPoints: G.prepareTracks(group.tasks.filter(item => item.point)),
+        oldPoints: [], overlap: overlap.size, occupancy: resource && resource.resource });
     }
-    return { ...prepared, mode, groups: facts, start: bounds.start, end: bounds.end, baselineStart: comparisonBounds.start, baselineEnd: comparisonBounds.end, conflicts };
+    return { mode, groups: facts, start: bounds.start, end: bounds.end, conflicts, items, labels, directory, occupancy, taskIndex, loadedRefs, deliveryRisks, resourceMembers };
   }
-  function matchingItems(prepared, needle, changedOnly) {
-    return prepared.items.filter(item => (!changedOnly || prepared.changed.has(item.task.operation_ref)) && (!needle || item.search.includes(needle)));
+  function groupBaseline(prepared, mode) {
+    const { before, labels, directory, items } = prepared, groups = new Map(), G = window.PointGanttModel;
+    let start = prepared.start, end = prepared.end;
+    for (const item of before) {
+      const task = item.task, id = mode === 'batch' ? task.batch_id : task[mode + '_ref'] || 'unbound';
+      if (!groups.has(id)) {
+        const label = resourceLabel(task, mode, labels), resource = directory.get(id);
+        groups.set(id, { id, label, code: resource && resource.business_code !== label ? resource.business_code : null, tasks: [], before: [] });
+      }
+      groups.get(id).before.push(item);
+      start = Math.min(start, item.start); end = Math.max(end, item.end);
+    }
+    const comparisonBounds = G.bounds(start, end, items.some(item => item.point) || before.some(item => item.point));
+    const baselineGroups = new Map();
+    for (const [id, group] of groups.entries()) {
+      baselineGroups.set(id, {
+        group,
+        oldNormal: tracks(group.before.filter(item => !item.point), new Set()),
+        oldPoints: G.prepareTracks(group.before.filter(item => item.point))
+      });
+    }
+    return { groups: baselineGroups, baselineStart: comparisonBounds.start, baselineEnd: comparisonBounds.end };
   }
-  function matching(prepared, query = '', changedOnly = false) {
-    return matchingItems(prepared, query.trim().toLocaleLowerCase(), changedOnly);
+  function matching(prepared, query) {
+    const needle = query.trim().toLocaleLowerCase();
+    return prepared.items.filter(item => !needle || item.search.includes(needle));
   }
-  function selectPrepared(prepared, query = '', changedOnly = false, baseline = false) {
-    const needle = query.trim().toLocaleLowerCase(), selected = matchingItems(prepared, needle, changedOnly), shown = new Set(selected);
+  function selectPrepared(grouped, query = '', changedOnly = false, baseline = false, baselineFacts = null, baselineGrouped = null) {
+    const changed = baselineFacts ? baselineFacts.changed : new Set();
+    const beforeItems = baselineFacts ? baselineFacts.before : [];
+    const needle = query.trim().toLocaleLowerCase();
+    const selected = grouped.items.filter(item => (!changedOnly || changed.has(item.task.operation_ref)) && (!needle || item.search.includes(needle)));
+    const shown = new Set(selected);
     const tasks = selected.map(item => item.task), shownRefs = new Set(tasks.map(task => task.task_ref));
     const taskOrder = new Map(tasks.map((task, index) => [task.task_ref, index]));
-    for (const item of baseline ? prepared.before : []) if ((!changedOnly || prepared.changed.has(item.task.operation_ref)) && (!needle || item.search.includes(needle))) shown.add(item);
-    const groups = prepared.groups.map(fact => ({ ...fact, shown,
-      group: { ...fact.group, tasks: fact.group.tasks.filter(item => shown.has(item)), before: baseline ? fact.group.before.filter(item => shown.has(item)) : [] },
-      currentNormal: fact.currentNormal.map(lane => lane.filter(item => shown.has(item))),
-      oldNormal: baseline ? fact.oldNormal.map(lane => lane.filter(item => shown.has(item))) : [], oldPoints: baseline ? fact.oldPoints : [] }));
-    return { ...prepared, groups, tasks, shownRefs, taskOrder, start: baseline ? prepared.baselineStart : prepared.start, end: baseline ? prepared.baselineEnd : prepared.end };
+    const latestBaseline = baselineFacts ? {
+      before: baselineFacts.before,
+      baselineLoaded: Boolean(baselineFacts.baselineLoaded),
+      beforeIndex: baselineFacts.beforeIndex,
+      comparisons: baselineFacts.comparisons,
+      changed: baselineFacts.changed
+    } : { baselineLoaded: false };
+    if (!baseline) {
+      const groups = grouped.groups.map(fact => ({ ...fact, shown,
+        group: { ...fact.group, tasks: fact.group.tasks.filter(item => shown.has(item)), before: [] },
+        currentNormal: fact.currentNormal.map(lane => lane.filter(item => shown.has(item))),
+        oldNormal: [], oldPoints: [] }));
+      return { ...grouped, ...latestBaseline, groups, tasks, shownRefs, taskOrder, start: grouped.start, end: grouped.end };
+    }
+    for (const item of beforeItems) if ((!changedOnly || changed.has(item.task.operation_ref)) && (!needle || item.search.includes(needle))) shown.add(item);
+    const seenIds = new Set();
+    const groups = grouped.groups.map(fact => {
+      seenIds.add(fact.group.id);
+      const bFact = baselineGrouped.groups.get(fact.group.id);
+      const before = bFact ? bFact.group.before.filter(item => shown.has(item)) : [];
+      return { ...fact, shown,
+        group: { ...fact.group, tasks: fact.group.tasks.filter(item => shown.has(item)), before },
+        currentNormal: fact.currentNormal.map(lane => lane.filter(item => shown.has(item))),
+        oldNormal: bFact ? bFact.oldNormal.map(lane => lane.filter(item => shown.has(item))) : [],
+        oldPoints: bFact ? bFact.oldPoints : [] };
+    });
+    for (const [id, bFact] of baselineGrouped.groups.entries()) {
+      if (seenIds.has(id)) continue;
+      groups.push({
+        group: { ...bFact.group, tasks: [], before: bFact.group.before.filter(item => shown.has(item)) },
+        shown, currentNormal: [], currentPoints: [],
+        oldNormal: bFact.oldNormal.map(lane => lane.filter(item => shown.has(item))),
+        oldPoints: bFact.oldPoints, overlap: 0,
+        occupancy: grouped.occupancy && grouped.occupancy.get(id) && grouped.occupancy.get(id).resource
+      });
+    }
+    return { ...grouped, ...latestBaseline, groups, tasks, shownRefs, taskOrder, start: baselineGrouped.baselineStart, end: baselineGrouped.baselineEnd };
   }
-  function layoutPrepared(prepared, width = 1000) {
+  function layoutPrepared(prepared, width) {
     const { mode, labels, start, end, conflicts, tasks, shownRefs, taskOrder } = prepared;
     const rows = [], locations = new Map(), baselineLocations = new Map(), G = window.PointGanttModel;
     let top = 0, groupCount = 0;
@@ -209,5 +285,5 @@
   function tone(task, risks) {
     return risks.get(task.batch_id) === 'overdue' ? 'critical' : 'primary';
   }
-  window.PlanGanttModel = { instant, wire, timeLabel, number, count, quantityLabel, pieceLabel, quantityReasons, names, resourceLabel, searchText, prepare, groupPrepared, matching, selectPrepared, layoutPrepared, visibleItems, visibleRows, tickStep, ticks, taskTitle, tone, kindLabels, scopeCaption };
+  window.PlanGanttModel = { instant, wire, timeLabel, number, count, quantityLabel, pieceLabel, quantityReasons, names, resourceLabel, searchText, prepareTasks, prepareBaseline, prepareOccupancy, combinePrepared, groupPrepared, groupBaseline, matching, selectPrepared, layoutPrepared, visibleItems, visibleRows, tickStep, ticks, taskTitle, tone, kindLabels, scopeCaption };
 })();

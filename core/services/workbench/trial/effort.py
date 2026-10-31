@@ -22,7 +22,8 @@ def _retained(value, row, admission):
     state = ("external" if value["source"] == "external" else "already_completed" if role == "completed"
              else "retained_in_execution" if role == "execution" and value["setup_standard_hours"] is not None
              else value["setup_state"])
-    return dict(value, execution_target_quantity=execution["target_quantity"],
+    return dict(value, data_gaps=[dict(gap) for gap in value.get("data_gaps", [])],
+                execution_target_quantity=execution["target_quantity"],
                 execution_quantity_basis=execution["target_basis"],
                 remaining_quantity=execution["remaining_quantity"], requirement_role=role, setup_state=state)
 

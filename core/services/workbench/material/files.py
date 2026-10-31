@@ -28,8 +28,6 @@ in header comments (no demo records that could accidentally be imported).
 
 from __future__ import annotations
 
-import re
-
 from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
@@ -45,8 +43,8 @@ from core.models.workbench_material_file import (
     normalize_scope,
     preview_row,
     reject_row,
+    scope_request,
 )
-from core.models.workbench_material_query import MaterialPageRequest
 from core.models.workbench_resource_file_source import PreparedImportSource
 from core.models.workbench_resource_input import resource_text
 from core.services.workbench import messages
@@ -56,25 +54,7 @@ from .bulk import full_material_snapshot
 from .file_codec import check_export_capacity, read_material_file, write_material_file
 from .queries import WorkbenchMaterialQueryService
 from .service import WorkbenchMaterialService
-from .table_facts import material_ref, material_stock
-
-# 与资源导出（resource/file_projection.py）同一条规则：认得出的存储时刻才换算。
-_STORED_TIME_TEXT = re.compile(r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$")
-
-
-def local_created_at(value):
-    """Materials.created_at 由数据库按 UTC 写入；导出和导入预检的"原值"都换算为工厂本地时间。
-
-    创建时间只是导出带出的参考列，导入不看。认不出的旧写法（只有日期、斜杠日期、空串等）原样写出，
-    不猜着换算，也不因为这一格让整份物料导不出来、导入预检报错。
-    """
-    if type(value) is not str or _STORED_TIME_TEXT.match(value) is None:
-        return value
-    try:
-        return messages.stored_utc_text(value)
-    except (ValueError, OverflowError):
-        # 形似时刻却不是真实日期（例如 2026-02-30 08:00），或换算后越过 9999 年（9999-12-31 16:00 以后），同样原样写出
-        return value
+from .table_facts import MaterialRow
 
 
 class WorkbenchMaterialFileService:
@@ -210,30 +190,25 @@ class WorkbenchMaterialFileService:
         if (scope is None) == (selected_refs is None):
             raise ValidationError("导出要么按筛选范围，要么按勾选的记录，只能选一种。", field="scope")
         if selected_refs is None:
-            query = MaterialPageRequest(**normalize_scope(scope))
-            rows = self.reader.matching_rows(query)
-            total = len(rows)
+            rows = self.reader.matching_rows(scope_request(scope))
+            check_export_capacity(len(rows), file_format)
         else:
             refs = normalize_refs(selected_refs, allow_empty=True)
-            captured = snapshot["by_ref"]
-            rows, total = (captured.get(ref) for ref in refs), len(refs)
-        check_export_capacity(total, file_format)
-        return list(self._export_rows(rows))
+            check_export_capacity(len(refs), file_format)
+            rows = self.reader.selected_rows(refs)
+        return [self._export_row(row) for row in rows]
 
     @staticmethod
     def write_export(rows, file_format):
         """只用 export_rows 读出的行生成 CSV/XLSX，不再查库，可在读事务之外调用。"""
         return write_material_file(rows, file_format)
 
-    def _export_rows(self, rows):
-        for raw in rows:
-            if raw is None:
-                raise WorkbenchCommandRejected("entity_not_found", "勾选的物料已经删除了。请刷新后重新勾选。", 404)
-            material_ref(raw)
-            material_stock(raw)
-            row = dict(zip(COLUMNS, (raw[key] for key in MATERIAL_COLUMNS)))
-            row["created_at"] = local_created_at(raw["created_at"])
-            yield row
+    @staticmethod
+    def _export_row(row: MaterialRow):
+        raw = row.raw
+        exported = dict(zip(COLUMNS, (raw[key] for key in MATERIAL_COLUMNS)))
+        exported["created_at"] = messages.local_created_at(raw["created_at"])
+        return exported
 
     @staticmethod
     def template(file_format="xlsx"):

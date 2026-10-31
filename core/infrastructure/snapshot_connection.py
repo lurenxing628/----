@@ -6,7 +6,9 @@ import sqlite3
 from contextlib import closing, contextmanager
 from functools import lru_cache
 from pathlib import Path
-from typing import Iterator, List, Tuple
+from typing import Iterator, Tuple
+
+from core.infrastructure.sqlite_udf import register_schedule_time_sql_functions
 
 from .schema_probe import table_columns
 
@@ -17,6 +19,7 @@ def open_readonly_immutable(path: str, *, detect_types: int = 0, row_factory=Non
     with closing(sqlite3.connect(uri, uri=True, detect_types=detect_types)) as conn:
         conn.row_factory = row_factory
         conn.execute("PRAGMA foreign_keys=ON")
+        register_schedule_time_sql_functions(conn)
         yield conn
 
 
@@ -38,7 +41,7 @@ def _ddl_columns(create_table_sql: str, name: str) -> Tuple[str, ...]:
         conn.close()
 
 
-def ddl_columns(create_table_sql: str, name: str, *, restricted: bool = False) -> List[str]:
+def ddl_columns(create_table_sql: str, name: str) -> Tuple[str, ...]:
     if type(create_table_sql) is not str:
         raise ValueError("DDL must be text")
-    return list(_ddl_columns(create_table_sql, name))
+    return _ddl_columns(create_table_sql, name)

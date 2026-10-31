@@ -68,9 +68,12 @@ def token(case, *, ref=None, intent=None):
 
 
 def connect(case, *, timeout=5):
+    from core.infrastructure.sqlite_udf import register_schedule_time_sql_functions
+
     conn = sqlite3.connect(case.db_path, timeout=timeout)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
+    register_schedule_time_sql_functions(conn)
     return conn
 
 

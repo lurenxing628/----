@@ -2,8 +2,6 @@
 
 from typing import Any, Dict, List, Tuple
 
-from core.models.workbench_run_candidate import local_time
-
 from .candidate_projection import metrics as saved_metrics
 from .delivery_projection import delivery_summary
 from .preflight_dependencies import material_deferred_ids
@@ -75,7 +73,7 @@ _METRIC_DEFINITIONS = _build_metric_definitions()
 
 
 def metric_definitions() -> List[Dict[str, Any]]:
-    return list(_METRIC_DEFINITIONS)
+    return [dict(row) for row in _METRIC_DEFINITIONS]
 
 
 def metric_value(value, *, total=1, unknown=0, subtotal=None, state=None, scope="full_admission", reason=None, covered_refs=None, metric_version=METRIC_VERSION):
@@ -130,7 +128,7 @@ def candidate_metrics(candidate, tasks, facts, batch_refs, *, delivery_items, op
                    "missing_count": len(missing), "skipped_count": len(skipped), "deferred_count": len(deferred)}
     coverage, values = delivery_coverage(delivery_items)
     saved = saved_metrics(candidate["artifact"])
-    for definition in metric_definitions():
+    for definition in _METRIC_DEFINITIONS:
         key = definition["key"]
         if key in values or key not in saved:
             continue
@@ -159,7 +157,7 @@ def candidate_metrics(candidate, tasks, facts, batch_refs, *, delivery_items, op
     return {"schedulable": schedulable, "delivery": coverage}, values
 
 
-def project_official_core_metrics(tasks, operation_refs, deferred_refs, available, delivery_items, *, metric_keys=None):
+def project_official_core_metrics(tasks, operation_refs, deferred_refs, available, delivery_items, *, task_intervals, metric_keys=None):
     """Project the saved official arrangement without reading its source archive."""
     refs = set(operation_refs)
     tasks = [task for task in tasks if task["operation_ref"] in refs]
@@ -168,7 +166,7 @@ def project_official_core_metrics(tasks, operation_refs, deferred_refs, availabl
                 "delivery_state": summary["state"]}
     reason = {"code": "official_algorithm_metric_missing", "message": "排产时的正式计划未保存这项计算指标。"}
     values = {definition["key"]: metric_value(None, state="unavailable", unknown=1, scope=definition["scope"], reason=reason)
-              for definition in metric_definitions() if metric_keys is None or definition["key"] in metric_keys}
+              for definition in _METRIC_DEFINITIONS if metric_keys is None or definition["key"] in metric_keys}
     values.update(delivery_metric_values(summary))
     deferred = set(deferred_refs) & refs
     expected = refs - deferred
@@ -184,9 +182,9 @@ def project_official_core_metrics(tasks, operation_refs, deferred_refs, availabl
             continue
         values[key] = metric_value(value if available else None, total=len(refs), unknown=0 if available else len(refs),
                                    state="complete" if available else "unavailable")
-    timed = all(task.get("interval_comparable", True) and task["start"] is not None and task["end"] is not None for task in tasks)
-    span = ((max(local_time(task["end"]) for task in tasks) - min(local_time(task["start"]) for task in tasks)).total_seconds() / 3600.0
-            if available and tasks and timed else None)
+    timed = all(task["interval_comparable"] for task in tasks)
+    spans = [task_intervals[task["row_ref"]] for task in tasks] if available and tasks and timed else []
+    span = (max(end for _, end in spans) - min(start for start, _ in spans)).total_seconds() / 3600.0 if spans else None
     values["makespan_hours"] = metric_value(span, unknown=int(span is None), scope="full_candidate")
     return values, {"schedulable": counts, "delivery": coverage}
 

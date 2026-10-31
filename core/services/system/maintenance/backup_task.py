@@ -10,7 +10,12 @@ from core.infrastructure.backup import BackupManager
 from core.infrastructure.logging import safe_log
 from core.shared.strict_json import canonical_json
 
-from .telemetry import write_job_state, write_oplog
+from .telemetry import (
+    classify_maintenance_result,
+    maintenance_oplog_level,
+    write_job_state,
+    write_oplog,
+)
 
 
 def maybe_run_auto_backup(
@@ -56,12 +61,15 @@ def maybe_run_auto_backup(
         }
         if size_mb_error:
             detail["size_mb_error"] = size_mb_error
+        status = classify_maintenance_result(detail, "auto_backup")
+        detail["status"] = status
         job_detail = canonical_json(
             {
                 "filename": filename,
                 "size_mb": size_mb,
                 "size_mb_status": size_mb_status,
                 "size_mb_error": size_mb_error,
+                "status": status,
                 "time_cost_ms": time_cost_ms,
             }
         )
@@ -70,7 +78,7 @@ def maybe_run_auto_backup(
             conn,
             op_logger=op_logger,
             logger=logger,
-            level="info",
+            level=maintenance_oplog_level(status),
             module="system",
             action="backup",
             target_type="backup",

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from core.algorithm_contracts.date_parsers import parse_date
+from core.algorithm_contracts.date_parsers import due_exclusive, parse_date
 from core.algorithm_contracts.priority_constants import PRIORITY_WEIGHT, normalize_priority
 from core.algorithm_contracts.types import OpForScheduleAlgo
 from core.algorithm_contracts.value_domains import EXTERNAL, MERGED
@@ -59,6 +59,7 @@ def enrich_graph_ready_v2_metrics(
     graph_ready_context: Dict[str, Any],
     deadline: float,
     clock: Callable[[], float],
+    native_preparation: Optional[Any] = None,
 ) -> Optional[Dict[int, Dict[str, Any]]]:
     if clock() >= deadline:
         return None
@@ -67,7 +68,7 @@ def enrich_graph_ready_v2_metrics(
                   graph_ready_context=graph_ready_context)
     inputs["prepared"] = _prepare_common_features(
         metrics_by_op_id, operations=operations, batches=batches, start_dt=start_dt,
-        seed_results=seed_results, downtime_map=downtime_map)
+        seed_results=seed_results, downtime_map=downtime_map, native_preparation=native_preparation)
     out = _enrich_feature_basis(
         feature_basis=SUCCESSOR_WORKLOAD_BASIS, deadline=deadline, clock=clock, **inputs
     )
@@ -83,11 +84,14 @@ def enrich_graph_ready_v2_metrics(
     return out
 
 
-def _prepare_common_features(metrics, *, operations, batches, start_dt, seed_results, downtime_map):
+def _prepare_common_features(metrics, *, operations, batches, start_dt, seed_results, downtime_map,
+                             native_preparation=None):
     op_by_id = {op.id: op for op in operations}
     if set(metrics).difference(op_by_id):
         raise ValidationError("GraphReady v2 特征缺少对应工序。", field="graph_ready_v2_features")
-    durations = _duration_by_op_id_with_zero_total_trace(op_by_id, batches=batches)
+    durations = _duration_by_op_id_with_zero_total_trace(
+        op_by_id, batches=batches, native_preparation=native_preparation,
+    )
     durations = {op_id: durations[op_id] for op_id in metrics}
     batch_by_op_id = {op_id: _batch_for_operation(op_by_id[op_id], batches=batches) for op_id in metrics}
     due_exclusive_by_batch: Dict[int, Optional[datetime]] = {}
@@ -166,46 +170,46 @@ def _enrich_feature_basis(*, batches, start_dt, calendar_service,
     for op_id in metrics_by_op_id:
         if clock() >= deadline:
             return None
-        op = op_by_id[op_id]
-        batch = prepared["batch_by_op_id"][op_id]
         remaining_hours = remaining_by_op_id[op_id]
         priority_weight = prepared["priority_weight_by_op_id"][op_id]
-        bottleneck_score = prepared["bottleneck_score_by_op_id"][op_id]
-        capacity_start_dt = start_dt + timedelta(hours=float(ready_offset_hours_by_op_id[op_id]))
         parsed_due_exclusive = prepared["due_exclusive_by_op_id"][op_id]
-        capacity_window_end = residual_capacity_window_end(
-            start_dt=capacity_start_dt,
-            due_exclusive=parsed_due_exclusive,
-        )
-        window_key = (
-            op.source,
-            op.machine_id,
-            op.operator_id,
-            op.op_type_id,
-            batch.priority,
-            capacity_start_dt,
-            capacity_window_end,
-        )
-        if window_key not in capacity_by_window:
-            capacity_by_window[window_key] = residual_capacity_for_operation(
-                op,
-                batch=batch,
-                start_dt=capacity_start_dt,
-                due_exclusive=capacity_window_end,
-                calendar_service=calendar_service,
-                resource_pool=resource_pool,
-                prepared=prepared["resource_blocking"],
-            )
-        capacity = capacity_by_window[window_key]
-        due_unavailable = parsed_due_exclusive is None
-        if due_unavailable:
+        if parsed_due_exclusive is None:
             due_budget_hours = _NO_DUE_DEADLINE_HOURS
             slack_hours = float(_NO_DUE_DEADLINE_HOURS - remaining_hours)
             due_pressure = 0.0
             saveability = 0.0
             sacrifice_penalty = _NO_DUE_SACRIFICE_PENALTY
             critical_ratio = _NO_DUE_CRITICAL_RATIO
+            bottleneck_due_gate = 0.0
         else:
+            op = op_by_id[op_id]
+            batch = prepared["batch_by_op_id"][op_id]
+            bottleneck_score = prepared["bottleneck_score_by_op_id"][op_id]
+            capacity_start_dt = start_dt + timedelta(hours=float(ready_offset_hours_by_op_id[op_id]))
+            capacity_window_end = residual_capacity_window_end(
+                start_dt=capacity_start_dt,
+                due_exclusive=parsed_due_exclusive,
+            )
+            window_key = (
+                op.source,
+                op.machine_id,
+                op.operator_id,
+                op.op_type_id,
+                batch.priority,
+                capacity_start_dt,
+                capacity_window_end,
+            )
+            if window_key not in capacity_by_window:
+                capacity_by_window[window_key] = residual_capacity_for_operation(
+                    op,
+                    batch=batch,
+                    start_dt=capacity_start_dt,
+                    due_exclusive=capacity_window_end,
+                    calendar_service=calendar_service,
+                    resource_pool=resource_pool,
+                    prepared=prepared["resource_blocking"],
+                )
+            capacity = capacity_by_window[window_key]
             due_budget_hours = _deadline_budget_hours(
                 op,
                 due_wall_hours=_ordering_deadline_hours(feature_basis, start_dt, capacity_start_dt, parsed_due_exclusive),
@@ -220,11 +224,12 @@ def _enrich_feature_basis(*, batches, start_dt, calendar_service,
                 saveability=saveability,
             )
             critical_ratio = _critical_ratio(due_hours=due_budget_hours, remaining_hours=remaining_hours)
-        bottleneck_score_with_capacity = bottleneck_on(
-            bottleneck_score=bottleneck_score,
-            residual_capacity_pressure=capacity["residual_capacity_pressure"],
-            machine_count=int(capacity["bottleneck_machine_count"]),
-        )
+            bottleneck_score_with_capacity = bottleneck_on(
+                bottleneck_score=bottleneck_score,
+                residual_capacity_pressure=capacity["residual_capacity_pressure"],
+                machine_count=int(capacity["bottleneck_machine_count"]),
+            )
+            bottleneck_due_gate = float(bottleneck_score_with_capacity * due_pressure * saveability)
         row = dict(base_row_by_op_id[op_id])
         row.update(
             {
@@ -236,11 +241,7 @@ def _enrich_feature_basis(*, batches, start_dt, calendar_service,
                 "saveability": float(saveability),
                 "sacrifice_penalty": float(sacrifice_penalty),
                 "critical_ratio": float(critical_ratio),
-                "residual_capacity_hours": float(capacity["residual_capacity_hours"]),
-                "residual_capacity_window_hours": float(capacity["residual_capacity_window_hours"]),
-                "residual_capacity_blocked_hours": float(capacity["residual_capacity_blocked_hours"]),
-                "residual_capacity_start_offset_hours": float(ready_offset_hours_by_op_id[op_id]),
-                "bottleneck_due_gate": float(bottleneck_score_with_capacity * due_pressure * saveability),
+                "bottleneck_due_gate": float(bottleneck_due_gate),
                 "graph_ready_workload_version": feature_basis,
             }
         )
@@ -272,11 +273,15 @@ def _duration_by_op_id_with_zero_total_trace(
     op_by_id: Dict[int, Any],
     *,
     batches: Dict[str, Any],
+    native_preparation: Optional[Any] = None,
 ) -> Dict[int, float]:
     duration_by_op_id: Dict[int, float] = {}
     zero_total_op_ids: List[int] = []
     for op_id, op in op_by_id.items():
-        total = non_negative_float(_operation_hours(op, batches=batches), field="operation.total_hours")
+        total = non_negative_float(
+            _operation_hours(op, batches=batches, native_preparation=native_preparation),
+            field="operation.total_hours",
+        )
         if total <= 0.0:
             # 真零工时工序：按文档化 epsilon 计入并留痕，取舍与除零安全论证见
             # _ZERO_TOTAL_DURATION_EPSILON_HOURS 常量注释。
@@ -294,10 +299,17 @@ def _duration_by_op_id_with_zero_total_trace(
     return duration_by_op_id
 
 
-def _operation_hours(op: Any, *, batches: Dict[str, Any]) -> float:
-    batch = operation_batch(op, _batch_for_operation(op, batches=batches))
+def _operation_hours(op: Any, *, batches: Dict[str, Any], native_preparation: Optional[Any] = None) -> float:
+    raw_batch = _batch_for_operation(op, batches=batches)
     if op.source == EXTERNAL:
         return float(_external_operation_hours(op))
+    if native_preparation is not None and op.id in native_preparation.total_hours_by_op_id:
+        return float(native_preparation.total_hours_by_op_id[op.id])
+    batch = (
+        native_preparation.operation_batch(op, raw_batch)
+        if native_preparation is not None
+        else operation_batch(op, raw_batch)
+    )
     # 单一真相源：total=setup+unit*quantity 与 core/algorithm_runtime/internal_slot.validate_internal_hours
     # 同口径——quantity==0 合法（总量=setup）、总工时 0 合法，不复辟 quantity>0 / total>0 硬闸
     # （系统口径见 schedule_input_runtime_support._ensure_internal_runtime_hours 护栏注释与回归测试
@@ -327,7 +339,7 @@ def _due_exclusive_datetime(batch: Any) -> Optional[datetime]:
     due_day = _parse_due_day(batch.due_date)
     if due_day is None:
         return None
-    return datetime.combine(due_day + timedelta(days=1), time.min)
+    return due_exclusive(due_day)
 
 
 def _deadline_hours(*, start_dt: datetime, due_exclusive: datetime) -> float:

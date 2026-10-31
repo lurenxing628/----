@@ -4,12 +4,6 @@
   const P = window.DashboardCandidatePanels, { Button, ErrorBox, Issues } = window.ResourceControls;
   // Q.context 保证 range_start / range_end 成对出现；未设置范围时输入框显示为空。
   const rangeDraft = value => value.range_start === undefined ? { start: '', end: '' } : { start: value.range_start, end: value.range_end };
-  function rangeFor(input) {
-    const start = input && input.start_date + 'T00:00:00', raw = input && input.end_date + 'T00:00:00';
-    C.check(A.time(start) && A.time(raw), '这次排产没有有效的提交时间范围，无法比较。请重新选择排产记录。');
-    const end = new Date(Date.parse(raw + 'Z') + 86400000).toISOString().slice(0, 19);
-    C.check(A.time(end) && start < end); return { range_start: start, range_end: end };
-  }
   async function allCandidates(runRef, signal) {
     const first = await A.catalog(runRef, { size: 50 }, signal), rows = first.data.candidates.slice();
     let page = 1, next = first;
@@ -24,7 +18,7 @@
     const [choice, setChoice] = React.useState(() => { const value = Q.context(initialContext); delete value.batch_ref; return value; }), [revision, refresh] = React.useReducer(n => n + 1, 0);
     const context = Q.context({ ...choice, ...(issueBatchRef ? { batch_ref: issueBatchRef } : {}) });
     const [list, setList] = React.useState({ run: null, data: null, error: null, loading: false });
-    const [read, setRead] = React.useState({ signature: null, data: null, error: null, loading: false });
+    const [read, setRead] = React.useState({ signature: null, resolvedSignature: null, revision: null, data: null, error: null, loading: false });
     const [range, setRange] = React.useState(() => rangeDraft(choice)), [rangeError, setRangeError] = React.useState(null);
     const [summary, setSummary] = React.useState(false), [rangeOpen, setRangeOpen] = React.useState(false), signature = JSON.stringify(context);
     React.useEffect(() => { setRange(rangeDraft(choice)); }, [choice.range_start, choice.range_end]);
@@ -36,23 +30,27 @@
       return () => controller.abort();
     }, [choice.run_ref, revision]);
     React.useEffect(() => {
+      if (read.resolvedSignature === signature && read.revision === revision && read.data) return;
       const controller = new AbortController(); setSummary(false);
-      setRead({ signature, data: null, error: null, loading: !!context.candidate_ref });
+      setRead({ signature, resolvedSignature: null, revision, data: null, error: null, loading: !!context.candidate_ref });
       if (!context.candidate_ref) return () => controller.abort();
       const load = async () => {
+        const comparison = await Q.read(context, controller.signal);
+        C.check(comparison.data.candidate.run_ref === context.run_ref, '返回的候选不属于原排产记录，未改指其他记录。');
+        if (controller.signal.aborted) return;
         if (!context.range_start || !context.range_end) {
-          const first = await A.workspace(context.candidate_ref, context.batch_ref ? { batch_ref: context.batch_ref } : {}, controller.signal);
-          C.check(first.data.candidate.run_ref === context.run_ref, '返回的候选不属于原排产记录，未改指其他记录。');
-          if (!controller.signal.aborted) setChoice(previous => C.equal(previous, choice) ? { ...previous, ...rangeFor(first.data.generation.input) } : previous);
+          const bounds = { range_start: comparison.data.time_scope.range_start, range_end: comparison.data.time_scope.range_end };
+          const nextContext = Q.context({ ...choice, ...bounds, ...(issueBatchRef ? { batch_ref: issueBatchRef } : {}) });
+          setRead({ signature, resolvedSignature: JSON.stringify(nextContext), revision, data: comparison, error: null, loading: false });
+          setChoice(previous => C.equal(previous, choice) ? { ...previous, ...bounds } : previous);
           return;
         }
-        const comparison = await Q.read(context, controller.signal);
-        if (!controller.signal.aborted) setRead({ signature, data: comparison, error: null, loading: false });
+        setRead({ signature, resolvedSignature: signature, revision, data: comparison, error: null, loading: false });
       };
-      load().catch(error => { if (!controller.signal.aborted) setRead({ signature, data: null, error, loading: false }); });
+      load().catch(error => { if (!controller.signal.aborted) setRead({ signature, resolvedSignature: null, revision, data: null, error, loading: false }); });
       return () => controller.abort();
     }, [signature, revision]);
-    const current = read.signature === signature ? read : null, result = current && current.data;
+    const current = (read.signature === signature || read.resolvedSignature === signature) && read.revision === revision ? read : null, result = current && current.data;
     const data = result && result.data, options = list.run === choice.run_ref && list.data;
     const caption = data ? { reference: data.candidate.candidate_ref, label: '比较方案', name: data.candidate.label || window.WorkbenchTerms.name_missing,
       status: data.baseline.available ? '已保存候选方案 · 与排产时的正式计划对照' : '已保存候选方案 · 排产时没有正式计划' } : null;
@@ -64,7 +62,7 @@
       const run = catalog.runs.find(row => row.run_ref === ref);
       let bounds = {};
       if (run && run.scope_summary && run.scope_summary.start_date && run.scope_summary.end_date) {
-        try { bounds = rangeFor(run.scope_summary); } catch (error) { setRangeError(error); }
+        try { bounds = Q.rangeFor(run.scope_summary); } catch (error) { setRangeError(error); }
       }
       setChoice({ run_ref: ref, ...bounds });
     }

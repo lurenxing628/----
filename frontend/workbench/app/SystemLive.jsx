@@ -16,11 +16,10 @@ function SystemLive({ boot, theme, initialContext }) {
   const onReadState = React.useCallback((suspended, reason) => setReadState({ suspended, reason }), []);
   const [local, setLocal] = React.useState(() => ({ checks: [], checkedAt: new Date().toISOString() }));
   React.useLayoutEffect(() => {
-    const report = model.inspectEnvironment(window, { theme, onSetTheme: value => window.APSWorkbenchTheme.set(value) });
+    const report = model.inspectEnvironment(window);
     setLocal({ schemaVersion: report.schemaVersion, scope: 'workbench-page', checkedAt: report.checkedAt, protocol: report.protocol,
-      checks: report.checks.map(item => item.id === 'model' && item.status === 'available' ? { ...item,
-        detail: '页面模型已加载；本机数据由各页签单独读取。' } : item) });
-  }, [theme, revision]);
+      checks: report.checks });
+  }, [revision]);
   // 系统管理只读本机数据；维护操作结果没确认前暂停读取，不用别的数据顶替。
   React.useEffect(() => {
     if (readSuspended) { setLoading(false); setPayload(null); setError(''); return; }
@@ -36,7 +35,10 @@ function SystemLive({ boot, theme, initialContext }) {
   const data = payload && payload.data;
   window.WorkbenchPageContext.useSnapshot({ tab, page_size: pageSize, records: recordContexts }, !readSuspended && !!data && !loading);
   const tabs = [['overview', '概况'], ['backups', '备份恢复'], ['logs', '运行日志'], ['config', '配置']];
-  const onTab = next => { setTab(next); setNotice(''); document.getElementById('sm-tab-' + next).focus(); };
+  const onTab = async next => {
+    if (next !== tab && !await window.WorkbenchGuards.confirmLeave()) return;
+    setTab(next); setNotice(''); document.getElementById('sm-tab-' + next).focus();
+  };
   const diagnosticName = '页面诊断.json';
   const exportDiagnostic = () => {
     try { window.APSWorkbenchTransport.downloadJSON(diagnosticName, { instance: boot.instance_label,

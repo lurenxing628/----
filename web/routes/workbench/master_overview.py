@@ -35,8 +35,8 @@ def _page(key):
     return int(value)
 
 
-def _current_snapshot(scope, token, as_of):
-    snapshot = bind_read_snapshot(scope, None, token, as_of=as_of)
+def _current_snapshot(scope, fingerprint, token, as_of):
+    snapshot = bind_read_snapshot(scope, fingerprint, token, as_of=as_of)
     snapshot["as_of"] = as_of
     return snapshot
 
@@ -46,10 +46,14 @@ def master_overview_list():
     page = _page("page")
     scope, token = _request(("page",))
     reader = MasterOverviewService(g.db)
-    with reader.read_snapshot() as state:
-        snapshot = _current_snapshot(scope.scope(), token, state)
+    bound = {}
+    with reader.read_snapshot(
+        bind_snapshot=lambda state, as_of: bound.setdefault(
+            "snapshot", _current_snapshot(scope.scope(), state, token, as_of)
+        )
+    ):
         data = reader.page(scope, page)
-    return query_success(data, snapshot)
+    return query_success(data, bound["snapshot"])
 
 
 @api_endpoint
@@ -58,21 +62,27 @@ def master_overview_detail(domain, ref):
     section = request.args.get("section", "issues")
     if section not in ("issues", "relations", "fields"):
         invalid("要看的详情类别不对，详情没有打开。请刷新页面后重新点开这一行。")
+    detail_page = _page("detail_page")
     reader = MasterOverviewService(g.db)
-    with reader.read_snapshot() as state:
-        snapshot = _current_snapshot(scope.scope(), token, state)
-        data = reader.detail(scope, domain, ref, section, _page("detail_page"))
-    return query_success(data, snapshot)
+    bound = {}
+    with reader.read_snapshot(
+        bind_snapshot=lambda state, as_of: bound.setdefault(
+            "snapshot", _current_snapshot(scope.scope(), state, token, as_of)
+        )
+    ):
+        data = reader.detail(scope, domain, ref, section, detail_page)
+    return query_success(data, bound["snapshot"])
 
 
 @api_endpoint
 def master_overview_locate(domain, ref):
     scope, token = _request(require_snapshot=True)
     reader = MasterOverviewService(g.db)
-    with reader.read_snapshot() as state:
-        _current_snapshot(scope.scope(), token, state)
+    with reader.read_snapshot(
+        bind_snapshot=lambda state, as_of: _current_snapshot(scope.scope(), state, token, as_of)
+    ) as as_of:
         target_scope, data = reader.locate(scope, domain, ref)
-        snapshot = _current_snapshot(target_scope.scope(), None, state)
+        snapshot = _current_snapshot(target_scope.scope(), reader.facts.snapshot_state, None, as_of)
     return query_success(data, snapshot)
 
 
@@ -80,9 +90,14 @@ def master_overview_locate(domain, ref):
 def master_overview_export():
     scope, token = _request(require_snapshot=True)
     reader = MasterOverviewService(g.db)
-    with reader.read_snapshot() as state:
-        snapshot = _current_snapshot(scope.scope(), token, state)
+    bound = {}
+    with reader.read_snapshot(
+        bind_snapshot=lambda state, as_of: bound.setdefault(
+            "snapshot", _current_snapshot(scope.scope(), state, token, as_of)
+        )
+    ):
         content, count = reader.csv(scope)
+    snapshot = bound["snapshot"]
     filename = "基础资料待维护项.csv" if scope.view == "issues" else "基础资料清单.csv"
     response = Response(content, content_type="text/csv; charset=utf-8")
     response.headers.update({"X-Workbench-Snapshot-Ref": snapshot["snapshot_ref"],

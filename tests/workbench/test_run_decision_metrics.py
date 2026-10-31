@@ -9,6 +9,7 @@ from core.services.workbench.facts.common_completed_delivery import common_compl
 from core.services.workbench.facts.decision_delivery import project_decision_delivery
 from core.services.workbench.facts.decision_metrics import (
     delivery_coverage,
+    metric_definitions,
     operation_change_metrics,
 )
 from core.services.workbench.facts.preparation_projection import project_operation_effort
@@ -91,7 +92,8 @@ def test_resource_reference_gap_preserves_known_operation_change_subtotal():
     from core.services.workbench.facts.decision_read_models import Memberships
 
     template = {"start": "2026-09-09T08:00:00", "end": "2026-09-09T10:00:00", "source": "internal",
-                "machine": {"ref": "machine-a"}, "operator": {"ref": "operator-a"}, "supplier": None, "data_gaps": []}
+                "machine": {"ref": "machine-a"}, "operator": {"ref": "operator-a"}, "supplier": None,
+                "locked": False, "interval_comparable": True, "data_gaps": []}
     before = [dict(template, row_ref="before-a", operation_ref="op-a"), dict(template, row_ref="before-b", operation_ref="op-b")]
     after = [dict(template, row_ref="after-a", operation_ref="op-a", start="2026-09-09T09:00:00"),
              dict(template, row_ref="after-b", operation_ref="op-b", machine={"ref": None})]
@@ -141,7 +143,8 @@ def test_resource_reference_gap_preserves_known_operation_change_subtotal():
 
 def test_unproven_official_point_keeps_time_difference_unknown():
     template = {"row_ref": "row-a", "operation_ref": "op-a", "start": "2026-09-09T08:00:00", "end": "2026-09-09T08:00:00", "source": "internal",
-                "machine": {"ref": "machine-a"}, "operator": {"ref": "operator-a"}, "supplier": None, "locked": False, "data_gaps": []}
+                "machine": {"ref": "machine-a"}, "operator": {"ref": "operator-a"}, "supplier": None, "locked": False,
+                "interval_comparable": True, "data_gaps": []}
     before = dict(template, interval_comparable=False, data_gaps=[{"field": "point_evidence", "code": "source_missing"}])
     after = dict(template, start="2026-09-09T09:00:00", end="2026-09-09T10:00:00")
     # Production intervals come from task_interval: the unproven point has none.
@@ -173,7 +176,8 @@ def test_unproven_official_point_keeps_time_difference_unknown():
     window = {"range_start": "2026-09-09T07:00:00", "range_end": template["start"]}
     engine = object.__new__(DecisionResources)
     engine.source = SimpleNamespace(scope=window, run={"run_ref": "a" * 48}, selected_ref="b" * 48, reference_ref=None,
-                                    baseline={"state": "available", "plan_ref": "c" * 48}, comparison_mode="admission_official", resource_view="selected_batches")
+                                    baseline={"state": "available", "plan_ref": "c" * 48}, comparison_mode="admission_official",
+                                    resource_view="selected_batches", task_intervals=lambda _key: {"row-a": None})
     engine.start, engine.end = window["range_start"], window["range_end"]
     target = engine.drill("reference", {"ref": "d" * 48, "kind": "machine"}, tasks=[before], start=engine.start, end=engine.end)
     assert target["range_end"] == "2026-09-09T08:00:00.000001"
@@ -194,6 +198,7 @@ def test_formal_workspace_preserves_archived_arrangement_with_unknown_time():
         baseline={"label": "排产时的正式计划 v1", "state": "available", "plan_ref": "c" * 48},
         reference_deferred_ids=set(), selected_ref="b" * 48, reference_ref=None, rows=[], facts=facts,
         run={"run_ref": "a" * 48, "accepted_at": "2026-09-09T00:00:00", "finished_at": "2026-09-09T00:01:00"}, capture={"input": {}},
+        task_intervals=lambda _key: {"row-a": None},
     )
     effort = project_operation_effort(None, None, allocation_state="unknown", source="internal",
                                      execution={"execution_state": "complete", "target_quantity": 3, "target_basis": "batch", "remaining_quantity": 0})
@@ -232,3 +237,9 @@ def test_material_ready_after_formal_adoption_compares_delivery_without_equating
             assert row["deltas"][key]["state"] == "different_coverage"
             assert row["deltas"][key]["value"] is None
         assert row["deltas"]["changeover_count"]["state"] == "unavailable"
+    original_label = metric_definitions()[0]["label"]
+    mutated = metric_definitions()
+    mutated[0]["label"] = "mutated-direct-label"
+    assert metric_definitions()[0]["label"] == original_label
+    data["metric_definitions"][0]["label"] = "mutated-response-label"
+    assert metric_definitions()[0]["label"] == original_label

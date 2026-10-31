@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from core.models.workbench_resource_file import file_columns
 from core.models.workbench_resource_status import public_resource_status
-from core.services.workbench.material.files import local_created_at
+from core.services.workbench.messages import local_created_at
 
 if TYPE_CHECKING:
     from .table_facts import ResourceTableFacts
@@ -47,12 +47,13 @@ def resource_export_state(facts: ResourceTableFacts, kind, code):
 
 
 def _supplier_export_state(facts: ResourceTableFacts, code, raw):
-    types = []
-    for key in sorted({row["op_type_id"] for row in facts.grouped("capabilities", "supplier_id")[code]}):
-        related = facts.raw_related("op_type", key)
-        if related is not None:
-            types.append({"op_type_id": related["identity"]["entity_key"]})
-    supplier = dict(raw, profile=facts.raw_lookup("supplier_profiles", "supplier_id").get(code), op_types=types)
+    types = facts.supplier_types(code)
+    # The file includes these relationships; keep the same missing-resource rejection.
+    for key in types:
+        facts.identity("op_type", key)
+        facts.raw_record("op_type", key)
+    supplier = dict(raw, profile=facts.raw_lookup("supplier_profiles", "supplier_id").get(code),
+                    op_types=[{"op_type_id": key} for key in types])
     return {"supplier": supplier}
 
 

@@ -44,6 +44,11 @@ from .workbench_resource_schema import resource_objects, workbench_resource_cont
 from .workbench_run_read_model_schema import contract_issues as run_read_model_contract_issues
 from .workbench_run_read_model_schema import objects as run_read_model_objects
 from .workbench_run_schema import workbench_run_contract_issues, workbench_run_objects
+from .workbench_source_revisions_schema import (
+    SOURCE_REVISION_KEYS,
+    source_revisions_contract_issues,
+    source_revisions_objects,
+)
 from .workbench_template_lineage_schema import template_lineage_contract_issues, template_lineage_objects
 from .workbench_trial_schema import workbench_trial_contract_issues, workbench_trial_objects
 
@@ -180,6 +185,11 @@ def is_truly_empty_db(conn: sqlite3.Connection) -> bool:
             if [tuple(row) for row in rows] != [(1, 1, 1)]:
                 return False
             continue
+        if name == "WorkbenchSourceRevisions":
+            rows = conn.execute("SELECT source_key, revision FROM WorkbenchSourceRevisions ORDER BY source_key").fetchall()
+            if [tuple(row) for row in rows] != sorted((key, 1) for key in SOURCE_REVISION_KEYS):
+                return False
+            continue
         quoted_name = '"' + str(name).replace('"', '""') + '"'
         row = conn.execute(f"SELECT 1 FROM {quoted_name} LIMIT 1").fetchone()
         if row is not None:
@@ -218,6 +228,7 @@ _SUBSYSTEM_OBJECT_SOURCES = (
     template_lineage_objects, workbench_trial_objects, lineage_lookup_objects, calibration_adoption_objects,
     workbench_dashboard_objects, workbench_dashboard_external_objects, workbench_outsourcing_objects,
     workbench_outsourcing_source_objects, batch_external_context_objects, calendar_periods_objects, machine_capabilities_objects, material_stages_objects,
+    source_revisions_objects,
 )
 # 有专用合并标签的核心表，不再单独报 missing_table。
 _CORE_TABLES_WITH_DEDICATED_LABEL = ("SystemConfig", "SystemJobState")
@@ -258,6 +269,7 @@ def current_schema_contract_issues(
         (_has_system_management_tables(structure=structure), "missing_table: SystemConfig/SystemJobState"),
         (_has_schedule_unique_index(structure=structure), "bad_index: idx_schedule_version_op_unique"),
         (_batch_material_ready_default_is_no(structure=structure), "bad_default: BatchMaterials.ready_status expected no"),
+        (_has_schedule_version_seq_autoincrement(structure=structure), "bad_table: ScheduleVersionSeq expected AUTOINCREMENT"),
     ):
         if not ok:
             issues.append(label)
@@ -283,6 +295,7 @@ def current_schema_contract_issues(
     issues.extend(calendar_periods_contract_issues(conn, structure=structure))
     issues.extend(machine_capabilities_contract_issues(conn, structure=structure))
     issues.extend(material_stages_contract_issues(conn, structure=structure))
+    issues.extend(source_revisions_contract_issues(conn, structure=structure))
     if schema_version in (0, CURRENT_SCHEMA_VERSION):
         issues.extend(index_contract_issues(conn, structure=structure))
         issues.extend(efficiency_index_contract_issues(conn, structure=structure))
@@ -312,15 +325,13 @@ def _has_system_management_tables(*, structure: SchemaStructure) -> bool:
     return structure.has_table("SystemConfig") and structure.has_table("SystemJobState")
 
 
+def _has_schedule_version_seq_autoincrement(*, structure: SchemaStructure) -> bool:
+    sql = structure.sql.get("ScheduleVersionSeq")
+    return bool(sql) and "AUTOINCREMENT" in sql.upper()
+
+
 def _has_schedule_unique_index(*, structure: SchemaStructure) -> bool:
     return (
         structure.index_table("idx_schedule_version_op_unique") == "Schedule"
-        and structure.has_unique_key("Schedule", ("version", "op_id"))
-        and any(
-            row[1] == "idx_schedule_version_op_unique"
-            and row[2]
-            and not row[4]
-            and tuple(col[2] for col in structure.index_info(row[1])) == ("version", "op_id")
-            for row in structure.index_list("Schedule")
-        )
+        and structure.has_unique_key("Schedule", ("version", "op_id"), index_name="idx_schedule_version_op_unique")
     )

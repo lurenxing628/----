@@ -3,19 +3,12 @@
 from core.models.workbench_batch import STATUSES
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_dashboard import page
-from core.services.capacity.plan_calendar_intervals import instant, wire
+from core.services.capacity.plan_calendar_intervals import wire
 from core.services.workbench import messages
 from core.services.workbench.facts.resource_pressure import pressure_summary
 from core.services.workbench.facts.resource_projection import RESOURCE_METRIC_VERSION, resource_summary
 
 from .downtime import downtime_overlap_count
-
-
-def _time(value):
-    try:
-        return wire(instant(value))
-    except (TypeError, ValueError):
-        return None
 
 
 def _stored_time(value):
@@ -97,20 +90,21 @@ def _downtime_records(facts, *, include_records):
     machines = {str(raw["machine_id"]): task["machine_ref"] for task, raw in zip(facts.tasks, facts.task_rows)
                 if task["machine_ref"] is not None and raw["source"] == "internal"}
     labels = {str(row["machine_id"]): row["machine_name"] for row in facts.task_rows} if include_records else {}
-    identities = {row["source_id"]: row["ref"] for row in facts.raw["WorkbenchDashboardDowntimeRefs"] if row["active"] == 1}
+    index = facts.downtime_index()
+    identities = index["identities"]
     records, count, issues = [], 0, []
-    for raw in facts.raw["MachineDowntimes"]:
+    # Every non-cancelled row, invalid ones included: an unreadable endpoint still yields its record and issue.
+    for raw, low, high in index["parsed"]:
         machine_id = str(raw["machine_id"])
-        if raw["status"] == "cancelled" or machine_id not in machines:
+        if machine_id not in machines:
             continue
-        ref = identities.get(raw["id"])
-        if ref is None:
+        if raw["id"] not in identities:
             raise WorkbenchCommandRejected("identity_missing", "停机登记编号缺失，请刷新重试。")
-        start, end = _time(raw["start_time"]), _time(raw["end_time"])
-        valid = raw["status"] == "active" and start is not None and end is not None and start < end
+        valid = raw["status"] == "active" and low is not None and high is not None and low < high
         count += 1
         if include_records:
-            records.append((raw, ref, machines[machine_id], labels.get(machine_id), start, end, valid))
+            records.append((raw, identities[raw["id"]]["ref"], machines[machine_id], labels[machine_id],
+                            wire(low) if low is not None else None, wire(high) if high is not None else None, valid))
         if not valid:
             issues.append({"code": "downtime_invalid", "message": "有停机记录的起止时间或状态填得不对，没有画成有效的停机条。"})
     return records, count, issues

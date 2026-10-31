@@ -1,4 +1,4 @@
-"""Sanitized bounded diagnostic ZIP and exact queried-window CSV, without raw files."""
+"""Bounded diagnostic ZIP and exact queried-window CSV, without raw files."""
 
 import csv
 import io
@@ -30,9 +30,9 @@ def diagnostic_zip(rows, sources, as_of):
     with zipfile.ZipFile(stream, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("logs.csv", logs_csv(rows))
         archive.writestr("diagnostic_info.json", json.dumps({
-            "scope": "sanitized-log-windows", "as_of": as_of, "time_basis": "factory_local",
-            "sources": sources, "rows": len(rows), "redacted": True,
-            "excludes": ["database", "raw-log-files", "credentials", "absolute-paths", "browser-storage"],
+            "scope": "bounded-log-windows", "as_of": as_of, "time_basis": "factory_local",
+            "sources": sources, "rows": len(rows), "redacted": False,
+            "excludes": ["database", "raw-log-files", "browser-storage"],
             "note": "每个运行日志文件取最近 200 条，操作日志取最近 500 条；不是全部历史日志。",
         }, ensure_ascii=False, indent=2, allow_nan=False))
         for source in sources:

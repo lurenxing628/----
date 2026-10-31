@@ -26,18 +26,28 @@ def _official(export):
     scope, topic, page, token = arguments(export)
     if topic != "delivery":
         raise WorkbenchCommandRejected("invalid_input", "正式执行复盘只能按工序完成专题看，报表没有变化。请选择工序完成专题后重试。", 400)
+    if export and request.args.get("format", "xlsx") != "xlsx":
+        raise WorkbenchCommandRejected("invalid_input", "正式执行复盘只提供 XLSX，没有开始下载。需要 CSV 请用五个专题的范围导出。", 400)
     reader = WorkbenchReportFacts(g.db, current_app.logger)
     as_of, binding = read_snapshot_time(token)
+    bound = {}
     # 与现场分析是同一份“整份正式计划 + 台账”重建，和看板、现场页一起排读额度。
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():
-            facts = reader.read(scope)
-            snapshot = bind_read_snapshot(facts["scope"].scope(), facts["fingerprint"], token, as_of=as_of, binding=binding)
-            data, ordered, labels = report_workspace(facts, snapshot, topic, page)
+            facts = reader.read(
+                scope,
+                bind_snapshot=lambda resolved_scope, fingerprint: bound.setdefault(
+                    "snapshot",
+                    bind_read_snapshot(resolved_scope, fingerprint, token, as_of=as_of, binding=binding),
+                ),
+                include_choices=not export,
+            )
+            snapshot = bound["snapshot"]
+            data, ordered, labels = report_workspace(
+                facts, snapshot, topic, page, mode="csv" if export else "workspace"
+            )
     if not export:
         return query_success(data, snapshot)
-    if request.args.get("format", "xlsx") != "xlsx":
-        raise WorkbenchCommandRejected("invalid_input", "正式执行复盘只提供 XLSX，没有开始下载。需要 CSV 请用五个专题的范围导出。", 400)
     selected = project_export_rows(ordered, labels)
     if not selected:
         raise WorkbenchCommandRejected("empty_export", "当前范围里没有可导出的正式工序，没有开始下载。请放宽筛选范围后重新点「导出 XLSX」。", 422)
@@ -70,10 +80,18 @@ def _catalog(kind, export=False):
     as_of, binding = read_snapshot_time(token)
     reader = WorkbenchReportFacts(g.db, current_app.logger)
     format_name = request.args.get("format", "xlsx") if export else None
+    bound = {}
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():
-            facts = catalog_facts(reader, scope)
-            snapshot = bind_read_snapshot(facts["scope"].scope(), facts["fingerprint"], token, as_of=as_of, binding=binding)
+            facts = catalog_facts(
+                reader,
+                scope,
+                bind_snapshot=lambda resolved_scope, fingerprint: bound.setdefault(
+                    "snapshot",
+                    bind_read_snapshot(resolved_scope, fingerprint, token, as_of=as_of, binding=binding),
+                ),
+            )
+            snapshot = bound["snapshot"]
             data, ordered, selected = catalog_workspace(
                 facts, page, as_of=as_of, include_sources=format_name == "xlsx"
             )

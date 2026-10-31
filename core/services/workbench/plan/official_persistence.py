@@ -8,7 +8,6 @@ from core.services.workbench.facts.preflight_dependencies import material_deferr
 from core.shared.strict_json import canonical_json
 from data.repositories.schedule_history_repo import ScheduleHistoryRepository
 from data.repositories.schedule_repo import ScheduleRepository
-from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
 
@@ -47,11 +46,7 @@ def persist_official_plan_in_tx(conn, *, prepared, payload, baseline, audit, app
                     "op_count": len(rows), "result_status": "success", "result_summary": canonical_json(audit),
                     "created_by": application_operator})
     identities = WorkbenchPlanIdentityRepository(conn)
-    plan_ref = identities.get_plan_ref(WorkbenchPlanLocator(version, "adopted"))
-    persisted = WorkbenchPlanBaselineRepository(conn).list_schedule_identity_rows(version)
-    persisted_tasks = identities.get_task_refs(plan_ref, ((row["schedule_id"], row["op_id"], row["version"]) for row in persisted))
-    if len(persisted_tasks) != len(rows):
-        raise RuntimeError("New official task identities are incomplete")
+    plan_ref = identities.get_plan_ref(WorkbenchPlanLocator(version))
     audit["plan_ref"] = plan_ref
     if not OperationLogger(conn).info("scheduler", action, target_type="schedule", target_id=plan_ref,
                                      operator=application_operator, detail=audit, raise_on_fail=True):

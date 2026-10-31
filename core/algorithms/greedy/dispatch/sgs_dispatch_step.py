@@ -33,8 +33,7 @@ def _dispatch_selected(
     from .sgs import resolve_operation_batch
 
     batch = resolve_operation_batch(ctx, op, batches[batch_id])
-    errors_before = len(state.errors)
-    result, _blocked = schedule_op(
+    result, failure = schedule_op(
         ctx,
         op=op,
         batch=batch,
@@ -45,7 +44,7 @@ def _dispatch_selected(
         auto_assign_enabled=auto_assign_enabled,
         resource_pool=resource_pool,
     )
-    if result and result.start_time and result.end_time:
+    if result is not None:
         state.record_dispatch_success(result)
         next_idx[batch_id] += 1
         if graph_state is not None:
@@ -72,7 +71,7 @@ def _dispatch_selected(
         remaining_failed=len(skipped_ops) + extra_failed_count,
         failed_op=op,
         skipped_ops=skipped_ops,
-        error_message=(state.errors[-1] if len(state.errors) > errors_before else ""),
+        failure=failure,
     )
 
 

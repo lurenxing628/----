@@ -56,7 +56,7 @@ def process_file_export_preview(kind):
         read_binding = resolve_read_snapshot(token)
         snapshot = bind_read_snapshot(query_scope, state, token, binding=read_binding)
         parts, scope = select_export_parts(reader, body, scope=scope)
-        facts = reader.facts()
+        facts = reader.raw_facts()
     # 读事务已结束：逐格试算导出只用读快照里的工艺资料。
     count = count_process_export_rows(kind, parts, facts, body["format"])
     document = {"kind": kind, "body": body, "query_scope": query_scope, "scope": scope,
@@ -85,7 +85,7 @@ def process_file_export(kind):
     with reader.read_snapshot() as state:
         snapshot = bind_read_snapshot(saved["query_scope"], state, body["snapshot_ref"], binding=read_binding)
         parts, _ = select_export_parts(reader, body, scope=saved["scope"])
-        facts = reader.facts()
+        facts = reader.raw_facts()
     # 读事务已结束：文件只用读快照里的工艺资料生成，编码再久也不挡别人提交写入。
     download = encode_process_file(kind, process_export_rows(kind, parts, facts), body["format"])
     response = file_response(download)

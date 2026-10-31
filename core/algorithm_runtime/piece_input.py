@@ -7,7 +7,6 @@ from typing import Any, Dict, Tuple, cast
 from core.algorithm_contracts.types import OpForScheduleAlgo
 from core.errors import ValidationError
 from core.models.batch import Batch
-from core.shared.strict_parse import parse_optional_date
 
 
 def operation_batch(op: OpForScheduleAlgo, batch: Batch) -> Batch:
@@ -58,9 +57,9 @@ def operation_dispatch_state(state, graph_state, op: OpForScheduleAlgo, batch: B
         raise ValidationError("A ready operation lacks predecessor completion evidence.", field="graph_ready_context")
     earliest = max([state.base_time] + [ends[key] for key in predecessors])
     if state.readiness_gate_enabled:
-        ready = parse_optional_date(batch.ready_date, field="ready_date")
-        if ready is not None:
-            earliest = max(earliest, datetime.combine(ready, datetime.min.time()))
+        ready_start = graph_state["ready_starts_by_batch_id"].get(op.batch_id)
+        if ready_start is not None:
+            earliest = max(earliest, ready_start)
     local = _OperationDispatchState(state, op.batch_id, earliest)
     states[op.id] = local
     return local

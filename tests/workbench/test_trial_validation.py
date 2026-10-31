@@ -11,7 +11,7 @@ from core.services.personnel.operator_qualification import OperatorQualification
 from core.services.scheduler.template_lineage import TemplateLineageWriter
 from core.services.workbench.batch.facts import BatchFacts
 from core.services.workbench.run.preflight import PreflightService
-from core.services.workbench.trial.constraints import _actual_reservations
+from core.services.workbench.trial.constraints import _actual_reservations, build_trial_intervals
 from tests.workbench.run_compute_support import compute_run, prepare_run_input
 from tests.workbench.trial_adoption_support import INTENT
 from tests.workbench.trial_adoption_support import service as adoption_service
@@ -205,9 +205,11 @@ def _reservation_codes(*, unit_hours, reports=(), finish="2026-09-09T10:00:00",
                 "BatchOperations": [{"id": 7, "source": "internal", "setup_hours": 0, "unit_hours": unit_hours}],
                 "WorkbenchPlanSourceRefs": [{"ref": "op-actual", "source_key": "7", "kind": "operation"}]}},
             "execution": {"op-actual": execution}}
-    row = {"operation_ref": "op-trial", "task_ref": "task-trial", "original": {"operation": {"source": "internal"}},
-           "current": {"start": window[0], "end": window[1], "machine_ref": "MR1", "operator_ref": "OR1"}}
-    return sorted(item["code"] for item in _actual_reservations([row], live))
+    current = {"start": window[0], "end": window[1], "machine_ref": "MR1", "operator_ref": "OR1"}
+    row = {"row_ref": "row-trial", "operation_ref": "op-trial", "task_ref": "task-trial",
+           "original": {"operation": {"source": "internal"}, "arrangement": current},
+           "current": current}
+    return sorted(item["code"] for item in _actual_reservations([row], live, build_trial_intervals([row])["current_by_op"]))
 
 
 def test_completed_point_work_zero_duration_reports_hold_no_resources():

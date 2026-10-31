@@ -54,9 +54,9 @@ class MasterOverviewService:
         self.entity_by_key = {}
 
     @contextmanager
-    def read_snapshot(self):
+    def read_snapshot(self, *, bind_snapshot=None):
         self._overview = None
-        with self.facts.read_snapshot() as as_of:
+        with self.facts.read_snapshot(bind_snapshot=bind_snapshot) as as_of:
             self.graph = MasterOverviewGraph(self.facts)
             add_resources(self.graph)
             add_process(self.graph)

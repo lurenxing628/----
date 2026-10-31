@@ -156,7 +156,7 @@ def apply_prepared_hours(conn, prepared):
     hours = ProcessTemplateHours(conn)
     group_repo = ExternalGroupRepository(conn)
     for old, fields in updates:
-        hours.revise_current(old, fields, expected_revision=old["revision"])
+        hours.revise_current(old, fields)
     for old, days in group_updates:
         group_repo.set_total_days(old["group_id"], days)
     return bool(updates or group_updates)

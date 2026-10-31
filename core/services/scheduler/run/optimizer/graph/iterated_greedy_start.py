@@ -14,34 +14,21 @@ from .iterated_greedy_reference import activate_entry, capture_reference, decode
 
 def start_reference(search: Any) -> None:
     """Start from the best pool tier; a pool entry whose capture fails yields to the next one (bounded by the pool)."""
-    report = search.report
-    report["starting_incumbent_origin"] = str(search.best.get("candidate_origin") or "baseline")
-    report["starting_incumbent_score"] = list(search.best["score"])
     seed_solution_pool(search)
     for index, entry in enumerate(_start_attempts(search)):
         activate_entry(search, entry)
         source = entry.candidate
-        _describe_parent(search, source)
         search._require_budget()
         reference = _due_date_reference(search, source) if index == 0 else None
         if reference is not None:
-            report["reference_basis"] = "due_date_seed"
             break
-        divergences = report["reference_capture_divergences"]
         reference = capture_reference(search, entry)
         if reference is not None:
-            report["reference_basis"] = "parent_order"
-            report["parent_order_score"] = list(reference.score)
-            # Consistent means the capture reproduced the parent's schedule, not merely its score.
-            report["parent_order_consistent"] = (report["reference_capture_divergences"] == divergences
-                                                 and reference.score == tuple(source["score"]))
             break
-        report["pool"]["start_captures_failed"] += 1
     else:
         raise _BudgetExhausted("parent_order_rejected")
     search.reference = reference
     search.solution_pool.refresh(reference)
-    report["pool"]["initial_entries"] = len(search.solution_pool.entries)
 
 
 def _start_attempts(search: Any) -> List[PoolEntry]:
@@ -54,53 +41,19 @@ def _start_attempts(search: Any) -> List[PoolEntry]:
     return [selected] + rest
 
 
-def _describe_parent(search: Any, source: Any) -> None:
-    report = search.report
-    report["parent_origin"] = str(source.get("candidate_origin") or "baseline")
-    report["parent_score"] = list(source["score"])
-    profile = source.get("graph_ready_profile") or {}
-    report["parent_profile_slug"] = profile.get("weight_profile_slug")
-
-
 def _due_date_reference(search: Any, source: Any) -> Optional[PoolEntry]:
-    seed = search.report["initial_seed"]
-    if not search.limits.due_date_seed:
-        seed.update(status="disabled", reason="disabled")
-        return None
-    if search.report["objective_name"] != "min_overdue":
-        seed.update(status="not_applicable", reason="objective_or_context")
+    if not search.limits.due_date_seed or search.report["objective_name"] != "min_overdue":
         return None
     from .iterated_greedy_seed import build_due_date_seed
 
-    started = search.clock()
-    # Construction consumes the common deadline and keeps the finite 2048-probe enumeration cap.
-    construction_deadline = search.deadline
-    seed["construction_time_budget_ms"] = max(int((construction_deadline - started) * 1000), 0)
-    proposal = build_due_date_seed(parent=search.parent, candidate=source, metrics=search.metrics,
-                                   graph_context=search.graph_context, start_dt=search.start_dt,
-                                   clock=search.clock, deadline=construction_deadline)
-    seed.update({key: value for key, value in proposal.items() if key != "order"})
-    seed["runtime_ms"] = max(int((search.clock() - started) * 1000), 0)
-    order = proposal["order"]
+    order = build_due_date_seed(parent=search.parent, candidate=source, metrics=search.metrics,
+                                graph_context=search.graph_context, start_dt=search.start_dt,
+                                clock=search.clock, deadline=search.deadline)
     if order is None:
         return None
-    before, improvements = search.report["decodes"], search.report["improvements"]
-    try:
-        entry = decode_reference(search, order, before=source, reference_kind="due_date_seed")
-    except _BudgetExhausted as exc:
-        seed.update(status="skipped_by_budget", reason=exc.reason)
-        raise
-    finally:
-        seed["decodes"] = search.report["decodes"] - before
-    seed["incumbent_improved"] = search.report["improvements"] > improvements
-    if entry is None:
-        seed.update(status="rejected", reason="decode_rejected")
+    entry = decode_reference(search, order, before=source, reference_kind="due_date_seed")
+    if entry is None or entry.score > tuple(source["score"]):
         return None
-    seed["validated_score"] = list(entry.score)
-    if entry.score > tuple(source["score"]):
-        seed.update(status="rejected", reason="worse_than_source")
-        return None
-    seed.update(status="used_as_reference", reason=None, selected=True)
     return entry
 
 

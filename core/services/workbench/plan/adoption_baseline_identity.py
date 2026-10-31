@@ -11,7 +11,7 @@ from core.services.workbench.facts.adoption_baseline_values import (
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
-from .projection import project_tasks, public_time
+from .projection import project_light_tasks, public_time
 
 
 def verify_capture(baseline, tables, *, admission_proof=None):
@@ -54,15 +54,13 @@ def _live_sources(conn, captured, *, context):
         fail("adoption_reference_invalid", "captured_source_instances")
 
 
-def verify_arranged(conn, plan_ref, version, tables, arranged, *, context,
-                    arranged_times=None, indexed_tables=None, verified_out=None):
+def verify_arranged(conn, plan_ref, version, arranged, *, context,
+                    arranged_times=None, indexed_tables, verified_out):
     rows = context.source_rows(version=version) if context is not None else schedule_rows(conn, version)
     originals, current = indexed(arranged, "op_id"), indexed(rows, "op_id")
     if set(originals) != set(current):
         fail("adoption_plan_drift", "selected_complete_operation_set")
     intervals = context.peek_source_intervals(version=version) if context is not None else None
-    if intervals is not None and not {row["id"] for row in rows} <= set(intervals):
-        intervals = None
     for op_id, original in originals.items():
         row = current[op_id]
         known_times = intervals[row["id"]] if intervals is not None else None
@@ -76,19 +74,14 @@ def verify_arranged(conn, plan_ref, version, tables, arranged, *, context,
     except WorkbenchPlanReferenceError:
         fail("adoption_reference_invalid", "selected_complete_task_identity")
     keys = {str(key) for key in current}
-    if indexed_tables is not None and indexed_tables.get("source_refs_id") == id(tables["WorkbenchPlanSourceRefs"]):
-        op_sources = indexed_tables["operation_sources"]
-        sources = [op_sources[key] for key in keys if key in op_sources]
-    else:
-        sources = [row for row in tables["WorkbenchPlanSourceRefs"] if row["kind"] == "operation"
-                   and row["active"] == 1 and row["source_key"] in keys]
+    op_sources = indexed_tables["operation_sources"]
+    sources = [op_sources[key] for key in keys if key in op_sources]
     require(len(sources) == len(current), "captured_selected_operations")
     if {int(row["source_key"]): row["ref"] for row in sources} != operations:
         fail("adoption_reference_invalid", "selected_original_operation_instances")
     _live_sources(conn, sources, context=context)
-    if verified_out is not None:
-        verified_out["selected_task_refs"] = task_refs
-        verified_out["verified_operation_keys"] = frozenset(keys)
+    verified_out["selected_task_refs"] = task_refs
+    verified_out["verified_operation_keys"] = frozenset(keys)
     return rows
 
 
@@ -116,16 +109,19 @@ def _arrangement_matches(row, original, *, known_times=None, original_times=None
             or (len(row[key]) == len(original_times[index]) and row[key].replace(" ", "T", 1) == original_times[index])
         ):
             continue
-        current = known_times[index].replace(" ", "T") if known_times is not None else public_time(row[key])
         if known_times is not None and row[key] == original[key]:
             continue
+        if known_times is not None:
+            current = known_times[index]
+        else:
+            current = public_time(row[key])
         expected = original_times[index] if original_times is not None else public_time(original[key])
         if current != expected:
             return False
     return True
 
 
-def baseline_tasks(conn, baseline, tables, facts, *, point_annotator, context):
+def light_baseline_tasks(conn, baseline, tables, facts, *, point_annotator, context):
     from core.services.workbench.facts.adoption_baseline_sources import read_adoption_operation_facts
 
     ref, version = baseline["plan_ref"], baseline["version"]
@@ -138,7 +134,6 @@ def baseline_tasks(conn, baseline, tables, facts, *, point_annotator, context):
     if locator != WorkbenchPlanLocator(version, "adopted"):
         fail("adoption_reference_invalid", "baseline.official_locator")
     rows = context.source_rows(version=version)
-    facts["observed_baseline_rows"] = rows
     captured = baseline["rows"]
     if not {row["id"] for row in captured} <= {row["id"] for row in rows}:
         fail("adoption_baseline_archived", "Schedule.original_rows")
@@ -153,15 +148,32 @@ def baseline_tasks(conn, baseline, tables, facts, *, point_annotator, context):
         op = ops.get(row["op_id"])
         if op is None or op["batch_id"] not in batches:
             fail(gap="baseline.original_operation_and_batch")
-        origin = origins.get(row["op_id"])
-        if origin is None or any(item["field"] in ("source", "supplier", "supplier.ref") for item in origin["data_gaps"]):
+        origin = origins.get(row["op_id"], {})
+        if not origin or any(item["field"] in ("source", "supplier", "supplier.ref") for item in origin["data_gaps"]):
             fail("adoption_evidence_missing", "baseline.original_source_and_supplier")
         supplier = next((item for item in origin["resource_directory"] if item["kind"] == "supplier"), None)
         detail.append({**row, "schedule_id": row["id"], "batch_id": op["batch_id"],
                        "seq": op["seq"], "piece_id": op["piece_id"], "op_type_name": op["op_type_name"],
                        "supplier_id": supplier["business_code"] if supplier is not None else None})
-    detail = point_annotator(detail)
-    return project_tasks(ref, detail, task_refs, operations, resources, facts=facts, context=context)
+    facts["resource_directory"] = [
+        resource
+        for row in detail
+        for resource in origins.get(row["op_id"], {}).get("resource_directory", [])
+    ]
+    light_tasks = project_light_tasks(
+        ref, detail, task_refs, operations, resources, origins, context=context,
+    )
+
+    def project_rows(selected_rows):
+        if not selected_rows:
+            return []
+        from .projection import project_tasks
+
+        return project_tasks(
+            ref, point_annotator(selected_rows), task_refs, operations, resources, facts={}, context=context,
+        )
+
+    return light_tasks, project_rows
 
 
 def _captured_tasks(baseline, tables):

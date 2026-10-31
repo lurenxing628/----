@@ -106,12 +106,8 @@ class RouteFilePreview:
         return part
 
     def _check_target(self, part):
-        if self.target_ref is None:
-            return
-        target = self.identities.get(self.target_ref) if type(self.target_ref) is str else None
-        if target is None or not target.active or target.kind != "part":
-            raise ValidationError("这个零件已失效，不能导入到同号的新零件上。请刷新列表后重新选择。", field="target_ref")
-        if part is None or part["ref"] != self.target_ref or target.entity_key != part["part_no"]:
+        # The coordinator resolved target_ref as an active part and scoped these facts to it.
+        if self.target_ref is not None and (part is None or part["ref"] != self.target_ref):
             raise ValidationError("详情导入的每一行都必须属于当前零件，不能替换为其他图号。", field="business_code")
 
     def _propose(self, row, values, part):

@@ -118,14 +118,20 @@ function fixture(specs) {
       process_order:{state:'unavailable',basis:null,issues:[{code:'process_order_unavailable',message:'Frozen process order unavailable'}]}}};
 }
 function prepare(model, data, ...args) {
-  const facts = model.prepare(data, ...args); facts.graph = runtime.GanttGraph.create(data.gantt_graph); return facts;
+  if (model === runtime.PlanGanttModel) {
+    const taskFacts = model.prepareTasks(data);
+    return model.combinePrepared(taskFacts, model.prepareBaseline(data, taskFacts, ...args), model.prepareOccupancy(data, null, null, taskFacts.labels));
+  }
+  const facts = model.prepare(data, ...args);
+  facts.graph = runtime.GanttGraph.create(data.gantt_graph);
+  return facts;
 }
 function gantt(data, options = {}) {
   const selections = [], queries = [];
   const states = Object.assign({}, options.states || {});
   // The product receives meta.as_of from its workspace response. Synthetic fixtures use a fixed local clock.
   const asOf = options.asOf === undefined ? input.data && input.data.meta && input.data.meta.as_of || fixtureAsOf : options.asOf;
-  const tree = render(runtime.PlanGantt, {data,prepared:prepare(runtime.PlanGanttModel,data),asOf,query:options.query || '',selected:options.selected || null,
+  const tree = render(runtime.PlanGantt, {data,prepared:prepare(runtime.PlanGanttModel,data),graph:runtime.GanttGraph.create(data.gantt_graph),asOf,query:options.query || '',selected:options.selected || null,
     onSelect:(task,before) => selections.push({task,before}),onQuery:value => queries.push(value)}, states);
   return {tree, nodes:walk(tree), selections, queries};
 }

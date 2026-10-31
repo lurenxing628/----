@@ -175,9 +175,20 @@ class WorkbenchResourceFileService:
             raise WorkbenchCommandRejected("stale_write", "文件或导入范围已经变了，没有导入。请点「重新预检」后再确认。") from exc
         document = check_resource_preview(preview, current)
         results = []
+        created_codes = []
         for row, change in zip(document["rows"], changes):
-            outcome = self.adapter.apply_prepared(change)
+            outcome = self.adapter.apply_prepared(change, read_identity=False)
+            if change.action == "create":
+                created_codes.append(change.business_code)
             results.append({"row": row["row"], "result": outcome.result, **outcome.data})
+        if created_codes:
+            identities = self.reader.identities.active_map(self.kind, created_codes)
+            for item in results:
+                if item["entity_ref"] is None:
+                    identity = identities.get(item["business_code"])
+                    if identity is None:
+                        raise RuntimeError("新增资源没有永久引用。")
+                    item["entity_ref"] = identity.ref
         result = "committed" if any(row["result"] == "committed" for row in results) else "unchanged"
         return WorkbenchCommandOutcome(result, {"rows": results, "summary": document["summary"]})
 

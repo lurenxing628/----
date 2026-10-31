@@ -37,9 +37,8 @@ def _source_contract_issues(*, structure: SchemaStructure) -> List[str]:
     return issues
 
 
-def workbench_process_contract_issues(conn, *, structure=None) -> List[str]:
+def workbench_process_contract_issues(conn, *, structure: SchemaStructure) -> List[str]:
     """Read-only structural check; missing identities are never allocated here."""
-    structure = structure if structure is not None else SchemaStructure(conn)
     actual = structure.sql
     issues = _source_contract_issues(structure=structure)
     for name, sql in process_objects().items():

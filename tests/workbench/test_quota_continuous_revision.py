@@ -2,6 +2,7 @@
 
 import pytest
 
+from core.infrastructure.schema_structure import SchemaStructure
 from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_calibration_adoption_schema import contract_issues
 from core.models.workbench_command import WorkbenchCommandRejected
@@ -63,12 +64,11 @@ def test_all_writers_preserve_existing_batches_and_plans_after_adoption(ready_ad
     case = ready_adoption_case
     adopt(case)
     before = snapshot(case.conn)
-    assert not contract_issues(case.conn)
+    assert not contract_issues(case.conn, structure=SchemaStructure(case.conn))
     ref, revision = case.template_ref, current(case)['revision']
     with TransactionManager(case.conn).transaction(begin_immediate=True):
         old = current(case)
-        ProcessTemplateHours(case.conn).revise_current(old, {'setup_hours': 0, 'unit_hours': 4.5},
-                                                       expected_revision=old['revision'])
+        ProcessTemplateHours(case.conn).revise_current(old, {'setup_hours': 0, 'unit_hours': 4.5})
     with TransactionManager(case.conn).transaction(begin_immediate=True):
         old = current(case)
         prepared = prepare_hours({'operations': [{'ref': ref, 'setup_hours': 0, 'unit_hours': 5.5}],
@@ -106,8 +106,7 @@ def test_repeated_adoption_uses_fresh_samples_of_the_current_version(ready_adopt
     assert [tuple(row) for row in history] == [(1, 3), (3, 6)]
     with TransactionManager(case.conn).transaction(begin_immediate=True):
         old = current(case)
-        ProcessTemplateHours(case.conn).revise_current(old, {'setup_hours': 0, 'unit_hours': 8},
-                                                       expected_revision=old['revision'])
+        ProcessTemplateHours(case.conn).revise_current(old, {'setup_hours': 0, 'unit_hours': 8})
     assert current(case)['unit_hours'] == 8
     receipt = service(case.conn).receipt(case.template_ref, KEY)
     assert receipt is not None and receipt['data'] == first
@@ -161,8 +160,7 @@ def test_history_is_append_only_but_templates_are_revisable(ready_adoption_case)
     adopt(case)
     with TransactionManager(case.conn).transaction(begin_immediate=True):
         old = current(case)
-        ProcessTemplateHours(case.conn).revise_current(old, {'setup_hours': 0, 'unit_hours': 9},
-                                                       expected_revision=old['revision'])
+        ProcessTemplateHours(case.conn).revise_current(old, {'setup_hours': 0, 'unit_hours': 9})
     assert current(case)['unit_hours'] == 9
     latest = service(case.conn).repo.latest_adoption(case.template_ref)
     assert latest is not None and latest['new_unit_hours'] == 3

@@ -9,10 +9,10 @@ import pytest
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.dashboard.service import WorkbenchDashboardService
 from data.repositories.workbench_dashboard_source_repo import source_gap_rows
+from tests._support.node_runtime_support import node_runtime
 from tests.workbench.dashboard_external_support import external_case as external_case  # noqa: F401
 from tests.workbench.dashboard_support import NOW, api
 from tests.workbench.dashboard_support import dashboard_case as dashboard_case  # noqa: F401
-from tests.workbench.node_runtime_support import node_runtime
 
 ROOT = "/api/workbench/v1/dashboard"
 FRONTEND_READ = r"""

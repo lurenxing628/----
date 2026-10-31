@@ -89,6 +89,15 @@ def residual_capacity_for_operation(
     resource_pool: Optional[Dict[str, Any]],
     prepared: FixedResourceBlockingFacts,
 ) -> Dict[str, float]:
+    if op.source != INTERNAL:
+        return _capacity_payload(
+            0.0,
+            0.0,
+            0.0,
+            candidate_machine_count=0,
+            resource_candidate_machine_count=0,
+            bottleneck_machine_count=0,
+        )
     pool = prepared.pool_view(resource_pool)
     resource_key = (op.machine_id, op.operator_id, op.op_type_id)
     machine_ids = pool.candidate_machine_ids(op, key=resource_key)
@@ -272,6 +281,8 @@ def _capacity_rank(item: Tuple[float, float, float]) -> Tuple[float, float, floa
 
 
 def _requires_auto_operator(op: Any, *, pool: _ResourcePoolView) -> bool:
+    if op.source != INTERNAL:
+        return False
     if op.operator_id:
         return False
     if op.machine_id:
@@ -281,6 +292,8 @@ def _requires_auto_operator(op: Any, *, pool: _ResourcePoolView) -> bool:
 
 
 def _candidate_machine_ids(op: Any, *, pool: _ResourcePoolView) -> Tuple[str, ...]:
+    if op.source != INTERNAL:
+        return ()
     fixed_machine = op.machine_id
     fixed_operator = op.operator_id
     op_type_id = op.op_type_id

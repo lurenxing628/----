@@ -7,6 +7,7 @@ from types import MappingProxyType
 import pytest
 from flask import Flask
 
+from core.infrastructure.sqlite_udf import register_schedule_time_sql_functions
 from core.models.schedule_config_runtime_fields import default_snapshot_values
 from core.models.workbench_run_job import new_run_ref
 from core.services.workbench.run.jobs import WorkbenchRunService
@@ -21,6 +22,7 @@ def connection(path):
     conn = sqlite3.connect(str(path), timeout=15)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
+    register_schedule_time_sql_functions(conn)
     return conn
 
 

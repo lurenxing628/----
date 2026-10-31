@@ -20,12 +20,12 @@ class WorkbenchProductionReportService:
         self.actor_provider = actor_provider or getpass.getuser
         self.commands = WorkbenchCommandService(conn)
 
-    def _prepare(self, items):
+    def _prepare(self, items, *, parsed_times):
         with self.ledger.read_snapshot():
             actor = self.actor_provider()
             if not isinstance(actor, str) or not actor.strip():
                 raise ValueError("Local application operator must be supplied by the server.")
-            return ReportBatchPreparation(self.ledger, items, actor).prepare()
+            return ReportBatchPreparation(self.ledger, items, actor, parsed_times=parsed_times).prepare()
 
     def preview(self, action, ref, payload):
         if action == "report_void":
@@ -40,18 +40,18 @@ class WorkbenchProductionReportService:
         return self.prepare_batch(items).public()
 
     def prepare_batch(self, items):
-        return self._prepare(normalize_items(items))
+        parsed_times = {}
+        return self._prepare(normalize_items(items, parsed_times=parsed_times), parsed_times=parsed_times)
 
     def execute(self, action, ref, payload, *, request_key, validate_context):
         if action == "report_void":
             return self._void_service().execute(ref, payload, request_key=request_key, validate_context=validate_context)
-        items = normalize_items([{"action": action, "ref": ref, "payload": payload}])
+        parsed_times = {}
+        items = normalize_items([{"action": action, "ref": ref, "payload": payload}], parsed_times=parsed_times)
 
         def guard():
-            prepared = self._prepare(items)
-            operation_ref = prepared.resolved[0]["operation_ref"]
-            snapshot = self.ledger.fact_snapshot(prepared.before, operation_ref)
-            validate_context(ref, action, snapshot)
+            prepared = self._prepare(items, parsed_times=parsed_times)
+            validate_context(ref, action, prepared.snapshot["operations"][0])
             return prepared
 
         return self._execute(items, request_key, "execution." + action, ref, guard)

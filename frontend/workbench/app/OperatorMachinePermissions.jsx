@@ -25,7 +25,16 @@
     const choices = read.result && read.result.data.entities || [];
     const reason = !Array.isArray(original) ? '设备关联尚未完整读取，请关闭后重新打开人员详情。'
       : C.blocked(current.write_context, 'operator', 'update', source);
-    const owner = window.WorkbenchGuards.useDirtyGuard({ dirty: !done && JSON.stringify(fields(rows)) !== JSON.stringify(fields(original || [])),
+    const originalFieldsJson = React.useMemo(() => JSON.stringify(fields(original || [])), [original]);
+    const { rowsFields, rowsFieldsJson, machineRefSet } = React.useMemo(() => {
+      const projected = fields(rows);
+      return {
+        rowsFields: projected,
+        rowsFieldsJson: JSON.stringify(projected),
+        machineRefSet: new Set(rows.map(row => row.machine_ref))
+      };
+    }, [rows]);
+    const owner = window.WorkbenchGuards.useDirtyGuard({ dirty: !done && rowsFieldsJson !== originalFieldsJson,
       message: '可操作设备有尚未保存的修改。', locked: command.locked });
     async function close(detail) {
       if (disabled && !done) return;
@@ -40,7 +49,7 @@
     }
     function add() {
       const machine = choices.find(item => item.ref === selected);
-      if (!machine || rows.some(row => row.machine_ref === selected)) return;
+      if (!machine || machineRefSet.has(selected)) return;
       change(rows.concat({ machine_ref: machine.ref, business_code: machine.business_code, label: machine.label, skill_level: 'normal', is_primary: 'no' }));
       setSelected('');
     }
@@ -61,7 +70,7 @@
       resetCommand(); setBusy(true); setError(null); setPreview(null);
       try {
         const result = await adapter.preview('entities/operator/' + entity.ref + '/machine-permissions/preview',
-          { machine_permissions: fields(rows), write_token: current.write_context.write_token }, new AbortController().signal);
+          { machine_permissions: rowsFields, write_token: current.write_context.write_token }, new AbortController().signal);
         const data = result && result.data;
         if (!data || data.operator_ref !== entity.ref || !Array.isArray(data.rows) || !data.write_context
             || data.write_context.capabilities['operator.machine_permissions'] !== true || typeof data.preview_ref !== 'string')
@@ -83,7 +92,7 @@
           <label className="search"><span className="ic"><Icon name="search" /></span><input type="search" aria-label="搜索可关联设备" placeholder="设备编号、名称" value={search} disabled={disabled} onChange={event => setSearch(event.target.value)} /></label>
           <Button icon="search" type="submit" disabled={disabled} busy={read.loading}>搜索设备</Button>
           <select aria-label="选择关联设备" value={selected} disabled={disabled || read.loading} onChange={event => setSelected(event.target.value)}>
-            <option value="">请选择设备</option>{choices.filter(item => !rows.some(row => row.machine_ref === item.ref)).map(item => <option key={item.ref} value={item.ref}>{item.business_code} · {item.label}</option>)}
+            <option value="">请选择设备</option>{choices.filter(item => !machineRefSet.has(item.ref)).map(item => <option key={item.ref} value={item.ref}>{item.business_code} · {item.label}</option>)}
           </select><Button icon="plus" disabled={disabled || !selected} onClick={add}>新增关联</Button>
           {read.result && read.result.data.page.total > 20 && <span className="muted">显示前 20 台，请输入编号或名称缩小范围。</span>}
         </form>}

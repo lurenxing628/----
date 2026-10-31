@@ -59,6 +59,8 @@ def _decode_enum(kind, value, field):
 
 def _decode(kind, value, field, fmt):
     if type(value) is str:
+        if "\x00" in value:
+            raise ValidationError("这一格含有不支持的空字符，请删除后重新导入。", field=field)
         if fmt == "csv" and value.startswith("'"):
             value = value[1:]
             if value == "":

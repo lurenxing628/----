@@ -79,9 +79,7 @@ class WorkbenchResourceMetricsService:
 
     def fingerprint_facts(self, kind):
         # Fingerprinting raw facts must not make another domain's validation a read gate.
-        names = READ_FACTS[kind]
-        self._load(names)
-        return {name: self.facts[name] for name in sorted(names)}
+        self._load(READ_FACTS.get(kind, ()))
 
     @staticmethod
     def identity_kinds(kind):

@@ -76,9 +76,7 @@ class WorkbenchMaterialBulkService:
             return row
         row["business_code"] = identity.entity_key
         row["expected"] = full_material_snapshot(captured, identity)
-        if identity.entity_key != identity.entity_key.strip():
-            reject_row(row, "这个物料编号首尾有空格，不能安全删除。请先核对原记录。", code="constraint_conflict")
-        elif row["expected"]["requirements"]:
+        if row["expected"]["requirements"]:
             reject_row(row, "这个物料还挂在批次的物料需求上，不能删除。", field="entity_ref", code="constraint_conflict")
         else:
             row["result"] = "delete"

@@ -8,6 +8,7 @@ import sqlite3
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -111,6 +112,65 @@ def test_utc_operation_logs_use_one_local_time_for_lists_details_filters_and_exp
     with closing(api.connect()) as conn:
         assert [row[0] for row in conn.execute("SELECT log_time FROM OperationLogs ORDER BY id")] == [
             "2026-10-15 15:59:59", "2026-10-15 16:00:01"]
+        conn.executemany("INSERT INTO OperationLogs(id,log_time,log_level,module,action,detail) VALUES (?,?,?,'system','cleanup',?)", [
+            (3, "2026-10-15 16:00:03", "WARNING", '{"removed_count":1,"delete_error_count":1}'),
+            (4, "2026-10-15 16:00:04", "INFO", '{"skipped":true,"reason":"backup_dir_not_exists"}'),
+        ])
+        conn.commit()
+    partial_rows = api.read("/backups", status="partial")["data"]["rows"]
+    skipped_rows = api.read("/backups", status="skipped")["data"]["rows"]
+    assert [(row["status"], row["event_ref"]) for row in partial_rows] == [("partial", "3")]
+    assert [(row["status"], row["event_ref"]) for row in skipped_rows] == [("skipped", "4")]
+
+
+def test_evicted_log_windows_release_their_registered_read_text(tmp_path, monkeypatch):
+    from web.routes.workbench import system_log_snapshots as snapshots
+
+    api = SystemTestAPI(tmp_path)
+    clock = [1000.0]
+    monkeypatch.setattr(snapshots, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+    monkeypatch.setattr(snapshots, "_MAX_WINDOWS", 3)
+    monkeypatch.setattr(snapshots, "_MAX_BYTES", 4096)
+
+    def retain(body):
+        clock[0] += 1
+        return snapshots.retain_log_snapshot({"kind": "system.logs"}, [{"body": body}], ["aps.log"])["snapshot_ref"]
+
+    def retained():
+        windows = api.app.extensions["workbench_system_log_snapshots_v1"]
+        state = api.app.extensions["aps_public_opaque_tokens"]["workbench-read-v1"]
+        texts = [text for _kind, text in state["by_value"]]
+        assert set(state["tokens"]) == set(windows)
+        assert sorted(texts) == sorted(window.document for window in windows.values())
+        assert sum(len(text.encode("utf-8")) for text in texts) <= snapshots._MAX_BYTES
+        return list(windows)
+
+    with api.app.app_context():
+        first, second, third = [retain(char * 1000) for char in "abc"]
+        assert retained() == [first, second, third]
+        # The window count evicts the first window; the byte budget then evicts the second one.
+        large = retain("d" * 2500)
+        assert retained() == [third, large]
+        clock[0] += snapshots._TTL_SECONDS
+        fresh = retain("e")
+        assert retained() == [fresh]
+
+
+def test_log_windows_with_the_same_text_hold_the_registered_text(tmp_path, monkeypatch):
+    from web.routes.workbench import read_context
+    from web.routes.workbench import system_log_snapshots as snapshots
+
+    api = SystemTestAPI(tmp_path)
+    # The same query repeated in a later second gets a new token in the same content group.
+    seconds = iter(range(60))
+    monkeypatch.setattr(read_context, "current_snapshot_time", lambda: datetime(2026, 10, 31, 8, 0, next(seconds)))
+    with api.app.app_context():
+        first, second = [snapshots.retain_log_snapshot({"kind": "system.logs"}, [{"body": "same"}], ["aps.log"])["snapshot_ref"]
+                         for _ in range(2)]
+        windows = api.app.extensions["workbench_system_log_snapshots_v1"]
+        (group,) = api.app.extensions["aps_public_opaque_tokens"]["workbench-read-v1"]["by_value"]
+        assert first != second
+        assert windows[first].document is group[1] and windows[second].document is group[1]
 
 
 def test_due_backup_runs_after_response_on_owned_worker_and_shutdown_joins_it(system_api, monkeypatch):

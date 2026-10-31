@@ -69,9 +69,7 @@ def create(case, code="COPY-001", *, quantity=10):
 
 def origin(case, op_id):
     ref = instance_for(case, op_id)["operation_ref"]
-    row = next(case.lineage_repo.origin_rows([ref]))
-    row.pop("_lineage_bytes", None)
-    return row
+    return next(case.lineage_repo.origin_rows([ref]))
 
 
 def lineage(case, op_id):

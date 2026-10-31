@@ -36,3 +36,15 @@ class WorkbenchIdentityRepository(BaseRepository):
                 identity = _row_identity(row)
                 output[identity.entity_key] = identity
         return output
+
+    def map_by_refs(self, refs: Iterable[str]) -> Dict[str, WorkbenchEntityIdentity]:
+        values = list(dict.fromkeys(refs))
+        output = {}
+        for start in range(0, len(values), 500):
+            chunk = values[start:start + 500]
+            marks = ",".join("?" for _ in chunk)
+            rows = self.fetchall("SELECT ref, kind, entity_key, revision, active FROM WorkbenchEntityRefs WHERE ref IN (" + marks + ")", chunk)
+            for row in rows:
+                identity = _row_identity(row)
+                output[identity.ref] = identity
+        return output

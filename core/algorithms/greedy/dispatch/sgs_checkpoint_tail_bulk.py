@@ -112,7 +112,6 @@ def install_reconverged_tail(checkpoint, final, *, state, next_idx, graph_state)
     prepared.batch_progress = dict(state.batch_progress)
     for batch in {graph_state["op_by_id"][row.op_id][0] for row in suffix}:
         prepared.batch_progress[batch] = final.state.batch_progress[batch]
-    prepared.errors = list(state.errors)
     prepared.failure_details = list(state.failure_details)
     prepared.batch_failure_sources = dict(state.batch_failure_sources)
     prepared_next = dict(final.next_idx)

@@ -18,6 +18,29 @@ def unavailable_graph(scope, reason):
             "critical_task_refs": [], "critical_edges": []}
 
 
+def public_gantt_graph(gantt_graph: dict) -> dict:
+    if gantt_graph["state"] != "available":
+        return {
+            "state": "unavailable",
+            "reason": gantt_graph["reason"],
+            "scope": gantt_graph["scope"],
+            "nodes": [],
+            "critical_task_refs": [],
+            "critical_edges": [],
+        }
+    return {
+        "state": "available",
+        "reason": None,
+        "scope": gantt_graph["scope"],
+        "nodes": [
+            dict(node, predecessor_operation_refs=list(node["predecessor_operation_refs"]))
+            for node in gantt_graph["nodes"]
+        ],
+        "critical_task_refs": list(gantt_graph["critical_task_refs"]),
+        "critical_edges": [dict(edge) for edge in gantt_graph["critical_edges"]],
+    }
+
+
 def build_gantt_graph(tasks, relations, *, scope, task_intervals):
     by_operation = {task["operation_ref"]: task["task_ref"] for task in tasks}
     previous = {task["task_ref"]: [by_operation[parent] for parent in relations[task["operation_ref"]]
@@ -37,13 +60,25 @@ def build_gantt_graph(tasks, relations, *, scope, task_intervals):
                                for edge in critical["edges"]]}
 
 
-def project_scoped_gantt_graph(full_graph, scoped_batch_ids):
-    if full_graph.get("state") != "available":
+def project_scoped_gantt_graph(full_graph, scoped_batch_ids, *, include_nodes=True):
+    if full_graph["state"] != "available":
         return full_graph
-    critical_refs = set(full_graph.get("critical_task_refs", ()))
+    critical_refs = set(full_graph["critical_task_refs"])
     batches = set(scoped_batch_ids) | {
         node["batch_id"] for node in full_graph["nodes"] if node["task_ref"] in critical_refs
     }
+    if not include_nodes:
+        node_count = sum(1 for node in full_graph["nodes"] if node["batch_id"] in batches)
+        return {
+            "state": "available",
+            "reason": None,
+            "scope": full_graph["scope"],
+            "nodes": [],
+            "node_count": node_count,
+            "nodes_complete": node_count == 0,
+            "critical_task_refs": [],
+            "critical_edges": [],
+        }
     nodes = [
         dict(node, predecessor_operation_refs=list(node["predecessor_operation_refs"]))
         for node in full_graph["nodes"]

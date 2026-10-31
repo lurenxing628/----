@@ -22,13 +22,11 @@ from core.algorithm_contracts.value_domains import INTERNAL
 from core.algorithm_runtime.auto_assign_contract import AutoAssignAttempt
 from core.algorithm_runtime.calendar_timing_memo import MemoizedTimingCalendar, native_timing_calendar
 from core.algorithm_runtime.internal_slot import refresh_changeover_penalty
-from core.algorithm_runtime.resource_quality import MachineTypeState
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.algorithm_runtime.sgs_shared_slot import SharedSlotEstimateCache
 
 if TYPE_CHECKING:
     from core.algorithm_contracts.types import OpForScheduleAlgo
-    from core.models.batch import Batch
 
 _FIXED = "fixed"
 _AUTO = "auto"
@@ -39,8 +37,9 @@ EligibleResources = Optional[Tuple[Tuple[str, ...], Tuple[str, ...]]]
 
 def make_sgs_score_cache_factory(ctx: Any, *, preparation: Any) -> Any:
     """Select the native input and calendar adapters at the preparation boundary."""
-    timing_calendar = ctx.calendar if native_timing_calendar(ctx.calendar) else None
-    calendar_days = ctx.calendar.add_calendar_days if native_timing_calendar(ctx.calendar, include_calendar_days=True) else None
+    native = native_timing_calendar(ctx.calendar)
+    timing_calendar = ctx.calendar if native else None
+    calendar_days = ctx.calendar.add_calendar_days if native else None
     return partial(SgsScoreCache, eligible_resources=preparation.eligible_auto_assign_resources,
                    timing_calendar=timing_calendar, calendar_days=calendar_days, preparation=preparation)
 
@@ -59,9 +58,7 @@ def _segments_witness(timeline: Any, resource_id: str) -> Optional[Tuple[int, in
 
 
 def _type_witness(types: Any, machine_id: str) -> Any:
-    if isinstance(types, MachineTypeState):
-        return types.neighbor_witness(machine_id)
-    return None if types is None else (None, types.get(machine_id))
+    return types.neighbor_witness(machine_id)
 
 
 class _Entry:
@@ -100,11 +97,12 @@ class SgsScoreCache:
 
     def __init__(
         self, state: ScheduleRunState, *, auto_assign_enabled: bool, resource_pool: Any,
-        eligible_resources: Callable[[Any], EligibleResources], timing_calendar: Any, calendar_days: Any, preparation: Any,
+        eligible_resources: Callable[[Any], EligibleResources], timing_calendar: Any, calendar_days: Any,
+        preparation: Any = None,
     ) -> None:
         self.state = state
-        self.preparation = preparation
         self.calendar_days = calendar_days
+        self.preparation = preparation
         self.hits = 0
         self.misses = 0
         self._reuse_keys = True
@@ -146,13 +144,13 @@ class SgsScoreCache:
         }
 
     def shared_slot_estimate(self, *, calendar, op, batch, machine_id, operator_id, prev_end, total_hours,
-                             end_dt_exclusive, machine_downtimes, compute):
+                             end_dt_exclusive, compute):
         if self._timing is None or self._shared_slots is None:
             return compute()
         return self._shared_slots.resolve(
             state=self.state, calendar=self.timing_calendar(calendar), op=op, priority=batch.priority,
             machine_id=machine_id, operator_id=operator_id, prev_end=prev_end, total_hours=total_hours,
-            end_dt_exclusive=end_dt_exclusive, machine_downtimes=machine_downtimes, compute=compute,
+            end_dt_exclusive=end_dt_exclusive, compute=compute,
             read_scan=lambda: self._last_scan, note_scan=self.note_scan)
 
     def timing_calendar(self, calendar: Any) -> Any:
@@ -269,10 +267,6 @@ class SgsScoreCache:
                 self._pairs.clear()
             self._shared_slots.clear()
 
-    def begin_round(self) -> None:
-        if self._timing is not None and self._shared_slots is not None:
-            self._shared_slots.begin_round()
-
     def record_attempt(self, attempt: AutoAssignAttempt) -> None:
         """Sink for the probe result of the candidate currently being scored."""
         self._pending_tie = attempt.pair_tie_occurred
@@ -311,11 +305,11 @@ class SgsScoreCache:
         return entry.resources
 
     def resolve(
-        self, op: OpForScheduleAlgo, batch: Batch, batch_id: str, graph_state: Optional[Dict[str, Any]],
+        self, op: OpForScheduleAlgo, batch_id: str, graph_state: Optional[Dict[str, Any]],
         score: Callable[[], Tuple[float, ...]],
     ) -> Tuple[float, ...]:
         """Reuse the previous key while every cell the candidate reads is unchanged; otherwise score and remember."""
-        witness = self._witness(op, batch, batch_id, graph_state)
+        witness = self._witness(op, batch_id, graph_state)
         entry = self._entries.get(id(op)) if witness is not None else None
         if (self._reuse_keys and entry is not None and witness == entry.witness
                 and (entry.demand_revision is None or entry.demand_revision == self._demand_revision())):
@@ -346,11 +340,10 @@ class SgsScoreCache:
         return key
 
     def _demand_revision(self) -> Optional[int]:
-        types = self.state.last_op_type_by_machine
-        demand = types.demand if isinstance(types, MachineTypeState) else None
+        demand = self.state.last_op_type_by_machine.demand
         return None if demand is None else demand.revision
 
-    def _classify(self, op: OpForScheduleAlgo, batch: Batch, machine_id: Optional[str], operator_id: Optional[str]) -> Any:
+    def _classify(self, op: OpForScheduleAlgo, machine_id: Optional[str], operator_id: Optional[str]) -> Any:
         if op.source != INTERNAL:
             return False
         if machine_id and operator_id:
@@ -361,13 +354,13 @@ class SgsScoreCache:
         return False if eligible is None else eligible
 
     def _witness(
-        self, op: OpForScheduleAlgo, batch: Batch, batch_id: str, graph_state: Optional[Dict[str, Any]],
+        self, op: OpForScheduleAlgo, batch_id: str, graph_state: Optional[Dict[str, Any]],
     ) -> Optional[Witness]:
         machine_id, operator_id = op.machine_id, op.operator_id
         memo_key = (id(op), machine_id, operator_id)
         eligible = self._eligible.get(memo_key, _UNCLASSIFIED)
         if eligible is _UNCLASSIFIED:
-            eligible = self._eligible[memo_key] = self._classify(op, batch, machine_id, operator_id)
+            eligible = self._eligible[memo_key] = self._classify(op, machine_id, operator_id)
         if eligible is False:
             return None
         if eligible is not None:

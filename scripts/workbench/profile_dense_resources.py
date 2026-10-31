@@ -22,6 +22,7 @@ sys.path.insert(0, str(ROOT))
 
 def seed(output, batches, operations):
     from core.infrastructure.database import ensure_schema
+    from core.infrastructure.sqlite_udf import register_schedule_time_sql_functions
     from core.models.schedule_config_runtime_fields import default_snapshot_values
     from tests.workbench.run_compute_support import RunCase
 
@@ -30,6 +31,7 @@ def seed(output, batches, operations):
     conn = sqlite3.connect(str(path))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
+    register_schedule_time_sql_functions(conn)
     conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T1','Turning')")
     conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M1','Lathe','T1')")
     conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('O1','Operator')")

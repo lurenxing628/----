@@ -161,9 +161,6 @@ class SegmentOverlapIndex:
             return self._covered_ends[index]
         return None
 
-    def has_native_coverage(self) -> bool:
-        return True
-
 
 def _drop_invalid_segments(
     starts: Sequence[datetime],

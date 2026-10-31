@@ -1,7 +1,5 @@
 """Connection-bound run journal. No implicit transaction, commit, schema repair or ruling."""
 
-from core.infrastructure.connection_guards import schema_contract_memo
-from core.infrastructure.workbench_run_schema import workbench_run_contract_issues
 from core.models.workbench_run_job import PROJECTION_VERSION, new_run_ref
 from core.shared.strict_json import canonical_json
 
@@ -33,10 +31,6 @@ def encode_decision_read_models(read_models):
 class WorkbenchRunRepository:
     def __init__(self, conn):
         self.conn = conn
-
-    def schema_issues(self):
-        """Run contract issues as reported by the schema probe; [] when the schema is complete."""
-        return schema_contract_memo(self.conn).get_schema(workbench_run_contract_issues)
 
     def get(self, run_ref):
         row = self.conn.execute("SELECT * FROM WorkbenchRunJobs WHERE run_ref=?", (run_ref,)).fetchone()

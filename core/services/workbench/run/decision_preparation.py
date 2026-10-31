@@ -28,7 +28,7 @@ _HOURS = ("setup_standard_hours", "processing_standard_hours", "required_standar
 class DecisionPreparation:
     def __init__(self, source: DecisionSource):
         self.source = source
-        self._rows, self._rows_by_ref, self._summaries = {}, {}, {}
+        self._rows, self._rows_by_ref, self._summaries, self._labels_by_ref = {}, {}, {}, {}
 
     def available(self, key):
         key = self.source.computation_key(key)
@@ -36,9 +36,14 @@ class DecisionPreparation:
             return self.source.baseline["state"] == "available"
         return next(row["status"] for row in self.source.rows if row["candidate_ref"] == key) == "completed"
 
+    def label_for(self, ref):
+        if ref not in self._labels_by_ref:
+            self._labels_by_ref[ref] = operation_labels(self.source.facts, ref)[0]
+        return self._labels_by_ref[ref]
+
     @cached_property
     def labels(self):
-        return {ref: operation_labels(self.source.facts, ref)[0] for ref in self.source.scope["operation_refs"]}
+        return {ref: self.label_for(ref) for ref in self.source.scope["operation_refs"]}
 
     @cached_property
     def current_standards(self):
@@ -89,32 +94,7 @@ class DecisionPreparation:
         return self.summary(key)["metrics"]
 
     def demand_hours(self, key):
-        key = self.source.computation_key(key)
-        summary = self.summary(key)
-        demand = summary.get("demand")
-        if type(demand) is dict:
-            return demand["value"]
-        available = self.available(key)
-        requirements_available = (self.source.receipt or {}).get("operation_effort") is not None or available
-        if not requirements_available:
-            return None
-        coverage = summary.get("coverage") or {}
-        pending_refs = {
-            ref
-            for group in ("new_schedule", "unplanned", "deferred", "unknown")
-            for ref in coverage.get(group, ())
-        }
-        efforts = self.source.operation_efforts
-        total = 0
-        for ref in self.source.scope["operation_refs"]:
-            if ref not in pending_refs:
-                continue
-            item = efforts.get(ref)
-            hours = None if item is None else item.get("required_standard_hours")
-            if hours is None:
-                return None
-            total += hours
-        return total
+        return self.summary(key)["demand"]["value"]
 
     def compact(self, key, ref):
         key = self.source.computation_key(key)
@@ -123,6 +103,26 @@ class DecisionPreparation:
             self._rows_by_ref[key][ref] = self._row(key, ref, self.source.analysis_groups("reference")[ref])
         return {field: value for field, value in self._rows_by_ref[key][ref].items()
                 if field not in ("operation_ref", "arranged")}
+
+    def rows_by_ref(self, key):
+        key = self.source.computation_key(key)
+        self.rows(key)
+        return self._rows_by_ref[key]
+
+    def matches_machine(self, ref, machine_ref):
+        source = self.source
+        for key in ("reference", source.selected_ref):
+            tasks = source.analysis_groups(key)[ref]
+            if any(task["machine"] and task["machine"]["ref"] == machine_ref for task in tasks):
+                return True
+            formal = key == "reference" and source.comparison_mode == "admission_official"
+            if not tasks and not formal:
+                operation = source.facts.tables["BatchOperations"].get(source.facts.operations[ref], {})
+                saved_id = operation.get("machine_id")
+                saved_ref = source.facts.entity_refs.get(("machine", saved_id)) if type(saved_id) is str else None
+                if saved_ref == machine_ref:
+                    return True
+        return False
 
     def _side(self, key, row):
         source, ref = self.source, row["operation_ref"]
@@ -139,26 +139,26 @@ class DecisionPreparation:
         return {**{field: value for field, value in row.items() if field not in ("operation_ref", "arranged")},
                 "machine": values[0] if len(values) == 1 else None, "machines": values,
                 "machine_basis": "saved_arrangement" if tasks else "admission_requirement" if values else None,
-                "arrangements": [{field: task.get(field, True) if field == "interval_comparable" else task.get(field) for field in ("row_ref", "start", "end", "machine", "operator", "source", "interval_comparable")} for task in tasks]}
+                "arrangements": [{field: task[field] for field in ("row_ref", "start", "end", "machine", "operator", "source", "interval_comparable")} for task in tasks]}
 
-    def impacts(self):
-        before, after = ({row["operation_ref"]: row for row in self.rows(key)} for key in ("reference", self.source.selected_ref))
-        rows = []
-        for ref in self.source.scope["operation_refs"]:
-            labels = self.labels[ref]
-            previous, selected = self._side("reference", before[ref]), self._side(self.source.selected_ref, after[ref])
-            deltas = {field: preparation_delta({"value": selected[field], "total_count": 1, "covered_operation_refs": [ref]},
-                                                {"value": previous[field], "total_count": 1, "covered_operation_refs": [ref]}) for field in _HOURS}
-            row = {**{field: labels[field] for field in ("operation_ref", "batch_ref", "batch_label", "part_label", "sequence", "process_label", "piece_id")},
-                         "batch_id": labels["batch_label"], "before": previous, "after": selected, "deltas": deltas,
-                         "data_gaps": labels["data_gaps"],
-                         "drill": {"selected": drill_target(self.source, tasks=self.source.analysis_groups(self.source.selected_ref)[ref], batch_ref=labels["batch_ref"], operation_ref=ref),
-                                   "reference": drill_target(self.source, tasks=self.source.analysis_groups("reference")[ref], batch_ref=labels["batch_ref"], operation_ref=ref, before=True)}}
-            for drill in row["drill"].values():
-                if drill is not None:
-                    drill.update(resource_view=self.source.resource_view, comparison_tab="preparation")
-            rows.append(row)
-        return rows
+    def _impact_row(self, ref, before_row, after_row):
+        labels = self.label_for(ref)
+        previous, selected = self._side("reference", before_row), self._side(self.source.selected_ref, after_row)
+        deltas = {field: preparation_delta({"value": selected[field], "total_count": 1, "covered_operation_refs": [ref]},
+                                            {"value": previous[field], "total_count": 1, "covered_operation_refs": [ref]}) for field in _HOURS}
+        row = {**{field: labels[field] for field in ("operation_ref", "batch_ref", "batch_label", "part_label", "sequence", "process_label", "piece_id")},
+                     "batch_id": labels["batch_label"], "before": previous, "after": selected, "deltas": deltas,
+                     "data_gaps": labels["data_gaps"],
+                     "drill": {"selected": drill_target(self.source, tasks=self.source.analysis_groups(self.source.selected_ref)[ref], batch_ref=labels["batch_ref"], operation_ref=ref),
+                               "reference": drill_target(self.source, tasks=self.source.analysis_groups("reference")[ref], batch_ref=labels["batch_ref"], operation_ref=ref, before=True)}}
+        for drill in row["drill"].values():
+            if drill is not None:
+                drill.update(resource_view=self.source.resource_view, comparison_tab="preparation")
+        return row
+
+    def impacts(self, operation_refs):
+        before, after = self.rows_by_ref("reference"), self.rows_by_ref(self.source.selected_ref)
+        return [self._impact_row(ref, before[ref], after[ref]) for ref in operation_refs]
 
     def public_summary(self):
         before, after = (self.summary(key) for key in ("reference", self.source.selected_ref))

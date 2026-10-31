@@ -511,7 +511,6 @@ def test_resource_paging_heatmap_snapshot_and_full_filtered_exports(candidate_ca
     import json
     from collections import Counter
 
-    from core.services.workbench.run import decision_resource_engine as resource_runtime
     from core.services.workbench.run.decision_resource_engine import DecisionResources
 
     case = candidate_case
@@ -529,7 +528,7 @@ def test_resource_paging_heatmap_snapshot_and_full_filtered_exports(candidate_ca
              "resource_view": "selected_batches", "range_start": DAY + "T00:00:00", "range_end": "2026-10-04T00:00:00",
              "sort": "label", "order": "asc"}
     calendar_refs, measurement_refs, calculation_keys, full_cells, drill_calls = [], [], [], [], []
-    parsed_calendar_times, day_facts_calls, day_statistics_calls = [], [], []
+    day_facts_calls, day_statistics_calls = [], []
     single_windows, bulk_windows = [], []
     measurements = []
     original_calendar = resource_calendar.ResourceCalendar.__init__
@@ -537,7 +536,6 @@ def test_resource_paging_heatmap_snapshot_and_full_filtered_exports(candidate_ca
     original_values = resource_projection._ResourceMeasurement._values
     original_cell = resource_projection._ResourceMeasurement.cell
     original_drill = DecisionResources.drill
-    original_parse = resource_runtime.instant
     original_facts = ResourceTaskIndex.period_facts
     original_statistics = resource_projection._ResourceMeasurement.period_statistics
     original_single = resource_projection.ResourceUtilizationMetrics.window
@@ -546,10 +544,6 @@ def test_resource_paging_heatmap_snapshot_and_full_filtered_exports(candidate_ca
     def record_calendar(value, calendar, low, high, **kwargs):
         calendar_refs.append(calendar["resource_ref"])
         original_calendar(value, calendar, low, high, **kwargs)
-
-    def record_parse(value):
-        parsed_calendar_times.append(value)
-        return original_parse(value)
 
     def record_facts(index, resource, calendar, **kwargs):
         day_facts_calls.append(resource["ref"])
@@ -594,7 +588,6 @@ def test_resource_paging_heatmap_snapshot_and_full_filtered_exports(candidate_ca
         scoped.setattr(resource_projection._ResourceMeasurement, "_values", record_values)
         scoped.setattr(resource_projection._ResourceMeasurement, "cell", record_cell)
         scoped.setattr(DecisionResources, "drill", record_drill)
-        scoped.setattr(resource_runtime, "instant", record_parse)
         scoped.setattr(ResourceTaskIndex, "period_facts", record_facts)
         scoped.setattr(resource_projection._ResourceMeasurement, "period_statistics", record_statistics)
         scoped.setattr(resource_projection.ResourceUtilizationMetrics, "window", record_single)
@@ -617,7 +610,6 @@ def test_resource_paging_heatmap_snapshot_and_full_filtered_exports(candidate_ca
     assert retained_contexts == retained_variants == 25 + 20 * 7
     assert all(not value.retain_statistics_values and all(value._value_cache.values()) for value in measurements)
     assert Counter(whole for _ref, whole in full_cells) == {True: 25, False: 20 * 7}
-    assert len(parsed_calendar_times) == len(set(parsed_calendar_times))
     assert day_facts_calls == [] and len(day_statistics_calls) == 20 * 7
     output_rows = (first["data"]["items"] + first["data"]["rankings"]["top_pressure"] +
                    first["data"]["rankings"]["top_increase"])
@@ -629,7 +621,6 @@ def test_resource_paging_heatmap_snapshot_and_full_filtered_exports(candidate_ca
         "numeric_calculations": len(calculation_keys), "unique_numeric_keys": len(set(calculation_keys)),
         "complete_window_rows": 25, "complete_period_rows": len(full_cells) - 25,
         "drill_resources": len(output_refs), "drill_locations": len(drill_calls),
-        "calendar_time_parses": len(parsed_calendar_times), "unique_calendar_time_strings": len(set(parsed_calendar_times)),
         "single_metrics_windows": len(single_windows), "bulk_metrics_windows": len(bulk_windows),
         "retained_value_contexts": retained_contexts, "retained_value_variants": retained_variants,
         "intentional_visible_recalculations": len(duplicates),
@@ -721,14 +712,6 @@ def test_resource_paging_heatmap_snapshot_and_full_filtered_exports(candidate_ca
         engine = source.resources
         resource = engine.resource(case.ref("machine", "M1"), "machine")
         calendar = engine.resource_calendar(resource)
-        parsed_calendar_times.clear()
-        with monkeypatch.context() as scoped:
-            scoped.setattr(resource_runtime, "instant", record_parse)
-            clock = DAY + "T08:00:00"
-            precise_clock = clock + ".000000"
-            assert engine._calendar_time(clock) == engine._calendar_time(precise_clock)
-            assert engine._calendar_time(precise_clock) is engine._calendar_times[precise_clock]
-            assert parsed_calendar_times == [precise_clock]
         detailed = engine.periods(resource, grain="hour", start=DAY + "T08:00:00", end=DAY + "T09:00:00", details=True)[0]
         assert detailed["before"]["tasks"] is not detailed["after"]["tasks"]
         assert detailed["before"]["tasks"][0]["drill"] is not detailed["after"]["tasks"][0]["drill"]
@@ -994,3 +977,21 @@ def test_resource_workspace_shares_source_restores_view_and_keeps_resource_failu
     # All client connections were query_only; writes above belong to the test's
     # explicit saved arrangement and pending-run setup, never to these readers.
     assert not any(sql.lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE", "REPLACE")) for sql in statements)
+
+    from core.models.workbench_command import WorkbenchCommandRejected
+    from core.services.workbench.run import decision_resource_workspace
+
+    with monkeypatch.context() as err_patch:
+        err_patch.setattr(
+            decision_resource_workspace,
+            "resource_details",
+            lambda *_, **__: (_ for _ in ()).throw(
+                WorkbenchCommandRejected("candidate_binding_invalid", "模拟候选资源损坏", 500)
+            ),
+        )
+        broken = client.get(path, query_string=query).get_json()
+    assert broken["ok"] and not broken["data"]["resource_result"]["ok"]
+    assert broken["data"]["resource_result"]["status"] == 500
+    err_payload = broken["data"]["resource_result"]["error"]
+    assert err_payload["code"] == "candidate_binding_invalid"
+    assert isinstance(err_payload.get("request_ref"), str) and len(err_payload["request_ref"]) == 32

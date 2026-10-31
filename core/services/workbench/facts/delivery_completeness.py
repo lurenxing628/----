@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Dict
+from typing import Dict, Optional
 
-from core.models.scheduler_history_parser import parse_result_summary_payload
+from core.models.scheduler_history_parser import ResultSummaryParseResult
 from core.services.scheduler.summary.due_risk_items import incomplete_batch_ids_from_failure_details
 
 
@@ -13,13 +13,16 @@ def _counter(value):
     return value if type(value) is int and value >= 0 else None
 
 
-def completion_evidence(record, finish_by_batch: Dict[str, datetime]):
+def completion_evidence(
+    parsed: ResultSummaryParseResult, result_status: Optional[str], finish_by_batch: Dict[str, datetime],
+):
     """Return (known incomplete batches, global uncertainty codes).
 
-    Full live operation coverage is mandatory independently of these hints.
-    A summary's omitted/sampled failures never prove that other batches finished.
+    ``parsed`` is the caller's one parse of the saved summary; ``result_status`` is
+    that same history row's status. Full live operation coverage is mandatory
+    independently of these hints. A summary's omitted/sampled failures never prove
+    that other batches finished.
     """
-    parsed = parse_result_summary_payload(record["summary"])
     if parsed.parse_failed:
         return set(), ["completion_summary_invalid"]
     if parsed.payload is None:
@@ -30,7 +33,7 @@ def completion_evidence(record, finish_by_batch: Dict[str, datetime]):
         return set(), uncertain
     incomplete = incomplete_batch_ids_from_failure_details(details, finish_by_batch)
     uncertain.extend(_metric_issues(payload, incomplete))
-    if record.get("result_status") not in (None, "success") and not incomplete:
+    if result_status not in (None, "success") and not incomplete:
         uncertain.append("completion_failures_unattributed")
     return incomplete, sorted(set(uncertain))
 

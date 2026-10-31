@@ -104,7 +104,6 @@ def project_detail(facts, as_of, operation_ref):
     needle = facts["scope"].query.strip().casefold()
     row = next((row for row in facts["rows"] if facts["operation_refs"][row["op_id"]] == operation_ref), None)
     if row is not None:
-        # 台账按计划行的工序取齐，计划行在就必有它的投影。
         projection = next(item for item in facts["ledger"]["projections"] if item["operation_ref"] == operation_ref)
         operation = project_operation(row, projection, planned_review_labels(row), facts, local_dt(as_of))
         if _selected(facts["scope"], operation, projection, needle=needle):

@@ -143,22 +143,17 @@ def test_graph_blocked_ops_already_counted_by_batch_skip_do_not_duplicate_failur
     )
 
     assert extra_failed == 0
-    # 已被同批跳过路径计数的工序，图阻塞路径既不重复计数也不写明细；
-    # 且不再往 state.errors 塞原始串（旧行为会回落成 generic “请联系管理员”双发）。
-    assert state.errors == []
+    # 已被同批跳过路径计数的工序，图阻塞路径既不重复计数也不写明细。
     assert state.failure_details == []
 
 
 def test_dispatch_failures_record_structured_details_without_raw_error_duplication() -> None:
-    """回归：missing_batch / 图阻塞失败只写结构化 failure_details，不再往
-    state.errors 塞原始中文串。旧行为会让原始串回落成 generic_scheduler_error（“请联系管理员”），
-    与结构化具体文案并列形成双发并虚增 error_count。"""
+    """回归：missing_batch / 图阻塞失败只写结构化 failure_details。"""
     from core.algorithms.greedy.dispatch.sgs_graph_failure import _record_graph_blocked_operations
 
     op = make_algo_op(id=1, batch_id="B001")
     state = ScheduleRunState(base_time=datetime(2026, 1, 1, 8, 0, 0))
     state.record_missing_batch(op, "B001")
-    assert state.errors == []
     assert [item["code"] for item in state.failure_details] == ["missing_batch"]
 
     failed_op = make_algo_op(id=1, batch_id="B001")
@@ -173,7 +168,6 @@ def test_dispatch_failures_record_structured_details_without_raw_error_duplicati
         already_counted_op_ids={1},
     )
     assert extra_failed == 1
-    assert graph_state_run.errors == []
     assert [item["code"] for item in graph_state_run.failure_details] == ["graph_blocked_after_failure"]
 
 
@@ -193,7 +187,7 @@ def test_graph_blocked_public_error_keeps_operation_codes_through_size_guard_pro
         already_counted_op_ids={1},
     )
 
-    (record,) = build_public_error_records([], structured_details=state.failure_details)
+    (record,) = build_public_error_records(state.failure_details)
     assert record["message"] == "工序 OP2：依赖的前序工序 OP1 排产失败，本次跳过。"
     assert (record["op_code"], record["op_id"], record["failed_op_code"]) == ("OP2", 2, "OP1")
 
@@ -235,8 +229,8 @@ def test_graph_skipped_operation_blocks_its_cross_batch_successors_once() -> Non
     assert results == []
     assert (summary.scheduled_ops, summary.failed_ops, summary.total_ops) == (0, 4, 4)
     assert sorted((item["code"], item["op_id"]) for item in summary.failure_details) == [
-        ("dispatch_operation_failed", 1),
-        ("dispatch_operation_failed", 10),
         ("graph_blocked_after_failure", 3),
+        ("schedule_window_exceeded", 1),
+        ("schedule_window_exceeded", 10),
         ("skipped_after_batch_failure", 2),
     ]

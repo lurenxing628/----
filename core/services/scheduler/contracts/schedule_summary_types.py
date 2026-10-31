@@ -17,7 +17,10 @@ class SummaryMetrics(Protocol):
     invalid_due_batch_ids_sample: List[str]
     unscheduled_batch_count: int
     unscheduled_batch_ids_sample: List[str]
+    _due_by_batch: Dict[str, Optional[date]]
+    _finish_by_batch: Dict[str, datetime]
 
+    def public_dict(self) -> Dict[str, Any]: ...
     def to_dict(self) -> Dict[str, Any]: ...
 
 
@@ -38,22 +41,19 @@ class SummaryBuildContext:
     batches: Dict[str, Batch]
     operations: List[BatchOperation]
     results: List[ScheduleResult]
-    summary: Optional[ScheduleSummary]
+    summary: ScheduleSummary
     used_strategy: SortStrategy
     # Metadata and traces are heterogeneous producer-owned payloads, not normalized here.
     used_params: Dict[str, Any]
     algo_mode: str
     objective_name: str
     time_budget_seconds: int
-    best_score: Optional[Tuple[float, ...]]
-    best_metrics: Optional[SummaryMetrics]
-    attempts: List[Dict[str, Any]]
-    improvement_trace: List[Dict[str, Any]]
+    best_score: Tuple[float, ...]
+    best_metrics: SummaryMetrics
     frozen_op_ids: Set[int]
     scheduled_op_ids: Set[int]
     freeze_meta: Dict[str, Any]
-    search_report: Dict[str, Any] = field(default_factory=dict)
-    missing_internal_resource_op_ids: Optional[Set[int]] = None
+    missing_internal_resource_op_ids: Set[int]
     downtime_meta: Dict[str, Any] = field(default_factory=dict)
     resource_pool_meta: Optional[Dict[str, Any]] = None
     readiness_gate_enabled: bool = False

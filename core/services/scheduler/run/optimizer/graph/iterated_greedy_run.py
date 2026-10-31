@@ -1,13 +1,13 @@
-"""The iterated greedy stage: start, bounded trial tasks, finish and publish."""
+"""The iterated greedy stage: start, bounded trial tasks, finish."""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from core.services.scheduler.run.optimizer.graph_ready_profiles import GraphReadyWeightProfile
 from core.services.scheduler.run.optimizer.shared_budget import SharedSearchSkip
 from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession
 
-from .iterated_greedy import _IteratedGreedySearch, _publish
+from .iterated_greedy import _IteratedGreedySearch
 from .iterated_greedy_contract import IteratedGreedyLimits, _BudgetExhausted, new_iterated_greedy_report
 from .iterated_greedy_iteration import IGIteration
 from .iterated_greedy_large import iteration_for, search_type_for
@@ -22,10 +22,9 @@ class IteratedGreedyRun:
 
     def __init__(self, *, limits: IteratedGreedyLimits, state: Any,
                  parent_profile: Callable[[Optional[Dict[str, Any]]], Optional[GraphReadyWeightProfile]],
-                 pool: Any, evaluate: Callable[..., Dict[str, Any]], operations: List[Any], graph_context: Dict[str, Any],
+                 pool: Any, evaluate: Callable[..., Dict[str, Any]], graph_context: Dict[str, Any],
                  metrics_by_op_id: Dict[int, Dict[str, Any]], objective_name: str, start_dt: Any, seed: int, deadline: float,
-                 clock: Callable[[], float], t_begin: float, attempts: List[Dict[str, Any]],
-                 improvement_trace: List[Dict[str, Any]], report_state: OptimizationSearchReportState,
+                 clock: Callable[[], float], report_state: OptimizationSearchReportState,
                  decode_session: SharedDecodeSession) -> None:
         self.limits = limits
         self.state = state
@@ -33,23 +32,17 @@ class IteratedGreedyRun:
         self.pool = pool
         self.evaluate = evaluate
         self.decode_session = decode_session
-        self.operations = operations
         self.graph_context = graph_context
         self.metrics_by_op_id = metrics_by_op_id
         self.start_dt = start_dt
         self.seed = int(seed)
         self.deadline = deadline
         self.clock = clock
-        self.t_begin = t_begin
-        self.attempts = attempts
-        self.improvement_trace = improvement_trace
         self.report_state = report_state
-        self.report = new_iterated_greedy_report(limits, objective_name=objective_name)
+        self.report = new_iterated_greedy_report(objective_name=objective_name)
         self.search: Optional[_IteratedGreedySearch] = None
         self.stopped = False
         self.started_at: Optional[float] = None
-        self.last_task_end: Optional[float] = None
-        self.task_seconds = 0.0
         self.finished = False
         self.iteration: Optional[IGIteration] = None
         self.pending_adoption: Optional[Dict[str, Any]] = None
@@ -68,27 +61,25 @@ class IteratedGreedyRun:
                 self.search._start_reference()
             else:
                 self._advance()
-        except SharedSearchSkip as exc:
+        except SharedSearchSkip:
             # A rejected request ends only this cooperative action; the stage and its
             # remaining insertion tasks remain available to the common rotation.
-            self.report["last_shared_skip"] = exc.reason
+            pass
         except _BudgetExhausted as exc:
             self.report["stop_reason"] = exc.reason
             self.stopped = True
         finally:
             if self.search is not None:
                 self.state.best = self.search.best
-            finished = self.clock()
-            self.task_seconds += max(finished - started, 0.0)
-            self.last_task_end = finished
 
     def _start(self, started: float) -> None:
         self.started_at = started
         best = self.state.best
-        parent = (_parent_from_candidate(best, graph_context=self.graph_context, prepared=self.pool.prepare_parent(best))
-                  if best is not None else None)
+        self.pool.sync_ig_candidates(best)
+        parent = _parent_from_candidate(best, prepared=self.pool.prepare_parent(best))
         profile = self.parent_profile(best)
         if parent is None or profile is None:
+            self.pool.sync_ig_candidates()
             self.report["status"] = "skipped_no_parent"
             self.stopped = True
             return
@@ -96,9 +87,8 @@ class IteratedGreedyRun:
             limits=self.limits, parent=parent, profile=profile, pool=self.pool, evaluate=self.evaluate,
             metrics_by_op_id=self.metrics_by_op_id, start_dt=self.start_dt, seed=self.seed,
             deadline=self.deadline, clock=self.clock,
-            t_begin=self.t_begin, attempts=self.attempts, improvement_trace=self.improvement_trace,
             report_state=self.report_state, report=self.report,
-            operations=self.operations, graph_context=self.graph_context, decode_session=self.decode_session)
+            graph_context=self.graph_context, decode_session=self.decode_session)
         self.search.best = best
         self.search._start_reference()
 
@@ -116,7 +106,7 @@ class IteratedGreedyRun:
                 return
             pending = self.pending_adoption
             self.pending_adoption = None
-            if pending is self.state.best and pending is not None:
+            if pending is self.state.best:
                 search.adopt_incumbent(self.state.best, self.parent_profile(self.state.best))
             self.iteration = iteration_for(search)
         if not self.iteration.step():
@@ -126,16 +116,11 @@ class IteratedGreedyRun:
         if self.finished:
             return
         self.finished = True
-        report = self.report
         if self.iteration is not None:
             self.iteration.close()
             self.iteration = None
-        self._finish_status(report)
-        report["runtime_ms"] = int(self.task_seconds * 1000)
-        last = self.last_task_end if self.last_task_end is not None else self.clock()
-        report["deadline_overrun_ms"] = max(int((last - self.deadline) * 1000), 0) if self.started_at is not None else 0
-        report["best_score"] = list((self.state.best or {}).get("score") or [])
-        _publish(report, attempts=self.attempts)
+        self.pool.sync_ig_candidates(self.state.best)
+        self._finish_status(self.report)
 
     def _finish_status(self, report: Dict[str, Any]) -> None:
         if self.search is not None:

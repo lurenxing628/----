@@ -178,7 +178,7 @@ def operation_rows(data):
             _resource(after, "supplier", "ref"), _resource(after, "supplier", "label"), boolean_text(row["supplier_changed"])]
 
 
-def read_decision_export(conn, run_ref, section, *, filter_section=None, **query):
+def read_decision_export(conn, run_ref, section, *, filter_section=None, fmt="xlsx", **query):
     selected = query.get("selected_candidate_ref")
     details = ("batches", "operations", "resources", "resource-days", "preparation", "changeovers", "process")
     detail_section = filter_section or (section if section in details else None)
@@ -234,7 +234,7 @@ def read_decision_export(conn, run_ref, section, *, filter_section=None, **query
             data["export_resources"] = resource_documents
         if section == "resource-days" or section == "all" and detail_section == "resource-days":
             data["export_resource_days"] = resource_details(source, active_filters, all_rows=True)
-        if section in ("resources", "resource-days", "all"):
+        if fmt == "xlsx" and section in ("resources", "resource-days", "all"):
             resource_document = data["export_resources"][0] if "export_resources" in data else data["export_resource_days"]
             data["export_coverage_operations"] = list(coverage_operation_rows(source, resource_document["coverage"]))
         for name in ("preparation", "changeovers"):

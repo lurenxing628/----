@@ -42,6 +42,8 @@ def resource_text(value, path, *, nullable=False):
         return None
     if type(value) is not str:
         raise ValidationError("这一项必须填文字。", field=path)
+    if "\x00" in value:
+        raise ValidationError("这一项含有不支持的空字符，请修改后重试。", field=path)
     text = value.strip()
     if not text and not nullable:
         raise ValidationError("这一项不能为空。", field=path)

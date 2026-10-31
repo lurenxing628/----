@@ -169,11 +169,14 @@ def _graph_priority_key_number(value: Any) -> float:
     return number
 
 
-def graph_priority_key_map(value: Any, *, schedulable_ids: set) -> Dict[int, Tuple[float, ...]]:
+def graph_priority_key_map(value: Any, *, schedulable_ids: AbstractSet[int]) -> ValidatedGraphPriorityKeys:
+    """Admit keys once per exact operation set; already admitted keys for an equal set come back as is."""
+    if type(value) is ValidatedGraphPriorityKeys and value.schedulable_ids == schedulable_ids:
+        return value
     if not isinstance(value, dict):
         raise ValidationError("图评分上下文缺少 graph_priority_key_by_op_id 映射。", field="graph_ready_context")
     _validate_exact_key_set(value, schedulable_ids=schedulable_ids, label="图评分 key")
-    normalized: Dict[int, Tuple[float, ...]] = ValidatedGraphPriorityKeys()
+    normalized = ValidatedGraphPriorityKeys(frozenset(schedulable_ids))
     for op_id in sorted(schedulable_ids):
         raw_key = value[op_id]
         if raw_key is None or isinstance(raw_key, (str, bytes)) or _is_graph_like(raw_key):
@@ -185,6 +188,8 @@ def graph_priority_key_map(value: Any, *, schedulable_ids: set) -> Dict[int, Tup
         if not key:
             raise ValidationError("图评分 key 不能为空。", field="graph_ready_context")
         normalized[op_id] = key
+    widths = {len(key) for key in normalized.values()}
+    normalized.key_width = widths.pop() if len(widths) == 1 else 0
     return normalized
 
 
@@ -192,10 +197,6 @@ def _graph_sort_key_map(value: Any, *, schedulable_ids: set) -> Dict[int, Tuple[
     if not isinstance(value, dict):
         raise ValidationError("图 ready 队列上下文 sort_key_by_op_id 必须是映射。", field="graph_ready_context")
     _validate_exact_key_set(value, schedulable_ids=schedulable_ids, label="图 ready 队列上下文 sort_key_by_op_id")
-    for raw_op_id in value:
-        if isinstance(raw_op_id, bool) or not isinstance(raw_op_id, int) or raw_op_id <= 0:
-            raise ValidationError("图 ready 队列上下文 sort_key_by_op_id 的 key 必须是正整数 op_id。", field="graph_ready_context")
-
     normalized: Dict[int, Tuple[int, int, int]] = {}
     for op_id in sorted(schedulable_ids):
         raw_key = value[op_id]
@@ -212,14 +213,12 @@ def _graph_sort_key_map(value: Any, *, schedulable_ids: set) -> Dict[int, Tuple[
     return normalized
 
 
-def _validate_exact_key_set(value: Dict[Any, Any], *, schedulable_ids: set, label: str) -> None:
-    actual_ids = set()
+def _validate_exact_key_set(value: Dict[Any, Any], *, schedulable_ids: AbstractSet[int], label: str) -> None:
+    """Callers index ``value`` by int op_id next, so keys must already be exact positive ints."""
     for raw_op_id in value:
-        try:
-            actual_ids.add(parse_required_int(raw_op_id, field="graph_ready_context", min_value=1))
-        except ValidationError as exc:
-            raise ValidationError(f"{label} 的 key 必须是正整数 op_id。", field="graph_ready_context") from exc
-    if actual_ids != set(schedulable_ids):
+        if type(raw_op_id) is not int or raw_op_id <= 0:
+            raise ValidationError(f"{label} 的 key 必须是正整数 op_id。", field="graph_ready_context")
+    if value.keys() != schedulable_ids:
         raise ValidationError(f"{label} 的 key 必须和待排工序完全一致。", field="graph_ready_context")
 
 

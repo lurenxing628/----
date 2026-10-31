@@ -1,41 +1,16 @@
-"""正式方案可派工反馈，历史版本和对比方案回退拒绝写入。"""
+"""当前正式方案可写现场反馈；历史版本或缺少正式证据的最新方案拒绝写入。"""
 
 from __future__ import annotations
 
 import pytest
 
 from core.infrastructure.database import ensure_schema, get_connection
-from core.models.schedule_plan_role import (
-    ROLE_ADOPTED,
-    SOURCE_SCHEDULE,
-)
+from core.models.schedule_plan_identity import PlanIdentity
 from core.services.common.plan_query import SchedulePlanQueryService
 from tests._support.paths import REPO_ROOT
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 VERSION = 7
-EXPECTED_PLAN_IDENTITY_KEYS = (
-    "version",
-    "requested_plan_role",
-    "effective_plan_role",
-    "plan_resolution_status",
-    "source_table",
-    "source_row_id",
-    "schedule_result_status",
-    "result_summary_parse_failed",
-    "result_summary_parse_reason",
-    "is_simulation",
-    "label",
-    "user_label",
-    "is_official",
-    "is_current_executable_version",
-    "is_current_executable_official_version",
-    "is_superseded_by_newer_version",
-    "schedule_lock_status",
-    "can_dispatch",
-    "can_write_feedback",
-    "detail_saved",
-)
 
 
 def _connect_fresh_schema(tmp_path):
@@ -82,55 +57,53 @@ def _seed_db(tmp_path):
     return conn
 
 
-def _identity_dict(resolution):
-    data = resolution.to_dict()
-    identity = data["plan_identity"]
-    assert tuple(identity) == EXPECTED_PLAN_IDENTITY_KEYS
-    return identity
+def _identity(conn, version: int) -> PlanIdentity:
+    return SchedulePlanQueryService(conn).resolve_plan(version).plan_identity
 
 
-def _assert_identity_fields(identity: dict, expected: dict) -> None:
-    assert {key: identity[key] for key in expected} == expected
-
-
-def test_current_adopted_plan_identity_can_dispatch_and_write_feedback(tmp_path) -> None:
+def test_current_adopted_plan_identity_can_write_feedback(tmp_path) -> None:
     conn = _seed_db(tmp_path)
     try:
-        conn.execute("UPDATE Schedule SET lock_status = 'locked' WHERE version = ? AND id = 80", (VERSION,))
-        conn.commit()
-        identity = _identity_dict(SchedulePlanQueryService(conn).resolve_plan(VERSION, ROLE_ADOPTED))
-
-        assert identity["requested_plan_role"] == ROLE_ADOPTED
-        assert identity["effective_plan_role"] == ROLE_ADOPTED
-        assert identity["plan_resolution_status"] == "resolved_adopted"
-        assert identity["source_table"] == SOURCE_SCHEDULE
-        assert identity["source_row_id"] == 80
-        assert identity["user_label"] == "正式采用方案"
-        assert identity["is_official"] is True
-        assert identity["is_current_executable_version"] is True
-        assert identity["is_current_executable_official_version"] is True
-        assert identity["is_superseded_by_newer_version"] is False
-        assert identity["result_summary_parse_failed"] is False
-        assert identity["result_summary_parse_reason"] == ""
-        assert identity["schedule_lock_status"] == "locked"
-        assert identity["can_dispatch"] is True
-        assert identity["can_write_feedback"] is True
+        assert _identity(conn, VERSION) == PlanIdentity(
+            version=VERSION,
+            is_current_executable_official_version=True,
+            can_write_feedback=True,
+        )
     finally:
         conn.close()
 
 
-def test_history_and_comparison_role_fallback_cannot_write_feedback(tmp_path) -> None:
+def test_superseded_history_plan_cannot_write_feedback(tmp_path) -> None:
     conn = _seed_db(tmp_path)
     try:
-        service = SchedulePlanQueryService(conn)
-        history_identity = _identity_dict(service.resolve_plan(6, ROLE_ADOPTED))
-        _assert_identity_fields(
-            history_identity,
-            {"is_superseded_by_newer_version": True, "can_dispatch": False, "can_write_feedback": False},
+        assert _identity(conn, 6) == PlanIdentity(
+            version=6,
+            is_current_executable_official_version=False,
+            can_write_feedback=False,
         )
+    finally:
+        conn.close()
 
-        for role in ("baseline_best", "critical_best"):
-            with pytest.raises(ValueError, match="未知的排产方案角色"):
-                service.resolve_plan(VERSION, role)
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        pytest.param("UPDATE ScheduleHistory SET result_summary = '{\"is_simulation\": true}' WHERE version = 7", id="simulation"),
+        pytest.param("UPDATE ScheduleHistory SET result_summary = '{bad' WHERE version = 7", id="summary_malformed"),
+        pytest.param("UPDATE ScheduleHistory SET result_summary = NULL WHERE version = 7", id="summary_missing"),
+        pytest.param("UPDATE ScheduleHistory SET result_status = 'failed' WHERE version = 7", id="result_not_success"),
+        pytest.param("DELETE FROM Schedule WHERE version = 7", id="no_schedule_rows"),
+    ],
+)
+def test_latest_plan_without_official_evidence_cannot_write_feedback(tmp_path, mutation: str) -> None:
+    conn = _seed_db(tmp_path)
+    try:
+        conn.execute(mutation)
+        conn.commit()
+        assert _identity(conn, VERSION) == PlanIdentity(
+            version=VERSION,
+            is_current_executable_official_version=False,
+            can_write_feedback=False,
+        )
     finally:
         conn.close()

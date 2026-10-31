@@ -4,7 +4,6 @@ from collections import defaultdict
 
 from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_process_commands import process_ref
 from core.models.workbench_resource_action import action_row, reject_action_row
 
 from .file_hours_values import HOURS_FIELDS, assertions, flat_hours, hours_values, row_key, supplied_values
@@ -24,11 +23,6 @@ class HoursFilePreview:
             self.operations[(row["part_no"], row["seq"])].append(row)
             if row["status"] == "active" and row["ext_group_id"] is not None:
                 self.members[row["ext_group_id"]].append(row)
-        if target_ref is not None:
-            process_ref(target_ref)
-            target = self.identities.get(target_ref)
-            if not target or not target["active"] or target["kind"] != "part":
-                raise WorkbenchCommandRejected("entity_not_found", "这个零件已失效。请返回列表重新选择。", 404)
 
     def identity(self, row, kind, key):
         ref = require_ref(row["ref"], "工艺")

@@ -1,11 +1,22 @@
 (function () {
   'use strict';
   const A = window.SystemMaintenanceAPI, C = window.SystemMaintenanceControls;
-  function Config({ revision, command, active, ...preferences }) {
+  function Config({ revision, command, active, tab, ...preferences }) {
     const [refresh, reload] = React.useReducer(value => value + 1, 0), [draft, setDraft] = React.useState(null), [validated, setValidated] = React.useState(false);
     const [base, setBase] = React.useState(null), [replace, setReplace] = React.useState(false);
     const request = C.useRead('config', {}, revision + ':' + refresh, active), incoming = request.data && request.data.data;
     const validation = A.normalize(draft || {}), changed = base && draft && A.fields.some(field => String(draft[field.key]) !== String(base.values[field.key]));
+    const onConfigTab = tab === 'config';
+    window.WorkbenchGuards.useDirtyGuard({
+      dirty: Boolean(changed),
+      locked: Boolean(active && command.locked),
+      message: '系统自动维护配置存在未保存修改，确定离开当前页面吗？'
+    });
+    React.useEffect(() => {
+      if (!onConfigTab && base) {
+        setDraft({ ...base.values }); setValidated(false); setReplace(false);
+      }
+    }, [onConfigTab, base]);
     React.useEffect(() => {
       // A receipt or revision alone cannot settle a draft; all eight read-back values must match.
       const matchesDraft = incoming && draft && A.fields.every(field => String(draft[field.key]) === String(incoming.values[field.key]));

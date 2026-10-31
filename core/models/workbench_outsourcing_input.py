@@ -15,13 +15,18 @@ def text(value, field, limit=2000):
     return value.strip()
 
 
-def factory_time(value: object) -> datetime:
+def factory_time(value: object, *, parsed_times: Optional[Dict[str, datetime]] = None) -> datetime:
+    if parsed_times is not None and type(value) is str and value in parsed_times:
+        return parsed_times[value]
     if type(value) is not str or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}", value) is None:
         raise WorkbenchCommandRejected("invalid_input", "登记时间格式不对，请按 2026-09-13 08:30:00 这样填写。", 422)
     try:
-        return datetime.fromisoformat(value)
+        parsed = datetime.fromisoformat(value)
     except ValueError as exc:
         raise WorkbenchCommandRejected("invalid_input", "登记时间不是有效日期。", 422) from exc
+    if parsed_times is not None:
+        parsed_times[value] = parsed
+    return parsed
 
 
 def target_input(target):
@@ -38,7 +43,7 @@ def target_input(target):
             "supplier_ref": reference(target["supplier_ref"]), "operation_refs": sorted(members)}
 
 
-def normalize_input(payload) -> Dict[str, object]:
+def normalize_input(payload, *, parsed_times: Optional[Dict[str, datetime]] = None) -> Dict[str, object]:
     if type(payload) is not dict:
         reject("提交内容格式不对，这次登记没有保存。请刷新页面后重试。", status=400)
     creating = "outsourcing_ref" not in payload
@@ -52,11 +57,11 @@ def normalize_input(payload) -> Dict[str, object]:
         result["target"] = target_input(payload["target"])
     else:
         result["outsourcing_ref"] = reference(payload["outsourcing_ref"])
-    result.update(_fact_patch(payload))
+    result.update(_fact_patch(payload, parsed_times=parsed_times))
     return result
 
 
-def _fact_patch(payload):
+def _fact_patch(payload, *, parsed_times: Optional[Dict[str, datetime]] = None):
     result = {}
     for key in FACT_FIELDS:
         if key not in payload:
@@ -66,7 +71,7 @@ def _fact_patch(payload):
             if type(value) is not str or value not in STATES:
                 reject("确认状态必须是在途、已回厂或待确认。")
         elif value is not None or key != "returned":
-            factory_time(value)
+            factory_time(value, parsed_times=parsed_times)
         result[key] = value
     return result
 
@@ -89,7 +94,7 @@ class PreparedReceiptValues:
             reject("实际发出和实际回厂不能晚于当前时间。")
 
 
-def prepare_values(before, payload, now):
+def prepare_values(before, payload, now, *, parsed_times: Optional[Dict[str, datetime]] = None):
     if not isinstance(now, datetime) or now.tzinfo is not None:
         raise ValueError("Outsourcing clock must return factory-local naive datetime")
     values = dict(before or {})
@@ -100,8 +105,13 @@ def prepare_values(before, payload, now):
     # only compares the already parsed actual times with its new clock value.
     if type(values["confirmedState"]) is not str or values["confirmedState"] not in STATES:
         reject("确认状态必须是在途、已回厂或待确认。")
-    sent, planned = factory_time(values["sent"]), factory_time(values["planned"])
-    returned = factory_time(values["returned"]) if values["returned"] is not None else None
+    sent = factory_time(values["sent"], parsed_times=parsed_times)
+    planned = factory_time(values["planned"], parsed_times=parsed_times)
+    returned = (
+        factory_time(values["returned"], parsed_times=parsed_times)
+        if values["returned"] is not None
+        else None
+    )
     _validate_timeline(sent, planned, returned)
     result = PreparedReceiptValues(values, sent, returned)
     result.check_recording_time(now)

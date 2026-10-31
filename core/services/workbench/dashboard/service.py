@@ -20,7 +20,7 @@ from data.repositories.workbench_dashboard_repo import WorkbenchDashboardReposit
 from .analysis_projection import project_dashboard_analysis
 from .external import load_external
 from .external_handling import DashboardExternalHandling
-from .facts import DashboardFacts, typed
+from .facts import DashboardFacts
 from .policy import (
     mapped_anchors,
     read_history,
@@ -71,17 +71,6 @@ def _category_counts(categories, observations_by_category, stored):
     return categories
 
 
-class _ProjectedDashboard(dict):
-    def __init__(self, values, snapshot_factory):
-        super().__init__(values)
-        self._snapshot_factory = snapshot_factory
-
-    def __getitem__(self, key):
-        if key == "snapshot_contents" and key not in self:
-            self[key] = self._snapshot_factory()
-        return super().__getitem__(key)
-
-
 class DashboardSources:
     """Everything one dashboard read takes from SQLite; project() turns it into items without a connection."""
 
@@ -120,20 +109,20 @@ class WorkbenchDashboardService:
         """读快照内读完并投影；写命令在写锁里重算时也走这里。"""
         return self.project(self.load(as_of))
 
-    def load(self, as_of=None):
+    def load(self, as_of=None, *, source_revisions=None):
         """Read every source under the caller's snapshot; project() then needs no SQLite access."""
         if not self.conn.in_transaction:
             raise RuntimeError("Dashboard reads require a caller-owned snapshot")
         now = as_of or self.clock().replace(microsecond=0)
         if not isinstance(now, datetime) or now.tzinfo is not None:
             raise ValueError("Dashboard time must be factory local")
-        facts = DashboardFacts(self.conn, now).load()
+        facts = DashboardFacts(self.conn, now, source_revisions=source_revisions).load()
         # 齐套要按批次查来源编号，留在读快照里判断；交期、报工、停机在 project() 里只用已读出的事实。
         material = safe_material(facts)
-        external_summary, facts.raw["external"], receipts = load_external(self.conn, now)
-        external_items, external_stored, facts.raw["external_handling"] = self.external_handling.read(external_summary, receipts)
+        external_summary, receipts = load_external(self.conn, now)
+        external_items = self.external_handling.read(external_summary, receipts)
         stored, identities = read_stored(self.repo)
-        return DashboardSources(facts, material, (external_summary, external_items, external_stored), stored,
+        return DashboardSources(facts, material, (external_summary, external_items), stored,
                                 self._anchor_mappings(facts, material[0]), identities)
 
     def _anchor_mappings(self, facts, material):
@@ -153,7 +142,7 @@ class WorkbenchDashboardService:
             observations_by_category[name] = found
         found, categories["material"] = sources.material
         observations_by_category["material"] = found
-        external_summary, external_items, external_stored = sources.external
+        external_summary, external_items = sources.external
         categories["candidate"] = category(facts.candidates["state"], issues=facts.candidates["issues"])
         categories["candidate"].update(kind="directory_not_risk", run_count=facts.candidates["run_count"],
                                        entry={"view": "analysis", "target": "/api/workbench/v1/scheduling/runs", "enabled": True})
@@ -162,14 +151,11 @@ class WorkbenchDashboardService:
         items.extend(self._decorate(item, saved, identity, facts.now) for item, saved, identity in external_items)
         categories = _category_counts(categories, observations_by_category, stored)
         categories["external"] = external_summary
-        return _ProjectedDashboard(
-            {"plan": facts.plan, "as_of": facts.now.isoformat(timespec="seconds"), "items": items,
-             "resource_pressure": facts.pressure, "candidate_catalog": facts.candidates,
-             "categories": {name: categories[name] for name in CATEGORIES}},
-            lambda: facts.snapshot_contents(view={
-                "stored": stored, "external_stored": external_stored,
-                "items": [(row["item_ref"], row["_guard"]) for row in items]}),
-        )
+        return {
+            "plan": facts.plan, "as_of": facts.now.isoformat(timespec="seconds"), "items": items,
+            "resource_pressure": facts.pressure, "candidate_catalog": facts.candidates,
+            "categories": {name: categories[name] for name in CATEGORIES},
+        }
 
     def _merge(self, observations_by_category, sources, categories, now):
         found, stored = self._identified(observations_by_category, sources.mappings), sources.stored
@@ -207,9 +193,9 @@ class WorkbenchDashboardService:
 
     def _decorate(self, item, saved, identity, now):
         handling = saved["handling"] if saved else empty_handling()
-        item["_guard"] = typed({"source_state": item["source_state"], "identity": identity,
-                                "revision": saved["revision"] if saved else 0,
-                                "source": item["source"], "risk": item["risk"], "handling": handling})
+        item["_guard"] = {"source_state": item["source_state"], "identity": identity,
+                          "revision": saved["revision"] if saved else 0,
+                          "source": item["source"], "risk": item["risk"], "handling": handling}
         item.update(handling=_handling_view(saved, now), allowed_transitions=allowed_transitions(handling["status"]),
                     _handling=handling)
         item["write_context"] = None
@@ -218,7 +204,6 @@ class WorkbenchDashboardService:
     @staticmethod
     def _materialize_item(item):
         if "_snapshot" not in item:
-            item["_facts"] = typed(item["_facts"])
             item["_snapshot"] = {"facts": item["_facts"], **item["_guard"]}
 
     def public_item(self, item):

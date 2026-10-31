@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Dict, List, Tuple
 
-from .schema_structure import schema_objects
+from .schema_structure import SchemaStructure
 from .workbench_metadata_schema import canonical_sql
 
 WORKFLOW_TABLES = ("WorkbenchProcessWorkflow", "WorkbenchProcessOperationConfirmations")
@@ -43,9 +43,9 @@ def workflow_objects() -> Dict[str, str]:
     }
 
 
-def workbench_process_workflow_contract_issues(conn, *, structure=None) -> List[str]:
+def workbench_process_workflow_contract_issues(conn, *, structure: SchemaStructure) -> List[str]:
     """Read-only exact contract check, including legal but incorrect DDL."""
-    actual = schema_objects(conn, structure=structure)
+    actual = structure.sql
     return [("missing_workbench_process_workflow: " if name not in actual else "bad_workbench_process_workflow: ") + name
             for name, sql in workflow_objects().items()
             if name not in actual or canonical_sql(actual[name]) != canonical_sql(sql)]

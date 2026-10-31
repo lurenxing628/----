@@ -26,7 +26,7 @@ def accumulate_busy_hours(
 def update_machine_last_state(
     *,
     last_end_by_machine: Dict[str, datetime],
-    last_op_type_by_machine: Dict[str, str],
+    last_op_type_by_machine: MachineTypeState,
     machine_id: str,
     end_time: datetime,
     op_type_name: Optional[str],
@@ -40,8 +40,7 @@ def update_machine_last_state(
 
     # Result rows carry Optional types: seed rows may lack them or keep the stored spelling.
     op_type = "" if op_type_name is None else op_type_name.strip()
-    if isinstance(last_op_type_by_machine, MachineTypeState):
-        last_op_type_by_machine.record(machine_id, start_time, end_time, op_id, "" if op_type_id is None else op_type_id)
+    last_op_type_by_machine.record(machine_id, start_time, end_time, op_id, "" if op_type_id is None else op_type_id)
     prev_end = last_end_by_machine.get(machine_id)
 
     if seed_mode:
@@ -55,7 +54,7 @@ def update_machine_last_state(
     # audit 2026-07-20 A16：last_op_type 必须与 last_end 同守卫——仅当机台时间线末尾
     # 真实推进时才允许覆盖上一工种。否则 gap 回填（把更早的空档排进已有更晚工序的机台）
     # 会把 (end, type) 快照改成"末尾时间不变、工种却换成回填工序"的自相矛盾状态，
-    # 导致换型惩罚（internal_slot._changeover_penalty）与自动选机排序按错的上一工种计算。
+    # 导致自动选机排序按错的上一工种计算。
     if prev_end is None or end_time > prev_end:
         last_end_by_machine[machine_id] = end_time
         if op_type:

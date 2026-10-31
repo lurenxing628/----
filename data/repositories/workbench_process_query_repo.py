@@ -62,19 +62,46 @@ class WorkbenchProcessQueryRepository(BaseRepository):
             LEFT JOIN WorkbenchEntityRefs sr ON sr.kind='supplier' AND sr.entity_key=s.supplier_id AND sr.active=1
             """ + where + "ORDER BY eg.part_no,eg.start_seq,eg.group_id", (self.part_ref,) if scoped else ())
 
-    def references(self):
+    def catalog_references(self):
         catalogs = ("OpTypes", "Suppliers", "WorkbenchSupplierProfiles", "WorkbenchSupplierOpTypes", "WorkbenchOpTypePolicies")
-        references = {table: self.fetchall('SELECT * FROM "' + table + '" ORDER BY rowid') for table in catalogs}
-        for table in ("WorkbenchProcessWorkflow", "WorkbenchProcessOperationConfirmations"):
-            where = " WHERE part_ref=?" if self.part_ref is not None else ""
-            references[table] = self.fetchall('SELECT * FROM "' + table + '"' + where + " ORDER BY rowid",
-                                              (self.part_ref,) if self.part_ref is not None else ())
-        return references
+        return {table: self.fetchall('SELECT * FROM "' + table + '" ORDER BY rowid') for table in catalogs}
+
+    def workflow_references(self):
+        where = " WHERE part_ref=?" if self.part_ref is not None else ""
+        params = (self.part_ref,) if self.part_ref is not None else ()
+        return {
+            table: self.fetchall('SELECT * FROM "' + table + '"' + where + " ORDER BY rowid", params)
+            for table in ("WorkbenchProcessWorkflow", "WorkbenchProcessOperationConfirmations")
+        }
+
+    def supplier_references(self, supplier_ids):
+        ids = tuple(dict.fromkeys(supplier_ids))
+        if not ids:
+            return {"Suppliers": [], "WorkbenchSupplierProfiles": [], "WorkbenchSupplierOpTypes": []}
+        placeholders = ",".join("?" for _ in ids)
+        return {
+            table: self.fetchall(
+                f'SELECT * FROM "{table}" WHERE supplier_id IN ({placeholders}) ORDER BY rowid', ids
+            )
+            for table in ("Suppliers", "WorkbenchSupplierProfiles", "WorkbenchSupplierOpTypes")
+        }
+
+    def references(self):
+        return {**self.catalog_references(), **self.workflow_references()}
+
+    def part_identities(self):
+        return self.fetchall(
+            """SELECT ref,kind,entity_key,alternate_key,revision,active
+                FROM WorkbenchEntityRefs WHERE ref=? ORDER BY ref""",
+            (self.part_ref,),
+        )
+
+    def shared_identities(self):
+        return self.fetchall(
+            """SELECT ref,kind,entity_key,alternate_key,revision,active
+                FROM WorkbenchEntityRefs WHERE kind IN ('op_type','supplier') ORDER BY ref"""
+        )
 
     def identities(self):
-        if self.part_ref is not None:
-            return self.fetchall("""SELECT ref,kind,entity_key,alternate_key,revision,active
-                FROM WorkbenchEntityRefs WHERE kind IN ('op_type','supplier') OR ref=?
-                ORDER BY ref""", (self.part_ref,))
         return self.fetchall("""SELECT ref,kind,entity_key,alternate_key,revision,active FROM WorkbenchEntityRefs
             WHERE kind IN ('part','template_operation','template_external_group','op_type','supplier') ORDER BY ref""")

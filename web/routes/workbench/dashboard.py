@@ -6,6 +6,7 @@ from core.models.workbench_command import WorkbenchCommandRejected, validate_req
 from core.models.workbench_dashboard import MAX_BYTES, DashboardQuery
 from core.services.workbench import messages
 from core.services.workbench.dashboard.commands import WorkbenchDashboardCommandService
+from core.services.workbench.dashboard.facts import DashboardFacts
 from core.services.workbench.dashboard.service import WorkbenchDashboardService
 from web.api_responses import json_response, query_success
 
@@ -49,9 +50,13 @@ def _read(item_ref=None, history=False):
     admission = PLAN_READ_SLOTS.slot(lane=request.headers.get("X-Workbench-Read-Lane")) if item_ref is None else PLAN_READ_SLOTS.slot()
     with admission:
         with reader.read_snapshot():
-            sources = reader.load(as_of)
+            revisions = DashboardFacts.precheck_binding(g.db, query.scope(), binding)
+            sources = reader.load(as_of, source_revisions=revisions)
             records = _history(reader, item_ref, history_page, query.size) if history else None
         # 读事务到此结束：整份看板的投影和指纹只用已读出的事实，算多久都不挡别人提交写入。
+        sources.facts.project()
+        snapshot = bind_read_snapshot(query.scope(), sources.facts.snapshot_contents(), token,
+                                      as_of=sources.facts.now.isoformat(timespec="seconds"), binding=binding)
         data = reader.project(sources)
         analysis, analysis_error = None, None
         if item_ref is None:
@@ -59,8 +64,6 @@ def _read(item_ref=None, history=False):
                 analysis = reader.analysis(sources)
             except WorkbenchCommandRejected as exc:
                 analysis_error = str(exc)
-    snapshot = bind_read_snapshot(query.scope(), data["snapshot_contents"], token,
-                                  as_of=data["as_of"], binding=binding)
     if item_ref is None:
         result = reader.workspace(data, query)
         result["analysis"] = analysis

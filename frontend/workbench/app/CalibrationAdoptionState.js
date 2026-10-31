@@ -1,15 +1,15 @@
 (function () {
   'use strict';
-  const A = window.CalibrationAdoptionAPI, KEY = 'aps_calibration_adoption_pending_v1', EVENT = KEY + '_changed';
-  function valid(value) {
+  const A = window.CalibrationAdoptionAPI, T = window.APSWorkbenchTransport, KEY = 'aps_calibration_adoption_pending_v1', EVENT = KEY + '_changed';
+  function valid(value, checkReceipt = true) {
     try {
       return value && value.version === 1 && A.key(value.request_key) && ['pending', 'rejected', 'committed'].includes(value.phase)
         && A.equal(A.input(value.input, true), value.input) && A.equal(A.binding(value.baseline), value.baseline)
-        && (value.phase !== 'committed' || !!A.receipt(value.receipt, value));
+        && (value.phase !== 'committed' || (checkReceipt ? !!A.receipt(value.receipt, value) : Boolean(value.receipt && typeof value.receipt === 'object')));
     } catch (_) { return false; }
   }
-  const { read, save } = window.APSWorkbenchTransport.pendingStore({
-    key: KEY, event: EVENT, validate: valid,
+  const { read, flush, save } = T.pendingStore({
+    key: KEY, event: EVENT, validate: valid, validateWrite: v => valid(v, false),
     readError: '无法读取上次采用操作的记录，暂时不能开始新的采用。',
     corruptError: '上次采用的操作记录已损坏。请不要再操作，联系维护人员；不能换个编号重新提交。',
     invalidError: '上次采用的操作记录不完整。请不要再操作，联系维护人员；不能换个编号重新提交。',
@@ -19,7 +19,7 @@
   });
   function begin(preview, previous) {
     A.check(!previous || previous.phase === 'rejected' && previous.baseline.template_operation_ref === preview.suggestion.template_operation_ref, '上次操作的结果还没确认，不能开始新的采用。');
-    return save({ version: 1, request_key: window.APSWorkbenchTransport.requestKey('calibration'),
+    return save({ version: 1, request_key: T.requestKey('calibration'),
       phase: 'pending', baseline: A.binding(preview.suggestion), input: A.input({ ...preview.input, confirm: true }, true) }, previous);
   }
   function storageMessage(e, current = e && e.saved) {
@@ -39,9 +39,9 @@
     const identity = detail ? JSON.stringify(A.binding(detail.suggestion)) : '';
     React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; if (request.current) request.current.abort(); }; }, []);
     React.useEffect(() => { source.current = { ...source.current, preview: null, consent: false }; setPreview(null); setConsent(false); if (request.current) request.current.abort(); }, [identity, stale]);
-    function sync(event) {
+    function sync(event, load = read) {
       try {
-        const value = event && event.type === EVENT ? event.detail : read();
+        const value = event && event.type === EVENT ? event.detail : load();
         if (value !== active.current && !A.equal(value, active.current)) {
           const switched = !active.current || !value || value.request_key !== active.current.request_key;
           const nextDraft = value ? { reason: value.input.reason, declared_operator: value.input.declared_operator } : { reason: '', declared_operator: '' };
@@ -71,6 +71,7 @@
       window.addEventListener('storage', changed); window.addEventListener(EVENT, changed);
       return () => { window.removeEventListener('storage', changed); window.removeEventListener(EVENT, changed); };
     }, []);
+    // 采用结论写回本机记录；调用方持有跨页锁。
     function accept(value, original) {
       if (!A.equal(active.current, original)) { if (mounted.current) sync(); return; }
       const committed = { ...original, phase: 'committed', receipt: value };
@@ -84,9 +85,9 @@
     React.useEffect(() => {
       if (!saved || saved.phase !== 'pending' || storageError || lock.current) return undefined;
       let disposed = false; const controller = new AbortController(); setBusy(true);
-      A.lookup(saved, controller.signal).then(value => {
+      A.lookup(saved, controller.signal).then(async value => {
         if (disposed || !A.equal(active.current, saved)) return;
-        if (value) accept(value, saved);
+        if (value) await T.exclusive(KEY, { wait: true }, () => accept(value, saved));
         else setNotice('上次采用结果尚未确认，请稍后再次查询。');
       }).catch(e => { if (!disposed && A.equal(active.current, saved)) setError('上次操作的结果还没确认。' + e.message); }).finally(() => { if (!disposed) setBusy(false); });
       return () => { disposed = true; controller.abort(); if (!lock.current) setBusy(false); };
@@ -109,21 +110,21 @@
       const initialActive = active.current;
       lock.current = true; setBusy(true); setError(''); setNotice('');
       try {
-        if (!navigator.locks || typeof navigator.locks.request !== 'function') { if (mounted.current) setError('当前浏览器不支持这一步，请用 Chrome 打开后重试。'); return; }
-        await navigator.locks.request(KEY, { ifAvailable: true }, async acquired => {
-          if (!acquired) { if (mounted.current) setError('另一个页面正在采用，请先在那边查询结果。'); return; }
+        // 采用记录、提交和结果写回在跨页互斥里串行，持锁跨过采用命令。
+        const { acquired } = await T.exclusive(KEY, {}, async () => {
           const latest = source.current;
           if (!mounted.current || latest.stale || latest.storageError || !latest.detail || latest.preview !== preview || !latest.consent
             || !A.equal(active.current, initialActive)
             || active.current && (active.current.phase !== 'rejected' || active.current.baseline.template_operation_ref !== latest.detail.suggestion.template_operation_ref)
             || !A.equal(A.binding(latest.detail.suggestion), A.binding(preview.suggestion))
             || !A.equal(A.input(latest.draft), preview.input)) return;
-          const original = begin(preview, active.current);
+          let original;
+          try { original = begin(preview, active.current); } catch (e) { setStorageError(e.message); return; }
           active.current = original; source.current = { ...source.current, preview: null, consent: false }; setSaved(original); setPreview(null); setConsent(false);
           try { accept(await A.adopt(original, preview.write_context.write_token), original); }
           catch (e) {
             if (!A.equal(active.current, original)) { if (mounted.current) sync(); return; }
-            if (window.APSWorkbenchTransport.rejected(e)) {
+            if (T.rejected(e)) {
               const rejected = { ...original, phase: 'rejected' };
               try { save(rejected, original); active.current = rejected; if (!mounted.current) return; }
               catch (storageErr) {
@@ -135,20 +136,24 @@
             } else if (mounted.current) setError(window.WorkbenchTerms.outcomes.pending('采用'));
           }
         });
-      } catch (e) { if (mounted.current) setStorageError(e.message); }
+        if (!acquired && mounted.current) setError('另一个页面正在采用，请先在那边查询结果。');
+      } catch (e) { if (mounted.current) setError(e.message); }
       finally { lock.current = false; if (mounted.current) { setBusy(false); refresh(); } }
     }
-    function finish() {
+    async function finish() {
       try {
         A.check(saved && saved.phase !== 'pending', '结果还不确定，不能丢弃这次操作。');
-        save(null, saved); source.current = { ...source.current, preview: null, consent: false }; setOpen(false); setPreview(null); setConsent(false);
+        await T.exclusive(KEY, { wait: true }, () => save(null, saved));
+        source.current = { ...source.current, preview: null, consent: false }; setOpen(false); setPreview(null); setConsent(false);
         setError(''); setNotice(''); setDraft({ reason: '', declared_operator: '' });
       }
       catch (e) { setStorageError(e.message); }
     }
     return { saved, draft, open, preview, consent, busy, error, notice, storageError, setOpen,
       setConsent: value => { source.current = { ...source.current, consent: value }; setConsent(value); },
-      change, inspect, submit, finish, lookup: refresh, sync,
+      change, inspect, submit, finish, lookup: refresh,
+      // 「刷新上次操作记录」在跨页互斥里把本页没写进去的记录写回再读。
+      sync: () => T.exclusive(KEY, { wait: true }, () => sync(undefined, flush)).catch(e => setStorageError(e.message)),
       close: () => { if (request.current) request.current.abort(); source.current = { ...source.current, preview: null, consent: false }; setOpen(false); setPreview(null); setConsent(false); } };
   }
   window.CalibrationAdoptionState = { KEY, read, save, begin, useSession };

@@ -18,7 +18,7 @@ def json_object(raw):
     return load_strict_json(raw, on_malformed=invalid, expected=dict)
 
 
-def scenario_evidence(conn, scenario_ref, _repo=None):
+def scenario_evidence(conn, scenario_ref):
     trial_repo = WorkbenchTrialRepository(conn)
     header, saved = load_scenario_record(trial_repo, scenario_ref, row_limit=10000,
                                           byte_limit=MAX_SCENARIO_BYTES, size_check=bound)
@@ -28,7 +28,7 @@ def scenario_evidence(conn, scenario_ref, _repo=None):
     return saved, header, draft
 
 
-def receipt_plan(row, _saved=None):
+def receipt_plan(row):
     value = json_object(row["outcome_json"])
     data = value["data"]
     plan = data["official_plan"]
@@ -44,7 +44,7 @@ def gap(code, message):
     return {"code": code, "message": message}
 
 
-def audit_fields(row, plan, saved, _header=None, *, history, command_repo=None):
+def audit_fields(row, plan, saved, *, history):
     empty = {"reason": None, "declared_operator": None, "application_operator": None, "adopted_at": None}
     if history is None:
         return empty, [gap("audit_missing", "找不到对应的正式计划历史，或同一版本有多条记录，采用信息暂时无法确认。")]

@@ -35,10 +35,20 @@ def dashboard_analysis():
                                    request.args.get("resource_ref"), request.args.get("locate_batch_ref"))
     token = request.args.get("snapshot_ref")
     as_of, binding = read_snapshot_time(token)
+    bound = {}
     with PLAN_READ_SLOTS.slot():
-        data, state = read_dashboard_analysis(g.db, plan_ref, query=query, as_of=as_of)
-    snapshot = bind_read_snapshot(query.scope(plan_ref), state, token, as_of=data["as_of"], binding=binding)
-    return _response(data, snapshot)
+        data, _ = read_dashboard_analysis(
+            g.db,
+            plan_ref,
+            query=query,
+            as_of=as_of,
+            binding=binding,
+            bind_snapshot=lambda state, resolved_as_of: bound.setdefault(
+                "snapshot",
+                bind_read_snapshot(query.scope(plan_ref), state, token, as_of=resolved_as_of, binding=binding),
+            ),
+        )
+    return _response(data, bound["snapshot"])
 
 
 @api_endpoint
@@ -51,5 +61,10 @@ def dashboard_candidate_comparison(candidate_ref):
     # 整份候选加正式计划基线一起重建，和看板、现场页一起排读额度。
     with PLAN_READ_SLOTS.slot():
         data, state = read_candidate_comparison(g.db, scope)
-    snapshot = bind_read_snapshot({**scope.scope(), "kind": "dashboard-candidate-comparison"}, state, token, binding=binding)
+    snapshot = bind_read_snapshot(
+        {**scope.scope(), **data["time_scope"], "kind": "dashboard-candidate-comparison"},
+        state,
+        token,
+        binding=binding,
+    )
     return _response(data, snapshot)

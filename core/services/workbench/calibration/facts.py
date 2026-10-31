@@ -12,14 +12,10 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution_input import public_ref
 from core.services.scheduler.template_lineage_query import TemplateLineageQuery
 from core.services.workbench.execution.ledger import ExecutionLedgerService
+from core.services.workbench.facts.source_revisions import CALIBRATION_SOURCE_KEYS, read_source_revisions
 from data.repositories.workbench_calibration_query_repo import WorkbenchCalibrationQueryRepository
 
 from .template_lineage_calibration import project_lineage_calibration
-
-
-def require_calibration_schema(repo):
-    if not repo.schema_installed():
-        raise WorkbenchCommandRejected("calibration_source_unavailable", "模板永久身份或修订结构未就绪，本次读取没有补表或补身份。")
 
 
 def _lineage_template_row(row):
@@ -30,13 +26,8 @@ def _lineage_template_row(row):
     return result
 
 
-def read_templates(repo, query, *, lineage_templates):
-    part_no = None
-    if query.part_ref is not None:
-        part = repo.part_identity(query.part_ref)
-        if part is None:
-            raise WorkbenchCommandRejected("entity_not_found", "所选零件已失效，请重新选择。", 404)
-        part_no = part["entity_key"]
+def read_templates(repo, query, *, lineage_templates, part_identity):
+    part_no = part_identity["entity_key"] if part_identity is not None else None
     rows = repo.template_rows(part_no, MAX_TEMPLATES)
     if len(rows) > MAX_TEMPLATES:
         raise WorkbenchCommandRejected("query_too_large", "模板范围超过10000道，请按零件缩小范围；未截断数据。", 413)
@@ -75,6 +66,7 @@ def read_candidate_instances(repo, part_numbers):
 
 class CalibrationFacts:
     def __init__(self, conn, *, as_of):
+        self.conn = conn
         self.repo = WorkbenchCalibrationQueryRepository(conn)
         self.as_of = as_of
         self.ledger = ExecutionLedgerService(conn)
@@ -88,15 +80,27 @@ class CalibrationFacts:
             yield self.as_of
             return
         with self.ledger.read_snapshot():
-            require_calibration_schema(self.repo)
             if clock is not None:
                 self.as_of = clock()
             yield self.as_of
 
     def read(self, query, *, clock=None, bind_snapshot=None):
+        snapshot = None
         with self.read_snapshot(clock=clock):
+            part_identity = None
+            if query.part_ref is not None:
+                part_identity = self.repo.part_identity(query.part_ref)
+                if part_identity is None:
+                    raise WorkbenchCommandRejected("entity_not_found", "所选零件已失效，请重新选择。", 404)
+            if bind_snapshot is not None:
+                content = {
+                    "revisions": read_source_revisions(self.conn, CALIBRATION_SOURCE_KEYS),
+                    "ledger_revision": self.ledger.revision_clock(),
+                    "scope": query.scope(),
+                }
+                snapshot = bind_snapshot(content)
             templates_by_ref = {}
-            templates = read_templates(self.repo, query, lineage_templates=templates_by_ref)
+            templates = read_templates(self.repo, query, lineage_templates=templates_by_ref, part_identity=part_identity)
             instances = read_candidate_instances(self.repo, [row.part_no for row in templates])
             self.ledger.seed_operations(instances)
             current_by_ref = {row["operation_ref"]: row for row in instances}
@@ -107,12 +111,17 @@ class CalibrationFacts:
                 current_by_ref=current_by_ref,
                 templates_by_ref=templates_by_ref,
             )
-        snapshot = None
-        if bind_snapshot is not None:
-            content = {"templates": [row.to_dict() for row in templates],
-                "instances": instances, "lineage": {key: value for key, value in lineage.items() if key != "lineages"},
-                "execution": facts}
-            snapshot = bind_snapshot(content)
-        projections = {row.operation_ref: row for row in self.ledger.project_loaded(facts, contexts=False)}
-        result = project_lineage_calibration(templates, instances, projections, lineage, as_of=self.as_of)
-        return {**result, "snapshot": snapshot}
+        projections = {
+            row.operation_ref: row
+            for row in self.ledger.project_loaded(
+                facts, contexts=False, include_history=False
+            )
+        }
+        result = project_lineage_calibration(
+            templates,
+            instances,
+            projections,
+            lineage,
+            as_of=self.as_of,
+        )
+        return {**result, "snapshot": snapshot, "report_histories": facts["reports"]}

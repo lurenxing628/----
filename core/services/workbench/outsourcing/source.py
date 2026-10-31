@@ -110,7 +110,16 @@ class WorkbenchOutsourcingSourceService:
         if any(row["id"] not in selected for row in between):
             reject("合并发出必须选择同一次外协的连续工序，不能跨过自制工序或漏选中间工序。请按实际发出阶段分别登记。", "constraint_conflict", 409)
 
-    def load(self, target, *, new_registration=False, include_snapshot_facts=True):
+    def load(
+        self,
+        target,
+        *,
+        new_registration=False,
+        include_snapshot_facts=True,
+        include_identity=True,
+        include_public=True,
+        include_public_operations=True,
+    ):
         facts = self._captured()
         batch = self.entity(target["batch_ref"], "batch")
         supplier = self.entity(target["supplier_ref"], "supplier")
@@ -126,29 +135,69 @@ class WorkbenchOutsourcingSourceService:
             reject("合并发出的工序须属于同一批次分件。", "constraint_conflict", 409)
         if new_registration:
             self.require_contiguous(operations)
-        public = {**target, "grouping_basis": "explicit_receipt_membership", "source_resolution": source_resolution(operations),
-                  "part": {"ref": part["identity"]["ref"], "business_code": _target_text(part["row"]["part_no"]),
-                           "label": _target_text(part["row"]["part_name"])},
-                  "batch": {"ref": target["batch_ref"], "business_code": label(batch["row"]["batch_id"]),
-                            "label": label(batch["row"]["part_name"])},
-                  "supplier": {"ref": target["supplier_ref"], "business_code": label(supplier["row"]["supplier_id"]),
-                               "label": label(supplier["row"]["name"])},
-                  "operations": [{"operation_ref": op["identity"]["ref"], "business_code": label(op["row"]["op_code"]),
-                                  "sequence": label(op["row"]["seq"]), "piece": label(op["row"]["piece_id"]),
-                                  "label": label(op["row"]["op_type_name"])} for op in operations]}
-        source_confirmations = [op["identity"]["ref"] for op in operations
-                                if op["binding"]["source_resolution"]["basis"] == "current_relation"]
-        if not include_snapshot_facts:
-            return {"public": public, "source_confirmations": source_confirmations}
-        identity = {"batch_ref": target["batch_ref"], "part_ref": part["identity"]["ref"],
-                    "supplier_ref": target["supplier_ref"], "members": [
-                        {"operation_ref": op["identity"]["ref"], **{key: op["row"][key] for key in MEMBER_KEYS}}
-                        for op in operations]}
-        clock = self.repo.plan_identity_revision()
-        return {"public": public, "identity": raw_facts(identity),
-                "source_confirmations": source_confirmations,
-                "facts": raw_facts({"batch": batch, "part": part, "supplier": supplier,
-                                    "operations": operations, "source_clock": clock})}
+        resolution = source_resolution(operations)
+        result = {}
+        if include_public:
+            public = {
+                **target,
+                "grouping_basis": "explicit_receipt_membership",
+                "source_resolution": resolution,
+                "part": {
+                    "ref": part["identity"]["ref"],
+                    "business_code": _target_text(part["row"]["part_no"]),
+                    "label": _target_text(part["row"]["part_name"]),
+                },
+                "batch": {
+                    "ref": target["batch_ref"],
+                    "business_code": label(batch["row"]["batch_id"]),
+                    "label": label(batch["row"]["part_name"]),
+                },
+                "supplier": {
+                    "ref": target["supplier_ref"],
+                    "business_code": label(supplier["row"]["supplier_id"]),
+                    "label": label(supplier["row"]["name"]),
+                },
+            }
+            if include_public_operations:
+                public["operations"] = [
+                    {
+                        "operation_ref": op["identity"]["ref"],
+                        "business_code": label(op["row"]["op_code"]),
+                        "sequence": label(op["row"]["seq"]),
+                        "piece": label(op["row"]["piece_id"]),
+                        "label": label(op["row"]["op_type_name"]),
+                    }
+                    for op in operations
+                ]
+            result["public"] = public
+        if include_identity or include_snapshot_facts:
+            identity = {
+                "batch_ref": target["batch_ref"],
+                "part_ref": part["identity"]["ref"],
+                "supplier_ref": target["supplier_ref"],
+                "members": [
+                    {"operation_ref": op["identity"]["ref"], **{key: op["row"][key] for key in MEMBER_KEYS}}
+                    for op in operations
+                ],
+            }
+            result["identity"] = raw_facts(identity)
+        if include_snapshot_facts:
+            result["source_confirmations"] = [
+                op["identity"]["ref"]
+                for op in operations
+                if op["binding"]["source_resolution"]["basis"] == "current_relation"
+            ]
+            clock = self.repo.plan_identity_revision()
+            result["facts"] = raw_facts(
+                {
+                    "batch": batch,
+                    "part": part,
+                    "supplier": supplier,
+                    "operations": operations,
+                    "source_clock": clock,
+                }
+            )
+        return result
 
     @staticmethod
     def _target_entity_labels(row, kind, source):
@@ -177,15 +226,10 @@ class WorkbenchOutsourcingSourceService:
         return {"kind": "single", "batch_ref": row["batch_ref"], "supplier_ref": row["supplier_ref"],
                 "operation_refs": [row["operation_ref"]]}
 
-    def capture_targets(self, batch_ref=None, query=""):
-        rows, entities = self.target_rows(batch_ref, query)
-        return rows, self.capture([self.target_from_row(row) for row in rows], entities=entities)
-
     def load_target_rows(self, rows):
         """Project already captured target rows with the shared load/binding judgement."""
         result = []
         for row in rows:
-            source = None
             item = {"operation_ref": row["operation_ref"], "business_code": label(row["op_code"]),
                     "sequence": label(row["seq"]), "piece": label(row["piece_id"]),
                     "label": label(row["op_type_name"]), "batch_ref": row["batch_ref"], "supplier_ref": row["supplier_ref"],
@@ -196,7 +240,12 @@ class WorkbenchOutsourcingSourceService:
             else:
                 # Known per-row identity gaps stay visible; storage failures propagate.
                 try:
-                    source = self.load(self.target_from_row(row), include_snapshot_facts=False)
+                    source = self.load(
+                        self.target_from_row(row),
+                        include_snapshot_facts=False,
+                        include_identity=False,
+                        include_public_operations=False,
+                    )
                     item["can_register"] = row["outsourcing_ref"] is None
                     item["batch"] = self._target_entity_labels(row, "batch", source)
                     item["supplier"] = self._target_entity_labels(row, "supplier", source)
@@ -204,5 +253,5 @@ class WorkbenchOutsourcingSourceService:
                     item["source_resolution"] = source["public"]["source_resolution"]
                 except WorkbenchCommandRejected as exc:
                     item["issues"] = [{"code": exc.code, "message": str(exc)}]
-            result.append((item, source))
+            result.append(item)
         return result

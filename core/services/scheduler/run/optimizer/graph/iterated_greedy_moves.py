@@ -25,20 +25,17 @@ class _Parent:
         return self.prepared.successors
 
 
-def _parent_from_candidate(candidate: Dict[str, Any], *, graph_context: Dict[str, Any],
-                           prepared: RepairParentPreparation) -> Optional[_Parent]:
-    """``prepared`` is the candidate's parent preparation (EliteRepairPool.prepare_parent)."""
+def _parent_from_candidate(candidate: Dict[str, Any], *, prepared: RepairParentPreparation) -> Optional[_Parent]:
+    """``prepared`` is the candidate's parent preparation (EliteRepairPool.prepare_parent).
+
+    A decoded order exists only when every mutable operation has a decoded row; each such row names its
+    operation's batch, so the decoded batch order then covers every mutable batch.
+    """
     if candidate["summary"].failed_ops or not candidate["summary"].success:
         return None
-    mutable = prepared.mutable_operation_ids
-    if not mutable or set(prepared.decoded_rows) != mutable:
+    if not prepared.operation_order:
         return None
-    if mutable.intersection(graph_context.get("fixed_op_ids", ())):
-        raise ValidationError("GraphReady 迭代贪心的可变范围不能包含固定工序。", field="graph_ready_iterated_greedy",
-                              details={"reason": "graph_ready_ig_scope_mismatch"})
     batch_order = tuple(batch for batch in prepared.decoded_batch_order if batch in prepared.mutable_batch_ids)
-    if set(batch_order) != prepared.mutable_batch_ids:
-        return None
     return _Parent(prepared.operation_order, batch_order, prepared.inherited_resources, prepared)
 
 

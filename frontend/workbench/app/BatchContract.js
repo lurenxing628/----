@@ -62,11 +62,19 @@
     return result;
   }
   // result 来自 resource-api 的 execute，已由 terminal() 确认是完成回执；这里只核对批次编号与逐项结果。
-  function receipt(result, action, expected) {
+  function receipt(result, action, expected, expectedOperationRef) {
     const data = result.data;
     const valid = ['bulk_confirm', 'import_confirm'].includes(action) ? Array.isArray(data.items) && data.items.length === data.count && data.items.every(row => ref(row.entity_ref) && ['committed', 'unchanged', 'skipped'].includes(row.result))
-      : ref(data.entity_ref) && (action === 'create' || data.entity_ref === expected);
-    if (!valid) { const error = C.failure(window.WorkbenchTerms.outcomes.unknown('保存')); error.committed = 'unknown'; throw error; }
+      : ref(data.entity_ref) && (action === 'create' || data.entity_ref === expected)
+        && (action !== 'operation_update' || ref(data.operation_ref) && data.operation_ref === expectedOperationRef)
+        && (action !== 'split_confirm' || ref(data.child_ref));
+    if (!valid) {
+      const message = action === 'operation_update' && ref(data.entity_ref) && data.entity_ref === expected && data.operation_ref !== expectedOperationRef
+        ? '保存结果对应的不是当前工序。请刷新批次详情核对，不要重复提交。'
+        : action === 'split_confirm' && ref(data.entity_ref) && data.entity_ref === expected && !ref(data.child_ref)
+          ? '未读到拆分子批，请刷新批次核对。' : window.WorkbenchTerms.outcomes.unknown('保存');
+      const error = C.failure(message); error.committed = 'unknown'; throw error;
+    }
     return result;
   }
   function preview(result, action, expectedRef, input) {

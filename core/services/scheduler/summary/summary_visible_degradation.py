@@ -32,10 +32,7 @@ def record_summary_degradation(
         causes.append(code)
 
 
-def summary_counts(summary: Optional[ScheduleSummary]) -> Tuple[int, int, int]:
-    # 三项计数由受控排产汇总生产者保证为非负整数；没有摘要（排产未产出）时计数为 0。
-    if summary is None:
-        return 0, 0, 0
+def summary_counts(summary: ScheduleSummary) -> Tuple[int, int, int]:
     return summary.total_ops, summary.scheduled_ops, summary.failed_ops
 
 
@@ -58,18 +55,13 @@ def warnings_with_graph(all_warnings: List[str], graph_analysis_public: Optional
 
 
 def public_summary_error_state(
-    raw_summary_errors: List[Any], structured_details: List[Dict[str, Any]],
+    structured_details: List[Dict[str, Any]],
 ) -> Tuple[List[Dict[str, Any]], List[str]]:
-    details = build_public_error_records(raw_summary_errors, structured_details=structured_details)
+    details = build_public_error_records(structured_details)
     messages = [item["message"] for item in details]
     return details, messages
 
 
-def apply_summary_diagnostics(
-    result_summary: Dict[str, Any], optimizer_diagnostics: Dict[str, Any], ctx: SummaryBuildContext,
-) -> None:
-    diagnostics = dict(optimizer_diagnostics)
+def apply_summary_diagnostics(result_summary: Dict[str, Any], ctx: SummaryBuildContext) -> None:
     if ctx.graph_analysis_diagnostics is not None:
-        diagnostics["graph_analysis"] = dict(ctx.graph_analysis_diagnostics)
-    if diagnostics:
-        result_summary["diagnostics"] = diagnostics
+        result_summary["diagnostics"] = {"graph_analysis": dict(ctx.graph_analysis_diagnostics)}

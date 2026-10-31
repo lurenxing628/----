@@ -76,7 +76,7 @@ class FieldReportFileService:
                 task_ref = task['task_ref']
                 if task_ref not in indexes:
                     indexes[task_ref] = report_index(task['execution']['reports'])
-                if resources is None:
+                if resources is None and (value['machine_label'] or value['operator_label']):
                     resources = self._resource_index()
                 items.append(self._row_item(row, task_ref, indexes[task_ref], resources, source_ref))
                 positions.append(row['row'])
@@ -132,8 +132,11 @@ class FieldReportFileService:
 
     def _checked_rows(self, items, rows, positions):
         preparation = self.production.prepare_batch(items) if items else None
-        check = preparation.public() if preparation else {'rows': [], 'summary': {'total': 0, 'changed': 0, 'unchanged': 0}, 'can_confirm': True, 'snapshot': {}}
-        mapped = dict(zip(positions, check['rows']))
+        checked = preparation.rows if preparation else []
+        changed = len(preparation.appended) if preparation else 0
+        check = {'summary': {'changed': changed, 'unchanged': len(checked) - changed},
+                 'snapshot': preparation.snapshot if preparation else {}}
+        mapped = dict(zip(positions, checked))
         for row in rows:
             if row['row'] in mapped:
                 item = mapped[row['row']]

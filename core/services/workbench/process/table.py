@@ -3,7 +3,7 @@
 from typing import Dict
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_process_table_query import PROCESS_STAGES, validate_process_facet_request
+from core.models.workbench_process_query import PROCESS_STAGES
 from core.models.workbench_resource_table_query import MAX_FACET_KEYS
 from core.services.workbench.facts.table_cells import TableCell, number_cell, text_cell
 from core.services.workbench.facts.table_index import ResourceTableIndex
@@ -77,7 +77,7 @@ class ProcessTable:
         return index._options(column, search), len(refs)
 
     def facets(self, query, column, search, number, size):
-        validate_process_facet_request(column, search, number, size)
+        """``column``/``search``/``number``/``size`` were validated at the request boundary."""
         options, row_count = self._facet_options(query, column, search)
         total = len(options)
         pages = max(1, (total + size - 1) // size)
@@ -90,8 +90,7 @@ class ProcessTable:
         return {"column": column, "basis": "toolbar_scope", "options": values, "row_count": row_count,
                 "page": {"number": number, "size": size, "total": total, "pages": pages}}
 
-    def facet_selection(self, query, column, search, size):
-        validate_process_facet_request(column, search, 1, size)
+    def facet_selection(self, query, column, search):
         options, _ = self._facet_options(query, column, search)
         if len(options) > MAX_FACET_KEYS:
             raise WorkbenchCommandRejected("capacity_exceeded", "搜索命中的不同值超过 50000 个。请缩小范围后重试。", 413)

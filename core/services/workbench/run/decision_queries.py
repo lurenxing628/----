@@ -5,6 +5,7 @@ from typing import Union
 from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.workbench_run_candidate import reference, reject
 from core.services.workbench.facts.candidate_store import CandidateStore
+from core.services.workbench.facts.candidate_tasks import operation_labels
 from core.services.workbench.facts.decision_metrics import METRIC_VERSION
 
 from .decision_impact import (
@@ -14,6 +15,7 @@ from .decision_impact import (
     OPERATION_CHANGES,
     OPERATION_SORTS,
     filter_options,
+    operation_impacts,
 )
 from .decision_source import DecisionSource
 
@@ -49,6 +51,33 @@ def parse_page(value, *, size=False):
     return parsed
 
 
+def _operation_matches(source, ref, delta, filters):
+    if filters["batch_ref"] is not None and source.operation_batch_ref(ref) != filters["batch_ref"]:
+        return False
+    change = filters["change_kind"]
+    if change == "changed":
+        if not any(kind not in ("unchanged", "unknown") for kind in delta["change_kinds"]):
+            return False
+    elif change != "all" and change not in delta["change_kinds"]:
+        return False
+    resource = filters["resource_ref"]
+    if resource is not None:
+        sides = [segment for side in (delta["before"], delta["after"]) if side is not None for segment in side.get("segments", [side])]
+        if not any((side.get(kind) or {}).get("ref") == resource for side in sides for kind in ("machine", "operator")):
+            return False
+    return True
+
+
+def _operation_sort_value(source, ref, delta, sort, batch_labels):
+    if sort == "change_kind":
+        return ",".join(delta["change_kinds"])
+    if sort in ("start_delta_hours", "end_delta_hours"):
+        return delta.get(sort)
+    if sort == "batch_id":
+        return batch_labels.get(source.operation_batch_ref(ref))
+    return operation_labels(source.facts, ref)[0].get(sort)
+
+
 def decision_details(source, section, filters, *, page: Union[int, str] = 1, size: Union[int, str] = 20, all_rows=False):
     if source.selected_ref is None:
         reject("invalid_input", "请选择候选方案后查看明细。", 422)
@@ -58,22 +87,37 @@ def decision_details(source, section, filters, *, page: Union[int, str] = 1, siz
             reject("entity_not_found", "所选批次不在这次排产的归档范围。", 404)
     if filters["resource_ref"] is not None and filters["resource_ref"] not in {item["ref"] for item in options["resources"]}:
         reject("entity_not_found", "所选资源不在这次排产的归档安排。", 404)
+    page, size = parse_page(page), parse_page(size, size=True)
+    offset = (page - 1) * size
     if section == "batches":
         batches, summary = source.batch_impacts
         selected_batch = next((row for row in batches if row["batch_ref"] == filters.get("selected_batch_ref")), None)
-        rows = batches
+        rows = [row for row in batches if _matches(row, filters)]
+        rows = _ordered(rows, filters)
+        total = len(rows)
+        items = rows if all_rows else rows[offset:offset + size]
     else:
         summary = source.batch_impact_summary
-        rows = source.operation_impacts
-    rows = [row for row in rows if _matches(row, filters)]
-    rows = _ordered(rows, filters)
-    page, size = parse_page(page), parse_page(size, size=True)
-    offset = (page - 1) * size
+        comparisons = source.operation_comparisons
+        refs = [ref for ref in source.scope["operation_refs"] if _operation_matches(source, ref, comparisons[ref], filters)]
+        batch_labels = {item["ref"]: item["label"] for item in options["batches"]}
+        known, unknown = [], []
+        for ref in sorted(refs):
+            value = _operation_sort_value(source, ref, comparisons[ref], filters["sort"], batch_labels)
+            if value is None:
+                unknown.append(ref)
+            else:
+                known.append((value, ref))
+        known.sort(key=lambda pair: pair[0], reverse=filters["order"] == "desc")
+        ordered_refs = [pair[1] for pair in known] + unknown
+        total = len(ordered_refs)
+        page_refs = ordered_refs if all_rows else ordered_refs[offset:offset + size]
+        items = operation_impacts(source, page_refs)
     result = {"run_ref": source.run["run_ref"], "scope": source.scope, "baseline": source.baseline,
               "candidate": {"candidate_ref": source.selected_ref, "label": source.selected["artifact"].get("label"),
                             "status": source.selected["status"], "result_available": source.result_available(source.selected_ref)},
-              "filters": filters, "filter_options": options, "items": rows if all_rows else rows[offset:offset + size],
-              "page": {"number": page, "size": size, "total": len(rows), "has_more": offset + size < len(rows)},
+              "filters": filters, "filter_options": options, "items": items,
+              "page": {"number": page, "size": size, "total": total, "has_more": offset + size < total},
               "summary": {**summary, "scope": "full_admission"}, "metric_version": METRIC_VERSION}
     if section == "batches":
         result["selected_batch"] = selected_batch
@@ -97,11 +141,6 @@ def _matches(row, filters):
         if delivery == "on_time" and row["after"]["is_overdue"] is not False:
             return False
         if delivery not in ("attention", "on_time") and delivery not in attention:
-            return False
-    resource = filters["resource_ref"]
-    if resource is not None:
-        sides = [segment for side in (row["before"], row["after"]) if side is not None for segment in side.get("segments", [side])]
-        if not any((side.get(kind) or {}).get("ref") == resource for side in sides for kind in ("machine", "operator")):
             return False
     return True
 
@@ -128,9 +167,8 @@ def _sort_value(row, sort):
 
 
 def _ordered(rows, filters):
-    identity = "batch_ref" if filters["section"] == "batches" else "operation_ref"
     known, unknown = [], []
-    for row in sorted(rows, key=lambda item: item[identity]):
+    for row in sorted(rows, key=lambda item: item["batch_ref"]):
         value = _sort_value(row, filters["sort"])
         if value is None:
             unknown.append(row)

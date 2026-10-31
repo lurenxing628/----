@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+from bisect import bisect_left
 from collections import defaultdict
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -163,25 +164,81 @@ def _external_problem(context: _Context, held: _Held, op):
         "和原安排的回厂时间对不上（例如改过外协周期或合并分组）。" + _KEEP + held.action("到批次管理核对这道工序的外协周期"))
 
 
+def _build_seq_prefix(items):
+    if not items:
+        return (), ()
+    by_seq = {}
+    for seq, finish in items:
+        prev = by_seq.get(seq)
+        if prev is None or finish > prev:
+            by_seq[seq] = finish
+    seqs = []
+    max_finishes = []
+    running_max = None
+    for seq in sorted(by_seq):
+        finish = by_seq[seq]
+        if running_max is None or finish > running_max:
+            running_max = finish
+        seqs.append(seq)
+        max_finishes.append(running_max)
+    return tuple(seqs), tuple(max_finishes)
+
+
+def _prefix_max_before(prefix, seq):
+    seqs, max_finishes = prefix
+    idx = bisect_left(seqs, seq) - 1
+    return max_finishes[idx] if idx >= 0 else None
+
+
 def _completed(facts, operations, projections):
-    """{批次: [(已完工工序, 实际完工)]}：排产计算以实际完工为准，同批后道的保留安排不能早于它开工。"""
-    result = defaultdict(list)
+    """{批次: 已完工前缀索引与明细}：排产计算以实际完工为准，同批后道的保留安排不能早于它开工。"""
+    raw = defaultdict(list)
     for op in operations:
         projection = projections[facts.operation_ref(op)]
         if projection["execution_state"] != "complete" or projection["confirmed_finish"] is None:
             continue
         try:
-            result[op["batch_id"]].append((op, parse_operation_event_time(projection["confirmed_finish"])))
+            raw[op["batch_id"]].append((op, parse_operation_event_time(projection["confirmed_finish"])))
         except (AppError, ValueError, TypeError):
             continue  # 完工时间读不出来由报工核对另行拦下
+    result = {}
+    for batch_id, entries in raw.items():
+        all_items = [(op["seq"], finish) for op, finish in entries]
+        shared_items = [(op["seq"], finish) for op, finish in entries if op["piece_id"] is None]
+        by_piece_items = defaultdict(list)
+        for op, finish in entries:
+            if op["piece_id"] is not None:
+                by_piece_items[op["piece_id"]].append((op["seq"], finish))
+        result[batch_id] = {
+            "entries": tuple(entries),
+            "all": _build_seq_prefix(all_items),
+            "shared": _build_seq_prefix(shared_items),
+            "by_piece": {piece_id: _build_seq_prefix(items) for piece_id, items in by_piece_items.items()},
+        }
     return result
 
 
 def _finish_problem(context: _Context, held: _Held, op):
     """与排产计算同口径（分件只比同一件和共同工序）：保留的安排早于同批已完工前道的实际完工，整次排产会被拦下。"""
-    for done, finish in context.finished.get(op["batch_id"], ()):
-        related = done["piece_id"] is None or op["piece_id"] is None or done["piece_id"] == op["piece_id"]
-        if related and done["seq"] < op["seq"] and held.seed["start_time"] < finish:
+    batch_finished = context.finished.get(op["batch_id"])
+    if not batch_finished:
+        return None
+    start_time = held.seed["start_time"]
+    seq = op["seq"]
+    piece_id = op["piece_id"]
+    if piece_id is None:
+        max_finish = _prefix_max_before(batch_finished["all"], seq)
+        if max_finish is None or start_time >= max_finish:
+            return None
+    else:
+        shared_max = _prefix_max_before(batch_finished["shared"], seq)
+        piece_prefix = batch_finished["by_piece"].get(piece_id)
+        piece_max = _prefix_max_before(piece_prefix, seq) if piece_prefix is not None else None
+        if (shared_max is None or start_time >= shared_max) and (piece_max is None or start_time >= piece_max):
+            return None
+    for done, finish in batch_finished["entries"]:
+        related = done["piece_id"] is None or piece_id is None or done["piece_id"] == piece_id
+        if related and done["seq"] < seq and start_time < finish:
             return issue("locked_predecessor_finish_conflict",
                 f"{held.text}，但同批前道第 {done['seq']} 道（{done['op_type_name']}）实际 {_time(finish)} 才完工，"
                 "晚于这个安排的开工，排产会被拦下。" + held.action("到现场记录核对前道的实际完工时间"))

@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Set
 
 from core.algorithm_contracts.types import ScheduleSummary
 from core.models.batch_operation import BatchOperation
 from core.services.scheduler.contracts.schedule_summary_types import ScheduleResultStatus
 
 
-def _compute_completion_status(summary: Optional[ScheduleSummary]) -> str:
-    if summary is not None and summary.success:
+def _compute_completion_status(summary: ScheduleSummary) -> str:
+    if summary.success:
         result_status = ScheduleResultStatus.SUCCESS
-    elif summary is not None and summary.scheduled_ops > 0:
+    elif summary.scheduled_ops > 0:
         result_status = ScheduleResultStatus.PARTIAL
     else:
         result_status = ScheduleResultStatus.FAILED

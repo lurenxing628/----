@@ -92,7 +92,7 @@
       if (!intent) return;
       store.running = true; publish(store, { ...store.state, intent, phase: 'checking', error: null });
       try {
-        const result = await adapter.lookup(intent.request_key);
+        const result = await adapter.lookup(intent.request_key, intent);
         const status = C.receipt(result);
         publish(store, { intent, result, phase: status === 'terminal' ? 'done' : 'pending',
           error: status === 'terminal' ? null : C.failure(result.message || window.WorkbenchTerms.outcomes.pending('操作')) });
@@ -104,7 +104,10 @@
       let intent;
       try {
         // category keeps the source list; the entity's category belongs to input.fields.
-        intent = { kind, action, ref, request_key: T.requestKey('resource'), input, category: listCategory };
+        intent = {
+          kind, action, ref, request_key: T.requestKey('resource'), input, category: listCategory,
+          ...(kind === 'batch' && action === 'operation_update' ? { operation_ref: input.operation_ref } : {})
+        };
         adapter.savePending(intent);
       }
       catch (error) { publish(store, { phase: 'rejected', error }); return; }
@@ -117,7 +120,7 @@
       } finally { store.running = false; }
       if (store.state.phase === 'rejected') {
         // 服务端已明确拒绝，没有回执可查；记录清不掉时保留拒绝态和意图，由 reset() 再清。
-        try { adapter.clearPending(); }
+        try { adapter.clearPending(intent); }
         catch (error) { publish(store, { ...store.state, error }); return; }
         publish(store, { ...store.state, intent: null });
       }
@@ -126,7 +129,7 @@
     function reset() {
       if (store.running || ['sending', 'pending', 'checking'].includes(store.state.phase)) return false;
       if (store.state.intent) {
-        try { adapter.clearPending(); }
+        try { adapter.clearPending(store.state.intent); }
         catch (error) { publish(store, { ...store.state, error }); return false; }
       }
       publish(store, { phase: 'idle' });

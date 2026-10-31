@@ -2,20 +2,14 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, cast
 
+from core.infrastructure.sqlite_udf import require_dt_for_sql
+
 from .base_repo import BaseRepository
-from .schedule_time_sql import (
-    overlap_or_bad_time_sql,
-    register_schedule_time_sql_functions,
-    require_dt_for_sql,
-)
+from .schedule_time_sql import overlap_or_bad_time_sql
 
 
 class MachineDowntimeRepository(BaseRepository):
     """设备停机时间段仓库（MachineDowntimes）。"""
-
-    def __init__(self, conn, logger=None):
-        super().__init__(conn, logger=logger)
-        register_schedule_time_sql_functions(conn)
 
     def list_active_overlaps_with_machine_names(self, start_time: str, end_time: str) -> List[Dict[str, Any]]:
         parsed_start_time = require_dt_for_sql(start_time, "停机重叠查询时间写法不对，无法读取停机线索")

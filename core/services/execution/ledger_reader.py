@@ -11,14 +11,13 @@ from sqlite3 import Connection
 from typing import Any, Callable, Dict, Optional, cast
 
 from core.infrastructure.transaction import TransactionManager
-from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution_input import MAX_FACT_ROWS, MAX_OPERATIONS, public_ref, reject
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from data.repositories.execution_ledger_scope_repo import ExecutionLedgerScopeRepository
 from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
-from .projection import project_execution, report_dto
+from .projection import project_execution, report_dto, validate_history_chain
 
 
 def _capped(read, refs, message):
@@ -45,12 +44,6 @@ class ExecutionLedgerReader:
         self._snapshot_facts = None
 
     # ---- judgement over repository facts ----
-
-    def require_schema(self):
-        if self._snapshot_clock is not None:
-            return
-        if self.repo.schema_issues():
-            raise WorkbenchCommandRejected("execution_ledger_unavailable", "报工数据库结构不完整，请联系维护人员升级数据库。")
 
     def revision_clock(self):
         if self._snapshot_clock is not None:
@@ -181,7 +174,6 @@ class ExecutionLedgerReader:
             yield
             return
         with TransactionManager(self.conn).transaction():
-            self.require_schema()
             self._snapshot_clock = self.revision_clock()
             self._snapshot_plan, self._snapshot_plan_read = None, False
             self._snapshot_operations, self._snapshot_task_maps, self._snapshot_resources = {}, {}, {}
@@ -269,27 +261,36 @@ class ExecutionLedgerReader:
                     result[key].update(batch[key])
             return result
 
-    def project_loaded(self, facts):
-        result = []
+    def validate_operation_reports(self, facts, ref):
+        histories = facts["reports"].get(ref, {})
+        if set(facts["report_heads"].get(ref, ())) - set(histories):
+            reject("报工来源或更正记录损坏，请核对报工数据；仍不行请联系维护人员。", "storage_failure", 500)
+        for report_ref, rows in histories.items():
+            validate_history_chain(rows, operation_ref=ref, report_ref=report_ref)
+
+    def project_operation(self, facts, ref, *, include_history: bool = True):
+        op = facts["operations"][ref]
         voids = facts["voids"]
-        for ref, op in facts["operations"].items():
-            histories = facts["reports"].get(ref, {})
-            if set(facts["report_heads"].get(ref, ())) - set(histories):
-                reject("报工来源或更正记录损坏，请核对报工数据；仍不行请联系维护人员。", "storage_failure", 500)
-            reports = sorted((report_dto(rows, operation_ref=ref, report_ref=report_ref)
-                              for report_ref, rows in histories.items()), key=lambda row: (row.recorded_at, row.report_no))
-            voided = []
-            if voids:
+        histories = facts["reports"].get(ref, {})
+        if set(facts["report_heads"].get(ref, ())) - set(histories):
+            reject("报工来源或更正记录损坏，请核对报工数据；仍不行请联系维护人员。", "storage_failure", 500)
+        reports = sorted((report_dto(rows, operation_ref=ref, report_ref=report_ref, include_history=include_history)
+                          for report_ref, rows in histories.items()), key=lambda row: (row.recorded_at, row.report_no))
+        voided = []
+        if voids:
+            if include_history:
                 voided = [{"report": report.to_dict(), "void_fact": {key: value for key, value in voids[report.report_ref].items()
                            if key != "request_key"}} for report in reports if report.report_ref in voids]
-                reports = [report for report in reports if report.report_ref not in voids]
-            projection = project_execution(op, reports,
-                current_task=facts["current_tasks"].get(ref), comparison_task=facts["comparison_tasks"].get(ref),
-                plan_identity=facts["plan"])
-            if voided:
-                projection = replace(projection, voided_reports=voided)
-            result.append(projection)
-        return result
+            reports = [report for report in reports if report.report_ref not in voids]
+        projection = project_execution(op, reports,
+            current_task=facts["current_tasks"].get(ref), comparison_task=facts["comparison_tasks"].get(ref),
+            plan_identity=facts["plan"])
+        if voided:
+            projection = replace(projection, voided_reports=voided)
+        return projection
+
+    def project_loaded(self, facts, *, include_history: bool = True):
+        return [self.project_operation(facts, ref, include_history=include_history) for ref in facts["operations"]]
 
     def project_operations(self, operation_refs):
         with self.read_snapshot():

@@ -27,17 +27,28 @@ class BatchChange:
 class BatchChangePreparation:
     """Current rows, identities and relations shared by every change before the first write."""
 
+    _reader: BatchFacts
+    facts: Any
+
     def __init__(self, facts):
-        self.facts = facts
-        self.identities = {row["ref"]: row for row in facts["WorkbenchEntityRefs"] if row["active"]}
-        self.batches = {row["batch_id"]: row for row in facts["Batches"]}
-        self.parts = {row["part_no"]: row for row in facts["Parts"]}
+        if isinstance(facts, BatchFacts):
+            self._reader = facts
+            self.facts = facts._pinned()
+            tables = self.facts if self.facts is not None else facts.entity_tables()
+        else:
+            self.facts = facts
+            tables = facts
+        self.identities = {row["ref"]: row for row in tables["WorkbenchEntityRefs"] if row["active"]}
+        self.batches = {row["batch_id"]: row for row in tables["Batches"]}
+        self.parts = {row["part_no"]: row for row in tables["Parts"]}
         self.used_codes = set(self.batches)
         self._relations = None
 
     @property
     def relations(self):
         if self._relations is None:
+            if self.facts is None:
+                self.facts = self._reader.load()
             self._relations = index_relations(self.facts)
         return self._relations
 
@@ -47,8 +58,8 @@ class BatchChangePreparation:
         if identity is None or identity["kind"] != kind:
             raise WorkbenchCommandRejected("entity_not_found", "这条记录已经不在了，请刷新后重新选择。", 404)
         key = identity["entity_key"]
-        if key != key.strip():
-            raise WorkbenchCommandRejected("constraint_conflict", "批次号或图号存在首尾空格，请先核对原记录。")
+        if not key.strip():
+            raise WorkbenchCommandRejected("constraint_conflict", "批次号或图号不能为空，请先核对原记录。")
         return key
 
     def batch(self, ref):
@@ -113,21 +124,34 @@ class WorkbenchBatchService:
         self.repo = BatchRepository(conn, logger=logger)
 
     def preparation(self, facts=None):
-        return BatchChangePreparation(self.facts.load() if facts is None else facts)
+        return BatchChangePreparation(self.facts if facts is None else facts)
 
-    def apply_prepared(self, change):
+    def apply_prepared_many(self, changes):
         if not self.conn.in_transaction:
             raise RuntimeError("批次命令必须在 WorkbenchCommandService 最外层事务中执行。")
-        ref = change.entity_ref
-        if change.action == "create":
-            self.repo.create(change.created)
-            identity = self.facts.identities.find_active("batch", change.business_code)
-            if identity is None:
-                raise RuntimeError("新增批次没有永久引用。")
-            ref = identity.ref
-        elif change.action == "delete":
-            self.repo.delete(change.business_code)
-        elif change.fields:
-            self.repo.update(change.business_code, change.fields)
-        result = "unchanged" if change.action == "update" and not change.fields else "committed"
-        return WorkbenchCommandOutcome(result, {"entity_ref": ref, "business_code": change.business_code})
+        if not changes:
+            return []
+        created_codes = []
+        for change in changes:
+            if change.action == "create":
+                self.repo.create(change.created)
+                created_codes.append(change.business_code)
+            elif change.action == "delete":
+                self.repo.delete(change.business_code)
+            elif change.fields:
+                self.repo.update(change.business_code, change.fields)
+        identities = self.facts.identities.active_map("batch", created_codes) if created_codes else {}
+        outcomes = []
+        for change in changes:
+            ref = change.entity_ref
+            if change.action == "create":
+                identity = identities.get(change.business_code)
+                if identity is None:
+                    raise RuntimeError("新增批次没有永久引用。")
+                ref = identity.ref
+            result = "unchanged" if change.action == "update" and not change.fields else "committed"
+            outcomes.append(WorkbenchCommandOutcome(result, {"entity_ref": ref, "business_code": change.business_code}))
+        return outcomes
+
+    def apply_prepared(self, change):
+        return self.apply_prepared_many([change])[0]

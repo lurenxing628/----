@@ -15,7 +15,7 @@ from core.services.workbench.run.piece_adoption_trial import trial_piece_issues
 
 from .arrangements import same_arrangement
 from .calendar import calendar_engine, estimate, new_slot_effort
-from .constraints import interval, relation_issues, resource_issues
+from .constraints import build_trial_intervals, relation_issues, resource_issues
 from .execution_anchors import resolve_execution_anchors
 from .facts import facts_unchanged
 from .materials import adoption_settings, hold_settings, material_issues
@@ -41,6 +41,35 @@ class TrialValidator:
         self.downtime = {}
         for row in self.tables["MachineDowntimes"]:
             self.downtime.setdefault(row["machine_id"], []).append(row)
+        self.batch_ready_dates = {}
+        self._parsed_downtime = {}
+        self.trial_intervals: dict = {}
+
+    def _batch_ready_dt(self, batch):
+        batch_id = batch["batch_id"]
+        if batch_id not in self.batch_ready_dates:
+            self.batch_ready_dates[batch_id] = datetime.fromisoformat(batch["ready_date"])
+        return self.batch_ready_dates[batch_id]
+
+    def _machine_downtime_entries(self, machine_id):
+        if machine_id not in self._parsed_downtime:
+            entries = []
+            for downtime in self.downtime.get(machine_id, []):
+                status = downtime["status"]
+                if status == "cancelled":
+                    continue
+                if status != "active":
+                    entries.append((status, None, None))
+                else:
+                    entries.append(
+                        (
+                            status,
+                            datetime.fromisoformat(downtime["start_time"]),
+                            datetime.fromisoformat(downtime["end_time"]),
+                        )
+                    )
+            self._parsed_downtime[machine_id] = entries
+        return self._parsed_downtime[machine_id]
 
     def _protect(self):
         # 采用输入的起止日随试调行变化（不重排时段按它裁剪）：行改过就按当前各行重新找。
@@ -83,7 +112,9 @@ class TrialValidator:
 
     def _evaluate(self, admission_issues):
         self._protect()
-        issues = list(self.admission["base_issues"]) + admission_issues
+        self.trial_intervals = build_trial_intervals(self.rows)
+        self.live["trial_intervals"] = self.trial_intervals
+        issues = [dict(item) for item in self.admission["base_issues"]] + admission_issues
         if self.calendar_issue:
             issues.append(self.calendar_issue)
         if self.frozen_issue:
@@ -92,9 +123,9 @@ class TrialValidator:
             issues.append(self.anchor_error)
         for row in self.rows:
             issues.extend(self._row(row))
-        issues.extend(relation_issues(self.rows, self.live))
+        issues.extend(relation_issues(self.rows, self.live, trial_intervals=self.trial_intervals))
         issues.extend(trial_piece_issues(self.rows, self.live, self.settings))
-        issues.extend(resource_issues(self.rows, self.live, conn=self.conn))
+        issues.extend(resource_issues(self.rows, self.live, conn=self.conn, trial_intervals=self.trial_intervals))
         unique = {content_text(item): item for item in issues}
         return validation(list(unique.values()))
 
@@ -140,18 +171,21 @@ class TrialValidator:
 
     def _times(self, row, protected):
         original, current, ref = row["original"], row["current"], row["task_ref"]
+        op_ref = row["operation_ref"]
         batch, issues = original["batch"], []
         anchor = self.anchors.get(original["operation"]["id"])
         actual = anchor is not None and anchor["basis"] == "completed_actuals"
         fixed_cycle = anchor is not None and anchor["basis"] == "merged_external_actuals"
         try:
-            start, end = interval(current, original=original)
+            if op_ref in self.trial_intervals["current_errors_by_op"]:
+                raise self.trial_intervals["current_errors_by_op"][op_ref].with_traceback(None)
+            start, end = self.trial_intervals["current_by_op"][op_ref]
             if protected is None and self.engine is not None:
-                estimated_start, estimated_end = estimate(self.engine, original, current)
+                estimated_start, estimated_end = estimate(self.engine, original, current, start=start)
                 if start != estimated_start or end != estimated_end:
                     issues.append(issue("calendar_duration_conflict", "开完工与原工时、真实日历或效率不一致。", ref))
             if (not actual and not fixed_cycle and self.settings["ready_check"]
-                    and batch["ready_date"] and start < datetime.fromisoformat(batch["ready_date"])):
+                    and batch["ready_date"] and start < self._batch_ready_dt(batch)):
                 issues.append(issue("before_ready_date", "安排早于原批次可开工日期。", ref))
             if not actual:
                 issues.extend(self._downtimes(row, start, end))
@@ -165,12 +199,10 @@ class TrialValidator:
         issues, ref = [], row["task_ref"]
         if start == end:
             return issues
-        for downtime in self.downtime.get(row["current"]["machine_id"], []):
-            if downtime["status"] == "cancelled":
-                continue
-            if downtime["status"] != "active":
+        for status, dt_start, dt_end in self._machine_downtime_entries(row["current"]["machine_id"]):
+            if status != "active":
                 issues.append(issue("downtime_state_unknown", "设备停机状态不明确。", ref))
-            elif datetime.fromisoformat(downtime["start_time"]) < end and datetime.fromisoformat(downtime["end_time"]) > start:
+            elif dt_start < end and dt_end > start:
                 issues.append(issue("machine_downtime", "目标安排与实际设备停机重叠。", ref))
         return issues
 
@@ -223,8 +255,9 @@ class TrialValidator:
 
     def _adjusted_end(self, row, current, effort):
         try:
-            estimated_start, end = estimate(self.engine, row["original"], current, effort=effort)
-            if row["original"].get("point_basis") is not None and estimated_start != datetime.fromisoformat(current["start"]):
+            start = datetime.fromisoformat(current["start"])
+            estimated_start, end = estimate(self.engine, row["original"], current, start=start, effort=effort)
+            if row["original"].get("point_basis") is not None and estimated_start != start:
                 reject("point_calendar_conflict", "所选点时间不在允许班次内，未推迟完工或改成正时长，原草稿保留。", 422)
         except (AppError, ValueError, TypeError, OverflowError) as exc:
             if isinstance(exc, WorkbenchCommandRejected):

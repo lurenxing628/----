@@ -84,12 +84,23 @@ def test_relation_export_in_read_snapshot_reuses_loaded_table_facts(resource_con
     operator = identity_for(conn, "operator")
     assert operator is not None
 
+    statements = []
+    conn.set_trace_callback(statements.append)
+    try:
+        with reader.read_snapshot():
+            _, cold_count = service.preview_export("selected", scope={}, selected_refs=[operator.ref])
+    finally:
+        conn.set_trace_callback(None)
+    selects = [sql for sql in statements if sql.lstrip().upper().startswith("SELECT")]
+    assert cold_count == 1 and len(selects) <= 3, selects
+
     def unexpected(*args, **kwargs):
         raise AssertionError("export inside read_snapshot must reuse table_facts instead of querying repo/links")
 
     monkeypatch.setattr(service.links, "list_simple_rows_for_operators", unexpected)
     monkeypatch.setattr(service.repo, "raw_many", unexpected)
     with reader.read_snapshot():
+        reader._table_reader()
         args, count = service.preview_export("selected", scope={}, selected_refs=[operator.ref])
         rows = service.export_rows("csv", **args)
     assert count == 1 and len(rows) == 1

@@ -10,18 +10,12 @@ from core.services.scheduler.run.optimizer.graph_ready_profiles import (
     GraphReadyWeightProfile,
 )
 
-IG_PHASE = "graph_ready_v2_iterated_greedy"
 IG_PROFILE_SLUG = "v2_ig_destroy_repair"
 IG_CANDIDATE_POLICY = "iterated_greedy"
 # The decoder consumes only the pick-rank keys of an IG decision; the profile is inert but part of the
 # decode input signature, so every IG decode uses this one canonical v2 profile.
 IG_DECODE_FORMULA_SLUG = "edd"
 IG_DECODE_FORMULA_VERSION = "graph_ready_v2_objective_features_v2"
-IG_ALGORITHM = "operation_destroy_best_insertion_v3"
-# Trial decodes resume from the reference decode's checkpoint whose required prefix the trial keeps;
-# every accepted order is decoded in full again and both outputs must match (fail-loud otherwise).
-IG_PARTIAL_EVALUATION = "checkpoint_resume_prefix_exact"
-IG_ACCEPTANCE = "simulated_annealing_exponential_cooling"
 IG_GENERATORS = ("time_window", "resource_window", "tardy_random")
 
 
@@ -61,40 +55,13 @@ class IteratedGreedyLimits:
     temperature_ratio_end: float = 0.01
 
 
-def new_iterated_greedy_report(limits: IteratedGreedyLimits, *, objective_name: str) -> Dict[str, Any]:
+def new_iterated_greedy_report(*, objective_name: str) -> Dict[str, Any]:
     return {
-        "schema_version": 4, "phase": IG_PHASE, "algorithm": IG_ALGORITHM,
-        "partial_evaluation": IG_PARTIAL_EVALUATION, "objective_name": objective_name,
-        "enabled": True, "status": "not_run", "stop_reason": None,
-        "destruction_size": limits.destruction_size, "max_destruction_size": limits.max_destruction_size,
-        "insertion_window": limits.insertion_window,
-        "max_iterations": limits.max_iterations, "max_decodes": limits.max_decodes,
-        "time_budget_ms": 0, "runtime_ms": 0, "deadline_overrun_ms": 0,
-        "iterations": 0, "interrupted_iterations": 0, "incumbent_adoptions": 0, "incumbent_adoption_rollbacks": 0,
-        "decodes": 0, "duplicate_decision_pruned": 0,
-        "budget_pruned_before_decode": 0, "decode_admission": None,
-        "context_switches": 0, "unverified_trial_decodes": 0, "validation_decodes": 0,
-        "checkpoint_capture_rejections": 0, "reference_capture_decodes": 0,
-        # Full decodes that only capture a known solution under the IG context (start, restart, adoption).
-        "reference_captures": 0, "reference_capture_divergences": 0, "reference_capture_improvements": 0,
-        "rejected_by_reason": {}, "walk_accepted": 0, "walk_improved": 0, "walk_accepted_worse": 0,
-        "improvements": 0, "accepted": False, "parent_origin": None, "parent_score": None, "parent_profile_slug": None,
-        "reference_basis": None,
-        "starting_incumbent_origin": None, "starting_incumbent_score": None,
-        "initial_seed": {"enabled": limits.due_date_seed, "status": "not_run", "reason": None,
-                         "model": "observed_single_resource_due_date", "requires_sgs_validation": True,
-                         "probes": 0, "runtime_ms": 0, "decodes": 0, "selected": False,
-                         "incumbent_improved": False},
-        "parent_order_score": None, "parent_order_consistent": None,
-        "best_score": None, "mean_decode_ms": None,
-        "generators": {name: {"calls": 0, "improving": 0, "fully_solved": 0, "idle": 0, "degenerate": 0,
-                              "time_ms": 0, "difficulty": None, "size": None} for name in limits.generators},
-        "checkpoints": {"count": limits.checkpoint_count, "full_decodes": 0, "resumed_decodes": 0,
-                        "picks_total": 0, "picks_saved": 0, "equivalence_checks": 0},
-        "acceptance": {"policy": IG_ACCEPTANCE, "temperature_ratio_start": limits.temperature_ratio_start,
-                       "temperature_ratio_end": limits.temperature_ratio_end, "temperature_scale": None,
-                       "secondary_temperature_scale": None, "rejected": 0},
-        "pool": {"size": limits.pool_size, "stagnation_iterations": limits.stagnation_iterations, "restarts": 0,
-                 "restart_captures_failed": 0, "start_captures_failed": 0,
-                 "entries": 0, "initial_entries": 0, "selection_policy": "best_ranked_random_with_stagnation_restart"},
+        "objective_name": objective_name,
+        "status": "not_run",
+        "stop_reason": None,
+        "iterations": 0,
+        "decodes": 0,
+        "improvements": 0,
+        "accepted": False,
     }

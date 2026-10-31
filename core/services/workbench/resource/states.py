@@ -106,8 +106,6 @@ class ResourceChangePreparation:
             raise WorkbenchCommandRejected("constraint_conflict", "选中的关联资源已经停用，没有保存。请重新选择一个在用的。")
         if category is not None and not supports_source(raw.get("category"), category):
             raise WorkbenchCommandRejected("constraint_conflict", "选中工种的自制或外协归属和当前资源不匹配，没有保存。请换一个工种。")
-        if identity.entity_key != identity.entity_key.strip():
-            raise WorkbenchCommandRejected("constraint_conflict", "关联编号前后带空格，没有保存，以免写错到别的记录上。请去掉前后的空格。")
         return identity, raw
 
     def name_owner(self, kind, name):

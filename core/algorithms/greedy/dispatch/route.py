@@ -2,9 +2,12 @@
 
 from core.errors import ValidationError
 
+from .batch_order import dispatch_batch_order
+from .sgs import dispatch_sgs
+
 
 def dispatch_run(ctx, *, state, sorted_ops, batches, batch_order, params, machine_downtimes,
-                 resource_pool, graph_ready_context, batch_dispatch, sgs_dispatch,
+                 resource_pool, graph_ready_context,
                  decode_resume=None, decode_checkpoints=None) -> None:
     if graph_ready_context is not None and params.dispatch_mode_key != "sgs":
         raise ValidationError("图 ready 队列只能在 SGS 派工模式下启用。", field="graph_ready_context")
@@ -22,8 +25,8 @@ def dispatch_run(ctx, *, state, sorted_ops, batches, batch_order, params, machin
         resource_pool=resource_pool,
     )
     if params.dispatch_mode_key != "sgs":
-        batch_dispatch(ctx, **common, base_time=params.base_time)
+        dispatch_batch_order(ctx, **common, base_time=params.base_time)
         return
-    sgs_dispatch(ctx, **common, batch_order=batch_order, dispatch_rule=params.dispatch_rule_spec,
+    dispatch_sgs(ctx, **common, batch_order=batch_order, dispatch_rule=params.dispatch_rule_spec,
                  graph_ready_context=graph_ready_context,
                  decode_resume=decode_resume, decode_checkpoints=decode_checkpoints)

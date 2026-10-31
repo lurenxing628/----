@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.algorithm_contracts.ordering import normalize_text_id
+from core.algorithm_contracts.ordering import clean_resource_id, normalize_text_id
 from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
 from core.algorithm_contracts.value_domains import INTERNAL
 
@@ -22,10 +22,9 @@ class ScheduleRunState:
     operator_timeline: Dict[str, List[Tuple[datetime, datetime]]] = field(default_factory=OwnedTimeline)
     machine_busy_hours: Dict[str, float] = field(default_factory=dict)
     operator_busy_hours: Dict[str, float] = field(default_factory=dict)
-    last_op_type_by_machine: Dict[str, str] = field(default_factory=MachineTypeState)
+    last_op_type_by_machine: MachineTypeState = field(default_factory=MachineTypeState)
     last_end_by_machine: Dict[str, datetime] = field(default_factory=dict)
     results: List[ScheduleResult] = field(default_factory=list)
-    errors: List[str] = field(default_factory=list)
     blocked_batches: set = field(default_factory=set)
     failed_count: int = 0
     seed_count: int = 0
@@ -49,7 +48,6 @@ class ScheduleRunState:
         is copied. A run-owned type state is cloned without its live demand; the
         resumed decode rebuilds and replays it for its own operation objects.
         """
-        types = self.last_op_type_by_machine
         return ScheduleRunState(
             base_time=self.base_time,
             readiness_gate_enabled=self.readiness_gate_enabled,
@@ -59,10 +57,9 @@ class ScheduleRunState:
             operator_timeline=clone_timeline(self.operator_timeline),
             machine_busy_hours=dict(self.machine_busy_hours),
             operator_busy_hours=dict(self.operator_busy_hours),
-            last_op_type_by_machine=types.clone() if isinstance(types, MachineTypeState) else dict(types),
+            last_op_type_by_machine=self.last_op_type_by_machine.clone(),
             last_end_by_machine=dict(self.last_end_by_machine),
             results=list(self.results),
-            errors=list(self.errors),
             blocked_batches=set(self.blocked_batches),
             failed_count=self.failed_count,
             seed_count=self.seed_count,
@@ -94,8 +91,7 @@ class ScheduleRunState:
         self.results.append(result)
         self.advance_batch(normalize_text_id(result.batch_id), result.end_time)
         self._record_internal_usage(result, seed_mode=False)
-        if isinstance(self.last_op_type_by_machine, MachineTypeState):
-            self.last_op_type_by_machine.complete(result.op_id)
+        self.last_op_type_by_machine.complete(result.op_id)
 
     def record_dispatch_failure(
         self,
@@ -105,14 +101,16 @@ class ScheduleRunState:
         remaining_failed: int = 0,
         failed_op: OpForScheduleAlgo,
         skipped_ops: Optional[List[OpForScheduleAlgo]] = None,
-        error_message: str = "",
+        failure: Dict[str, Any],
     ) -> None:
         self.failed_count += 1 + max(remaining_failed, 0)
+        code = str(failure["code"])
+        extra = {key: value for key, value in failure.items() if key != "code"} or None
         detail = self._failure_detail(
-            "dispatch_operation_failed",
+            code,
             failed_op,
             batch_id=batch_id,
-            extra={"error_message": error_message} if error_message else None,
+            extra=extra,
         )
         self.failure_details.append(detail)
         self._retire_resource_demand(detail["op_id"])
@@ -129,14 +127,11 @@ class ScheduleRunState:
             )
         if block and batch_id:
             self.blocked_batches.add(batch_id)
-            if isinstance(self.last_op_type_by_machine, MachineTypeState):
-                self.last_op_type_by_machine.block_batch(batch_id)
+            self.last_op_type_by_machine.block_batch(batch_id)
 
     def record_missing_batch(self, op: OpForScheduleAlgo, batch_id: str) -> None:
         self.failed_count += 1
         # 失败的用户可见文案统一由结构化 failure_details + _structured_failure_message 单点渲染。
-        # 不再往 state.errors 塞原始中文串：它不匹配任何 legacy 反解模式，会回落成
-        # generic_scheduler_error（“请联系管理员”），与具体文案并列形成双发并虚增 error_count。
         detail = self._failure_detail("missing_batch", op, batch_id=batch_id)
         self.failure_details.append(detail)
         self._retire_resource_demand(detail["op_id"], blocked_batch=batch_id)
@@ -176,10 +171,9 @@ class ScheduleRunState:
         self._retire_resource_demand(detail["op_id"])
 
     def _retire_resource_demand(self, op_id: int, *, blocked_batch: str = "") -> None:
-        if isinstance(self.last_op_type_by_machine, MachineTypeState):
-            self.last_op_type_by_machine.complete(op_id)
-            if blocked_batch:
-                self.last_op_type_by_machine.block_batch(blocked_batch)
+        self.last_op_type_by_machine.complete(op_id)
+        if blocked_batch:
+            self.last_op_type_by_machine.block_batch(blocked_batch)
 
     def seed_resource_warnings(self) -> List[str]:
         warnings: List[str] = []
@@ -205,8 +199,8 @@ class ScheduleRunState:
         # A multi-report seed occupies each segment's actual resources; the result row keeps only the first pair.
         usages = segments or ((result.start_time, result.end_time, result.machine_id, result.operator_id),)
         for start, end, machine, operator in usages:
-            machine_id = normalize_text_id(machine)
-            operator_id = normalize_text_id(operator)
+            machine_id = clean_resource_id(machine)
+            operator_id = clean_resource_id(operator)
             accumulate_busy_hours(
                 machine_busy_hours=self.machine_busy_hours,
                 operator_busy_hours=self.operator_busy_hours,
@@ -230,11 +224,11 @@ class ScheduleRunState:
     def _record_missing_seed_resources(self, result: ScheduleResult) -> None:
         # normalize_seed_results keeps only seeds with a positive operation id.
         op_id = str(result.op_id)
-        if not normalize_text_id(result.machine_id):
+        if not clean_resource_id(result.machine_id):
             self.missing_seed_machine_count += 1
             if len(self.missing_seed_machine_samples) < 5:
                 self.missing_seed_machine_samples.append(op_id)
-        if not normalize_text_id(result.operator_id):
+        if not clean_resource_id(result.operator_id):
             self.missing_seed_operator_count += 1
             if len(self.missing_seed_operator_samples) < 5:
                 self.missing_seed_operator_samples.append(op_id)

@@ -43,7 +43,7 @@ def process_create():
     def guard():
         with reader.read_snapshot() as state:
             validate_write_context(body["write_token"], "process:create", "process.create", state)
-            return domain.prepare_create(payload, parts={row["part_no"]: row for row in reader.facts()["parts"]})
+            return domain.prepare_create(payload)
 
     result = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action="process.create", context_ref="process:create",

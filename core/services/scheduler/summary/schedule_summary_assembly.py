@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
-from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
+from core.algorithm_contracts.types import ScheduleSummary
 from core.models.enums import YesNo
 from core.models.objective import best_score_schema, comparison_metric_key
+from core.services.scheduler.contracts.graph_public_summary import project_public_graph_analysis
 from core.services.scheduler.contracts.schedule_summary_types import (
     AlgorithmSummaryState,
     FallbackState,
@@ -13,12 +14,12 @@ from core.services.scheduler.contracts.schedule_summary_types import (
     SummaryBuildContext,
 )
 from core.services.scheduler.run.auto_assign_resource_errors import auto_assign_failed_op_ids_from_failure_details
-from core.services.scheduler.run.optimizer.search_state import compact_attempts
+from core.services.scheduler.run.schedule_candidate_summary import is_unified_generation
 from core.services.scheduler.run.schedule_persistence_errors import missing_internal_resource_samples
 from core.shared.local_datetime import format_local_datetime as fmt_dt
 
 from .due_risk_items import NEAR_DUE_WINDOW_DAYS, incomplete_batches_payload
-from .optimizer_public_summary import project_public_algo_summary
+from .optimizer_public_candidates import project_candidate_comparison
 from .summary_visible_degradation import (
     apply_summary_diagnostics,
     public_summary_error_state,
@@ -35,24 +36,6 @@ def serialize_end_date(end_date: Optional[Union[date, str]]) -> Optional[str]:
         text = end_date.strip()
         return text if text else None
     return end_date.isoformat()
-
-
-def _finish_time_by_batch(results: List[ScheduleResult]) -> Dict[str, datetime]:
-    # 口径提示（audit 2026-07-20 A18）：这里取"已排结果"的最大 end_time，不校验批次
-    # 是否排完——半途失败批次的值是被截断的部分完工时间。超期/临期分类前须先按
-    # due_risk_items.incomplete_batch_ids_from_failure_details 排除这类批次。
-    finish_by_batch: Dict[str, datetime] = {}
-    for result in results:
-        finish_time = result.end_time
-        if finish_time is None:
-            continue
-        batch_id = result.batch_id.strip()
-        if not batch_id:
-            continue
-        current = finish_by_batch.get(batch_id)
-        if current is None or finish_time > current:
-            finish_by_batch[batch_id] = finish_time
-    return finish_by_batch
 
 
 def _actionable_missing_internal_resource_op_ids(
@@ -119,26 +102,42 @@ def _apply_fallback_algo_fields(algo: Dict[str, Any], fallback_state: FallbackSt
 
 def _algo_dict(state: AlgorithmSummaryState) -> Dict[str, Any]:
     ctx = state.ctx
+    comparison = ctx.candidate_comparison_public
+    unified = comparison is not None and is_unified_generation(comparison)
+    best_score = (
+        list(comparison["selection"]["selected_score"])
+        if unified and comparison is not None
+        else list(ctx.best_score)
+    )
+    metrics = ctx.best_metrics.public_dict()
     algo: Dict[str, Any] = {
         "mode": ctx.algo_mode,
         "objective": ctx.objective_name,
         "comparison_metric": comparison_metric_key(ctx.objective_name),
-        "config_snapshot": ctx.cfg.to_dict(),
+        "config_snapshot": ctx.cfg.public_config_snapshot(),
         "time_budget_seconds": ctx.time_budget_seconds,
         "hard_constraints": state.hard_constraints,
         "soft_objectives": [ctx.objective_name],
-        "best_score": ctx.best_score,
         "best_score_schema": best_score_schema(ctx.objective_name),
-        "metrics": ctx.best_metrics.to_dict() if ctx.best_metrics is not None else None,
-        "attempts": compact_attempts(ctx.attempts, limit=12),
-        "improvement_trace": ctx.improvement_trace[:200],
-        "search_report": ctx.search_report,
+        "attempts": [],
         # 停机扩展只在自动分配开启且资源池建成时由 extend_downtime_map_for_resource_pool 写入。
-        "downtime_avoid": {"extend_attempted": ctx.downtime_meta.get("downtime_extend_attempted", False)},
+        "downtime_avoid": {"extend_attempted": bool(ctx.downtime_meta.get("downtime_extend_attempted", False))},
         "freeze_window": _algo_freeze_window_dict(state),
-        "graph_analysis": ctx.graph_analysis_public,
-        "candidate_comparison": ctx.candidate_comparison_public,
+        "best_score": best_score,
     }
+    if metrics:
+        algo["metrics"] = metrics
+    if unified and comparison is not None:
+        for key in ("generation_policy_version", "primary_objective", "target_objectives"):
+            algo[key] = comparison[key]
+    if ctx.graph_analysis_public is not None:
+        graph_analysis = project_public_graph_analysis(ctx.graph_analysis_public)
+        if graph_analysis:
+            algo["graph_analysis"] = graph_analysis
+    if comparison is not None:
+        projected_comparison = project_candidate_comparison(comparison)
+        if projected_comparison:
+            algo["candidate_comparison"] = projected_comparison
     _apply_optional_algo_fields(algo, state)
     _apply_fallback_algo_fields(algo, state.fallback_state)
     return algo
@@ -146,7 +145,7 @@ def _algo_dict(state: AlgorithmSummaryState) -> Dict[str, Any]:
 
 def _apply_visible_degradations(
     *,
-    summary: Optional[ScheduleSummary],
+    summary: ScheduleSummary,
     events: List[Dict[str, Any]],
     counters: Dict[str, Any],
     causes: List[str],
@@ -211,14 +210,13 @@ def _build_result_summary_obj(
     completion_status: str,
     time_cost_ms: int,
 ) -> Dict[str, Any]:
-    raw_summary_errors = ctx.summary.errors if ctx.summary is not None else []
-    failure_details = ctx.summary.failure_details if ctx.summary is not None else []
-    public_error_details, public_error_messages = public_summary_error_state(raw_summary_errors, failure_details)
+    failure_details = ctx.summary.failure_details
+    public_error_details, public_error_messages = public_summary_error_state(failure_details)
     missing_resource_ops = missing_internal_resource_samples(
         ctx.operations,
         _actionable_missing_internal_resource_op_ids(ctx, failure_details),
     )
-    public_algo, optimizer_diagnostics = project_public_algo_summary(_algo_dict(algorithm_state))
+    public_algo = _algo_dict(algorithm_state)
     warnings = warnings_with_graph(warnings, public_algo.get("graph_analysis"))
     degradation_events = list(summary_degradation["events"])
     degradation_counters = dict(summary_degradation["counters"])
@@ -297,5 +295,5 @@ def _build_result_summary_obj(
             "execution_snapshot_op_ids_sample": op_ids[:50],
             "execution_snapshot_op_ids_truncated": len(op_ids) > 50,
         }
-    apply_summary_diagnostics(result_summary, optimizer_diagnostics, ctx)
+    apply_summary_diagnostics(result_summary, ctx)
     return result_summary

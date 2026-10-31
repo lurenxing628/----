@@ -6,7 +6,8 @@ import re
 import sqlite3
 from typing import Any, Dict, List, Optional, Set
 
-from core.infrastructure.connection_guards import schema_contract_memo
+from core.infrastructure.schema_structure import SchemaStructure
+from core.infrastructure.sqlite_udf import NON_INPUT_RECEIPT_ACTIONS, NON_INPUT_RECEIPT_PREFIXES
 
 from .base_repo import BaseRepository
 from .sqlite_rows import raw_projection
@@ -22,17 +23,15 @@ def _quote(name: str) -> str:
 
 
 class WorkbenchPreflightFactsRepository(BaseRepository):
-    def __init__(self, conn, logger=None, *, present_tables=None,
-                 non_input_receipt_actions=(), non_input_receipt_prefixes=()):
+    def __init__(self, conn, logger=None, *, present_tables=None, structure: Optional[SchemaStructure] = None):
         super().__init__(conn, logger)
+        self.structure = structure if structure is not None else SchemaStructure(conn)
         self._present: Optional[Set[str]] = set(present_tables) if present_tables is not None else None
-        self.column_types, self.converters = {}, {}
-        self._non_input_receipt_actions = tuple(non_input_receipt_actions)
-        self._non_input_receipt_prefixes = tuple(non_input_receipt_prefixes)
+        self.converters = {}
 
     def _present_tables(self) -> Set[str]:
         if self._present is None:
-            self._present = {name for name, (kind, _table, _sql) in schema_contract_memo(self.conn).structure.objects.items() if kind == "table"}
+            self._present = {name for name, (kind, _table, _sql) in self.structure.objects.items() if kind == "table"}
         return self._present
 
     def preflight_tables(self, capture) -> Dict[str, List[Dict[str, Any]]]:
@@ -43,32 +42,34 @@ class WorkbenchPreflightFactsRepository(BaseRepository):
         rows = capture.business_table(name)
         return sorted(rows, key=lambda row: row["operation_id"]) if name == "BatchExternalContexts" else rows
 
+    def table_converters(self, name):
+        if name not in self.converters:
+            info = self.structure.table_info(name)
+            self.converters[name] = {
+                str(row[1]): sqlite3.converters[kind]
+                for row in info
+                for kind in (re.split(r"[ (]", str(row[2]), maxsplit=1)[0].upper(),)
+                if kind in sqlite3.converters
+            }
+        return self.converters[name]
+
     def capture_table(self, name):
         """Capture actual columns and original storage values once in rowid order."""
         if name not in self._present_tables():
             raise ValueError("unknown table: " + repr(name))
-        info = schema_contract_memo(self.conn).structure.table_info(name)
+        info = self.structure.table_info(name)
         columns, projection = raw_projection(name, info)
-        self.column_types[name] = {str(row[1]): str(row[2]) for row in info}
-        codecs = {column: sqlite3.converters[kind] for column, declared in self.column_types[name].items()
-                  for kind in (re.split(r"[ (]", declared, maxsplit=1)[0].upper(),) if kind in sqlite3.converters}
         where, params = self._capture_predicate(name, columns)
         rows = [tuple(row) for row in self.execute(
             "SELECT " + projection + " FROM " + _quote(name) + where + " ORDER BY rowid", params)]
-        self.converters[name] = codecs
         return columns, rows
 
     def _capture_predicate(self, name, columns):
         if name != "WorkbenchCommandReceipts" or "action" not in columns:
             return "", ()
-        checks, params = [], []
-        if self._non_input_receipt_actions:
-            checks.append('"action" COLLATE BINARY IN (' + ",".join(
-                "?" for _ in self._non_input_receipt_actions) + ")")
-            params.extend(self._non_input_receipt_actions)
-        for prefix in self._non_input_receipt_prefixes:
-            checks.append('"action" GLOB ?')
-            params.append(prefix + "*")
-        if not checks:
-            return "", ()
-        return " WHERE NOT (typeof(\"action\")='text' AND (" + " OR ".join(checks) + "))", tuple(params)
+        checks = (
+            '"action" COLLATE BINARY IN (' + ",".join("?" for _ in NON_INPUT_RECEIPT_ACTIONS) + ")",
+            *('"action" GLOB ?' for _ in NON_INPUT_RECEIPT_PREFIXES),
+        )
+        params = (*NON_INPUT_RECEIPT_ACTIONS, *(prefix + "*" for prefix in NON_INPUT_RECEIPT_PREFIXES))
+        return " WHERE NOT (typeof(\"action\")='text' AND (" + " OR ".join(checks) + "))", params

@@ -9,7 +9,7 @@ from typing import Optional, Tuple
 @dataclass(frozen=True)
 class WorkbenchPlanLocator:
     version: int
-    plan_role: str
+    plan_role: str = "adopted"
 
 
 class WorkbenchPlanReferenceError(ValueError):

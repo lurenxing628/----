@@ -42,10 +42,6 @@ def metric_bonus(metric: Dict[str, Any], *, weights: Dict[str, float]) -> float:
     )
 
 
-def v2_metric_bonus(metric: Dict[str, Any], *, weights: Dict[str, float]) -> float:
-    return metric_bonus(metric, weights=weights)
-
-
 def normalized_v2_metrics_by_op_id(
     metrics_by_op_id: Dict[int, Dict[str, Any]],
     *,
@@ -155,5 +151,4 @@ __all__ = [
     "build_v2_common_rank_cache",
     "metric_bonus",
     "normalized_v2_metrics_by_op_id",
-    "v2_metric_bonus",
 ]

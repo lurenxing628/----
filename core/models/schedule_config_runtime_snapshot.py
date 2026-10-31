@@ -38,31 +38,17 @@ class ScheduleConfigSnapshot:
         """沿用旧口径：重点工序与后续影响权重都为 0 时不按后续工时加分，否则固定为 1。"""
         return 0 if self.graph_critical_weight == 0 and self.graph_impact_weight == 0 else 1
 
-    def to_dict(self) -> Dict[str, Any]:
+    def public_config_snapshot(self) -> Dict[str, Any]:
         return {
             "sort_strategy": self.sort_strategy,
-            "priority_weight": self.priority_weight,
-            "due_weight": self.due_weight,
-            "ready_weight": self.ready_weight,
-            "holiday_default_efficiency": self.holiday_default_efficiency,
-            "enforce_ready_default": self.enforce_ready_default,
-            "prefer_primary_skill": self.prefer_primary_skill,
             "dispatch_mode": self.dispatch_mode,
             "dispatch_rule": self.dispatch_rule,
-            "auto_assign_enabled": self.auto_assign_enabled,
-            "auto_assign_persist": self.auto_assign_persist,
-            "ortools_enabled": self.ortools_enabled,
-            "ortools_time_limit_seconds": self.ortools_time_limit_seconds,
             "algo_mode": self.algo_mode,
-            "time_budget_seconds": self.time_budget_seconds,
             "objective": self.objective,
+            "auto_assign_enabled": self.auto_assign_enabled,
             "freeze_window_enabled": self.freeze_window_enabled,
+            "time_budget_seconds": self.time_budget_seconds,
             "freeze_window_days": self.freeze_window_days,
-            "graph_analysis_mode": self.graph_analysis_mode,
-            "graph_block_on_cycle": self.graph_block_on_cycle,
-            "graph_critical_weight": self.graph_critical_weight,
-            "graph_impact_weight": self.graph_impact_weight,
-            "graph_debug_export": self.graph_debug_export,
         }
 
 

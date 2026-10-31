@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from unittest import mock
 
 from core.algorithm_contracts.types import ScheduleResult
-from core.algorithms.greedy.dispatch import sgs as sgs_module
+from core.algorithms.greedy.dispatch import sgs_scoring as sgs_scoring_module
 from core.algorithms.greedy.dispatch.sgs_scoring import with_graph_priority_key
 from core.algorithms.greedy.scheduler import GreedyScheduler
 from tests._support.algo_operations import make_algo_op, make_batch
@@ -100,8 +100,8 @@ def test_sgs_internal_scoring_uses_shared_estimator_and_matches_execution_order(
     def _dispatch_key_by_end(inp):
         return (-inp.slack_hours, float(inp.batch_order), float(inp.seq), float(inp.op_id))
 
-    with mock.patch.object(sgs_module, "estimate_internal_slot", wraps=sgs_module.estimate_internal_slot) as wrapped, mock.patch.object(
-        sgs_module,
+    with mock.patch.object(sgs_scoring_module, "estimate_internal_slot", wraps=sgs_scoring_module.estimate_internal_slot) as wrapped, mock.patch.object(
+        sgs_scoring_module,
         "build_dispatch_key",
         side_effect=_dispatch_key_by_end,
     ):
@@ -134,7 +134,7 @@ def test_sgs_native_order_keeps_seq_id_ties_and_missing_batch_with_raw_downtime(
     start = datetime(2026, 1, 1, 8)
     operations = [
         make_algo_op(id=op_id, op_code="OP" + str(op_id), batch_id=batch_id, seq=seq,
-                     source="internal", machine_id="M1", operator_id="O1", setup_hours=1.0,
+                     source="internal", machine_id=" M1 ", operator_id="O1", setup_hours=1.0,
                      unit_hours=0.0, op_type_id="OT1", op_type_name="cut")
         for op_id, batch_id, seq in ((4, "B_A", 2), (3, "B_A", 1), (1, "B_B", 1),
                                      (2, "B_A", 1), (5, "MISSING", 1))

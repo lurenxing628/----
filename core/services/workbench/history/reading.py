@@ -1,14 +1,16 @@
 """Request-local reads of original history sources inside one read snapshot."""
 
-from core.infrastructure.connection_guards import schema_contract_memo
-from core.infrastructure.workbench_run_schema import workbench_run_contract_issues
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.facts.adoption_baseline_values import (
     REASONS,
     AdoptionBaselineUnavailable,
     read_adoption_record,
 )
-from core.services.workbench.facts.candidate_projection import candidate_summary, dispositions, validate_manifest
+from core.services.workbench.facts.candidate_projection import (
+    candidate_completeness,
+    dispositions,
+    validate_manifest,
+)
 from core.services.workbench.facts.candidate_read_source import read_candidate_source
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_values import corrupt
@@ -49,7 +51,7 @@ class _HistoryCandidateStore(CandidateStore):
     """Keep CandidateStore's checks while sharing archived bytes across events."""
 
     def __init__(self, conn):
-        super().__init__(conn, copy_on_read=False)
+        super().__init__(conn)
         self._saved = {}
 
     def run(self, run_ref):
@@ -94,7 +96,6 @@ class HistoryReader:
             raise RuntimeError("History sources require the caller's read transaction")
         self.conn = conn
         self.store = _HistoryCandidateStore(conn)
-        self._run_schema_checked = False
         self._run_prepared = {descriptor["source"]["run_ref"]: {
             "head": descriptor["record"]["job"], "admission": descriptor["record"]["admission"],
             "header": descriptor["record"]["run_header"]} for descriptor in catalog
@@ -110,31 +111,28 @@ class HistoryReader:
         self.history_metrics_cache = {}
         self.history_range_facts = {}
 
-    def condition_source(self, packet):
-        """Share a verified saved source while keeping missing-event evidence separate."""
+    def prepared_condition_source(self, packet):
+        """Share a verified saved source and window-free settings while keeping missing-event evidence separate."""
         key = _condition_key(packet)
         if key not in self._condition_sources:
             self._condition_sources[key] = prepare_history_condition_source(packet)
-        return self._condition_sources[key]["source"]
+        return self._condition_sources[key]
+
+    def condition_source(self, packet):
+        """Share a verified saved source while keeping missing-event evidence separate."""
+        return self.prepared_condition_source(packet)["source"]
 
     def condition_side(self, packet, window):
         """Reuse production by source and window, retaining window-free settings."""
         source_key = _condition_key(packet)
         key = (source_key, window["start"], window["end"])
         if key not in self._condition_sides:
-            self.condition_source(packet)
-            self._condition_sides[key] = prepare_history_condition_side(self._condition_sources[source_key], window)
+            self._condition_sides[key] = prepare_history_condition_side(
+                self.prepared_condition_source(packet), window
+            )
         return self._condition_sides[key]
 
-    def _require_run_schema(self):
-        if not self._run_schema_checked:
-            if schema_contract_memo(self.conn).get_schema(workbench_run_contract_issues):
-                raise WorkbenchCommandRejected("candidate_schema_unavailable", "排产记录结构不完整，请联系维护人员。", 503)
-            self._run_schema_checked = True
-
     def _run(self, run_ref):
-        self._require_run_schema()
-
         def load():
             prepared = self._run_prepared.get(run_ref, {})
             head = prepared.get("head")
@@ -163,7 +161,7 @@ class HistoryReader:
                     raise WorkbenchCommandRejected("history_source_invalid", "历史候选与原排产编号不一致。", 500)
                 corrupt()
             source = read_candidate_source(self.store, candidate_ref, prepared={**saved, "candidate": candidate})
-            candidate_summary(candidate, saved["disposition"], scheduled_op_ids=source.scheduled_op_ids)
+            candidate_completeness(candidate, saved["disposition"], scheduled_op_ids=source.scheduled_op_ids)
             saved["candidate_sources"][candidate_ref] = source
             return source
 
@@ -176,15 +174,23 @@ class HistoryReader:
             self._entries[entry_ref] = self._read(descriptor)
         return self._entries[entry_ref]
 
-    def _read(self, descriptor):
+    @staticmethod
+    def _descriptor_identity(descriptor):
         source_kind, refs = descriptor["source_kind"], descriptor["source"]
         kind = "trial" if source_kind == "trial_adoption" else "run"
         ref = refs["run_ref"] if kind == "run" else refs["scenario_ref"]
-        packet = _packet(kind, ref, descriptor["entry_ref"])
+        source_issue = None
         if source_kind in ("candidate_adoption", "trial_adoption") and descriptor["record"]["audit"] is None:
             gap = next((row for row in descriptor["evidence_gaps"] if row["code"] in ("audit_missing", "audit_unproven")), None)
-            packet["source_issue"] = {"code": gap["code"], "message": gap["message"]} if gap else {
+            source_issue = {"code": gap["code"], "message": gap["message"]} if gap else {
                 "code": "audit_missing", "message": "原采用审计缺失，结果来源无法确认。"}
+        return source_kind, refs, kind, ref, source_issue
+
+    def _read(self, descriptor):
+        _source_kind, refs, kind, ref, source_issue = self._descriptor_identity(descriptor)
+        packet = _packet(kind, ref, descriptor["entry_ref"])
+        if source_issue is not None:
+            packet["source_issue"] = source_issue
             return packet
         # Runs, candidates, drafts and scenarios are permanent; a missing source is damaged storage.
         try:
@@ -241,14 +247,13 @@ class HistoryReader:
 
     def source_state(self, descriptor):
         """Saved sources bind their permanent references, state and known gaps."""
-        packet = self.read(descriptor)
-        return {"kind": packet["kind"], "ref": packet["ref"], "entry_ref": descriptor["entry_ref"],
+        _source_kind, _refs, kind, ref, source_issue = self._descriptor_identity(descriptor)
+        return {"kind": kind, "ref": ref, "entry_ref": descriptor["entry_ref"],
                 "source": descriptor["source"], "state": descriptor["state"],
-                "source_issue": packet.get("source_issue")}
+                "source_issue": source_issue}
 
     def run_source(self, run_ref, candidate_ref, *, range_start, range_end):
         """Reuse the existing decision source for the actual candidate and window."""
-        self._require_run_schema()
         key = (run_ref, candidate_ref, range_start, range_end)
         return _cached(self._sources, key, lambda: DecisionSource(self.store, run_ref,
             selected_candidate_ref=candidate_ref, range_start=range_start, range_end=range_end,

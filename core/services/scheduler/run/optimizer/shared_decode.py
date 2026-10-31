@@ -6,7 +6,7 @@ import math
 from copy import copy
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple
 
 from core.algorithm_contracts.ordering import normalize_batch_order_override
 from core.algorithm_contracts.sort_strategies import SortStrategy
@@ -15,7 +15,7 @@ from core.algorithms.evaluation import compute_metrics, prepare_evaluation_conte
 from core.algorithms.greedy.schedule_params import resolve_schedule_params
 from core.errors import ValidationError
 
-from .shared_archive import ArchiveObservation, CandidateArchiveRef
+from .shared_archive import ArchiveObservation, CandidateArchiveRef, decoded_batch_order
 from .shared_budget import SharedSearchSkip
 
 if TYPE_CHECKING:
@@ -54,6 +54,7 @@ class DecodedEvaluation:
     used_params: Dict[str, Any]
     algo_stats: Dict[str, Any]
     receipt: Dict[str, Any]
+    decoded_batch_order: Tuple[str, ...]
     entry_id: Optional[int] = None
     archive_observation: Any = None
 
@@ -137,6 +138,7 @@ class SharedDecodeSession:
         self._operation_ids = {op.id for op in operations}
         self._records: Dict[DecodeRequest, _RequestRecord] = {}
         self._by_id: Dict[int, _RequestRecord] = {}
+        self._due_by_batch: Optional[Dict[str, Optional[date]]] = None
         self.actual_decoder_calls = 0
         self.new_decisions = 0
         self.reused_decisions = 0
@@ -144,53 +146,75 @@ class SharedDecodeSession:
         self.failed_decoder_calls = 0
         self._execution_counts: Dict[str, int] = {}
 
+    def due_by_batch(self, batches: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Optional[date]]]:
+        target_batches = self.batches if batches is None else batches
+        if target_batches is None:
+            return None
+        if target_batches is self.batches or target_batches is self._normalized_batches:
+            if self._due_by_batch is None:
+                from .neighborhood_move_support import prepare_batch_due_dates
+
+                self._due_by_batch = prepare_batch_due_dates(
+                    target_batches,
+                    native_preparation=self.native_preparation,
+                )
+            return self._due_by_batch
+        from .neighborhood_move_support import prepare_batch_due_dates
+
+        return prepare_batch_due_dates(target_batches)
+
     def _request(self, kwargs: Dict[str, Any]) -> Tuple[DecodeRequest, Any, Dict[str, int], Any, Any, Any]:
         from core.algorithms.greedy.dispatch.sgs_graph import graph_priority_key_map
         from core.algorithms.greedy.scheduler import build_batch_order
 
         from .graph.predecode import graph_priority_preorder
 
-        pair_rank = kwargs.get("resource_pair_rank") or None
+        pair_rank = kwargs["resource_pair_rank"] or None
         pool = self.native_preparation.resource_pool
         if pair_rank is not None:
             ranks = dict((pool or {}).get("pair_rank") or {})
             ranks.update(pair_rank)
             pool = dict(pool or {}, pair_rank=ranks)
         params = resolve_schedule_params(
-            config=self.scheduler.config, strategy=kwargs.get("strategy"),
-            strategy_params=kwargs.get("strategy_params"), start_dt=kwargs["start_dt"],
-            end_date=kwargs.get("end_date"), dispatch_mode=kwargs.get("dispatch_mode"),
-            dispatch_rule=kwargs.get("dispatch_rule"), resource_pool=pool,
+            config=self.scheduler.config, strategy=kwargs["strategy"],
+            strategy_params=kwargs["strategy_params"], start_dt=kwargs["start_dt"],
+            end_date=kwargs["end_date"], dispatch_mode=kwargs["dispatch_mode"],
+            dispatch_rule=kwargs["dispatch_rule"], resource_pool=pool,
         )
-        readiness = bool(kwargs.get("readiness_gate_enabled", False))
-        override = normalize_batch_order_override(kwargs.get("batch_order_override"), self._normalized_batches)
+        readiness = bool(kwargs["readiness_gate_enabled"])
+        override = normalize_batch_order_override(kwargs["batch_order_override"], self._normalized_batches)
         full_override = bool(override) and len(override) == len(self._normalized_batches)
-        batch_ranks = build_batch_order(self._normalized_batches, params, batch_order_override=override)
+        batch_ranks = build_batch_order(
+            self._normalized_batches,
+            params,
+            batch_order_override=override,
+            preparation=self.native_preparation,
+        )
         order = tuple(sorted(batch_ranks, key=batch_ranks.__getitem__))
         sort_inputs = () if full_override else (
             params.strategy.value,
             tuple((name, _immutable(params.used_params[name])) for name in ("priority_weight", "due_weight")
                   if name in params.used_params),
         )
-        graph_enabled = bool(kwargs.get("graph_enabled", False))
+        graph_enabled = bool(kwargs["graph_enabled"])
         score_enabled, preorder, context = False, (), None
         if graph_enabled:
             if self._graph_context is None:
                 raise ValueError("SharedDecodeSession has no graph input.")
-            score_enabled = kwargs.get("graph_score_enabled", False)
+            score_enabled = kwargs["graph_score_enabled"]
             if type(score_enabled) is not bool:
                 raise ValidationError("图评分开关 score_enabled 必须是 bool。", field="graph_ready_context")
-            keys = kwargs.get("graph_priority_key_by_op_id")
+            keys = kwargs["graph_priority_key_by_op_id"]
             if score_enabled:
-                if not isinstance(keys, dict) or any(type(op_id) is not int for op_id in keys):
-                    raise ValidationError("图评分 key 必须覆盖全部待排工序。", field="graph_ready_context")
                 keys = graph_priority_key_map(keys, schedulable_ids=self._operation_ids)
-                preorder = graph_priority_preorder(keys)
+                if keys.preorder is None:
+                    keys.preorder = graph_priority_preorder(keys)
+                preorder = keys.preorder
             context = dict(self._graph_context, score_enabled=score_enabled, graph_priority_key_by_op_id=keys)
-        resource_changes = kwargs.get("operation_resources")
+        resource_changes = kwargs["operation_resources"]
         resources = (
             tuple(sorted((op_id, machine_id, operator_id) for op_id, (machine_id, operator_id) in resource_changes.items()
-                         if (machine_id, operator_id) != self._base_operation_resources.get(op_id)))
+                         if (machine_id, operator_id) != self._base_operation_resources[op_id]))
             if resource_changes else ()
         )
         operations = self.operations
@@ -206,7 +230,7 @@ class SharedDecodeSession:
                         base_op = self._operations_by_id[op_id]
                         variant_op = copy(base_op)
                         variant_op.machine_id, variant_op.operator_id = machine_id, operator_id
-                        self.native_preparation.register_operation_variant(base_op, variant_op)
+                        self.native_preparation.register_operation_variant(variant_op)
                         self._op_variant_cache[variant_key] = variant_op
                     replacements[op_id] = variant_op
                 operations = [replacements.get(op.id, op) for op in self.operations]
@@ -218,14 +242,14 @@ class SharedDecodeSession:
         )
         return request, params, batch_ranks, operations, pool, context
 
-    def _decode(self, kwargs: Dict[str, Any], params: Any, batch_order: Dict[str, int],
+    def _decode(self, kwargs: Dict[str, Any], request: DecodeRequest, params: Any, batch_order: Dict[str, int],
                 operations: Any, resource_pool: Any, context: Any) -> Any:
         return self.scheduler.schedule_prepared(
             self.native_preparation, params=params, batch_order=batch_order,
             operations=operations, resource_pool=resource_pool, graph_ready_context=context,
-            readiness_gate_enabled=bool(kwargs.get("readiness_gate_enabled", False)),
-            decode_resume=kwargs.get("decode_resume"),
-            decode_checkpoints=kwargs.get("decode_checkpoints"),
+            readiness_gate_enabled=request.readiness_gate_enabled,
+            decode_resume=kwargs["decode_resume"],
+            decode_checkpoints=kwargs["decode_checkpoints"],
         )
 
     def _record(self, request: DecodeRequest) -> _RequestRecord:
@@ -277,9 +301,9 @@ class SharedDecodeSession:
         record = self._record(request)
         if redecode_reason is not None and redecode_reason not in _REDECODE_KINDS:
             raise ValueError("Unknown shared decode reconstruction reason: " + str(redecode_reason))
-        resumed = schedule_kwargs.get("decode_resume") is not None
+        resumed = schedule_kwargs["decode_resume"] is not None
         needs_capture = (redecode_reason == "capture_checkpoints"
-                         or (not resumed and schedule_kwargs.get("decode_checkpoints") is not None))
+                         or (not resumed and schedule_kwargs["decode_checkpoints"] is not None))
         if record.verified and record.entry_id is not None and not needs_capture:
             if record.entry_id in self.archive:
                 candidate = self.archive.view(record.entry_id, objective=objective_name)
@@ -296,11 +320,13 @@ class SharedDecodeSession:
                 self._event(record, receipt, objective_name=objective_name)
                 return DecodedEvaluation(candidate["results"], summary, candidate["metrics"],
                                          params.strategy, dict(params.used_params), candidate["algo_stats"], receipt,
+                                         candidate["decoded_batch_order"],
                                          record.entry_id, ArchiveObservation(entry_id=record.entry_id, reused=True))
             if redecode_reason != "restore_parent":
                 self._skip(record, reason="seen_without_payload", objective_name=objective_name, started=started)
-        kind = _REDECODE_KINDS.get(redecode_reason) if redecode_reason else None
-        if kind is None:
+        if redecode_reason is not None:
+            kind = _REDECODE_KINDS[redecode_reason]
+        else:
             kind = "trial_decode" if resumed else ("capture_checkpoints" if record.verified else "new_decision")
         cost_kind = "sgs_resume" if resumed else ("sgs_full" if request.dispatch_mode == "sgs" else "batch_order_full")
         unpruned_sgs = cost_kind == "sgs_full" and not request.score_enabled
@@ -321,7 +347,7 @@ class SharedDecodeSession:
         self.actual_decoder_calls += 1
         self._execution_counts[kind] = self._execution_counts.get(kind, 0) + 1
         try:
-            res, summ, used_strategy, used_params = self._decode(schedule_kwargs, params, batch_order,
+            res, summ, used_strategy, used_params = self._decode(schedule_kwargs, request, params, batch_order,
                                                                operations, pool, context)
             metrics = compute_metrics(res, self.batches, expected_operations=self.operations,
                                       seed_results=self.seed_results,
@@ -351,15 +377,22 @@ class SharedDecodeSession:
         )
         entry_id = observation.entry_id
         receipt["entry_id"] = entry_id
-        if entry_id in self.archive:
+        if entry_id not in self.archive:
+            decoded_order = decoded_batch_order(res)
+        else:
+            # The archived entry has this decode's content identity, hence its start order.
+            decoded_order = self.archive.decoded_order(entry_id)
             if not resumed:
                 if observation.reused:
+                    # Share the archive's results object only when it equals this decode's native output
+                    # exactly, enumeration order included: IG checks a resumed trial against its full decode
+                    # by those rows in order (decode_output_contents), so content alone is not enough.
                     archived_results = self.archive.results(entry_id)
                     if archived_results == res:
                         res = archived_results
                 record.entry_id, record.verified = entry_id, True
         return DecodedEvaluation(res, summ, metrics, used_strategy, used_params, algo_stats, receipt,
-                                 entry_id, observation)
+                                 decoded_order, entry_id, observation)
 
     def bind_observation(self, receipt: Dict[str, Any], entry_id: Optional[int], verified: bool,
                          candidate: Dict[str, Any]) -> None:
@@ -391,6 +424,16 @@ class SharedDecodeSession:
             if event_id is not None:
                 receipt["source_event_ref"] = event_id
         return receipt
+
+    def executed_decision_keys(self) -> Set[Tuple[str, str, Tuple[str, ...]]]:
+        return {
+            (record.request.dispatch_mode, record.request.dispatch_rule, record.request.batch_order)
+            for record in self._records.values()
+            if record.original_decode_ms is not None
+            and not record.request.graph_enabled
+            and not record.request.operation_resources
+            and record.request.resource_pair_rank == ("none",)
+        }
 
     def stats(self) -> Dict[str, Any]:
         return {"actual_decoder_calls": self.actual_decoder_calls, "new_decisions": self.new_decisions,

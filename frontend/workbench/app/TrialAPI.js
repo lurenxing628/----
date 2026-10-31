@@ -2,21 +2,45 @@
   'use strict';
   const T = window.APSWorkbenchTransport, C = window.TrialContract, ROOT = '/api/workbench/v1', BASE = ROOT + '/trial';
   const PENDING_KEY = 'aps_workbench_trial_pending_v1';
+  const CONFLICT_MESSAGE = '上次操作记录已变化，没有清除其他操作记录。';
   const validKey = v => typeof v === 'string' && /^trial-[a-f0-9]{48}$/.test(v);
   const store = T.pendingStore({
     key: PENDING_KEY, raw: true, validate: validKey,
     readError: '读不到上次操作记录，暂时不能提交。请重新打开页面。',
     invalidError: '上次操作记录已损坏，没有删除也没有覆盖。请重新打开页面。',
-    conflictError: '上次操作记录已变化，没有清除其他操作记录。',
+    conflictError: CONFLICT_MESSAGE,
     writeError: '存不下上次操作记录，这次没有提交。请重新打开页面。',
     removeError: '上次提交的结果已确认，但上次操作记录没清掉。请点「刷新」后重新查询。'
   });
-  const pending = store.read;
-  function reserve() {
-    C.check(pending() === null, window.WorkbenchTerms.outcomes.pending('试调提交'));
-    return store.write(T.requestKey('trial'));
+  function pending() {
+    const key = store.read();
+    if (api.settled && api.settled.key !== key) api.settled = null;
+    return key;
   }
-  function clear(key) { store.save(null, key); }
+  function reserve() {
+    C.check(!api.settled, window.WorkbenchTerms.outcomes.pending('试调提交'));
+    try {
+      const key = store.save(T.requestKey('trial'), null);
+      api.settled = null;
+      return key;
+    } catch (error) {
+      if (error && error.conflict === true) throw new Error(window.WorkbenchTerms.outcomes.pending('试调提交'));
+      throw error;
+    }
+  }
+  function clear(key, note) {
+    try { store.save(null, key); }
+    catch (error) {
+      if (error && error.conflict === true) {
+        if (api.settled && api.settled.key === key) api.settled = null;
+      } else {
+        api.settled = { key, note };
+      }
+      throw error;
+    }
+    if (api.settled && api.settled.key === key) api.settled = null;
+    return true;
+  }
   async function read(path, q, signal, validate) {
     const value = await T.read(ROOT + path, q, { signal, timeout: 60000 });
     if (validate) return validate(value);
@@ -42,5 +66,6 @@
     if (d.state === 'committed') C.receipt(d.receipt); else C.check(d.receipt === null);
     return d;
   }
-  window.TrialAPI = { read, preview, command, lookup, pending, reserve, clear, PENDING_KEY };
+  const api = { read, preview, command, lookup, pending, reserve, clear, settled: null, PENDING_KEY };
+  window.TrialAPI = api;
 })();

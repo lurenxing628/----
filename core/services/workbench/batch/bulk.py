@@ -80,8 +80,9 @@ class WorkbenchBatchBulkService:
     @staticmethod
     def _copy_code(code, used, successors):
         """Find the nearest free suffix, sharing occupied runs within this operation."""
-        match = re.search(r"([0-9]+)$", code)
-        prefix = code[:match.start()] if match else code + "-copy-"
+        base = code.strip()
+        match = re.search(r"([0-9]+)$", base)
+        prefix = base[:match.start()] if match else base + "-copy-"
         digits = len(match[1]) if match else 1
         serial = (int(match[1]) if match else 0) + 1
         following, visited = successors.setdefault((prefix, digits), {}), []
@@ -106,8 +107,7 @@ class WorkbenchBatchBulkService:
     def apply_normalized(self, payload):
         if not self.conn.in_transaction:
             raise RuntimeError("批量保存必须由工作台命令事务持有。")
-        facts = self.reader.load()
-        preparation = self.domain.preparation(facts)
+        preparation = self.domain.preparation()
         prepared, successors = [], {}
         for ref in payload["refs"]:
             batch = preparation.batch(ref)
@@ -118,11 +118,10 @@ class WorkbenchBatchBulkService:
                 change = preparation.prepare(payload["action"], {"fields": payload["patch"]}, ref)
             prepared.append((ref, batch, change))
         if payload["action"] == "copy":
-            return self._copy(payload, facts, preparation.relations, prepared)
-        outcomes = []
-        for _ref, _batch, change in prepared:
-            result = self.domain.apply_prepared(change)
-            outcomes.append({**result.data, "result": result.result})
+            relations = preparation.relations
+            return self._copy(payload, preparation.facts, relations, prepared)
+        applied = self.domain.apply_prepared_many([change for _ref, _batch, change in prepared])
+        outcomes = [{**item.data, "result": item.result} for item in applied]
         result = self._outcome(payload, outcomes)
         if payload["action"] == "delete":
             result.data["deleted_refs"] = payload["refs"]
@@ -138,10 +137,10 @@ class WorkbenchBatchBulkService:
                              for op in source_relations[batch["batch_id"]]["operations"]]
         prepared_rows = writer.prepare_instances(source_operations, facts=facts)
         prepared = {op["id"]: ready for op, ready in zip(source_operations, prepared_rows)}
+        applied = self.domain.apply_prepared_many([change for _ref, _batch, change in changes])
         outcomes = []
-        for ref, batch, change in changes:
+        for (ref, batch, change), result in zip(changes, applied):
             code = change.business_code
-            result = self.domain.apply_prepared(change)
             mapping = {op["id"]: writer.copy_prepared_instance(code, prepared[op["id"]])
                        for op in source_relations[batch["batch_id"]]["operations"]}
             BatchMaterialRepository(self.conn).copy_requirements(

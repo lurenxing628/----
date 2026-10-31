@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from core.algorithm_contracts.ordering import clean_resource_id
+
 OPERATION_NODE_PREFIX = "op:"
 MACHINE_NODE_PREFIX = "machine:"
 OPERATOR_NODE_PREFIX = "operator:"
@@ -11,17 +13,11 @@ class GraphNodeIdError(ValueError):
     """Raised when graph node id construction receives unsafe business identifiers."""
 
 
-def _display_text(value: Any) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
 def _require_text_component(value: Any, *, field_name: str) -> str:
     if isinstance(value, (bytes, bytearray)):
         raise GraphNodeIdError(f"{field_name} 不能是 bytes/bytearray，避免静默解码造成节点 ID 碰撞。")
-    text = "" if value is None else str(value).strip()
-    if not text:
+    text = "" if value is None else str(value)
+    if not text.strip():
         raise GraphNodeIdError(f"{field_name} 不能为空，无法生成稳定图节点 ID。")
     return text
 
@@ -37,7 +33,7 @@ def make_machine_node_id(machine_id: Any) -> str:
 
 def display_id(node_id: Any) -> str:
     """Return a human-readable id for diagnostics; intentionally tolerant."""
-    text = _display_text(node_id)
+    text = clean_resource_id(node_id)
     if text.startswith(OPERATION_NODE_PREFIX):
         return text[len(OPERATION_NODE_PREFIX) :]
     if text.startswith(MACHINE_NODE_PREFIX):

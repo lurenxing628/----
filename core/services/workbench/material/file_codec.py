@@ -76,6 +76,8 @@ def _headers(values):
 
 def _decode_value(value, field, file_format):
     if type(value) is str:
+        if "\x00" in value:
+            raise ValidationError("这一格含有不支持的空字符，请删除后重新导入。", field=field)
         if file_format == "csv" and value.startswith("'"):
             value = value[1:]
             if value == "":

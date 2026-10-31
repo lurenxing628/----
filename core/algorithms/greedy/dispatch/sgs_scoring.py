@@ -14,7 +14,6 @@ from core.algorithm_runtime.run_state import ScheduleRunState
 from core.algorithm_runtime.sgs_estimate_reuse import current_sgs_handoff, remember_sgs_estimate
 from core.algorithm_runtime.slot_overlap_reuse import overlap_reuse_for
 from core.errors import ValidationError
-from core.shared.strict_parse import parse_optional_date
 
 from .resource_validation import (
     RESOURCE_REASON_AUTO_ASSIGN_UNAVAILABLE,
@@ -36,31 +35,8 @@ class _ScoringResources(NamedTuple):
     auto_assign_reason: str
 
 
-_DUE_TEXT_CACHE: Dict[str, Optional[date]] = {}
-
-
-def _parse_native_due_text(value: str) -> Optional[date]:
-    # Invalid text raises before it is cached; blank text caches None.
-    if value in _DUE_TEXT_CACHE:
-        return _DUE_TEXT_CACHE[value]
-    result = parse_optional_date(value, field="due_date")
-    if len(_DUE_TEXT_CACHE) >= 4096:
-        _DUE_TEXT_CACHE.pop(next(iter(_DUE_TEXT_CACHE)))
-    _DUE_TEXT_CACHE[value] = result
-    return result
-
-
-def parse_due_date(value: Any) -> Optional[date]:
-    if value is None or type(value) is date:
-        return value
-    if type(value) is str:
-        return _parse_native_due_text(value)
-    return parse_optional_date(value, field="due_date")
-
-
 def _dispatch_key(
     *,
-    dispatch_key_builder: Callable[[DispatchInputs], Tuple[float, ...]] = build_dispatch_key,
     dispatch_rule: DispatchRuleSpec,
     priority: str,
     proc_hours: float,
@@ -74,7 +50,7 @@ def _dispatch_key(
     slack_hours: float,
     time_left_hours: float,
 ) -> Tuple[float, ...]:
-    base_key = dispatch_key_builder(
+    base_key = build_dispatch_key(
         DispatchInputs(
             rule=dispatch_rule.rule,
             priority=priority,
@@ -123,9 +99,8 @@ def _score_external_candidate(
     dispatch_rule: DispatchRuleSpec,
     end_dt_exclusive: Optional[datetime],
     avg_proc_hours: float,
-    dispatch_key_builder: Callable[[DispatchInputs], Tuple[float, ...]] = build_dispatch_key,
 ) -> Tuple[float, ...]:
-    meta = _candidate_meta(op=op, batch=batch, batch_id=batch_id, state=state)
+    meta = _candidate_meta(op=op, batch=batch, batch_id=batch_id, state=state, ctx=ctx)
     window = external_candidate_window(ctx.calendar, state.external_group_cache, op=op, prev_end=meta["prev_end"])
     est_start, est_end = window
     proc_hours = max((est_end - est_start).total_seconds() / 3600.0, 0.0)
@@ -134,7 +109,6 @@ def _score_external_candidate(
         priority=meta["priority"], operator_id="", horizon=end_dt_exclusive,
     )
     return _dispatch_key(
-        dispatch_key_builder=dispatch_key_builder,
         dispatch_rule=dispatch_rule,
         priority=meta["priority"],
         proc_hours=proc_hours,
@@ -165,11 +139,9 @@ def _score_internal_candidate(
     resource_pool: Optional[Dict[str, Any]],
     avg_proc_hours: float,
     total_hours_by_op_id: Dict[int, float],
-    estimate_slot: Callable[..., Any] = estimate_internal_slot,
-    dispatch_key_builder: Callable[[DispatchInputs], Tuple[float, ...]] = build_dispatch_key,
     attempt_sink: Optional[Callable[[Any], None]] = None,
 ) -> Tuple[float, ...]:
-    meta = _candidate_meta(op=op, batch=batch, batch_id=batch_id, state=state)
+    meta = _candidate_meta(op=op, batch=batch, batch_id=batch_id, state=state, ctx=ctx)
     total_hours = total_hours_by_op_id[meta["op_id"]]
     resources = _scoring_resources(
         ctx,
@@ -194,7 +166,6 @@ def _score_internal_candidate(
                 priority=meta["priority"], operator_id="", horizon=end_dt_exclusive,
             )
             return _dispatch_key(
-                dispatch_key_builder=dispatch_key_builder,
                 dispatch_rule=dispatch_rule,
                 priority=meta["priority"],
                 proc_hours=total_hours,
@@ -227,14 +198,12 @@ def _score_internal_candidate(
         end_dt_exclusive,
         machine_downtimes,
         total_hours,
-        estimate_slot=estimate_slot,
     )
     slack_hours, time_left_hours = due_span_inputs(
         ctx.calendar, due_date=meta["due_date"], est_start=estimate.start_time, est_end=estimate.end_time,
         priority=meta["priority"], operator_id=resources.operator_id, horizon=end_dt_exclusive,
     )
     return _dispatch_key(
-        dispatch_key_builder=dispatch_key_builder,
         dispatch_rule=dispatch_rule,
         priority=meta["priority"],
         proc_hours=estimate.total_hours,
@@ -251,11 +220,12 @@ def _score_internal_candidate(
 
 
 def _candidate_meta(
-    *, op: OpForScheduleAlgo, batch: Batch, batch_id: str, state: ScheduleRunState,
+    *, op: OpForScheduleAlgo, batch: Batch, batch_id: str, state: ScheduleRunState, ctx: Any,
 ) -> Dict[str, Any]:
+    due_date = ctx.native_preparation.due_date_for_batch(batch_id, batch)
     return {
         "priority": batch.priority,
-        "due_date": parse_due_date(batch.due_date),
+        "due_date": due_date,
         "seq": op.seq,
         "op_id": op.id,
         "batch_id": batch_id,
@@ -315,7 +285,7 @@ def _auto_assign_attempt_for_scoring(
         "base_time": state.base_time,
         "end_dt_exclusive": end_dt_exclusive,
         "machine_downtimes": machine_downtimes,
-        "resource_pool": (resource_pool if isinstance(resource_pool, dict) else {}),
+        "resource_pool": resource_pool,
         "last_op_type_by_machine": state.last_op_type_by_machine,
         "machine_busy_hours": state.machine_busy_hours,
         "operator_busy_hours": state.operator_busy_hours,
@@ -335,10 +305,9 @@ def _estimate_scoring_slot(
     end_dt_exclusive: Optional[datetime],
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
     total_hours: float,
-    estimate_slot: Callable[..., Any] = estimate_internal_slot,
 ):
     def estimate_selected():
-        return estimate_slot(
+        return estimate_internal_slot(
             calendar=ctx.calendar,
             op=op,
             batch=batch,
@@ -365,7 +334,6 @@ def _estimate_scoring_slot(
                 return handoff.shared_slot_estimate(
                     calendar=ctx.calendar, op=op, batch=batch, machine_id=machine_id, operator_id=operator_id,
                     prev_end=meta["prev_end"], total_hours=total_hours, end_dt_exclusive=end_dt_exclusive,
-                    machine_downtimes=(machine_downtimes.get(machine_id) or []) if machine_downtimes else [],
                     compute=estimate_selected)
 
             compute = shared_selected

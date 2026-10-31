@@ -10,10 +10,7 @@ from core.models.workbench_run_compute import CandidateRunInputError
 from core.models.workbench_run_job import durable_value
 from core.services.scheduler.run.schedule_execution_persistence_guard import validate_execution_guard_before_persist
 from core.services.scheduler.run.schedule_payload_contract import ValidatedScheduleRow
-from core.services.workbench.facts.candidate_archive import (
-    load_adoption_candidate,
-    require_adoption_schema,
-)
+from core.services.workbench.facts.candidate_archive import load_adoption_candidate
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_tasks import validate_task_payload
 from core.services.workbench.facts.official_scope_coverage import official_scope_coverage
@@ -54,18 +51,19 @@ def _row_from_task(task, refs, frozen_op_ids, expected_ids, seen):
 def validate_adoption(conn, candidate_ref):
     try:
         with CandidateStore(conn).snapshot():
-            require_adoption_schema(conn)
-            _run, candidate, scope, tasks, capture, ids, _facts = load_adoption_candidate(conn, candidate_ref)
+            _run, candidate, scope, tasks, capture, ids, generation_facts = load_adoption_candidate(conn, candidate_ref)
             current_capture = ProductionFactsCapture(conn)
             facts = PreflightFacts(conn, capture=current_capture)
             with facts.snapshot(fingerprint=False):
-                baseline, projections = check_admission_current(conn, capture, current_capture=current_capture)
+                baseline, projections = check_admission_current(
+                    conn, capture, current_capture=current_capture, captured_facts=generation_facts.archive,
+                )
                 prepared = prepare_candidate_run_input(conn, capture["input"], projections, facts=facts, baseline=baseline,
                                                        for_adoption=True)
                 if not same({row["operation_ref"]: row for row in prepared.dispositions}, scope):
                     raise CandidateAdoptionBlocked("candidate_disposition_mismatch", "排产时的工序范围或前后顺序和现在的记录对不上，不能采用。请重新做排产检查。")
                 rows = _rows(tasks, prepared, ids)
-                payload = validate_candidate(prepared, rows, [])
+                payload = validate_candidate(prepared, rows)
                 _check_artifact_payload(candidate, payload)
                 if payload.scheduled_op_ids != prepared.schedule_output_allowed_op_ids:
                     raise CandidateAdoptionBlocked("candidate_scope_incomplete", "这个候选方案没有排全选中的工序，不能采用。请重新排产后再试。")

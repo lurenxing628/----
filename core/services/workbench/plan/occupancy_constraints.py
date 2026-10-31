@@ -5,10 +5,11 @@ from collections import defaultdict
 from core.errors import BusinessError, ValidationError
 from core.models.resource_capabilities import machine_type_index, supports_source
 from core.services.capacity.plan_calendar_engine import SnapshotCalendarEngine
-from core.services.capacity.plan_calendar_intervals import IntervalIndex, instant
+from core.services.capacity.plan_calendar_intervals import IntervalIndex
 from core.services.capacity.plan_calendar_issues import issue
 from core.services.capacity.plan_calendar_windows import available_intervals
 from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
+from core.services.workbench.facts.archived_calendar import DowntimeIndex
 from core.services.workbench.facts.zero_duration import estimate_point_event
 
 # 区分“调用方没给点时间日历”和“调用方明确给了 None（归档日历本身已损坏）”。
@@ -41,8 +42,19 @@ class _Authorizations:
         return (operator_id, machine_id) in self.links
 
 
+def _downtime_indexes(rows):
+    """Per-machine DowntimeIndex over calendar_facts' own downtime rows."""
+    by_machine = defaultdict(list)
+    for row in rows:
+        by_machine[row["machine_id"]].append(row)
+    return lambda machine_id: DowntimeIndex(by_machine[machine_id])
+
+
 class TaskConstraints:
-    def __init__(self, calendar_facts, *, calendar_lookup=None, point_calendar=_UNSET):
+    """``calendar_lookup``/``downtime_lookup`` reuse a calendar factory's projections of the
+    same captured sources; without them each resource is projected from ``calendar_facts``."""
+
+    def __init__(self, calendar_facts, *, calendar_lookup=None, downtime_lookup=None, point_calendar=_UNSET):
         self.available = calendar_facts["sources"] is not None
         self.resources = calendar_facts["resources"]
         self.calendar_lookup = calendar_lookup
@@ -60,9 +72,8 @@ class TaskConstraints:
         self.work_types = {row["op_type_id"]: row for row in facts["work_types"]}
         self.qualification = OperatorQualificationService(None, repo=_SkillFacts(facts),
                                                           authorizations=_Authorizations(facts))
-        self.downtime = defaultdict(list)
-        for row in facts["downtimes"]:
-            self.downtime[row["machine_id"]].append(row)
+        self.downtime_lookup = (downtime_lookup if downtime_lookup is not None
+                                else _downtime_indexes(facts["downtimes"]))
 
     def _add(self, code, op_id):
         self.issues[code].add(op_id)
@@ -119,20 +130,14 @@ class TaskConstraints:
     def _check_downtime(self, row, start, end):
         key = ("downtime", row["machine_id"])
         if key not in self.indexes:
-            windows = []
-            try:
-                for item in self.downtime[row["machine_id"]]:
-                    low, high = instant(item["start_time"]), instant(item["end_time"])
-                    if low >= high or item["status"] != "active":
-                        raise ValueError("Invalid downtime")
-                    windows.append((low, high))
-                self.indexes[key] = IntervalIndex(windows)
-            except ValueError:
-                self.indexes[key] = None
+            # Any unproven downtime row makes the whole machine's downtime unknown.
+            downtime = self.downtime_lookup(row["machine_id"])
+            self.indexes[key] = None if downtime.errors else IntervalIndex.from_normalized(downtime.intervals)
         index = self.indexes[key]
         if index is None:
             self._add("assignment_calendar_unavailable", row["op_id"])
-        elif index.hours_between(start, end) > 1e-9:
+        # Clipping a task to the view can leave end < start (a negative span); only positive overlap is downtime.
+        elif index.hours_between(start, end) > 0:
             self._add("assignment_machine_downtime", row["op_id"])
 
     def _check_calendar(self, kind, key, priority, row, start, end, *, row_start, row_end):

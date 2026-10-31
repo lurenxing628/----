@@ -71,7 +71,12 @@ function runtime(fetcher, timeout = 20000) {
     clearTimeout: timer => { timers--; clearTimeout(timer); }});
   context.window = context;
   for (const script of scripts) vm.runInContext(script.source, context, {filename: script.name});
-  return {api: context.APSPlanAPI, C: context.APSPlanContract, D: context.DeliveryProjectionContract, idle: () => assert.equal(timers, 0),
+  let taskChecks = 0;
+  const origArrangement = context.PointContract.arrangement;
+  context.PointContract.arrangement = row => { taskChecks++; return origArrangement(row); };
+  return {api: context.APSPlanAPI, C: context.APSPlanContract, D: context.DeliveryProjectionContract, T: context.APSWorkbenchTransport,
+    taskChecks: () => taskChecks, resetTaskChecks: () => { taskChecks = 0; },
+    idle: () => assert.equal(timers, 0),
     signal(controller) {
       return {get aborted() { return controller.signal.aborted; },
         addEventListener(type, listener, options) { listeners.add(listener); controller.signal.addEventListener(type, listener, options); },
@@ -89,7 +94,7 @@ function aborting(signal) {
 async function requests() {
   const normal = runtime(async url => { assert.equal(url, endpoint + '?collection=history&size=20'); return response(catalog()); });
   await check('catalog exact default path and GET', async () => { assert.deepEqual(await normal.api.catalog(), catalog()); normal.idle(); });
-  await check('read-only public surface', () => assert.deepEqual(Object.keys(normal.api).sort(), ['baseline', 'capacity', 'catalog', 'export', 'ganttGraph', 'tasks', 'workspace']));
+  await check('read-only public surface', () => assert.deepEqual(Object.keys(normal.api).sort(), ['baseline', 'capacity', 'catalog', 'export', 'ganttGraph', 'workspace']));
   const opaque = ' cursor:/+?&= % unicode \u6d4b\u8bd5 ', token = 'Az09_-'.repeat(6).slice(0, 32);
   await check('opaque cursor and snapshot query escaping', async () => {
     const payload = catalog(); payload.data.page = {collection: 'history', size: 1, unit: 'version', has_more: false, next_cursor: null};
@@ -113,6 +118,7 @@ async function requests() {
     assert.deepEqual(await client.api.workspace(P, scope), payload); client.idle();
   });
   await check('baseline exact path and default pagination', async () => {
+    const ws = workspace(); ws.meta.snapshot_ref = token;
     const basePayload = envelope({state: 'unavailable', reason_code: 'not_recorded', reason: 'No recorded baseline', baseline_plan: null,
       items: [], item_count: 0, items_complete: false, page: {number: 1, size: 5000, total: 0, pages: 0, has_more: false}});
     basePayload.meta.snapshot_ref = token;
@@ -121,11 +127,13 @@ async function requests() {
       assert.equal(url, endpoint + '/' + P + '/baseline?' + new URLSearchParams({snapshot_ref: token, page: '1', size: '5000'}));
       return response(basePayload);
     });
-    assert.deepEqual(await client.api.baseline(P, {snapshot_ref: token, page: 1}), basePayload);
-    const combinedUnavailable = await client.api.baseline(P, {snapshot_ref: token});
+    client.C.workspace(ws, P, {snapshot_ref: token});
+    assert.deepEqual(client.C.baselinePage(clone(basePayload), ws.data, {snapshot_ref: token, page: 1, size: 5000}), basePayload);
+    const combinedUnavailable = await client.api.baseline(P, {snapshot_ref: token}, ws.data);
     assert.deepEqual(combinedUnavailable, expectedCombined);
     assert.equal('page' in combinedUnavailable.data, false);
-    assert.equal(client.C.baseline(combinedUnavailable.data), true);
+    assert.equal(client.C.baseline(combinedUnavailable.data, ws.data), true);
+    assert.equal(client.C.completeBaseline(combinedUnavailable.data, ws.data), true);
     client.idle();
   });
   const noRequest = runtime(() => assert.fail('Invalid scope must be rejected before transport'));
@@ -136,15 +144,16 @@ async function requests() {
     {cursor: 123}, {snapshot_ref: ''}, {snapshot_ref: undefined}, {[Symbol('filter')]: true}, Object.defineProperty({}, 'size', {value: 1})]) {
     await check('catalog invalid scope ' + cases.length, () => assert.rejects(noRequest.api.catalog(scope), rejected));
   }
+  const validWsData = workspace().data;
   for (const value of [null, undefined, 3, P.toUpperCase(), 'a'.repeat(47), 'a'.repeat(49), '../plans', P + '?x=1', P + '/workspace']) {
     await check('invalid plan ref ' + cases.length, () => assert.rejects(noRequest.api.workspace(value), rejected));
-    await check('invalid baseline plan ref ' + cases.length, () => assert.rejects(noRequest.api.baseline(value, {snapshot_ref: token}), rejected));
+    await check('invalid baseline plan ref ' + cases.length, () => assert.rejects(noRequest.api.baseline(value, {snapshot_ref: token}, validWsData), rejected));
   }
   for (const scope of [null, [], {}, {page: 1}, {snapshot_ref: ''}, {snapshot_ref: null}, {snapshot_ref: token, page: 0},
     {snapshot_ref: token, page: '1'}, {snapshot_ref: token, page: 1.5}, {snapshot_ref: token, size: 0}, {snapshot_ref: token, size: 5001},
     {snapshot_ref: token, size: '5000'}, {snapshot_ref: token, range_start: START}, {snapshot_ref: token, range_end: END},
     {snapshot_ref: token, range_start: END, range_end: START}, {snapshot_ref: token, cursor: 'x'}]) {
-    await check('baseline invalid scope ' + cases.length, () => assert.rejects(noRequest.api.baseline(P, scope), rejected));
+    await check('baseline invalid scope ' + cases.length, () => assert.rejects(noRequest.api.baseline(P, scope, validWsData), rejected));
   }
   for (const scope of [null, [], {range_start: START}, {range_end: END}, {range_start: null, range_end: null},
     {range_start: END, range_end: START}, {range_start: START, range_end: START}, {plan_ref: OTHER}, {cursor: 'x'}, {baseline_ref: P}, {resource_ref: P},
@@ -304,6 +313,14 @@ async function contracts() {
     const microSummary=clone(micro); microSummary.data.projections.occupancy.segments_complete=false;
     microSummary.data.projections.occupancy.resources[0].segments=[{start:'2026-09-10T00:00:00',end:'2026-09-10T00:00:00.000001',concurrent_operations:2}];
     assert.strictEqual(C.workspace(microSummary,P,{}),microSummary);
+    const microInCalendar=clone(micro), microInCalRow=microInCalendar.data.projections.occupancy.resources[0];
+    microInCalRow.available_overlap_hours=1/3600000000;
+    microInCalRow.conflict_segments=[{start:'2026-09-09T23:00:00',end:'2026-09-09T23:00:00.000001',concurrent_operations:2}];
+    assert.throws(()=>C.workspace(microInCalendar,P,{}),rejected);
+    microInCalRow.has_overlap=true;
+    assert.strictEqual(C.workspace(microInCalendar,P,{}),microInCalendar);
+    microInCalRow.conflict_segments=[];
+    assert.throws(()=>C.workspace(microInCalendar,P,{}),rejected);
     row.has_overlap=true; assert.throws(()=>C.workspace(p,P,{}),rejected); row.has_overlap=false;
     const legacy=clone(p), old=legacy.data.projections.occupancy.resources[0];
     for(const key of ['metric_version','available_overlap_hours','conflict_segments','outside_calendar_basis','conflict_basis']) delete old[key];
@@ -385,11 +402,12 @@ async function contracts() {
       assert.equal(u.pathname, '/api/workbench/v1/plans/' + P + '/baseline');
       return response(pages.shift());
     });
+    client.C.workspace(p, P, {});
     const combined = await client.api.baseline(P, {snapshot_ref: snap, size: 1}, d);
     assert.equal(combined.data.items.length, 2);
     assert.equal(combined.data.items_complete, true);
     assert.equal('page' in combined.data, false);
-    assert.equal(C.baseline(combined.data, d), true);
+    assert.equal(C.completeBaseline(combined.data, d), true);
     assert.deepEqual(combined.data.items[0].after, d.tasks[0]);
     assert.equal(combined.data.items[1].after, null);
     client.idle();
@@ -436,6 +454,27 @@ async function contracts() {
       calendar: {...clone(d.projections.calendar), windows_complete: true},
       occupancy: {...clone(d.projections.occupancy), segments_complete: true}
     });
+    const BASE_PLAN = ref48(999);
+    const basePlan = {...header(), plan_ref: BASE_PLAN, version: 2, is_current_official: false, display_name: 'Previous plan'};
+    const baselineItems = allTasks.map((row, index) => ({
+      operation_ref: row.operation_ref,
+      change: 'unchanged',
+      changed_fields: [],
+      before: {...row, task_ref: ref48(index + 50000), plan_ref: BASE_PLAN},
+      after: {task_ref: row.task_ref},
+      before_in_scope: true,
+      after_in_scope: true
+    }));
+    const baselineSummary = {
+      state: 'available', reason_code: null, reason: null, basis: 'candidate_adoption', baseline_plan: basePlan,
+      comparison_scope: {scope: clone(d.scope), selection: 'either_side_overlap', boundary: 'half_open', alignment: 'operation_ref',
+        time_basis: 'factory_local', task_times: 'unclipped'},
+      compared_fields: ['start', 'end', 'machine_ref', 'operator_ref'],
+      items: [], item_count: 5001, items_complete: false
+    };
+    const baselinePage1 = envelope({...clone(baselineSummary), items: baselineItems.slice(0, 5000), page: {number: 1, size: 5000, total: 5001, pages: 2, has_more: true}});
+    const baselinePage2 = envelope({...clone(baselineSummary), items: baselineItems.slice(5000), page: {number: 2, size: 5000, total: 5001, pages: 2, has_more: false}});
+    let nextTasksPage2 = tasksPage2, nextBaselinePage2 = baselinePage2;
     const client = runtime(async url => {
       const u = new URL(url);
       if (u.pathname.endsWith('/workspace')) return response(clone(first));
@@ -443,7 +482,12 @@ async function contracts() {
         assert.equal(u.searchParams.get('snapshot_ref'), snap);
         assert.equal(u.searchParams.get('page'), '2');
         assert.equal(u.searchParams.get('size'), '5000');
-        return response(clone(tasksPage2));
+        return response(clone(nextTasksPage2));
+      }
+      if (u.pathname.endsWith('/baseline')) {
+        assert.equal(u.searchParams.get('snapshot_ref'), snap);
+        const page = u.searchParams.get('page');
+        return response(clone(page === '1' ? baselinePage1 : nextBaselinePage2));
       }
       if (u.pathname.endsWith('/gantt-graph')) {
         assert.equal(u.searchParams.get('snapshot_ref'), snap);
@@ -455,15 +499,69 @@ async function contracts() {
       }
       assert.fail('Unexpected path ' + u.pathname);
     });
+    client.resetTaskChecks();
     const stitched = await client.api.workspace(P);
     assert.equal(stitched.data.tasks.length, 5001);
     assert.equal(stitched.data.tasks_complete, true);
+    assert.equal(client.taskChecks(), 5001, '5,001-row workspace pagination validates each task exactly once (5,001 total)');
+    client.resetTaskChecks();
+    const rawTasks = stitched.data.tasks;
+    let taskReadsDuringBaseline = 0;
+    stitched.data.tasks = new Proxy(rawTasks, {
+      get(target, prop, receiver) {
+        if (prop !== 'length') taskReadsDuringBaseline++;
+        return Reflect.get(target, prop, receiver);
+      }
+    });
+    const stitchedBaseline = await client.api.baseline(P, {snapshot_ref: snap}, stitched.data);
+    stitched.data.tasks = rawTasks;
+    assert.equal(stitchedBaseline.data.items.length, 5001);
+    assert.equal(stitchedBaseline.data.items_complete, true);
+    assert.equal(client.taskChecks(), 5001, '5,001-row baseline pagination validates each before task once and reuses in-scope after tasks (5,001 total)');
+    assert.equal(taskReadsDuringBaseline, 0, 'Baseline pagination reuses verified task index with 0 task reads');
+    const dupTaskPage2 = clone(tasksPage2);
+    dupTaskPage2.data.tasks[0].task_ref = allTasks[0].task_ref;
+    nextTasksPage2 = dupTaskPage2;
+    await assert.rejects(client.api.workspace(P), rejected, 'Cross-page duplicate task_ref is rejected');
+    nextTasksPage2 = tasksPage2;
+    const dupOpPage2 = clone(baselinePage2);
+    dupOpPage2.data.items[0].operation_ref = baselineItems[0].operation_ref;
+    dupOpPage2.data.items[0].before.operation_ref = baselineItems[0].operation_ref;
+    dupOpPage2.data.items[0].after = {task_ref: allTasks[0].task_ref};
+    nextBaselinePage2 = dupOpPage2;
+    await assert.rejects(client.api.baseline(P, {snapshot_ref: snap}, stitched.data), rejected, 'Cross-page duplicate operation_ref is rejected');
+    const basisDriftPage2 = clone(baselinePage2);
+    basisDriftPage2.data.basis = 'trial_adoption';
+    nextBaselinePage2 = basisDriftPage2;
+    await assert.rejects(client.api.baseline(P, {snapshot_ref: snap}, stitched.data), rejected, 'Page 2 basis drift is rejected before stitching');
+    const afterCountMismatchPage2 = clone(baselinePage2);
+    Object.assign(afterCountMismatchPage2.data.items[0], {change: 'removed', after: null, after_in_scope: false});
+    nextBaselinePage2 = afterCountMismatchPage2;
+    await assert.rejects(client.api.baseline(P, {snapshot_ref: snap}, stitched.data), rejected, 'Cross-page after_in_scope count mismatch is rejected');
+    nextBaselinePage2 = baselinePage2;
     const graphResult = await client.api.ganttGraph(P, {snapshot_ref: snap}, stitched.data);
     assert.equal(graphResult.data.gantt_graph.nodes_complete, true);
     assert.equal(graphResult.data.gantt_graph.nodes.length, 5001);
+    client.resetTaskChecks();
+    let taskReadsDuringCapacity = 0;
+    stitched.data.tasks = new Proxy(rawTasks, {
+      get(target, prop, receiver) {
+        if (prop !== 'length') taskReadsDuringCapacity++;
+        return Reflect.get(target, prop, receiver);
+      }
+    });
     const capResult = await client.api.capacity(P, {snapshot_ref: snap}, stitched.data);
+    stitched.data.tasks = rawTasks;
     assert.equal(capResult.data.calendar.windows_complete, true);
     assert.equal(capResult.data.occupancy.segments_complete, true);
+    assert.equal(client.taskChecks(), 0, 'Capacity validation reuses verified resource directory with 0 task checks');
+    assert.equal(taskReadsDuringCapacity, 0, 'Capacity validation reuses verified resource directory with 0 task reads');
+    for (const invalidData of [null, undefined, stitched]) {
+      await assert.rejects(client.api.baseline(P, {snapshot_ref: snap}, invalidData), rejected);
+      await assert.rejects(client.api.ganttGraph(P, {snapshot_ref: snap}, invalidData), rejected);
+      await assert.rejects(client.api.capacity(P, {snapshot_ref: snap}, invalidData), rejected);
+      assert.throws(() => client.C.tasksPage(tasksPage2, invalidData, {snapshot_ref: snap, page: 2, size: 5000}), rejected);
+    }
     client.idle();
   });
 }
@@ -483,12 +581,17 @@ async function failures() {
     await check('transport malformed or offline ' + cases.length, async () => { const client = runtime(fetcher); const before = calls.length;
       await assert.rejects(client.api.catalog(), rejected); assert.equal(calls.length, before + 1); client.idle(); });
   }
+  const cancelWsData = workspace().data;
   for (const method of ['catalog', 'workspace', 'tasks', 'ganttGraph', 'capacity', 'baseline']) {
     await check('cancel in flight and already cancelled ' + method, async () => {
       const client = runtime(async (_, options) => aborting(options.signal)), controller = new AbortController(), signal = client.signal(controller);
       const read = () => method === 'catalog' ? client.api.catalog({}, signal)
         : method === 'workspace' ? client.api.workspace(P, {}, signal)
-        : client.api[method](P, {snapshot_ref: 's'.repeat(32)}, null, signal);
+        : method === 'tasks' ? (async () => {
+          const query = client.C.tasksScope(P, {snapshot_ref: 's'.repeat(32)});
+          return client.C.tasksPage(await client.T.read('/api/workbench/v1/plans/' + P + '/tasks', query, {signal, timeout: 20000}), cancelWsData, query);
+        })()
+        : client.api[method](P, {snapshot_ref: 's'.repeat(32)}, cancelWsData, signal);
       const cancelled = error => error.name === 'AbortError';
       const pending = read(); controller.abort(); await assert.rejects(pending, cancelled); client.idle(); client.detached();
       await assert.rejects(read(), cancelled); client.idle(); client.detached();
@@ -514,9 +617,20 @@ async function backendFixtures() {
         assert.equal(target.pathname, '/api/workbench/v1/plans' + suffix);
         return response(clone(fixture.payload), fixture.status || 200);
       });
+      if (fixture.workspace_data) {
+        const wsScope = {};
+        if (fixture.workspace_data.scope && fixture.workspace_data.scope.range_start !== null) {
+          wsScope.range_start = fixture.workspace_data.scope.range_start;
+          wsScope.range_end = fixture.workspace_data.scope.range_end;
+        }
+        client.C.workspace({...envelope(fixture.workspace_data), data: fixture.workspace_data}, fixture.plan_ref, wsScope);
+      }
       const read = () => fixture.kind === 'catalog' ? client.api.catalog(fixture.scope || {})
         : fixture.kind === 'baseline' ? client.api.baseline(fixture.plan_ref, fixture.scope || {}, fixture.workspace_data || null)
-        : fixture.kind === 'tasks' ? client.api.tasks(fixture.plan_ref, fixture.scope || {}, fixture.workspace_data || null)
+        : fixture.kind === 'tasks' ? (async () => {
+          const query = client.C.tasksScope(fixture.plan_ref, fixture.scope || {});
+          return client.C.tasksPage(await client.T.read('/api/workbench/v1/plans/' + fixture.plan_ref + '/tasks', query, {timeout: 20000}), fixture.workspace_data || null, query);
+        })()
         : fixture.kind === 'gantt_graph' ? client.api.ganttGraph(fixture.plan_ref, fixture.scope || {}, fixture.workspace_data || null)
         : fixture.kind === 'capacity' ? client.api.capacity(fixture.plan_ref, fixture.scope || {}, fixture.workspace_data || null)
         : client.api.workspace(fixture.plan_ref, fixture.scope || {});

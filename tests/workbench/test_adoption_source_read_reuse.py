@@ -15,7 +15,7 @@ from core.models.workbench_dashboard import DashboardAnalysisQuery
 from core.models.workbench_plan_scope import MAX_PLAN_RESPONSE_BYTES, PlanReadScope
 from core.services.workbench.dashboard.analysis import read_dashboard_analysis
 from core.services.workbench.facts import adoption_baseline_sources
-from core.services.workbench.plan import adoption_baseline, adoption_baseline_identity, projection
+from core.services.workbench.plan import adoption_baseline, adoption_baseline_identity, point_query, projection
 from core.services.workbench.plan.point_evidence import official_point_work
 from core.services.workbench.plan.process_order import project_process_order
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
@@ -189,6 +189,36 @@ def test_task_facts_without_reuse_scope_still_verify_source_once(adopted_version
     assert snapshot(case.conn) == before and case.conn.total_changes == changes
 
 
+def test_oversized_adoption_summary_is_rejected_before_any_decode(adopted_versions, monkeypatch):
+    from core.models.workbench_command import WorkbenchCommandRejected
+    from core.services.common import plan_query
+    from core.services.workbench.facts import adoption_baseline_values
+
+    case, _, second = adopted_versions
+    summary = case.conn.execute("SELECT result_summary FROM ScheduleHistory WHERE version=?",
+                                (second["version"],)).fetchone()[0]
+    size = len(summary.encode("utf-8"))
+    parsed = []
+    parse = plan_query.parse_result_summary_payload
+
+    def observed(raw):
+        parsed.append(raw)
+        return parse(raw)
+
+    monkeypatch.setattr(plan_query, "parse_result_summary_payload", observed)
+    # 正好等于上限的真实采用摘要照常解析一次，证明下面的拒绝只来自体积预算。
+    monkeypatch.setattr(adoption_baseline_values, "_EVIDENCE_BYTES", size)
+    official_point_work(case.conn, second["version"])
+    assert parsed == [summary]
+    parsed.clear()
+    # 超出上限 1 字节：在任何 JSON 解码之前就按 413 拒绝。
+    monkeypatch.setattr(adoption_baseline_values, "_EVIDENCE_BYTES", size - 1)
+    with pytest.raises(WorkbenchCommandRejected) as rejected:
+        official_point_work(case.conn, second["version"])
+    assert (rejected.value.code, rejected.value.status) == ("query_too_large", 413)
+    assert parsed == []
+
+
 def test_candidate_admission_proof_reuses_strict_fields_and_preserves_extra_official_checks(adopted_versions, monkeypatch):
     from core.infrastructure.transaction import TransactionManager
     from core.services.workbench.facts import run_input_codec
@@ -206,6 +236,11 @@ def test_candidate_admission_proof_reuses_strict_fields_and_preserves_extra_offi
             _init(self, *args, **kwargs)
 
         monkeypatch.setattr(dto, "__init__", observed)
+    from core.services.workbench.facts import candidate_read_source, decision_baseline_source
+    from core.services.workbench.facts.adoption_baseline_values import AdoptionBaselineUnavailable
+    from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
+
+    assert "source_exists" not in WorkbenchPlanBaselineRepository.__dict__
     with TransactionManager(case.conn).transaction(), read_evidence_scope(case.conn):
         source = adoption_baseline_sources.candidate_source_evidence(case.conn, audit)
         proof = source["admission_proof"]
@@ -213,10 +248,31 @@ def test_candidate_admission_proof_reuses_strict_fields_and_preserves_extra_offi
         assert values[case.op_id]["quantity"] == values[case.op_id]["batch_quantity"] == 5
         assert values[case.op_id]["quantity_reason"] is None and calls == []
         adoption_baseline_identity.verify_capture(proof.baseline, proof.tables, admission_proof=proof)
+        with pytest.raises(AdoptionBaselineUnavailable) as missing_cand:
+            adoption_baseline_sources.candidate_source_evidence(case.conn, {**audit, "candidate_ref": "f" * 48})
+        assert missing_cand.value.code == "adoption_source_archived"
+        with monkeypatch.context() as no_display:
+            no_display.setattr(
+                candidate_read_source,
+                "project_validated_tasks",
+                lambda *_: pytest.fail("Official baseline source must not project display tasks"),
+            )
+            no_display.setattr(
+                candidate_read_source,
+                "unplanned_projection",
+                lambda *_: pytest.fail("Official baseline source must not project unplanned display items"),
+            )
+            resolver = decision_baseline_source.decision_baseline_source_resolver(case.conn)
+            history = case.conn.execute(
+                "SELECT version, result_summary, result_status FROM ScheduleHistory WHERE version=?",
+                (second["version"],),
+            ).fetchone()
+            resolved = resolver(plan_ref=second["plan_ref"], version=second["version"], history=dict(history))
+            assert resolved["evidence"] is not None
     assert snapshot(case.conn) == before and case.conn.total_changes == changes
 
 
-def test_arrangement_comparison_keeps_canonical_types_and_reuses_only_completed_intervals(monkeypatch):
+def test_arrangement_comparison_keeps_canonical_types_and_reuses_only_completed_intervals(adopted_versions, monkeypatch):
     base = {"machine_id": None, "operator_id": "O1", "start_time": "2026-09-09 08:00:00",
             "end_time": "2026-09-09 09:00:00"}
     current, candidate = dict(base), dict(base, start_time="2026-09-09T08:00:00", end_time="2026-09-09T09:00:00")
@@ -229,16 +285,29 @@ def test_arrangement_comparison_keeps_canonical_types_and_reuses_only_completed_
 
     monkeypatch.setattr(adoption_baseline_identity, "public_time", observed)
     assert adoption_baseline_identity._arrangement_matches(current, candidate,
-        known_times=("2026-09-09 08:00:00", "2026-09-09 09:00:00"))
+        known_times=("2026-09-09T08:00:00", "2026-09-09T09:00:00"))
     assert calls == [candidate["start_time"], candidate["end_time"]]
-    context = PlanReadContext.__new__(PlanReadContext)
-    context._intervals = {}
-    query = {"version": 2}
-    assert context.peek_source_intervals(**query) is None
-    completed = {1: (base["start_time"], base["end_time"])}
-    context._intervals[context.source_key(query)] = completed
-    assert context.peek_source_intervals(**query) is completed
-    assert context.peek_source_intervals(**dict(query, version=3)) is None
+    case, _, second = adopted_versions
+    preparing = []
+    annotate = point_query.annotate_plan_points
+
+    def observed_annotate(conn, rows, *, context, intervals):
+        preparing.append(context.peek_source_intervals(version=rows[0]["version"]))
+        return annotate(conn, rows, context=context, intervals=intervals)
+
+    monkeypatch.setattr(point_query, "annotate_plan_points", observed_annotate)
+    reader = WorkbenchPlanQueryService(case.conn)
+    with reader.read_snapshot():
+        context = PlanReadContext(case.conn)
+        with context.read_scope():
+            query = {"version": second["version"]}
+            assert context.peek_source_intervals(**query) is None
+            _, entry, _ = context.selected(second["plan_ref"])
+            # 准备途中重入的采用核对仍视为未完成，只有整版准备完成后才复用区间。
+            assert preparing == [None]
+            completed = context.peek_source_intervals(**query)
+            assert completed is not None and completed is context.intervals(entry)
+            assert context.peek_source_intervals(**dict(query, version=second["version"] + 1)) is None
 
 
 @pytest.mark.parametrize("error_type", [KeyError, TypeError, ValueError])
@@ -339,29 +408,23 @@ def test_readonly_candidate_archive_eliminates_clone_json_and_shares_generation_
             case.conn, candidate_ref
         )
 
-    clone_calls = Mock(wraps=candidate_store.clone_json)
     facts_calls = Mock(wraps=candidate_store.GenerationFacts)
-    monkeypatch.setattr(candidate_store, "clone_json", clone_calls)
     monkeypatch.setattr(candidate_store, "GenerationFacts", facts_calls)
 
     with TransactionManager(case.conn).transaction(), read_evidence_scope(case.conn):
         _, _, scope, tasks, capture, _, facts, _ = candidate_archive.load_adoption_candidate_with_key(
             case.conn, candidate_ref
         )
-        assert clone_calls.call_count == 0
         assert facts_calls.call_count == 0
         assert facts is warm_facts and capture is warm_capture
 
-        readonly_store = candidate_store.ReadOnlyCandidateStore(case.conn)
-        assert readonly_store.copy_on_read is False
+        readonly_store = candidate_store.CandidateStore(case.conn)
         assert readonly_store.capture(run_ref) is warm_capture
-        assert clone_calls.call_count == 0
 
         history_reader = HistoryReader(case.conn)
         history_run = history_reader._run(run_ref)
         assert history_run["facts"] is warm_facts
         assert history_run["capture"] is warm_capture
-        assert clone_calls.call_count == 0
         assert facts_calls.call_count == 0
 
         decision = DecisionSource(candidate_store.CandidateStore(case.conn), run_ref)
@@ -372,19 +435,12 @@ def test_readonly_candidate_archive_eliminates_clone_json_and_shares_generation_
         reused = candidate_store.cached_generation_facts(dict(capture, execution=copied_execution))
         assert reused is warm_facts
         assert facts_calls.call_count == 0
-
-        mutable_store = candidate_store.CandidateStore(case.conn)
-        mutable_capture = mutable_store.capture(run_ref)
-        assert mutable_capture is not warm_capture
-        mutable_capture["input"]["batch_refs"].append("mutated-in-test")
-        assert "mutated-in-test" not in warm_capture["input"]["batch_refs"]
         assert tasks and scope
 
     dto, _ = _workspace(case, second)
     original_strategy = candidate_store.CandidateStore(case.conn).candidate(candidate_ref)["artifact"]["origin"]["strategy"]
     dto["provenance"]["algorithm"]["origin"]["strategy"] = "mutated-strategy"
     assert candidate_store.CandidateStore(case.conn).candidate(candidate_ref)["artifact"]["origin"]["strategy"] == original_strategy
-    assert candidate_store.ReadOnlyCandidateStore(case.conn).candidate(candidate_ref)["artifact"]["origin"]["strategy"] == original_strategy
     fresh_dto, _ = _workspace(case, second)
     assert fresh_dto["provenance"]["algorithm"]["origin"]["strategy"] == original_strategy
     assert snapshot(case.conn) == before and case.conn.total_changes == changes

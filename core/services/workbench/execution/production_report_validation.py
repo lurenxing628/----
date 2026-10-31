@@ -1,11 +1,10 @@
 """Resource and lifecycle constraints, rechecked under the outer command lock."""
 
-from datetime import datetime
-
 from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.models.resource_capabilities import machine_types
 from core.models.workbench_execution_input import reject
 from core.models.workbench_identity import WorkbenchEntityIdentity
+from core.services.execution.projection import actual_period, actual_period_basis
 from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_report_validation_repo import WorkbenchReportValidationRepository
@@ -30,19 +29,31 @@ class ReportResourceValidator:
         self.operator_qualifications = {}
         self._skill_profiles = {}
         self._skill_rows = {}
+        self._skills_loaded = set()
 
     def preload(self, refs):
         for row in self.repo.entity_rows_with_machine_type(refs):
             self.entities[row["ref"]] = WorkbenchEntityIdentity(row["ref"], row["kind"], row["entity_key"], row["revision"], bool(row["active"]))
             if row["kind"] == "machine":
                 self.machine_types[row["entity_key"]] = set(machine_types({"op_type_id": row["machine_type"], "op_type_ids": row["op_type_ids"]}))
-        operators = sorted({entity.entity_key for entity in self.entities.values() if entity.kind == "operator" and entity.active})
-        if operators:
-            profiles, skills = self.qualification_service.repo.read_skill_facts(operators)
-            for row in profiles:
-                self._skill_profiles.setdefault(row["operator_id"], []).append(row)
-            for row in skills:
-                self._skill_rows.setdefault(row["operator_id"], []).append(row)
+
+    def _ensure_skill_facts(self, operator_id):
+        if operator_id in self._skills_loaded:
+            return
+        operators = sorted(
+            {
+                entity.entity_key
+                for entity in self.entities.values()
+                if entity.kind == "operator" and entity.active and entity.entity_key not in self._skills_loaded
+            }
+            | {operator_id}
+        )
+        profiles, skills = self.qualification_service.repo.read_skill_facts(operators)
+        for row in profiles:
+            self._skill_profiles.setdefault(row["operator_id"], []).append(row)
+        for row in skills:
+            self._skill_rows.setdefault(row["operator_id"], []).append(row)
+        self._skills_loaded.update(operators)
 
     def resolve(self, ref, kind):
         if ref is None:
@@ -79,6 +90,7 @@ class ReportResourceValidator:
         if operator is not None:
             try:
                 if operator not in self.operator_qualifications:
+                    self._ensure_skill_facts(operator)
                     self.operator_qualifications.update(
                         self.qualification_service.project_facts(
                             [operator],
@@ -116,11 +128,6 @@ def validate_projection_change(before, after):
             reject(item["message"], "constraint_conflict", 409)
     if after.target_quantity is None and after.known_completed_quantity > before.known_completed_quantity:
         reject("这道工序的目标数量读不出来，判断不了有没有超报。请到批次管理核对数量。", "constraint_conflict", 409)
-
-
-def _actual_period(projection):
-    return tuple(None if value is None else datetime.fromisoformat(value)
-                 for value in (projection.first_actual_start, projection.confirmed_finish))
 
 
 def _periods_conflict(mine, theirs):
@@ -161,7 +168,7 @@ def _cycle_blocker(peers, mine, previous, correcting):
 
 def _cycle_peer_periods(dependencies, operation):
     refs = dependencies.cycle_peers(operation)
-    return [(ref, _actual_period(row)) for ref, row in zip(refs, dependencies.projections(refs))]
+    return [(ref, actual_period(row)) for ref, row in zip(refs, dependencies.projections(refs))]
 
 
 def merged_cycle_parted(dependencies, operation, before, after):
@@ -169,8 +176,10 @@ def merged_cycle_parted(dependencies, operation, before, after):
 
     撤销不按这个拦：同组两道各有一条偏早的报工时，单独撤销哪条都会先对不上，只能先撤一条再逐道改齐。
     """
-    mine, previous = _actual_period(after), _actual_period(before)
-    if operation["source"] != "external" or mine == previous:
+    if operation["source"] != "external":
+        return []
+    mine, previous = actual_period(after), actual_period(before)
+    if mine == previous:
         return []
     return [peer for peer in _cycle_peer_periods(dependencies, operation)
             if _periods_conflict(mine, peer[1]) and not _periods_conflict(previous, peer[1])]
@@ -183,8 +192,10 @@ def validate_merged_cycle(dependencies, operation, before, after, changed):
     再逐道改齐（排产检查会提示未改齐的组）；原本就对不上的，更正后必须对上；
     其余各道之间也对不上时，更正后至少和其中一道对上。
     """
-    mine, previous = _actual_period(after), _actual_period(before)
-    if operation["source"] != "external" or mine == previous:
+    if operation["source"] != "external":
+        return
+    mine, previous = actual_period(after), actual_period(before)
+    if mine == previous:
         return
     correcting = bool(changed) and all(row["action"] == "correct" for row in changed)
     blocker = _cycle_blocker(_cycle_peer_periods(dependencies, operation), mine, previous, correcting)
@@ -196,40 +207,50 @@ def validate_merged_cycle(dependencies, operation, before, after, changed):
 
 
 def _retained_resource_refs(projection):
-    machines, operators = set(), set()
-    for report in projection.reports:
-        if report.actual_machine_ref is not None:
-            machines.add(report.actual_machine_ref)
-        if report.actual_operator_ref is not None:
-            operators.add(report.actual_operator_ref)
-    return machines, operators
-
-
-def _actual_period_basis(projection):
-    """Deduplicate and join adjacent periods; keep overlaps and unknowns visible."""
-    periods = {tuple(None if value is None else datetime.fromisoformat(value)
-                     for value in (report.actual_start, report.actual_end)) for report in projection.reports}
-    unresolved = frozenset((start, end) for start, end in periods if start is None or end is None or end <= start)
-    coverage = []
-    for start, end in sorted((start, end) for start, end in periods
-                             if start is not None and end is not None and end > start):
-        if coverage and start == coverage[-1][1]:
-            coverage[-1] = (coverage[-1][0], end)
-        else:
-            coverage.append((start, end))
-    return tuple(coverage), unresolved
+    cache = projection.__dict__["_cache"]
+    cached = cache.get("retained_resource_refs")
+    if cached is None:
+        machines, operators = set(), set()
+        for report in projection.reports:
+            if report.actual_machine_ref is not None:
+                machines.add(report.actual_machine_ref)
+            if report.actual_operator_ref is not None:
+                operators.add(report.actual_operator_ref)
+        cached = (frozenset(machines), frozenset(operators))
+        cache["retained_resource_refs"] = cached
+    return cached
 
 
 def _report_resource_segments(projection):
-    return tuple((report.actual_start, report.actual_end, report.actual_machine_ref, report.actual_operator_ref)
-                 for report in sorted(projection.reports,
-                                      key=lambda report: (report.actual_start or "", report.actual_end or "")))
+    cache = projection.__dict__["_cache"]
+    cached = cache.get("report_resource_segments")
+    if cached is None:
+        cached = tuple(
+            (report.actual_start, report.actual_end, report.actual_machine_ref, report.actual_operator_ref)
+            for report in sorted(
+                projection.reports,
+                key=lambda report: (report.actual_start or "", report.actual_end or ""),
+            )
+        )
+        cache["report_resource_segments"] = cached
+    return cached
 
 
 def _constraint_signature(projection):
-    return (projection.execution_state, projection.first_actual_start, projection.confirmed_finish,
-            projection.known_completed_quantity, projection.unknown_record_count, _actual_period_basis(projection),
-            *_retained_resource_refs(projection))
+    cache = projection.__dict__["_cache"]
+    cached = cache.get("constraint_signature")
+    if cached is None:
+        cached = (
+            projection.execution_state,
+            projection.first_actual_start,
+            projection.confirmed_finish,
+            projection.known_completed_quantity,
+            projection.unknown_record_count,
+            actual_period_basis(projection),
+            *_retained_resource_refs(projection),
+        )
+        cache["constraint_signature"] = cached
+    return cached
 
 
 def execution_facts_changed(before, after):
@@ -283,7 +304,7 @@ def _adopted_conflicts(before, after, current, revisions, source):
         conflicts.append({"code": "adopted_execution_basis_changed", "operation_ref": before.operation_ref})
     if before.execution_state == "complete" and after.execution_state != "complete":
         conflicts.append({"code": "adopted_completion_required", "operation_ref": before.operation_ref})
-    if _actual_period_basis(before) != _actual_period_basis(after):
+    if actual_period_basis(before) != actual_period_basis(after):
         conflicts.append({"code": "adopted_actual_period_changed", "operation_ref": before.operation_ref})
     if _actual_resources_changed(before, after, source):
         conflicts.append({"code": "adopted_actual_resource_changed", "operation_ref": before.operation_ref})

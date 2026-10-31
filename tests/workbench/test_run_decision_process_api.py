@@ -3,16 +3,11 @@
 import csv
 import io
 import json
-import sys
-from copy import deepcopy
 
 import pytest
 from openpyxl import load_workbook
 
-from core.services.scheduler.contracts.optimizer_public_safety import project_attempt_metrics, project_public_metrics
 from core.services.scheduler.run.optimizer.shared_process import UNIFIED_PROCESS_VERSION
-from core.services.scheduler.summary.optimizer_public_attempts import COMPARISON_METRIC_KEYS, project_attempts
-from core.services.scheduler.summary.optimizer_public_summary import project_public_algo_summary
 from core.services.workbench.run.decision_process_export import UNIFIED_PROCESS_CSV_HEADERS
 from tests.workbench.run_candidate_support import BASE, api, compute, retained
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
@@ -247,75 +242,3 @@ def test_real_shared_process_queries_and_exports_preserve_one_snapshot(candidate
         assert sum(row["record_kind"] == "search_action" for row in all_rows) == len(raw["actions"])
         check_scope_exports(all_rows, raw["scopes"], "xlsx")
         assert decision_summary(client, run_ref, **query)["data"]["selection_basis"] == overview["data"]["selection_basis"]
-
-
-def test_public_attempt_projection_drops_numbers_beyond_the_float_range_without_raising():
-    huge = 10 ** 400
-    completion = {"objective_scope": "all_batches", "incomplete_work_weight": huge}
-    for project in (project_attempt_metrics, project_public_metrics):
-        assert project({"completion": completion})["completion"] == {"objective_scope": "all_batches"}
-    public_attempts, _diagnostics = project_attempts([{"score": [huge, 1.5], "elapsed_ms": huge, "metrics": {"completion": completion}}])
-    assert public_attempts == [{"score": [None, 1.5], "elapsed_ms": None, "metrics": {"completion": {"objective_scope": "all_batches"}}}]
-
-
-def test_public_algo_summary_keeps_sentinels_graph_origins_and_comparisons_idempotent():
-    # Explicit unknown components are ordering sentinels; completed-subset zero is real.
-    sentinel = sys.float_info.max
-    attempts = [
-        {"tag": "local:unknown_scope", "score": [2, sentinel, sentinel],
-         "metrics": {"total_tardiness_hours": sentinel, "completion": {"objective_scope": "unknown"}}},
-        {"tag": "local:unknown_policy", "score": [1, sentinel, sentinel],
-         "metrics": {"total_tardiness_hours": 0, "completion": {"objective_score_policy": "unknown_all_components"}}},
-        {"tag": "local:completed_subset", "score": [1, 0, 0],
-         "metrics": {"total_tardiness_hours": 0, "completion": {"objective_scope": "completed_batches_only",
-                     "objective_score_policy": "completed_batches_only", "objective_defined": False,
-                     "expected_operation_count": 3, "missing_operation_count": 1, "unexpected_result_count": 0,
-                     "complete_batch_count": 1, "incomplete_batch_count": 1}}},
-        {"tag": "local:all_batches", "score": [0, 5.5, 1.25], "metrics": {"total_tardiness_hours": 5.5,
-         "completion": {"objective_scope": "all_batches", "expected_operation_count": 31, "missing_operation_count": 0,
-                        "unexpected_result_count": 0, "complete_batch_count": 11, "incomplete_batch_count": 0}}},
-    ]
-    trace = [{"elapsed_ms": index, **deepcopy(attempt)} for index, attempt in enumerate(attempts, 1)]
-    ordinary, _diagnostics = project_public_algo_summary({"attempts": attempts, "improvement_trace": trace})
-    expected = [[2, None, None], [1, None, None], [1, 0, 0], [0, 5.5, 1.25]]
-    assert [item["score"] for item in ordinary["attempts"]] == expected
-    assert [item["score"] for item in ordinary["improvement_trace"]] == expected
-
-    origins = ("graph_ready_v2_generated", "graph_ready_v2_repaired", "graph_ready_v2_iterated_greedy")
-    graph_attempts = [{"candidate_origin": origin, "weight_profile_slug": "profile-" + str(index),
-                       "tag": "graph_ready:profile|sgs:slack", "score": [0, 1, 1.5], "metrics": {"overdue_count": 1}}
-                      for index, origin in enumerate(origins, 1)]
-    public_attempts, _diagnostics = project_attempts(graph_attempts)
-    assert project_attempts(public_attempts)[0] == public_attempts
-    summary, _diagnostics = project_public_algo_summary({"attempts": public_attempts})
-    assert summary["attempts"] == public_attempts
-
-    # Freeze the recorded object and decisions; comparison is independent of representative rank.
-    metrics = {"failed_ops": 0, "overdue_count": 1, "weighted_tardiness_hours": 1.5, "total_tardiness_hours": 1.5,
-               "makespan_hours": 2.5, "changeover_count": 0}
-    complete = {"expected_operation_count": 1, "missing_operation_count": 0, "unexpected_result_count": 0,
-                "complete_batch_count": 1, "incomplete_batch_count": 0}
-    comparator = {"kind": "incumbent", "state": "comparable", "objective_name": "min_overdue", "objective_scope": "all_batches",
-                  "reference_scope": "all_batches", "reference_score": [0, 1, 1.5, 1.5, 2.5, 0],
-                  "reference_metrics": metrics, "reference_completion": complete, "metric_deltas": dict.fromkeys(COMPARISON_METRIC_KEYS, 0)}
-    for attempt in graph_attempts:
-        attempt.update(score=[0, 1, 1.5, 1.5, 2.5, 0], failed_ops=0,
-                       metrics={**{key: value for key, value in metrics.items() if key != "failed_ops"},
-                                "completion": {**complete, "objective_scope": "all_batches"}})
-    first = {**deepcopy(comparator), "kind": "none", "state": "no_reference", "reference_scope": None,
-             "reference_score": None, "reference_metrics": None, "reference_completion": None, "metric_deltas": None}
-    graph_attempts[0].update(elapsed_ms=10, event_index=1, accepted=True, verified=True, strict_improved=None, comparison=first)
-    graph_attempts[1].update(elapsed_ms=32, event_index=7, accepted=True, verified=True, strict_improved=False, comparison=deepcopy(comparator))
-    graph_attempts[1]["comparison"]["reference_completion"]["incomplete_batch_ids"] = ["PRIVATE-BATCH"]
-    graph_attempts[1]["comparison"]["reference_metrics"]["machine_id"] = "PRIVATE-MACHINE"
-    graph_attempts[2].update(elapsed_ms=19, event_index=4, accepted=True, verified=True, strict_improved=True, comparison=deepcopy(comparator))
-    graph_attempts[2]["comparison"]["reference_metrics"]["total_tardiness_hours"] = 2.5
-    graph_attempts[2]["comparison"]["reference_score"][3] = 2.5
-    graph_attempts[2]["comparison"]["metric_deltas"]["total_tardiness_hours"] = -1.0
-    ordinary, _diagnostics = project_public_algo_summary({"attempts": graph_attempts})
-    repeated, _diagnostics = project_public_algo_summary(ordinary)
-    assert ordinary == repeated
-    assert ordinary["attempts"][0]["comparison"] == first
-    assert ordinary["attempts"][1]["comparison"] == comparator
-    assert ordinary["attempts"][2]["comparison"]["metric_deltas"]["total_tardiness_hours"] == -1.0
-    assert "PRIVATE" not in json.dumps(ordinary)

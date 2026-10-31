@@ -25,11 +25,14 @@ class WorkbenchTrialAdoptionService(AdoptionCommandHost):
     _busy_message = "正在排产，这次采用没有执行。请等排产结束后重新点「确认正式采用」。"
     _conflict_message = "这个操作编号不是本试调方案的采用结果，请回到试调列表重新打开。"
 
+    def _validate(self, conn, scenario_ref):
+        return validate_trial_adoption(conn, scenario_ref, data_context=self.data_context)
+
     def preview(self, scenario_ref):
         self._outer()
         reference(scenario_ref)
         try:
-            evidence, context_factory, data_context_ref = self._prepare_preview(scenario_ref, validate_trial_adoption)
+            evidence, context_factory, data_context_ref = self._prepare_preview(scenario_ref, self._validate)
         except TrialAdoptionBlocked as exc:
             return {"scenario_ref": scenario_ref,
                     "validation": {"status": "blocked", "can_adopt": False, "issues": exc.issues},
@@ -43,7 +46,7 @@ class WorkbenchTrialAdoptionService(AdoptionCommandHost):
         validate_request_key(request_key)
         intent = adoption_input(value)
         return self._execute_adoption(scenario_ref, write_token, request_key, intent,
-                                      validate=validate_trial_adoption, persist=persist_trial_adoption_in_tx)
+                                      validate=self._validate, persist=persist_trial_adoption_in_tx)
 
     def lookup(self, scenario_ref, request_key):
         reference(scenario_ref)

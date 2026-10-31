@@ -27,7 +27,7 @@ def _invalid_facts(message: str) -> OperatorQualificationError:
 
 
 def _identifier(value: Any) -> str:
-    if not isinstance(value, str) or not value or value != value.strip() or "\x00" in value:
+    if not isinstance(value, str) or not value.strip() or "\x00" in value:
         raise _invalid_facts("人员资格资料中的编号无效，请核对原始资料；本次没有生成新排程。")
     return value
 

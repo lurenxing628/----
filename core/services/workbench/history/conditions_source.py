@@ -2,11 +2,11 @@
 
 from core.services.workbench.facts.archived_calendar import ArchivedCalendar
 from core.services.workbench.facts.candidate_facts import (
-    GenerationFacts,
     entity_ref_rows,
     index_rows,
     operation_ref_rows,
 )
+from core.services.workbench.facts.candidate_store import cached_generation_facts
 from core.services.workbench.facts.candidate_values import corrupt
 from core.services.workbench.facts.trial_origin import delivery_origin, operation_contexts
 
@@ -111,7 +111,7 @@ class ConditionSource:
         if capture is not None and type(capture) is not dict:
             corrupt()
         if capture is not None and capture.get("facts_text") is not None:
-            facts = GenerationFacts(capture)
+            facts = cached_generation_facts(capture)
             operations, batches, refs = facts.tables["BatchOperations"], facts.tables["Batches"], facts.operations
             entity_refs = facts.entity_refs
             prefix = "head.admission.source.capture.facts_text"

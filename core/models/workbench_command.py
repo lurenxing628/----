@@ -39,6 +39,7 @@ class WorkbenchCommandOutcome:
     result: str
     data: Any
     warnings: List[Dict[str, Any]] = field(default_factory=list)
+    history_revision: Optional[int] = None
 
     def payload(self) -> Dict[str, Any]:
         if self.result not in ("committed", "unchanged", "partial"):

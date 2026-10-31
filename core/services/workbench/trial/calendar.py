@@ -1,7 +1,6 @@
 """Real scheduler calendar and duration math over exact snapshot-local inputs."""
 
 from dataclasses import replace
-from datetime import datetime
 
 from core.algorithm_runtime.internal_slot import estimate_internal_slot
 from core.algorithm_runtime.operation_effort import external_operation_effort, internal_operation_effort
@@ -70,10 +69,9 @@ def _original_target(op, batch, execution):
     return quantity
 
 
-def estimate(engine, original, arrangement, *, effort=None):
+def estimate(engine, original, arrangement, *, start, effort=None):
     """Estimate a slot with saved work and the snapshot-local calendar."""
     duration = original_duration(original, effort=effort)
-    start = datetime.fromisoformat(arrangement["start"])
     if duration["basis"] == "calendar_days":
         return start, engine.add_calendar_days(start, duration["days"])
     if arrangement["machine_ref"] is None or arrangement["operator_ref"] is None:

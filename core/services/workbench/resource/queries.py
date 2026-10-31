@@ -10,6 +10,8 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_resource_query import RESOURCE_KINDS
 from core.models.workbench_resource_table_query import table_query_required, toolbar_scope
+from core.services.workbench.facts.source_revisions import RESOURCE_SOURCE_KEYS, read_source_revisions
+from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_resource_query_repo import WorkbenchResourceQueryRepository
 from data.repositories.workbench_resource_table_repo import WorkbenchResourceTableRepository
 
@@ -38,6 +40,7 @@ class WorkbenchResourceQueryService:
             raise WorkbenchCommandRejected("entity_not_found", "没有这个资源页面。请从左边的资料总览重新进入。", 404)
         self.conn, self.kind = conn, kind
         self.repo = WorkbenchResourceQueryRepository(conn, logger=logger)
+        self.identities = WorkbenchIdentityRepository(conn, logger=logger)
         self.logger = logger
         self._snapshot_metrics = None
         self._table_facts = None
@@ -46,7 +49,10 @@ class WorkbenchResourceQueryService:
         self._identities_by_ref = None
         self._resolved_by_ref = {}
         self._snapshot_scope = None
+        self._snapshot_revisions = None
         self._report_revisions = {}
+        self._capture_fingerprint = False
+        self._table_warmed = False
         if kind == "supplier":
             self.domain = WorkbenchSupplierService(conn, logger=logger)
         elif kind in ("machine_group", "shift_profile"):
@@ -59,42 +65,58 @@ class WorkbenchResourceQueryService:
         with TransactionManager(self.conn).transaction():
             previous = (self._snapshot_metrics, self._table_facts, self._table_indexes,
                         self._table_identities, self._identities_by_ref, self._resolved_by_ref,
-                        self._snapshot_scope, self._report_revisions)
+                        self._snapshot_scope, self._snapshot_revisions, self._report_revisions,
+                        self._capture_fingerprint, self._table_warmed)
             try:
                 self._snapshot_metrics = WorkbenchResourceMetricsService(self.conn, self.logger)
                 self._table_facts, self._table_indexes = None, {}
-                identities = self._read_identities() if capture_fingerprint else None
-                self._table_identities = identities
-                self._identities_by_ref = None if identities is None else {row["ref"]: row for row in identities}
+                self._table_identities = None
+                self._identities_by_ref = None
                 self._resolved_by_ref = {}
                 self._snapshot_scope = None
+                self._snapshot_revisions = None
                 self._report_revisions = {}
+                self._capture_fingerprint = bool(capture_fingerprint)
+                self._table_warmed = False
                 yield self.state_fingerprint() if capture_fingerprint else None
             finally:
                 (self._snapshot_metrics, self._table_facts, self._table_indexes,
                  self._table_identities, self._identities_by_ref, self._resolved_by_ref,
-                 self._snapshot_scope, self._report_revisions) = previous
+                 self._snapshot_scope, self._snapshot_revisions, self._report_revisions,
+                 self._capture_fingerprint, self._table_warmed) = previous
 
     def _metrics_reader(self) -> WorkbenchResourceMetricsService:
         return self._snapshot_metrics or WorkbenchResourceMetricsService(self.conn, self.logger)
 
     def state_fingerprint(self):
-        scope = self._snapshot_scope
-        if scope is None:
-            scope = self.repo.scope_state(
-                self.kind, identities=self._table_identities, report_revisions=self._report_revisions
-            )
+        revisions = self._snapshot_revisions
+        if revisions is None:
+            revisions = read_source_revisions(self.conn, RESOURCE_SOURCE_KEYS)
             if self._snapshot_metrics is not None:
-                self._snapshot_scope = scope
-        return {"scope": scope,
-                "metric_facts": self._metrics_reader().fingerprint_facts(self.kind),
-                "table_refs": self._table_identities if self._table_identities is not None else self._read_identities()}
+                self._snapshot_revisions = revisions
+        return revisions
+
+    def _ensure_table_snapshot(self):
+        if self._snapshot_metrics is None or not self._capture_fingerprint:
+            return
+        if self._table_identities is None:
+            identities = self._read_identities()
+            self._table_identities = identities
+            self._identities_by_ref = {row["ref"]: row for row in identities}
+        if not self._table_warmed:
+            if self._snapshot_scope is None:
+                self._snapshot_scope = self.repo.scope_state(
+                    self.kind, identities=self._table_identities, report_revisions=self._report_revisions
+                )
+            self._metrics_reader().fingerprint_facts(self.kind)
+            self._table_warmed = True
 
     def _read_identities(self):
         return WorkbenchResourceTableRepository(self.conn, self.logger).identities(self._metrics_reader().identity_kinds(self.kind))
 
     def create_snapshot(self):
-        if self._snapshot_metrics is None or self._table_identities is None:
+        self._ensure_table_snapshot()
+        if self._snapshot_metrics is None or not self._table_warmed:
             return self.repo.create_relations(self.kind)
         relations = {"machine": ("op_type", "machine_group"),
                      "operator": ("op_type", "shift_profile"), "supplier": ("op_type",)}.get(self.kind, ())
@@ -119,7 +141,7 @@ class WorkbenchResourceQueryService:
 
     def preparation(self, *, refs=None, codes=None, selected_refs=(), selected_codes=None, names=None,
                     machine_authorizations=False, known_identities=()):
-        if self._table_identities is not None:
+        if self._table_warmed:
             return ResourceChangePreparation(self._table_reader())
         repo = WorkbenchResourceTableRepository(self.conn, self.logger)
         if refs is not None or codes is not None:
@@ -129,6 +151,8 @@ class WorkbenchResourceQueryService:
                                          known_identities=known_identities)
             owners = {kind: repo.name_owners(kind, values) for kind, values in (names or {}).items()}
             return ResourceChangePreparation(facts, name_reader=repo.name_owners, names=owners)
+        if self._snapshot_metrics is not None:
+            return ResourceChangePreparation(self._table_reader())
         return ResourceChangePreparation(ResourceTableFacts(self._metrics_reader(), repo.identities(),
                                                            scope_state=self._snapshot_scope,
                                                            report_revisions=self._report_revisions))
@@ -180,7 +204,7 @@ class WorkbenchResourceQueryService:
 
     def detail(self, ref):
         identity = self.resolve(ref)
-        if self._table_identities is not None:
+        if self._table_warmed:
             if self.kind == "op_type":
                 return self._op_type_page([{"ref": identity.ref, "business_code": identity.entity_key,
                                            "revision": identity.revision}], self._metrics_reader())[0]
@@ -197,6 +221,7 @@ class WorkbenchResourceQueryService:
     def page(self, query):
         if query.kind != self.kind:
             raise WorkbenchCommandRejected("invalid_input", "查询类型与当前资源不一致。", 400)
+        self._ensure_table_snapshot()
         advanced = table_query_required(query)
         if advanced:
             index = self.table_index(query)
@@ -237,6 +262,7 @@ class WorkbenchResourceQueryService:
         return result
 
     def _table_reader(self):
+        self._ensure_table_snapshot()
         if self._table_facts is not None:
             return self._table_facts
         identities = self._table_identities if self._table_identities is not None else self._read_identities()
@@ -245,6 +271,7 @@ class WorkbenchResourceQueryService:
                                    report_revisions=self._report_revisions)
         if self._table_indexes is not None:
             self._table_facts = facts
+            self._table_warmed = True
         return facts
 
     def table_index(self, query):
@@ -266,10 +293,10 @@ class WorkbenchResourceQueryService:
         return self.repo.toolbar_keys(query)
 
     def facets(self, query, column, search="", number=1, size=100):
-        return self.table_index(query).facets(query, column, search, number, size)
+        return self.table_index(query).facets(column, search, number, size)
 
-    def facet_selection(self, query, column, search="", size=100):
-        return self.table_index(query).facet_selection(query, column, search, size)
+    def facet_selection(self, query, column, search=""):
+        return self.table_index(query).facet_selection(column, search)
 
     def _table_page_records(self, rows):
         facts = self._table_reader()

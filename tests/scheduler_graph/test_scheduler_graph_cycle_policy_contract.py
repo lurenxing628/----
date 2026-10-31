@@ -361,7 +361,7 @@ def _analysis_graph(durations: List[Tuple[str, int]], edges: List[Tuple[str, str
     graph = import_networkx().DiGraph()
     for node_id, duration in durations:
         graph.add_node(node_id, batch_id="B", piece_id=None, seq=0, op_code=node_id, duration_minutes=duration,
-                       machine_id=None, candidate_machine_ids=())
+                       machine_id=None, candidate_machine_ids=(), external_group_key=None)
     for parent, child, lag in edges:
         graph.add_edge(parent, child, lag_minutes=lag, kind="precedence")
     return graph

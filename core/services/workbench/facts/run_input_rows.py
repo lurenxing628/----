@@ -32,6 +32,16 @@ def _optional_text(value, field):
         _required_text(value, field)
 
 
+def _required_resource_id(value, field):
+    if not isinstance(value, str) or not value.strip() or "\x00" in value:
+        fail("invalid_stored_text", "有资料的编号或名称是空的，或者前后带空格，这次排产没有开始。请到资料总览把它补齐。", field=field)
+
+
+def _optional_resource_id(value, field):
+    if value is not None:
+        _required_resource_id(value, field)
+
+
 def batch_model(row):
     for key in ("batch_id", "part_no"):
         _required_text(row[key], key)
@@ -50,10 +60,12 @@ def batch_model(row):
 def operation_model(row):
     if not number(row["id"], integer=True, positive=True) or not number(row["seq"], integer=True, positive=True):
         fail("invalid_operation_identity", "有工序的编号或工序号不是正整数，这次排产没有开始。请到批次管理核对工序。")
-    for key in ("op_code", "batch_id", "op_type_id", "op_type_name"):
+    for key in ("op_code", "batch_id", "op_type_name"):
         _required_text(row[key], key)
-    for key in ("piece_id", "machine_id", "operator_id", "supplier_id"):
-        _optional_text(row[key], key)
+    _required_resource_id(row["op_type_id"], "op_type_id")
+    _optional_text(row["piece_id"], "piece_id")
+    for key in ("machine_id", "operator_id", "supplier_id"):
+        _optional_resource_id(row[key], key)
     if row["status"] not in OPERATION_STATES or row["source"] not in OPERATION_SOURCES:
         fail("invalid_operation_state", "有工序的状态或来源资料不完整，这次排产没有开始。请到批次管理核对。", op_id=row["id"])
     if row["source"] == INTERNAL:

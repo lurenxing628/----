@@ -10,9 +10,8 @@
     const affected = new Set(stops.map(row => row.machine_ref)), windows = new Map();
     for (const row of stops) { if (!windows.has(row.machine_ref)) windows.set(row.machine_ref, []); windows.get(row.machine_ref).push(row); }
     const tasks = data.tasks.filter(row => row.source === 'internal' && row.machine_ref);
-    const facts = G.prepare({ tasks, plan_span: { start: data.time_scope.range_start, end: data.time_scope.range_end },
-      resources: data.resource_common.cohort.map(row => ({ ref: row.ref, label: row.label })),
-      projections: { calendar: { resources: [] }, occupancy: { resources: [] }, baseline: { state: 'unavailable' } } });
+    const facts = G.prepareTasks({ tasks, plan_span: { start: data.time_scope.range_start, end: data.time_scope.range_end },
+      resources: data.resource_common.cohort.map(row => ({ ref: row.ref, label: row.label })) });
     return { facts, stops, affected, windows, risks: new Map(data.deliveries.map(row => [row.batch_ref, row.risk])) };
   }
   function groupPrepared(prepared, mode) {

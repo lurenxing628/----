@@ -11,7 +11,6 @@ class WorkbenchMaterialFileRepository(BaseRepository):
         identities, histories, materials, requirements = {}, {}, {}, {}
         codes = set(codes)
         capture_history = bool(codes)
-        refs = list(dict.fromkeys(refs))
         for start in range(0, len(refs), 400):
             chunk = refs[start:start + 400]
             marks = ",".join("?" for _ in chunk)

@@ -6,11 +6,15 @@ import os
 import sqlite3
 import stat
 from datetime import datetime
-from typing import Any, Dict, NoReturn
+from typing import Any, Dict, NoReturn, Tuple
 
 from core.errors import AppError
 from core.infrastructure.safe_files import stat_regular_file
 from core.infrastructure.schema_probe import user_table_count
+from core.services.system.maintenance.telemetry import (
+    classify_maintenance_result,
+    extract_maintenance_result_values,
+)
 from core.services.system.runtime_log_reader import (
     DIAGNOSTIC_EXTRA_FILES,
     ROTATED_LOG_RE,
@@ -19,7 +23,6 @@ from core.services.system.runtime_log_reader import (
 from core.services.system.system_config_service import SystemConfigService
 from core.services.system.system_maintenance_service import _parse_db_dt
 from core.shared.strict_json import load_strict_json
-from core.shared.strict_parse import is_exact_non_negative_number
 from data.repositories.operation_log_repo import OperationLogRepository
 from data.repositories.system_job_state_repo import SystemJobStateRepository
 
@@ -30,12 +33,6 @@ _CONFIG_FIELDS = (
     "auto_log_cleanup_keep_days", "auto_log_cleanup_interval_minutes",
 )
 _JOBS = ("auto_backup", "auto_backup_cleanup", "auto_log_cleanup")
-_RESULT_COUNTS = (
-    "time_cost_ms", "removed_count", "deleted_count", "total", "candidates",
-    "min_keep", "kept_recent_count", "mtime_error_count", "unsafe_backup_count",
-    "delete_error_count", "allow",
-)
-_RESULT_TEXT = ("filename", "error", "reason", "cutoff", "size_mb_status", "size_mb_error")
 _FILE_LIMIT = 20
 _DETAIL_LIMIT = 16384
 _READ_ERRORS = (sqlite3.Error, AppError)
@@ -167,68 +164,15 @@ def _config(conn, backup_keep_days_default: int) -> Dict[str, Any]:
     return result
 
 
-def _result_numbers(detail: Dict[str, Any]) -> Dict[str, Any]:
-    values = {}
-    for field in _RESULT_COUNTS:
-        if field not in detail:
-            continue
-        value = detail[field]
-        if type(value) is not int or value < 0:
-            raise ValueError("Invalid task result number: " + field)
-        values[field] = value
-    if "size_mb" in detail:
-        value = detail["size_mb"]
-        if value is not None and not is_exact_non_negative_number(value):
-            raise ValueError("Invalid task result number: size_mb")
-        values["size_mb"] = value
-    return values
-
-
-def _result_text(detail: Dict[str, Any]) -> Dict[str, Any]:
-    values = {}
-    for field in _RESULT_TEXT:
-        if field not in detail or detail[field] is None:
-            continue
-        value = detail[field]
-        if not isinstance(value, str):
-            raise ValueError("Invalid task result text: " + field)
-        if field == "filename" and ("/" in value or "\\" in value):
-            raise ValueError("Task result filename must not contain a path")
-        values[field] = value[:1000]
-    return values
-
-
 def _not_object() -> NoReturn:
     raise ValueError("Task result must be a strict JSON object")
 
 
-def _result_values(raw: object) -> Dict[str, Any]:
+def _result_values(raw: object) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     if not isinstance(raw, str) or len(raw) > _DETAIL_LIMIT:
         raise ValueError("Task result is not text or exceeds the metadata limit")
     detail = load_strict_json(raw, on_malformed=_not_object, expected=dict)
-    values = _result_numbers(detail)
-    values.update(_result_text(detail))
-    if "skipped" in detail:
-        if type(detail["skipped"]) is not bool:
-            raise ValueError("Invalid task result flag: skipped")
-        values["skipped"] = detail["skipped"]
-    return values
-
-
-def _result_status(values: Dict[str, Any], kind: str) -> str:
-    if values.get("error"):
-        return "failed"
-    partial = any(values.get(key, 0) > 0 for key in (
-        "mtime_error_count", "unsafe_backup_count", "delete_error_count"
-    ))
-    if partial or values.get("size_mb_error") or values.get("size_mb_status") == "stat_failed":
-        return "partial"
-    if values.get("skipped") or values.get("reason") == "backup_dir_not_exists":
-        return "skipped"
-    complete = {"auto_backup": bool(values.get("filename")),
-                "auto_backup_cleanup": "removed_count" in values,
-                "auto_log_cleanup": "deleted_count" in values}
-    return "completed" if complete[kind] else "unknown"
+    return detail, extract_maintenance_result_values(detail)
 
 
 def _job_result(raw: Any, kind: str) -> Dict[str, Any]:
@@ -236,11 +180,11 @@ def _job_result(raw: Any, kind: str) -> Dict[str, Any]:
     if raw is None or raw == "":
         return result
     try:
-        values = _result_values(raw)
+        detail, values = _result_values(raw)
     except (ValueError, TypeError, OverflowError) as exc:
         result.update(status="invalid", error=_error(exc))
     else:
-        result.update(status=_result_status(values, kind), values=values)
+        result.update(status=classify_maintenance_result(detail, kind, success_status="completed"), values=values)
     return result
 
 

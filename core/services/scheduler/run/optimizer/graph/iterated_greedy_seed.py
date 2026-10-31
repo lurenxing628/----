@@ -12,11 +12,10 @@ import math
 from dataclasses import dataclass
 from datetime import datetime
 from itertools import chain, combinations
-from typing import Any, Callable, Dict, FrozenSet, Iterator, List, Optional, Tuple
+from typing import Any, Callable, Dict, FrozenSet, Iterator, List, Optional, Tuple, cast
 
 from core.algorithm_contracts.types import ScheduleResult
 from core.algorithm_contracts.value_domains import INTERNAL
-from core.shared.strict_parse import finite_float, is_number
 
 _MAX_PROBES = 2048
 
@@ -45,70 +44,45 @@ class _Budget:
             raise _ConstructionStopped("time_budget")
 
 
-def _empty_result() -> Dict[str, Any]:
-    return {"order": None, "status": "not_applicable", "reason": None, "estimated_key": None,
-            "original_estimated_key": None, "probes": 0, "construction_stop": "not_applicable",
-            "construction_method": None, "deferred_count": None, "estimated_start_offset_hours": None,
-            "estimate_basis": "observed_result_spans_and_common_start_offset",
-            "requires_sgs_validation": True, "optimality": "not_claimed"}
-
-
 def build_due_date_seed(*, parent: Any, candidate: Dict[str, Any], metrics: Dict[int, Dict[str, Any]],
                         graph_context: Dict[str, Any], start_dt: datetime,
-                        clock: Callable[[], float], deadline: float) -> Dict[str, Any]:
+                        clock: Callable[[], float], deadline: float) -> Optional[Tuple[int, ...]]:
     """Return a complete op-id tuple only when its estimated key strictly beats the original.
 
     probes counts distinct proposed orders induced by deferred sets; the original estimate is
-    not a probe. A best completed probe can survive a later budget stop, with that stop reported.
+    not a probe. A best completed probe can survive a later budget stop.
     """
-    result, budget = _empty_result(), _Budget(clock, deadline)
+    budget = _Budget(clock, deadline)
     search: Optional[_SeedSearch] = None
     try:
         budget.check()
-        order = _check_scope(parent, graph_context)
+        _check_graph(graph_context)
+        order = parent.order
         jobs, offset = _observed_jobs(candidate, metrics, start_dt, budget)
-        result["estimated_start_offset_hours"] = offset
         budget.check()
         search = _SeedSearch(jobs, offset, _estimate(order, jobs, offset), budget)
         deferred = _moore_deferred(search.jobs_by_due, offset, budget)
-        result["deferred_count"] = len(deferred)
         key = search.probe(deferred)
         if len(deferred) <= 2 and math.comb(len(jobs), len(deferred)) <= _MAX_PROBES:
-            result["construction_method"] = "enumerated_fixed_size_deferred_sets"
             for chosen in combinations(sorted(jobs), len(deferred)):
                 search.probe(frozenset(chosen))
         else:
-            result["construction_method"] = "bounded_single_exchange"
             _exchange_search(search, deferred, key)
             if len(deferred) > 2:
-                result["construction_method"] = "bounded_single_exchange_and_insertion"
                 _polish_order(search, search.best_order or order)
-        result["construction_stop"] = "completed"
-    except _NotApplicable as exc:
-        result["reason"] = str(exc)
-        if search is not None:
-            result.update(probes=search.probes, original_estimated_key=search.original_key)
-        return result
-    except _ConstructionStopped as exc:
-        result["construction_stop"] = str(exc)
-    return _finish_result(result, search)
+    except _NotApplicable:
+        return None
+    except _ConstructionStopped:
+        pass
+    return search.best_order if search is not None else None
 
 
-def _check_scope(parent: Any, graph: Dict[str, Any]) -> Tuple[int, ...]:
-    _check_graph(parent, graph)
-    return tuple(parent.order)
-
-
-def _check_graph(parent: Any, graph: Dict[str, Any]) -> None:
+def _check_graph(graph: Dict[str, Any]) -> None:
     if graph["fixed_op_ids"]:
         raise _NotApplicable("fixed_operations")
-    links = (
-        parent.predecessors,
-        parent.successors,
-        graph["predecessor_op_ids_by_op_id"],
-        graph["successor_op_ids_by_op_id"],
-    )
-    if any(values for mapping in links for values in mapping.values()):
+    # The graph links are validated bidirectional at decode preparation, and the parent's links are their
+    # mutable slice, so the full predecessor map alone decides whether any precedence exists.
+    if any(graph["predecessor_op_ids_by_op_id"].values()):
         raise _NotApplicable("precedence_constraints")
 
 
@@ -126,46 +100,26 @@ def _observed_jobs(candidate: Dict[str, Any], metrics: Dict[int, Dict[str, Any]]
         resources.add(_resource_pair(row))
         processing = _observed_duration(row)
         starts.append(row.start_time)
-        jobs[op_id] = _Job(op_id, processing, _due_deadline(metrics, op_id))
+        jobs[op_id] = _Job(op_id, processing, metrics[op_id]["due_deadline_hours"])
     if len(resources) != 1:
         raise _NotApplicable("multiple_resource_pairs")
     return jobs, _start_offset(starts, start_dt)
 
 
-def _due_deadline(metrics: Dict[int, Dict[str, Any]], op_id: int) -> float:
-    due = metrics[op_id]["due_deadline_hours"]
-    hours = finite_float(due) if is_number(due) else None
-    if hours is None:
-        raise _NotApplicable("missing_or_nonfinite_due_deadline_hours")
-    return hours
-
-
-def _resource_pair(row: ScheduleResult) -> Tuple[str, str]:
+def _resource_pair(row: ScheduleResult) -> Tuple[Optional[str], Optional[str]]:
     if row.source != INTERNAL:
         raise _NotApplicable("non_internal_result")
-    if row.machine_id is None or row.operator_id is None:
-        raise _NotApplicable("missing_resource_pair")
+    # A decoded internal row always names its machine and operator (internal_operation.py).
     return row.machine_id, row.operator_id
 
 
 def _observed_duration(row: ScheduleResult) -> float:
-    start, end = row.start_time, row.end_time
-    if start is None or end is None:
-        raise _NotApplicable("invalid_result_times")
-    try:
-        hours = (end - start).total_seconds() / 3600.0
-    except TypeError as exc:
-        raise _NotApplicable("incompatible_result_timezones") from exc
-    if not math.isfinite(hours) or hours < 0:
-        raise _NotApplicable("invalid_observed_duration")
-    return hours
+    # Decoded rows carry the run's own datetimes with end >= start; zero-duration point events stay 0.
+    return (cast(datetime, row.end_time) - cast(datetime, row.start_time)).total_seconds() / 3600.0
 
 
 def _start_offset(starts: List[datetime], start_dt: datetime) -> float:
-    try:
-        return max((min(starts) - start_dt).total_seconds() / 3600.0, 0.0)
-    except TypeError as exc:
-        raise _NotApplicable("incompatible_start_timezones") from exc
+    return max((min(starts) - start_dt).total_seconds() / 3600.0, 0.0)
 
 
 def _moore_deferred(jobs: Tuple[_Job, ...], offset: float, budget: _Budget) -> FrozenSet[int]:
@@ -197,8 +151,6 @@ def _estimate(order: Tuple[int, ...], jobs: Dict[int, _Job], offset: float) -> T
         completion += job.processing
         late += int(completion >= job.due)
         tardiness += max(completion - job.due, 0.0)
-    if not math.isfinite(completion) or not math.isfinite(tardiness):
-        raise _NotApplicable("nonfinite_estimate")
     return late, tardiness
 
 
@@ -207,7 +159,7 @@ class _SeedSearch:
         self.jobs, self.offset, self.budget = jobs, offset, budget
         self.jobs_by_due = tuple(sorted(jobs.values(), key=lambda job: (job.due, job.processing, job.op_id)))
         self.jobs_by_processing = tuple(sorted(jobs.values(), key=lambda job: (job.processing, job.due, job.op_id)))
-        self.original_key = self.best_key = original_key
+        self.best_key = original_key
         self.best_order: Optional[Tuple[int, ...]] = None
         self.keys: Dict[FrozenSet[int], Tuple[int, float]] = {}
         self.orders: Dict[Tuple[int, ...], Tuple[int, float]] = {}
@@ -288,19 +240,6 @@ def _polish_order(search: _SeedSearch, order: Tuple[int, ...]) -> None:
                 break
         else:
             return
-
-
-def _finish_result(result: Dict[str, Any], search: Optional[_SeedSearch]) -> Dict[str, Any]:
-    if search is not None:
-        result.update(order=search.best_order, estimated_key=search.best_key,
-                      original_estimated_key=search.original_key, probes=search.probes)
-    if result["order"] is not None:
-        result.update(status="candidate", reason="estimated_improvement")
-    elif result["construction_stop"] != "completed":
-        result.update(status="budget_exhausted", reason=result["construction_stop"])
-    else:
-        result.update(status="no_improvement", reason="estimate_not_better")
-    return result
 
 
 __all__ = ["build_due_date_seed"]

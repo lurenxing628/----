@@ -150,7 +150,3 @@ class IntervalIndex:
             return False
         start, end = self.intervals[index]
         return start < at <= end if ending else start <= at < end
-
-
-def public_intervals(intervals):
-    return [{"start": wire(start), "end": wire(end)} for start, end in intervals]

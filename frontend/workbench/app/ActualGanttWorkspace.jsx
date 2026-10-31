@@ -202,7 +202,24 @@
     }
     function select(item, report) { setLocateNotice(''); patch({ selected: item.task.task_ref, report: report ? report.report_ref : null }); }
     const selectedFact = taskIndex && taskIndex.get(view.selected), selected = selectedFact && selectedFact.item;
-    const report = selected && selected.execution && selected.execution.reports.find(r => r.report_ref === view.report);
+    const report = selectedFact && view.report ? selectedFact.reportIndex.get(view.report)?.report || null : null;
+    const selectedLines = React.useMemo(
+      () => view.details && selected && model ? M.describe(selected, model.labels, report).map((line, i) => <p key={i}>{line}</p>) : null,
+      [view.details, selected, model && model.labels, report]
+    );
+    const reportOptions = React.useMemo(
+      () => view.details && selected && selected.execution ? selected.execution.reports.map(r => <option key={r.report_ref} value={r.report_ref}>{r.report_no}</option>) : null,
+      [view.details, selected && selected.execution && selected.execution.reports]
+    );
+    const gapReportButtons = React.useMemo(
+      () => view.details && selectedFact && selected && selected.execution ? selectedFact.gapReports.map(row => <Button key={row.report_ref} icon="search"
+        onClick={() => patch({ report: row.report_ref })}>查看待补报工 {row.report_no}</Button>) : null,
+      [view.details, selectedFact && selectedFact.gapReports, selected && selected.execution]
+    );
+    const hoverTip = React.useMemo(
+      () => !hover || !model ? '' : hover.title || M.describe(hover.item, model.labels, hover.report).join('\n'),
+      [hover && hover.title, hover && hover.item, hover && hover.report, model && model.labels]
+    );
     const graph = prepared && prepared.graph;
     const targetRef = chainTarget && chainTarget[0] || view.selected;
     const active = React.useMemo(() => graph ? window.GanttGraph.selection(graph, { enabled: view.chain, targetRef }) : null, [graph, view.chain, targetRef]);
@@ -281,12 +298,11 @@
           <header className="wb-gantt-detail-header"><h3>工序详情</h3><Button icon="x" aria-label="收起工序详情" onClick={collapseDetails} /></header>
           <div className="wb-gantt-detail-body">{selected ? <>
             <details className="wb-gantt-detail-section" open><summary>执行与完工偏差</summary><div className="wb-gantt-detail-section-body fg-detail-facts">
-              {M.describe(selected, model.labels, report).map((line, i) => <p key={i}>{line}</p>)}
-              {selected.execution && <><label className="fg-report-selector">逐次报工 <select aria-label="选择报工详情" value={view.report === null ? '' : view.report} onChange={e => patch({ report: e.target.value === '' ? null : e.target.value })}><option value="">整道工序</option>{selected.execution.reports.map(r => <option key={r.report_ref} value={r.report_ref}>{r.report_no}</option>)}</select></label>
+              {selectedLines}
+              {selected.execution && <><label className="fg-report-selector">逐次报工 <select aria-label="选择报工详情" value={view.report === null ? '' : view.report} onChange={e => patch({ report: e.target.value === '' ? null : e.target.value })}><option value="">整道工序</option>{reportOptions}</select></label>
                 <Button icon="search" disabled={!report || !report.actual_start} onClick={() => locate()}>定位本次报工</Button>
                 {selected.execution.remaining_plan && <p>剩余安排：{M.time(selected.execution.remaining_plan.start)} 至 {M.time(selected.execution.remaining_plan.end)}</p>}
-                {selected.execution.reports.filter(row => selected.execution.data_gaps.some(gap => gap.report_ref === row.report_ref)).map(row => <Button key={row.report_ref} icon="search"
-                  onClick={() => patch({ report: row.report_ref })}>查看待补报工 {row.report_no}</Button>)}
+                {gapReportButtons}
                 {report && <p>登记：{M.time(report.recorded_at)} · 历史版本 {report.correction_history.length} 条</p>}</>}
               <Button icon="arrow-right" onClick={() => navigate('field')}>到现场记录核对或补齐</Button>
             </div></details>
@@ -298,7 +314,7 @@
               <Chain index={graph} model={model} onLocate={locate} /></div>}</details>}
           </> : <p className="fg-muted">点击工序查看详情与完整工艺路线。</p>}</div>
         </aside>}</div></>}
-      {hover && model && <div className="fg-tip" role="tooltip" style={{ left: Math.max(8, Math.min(hover.x + 12, window.innerWidth - 368)), top: Math.max(8, Math.min(hover.y + 12, window.innerHeight - 360)) }}>{hover.title || M.describe(hover.item, model.labels, hover.report).join('\n')}</div>}
+      {hover && model && <div className="fg-tip" role="tooltip" style={{ left: Math.max(8, Math.min(hover.x + 12, window.innerWidth - 368)), top: Math.max(8, Math.min(hover.y + 12, window.innerHeight - 360)) }}>{hoverTip}</div>}
       {exporting && data && <Modal title="导出现场实际甘特" icon="download" onClose={() => { if (downloadController.current) downloadController.current.abort(); setExporting(false); }} footer={<><Button onClick={() => setExporting(false)} disabled={exportBusy}>取消</Button><Button transfer="export" busy={exportBusy} onClick={download}>下载 CSV</Button></>}>
         <div className="modal-b"><p>按当前查询范围和本次读取的数据导出全部 {model.items.length} 道匹配工序及其逐次报工，不受滚动、折叠和详情开关影响。</p>
           <p>本地搜索：{view.query.trim() || '无'}；{window.WorkbenchTerms.overdue}：{M.lateLabels[view.late]}；仅选中：{view.onlySelected ? '是' : '否'}。</p>

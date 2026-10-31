@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Set, Tuple, cast
 
+from core.algorithm_contracts.ordering import clean_resource_id
 from core.algorithm_contracts.schedule_point_evidence import SchedulePointEvidence
 from core.errors import AppError, ErrorCode
 from core.models.batch_operation import BatchOperation
@@ -26,8 +27,8 @@ def _execution_conflict(message: str, *, reason: str, op_id: int) -> AppError:
 
 
 def _execution_seed_resources(fact: ExecutionFact, *, op_id: int) -> Tuple[str, str]:
-    machine_id = str(fact.actual_machine_id or "").strip()
-    operator_id = str(fact.actual_operator_id or "").strip()
+    machine_id = clean_resource_id(fact.actual_machine_id)
+    operator_id = clean_resource_id(fact.actual_operator_id)
     if not machine_id or not operator_id:
         raise _execution_conflict(
             "已完工的工序缺少实际设备或人员，本次没有写入新排程。请先核对现场反馈记录。",

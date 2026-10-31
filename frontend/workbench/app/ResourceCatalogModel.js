@@ -2,14 +2,12 @@
   'use strict';
   const C = window.APSResourceContract;
   const names = { machine_group: '设备组', shift_profile: '班次档' };
-  const cloneRow = row => ({ ...row, ...(Array.isArray(row.periods) ? { periods: row.periods.map(p => ({ ...p })) } : {}) });
-  const clone = value => value.map(cloneRow);
   function draft(entity) {
     const fields = entity ? entity.fields : {};
     return { business_code: entity ? entity.business_code : '', label: entity ? entity.label : '',
       status: entity ? entity.status : '', remark: fields.remark == null ? '' : fields.remark,
       anchor_date: fields.anchor_date || '', cycle_days: fields.cycle_days == null ? '' : String(fields.cycle_days),
-      pattern: Array.isArray(fields.pattern) ? clone(fields.pattern) : [] };
+      pattern: Array.isArray(fields.pattern) ? fields.pattern : [] };
   }
   function cycle(value) {
     if (!/^[1-9][0-9]{0,2}$/.test(value) || Number(value) > 366)
@@ -17,7 +15,7 @@
     return Number(value);
   }
   function resized(pattern, length) {
-    return Array.from({ length }, (_, day_offset) => pattern[day_offset] ? cloneRow(pattern[day_offset]) :
+    return Array.from({ length }, (_, day_offset) => pattern[day_offset] ||
       { day_offset, is_rest: null, shift_start: '', shift_end: '' });
   }
   function dateValid(value) {
@@ -47,31 +45,66 @@
     });
     return errors;
   }
+  function samePeriods(a, b) {
+    if (a === b) return true;
+    if (a == null || b == null) return a == null && b == null;
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    return a.every((p, i) => {
+      const q = b[i];
+      return p === q || Boolean(p && q && p.start === q.start && p.end === q.end && p.day_offset === q.day_offset);
+    });
+  }
+  function samePattern(a, b) {
+    if (a === b) return true;
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    return a.every((row, i) => {
+      const other = b[i];
+      return row === other || Boolean(row && other
+        && row.day_offset === other.day_offset
+        && row.is_rest === other.is_rest
+        && row.shift_start === other.shift_start
+        && row.shift_end === other.shift_end
+        && samePeriods(row.periods, other.periods));
+    });
+  }
+  function isDirty(kind, current, baseline) {
+    if (current === baseline) return false;
+    if (!current || !baseline) return true;
+    if (current.business_code !== baseline.business_code
+        || current.label !== baseline.label
+        || current.status !== baseline.status
+        || current.remark !== baseline.remark) return true;
+    if (kind !== 'shift_profile') return false;
+    if (current.anchor_date !== baseline.anchor_date
+        || current.cycle_days !== baseline.cycle_days) return true;
+    return !samePattern(current.pattern, baseline.pattern);
+  }
   function input(kind, value, original) {
     if (!names[kind]) throw C.failure('不支持这类基础资料。');
-    const base = draft(original), creating = !original, result = {}, fields = {}, errors = [];
+    const creating = !original, baseFields = original ? original.fields : {}, result = {}, fields = {}, errors = [];
     const bad = (path, message) => errors.push({ path, message });
     if (creating) {
       result.business_code = value.business_code.trim();
       if (!result.business_code) bad('business_code', '请填写编号。');
     }
-    if (creating || value.label !== base.label) {
+    if (creating || value.label !== original.label) {
       result.label = value.label.trim();
       if (!result.label) bad('label', '请填写名称。');
     }
-    if (creating || value.status !== base.status) {
+    if (creating || value.status !== original.status) {
       if (!['active', 'inactive'].includes(value.status)) bad('status', '请明确选择启用或停用。');
       else fields.status = value.status;
     }
-    const remark = value.remark.trim();
-    if (creating ? remark : value.remark !== base.remark) fields.remark = remark || null;
-    if (kind === 'shift_profile' && (creating || ['anchor_date', 'cycle_days', 'pattern'].some(key => JSON.stringify(base[key]) !== JSON.stringify(value[key])))) {
+    const remark = value.remark.trim(), baseRemark = baseFields.remark == null ? '' : baseFields.remark;
+    if (creating ? remark : value.remark !== baseRemark) fields.remark = remark || null;
+    const baseAnchor = baseFields.anchor_date || '', baseCycle = baseFields.cycle_days == null ? '' : String(baseFields.cycle_days);
+    if (kind === 'shift_profile' && (creating || value.anchor_date !== baseAnchor || value.cycle_days !== baseCycle || !samePattern(value.pattern, baseFields.pattern))) {
       let length;
       try { length = cycle(value.cycle_days); } catch (error) { errors.push(...C.fieldErrors(error)); }
       if (!dateValid(value.anchor_date)) bad('anchor_date', '请填写有效的周期起始日期。');
       if (length !== value.pattern.length) bad('pattern', '轮换天数与逐日规则不一致，请先确认调整。');
       errors.push(...patternErrors(value.pattern));
-      fields.anchor_date = value.anchor_date; fields.cycle_days = length; fields.pattern = clone(value.pattern);
+      fields.anchor_date = value.anchor_date; fields.cycle_days = length; fields.pattern = value.pattern;
     }
     if (errors.length) throw C.failure('请核对标红的项。', errors);
     if (Object.keys(fields).length) result.fields = fields;
@@ -81,5 +114,5 @@
     const value = entity.relationships[kind === 'machine_group' ? 'machine_count' : 'operator_count'];
     return Number.isSafeInteger(value) && value >= 0 ? value : null;
   }
-  window.APSResourceCatalogModel = { names, draft, cycle, resized, input, memberCount };
+  window.APSResourceCatalogModel = { names, draft, cycle, resized, samePattern, isDirty, input, memberCount };
 })();

@@ -121,7 +121,6 @@ def _apply_maintenance_lock_token(state: dict, token: str) -> None:
     elif key == "action":
         state["action"] = value or None
     elif key == "ts":
-        state["ts_text"] = value or None
         try:
             state["ts"] = datetime.fromisoformat(value)
         except Exception:

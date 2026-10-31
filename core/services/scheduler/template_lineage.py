@@ -12,11 +12,7 @@ from core.models.workbench_template_lineage import copy_payload, snapshot, state
 from data.repositories.batch_external_context_repo import BatchExternalContextRepository
 from data.repositories.workbench_template_lineage_repo import WorkbenchTemplateLineageRepository
 
-from .template_lineage_query import (
-    TemplateLineageQuery,
-    check_evidence_size,
-    lineage_available,
-)
+from .template_lineage_query import TemplateLineageQuery
 
 
 def _instance_row(row):
@@ -90,10 +86,6 @@ class TemplateLineageWriter:
     def require_ready(self):
         if not self.conn.in_transaction:
             raise RuntimeError("Template lineage writes require a caller transaction.")
-        if not lineage_available(self.repo):
-            raise WorkbenchCommandRejected("template_lineage_schema_missing", "模板来源记录的数据表还没安装，这次复制没有执行。请先完成统一版本升级后重试。")
-        if self.repo.identity_schema_broken():
-            raise WorkbenchCommandRejected("template_lineage_unavailable", "来源模板或批次的记录结构已损坏，这次复制没有执行，系统没有用不可靠的版本继续。请联系维护人员。")
 
     def prepare_templates(self, rows, *, facts):
         """Capture fixed raw templates once for this caller transaction."""
@@ -165,6 +157,5 @@ class TemplateLineageWriter:
 
     def _record_new_origin(self, instance, template, template_snapshot, *, source=None, source_event_id=None, source_eligible=True):
         encoded = state_snapshot(instance)
-        check_evidence_size(len(template_snapshot.encode("ascii")) + len(encoded.encode("ascii")))
         return self.repo.append_origin(instance, template, template_snapshot, encoded, birth_event_id=instance["birth_event_id"],
                                        source=source, source_event_id=source_event_id, source_eligible=source_eligible)

@@ -17,7 +17,14 @@ def _merge_exclusion_reasons(first, second):
     return [{"code": code, "message": messages[code], "count": count} for code, count in sorted(counts.items())]
 
 
-def project_lineage_calibration(templates, instances, projections, lineage, *, as_of):
+def project_lineage_calibration(
+    templates,
+    instances,
+    projections,
+    lineage,
+    *,
+    as_of,
+):
     by_ref = {row.operation_ref: row for row in templates}
     samples_by_template, unbound = defaultdict(list), defaultdict(list)
     for row in instances:
@@ -39,7 +46,8 @@ def project_lineage_calibration(templates, instances, projections, lineage, *, a
     rows = []
     generated_at = as_of.isoformat(timespec="seconds")
     for template in templates:
-        summary = summarize_samples(samples_by_template[template.operation_ref])
+        template_samples = samples_by_template[template.operation_ref]
+        summary = summarize_samples(template_samples)
         missing = unbound_summaries.get(template.part_no, empty)
         summary["candidate_count"] += missing["candidate_count"]
         summary["excluded_count"] += missing["excluded_count"]

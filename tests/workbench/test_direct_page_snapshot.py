@@ -294,9 +294,8 @@ def test_calibration_export_source_labels_are_shared_by_csv_and_xlsx(source, lab
     row = {key: None for key, _ in COLUMNS}
     row["source"] = source
     source_index = next(index for index, (key, _) in enumerate(COLUMNS) if key == "source")
-    for format_name in ("csv", "xlsx"):
-        values, = _export_values([row], "{}", format_name)
-        assert len(values) == 22 and values[source_index] == label
+    values, = _export_values([row], "{}")
+    assert len(values) == 22 and values[source_index] == label
 
 
 _CALIBRATION_DUPLICATE = "筛选条件里有重复的列，请重新选择。"
@@ -426,3 +425,114 @@ def test_calibration_routes_use_read_budget_and_avoid_duplicate_instance_or_unse
     assert ok_facets.status_code == 200 and len(admitted) == 2
     ok_detail = client.get(f"/api/workbench/v1/calibration/{suggestion_ref}", query_string={"snapshot_ref": token})
     assert ok_detail.status_code == 200 and len(admitted) == 3
+
+
+def test_shared_receipt_classification_route_boundaries_and_dashboard_stored_rows(schema_conn, tmp_path):
+    from urllib.parse import unquote
+
+    from core.infrastructure.sqlite_udf import receipt_revision_category
+    from core.models.workbench_dashboard import empty_handling
+    from core.services.workbench.dashboard.policy import read_stored
+    from core.services.workbench.facts.production_capture import non_input_row
+    from core.shared.strict_json import canonical_json
+    from data.repositories.workbench_dashboard_repo import WorkbenchDashboardRepository
+    from web.routes.workbench.batches import register_batch_routes
+    from web.routes.workbench.calendars import register_calendar_routes
+    from web.routes.workbench.materials import register_material_routes
+    from web.routes.workbench.resources import register_resource_routes
+    from web.routes.workbench.system_routes import register_system_maintenance_routes
+
+    # #35: 统一回执三分类语义与 non_input_row
+    cols = ("action", "outcome_json")
+    assert receipt_revision_category("trial.scenario.adopt", '{"result":"applied"}') == "trial_adoption"
+    assert non_input_row("WorkbenchCommandReceipts", ("trial.scenario.adopt", '{"result":"applied"}'), cols) is True
+    assert receipt_revision_category("batch.update", '{"result":"unchanged"}') == ""
+    assert non_input_row("WorkbenchCommandReceipts", ("batch.update", '{"result":"unchanged"}'), cols) is True
+    assert receipt_revision_category("batch.update", "{malformed") == "production_input"
+    assert non_input_row("WorkbenchCommandReceipts", ("batch.update", "{malformed"), cols) is False
+    assert receipt_revision_category("batch.update", '{"result":"applied"}') == "production_input"
+    assert non_input_row("WorkbenchCommandReceipts", ("batch.update", '{"result":"applied"}'), cols) is False
+
+    log_dir = tmp_path / "logs"
+    backup_dir = tmp_path / "backups"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    backup_dir.mkdir(parents=True, exist_ok=True)
+
+    app = Flask("shard-d-route-contracts")
+    app.config.update(
+        TESTING=True,
+        SECRET_KEY="temporary-shard-d-route-contracts",
+        DATABASE_PATH=str(tmp_path / "schema.db"),
+        LOG_DIR=str(log_dir),
+        BACKUP_DIR=str(backup_dir),
+    )
+    bp = Blueprint("shard_d_routes", __name__)
+    register_material_routes(bp)
+    register_resource_routes(bp)
+    register_calendar_routes(bp)
+    register_batch_routes(bp)
+    register_system_maintenance_routes(bp)
+    app.register_blueprint(bp)
+
+    @app.before_request
+    def _bind_db():
+        g.db = schema_conn
+
+    client = app.test_client()
+
+    # #41: 物料、资料、日历命令入口按领域主语参数化且非法 request_key 不污染 g.workbench_request_key
+    for path, subject in (
+        ("/api/workbench/v1/entities/material/create", "物料"),
+        ("/api/workbench/v1/entities/machine/create", "资料"),
+        ("/api/workbench/v1/calendar/upsert", "日历"),
+    ):
+        resp = client.post(path, json={"only": "incomplete"})
+        assert resp.status_code == 400
+        assert f"{subject}还没有保存" in resp.get_json()["error"]["message"]
+
+    # #43: batch_detail 拒绝重复同名 snapshot_ref 参数
+    dup_resp = client.get(
+        "/api/workbench/v1/entities/batch/" + ("a" * 48),
+        query_string=[("snapshot_ref", "first"), ("snapshot_ref", "second")],
+    )
+    assert dup_resp.status_code == 400
+    assert dup_resp.get_json()["error"]["code"] == "invalid_input"
+
+    # #40: 系统诊断包文件名不再伪称“已脱敏”
+    logs_resp = client.get("/api/workbench/v1/system/logs")
+    assert logs_resp.status_code == 200
+    snap_ref = logs_resp.get_json()["meta"]["snapshot_ref"]
+    zip_resp = client.get("/api/workbench/v1/system/logs/export/zip", query_string={"snapshot_ref": snap_ref})
+    assert zip_resp.status_code == 200
+    disposition = unquote(zip_resp.headers["Content-Disposition"])
+    assert "系统诊断包.zip" in disposition
+    assert "已脱敏" not in disposition
+
+    # #48: WorkbenchDashboardRepository.stored_rows 不再产出假字段
+    batch_ref = "b" * 48
+    schema_conn.execute(
+        "INSERT INTO WorkbenchEntityRefs(ref,kind,entity_key,active,revision) VALUES (?,?,?,?,?)",
+        (batch_ref, "batch", "B-DASH-01", 1, 1),
+    )
+    item_ref = schema_conn.execute(
+        "SELECT item_ref FROM WorkbenchDashboardItems WHERE category='delivery' AND batch_ref=?",
+        (batch_ref,),
+    ).fetchone()[0]
+    handling = {**empty_handling(), "status": "following", "owner": "张三"}
+    origin = {"item_ref": item_ref, "category": "delivery", "source": {"batch_ref": batch_ref}}
+    schema_conn.execute(
+        "INSERT INTO WorkbenchDashboardStates(item_ref,revision,handling_json,origin_json,updated_at) VALUES (?,?,?,?,?)",
+        (
+            item_ref,
+            1,
+            canonical_json(handling),
+            canonical_json(origin),
+            "2026-10-16T08:00:00",
+        ),
+    )
+    repo = WorkbenchDashboardRepository(schema_conn)
+    raw_row, = list(repo.stored_rows(10))
+    assert not {"_stored_body_bytes", "_tail_after_json", "_receipt_ref"}.intersection(raw_row)
+    stored, identities = read_stored(repo)
+    assert stored[item_ref]["handling"]["status"] == "following"
+    assert identities[item_ref]["item_ref"] == item_ref

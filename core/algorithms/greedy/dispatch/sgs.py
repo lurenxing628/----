@@ -7,10 +7,9 @@ from core.algorithm_contracts.dispatch_rules import (
     DispatchRule,
     DispatchRuleSpec,
     as_dispatch_rule_spec,
-    build_dispatch_key,
 )
 from core.algorithm_contracts.value_domains import EXTERNAL, INTERNAL
-from core.algorithm_runtime.internal_slot import estimate_internal_slot, require_internal_hours
+from core.algorithm_runtime.internal_slot import require_internal_hours
 from core.algorithm_runtime.piece_input import operation_dispatch_state
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.algorithm_runtime.sgs_estimate_reuse import sgs_handoff_scope
@@ -32,10 +31,8 @@ from .sgs_priority_frontier import score_next_ready
 from .sgs_priority_pruning import GraphPriorityPruning
 from .sgs_scoring import (
     _score_external_candidate,
+    _score_internal_candidate,
     with_graph_priority_key,
-)
-from .sgs_scoring import (
-    _score_internal_candidate as _score_internal_candidate_impl,
 )
 
 if TYPE_CHECKING:
@@ -43,14 +40,6 @@ if TYPE_CHECKING:
     from core.models.batch import Batch
 
 ScoredCandidate = Tuple[Tuple[float, ...], str, "OpForScheduleAlgo"]
-
-
-def _score_internal_candidate(**kwargs: Any) -> Tuple[float, ...]:
-    return _score_internal_candidate_impl(
-        **kwargs,
-        estimate_slot=estimate_internal_slot,
-        dispatch_key_builder=build_dispatch_key,
-    )
 
 
 def _pick_best_candidate(scored_candidates: List[ScoredCandidate]) -> Tuple[str, OpForScheduleAlgo]:
@@ -124,8 +113,11 @@ def _average_proc_hours(
     ops_by_batch: Dict[str, List[OpForScheduleAlgo]],
     batches: Dict[str, Batch],
 ) -> Tuple[float, Dict[int, float]]:
+    preparation = ctx.native_preparation
+    total_hours_by_op_id: Dict[int, float] = preparation.total_hours_by_op_id
+    if preparation.average_internal_proc_hours is not None:
+        return preparation.average_internal_proc_hours, total_hours_by_op_id
     samples: List[float] = []
-    total_hours_by_op_id: Dict[int, float] = ctx.native_preparation.total_hours_by_op_id
     # _group_sgs_ops only keeps batches that exist, so every grouped batch id resolves.
     for batch_id, operations in ops_by_batch.items():
         batch = batches[batch_id]
@@ -135,7 +127,9 @@ def _average_proc_hours(
                     total_hours_by_op_id[op.id] = require_internal_hours(op, resolve_operation_batch(ctx, op, batch))
                 samples.append(total_hours_by_op_id[op.id])
     if samples:
-        return sum(samples) / len(samples), total_hours_by_op_id
+        avg = sum(samples) / len(samples)
+        preparation.average_internal_proc_hours = avg
+        return avg, total_hours_by_op_id
     ctx.increment("dispatch_key_avg_proc_hours_fallback_count")
     return 1.0, total_hours_by_op_id
 
@@ -167,6 +161,8 @@ def _run_sgs_loop(
     )
     if graph_state is not None and isinstance(graph_ready_context, dict) and graph_ready_context.get("piece_scope"):
         graph_state["end_time_by_op_id"] = {row.op_id: row.end_time for row in state.results}
+        if state.readiness_gate_enabled:
+            graph_state["ready_starts_by_batch_id"] = ctx.native_preparation.parsed_ready_starts()
     # Picks completed so far; a resumed decode continues from the checkpoint's count and progress.
     position = 0
     if decode_resume is not None:
@@ -174,7 +170,7 @@ def _run_sgs_loop(
     score_cache = ctx.sgs_score_cache
     if score_cache is not None and score_cache.state is not state:
         raise RuntimeError("SGS 评分缓存绑定的运行状态与本次派工不一致")
-    pruning = GraphPriorityPruning.for_cache(score_cache, graph_state, batches)
+    pruning = GraphPriorityPruning.for_cache(score_cache, graph_state)
     acceleration = DecodeAcceleration(decode_checkpoints, graph_state, pruning, total_hours_by_op_id,
                                       resume=decode_resume)
 
@@ -234,8 +230,6 @@ def _complete_reused_tail(graph_state: Optional[Dict[str, Any]], *, ops_by_batch
 
 def _prepare_scoring_round(ctx, priority_pruning):
     cache = ctx.sgs_score_cache
-    if cache is not None:
-        cache.begin_round()
     if cache is None or cache._timing is None:
         priority_pruning = None
     return cache, priority_pruning
@@ -282,7 +276,7 @@ def _score_candidates(
                 graph_state,
                 attempt_sink=attempt_sink,
             )
-        key = cache.resolve(op, batches[batch_id], batch_id, graph_state, score) if cache is not None else score()
+        key = cache.resolve(op, batch_id, graph_state, score) if cache is not None else score()
         scored.append((key, batch_id, op))
     if remainder:
         if any(item[0][0] == 0.0 for item in scored):
@@ -332,7 +326,6 @@ def _score_candidate(
                 dispatch_rule=dispatch_rule,
                 end_dt_exclusive=end_dt_exclusive,
                 avg_proc_hours=avg_proc_hours,
-                dispatch_key_builder=build_dispatch_key,
             )
         return _score_internal_candidate(
             ctx=ctx,

@@ -16,7 +16,6 @@ def require_template(repo, template_operation_ref):
 def adopt_checked_quota(repo, template, value):
     """Use the shared current-template hours writer in the adoption transaction."""
     current = {**template, "ref": template["template_operation_ref"], "revision": template["template_revision"]}
-    ProcessTemplateHours(repo.conn).revise_current(current, {"unit_hours": value},
-                                                  expected_revision=template["template_revision"])
+    ProcessTemplateHours(repo.conn).revise_current(current, {"unit_hours": value})
     revision = template["template_revision"] + int(template["unit_hours"] != value)
     return {**template, "unit_hours": value, "template_revision": revision}

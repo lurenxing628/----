@@ -25,11 +25,7 @@
     React.useEffect(() => () => { if (onActivityChange) onActivityChange(false); }, [onActivityChange]);
     React.useEffect(() => {
       if (command.phase !== 'done' || seen.current === command.result.receipt_ref || command.intent.action !== 'split_confirm') return;
-      try {
-        const result = B.receipt(command.result, 'split_confirm', command.intent.ref);
-        if (!B.ref(result.data.child_ref)) throw window.APSResourceContract.failure('未读到拆分子批，请刷新批次核对。');
-        seen.current = result.receipt_ref; setPreview(null); setQuantity(''); onCommitted(result.data.child_ref, command.intent.ref);
-      } catch (e) { setError(e); }
+      seen.current = command.result.receipt_ref; setPreview(null); setQuantity(''); onCommitted(command.result.data.child_ref, command.intent.ref);
     }, [command.phase, command.result]);
     async function inspect() {
       if (disabled || refs.length !== 1 || command.locked || busy) return;

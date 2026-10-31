@@ -93,6 +93,8 @@ def batch_selection():
 
 @api_endpoint
 def batch_detail(ref):
+    if any(len(request.args.getlist(key)) != 1 for key in request.args):
+        raise WorkbenchCommandRejected("invalid_input", "详情的查询条件不对，详情没有打开。请刷新页面后重新点开这一行。", 400)
     object_fields(dict(request.args), ("snapshot_ref",))
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
     with batch_read_snapshot(reader) as fingerprint:

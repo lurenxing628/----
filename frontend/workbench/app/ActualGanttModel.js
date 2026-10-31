@@ -81,10 +81,12 @@
         return { key: report.report_ref, report, start, end, actual_machine_ref: report.actual_machine_ref, actual_operator_ref: report.actual_operator_ref,
           mark: report.actual_start ? { key: report.report_ref, kind: point ? 'point' : 'actual', report, start, end, y: point ? 20 : 14, height: point ? 24 : 38 } : null };
       }) : [];
+      const gapRefs = e && Array.isArray(e.data_gaps) ? new Set(e.data_gaps.map(gap => gap.report_ref).filter(Boolean)) : null;
+      const gapReports = e && gapRefs && gapRefs.size ? e.reports.filter(row => gapRefs.has(row.report_ref)) : [];
       const remaining = e && e.remaining_plan ? { key: 'remaining', kind: 'remaining', start: instant(e.remaining_plan.start), end: instant(e.remaining_plan.end), y: 14, height: 34 } : null;
       include(planRange, baseline.start); include(planRange, baseline.end);
       for (const report of reports) { include(reportRange, report.start); include(reportRange, report.end); }
-      const fact = { item, baseline, reports, reportIndex: new Map(reports.map(report => [report.report.report_ref, report])), remaining, search: searchText(item, labels), deadlines: deadlines(item) };
+      const fact = { item, baseline, reports, reportIndex: new Map(reports.map(report => [report.report.report_ref, report])), gapReports, remaining, search: searchText(item, labels), deadlines: deadlines(item) };
       facts.push(fact); taskIndex.set(task.task_ref, fact);
     }
     const hasPoints = facts.some(fact => fact.baseline.kind === 'plan-point' || fact.reports.some(report => report.mark && report.mark.kind === 'point'));
@@ -165,6 +167,25 @@
     while (low < high) { const mid = (low + high) >> 1; if (rows[mid].top + rows[mid].height <= top) low = mid + 1; else high = mid; }
     const result = []; for (let at = low; at < rows.length && rows[at].top < bottom; at++) result.push(rows[at]); return result;
   }
+  function visibleMarks(marks, modelStart, scale, left, viewport) {
+    if (!marks.length || !(scale > 0) || !(viewport >= 0)) return marks;
+    const minX = left - 12, maxX = left + viewport + 12, result = [];
+    let startIndex = 0;
+    if (marks[0].kind === 'plan' || marks[0].kind === 'plan-point' || marks[0].kind === 'plan-baseline') {
+      startIndex = 1;
+      if ((marks[0].end - modelStart) * scale >= minX && (marks[0].start - modelStart) * scale <= maxX) result.push(marks[0]);
+    }
+    let low = startIndex, high = marks.length;
+    while (low < high) {
+      const mid = (low + high) >> 1;
+      if ((marks[mid].end - modelStart) * scale < minX) low = mid + 1;
+      else high = mid;
+    }
+    for (let at = low; at < marks.length && (marks[at].start - modelStart) * scale <= maxX; at++) {
+      if ((marks[at].end - modelStart) * scale >= minX) result.push(marks[at]);
+    }
+    return result;
+  }
   function graphLocations(model) {
     const result = new Map();
     for (const row of model.rows) {
@@ -192,33 +213,51 @@
   function ticks(model, width, left, viewport) {
     return window.PlanGanttModel.ticks(model.start, model.end, width, left, viewport);
   }
-  function describe(item, labels, report) {
+  const baseDescriptions = new WeakMap(), markTitles = new WeakMap();
+  function describeBase(item, labels) {
+    let byItem = baseDescriptions.get(labels);
+    if (!byItem) baseDescriptions.set(labels, byItem = new WeakMap());
+    let result = byItem.get(item);
+    if (result) return result;
     const t = item.task, e = item.execution;
-    const result = [taskLabel(t), '计划应做：' + window.FieldContract.quantity(t.quantity, { digits: 2 }) + ' 件 · 批次：' + window.FieldContract.quantity(t.batch_quantity, { digits: 2 }) + ' 件',
+    result = [taskLabel(t), '计划应做：' + window.FieldContract.quantity(t.quantity, { digits: 2 }) + ' 件 · 批次：' + window.FieldContract.quantity(t.batch_quantity, { digits: 2 }) + ' 件',
       '原计划：' + time(t.start) + ' 至 ' + time(t.end),
       '计划资源：' + (labels.get(t.machine_ref) || '设备未填写') + ' / ' + (labels.get(t.operator_ref) || '人员未填写')];
     if (window.PointContract.isPoint(t)) result.push('零工时工序，无资源占用。');
     if (t.quantity_reason) result.push(quantityReasons[t.quantity_reason]);
-    if (!e) return result.concat('报工记录不可用');
-    result.push(states[e.execution_state] + ' · 已知完成 ' + number(e.known_completed_quantity) + ' 件',
-      '整道实际完工：' + (e.confirmed_finish ? time(e.confirmed_finish) : e.execution_state === 'complete' ? '已标记完工，确认完工时间缺失' : '尚未确认整道完工'),
-      '剩余数量：' + (e.remaining_quantity === null ? '当前记录无法计算，见记录问题' : number(e.remaining_quantity)));
-    if (e.completion_basis) result.push('完成依据：逐次报工记录');
-    const deviation = finishDeviation(item);
-    result.push('整道完工偏差：' + (deviation || '未完工，不计算完成偏差'));
-    e.data_gaps.forEach(gap => result.push('记录问题：' + gap.message));
-    if (report) result.push('本次报工：' + report.report_no, '实际：' + (report.actual_start ? time(report.actual_start) : '本次开工未填写') + ' 至 ' + (report.actual_end ? time(report.actual_end) : '本次结束未填写'),
+    if (!e) result.push('报工记录不可用');
+    else {
+      result.push(states[e.execution_state] + ' · 已知完成 ' + number(e.known_completed_quantity) + ' 件',
+        '整道实际完工：' + (e.confirmed_finish ? time(e.confirmed_finish) : e.execution_state === 'complete' ? '已标记完工，确认完工时间缺失' : '尚未确认整道完工'),
+        '剩余数量：' + (e.remaining_quantity === null ? '当前记录无法计算，见记录问题' : number(e.remaining_quantity)));
+      if (e.completion_basis) result.push('完成依据：逐次报工记录');
+      const deviation = finishDeviation(item);
+      result.push('整道完工偏差：' + (deviation || '未完工，不计算完成偏差'));
+      e.data_gaps.forEach(gap => result.push('记录问题：' + gap.message));
+    }
+    byItem.set(item, result); return result;
+  }
+  function describe(item, labels, report) {
+    const result = describeBase(item, labels);
+    if (!item.execution || !report) return result;
+    return result.concat(['本次报工：' + report.report_no, '实际：' + (report.actual_start ? time(report.actual_start) : '本次开工未填写') + ' 至 ' + (report.actual_end ? time(report.actual_end) : '本次结束未填写'),
       '本次数量：' + (report.completed_quantity === null ? '本条报工未填写完成数量' : number(report.completed_quantity) + ' 件') + ' · 有效工时：' + (report.effective_processing_hours === null ? '本条报工未填写有效工时' : hours(report.effective_processing_hours)),
-      '实际资源：' + (labels.get(report.actual_machine_ref) || '设备未填写') + ' / ' + (labels.get(report.actual_operator_ref) || '人员未填写'), '备注：' + (report.remark || '未填写'));
-    return result;
+      '实际资源：' + (labels.get(report.actual_machine_ref) || '设备未填写') + ' / ' + (labels.get(report.actual_operator_ref) || '人员未填写'), '备注：' + (report.remark || '未填写')]);
   }
   function markTitle(mark, item, labels) {
+    let byItem = markTitles.get(labels);
+    if (!byItem) markTitles.set(labels, byItem = new WeakMap());
+    let byMark = byItem.get(item);
+    if (!byMark) byItem.set(item, byMark = new WeakMap());
+    let title = byMark.get(mark);
+    if (title !== undefined) return title;
     const heading = mark.kind === 'plan-point' ? '原计划 · 零工时工序' : mark.kind === 'plan' ? '原计划' : mark.kind === 'remaining' ? '已有剩余安排' : mark.kind === 'point' ? (mark.report.actual_end ? '报工时刻' : '报工开工时刻 · 结束未填写') : '实际报工时段';
-    return [heading].concat(describe(item, labels, mark.report)).join('\n');
+    title = [heading].concat(describe(item, labels, mark.report)).join('\n');
+    byMark.set(mark, title); return title;
   }
   function metrics(data) {
     const value = data.execution_summary;
     return { complete: value.complete, reported: value.reported, pending: value.pending, average: value.average_finish_deviation_minutes };
   }
-  window.ActualGanttModel = { instant, wire, time, number, hours, pieceLabel, taskLabel, states, views, lateLabels, names, finishDeviation, deadlines, fieldSearchText, searchText, filter, tracks, prepare, groupPrepared, selectPrepared, layoutPrepared, visibleRows, graphLocations, tickStep, tickLabel, ticks, describe, markTitle, metrics };
+  window.ActualGanttModel = { instant, wire, time, number, hours, pieceLabel, taskLabel, states, views, lateLabels, names, finishDeviation, deadlines, fieldSearchText, searchText, filter, tracks, prepare, groupPrepared, selectPrepared, layoutPrepared, visibleRows, visibleMarks, graphLocations, tickStep, tickLabel, ticks, describe, markTitle, metrics };
 })();

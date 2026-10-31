@@ -19,7 +19,7 @@ class WorkbenchOutsourcingCommandService:
         self.actor_provider = actor_provider or getpass.getuser
         self.context_factory = context_factory
 
-    def _prepare(self, payload):
+    def _prepare(self, payload, *, parsed_times):
         ref = payload.get("outsourcing_ref")
         previous, header = None, None
         if ref is not None:
@@ -34,7 +34,7 @@ class WorkbenchOutsourcingCommandService:
         if header is None and memberships:
             reject("这些工序已经有外协登记了；请打开原来的登记修改，不要重复登记或换组。", "constraint_conflict", 409)
         before = values(previous) if previous else None
-        prepared_values = prepare_values(before, payload, self.reader.now())
+        prepared_values = prepare_values(before, payload, self.reader.now(), parsed_times=parsed_times)
         after = prepared_values.values
         snapshot = {"input": payload, "source": source["facts"],
                     "memberships": memberships, "header": header, "latest_fact_ref": previous["fact_ref"] if previous else None}
@@ -42,9 +42,10 @@ class WorkbenchOutsourcingCommandService:
                 "input": payload, "snapshot": snapshot, "subject": ref or target["batch_ref"], "values": prepared_values}
 
     def preview(self, payload):
-        normalized = normalize_input(payload)
+        parsed_times = {}
+        normalized = normalize_input(payload, parsed_times=parsed_times)
         with self.reader.read_snapshot():
-            prepared = self._prepare(normalized)
+            prepared = self._prepare(normalized, parsed_times=parsed_times)
             result = {"outsourcing_ref": prepared["ref"], "target": prepared["source"]["public"],
                       "before": prepared["before"], "after": prepared["after"], "input": normalized,
                       "can_confirm": True, "execution": execution_boundary(prepared["target"]), "write_context": None}
@@ -53,13 +54,13 @@ class WorkbenchOutsourcingCommandService:
             return result
 
     def execute(self, payload, *, request_key, validate_context):
-        normalized = normalize_input(payload)
+        parsed_times = {}
+        normalized = normalize_input(payload, parsed_times=parsed_times)
         subject = cast(str, normalized["outsourcing_ref"] if "outsourcing_ref" in normalized
                        else cast(dict, normalized["target"])["batch_ref"])
 
         def guard():
-            self.reader.require_schema()
-            prepared = self._prepare(normalized)
+            prepared = self._prepare(normalized, parsed_times=parsed_times)
             validate_context(subject, "confirm", prepared["snapshot"])
             actor = self.actor_provider()
             if type(actor) is not str or not actor.strip() or "\x00" in actor or len(actor) > 200:

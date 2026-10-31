@@ -45,6 +45,12 @@
     ['benefits', 'costs'].forEach((key, index) => C.check(value[key].every(item =>
       item.direction === (index ? 'worse' : 'better') && value.all_differences.some(entry => C.equal(entry, item))), '主要取舍与完整差值不一致，请刷新。'));
   }
+  function rangeFor(input) {
+    const start = input && input.start_date + 'T00:00:00', raw = input && input.end_date + 'T00:00:00';
+    C.check(A.time(start) && A.time(raw), '这次排产没有有效的提交时间范围，无法比较。请重新选择排产记录。');
+    const end = new Date(Date.parse(raw + 'Z') + 86400000).toISOString().slice(0, 19);
+    C.check(A.time(end) && start < end); return { range_start: start, range_end: end };
+  }
   function validate(payload, scope) {
     const d = payload.data;
     C.check(shape(d, ['candidate', 'generation', 'baseline', 'time_scope', 'batch_ref', 'batch_refs', 'batches', 'resources', 'summary',
@@ -67,8 +73,9 @@
     C.check(hold === undefined || hold === null || shape(hold, ['start', 'end'])
       && A.time(hold.start + ':00') && A.time(hold.end + ':00') && hold.start < hold.end);
     const expected = scope.batch_ref ? [scope.batch_ref] : input.batch_refs.slice().sort();
+    const bounds = scope.range_start && scope.range_end ? { range_start: scope.range_start, range_end: scope.range_end } : rangeFor(input);
     C.check(baselineIdentity(d.baseline, g)
-      && C.equal(d.time_scope, { range_start: scope.range_start, range_end: scope.range_end, interval: 'half_open_overlap',
+      && C.equal(d.time_scope, { ...bounds, interval: 'half_open_overlap',
         membership: 'either_side_overlap', counterpart_policy: 'retain_complete_counterpart', time_basis: 'factory_local',
         unplanned_policy: 'included_without_time_interval', unknown_or_zero_interval_policy: 'included_without_time_interval' })
       && d.batch_ref === (scope.batch_ref || null) && C.equal(d.batch_refs, expected)
@@ -97,10 +104,13 @@
   }
   async function read(value, signal) {
     const scope = context(value);
-    C.check(scope.candidate_ref && scope.range_start && scope.range_end, '请先选择候选并填写两个方案共同的开始和结束时间。');
-    const query = { range_start: scope.range_start, range_end: scope.range_end, ...(scope.batch_ref ? { batch_ref: scope.batch_ref } : {}) };
+    C.check(scope.candidate_ref && Boolean(scope.range_start) === Boolean(scope.range_end), '请先选择候选并填写两个方案共同的开始和结束时间。');
+    const query = {
+      ...(scope.range_start && scope.range_end ? { range_start: scope.range_start, range_end: scope.range_end } : {}),
+      ...(scope.batch_ref ? { batch_ref: scope.batch_ref } : {})
+    };
     const payload = await C.read('/api/workbench/v1/dashboard/candidates/' + scope.candidate_ref + '/comparison', query, signal);
     validate(payload, scope); return payload;
   }
-  window.DashboardCandidateComparisonAPI = { read, validate, context };
+  window.DashboardCandidateComparisonAPI = { read, validate, context, rangeFor };
 })();

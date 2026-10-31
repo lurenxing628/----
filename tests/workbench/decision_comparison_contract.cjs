@@ -1257,6 +1257,7 @@ async function adoptionContextContracts() {
   let random = 0;
   const storage = { getItem: key => values.has(key) ? values.get(key) : null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) };
   const local = { ...window, localStorage: storage, crypto: { getRandomValues(bytes) { bytes.fill(++random); return bytes; } },
+    navigator: { locks: { request: async (_key, _options, fn) => fn({}) } },
     WorkbenchHandlerMemory: { read: () => ({ value: '经办人' }), write() {}, useHint: () => '' },
     addEventListener(type, fn) { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type).add(fn); },
     removeEventListener(type, fn) { if (listeners.has(type)) listeners.get(type).delete(fn); },
@@ -1310,7 +1311,9 @@ async function adoptionContextContracts() {
   assert.deepEqual(clone(A.pending().read()), clone(changed));
   storage.setItem(A.PENDING_KEY, JSON.stringify(modern));
   const blockedStorage = { ...storage, removeItem() { throw new Error('disk full'); } };
-  assert.throws(() => A.pending(blockedStorage).dismissReplaced(modern, proof), /存不下/);
+  local.localStorage = blockedStorage;
+  assert.throws(() => A.pending().dismissReplaced(modern, proof), /存不下/);
+  local.localStorage = storage;
   assert.equal(A.pending().read().request_key, modern.request_key);
   A.pending().dismissReplaced(clone(modern), proof); assert.equal(A.pending().read(), null);
   lookupAnswer = receipt(modern);

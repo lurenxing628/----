@@ -38,7 +38,7 @@ const candidate={tasks:plan.tasks.map(task=>({...task,row_ref:task.task_ref,batc
   gantt_graph:{...plan.gantt_graph,scope:'full_candidate'}};
 for (const isCandidate of [false,true]) {
   const component=isCandidate?'RunCandidateGantt':'PlanGantt', data=isCandidate?candidate:plan;
-  const choices=[], props={data,prepared:h.prepare(h.runtime[isCandidate?'RunCandidateModel':'PlanGanttModel'],data),query:'',selected:null,onSelect:(task,before)=>choices.push(isCandidate?task:{task,before}),
+  const choices=[], props={data,prepared:h.prepare(h.runtime[isCandidate?'RunCandidateModel':'PlanGanttModel'],data),...(isCandidate?{}:{graph:h.runtime.GanttGraph.create(data.gantt_graph)}),query:'',selected:null,onSelect:(task,before)=>choices.push(isCandidate?task:{task,before}),
     onQuery:()=>{},asOf:'2026-05-11T12:00:00'};
   const render=states=>h.render(h.runtime[component],props,states||{});
   const edges=tree=>h.walk(tree).filter(node=>node.props['data-gantt-edge']);
@@ -88,7 +88,7 @@ try {
   for (const isCandidate of [false,true]) {
     const data=isCandidate?candidate:plan, task=data.tasks[1];
     const tree=h.render(h.runtime[isCandidate?'RunCandidateGantt':'PlanGantt'],{
-      data,prepared:h.prepare(h.runtime[isCandidate?'RunCandidateModel':'PlanGanttModel'],data),query:'',selected:isCandidate?task:{task,before:false},onSelect:()=>{},onQuery:()=>{},asOf:'2026-05-11T12:00:00'});
+      data,prepared:h.prepare(h.runtime[isCandidate?'RunCandidateModel':'PlanGanttModel'],data),...(isCandidate?{}:{graph:h.runtime.GanttGraph.create(data.gantt_graph)}),query:'',selected:isCandidate?task:{task,before:false},onSelect:()=>{},onQuery:()=>{},asOf:'2026-05-11T12:00:00'});
     const nodes=h.walk(tree), rows=nodes.filter(node=>node.props.className===(isCandidate?'rc-lane':'plan-lane'));
     const slices=nodes.filter(node=>node.props['data-gantt-graph-lines']);
     assert.equal(rows.length,3); assert.equal(slices.length,rows.length,'Printing must not keep an independently paginating whole-chart SVG');
@@ -123,7 +123,8 @@ assert(!h.text(source(tree)).includes('vnull'),'A plan without an official versi
 assert(h.text(source(tree)).includes('当前安排：正式计划 · 正式计划 A'));
 plan.projections.baseline={state:'available',basis:'official_base',items:[],item_count:1,items_complete:false,
   baseline_plan:{kind:'official',version:1,display_name:'对照计划'}};
-assert.equal(h.runtime.PlanGanttModel.prepare(plan).baselineLoaded,false);
+const taskFacts=h.runtime.PlanGanttModel.prepareTasks(plan);
+assert.equal(h.runtime.PlanGanttModel.prepareBaseline(plan,taskFacts).baselineLoaded,false);
 tree=h.render(h.runtime.PlanGanttSource,{data:plan});
 assert(h.text(source(tree)).includes('原安排：正式计划 · 对照计划 · v1'));
 assert(!h.text(source(tree)).includes('vnull'));
@@ -167,7 +168,7 @@ const full=h.processFixture();
 const incomplete={...full,gantt_graph:{...full.gantt_graph,nodes:[],node_count:full.gantt_graph.nodes.length,
   nodes_complete:false,critical_task_refs:[],critical_edges:[]}};
 const renderPlan=(data,extra={})=>h.render(h.runtime.PlanGantt,{
-  data,prepared:h.prepare(h.runtime.PlanGanttModel,data),query:'',selected:null,onSelect:()=>{},onQuery:()=>{},
+  data,prepared:h.prepare(h.runtime.PlanGanttModel,data),graph:h.runtime.GanttGraph.create(data.gantt_graph),query:'',selected:null,onSelect:()=>{},onQuery:()=>{},
   asOf:'2026-05-11T12:00:00',...extra},{PlanGantt:{7:true}});
 const tools=tree=>h.walk(tree).find(node=>node.props.className==='wb-gantt-graph-tools');
 const checkbox=tree=>h.walk(tools(tree)).find(node=>node.type==='input'&&node.props.type==='checkbox');

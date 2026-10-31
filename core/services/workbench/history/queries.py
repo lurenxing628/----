@@ -16,6 +16,7 @@ from .projection import (
     chronological_key,
     comparison_conclusion,
     condition_pair,
+    configuration_pair,
     project_entry,
     reason,
     trend_projection,
@@ -35,7 +36,7 @@ def _filtered(descriptor, query):
 
 def _page(rows, number, size, *, all_rows):
     start = (number - 1) * size
-    return (list(rows) if all_rows else rows[start:start + size],
+    return (rows if all_rows else rows[start:start + size],
             {"number": number, "size": size, "total": len(rows), "has_more": False if all_rows else start + size < len(rows)})
 
 
@@ -48,7 +49,7 @@ def _descriptor(entries, reference):
     return value
 
 
-def _read(conn, values, *, all_rows):
+def _read(conn, values, *, all_rows, section=None, bind_snapshot=None):
     query = normalize_history_query(values)
     definitions = metric_definitions()
     by_metric = {row["key"]: row for row in definitions}
@@ -59,12 +60,18 @@ def _read(conn, values, *, all_rows):
         descriptors = {row["entry_ref"]: row for row in catalog}
         selected_descriptor = _descriptor(descriptors, query["selected_entry_ref"])
         reference_descriptor = _descriptor(descriptors, "run:" + query["reference_run_ref"] if query["reference_run_ref"] else None)
+        reader, projected, pairs = HistoryReader(conn, catalog=catalog), {}, {}
+        # Immutable archives bind permanent source identities and known gaps;
+        # the directory's existing identity clock covers its mutable official bindings.
+        state["source_anchors"] = [reader.source_state(descriptor) for descriptor in (selected_descriptor, reference_descriptor)
+                                   if descriptor is not None]
+        scope = history_snapshot_scope(query)
+        snapshot = bind_snapshot(scope, state) if bind_snapshot is not None else scope
         rows = [row for row in catalog if _filtered(row, query)]
         dated = sorted((row for row in rows if row["occurred_at"] is not None), key=chronological_key,
                        reverse=query["order"] == "desc")
         rows = dated + sorted((row for row in rows if row["occurred_at"] is None), key=lambda row: row["entry_ref"])
         page_rows, page = _page(rows, query["page"], query["size"], all_rows=all_rows)
-        reader, projected, pairs = HistoryReader(conn, catalog=catalog), {}, {}
 
         def entry(descriptor):
             if descriptor is None:
@@ -74,25 +81,69 @@ def _read(conn, values, *, all_rows):
                 projected[key] = project_entry(reader, descriptor, query)
             return projected[key]
 
-        entries = [entry(row) for row in page_rows]
-        selected, reference = entry(selected_descriptor), entry(reference_descriptor)
-        pair = condition_pair(reader, reference_descriptor, selected_descriptor, selected, query, pairs,
-                              include_rows=True, all_rows=all_rows)
-        conditions = pair["conditions"]
-        deltas = {}
-        for key in query["metric_keys"]:
-            if selected is not None and reference is not None:
-                deltas[key] = gate_history_metric(by_metric[key], reference["metrics"][key], selected["metrics"][key],
-                    production_state=pair["conditions"]["state"], objective_state=pair["objective"]["state"],
-                    window_comparable=window_comparable(reference, selected, by_metric[key]))
+        need_entries = section in (None, "entries")
+        need_comparison = section in (None, "conditions", "configurations")
+        entries = [entry(row) for row in page_rows] if need_entries else []
+        if section is None:
+            selected, reference = entry(selected_descriptor), entry(reference_descriptor)
+        elif need_comparison:
+            selected = {"entry_ref": selected_descriptor["entry_ref"]} if selected_descriptor is not None else None
+            reference = {"entry_ref": reference_descriptor["entry_ref"]} if reference_descriptor is not None else None
+        else:
+            selected, reference = None, None
+        if need_comparison:
+            if section == "configurations":
+                pair = configuration_pair(reader, reference_descriptor, selected_descriptor)
             else:
-                deltas[key] = {"value": None, "state": "unavailable", "direction": "neutral",
-                    "reference_value": reference["metrics"][key]["value"] if reference else None,
-                    "selected_value": selected["metrics"][key]["value"] if selected else None,
-                    "reason": reason("history_pair_required", "比较指标需要实际历史条目和明确基准运行。")}
-        comparison = {"mode": query["comparison"], "conditions": conditions,
-            "configurations": pair["configurations"], "objective": pair["objective"], "metric_deltas": deltas,
-            "conclusion": comparison_conclusion(query["comparison"], pair, deltas, selected is not None and reference is not None)}
+                pair = condition_pair(
+                    reader,
+                    reference_descriptor,
+                    selected_descriptor,
+                    selected if section is None else None,
+                    query,
+                    pairs,
+                    include_rows=True,
+                    include_configurations=section is None,
+                    all_rows=all_rows,
+                )
+            conditions = pair["conditions"]
+            has_pair = selected is not None and reference is not None
+            deltas = {}
+            if section is None:
+                for key in query["metric_keys"]:
+                    if selected is not None and reference is not None:
+                        deltas[key] = gate_history_metric(
+                            by_metric[key],
+                            reference["metrics"][key],
+                            selected["metrics"][key],
+                            production_state=pair["conditions"]["state"],
+                            objective_state=pair["objective"]["state"],
+                            window_comparable=window_comparable(reference, selected, by_metric[key]),
+                        )
+                    else:
+                        deltas[key] = {
+                            "value": None,
+                            "state": "unavailable",
+                            "direction": "neutral",
+                            "reference_value": reference["metrics"][key]["value"] if reference else None,
+                            "selected_value": selected["metrics"][key]["value"] if selected else None,
+                            "reason": reason("history_pair_required", "比较指标需要实际历史条目和明确基准运行。"),
+                        }
+            conclusion = (
+                comparison_conclusion(query["comparison"], pair, deltas, has_pair)
+                if section is None or not has_pair
+                else None
+            )
+            comparison = {
+                "mode": query["comparison"],
+                "conditions": conditions,
+                "configurations": pair["configurations"],
+                "objective": pair["objective"],
+                "metric_deltas": deltas,
+                "conclusion": conclusion,
+            }
+        else:
+            comparison = None
         trend = {"point_scope": "current_page", "order": "asc", "points": []} if all_rows else trend_projection(
             reader, entries, descriptors, reference, reference_descriptor, query, by_metric, pairs)
         absolute = query["range_start"] is not None
@@ -104,16 +155,12 @@ def _read(conn, values, *, all_rows):
                 "official": sum(row["timeline"] == "official" for row in catalog), "filtered": len(rows)},
             "metric_definitions": definitions, "selection": {"entry": selected, "reference": reference},
             "comparison": comparison, "trend": trend, "resource_window": policy}
-        # Immutable archives bind permanent source identities and known gaps;
-        # the directory's existing identity clock covers its mutable official bindings.
-        state["source_anchors"] = [reader.source_state(descriptor) for descriptor in (selected_descriptor, reference_descriptor)
-                                   if descriptor is not None]
-        return data, history_snapshot_scope(query), state
+        return data, snapshot, state
 
 
-def read_decision_history(conn, query):
-    return _read(conn, query, all_rows=False)
+def read_decision_history(conn, query, *, bind_snapshot=None):
+    return _read(conn, query, all_rows=False, bind_snapshot=bind_snapshot)
 
 
-def read_history_all(conn, query):
-    return _read(conn, query, all_rows=True)
+def read_history_all(conn, query, *, section=None, bind_snapshot=None):
+    return _read(conn, query, all_rows=True, section=section, bind_snapshot=bind_snapshot)

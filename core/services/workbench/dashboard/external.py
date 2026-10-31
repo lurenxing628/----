@@ -30,7 +30,7 @@ def summary():
 
 
 def _receipts(reader, now, result, facts, sources):
-    snapshots, captured = [], {}
+    captured = {}
     for ref, rows in facts.items():
         latest = latest_fact(rows["latest"])
         header = rows["header"]
@@ -44,11 +44,9 @@ def _receipts(reader, now, result, facts, sources):
                 raise
             issues = [source_issue("outsourcing_fact_invalid", "外协登记的时间或状态无效，请核对物流登记。")]
             result["evaluation_gaps"].append(gap(ref, "外协原登记", issues))
-            snapshots.append({"latest": latest, "issues": issues})
             continue
         item, snapshot = reader.entry_from_facts(header, latest, now, sources=sources)
         captured[ref].update(receipt=item, snapshot=snapshot)
-        snapshots.append({"source": snapshot, "receipt": item})
         if item["source_state"] != "current":
             title = subject(item["target"]["batch"]["business_code"], "外协原登记")
             result["evaluation_gaps"].append(gap(ref, title, item["issues"]))
@@ -60,18 +58,15 @@ def _receipts(reader, now, result, facts, sources):
         pending = item["confirmedState"] == "awaiting_confirmation"
         result["awaiting_confirmation_count"] += int(pending)
         result["known_risk_count"] += int(item["overdue"] or pending)
-    result["receipt_count"] = len(snapshots)
-    return snapshots, captured
+    result["receipt_count"] = len(captured)
+    return captured
 
 
 def _targets(reader, result, rows, sources):
     entries = sources.load_target_rows(rows)
-    targets = [item for item, source in entries]
-    snapshots = []
-    for item, source in entries:
+    for item in entries:
         result["unregistered_count"] += 1
         issues = item["issues"]
-        snapshots.append({"target": item, "source": source, "issues": issues})
         if not issues:
             issues = [source_issue("outsourcing_unregistered", "尚未登记外协发出或回厂信息，请补充物流登记。")]
         title = subject(item["label"], "外协工序")
@@ -91,7 +86,6 @@ def _targets(reader, result, rows, sources):
                 issue = source_issue("external_source_unknown", "工序归属未填写或无效，请确认自制或外协。")
             title = subject(item["business_code"], "历史外协工序" if legacy_external else "来源未知工序")
             result["evaluation_gaps"].append(gap(item["operation_ref"], title, [issue]))
-    return {"targets": targets, "unregistered_sources": snapshots, "source_gaps": source_rows}
 
 
 def load_external(conn, now):
@@ -105,8 +99,8 @@ def load_external(conn, now):
     source_targets = [rows["header"]["target"] for rows in receipt_facts.values()]
     source_targets.extend(reader.sources.target_from_row(row) for row in target_rows)
     sources = reader.sources.capture(source_targets, entities=entities)
-    receipts, captured = _receipts(reader, now, result, receipt_facts, sources)
-    targets = _targets(reader, result, target_rows, sources)
+    captured = _receipts(reader, now, result, receipt_facts, sources)
+    _targets(reader, result, target_rows, sources)
     gaps = bounded(result["evaluation_gaps"])
     result["unknown_count"] = len(gaps)
     result["source_gap_count"] = sum(item["code"] != "outsourcing_unregistered" for item in gaps)
@@ -114,5 +108,4 @@ def load_external(conn, now):
     result["risk_count"] = None if gaps else result["known_risk_count"]
     if not result["receipt_count"] and not gaps:
         result["state"] = "no_data"
-    source_contents = {"receipts": receipts, "targets": targets, "summary": result}
-    return result, source_contents, captured
+    return result, captured

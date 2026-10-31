@@ -24,8 +24,8 @@ def process_export_tables(data, snapshot):
 def process_csv(data, snapshot):
     common = dict(zip(COMMON_HEADERS, common_export_columns(data, snapshot)))
     records = _unified_records(data["export_process"])
-    return UNIFIED_PROCESS_CSV_HEADERS, [[{**common, **row}.get(field) for field in UNIFIED_PROCESS_CSV_HEADERS]
-        for rows in records.values() for row in rows]
+    return UNIFIED_PROCESS_CSV_HEADERS, [[merged.get(field) for field in UNIFIED_PROCESS_CSV_HEADERS]
+        for rows in records.values() for row in rows for merged in ({**common, **row},)]
 
 
 _UNIFIED_DIRECTION_FIELDS = ("优化方向", "优化方向名称", "主指标key", "主指标", "主指标单位")

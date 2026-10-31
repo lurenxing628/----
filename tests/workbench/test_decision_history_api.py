@@ -91,12 +91,26 @@ def test_three_saved_sources_preserve_events_and_result_identity_on_two_timeline
     case.conn.commit()
     client, statements = api(case)
     with retained(case.conn):
-        runs = read(client, timeline="run", state="complete")["data"]
+        runs = read(
+            client,
+            timeline="run",
+            state="complete",
+            metric_keys=[
+                "overdue_count",
+                "total_tardiness_hours",
+                "makespan_hours",
+                "elapsed_seconds",
+                "changed_operation_count",
+                "machine_change_count",
+            ],
+        )["data"]
         official = read(client, timeline="official", order="asc")["data"]
         assert runs["totals"] == {"run": 3, "official": 3, "filtered": 1}
         assert official["totals"] == {"run": 3, "official": 3, "filtered": 3}
         assert len(runs["entries"]) == 1 and runs["entries"][0]["identity"]["run_ref"] == refs["run_ref"]
         assert runs["entries"][0]["identity"]["candidate_ref"] == refs["candidate_ref"]
+        assert runs["entries"][0]["metrics"]["changed_operation_count"]["value"] == 0
+        assert runs["entries"][0]["metrics"]["machine_change_count"]["value"] == 0
         by_ref = {row["entry_ref"]: row for row in official["entries"]}
         for prefix in ("candidate", "second_candidate"):
             event = by_ref["adoption:" + refs[prefix + "_receipt_ref"]]
@@ -145,7 +159,8 @@ def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments
         _compare,
         _materials,
         _Projection,
-        compare_prepared_history_conditions,
+        analyze_prepared_history_conditions,
+        materialize_history_conditions,
     )
     from core.services.workbench.history.conditions_source import ConditionSource
     from core.services.workbench.history.metric_gate import gate_history_metric
@@ -196,13 +211,37 @@ def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments
             checks.setattr(condition_module, "_production", count_production)
             checks.setattr(condition_module, "_calendar", count_calendar)
             checks.setattr(condition_module, "_experiments", count_experiments)
-            equal = read(client, **query)["data"]
+            equal_payload = read(client, **query)
+            equal = equal_payload["data"]
             assert len(equal["trend"]["points"]) == 15
             assert sum(counts["source"].values()) == sum(counts["production"].values()) == sum(counts["experiments"].values()) == 15
             assert all(count == 1 for values in counts.values() for count in values.values())
             next_request = read(client, **query)["data"]
             assert next_request == equal
             assert all(count == 2 for values in counts.values() for count in values.values())
+            for values in counts.values():
+                values.clear()
+            calendar_calls.clear()
+            cfg_csv = client.get(
+                BASE + "/export",
+                query_string=dict(
+                    query,
+                    metric_keys=",".join(query["metric_keys"]),
+                    snapshot_ref=equal_payload["meta"]["snapshot_ref"],
+                    format="csv",
+                    section="configurations",
+                ),
+            )
+            assert cfg_csv.status_code == 200, cfg_csv.get_data(as_text=True)
+            assert sum(counts["production"].values()) == 0 and sum(calendar_calls.values()) == 0
+            assert sum(counts["source"].values()) == sum(counts["experiments"].values()) == 2
+            cfg_rows = list(csv.reader(io.StringIO(cfg_csv.data.decode("utf-8-sig"))))
+            cfg_header, cfg_body = cfg_rows[0], cfg_rows[1:]
+            assert len(cfg_body) == len(equal["comparison"]["configurations"]["rows"])
+            field_idx, state_idx = cfg_header.index("字段"), cfg_header.index("对照状态")
+            assert [(row[field_idx], row[state_idx]) for row in cfg_body] == [
+                (row["field"], row["state"]) for row in equal["comparison"]["configurations"]["rows"]
+            ]
         assert equal["comparison"]["conditions"]["state"] == "equal"
         assert equal["comparison"]["configurations"]["state"] == "different"
         assert equal["comparison"]["objective"]["state"] == "equal"
@@ -251,7 +290,8 @@ def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments
             assert reader.condition_source(alias) is source
             assert reader.condition_side(alias, dict(window, cohort={"machine_refs": []})) is side
             saved_rows, saved_families = deepcopy(side["conditions"].rows), deepcopy(side["conditions"].families)
-            compare_prepared_history_conditions(side, side)
+            before_side, after_side, cond_analysis, _, _ = analyze_prepared_history_conditions(side, side)
+            materialize_history_conditions(before_side, after_side, cond_analysis)
             assert side["conditions"].rows == saved_rows and side["conditions"].families == saved_families
             other_window = dict(window, end="2026-09-10T16:00:00")
             other_side = reader.condition_side(packet, other_window)
@@ -294,7 +334,7 @@ def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments
         for kind, name, _table, ddl in facts["schema"]:
             if kind != "table" or name not in ("Batches", "BatchOperations", "SchemaVersion", "ScheduleConfig"):
                 continue
-            columns = ddl_columns(ddl, name, restricted=True)
+            columns = ddl_columns(ddl, name)
             for row in facts["tables"][name]:
                 for field in ("created_at", "updated_at"):
                     if field in columns:
@@ -351,6 +391,7 @@ def test_shared_resource_window_uses_saved_capacity_and_keeps_missing_capacity_u
     from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
     from core.services.workbench.history.conditions_source import ConditionSource
     from core.services.workbench.history.metrics import _metric, _path, _trial, metric_definitions
+    from core.services.workbench.trial.constraints import build_trial_intervals
     from core.services.workbench.trial.projection import comparison as trial_comparison
     from tests.workbench.trial_support import change, create
     from tests.workbench.trial_support import service as trial_service
@@ -421,6 +462,32 @@ def test_shared_resource_window_uses_saved_capacity_and_keeps_missing_capacity_u
         assert count["value"] == expected and count["state"] == "complete"
         assert count["scope"] == "fixed_changeover_window"
 
+    from core.services.workbench.history import metrics as history_metrics
+    from core.services.workbench.trial import preparation as trial_preparation
+
+    changeover_sides = Counter()
+    original_changeover = trial_preparation.changeover_projection
+
+    def count_changeover_side(*args, **kwargs):
+        changeover_sides["calls"] += 1
+        return original_changeover(*args, **kwargs)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            history_metrics,
+            "project_completion_summary",
+            lambda *_: pytest.fail("Unrequested completion count metrics must not run completion summary"),
+        )
+        patch.setattr(trial_preparation, "changeover_projection", count_changeover_side)
+        scoped_metrics, _, _ = _trial(
+            packet,
+            {"start": "2026-09-09T08:00:00", "end": "2026-09-09T10:00:00", "cohort": {}},
+            reader=reader,
+            metric_keys=["type_changeover_count", "makespan_hours"],
+        )
+        assert scoped_metrics["type_changeover_count"]["value"] == 1
+        assert changeover_sides["calls"] == 1
+
     # Pure adapter probes reuse verified permanent rows; no saved record or receipt is rewritten.
     partial = deepcopy(packet)
     missing_task = partial["saved"]["tasks"].pop()
@@ -437,8 +504,13 @@ def test_shared_resource_window_uses_saved_capacity_and_keeps_missing_capacity_u
             partial["saved"]["unplanned_operations"] = []
             ledger = partial["saved"]["operation_effort"]
             ledger["items"] = [row for row in ledger["items"] if row["operation_ref"] != missing_ref]
-        partial["saved"]["comparison"] = trial_comparison(partial["saved"]["tasks"], partial["saved"]["validation"],
-            partial["rows"], partial["head"]["admission"])
+        partial["saved"]["comparison"] = trial_comparison(
+            partial["saved"]["tasks"],
+            partial["saved"]["validation"],
+            partial["rows"],
+            partial["head"]["admission"],
+            trial_intervals=build_trial_intervals(partial["rows"]),
+        )
         metrics, _, _ = _trial(partial, {"start": "2026-09-09T08:00:00", "end": "2026-09-09T10:00:00", "cohort": {}},
                                reader=reader)
         assert metrics["deferred_operation_count"]["value"] == deferred_count
@@ -491,9 +563,43 @@ def test_filtered_twenty_and_fifty_pages_export_all_native_rows_and_reject_stale
             assert rows == expected and outside not in rows and len(set(rows)) == 51
         assert entries[expected[0]]["label"] == "第2次运行"
         assert entries[expected[-1]]["label"] == "第52次运行"
+        from core.services.workbench.history import conditions as condition_module
+        from core.services.workbench.history import queries as history_queries
+
         export_query = dict(query, metric_keys=",".join(query["metric_keys"]), page=2, size=20)
-        csv_response = client.get(BASE + "/export", query_string=dict(export_query, format="csv", section="entries"))
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(
+                history_queries,
+                "condition_pair",
+                lambda *_, **__: pytest.fail("CSV entries export must not compute condition comparison"),
+            )
+            patch.setattr(
+                history_queries,
+                "configuration_pair",
+                lambda *_, **__: pytest.fail("CSV entries export must not compute configuration comparison"),
+            )
+            csv_response = client.get(BASE + "/export", query_string=dict(export_query, format="csv", section="entries"))
         assert csv_response.status_code == 200, csv_response.get_data(as_text=True)
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(
+                history_queries,
+                "project_entry",
+                lambda *_, **__: pytest.fail("CSV condition/configuration export must not project entry metrics"),
+            )
+            sec_res = client.get(BASE + "/export", query_string=dict(export_query, format="csv", section="conditions"))
+            assert sec_res.status_code == 200, sec_res.get_data(as_text=True)
+            patch.setattr(
+                condition_module,
+                "_production",
+                lambda *_, **__: pytest.fail("CSV configurations export must not project production conditions"),
+            )
+            patch.setattr(
+                condition_module,
+                "_calendar",
+                lambda *_, **__: pytest.fail("CSV configurations export must not project calendar conditions"),
+            )
+            cfg_res = client.get(BASE + "/export", query_string=dict(export_query, format="csv", section="configurations"))
+            assert cfg_res.status_code == 200, cfg_res.get_data(as_text=True)
         csv_rows = list(csv.reader(io.StringIO(csv_response.data.decode("utf-8-sig"))))
         header, exported = csv_rows[0], csv_rows[1:]
         assert len(header) == len(set(header)) and len(exported) > 51 * 3
@@ -564,5 +670,47 @@ def test_filtered_twenty_and_fifty_pages_export_all_native_rows_and_reject_stale
         finally:
             workbook.close()
     clone_run(case, "2026-09-13T09:00:00")
-    stale = client.get(BASE + "/export", query_string=dict(export_query, format="csv", section="entries"))
-    assert stale.status_code == 409 and stale.get_json()["error"]["code"] == "snapshot_stale"
+    from core.services.workbench.history.reading import HistoryReader
+
+    with pytest.MonkeyPatch.context() as stale_patch:
+        stale_patch.setattr(
+            HistoryReader,
+            "read",
+            lambda *_, **__: pytest.fail("Stale history snapshot must reject before restoring full archives"),
+        )
+        stale_list = client.get(BASE, query_string=dict(export_query))
+        assert stale_list.status_code == 409 and stale_list.get_json()["error"]["code"] == "snapshot_stale"
+        stale = client.get(BASE + "/export", query_string=dict(export_query, format="csv", section="entries"))
+        assert stale.status_code == 409 and stale.get_json()["error"]["code"] == "snapshot_stale"
+
+    from core.infrastructure.read_evidence import read_evidence_scope
+    from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
+    from core.services.workbench.history.catalog import read_history_catalog
+    from core.services.workbench.history.projection import configuration_pair
+
+    with candidate_read_snapshot(case.conn), read_evidence_scope(case.conn):
+        catalog, _ = read_history_catalog(case.conn)
+        descriptors = {row["entry_ref"]: row for row in catalog}
+        reader = HistoryReader(case.conn, catalog=catalog)
+        selected_desc = descriptors[expected[0]]
+        reference_desc = descriptors[expected[1]]
+        selected_packet = reader.read(selected_desc)
+        reference_packet = reader.read(reference_desc)
+        expected_targets = deepcopy(selected_packet["receipt"]["selection"]["target_objectives"])
+        expected_orders = deepcopy(selected_packet["receipt"]["selection"]["objective_field_order"])
+        ref_expected_targets = deepcopy(reference_packet["receipt"]["selection"]["target_objectives"])
+        ref_expected_orders = deepcopy(reference_packet["receipt"]["selection"]["objective_field_order"])
+        projected_pair = configuration_pair(reader, reference_desc, selected_desc)
+        for row in projected_pair["configurations"]["rows"]:
+            for side in ("before", "after"):
+                val = row[side].get("value")
+                if isinstance(val, list):
+                    val.append("polluted-target")
+        for side in ("before", "after"):
+            val = projected_pair["objective"][side].get("value")
+            if isinstance(val, dict) and isinstance(val.get("field_order"), list):
+                val["field_order"].append("polluted-field")
+        assert selected_packet["receipt"]["selection"]["target_objectives"] == expected_targets
+        assert selected_packet["receipt"]["selection"]["objective_field_order"] == expected_orders
+        assert reference_packet["receipt"]["selection"]["target_objectives"] == ref_expected_targets
+        assert reference_packet["receipt"]["selection"]["objective_field_order"] == ref_expected_orders

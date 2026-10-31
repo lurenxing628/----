@@ -154,7 +154,27 @@ def test_preparation_pages_filters_snapshot_and_all_filtered_exports(candidate_c
     client, _ = api(case)
     query = dict(WINDOW, selected_candidate_ref=refs[0], reference_candidate_ref=refs[0], machine_ref=case.ref("machine", "M1"),
                  sort="after_setup_hours", order="asc")
-    initial = detail(client, run_ref, "preparation", **query)
+    from collections import Counter
+
+    from core.services.workbench.run.decision_preparation import DecisionPreparation
+
+    side_calls, task_calls = Counter(), []
+    original_side, original_tasks = DecisionPreparation._side, DecisionSource.analysis_tasks
+
+    def count_side(self, key, row):
+        side_calls["calls"] += 1
+        return original_side(self, key, row)
+
+    def count_tasks(self, key):
+        task_calls.append(self.computation_key(key))
+        return original_tasks(self, key)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(DecisionPreparation, "_side", count_side)
+        patch.setattr(DecisionSource, "analysis_tasks", count_tasks)
+        initial = detail(client, run_ref, "preparation", **query)
+    assert side_calls["calls"] == 40
+    assert set(task_calls) <= {refs[0], "reference"}
     token = initial["meta"]["snapshot_ref"]
     page = initial["data"]["page"]
     assert (page["number"], page["size"], page["total"], page["has_more"]) == (1, 20, 25, True)

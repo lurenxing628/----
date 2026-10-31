@@ -15,7 +15,7 @@ from __future__ import annotations
 from flask import current_app, g, request
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_material_file import normalize_refs, normalize_scope
+from core.models.workbench_material_file import normalize_refs, wire_scope
 from core.models.workbench_material_query import MaterialPageRequest
 from core.services.workbench.material.files import WorkbenchMaterialFileService
 from core.services.workbench.material.queries import WorkbenchMaterialQueryService
@@ -34,28 +34,27 @@ from .read_context import bind_read_snapshot, resolve_read_snapshot
 from .resource_action_context import download_args, file_response
 
 
-def _selection(body, reader, scope):
+def _selection(body, reader, request):
     selected = body["selection"]
     if selected not in ("all", "filtered", "selected") or ("refs" in body) != (selected == "selected"):
         raise WorkbenchCommandRejected("invalid_input", "请先选好导出全部、当前筛选还是选中的物料，没有开始下载。选好后重新点「导出」。", 400)
     if selected == "selected":
         refs = normalize_refs(body["refs"], allow_empty=True)
-        for ref in refs:
-            reader.resolve(ref)
+        reader.resolve_many(refs)
         return {"selected_refs": refs}, len(refs)
-    effective = normalize_scope({}) if selected == "all" else scope
-    return {"scope": effective}, reader.count(MaterialPageRequest(**effective, size=1))
+    effective = MaterialPageRequest() if selected == "all" else request
+    return {"scope": wire_scope(effective)}, reader.count(effective)
 
 
 @read_endpoint
 def material_export_preview():
     body = json_body({"selection", "scope", "snapshot_ref"}, {"refs", "page_size"})
-    scope, query_scope, snapshot_ref = scope_input(body)
+    page_request, query_scope, snapshot_ref = scope_input(body)
     reader = WorkbenchMaterialQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as fingerprint:
         read_binding = resolve_read_snapshot(snapshot_ref)
         snapshot = bind_read_snapshot(query_scope, fingerprint, snapshot_ref, binding=read_binding)
-        arguments, count = _selection(body, reader, scope)
+        arguments, count = _selection(body, reader, page_request)
         binding = {"query_scope": query_scope, "snapshot_ref": snapshot_ref,
                    "read_binding": read_binding, "arguments": arguments}
         ref, expires_at = issue_binding(EXPORT_SCOPE, binding)

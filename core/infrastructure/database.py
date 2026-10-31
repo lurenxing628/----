@@ -7,6 +7,8 @@ import sqlite3
 from pathlib import Path
 from typing import Optional
 
+from core.infrastructure.sqlite_udf import register_schedule_time_sql_functions
+
 from .database_bootstrap import (
     build_schema_exec_script as _build_schema_exec_script,
 )
@@ -99,6 +101,7 @@ def get_connection(db_path: str) -> sqlite3.Connection:
     try:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON;")
+        register_schedule_time_sql_functions(conn)
         return conn
     except Exception:
         conn.close()

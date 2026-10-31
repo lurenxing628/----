@@ -16,7 +16,6 @@ class NeighborhoodBudget:
     def __init__(self, search: LargeIteratedGreedySearch, requested_size):
         self.search = search
         self.size = max(1, requested_size)
-        self.seconds = max(search.deadline - search.clock(), 0.0)
 
     def can_try(self):
         """Check the deadline and decode cap before adding an insertion trial."""
@@ -31,36 +30,28 @@ class LargeIGIteration(IGIteration):
         search = self.search
         budget = NeighborhoodBudget(search, len(removed))
         self.local_budget = budget
-        report = search.report["local_search"]
-        report["neighborhoods"] += 1
-        report["last_budget_ms"] = int(budget.seconds * 1000)
         selected = search.rotation.selected
         joint = selected is not None and selected.name == "resource_window" and budget.size >= 2
         if joint:
             removed = joint_removed(search, reference, removed, budget.size)
-        report["last_destroy_size"] = len(removed)
-        if joint:
             improved = yield from self._joint_repair(reference, removed)
             if improved is not None:
                 return improved
         return (yield from self._screened_repair(reference, removed))
 
     def _joint_repair(self, reference, removed):
-        search, report = self.search, self.search.report["local_search"]
+        search = self.search
         for order in joint_orders(search, reference, removed):
             if not self.local_budget.can_try():
-                report["queue_budget_stops"] += 1
                 break
             if order in search.scores:
                 search._record_local_reuse("local_trial_reused")
                 continue
-            report["joint_candidates"] += 1
             before = search.report["decodes"]
             scored = search._score_trial(order, reference)
             if search.report["decodes"] > before or search.last_decode_skip is not None:
                 yield
             if scored is not None and scored[1] and scored[0] < reference.score:
-                report["joint_improvements"] += 1
                 return order
         return None
 
@@ -79,24 +70,20 @@ class LargeIGIteration(IGIteration):
             working = yield from self._insert(screen, reference, working, op_id, explore, anchor=anchors[op_id])
         final = tuple(working)
         if explore and final == reference.order and self.walk is not None:
-            search.report["local_search"]["exploratory_walks"] += 1
             return self.walk[1]
         return final
 
     def _insert(self, screen, reference, working, op_id, explore, *, anchor):
-        search, report = self.search, self.search.report["local_search"]
+        search = self.search
         without = [item for item in working if item != op_id]
         positions = _insertion_positions(without, op_id, parent=search.parent, anchor=anchor,
                                          window=search.limits.insertion_window, explore=explore)
         queue, best_position, best_score = screen.ranked_positions(
             without, op_id, positions, anchor=anchor, diversify=explore)
         # A rejection or non-improvement can advance the bounded queue.
-        for index, position in enumerate(queue[:3]):
+        for position in queue[:3]:
             if not self.local_budget.can_try():
-                report["queue_budget_stops"] += 1
                 break
-            report["queue_continuations"] += int(index > 0)
-            report["shortlisted_positions"] += 1
             search._require_budget()
             trial = tuple(without[:position] + [op_id] + without[position:])
             before = search.report["decodes"]
@@ -109,8 +96,6 @@ class LargeIGIteration(IGIteration):
                 yield
             if self._position_finished(scored, best_score, reference, explore):
                 break
-        else:
-            report["queue_exhausted"] += int(len(queue) <= 3)
         return working if best_position is None else without[:best_position] + [op_id] + without[best_position:]
 
     def _score_position(self, trial, reference):

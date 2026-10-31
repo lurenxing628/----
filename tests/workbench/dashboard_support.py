@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from flask import Blueprint, Flask, g, jsonify
 
+from core.infrastructure.sqlite_udf import register_schedule_time_sql_functions
 from core.models.workbench_dashboard import DashboardQuery
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.dashboard.commands import WorkbenchDashboardCommandService
@@ -23,6 +24,7 @@ def connect(path):
     conn = sqlite3.connect(str(path), timeout=5)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
+    register_schedule_time_sql_functions(conn)
     return conn
 
 

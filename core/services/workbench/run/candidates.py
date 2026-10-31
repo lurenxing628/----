@@ -9,7 +9,8 @@ from core.services.workbench.facts.candidate_projection import (
 )
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_tasks import (
-    filter_workspace,
+    interval_span,
+    scope_workspace_tasks,
     task_span,
 )
 from core.services.workbench.facts.candidate_values import gap
@@ -17,6 +18,7 @@ from core.services.workbench.facts.run_history_projection import (
     stored_scope_input_keys,
     stored_scope_value_valid,
 )
+from core.shared.strict_json import clone_json
 
 
 class WorkbenchRunCandidateQueryService:
@@ -53,27 +55,55 @@ class WorkbenchRunCandidateQueryService:
             data = self.store.candidate_identity(candidate_ref)
             return data, {"read_contract_version": 1, **data}
 
-    def workspace(self, scope):
+    def workspace(self, scope, *, include_effort_and_delivery: bool = True, include_gantt_graph: bool = True):
         """No UI paging: every persisted task in the exact requested scope is returned."""
         with self.store.snapshot():
             from .decision_source import DecisionSource
             source = DecisionSource(self.store, self.store.candidate_run(scope.candidate_ref), selected_candidate_ref=scope.candidate_ref)
-            return self._workspace(source.candidate_source(scope.candidate_ref), scope)
+            return self._workspace(
+                source.candidate_source(scope.candidate_ref),
+                scope,
+                include_effort_and_delivery=include_effort_and_delivery,
+                include_gantt_graph=include_gantt_graph,
+            )
+
+    def export_workspace(self, scope):
+        return self.workspace(scope, include_effort_and_delivery=False, include_gantt_graph=False)
 
     @staticmethod
-    def _workspace(source, scope):
-        tasks, unplanned = filter_workspace(source.tasks, source.unplanned, scope)
-        effort = source.operation_effort_projection
-        tasks = [dict(row, operation_effort=effort[row["operation_ref"]]) for row in tasks]
-        unplanned = [dict(row, operation_effort=effort[row["operation_ref"]]) for row in unplanned]
-        delivery = candidate_delivery_risks(source.candidate, source.facts, source.tasks, source.disposition, scope,
-                                            source.capture["input"], tasks, unplanned)
-        data = {"candidate": candidate_summary(source.candidate, source.disposition,
-                                                scheduled_op_ids=source.scheduled_op_ids),
-                "generation": _generation(source.run, source.capture, source.candidate), "tasks": tasks, "task_count": len(tasks),
-                "gantt_graph": source.gantt_graph,
+    def _workspace(source, scope, *, include_effort_and_delivery: bool = True, include_gantt_graph: bool = True):
+        tasks, unplanned = scope_workspace_tasks(source, scope)
+        if include_effort_and_delivery:
+            if tasks or unplanned:
+                effort = source.operation_effort_projection
+                tasks = [dict(row, operation_effort=effort[row["operation_ref"]]) for row in tasks]
+                unplanned = [dict(row, operation_effort=effort[row["operation_ref"]]) for row in unplanned]
+            delivery = candidate_delivery_risks(source.candidate, source.facts, source.tasks, source.disposition, scope,
+                                                source.capture["input"], tasks, unplanned,
+                                                intervals=source.task_intervals)
+        else:
+            delivery = None
+        gantt_graph = source.gantt_graph if include_gantt_graph else None
+        candidate_dto = candidate_summary(
+            source.candidate, source.disposition, scheduled_op_ids=source.scheduled_op_ids
+        )
+        business_fields = {
+            key: candidate_dto[key]
+            for key in (
+                "generation_policy_version",
+                "representative_objectives",
+                "evaluations",
+                "origin",
+                "first_found_elapsed_ms",
+                "search_evidence_ref",
+            )
+        }
+        data = {"candidate": candidate_dto,
+                "generation": _generation(source.run, source.capture, source.candidate, business_fields=business_fields),
+                "tasks": tasks, "task_count": len(tasks),
+                "gantt_graph": gantt_graph,
                 "tasks_complete": True, "candidate_task_count": source.candidate["task_count"],
-                "candidate_span": task_span(source.tasks), "task_span": task_span(tasks),
+                "candidate_span": interval_span(source.task_intervals), "task_span": task_span(tasks),
                 "unplanned_operations": unplanned,
                 "unplanned_operation_count": len(unplanned),
                 "time_scope": {"range_start": scope.range_start, "range_end": scope.range_end,
@@ -85,18 +115,18 @@ class WorkbenchRunCandidateQueryService:
         return data, source.snapshot_identity
 
 
-def _generation(run, capture, candidate):
+def _generation(run, capture, candidate, *, business_fields):
     settings = capture["input"]
     values, gaps = {}, []
     for key in stored_scope_input_keys(settings):
         value = settings.get(key)
         valid = stored_scope_value_valid(key, value)
-        values[key] = value if valid else None
+        values[key] = clone_json(value) if valid else None
         if not valid:
             gaps.append(gap("input." + key, "not_recorded" if value is None else "invalid_stored_value"))
     values["time_budget_seconds"] = settings["time_budget_seconds"]
     return {"run_ref": run["run_ref"], "accepted_at": run["accepted_at"], "finished_at": run["finished_at"],
             "metadata_basis": "captured_at_run_admission", "execution_basis": "captured_at_run_admission",
             "current_entities_consulted": False, "formal_version_allocated": False,
-            "input": values, "data_gaps": gaps, "algorithm": algorithm_facts(candidate["artifact"]),
+            "input": values, "data_gaps": gaps, "algorithm": algorithm_facts(candidate["artifact"], business_fields=business_fields),
             "baseline": baseline_capture(capture["baseline"], run["accepted_at"])}

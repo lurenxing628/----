@@ -7,17 +7,22 @@ from a connection or filled from a current resource/calendar directory.
 
 from bisect import bisect_left, bisect_right
 from collections import defaultdict
-from datetime import date, datetime, time, timedelta
+from datetime import date, timedelta
 
 from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.capacity.plan_calendar_engine import SnapshotCalendarEngine
 from core.services.capacity.plan_calendar_intervals import instant, union
 from core.services.capacity.plan_calendar_limits import MAX_CALENDAR_DATES
-from core.services.capacity.plan_calendar_windows import apply_resource, policy_projection, unavailable
+from core.services.capacity.plan_calendar_windows import (
+    apply_resource,
+    policy_projection,
+    unavailable,
+)
 
 from .candidate_facts import archived_table
 from .candidate_values import corrupt
+from .resource_calendar import natural_days
 
 _MEASURES = ("available_hours", "effective_hours", "normal_available_hours", "normal_effective_hours",
              "urgent_available_hours", "urgent_effective_hours")
@@ -57,8 +62,7 @@ class _SavedCalendarEngine(SnapshotCalendarEngine):
         if op_id is not None:
             if self.tables["OperatorCalendar"] is None:
                 self._missing("OperatorCalendar", date_str, op_id)
-            # 个人日历表坏了时查不清这天有没有个人日历，先于班表资料报个人日历无效。
-            if self._personal_error is not None or (op_id, date_str) in self.personal_rows:
+            if (op_id, date_str) in self.personal_rows:
                 return super()._resolve_calendar_row(date_str, op_id)
             if self.tables["WorkbenchOperatorProfiles"] is None:
                 self._missing("WorkbenchOperatorProfiles", date_str, op_id)
@@ -87,18 +91,13 @@ def _bounds(start, end):
     return low, high
 
 
-def _day_bounds(low, high):
-    if low == high:
-        yield low, high
-    while low < high:
-        boundary = high if low.date() == date.max else datetime.combine(low.date() + timedelta(days=1), time.min)
-        end = min(high, boundary)
-        yield low, end
-        low = end
+class DowntimeIndex:
+    """Parse a machine's saved intervals once; retain raw error rows in source order.
 
-
-class _DowntimeIndex:
-    """Parse a machine's saved intervals once; retain raw error rows in source order."""
+    ``intervals`` is the sorted, disjoint union of the valid windows. Any ``errors``
+    row (bad time, empty span or a status other than active) leaves the machine's
+    downtime unproven; cancelled rows are not downtime at all.
+    """
 
     def __init__(self, rows):
         intervals, self.errors = [], []
@@ -107,7 +106,7 @@ class _DowntimeIndex:
                 continue
             try:
                 start, end = instant(row["start_time"]), instant(row["end_time"])
-            except (ValueError, TypeError, KeyError):
+            except (ValueError, KeyError):
                 self.errors.append((row, None, None))
                 continue
             if start >= end:
@@ -222,8 +221,7 @@ class ArchivedCalendar:
         if operator_id is not None:
             op_id = engine._normalize_text(operator_id)
             member = engine.members.get(op_id)
-            # 个人日历表坏了时空索引不代表“没有个人日历”，不能借用全局或同班表的结果。
-            if (op_id == operator_id and engine._personal_error is None
+            if (op_id == operator_id
                     and engine.tables["OperatorCalendar"] is not None
                     and engine.tables["WorkbenchOperatorProfiles"] is not None
                     and all((who, day) not in engine.personal_rows
@@ -271,20 +269,22 @@ class ArchivedCalendar:
         else:
             base = self._policy_day(low, high, saved_id if kind == "operator" else None, engine=self.engine)
             result = apply_resource(base, self.records[kind].get(saved_id), kind,
-                                    self._machine_downtimes(saved_id, low, high) if kind == "machine" else [], low, high)
-        return {**result, "date": low.date().isoformat(), "start": low.isoformat(), "end": high.isoformat(),
+                                    self.downtime_index(saved_id).between(low, high) if kind == "machine" else [],
+                                    low, high)
+        return {**result, "date": low.date().isoformat(), "start": low, "end": high,
                 "source": self.source}
 
-    def _machine_downtimes(self, saved_id, low, high):
-        if saved_id not in self._downtime_indexes:
-            self._downtime_indexes[saved_id] = _DowntimeIndex(self.downtimes[saved_id])
-        return self._downtime_indexes[saved_id].between(low, high)
+    def downtime_index(self, machine_id):
+        """The machine's parsed downtime, shared by resource days and task feasibility checks."""
+        if machine_id not in self._downtime_indexes:
+            self._downtime_indexes[machine_id] = DowntimeIndex(self.downtimes[machine_id])
+        return self._downtime_indexes[machine_id]
 
     def iter_resources(self, resources, start, end):
         """Stream complete resources; callers may consume summaries and discard days."""
         low, high = _bounds(start, end)
         for resource in resources:
-            days = [self._resource_day(resource, first, last) for first, last in _day_bounds(low, high)]
+            days = [self._resource_day(resource, first, last) for first, last in natural_days(low, high)]
             basis = "global_calendar_machine_availability" if resource["kind"] == "machine" else "personal_or_operator_shift_calendar"
             yield resource["ref"], {**_aggregate(days, basis, self.source), "resource_ref": resource["ref"],
                                     "resource_type": resource["kind"]}

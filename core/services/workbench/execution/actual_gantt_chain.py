@@ -1,7 +1,12 @@
 """Read the existing plan-chain engine without invoking scheduling or changing its rules."""
 
-from core.services.common.plan_task_identity import public_task_id
-from core.services.scheduler.gantt.critical_chain import compute_critical_chain_from_rows
+from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_piece_adoption import PieceAdoptionBlocked
+from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
+from core.services.scheduler.gantt.critical_chain import compute_critical_chain_from_dependencies
+from core.services.workbench.facts.adoption_baseline_values import AdoptionBaselineUnavailable
+from core.services.workbench.plan.process_order import load_frozen_plan_process_order
+from core.services.workbench.plan.projection import required_text, resource_ref, sequence
 
 ENGINE = "core.services.scheduler.gantt.critical_chain.compute_critical_chain_from_rows"
 SEMANTICS = "selected_plan_control_predecessor_chain"
@@ -14,47 +19,92 @@ def unavailable(plan_ref, code, reason, *, target_task_ref, **evidence):
             "gap_unit": "minute", "nodes": [], "task_refs": [], "edges": [], **evidence}
 
 
-def _mixed_piece_groups(tasks):
-    groups = {}
-    for task in tasks:
-        groups.setdefault(task["batch_id"], set()).add(task["piece_id"] is None)
-    return any(len(values) > 1 for values in groups.values())
-
-
-def _bound_rows(plan_ref, rows, *, context, dt_intervals):
-    projected, _, _, _ = context.projected_tasks(plan_ref, rows)
-    mapping, bound = {}, []
-    for original, task in zip(rows, projected):
-        row = dict(original)
-        row["task_id"] = "task_" + task["task_ref"]
-        raw_op_code = row.get("op_code")
-        op_code = raw_op_code if type(raw_op_code) is str and raw_op_code.strip() else ""
-        key = op_code or public_task_id(row)
-        if key in mapping:
-            return None, None
-        row["start_time"], row["end_time"] = dt_intervals[original["schedule_id"]]
-        mapping[key] = task
-        bound.append(row)
-    return bound, mapping
+def _bound_frozen_rows(frozen, *, context, dt_intervals, times):
+    selected = frozen["selected"]
+    operations = frozen["operations"]
+    refs = frozen["refs"]
+    relations = frozen["relations"]
+    task_refs = frozen["task_refs"]
+    resources = {}
+    for kind in ("machine", "operator"):
+        keys = sorted({str(row[kind + "_id"]) for row in selected if row[kind + "_id"] not in (None, "")})
+        mapping_res = context.active_map(kind, keys)
+        if set(mapping_res) != set(keys):
+            raise WorkbenchCommandRejected("identity_missing", "安排关联的批次、设备或人员编号缺失，请到资料总览核对。")
+        resources[kind] = mapping_res
+    mapping, by_operation, bound = {}, {}, []
+    for row in selected:
+        schedule_id = row["id"]
+        t_ref = task_refs[schedule_id]
+        op_id = row["op_id"]
+        op = operations[op_id]
+        op_ref = refs[op_id]
+        start, end = times[schedule_id]
+        piece = op.get("piece_id")
+        if piece is not None:
+            piece = required_text(piece)
+        task = {
+            "task_ref": t_ref,
+            "operation_ref": op_ref,
+            "batch_id": required_text(op["batch_id"]),
+            "sequence": sequence(op["seq"]),
+            "process_label": op["op_type_name"],
+            "piece_id": piece,
+            "machine_ref": resource_ref(row, "machine", resources),
+            "operator_ref": resource_ref(row, "operator", resources),
+            "start": start,
+            "end": end,
+        }
+        low_dt, high_dt = dt_intervals[schedule_id]
+        mapping[t_ref] = task
+        by_operation[op_ref] = t_ref
+        bound.append({
+            "op_code": t_ref,
+            "operation_ref": op_ref,
+            "batch_id": task["batch_id"],
+            "piece_id": piece,
+            "seq": task["sequence"],
+            "op_type_name": task["process_label"],
+            "start_time": low_dt,
+            "end_time": high_dt,
+            "machine_id": row["machine_id"],
+            "operator_id": row["operator_id"],
+        })
+    previous = {
+        t_ref: [
+            by_operation[parent]
+            for parent in relations[task["operation_ref"]]
+            if parent in by_operation
+        ]
+        for t_ref, task in mapping.items()
+    }
+    return bound, previous, mapping
 
 
 def plan_chain(plan_ref, visible_refs, *, target_task_ref, context):
     target = {"target_task_ref": target_task_ref}
-    with context.read_scope():
-        _, entry, _ = context.selected(plan_ref)
-        detail_rows = context.detail_rows(entry)
-        if _mixed_piece_groups(detail_rows):
-            return unavailable(plan_ref, "engine_piece_precedence_unsupported",
-                "暂不支持共同工序与分件之间的跨组依赖，无法计算关键链。", **target)
-        dt_intervals = context.datetime_intervals(entry)
-        rows, mapping = _bound_rows(plan_ref, detail_rows, context=context, dt_intervals=dt_intervals)
-    if rows is None or mapping is None:
-        return unavailable(plan_ref, "chain_plan_facts_mismatch",
-            "关键链与计划明细不一致，请刷新重试。", **target)
-    target_id = next((key for key, task in mapping.items() if task["task_ref"] == target_task_ref), None)
-    if target_task_ref is not None and target_id is None:
-        return unavailable(plan_ref, "chain_target_not_found", "所选工序不在此计划中，请重新选择。", **target)
-    raw = compute_critical_chain_from_rows(rows, target_id=target_id)
+    try:
+        with context.read_scope():
+            _, entry, _ = context.selected(plan_ref)
+            frozen = load_frozen_plan_process_order(context.conn, plan_ref=plan_ref, context=context)
+            if frozen is None:
+                return unavailable(plan_ref, "process_order_not_recorded", "此计划未记录工序顺序。", **target)
+            if target_task_ref is not None and target_task_ref not in set(frozen["task_refs"].values()):
+                return unavailable(plan_ref, "chain_target_not_found", "所选工序不在此计划中，请重新选择。", **target)
+            dt_intervals = context.datetime_intervals(entry)
+            times = context.intervals(entry)
+            rows, previous, mapping = _bound_frozen_rows(
+                frozen, context=context, dt_intervals=dt_intervals, times=times
+            )
+    except (AdoptionBaselineUnavailable, WorkbenchPlanReferenceError, PieceAdoptionBlocked):
+        return unavailable(plan_ref, "process_order_unavailable", "工序顺序数据不完整。", **target)
+    except WorkbenchCommandRejected as exc:
+        if exc.status == 413:
+            raise
+        return unavailable(plan_ref, "process_order_unavailable", "工序顺序数据不完整。", **target)
+    raw = compute_critical_chain_from_dependencies(
+        rows, previous, target_id=target_task_ref, include_points=False
+    )
     if raw.get("available") is False:
         return unavailable(plan_ref, "chain_engine_unavailable", "计划链没算出完整、可核对的结果。请刷新后重试。",
                            engine_reason=raw["reason_code"], **target)

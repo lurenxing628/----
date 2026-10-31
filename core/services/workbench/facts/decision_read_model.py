@@ -31,7 +31,7 @@ from .decision_selection import selection_basis
 from .operation_effort_evidence import saved_operation_efforts
 from .preflight_dependencies import material_deferred_ids
 from .preparation_projection import ALLOCATIONS
-from .resource_intervals import resource_cohort, task_interval
+from .resource_intervals import resource_cohort
 from .run_history_projection import failure_reason, scope_summary
 from .schema_compat import archived_columns
 
@@ -160,6 +160,20 @@ def _arrangements(tasks):
     return {"columns": list(ARRANGEMENT_COLUMNS), "rows": rows, "resource_values": resources}
 
 
+def _arranged_resources(rows):
+    resources = {}
+    for task in rows:
+        for kind in ("machine", "operator", "supplier"):
+            value = task[kind]
+            if value is not None and value["ref"] is not None:
+                resources[(kind, value["ref"])] = {
+                    "kind": kind,
+                    "ref": value["ref"],
+                    "label": value["label"],
+                }
+    return [resources[key] for key in sorted(resources)]
+
+
 def _resource_views(tasks, operation_refs, intervals):
     selected = set(operation_refs)
     result = {}
@@ -167,18 +181,21 @@ def _resource_views(tasks, operation_refs, intervals):
         members = resource_cohort([rows], task_intervals=[intervals])
         by_resource = {(row["kind"], row["ref"]): [] for row in members}
         for row in rows:
-            interval = intervals[row["row_ref"]]
-            if row.get("source") == "external" or interval is not None and interval[0] == interval[1]:
+            interval = intervals.get(row["row_ref"])
+            if row["source"] == "external" or interval is None or interval[0] == interval[1]:
                 continue
             for kind in ("machine", "operator"):
-                ref = (row.get(kind) or {}).get("ref")
-                if (kind, ref) in by_resource and interval is not None:
-                    by_resource[(kind, ref)].append(interval)
-        result[name] = {"resources": [dict(row,
-            span_start=min(value[0] for value in by_resource[(row["kind"], row["ref"])]).isoformat()
-                if by_resource[(row["kind"], row["ref"])] else None,
-            span_end=max(value[1] for value in by_resource[(row["kind"], row["ref"])]).isoformat()
-                if by_resource[(row["kind"], row["ref"])] else None) for row in members]}
+                value = row[kind]
+                if value is not None and (kind, value["ref"]) in by_resource:
+                    by_resource[(kind, value["ref"])].append(interval)
+        result[name] = {
+            "resources": [dict(row,
+                span_start=min(value[0] for value in by_resource[(row["kind"], row["ref"])]).isoformat()
+                    if by_resource[(row["kind"], row["ref"])] else None,
+                span_end=max(value[1] for value in by_resource[(row["kind"], row["ref"])]).isoformat()
+                    if by_resource[(row["kind"], row["ref"])] else None) for row in members],
+            "arranged_resources": _arranged_resources(rows),
+        }
     return result
 
 
@@ -198,10 +215,12 @@ def _official_projection(run, facts, disposition, official, refs, batch_refs, de
     available = official["identity"]["state"] == "available"
     deferred_ids = set(official["deferred_operation_ids"])
     official_deferred = {ref for ref, key in facts.operations.items() if key in deferred_ids}
-    intervals = {row["row_ref"]: task_interval(row) for row in tasks}
+    intervals = official["task_intervals"]
     delivery = project_decision_delivery(facts, selected, batch_refs, available=available,
         deferred_ids=official["deferred_operation_ids"], intervals=intervals)
-    values, coverage = project_official_core_metrics(tasks, refs, official_deferred & scope_refs, available, delivery)
+    values, coverage = project_official_core_metrics(
+        tasks, refs, official_deferred & scope_refs, available, delivery, task_intervals=intervals
+    )
     prepared = project_decision_preparation(facts, refs, {}, selected, run_ref=run["run_ref"], available=available,
         deferred_refs=official_deferred, requirements_available=available, official=official)
     work = preparation_work_items(facts, prepared["rows"], disposition, available=available)

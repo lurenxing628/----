@@ -20,18 +20,25 @@
     });
     return next;
   }
-  function supplierMembers(entity, draft, row) {
-    const group = entity.external_groups.find(item => item.ref === row.external_group_ref);
+  function supplierMembers(entity, draft, row, groups) {
+    const group = groups.get(row.external_group_ref);
     return group && draft[row.ref].source === 'external' ? E.active(entity).filter(item => item.external_group_ref === group.ref && draft[item.ref].source === 'external') : [row];
   }
-  function supplierReason(row, target) {
-    if (row.status !== 'active') return '供应商未启用，不能选择。';
+  function prepareSupplierTarget(target) {
+    if (!target || target.kind !== 'supplier') return null;
     const members = target.members || [target];
     const missing = members.filter(item => !item.op_type_ref);
-    if (missing.length) return '请先为工序 ' + missing.map(item => item.sequence).join('、') + ' 选择外协工种。';
+    return {
+      members,
+      missingReason: missing.length ? '请先为工序 ' + missing.map(item => item.sequence).join('、') + ' 选择外协工种。' : ''
+    };
+  }
+  function supplierReason(row, targetCheck) {
+    if (row.status !== 'active') return '供应商未启用，不能选择。';
+    if (targetCheck.missingReason) return targetCheck.missingReason;
     // 供应商实体恒带 op_type_refs / op_types 数组（core/services/workbench/resource/projection.py _supplier）。
-    const refs = row.relationships.op_type_refs;
-    const unsupported = members.filter(item => !refs.includes(item.op_type_ref));
+    const refs = new Set(row.relationships.op_type_refs);
+    const unsupported = targetCheck.members.filter(item => !refs.has(item.op_type_ref));
     return unsupported.length ? '不能承接：' + unsupported.map(item => '工序 ' + item.sequence + ' ' + item.op_type_label).join('、') + '。' : '';
   }
   function locateFailure(error, entity, pageSize) {
@@ -58,6 +65,11 @@
     const read = S.useQuery(async signal => C.query(await adapter.choices(target.kind, { ...scope, ...(target.kind === 'op_type' ? { category: target.source } : {}) }, signal), 'choices'),
       [adapter, target.kind, target.source, scope]);
     const data = read.result && read.result.data, title = target.kind === 'op_type' ? P.sourceLabel(target.source) + '工种' : '供应商';
+    const targetCheck = React.useMemo(() => prepareSupplierTarget(target), [target]);
+    const reasonsByRef = React.useMemo(() => {
+      if (!data || !targetCheck) return null;
+      return new Map(data.entities.map(row => [row.ref, supplierReason(row, targetCheck)]));
+    }, [data, targetCheck]);
     const grouped = target.kind === 'supplier' && target.group;
     const subject = grouped ? '外协段 ' + target.group.start_sequence + ' 至 ' + target.group.end_sequence : '工序 ' + target.sequence;
     return <Modal title={'选择' + title + ' · ' + subject} icon="search" onClose={onClose} locked={disabled} footer={<Button onClick={onClose} disabled={disabled}>取消</Button>}>
@@ -69,7 +81,7 @@
         {read.loading && <p role="status">正在读取选项…</p>}
         {data && <><Issues issues={read.result.warnings} /><div className="wb-table-frame"><table className="tbl wb-table" aria-label={title + '选项'} style={{ width: '100%', tableLayout: 'fixed' }}><caption className="wb-visually-hidden">{title + '选项'}</caption><thead><tr><th scope="col">编号</th><th scope="col">名称</th>{target.kind === 'supplier' && <th scope="col">承接工种</th>}<th scope="col">选择</th></tr></thead>
           <tbody>{data.entities.map(row => {
-            const reason = target.kind === 'supplier' ? supplierReason(row, target) : '';
+            const reason = reasonsByRef ? reasonsByRef.get(row.ref) : '';
             return <tr key={row.ref}><td>{row.business_code}</td><td>{row.label}</td>{target.kind === 'supplier' && <td>{row.relationships.op_types.map(item => item.label).join('、') || '未登记承接工种'}</td>}<td><Button icon="check" reason={reason} disabled={disabled || !(row.status === 'active' || target.kind === 'op_type' && row.status === null) || target.kind === 'op_type' && ![target.source, "both"].includes(row.fields.category)}
               aria-label={'采用 ' + row.label} onClick={() => onSelect(row)}>采用</Button></td></tr>;
           })}{!data.entities.length && <tr><td colSpan={target.kind === 'supplier' ? 4 : 3}>没有匹配选项。</td></tr>}</tbody></table></div>
@@ -95,14 +107,14 @@
     function change(ref, patch) { invalidate(); model.edit(current => ({ ...current, [ref]: { ...current[ref], ...patch } })); }
     function openPicker(row, kind) {
       invalidate();
-      const members = supplierMembers(entity, draft, row).map(item => ({ ...item, ...draft[item.ref] }));
-      setPicker({ ...row, ...draft[row.ref], kind, members, group: entity.external_groups.find(item => item.ref === row.external_group_ref) });
+      const members = supplierMembers(entity, draft, row, groups).map(item => ({ ...item, ...draft[item.ref] }));
+      setPicker({ ...row, ...draft[row.ref], kind, members, group: groups.get(row.external_group_ref) });
     }
     function closePicker() { setPicker(null); }
     function choose(row) {
       invalidate();
       model.edit(current => {
-        const next = { ...current }, members = supplierMembers(entity, current, picker);
+        const next = { ...current }, members = supplierMembers(entity, current, picker, groups);
         if (picker.kind === 'supplier') members.forEach(item => { next[item.ref] = { ...next[item.ref], supplier_ref: row.ref, supplier_label: row.label }; });
         else {
           if (current[picker.ref].op_type_ref !== row.ref) members.forEach(item => { next[item.ref] = { ...next[item.ref], supplier_ref: null, supplier_label: null }; });
@@ -116,7 +128,7 @@
       invalidate();
       model.edit(current => {
         const next = { ...current };
-        supplierMembers(entity, current, row).forEach(item => { next[item.ref] = { ...next[item.ref], supplier_ref: null, supplier_label: null }; });
+        supplierMembers(entity, current, row, groups).forEach(item => { next[item.ref] = { ...next[item.ref], supplier_ref: null, supplier_label: null }; });
         return next;
       });
     }

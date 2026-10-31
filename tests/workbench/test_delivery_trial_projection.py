@@ -12,6 +12,7 @@ from core.services.workbench.facts.trial_policy import load_draft, load_scenario
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from core.services.workbench.trial import projection
+from core.services.workbench.trial.constraints import build_trial_intervals
 from core.services.workbench.trial.preparation import preparation_projection
 from core.services.workbench.trial.service import WorkbenchTrialService
 from tests.workbench.run_candidate_adoption_support import INTENT
@@ -55,7 +56,10 @@ def test_trial_route_coverage_keeps_creation_snapshot_after_current_route_grows(
     draft = create(case)
     head, rows = load_draft(service(case.conn).repo, draft["draft_ref"])
     case.operation(seq=2)
-    current = projection.comparison(draft["tasks"], {"constraints_status": "valid"}, rows, head["admission"])
+    current = projection.comparison(
+        draft["tasks"], {"constraints_status": "valid"}, rows, head["admission"],
+        trial_intervals=build_trial_intervals(rows),
+    )
     row, = current["batches"]
     assert row["after"]["operation_count"] == row["before"]["operation_count"] == 1
     assert row["after"]["schedule_complete"] is True
@@ -87,7 +91,10 @@ def test_trial_missing_origin_operation_never_claims_whole_batch_finish(trial_ca
     second = case.operation(seq=2)
     draft = create(case, official(case, ids=[case.op_id]))
     head, rows = load_draft(service(case.conn).repo, draft["draft_ref"])
-    comparison = projection.comparison(draft["tasks"], {"constraints_status": "valid"}, rows, head["admission"])
+    comparison = projection.comparison(
+        draft["tasks"], {"constraints_status": "valid"}, rows, head["admission"],
+        trial_intervals=build_trial_intervals(rows),
+    )
     row, = comparison["batches"]
     assert row["completion_state"] == "incomplete" and row["risk"] == "unknown"
     assert row["after"]["operation_count"] == 2
@@ -204,7 +211,10 @@ def test_candidate_trial_retains_explicit_material_deferral_from_run_capture(tri
     assert preflight["task_count"] == len(raw_rows)
     head, rows = load_draft(service(case.conn).repo, draft["draft_ref"])
     case.operation(seq=3)
-    comparison = projection.comparison(draft["tasks"], {"constraints_status": "valid"}, rows, head["admission"])
+    comparison = projection.comparison(
+        draft["tasks"], {"constraints_status": "valid"}, rows, head["admission"],
+        trial_intervals=build_trial_intervals(rows),
+    )
     row, = comparison["batches"]
     assert row["completion_state"] == "deferred" and row["risk"] == "unknown"
     assert row["after"]["operation_count"] == 2
@@ -239,7 +249,10 @@ def test_trial_includes_selected_batch_with_only_material_deferred_operations(tr
     head, rows = load_draft(service(case.conn).repo, draft["draft_ref"])
     checked = {"constraints_status": "blocked", "issues": [{"code": "calendar_duration_conflict", "severity": "blocker",
                                                              "task_ref": draft["tasks"][0]["task_ref"]}]}
-    scoped = projection.comparison(draft["tasks"], checked, rows, head["admission"])
+    scoped = projection.comparison(
+        draft["tasks"], checked, rows, head["admission"],
+        trial_intervals=build_trial_intervals(rows),
+    )
     deliveries = {row["batch_id"]: row for row in scoped["batches"]}
     assert deliveries["B1"]["completion_state"] == "unknown"
     assert deliveries["B2"]["completion_state"] == "deferred"

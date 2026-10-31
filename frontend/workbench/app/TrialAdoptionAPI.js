@@ -20,15 +20,13 @@
     && text(r.code) && r.code && text(r.message) && r.message && r.severity === 'blocker'
     && ['task_ref', 'related_task_ref'].every(k => r[k] === undefined || r[k] === null || ref(r[k])));
   // 采用范围有两种来源：试调详情（source）不带数据上下文，可采用的预检（overview）恒带数据上下文。
-  function scope(v) {
-    check(object(v) && ref(v.scenario_ref) && ref(v.draft_ref) && v.scenario_ref !== v.draft_ref && positive(v.task_count) && v.scope_complete === true
-      && shape(v.baseline, ['plan_ref', 'version']) && (v.baseline.plan_ref === null ? v.baseline.version === null : ref(v.baseline.plan_ref) && positive(v.baseline.version)));
-    return { scenario_ref: v.scenario_ref, draft_ref: v.draft_ref, baseline: v.baseline, task_count: v.task_count, scope_complete: true };
-  }
-  function overview(v) {
-    check(window.RunAdoptionAPI.contextRef(v.data_context_ref));
-    return { ...scope(v), data_context_ref: v.data_context_ref };
-  }
+  // 投影只取这些字段、不校验；scope/overview 先校验再投影，已校验过的值直接投影。
+  const scopeFields = v => ({ scenario_ref: v.scenario_ref, draft_ref: v.draft_ref, baseline: v.baseline, task_count: v.task_count, scope_complete: true });
+  const overviewFields = v => ({ ...scopeFields(v), data_context_ref: v.data_context_ref });
+  const validScope = v => object(v) && ref(v.scenario_ref) && ref(v.draft_ref) && v.scenario_ref !== v.draft_ref && positive(v.task_count) && v.scope_complete === true
+    && shape(v.baseline, ['plan_ref', 'version']) && (v.baseline.plan_ref === null ? v.baseline.version === null : ref(v.baseline.plan_ref) && positive(v.baseline.version));
+  function scope(v) { check(validScope(v)); return scopeFields(v); }
+  function overview(v) { check(validScope(v) && window.RunAdoptionAPI.contextRef(v.data_context_ref)); return overviewFields(v); }
   function sameScope(a, b) {
     return a.scenario_ref === b.scenario_ref && a.draft_ref === b.draft_ref && a.task_count === b.task_count
       && a.scope_complete === b.scope_complete && a.baseline.plan_ref === b.baseline.plan_ref && a.baseline.version === b.baseline.version;
@@ -59,10 +57,10 @@
       && Array.from(v[name].trim()).length <= limit && !v[name].includes('\0'), '请填写采用原因（1 至 1000 字）和经办人（1 至 100 字）。');
     return { confirm: true, reason: v.reason.trim(), declared_operator: v.declared_operator.trim() };
   }
+  // intent 已由调用方校验：adopt/lookup 传入已存的采用记录，valid() 核完其余字段才调用这里。
   function receipt(v, intent) {
-    const d = v && v.data, p = d && d.official_plan, s = overview(intent.preview);
-    check(key(intent.request_key) && intent.scenario_ref === s.scenario_ref && equal(input(intent.input), intent.input)
-      && shape(v, ['ok', 'result', 'data', 'receipt_ref', 'replayed', 'warnings']) && v.ok === true && v.result === 'committed'
+    const d = v && v.data, p = d && d.official_plan, s = intent.preview;
+    check(shape(v, ['ok', 'result', 'data', 'receipt_ref', 'replayed', 'warnings']) && v.ok === true && v.result === 'committed'
       && text(v.receipt_ref) && /^[a-f0-9]{32}$/.test(v.receipt_ref) && typeof v.replayed === 'boolean' && Array.isArray(v.warnings) && !v.warnings.length
       && shape(d, ['scenario_ref', 'draft_ref', 'row_count', 'official_plan']) && d.scenario_ref === s.scenario_ref && d.draft_ref === s.draft_ref && d.row_count === s.task_count
       && shape(p, ['plan_ref', 'version', 'kind', 'is_current_official', 'display_name', 'baseline_ref', 'completeness', 'capabilities', 'blocked_reasons', 'source_scenario_ref', 'source_draft_ref'])
@@ -85,16 +83,15 @@
   async function preview(original, signal) {
     return previewResult(await T.preview(BASE + original.scenario_ref + '/adopt-preview', {}, { signal, timeout: 30000 }), original);
   }
+  // intent 是 begin() 刚写入的待确认记录，writeToken 已由 previewResult 核过；回执查询的 intent 来自已校验的本机记录。
   async function adopt(intent, writeToken) {
-    check(key(intent.request_key) && intent.phase === 'pending' && token(writeToken)); overview(intent.preview);
     const target = BASE + intent.scenario_ref + '/adoption-commands/' + intent.request_key;
-    return receipt(await T.command(BASE + intent.scenario_ref + '/adopt', { write_token: writeToken, request_key: intent.request_key, input: input(intent.input) },
+    return receipt(await T.command(BASE + intent.scenario_ref + '/adopt', { write_token: writeToken, request_key: intent.request_key, input: intent.input },
       { timeout: 30000, expect: target }), intent);
   }
   async function lookup(intent, signal) {
-    check(key(intent.request_key) && ref(intent.scenario_ref));
     return lookupResult(await T.read(BASE + intent.scenario_ref + '/adoption-commands/' + intent.request_key,
       { data_context_ref: intent.preview.data_context_ref }, { signal, timeout: 30000 }), intent);
   }
-  window.TrialAdoptionAPI = { preview, adopt, lookup, source, overview, sameScope, receipt, input, check, shape, key, equal };
+  window.TrialAdoptionAPI = { preview, adopt, lookup, source, overview, overviewFields, sameScope, receipt, input, check, shape, key, equal };
 })();

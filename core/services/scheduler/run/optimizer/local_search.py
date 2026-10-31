@@ -5,10 +5,8 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tupl
 
 from core.algorithm_contracts.dispatch_rules import dispatch_rule_search_pool
 
-from .acceptance import ACCEPTANCE_IMPROVE_ONLY
 from .local_search_limits import (
     LocalSearchCounters,
-    LocalSearchLimits,
     derive_local_search_limits,
     local_search_stop_reason,
 )
@@ -66,7 +64,7 @@ class _LocalSearchRun:
         self.inputs = decode_inputs
 
     def round(self, *, local_state: LocalSearchState, vns_state: VnsState, strategy_state: Tuple[Any, Any, str, str],
-              counters: LocalSearchCounters, limits: LocalSearchLimits, iteration: int,
+              counters: LocalSearchCounters,
               tried_sgs_rules: Optional[Set[str]] = None) -> LocalSearchRoundResult:
         cur_strat, cur_params, cur_dispatch_mode, cur_dispatch_rule = strategy_state
         valid_dispatch_rules = self.valid_dispatch_rules
@@ -78,7 +76,7 @@ class _LocalSearchRun:
         return run_local_search_candidate_round(
             local_state=local_state, vns_state=vns_state, cur_strat=cur_strat, cur_params=cur_params,
             cur_dispatch_mode=cur_dispatch_mode, cur_dispatch_rule=cur_dispatch_rule,
-            no_improve=counters.no_improve, iteration=iteration, iteration_limit=limits.decode_limit,
+            no_improve=counters.no_improve,
             valid_dispatch_rules=valid_dispatch_rules,
             **self.inputs,
         )
@@ -121,17 +119,13 @@ class LocalSearchStage(SearchStage):
         end_date: Optional[date],
         resource_pool: Optional[Dict[str, Any]],
         objective_name: str,
-        attempts: List[Dict[str, Any]],
-        improvement_trace: List[Dict[str, Any]],
         optimizer_algo_stats: Optional[Dict[str, Any]],
-        t_begin: float,
         readiness_gate_enabled: bool,
         clock: Callable[[], float],
         rng_factory: Callable[[int], Any],
         search_report_state: OptimizationSearchReportState,
         neighborhoods: Optional[Tuple[str, ...]] = None,
         valid_dispatch_rules: Optional[List[str]] = None,
-        acceptance: str = ACCEPTANCE_IMPROVE_ONLY,
         decode_session: SharedDecodeSession,
     ) -> None:
         self._initial_best = best
@@ -151,7 +145,11 @@ class LocalSearchStage(SearchStage):
         if self._skip_reason:
             return
         best = cast(Dict[str, Any], best)
-        local_state = LocalSearchState.from_best(best)
+        local_state = LocalSearchState.from_best(
+            best,
+            batches=batches,
+            due_by_batch=decode_session.due_by_batch(batches),
+        )
         strategy_state = resolve_current_strategy_state(best)
         active_neighborhoods = _active_neighborhoods(
             neighborhoods=neighborhoods, cur_dispatch_mode=strategy_state[2],
@@ -161,14 +159,14 @@ class LocalSearchStage(SearchStage):
         vns_state = VnsState(active_neighborhoods)
         counters = LocalSearchCounters()
         run = _LocalSearchRun(
-            attempts=attempts, improvement_trace=improvement_trace, rnd=rng_factory(int(version)),
-            search_report_state=search_report_state, acceptance=acceptance,
+            rnd=rng_factory(int(version)),
+            search_report_state=search_report_state,
             batches=batches, start_dt=start_dt,
             end_date=end_date, resource_pool=resource_pool,
             objective_name=objective_name, optimizer_algo_stats=optimizer_algo_stats,
             readiness_gate_enabled=readiness_gate_enabled,
             valid_dispatch_rules=_resolve_sgs_dispatch_rules(valid_dispatch_rules, strategy_state[3]),
-            clock=clock, t_begin=t_begin, decode_session=decode_session,
+            decode_session=decode_session,
         )
         self.local_state = local_state
         self._run = run
@@ -189,7 +187,7 @@ class LocalSearchStage(SearchStage):
         prev_best = self.local_state.best
         if candidate is prev_best:
             return
-        self.local_state.best = candidate
+        self.local_state.set_best(candidate)
         if (candidate["archive_ref"].entry_id != prev_best["archive_ref"].entry_id
                 or candidate.get("order") != prev_best.get("order")):
             self._tried_sgs_rules.clear()
@@ -268,8 +266,8 @@ class LocalSearchStage(SearchStage):
         prev_current = local_state.current
         outcome = self._run.round(
             local_state=local_state, vns_state=self.vns_state, strategy_state=self.strategy_state,
-            counters=self.counters, limits=self.limits,
-            iteration=self.rounds - 1, tried_sgs_rules=self._tried_sgs_rules,
+            counters=self.counters,
+            tried_sgs_rules=self._tried_sgs_rules,
         )
         self.counters.record_round(decode_attempted=outcome.decode_attempted)
         self.counters.no_improve = outcome.no_improve

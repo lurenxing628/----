@@ -1734,7 +1734,7 @@ def _resource_archive_labels(identity, run_ref):
     finally:
         connection.close()
     schema = {entry[1]: entry[3] for entry in facts["schema"] if entry[0] == "table"}
-    tables = {name: [dict(zip(ddl_columns(schema[name], name, restricted=True), row)) for row in facts["tables"][name]]
+    tables = {name: [dict(zip(ddl_columns(schema[name], name), row)) for row in facts["tables"][name]]
               for name in ("BatchOperations", "Batches", "WorkbenchPlanSourceRefs", "WorkbenchEntityRefs")}
     operations = {row["id"]: row for row in tables["BatchOperations"]}
     batches = {row["batch_id"]: row for row in tables["Batches"]}
@@ -2976,185 +2976,99 @@ def recommendation_export_verify(args):
 
 
 # Independent process export contract from public DTO fields; no product row writer is used.
-PROCESS_EXPORT_COMMON = ('排产编号', '归档编号', '读取编号', '读取时间', '保存推荐候选编号', '当前查看候选编号', '比较模式', '查看基准编号', '查看基准类型', '范围起点（含）', '范围终点（不含）', '资源视角', '推荐版本', '推荐记录格式版本', '过程版本', '查看过程候选编号', '查看过程候选名称', '求解来源候选编号', '过程来源类型', '过程来源可用', '过程证据版本', '过程证据状态', '主目标', '主指标key', '主指标', '主指标单位')
-PROCESS_EXPORT_FIELD_PATHS = {'候选计算': {'record_kind': 'literal candidate_summary',
-          '候选顺序类型': 'saved.candidate.kind',
-          '保存状态': 'saved.candidate.persisted_status',
-          '算法模式': 'saved.candidate.algo_mode',
-          '策略': 'saved.candidate.used_strategy',
-          '优化器配置类别': 'saved.candidate.algorithm_profile',
-          '优化器Profile': 'saved.source.profile.profile',
-          '接受准则': 'saved.source.profile.acceptance',
-          '实际派工模式': 'saved.candidate.dispatch_mode',
-          '配置派工规则': 'saved.candidate.configured_dispatch_rule',
-          '实际采用派工规则': 'saved.candidate.adopted_dispatch_rule',
-          '候选自身耗时（毫秒）': 'saved.candidate.own_elapsed_ms',
-          '来源求解耗时（毫秒）': 'saved.candidate.source_solver_elapsed_ms',
-          '停止原因': 'saved.candidate.stop_reason.code or null',
-          '停止说明': 'saved.candidate.stop_reason.message or null',
-          '优化器已启用': 'saved.source.profile.enabled',
-          '优化器随机种子': 'saved.source.profile.seed',
-          '配置求解预算（秒）': 'saved.source.profile.configured_time_budget_seconds',
-          '实际求解预算（秒）': 'saved.source.profile.effective_time_budget_seconds',
-          '已分配求解预算（毫秒）': 'saved.source.profile.assigned_time_budget_ms',
-          '配置迭代上限': 'saved.source.profile.configured_max_iterations',
-          '实际迭代上限': 'saved.source.profile.effective_max_iterations',
-          '已应用系统限制': 'saved.source.profile.system_limit_applied',
-          '系统限制原因': 'saved.source.profile.system_limit_reason',
-          'Profile说明': 'saved.source.profile.message',
-          '候选策略族': 'saved.source.profile.candidate_strategy_families',
-          '配置邻域': 'saved.source.profile.configured_neighborhoods',
-          '实际邻域': 'saved.source.profile.effective_neighborhoods',
-          '候选自身评估数': 'saved.candidate.own_counts.evaluated',
-          '候选自身接受数': 'saved.candidate.own_counts.accepted',
-          '候选自身当前解接受数': 'saved.candidate.own_counts.current_accepted',
-          '候选自身严格改善数': 'saved.candidate.own_counts.strict_improvements',
-          '候选自身已记录拒绝数': 'saved.candidate.own_counts.rejected',
-          '候选自身未验证数': 'saved.candidate.own_counts.unverified_trials',
-          '候选自身实际排程调用数': 'saved.candidate.own_counts.decoder_invocations',
-          '来源求解评估数': 'saved.candidate.solver_counts.evaluated',
-          '来源求解接受数': 'saved.candidate.solver_counts.accepted',
-          '来源求解当前解接受数': 'saved.candidate.solver_counts.current_accepted',
-          '来源求解严格改善数': 'saved.candidate.solver_counts.strict_improvements',
-          '来源求解已记录拒绝数': 'saved.candidate.solver_counts.rejected',
-          '来源求解未验证数': 'saved.candidate.solver_counts.unverified_trials',
-          '来源求解实际排程调用数': 'saved.candidate.solver_counts.decoder_invocations',
-          '保存超期批次数': 'saved.candidate.final_metrics.overdue_count',
-          '保存总拖期（小时）': 'saved.candidate.final_metrics.total_tardiness_hours',
-          '保存加权拖期（小时）': 'saved.candidate.final_metrics.weighted_tardiness_hours',
-          '保存工期（小时）': 'saved.candidate.final_metrics.makespan_hours',
-          '保存算法工种切换次数': 'saved.candidate.final_metrics.changeover_count',
-          '本次参与计算工序数': 'saved.candidate.completion.expected_operation_count',
-          '本次计算范围缺少工序数': 'saved.candidate.completion.missing_operation_count',
-          '本次计算范围外结果数': 'saved.candidate.completion.unexpected_result_count',
-          '本次计算范围内工序排齐批次数': 'saved.candidate.completion.complete_batch_count',
-          '本次计算范围内工序未排齐批次数': 'saved.candidate.completion.incomplete_batch_count',
-          '保存代表尝试数': 'saved.summary.saved_attempt_count',
-          '旧版最佳更新数（含同分）': 'saved.summary.legacy_best_updates',
-          '原进步事件数': 'saved.progress.sampling.event_total_count',
-          '保留进步点数': 'saved.progress.sampling.retained_point_count',
-          '采样策略': 'saved.progress.sampling.policy',
-          '分桶数': 'saved.progress.sampling.bucket_count',
-          '桶宽（毫秒）': 'saved.progress.sampling.bucket_width_ms',
-          '保留首次有效': 'saved.progress.coverage.endpoint_coverage.first_valid',
-          '保留首次排齐本次参与计算工序': 'saved.progress.coverage.endpoint_coverage.first_expected_complete',
-          '保留最终': 'saved.progress.coverage.endpoint_coverage.final',
-          '覆盖说明': 'saved.progress.coverage.reason.message or null',
-          '拒绝原因key': 'null in candidate_summary; reason key in rejection_reason',
-          '拒绝原因数': 'null in candidate_summary; source.rejection_summary[key] in rejection_reason'},
- '进步事件': {'record_kind': 'literal progress_point',
-          '事件序号': 'point.event_index',
-          '累计求解耗时（毫秒）': 'point.elapsed_ms',
-          '阶段': 'point.phase',
-          '阶段访问序号': 'point.phase_visit',
-          '连续段': 'point.segment',
-          '首次有效': 'first_valid in point.flags if saved.candidate.evidence_version is not null else null',
-          '首次排齐本次参与计算工序': 'first_expected_complete in point.flags if saved.candidate.evidence_version is not null else '
-                    'null',
-          '最终结果': 'final in point.flags if saved.candidate.evidence_version is not null else null',
-          '业务主值': 'point.primary_value',
-          '目标评价范围': 'point.objective_scope',
-          '评价范围未排齐批次编号': 'point.evaluation_scope.incomplete_batch_ids',
-          '已验证': 'point.verified',
-          '本次参与计算工序数': 'point.completion.expected_operation_count',
-          '本次计算范围缺少工序数': 'point.completion.missing_operation_count',
-          '本次计算范围外结果数': 'point.completion.unexpected_result_count',
-          '本次计算范围内工序排齐批次数': 'point.completion.complete_batch_count',
-          '本次计算范围内工序未排齐批次数': 'point.completion.incomplete_batch_count',
-          '评分分量0': 'point.score[0] if present else null',
-          '评分分量1': 'point.score[1] if present else null',
-          '评分分量2': 'point.score[2] if present else null',
-          '评分分量3': 'point.score[3] if present else null',
-          '评分分量4': 'point.score[4] if present else null',
-          '评分分量5': 'point.score[5] if present else null',
-          '评分分量0单位': 'saved.objective.score_fields item with index=0.unit if present else null',
-          '评分分量1单位': 'saved.objective.score_fields item with index=1.unit if present else null',
-          '评分分量2单位': 'saved.objective.score_fields item with index=2.unit if present else null',
-          '评分分量3单位': 'saved.objective.score_fields item with index=3.unit if present else null',
-          '评分分量4单位': 'saved.objective.score_fields item with index=4.unit if present else null',
-          '评分分量5单位': 'saved.objective.score_fields item with index=5.unit if present else null'},
- '搜索阶段': {'record_kind': 'literal stage',
-          '阶段': 'stage.phase',
-          '阶段状态': 'stage.status',
-          '阶段起点（毫秒）': 'stage.start_elapsed_ms',
-          '阶段终点（毫秒）': 'stage.end_elapsed_ms',
-          '阶段累计耗时（毫秒）': 'stage.elapsed_ms',
-          '访问数': 'stage.visits',
-          '评估数': 'stage.evaluated',
-          '接受数': 'stage.accepted',
-          '严格改善数': 'stage.strict_improvements',
-          '已记录拒绝数': 'stage.rejected',
-          '停止原因': 'stage.stop_reason'},
- '代表尝试': {'record_kind': 'literal representative_attempt',
-          '保存尝试序号': 'attempt.saved_index',
-          '代表排名': 'attempt.rank',
-          '尝试来源': 'attempt.source_label',
-          '尝试策略': 'attempt.strategy',
-          '尝试派工模式': 'attempt.dispatch_mode',
-          '尝试派工规则': 'attempt.dispatch_rule',
-          '尝试保存状态': 'attempt.candidate_status',
-          '尝试来源key': 'attempt.candidate_origin',
-          '权重Profile': 'attempt.weight_profile_slug',
-          '尝试事件序号': 'attempt.event_index',
-          '尝试失败工序数': 'attempt.failed_ops',
-          '尝试累计耗时（毫秒）': 'attempt.elapsed_ms',
-          '尝试已接受': 'attempt.accepted',
-          '尝试已验证': 'attempt.verified',
-          '相对当时对象严格改善': 'attempt.strict_improved',
-          '业务主值': 'attempt.primary_value',
-          '目标评价范围': 'attempt.objective_scope',
-          '当时比较对象': 'attempt.comparison.kind',
-          '当时比较状态': 'attempt.comparison.state',
-          '当时比较目标': 'attempt.comparison.objective_name',
-          '当时本次评价范围': 'attempt.comparison.objective_scope',
-          '当时参考评价范围': 'attempt.comparison.reference_scope',
-          '保存超期批次数': 'attempt.metrics.overdue_count',
-          '保存总拖期（小时）': 'attempt.metrics.total_tardiness_hours',
-          '保存加权拖期（小时）': 'attempt.metrics.weighted_tardiness_hours',
-          '保存工期（小时）': 'attempt.metrics.makespan_hours',
-          '保存算法工种切换次数': 'attempt.metrics.changeover_count',
-          '本次参与计算工序数': 'attempt.completion.expected_operation_count',
-          '本次计算范围缺少工序数': 'attempt.completion.missing_operation_count',
-          '本次计算范围外结果数': 'attempt.completion.unexpected_result_count',
-          '本次计算范围内工序排齐批次数': 'attempt.completion.complete_batch_count',
-          '本次计算范围内工序未排齐批次数': 'attempt.completion.incomplete_batch_count',
-          '评分分量0': 'attempt.score[0] if present else null',
-          '评分分量1': 'attempt.score[1] if present else null',
-          '评分分量2': 'attempt.score[2] if present else null',
-          '评分分量3': 'attempt.score[3] if present else null',
-          '评分分量4': 'attempt.score[4] if present else null',
-          '评分分量5': 'attempt.score[5] if present else null',
-          '评分分量0单位': 'saved.objective.score_fields item with index=0.unit if present else null',
-          '评分分量1单位': 'saved.objective.score_fields item with index=1.unit if present else null',
-          '评分分量2单位': 'saved.objective.score_fields item with index=2.unit if present else null',
-          '评分分量3单位': 'saved.objective.score_fields item with index=3.unit if present else null',
-          '评分分量4单位': 'saved.objective.score_fields item with index=4.unit if present else null',
-          '评分分量5单位': 'saved.objective.score_fields item with index=5.unit if present else null',
-          '当时参考评分分量0': 'attempt.comparison.reference_score[0]',
-          '当时参考评分分量1': 'attempt.comparison.reference_score[1]',
-          '当时参考评分分量2': 'attempt.comparison.reference_score[2]',
-          '当时参考评分分量3': 'attempt.comparison.reference_score[3]',
-          '当时参考评分分量4': 'attempt.comparison.reference_score[4]',
-          '当时参考评分分量5': 'attempt.comparison.reference_score[5]',
-          '当时参考失败工序数': 'attempt.comparison.reference_metrics.failed_ops',
-          '当时参考超期批次数': 'attempt.comparison.reference_metrics.overdue_count',
-          '当时参考加权拖期（小时）': 'attempt.comparison.reference_metrics.weighted_tardiness_hours',
-          '当时参考总拖期（小时）': 'attempt.comparison.reference_metrics.total_tardiness_hours',
-          '当时参考工期（小时）': 'attempt.comparison.reference_metrics.makespan_hours',
-          '当时参考算法工种切换次数': 'attempt.comparison.reference_metrics.changeover_count',
-          '相对当时对象变化失败工序数': 'attempt.comparison.metric_deltas.failed_ops',
-          '相对当时对象变化超期批次数': 'attempt.comparison.metric_deltas.overdue_count',
-          '相对当时对象变化加权拖期（小时）': 'attempt.comparison.metric_deltas.weighted_tardiness_hours',
-          '相对当时对象变化总拖期（小时）': 'attempt.comparison.metric_deltas.total_tardiness_hours',
-          '相对当时对象变化工期（小时）': 'attempt.comparison.metric_deltas.makespan_hours',
-          '相对当时对象变化算法工种切换次数': 'attempt.comparison.metric_deltas.changeover_count',
-          '当时参考本次参与计算工序数': 'attempt.comparison.reference_completion.expected_operation_count',
-          '当时参考本次计算范围缺少工序数': 'attempt.comparison.reference_completion.missing_operation_count',
-          '当时参考本次计算范围外结果数': 'attempt.comparison.reference_completion.unexpected_result_count',
-          '当时参考本次计算范围内工序排齐批次数': 'attempt.comparison.reference_completion.complete_batch_count',
-          '当时参考本次计算范围内工序未排齐批次数': 'attempt.comparison.reference_completion.incomplete_batch_count'}}
-PROCESS_EXPORT_HEADERS = {title: PROCESS_EXPORT_COMMON + tuple(fields) for title, fields in PROCESS_EXPORT_FIELD_PATHS.items()}
+UNIFIED_PROCESS_VERSION = "unified-optimization-process-v1"
+PROCESS_EXPORT_COMMON = RECOMMENDATION_EXPORT_COMMON
+PROCESS_EXPORT_DIRECTION_FIELDS = ("优化方向", "优化方向名称", "主指标key", "主指标", "主指标单位")
+PROCESS_EXPORT_COUNT_FIELDS = (
+    ("actual_decoder_calls", "共同实际排程调用数"),
+    ("new_decisions", "共同新增决策数"),
+    ("decision_reuses", "共同决策复用数"),
+    ("skipped_requests", "共同跳过执行次数"),
+    ("failed_decoder_calls", "共同排程失败数"),
+    ("request_count", "共同不同决策请求数"),
+)
+PROCESS_EXPORT_GOAL_FIELDS = (
+    ("objective_status", "方向状态"),
+    ("weight", "方向预算权重"),
+    ("elapsed_seconds", "方向实际耗时（秒）"),
+    ("charged_seconds", "方向计入预算耗时（秒）"),
+    ("preparation_seconds", "方向准备耗时（秒）"),
+    ("action_count", "方向动作数"),
+    ("new_decisions", "方向新增决策数"),
+    ("reused_decisions", "方向复用决策数"),
+    ("probe_decisions", "方向探测决策数"),
+    ("minimum_opportunity", "方向已取得最小机会"),
+    ("improvement_action_count", "方向改善动作数"),
+    ("has_gain", "方向已有改善"),
+    ("feedback_rate", "方向改善反馈率"),
+    ("feedback_bonus", "方向预算反馈增量"),
+    ("unavailable_reason", "方向无机会原因"),
+    ("budget_reason", "方向预算原因"),
+)
+PROCESS_EXPORT_ACTION_FIELDS = (
+    ("action_id", "动作编号"),
+    ("phase", "阶段"),
+    ("initial_construction", "共同首次构造"),
+    ("started_elapsed_ms", "动作起点（毫秒）"),
+    ("finished_elapsed_ms", "动作终点（毫秒）"),
+    ("elapsed_ms", "动作实际耗时（毫秒）"),
+    ("evaluation_count", "动作评估数"),
+    ("verified_evaluation_count", "动作已验证评估数"),
+    ("new_decisions", "动作新增决策数"),
+    ("reused_decisions", "动作复用决策数"),
+    ("skip_reason", "动作跳过原因"),
+)
+PROCESS_EXPORT_STAGE_FIELDS = (
+    ("phase", "阶段"),
+    ("start_elapsed_ms", "阶段动作起点（毫秒）"),
+    ("end_elapsed_ms", "阶段动作终点（毫秒）"),
+    ("elapsed_ms", "阶段预算累计耗时（毫秒）"),
+    ("action_count", "阶段动作数"),
+    ("evaluation_count", "阶段评估数"),
+    ("verified_evaluation_count", "阶段已验证评估数"),
+    ("new_decisions", "阶段新增决策数"),
+    ("reused_decisions", "阶段复用决策数"),
+)
+PROCESS_EXPORT_BRIDGE_FIELDS = (
+    ("search_objective", "实际搜索方向"),
+    ("phase", "阶段"),
+    ("before_entry_id", "桥接前条目编号"),
+    ("after_entry_id", "桥接后条目编号"),
+    ("source_event_id", "来源事件编号"),
+    ("started_elapsed_ms", "桥接起点（毫秒）"),
+    ("finished_elapsed_ms", "桥接终点（毫秒）"),
+    ("elapsed_ms", "桥接实际耗时（毫秒）"),
+    ("same_arrangement", "桥接安排相同"),
+    ("decoder_executed", "桥接实际调用排程"),
+    ("reference_kind", "桥接来源类型"),
+)
+PROCESS_EXPORT_SCORE_FIELDS = tuple("评分分量" + str(index) for index in range(6))
+PROCESS_EXPORT_SCORE_UNITS = tuple("评分分量" + str(index) + "单位" for index in range(6))
+PROCESS_EXPORT_SCORE_KEYS = tuple("评分分量" + str(index) + "指标key" for index in range(6))
+PROCESS_EXPORT_TABLE_FIELDS = {
+    "共同计算": ("record_kind", "过程版本", "共同计时来源", "共同总耗时（毫秒）", "首次完整解（毫秒）", "停止原因", "主目标",
+              "目标方向目录", "查看过程候选编号", "查看过程候选名称", "查看过程来源事件编号", "共同候选来源目录",
+              "共同执行类型计数", "共同预算") + tuple(label for _, label in PROCESS_EXPORT_COUNT_FIELDS),
+    "目标预算": ("record_kind",) + PROCESS_EXPORT_DIRECTION_FIELDS + tuple(label for _, label in PROCESS_EXPORT_GOAL_FIELDS)
+              + ("首次真实评分改善（毫秒）", "最后真实评分改善（毫秒）", "进步采样记录"),
+    "进步事件": ("record_kind",) + PROCESS_EXPORT_DIRECTION_FIELDS + (
+        "累计共同耗时（毫秒）", "档案条目编号", "来源事件编号", "实际搜索方向", "实际来源",
+        "阶段", "已验证", "评价范围编号", "连续段", "进步标记", "业务主值")
+        + PROCESS_EXPORT_SCORE_FIELDS + PROCESS_EXPORT_SCORE_UNITS + PROCESS_EXPORT_SCORE_KEYS,
+    "搜索动作": ("record_kind",) + PROCESS_EXPORT_DIRECTION_FIELDS + tuple(label for _, label in PROCESS_EXPORT_ACTION_FIELDS)
+              + ("动作改善方向",),
+    "搜索阶段": ("record_kind",) + PROCESS_EXPORT_DIRECTION_FIELDS + tuple(label for _, label in PROCESS_EXPORT_STAGE_FIELDS),
+    "评价范围": ("record_kind", "评价范围编号", "目标评价范围", "评分分量已知", "本次工序已排齐", "已排工序成员数", "排齐批次成员数"),
+    "范围成员": ("record_kind", "评价范围编号", "成员类型", "成员顺序", "成员永久编号"),
+    "真实桥接": ("record_kind",) + tuple(label for _, label in PROCESS_EXPORT_BRIDGE_FIELDS),
+}
+PROCESS_EXPORT_HEADERS = {title: PROCESS_EXPORT_COMMON + fields for title, fields in PROCESS_EXPORT_TABLE_FIELDS.items()}
 PROCESS_EXPORT_CSV_HEADERS = tuple(dict.fromkeys(header for headers in PROCESS_EXPORT_HEADERS.values() for header in headers))
+
+
+def _process_json(value):
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
 
 def _process_public_pages(client, path, query, target, kind):
     """Keep raw HTTP pages and prove complete 20/50 row unions on one snapshot."""
@@ -3191,6 +3105,9 @@ def _process_public_pages(client, path, query, target, kind):
     raw_points = first["data"]["progress"]["points"]
     if kind == "progress" and sorted(combined[20], key=lambda row: json.dumps(row, sort_keys=True)) != sorted(raw_points, key=lambda row: json.dumps(row, sort_keys=True)):
         raise RuntimeError("计算过程分页遗漏或增加了公开完整进步事件。")
+    raw_actions = first["data"]["actions"]
+    if kind == "attempts" and sorted(combined[20], key=lambda row: json.dumps(row, sort_keys=True)) != sorted(raw_actions, key=lambda row: json.dumps(row, sort_keys=True)):
+        raise RuntimeError("计算过程分页遗漏或增加了公开完整搜索动作。")
     result = dict(pages[50][0])
     result["data"] = dict(result["data"], items=combined[50])
     result["read_evidence"] = {"kind": "public_GET_page_union", "total": len(combined[50]),
@@ -3201,119 +3118,214 @@ def _process_public_pages(client, path, query, target, kind):
     return result
 
 
-def process_export_candidate_documents(client, fixture, query, overview, target, *, anchor_ref=None):
+def process_export_candidate_documents(client, fixture, query, overview, target, *, anchor_ref=None, include_all_objectives=False):
     common_keys = ("comparison_mode", "selected_candidate_ref", "reference_candidate_ref", "range_start", "range_end", "resource_view")
     common = {key: value for key, value in query.items() if key in common_keys}
-    refs = [anchor_ref] if anchor_ref is not None else [row["candidate_ref"] for row in overview["data"]["candidates"]]
+    ref = anchor_ref or query.get("process_candidate_ref") or overview["data"]["scope"]["selected_candidate_ref"]
     catalog = {row["candidate_ref"] for row in overview["data"]["candidates"]}
-    if any(ref not in catalog for ref in refs):
+    if ref not in catalog:
         raise RuntimeError("导出的计算过程候选没有对应永久目录记录。")
     path = API + "/runs/" + fixture["run_ref"] + "/decision"
-    records = []
     active_kind, order = query.get("record_kind", "attempts"), query.get("order", "asc")
-    for ref in refs:
-        documents = {}
+    requested_objective = query.get("objective")
+    documents = {}
+    for kind in ("attempts", "progress"):
+        default_sort = "rank" if kind == "attempts" else "elapsed_ms"
+        sort = (query.get("sort") or default_sort) if active_kind == kind else default_sort
+        current = dict(common, process_candidate_ref=ref, record_kind=kind, sort=sort, order=order)
+        if requested_objective is not None:
+            current["objective"] = requested_objective
+        documents[kind] = _process_public_pages(client, path, current, target / ref, kind)
+    attempts, progress = (documents[kind]["data"] for kind in ("attempts", "progress"))
+    shared_keys = ("process_version", "summary", "counts", "budget", "stop_reason", "bridges",
+                   "objectives", "selected_objective", "scopes", "stages", "candidate", "candidates",
+                   "source_event", "scope", "baseline")
+    for key in shared_keys:
+        if attempts[key] != progress[key]:
+            raise RuntimeError("进步事件与搜索动作的保存过程来源不同：" + key)
+    if (attempts["candidate"]["candidate_ref"] != ref or attempts["run_ref"] != fixture["run_ref"]
+            or attempts["scope"] != overview["data"]["scope"]
+            or any(value != overview["data"]["baseline"].get(key) for key, value in attempts["baseline"].items())):
+        raise RuntimeError("计算过程的锚点、查看方案、基准或共同窗口不同。")
+    if attempts["process_version"] != UNIFIED_PROCESS_VERSION:
+        raise RuntimeError("计算过程公共版本与本轮验收契约不同。")
+    if (len(attempts["items"]) != len(attempts["actions"])
+            or len(progress["items"]) != progress["progress"]["sampling"]["retained_point_count"]):
+        raise RuntimeError("计算过程全部保存条数与采样记录不同。")
+    if len(progress["items"]) > 200:
+        raise RuntimeError("计算过程超过本轮保留上限。")
+    target_objectives = [row["name"] for row in attempts["objectives"]]
+    basis_objectives = overview["data"]["selection_basis"].get("target_objectives")
+    if basis_objectives and basis_objectives != target_objectives:
+        raise RuntimeError("计算过程目标方向目录与推荐依据不一致。")
+    primary_objective = overview["data"]["selection_basis"].get("primary_objective") or target_objectives[0]
+    active_objective = attempts["selected_objective"]["name"]
+    export_objectives = target_objectives if include_all_objectives else [active_objective]
+    by_objective = {
+        active_objective: {
+            "selected_objective": attempts["selected_objective"],
+            "summary": attempts["summary"],
+            "budget": attempts["budget"]["objectives"][active_objective],
+            "stages": attempts["stages"],
+            "actions": attempts["items"],
+            "progress": dict(progress["progress"], points=progress["items"]),
+        }
+    }
+    for obj_name in export_objectives:
+        if obj_name == active_objective:
+            continue
+        obj_documents = {}
         for kind in ("attempts", "progress"):
-            sort = query.get("sort", "rank" if kind == "attempts" else "elapsed_ms") if active_kind == kind else ("rank" if kind == "attempts" else "elapsed_ms")
-            current = dict(common, process_candidate_ref=ref, record_kind=kind, sort=sort, order=order)
-            documents[kind] = _process_public_pages(client, path, current, target / ref, kind)
-        attempts, progress = (documents[kind]["data"] for kind in ("attempts", "progress"))
-        for key in ("candidate", "source", "summary", "objective", "stages", "scope", "baseline", "process_version"):
-            if attempts[key] != progress[key]:
-                raise RuntimeError("进步事件与代表尝试的保存过程来源不同：" + key)
-        if (attempts["candidate"]["candidate_ref"] != ref or attempts["run_ref"] != fixture["run_ref"]
-                or attempts["scope"] != overview["data"]["scope"]
-                or any(value != overview["data"]["baseline"].get(key) for key, value in attempts["baseline"].items())):
-            raise RuntimeError("计算过程的锚点、查看方案、基准或共同窗口不同。")
-        if attempts["process_version"] != "decision-process-v1":
-            raise RuntimeError("计算过程公共版本与本轮验收契约不同。")
-        record = {key: attempts[key] for key in ("candidate", "source", "summary", "objective", "stages", "process_version")}
-        record["attempts"] = attempts["items"]
-        record["progress"] = dict(progress["progress"], points=progress["items"])
-        record["public_readbacks"] = {kind: str((target / ref / (kind + "-readback.json")).resolve()) for kind in documents}
-        if len(record["attempts"]) != attempts["summary"]["saved_attempt_count"] or len(record["progress"]["points"]) != attempts["summary"]["retained_point_count"]:
-            raise RuntimeError("计算过程全部保存条数与摘要不同。")
-        if len(record["attempts"]) > 12 or len(record["progress"]["points"]) > 200:
+            default_sort = "rank" if kind == "attempts" else "elapsed_ms"
+            current = dict(common, process_candidate_ref=ref, objective=obj_name,
+                           record_kind=kind, sort=default_sort, order="asc")
+            obj_documents[kind] = _process_public_pages(client, path, current, target / ref / obj_name, kind)
+        obj_attempts, obj_progress = (obj_documents[kind]["data"] for kind in ("attempts", "progress"))
+        for key in shared_keys:
+            if obj_attempts[key] != obj_progress[key]:
+                raise RuntimeError("目标方向的进步事件与搜索动作来源不同：" + key)
+        for key in ("process_version", "counts", "budget", "stop_reason", "bridges", "objectives",
+                    "scopes", "candidate", "candidates", "source_event", "scope", "baseline"):
+            if obj_attempts[key] != attempts[key]:
+                raise RuntimeError("不同优化方向的共同计算过程事实不同：" + key)
+        if len(obj_progress["progress"]["points"]) > 200:
             raise RuntimeError("计算过程超过本轮保留上限。")
-        records.append(record)
+        by_objective[obj_name] = {
+            "selected_objective": obj_attempts["selected_objective"],
+            "summary": obj_attempts["summary"],
+            "budget": obj_attempts["budget"]["objectives"][obj_name],
+            "stages": obj_attempts["stages"],
+            "actions": obj_attempts["actions"],
+            "progress": dict(obj_progress["progress"], points=obj_progress["progress"]["points"]),
+        }
+    record = {
+        "process_version": attempts["process_version"],
+        "clock": "shared_monotonic",
+        "primary_objective": primary_objective,
+        "target_objectives": target_objectives,
+        "export_objectives": export_objectives,
+        "active_objective": active_objective,
+        "summary": attempts["summary"],
+        "counts": attempts["counts"],
+        "budget": attempts["budget"],
+        "stop_reason": attempts["stop_reason"],
+        "bridges": attempts["bridges"],
+        "scopes": attempts["scopes"],
+        "candidate": attempts["candidate"],
+        "candidates": attempts["candidates"],
+        "source_event": attempts["source_event"],
+        "objectives": by_objective,
+        "public_readbacks": {kind: str((target / ref / (kind + "-readback.json")).resolve()) for kind in documents},
+    }
+    records = [record]
     _save(target / "public-process-candidates.json", records)
     return records
 
 
-def _process_expected_path(root, path):
-    value = root
-    for key in path.split("."):
-        if value is None:
-            return None
-        if not isinstance(value, dict):
-            raise RuntimeError("计算过程预期字段结构不同：" + path)
-        indexed = re.fullmatch(r"([^\[]+)\[([0-9]+)\]", key)
-        if indexed is None:
-            value = value.get(key)
-        else:
-            array = value.get(indexed.group(1))
-            if array is None:
-                return None
-            if not isinstance(array, list):
-                raise RuntimeError("计算过程预期评分结构不同：" + path)
-            index = int(indexed.group(2))
-            value = array[index] if index < len(array) else None
-    return value
-
-
-def _process_expected_grain(saved, title, item=None):
-    root = {"saved": saved, "point": item, "stage": item, "attempt": item}
-    kinds = {"候选计算": "candidate_summary", "进步事件": "progress_point", "搜索阶段": "stage", "代表尝试": "representative_attempt"}
-    values = {}
-    flags = {"首次有效": "first_valid", "首次排齐本次参与计算工序": "first_expected_complete", "最终结果": "final"}
-    for header, path in PROCESS_EXPORT_FIELD_PATHS[title].items():
-        if header == "record_kind":
-            value = kinds[title]
-        elif header in ("拒绝原因key", "拒绝原因数"):
-            value = None
-        elif header.startswith("评分分量"):
-            index = int(re.search(r"评分分量([0-5])", header).group(1))
-            if header.endswith("单位"):
-                units = {field["index"]: field["unit"] for field in saved["objective"]["score_fields"]}
-                value = units.get(index)
-            else:
-                score = item["score"]
-                value = score[index] if index < len(score) else None
-        elif title == "进步事件" and header in flags:
-            value = flags[header] in item["flags"] if saved["candidate"]["evidence_version"] is not None else None
-        else:
-            value = _process_expected_path(root, (path[:-8] if path.endswith(" or null") else path))
-        if type(value) is list:
-            if not all(type(entry) is str for entry in value):
-                raise RuntimeError("计算过程 Profile 列表含非文本值：" + header)
-            value = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")) if header == "评价范围未排齐批次编号" else "；".join(value)
-        values[header] = value
-    return values
-
-
-def process_export_expected(document, saved_candidates):
-    base = recommendation_export_common(document)
-    expected = {title: [] for title in PROCESS_EXPORT_HEADERS}
-    for saved in saved_candidates:
-        row, objective = saved["candidate"], saved["objective"]
-        common_values = [saved["process_version"], row["candidate_ref"], row["label"], row["source_candidate_ref"], row["source_kind"],
-            saved["source"]["available"], row["evidence_version"], row["evidence_state"], objective["name"],
-            objective["primary_metric_key"], objective["primary_metric_label"], objective["unit"]]
-        common = dict(base)
-        common.update(dict(zip(PROCESS_EXPORT_COMMON[14:], common_values)))
-        groups = {"候选计算": [_process_expected_grain(saved, "候选计算")],
-            "进步事件": [_process_expected_grain(saved, "进步事件", point) for point in saved["progress"]["points"]],
-            "搜索阶段": [_process_expected_grain(saved, "搜索阶段", stage) for stage in saved["stages"]],
-            "代表尝试": [_process_expected_grain(saved, "代表尝试", attempt) for attempt in saved["attempts"]]}
-        reasons = saved["source"]["rejection_summary"]
-        if reasons is not None:
-            for code in sorted(reasons):
-                if type(reasons[code]) is not int or reasons[code] < 0:
-                    raise RuntimeError("保存的拒绝原因计数不是非负原生整数。")
-                groups["候选计算"].append({"record_kind": "rejection_reason", "拒绝原因key": code, "拒绝原因数": reasons[code]})
-        for title, rows in groups.items():
-            expected[title].extend({**dict.fromkeys(PROCESS_EXPORT_HEADERS[title]), **common, **values} for values in rows)
-    return expected
+def process_export_expected(document, saved_process):
+    (saved,) = saved_process
+    common = recommendation_export_common(document)
+    groups = {title: [] for title in PROCESS_EXPORT_HEADERS}
+    source_event, candidate = saved["source_event"], saved["candidate"]
+    groups["共同计算"].append({
+        "record_kind": "run_process_summary",
+        "过程版本": saved["process_version"],
+        "共同计时来源": saved["clock"],
+        "共同总耗时（毫秒）": saved["summary"]["elapsed_ms"],
+        "首次完整解（毫秒）": saved["summary"]["first_complete_elapsed_ms"],
+        "停止原因": saved["stop_reason"],
+        "主目标": saved["primary_objective"],
+        "目标方向目录": _process_json(saved["target_objectives"]),
+        "查看过程候选编号": candidate["candidate_ref"],
+        "查看过程候选名称": candidate["label"],
+        "查看过程来源事件编号": source_event["event_id"] if source_event is not None else None,
+        "共同候选来源目录": _process_json(saved["candidates"]),
+        "共同执行类型计数": _process_json(saved["counts"]["execution_counts"]),
+        "共同预算": _process_json({key: value for key, value in saved["budget"].items()
+                                 if key not in ("objectives", "objective_status")}),
+        **{label: saved["counts"].get(key) for key, label in PROCESS_EXPORT_COUNT_FIELDS},
+    })
+    for name in saved["export_objectives"]:
+        projected = saved["objectives"][name]
+        objective = projected["selected_objective"]
+        direction = {
+            "优化方向": objective["name"],
+            "优化方向名称": objective["label"],
+            "主指标key": objective["primary_metric_key"],
+            "主指标": objective["primary_metric_label"],
+            "主指标单位": objective["unit"],
+        }
+        groups["目标预算"].append({
+            "record_kind": "objective_budget",
+            **direction,
+            **{label: projected["budget"].get(key) for key, label in PROCESS_EXPORT_GOAL_FIELDS},
+            "首次真实评分改善（毫秒）": projected["summary"]["first_improvement_elapsed_ms"],
+            "最后真实评分改善（毫秒）": projected["summary"]["last_improvement_elapsed_ms"],
+            "进步采样记录": _process_json(projected["progress"]["sampling"]),
+        })
+        score_units = {field["key"]: field["unit"] for field in objective["score_fields"]}
+        for point in projected["progress"]["points"]:
+            groups["进步事件"].append({
+                "record_kind": "progress_point",
+                **direction,
+                "累计共同耗时（毫秒）": point["elapsed_ms"],
+                "档案条目编号": point["entry_id"],
+                "来源事件编号": point["source_event_id"],
+                "实际搜索方向": point["search_objective"],
+                "实际来源": point["origin"],
+                "阶段": point["phase"],
+                "已验证": point["verified"],
+                "评价范围编号": point["scope_ref"],
+                "连续段": point["segment"],
+                "进步标记": _process_json(point["flags"]),
+                "业务主值": point["primary_value"],
+                **{label: point["score"][index] if index < len(point["score"]) else None
+                   for index, label in enumerate(PROCESS_EXPORT_SCORE_FIELDS)},
+                **{label: point["field_order"][index] if index < len(point["field_order"]) else None
+                   for index, label in enumerate(PROCESS_EXPORT_SCORE_KEYS)},
+                **{label: score_units[point["field_order"][index]] if index < len(point["field_order"]) else None
+                   for index, label in enumerate(PROCESS_EXPORT_SCORE_UNITS)},
+            })
+        for action in projected["actions"]:
+            groups["搜索动作"].append({
+                "record_kind": "search_action",
+                **direction,
+                **{label: action.get(key) for key, label in PROCESS_EXPORT_ACTION_FIELDS},
+                "动作改善方向": _process_json(action["improved_objectives"]),
+            })
+        for stage in projected["stages"]:
+            groups["搜索阶段"].append({
+                "record_kind": "stage",
+                **direction,
+                **{label: stage.get(key) for key, label in PROCESS_EXPORT_STAGE_FIELDS},
+            })
+    for scope_ref, scope in saved["scopes"].items():
+        groups["评价范围"].append({
+            "record_kind": "score_scope",
+            "评价范围编号": scope_ref,
+            "目标评价范围": scope["objective_scope"],
+            "评分分量已知": scope["components_known"],
+            "本次工序已排齐": scope["is_complete"],
+            "已排工序成员数": len(scope["scheduled_operation_refs"]),
+            "排齐批次成员数": len(scope["complete_batch_refs"]),
+        })
+        for kind, members in (("scheduled_operation", scope["scheduled_operation_refs"]),
+                              ("complete_batch", scope["complete_batch_refs"])):
+            for index, member in enumerate(members, 1):
+                groups["范围成员"].append({
+                    "record_kind": "scope_member",
+                    "评价范围编号": scope_ref,
+                    "成员类型": kind,
+                    "成员顺序": index,
+                    "成员永久编号": member,
+                })
+    for bridge in saved["bridges"]:
+        groups["真实桥接"].append({
+            "record_kind": "bridge",
+            **{label: bridge.get(key) for key, label in PROCESS_EXPORT_BRIDGE_FIELDS},
+        })
+    return {title: [{**dict.fromkeys(PROCESS_EXPORT_HEADERS[title]), **common, **values} for values in rows]
+            for title, rows in groups.items()}
 
 
 def process_export_check_table(rows, headers, fmt, types, expected, title, *, csv_union=False):
@@ -3347,7 +3359,7 @@ _CURRENT_ALL_FILTER_KEYS = {
     "resource-days": ("resource_kind", "resource_ref", "grain", "pressure_threshold", "display_start", "display_end", "bucket_start", "bucket_end"),
     "preparation": ("batch_ref", "machine_ref", "allocation_state", "work_scope", "sort", "order"),
     "changeovers": ("machine_ref", "event_side", "sort", "order"),
-    "process": ("process_candidate_ref", "record_kind", "sort", "order"),
+    "process": ("process_candidate_ref", "objective", "record_kind", "sort", "order"),
 }
 _CURRENT_ALL_TITLES = {
     "overview": "方案总览", "batches": "批次影响", "operations": "工序变化",
@@ -3355,7 +3367,7 @@ _CURRENT_ALL_TITLES = {
     "preparation": "准备需求", "changeovers": "工种切换",
 }
 _CURRENT_ALL_RECOMMENDATION_TITLES = ("推荐说明", "工序安排", "剩余需求")
-_CURRENT_ALL_PROCESS_TITLES = ("候选计算", "进步事件", "搜索阶段", "代表尝试")
+_CURRENT_ALL_PROCESS_TITLES = ("共同计算", "目标预算", "进步事件", "搜索动作", "搜索阶段", "评价范围", "范围成员", "真实桥接")
 
 
 def _current_all_scope_query(scope):
@@ -3430,7 +3442,7 @@ def _current_all_check_scope(workbook, expected_document, filter_section, active
         "resource-days": ("section", "resource_kind", "resource_ref", "grain", "pressure_threshold", "display_start", "display_end", "bucket_start", "bucket_end"),
         "preparation": ("section", "machine_ref", "sort", "order", "batch_ref", "allocation_state", "work_scope"),
         "changeovers": ("section", "machine_ref", "sort", "order", "event_side"),
-        "process": ("section", "process_candidate_ref", "record_kind", "sort", "order"),
+        "process": ("section", "process_candidate_ref", "record_kind", "sort", "order", "objective"),
     }
     if active_filters is not None and set(active_filters) != set(filter_orders[filter_section]):
         raise RuntimeError("完整导出的活动筛选字段集合不同。")
@@ -3509,7 +3521,7 @@ def _current_all_check_scope(workbook, expected_document, filter_section, active
 
 def current_all_export_case(client, identity, fixture, query, target, cache=None,
                             filter_section=None, active=None, documents=None, archived_labels=None):
-    """One all-XLSX download; complete field/type checks for 16 or 18 sheets.
+    """One all-XLSX download; complete field/type checks for 20 or 22 sheets.
 
     Existing all callers dispatch here without renaming their historical cases.
     documents can contain already obtained complete public business responses;
@@ -3637,10 +3649,10 @@ def current_all_export_case(client, identity, fixture, query, target, cache=None
     process_query = leaf_query if requested_section == "process" else common
     anchor_ref = active["data"]["candidate"]["candidate_ref"] if requested_section == "process" else None
     saved_process = process_export_candidate_documents(client, fixture, process_query, overview,
-        target / "process-sources", anchor_ref=anchor_ref)
+        target / "process-sources", anchor_ref=anchor_ref, include_all_objectives=True)
     process_expected = process_export_expected(expected_document, saved_process)
     if tuple(RECOMMENDATION_EXPORT_HEADERS) != _CURRENT_ALL_RECOMMENDATION_TITLES or tuple(PROCESS_EXPORT_HEADERS) != _CURRENT_ALL_PROCESS_TITLES:
-        raise RuntimeError("all 的独立推荐/过程表顺序与16/18表合同不同。")
+        raise RuntimeError("all 的独立推荐/过程表顺序与20/22表合同不同。")
 
     labels = dict(archived_labels or {})
     if archived_labels is None:
@@ -3664,7 +3676,7 @@ def current_all_export_case(client, identity, fixture, query, target, cache=None
     row_counts.update({title: len(process_expected[title]) for title in _CURRENT_ALL_PROCESS_TITLES})
     business_count = sum(row_counts.values())  # 指标计算方式和比较范围不计入下载业务行数。
     wanted_sheets = list(row_counts) + ["指标计算方式", "比较范围"]
-    if len(wanted_sheets) != (18 if requested_section == "resource-days" else 16):
+    if len(wanted_sheets) != (22 if requested_section == "resource-days" else 20):
         raise RuntimeError("all 的独立表名单数量不同。")
     export_query = dict(common, section="all", snapshot_ref=active["meta"]["snapshot_ref"])
     if requested_section is not None:
@@ -3696,7 +3708,7 @@ def current_all_export_case(client, identity, fixture, query, target, cache=None
     checked = {}
     try:
         if workbook.sheetnames != wanted_sheets:
-            raise RuntimeError("all 的16/18表顺序不同：" + str(workbook.sheetnames))
+            raise RuntimeError("all 的20/22表顺序不同：" + str(workbook.sheetnames))
         checked["overview"] = preparation_export_check_records(workbook["方案总览"], overview_headers, overview_rows)
         for section in ("batches", "operations", "resources", "resource-days", "preparation", "changeovers"):
             if section not in business:
@@ -3802,7 +3814,7 @@ def process_export_verify(args):
             if (headers.get("X-Workbench-Run-Ref") != args.run_ref
                     or headers.get("X-Workbench-Snapshot-Ref") != active["meta"]["snapshot_ref"]
                     or int(headers["X-Workbench-Row-Count"]) != count):
-                raise RuntimeError("过程导出的运行、快照身份或四个业务粒度行数不同。")
+                raise RuntimeError("过程导出的运行、快照身份或八个业务粒度行数不同。")
             if fmt == "csv":
                 reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig")))
                 rows = list(reader)
@@ -3816,7 +3828,7 @@ def process_export_verify(args):
                 try:
                     wanted_sheets = list(PROCESS_EXPORT_HEADERS) + ["指标计算方式", "比较范围"]
                     if workbook.sheetnames != wanted_sheets:
-                        raise RuntimeError("过程XLSX的四个业务粒度及附表顺序不同。")
+                        raise RuntimeError("过程XLSX的八个业务粒度及附表顺序不同。")
                     checked = {}
                     for title, records in expected.items():
                         rows, columns, types = _current_all_sheet_rows(workbook[title])
@@ -4147,18 +4159,18 @@ def main():
     preparation_days.add_argument("--fixture", help="明确指定已生成的准备需求夹具记录")
     preparation_days.add_argument("--evidence-directory", help="已有四案例原始导出的证据目录")
     preparation_days.set_defaults(function=preparation_export_resource_days_verify)
-    recommendation_exports = commands.add_parser("recommendation-export-verify", help="独立核对三个代表运行的推荐导出及一份全部十六表XLSX")
+    recommendation_exports = commands.add_parser("recommendation-export-verify", help="独立核对三个代表运行的推荐导出及一份全部二十表XLSX")
     recommendation_exports.add_argument("--instance", required=True)
     recommendation_exports.add_argument("--evidence-directory", help="本次推荐原始导出和独立结果目录")
     recommendation_exports.add_argument("--case", nargs="+", choices=("balanced-recommendation", "ordinary-partial-recommendation",
         "mixed-due-recommendation", "all-balanced-twelve-tables"), help="只验收指定的既定案例")
     recommendation_exports.set_defaults(function=recommendation_export_verify)
-    process_exports = commands.add_parser("process-export-verify", help="只读核对保存过程CSV、过程六表及全部十六表XLSX原文件")
+    process_exports = commands.add_parser("process-export-verify", help="只读核对保存过程CSV、过程十表及全部二十表XLSX原文件")
     for argument in ("instance", "run-ref", "selected-candidate-ref", "reference-candidate-ref", "process-candidate-ref",
                      "range-start", "range-end", "evidence-directory"):
         process_exports.add_argument("--" + argument, required=True)
     process_exports.add_argument("--resource-view", choices=("selected_batches", "full_candidate"), default="selected_batches")
-    process_exports.add_argument("--process-only", action="store_true", help="仅下载保存过程CSV与六表XLSX，复用既有全部导出证据")
+    process_exports.add_argument("--process-only", action="store_true", help="仅下载保存过程CSV与十表XLSX，复用既有全部导出证据")
     process_exports.add_argument("--resume-process-capture", action="store_true", help="复用同一公开快照已下载的原CSV，仅补XLSX并完成逐字段续验")
     process_exports.set_defaults(function=process_export_verify)
     args = parser.parse_args()

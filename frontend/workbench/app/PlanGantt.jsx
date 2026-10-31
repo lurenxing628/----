@@ -67,7 +67,7 @@
         : <div>原安排：{baseline.reason}</div>}
     </div>;
   }
-  function PlanGantt({ data, prepared: facts, asOf, selected, onSelect, query, onQuery, toolbarActions, initialMode, initialBaseline, onRequestBaseline, baselineLoading, baselineError, graphLoading, graphError, onRetryGraph }) {
+  function PlanGantt({ data, prepared: facts, graph, asOf, selected, onSelect, query, onQuery, toolbarActions, initialMode, initialBaseline, onRequestBaseline, baselineLoading, baselineError, graphLoading, graphError, onRetryGraph }) {
     const [mode, setMode] = React.useState(initialMode === 'operator' ? 'operator' : 'machine'), [baseline, setBaseline] = React.useState(initialBaseline), [zoom, setZoom] = React.useState(1);
     const [changedOnly, setChangedOnly] = React.useState(false), { expanded, toggle } = window.GanttPresentationUI.useExpanded();
     const [position, setPosition] = React.useState({ left: 0, top: 0, width: 1000, height: 440 }), [hover, setHover] = React.useState(null);
@@ -87,10 +87,13 @@
     // It must not inherit a wide screen or expanded board's pixel width.
     const width = printing ? 640 : viewport * zoom, selectedRef = selected && selected.task.task_ref;
     const renderLeft = printing ? 0 : position.left, renderViewport = printing ? width : viewport;
-    const grouped = React.useMemo(() => M.groupPrepared(facts, mode), [facts, mode]);
-    const prepared = React.useMemo(() => M.selectPrepared(grouped, query, effectiveChangedOnly, effectiveBaseline), [grouped, query, effectiveChangedOnly, effectiveBaseline]);
+    const grouped = React.useMemo(() => M.groupPrepared(facts, mode), [facts.items, facts.occupancy, facts.labels, facts.directory, facts.start, facts.end, mode]);
+    const baselineGrouped = React.useMemo(
+      () => facts.baselineLoaded ? M.groupBaseline(facts, mode) : null,
+      [facts.baselineLoaded, facts.before, facts.labels, facts.directory, facts.start, facts.end, facts.items, mode]
+    );
+    const prepared = React.useMemo(() => M.selectPrepared(grouped, query, effectiveChangedOnly, effectiveBaseline, facts, baselineGrouped), [grouped, baselineGrouped, facts.changed, facts.comparisons, facts.baselineLoaded, facts.before, query, effectiveChangedOnly, effectiveBaseline]);
     const model = React.useMemo(() => M.layoutPrepared(prepared, width), [prepared, width]);
-    const graph = facts.graph;
     const targetRef = hover && !hover.before ? hover.task.task_ref : selected && !selected.before ? selectedRef : null;
     const active = React.useMemo(() => window.GanttGraph.selection(graph, { enabled: chainEnabled && data.gantt_graph.nodes_complete !== false, targetRef }), [graph, chainEnabled, data.gantt_graph.nodes_complete, targetRef]);
     const graphLocations = React.useMemo(() => window.GanttGraph.locations(model), [model]);
@@ -100,7 +103,7 @@
     }, { locationIndex }), [active, model, width, renderLeft, renderViewport, position.top, position.height, printing, locationIndex]);
     const printItems = printing ? model.rows.flatMap(row => row.items) : [];
     const printNumbers = new Map(printItems.map((item, index) => [item.task.task_ref, index + 1]));
-    const risks = React.useMemo(() => new Map(data.projections.delivery_risks.items.map(row => [row.batch_id, row.risk])), [data]);
+    const risks = React.useMemo(() => new Map(data.projections.delivery_risks.items.map(row => [row.batch_id, row.risk])), [data.projections.delivery_risks]);
     const axis = React.useMemo(() => V.axis({ start: model.start, end: model.end, width, left: renderLeft, viewport: renderViewport }), [model.start, model.end, width, renderLeft, renderViewport]), ticks = axis.ticks;
     const refreshedAt = React.useMemo(() => M.instant(asOf), [asOf]);
     const timeX = at => (at - model.start) / (model.end - model.start) * width;
@@ -158,7 +161,7 @@
       located.current = selected; locate(selectedRef, selected.before);
     }, [selected, model]);
     React.useEffect(() => {
-      if ((displayBaseline || displayChangedOnly) && !facts.baselineLoaded && typeof onRequestBaseline === 'function') onRequestBaseline();
+      if ((displayBaseline || displayChangedOnly) && !facts.baselineLoaded) onRequestBaseline();
     }, [displayBaseline, displayChangedOnly, facts.baselineLoaded, onRequestBaseline]);
     function select(task, beforeTask) { setHover(null); onSelect(task, beforeTask); }
     const currentIndex = model.taskOrder.has(selectedRef) ? model.taskOrder.get(selectedRef) : -1;
@@ -179,9 +182,9 @@
       <div className="plan-toolbar">
         <Segment value={mode} options={Object.entries(M.kindLabels)} onChange={setMode} label="甘特分组" />
         {showBaseline && <label className="plan-check" title="显示保存的原安排"><input type="checkbox" aria-label="显示原安排" checked={displayBaseline}
-          onChange={event => { const next = event.target.checked; setBaseline(next); if (next && !facts.baselineLoaded && typeof onRequestBaseline === 'function') onRequestBaseline(); }} />显示原安排</label>}
+          onChange={event => { const next = event.target.checked; setBaseline(next); if (next && !facts.baselineLoaded) onRequestBaseline(); }} />显示原安排</label>}
         {showBaseline && <label className="plan-check" title="筛选起止时间、设备或人员发生变化，以及新增、移除的工序"><input type="checkbox" aria-label="只看有变化的工序" checked={displayChangedOnly}
-          onChange={event => { const next = event.target.checked; setChangedOnly(next); if (next && !facts.baselineLoaded && typeof onRequestBaseline === 'function') onRequestBaseline(); }} />只看有变化的工序</label>}
+          onChange={event => { const next = event.target.checked; setChangedOnly(next); if (next && !facts.baselineLoaded) onRequestBaseline(); }} />只看有变化的工序</label>}
         <label className="search plan-search"><span className="ic"><Icon name="search" /></span><input ref={search} type="search" aria-label="搜索批次、工序、设备、人员" placeholder="批次、工序、资源" value={query}
           onChange={event => onQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); move(event.shiftKey ? -1 : 1); } if (event.key === 'Escape') onQuery(''); }} /></label>
         <div className="plan-actions">

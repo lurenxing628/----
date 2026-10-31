@@ -88,11 +88,16 @@ def plan_list():
 def plan_workspace(plan_ref):
     _arguments(("range_start", "range_end", "snapshot_ref"))
     scope = PlanReadScope(plan_ref, request.args.get("range_start"), request.args.get("range_end"))
+    token = request.args.get("snapshot_ref")
     reader = WorkbenchPlanQueryService(g.db, current_app.logger)
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():
+            if token is not None:
+                scope_dict, state = reader.prebind_scope(scope)
+                snapshot = bind_read_snapshot(scope_dict, state, token)
             data, state = reader.workspace(scope)
-    snapshot = bind_read_snapshot(data["scope"], state, request.args.get("snapshot_ref"))
+    if token is None:
+        snapshot = bind_read_snapshot(data["scope"], state, None)
     return _response(data, snapshot)
 
 
@@ -112,8 +117,9 @@ def plan_baseline(plan_ref):
     reader = WorkbenchPlanQueryService(g.db, current_app.logger)
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():
-            data, scope_dict, state = reader.baseline_comparison(scope, page=page, size=size)
-    snapshot = bind_read_snapshot(scope_dict, state, token)
+            scope_dict, state = reader.prebind_scope(scope)
+            snapshot = bind_read_snapshot(scope_dict, state, token)
+            data, _, _ = reader.baseline_comparison(scope, page=page, size=size)
     return _response(data, snapshot)
 
 
@@ -133,8 +139,9 @@ def plan_tasks(plan_ref):
     reader = WorkbenchPlanQueryService(g.db, current_app.logger)
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():
-            data, scope_dict, state = reader.tasks_page(scope, page=page, size=size)
-    snapshot = bind_read_snapshot(scope_dict, state, token)
+            scope_dict, state = reader.prebind_scope(scope)
+            snapshot = bind_read_snapshot(scope_dict, state, token)
+            data, _, _ = reader.tasks_page(scope, page=page, size=size)
     return _response(data, snapshot)
 
 
@@ -148,8 +155,9 @@ def plan_gantt_graph(plan_ref):
     reader = WorkbenchPlanQueryService(g.db, current_app.logger)
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():
-            data, scope_dict, state = reader.gantt_graph(scope)
-    snapshot = bind_read_snapshot(scope_dict, state, token)
+            scope_dict, state = reader.prebind_scope(scope)
+            snapshot = bind_read_snapshot(scope_dict, state, token)
+            data, _, _ = reader.gantt_graph(scope)
     return _response(data, snapshot)
 
 
@@ -163,8 +171,9 @@ def plan_capacity(plan_ref):
     reader = WorkbenchPlanQueryService(g.db, current_app.logger)
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():
-            data, scope_dict, state = reader.capacity_projections(scope)
-    snapshot = bind_read_snapshot(scope_dict, state, token)
+            scope_dict, state = reader.prebind_scope(scope)
+            snapshot = bind_read_snapshot(scope_dict, state, token)
+            data, _, _ = reader.capacity_projections(scope)
     return _response(data, snapshot)
 
 
@@ -178,8 +187,9 @@ def plan_export(plan_ref):
     reader = WorkbenchPlanQueryService(g.db, current_app.logger)
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():
-            data, state = reader.workspace(scope, include_all_tasks=True)
-    snapshot = bind_read_snapshot(data["scope"], state, token)
+            scope_dict, state = reader.prebind_scope(scope)
+            snapshot = bind_read_snapshot(scope_dict, state, token)
+            data, _ = reader.export_workspace(scope)
     # 读事务和读额度都已释放：大小检查和生成文件只用已读出的计划，不再占着读锁。
     download = write_plan_export(data, snapshot, fmt)
     if len(download.content) > MAX_PLAN_RESPONSE_BYTES:

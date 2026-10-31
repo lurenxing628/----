@@ -1,7 +1,6 @@
 """Real file endpoints, isolated SQLite and the production Node contract."""
 
 import json
-import shutil
 import subprocess
 import uuid
 from io import BytesIO
@@ -10,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from core.services.workbench.process.file_codec import encode_process_file
+from tests._support.node_runtime_support import node_runtime
 from tests.workbench.process_query_support import seed_process
 from tests.workbench.process_stage_api_support import BASE, PART, StageAPI, seed_history, success
 
@@ -98,8 +98,7 @@ class FileAPI(StageAPI):
 
 
 def node_contract(mode, raw, kind, *, body=None, preview=None, target=None, fmt="csv"):
-    node = shutil.which("node")
-    assert node, "Node is required to check real API responses against ProcessFileContract.js"
+    node = node_runtime()
     script = r"""
 const fs = require('fs'), vm = require('vm'), path = require('path'), assert = require('assert/strict');
 const input = JSON.parse(fs.readFileSync(0, 'utf8'));

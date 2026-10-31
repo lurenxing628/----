@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Sequence, Set
 
 from core.errors import ValidationError
 from core.models.batch_operation import BatchOperation
@@ -61,12 +61,13 @@ def raise_no_actionable_schedule_error(
     *,
     operations: List[BatchOperation],
     missing_internal_resource_op_ids: Set[int],
+    failure_details: Sequence[Dict[str, Any]] = (),
 ) -> None:
     details: Dict[str, Any] = {"reason": "no_actionable_schedule_rows"}
     if validation_errors:
         details["validation_errors"] = list(validation_errors)
 
-    public_root_error_message = first_public_auto_assign_resource_error(validation_errors)
+    public_root_error_message = first_public_auto_assign_resource_error(failure_details)
     missing_samples = missing_internal_resource_samples(operations, missing_internal_resource_op_ids)
     if missing_samples:
         total = len(missing_samples)

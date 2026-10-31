@@ -6,6 +6,8 @@ from core.models.calendar_periods import DEFAULT_WORK_PERIODS
 from core.services.scheduler.calendar.service import CalendarService
 from tests.workbench.calendar_api_support import (
     BASE,
+    WORK,
+    assert_error,
     assert_read_failure,
     calendar_api_fixture,  # noqa: F401
     deny_table_reads,
@@ -44,6 +46,12 @@ def test_default_periods_are_readonly_until_confirmed_and_persist_across_service
         service = CalendarService(conn)
         assert service._engine._policy_for_date("2026-09-10").shift_hours == 7
         assert conn.execute("SELECT COUNT(*) FROM WorkbenchCalendarDefaults").fetchone()[0] == 1
+    sep = calendar_api.month(2026, 9)
+    assert calendar_api.month(2026, 9, snapshot_ref=sep["meta"]["snapshot_ref"])["data"] == sep["data"]
+    assert calendar_api.save(WORK, day="2026-10-01").status_code == 200
+    stale = calendar_api.client.get(BASE + "/month", query_string={
+        "year": 2026, "month": 9, "snapshot_ref": sep["meta"]["snapshot_ref"]})
+    assert_error(stale, "snapshot_stale")
 
 
 def test_range_preview_read_failure_reports_nothing_committed(calendar_api):

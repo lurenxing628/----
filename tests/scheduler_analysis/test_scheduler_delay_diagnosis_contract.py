@@ -5,10 +5,6 @@ from __future__ import annotations
 import pytest
 
 from core.infrastructure.database import ensure_schema, get_connection
-from core.models.schedule_plan_role import (
-    ROLE_ADOPTED,
-    SOURCE_SCHEDULE,
-)
 from core.services.common.plan_query import SchedulePlanQueryService
 from tests._support.paths import REPO_ROOT
 
@@ -108,20 +104,15 @@ def _overdue_rows(query, resolution):
         version=resolution.version)
 
 
-def test_overdue_official_source_remains_strict_and_rejects_retired_roles(tmp_path):
+def test_overdue_official_source_remains_strict(tmp_path):
     conn = _seed_db(tmp_path)
     try:
         query = SchedulePlanQueryService(conn)
         before = _snapshot(conn)
-        resolution = query.resolve_existing_plan(VERSION, ROLE_ADOPTED)
-        assert resolution.source_table == SOURCE_SCHEDULE
+        resolution = query.resolve_existing_plan(VERSION)
         rows = _overdue_rows(query, resolution)
         assert next(row for row in rows if row['batch_id'] == 'B_SCHEDULED')['finish_time'] == '2026-05-04 11:00:00'
         assert _snapshot(conn) == before
-        with pytest.raises(ValueError, match='未知的排产方案角色'):
-            query.resolve_plan(VERSION, 'baseline_best')
-        with pytest.raises(ValueError, match='未知的排产方案角色'):
-            query.resolve_existing_plan(VERSION, 'baseline_best')
     finally:
         conn.close()
 
@@ -155,7 +146,7 @@ def test_overdue_allow_points_recognizes_zero_duration_point_event_batches(tmp_p
         )
         conn.commit()
         query = SchedulePlanQueryService(conn)
-        resolution = query.resolve_plan(VERSION, ROLE_ADOPTED)
+        resolution = query.resolve_plan(VERSION)
         rows = query.list_plan_overdue_base_rows_for_resolution(
             version=resolution.version,
         )

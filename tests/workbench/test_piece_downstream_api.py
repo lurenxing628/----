@@ -96,7 +96,7 @@ def test_piece_downstream_frontend_model():
     import subprocess
     from pathlib import Path
 
-    from tests.workbench.node_runtime_support import node_runtime
+    from tests._support.node_runtime_support import node_runtime
 
     result = subprocess.run([node_runtime(), str(Path(__file__).with_name('piece_downstream_contract.cjs'))],
         capture_output=True, text=True, timeout=30)

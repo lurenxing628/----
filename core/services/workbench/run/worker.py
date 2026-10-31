@@ -55,9 +55,16 @@ class WorkbenchRunWorker:
     def _now(self):
         return self.clock().isoformat(timespec="microseconds")
 
-    def _check_facts(self, row, conn=None, *, capture=None):
-        if not production_facts_match(self.conn if conn is None else conn, row["facts_json"], capture=capture):
+    def _check_facts(self, row, conn=None, *, capture=None, captured_facts=None):
+        if captured_facts is None:
+            captured_facts = stored_json(row["facts_json"])
+        if not production_facts_match(
+            self.conn if conn is None else conn,
+            captured_facts,
+            capture=capture,
+        ):
             raise WorkbenchCommandRejected("snapshot_stale", "排产之后现场数据有变化，这次的候选方案没有保存。请重新做一次排产检查。")
+        return captured_facts
 
     def execute(self, run_ref, *, retry_original=None):
         validate_run_ref(run_ref)
@@ -91,7 +98,7 @@ class WorkbenchRunWorker:
         """Consume the caller's isolated database without copying it again."""
         with candidate_read_snapshot(snapshot):
             current_capture = ProductionFactsCapture(snapshot)
-            self._check_facts(row, snapshot, capture=current_capture)
+            captured_facts = self._check_facts(row, snapshot, capture=current_capture)
             # 与 CandidateStore.capture 读同一组排产原件，同一个严格读取器。
             raw_execution = stored_json(row["execution_json"], list)
             normalized_input = stored_json(row["normalized_input_json"])
@@ -99,7 +106,8 @@ class WorkbenchRunWorker:
             computation = compute_candidate_run(snapshot, normalized_input, projections, capture=current_capture,
                                                 dispositions=admission["dispositions"])
             capture = {"input": normalized_input, "execution": raw_execution,
-                       "baseline": stored_json(row["baseline_json"]), "facts_text": row["facts_json"]}
+                       "baseline": stored_json(row["baseline_json"]), "facts_text": row["facts_json"],
+                       "facts": captured_facts}
             facts = GenerationFacts(capture)
             identities = {op_id: ref for ref, op_id in facts.operations.items()}
             return prepare_run_result(computation, identities, run=row, capture=capture, admission=admission, facts=facts)
@@ -108,7 +116,7 @@ class WorkbenchRunWorker:
         candidates, result = prepared.candidates, prepared.result
         try:
             with TransactionManager(self.conn).transaction(begin_immediate=True):
-                self._check_facts(row)
+                self._check_facts(row, captured_facts=prepared.captured_facts)
                 current = self.repo.claim_head(row["run_ref"])
                 if current is None or current["state"] != "running" or current["executor_ref"] != PROCESS_EXECUTOR_REF:
                     raise RuntimeError("Run ownership changed before result persistence")

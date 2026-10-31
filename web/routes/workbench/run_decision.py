@@ -1,5 +1,6 @@
 """同次候选总览与下载共用一个比较投影。"""
 
+import uuid
 from io import BytesIO
 from typing import Dict
 
@@ -152,10 +153,11 @@ def run_decision_summary(run_ref):
 
 
 def _resource_error(error):
+    request_ref = uuid.uuid4().hex
     if error.status >= 500:
-        current_app.logger.error("工作台请求失败 code=%s", error.code,
+        current_app.logger.error("工作台请求失败 code=%s request_ref=%s", error.code, request_ref,
                                  exc_info=(type(error), error, error.__traceback__))
-    return {**failure_payload(error.code, str(error), error.status), "status": error.status}
+    return {**failure_payload(error.code, str(error), error.status, request_ref=request_ref), "status": error.status}
 
 
 @api_endpoint
@@ -201,7 +203,7 @@ def run_decision_export(run_ref):
     if not token:
         raise WorkbenchCommandRejected("invalid_input", "请刷新方案比较后导出当前资料。", 422)
     with PLAN_READ_SLOTS.slot():
-        data, scope, state = read_decision_export(g.db, run_ref, section, **values)
+        data, scope, state = read_decision_export(g.db, run_ref, section, fmt=fmt, **values)
         snapshot = bind_read_snapshot(scope, state, token)
     download = (write_decision_xlsx("run", data, snapshot, section) if fmt == "xlsx" else
                 write_run_decision_export(data, snapshot, fmt, section))

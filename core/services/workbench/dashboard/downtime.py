@@ -9,28 +9,40 @@ from core.services.capacity.plan_calendar_intervals import IntervalIndex, instan
 from .projection import category, observation
 
 
-def _index(raw, refs):
+def _instant(value):
+    try:
+        return instant(value)
+    except ValueError:
+        return None
+
+
+def downtime_index(raw, refs):
+    """Parse each non-cancelled downtime's two endpoints once, independently; an unreadable endpoint is None.
+
+    ``parsed`` keeps every non-cancelled row in rowid order, invalid ones included, for analysis records;
+    windows, invalid machines and interval indexes are derived from it.
+    """
     identities = {row["source_id"]: row for row in refs if row["active"] == 1}
-    by_machine, all_rows, identity_rows, invalid = defaultdict(list), defaultdict(list), defaultdict(list), set()
+    by_machine, all_rows, identity_rows, invalid, parsed = defaultdict(list), defaultdict(list), defaultdict(list), set(), []
     for row in refs:
         identity_rows[row["source_id"]].append(row)
     for row in raw:
         all_rows[row["machine_id"]].append(row)
         if row["status"] == "cancelled":
             continue
-        try:
-            low, high = instant(row["start_time"]), instant(row["end_time"])
-            if row["status"] != "active" or low >= high or row["id"] not in identities:
-                raise ValueError()
-            by_machine[row["machine_id"]].append((low, high, row))
-        except (TypeError, ValueError):
+        low, high = _instant(row["start_time"]), _instant(row["end_time"])
+        parsed.append((row, low, high))
+        if (row["status"] != "active" or low is None or high is None or low >= high
+                or row["id"] not in identities):
             invalid.add(row["machine_id"])
+        else:
+            by_machine[row["machine_id"]].append((low, high, row))
     indexes = {key: IntervalIndex.from_normalized(union([(low, high) for low, high, _ in values]))
                for key, values in by_machine.items()}
     machine_identities = defaultdict(list, {
         key: [identity for row in values for identity in identity_rows[row["id"]]]
         for key, values in all_rows.items()})
-    return {"identities": identities, "windows": by_machine, "invalid": invalid, "indexes": indexes,
+    return {"identities": identities, "parsed": parsed, "windows": by_machine, "invalid": invalid, "indexes": indexes,
             "all_rows": all_rows, "machine_identities": machine_identities}
 
 
@@ -71,8 +83,7 @@ def _task(task, raw_task, resource_rows, index, *, interval):
 def downtime_overlap_count(facts):
     if "downtime" in facts._observations:
         return sum(1 for item in facts._observations["downtime"][0] if item["source"]["known_overlap_hours"])
-    raw, refs = (facts.raw[key] for key in ("MachineDowntimes", "WorkbenchDashboardDowntimeRefs"))
-    index = _index(raw, refs)
+    index = facts.downtime_index()
     bounds = {
         key: (
             sorted(start for start, _, _ in windows),
@@ -99,8 +110,7 @@ def downtime_overlap_count(facts):
 def downtime(facts):
     if facts.plan_state != "loaded":
         return [], category(facts.plan_state, issues=facts.plan_issues)
-    raw, refs, machines = (facts.raw[key] for key in ("MachineDowntimes", "WorkbenchDashboardDowntimeRefs", "Machines"))
-    index, resource_rows = _index(raw, refs), {row["machine_id"]: row for row in machines}
+    index, resource_rows = facts.downtime_index(), {row["machine_id"]: row for row in facts.raw["Machines"]}
     result, unknown, intersections = [], 0, 0
     for task, raw_task in zip(facts.tasks, facts.task_rows):
         if raw_task["source"] == "external":

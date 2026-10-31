@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
+from core.algorithm_contracts.types import ScheduleSummary
 from core.models.batch import Batch
 from core.services.scheduler.contracts.schedule_summary_types import (
     FallbackState,
@@ -15,9 +15,6 @@ from .due_risk_items import (
 )
 from .due_risk_items import (
     incomplete_batch_ids_from_failure_details,
-)
-from .schedule_summary_assembly import (
-    _finish_time_by_batch as finish_time_by_batch,
 )
 
 
@@ -41,9 +38,8 @@ def _merge_warning_lists(primary: Any, extra: Any) -> List[str]:
     return merged
 
 
-def _append_summary_warning(summary: Optional[ScheduleSummary], message: str) -> None:
-    if summary is not None:
-        summary.warnings.append(message)
+def _append_summary_warning(summary: ScheduleSummary, message: str) -> None:
+    summary.warnings.append(message)
 
 
 def _counter_dict(value: Any) -> Dict[str, int]:
@@ -56,15 +52,14 @@ def _counter_dict(value: Any) -> Dict[str, int]:
 def _build_runtime_state(
     *,
     batches: Dict[str, Batch],
-    results: List[ScheduleResult],
-    summary: Optional[ScheduleSummary],
-    best_metrics: Optional[SummaryMetrics],
+    summary: ScheduleSummary,
+    best_metrics: SummaryMetrics,
 ) -> RuntimeState:
-    finish_by_batch = finish_time_by_batch(results)
+    finish_by_batch = best_metrics._finish_by_batch
     # 半途失败批次的 finish 是被截断的部分完工时间，排除出超期/临期分类，
     # 改走 result_summary 的 incomplete_batches 风险清单（audit 2026-07-20 A18）。
     incomplete_batch_ids = incomplete_batch_ids_from_failure_details(
-        summary.failure_details if summary is not None else None,
+        summary.failure_details,
         finish_by_batch,
     )
     overdue_items, overdue_meta = _build_overdue_items_impl(
@@ -73,8 +68,8 @@ def _build_runtime_state(
         summary=summary,
         append_summary_warning_fn=_append_summary_warning,
         incomplete_batch_ids=incomplete_batch_ids,
+        due_by_batch=best_metrics._due_by_batch,
     )
-    assert best_metrics is not None
     return RuntimeState(
         finish_by_batch=finish_by_batch,
         overdue_items=overdue_items,
@@ -89,10 +84,10 @@ def _build_runtime_state(
 
 def _build_summary_warnings(
     *,
-    summary: Optional[ScheduleSummary],
+    summary: ScheduleSummary,
     runtime_state: RuntimeState,
 ) -> List[str]:
-    all_warnings = _warning_list(summary.warnings if summary is not None else None)
+    all_warnings = _warning_list(summary.warnings)
     if runtime_state.unscheduled_batch_count > 0:
         all_warnings = _merge_warning_lists(
             all_warnings,

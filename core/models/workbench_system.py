@@ -124,7 +124,7 @@ def query_input(value, kind) -> SystemQuery:
     result["level"] = normalize_log_level(result["level"])
     choices = {"type": ("", "runtime", "operation") if kind == "logs" else
                ("", "manual", "auto", "before_restore", "unknown", "restore", "cleanup"),
-               "status": ("", "recorded") if kind == "logs" else ("", "unverified", "unknown") + tuple(sorted(JOB_STATES)),
+               "status": ("", "recorded") if kind == "logs" else ("", "unverified", "partial", "skipped", "unknown") + tuple(sorted(JOB_STATES)),
                "level": ("",) + LOG_LEVELS,
                "file": ("", "aps.log", "aps_error.log", "launcher.log", "OperationLogs")}
     if any(result[key] not in items for key, items in choices.items()):

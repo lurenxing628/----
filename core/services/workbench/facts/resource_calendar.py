@@ -49,7 +49,7 @@ def calendar_days(calendar, low, high) -> List[Dict[str, Any]]:
     windows = calendar["windows"] if available else None
     issues = calendar.get("issues", []) if calendar is not None else [
         {"code": "calendar_unavailable", "message": "保存的资源班表缺项，容量未知。"}]
-    return [{"date": start.date().isoformat(), "start": start.isoformat(), "end": end.isoformat(),
+    return [{"date": start.date().isoformat(), "start": start, "end": end,
              "state": "available" if available else "unavailable", "windows": windows, "issues": issues}
             for start, end in natural_days(low, high)]
 
@@ -67,16 +67,15 @@ class CalendarDay(NamedTuple):
 class ResourceCalendar:
     """One resource's calendar geometry, shared by all compared task indexes."""
 
-    def __init__(self, calendar, low, high, *, parse_time=None):
-        parse_time = instant if parse_time is None else parse_time
+    def __init__(self, calendar, low, high):
         self.days = []
         for row in calendar_days(calendar, low, high):
-            first, last = parse_time(row["start"]), parse_time(row["end"])
+            first, last = row["start"], row["end"]
             available = row["state"] == "available"
             shifts = []
             for window in row["windows"] if available else []:
                 if window["allow_normal"] or window["allow_urgent"]:
-                    start, end = parse_time(window["start"]), parse_time(window["end"])
+                    start, end = window["start"], window["end"]
                     shifts.append((start, end, window.get("policy_date") or start.date().isoformat()))
             self.days.append(CalendarDay(row["date"], first, last, available,
                 union((start, end) for start, end, _ in shifts), shifts, row.get("issues", [])))
@@ -125,9 +124,8 @@ class ResourceCalendar:
         return bounds
 
 
-def normalize_resource_calendar(calendar, start, end, *, parse_time=None):
+def normalize_resource_calendar(calendar, start, end):
     """Normalize the common saved calendar once; raw legacy callers use this too."""
     if isinstance(calendar, ResourceCalendar):
         return calendar
-    parse_time = instant if parse_time is None else parse_time
-    return ResourceCalendar(calendar, parse_time(start), parse_time(end), parse_time=parse_time)
+    return ResourceCalendar(calendar, instant(start), instant(end))

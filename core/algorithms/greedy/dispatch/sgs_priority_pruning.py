@@ -15,56 +15,41 @@ first error stays the same. ``fixed_resources`` tells consumers that need the st
 fixed-resource proof (decode tail reuse) whether every operation names its machine and operator.
 """
 
-from datetime import datetime
-from types import MappingProxyType
-
 from core.algorithm_contracts.value_domains import EXTERNAL
-from core.errors import ValidationError
 
-from .sgs_due_span import external_candidate_window
 from .sgs_priority_keys import ValidatedGraphPriorityKeys
-from .sgs_scoring import parse_due_date
-
-_NO_PLACED_GROUPS = MappingProxyType({})
 
 
 class GraphPriorityPruning:
     @classmethod
-    def for_cache(cls, cache, graph_state, batches):
+    def for_cache(cls, cache, graph_state):
         if cache is None or cache._timing is None:
             return None
         # The cache already certified the pool and the native probe; auto-assign operations
         # are admitted only through that same certification.
-        return cls(graph_state, batches,
-                   eligible_resources=cache.eligible_resources,
-                   calendar=cache._timing.calendar, calendar_days=cache.calendar_days, preparation=cache.preparation)
+        return cls(
+            graph_state,
+            eligible_resources=cache.eligible_resources,
+            calendar_days=cache.calendar_days,
+            preparation=cache.preparation,
+        )
 
-    def __init__(self, graph_state, batches, *, eligible_resources=None, calendar=None, calendar_days=None, preparation=None):
+    def __init__(self, graph_state, *, eligible_resources, calendar_days, preparation):
         self._calendar_days = calendar_days
-        self.key_width = 0
+        self._preparation = preparation
         # True only when every schedulable operation names both resources; tail reuse requires it.
         self.fixed_resources = True
         self._eligible_resources = eligible_resources
-        self._calendar = calendar
-        self.supported = self._prepare(graph_state, batches)
+        self.supported = self._prepare(graph_state)
 
-    def _prepare(self, graph, batches):
+    def _prepare(self, graph):
         if graph is None or not graph.get("score_enabled"):
             return False
         keys = graph["graph_priority_key_by_op_id"]
-        if type(keys) is not ValidatedGraphPriorityKeys:
+        if type(keys) is not ValidatedGraphPriorityKeys or not keys.key_width:
             return False
-        widths = {len(key) for key in keys.values()}
-        if len(widths) != 1:
+        if not self._preparation.all_batch_due_dates_valid():
             return False
-        self.key_width = widths.pop()
-        if not self.key_width:
-            return False
-        for batch in batches.values():
-            try:
-                parse_due_date(batch.due_date)
-            except ValidationError:
-                return False
         return self._certify_operations(graph)
 
     def _certify_operations(self, graph):
@@ -83,14 +68,7 @@ class GraphPriorityPruning:
     def _certified_external(self, op):
         if self._calendar_days is None:
             return False
-        # Run the normal merge/calendar path with an empty group cache; the calendar rejects a
-        # duration it cannot add. A native natural-day call is pure arithmetic; the earliest datetime
-        # leaves room for every valid duration without depending on this operation's future progress.
-        try:
-            external_candidate_window(self._calendar, _NO_PLACED_GROUPS, op=op, prev_end=datetime.min)
-        except (ValidationError, ValueError, OverflowError):
-            return False
-        return True
+        return self._preparation.certified_external_operation(op)
 
     def _certified_resources(self, op):
         """True for a fixed machine/operator pair, False for a certified auto-assign operation, None otherwise.

@@ -112,14 +112,7 @@ def test_real_adoptions_batch_history_reads(trial_case, monkeypatch):
     versions = [result["data"]["official_plan"]["version"] for result in (first, second)]
     plan_refs = [result["data"]["official_plan"]["plan_ref"] for result in (first, second)]
     keys = ["trial-batch-history-adopt-01", "trial-batch-history-adopt-02"]
-    statements, schema_checks = [], []
-    check_schema = workbench_plan_identity_repo.workbench_plan_identity_contract_issues
-
-    def schema_check(conn, *, structure):
-        schema_checks.append(conn)
-        return check_schema(conn, structure=structure)
-
-    monkeypatch.setattr(workbench_plan_identity_repo, "workbench_plan_identity_contract_issues", schema_check)
+    statements = []
     case.conn.set_trace_callback(statements.append)
     try:
         with TransactionManager(case.conn).transaction():
@@ -137,7 +130,6 @@ def test_real_adoptions_batch_history_reads(trial_case, monkeypatch):
         case.conn.set_trace_callback(None)
     histories = [sql.upper() for sql in statements if "FROM SCHEDULEHISTORY" in sql.upper() and "RESULT_SUMMARY" in sql.upper()]
     assert len(histories) == 1 and "VERSION IN (" in histories[0]
-    assert schema_checks == [case.conn]
     assert not any("PRAGMA_SCHEMA_VERSION" in sql.upper() for sql in statements)
 
     statements.clear()
@@ -153,5 +145,4 @@ def test_real_adoptions_batch_history_reads(trial_case, monkeypatch):
     assert not any(issue["code"].startswith("audit_") for issue in entry["evidence_gaps"])
     # Every receipt keeps its original intent, so the reader never scans the whole history table.
     assert not any(sql.upper() == "SELECT RESULT_SUMMARY FROM SCHEDULEHISTORY" for sql in statements)
-    assert schema_checks == [case.conn, case.conn]
     assert adoption_service(case.conn).adopt(first_saved["scenario_ref"], "expired-token", keys[0], INTENT) == dict(first, replayed=True)

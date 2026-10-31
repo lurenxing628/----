@@ -4,6 +4,10 @@ import json
 from datetime import datetime
 from typing import NoReturn
 
+from core.services.system.maintenance.telemetry import (
+    classify_maintenance_result,
+    extract_maintenance_result_values,
+)
 from core.services.workbench.facts.system_reads import backup_records
 from core.services.workbench.facts.system_redaction import public_system_text
 from core.services.workbench.messages import stored_utc_text
@@ -12,8 +16,8 @@ from data.repositories.system_job_state_repo import SystemJobStateRepository
 from data.repositories.workbench_system_maintenance_repo import WorkbenchSystemMaintenanceRepository
 
 _AUDIT_LIMIT = 500
-_JOBS = {"auto_backup_cleanup": ("cleanup", "备份清理", "removed_count"),
-         "auto_log_cleanup": ("logs_cleanup", "操作日志清理", "deleted_count")}
+_JOBS = {"auto_backup_cleanup": ("cleanup", "备份清理"),
+         "auto_log_cleanup": ("logs_cleanup", "操作日志清理")}
 _FILE_ACTIONS = {"download": False, "restore": False, "delete": False}
 
 
@@ -54,7 +58,9 @@ def _not_object() -> NoReturn:
 
 def _detail(value):
     try:
-        return load_strict_json(value, on_malformed=_not_object, expected=dict)
+        detail = load_strict_json(value, on_malformed=_not_object, expected=dict)
+        extract_maintenance_result_values(detail)
+        return detail
     except ValueError:
         return {"unparsed_detail": public_system_text(str(value or ""), 8192)}
 
@@ -64,11 +70,17 @@ def _cleanup_audits(conn):
     rows, present = [], set()
     for record in records[:_AUDIT_LIMIT]:
         present.add(record["action"])
-        state = "failed" if record["log_level"] in ("ERROR", "CRITICAL") or record["error_message"] else (
-            "succeeded" if record["log_level"] == "INFO" else "unknown")
+        parsed_detail = _detail(record["detail"])
+        state = classify_maintenance_result(
+            parsed_detail,
+            record["action"],
+            log_level=record["log_level"],
+            error_message=record["error_message"],
+            success_status="succeeded",
+        )
         label = "备份清理" if record["action"] == "cleanup" else "操作日志清理"
         detail = {"audit_id": record["id"], "action": record["action"], "level": record["log_level"],
-                  "detail": _detail(record["detail"]), "error_message": record["error_message"],
+                  "detail": parsed_detail, "error_message": record["error_message"],
                   "basis": "persisted_operation_audit_not_file_existence"}
         time = stored_utc_text(record["log_time"]).replace(" ", "T", 1) if record["log_time"] else None
         rows.append(_event("cleanup", "operation_audit", record["id"], time, state, label, detail))
@@ -87,13 +99,10 @@ def _latest_cleanup(conn, audited_actions):
         issues.extend(field_issues)
         if job.job_key == "auto_backup":
             continue
-        action, label, count_key = _JOBS[job.job_key]
+        action, label = _JOBS[job.job_key]
         if action in audited_actions:
             continue
-        count = detail.get(count_key)
-        known = type(count) is int and count >= 0
-        state = "failed" if isinstance(detail.get("error"), str) and detail["error"] else (
-            "succeeded" if known else "unknown")
+        state = classify_maintenance_result(detail, job.job_key, success_status="succeeded")
         rows.append(_event("cleanup", "latest_job_state_only", job.job_key, timestamp, state,
                            label + " · 仅最近状态", {"job_key": job.job_key, "detail": detail,
                            "basis": "latest_job_state_not_complete_history"}))
@@ -133,6 +142,7 @@ def _job_detail(job, label):
         return {}, issues, timestamp
     try:
         detail = load_strict_json(raw, on_malformed=_not_object, expected=dict)
+        extract_maintenance_result_values(detail)
     except ValueError:
         message = "上次结果记录异常，详细内容请让维护人员查看日志。"
         issues.append({"code": "maintenance_last_detail_invalid", "job_key": job.job_key,

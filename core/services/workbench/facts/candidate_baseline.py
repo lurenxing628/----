@@ -19,8 +19,6 @@ from .candidate_values import bounded_size, gap
 from .run_input_codec import prepare_execution_projections
 from .zero_duration import point_event_dto
 
-_ORIGIN_NOT_RECORDED = {"code": "adoption_not_recorded", "message": "此正式版本未保存可核对的采用来源。"}
-
 
 def invalid_baseline() -> NoReturn:
     reject("candidate_baseline_invalid", "排产时的对照资料不完整，无法对比。请重新排产后查看。", 500)
@@ -94,10 +92,9 @@ class ArchivedAdmissionPlan:
 class AdmissionBaseline(ArchivedAdmissionPlan):
     """Bind saved admission execution without replaying its historical formulas."""
 
-    def __init__(self, capture, facts, disposition, *, point_work=None, origins=None, origin_issue=None):
+    def __init__(self, capture, facts, disposition):
         super().__init__(capture, facts)
-        self.bind_origin({} if origins is None else origins,
-                         _ORIGIN_NOT_RECORDED if origin_issue is None else origin_issue, point_work)
+        self.segment_intervals = {}
         self.settings = self._settings(capture["input"])
         self.selected = self._selected(disposition)
         self._execution(capture)
@@ -174,6 +171,7 @@ class AdmissionBaseline(ArchivedAdmissionPlan):
     def bind_origin(self, origins, origin_issue, point_work):
         """Read segments against one official version's adoption origins and point work.
 
+        Segment readers bind first; construction only verifies the archive.
         ``point_work`` is a zero-argument loader of that version's point witnesses, or
         None when the version has no adoption evidence; it is loaded once per binding.
         """
@@ -190,6 +188,8 @@ class AdmissionBaseline(ArchivedAdmissionPlan):
         gaps = []
         start, end = baseline_interval(row, gaps)
         point = self._point(row, start, end, gaps) if start is not None and start == end else {}
+        comparable = bool(point) or start is not None and end is not None and start != end
+        self.segment_intervals[row["row_ref"]] = (start, end) if comparable else None
         origin = self.origin(row["op_id"])
         source = row.get("source", origin.get("source"))
         gaps.extend(origin.get("data_gaps", []))
@@ -202,7 +202,7 @@ class AdmissionBaseline(ArchivedAdmissionPlan):
         return {"row_ref": row["row_ref"], "start": start.isoformat() if start is not None else None,
                 "end": end.isoformat() if end is not None else None, **point,
                 "elapsed_hours": (end - start).total_seconds() / 3600 if start is not None and end is not None else None,
-                "interval_comparable": bool(point) or start is not None and end is not None and start != end,
+                "interval_comparable": comparable,
                 "machine": task_resource(self.facts, "machine", row.get("machine_id"), gaps),
                 "operator": task_resource(self.facts, "operator", row.get("operator_id"), gaps),
                 "source": source, "supplier": origin.get("supplier"), "effective_processing_hours": None, "data_gaps": gaps}
@@ -242,11 +242,9 @@ def baseline_interval(row, gaps):
     for field in ("start_time", "end_time"):
         value = row.get(field)
         try:
-            # Schedule historically stores both SQLite's space and ISO's T separator.
-            if type(value) is not str:
-                raise ValueError("Not a saved timestamp")
-            values.append(local_time(value.replace(" ", "T", 1)))
-        except (TypeError, ValueError):
+            # Schedule historically stores both SQLite's space and ISO's T separator; local_time rejects non-text.
+            values.append(local_time(value.replace(" ", "T", 1) if type(value) is str else value))
+        except ValueError:
             gaps.append(gap(field, "blob_metadata" if type(value) is dict and "sqlite_blob_base64" in value else "invalid_stored_value"))
             values.append(None)
     if values[0] is not None and values[1] is not None and values[0] > values[1]:

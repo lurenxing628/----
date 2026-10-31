@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, cast
-
 from .base_repo import BaseRepository
 
 _FROM = """FROM Materials AS m LEFT JOIN WorkbenchEntityRefs AS r
@@ -12,15 +10,12 @@ _SELECT = """SELECT m.*, r.ref, r.revision,
     (SELECT COUNT(*) FROM BatchMaterials AS b WHERE b.material_id = m.material_id) AS requirement_count
     """ + _FROM
 _TABLE_SELECT = "SELECT m.*, r.ref, r.revision " + _FROM
-_SORTS = {"business_code": "m.material_id", "label": "m.name", "spec": "m.spec", "stock_qty": "m.stock_qty", "status": "m.status"}
 
 
 class WorkbenchMaterialQueryRepository(BaseRepository):
-    def table_rows(self, query="", status=None, *, requirements=None):
-        where, params = self._where(query, status)
-        rows = self.fetchall(_TABLE_SELECT + where + " ORDER BY m.material_id", params)
-        requirements = self.requirement_counts() if requirements is None else requirements
-        counts = {row["material_id"]: row["amount"] for row in requirements}
+    def table_rows(self):
+        rows = self.fetchall(_TABLE_SELECT + " ORDER BY m.material_id")
+        counts = {row["material_id"]: row["amount"] for row in self.requirement_counts()}
         for row in rows:
             row["requirement_count"] = counts.get(row["material_id"], 0)
         return rows
@@ -28,45 +23,18 @@ class WorkbenchMaterialQueryRepository(BaseRepository):
     def get_by_ref(self, ref):
         return self.fetchone(_SELECT + " WHERE r.ref = ?", (ref,))
 
+    def rows_by_refs(self, refs):
+        by_ref = {}
+        for start in range(0, len(refs), 400):
+            chunk = refs[start:start + 400]
+            marks = ",".join("?" for _ in chunk)
+            for row in self.fetchall(_TABLE_SELECT + f" WHERE r.ref IN ({marks})", chunk):
+                by_ref[row["ref"]] = row
+        return [by_ref.get(ref) for ref in refs]
+
     def get_raw(self, business_code):
-        return self.fetchone(_SELECT + " WHERE m.material_id = ?", (business_code,))
-
-    @staticmethod
-    def _where(query, status):
-        conditions, params = [], []
-        if query:
-            conditions.append("(instr(lower(m.material_id), lower(?)) > 0 OR instr(lower(m.name), lower(?)) > 0 OR instr(lower(coalesce(m.spec, '')), lower(?)) > 0)")
-            params.extend([query] * 3)
-        if status is not None:
-            conditions.append("m.status = ?")
-            params.append(status)
-        return (" WHERE " + " AND ".join(conditions) if conditions else ""), params
-
-    def page(self, *, query, status, number, size, sort, direction):
-        where, params = self._where(query, status)
-        total = self.fetchvalue("SELECT COUNT(*) FROM Materials AS m" + where, params)
-        order = _SORTS[sort] + " " + direction.upper()
-        if sort != "business_code":
-            order += ", m.material_id ASC"
-        rows = self.fetchall(_SELECT + where + " ORDER BY " + order + " LIMIT ? OFFSET ?",
-                             params + [size, (number - 1) * size])
-        return rows, total
-
-    def snapshot_state(self):
-        # Retired refs are retained: revisions/count increase on every material mutation.
-        refs = self.fetchone("""SELECT COUNT(*) AS instances, coalesce(SUM(revision), 0) AS revisions
-            FROM WorkbenchEntityRefs WHERE kind = 'material'""")
-        return {"refs": refs, "requirements": self.requirement_counts()}
+        return self.fetchone(_TABLE_SELECT + " WHERE m.material_id = ?", (business_code,))
 
     def requirement_counts(self):
         return self.fetchall("""SELECT material_id, COUNT(*) AS amount FROM BatchMaterials
             GROUP BY material_id ORDER BY material_id""")
-
-    def metrics(self, query, status) -> Dict[str, Any]:
-        """Status and stock counts over the toolbar scope (text query + status) only."""
-        where, params = self._where(query, status)
-        return cast(Dict[str, Any], self.fetchone("""SELECT COUNT(*) AS total,
-            COALESCE(SUM(CASE WHEN m.status='active' THEN 1 ELSE 0 END),0) AS active,
-            COALESCE(SUM(CASE WHEN m.status='inactive' THEN 1 ELSE 0 END),0) AS inactive,
-            COALESCE(SUM(CASE WHEN m.stock_qty IS NULL THEN 1 ELSE 0 END),0) AS stock_unknown
-            FROM Materials AS m""" + where, params))

@@ -102,13 +102,18 @@ def test_schedule_lock_wait_skips_connections_and_reads_until_release_or_stop(ow
 
     lock = ControlledLock()
     connect = Mock(wraps=run_runtime.get_connection)
-    read = Mock(wraps=WorkbenchRunService.get)
+    read = Mock(wraps=WorkbenchRunService.get_head)
     execute = Mock(wraps=WorkbenchRunWorker.execute)
     verify = Mock(wraps=runtime._verify)
     monkeypatch.setattr(run_runtime, "RUN_SCHEDULE_LOCK", lock)
     monkeypatch.setattr(run_worker, "RUN_SCHEDULE_LOCK", lock)
     monkeypatch.setattr(run_runtime, "get_connection", connect)
-    monkeypatch.setattr(WorkbenchRunService, "get", lambda service, run_ref: read(service, run_ref))
+    monkeypatch.setattr(WorkbenchRunService, "get_head", lambda service, run_ref: read(service, run_ref))
+    monkeypatch.setattr(
+        WorkbenchRunService,
+        "get",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("runtime._execute should use get_head, not get")),
+    )
     monkeypatch.setattr(WorkbenchRunWorker, "execute", lambda worker, run_ref, **kwargs: execute(worker, run_ref, **kwargs))
     monkeypatch.setattr(runtime, "_verify", verify)
     errors = []

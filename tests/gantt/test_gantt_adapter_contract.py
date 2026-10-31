@@ -12,7 +12,7 @@ const data=h.fixture(), before=JSON.stringify(data), view=h.gantt(data), task=da
 const bar=view.nodes.find(node=>node.type==='button' && node.props['data-plan-task']===task.task_ref);
 bar.props.onClick(); assert.strictEqual(view.selections[0].task,task);
 assert.strictEqual(view.selections[0].before,false);
-const trials=[], detail=h.render(h.runtime.PlanDetailsUI.TaskDetail,{data,prepared:h.prepare(h.runtime.PlanGanttModel,data),selected:{task,before:false},onSelect:()=>{},
+const trials=[], detail=h.render(h.runtime.PlanDetailsUI.TaskDetail,{data,prepared:h.prepare(h.runtime.PlanGanttModel,data),graph:h.runtime.GanttGraph.create(data.gantt_graph),selected:{task,before:false},onSelect:()=>{},
   renderTrial:value=>{trials.push(value);return null;},scope:{},query:'',disabled:false});
 const text=h.text(detail);
 for (const value of [task.batch_id,task.process_label,'Machine 1','Operator 1',h.runtime.WorkbenchFormat.compactDateTime(task.start),h.runtime.WorkbenchFormat.compactDateTime(task.end)]) assert(text.includes(value),value);
@@ -31,7 +31,7 @@ for (const candidate of [false,true]) {
   let collapsed=0;
   const candidateData={tasks:[candidateTask],unplanned_operations:[],gantt_graph:routeData.gantt_graph};
   const props=candidate?{data:candidateData,prepared:h.prepare(h.runtime.RunCandidateModel,candidateData),task:candidateTask,onClose:()=>assert.fail('Collapse must retain selection')}:
-    {data:routeData,prepared:h.prepare(h.runtime.PlanGanttModel,routeData),selected:{task:selected,before:false},onSelect:()=>assert.fail('Collapse must retain selection'),renderTrial:()=>null};
+    {data:routeData,prepared:h.prepare(h.runtime.PlanGanttModel,routeData),graph:h.runtime.GanttGraph.create(routeData.gantt_graph),selected:{task:selected,before:false},onSelect:()=>assert.fail('Collapse must retain selection'),renderTrial:()=>null};
   const panel=h.render(candidate?h.runtime.RunCandidateControls.Detail:h.runtime.PlanDetailsUI.TaskDetail,
     {...props,onCollapse:()=>collapsed++,onRelated:()=>{}});
   const nodes=h.walk(panel), body=nodes.find(node=>node.props.className==='wb-gantt-detail-body');
@@ -48,7 +48,7 @@ for (const candidate of [false,true]) {
 }
 const zeroTask={...task,quantity:0,batch_quantity:3,quantity_reason:null,quantity_basis:'run_admission'};
 const zeroData={...data,tasks:data.tasks.map(row=>row.task_ref===zeroTask.task_ref?zeroTask:row)};
-const zeroDetail=h.render(h.runtime.PlanDetailsUI.TaskDetail,{data:zeroData,prepared:h.prepare(h.runtime.PlanGanttModel,zeroData),selected:{task:zeroTask,before:false},onSelect:()=>{},renderTrial:()=>null,onCollapse:()=>{}});
+const zeroDetail=h.render(h.runtime.PlanDetailsUI.TaskDetail,{data:zeroData,prepared:h.prepare(h.runtime.PlanGanttModel,zeroData),graph:h.runtime.GanttGraph.create(zeroData.gantt_graph),selected:{task:zeroTask,before:false},onSelect:()=>{},renderTrial:()=>null,onCollapse:()=>{}});
 assert(h.text(zeroDetail).includes('本工序目标量0.00'),'A recorded zero must remain a quantity');
 const G=h.runtime.RunGenerationContract, candidateAlgorithm={mode:'greedy',mode_label:'候选计算',strategy:null,strategy_label:null,
   generation_policy_version:'unified_search_v1',primary_objective:'min_overdue',target_objectives:['min_overdue','min_tardiness','min_changeover'],
@@ -124,9 +124,9 @@ for (const message of missingQuantities.data_gaps.map(gap=>gap.message)) {
 }
 assert.equal(h.runtime.RunCandidateModel.quantityLabel({...missingQuantities,quantity:0}),'0','A recorded zero overrides no-data explanations');
 data.resources.push({ref:h.reference(202),label:'Original machine'});
-data.projections.baseline={state:'available',items:[{operation_ref:task.operation_ref,change:'changed',before_in_scope:true,after_in_scope:true,
+data.projections.baseline={state:'available',items_complete:true,items:[{operation_ref:task.operation_ref,change:'changed',before_in_scope:true,after_in_scope:true,
   before:{...task,start:'2026-05-11T07:00:00',end:'2026-05-11T10:00:00',machine_ref:h.reference(202)},after:task}]};
-const comparison=h.render(h.runtime.PlanDetailsUI.TaskDetail,{data,prepared:h.prepare(h.runtime.PlanGanttModel,data),selected:{task,before:false},onSelect:()=>{},renderTrial:()=>null,onCollapse:()=>{}});
+const comparison=h.render(h.runtime.PlanDetailsUI.TaskDetail,{data,prepared:h.prepare(h.runtime.PlanGanttModel,data),graph:h.runtime.GanttGraph.create(data.gantt_graph),selected:{task,before:false},onSelect:()=>{},renderTrial:()=>null,onCollapse:()=>{}});
 const comparisonNodes=h.walk(comparison);
 for (const value of ['延后 60 分钟','提前 60 分钟','Original machine → Machine 1'])
   assert(comparisonNodes.some(node=>node.type==='dd'&&h.text(node)===value),value);
@@ -176,7 +176,7 @@ try {
   assert.equal(target.resource_kind,'operator'); assert.equal(target.selected_task_ref,resourceData.tasks[0].task_ref);
   assert.equal(target.selected_task_side,'current');
   assert.equal(target.query,'','The resource opens by saved task identity rather than the source search text');
-  const targetGantt=h.render(h.runtime.PlanGantt,{data:resourceData,prepared:h.prepare(h.runtime.PlanGanttModel,resourceData),asOf:resourceResult.meta.as_of,
+  const targetGantt=h.render(h.runtime.PlanGantt,{data:resourceData,prepared:h.prepare(h.runtime.PlanGanttModel,resourceData),graph:h.runtime.GanttGraph.create(resourceData.gantt_graph),asOf:resourceResult.meta.as_of,
     query:target.query,initialMode:target.resource_kind,selected:{task:resourceData.tasks[0],before:false,locate:true},onSelect:()=>{},onQuery:()=>{}});
   assert(h.walk(targetGantt).some(node=>node.props['aria-label']==='人员甘特时间轴'));
   assert(h.walk(targetGantt).some(node=>node.props['data-plan-task']===target.selected_task_ref&&node.props['aria-pressed']===true));
@@ -193,7 +193,7 @@ try {
 const returnData=h.fixture(), originalTask={...returnData.tasks[0],plan_ref:h.reference(99),task_ref:h.reference(300),
   start:'2026-05-11T07:00:00',end:'2026-05-11T08:00:00'};
 Object.assign(returnData.plan,{display_name:'Formal plan 5',is_current_official:true,completeness:'complete',capabilities:{view:true,export:true},blocked_reasons:[]});
-returnData.projections.baseline={state:'available',baseline_plan:{...returnData.plan,plan_ref:originalTask.plan_ref,version:4},
+returnData.projections.baseline={state:'available',items_complete:true,baseline_plan:{...returnData.plan,plan_ref:originalTask.plan_ref,version:4},
   items:[{operation_ref:originalTask.operation_ref,change:'changed',before_in_scope:true,after_in_scope:true,before:originalTask,after:returnData.tasks[0]}]};
 const returnResult={data:returnData,meta:{as_of:'2026-05-11T12:00:00',snapshot_ref:'return-read'},warnings:[]},
   returnedContexts=[], restoreEffects=[], oldEffect=h.runtime.React.useEffect;
@@ -259,12 +259,12 @@ data.tasks=data.tasks.slice(1); data.task_count=data.tasks.length;
 Object.assign(data.scope,{range_start:'2026-05-11T08:00:00',range_end:'2026-05-11T12:00:00'});
 Object.assign(data.time_scope,{range_start:data.scope.range_start,range_end:data.scope.range_end});
 data.plan_span={start:data.tasks[0].start,end:moved.end};
-data.projections.baseline={state:'available',items:[{operation_ref:current.operation_ref,change:'changed',
+data.projections.baseline={state:'available',items_complete:true,items:[{operation_ref:current.operation_ref,change:'changed',
   before_in_scope:true,after_in_scope:false,before:original,after:moved}]};
-const prepared=h.prepare(h.runtime.PlanGanttModel,data), before=JSON.stringify(data), selections=[];
+const prepared=h.prepare(h.runtime.PlanGanttModel,data), graph=h.runtime.GanttGraph.create(data.gantt_graph), before=JSON.stringify(data), selections=[];
 assert(!prepared.taskIndex.has(moved.task_ref),'The current arrangement outside the scope stays out of the plotted tasks');
 let selected={task:original,before:true};
-const render=()=>h.render(h.runtime.PlanDetailsUI.TaskDetail,{data,prepared,selected,renderTrial:()=>null,onSelect:(task,before)=>{
+const render=()=>h.render(h.runtime.PlanDetailsUI.TaskDetail,{data,prepared,graph,selected,renderTrial:()=>null,onSelect:(task,before)=>{
   selected={task,before}; selections.push(selected);
 }});
 const duration=tree=>{

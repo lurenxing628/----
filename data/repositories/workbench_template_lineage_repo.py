@@ -2,14 +2,6 @@
 
 import secrets
 
-from core.infrastructure.connection_guards import schema_contract_memo
-from core.infrastructure.workbench_metadata_schema import workbench_metadata_contract_issues
-from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
-from core.infrastructure.workbench_process_schema import workbench_process_contract_issues
-from core.infrastructure.workbench_template_lineage_schema import (
-    template_lineage_contract_issues,
-    template_lineage_objects,
-)
 from core.models.workbench_template_lineage import (
     COPY_COLUMNS,
     EVIDENCE_VERSION,
@@ -17,8 +9,6 @@ from core.models.workbench_template_lineage import (
 
 from .base_repo import BaseRepository
 from .workbench_execution_repo import chunks
-
-_LINEAGE_OBJECT_NAMES = frozenset(template_lineage_objects())
 
 INSTANCE_SELECT = """SELECT o.*, r.ref AS operation_ref, br.ref AS batch_ref, pr.ref AS part_ref, b.quantity"""
 INSTANCE_FROM = """ FROM BatchOperations o JOIN Batches b ON b.batch_id=o.batch_id
@@ -28,19 +18,6 @@ INSTANCE_FROM = """ FROM BatchOperations o JOIN Batches b ON b.batch_id=o.batch_
 
 
 class WorkbenchTemplateLineageRepository(BaseRepository):
-    def schema_state(self):
-        """'missing' (no lineage objects), 'invalid' (partial/altered DDL) or 'loaded'."""
-        memo = schema_contract_memo(self.conn)
-        if not (memo.structure.objects.keys() & _LINEAGE_OBJECT_NAMES):
-            return "missing"
-        return "invalid" if memo.get_schema(template_lineage_contract_issues) else "loaded"
-
-    def identity_schema_broken(self):
-        memo = schema_contract_memo(self.conn)
-        return bool(memo.get_schema(workbench_metadata_contract_issues)
-                    or memo.get_schema(workbench_process_contract_issues)
-                    or memo.get_schema(workbench_plan_identity_contract_issues))
-
     def current_templates(self, refs):
         result = {}
         for chunk in chunks(refs):
@@ -78,7 +55,7 @@ class WorkbenchTemplateLineageRepository(BaseRepository):
         for chunk in chunks(refs):
             marks = ",".join("?" for _ in chunk)
             yield from self.iter_rows(
-                "SELECT *, 0 AS _lineage_bytes FROM WorkbenchTemplateLineageOrigins WHERE operation_ref IN (" + marks + ")", chunk)
+                "SELECT * FROM WorkbenchTemplateLineageOrigins WHERE operation_ref IN (" + marks + ")", chunk)
 
     def event_chunks(self, refs, limit):
         """Stream body rows, with one global budget across all ref chunks."""
@@ -93,7 +70,7 @@ class WorkbenchTemplateLineageRepository(BaseRepository):
         for chunk in chunks(refs):
             marks = ",".join("?" for _ in chunk)
             rows = self.iter_rows(
-                "SELECT *, 0 AS _lineage_bytes FROM WorkbenchTemplateLineageEvents WHERE operation_ref IN (" + marks +
+                "SELECT * FROM WorkbenchTemplateLineageEvents WHERE operation_ref IN (" + marks +
                 ") ORDER BY event_id LIMIT ?", chunk + [limit - total + 1])
             yield counted(rows)
             if total > limit:

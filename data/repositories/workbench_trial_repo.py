@@ -2,8 +2,6 @@
 
 import secrets
 
-from core.infrastructure.connection_guards import schema_contract_memo
-from core.infrastructure.workbench_trial_schema import workbench_trial_contract_issues
 from core.models.workbench_trial import MAX_TRIAL_TASKS
 from core.models.workbench_trial_codec import dump, load_object
 from core.models.workbench_trial_scenario_archive import EncodedScenario
@@ -15,13 +13,14 @@ def new_ref():
     return secrets.token_hex(24)
 
 
+def history_reference(draft_ref, revision):
+    """Bind a command to the immutable change ledger at its committed revision."""
+    return {"format": HISTORY_REFERENCE_FORMAT, "draft_ref": draft_ref, "through_revision": revision}
+
+
 class WorkbenchTrialRepository:
     def __init__(self, conn):
         self.conn = conn
-
-    def schema_issues(self):
-        """Trial contract issues as reported by the schema probe; [] when the schema is complete."""
-        return schema_contract_memo(self.conn).get_schema(workbench_trial_contract_issues)
 
     def draft_header(self, draft_ref):
         """The whole WorkbenchTrialDrafts row (JSON columns undecoded), or None."""
@@ -130,11 +129,6 @@ class WorkbenchTrialRepository:
             for side in ("before", "after"):
                 item[side] = {key: item[side][key] for key in ("machine_ref", "operator_ref", "start", "end")}
         return result
-
-    def history_reference(self, draft_ref):
-        """Bind a command to the immutable change ledger at its committed revision."""
-        revision = self.conn.execute("SELECT revision FROM WorkbenchTrialDrafts WHERE draft_ref=?", (draft_ref,)).fetchone()[0]
-        return {"format": HISTORY_REFERENCE_FORMAT, "draft_ref": draft_ref, "through_revision": revision}
 
     def _transaction(self):
         if not self.conn.in_transaction:

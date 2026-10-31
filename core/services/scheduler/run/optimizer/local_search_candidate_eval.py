@@ -54,6 +54,7 @@ def evaluate_local_search_candidate(
         "dispatch_mode": dispatch_mode,
         "dispatch_rule": dispatch_rule,
         "order": order,
+        "decoded_batch_order": decoded.decoded_batch_order,
         "metrics": metrics,
         "score": (float(summary.failed_ops),) + objective_score(objective_name, metrics),
         "resource_pool": resource_pool or {},

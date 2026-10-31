@@ -1,12 +1,11 @@
 """Pure archived material deferral evidence, independent of saved-source reads."""
 
-from core.models.scheduler_history_parser import parse_result_summary_payload
+from core.models.scheduler_history_parser import ResultSummaryParseResult
 
 
-def archived_deferred_operation_evidence(record):
-    """Read the pending identities a saved summary declared, without consulting any source."""
-    parsed = parse_result_summary_payload(record.get("summary"))
-    return archived_deferred_payload_evidence(parsed.payload if not parsed.parse_failed else None)
+def archived_deferred_operation_evidence(parsed: ResultSummaryParseResult):
+    """Read the pending identities a saved summary declared, from the caller's one parse of it."""
+    return archived_deferred_payload_evidence(parsed.payload)
 
 
 def archived_deferred_payload_evidence(payload):

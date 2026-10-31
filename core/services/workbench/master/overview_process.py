@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from core.algorithm_contracts.value_domains import OPERATION_SOURCES
-from core.services.process.template_source import SOURCE_MESSAGES, TemplateSourceFacts
+from core.services.process.template_source import SOURCE_MESSAGES
 from core.shared.strict_parse import is_exact_non_negative_number
 
 from .overview_graph import text
@@ -33,10 +33,7 @@ SOURCE_TITLES = {
 def add_process(graph: MasterOverviewGraph):
     facts = graph.facts
     grouped = facts.grouped("PartOperations", "part_no")
-    sources = (TemplateSourceFacts(facts.rows("PartOperations"), facts.rows("ExternalGroups"), facts.rows("Suppliers"),
-                                   facts.rows("WorkbenchSupplierOpTypes"), facts.rows("WorkbenchSupplierProfiles"))
-               if facts.available("PartOperations", "ExternalGroups", "OpTypes", "Suppliers",
-                                  "WorkbenchSupplierOpTypes", "WorkbenchSupplierProfiles") else None)
+    sources = facts.template_source_facts
     for row in facts.rows("Parts"):
         key = row["part_no"]
         part = graph.add("part", key, key, row["part_name"])

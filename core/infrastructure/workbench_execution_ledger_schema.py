@@ -2,7 +2,7 @@
 
 from core.infrastructure.workbench_metadata_schema import canonical_sql
 
-from .schema_structure import schema_objects
+from .schema_structure import SchemaStructure
 
 _REF = "TEXT NOT NULL CHECK(length({0}) = 48 AND {0} NOT GLOB '*[^0-9a-f]*')"
 
@@ -54,9 +54,9 @@ def execution_ledger_objects():
     return objects
 
 
-def execution_ledger_contract_issues(conn, *, structure=None):
+def execution_ledger_contract_issues(conn, *, structure: SchemaStructure):
     """SELECT-only structural check. Missing/partial schemas are never repaired."""
-    actual = schema_objects(conn, structure=structure)
+    actual = structure.sql
     issues = []
     declared = execution_ledger_objects()
     for name, sql in declared.items():

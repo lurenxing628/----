@@ -6,7 +6,7 @@ import re
 
 from flask import current_app, g, request
 
-from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_material_query import MaterialPageRequest
 from core.services.workbench import messages
 from core.services.workbench.commands import WorkbenchCommandService
@@ -15,7 +15,7 @@ from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot
-from .write_context import issue_write_context, validate_write_context
+from .write_context import command_body, issue_write_context, validate_write_context
 
 _COLLECTION = "material:create"
 
@@ -80,22 +80,9 @@ def material_detail(ref):
     return query_success(entity, snapshot)
 
 
-def _command_body():
-    if request.args or not request.is_json:
-        raise WorkbenchCommandRejected("invalid_input", "提交的内容格式不正确，物料还没有保存。请刷新页面后重新填写。", 400)
-    body = request.get_json()
-    if not isinstance(body, dict) or set(body) != {"request_key", "write_token", "input"}:
-        raise WorkbenchCommandRejected("invalid_input", "提交的内容不完整或有多余项，物料还没有保存。请刷新页面后重新填写。", 400)
-    validate_request_key(body["request_key"])
-    g.workbench_request_key = body["request_key"]
-    if not isinstance(body["write_token"], str) or not body["write_token"]:
-        raise WorkbenchCommandRejected("invalid_input", "本页数据已过期，物料还没有保存。请点「刷新资料」后重新填写。", 400)
-    return body
-
-
 @api_endpoint
 def material_command(action, ref=None):
-    body = _command_body()
+    body = command_body("物料")
     reader, domain = _services()
     normalized = domain.normalize_input(action, body["input"])
     subject = _COLLECTION if ref is None else ref

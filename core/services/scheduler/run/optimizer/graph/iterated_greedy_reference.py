@@ -20,20 +20,28 @@ from .iterated_greedy_contract import _BudgetExhausted
 from .iterated_greedy_moves import _parent_from_candidate
 
 
+def _sync_ig_parents(search: Any) -> None:
+    reference = search.reference.candidate if search.reference is not None else None
+    search.pool.sync_ig_candidates(
+        search.best,
+        reference,
+        *(entry.candidate for entry in search.solution_pool.entries),
+    )
+
+
 def seed_solution_pool(search: Any) -> None:
     """Offer the incumbent and every current elite to the bounded start pool (decision-key deduplicated)."""
     best = search._require_best()
     sources = [(best, search.pool.prepare_parent(best))]
     sources.extend((elite["candidate"], elite["prepared_parent"]) for elite in search.pool.elites)
     for candidate, prepared in sources:
-        parent = _parent_from_candidate(candidate, graph_context=search.graph_context, prepared=prepared)
+        parent = _parent_from_candidate(candidate, prepared=prepared)
         if parent is None:
             continue
         search.solution_pool.add(PoolEntry(order=parent.order, score=tuple(candidate["score"]), candidate=candidate,
                                            batch_order=parent.batch_order, resource_overrides=parent.inherited,
                                            profile=search.profile))
-    if not search.report["pool"]["initial_entries"]:
-        search.report["pool"]["initial_entries"] = len(search.solution_pool.entries)
+    _sync_ig_parents(search)
 
 
 def activate_entry(search: Any, entry: PoolEntry) -> None:
@@ -99,26 +107,24 @@ def restart_from_pool(search: Any, reference: PoolEntry) -> PoolEntry:
         activate_entry(search, reference)
         raise
     if decoded is None:
-        search.report["pool"]["restart_captures_failed"] += 1
         activate_entry(search, reference)
         return reference
     if decoded is not restart:
         search.solution_pool.refresh(decoded)
-    search.report["pool"]["restarts"] += 1
     search.rotation.reset_sizes()
     search.idle_iterations = search.rejected_iterations = 0
     search.reference = decoded
+    _sync_ig_parents(search)
     return decoded
 
 
 def adopt_incumbent(search: Any, candidate: Dict[str, Any], profile: Optional[GraphReadyWeightProfile]) -> None:
     """Another stage improved the incumbent: base the walk on it, or keep the old walk when its capture fails."""
     search.best = candidate
-    parent = _parent_from_candidate(candidate, graph_context=search.graph_context,
-                                    prepared=search.pool.prepare_parent(candidate))
+    parent = _parent_from_candidate(candidate, prepared=search.pool.prepare_parent(candidate))
     if parent is None:
+        _sync_ig_parents(search)
         return
-    search.report["incumbent_adoptions"] += 1
     previous_parent, previous_profile, previous_reference = search.parent, search.profile, search.reference
     search._set_parent(parent, profile or search.profile)
     entry = PoolEntry(order=parent.order, score=tuple(candidate["score"]), candidate=candidate,
@@ -135,13 +141,14 @@ def adopt_incumbent(search: Any, candidate: Dict[str, Any], profile: Optional[Gr
     search.solution_pool.refresh(decoded)
     search.reference = decoded
     search.non_improving = 0
+    _sync_ig_parents(search)
 
 
 def _roll_back(search: Any, parent: Any, profile: GraphReadyWeightProfile, reference: Optional[PoolEntry]) -> None:
     """The new context has no reference: restore the previous walk context (its trial caches are already gone)."""
-    search.report["incumbent_adoption_rollbacks"] += 1
-    search._set_parent(parent, profile, count_switch=False)
+    search._set_parent(parent, profile)
     search.reference = reference
+    _sync_ig_parents(search)
 
 
 __all__ = ["activate_entry", "adopt_incumbent", "capture_reference", "decode_reference",

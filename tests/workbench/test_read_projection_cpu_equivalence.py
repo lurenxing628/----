@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 import pytest
 
+from core.infrastructure.sqlite_udf import parse_dt_for_sql
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.capacity.plan_calendar_intervals import instant
 from core.services.workbench.facts.candidate_archive import load_adoption_candidate
@@ -13,14 +14,12 @@ from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_tasks import (
     operation_labels,
     project_validated_tasks,
-    tasks_projection_with_intervals,
     validate_saved_tasks,
 )
 from core.services.workbench.facts.decision_delivery import project_decision_delivery
 from core.services.workbench.facts.resource_projection import resource_cohort
 from core.services.workbench.run.decision_source import DecisionSource
 from core.shared.strict_json import canonical_json
-from data.repositories.schedule_time_sql import parse_dt_for_sql
 from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
 from tests.workbench.execution_ledger_support import all_rows
 from tests.workbench.execution_ledger_support import ledger_case as ledger_fixture  # noqa: F401
@@ -85,52 +84,57 @@ def test_different_plan_load_keeps_both_historical_task_mappings(ledger_case, mo
 def test_cross_layer_schema_checks_share_leaf_contracts_in_one_snapshot(candidate_case, monkeypatch):
     from collections import Counter
 
-    from core.infrastructure import workbench_execution_ledger_schema
+    from core.infrastructure import migration_state
+    from core.infrastructure.schema_declaration import load_schema_sql
     from core.infrastructure.transaction import TransactionManager
-    from core.services.workbench.facts import candidate_archive
+    from core.services.scheduler.template_lineage_query import TemplateLineageQuery
     from core.services.workbench.run import preflight_execution
     from core.services.workbench.run.preflight_facts import PreflightFacts
-    from data.repositories import (
-        workbench_calibration_query_repo,
-        workbench_execution_repo,
-        workbench_plan_identity_repo,
-        workbench_template_lineage_repo,
-    )
+    from data.repositories import workbench_plan_identity_repo
 
     calls = Counter()
     checks = (
-        ("ledger", "execution_ledger_contract_issues", (workbench_execution_repo, workbench_execution_ledger_schema)),
-        ("void", "execution_void_contract_issues", (workbench_execution_repo,)),
-        ("metadata", "workbench_metadata_contract_issues", (workbench_calibration_query_repo, workbench_template_lineage_repo)),
-        ("process", "workbench_process_contract_issues", (workbench_calibration_query_repo, workbench_template_lineage_repo)),
-        ("identity", "workbench_plan_identity_contract_issues",
-         (workbench_plan_identity_repo, workbench_template_lineage_repo, candidate_archive)),
-        ("lineage", "template_lineage_contract_issues", (workbench_template_lineage_repo,)),
+        ("ledger", "execution_ledger_contract_issues"),
+        ("void", "execution_void_contract_issues"),
+        ("metadata", "workbench_metadata_contract_issues"),
+        ("process", "workbench_process_contract_issues"),
+        ("identity", "plan_identity_write_guard_contract_issues"),
+        ("lineage", "template_lineage_contract_issues"),
     )
-    for name, symbol, modules in checks:
-        original = vars(modules[0])[symbol]
+    for name, symbol in checks:
+        original = vars(migration_state)[symbol]
 
         def checked(conn, *, structure, _name=name, _original=original):
             calls[_name] += 1
             return _original(conn, structure=structure)
 
-        for module in modules:
-            monkeypatch.setattr(module, symbol, checked)
+        monkeypatch.setattr(migration_state, symbol, checked)
 
     conn = candidate_case.conn
-    execution = WorkbenchExecutionRepository(conn)
-    lineage = workbench_template_lineage_repo.WorkbenchTemplateLineageRepository(conn)
-    calibration = workbench_calibration_query_repo.WorkbenchCalibrationQueryRepository(conn)
+    schema_sql = load_schema_sql()
+    assert migration_state.current_schema_contract_issues(
+        conn, schema_version=migration_state.CURRENT_SCHEMA_VERSION, schema_sql=schema_sql
+    ) == []
+    assert calls == {name: 1 for name, _ in checks}
+    conn.execute("SAVEPOINT seq_autoincrement_probe")
+    try:
+        conn.execute("DROP TABLE ScheduleVersionSeq")
+        conn.execute("CREATE TABLE ScheduleVersionSeq (version INTEGER PRIMARY KEY)")
+        issues = migration_state.current_schema_contract_issues(
+            conn, schema_version=migration_state.CURRENT_SCHEMA_VERSION, schema_sql=schema_sql
+        )
+        assert "bad_table: ScheduleVersionSeq expected AUTOINCREMENT" in issues
+    finally:
+        conn.execute("ROLLBACK TO SAVEPOINT seq_autoincrement_probe")
+        conn.execute("RELEASE SAVEPOINT seq_autoincrement_probe")
     identities = workbench_plan_identity_repo.WorkbenchPlanIdentityRepository(conn)
+    lineage = TemplateLineageQuery(conn)
     with TransactionManager(conn).transaction():
         for _ in range(2):
-            assert execution.schema_issues() == []
-            assert lineage.schema_state() == "loaded" and not lineage.identity_schema_broken()
-            assert calibration.schema_installed()
-            candidate_archive.require_adoption_schema(conn)
+            assert lineage.read([])["available"] is True
             identities.read_revision()
             assert preflight_execution.execution_projections(PreflightFacts(conn), [], prepared=[]) == {}
-        assert calls == {name: 1 for name, _, _ in checks}
+        assert calls == {name: 2 for name, _ in checks}
 
 
 def _admission(case):
@@ -202,14 +206,19 @@ def test_archived_labels_and_arrangements_keep_saved_work_without_formula_replay
 
     with monkeypatch.context() as task_probe:
         task_probe.setattr(GenerationFacts, "operation", read_operation)
-        projected, intervals, scheduled_ids = tasks_projection_with_intervals(rows, candidate, original)
+        prepared_tasks = {}
+        validated, intervals, scheduled_ids = validate_saved_tasks(
+            rows, candidate, original, prepared_tasks=prepared_tasks
+        )
+        projected = project_validated_tasks(
+            validated, candidate, original, intervals, prepared_tasks=prepared_tasks
+        )
     assert operation_calls == [row["operation_ref"] for row in rows]
-    repeated = tasks_projection_with_intervals(rows, candidate, original)[0]
+    repeated = project_validated_tasks(validated, candidate, original, intervals)
     assert projected == repeated
-    validated, saved_intervals, validated_ids = validate_saved_tasks(rows, candidate, original, prepared_tasks={})
+    _, saved_intervals, validated_ids = validate_saved_tasks(rows, candidate, original, prepared_tasks={})
     assert validated_ids == scheduled_ids
     assert validated is rows and saved_intervals == intervals
-    assert project_validated_tasks(validated, candidate, original, saved_intervals) == repeated
     delivery = project_decision_delivery(original, repeated, capture["input"]["batch_refs"], candidate=candidate)
     assert project_decision_delivery(original, repeated, capture["input"]["batch_refs"],
                                     candidate=candidate, intervals=saved_intervals) == delivery
@@ -241,7 +250,7 @@ def test_archived_labels_and_arrangements_keep_saved_work_without_formula_replay
     assert repeated[0]["data_gaps"] == []
     traced = {**candidate, "artifact": {**candidate["artifact"], "results": [
         dict(row, op_type_id=None) for row in candidate["artifact"]["results"]]}}
-    actual = tasks_projection_with_intervals(rows, traced, original)[0]
+    actual = project_validated_tasks(validated, traced, original, intervals, prepared_tasks=prepared_tasks)
     assert actual[0]["process_type_ref"] is actual[0]["process_type_label"] is None
     assert repeated[0]["process_type_ref"] is not None
     quantity = capture["execution"][0]["target_quantity"] + 1

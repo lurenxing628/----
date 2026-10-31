@@ -10,9 +10,9 @@ import pytest
 from core.models.workbench_dashboard import DashboardAnalysisQuery
 from core.services.workbench.dashboard.execution import actual
 from core.services.workbench.dashboard.service import WorkbenchDashboardService
+from tests._support.node_runtime_support import node_runtime
 from tests.workbench.dashboard_support import NOW, api
 from tests.workbench.dashboard_support import dashboard_case as dashboard_case  # noqa: F401
-from tests.workbench.node_runtime_support import node_runtime
 
 ROOT = Path(__file__).resolve().parents[2]
 BASE = "/api/workbench/v1/dashboard"

@@ -10,6 +10,7 @@ from tests._support.paths import REPO_ROOT_STR as REPO_ROOT
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
+import core.algorithms.greedy.dispatch.route as greedy_route_module
 import core.algorithms.greedy.scheduler as greedy_scheduler_module
 from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithms.greedy.scheduler import GreedyScheduler
@@ -65,7 +66,7 @@ def test_greedy_scheduler_weighted_order_uses_start_dt_base_date(monkeypatch):
     def _fake_dispatch_batch_order(*args, **kwargs):
         captured["sorted_batch_ids"] = [op.batch_id for op in kwargs["sorted_ops"]]
 
-    monkeypatch.setattr(greedy_scheduler_module, "dispatch_batch_order", _fake_dispatch_batch_order)
+    monkeypatch.setattr(greedy_route_module, "dispatch_batch_order", _fake_dispatch_batch_order)
 
     scheduler = GreedyScheduler(calendar_service=_DummyCalendar(), config_service=config_snapshot())
     start_dt = datetime(2032, 1, 4, 8, 0, 0)

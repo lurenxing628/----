@@ -113,7 +113,7 @@ def _pruning(case, calendar):
         ops_by_batch.setdefault(op.batch_id, []).append(op)
     graph = _prepare_graph_ready_state(preparation.graph_ready_context, ops_by_batch=ops_by_batch)
     assert graph is not None
-    pruning = GraphPriorityPruning.for_cache(cache, graph, case["batches"])
+    pruning = GraphPriorityPruning.for_cache(cache, graph)
     assert pruning is not None
     return pruning, graph
 

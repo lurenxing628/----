@@ -17,7 +17,7 @@ hours remain visible. DB/schema errors propagate. Caller owns the read snapshot.
 from collections import defaultdict
 from datetime import datetime
 
-from core.services.capacity.plan_calendar_intervals import hours, instant, union, wire
+from core.services.capacity.plan_calendar_intervals import hours, union, wire
 from core.services.capacity.plan_calendar_issues import issue
 from core.services.capacity.plan_calendar_windows import available_intervals
 from core.services.capacity.resource_utilization_metrics import ResourceUtilizationMetrics
@@ -27,7 +27,7 @@ from .calendar_context import public_resource
 from .occupancy_constraints import TaskConstraints
 
 
-def _occupancy_groups(rows, start, end, constraints):
+def _occupancy_groups(rows, start, end, constraints, *, intervals):
     groups = defaultdict(lambda: defaultdict(list))
     unknown = set()
     for row in rows:
@@ -39,7 +39,7 @@ def _occupancy_groups(rows, start, end, constraints):
         if source != "internal":
             unknown.add(row["op_id"])
             continue
-        row_start, row_end = instant(row["start_time"]), instant(row["end_time"])
+        row_start, row_end = intervals[row["schedule_id"]]
         low, high = max(start, row_start), min(end, row_end)
         constraints.check(row, low, high, row_start=row_start, row_end=row_end)
         for kind in ("machine", "operator"):
@@ -69,7 +69,7 @@ def _resource_occupancy(kind, key, operations, calendar, resources, label):
                capacity_basis=calendar["basis"] if calendar is not None else "unknown",
                utilization=utilization,
                available_overlap_hours=metrics["available_overlap_hours"],
-               has_overlap=metrics["available_overlap_hours"] > 1e-9 if metrics["available_overlap_hours"] is not None else None,
+               has_overlap=bool(metrics["conflict_segments"]) if metrics["conflict_segments"] is not None else None,
                capacity_insufficient=insufficient,
                metric_version=RESOURCE_METRIC_VERSION,
                outside_calendar_basis="reservation_span_outside_work_calendar",
@@ -108,11 +108,11 @@ def _capacity_measures(metrics):
             "outside_available_hours": outside, "capacity_shortfall_hours": shortage}, utilization, shortage > 1e-9
 
 
-def project_plan_occupancy(*, scope, resources, calendar_facts, selected, include_segments: bool = True):
+def project_plan_occupancy(*, scope, resources, calendar_facts, selected, include_segments: bool = True, intervals):
     """calendar_facts is the private result of project_plan_calendar over the same selection."""
-    rows, start, end, time_scope, context = selected
+    rows, start, end, time_scope = selected
     constraints = TaskConstraints(calendar_facts)
-    groups, unknown = _occupancy_groups(rows, start, end, constraints)
+    groups, unknown = _occupancy_groups(rows, start, end, constraints, intervals=intervals)
     calendars = calendar_facts["resources"]
     labels = {(kind, str(row[kind + "_id"])): row[kind + "_name"] for row in rows for kind in ("machine", "operator")}
     public = [_resource_occupancy(kind, key, operations, calendars[kind].get(key) if calendars is not None else None,
@@ -137,5 +137,4 @@ def project_plan_occupancy(*, scope, resources, calendar_facts, selected, includ
         dto = {"state": state, "plan_ref": scope.plan_ref, "time_scope": time_scope,
                "basis": "selected_plan_only", "resources": public_dto, "issues": issues,
                "segments_complete": not has_single_segments}
-    return dto, {"context": context, "constraints": constraints.private(), "unknown_source_operations": sorted(unknown),
-                 "occupancy": public}
+    return dto

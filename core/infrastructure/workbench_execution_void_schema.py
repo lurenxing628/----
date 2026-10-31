@@ -2,7 +2,7 @@
 
 from core.infrastructure.workbench_metadata_schema import canonical_sql
 
-from .schema_structure import schema_objects
+from .schema_structure import SchemaStructure
 
 
 def execution_void_objects():
@@ -42,8 +42,8 @@ def execution_void_objects():
     return objects
 
 
-def execution_void_contract_issues(conn, *, structure=None):
-    actual = schema_objects(conn, structure=structure)
+def execution_void_contract_issues(conn, *, structure: SchemaStructure):
+    actual = structure.sql
     return [("missing_execution_void:" if name not in actual else "invalid_execution_void:") + name
             for name, sql in execution_void_objects().items()
             if name not in actual or canonical_sql(sql) != canonical_sql(actual[name])]

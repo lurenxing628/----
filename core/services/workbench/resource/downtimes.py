@@ -1,9 +1,9 @@
 """Guarded downtime maintenance; cancellation retains the original record."""
 
+from core.infrastructure.sqlite_udf import parse_dt_for_sql, require_dt_for_sql
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_downtime import REASONS
 from data.repositories.machine_downtime_repo import MachineDowntimeRepository
-from data.repositories.schedule_time_sql import parse_dt_for_sql, require_dt_for_sql
 from data.repositories.workbench_downtime_repo import WorkbenchDowntimeRepository
 
 from .queries import WorkbenchResourceQueryService

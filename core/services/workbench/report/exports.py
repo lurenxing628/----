@@ -12,6 +12,7 @@ from core.services.report.exporters.xlsx import (
     SUMMARY_IDENTITY_LABELS,
     _append_write_only_row,
     append_summary_row,
+    close_workbook,
 )
 from core.services.workbench.facts.execution_projection import COMPLETION_BASIS_TEXT, DATA_QUALITY_TEXT
 from core.services.workbench.facts.export_names import export_stamp
@@ -73,11 +74,8 @@ def ensure_export_size(engine, count):
     return decision
 
 
-def _export_values(columns, rows, format_name):
-    values = [[_cell(column["key"], row[column["key"]]) for column in columns] for row in rows]
-    if format_name == "xlsx" and any(isinstance(value, str) and len(value) > 32767 for row in values for value in row):
-        raise WorkbenchCommandRejected("export_too_large", "单元格内容超过 XLSX 上限，请改用 CSV 导出。", 413)
-    return values
+def _export_values(columns, rows):
+    return [[_cell(column["key"], row[column["key"]]) for column in columns] for row in rows]
 
 
 def _append_xlsx_metadata(sheet, data, snapshot):
@@ -92,7 +90,7 @@ def export_table(engine, data, rows, snapshot, format_name):
         raise WorkbenchCommandRejected("empty_export", "当前筛选范围里没有可导出的结果，没有开始下载。请放宽筛选条件后重试。", 422)
     decision = ensure_export_size(engine, len(rows))
     columns = data["columns"]
-    values = _export_values(columns, rows, format_name)
+    values = _export_values(columns, rows)
     filename = TOPIC_TITLES[data["topic"]] + "-" + export_stamp(snapshot["as_of"])
     if format_name == "csv":
         output = io.StringIO(newline="")
@@ -107,6 +105,7 @@ def export_table(engine, data, rows, snapshot, format_name):
 
     workbook = openpyxl.Workbook(write_only=True)
     output = io.BytesIO()
+    saved = False
     try:
         sheet = workbook.create_sheet("范围与计算方式")
         _append_xlsx_metadata(sheet, data, snapshot)
@@ -117,7 +116,8 @@ def export_table(engine, data, rows, snapshot, format_name):
         for row in values:
             _append_write_only_row(sheet, row)
         workbook.save(output)
+        saved = True
         output.seek(0)
     finally:
-        workbook.close()
+        close_workbook(workbook, saved=saved)
     return ReportExport(filename + ".xlsx", engine.XLSX_CONTENT_TYPE, output, mode=decision.mode, estimated_rows=len(rows))

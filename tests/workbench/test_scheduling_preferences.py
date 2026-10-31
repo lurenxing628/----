@@ -16,7 +16,7 @@ from core.services.workbench.run.preferences import SchedulingPreferencesService
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from data.repositories.system_config_repo import SystemConfigRepository
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
-from tests.workbench.node_runtime_support import node_runtime
+from tests._support.node_runtime_support import node_runtime
 from tests.workbench.preflight_support import payload, read_only_snapshot
 from tests.workbench.preflight_support import pf as pf_fixture  # noqa: F401
 from tests.workbench.run_jobs_support import job_case as job_case_fixture  # noqa: F401
@@ -132,10 +132,10 @@ def test_preferences_save_does_not_expire_existing_preflight_or_worker_facts(pf)
     checked = pf.post("/api/workbench/v1/scheduling/preflight", json=payload(pf))
     assert checked.status_code == 200, checked.get_json()
     before = _facts_content(pf.conn)
-    captured_text = ProductionFactsCapture(pf.conn).content()
+    captured_facts = ProductionFactsCapture(pf.conn).archive()
     assert save(pf, payload(pf), read(pf)["write_context"]["write_token"]).status_code == 200
     assert _facts_content(pf.conn) == before
-    assert production_facts_match(pf.conn, captured_text)
+    assert production_facts_match(pf.conn, captured_facts)
     from web.routes.workbench.preflight import evaluate_preflight_input_prepared
 
     with pf.application.app_context():
@@ -149,7 +149,7 @@ def test_preferences_save_does_not_expire_existing_preflight_or_worker_facts(pf)
     SystemConfigRepository(pf.conn).set("auto_backup_enabled", "yes")
     pf.conn.commit()
     assert _facts_content(pf.conn) != before
-    assert not production_facts_match(pf.conn, captured_text)
+    assert not production_facts_match(pf.conn, captured_facts)
 
 
 def test_receipt_failure_rolls_back_preference_and_audit_in_same_transaction(pf, monkeypatch):

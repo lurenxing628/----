@@ -13,11 +13,11 @@
 5. 决策记录目录：`./ADR/`
 6. V1.2 方案目录：`./V1.2/`
 
-### 留存备用方案
+### 留存备用方案与演进设计
 
-- [试调、联动重排与条件试算整体方案](../.codestable/roadmap/trial-scenario-planning/trial-scenario-planning-roadmap.md)：2026-10-13 留存，实施未启动。包含行业做法、现有基础、交互与计算设计、性能取舍、分阶段依赖和验收场景；当前优先跑明白已有功能。
+- [试调、联动重排与条件试算整体方案](../.codestable/roadmap/trial-scenario-planning/trial-scenario-planning-roadmap.md)：2026-10-13 留存，完整联动重排与条件试算路线图预留未启动（基础手动试调工作台已上线）。包含行业做法、现有基础、交互与计算设计、性能取舍、分阶段依赖和验收场景。
 - [APS 与项目管理系统的试调实践调研](../.codestable/compound/2026-10-13-explore-aps-trial-scenario-practices.md)：七款产品的具体机制、资源条件试算、共享资料边界及来源。
-- [统一优化与业务多方案重构设计](../.codestable/features/2026-10-13-unified-scheduling-optimization/unified-scheduling-optimization-design.md)：待审方案，实施未授权。取消固定图档，保留最多三份有真实业务取舍的方案；涵盖最好结果共享、跨目标去重、总预算、速度质量验收及排产决策工作台衔接。
+- [统一优化与业务多方案重构设计](../.codestable/features/2026-10-13-unified-scheduling-optimization/unified-scheduling-optimization-design.md)：已落地实现。取消固定图档，保留最多三份有真实业务取舍的方案；涵盖最好结果共享、跨目标去重、总预算、速度质量验收及排产决策工作台衔接。
 
 ### 当前排产实测
 

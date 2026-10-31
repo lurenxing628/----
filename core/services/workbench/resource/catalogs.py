@@ -51,7 +51,7 @@ class WorkbenchResourceCatalogService:
         changes = {"status": "active", **fields} if action == "create" else {key: value for key, value in fields.items() if raw[key] != value}
         return ResourceChange(action, code, identity, changes, related)
 
-    def apply_prepared(self, change):
+    def apply_prepared(self, change, *, read_identity: bool = True):
         if not self.conn.in_transaction:
             raise RuntimeError("资源目录写入必须由外层工作台事务负责。")
         code, identity = change.business_code, change.identity
@@ -59,12 +59,16 @@ class WorkbenchResourceCatalogService:
             self.repo.delete_catalog(self.kind, code)
         elif change.action == "create":
             self.repo.insert_catalog(self.kind, code, change.fields)
-            identity = self.identities.find_active(self.kind, code)
-            if identity is None:
-                raise RuntimeError("新目录记录缺少永久引用。")
+            if read_identity:
+                identity = self.identities.find_active(self.kind, code)
+                if identity is None:
+                    raise RuntimeError("新目录记录缺少永久引用。")
         elif change.fields:
             self.repo.update_catalog(self.kind, code, change.fields)
         if "pattern" in change.related:
             self.repo.set_pattern(code, change.related["pattern"])
         changed = change.action != "update" or bool(change.fields or change.related)
-        return WorkbenchCommandOutcome("committed" if changed else "unchanged", {"entity_ref": identity.ref, "business_code": code})
+        return WorkbenchCommandOutcome(
+            "committed" if changed else "unchanged",
+            {"entity_ref": None if identity is None else identity.ref, "business_code": code},
+        )

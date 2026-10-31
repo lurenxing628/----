@@ -69,4 +69,4 @@ def _observe_decoded(search, objective, *, candidate, origin, verified, elapsed_
 
 
 def _failure(op_id):
-    return {"code": "dispatch_operation_failed", "op_id": op_id, "batch_id": f"B{op_id}"}
+    return {"code": "schedule_window_exceeded", "op_id": op_id, "batch_id": f"B{op_id}"}

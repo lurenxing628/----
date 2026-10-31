@@ -8,6 +8,8 @@ from core.models.workbench_trial import issue, reject
 from core.services.scheduler.execution.execution_ledger_guard import is_point_work
 from core.services.workbench.facts.zero_duration_evidence import trial_point_evidence
 
+from .arrangements import same_arrangement
+
 _MAX_ISSUES = 50000
 
 
@@ -22,30 +24,89 @@ def interval(value, *, original=None):
     return start, end
 
 
-def relation_issues(rows, live):
+def build_trial_intervals(rows):
+    current_by_op = {}
+    current_by_row = {}
+    current_errors_by_op = {}
+    original_by_op = {}
+    original_by_row = {}
+    original_by_source_row = {}
+    for row in rows:
+        original = row["original"]
+        current = row["current"]
+        orig_arr = original["arrangement"]
+        op_ref = row["operation_ref"]
+        row_ref = row["row_ref"]
+        source_row_ref = row.get("source_row_ref")
+        try:
+            curr_span = interval(current, original=original)
+        except (TypeError, ValueError) as exc:
+            curr_span = None
+            current_errors_by_op[op_ref] = exc.with_traceback(None)
+        if curr_span is not None:
+            current_by_op[op_ref] = curr_span
+        current_by_row[row_ref] = curr_span
+        if (
+            curr_span is not None
+            and current["start"] == orig_arr["start"]
+            and current["end"] == orig_arr["end"]
+            and (current["start"] != current["end"] or same_arrangement(current, orig_arr))
+        ):
+            orig_span = curr_span
+        else:
+            try:
+                orig_span = interval(orig_arr, original=original)
+            except (TypeError, ValueError):
+                orig_span = None
+        if orig_span is not None:
+            original_by_op[op_ref] = orig_span
+        original_by_row[row_ref] = orig_span
+        if source_row_ref is not None:
+            original_by_source_row[source_row_ref] = orig_span
+    return {
+        "current_by_op": current_by_op,
+        "current_by_row": current_by_row,
+        "current_errors_by_op": current_errors_by_op,
+        "original_by_op": original_by_op,
+        "original_by_row": original_by_row,
+        "original_by_source_row": original_by_source_row,
+    }
+
+
+def relation_issues(rows, live, *, trial_intervals):
     by_ref = {row["operation_ref"]: row for row in rows}
+    current_by_op = trial_intervals["current_by_op"]
     issues = []
     for row in rows:
         for previous_ref in row["original"]["predecessor_operation_refs"]:
-            problem = _predecessor_issue(row, previous_ref, by_ref.get(previous_ref), live)
+            problem = _predecessor_issue(row, previous_ref, by_ref.get(previous_ref), live, current_by_op)
             if problem is not None:
                 issues.append(problem)
     return issues
 
 
-def _predecessor_issue(row, previous_ref, previous, live):
+def _predecessor_issue(row, previous_ref, previous, live, current_by_op):
     if previous is None:
         actual = live["execution"].get(previous_ref)
         if not actual or actual["execution_state"] != "complete" or not actual["confirmed_finish"]:
             return issue("predecessor_missing", "前一道工序不在这份草稿里，现场也没有它已确认完工的记录，系统定不了这道工序的开工时间。请把前一道工序也放进草稿。", row["task_ref"])
         end = actual["confirmed_finish"]
+        end_dt = datetime.fromisoformat(end)
     else:
         end = previous["current"]["end"]
         if _same_merged_cycle(row, previous):
             if (previous["current"]["start"], end) != (row["current"]["start"], row["current"]["end"]):
                 return issue("external_group_split", "合并外协组的工序必须保持同一周期。", row["task_ref"], previous["task_ref"])
             return None
-    if datetime.fromisoformat(end) > datetime.fromisoformat(row["current"]["start"]):
+        prev_span = current_by_op.get(previous_ref)
+        if prev_span is None:
+            return None
+        end_dt = prev_span[1]
+    curr_span = current_by_op.get(row["operation_ref"])
+    if curr_span is None:
+        return None
+    start_dt = curr_span[0]
+    if end_dt > start_dt:
         return issue("precedence_violation", "后序开工早于前序完工。", row["task_ref"], previous["task_ref"] if previous else None)
     return None
 
@@ -59,11 +120,12 @@ def _same_merged_cycle(row, previous):
             and row["original"]["operation"]["piece_id"] == previous["original"]["operation"]["piece_id"])
 
 
-def resource_issues(rows, live, *, conn):
-    occupied = _trial_intervals(rows)
+def resource_issues(rows, live, *, conn, trial_intervals):
+    current_by_op = trial_intervals["current_by_op"]
+    occupied = _trial_intervals(rows, current_by_op)
     issues = _outside_intervals(occupied, rows, live, conn=conn)
     issues.extend(_overlap_issues(occupied))
-    issues.extend(_actual_reservations(rows, live))
+    issues.extend(_actual_reservations(rows, live, current_by_op))
     return issues
 
 
@@ -103,7 +165,10 @@ def _outside_occupancy(row, conn, point_versions):
                 point_versions[row["version"]] = official_point_work(conn, row["version"])
             if row["op_id"] in point_versions[row["version"]]:
                 return None, None
-        except WorkbenchCommandRejected:
+        except WorkbenchCommandRejected as exc:
+            # 读取容量超限是整个请求的 413，不是这道工序“没有依据”。
+            if exc.status == 413:
+                raise
             return None, issue("outside_scope_point_unproven", "范围外那道零工时工序没有可核对的依据。")
     try:
         return interval({"start": row["start_time"], "end": row["end_time"]}), None
@@ -111,15 +176,15 @@ def _outside_occupancy(row, conn, point_versions):
         return None, issue("outside_scope_interval_invalid", "范围外正式安排的时间不对，判断不了设备人员有没有空。")
 
 
-def _trial_intervals(rows):
+def _trial_intervals(rows, current_by_op):
     occupied = defaultdict(list)
     for row in rows:
         if row["original"]["operation"]["source"] != "internal":
             continue
-        try:
-            start, end = interval(row["current"], original=row["original"])
-        except (TypeError, ValueError):
+        span = current_by_op.get(row["operation_ref"])
+        if span is None:
             continue
+        start, end = span
         if start == end:
             continue
         for kind in ("machine", "operator"):
@@ -154,16 +219,17 @@ def _overlap_issues(occupied):
     return issues
 
 
-def _actual_reservations(rows, live):
+def _actual_reservations(rows, live, current_by_op):
     index, issues = _actual_index(live)
     for row in rows:
         if row["original"]["operation"]["source"] != "internal":
             continue
-        if row["current"]["start"] == row["current"]["end"]:
-            # The row validator must prove the point before any save/adoption.
+        span = current_by_op.get(row["operation_ref"])
+        if span is None:
             continue
-        row_start = datetime.fromisoformat(row["current"]["start"])
-        row_end = datetime.fromisoformat(row["current"]["end"])
+        row_start, row_end = span
+        if row_start == row_end:
+            continue
         for kind in ("machine", "operator"):
             for ref, execution, start_dt, end_dt in index[kind, row["current"][kind + "_ref"]]:
                 if row["operation_ref"] == ref:

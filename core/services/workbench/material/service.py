@@ -46,11 +46,9 @@ class WorkbenchMaterialService:
                       "stock_qty": 0.0, "status": "active", "remark": None, **payload["fields"]}
             return PreparedMaterialChange(action, None, code, values)
         current = WorkbenchEntityIdentity(**checked["identity"])
-        if current.entity_key != current.entity_key.strip():
-            raise WorkbenchCommandRejected("constraint_conflict", "这个物料编号首尾有空格，现在改不了。请先核对原记录。")
         if action == "delete":
             return PreparedMaterialChange(action, current, current.entity_key, {})
-        changes = dict(payload.get("fields", {}))
+        changes = dict(payload["fields"])
         if "label" in payload:
             changes["name"] = payload["label"]
         changes = {key: value for key, value in changes.items() if checked["material"][key] != value}

@@ -207,3 +207,41 @@ def test_permission_capture_includes_complete_old_machine_states_before_removal(
     assert result.result == "committed"
     assert [tuple(row) for row in conn.execute("SELECT machine_id FROM OperatorMachine WHERE operator_id='O1'")] == (
         [("M2",)] if replace else [])
+
+
+def test_selected_relation_export_preview_and_bulk_create_avoid_unbounded_identity_queries(resource_conn):
+    from core.services.workbench.resource.files import WorkbenchResourceFileService
+    from core.services.workbench.resource.relation_files.files import WorkbenchRelationFileService
+    from tests.workbench.resource_file_support import confirm, file_bytes
+
+    conn = resource_conn
+    operator = identity_for(conn, "operator", "O1")
+    assert operator is not None
+    reader = WorkbenchResourceQueryService(conn, "operator")
+    relation_files = WorkbenchRelationFileService(conn, "operator_machine", reader=reader)
+    trace = []
+    conn.set_trace_callback(trace.append)
+    try:
+        with reader.read_snapshot():
+            arguments, count = relation_files.preview_export("selected", scope={}, selected_refs=[operator.ref])
+    finally:
+        conn.set_trace_callback(None)
+    selects = [sql for sql in trace if sql.lstrip().upper().startswith("SELECT")]
+    assert len(selects) == 3
+    assert arguments["selected_refs"] == [operator.ref] and count == 1
+
+    rows = [(f"OT-BULK-{i:02d}", f"Bulk {i}") for i in range(5)]
+    content = file_bytes(rows, headers=("编号", "名称"))
+    file_service = WorkbenchResourceFileService(conn, "op_type")
+    preview = file_service.preview_import(content, file_format="csv", scope={"category": "internal"})
+    trace.clear()
+    conn.set_trace_callback(trace.append)
+    try:
+        outcome = confirm(conn, "op_type", preview, content)
+    finally:
+        conn.set_trace_callback(None)
+    assert outcome["result"] == "committed"
+    assert len(outcome["data"]["rows"]) == 5
+    assert all(item["entity_ref"] for item in outcome["data"]["rows"])
+    assert sum("FROM WorkbenchEntityRefs WHERE kind =" in sql and "AND entity_key =" in sql for sql in trace) == 0
+    assert sum("FROM WorkbenchEntityRefs WHERE kind =" in sql and "AND active = 1 AND entity_key IN (" in sql for sql in trace) == 1

@@ -7,11 +7,14 @@ The calendar does not change while one decode runs, so those answers are pure fu
 of their arguments, and measured decodes repeat 96-99% of them. The memo answers repeats
 from a dict and defers everything else to the real calendar with exactly the call the
 estimator would have made itself; exceptions propagate and are never memoized.
+
+A calendar is native when it is an instance of a registered native calendar type;
+a registered type vouches for its subclasses' timing surface.
 """
 
 import enum
 from datetime import datetime
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 
 class _Sentinel(enum.Enum):
@@ -22,32 +25,18 @@ class _Sentinel(enum.Enum):
 
 _MISSING = _Sentinel.MISSING
 _LIMIT = 32768
-_GUARDS: Dict[type, Callable[[Any], bool]] = {}
-_CALENDAR_DAY_GUARDS: Dict[type, Callable[[Any], bool]] = {}
+_NATIVE_CALENDAR_TYPES: Tuple[type, ...] = ()
 
 
-def make_lineage_timing_guard(base: type) -> Callable[[Any], bool]:
-    return lambda calendar: isinstance(calendar, base)
+def register_native_timing_calendar(calendar_type: type) -> None:
+    """Certify a calendar type's timing methods and calendar-day arithmetic as native."""
+    global _NATIVE_CALENDAR_TYPES
+    if calendar_type not in _NATIVE_CALENDAR_TYPES:
+        _NATIVE_CALENDAR_TYPES += (calendar_type,)
 
 
-def register_calendar_timing_guard(
-    calendar_type: type, guard: Callable[[Any], bool], *, calendar_days_guard: Callable[[Any], bool],
-) -> None:
-    _GUARDS[calendar_type] = guard
-    _CALENDAR_DAY_GUARDS[calendar_type] = calendar_days_guard
-
-
-def native_timing_calendar(calendar: Any, *, include_calendar_days: bool = False) -> bool:
-    """The nearest registered guard in the calendar's lineage certifies its timing methods as native."""
-    for entry in type(calendar).__mro__:
-        guard = _GUARDS.get(entry)
-        if guard is not None:
-            if not guard(calendar):
-                return False
-            if not include_calendar_days:
-                return True
-            return _CALENDAR_DAY_GUARDS[entry](calendar)
-    return False
+def native_timing_calendar(calendar: Any) -> bool:
+    return isinstance(calendar, _NATIVE_CALENDAR_TYPES)
 
 
 def _plain_text(value: Any) -> bool:
@@ -123,25 +112,16 @@ class MemoizedTimingCalendar:
         return _remember(self._effective_hours, key, self.calendar.add_effective_hours(start, hours, priority=priority, operator_id=operator_id))
 
     def certified_slot_window(self, dt: datetime, *, priority: Any, operator_id: Any) -> Optional[Tuple[datetime, datetime]]:
-        """The underlying certificate, or None for calendars that offer none; validated by the caller as before."""
+        """The underlying certificate, or None outside a constant work window."""
         if type(dt) is not datetime or not _plain_text(priority) or not _plain_text(operator_id):
-            return self._certify(dt, priority, operator_id)
+            return self.calendar.certified_slot_window(dt, priority=priority, operator_id=operator_id)
         key = (dt, priority, operator_id)
         found = self._window.get(key, _MISSING)
         if found is not _MISSING:
             self.hits += 1
             return found
         self.misses += 1
-        return _remember(self._window, key, self._certify(dt, priority, operator_id))
-
-    def _certify(self, dt: datetime, priority: Any, operator_id: Any) -> Optional[Tuple[datetime, datetime]]:
-        certify = getattr(self.calendar, "certified_slot_window", None)
-        if certify is None:
-            return None
-        return certify(dt, priority=priority, operator_id=operator_id)
+        return _remember(self._window, key, self.calendar.certified_slot_window(dt, priority=priority, operator_id=operator_id))
 
 
-__all__ = [
-    "MemoizedTimingCalendar", "make_lineage_timing_guard",
-    "native_timing_calendar", "register_calendar_timing_guard",
-]
+__all__ = ["MemoizedTimingCalendar", "native_timing_calendar", "register_native_timing_calendar"]

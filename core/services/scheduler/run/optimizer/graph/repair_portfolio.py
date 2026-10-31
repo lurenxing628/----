@@ -94,8 +94,6 @@ class ParentRepairPortfolio:
         return tuple(profile.feature_basis for profile, _portfolio in self.variants)
 
     def with_variant(self, profile: GraphReadyWeightProfile, portfolio: RepairPortfolio) -> ParentRepairPortfolio:
-        if profile.feature_basis in self.feature_bases:
-            return self
         return ParentRepairPortfolio(self.variants + ((profile, portfolio),))
 
     def profiled_decisions(self, skip_by_basis: Dict[str, int]
@@ -128,7 +126,7 @@ def build_repair_portfolio(*, operations: List[Any], metrics_by_op_id: Dict[int,
         metrics_by_op_id=metrics_by_op_id, batch_order=batches.order, start_dt=start_dt, objective_name=objective_name,
         prepared_parent=prepared_parent)
     resources = (("resource_alternative", decision) for decision in iter_resource_decisions(
-        operations=operations, batch_order=batches.order, operation_order=prepared_parent.operation_order,
+        batch_order=batches.order, operation_order=prepared_parent.operation_order,
         prepared_parent=prepared_parent))
     extras = tuple(item for group in zip_longest(operation_decisions, resources) for item in group if item is not None)
     return RepairPortfolio(batches, extras, inherited)

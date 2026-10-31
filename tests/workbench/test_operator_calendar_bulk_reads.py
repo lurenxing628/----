@@ -37,7 +37,17 @@ def test_operator_calendar_bulk_reads_cross_chunks_and_preserve_histories(schema
     with TransactionManager(conn).transaction():
         conn.set_trace_callback(trace.append)
         try:
-            _, exported = service._states_and_rows(DAY, DAY)
+            codes = service.validate_export_scope(start_date=DAY, end_date=DAY)
+            _, count = service.preview_export(start_date=DAY, end_date=DAY, codes=codes)
+        finally:
+            conn.set_trace_callback(None)
+    assert count == 400 and len(trace) == 5
+    trace.clear()
+    with TransactionManager(conn).transaction():
+        conn.set_trace_callback(trace.append)
+        try:
+            codes = service.validate_export_scope(start_date=DAY, end_date=DAY)
+            exported = service.export_rows(DAY, DAY, codes=codes)
         finally:
             conn.set_trace_callback(None)
     assert len(exported) == 400 and len(trace) == 7

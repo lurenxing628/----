@@ -6,8 +6,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, cast
 
-from core.algorithm_contracts.ordering import build_batch_sort_inputs
-from core.algorithm_contracts.sort_strategies import SortStrategy, StrategyFactory
+from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithm_contracts.types import OpForScheduleAlgo
 from core.algorithms.evaluation import prepare_evaluation_context
 from core.errors import ValidationError
@@ -167,9 +166,7 @@ def optimize_shared_schedule(
     native_preparation = session.decode_session.native_preparation
 
     def build_order(strategy: SortStrategy, params: Dict[str, Any]) -> List[str]:
-        sortable = build_batch_sort_inputs(native_preparation.batches, strategy=strategy)
-        sorter = StrategyFactory.create(strategy, **params)
-        return [item.batch_id for item in sorter.sort(sortable, base_date=start_dt.date())]
+        return native_preparation.batch_order(start_dt=start_dt, strategy=strategy, params=params)
 
     profile = build_candidate_profile(
         algo_mode=config.algo_mode, time_budget_seconds=config.time_budget_seconds,
@@ -187,7 +184,7 @@ def optimize_shared_schedule(
     primary = session.views[targets[0]]
     decode_common: Dict[str, Any] = dict(
         start_dt=start_dt, end_date=end_date, resource_pool=resource_pool, deadline=deadline,
-        optimizer_algo_stats=algo_stats, t_begin=started_at, readiness_gate_enabled=bool(readiness_gate_enabled),
+        optimizer_algo_stats=algo_stats, readiness_gate_enabled=bool(readiness_gate_enabled),
         clock=runtime.clock, decode_session=session.decode_session,
     )
     common: Dict[str, Any] = dict(
@@ -211,7 +208,7 @@ def optimize_shared_schedule(
     graph_enabled = (
         cfg.graph_analysis_mode == "on"
         and graph_ready_context is not None
-        and (piece or graph_ready_context.get("score_enabled") is not False)
+        and graph_ready_context.get("score_enabled") is not False
     )
 
     def prepare_graph_features() -> Optional[SharedGraphFeatures]:
@@ -232,7 +229,8 @@ def optimize_shared_schedule(
             prepared_features = prepare_shared_graph_features(
                 **{key: common[key] for key in ("scheduler", "algo_ops_to_schedule", "batches", "start_dt",
                                                "downtime_map", "seed_sr_list", "resource_pool", "deadline", "clock")},
-                graph_ready_context=cast(Dict[str, Any], graph_ready_context))
+                graph_ready_context=cast(Dict[str, Any], graph_ready_context),
+                native_preparation=native_preparation)
         finally:
             shared_budget.charge_preparation(targets[0], "graph_features", runtime.clock() - feature_started_at)
         return prepared_features
@@ -251,17 +249,16 @@ def optimize_shared_schedule(
                     **decode_common, algo_ops_to_schedule=algo_ops_to_schedule, batches=batches,
                     algo_mode=config.algo_mode, cfg=cfg, strategy_enum=config.strategy_enum, objective_name=view.objective,
                     dispatch_mode_cfg=dispatch_mode, dispatch_rule_cfg=config.dispatch_rule,
-                    attempts=view.state.attempts, improvement_trace=view.state.improvement_trace, best=view.state.best,
+                    best=view.state.best,
                     graph_ready_context=ordinary_context, search_report_state=view.report)
             view.stages.append(_WarmStartStage(run=warmstart, clock=runtime.clock, deadline=deadline))
         if not piece:
             view.local_stage = LocalSearchStage(
                 **decode_common, batches=batches, best=view.state.best, version=version,
                 objective_name=view.objective,
-                attempts=view.state.attempts, improvement_trace=view.state.improvement_trace,
                 rng_factory=runtime.rng_factory, search_report_state=view.report,
                 neighborhoods=_business_neighborhoods(view.objective),
-                valid_dispatch_rules=list(config.valid_dispatch_rules), acceptance=profile.acceptance)
+                valid_dispatch_rules=list(config.valid_dispatch_rules))
             view.stages.append(view.local_stage)
             view.stages.append(GraspIGStage(
                 **decode_common, version=version,
@@ -278,7 +275,6 @@ def optimize_shared_schedule(
                 **decode_common, algo_ops_to_schedule=algo_ops_to_schedule, best=view.state.best,
                 version=version, base_strategy=config.strategy_enum, base_params=config.strategy_params,
                 build_order=build_order, dispatch_rule_cfg=config.dispatch_rule, objective_name=view.objective,
-                attempts=view.state.attempts, improvement_trace=view.state.improvement_trace,
                 graph_ready_context=cast(Dict[str, Any], graph_ready_context),
                 search_report_state=view.report, prepared_features=features)
             view.stages.extend(view.graph_bundle.stages)

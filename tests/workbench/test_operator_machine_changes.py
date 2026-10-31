@@ -224,7 +224,11 @@ def test_relation_export_routes_reuse_request_reader(resource_conn, selection):
         conn.set_trace_callback(None)
     assert preview.get_json()["data"]["row_count"] == int(exported.headers["X-Workbench-Row-Count"]) == 1
     for queries in (preview_statements, statements):
-        assert sum("FROM WorkbenchEntityRefs" in sql for sql in queries) == 1, queries
+        if selection == "selected":
+            assert sum("FROM WorkbenchEntityRefs" in sql for sql in queries) == 1, queries
+        else:
+            assert sum("FROM WorkbenchEntityRefs" in sql for sql in queries) == 0, queries
+            assert sum("FROM Operators" in sql for sql in queries) == 1, queries
 
 
 def test_permission_routes_accept_existing_write_context_and_replay_receipt(resource_conn):
@@ -260,3 +264,54 @@ def test_permission_routes_accept_existing_write_context_and_replay_receipt(reso
     assert _rows(conn) == [("M2", "expert", "yes")]
     response = client.post(path + "confirm", json=body)
     assert response.status_code == 200 and response.get_json()["replayed"] is True
+
+
+def test_permission_replacement_preserves_whitespace_operator_and_machine_identities(resource_conn):
+    conn = resource_conn
+    insert_row(conn, "Operators", {"operator_id": " O1 ", "name": "Padded Operator"})
+    insert_row(conn, "Machines", {"machine_id": " M1 ", "name": "Padded Machine", "op_type_id": "OT1"})
+    conn.commit()
+    padded_operator = identity_for(conn, "operator", " O1 ")
+    padded_machine = identity_for(conn, "machine", " M1 ")
+    assert padded_operator is not None and padded_operator.entity_key == " O1 "
+    assert padded_machine is not None and padded_machine.entity_key == " M1 "
+    assert _rows(conn) == [("M1", "expert", "yes")]
+
+    def padded_rows():
+        return [tuple(row) for row in conn.execute(
+            "SELECT operator_id,machine_id,skill_level,is_primary FROM OperatorMachine WHERE operator_id=' O1 '")]
+
+    service = WorkbenchOperatorMachinePermissions(conn)
+
+    preview = service.preview(
+        padded_operator.ref,
+        [{"machine_ref": padded_machine.ref, "skill_level": "beginner", "is_primary": "no"}],
+    )
+    row = preview.as_dict()["rows"][0]
+    assert row["result"] == "new" and row["business_code"] == " M1 "
+    with TransactionManager(conn).transaction():
+        outcome = service.confirm(preview)
+    assert outcome.result == "committed" and outcome.data["business_code"] == " O1 "
+    assert padded_rows() == [(" O1 ", " M1 ", "beginner", "no")]
+    assert _rows(conn) == [("M1", "expert", "yes")]
+
+    preview = service.preview(
+        padded_operator.ref,
+        [{"machine_ref": padded_machine.ref, "skill_level": "expert", "is_primary": "yes"}],
+    )
+    row = preview.as_dict()["rows"][0]
+    assert row["result"] == "update" and row["business_code"] == " M1 "
+    with TransactionManager(conn).transaction():
+        outcome = service.confirm(preview)
+    assert outcome.result == "committed" and outcome.data["business_code"] == " O1 "
+    assert padded_rows() == [(" O1 ", " M1 ", "expert", "yes")]
+    assert _rows(conn) == [("M1", "expert", "yes")]
+
+    preview = service.preview(padded_operator.ref, [])
+    row = preview.as_dict()["rows"][0]
+    assert row["result"] == "delete" and row["business_code"] == " M1 "
+    with TransactionManager(conn).transaction():
+        outcome = service.confirm(preview)
+    assert outcome.result == "committed" and outcome.data["business_code"] == " O1 "
+    assert padded_rows() == []
+    assert _rows(conn) == [("M1", "expert", "yes")]

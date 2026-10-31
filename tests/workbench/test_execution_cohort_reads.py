@@ -1,7 +1,6 @@
 """Complete paginated cohorts use bounded ledger reads in one snapshot."""
 
 from core.models.content import content_text
-from core.services.workbench.dashboard.facts import typed
 from core.services.workbench.execution.field_workspace import FieldWorkspaceService
 from tests.workbench.execution_ledger_support import ledger_case as ledger_fixture  # noqa: F401
 
@@ -56,7 +55,7 @@ def test_bounded_cohort_matches_single_load_with_revisions_voids_and_legacy(ledg
     with case.ledger.read_snapshot():
         single = case.ledger.load(refs, comparison_plan_ref=case.plan_ref(2))
         expected = case.ledger.project_loaded(single, contexts=False)
-    assert content_text(typed(facts)) == content_text(typed(single))
+    assert content_text(facts) == content_text(single)
     assert [row.to_dict() for row in projected] == [row.to_dict() for row in expected]
     assert len(projected[1].reports[0].correction_history) == 2
     assert len(projected[2].voided_reports) == 1
@@ -129,3 +128,40 @@ def test_field_visible_finish_dates_narrow_before_ledger_and_keep_inclusive_days
     assert [task["planned_end"][:10] for task in selected["tasks"]] == ["2026-01-01", "2026-01-02"]
     assert selected["summary"]["tasks"] == selected["summary"]["state_scope_tasks"] == 2
     assert [len(group) for group in reads] == [2]
+
+
+def test_field_page_constructs_report_dicts_only_for_sliced_page_tasks(ledger_case, monkeypatch):
+    from core.models.workbench_execution import ExecutionProjection
+    from core.services.workbench.execution import field_workspace
+
+    case = ledger_case
+    op_ids = [case.op_id] + [case.op(f"OP-BULK-{idx:02d}", seq=idx + 1) for idx in range(1, 30)]
+    case.plan(2, op_ids)
+    for op_id in op_ids:
+        case.command("create", case.task(2, op_id), case.values(1))
+
+    lazy_calls = []
+    to_dict_calls = []
+    orig_lazy = field_workspace._LazyReportDict.__init__
+    orig_to_dict = ExecutionProjection.to_dict
+
+    monkeypatch.setattr(
+        field_workspace._LazyReportDict,
+        "__init__",
+        lambda self, *a, **kw: (lazy_calls.append(True), orig_lazy(self, *a, **kw))[1],
+    )
+    monkeypatch.setattr(
+        ExecutionProjection,
+        "to_dict",
+        lambda self: (to_dict_calls.append(self.operation_ref), orig_to_dict(self))[1],
+    )
+
+    reader = FieldWorkspaceService(case.conn)
+    with reader.read_snapshot():
+        cohort, _, _ = reader.cohort({})
+    assert cohort["summary"]["tasks"] == 30 and cohort["summary"]["reports"] == 30
+    assert len(lazy_calls) == 0 and len(to_dict_calls) == 0
+
+    paged = reader.page(cohort, 1, 1)
+    assert len(paged["tasks"]) == 1
+    assert len(lazy_calls) == 0 and len(to_dict_calls) == 1

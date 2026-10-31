@@ -157,6 +157,24 @@ class BatchCompletion:
             "failure_batch_ids_sample": list(self.failure_batch_ids[:20]),
         }
 
+    def public_dict(self) -> Dict[str, Any]:
+        return {
+            "contract": "expected_operations_complete_only_v1",
+            "objective_defined": self.objective_defined,
+            "objective_score_policy": self.objective_score_policy,
+            "objective_scope": self.objective_scope,
+            "incomplete_work_weight": float(self.incomplete_work_weight),
+            "due_metrics_scope": "completed_batches_only",
+            "resource_metrics_scope": "scheduled_results_only",
+            "expected_operation_count": self.expected_operation_count,
+            "missing_operation_count": self.missing_operation_count,
+            "unexpected_result_count": self.unexpected_result_count,
+            "complete_batch_count": self.complete_batch_count,
+            "incomplete_batch_count": len(self.incomplete_batch_ids),
+            "partial_batch_count": len(self.partial_batch_ids),
+            "failure_detail_count": self.failure_detail_count,
+        }
+
 
 def collect_batch_completion(
     results: Iterable[ScheduleResult],

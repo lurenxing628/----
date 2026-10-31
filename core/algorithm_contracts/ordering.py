@@ -4,10 +4,15 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from core.errors import ValidationError
 from core.models.batch import Batch
-from core.shared.strict_parse import parse_optional_date, parse_optional_datetime
 
-from .sort_strategies import BatchForSort, SortStrategy
 from .types import OpForScheduleAlgo
+
+
+def clean_resource_id(value: Any) -> str:
+    if value is None:
+        return ""
+    text = str(value)
+    return text if text.strip() else ""
 
 
 def normalize_text_id(value: Any) -> str:
@@ -53,24 +58,6 @@ def normalize_batch_order_override(
         seen.add(batch_id)
         override_order.append(batch_id)
     return override_order
-
-
-def build_batch_sort_inputs(
-    batches: Mapping[str, Batch],
-    *,
-    strategy: SortStrategy,
-) -> List[BatchForSort]:
-    batch_for_sort: List[BatchForSort] = []
-    for batch_id, batch in batches.items():
-        batch_for_sort.append(
-            BatchForSort(
-                batch_id=batch_id,
-                priority=batch.priority,
-                due_date=parse_optional_date(batch.due_date, field="due_date"),
-                created_at=parse_optional_datetime(batch.created_at, field="created_at") if strategy == SortStrategy.FIFO else None,
-            )
-        )
-    return batch_for_sort
 
 
 def operation_sort_key(op: OpForScheduleAlgo, batch_order: Mapping[str, int]) -> Tuple[int, str, int, int]:

@@ -138,56 +138,54 @@
   function details(error) { return messageDetails[error && error.code] || null; }
   function validIntent(v) { return shape(v, ['schema_version', 'input_ref', 'request_key', 'run_ref', 'data_context_ref']) && v.schema_version === 2 && contextRef(v.data_context_ref)
     && token(v.input_ref) && key(v.request_key) && (v.run_ref === null || ref(v.run_ref)); }
-  function pending(storage) {
-    const targetStorage = storage === undefined ? () => window.localStorage : () => storage;
-    const same = (a, b) => !!a && !!b && a.input_ref === b.input_ref && a.request_key === b.request_key && a.run_ref === b.run_ref && a.data_context_ref === b.data_context_ref;
-    const store = T.pendingStore({
-      key: PENDING_KEY, storage: targetStorage, validate: validIntent, validateWrite: null, same,
-      readError: '读不到上次排产的操作记录，请重新打开页面，不要重做。',
-      corruptError: '本机存的排产操作记录已损坏，已拦下新排产。请不要再操作，联系维护人员。',
-      invalidError: '本机存的排产操作记录不完整，已拦下新排产。请不要再操作，联系维护人员。',
-      conflictError: '上次操作记录已变化，没有删除其他记录。',
-      writeError: '存不下这次排产的操作记录，没有开始排产。请重新打开页面。',
-      removeError: '本机无法更新上次操作记录。请不要再操作，联系维护人员。'
-    });
-    const recentStore = T.pendingStore({
-      key: RECENT_KEY, storage: targetStorage,
-      validate: value => shape(value, ['intent', 'resolution']) && validIntent(value.intent) && ['found', 'context_replaced'].includes(value.resolution),
-      validateWrite: null,
-      corruptError: '最近排产记录读不到，请到排产记录页查看。',
-      invalidError: '最近排产记录不完整，请到排产记录页查看。'
-    });
-    const { read, write, save } = store;
-    return { read, recent: recentStore.read,
-      begin(inputRef, previous, dataContext) {
-        check(token(inputRef), '排产检查已失效，请重新做排产检查。'); const current = read();
-        check(previous === null || validIntent(previous));
-        check(previous ? same(current, previous) : current === null, '上次排产还没确认结果，不能重做。请先点「查询结果」。');
-        check(contextRef(dataContext));
-        return write({ schema_version: 2, input_ref: inputRef, request_key: T.requestKey('run'), run_ref: null, data_context_ref: dataContext });
-      },
-      attach(intent, runRef) {
-        const current = read();
-        check(validIntent(intent) && current !== null && ref(runRef) && current.request_key === intent.request_key && current.input_ref === intent.input_ref
-          && (!intent.run_ref || intent.run_ref === runRef) && (!current.run_ref || current.run_ref === runRef), '上次操作记录已变化，没有覆盖其他排产记录。');
-        if (current.run_ref === runRef) return current;
-        return write({ ...intent, run_ref: runRef });
-      },
-      finish(intent, resolution) {
-        const current = read();
-        check(['found', 'context_replaced'].includes(resolution) && validIntent(intent));
-        // A completed lookup in an older tab must never erase a newer submission.
-        if (current === null) return;
-        check(same(current, intent), '上次操作记录已变化，没有删除其他记录。');
-        recentStore.write({ intent, resolution });
-        targetStorage().removeItem(PENDING_KEY);
-      },
-      reject(intent) {
-        check(validIntent(intent));
-        save(null, intent);
+  const store = T.pendingStore({
+    key: PENDING_KEY, validate: validIntent, validateWrite: null,
+    readError: '读不到上次排产的操作记录，请重新打开页面，不要重做。',
+    corruptError: '本机存的排产操作记录已损坏，已拦下新排产。请不要再操作，联系维护人员。',
+    invalidError: '本机存的排产操作记录不完整，已拦下新排产。请不要再操作，联系维护人员。',
+    conflictError: '上次操作记录已变化，没有删除其他记录。',
+    writeError: '存不下这次排产的操作记录，没有开始排产。请重新打开页面。',
+    removeError: '本机无法更新上次操作记录。请不要再操作，联系维护人员。'
+  });
+  const recentStore = T.pendingStore({
+    key: RECENT_KEY,
+    validate: value => shape(value, ['intent', 'resolution']) && validIntent(value.intent) && ['found', 'context_replaced'].includes(value.resolution),
+    validateWrite: null,
+    corruptError: '最近排产记录读不到，请到排产记录页查看。',
+    invalidError: '最近排产记录不完整，请到排产记录页查看。'
+  });
+  const { read, flush, save } = store;
+  const runPending = { read, flush, recent: recentStore.read,
+    begin(inputRef, dataContext) {
+      check(token(inputRef), '排产检查已失效，请重新做排产检查。');
+      check(contextRef(dataContext));
+      try {
+        return save({ schema_version: 2, input_ref: inputRef, request_key: T.requestKey('run'), run_ref: null, data_context_ref: dataContext }, null);
+      } catch (error) {
+        if (error && error.conflict === true) throw new Error('上次排产还没确认结果，不能重做。请先点「查询结果」。');
+        throw error;
       }
-    };
-  }
+    },
+    attach(intent, runRef) {
+      check(validIntent(intent) && ref(runRef) && (!intent.run_ref || intent.run_ref === runRef), '上次操作记录已变化，没有覆盖其他排产记录。');
+      try {
+        return save({ ...intent, run_ref: runRef }, intent);
+      } catch (error) {
+        if (error && error.conflict === true) throw new Error('上次操作记录已变化，没有覆盖其他排产记录。');
+        throw error;
+      }
+    },
+    finish(intent, resolution) {
+      check(['found', 'context_replaced'].includes(resolution) && validIntent(intent));
+      save(null, intent, () => recentStore.write({ intent, resolution }));
+    },
+    reject(intent) {
+      check(validIntent(intent));
+      save(null, intent);
+    }
+  };
+  // 排产操作记录只存在本页的 window.localStorage，全页共用这一份。
+  const pending = () => runPending;
   // 排产检查核对、受理回执和读取都按 30 秒等待；受理失败的结果编号指向排产请求查询。
   async function preview(inputRef, signal) {
     check(token(inputRef));

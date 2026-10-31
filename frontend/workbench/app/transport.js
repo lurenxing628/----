@@ -3,7 +3,7 @@
   // 工作台唯一的传输通道：地址守卫、取消与超时、信封校验、统一错误对象、命令确定/不确定判定、下载与存盘、request_key。
   // 统一错误对象：{ message, code, fields, conflicts, committed, status, requestRef, requestKey, resultTarget }。
   const PREFIX = '/api/workbench/v1/';
-  const REJECTED_STATUS = [400, 404, 409, 422, 503];
+  const REJECTED_STATUS = [400, 404, 409, 413, 422, 503];
   // 工作台下载只有这四种文件；领域写 types: [T.types.csv] 这种形式。
   const types = Object.freeze({ csv: 'text/csv', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     zip: 'application/zip', sqlite: 'application/vnd.sqlite3' });
@@ -215,29 +215,44 @@
     return JSON.stringify(value, (_, item) => object(item) ? Object.keys(item).sort().reduce((out, key) => { out[key] = item[key]; return out; }, {}) : item);
   }
   const equal = (a, b) => canonical(a) === canonical(b);
-  function raise(spec, fallback, extra) {
-    const err = !spec ? fallback : typeof spec === 'function' ? spec() : new Error(spec);
+  function raise(spec, cause, extra) {
+    const err = !spec ? cause : typeof spec === 'function' ? spec() : new Error(spec);
     if (extra) Object.assign(err, extra);
     throw err;
   }
-  const unflushedByKey = new Map();
-  // 待确认意图的本机存储：统一读、校验、CAS 写、清除与同页事件通知，错误文案由各领域指定。
+  // 跨页互斥的唯一入口：同名的本机待确认记录转换在所有标签页之间串行。不带 wait 时拿不到锁立即返回 acquired:false。
+  async function exclusive(name, { wait }, fn) {
+    const locks = window.navigator.locks;
+    if (!locks) throw fault('当前浏览器不支持，请用 Chrome 打开。', { code: 'locks_unavailable' });
+    return locks.request(name, wait ? {} : { ifAvailable: true },
+      async lock => lock ? { acquired: true, value: await fn() } : { acquired: false, value: undefined });
+  }
+  // 本页内每个存储对象、每个键的状态：known 是本页最近读到或写入的值；pending 是结算类转换没写进磁盘的记录，
+  // disk 是写失败时磁盘上留着的旧值，value 是应有的新值，beforeWrite 是 getItem 失败时还没执行的附属写入。只在本页内存里，不跨页共享。
+  // read 只报告未刷盘记录，写回只由 flush 与 save 做。
+  const pageSlots = new WeakMap();
+  // 待确认意图的本机存储：统一读、校验、CAS 写、清除与同页事件通知，错误文案由各领域指定；跨页串行由调用方用 exclusive 保证。
   function pendingStore({ key, storage = () => window.localStorage, event, raw = false, validate, validateWrite = validate,
       encode = value => value, same = equal, readError, corruptError = readError, invalidError = corruptError,
       conflictError, invalidWriteError = invalidError, writeError, removeError = writeError }) {
-    function currentPending(target) {
-      const pending = unflushedByKey.get(key);
-      if (!pending) return null;
-      if (target && pending.target && pending.target !== target) {
-        unflushedByKey.delete(key);
-        return null;
-      }
-      if (target && !pending.target) pending.target = target;
-      return pending;
+    // storage() 本身抛错时，本实例的状态先记在这里，存储恢复后归入对应的存储对象。
+    const orphan = { known: undefined, pending: null };
+    const matches = (left, right) => left === null || right === null ? left === right
+      : raw ? same(left, right) : same(encode(left), encode(right));
+    const notify = value => { if (event) window.dispatchEvent(new CustomEvent(event, { detail: value })); };
+    const put = (target, value) => value === null ? target.removeItem(key) : target.setItem(key, raw ? value : JSON.stringify(encode(value)));
+    const conflict = () => raise(conflictError, undefined, { conflict: true });
+    function slotOf(target) {
+      if (target === undefined) return orphan;
+      let slots = pageSlots.get(target);
+      if (!slots) pageSlots.set(target, slots = new Map());
+      let slot = slots.get(key);
+      if (!slot) slots.set(key, slot = { known: undefined, pending: null });
+      if (orphan.pending) { slot.pending = orphan.pending; slot.known = orphan.known; orphan.pending = null; }
+      return slot;
     }
-    function readDisk(target, pending) {
-      let text;
-      try { text = target.getItem(key); } catch (error) { raise(readError, error, pending ? { saved: pending.value } : undefined); }
+    // 磁盘原始串的唯一解码点：null 表示没有记录；原始串模式只校验，其余先解析再校验。
+    function decode(text) {
       if (text === null) return null;
       let value = text;
       if (!raw) {
@@ -246,67 +261,87 @@
       if (validate && !validate(value)) raise(invalidError);
       return value;
     }
-    function effectiveRead() {
-      let target = null;
-      try { target = storage(); } catch (error) {
-        const pending = currentPending(null);
-        raise(readError, error, pending ? { saved: pending.value } : undefined);
+    // 每次转换只调一次 getItem。未刷盘记录只在磁盘仍是它记下的旧值时有效，否则别处已经写过，丢弃它。
+    // 读不到磁盘时先让 settle（save 的冲突核对与未刷盘记录）处理本页状态，再在读取边界报错。
+    function effectiveRead(settle) {
+      let target, text;
+      try { target = storage(); text = target.getItem(key); }
+      catch (error) {
+        const slot = slotOf(target);
+        if (settle) settle(slot);
+        raise(readError, error, slot.pending ? { saved: slot.pending.value } : undefined);
       }
-      const pending = currentPending(target), disk = readDisk(target, pending);
-      if (!pending) return { target, disk, current: disk, pending: null };
-      if (!same(disk, pending.disk)) {
-        unflushedByKey.delete(key);
-        return { target, disk, current: disk, pending: null };
-      }
-      return { target, disk, current: pending.value, pending };
+      const slot = slotOf(target), disk = decode(text);
+      if (slot.pending && !matches(disk, slot.pending.disk)) slot.pending = null;
+      slot.known = slot.pending ? slot.pending.value : disk;
+      return { target, slot, disk, current: slot.known };
     }
+    // 未刷盘记录在 getItem 失败时还欠着 beforeWrite：写本键前先补做，补做成功立即清掉，本键再写失败时重试不会重复执行。
+    function replay(slot) {
+      const pending = slot.pending;
+      if (pending && pending.beforeWrite) { pending.beforeWrite(); pending.beforeWrite = null; }
+    }
+    // 只读不写，锁外也能调。本页还有仍有效的未刷盘记录时，照写失败报出并带 saved，由持锁的 flush 或下一次 save 写回。
     function read() {
-      const { target, current, pending } = effectiveRead();
-      if (pending) {
-        try {
-          if (current === null) target.removeItem(key);
-          else target.setItem(key, raw ? current : JSON.stringify(encode(current)));
-          unflushedByKey.delete(key);
-        } catch (error) { raise(current === null ? removeError : writeError, error, { saved: current }); }
+      const { slot, current } = effectiveRead();
+      if (slot.pending) raise(current === null ? removeError : writeError, undefined, { saved: current });
+      return current;
+    }
+    // 和 save 一样由调用方在本键的跨页锁里调用：本页未刷盘记录仍有效时写进磁盘，返回当前值。
+    function flush() {
+      const { target, slot, current } = effectiveRead();
+      if (slot.pending) {
+        replay(slot);
+        try { put(target, current); } catch (error) { raise(current === null ? removeError : writeError, error, { saved: current }); }
+        slot.pending = null;
       }
       return current;
     }
-    function write(value, fallbackDisk) {
+    // 不读直接写：只给不做 CAS 的附属记录用（如最近排产结论）。
+    function write(value) {
       if (value !== null && validateWrite && !validateWrite(value)) raise(invalidWriteError);
-      let target = null;
-      try {
-        target = storage();
-        if (value === null) target.removeItem(key);
-        else target.setItem(key, raw ? value : JSON.stringify(encode(value)));
-        unflushedByKey.delete(key);
-      } catch (error) {
-        if (fallbackDisk !== undefined) {
-          unflushedByKey.set(key, { target: target && typeof target === 'object' ? target : null, disk: fallbackDisk, value });
-          if (event) window.dispatchEvent(new CustomEvent(event, { detail: value }));
-        }
-        raise(value === null ? removeError : writeError, error, fallbackDisk !== undefined ? { saved: value } : undefined);
-      }
-      if (event) window.dispatchEvent(new CustomEvent(event, { detail: value }));
+      try { put(storage(), value); } catch (error) { raise(value === null ? removeError : writeError, error); }
+      notify(value);
       return value;
     }
-    function save(value, previous) {
-      const settling = previous !== null && (previous.phase === 'pending' || previous.run_ref === null) && (value === null || value.phase !== 'pending');
-      let disk, current;
-      try { ({ disk, current } = effectiveRead()); }
+    // save 的写盘：结算类转换（settledDisk 有值）写不进去时记成未刷盘记录、在错误上带出 saved，磁盘仍是旧值时由 flush 或下一次 save 写回。
+    function commit(target, slot, value, settledDisk) {
+      try { put(target, value); }
       catch (error) {
-        if (settling && (value === null || !validateWrite || validateWrite(value))) {
-          let target = null;
-          try { target = storage(); } catch (_) {}
-          unflushedByKey.set(key, { target: target && typeof target === 'object' ? target : null, disk: previous, value });
-          if (event) window.dispatchEvent(new CustomEvent(event, { detail: value }));
-          if (error && typeof error === 'object') error.saved = value;
-        }
-        throw error;
+        if (settledDisk === undefined) raise(value === null ? removeError : writeError, error);
+        slot.pending = { disk: settledDisk, value }; slot.known = value; notify(value);
+        raise(value === null ? removeError : writeError, error, { saved: value });
       }
-      if (!same(current, previous)) raise(conflictError);
-      return write(value, settling ? disk : undefined);
+      slot.pending = null; slot.known = value; notify(value);
+      return value;
     }
-    return { read, write, save };
+    // CAS 转换：当前值仍是 previous 才写入 value。当前已是 value 时无操作（重复的结束、清除、关联都幂等）；但本页还有未刷盘记录时，
+    // 只有这条记录的发起方（previous 是记录的旧值或目标值）能接着写回，过时调用方不能接管。beforeWrite 只写别的键，在本键写入前执行；
+    // getItem 失败时它还没执行，随未刷盘记录留下，由 flush 或下一次 save 写本键前补做。
+    function save(value, previous, beforeWrite) {
+      if (value !== null && validateWrite && !validateWrite(value)) raise(invalidWriteError);
+      const settling = previous !== null && (value === null || value.phase !== 'pending');
+      const { target, slot, disk, current } = effectiveRead(slot => {
+        const view = slot.pending ? slot.pending.value : slot.known;
+        if (view !== undefined && !matches(view, previous) && !matches(view, value)) conflict();
+        if (settling && !(view !== undefined && matches(view, value))) {
+          // 还欠着 beforeWrite 的记录不能被接在它后面的结算顶掉。
+          if (slot.pending && slot.pending.beforeWrite) conflict();
+          slot.pending = { disk: slot.pending ? slot.pending.disk : view !== undefined ? view : previous, value, beforeWrite };
+          slot.known = value; notify(value);
+        }
+      });
+      if (matches(current, value)) {
+        if (!slot.pending) return value;
+        if (matches(previous, slot.pending.disk) || matches(previous, value)) { replay(slot); return commit(target, slot, value, slot.pending.disk); }
+        conflict();
+      }
+      if (!matches(current, previous)) conflict();
+      replay(slot);
+      if (beforeWrite) beforeWrite();
+      return commit(target, slot, value, settling ? disk : undefined);
+    }
+    return { read, flush, write, save };
   }
-  window.APSWorkbenchTransport = { types, url, read, preview, command, lookup, download, saveBlob, downloadJSON, requestKey, rejected, uncertain, envelope, failure, canonical, equal, pendingStore };
+  window.APSWorkbenchTransport = { types, url, read, preview, command, lookup, download, saveBlob, downloadJSON, requestKey, rejected, uncertain, envelope, failure, canonical, equal, exclusive, pendingStore };
 })();

@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const A = window.RunAdoptionAPI, U = window.RunAdoptionControls;
+  const A = window.RunAdoptionAPI, U = window.RunAdoptionControls, T = window.APSWorkbenchTransport;
   // A fresh draft starts with the last handler typed on this machine; it is a typing convenience, never an identity.
   const empty = () => ({ reason: '', declared_operator: window.WorkbenchHandlerMemory.read().value });
   function Session({ candidateRef, candidateDisplay, candidateCatalog, onNavigate }) {
@@ -14,9 +14,9 @@
     const alive = React.useRef(false), lock = React.useRef(false), previewRequest = React.useRef(null), active = React.useRef(intent), current = React.useRef(null);
     active.current = intent; current.current = { candidateRef, preview, consent, draft, storageError };
     React.useEffect(() => { alive.current = true; return () => { alive.current = false; if (previewRequest.current) previewRequest.current.abort(); }; }, []);
-    function readStorage(event) {
+    function readStorage(event, load = A.pending().read) {
       try {
-        const saved = event && event.type === A.EVENT ? event.detail : A.pending().read();
+        const saved = event && event.type === A.EVENT ? event.detail : load();
         if (saved !== active.current && JSON.stringify(saved) !== JSON.stringify(active.current)) {
           const switched = !active.current || !saved || saved.request_key !== active.current.request_key;
           const nextDraft = saved ? saved.input : empty();
@@ -45,9 +45,8 @@
       return () => { window.removeEventListener('storage', changed); window.removeEventListener(A.EVENT, changed); };
     }, []);
     function acceptResult(value, original) {
-      const receipt = A.receipt(value, original);
       if (!alive.current || !active.current || active.current.request_key !== original.request_key) return;
-      setResult(receipt); setError(''); setNotice('');
+      setResult(value); setError(''); setNotice('');
     }
     React.useEffect(() => {
       setReplacedInfo(null);
@@ -87,20 +86,20 @@
       const initialActive = active.current;
       lock.current = true; setBusy(true); setError(''); setNotice('');
       try {
-        if (!navigator.locks || typeof navigator.locks.request !== 'function') { if (alive.current) setError('当前浏览器不支持，请用 Chrome 打开。'); return; }
-        await navigator.locks.request(A.PENDING_KEY, { ifAvailable: true }, async acquired => {
-          if (!acquired) { if (alive.current) setError('另一个页面正在确认采用，请稍后刷新上次操作记录。'); return; }
+        // 采用记录、提交和拒绝写回在跨页互斥里串行，持锁跨过采用命令。
+        const { acquired } = await T.exclusive(A.PENDING_KEY, {}, async () => {
           const latest = current.current;
           if (!alive.current || latest.storageError || latest.preview !== preview || !latest.consent || (active.current ? active.current.candidate_ref : latest.candidateRef) !== preview.candidate_ref
             || latest.draft.reason !== draft.reason || latest.draft.declared_operator !== draft.declared_operator
             || JSON.stringify(active.current) !== JSON.stringify(initialActive)
             || active.current && active.current.phase === 'pending') return;
-          const original = A.pending().begin(preview, values, active.current);
+          let original;
+          try { original = A.pending().begin(preview, values, active.current); } catch (e) { setStorageError(e.message); return; }
           active.current = original; current.current = { ...current.current, preview: null, consent: false }; setIntent(original); setDraft(values); setPreview(null); setConsent(false);
           try { acceptResult(await A.adopt(original, preview.write_context.write_token), original); }
           catch (e) {
             if (JSON.stringify(active.current) !== JSON.stringify(original)) { if (alive.current) readStorage(); return; }
-            if (window.APSWorkbenchTransport.rejected(e)) {
+            if (T.rejected(e)) {
               // Only an authentic, definitive non-commit permits a new preview. Unknown responses keep the original key.
               const rejected = { ...original, phase: 'rejected' };
               try { A.pending().reject(original, e); active.current = rejected; }
@@ -113,25 +112,33 @@
             } else if (alive.current) setError(window.WorkbenchTerms.outcomes.pending('采用'));
           }
         });
-      } catch (e) { if (alive.current) setStorageError(e.message); }
+        if (!acquired && alive.current) setError('另一个页面正在确认采用，请稍后刷新上次操作记录。');
+      } catch (e) { if (alive.current) setError(e.message); }
       finally { lock.current = false; if (alive.current) { setBusy(false); refresh(); } }
+    }
+    // 「刷新上次操作记录」在跨页互斥里把本页没写进去的记录写回再读。
+    async function reload() {
+      try { await T.exclusive(A.PENDING_KEY, { wait: true }, () => readStorage(undefined, A.pending().flush)); }
+      catch (e) { setStorageError(e.message); }
+      refresh();
     }
     function close() {
       if (previewRequest.current) previewRequest.current.abort();
       current.current = { ...current.current, preview: null, consent: false };
       setOpen(false); setPreview(null); setConsent(false);
     }
-    function finish() {
-      try { A.pending().finish(intent, result); setResult(null); setOpen(false); setNotice(window.WorkbenchTerms.outcomes.done('采用')); }
+    // 结束本机采用记录的三种方式都在跨页互斥里写入。
+    async function finish() {
+      try { await T.exclusive(A.PENDING_KEY, { wait: true }, () => A.pending().finish(intent)); setResult(null); setOpen(false); setNotice(window.WorkbenchTerms.outcomes.done('采用')); }
       catch (e) { setStorageError(e.message); }
     }
-    function cancelRejected() {
-      try { A.pending().cancelRejected(intent); setOpen(false); setNotice('已结束本次未采用，原正式计划未改变。'); }
+    async function cancelRejected() {
+      try { await T.exclusive(A.PENDING_KEY, { wait: true }, () => A.pending().cancelRejected(intent)); setOpen(false); setNotice('已结束本次未采用，原正式计划未改变。'); }
       catch (e) { setStorageError(e.message); }
     }
-    function dismissReplaced() {
+    async function dismissReplaced() {
       try {
-        A.pending().dismissReplaced(intent, replacedInfo); setReplacedInfo(null); setOpen(false);
+        await T.exclusive(A.PENDING_KEY, { wait: true }, () => A.pending().dismissReplaced(intent, replacedInfo)); setReplacedInfo(null); setOpen(false);
         setNotice('已结束本机的旧来源待确认记录，原数据库中的采用结果未作更改。');
       } catch (e) { setStorageError(e.message); }
     }
@@ -145,11 +152,11 @@
         if (intent) { setOpen(true); if (pending && !result) refresh(); }
         else inspect();
       }} aria-expanded={open} aria-label={!intent && targetDisplay ? '采用前核对 ' + targetDisplay.label : label} title={!intent && targetDisplay ? '采用前核对 ' + targetDisplay.label : undefined} busy={busy && !intent}>{label}</U.Button>
-      {storageError && !open && <span className="ra-inline" role="alert">{storageError}<U.Button icon="refresh-cw" disabled={busy} onClick={() => { readStorage(); refresh(); }}>刷新上次操作记录</U.Button></span>}
+      {storageError && !open && <span className="ra-inline" role="alert">{storageError}<U.Button icon="refresh-cw" disabled={busy} onClick={reload}>刷新上次操作记录</U.Button></span>}
       {intent && !open && <span className="ra-inline">{result ? '采用结果已确认。' : pending ? '上次操作已保留，结果待确认。' : '上次没有采用，请重新预检。'}</span>}
       {open && <U.Dialog value={display} intent={intent} result={result} preview={preview} draft={draft} consent={consent} busy={busy || checking}
         candidateDisplay={targetDisplay} replacedInfo={replacedInfo}
-        error={storageError || error} storageError={storageError} onReadStorage={() => { readStorage(); refresh(); }}
+        error={storageError || error} storageError={storageError} onReadStorage={reload}
         notice={[intent && intent.candidate_ref !== candidateRef ? '另一个候选方案还有没确认的采用操作，请先确认那条记录。' : '',
           notice || (intent && intent.phase === 'rejected' && !preview ? '上次采用被拒绝了，填写内容已保留。请重新预检并再次确认。' : '')].filter(Boolean).join(' ')}
         onChange={value => { current.current = { ...current.current, draft: value }; setDraft(value); }}

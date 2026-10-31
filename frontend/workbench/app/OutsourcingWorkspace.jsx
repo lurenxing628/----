@@ -37,9 +37,9 @@
       if (paging) next.snapshot_ref = result.meta.snapshot_ref; setQuery(next); }
     function reload() { change({}); refresh(); }
     function open(ref) { setSelected(ref); setDialog(null); }
-    function finish() {
+    async function finish() {
       const ref = command.saved && command.saved.phase === 'confirmed' && command.saved.receipt.data.outsourcing_ref;
-      if (command.finish()) { setDialog(null); if (ref) setSelected(ref); reload(); onUpdated(); }
+      if (await command.finish()) { setDialog(null); if (ref) setSelected(ref); reload(); onUpdated(); }
     }
     return <section className="outsourcing-live" aria-label="外协登记" data-outsourcing-workspace data-ready={!!data}>
       <div className="os-heading"><h3>外协发出与回厂登记</h3><div className="os-tools"><label>登记筛选<select aria-label="外协登记筛选" value={q.status} disabled={read.loading} onChange={e => change({ status: e.target.value })}>

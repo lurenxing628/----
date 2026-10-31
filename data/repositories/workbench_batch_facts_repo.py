@@ -28,6 +28,13 @@ class WorkbenchBatchFactsRepository(BaseRepository):
         """按 BATCH_FACT_TABLES 顺序整表读取（rowid 序），返回 {表名: [行 dict]}。"""
         return {table: self.fetchall('SELECT * FROM "' + table + '" ORDER BY rowid') for table in BATCH_FACT_TABLES}
 
+    def entity_tables(self) -> Dict[str, List[Dict[str, Any]]]:
+        """Minimal tables required for batch identity, uniqueness and part existence checks."""
+        return {
+            table: self.fetchall('SELECT * FROM "' + table + '" ORDER BY rowid')
+            for table in ("Batches", "Parts", "WorkbenchEntityRefs")
+        }
+
     def choice_tables(self) -> Dict[str, List[Dict[str, Any]]]:
         """Creation choices need only base catalogs, authorizations and existing refs."""
         tables = {table: self.fetchall('SELECT * FROM "' + table + '" ORDER BY rowid') for table in CHOICE_CATALOG_TABLES}

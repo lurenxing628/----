@@ -7,6 +7,7 @@ from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.trial_origin import delivery_origin, operation_contexts
 from core.services.workbench.facts.trial_policy import load_draft, load_scenario
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
+from core.services.workbench.trial.constraints import build_trial_intervals
 from core.services.workbench.trial.effort import operation_types
 from core.services.workbench.trial.preparation import apply_preparation, preparation_projection, trial_changeovers
 from core.services.workbench.trial.projection import unplanned_operations
@@ -215,7 +216,7 @@ def test_trial_switches_follow_actual_type_identity_and_saved_complete_arrangeme
                               [{"op_id": second["original"]["operation"]["id"], "op_type_id": None}])
     assert unknown[second["operation_ref"]] == {"ref": None, "label": None}
     unknown_source = dict(head["admission"], source=dict(head["admission"]["source"], operation_types=unknown))
-    assert trial_changeovers(rows, unknown_source)["before"]["count"] is None
+    assert trial_changeovers(rows, unknown_source, trial_intervals=build_trial_intervals(rows))["before"]["count"] is None
     updated = change(case, draft, task=1, start="2026-09-09T12:00:00")["data"]
     assert updated["comparison"]["changeovers"] == 0
     assert updated["comparison"]["changeover_common"]["before"]["count"] == 1

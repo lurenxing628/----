@@ -1,9 +1,5 @@
 """DA-only helpers: real engine/adoptions in temporary file SQLite, never production."""
 
-from core.models.workbench_plan_scope import PlanReadScope
-from core.services.workbench.plan.baseline import build_plan_baseline
-from core.services.workbench.plan.queries import WorkbenchPlanQueryService
-from core.services.workbench.plan.read_context import PlanReadContext
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.run_candidate_adoption_support import INTENT
 from tests.workbench.run_candidate_adoption_support import service as candidate_service
@@ -33,17 +29,6 @@ def adopt_trial(case, official, suffix="second"):
     result = svc.adopt(saved["scenario_ref"], preview["write_context"]["write_token"], "da-adopt-trial-" + suffix, INTENT)
     assert result["result"] == "committed", result
     return result["data"]["official_plan"], saved
-
-
-def read(case, official, start=None, end=None):
-    conn = case.conn
-    query = WorkbenchPlanQueryService(conn)
-    with query.read_snapshot():
-        scope = PlanReadScope(official["plan_ref"], start, end)
-        context = PlanReadContext(conn, references=query.references, entities=query.entities)
-        with context.read_scope():
-            _, entry, _ = context.selected(scope.plan_ref)
-            return build_plan_baseline(conn, entry=entry, scope=scope, context=context)
 
 
 def two_versions(case, source="trial"):

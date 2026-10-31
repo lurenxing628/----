@@ -13,8 +13,11 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_analysis import operation_metrics
 from core.models.workbench_run_baseline import RunCandidateBaselineScope
 from core.models.workbench_run_candidate import RunCandidateReadScope
-from core.services.workbench.facts.candidate_projection import algorithm_facts
-from core.services.workbench.facts.candidate_tasks import filter_workspace
+from core.services.workbench.facts.candidate_projection import (
+    algorithm_facts,
+    business_candidate_fields,
+)
+from core.services.workbench.facts.candidate_tasks import scope_workspace_tasks
 from core.services.workbench.run.candidate_analysis import read_candidate_analysis
 from core.services.workbench.run.candidate_baseline import WorkbenchRunCandidateBaselineQueryService
 from core.services.workbench.run.worker import WorkbenchRunWorker
@@ -61,14 +64,31 @@ def test_full_app_explicit_registration_only_temporary_connections(candidate_cas
     artifact = json.loads(case.conn.execute("SELECT artifact_json FROM WorkbenchRunCandidates WHERE candidate_ref=?", (refs[0],)).fetchone()[0])
     assert artifact["generation_policy_version"] == "unified_search_v1"
     assert 1 <= len(refs) <= 3
-    assert generation["algorithm"] == algorithm_facts(artifact)
+    assert generation["algorithm"] == algorithm_facts(artifact, business_fields=business_candidate_fields(artifact))
     assert generation["algorithm"]["target_objectives"] == artifact["target_objectives"]
     assert list(artifact["evaluations"]) != artifact["target_objectives"]
     token = result["meta"]["snapshot_ref"]
+    from core.services.workbench.facts import candidate_read_source
+    from core.services.workbench.run import candidates as run_candidates_service
     from web.routes.workbench import run_candidates
 
     with monkeypatch.context() as patch:
         patch.setattr(run_candidates, "_response", lambda *_: pytest.fail("Downloads must not rehearse a discarded JSON envelope"))
+        patch.setattr(
+            candidate_read_source,
+            "candidate_operation_effort_projection",
+            lambda *_: pytest.fail("Candidate export must not project operation effort"),
+        )
+        patch.setattr(
+            candidate_read_source,
+            "candidate_gantt_graph",
+            lambda *_, **__: pytest.fail("Candidate export must not build gantt graph"),
+        )
+        patch.setattr(
+            run_candidates_service,
+            "candidate_delivery_risks",
+            lambda *_: pytest.fail("Candidate export must not compute delivery risks"),
+        )
         for fmt in ("csv", "xlsx"):
             response = client.get(BASE + "/candidates/" + refs[0] + "/export", query_string={"format": fmt, "snapshot_ref": token})
             assert response.status_code == 200 and response.headers["X-Workbench-Task-Count"] == "1"
@@ -185,15 +205,26 @@ def test_added_removed_and_absent_arrangements_are_known_without_counting_machin
 
 
 def test_arranged_and_unplanned_operations_share_one_sequence_order():
+    from types import SimpleNamespace
+
     def row(ref, sequence):
         return {"operation_ref": ref, "batch_ref": "b" * 48, "sequence": sequence}
 
     tasks = [row("t-unknown", None), row("t-big", "9007199254740993"), row("t-two", 2), row("t-zero", 0)]
     unplanned = [row("u-one", 1), row("u-unknown", None), row("u-zero", 0)]
+    source = SimpleNamespace(
+        facts=None,
+        raw_tasks=tasks,
+        disposition={},
+        tasks=tasks,
+        unplanned=unplanned,
+    )
     for order, expected_tasks, expected_unplanned in (
             ("asc", ["t-zero", "t-two", "t-big", "t-unknown"], ["u-zero", "u-one", "u-unknown"]),
             ("desc", ["t-unknown", "t-big", "t-two", "t-zero"], ["u-unknown", "u-one", "u-zero"])):
-        arranged, pending = filter_workspace(tasks, unplanned, RunCandidateReadScope("c" * 48, order=order))
+        arranged, pending = scope_workspace_tasks(
+            source, RunCandidateReadScope("c" * 48, order=order)
+        )
         assert [item["operation_ref"] for item in arranged] == expected_tasks
         assert [item["operation_ref"] for item in pending] == expected_unplanned
 

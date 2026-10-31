@@ -45,6 +45,7 @@ class PreparedRunResult:
     result: Dict[str, Any]
     read_models: Dict[str, Any]
     status_header: Dict[str, Any]
+    captured_facts: Dict[str, Any]
 
 
 class CandidateRunInputError(ValueError):

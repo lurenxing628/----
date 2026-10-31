@@ -1,36 +1,23 @@
 """Read the immutable admission and candidate evidence without installing anything."""
 
-from core.infrastructure.connection_guards import schema_contract_memo
-from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
-from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 
-from .candidate_projection import candidate_summary, validate_manifest
+from .candidate_projection import candidate_completeness, validate_manifest
 from .candidate_store import CandidateStore
 from .preflight_dependencies import material_deferred_ids
 from .run_policy import require_admission
 
 
-def require_adoption_schema(conn):
-    memo = schema_contract_memo(conn)
-    if memo.get_schema(workbench_plan_identity_contract_issues):
-        raise WorkbenchCommandRejected("adoption_schema_unavailable", "正式计划编号结构不完整，无法采用。请联系维护人员。", 503)
-    # The legacy allocator's CREATE IF NOT EXISTS must never become a repair path.
-    sql = memo.structure.sql.get("ScheduleVersionSeq")
-    if sql is None or "AUTOINCREMENT" not in sql.upper():
-        raise WorkbenchCommandRejected("adoption_schema_unavailable", "排版本号用的结构还没装好，不能采用。请联系维护人员。", 503)
-
-
 def load_adoption_candidate(conn, candidate_ref):
     run, candidate, scope, tasks, capture, ids, facts, _ = load_adoption_candidate_with_key(
-        conn, candidate_ref, copy_on_read=False
+        conn, candidate_ref
     )
     return run, candidate, scope, tasks, capture, ids, facts
 
 
-def load_adoption_candidate_with_key(conn, candidate_ref, *, copy_on_read=False):
-    store = CandidateStore(conn, copy_on_read=copy_on_read)
+def load_adoption_candidate_with_key(conn, candidate_ref):
+    store = CandidateStore(conn)
     run_ref = store.candidate_run(candidate_ref)
     run = store.run(run_ref)
     repo = WorkbenchRunRepository(conn)
@@ -50,11 +37,12 @@ def load_adoption_candidate_with_key(conn, candidate_ref, *, copy_on_read=False)
     return run, candidate, scope, tasks, capture, ids, facts, store.build_adoption_raw_key(candidate_ref, head)
 
 
-def require_candidate_scope(run, candidate, scope, capture, *, scheduled_op_ids):
+def require_candidate_scope(run, candidate, scope, capture, *, scheduled_op_ids, completeness=None):
     """Prove this candidate's scope; a comparison sibling may have exhausted its budget."""
-    summary = candidate_summary(candidate, scope, scheduled_op_ids=scheduled_op_ids)
+    if completeness is None:
+        completeness = candidate_completeness(candidate, scope, scheduled_op_ids=scheduled_op_ids)
     deferred = material_deferred_ids(scope.values(), capture["input"])
-    if run["state"] not in ("complete", "partial") or (summary["completeness"] != "complete" and not deferred):
+    if run["state"] not in ("complete", "partial") or (completeness != "complete" and not deferred):
         raise CandidateAdoptionBlocked("candidate_incomplete", _incomplete_message(candidate, scope, deferred, scheduled_op_ids))
     ids = scheduled_op_ids
     if not ids or ids != {row["op_id"] for row in scope.values()} - deferred:

@@ -57,7 +57,7 @@
         setNavigationConfirmation(null);
       } catch (error) { setNavError(error); }
     }
-    function finish() { if (command.finish()) { setDialog(false); reload(); } }
+    async function finish() { if (await command.finish()) { setDialog(false); reload(); } }
     const currentSummary = data && q.category !== 'all' && data.categories[q.category];
     const external = q.category === 'external', activeTabs = external ? handlingAvailable ? { items: '处置清单', records: '处置历史' } : { items: '登记与更正历史' } : S.tabs;
     const activeTab = Object.prototype.hasOwnProperty.call(activeTabs, tab) ? tab : 'items', tabKeys = Object.keys(activeTabs);

@@ -1,15 +1,21 @@
 (function () {
   'use strict';
-  const A = window.SystemMaintenanceAPI, C = window.SystemMaintenanceControls;
+  const A = window.SystemMaintenanceAPI, C = window.SystemMaintenanceControls, T = window.APSWorkbenchTransport;
   function useCommand(onChanged, revision) {
     const [initial] = React.useState(A.inspectPending), [intent, setIntent] = React.useState(initial.intent), [storageError, setStorageError] = React.useState(initial.storageError);
-    const [result, setResult] = React.useState(null), [error, setError] = React.useState(null), [busy, setBusy] = React.useState(false);
-    const [host, setHost] = React.useState(null), [hostError, setHostError] = React.useState(null), [hostBusy, setHostBusy] = React.useState(true);
-    const startedHere = React.useRef(false), hostSequence = React.useRef(0);
-    const [selection, setSelection] = React.useState(null);
-    const current = React.useRef(intent), found = React.useRef(null), running = React.useRef(false), mounted = React.useRef(true), changed = React.useRef(onChanged);
+    const [result, setResult] = React.useState(initial.result || null), [error, setError] = React.useState(initial.error || null), [busy, setBusy] = React.useState(false);
+    const [host, setHost] = React.useState(initial.result && initial.result.host ? initial.result.host : null), [hostError, setHostError] = React.useState(null), [hostBusy, setHostBusy] = React.useState(true);
+    const startedHere = React.useRef(Boolean(initial.startedHere)), hostSequence = React.useRef(0);
+    const [selection, setSelection] = React.useState(initial.selection || null);
+    const current = React.useRef(initial.intent), found = React.useRef(initial.result || null), running = React.useRef(false), mounted = React.useRef(true), changed = React.useRef(onChanged);
     changed.current = onChanged;
-    function settle(value) { found.current = value; if (mounted.current) { setResult(value); if (value && value.host) setHost(value.host); } }
+    function settle(value, targetIntent, problem = null) {
+      if (!current.current || current.current.request_key !== targetIntent.request_key) return false;
+      if (!A.pending().settle(targetIntent, value, problem)) return false;
+      found.current = value;
+      if (mounted.current) { setResult(value); if (value && value.host) setHost(value.host); }
+      return true;
+    }
     async function inspectHost() {
       const sequence = ++hostSequence.current;
       if (mounted.current) setHostBusy(true);
@@ -21,8 +27,15 @@
       const original = current.current; if (!original || running.current) return;
       if (found.current && found.current.kind === 'rejected') return inspectHost();
       running.current = true; setBusy(true); setError(null);
-      try { settle(await A.lookup(original)); }
-      catch (problem) { if (mounted.current) setError(problem); }
+      // 查询在锁外，查询结论（或查询失败）写回本页记录在跨页互斥里做。
+      let value, problem = null;
+      try { value = await A.lookup(original); } catch (error) { problem = error; }
+      try {
+        await T.exclusive(A.PENDING_KEY, { wait: true }, () => {
+          if (!problem) settle(value, original);
+          else if (current.current && current.current.request_key === original.request_key && A.pending().settle(original, found.current, problem) && mounted.current) setError(problem);
+        });
+      } catch (error) { if (mounted.current) setError(error); }
       finally { await inspectHost(); running.current = false; if (mounted.current) setBusy(false); }
     }
     React.useEffect(() => {
@@ -35,10 +48,18 @@
           setStorageError(new Error('本机存的上次操作记录已变化，页面仍然停在等待确认的状态。请不要再操作，联系维护人员。'));
           lookup(); return;
         }
+        startedHere.current = Boolean(state.startedHere);
+        setSelection(state.selection);
         if (!state.storageError && !current.current) {
-          current.current = state.intent; setIntent(state.intent); settle(null); setError(null);
+          current.current = state.intent; setIntent(state.intent);
+          found.current = state.result || null; setResult(state.result || null); setError(state.error || null);
+          if (state.result && state.result.host) setHost(state.result.host);
+        } else if (current.current && state.intent && state.intent.request_key === current.current.request_key && state.result) {
+          found.current = state.result; setResult(state.result);
+          if (state.error) setError(state.error);
+          if (state.result.host) setHost(state.result.host);
         }
-        if (state.intent) lookup(); else inspectHost();
+        if (state.intent && !(state.result && state.result.terminal)) lookup(); else inspectHost();
       }
       reload();
       window.addEventListener('online', reload); window.addEventListener('storage', reload);
@@ -47,21 +68,34 @@
     async function execute(action, token, input, selected = null) {
       if (running.current || current.current || storageError || !host || hostError || host.state !== 'ready' || !host.operations_available) return;
       let original;
-      try { original = A.pending().begin(action); } catch (problem) { setStorageError(problem); return; }
-      startedHere.current = action === 'restore';
-      setSelection(selected);
-      current.current = original; setIntent(original); settle(null); setError(null); setBusy(true); running.current = true;
-      try { settle(await A.command(original, token, input)); }
-      catch (problem) {
-        if (mounted.current) setError(problem);
-        if (window.APSWorkbenchTransport.rejected(problem)) {
-          settle({ kind: 'rejected', terminal: true, intent: original });
-          try {
-            A.pending().finish(original); current.current = null;
-            if (mounted.current) setIntent(null);
-          } catch (storageProblem) { if (mounted.current) setStorageError(storageProblem); }
-        }
-      } finally { await inspectHost(); running.current = false; if (mounted.current) setBusy(false); }
+      running.current = true;
+      try {
+        // 维护操作的本机记录、提交和结果写回在跨页互斥里串行，持锁跨过维护命令。
+        const { acquired } = await T.exclusive(A.PENDING_KEY, {}, async () => {
+          try { original = A.pending().begin(action, selected); } catch (problem) { setStorageError(problem); return; }
+          startedHere.current = action === 'restore';
+          setSelection(selected);
+          current.current = original; setIntent(original); settle(null, original); setError(null); setBusy(true);
+          try { settle(await A.command(original, token, input), original); }
+          catch (problem) {
+            if (current.current && current.current.request_key === original.request_key) {
+              if (T.rejected(problem)) {
+                if (settle({ kind: 'rejected', terminal: true, intent: original }, original, problem)) {
+                  if (mounted.current) setError(problem);
+                  try {
+                    A.pending().finish(original); current.current = null;
+                    if (mounted.current) setIntent(null);
+                  } catch (storageProblem) { if (mounted.current) setStorageError(storageProblem); }
+                }
+              } else if (A.pending().settle(original, null, problem) && mounted.current) {
+                setError(problem);
+              }
+            }
+          }
+        });
+        if (!acquired && mounted.current) setError(new Error('另一个页面正在处理维护操作，请稍后重试。'));
+      } catch (problem) { if (mounted.current) setError(problem); }
+      finally { if (original) await inspectHost(); running.current = false; if (mounted.current) setBusy(false); }
     }
     const restorePending = !!(intent && intent.action === 'restore' && !(result && result.terminal
       && (result.kind === 'rejected' || !startedHere.current)));
@@ -71,11 +105,16 @@
       : hostError ? hostError.message : !host ? '正在查询维护状态。' : '';
     const lockedReason = storageError ? storageError.message : readReason || (intent ? intent.summary + '结果待确认，请查询结果。'
       : busy ? '正在执行维护操作。' : !host.operations_available ? '当前维护操作暂不可用，请重新查询状态。' : '');
-    function acknowledge() {
+    async function acknowledge() {
       if (suspended || running.current || !current.current || !found.current || !found.current.terminal) return;
-      try { A.pending().finish(current.current); } catch (problem) { setStorageError(problem); return; }
       const original = current.current, completed = found.current;
-      current.current = null; setIntent(null); settle(null); setError(null); setStorageError(null); changed.current(original, completed);
+      running.current = true;
+      try { await T.exclusive(A.PENDING_KEY, { wait: true }, () => A.pending().finish(original, true)); }
+      catch (problem) { setStorageError(problem); return; }
+      finally { running.current = false; }
+      current.current = null; found.current = null; startedHere.current = false;
+      setIntent(null); setResult(null); setError(null); setStorageError(null);
+      if (completed.kind !== 'rejected') changed.current(original, completed);
     }
     return { intent, result, error, storageError, busy, host, hostError, hostBusy, suspended, readReason, maintenanceRequired, inspectHost, selection, lockedReason,
       locked: !!lockedReason, execute, lookup, acknowledge };
@@ -109,7 +148,7 @@
         <window.SystemMaintenanceRecords kind={kind} pageSize={pageSize} onPageSize={onPageSize} revision={serial} command={command} active={enabled && tab === kind}
           initialContext={recordContexts[kind]} onReadContext={onRecordContext} />
       </div> : null)}
-      {(visited.config || enabled && tab === 'config') && <div hidden={!enabled || tab !== 'config'}><window.SystemMaintenanceConfig revision={serial} command={command} active={enabled && tab === 'config'}
+      {(visited.config || enabled && tab === 'config') && <div hidden={!enabled || tab !== 'config'}><window.SystemMaintenanceConfig revision={serial} command={command} active={enabled && tab === 'config'} tab={tab}
         theme={theme} onSetTheme={onSetTheme} pageSize={pageSize} onPageSize={onPageSize} compact={compact} onCompact={onCompact} /></div>}
     </div>;
   }

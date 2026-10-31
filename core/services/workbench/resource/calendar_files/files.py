@@ -7,7 +7,6 @@
 所以界面拒绝的组合文件也拒绝。唯一的例外是假期带工时：界面的输入模型禁止，文件放行，见 4.5 的裁决。
 """
 
-from dataclasses import replace
 from datetime import date
 from typing import Any, Dict, List, Optional
 
@@ -66,13 +65,6 @@ def zero_hour_workday_note(after: Dict[str, Any], subject: str, remedy: str) -> 
     return "这一天是工作日，但可排工时是 0，排产时" + subject + "一道工序也排不进来。" + remedy
 
 
-def range_fingerprint(states: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """日期范围的原读内容：已保存日期的行与修订号。"""
-    return [{"date": day, "row": state["row"],
-             "revision": state["identity"]["revision"] if state["identity"] else None}
-            for day, state in sorted(states.items())]
-
-
 def check_range(start_date: str, end_date: str) -> None:
     try:
         start, end = date.fromisoformat(start_date), date.fromisoformat(end_date)
@@ -112,15 +104,17 @@ class WorkbenchCalendarFileService:
         with self.calendar._calendar.normalization_operation():
             rows = self._build_rows(source)
             calendars = {row["row"]: row.pop("calendar") for row in rows if "calendar" in row}
-            return replace(CalendarFilePreview.build(self.kind + ".import", request, rows, notices, source=prepared),
-                           calendars=calendars)
+            return CalendarFilePreview.build(
+                self.kind + ".import", request, rows, notices, source=prepared, calendars=calendars
+            )
 
     def _build_rows(self, source) -> List[Dict[str, Any]]:
         rows = [self._parse_row(item) for item in source]
         self._reject_duplicate_dates(rows)
         states = self._load_states(rows)
+        projection = self.calendar.projection(states) if states or any(not row_blocked(row) for row in rows) else None
         for row in rows:
-            self._classify(row, states)
+            self._classify(row, states, projection=projection)
         return rows
 
     def _parse_row(self, source) -> Dict[str, Any]:
@@ -197,17 +191,16 @@ class WorkbenchCalendarFileService:
                 field="date")
         return self.calendar.range_states(days[0], days[-1])
 
-    def _classify(self, row, states) -> None:
+    def _classify(self, row, states, *, projection=None) -> None:
         if row_blocked(row):
             return
         day = row["values"]["date"]
         fields = {UI_FIELDS[self.kind][key]: value for key, value in row["values"].items() if key in UI_FIELDS[self.kind]}
         try:
             # 这一天的现状也可能算不出来（例如 9999-12-31 的班次跨到次日），只拒这一行。
-            before = self.calendar.day_state(day, states)
+            before = self.calendar.day_state(day, states, projection=projection)
             fields.update(parse_period_columns(row["values"]))
-            model = self.calendar.proposed_row(fields, before)
-            after = model if model is None or isinstance(model, dict) else model.to_dict()
+            model, after, after_effective = self.calendar.proposed_state(fields, before, projection=projection)
         except WorkbenchCommandRejected as exc:
             reject_action_row(row, str(exc), code=exc.code, field="date")
             return
@@ -215,8 +208,12 @@ class WorkbenchCalendarFileService:
             reject_action_row(row, exc.message, field=exc.field or "date")
             return
         row["expected"], row["input"], row["calendar"] = before, after, model
-        row["before"] = self._public(before["row"], before["effective"])
-        row["after"] = row["before"] if after is before["row"] else self._public(after)
+        row["before"] = self._public(before["row"], before["effective"], projection=projection)
+        row["after"] = (
+            row["before"]
+            if after == before["row"]
+            else self._public(after, after_effective, projection=projection)
+        )
         row["action"] = "create" if before["row"] is None else "update"
         if before["row"] is None:
             # 只填日期、其余全空的行，对没配置过的天什么都不写（这天继续走默认规则）。
@@ -251,7 +248,8 @@ class WorkbenchCalendarFileService:
             row["notes"].append(zero_hours)
             row["requires_confirmation"] = True
 
-    def _public(self, row: Optional[Dict[str, Any]], effective: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+    def _public(self, row: Optional[Dict[str, Any]], effective: Optional[Dict[str, Any]] = None,
+                *, projection=None) -> Optional[Dict[str, Any]]:
         """把领域行翻成文件列口径，导出、预检对比、回导用的是同一份翻译。
 
         班次开始、工时、效率空着的旧行按日历引擎的解释写出（工时按时段或起止推算否则 8 小时、效率 1），与日历页显示一致；
@@ -259,7 +257,7 @@ class WorkbenchCalendarFileService:
         """
         if row is None:
             return None
-        row = engine_read_row(row, effective=effective, fill_shift_end=True)
+        row = engine_read_row(row, effective=effective, fill_shift_end=True, projection=projection)
         return {"date": row["date"], "day_type": DAY_TYPE_TEXT[row["day_type"]],
                 "shift_hours": number_text(row["shift_hours"]), "efficiency": percent_text(row["efficiency"]),
                 "allow_normal": YES_NO_TEXT[row["allow_normal"]], "allow_urgent": YES_NO_TEXT[row["allow_urgent"]],
@@ -277,7 +275,7 @@ class WorkbenchCalendarFileService:
             raise WorkbenchCommandRejected(
                 "stale_write", "文件或日历已经变了，没有导入。请点「重新预检」后再确认。") from exc
         body = check_resource_preview(preview, current)
-        changes = [(row["expected"], current.calendars[row["row"]]) for row in body["rows"]
+        changes = [(row["expected"], current.calendars[row["row"]], row["input"]) for row in body["rows"]
                    if row["result"] != "unchanged"]
         self.calendar.write_days(changes, include_refs=False)
         results = [{"row": row["row"], "business_code": row["business_code"],
@@ -289,23 +287,30 @@ class WorkbenchCalendarFileService:
 
     # ---------- 导出 ----------
 
-    def _states_and_rows(self, start_date: str, end_date: str):
-        if not self.conn.in_transaction:
-            raise RuntimeError("日历范围读取必须在快照事务中执行。")
+    def validate_export_scope(self, *, start_date: str, end_date: str) -> None:
         check_range(start_date, end_date)
-        states = self.calendar.range_states(start_date, end_date)
-        return range_fingerprint(states), self._rows_from_states(states)
 
     def _rows_from_states(self, states: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+        projection = self.calendar.projection(states) if states else None
         rows: List[Dict[str, Any]] = []
         for state in states.values():
-            public = self._public(state["row"])
+            public = self._public(state["row"], state.get("effective"), projection=projection)
             if public is not None:
                 rows.append(public)
         return rows
 
-    def preview_export(self, *, start_date: str, end_date: str, rows):
-        return ({"start_date": start_date, "end_date": end_date}, len(rows))
+    def preview_export(self, *, start_date: str, end_date: str):
+        if not self.conn.in_transaction:
+            raise RuntimeError("日历范围读取必须在快照事务中执行。")
+        states = self.calendar.range_states(start_date, end_date)
+        count = sum(state["row"] is not None for state in states.values())
+        return ({"start_date": start_date, "end_date": end_date}, count)
+
+    def export_rows(self, *, start_date: str, end_date: str) -> List[Dict[str, Any]]:
+        if not self.conn.in_transaction:
+            raise RuntimeError("日历范围读取必须在快照事务中执行。")
+        states = self.calendar.range_states(start_date, end_date)
+        return self._rows_from_states(states)
 
     def export(self, file_format, *, rows) -> FileDownload:
         check_capacity(len(rows), file_format)

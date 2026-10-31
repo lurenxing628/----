@@ -9,9 +9,9 @@ import pytest
 from core.models.workbench_run_candidate import RunCandidateReadScope
 from core.services.workbench.facts.decision_metrics import metric_definitions
 from core.services.workbench.run.candidate_comparison import read_candidate_comparison
+from tests._support.node_runtime_support import node_runtime
 from tests.workbench.dashboard_support import api
 from tests.workbench.dashboard_support import dashboard_case as dashboard_case  # noqa: F401
-from tests.workbench.node_runtime_support import node_runtime
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
 from tests.workbench.test_run_decision_resource_api import WINDOW, reassigned_run
 from tests.workbench.trial_support import change, create, service

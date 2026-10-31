@@ -64,8 +64,9 @@ def process_detail(ref):
         raise WorkbenchCommandRejected("invalid_input", "详情的查询条件不对，详情没有打开。请刷新页面后重新点开这一行。", 400)
     reader = WorkbenchProcessQueryService(g.db, current_app.logger, part_ref=ref)
     with reader.read_snapshot() as state:
-        data = reader.detail(ref)
+        identity = reader.resolve(ref)
         snapshot = bind_read_snapshot({"kind": "part", "entity_ref": ref}, state, request.args.get("snapshot_ref"))
+        data = reader.resolved_detail(identity)
         if data["workflow"]["source"]["state"] == "confirmed":
             data["write_context"] = issue_write_context(ref, ["process.hours_confirm"], state)
     return query_success(data, snapshot)
@@ -81,6 +82,7 @@ def process_route_preview(ref):
             raise WorkbenchCommandRejected("invalid_input", "工序号太大，页面上填不准，路线没有保存；系统没有替你四舍五入。请改用整段路线文字录入。", 422)
         reader = WorkbenchProcessQueryService(g.db, current_app.logger, part_ref=ref)
         with reader.read_snapshot() as state:
+            reader.resolve(ref)
             if token is not None:
                 bind_read_snapshot({"kind": "part", "entity_ref": ref}, state, token)
             data, _, affected = reader.prepare_route(ref, body)

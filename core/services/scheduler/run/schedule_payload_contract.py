@@ -4,6 +4,7 @@ from dataclasses import dataclass, field, fields
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple, Union, cast
 
+from core.algorithm_contracts.ordering import clean_resource_id
 from core.algorithm_contracts.schedule_point_evidence import verified_point
 from core.algorithm_contracts.types import ScheduleResult
 from core.algorithm_contracts.value_domains import OPERATION_SOURCES
@@ -48,10 +49,6 @@ class ValidatedSchedulePayload:
     assigned_by_op_id: Dict[int, Dict[str, Any]]
     out_of_scope_op_ids: List[int] = field(default_factory=list)
     validation_errors: List[str] = field(default_factory=list)
-
-
-def _resource_text(value: Any) -> str:
-    return str(value or "").strip()
 
 
 def _source_text(value: Any) -> str:
@@ -133,7 +130,7 @@ def _resolve_schedule_row_source(
 def _validate_schedule_row_resources(row: ValidatedScheduleRow, *, identity: str) -> Optional[str]:
     if row.source != SourceType.INTERNAL.value:
         return None
-    if not _resource_text(row.machine_id) or not _resource_text(row.operator_id):
+    if not clean_resource_id(row.machine_id) or not clean_resource_id(row.operator_id):
         return f"{identity}: internal 工序必须有设备和人员"
     return None
 
@@ -196,7 +193,7 @@ def build_validated_schedule_payload(
     operation_sources: Dict[int, str],
     allowed_op_ids: Set[int],
     missing_internal_resource_op_ids: Set[int],
-    schedule_errors: List[str],
+    failure_details: Sequence[Dict[str, Any]] = (),
     point_validator: PointValidator,
 ) -> ValidatedSchedulePayload:
     schedule_rows: List[ValidatedScheduleRow] = []
@@ -241,9 +238,10 @@ def build_validated_schedule_payload(
         _raise_invalid_schedule_rows_error(validation_errors)
     if not schedule_rows:
         raise_no_actionable_schedule_error(
-            validation_errors + schedule_errors,
+            validation_errors,
             operations=operations,
             missing_internal_resource_op_ids=missing_internal_resource_op_ids,
+            failure_details=failure_details,
         )
 
     return ValidatedSchedulePayload(

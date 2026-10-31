@@ -42,7 +42,7 @@
     const validKind = Object.prototype.hasOwnProperty.call(M.names, kind), done = command.phase === 'done';
     const locked = command.locked || busy, showList = !editor && !command.locked && !done;
     const guardOwner = window.WorkbenchGuards.useDirtyGuard({ owner: 'resource-catalog-' + formId,
-      dirty: !!(editor && editor.action !== 'delete' && !done && JSON.stringify(editor.draft) !== editor.baseline),
+      dirty: !!(editor && editor.action !== 'delete' && !done && M.isDirty(kind, editor.draft, editor.baseline)),
       locked: command.locked, message: (M.names[kind] || '基础资料') + '有尚未保存的填写内容。' });
     React.useEffect(() => { if (error || command.error) focusFirstInvalid(root.current); }, [error, command.error]);
     const list = S.useQuery(async signal => C.query(await adapter.list(kind, scope, signal), 'list'), [adapter, kind, scope], validKind && showList);
@@ -62,13 +62,13 @@
         const result = ref ? C.query(await adapter.detail(kind, ref, new AbortController().signal), 'entity') :
           C.query(await adapter.list(kind, { ...scope, page: 1, snapshot_ref: undefined }, new AbortController().signal), 'list');
         if (ref && result.data.ref !== ref) throw C.failure('读到的记录与所选记录不一致，请刷新后重试。');
-        const defaults = kind === "shift_profile" && action !== "delete" ? await adapter.query("/api/workbench/v1/calendar/defaults", {}, new AbortController().signal) : null;
+        const defaults = !reviewing && kind === "shift_profile" && action !== "delete" ? await adapter.query("/api/workbench/v1/calendar/defaults", {}, new AbortController().signal) : null;
         if (defaults && (!defaults.data || window.APSWorkPeriods.validate(defaults.data.periods))) throw C.failure("默认工作时间读取不完整，请刷新重试。");
         if (!alive.current || ticket !== generation.current) return;
         if (reviewing) setReview(result);
         else {
           const draft = M.draft(ref ? result.data : null);
-          setEditor({ action, ref, defaultPeriods: defaults && defaults.data.periods, base: ref ? result.data : null, draft, baseline: JSON.stringify(draft),
+          setEditor({ action, ref, defaultPeriods: defaults && defaults.data.periods, base: ref ? result.data : null, draft, baseline: draft,
             context: ref ? result.data.write_context : result.data.create_context, source: result.meta.source });
         }
       } catch (failure) { if (alive.current && ticket === generation.current) setError(failure); }

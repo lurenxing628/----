@@ -35,14 +35,12 @@ class SchemaStructure:
     def index_info(self, name):
         return self._pragma(self._index_columns, "index_info", name)
 
-    def has_unique_key(self, table, columns):
+    def has_unique_key(self, table, columns, *, index_name=None):
         expected = tuple(columns)
-        return any(row[2] and not row[4] and tuple(col[2] for col in self.index_info(row[1])) == expected
-                   for row in self.index_list(table))
-
-
-def schema_objects(conn, *, structure=None):
-    """Independent checks stay fresh; an aggregate check supplies its capture."""
-    if structure is not None:
-        return structure.sql
-    return {row[0]: row[1] for row in conn.execute("SELECT name, sql FROM sqlite_master")}
+        return any(
+            (index_name is None or row[1] == index_name)
+            and row[2]
+            and not row[4]
+            and tuple(col[2] for col in self.index_info(row[1])) == expected
+            for row in self.index_list(table)
+        )

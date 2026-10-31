@@ -1,6 +1,6 @@
 """Additional machine work types; the primary capability remains valid."""
 
-from .schema_structure import schema_objects
+from .schema_structure import SchemaStructure
 from .workbench_metadata_schema import canonical_sql
 
 
@@ -23,8 +23,8 @@ def objects():
     return result
 
 
-def contract_issues(conn, *, structure=None):
-    actual = schema_objects(conn, structure=structure)
+def contract_issues(conn, *, structure: SchemaStructure):
+    actual = structure.sql
     return [("missing_machine_capabilities:" if name not in actual else "invalid_machine_capabilities:") + name
             for name, sql in objects().items()
             if name not in actual or canonical_sql(sql) != canonical_sql(actual[name])]

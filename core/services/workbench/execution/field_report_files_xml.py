@@ -72,13 +72,17 @@ def check_package(content):
                 or workbook_parts[0].get('PartName') != '/xl/workbook.xml'
             ):
                 invalid('这不是标准的 XLSX 文件，只把扩展名改成 .xlsx 不行。')
+            sheet_path = _sheet(archive, names)
+            rows = {}
             for name in sorted(names):
-                if name.endswith(('.xml', '.rels')):
+                if name == sheet_path or name.endswith(('.xml', '.rels')):
                     with archive.open(name) as xml_stream:
-                        for _event, node in ElementTree.iterparse(xml_stream, events=('end',)):
-                            node.clear()
-            with archive.open(_sheet(archive, names)) as stream:
-                return _rows(stream)
+                        if name == sheet_path:
+                            rows = _rows(xml_stream)
+                        else:
+                            for _event, node in ElementTree.iterparse(xml_stream, events=('end',)):
+                                node.clear()
+            return rows
     except WorkbenchCommandRejected:
         raise
     except Exception as exc:

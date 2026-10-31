@@ -2,13 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from .acceptance import AcceptanceDecision, decide_acceptance
-from .attempt_records import append_rejected_reason_attempt, attempt_decision_evidence
+from .candidate_fingerprint import score_strictly_better
 from .local_search_candidate_eval import evaluate_local_search_candidate
 from .local_search_state import LocalSearchState, candidate_can_update_best
-from .neighborhood_moves import NeighborhoodMove
 from .neighborhood_registry import build_neighborhood_move
 from .shared_budget import SharedSearchSkip
 from .vns import VnsState
@@ -46,92 +44,17 @@ def stamp_decode_runtime(candidate: Dict[str, Any]) -> None:
         candidate["runtime_ms"] = int(candidate["initial_decode_runtime_ms"])
 
 
-def _record_improvement(
-    *,
-    candidate: Dict[str, Any],
-    move: NeighborhoodMove,
-    attempts: List[Dict[str, Any]],
-    improvement_trace: List[Dict[str, Any]],
-    clock: Callable[[], float],
-    t_begin: float,
-    reference: Dict[str, Any],
-    search_report_state: OptimizationSearchReportState,
-) -> None:
-    metrics = candidate["metrics"]
-    score = candidate["score"]
-    used_strat = candidate["strategy"]
-    used_params = candidate["params"]
-    dispatch_mode = candidate["dispatch_mode"]
-    dispatch_rule = candidate["dispatch_rule"]
-    move_tag = f"local:{move.neighborhood_name}"
-    improvement_trace.append(
-        {
-            "elapsed_ms": int((clock() - t_begin) * 1000),
-            "tag": move_tag,
-            "strategy": used_strat.value,
-            "dispatch_mode": dispatch_mode,
-            "dispatch_rule": dispatch_rule,
-            "score": list(score),
-            "metrics": metrics.to_dict(),
-        }
-    )
-    # Every best improvement is recorded; the final compaction keeps the best per dispatch mode,
-    # so a cap here could drop the adopted plan's own attempt from the report.
-    attempt = {
-        "tag": move_tag,
-        "source": "local_search",
-        "strategy": used_strat.value,
-        "dispatch_mode": dispatch_mode,
-        "dispatch_rule": dispatch_rule,
-        "used_params": dict(used_params),
-        "score": list(score),
-        "failed_ops": int(candidate["summary"].failed_ops),
-        "algo_stats": candidate["algo_stats"],
-        "metrics": metrics.to_dict(),
-    }
-    attempt.update(attempt_decision_evidence(
-        candidate=candidate, reference=reference, accepted=True,
-        search_report_state=search_report_state, clock=clock, t_begin=t_begin,
-    ))
-    attempts.append(attempt)
-
-
-def _record_noop_neighbor(
-    *,
-    attempts: List[Dict[str, Any]],
-    strategy: Any,
-    dispatch_mode: str,
-    dispatch_rule: str,
-    move: NeighborhoodMove,
-) -> None:
-    append_rejected_reason_attempt(
-        attempts=attempts,
-        tag=f"local:{move.neighborhood_name}",
-        strategy=strategy.value,
-        dispatch_mode=dispatch_mode,
-        dispatch_rule=dispatch_rule,
-        reason="noop_neighbor",
-        message=f"业务邻域 {move.neighborhood_name} 未产生有效候选：noop_neighbor",
-    )
-
-
 def _apply_accepted_candidate(
     *,
     candidate: Dict[str, Any],
     local_state: LocalSearchState,
     candidate_fingerprint: CandidateFingerprint,
-    acceptance_decision: AcceptanceDecision,
+    accepted: bool,
     no_improve: int,
-    move: NeighborhoodMove,
-    attempts: List[Dict[str, Any]],
-    improvement_trace: List[Dict[str, Any]],
-    clock: Callable[[], float],
-    t_begin: float,
     incumbent_origin: str,
     incumbent_fingerprint_changed: bool,
-    search_report_state: OptimizationSearchReportState,
 ) -> Tuple[bool, bool, int]:
-    if acceptance_decision.accepted and candidate_can_update_best(
+    if accepted and candidate_can_update_best(
         candidate=candidate,
         best=local_state.best,
         fingerprint=candidate_fingerprint,
@@ -139,19 +62,9 @@ def _apply_accepted_candidate(
         incumbent_origin=incumbent_origin,
         incumbent_fingerprint_changed=incumbent_fingerprint_changed,
     ):
-        _record_improvement(
-            candidate=candidate,
-            move=move,
-            attempts=attempts,
-            improvement_trace=improvement_trace,
-            clock=clock,
-            t_begin=t_begin,
-            reference=local_state.best,
-            search_report_state=search_report_state,
-        )
         local_state.improve_best(candidate)
         return True, True, 0
-    if acceptance_decision.accepted:
+    if accepted:
         local_state.accept_current(candidate)
         return True, False, no_improve + 1
     return False, False, no_improve + 1
@@ -166,13 +79,8 @@ def run_local_search_candidate_round(
     cur_dispatch_mode: str,
     cur_dispatch_rule: str,
     rnd: Any,
-    attempts: List[Dict[str, Any]],
-    improvement_trace: List[Dict[str, Any]],
     search_report_state: OptimizationSearchReportState,
     no_improve: int,
-    acceptance: str,
-    iteration: int,
-    iteration_limit: int,
     batches: Dict[str, Any],
     start_dt: datetime,
     end_date: Optional[date],
@@ -181,28 +89,21 @@ def run_local_search_candidate_round(
     optimizer_algo_stats: Optional[Dict[str, Any]],
     readiness_gate_enabled: bool,
     valid_dispatch_rules: List[str],
-    clock: Callable[[], float],
-    t_begin: float,
     decode_session: SharedDecodeSession,
 ) -> LocalSearchRoundResult:
+    current_results = local_state.current["results"]
     move = build_neighborhood_move(
         vns_state.current_neighborhood(),
         order=local_state.current_order,
-        results=local_state.current["results"],
+        results=current_results,
         batches=batches,
         resource_pool=local_state.current_resource_pool or resource_pool,
         rnd=rnd,
         current_dispatch_rule=cur_dispatch_rule,
         valid_dispatch_rules=valid_dispatch_rules,
+        result_facts=local_state.facts_for(current_results, batches=batches),
     )
     if move.noop:
-        _record_noop_neighbor(
-            attempts=attempts,
-            strategy=cur_strat,
-            dispatch_mode=cur_dispatch_mode,
-            dispatch_rule=cur_dispatch_rule,
-            move=move,
-        )
         return LocalSearchRoundResult(no_improve + 1, False)
     cand_order = list(move.batch_order or local_state.current_order)
     candidate_resource_pool = local_state.current_resource_pool or resource_pool
@@ -241,29 +142,15 @@ def run_local_search_candidate_round(
     decode_attempted = decode_session.actual_decoder_calls > calls_before
     stamp_decode_runtime(candidate)
     candidate_fingerprint = search_report_state.mark_candidate_evaluated(candidate, origin="local_search")
-    acceptance_decision = decide_acceptance(
-        acceptance_name=acceptance,
-        candidate_score=candidate.get("score"),
-        current_score=local_state.current.get("score"),
-        best_score=local_state.best.get("score"),
-        iteration=iteration,
-        max_iterations=iteration_limit,
-        rnd=rnd,
-    )
+    accepted = score_strictly_better(candidate["score"], local_state.current["score"])
     accepted_current, best_improved, no_improve = _apply_accepted_candidate(
         candidate=candidate,
         local_state=local_state,
         candidate_fingerprint=candidate_fingerprint,
-        acceptance_decision=acceptance_decision,
+        accepted=accepted,
         no_improve=no_improve,
-        move=move,
-        attempts=attempts,
-        improvement_trace=improvement_trace,
-        clock=clock,
-        t_begin=t_begin,
         incumbent_origin=str(search_report_state.best_origin or "baseline"),
         incumbent_fingerprint_changed=search_report_state.best_fingerprint_changed(),
-        search_report_state=search_report_state,
     )
     _record_acceptance_result(
         best_improved=best_improved,

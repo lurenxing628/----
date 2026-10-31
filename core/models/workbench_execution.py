@@ -82,6 +82,9 @@ class ExecutionProjection:
     write_context: Dict[str, Any] = field(default_factory=dict)
     voided_reports: List[Dict[str, Any]] = field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "_cache", {})
+
     def to_dict(self) -> Dict[str, Any]:
         return _snapshot_value(self)
 

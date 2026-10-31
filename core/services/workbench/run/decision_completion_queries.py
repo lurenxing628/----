@@ -39,20 +39,22 @@ def _remaining_drill(source, key, rows, *, batch_ref=None):
 
 
 def _batch_row(source, key, item):
-    remaining = source.completion.remaining_batches(key).get(item["batch_ref"], {})
-    count = remaining.get("operation_count", 0)
-    metrics = remaining.get("metrics")
-    if metrics is None:
-        rows = remaining.get("operations", [])
-        count = len(rows)
-        metrics = preparation_summary(rows)["metrics"]
+    remaining = source.completion.remaining_batches(key).get(item["batch_ref"])
+    if remaining is None:
+        count = unplanned_count = deferred_count = 0
+        metrics = preparation_summary([])["metrics"]
+    else:
+        count = remaining["operation_count"]
+        unplanned_count = len(remaining["unplanned_operation_refs"])
+        deferred_count = len(remaining["deferred_operation_refs"])
+        metrics = remaining["metrics"]
     return {"batch_ref": item["batch_ref"], "batch_label": item["batch_id"],
             "part_no": item["part_no"], "part_label": item["part_label"], "quantity": item["quantity"],
             "completion_state": item["completion_state"],
             "schedule_complete": item["schedule_complete"],
             "scheduled_operation_count": item["scheduled_operation_count"],
-            "unplanned_operation_count": len(remaining.get("unplanned_operation_refs", [])),
-            "deferred_operation_count": len(remaining.get("deferred_operation_refs", [])),
+            "unplanned_operation_count": unplanned_count,
+            "deferred_operation_count": deferred_count,
             "remaining_work": {"operation_count": count,
                                "metrics": public_preparation_metrics(metrics)},
             "issues": list(item["issues"]),

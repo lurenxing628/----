@@ -59,9 +59,6 @@ class WorkbenchOperatorMachinePermissions:
         if preparation is None:
             preparation = self.capture(operator_ref, permissions)
         identity = preparation.identity("operator", operator_ref)
-        raw = preparation.raw("operator", identity.entity_key)
-        if raw["operator_id"] != raw["operator_id"].strip():
-            raise WorkbenchCommandRejected("constraint_conflict", "工号前后含空格，请先修正工号。")
         before = preparation.state("operator", identity.entity_key)
         old_rows = {row["machine_ref"]: row for row in permission_rows(before)}
         requested = self._normalize(permissions, old_rows)
@@ -80,12 +77,7 @@ class WorkbenchOperatorMachinePermissions:
         return ResourceActionPreview.build(OPERATION, request, rows), changes
 
     def _machine_snapshots(self, preparation, refs):
-        identities = {}
-        for ref in refs:
-            machine = preparation.identity("machine", ref)
-            if machine.entity_key != machine.entity_key.strip():
-                raise WorkbenchCommandRejected("constraint_conflict", "设备编号前后含空格，请先修正设备编号。")
-            identities[ref] = machine
+        identities = {ref: preparation.identity("machine", ref) for ref in refs}
         snapshots = preparation.states("machine", [identity.entity_key for identity in identities.values()])
         return {ref: snapshots[identity.entity_key] for ref, identity in identities.items()}
 

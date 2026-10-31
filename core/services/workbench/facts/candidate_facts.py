@@ -80,9 +80,8 @@ def operation_ref_rows(rows):
 
 class GenerationFacts:
     def __init__(self, capture):
-        value = capture["facts_text"]
-        facts = stored_json(value)
-        self.archive = facts
+        facts = capture.get("facts")
+        self.archive = facts if isinstance(facts, dict) else stored_json(capture["facts_text"])
         self._decoded_tables = {}
         self.tables = {name: index_rows(self.table(name), key) for name, key in _TABLES.items()}
         self.entity_refs = entity_ref_rows(self.table("WorkbenchEntityRefs"))
@@ -114,6 +113,12 @@ class GenerationFacts:
     @cached_property
     def operation_refs(self):
         return {key: ref for ref, key in self.operations.items()}
+
+    def operation_batch_ref(self, ref):
+        op_id = self.operations.get(ref)
+        op = self.tables["BatchOperations"].get(op_id) if op_id is not None else None
+        batch_key = op.get("batch_id") if op is not None else None
+        return self.entity_refs.get(("batch", batch_key)) if type(batch_key) is str else None
 
     def operation(self, ref, payload, gaps):
         key = self.operations.get(ref)

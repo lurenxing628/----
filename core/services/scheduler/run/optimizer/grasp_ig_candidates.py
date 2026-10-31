@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tupl
 from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithms.evaluation import objective_score
 
-from .attempt_records import attempt_decision_evidence
 from .candidate_comparison import candidate_is_preferred
 from .grasp_ig_specs import build_grasp_ig_candidate_specs
 from .search_stage import SearchStage
@@ -21,11 +20,6 @@ if TYPE_CHECKING:
 
 
 GRASP_IG_PHASE = "grasp_ig_candidate_construction"
-
-
-
-def _candidate_tag(origin: str, index: int, dispatch_mode: str, dispatch_rule: str) -> str:
-    return f"{origin}:r{int(index)}|{dispatch_mode}:{dispatch_rule}"
 
 
 def _evaluate_candidate(
@@ -66,6 +60,7 @@ def _evaluate_candidate(
         "dispatch_mode": dispatch_mode,
         "dispatch_rule": dispatch_rule,
         "order": list(order),
+        "decoded_batch_order": decoded.decoded_batch_order,
         "metrics": decoded.metrics,
         "score": (float(decoded.summary.failed_ops),) + objective_score(objective_name, decoded.metrics),
         "algo_stats": decoded.algo_stats,
@@ -82,65 +77,12 @@ def _evaluate_candidate(
     return candidate
 
 
-def _append_attempt(
-    *, attempts: List[Dict[str, Any]], candidate: Dict[str, Any], origin: str, index: int,
-    decision_evidence: Dict[str, Any],
-) -> None:
-    metrics = candidate["metrics"]
-    dispatch_mode = candidate["dispatch_mode"]
-    dispatch_rule = candidate["dispatch_rule"]
-    attempt = {
-        "tag": _candidate_tag(origin, index, dispatch_mode, dispatch_rule),
-        "source": origin,
-        "strategy": candidate["strategy"].value,
-        "dispatch_mode": dispatch_mode,
-        "dispatch_rule": dispatch_rule,
-        "used_params": dict(candidate["params"]),
-        "score": list(candidate["score"]),
-        "failed_ops": int(candidate["summary"].failed_ops),
-        "metrics": metrics.to_dict(),
-        "algo_stats": candidate["algo_stats"],
-    }
-    attempt.update(decision_evidence)
-    attempts.append(attempt)
-
-
-def _append_trace(
-    *,
-    improvement_trace: List[Dict[str, Any]],
-    candidate: Dict[str, Any],
-    origin: str,
-    index: int,
-    now: Callable[[], float],
-    t_begin: float,
-) -> None:
-    metrics = candidate["metrics"]
-    dispatch_mode = candidate["dispatch_mode"]
-    dispatch_rule = candidate["dispatch_rule"]
-    improvement_trace.append(
-        {
-            "elapsed_ms": int((now() - t_begin) * 1000),
-            "tag": _candidate_tag(origin, index, dispatch_mode, dispatch_rule),
-            "strategy": candidate["strategy"].value,
-            "dispatch_mode": dispatch_mode,
-            "dispatch_rule": dispatch_rule,
-            "score": list(candidate["score"]),
-            "metrics": metrics.to_dict(),
-        }
-    )
-
-
 def _record_candidate(
     *,
     best: Optional[Dict[str, Any]],
     candidate: Dict[str, Any],
     origin: str,
-    index: int,
-    attempts: List[Dict[str, Any]],
-    improvement_trace: List[Dict[str, Any]],
     search_report_state: OptimizationSearchReportState,
-    now: Callable[[], float],
-    t_begin: float,
 ) -> Optional[Dict[str, Any]]:
     fingerprint = search_report_state.mark_candidate_evaluated(candidate, origin=origin)
     duplicate = fingerprint.same_as_parent or fingerprint.same_as_seen
@@ -152,24 +94,9 @@ def _record_candidate(
         candidate_fingerprint=fingerprint,
         incumbent_fingerprint_changed=search_report_state.best_fingerprint_changed(),
     )
-    _append_attempt(
-        attempts=attempts, candidate=candidate, origin=origin, index=index,
-        decision_evidence=attempt_decision_evidence(
-            candidate=candidate, reference=best, accepted=accepted,
-            search_report_state=search_report_state, clock=now, t_begin=t_begin,
-        ),
-    )
     if not accepted:
         return best
     search_report_state.mark_candidate_accepted(candidate, origin=origin, fingerprint=fingerprint)
-    _append_trace(
-        improvement_trace=improvement_trace,
-        candidate=candidate,
-        origin=origin,
-        index=index,
-        now=now,
-        t_begin=t_begin,
-    )
     return candidate
 
 
@@ -184,6 +111,7 @@ def _candidate_specs_for_run(
     dispatch_rule_cfg: str,
     batch_order_enabled: bool,
     rng_factory: Callable[[int], Any],
+    decode_session: SharedDecodeSession,
 ) -> Optional[List[Dict[str, Any]]]:
     if not bool(batch_order_enabled):
         return None
@@ -201,12 +129,7 @@ def _candidate_specs_for_run(
         dispatch_rule_cfg=dispatch_rule_cfg,
         rng_factory=rng_factory,
     )
-    # The configured rule is already a validated choice (optimizer/config.require_choice).
-    initial_seen = {
-        ("batch_order", dispatch_rule_cfg, tuple(base_order)),
-        ("batch_order", dispatch_rule_cfg, tuple(parent_order)),
-    }
-    return _dedupe_candidate_specs(specs, initial_seen=initial_seen)
+    return _dedupe_candidate_specs(specs, initial_seen=decode_session.executed_decision_keys())
 
 
 def _dedupe_candidate_specs(
@@ -242,15 +165,11 @@ def _run_candidate_spec(
     objective_name: str,
     optimizer_algo_stats: Optional[Dict[str, Any]],
     readiness_gate_enabled: bool,
-    attempts: List[Dict[str, Any]],
-    improvement_trace: List[Dict[str, Any]],
     search_report_state: OptimizationSearchReportState,
     clock: Callable[[], float],
-    t_begin: float,
     decode_session: SharedDecodeSession,
 ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     origin = str(spec["origin"])
-    index = int(spec["restart_index"])
     dispatch_mode = spec["dispatch_mode"]
     dispatch_rule = str(spec["dispatch_rule"])
     decode_started = clock()
@@ -270,12 +189,6 @@ def _run_candidate_spec(
             decode_session=decode_session,
         )
     except SharedSearchSkip as exc:
-        attempts.append({
-            "tag": _candidate_tag(origin, index, dispatch_mode, dispatch_rule),
-            "source": origin, "candidate_status": "skipped", "reason": exc.reason,
-            "request_id": exc.request_id, "decode_receipt": exc.receipt,
-            "strategy": base_strategy.value, "dispatch_mode": dispatch_mode, "dispatch_rule": dispatch_rule,
-        })
         return best, exc.reason
     # Measured decode time travels with the candidate so a GRASP/IG incumbent can still budget
     # the local search and later guards (the key name is shared with multi-start starts); its
@@ -288,12 +201,7 @@ def _run_candidate_spec(
         best=best,
         candidate=candidate,
         origin=origin,
-        index=index,
-        attempts=attempts,
-        improvement_trace=improvement_trace,
         search_report_state=search_report_state,
-        now=clock,
-        t_begin=t_begin,
     ), None
 
 
@@ -307,7 +215,7 @@ class GraspIGStage(SearchStage):
         start_dt: datetime, end_date: Optional[date], base_strategy: SortStrategy, base_params: Dict[str, Any],
         build_order: Callable[[SortStrategy, Dict[str, Any]], List[str]], dispatch_rule_cfg: str,
         resource_pool: Optional[Dict[str, Any]], objective_name: str,
-        deadline: float, optimizer_algo_stats: Optional[Dict[str, Any]], t_begin: float,
+        deadline: float, optimizer_algo_stats: Optional[Dict[str, Any]],
         readiness_gate_enabled: bool,
         clock: Callable[[], float], rng_factory: Callable[[int], Any],
         batch_order_enabled: bool = True,
@@ -326,13 +234,13 @@ class GraspIGStage(SearchStage):
             base_params=base_params, start_dt=start_dt, end_date=end_date,
             resource_pool=resource_pool, objective_name=objective_name,
             optimizer_algo_stats=optimizer_algo_stats, readiness_gate_enabled=bool(readiness_gate_enabled),
-            attempts=self.state.attempts, improvement_trace=self.state.improvement_trace,
-            search_report_state=search_report_state, clock=clock, t_begin=t_begin, decode_session=decode_session,
+            search_report_state=search_report_state, clock=clock, decode_session=decode_session,
         )
         specs = _candidate_specs_for_run(
             best=self.state.best, base_strategy=base_strategy, base_params=base_params,
             build_order=build_order, version=int(version), candidate_construction=candidate_construction,
             dispatch_rule_cfg=dispatch_rule_cfg, batch_order_enabled=batch_order_enabled, rng_factory=rng_factory,
+            decode_session=decode_session,
         )
         self.specs: List[Dict[str, Any]] = specs if specs is not None else []
         if specs is None:

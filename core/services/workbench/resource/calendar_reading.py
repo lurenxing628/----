@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Mapping, Optional, Union
 
 from core.errors import ValidationError
 from core.models.calendar import OperatorCalendar, WorkCalendar
-from core.models.calendar_periods import decode_periods, encode_periods, normalize_periods
+from core.models.calendar_periods import encode_periods, normalize_periods
 from core.services.scheduler.calendar.engine import CalendarEngine
 
 from .calendar_summary import owned_hours
@@ -30,8 +30,10 @@ class CalendarProjection(CalendarEngine):
         self._default_periods_json = None
         self._default_period_hours = 0.0
         self._period_facts = {}
+        self._decoded_periods = {}
         if self._default_periods:
             self._default_periods_json = encode_periods(self._default_periods)
+            self._decoded_periods[self._default_periods_json] = self._default_periods
             _, self._default_period_hours = self._period_facts_for_json(
                 self._default_periods_json, self._default_periods
             )
@@ -44,6 +46,24 @@ class CalendarProjection(CalendarEngine):
         self._segment_cache = {}
         self._rows = rows
 
+    def with_rows(self, rows: Mapping[str, CalendarRow]) -> CalendarProjection:
+        clone = self.__class__.__new__(self.__class__)
+        clone.conn = None
+        clone.logger = None
+        clone.capture = None
+        clone._default_periods = self._default_periods
+        clone._default_periods_json = self._default_periods_json
+        clone._default_period_hours = self._default_period_hours
+        clone._period_facts = dict(self._period_facts)
+        clone._decoded_periods = dict(self._decoded_periods)
+        clone._public_calendar_rows = {}
+        clone._public_policy_cache = {}
+        clone._policy_cache = {}
+        clone._policy_operator_keys = {}
+        clone._segment_cache = {}
+        clone._rows = rows
+        return clone
+
     def _resolve_calendar_row(self, date_str: str, op_id: Optional[str]) -> Union[WorkCalendar, OperatorCalendar]:
         # 用到哪天才解析哪天：月合计多读的次月 1 日即使存坏了，也只让合计未知，不牵连本月。
         row = self._rows.get(date_str)
@@ -55,10 +75,16 @@ class CalendarProjection(CalendarEngine):
 
 
 def effective_calendar_day(day: str, row: Optional[CalendarRow], periods=None,
-               *, projection: Optional[CalendarProjection] = None) -> Dict[str, Any]:
+                           *, projection: Optional[CalendarProjection] = None) -> Dict[str, Any]:
     # Date-key policy is deliberate: midnight may still belong to yesterday's shift.
     try:
-        engine = projection if projection is not None else CalendarProjection({day: row} if row is not None else {}, periods)
+        if projection is not None:
+            if (row is None and day not in projection._rows) or (day in projection._rows and projection._rows[day] is row):
+                engine = projection
+            else:
+                engine = projection.with_rows({day: row} if row is not None else {})
+        else:
+            engine = CalendarProjection({day: row} if row is not None else {}, periods)
         policy = engine._policy_for_date(day)
     except OverflowError as exc:
         raise ValidationError(f"{day} 的工作时段超出了系统能处理的最后日期 9999-12-31，算不出这一天的工作时间。"
@@ -72,7 +98,7 @@ def effective_calendar_day(day: str, row: Optional[CalendarRow], periods=None,
             "effective_hours": policy.shift_hours * policy.efficiency if working else 0.0,
             "efficiency": policy.efficiency, "eff": policy.efficiency * 100,
             "allowNormal": "yes" if normal else "no", "allowUrgent": "yes" if urgent else "no",
-            "periods": decode_periods(policy.periods_json),
+            "periods": engine.decoded_periods_for_json(policy.periods_json),
             "windows": [{"start": left.isoformat(), "end": right.isoformat()} for left, right in policy.work_windows()],
             "window_start": start.isoformat(timespec="seconds"), "window_end": end.isoformat(timespec="seconds")}
 
@@ -85,17 +111,23 @@ def _is_blank_value(value: Any) -> bool:
 
 
 def engine_read_row(row: Dict[str, Any], effective: Optional[Dict[str, Any]] = None,
-                    *, fill_shift_end: bool = False) -> Dict[str, Any]:
+                    *, fill_shift_end: bool = False,
+                    projection: Optional[CalendarProjection] = None) -> Dict[str, Any]:
     """空着的班次开始、工时、效率换成排产引擎对这一天的解释，空白备注归一为 None；没有空着的列就原样返回。"""
     blanks = [name for name in _ENGINE_DEFAULTED if _is_blank_value(row.get(name))]
-    blank_end = fill_shift_end and _is_blank_value(row.get("shift_end")) and row.get("periods_json") is None
+    blank_end = (
+        fill_shift_end
+        and _is_blank_value(row.get("shift_end"))
+        and row.get("periods_json") is None
+        and ("shift_hours" in blanks or 0 < row["shift_hours"] <= 24)
+    )
     blank_remark = isinstance(row.get("remark"), str) and not row["remark"].strip()
     if not blanks and not blank_end and not blank_remark:
         return row
     updates: Dict[str, Any] = {}
     if blanks or blank_end:
         if effective is None:
-            effective = effective_calendar_day(row["date"], row)
+            effective = effective_calendar_day(row["date"], row, projection=projection)
         reading = {"shift_start": effective["window_start"][11:16],
                    "shift_hours": effective["hours"], "efficiency": effective["efficiency"],
                    "allow_normal": effective["allowNormal"], "allow_urgent": effective["allowUrgent"]}
@@ -119,7 +151,8 @@ _LEGACY_BLANK_COLUMNS = ("shift_start", "shift_end", "shift_hours", "efficiency"
 
 
 def defaulted_blanks(day: str, row: Dict[str, Any], proposed: Dict[str, Any],
-                      names, *, before_effective: Optional[Dict[str, Any]]) -> set:
+                     names, *, before_effective: Optional[Dict[str, Any]],
+                     projection: Optional[CalendarProjection] = None) -> set:
     """旧行空着的班次列被保存规则补成具体值：未修改的空列补上后，这一天按引擎算出的时段、工时、效率都不变，就算推导列。
 
     补出的值和引擎原来的解释不一样（例如假期空着效率，引擎按 1 算、保存规则补成假期默认效率）仍算改写，照旧拒绝。
@@ -130,8 +163,12 @@ def defaulted_blanks(day: str, row: Dict[str, Any], proposed: Dict[str, Any],
         return set()
     filled = {**row, **{name: proposed.get(name) for name in blanks}}
     try:
-        current = effective_calendar_day(day, row) if before_effective is None else before_effective
-        return blanks if current == effective_calendar_day(day, filled) else set()
+        current = (
+            effective_calendar_day(day, row, projection=projection)
+            if before_effective is None
+            else before_effective
+        )
+        return blanks if current == effective_calendar_day(day, filled, projection=projection) else set()
     except ValidationError:
         return set()
 

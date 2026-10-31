@@ -16,7 +16,6 @@ from data.repositories.workbench_template_lineage_repo import WorkbenchTemplateL
 
 _INITIAL_SEMANTIC_COLUMNS = SEMANTIC_COLUMNS + OWNER_COLUMNS
 
-MAX_EVIDENCE_BYTES = 16 * 1024 * 1024
 MAX_EVENTS = 50000
 
 
@@ -24,36 +23,16 @@ def _invalid() -> NoReturn:
     raise WorkbenchCommandRejected("template_lineage_corrupt", "模板来源记录和这道工序的历史记录对不上，系统没有猜着匹配，也没有忽略。请联系维护人员。", 500)
 
 
-def check_evidence_size(size):
-    if size > MAX_EVIDENCE_BYTES:
-        raise WorkbenchCommandRejected("query_too_large", "要读的模板来源记录超过 16 MB，系统没有截断处理，这次没有读取。请缩小范围后重试。", 413)
-
-
-def lineage_available(repo):
-    """False when lineage storage was never installed; partial or altered DDL is rejected, never repaired."""
-    state = repo.schema_state()
-    if state == "invalid":
-        raise WorkbenchCommandRejected("template_lineage_unavailable", "模板来源记录的数据表不完整，系统没有自动补表，这次没有读取。请恢复完整资料后重试。")
-    return state == "loaded"
-
-
-def _read_origins(repo, refs, evidence_bytes=0):
-    result = {}
-    for row in repo.origin_rows(refs):
-        evidence_bytes += row.pop("_lineage_bytes")
-        check_evidence_size(evidence_bytes)
-        result[row["operation_ref"]] = row
-    return result, evidence_bytes
+def _read_origins(repo, refs):
+    return {row["operation_ref"]: row for row in repo.origin_rows(refs)}
 
 
 def read_events(repo, refs):
     result = {}
-    event_count = evidence_bytes = 0
+    event_count = 0
     for rows in repo.event_chunks(refs, MAX_EVENTS):
         for row in rows:
             event_count += 1
-            evidence_bytes += row.pop("_lineage_bytes")
-            check_evidence_size(evidence_bytes)
             if event_count > MAX_EVENTS:
                 raise WorkbenchCommandRejected("query_too_large", "模板来源的变更记录超过 50000 条，系统没有截断处理，这次没有读取。请缩小范围后重试。", 413)
             result.setdefault(row["operation_ref"], []).append(row)
@@ -180,7 +159,6 @@ def _validate_template_revision(origin, templates):
 
 class TemplateLineageQuery:
     def __init__(self, conn, repo=None):
-        # 写入器逐道复制时把已校验过表结构的仓储传进来，避免每道工序重新解析整套 DDL。
         self.repo = repo if repo is not None else WorkbenchTemplateLineageRepository(conn)
         self._prepared = {}
 
@@ -190,10 +168,8 @@ class TemplateLineageQuery:
     def read(self, operation_refs, *, current=None, templates=None, current_by_ref=None, templates_by_ref=None):
         self._prepared = {}
         refs = sorted(set(operation_refs))
-        if not lineage_available(self.repo):
-            return {"available": False, "origins": {}, "events": {}, "current": {}, "templates": {}, "lineages": {}, "problems": {}}
-        origins, evidence_bytes = _read_origins(self.repo, refs)
-        self._ancestors(origins, evidence_bytes)
+        origins = _read_origins(self.repo, refs)
+        self._ancestors(origins)
         events = read_events(self.repo, list(origins))
         if current is not None:
             current = {ref: current[ref] for ref in origins if ref in current}
@@ -234,7 +210,7 @@ class TemplateLineageQuery:
         return {"available": True, "origins": origins, "events": events, "current": current, "templates": templates,
                 "lineages": lineages, "problems": problems}
 
-    def _ancestors(self, origins, evidence_bytes):
+    def _ancestors(self, origins):
         frontier = list(origins.values())
         if len(origins) > MAX_OPERATIONS:
             self._too_many_ancestors()
@@ -243,7 +219,7 @@ class TemplateLineageQuery:
                        and row["source_operation_ref"] not in origins}
             if not missing:
                 return
-            rows, evidence_bytes = _read_origins(self.repo, sorted(missing), evidence_bytes)
+            rows = _read_origins(self.repo, sorted(missing))
             if set(rows) != missing:
                 _invalid()
             origins.update(rows)

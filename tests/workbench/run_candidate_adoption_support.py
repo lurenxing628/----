@@ -44,7 +44,7 @@ def snapshot(conn):
 def assert_retained(before, after):
     append_only = {"Schedule", "ScheduleHistory", "ScheduleVersionSeq", "OperationLogs",
                    "WorkbenchCommandReceipts", "WorkbenchPlanSourceRefs", "WorkbenchTaskRefs"}
-    mutable_clocks = {"sqlite_sequence", "WorkbenchPlanIdentityClock"}
+    mutable_clocks = {"sqlite_sequence", "WorkbenchPlanIdentityClock", "WorkbenchSourceRevisions"}
     assert set(before) == set(after)
     for name, rows in before.items():
         if name == "WorkbenchDashboardItems":

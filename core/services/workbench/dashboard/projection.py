@@ -136,9 +136,7 @@ def material(facts):
     batches, requirements, availability = current_material_views(facts.raw, day)
     bounded(batches, MAX_ROWS)
     refs = facts.entity_refs("batch", [row["batch_id"] for row in batches])
-    facts.raw["material_batch_refs"] = refs
     material_refs = facts.entity_refs("material", [row["material_id"] for row in materials])
-    facts.raw["material_refs"] = material_refs
     by_material = {row["material_id"]: row for row in materials}
     checks = _MaterialChecks(availability, requirements, facts.raw["Batches"], day)
     source_facts = _material_sources(facts.raw)

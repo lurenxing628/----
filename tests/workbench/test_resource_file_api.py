@@ -198,16 +198,23 @@ def test_resource_export_shares_captured_facts_for_preview_and_csv(client, monke
         finally:
             reader.conn.set_trace_callback(None)
 
+    tables = ("Machines", "MachineOpTypes", "OpTypes", "WorkbenchMachineGroupMembers")
+
+    def full_table_counts():
+        return {table: sum(bool(re.match(r"\s*SELECT\s+\*\s+FROM\s+" + table + r"\b", sql, re.IGNORECASE))
+                           for sql in queries) for table in tables}
+
     def assert_single_capture():
-        tables = ("Machines", "MachineOpTypes", "OpTypes", "WorkbenchMachineGroupMembers")
-        counts = {table: sum(bool(re.match(r"\s*SELECT\s+\*\s+FROM\s+" + table + r"\b", sql, re.IGNORECASE))
-                             for sql in queries) for table in tables}
-        assert counts == dict.fromkeys(tables, 1), queries
+        assert full_table_counts() == dict.fromkeys(tables, 1), queries
 
     monkeypatch.setattr(WorkbenchResourceQueryService, "read_snapshot", observed)
     approved = client.post(BASE + "/exports/machine/preview", json=body)
     assert approved.status_code == 200, approved.get_json()
-    assert_single_capture()
+    if selection == "selected":
+        assert_single_capture()
+    else:
+        assert full_table_counts() == dict.fromkeys(tables, 0), queries
+        assert sum("FROM Machines" in sql for sql in queries) == 1, queries
     queries.clear()
     result = client.get(BASE + "/exports/machine", query_string={
         "export_ref": approved.get_json()["data"]["export_ref"], "format": "csv"})
@@ -414,3 +421,52 @@ def test_resource_import_allows_keeping_existing_bound_work_type_when_pruning_li
     confirmed = command(client, kind, preview, key=f"keep-existing-{kind}")
     assert confirmed.status_code == 200, confirmed.get_json()
     assert confirmed.get_json()["result"] == "committed"
+
+
+def test_calendar_and_operator_calendar_import_previews_retain_parsed_body_without_reparse(client, monkeypatch):
+    from types import SimpleNamespace
+
+    import core.models.workbench_action_values as action_values
+    from core.infrastructure.transaction import TransactionManager
+    from core.services.workbench.resource.calendar_files.files import WorkbenchCalendarFileService
+    from core.services.workbench.resource.calendar_files.operator_files import (
+        WorkbenchOperatorCalendarFileService,
+    )
+
+    with database(client) as conn:
+        conn.execute("INSERT INTO Operators(operator_id,name,status) VALUES ('CAL-OP1','Calendar Operator','active')")
+        conn.commit()
+
+        work_bytes = (
+            "日期,类型,可排工时（小时）,效率（%）,允许普通件,允许急件,备注,班次开始,班次结束\n"
+            "2026-10-15,工作日,8,100,是,是,测试全局日历,08:00,16:00\n"
+        ).encode()
+        op_bytes = (
+            "工号,日期,类型,班次开始,班次结束,效率（%）,允许普通件,允许急件,备注\n"
+            "CAL-OP1,2026-10-15,工作日,09:00,17:00,100,是,是,测试个人日历\n"
+        ).encode()
+
+        monkeypatch.setattr(
+            action_values,
+            "json",
+            SimpleNamespace(
+                dumps=action_values.json.dumps,
+                loads=lambda *a, **kw: pytest.fail("CalendarFilePreview lost _parsed cache and reparsed JSON"),
+            ),
+        )
+
+        work_svc = WorkbenchCalendarFileService(conn, "work_calendar")
+        work_preview = work_svc.preview_import(work_bytes, file_format="csv")
+        assert work_preview._parsed is not None
+        assert work_preview.as_dict()["summary"]["new"] == 1
+        with TransactionManager(conn).transaction(begin_immediate=True):
+            work_outcome = work_svc.confirm_import(work_preview, work_bytes, file_format="csv")
+        assert work_outcome.result == "committed"
+
+        op_svc = WorkbenchOperatorCalendarFileService(conn)
+        op_preview = op_svc.preview_import(op_bytes, file_format="csv")
+        assert op_preview._parsed is not None
+        assert op_preview.as_dict()["summary"]["new"] == 1
+        with TransactionManager(conn).transaction(begin_immediate=True):
+            op_outcome = op_svc.confirm_import(op_preview, op_bytes, file_format="csv")
+        assert op_outcome.result == "committed"

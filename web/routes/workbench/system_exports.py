@@ -22,7 +22,7 @@ def system_log_export(format_name):
         data, mime, name, ascii_name = logs_csv(rows), "text/csv; charset=utf-8", "系统日志片段.csv", "aps-system-log.csv"
     else:
         data = diagnostic_zip(rows, sources, snapshot["as_of"])
-        mime, name, ascii_name = "application/zip", "系统诊断包-已脱敏.zip", "aps-system-diagnostic.zip"
+        mime, name, ascii_name = "application/zip", "系统诊断包.zip", "aps-system-diagnostic.zip"
     response = Response(data, content_type=mime)
     response.headers["Content-Disposition"] = ("attachment; filename=" + ascii_name
                                                + "; filename*=UTF-8''" + quote(name, safe=""))

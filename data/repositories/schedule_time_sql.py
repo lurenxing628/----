@@ -1,12 +1,8 @@
 from __future__ import annotations
 
-import json
-import sqlite3
-from typing import Any, Callable, Optional, Protocol, cast
+from typing import Optional
 
-from core.shared.local_datetime import format_local_datetime, parse_local_datetime
-
-_SQL_PARSE_FUNCTION = "aps_parse_dt"
+from core.infrastructure.sqlite_udf import SQL_PARSE_FUNCTION
 
 
 def _time_column(alias: Optional[str], name: str) -> str:
@@ -20,56 +16,7 @@ def _time_text(alias: Optional[str], name: str) -> str:
 def time_dt(alias: Optional[str], name: str) -> str:
     # 使用注册到 SQLite 连接上的 Python 解析函数，避免 SQLite datetime()
     # 对不存在日期、24 点、超出微秒精度等值过于宽松，和上层 Python 解析口径漂移。
-    return f"{_SQL_PARSE_FUNCTION}({_time_text(alias, name)})"
-
-
-def parse_dt_for_sql(value: Any) -> Optional[str]:
-    parsed = parse_local_datetime(value)
-    return format_local_datetime(parsed) if parsed is not None else None
-
-
-def require_dt_for_sql(value: Any, error_message: str) -> str:
-    parsed = parse_dt_for_sql(value)
-    if parsed is None:
-        raise ValueError(error_message)
-    return parsed
-
-
-def _interval_values(start, end):
-    # SQL callers retain TRIM(CAST(... AS TEXT)); the local parser owns the rules.
-    return parse_dt_for_sql(start), parse_dt_for_sql(end)
-
-
-def _interval_admitted(start, end, window_end, window_start):
-    start, end = _interval_values(start, end)
-    if start is None or end is None or end <= start:
-        return 1
-    return int(window_end is not None and window_start is not None and start < window_end and end > window_start)
-
-
-class _IntervalSummary:
-    def __init__(self):
-        self.first, self.last, self.invalid = None, None, 0
-
-    def step(self, row_id: Any, start: Any, end: Any, allow_points: int) -> None:
-        if row_id is None:
-            return
-        start, end = _interval_values(start, end)
-        if start is None or end is None or (end < start if allow_points else end <= start):
-            self.invalid += 1
-            return
-        self.first = start if self.first is None else min(self.first, start)
-        self.last = end if self.last is None else max(self.last, end)
-
-    def finalize(self) -> str:
-        return json.dumps((self.first, self.last, self.invalid), separators=(",", ":"))
-
-
-class _IntervalAggregateConnection(Protocol):
-    """SQLite accepts this four-input aggregate and its TEXT final value."""
-
-    def create_aggregate(self, name: str, num_params: int,
-                         aggregate_class: Callable[[], _IntervalSummary]) -> None: ...
+    return f"{SQL_PARSE_FUNCTION}({_time_text(alias, name)})"
 
 
 def interval_summary_sql(alias=None, *, allow_points: bool = False):
@@ -84,20 +31,6 @@ def interval_summary_sql(alias=None, *, allow_points: bool = False):
         + ("1" if allow_points else "0")
         + ")"
     )
-
-
-def decode_interval_summary(value):
-    return json.loads(value) if value is not None else (None, None, 0)
-
-
-def register_schedule_time_sql_functions(conn: sqlite3.Connection) -> None:
-    for name, count, function in ((_SQL_PARSE_FUNCTION, 1, parse_dt_for_sql),
-                                  ("aps_interval_admitted", 4, _interval_admitted)):
-        try:
-            conn.create_function(name, count, function, deterministic=True)
-        except sqlite3.NotSupportedError:
-            conn.create_function(name, count, function)
-    cast(_IntervalAggregateConnection, conn).create_aggregate("aps_interval_summary", 4, _IntervalSummary)
 
 
 def overlap_or_bad_time_sql(alias: Optional[str]) -> str:
@@ -115,10 +48,6 @@ DETAIL_OVERLAP_OR_BAD_TIME_SQL = overlap_or_bad_time_sql("s")
 __all__ = [
     "DETAIL_OVERLAP_OR_BAD_TIME_SQL",
     "interval_summary_sql",
-    "decode_interval_summary",
     "overlap_or_bad_time_sql",
-    "parse_dt_for_sql",
-    "require_dt_for_sql",
-    "register_schedule_time_sql_functions",
     "time_dt",
 ]

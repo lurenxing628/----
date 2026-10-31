@@ -35,7 +35,7 @@
       && !['backup_ref', 'write_context', 'filename', 'size_bytes', '_signature', 'file_exists', 'verification_state'].some(key => Object.prototype.hasOwnProperty.call(row, key))
       && nonempty(row.event_ref) && (row.record_kind === 'restore_event' ? row.type === 'restore' && states.includes(row.status)
         && row.event_source === 'external_maintenance_journal' && /^[a-f0-9]{32}$/.test(row.event_ref)
-        : row.type === 'cleanup' && ['succeeded', 'failed', 'unknown'].includes(row.status) && ['operation_audit', 'latest_job_state_only'].includes(row.event_source));
+        : row.type === 'cleanup' && ['succeeded', 'failed', 'partial', 'skipped', 'unknown'].includes(row.status) && ['operation_audit', 'latest_job_state_only'].includes(row.event_source));
   }
   // 清单读取已由 transport 校验过信封；翻页和导出还要用这次读取的数据版本。
   function collection(value, kind) {
@@ -104,28 +104,108 @@
     return object(value) && Object.keys(value).length === 3 && /^system-[a-f0-9]{48}$/.test(value.request_key)
       && Object.prototype.hasOwnProperty.call(actions, value.action) && value.summary === actions[value.action];
   }
-  function pending(storage = window.localStorage) {
-    const store = T.pendingStore({
-      key: PENDING_KEY, storage: () => storage, validate: validIntent, validateWrite: null,
-      corruptError: '上次操作记录损坏，请联系维护人员核对。',
-      invalidError: '本机存的上次操作记录不完整，已停止新的操作。请不要再操作，联系维护人员。'
-    });
-    return {
-      read: store.read,
-      begin(action) {
-        check(Object.prototype.hasOwnProperty.call(actions, action), '未知维护动作。');
-        check(!this.read(), '还有一次操作没有确认结果，不能重新发起。请先点「查询结果」。');
-        return store.write({ request_key: T.requestKey('system'), action, summary: actions[action] });
-      },
-      finish(intent) {
-        const saved = this.read(); check(!saved || saved.request_key === intent.request_key, '上次操作记录已变化，没有删除其他记录。请刷新后重新确认。');
-        if (saved) store.write(null);
+  const CONFLICT_MESSAGE = '上次操作记录已变化，没有删除其他记录。请刷新后重新确认。';
+  const emptySession = () => ({ intent: null, startedHere: false, result: null, error: null, storageError: null, selection: null });
+  // 维护操作记录只存在本页的 window.localStorage；本页对它的查询结论也只有这一份。
+  let session = emptySession();
+  const store = T.pendingStore({
+    key: PENDING_KEY, validate: validIntent, validateWrite: null,
+    corruptError: '上次操作记录损坏，请联系维护人员核对。',
+    invalidError: '本机存的上次操作记录不完整，已停止新的操作。请不要再操作，联系维护人员。',
+    conflictError: CONFLICT_MESSAGE,
+    writeError: '本机没能更新上次维护操作记录。请不要再操作，联系维护人员。'
+  });
+  const maintenancePending = {
+    read() {
+      const disk = store.read(), current = session;
+      if (!disk) {
+        if (current.intent && !(current.result && current.result.kind === 'rejected' && !current.storageError)) session = emptySession();
+        return null;
       }
-    };
-  }
+      if (!current.intent || current.intent.request_key !== disk.request_key) {
+        session = { intent: disk, startedHere: false, result: null, error: null, storageError: null, selection: null };
+      }
+      return disk;
+    },
+    begin(action, selection = null) {
+      check(Object.prototype.hasOwnProperty.call(actions, action), '未知维护动作。');
+      const current = session;
+      check(!(current.intent && current.storageError), '还有一次操作没有确认结果，不能重新发起。请先点「查询结果」。');
+      let created;
+      try {
+        created = store.save({ request_key: T.requestKey('system'), action, summary: actions[action] }, null);
+      } catch (error) {
+        if (error && error.conflict === true) throw new Error('还有一次操作没有确认结果，不能重新发起。请先点「查询结果」。');
+        throw error;
+      }
+      session = { intent: created, startedHere: action === 'restore', result: null, error: null, storageError: null, selection };
+      return created;
+    },
+    settle(intent, value, error = null) {
+      const current = session;
+      const sameKey = Boolean(current.intent && current.intent.request_key === intent.request_key);
+      if (current.intent) {
+        if (!sameKey) return null;
+      } else {
+        let disk = null;
+        try { disk = store.read(); } catch (_) { return null; }
+        if (!disk || disk.request_key !== intent.request_key) return null;
+      }
+      const terminal = Boolean(value && value.terminal);
+      if (sameKey && current.result && current.result.terminal && !terminal) return null;
+      session = {
+        intent,
+        startedHere: sameKey ? current.startedHere : false,
+        result: terminal ? value : null,
+        error: terminal ? error : (error || (sameKey ? current.error : null)),
+        storageError: sameKey ? current.storageError : null,
+        selection: sameKey ? current.selection : null
+      };
+      return session;
+    },
+    finish(intent, dismiss = false) {
+      check(validIntent(intent), CONFLICT_MESSAGE);
+      try {
+        store.save(null, intent);
+      } catch (error) {
+        if (session.intent && session.intent.request_key === intent.request_key) {
+          if (error && error.conflict === true) session = emptySession();
+          else session = { ...session, storageError: error };
+        }
+        throw error;
+      }
+      if (session.intent && session.intent.request_key === intent.request_key) {
+        if (!dismiss && session.result && session.result.kind === 'rejected') {
+          session = { ...session, intent: null, storageError: null };
+        } else {
+          session = emptySession();
+        }
+      }
+    }
+  };
+  const pending = () => maintenancePending;
   function inspectPending() {
-    try { return { intent: pending().read(), storageError: null }; }
-    catch (storageError) { return { intent: null, storageError }; }
+    try {
+      const intent = maintenancePending.read(), current = session;
+      return {
+        intent,
+        result: current.result,
+        error: current.error,
+        startedHere: current.startedHere,
+        selection: current.selection,
+        storageError: current.storageError
+      };
+    } catch (storageError) {
+      const current = session;
+      return {
+        intent: current.intent,
+        result: current.result,
+        error: current.error,
+        startedHere: current.startedHere,
+        selection: current.selection,
+        storageError
+      };
+    }
   }
   function recordSelection(selection, kind) {
     if (selection === undefined || selection === null) return null;

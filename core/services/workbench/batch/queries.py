@@ -1,6 +1,5 @@
 """Batch list/detail/choices from one real SQLite snapshot."""
 
-from core.models.workbench_batch_query import batch_scope
 from core.models.workbench_command import WorkbenchCommandRejected
 
 from .facts import BatchFacts
@@ -28,8 +27,7 @@ def matches_entity(query, entity):
 
 
 class WorkbenchBatchQueryService(BatchFacts):
-    def matched(self, scope):
-        query = batch_scope(scope)
+    def matched(self, query):
         facts = self.load()
         projection = BatchProjection(facts)
         needle = query["query"].casefold()

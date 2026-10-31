@@ -2,15 +2,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithm_runtime.algo_stats import increment_counter
 from core.algorithm_runtime.downtime import occupy_resource
-from core.algorithm_runtime.resource_quality import MachineTypeState
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.errors import ValidationError
-from core.models.batch import Batch
-from core.shared.strict_parse import parse_optional_date
 
 from .dispatch.sgs_checkpoint import CHECKPOINT_FIELD, DecodeCheckpoint
 from .schedule_params import ScheduleParams
@@ -28,7 +25,10 @@ def prepare_run_state(
     state = ScheduleRunState(base_time=params.base_time)
     state.readiness_gate_enabled = readiness_gate_enabled
     if readiness_gate_enabled:
-        _initialize_ready_progress(state=state, batches=prepared_inputs.batches)
+        _initialize_ready_progress(
+            state=state,
+            ready_starts=prepared_inputs.parsed_ready_starts(),
+        )
     if prepared_inputs.seed_applications:
         for result, machine_id, operator_id, segments in prepared_inputs.seed_applications:
             if segments:
@@ -48,13 +48,13 @@ def prepare_run_state(
     return state
 
 
-def _initialize_ready_progress(*, state: ScheduleRunState, batches: Dict[str, Batch]) -> None:
-    # 键来自 build_normalized_batches_map，已保证非空。
-    for batch_id, batch in batches.items():
-        ready_date = parse_optional_date(batch.ready_date, field="ready_date")
-        if ready_date is not None:
-            ready_start = datetime(ready_date.year, ready_date.month, ready_date.day, 0, 0, 0)
-            # 齐套只设时间下界；日历校验留给实际资源排槽，外协仍按自然日推进。
+def _initialize_ready_progress(
+    *,
+    state: ScheduleRunState,
+    ready_starts: Dict[str, Optional[datetime]],
+) -> None:
+    for batch_id, ready_start in ready_starts.items():
+        if ready_start is not None:
             state.advance_batch(batch_id, ready_start)
 
 
@@ -77,6 +77,4 @@ def resume_run_state(checkpoint: DecodeCheckpoint, *, signature: Tuple[Any, ...]
 
 def replay_resumed_demand(state: ScheduleRunState) -> None:
     """After resource quality is initialised for the resumed decode's own operations, replay lifecycle events."""
-    types = state.last_op_type_by_machine
-    if isinstance(types, MachineTypeState):
-        types.replay_demand_events()
+    state.last_op_type_by_machine.replay_demand_events()

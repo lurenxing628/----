@@ -161,8 +161,14 @@ def delivery_batch_delta(before, after):
     """Selected minus reference over the shared whole-batch delivery facts."""
     first, second = before["delay_hours"], after["delay_hours"]
     delay = None if first is None or second is None else second - first
-    old_finish, new_finish = parse_dt(before["planned_finish"]), parse_dt(after["planned_finish"])
-    finish = None if old_finish is None or new_finish is None else (new_finish - old_finish).total_seconds() / 3600.0
+    before_finish, after_finish = before["planned_finish"], after["planned_finish"]
+    if before_finish is None or after_finish is None:
+        finish = None
+    elif before_finish == after_finish:
+        finish = 0.0 if parse_dt(before_finish) is not None else None
+    else:
+        old_finish, new_finish = parse_dt(before_finish), parse_dt(after_finish)
+        finish = None if old_finish is None or new_finish is None else (new_finish - old_finish).total_seconds() / 3600.0
     kinds = []
     if finish is not None and finish != 0:
         kinds.append("earlier" if finish < 0 else "later")

@@ -4,17 +4,16 @@ from datetime import datetime
 from typing import NoReturn
 
 from core.infrastructure.read_evidence import verified_read
-from core.models.workbench_trial import MAX_TRIAL_TASKS, reference
+from core.models.workbench_trial import reference
 from core.models.workbench_trial_adoption import TrialAdoptionBlocked
 from core.services.scheduler.run.schedule_payload_contract import ValidatedScheduleRow
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 
 from .trial_origin import operation_contexts
 from .trial_policy import (
-    copy_draft_rows,
     load_draft_with_key,
     load_scenario_record_with_key,
-    max_trial_tasks,
+    saved_scenario_cache_key,
     trial_cache_get,
     trial_cache_memo,
 )
@@ -35,28 +34,11 @@ def _load_saved_scenario(conn, scenario_ref):
     repo = WorkbenchTrialRepository(conn)
     header, saved, scenario_key = load_scenario_record_with_key(repo, scenario_ref)
     head, originals, draft_key = load_draft_with_key(repo, header["draft_ref"])
-    cache_key = (
-        (
-            scenario_key,
-            draft_key,
-            header.get("scenario_ref"),
-            header.get("draft_ref"),
-            header.get("name"),
-            header.get("revision"),
-            header.get("saved_at"),
-            head.get("draft_ref"),
-            head.get("status"),
-            head.get("revision"),
-            head.get("base_ref"),
-        )
-        if scenario_key is not None and draft_key is not None
-        else None
-    )
-    max_tasks = min(MAX_TRIAL_TASKS, max_trial_tasks())
-    if cache_key is not None and 0 < len(originals) <= max_tasks:
+    cache_key = saved_scenario_cache_key(scenario_key, draft_key)
+    if cache_key is not None:
         cached_rows = trial_cache_get(_SAVED_SCENARIO_CACHE, cache_key)
         if cached_rows is not None:
-            return saved, dict(head, scenario_revision=header["revision"]), copy_draft_rows(cached_rows)
+            return saved, dict(head, scenario_revision=header["revision"]), cached_rows
     _require_head(saved, header, head, originals)
     sources = {row["row_ref"]: row for row in originals}
     rows, seen = [], set()
@@ -68,7 +50,7 @@ def _load_saved_scenario(conn, scenario_ref):
         rows.append(_saved_row(task, source))
     _require_links(saved["tasks"], rows)
     if cache_key is not None:
-        trial_cache_memo(_SAVED_SCENARIO_CACHE, cache_key, copy_draft_rows(rows))
+        trial_cache_memo(_SAVED_SCENARIO_CACHE, cache_key, rows)
     return saved, dict(head, scenario_revision=header["revision"]), rows
 
 
@@ -86,7 +68,6 @@ def _require_head(saved, header, head, originals):
 def _require_saved_scope(saved, originals, admission):
     full = saved["scope_complete"] is True and not saved["unplanned_operations"]
     if (saved["tasks_complete"] is not True or (not full and not _material_stage_scope(saved, originals, admission))
-            or not 0 < len(originals) <= min(MAX_TRIAL_TASKS, max_trial_tasks())
             or type(saved["task_count"]) is not int or saved["task_count"] != len(originals)
             or len(saved["tasks"]) != len(originals)):
         raise TrialAdoptionBlocked("scenario_scope_incomplete", "试调方案没有覆盖原来的全部范围，不能正式采用。")
@@ -129,10 +110,10 @@ def _require_links(tasks, rows):
             _invalid("试调方案里的前后序和保存的工序对不上。请刷新后重试。")
 
 
-def schedule_rows(rows):
+def schedule_rows(rows, intervals_by_row):
     """归档场景的安排，按候选采用同一种排程行交给写库前守卫。"""
     return [ValidatedScheduleRow(op_id=row["original"]["operation"]["id"],
                 source=row["original"]["operation"]["source"],
                 machine_id=row["current"]["machine_id"], operator_id=row["current"]["operator_id"],
-                start_time=datetime.fromisoformat(row["current"]["start"]),
-                end_time=datetime.fromisoformat(row["current"]["end"])) for row in rows]
+                start_time=intervals_by_row[row["row_ref"]][0],
+                end_time=intervals_by_row[row["row_ref"]][1]) for row in rows]

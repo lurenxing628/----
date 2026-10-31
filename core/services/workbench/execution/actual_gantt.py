@@ -1,18 +1,20 @@
 """Read-only plan/execution composition; execution arithmetic belongs to the ledger."""
 
-from datetime import datetime, timedelta
+from contextlib import ExitStack, contextmanager
+from datetime import date, datetime, timedelta
 from math import fsum
 
 from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.workbench.facts.execution_values import execution_deviation
+from core.services.workbench.facts.gantt_graph import public_gantt_graph
+from core.services.workbench.facts.source_revisions import EXECUTION_SOURCE_KEYS, read_source_revisions
 from core.services.workbench.plan.calendar import project_plan_calendar
 from core.services.workbench.plan.calendar_context import selected_context
 from core.services.workbench.plan.process_order import project_process_order
 from core.services.workbench.plan.projection import project_plan
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
-from core.services.workbench.plan.read_context import PlanReadContext
 from core.services.workbench.plan.workspace_dto import resource_directory
 
 from .actual_gantt_chain import plan_chain
@@ -100,76 +102,156 @@ class ActualGanttService:
         self.conn = conn
         self.plans = WorkbenchPlanQueryService(conn, logger)
         self.ledger = ExecutionLedgerService(conn)
+        self._cached_ledger_state = None
+        self._cached_state = None
+        self._snapshot_stack = None
 
+    @contextmanager
     def read_snapshot(self):
-        return self.plans.read_snapshot()
+        self._cached_ledger_state = None
+        self._cached_state = None
+        with ExitStack() as stack:
+            stack.enter_context(self.plans.read_snapshot())
+            self._snapshot_stack = stack
+            try:
+                yield
+            finally:
+                self._snapshot_stack = None
+                self._cached_ledger_state = None
+                self._cached_state = None
 
-    def _planned(self, scope, context):
+    def _ledger_state(self, scope):
+        if self._cached_ledger_state is None:
+            availability = {"state": "available", "reason_code": None, "reason": None}
+            try:
+                if self._snapshot_stack is not None:
+                    self._snapshot_stack.enter_context(self.ledger.read_snapshot())
+                clock = self.ledger.revision_clock()
+                self.ledger._current_plan()
+            except WorkbenchCommandRejected as exc:
+                if exc.code != "execution_ledger_unavailable":
+                    raise
+                availability = {
+                    "state": "unavailable",
+                    "reason_code": exc.code,
+                    "reason": str(exc) + " 当前仅显示计划安排。",
+                }
+                clock = None
+            self._cached_ledger_state = (clock, availability)
+        clock, availability = self._cached_ledger_state
+        if clock is None and scope.resource_ref is not None:
+            raise WorkbenchCommandRejected(
+                "execution_ledger_unavailable",
+                availability["reason"] + " 当前资源筛选需要完整的现场报工记录。",
+            )
+        return clock, availability
+
+    def _snapshot_state(self, context, scope):
+        ledger_revision, availability = self._ledger_state(scope)
+        if self._cached_state is None:
+            self._cached_state = content_text({
+                "plan_revision": context.references.read_revision(),
+                "ledger_revision": ledger_revision,
+                "revisions": read_source_revisions(self.conn, EXECUTION_SOURCE_KEYS),
+                "availability": availability,
+            })
+        return self._cached_state
+
+    def prebind_scope(self, scope):
+        with self.plans._context_scope() as context:
+            context.resolve(scope.plan_ref)
+            return scope.scope(), self._snapshot_state(context, scope)
+
+    def _planned(self, scope, context, *, include_calendar=True, include_resources=True):
         plan_scope = PlanReadScope(scope.plan_ref, scope.range_start, scope.range_end)
         _, entry, span = context.selected(scope.plan_ref)
         if scope.range_start is None and scope.plan_finish_date_from is not None:
-            times = context.intervals(entry)
+            dt_intervals = context.datetime_intervals(entry)
+            finish_from = date.fromisoformat(scope.plan_finish_date_from)
+            finish_to = date.fromisoformat(scope.plan_finish_date_to)
             prepared = context.repo.prepared_rows(**context.query(entry))
             rows = context._enrich_rows(entry, [row for row in prepared
-                if scope.plan_finish_date_from <= times[row["id"]][1][:10] <= scope.plan_finish_date_to])
+                if finish_from <= dt_intervals[row["id"]][1].date() <= finish_to])
         else:
             rows = context.scoped_rows(entry, plan_scope)
             if scope.plan_finish_date_from is not None:
-                times = context.intervals(entry)
-                rows = [row for row in rows if scope.plan_finish_date_from <=
-                        times[row["schedule_id"]][1][:10] <= scope.plan_finish_date_to]
+                dt_intervals = context.datetime_intervals(entry)
+                finish_from = date.fromisoformat(scope.plan_finish_date_from)
+                finish_to = date.fromisoformat(scope.plan_finish_date_to)
+                rows = [row for row in rows if finish_from <=
+                        dt_intervals[row["schedule_id"]][1].date() <= finish_to]
         if scope.batch_ids:
             batches = set(scope.batch_ids)
             rows = [row for row in rows if row["batch_id"] in batches]
-        tasks, task_facts, resources, resource_state = context.projected_tasks(scope.plan_ref, rows)
-        selected = selected_context(self.conn, entry, plan_scope, rows, resources, span)
-        calendar, calendar_facts = project_plan_calendar(self.conn, scope=plan_scope, resources=resources, selected=selected)
-        planned = {"plan": project_plan(entry, scope.plan_ref), "plan_span": span, "tasks": tasks,
-                   "resources": resource_directory(rows, resources, tasks=tasks, archived=task_facts["resource_directory"]),
-                   "projections": {"calendar": calendar}}
-        cal_sources = calendar_facts.get("sources") or {}
-        return planned, {
-            "plan_revision": context.references.read_revision(),
-            "resources": resource_state,
-            "calendar": (
-                calendar_facts.get("state"),
-                calendar_facts.get("reason"),
-                {k: v for k, v in cal_sources.items() if k != "operations"},
-            ),
-        }
+        resources = context.resource_identities(rows)
+        tasks, task_facts = context.projected_tasks(scope.plan_ref, rows, resources=resources)
+        calendar = None
+        if include_calendar:
+            selected = selected_context(self.conn, plan_scope, rows, span)
+            calendar, _ = project_plan_calendar(self.conn, scope=plan_scope, resources=resources, selected=selected)
+        return {"plan": project_plan(entry, scope.plan_ref), "plan_span": span, "tasks": tasks,
+                "resources": (resource_directory(rows, resources, tasks=tasks, archived=task_facts["resource_directory"])
+                              if include_resources else []),
+                "projections": {"calendar": calendar}}
 
-    def _execution(self, planned, scope):
-        availability = {"state": "available", "reason_code": None, "reason": None}
+    def _execution(self, planned, scope, *, include_history=True, include_resources=True):
+        clock, availability = self._ledger_state(scope)
+        if clock is None:
+            return None, [{"task": task, "execution": None} for task in planned["tasks"]], planned["resources"], availability
         try:
-            projection = self.ledger.workspace_projection(scope.plan_ref, planned["tasks"])
+            projection = self.ledger.workspace_projection(
+                scope.plan_ref,
+                planned["tasks"],
+                include_history=include_history,
+                include_resources=include_resources,
+            )
         except WorkbenchCommandRejected as exc:
             if exc.code == "query_too_large":
                 raise WorkbenchCommandRejected(exc.code,
                     str(exc) + " 请缩小计划完工日期范围或减少所选批次后重试。", exc.status) from exc
-            if exc.code != "execution_ledger_unavailable":
-                raise
-            projection = None
-            availability = {"state": "unavailable", "reason_code": exc.code,
-                            "reason": str(exc) + " 当前仅显示计划安排。"}
-        if projection is None:
-            if scope.resource_ref is not None:
-                raise WorkbenchCommandRejected("execution_ledger_unavailable", availability["reason"] + " 当前资源筛选需要完整的现场报工记录。")
-            items = [{"task": task, "execution": None} for task in planned["tasks"]]
-            resources = planned["resources"]
-        else:
-            items = _items(planned["tasks"], projection)
-            resources = _merge_resources(planned["resources"], projection["resources"])
+            raise
+        items = _items(planned["tasks"], projection)
+        resources = _merge_resources(planned["resources"], projection["resources"]) if include_resources else []
         return projection, items, resources, availability
 
     def workspace(self, scope, *, chain_target=None, include_chain=True):
-        context = PlanReadContext(self.conn, references=self.plans.references, entities=self.plans.entities)
-        with context.read_scope():
-            planned, plan_state = self._planned(scope, context)
-            projection, items, resources, availability = self._execution(planned, scope)
+        full_workspace = include_chain and chain_target is None
+        with self.plans._context_scope() as context:
+            planned = self._planned(
+                scope, context, include_calendar=full_workspace, include_resources=chain_target is None
+            )
+            if chain_target is not None:
+                if scope.resource_ref is None:
+                    task_refs = {task["task_ref"] for task in planned["tasks"]}
+                else:
+                    _, items, _, _ = self._execution(
+                        planned, scope, include_history=False, include_resources=False
+                    )
+                    task_refs = {
+                        item["task"]["task_ref"]
+                        for item in items
+                        if matches_execution_resource(
+                            item["task"], item["execution"], scope.resource_type, scope.resource_ref
+                        )
+                    }
+                state = self._snapshot_state(context, scope)
+                return {
+                    "plan": planned["plan"],
+                    "scope": scope.scope(),
+                    "critical_chain": plan_chain(
+                        scope.plan_ref, task_refs, target_task_ref=chain_target, context=context
+                    ),
+                }, state
+            projection, items, resources, availability = self._execution(
+                planned, scope, include_history=full_workspace
+            )
             if scope.resource_ref is not None:
                 items = [item for item in items if matches_execution_resource(
                     item["task"], item["execution"], scope.resource_type, scope.resource_ref)]
-            _, _, gantt_graph = project_process_order(self.conn, plan_ref=scope.plan_ref, context=context)
+            gantt_graph = None
+            if full_workspace:
+                _, gantt_graph = project_process_order(self.conn, plan_ref=scope.plan_ref, context=context)
+                gantt_graph = public_gantt_graph(gantt_graph)
             data = {"plan": planned["plan"], "scope": scope.scope(), "plan_span": planned["plan_span"],
                     "axis_span": _span(planned["plan_span"], items), "availability": availability,
                     "items": items, "task_count": len(items), "items_complete": True,
@@ -179,12 +261,7 @@ class ActualGanttService:
                     "semantics": {"cohort": "plan_finish_date_and_plan_overlap", "resources": "planned_or_actual_or_recorded_remaining",
                                   "reports": "all_effective_reports_of_selected_operations", "local_filters": "search_late_selected",
                                   "export": "full_snapshot_cohort_or_explicit_local_view", "time_basis": "factory_local"}}
-            exec_facts = projection["snapshot_facts"] if projection else None
-            state = content_text({
-                "plan": plan_state,
-                "execution": exec_facts,
-                "availability": availability,
-            })
+            state = self._snapshot_state(context, scope)
             if include_chain:
                 data["critical_chain"] = plan_chain(scope.plan_ref,
                     {item["task"]["task_ref"] for item in items}, target_task_ref=chain_target, context=context)

@@ -21,22 +21,21 @@ from .system_config_service import SystemConfigService
 class ParsedJobTime:
     value: Optional[datetime]
     state: str
-    raw: Optional[str] = None
 
 
 def _parse_db_dt(value: Optional[str]) -> ParsedJobTime:
     raw = None if value is None else str(value)
     if raw is None:
-        return ParsedJobTime(value=None, state="missing", raw=None)
+        return ParsedJobTime(value=None, state="missing")
     v = raw.strip().replace("：", ":")
     if not v:
-        return ParsedJobTime(value=None, state="missing", raw=raw)
+        return ParsedJobTime(value=None, state="missing")
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
         try:
-            return ParsedJobTime(value=datetime.strptime(v, fmt), state="valid", raw=v)
+            return ParsedJobTime(value=datetime.strptime(v, fmt), state="valid")
         except ValueError:
             continue
-    return ParsedJobTime(value=None, state="invalid", raw=raw)
+    return ParsedJobTime(value=None, state="invalid")
 
 
 def _fmt_db_dt(dt: datetime) -> str:

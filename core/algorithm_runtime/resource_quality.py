@@ -1,4 +1,4 @@
-"""Run-owned resource quality evidence; borrowed legacy maps keep their semantics."""
+"""Run-owned resource quality evidence."""
 from __future__ import annotations
 
 from bisect import bisect_left, insort
@@ -85,22 +85,18 @@ class MachineTypeState(Dict[str, str]):
 
 
 def slot_changeover_penalty(
-    state: Optional[Mapping[str, str]], *, op: OpForScheduleAlgo, machine_id: str,
-    start: datetime, end: datetime, legacy_penalty: int,
+    state: Optional[MachineTypeState], *, op: OpForScheduleAlgo, machine_id: str,
+    start: datetime, end: datetime,
 ) -> int:
-    if not isinstance(state, MachineTypeState):
-        return legacy_penalty
-    if type(start) is not datetime or type(end) is not datetime:
-        return legacy_penalty
-    if start == end or not state._entries.get(machine_id):
+    if state is None or start == end or not state._entries.get(machine_id):
         return 0
     return state.insertion_penalty(machine_id, start, end, op.id, op.op_type_id)
 
 
 def prefer_resource_pair(
-    state: Mapping[str, str], op: OpForScheduleAlgo, candidate: Tuple[Any, ...], best: Tuple[Any, ...],
+    state: MachineTypeState, op: OpForScheduleAlgo, candidate: Tuple[Any, ...], best: Tuple[Any, ...],
 ) -> bool:
-    if candidate[:2] != best[:2] or not isinstance(state, MachineTypeState) or state.demand is None:
+    if candidate[:2] != best[:2] or state.demand is None:
         return candidate < best
     pairs = ((candidate[-2], candidate[-1]), (best[-2], best[-1]))
     if state.demand.comparison_is_neutral(op, *pairs):
@@ -116,7 +112,6 @@ def initialize_resource_quality(
     preparation: Any,
 ) -> None:
     # ``preparation`` is the greedy scheduler's NativeSchedulePreparation; the runtime layer must not import it.
-    types = state.last_op_type_by_machine
-    if isinstance(types, MachineTypeState) and resource_pool is not None:
+    if resource_pool is not None:
         claims = (preparation.resource_claim_for(op) for op in operations)
-        types.demand = ResourceDemand(claim for claim in claims if claim is not None)
+        state.last_op_type_by_machine.demand = ResourceDemand(claim for claim in claims if claim is not None)

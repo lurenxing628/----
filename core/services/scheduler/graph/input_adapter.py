@@ -4,6 +4,7 @@ from typing import AbstractSet, Any, Dict, Iterable, List, Mapping, Optional, Tu
 
 from core.algorithm_contracts.types import OpForScheduleAlgo
 from core.algorithm_contracts.value_domains import INTERNAL, MERGED
+from core.algorithm_runtime.piece_input import external_group_key, operation_batch
 from core.models.batch import Batch
 
 from .id_policy import make_operation_node_id
@@ -38,10 +39,18 @@ class GraphResourcePreparation:
         self._candidates: Dict[Tuple[Optional[str], Optional[str], str], Tuple[str, ...]] = {}
 
     def candidates_for(self, row: OpForScheduleAlgo) -> Tuple[str, ...]:
+        if row.source != INTERNAL:
+            return ()
         key = (row.machine_id, row.operator_id, row.op_type_id)
         if key not in self._candidates:
             self._candidates[key] = _candidate_machine_ids(row, resource_pool=self)
         return self._candidates[key]
+
+
+def _external_group_key(row: OpForScheduleAlgo) -> Optional[Tuple[str, ...]]:
+    if row.source == INTERNAL or row.ext_merge_mode != MERGED:
+        return None
+    return external_group_key(row)
 
 
 def _build_operation_node(
@@ -53,7 +62,7 @@ def _build_operation_node(
 ) -> OperationGraphNode:
     # 算法工序由排产输入构建一次给出规范值（编号、文本、来源、工时、外协周期都已校验），批次同样来自读取边界；
     # 这里只做图节点投影，不再逐字段复核。
-    batch = batches[row.batch_id]
+    batch = operation_batch(row, batches[row.batch_id])
     return OperationGraphNode(
         node_id=make_operation_node_id(row.id),
         batch_id=row.batch_id,
@@ -63,8 +72,9 @@ def _build_operation_node(
         duration_minutes=_operation_duration_minutes(row, batch),
         source=row.source,
         is_frozen=row.id in frozen_op_ids,
-        machine_id=row.machine_id,
+        machine_id=row.machine_id if row.source == INTERNAL else None,
         candidate_machine_ids=resource_pool.candidates_for(row),
+        external_group_key=_external_group_key(row),
         raw={"id": row.id},
     )
 

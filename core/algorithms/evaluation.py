@@ -3,11 +3,11 @@ from __future__ import annotations
 import math
 import statistics
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from core.algorithm_contracts.changeover_events import count_known_changeovers
-from core.algorithm_contracts.ordering import normalize_text_id
+from core.algorithm_contracts.ordering import clean_resource_id
 from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
 from core.algorithm_contracts.value_domains import INTERNAL
 from core.algorithms.evaluation_completion import (
@@ -47,15 +47,17 @@ class ScheduleMetrics:
     unscheduled_batch_count: int = 0
     invalid_due_batch_ids_sample: List[str] = field(default_factory=list)
     unscheduled_batch_ids_sample: List[str] = field(default_factory=list)
+    _due_by_batch: Dict[str, Optional[date]] = field(default_factory=dict, repr=False, compare=False)
+    _finish_by_batch: Dict[str, datetime] = field(default_factory=dict, repr=False, compare=False)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def _numeric_dict(self) -> Dict[str, Any]:
         def _round_finite(key: str, v: Any, ndigits: int) -> float:
             fv = float(v)
             if not math.isfinite(fv):
                 raise ValueError(f"排产指标 {key} 必须是有限数字：{v!r}")
             return float(round(fv, ndigits))
 
-        payload = {
+        return {
             "overdue_count": int(self.overdue_count),
             "total_tardiness_hours": _round_finite("total_tardiness_hours", self.total_tardiness_hours, 4),
             "makespan_hours": _round_finite("makespan_hours", self.makespan_hours, 4),
@@ -71,14 +73,24 @@ class ScheduleMetrics:
             "machine_load_cv": _round_finite("machine_load_cv", self.machine_load_cv, 6),
             "operator_load_cv": _round_finite("operator_load_cv", self.operator_load_cv, 6),
             "internal_horizon_hours": _round_finite("internal_horizon_hours", self.internal_horizon_hours, 4),
-            "util_defined": bool(self.util_defined),
             "invalid_due_count": int(self.invalid_due_count),
             "unscheduled_batch_count": int(self.unscheduled_batch_count),
+        }
+
+    def public_dict(self) -> Dict[str, Any]:
+        return {
+            **self._numeric_dict(),
+            "completion": self.completion.public_dict(),
+        }
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            **self._numeric_dict(),
+            "util_defined": bool(self.util_defined),
             "invalid_due_batch_ids_sample": [str(x) for x in self.invalid_due_batch_ids_sample[:10]],
             "unscheduled_batch_ids_sample": [str(x) for x in self.unscheduled_batch_ids_sample[:20]],
             "completion": self.completion.to_dict(),
         }
-        return payload
 
 
 @dataclass
@@ -136,6 +148,19 @@ def compute_metrics(
     result_state = _collect_result_metric_state(results)
     due_state = _compute_due_metrics(context, result_state.finish_by_batch, completion=completion)
     utilization = _build_utilization_metrics(result_state)
+    due_by_batch: Dict[str, Optional[date]] = {
+        batch_due.batch_id: (
+            None
+            if batch_due.due_exclusive is None
+            else (
+                date.max
+                if batch_due.due_exclusive == datetime.max
+                else (batch_due.due_exclusive - timedelta(days=1)).date()
+            )
+        )
+        for batch_due in context.due_batches
+        if not batch_due.due_invalid
+    }
 
     return ScheduleMetrics(
         overdue_count=int(due_state.overdue_count),
@@ -161,6 +186,8 @@ def compute_metrics(
         invalid_due_batch_ids_sample=due_state.invalid_due_batch_ids_sample,
         unscheduled_batch_ids_sample=due_state.unscheduled_batch_ids_sample,
         completion=completion,
+        _due_by_batch=due_by_batch,
+        _finish_by_batch=result_state.finish_by_batch,
     )
 
 
@@ -174,8 +201,9 @@ def _collect_result_metric_state(results: List[ScheduleResult]) -> _ResultMetric
         if st is None or et is None:
             continue
         # 旧种子在存储边界可能缺批次号（空串），这类结果不计入批次完工。
-        if result.batch_id:
-            _record_batch_finish(state, bid=result.batch_id, start_time=st, end_time=et)
+        bid = result.batch_id.strip() if isinstance(result.batch_id, str) else ""
+        if bid:
+            _record_batch_finish(state, bid=bid, start_time=st, end_time=et)
         if result.source == INTERNAL:
             _record_internal_result(state, result=result, start_time=st, end_time=et)
     return state
@@ -204,12 +232,12 @@ def _record_internal_result(
         state.max_internal_end = end_time
 
     duration_hours = _duration_hours(start_time, end_time)
-    # 种子资源编号来自上一版排程存储，按文本标识口径归一（None 表示未占资源）。
-    machine_id = normalize_text_id(result.machine_id)
+    # 种子资源编号来自上一版排程存储，保留已落库原始文本（None 或空白串视为未占资源）。
+    machine_id = clean_resource_id(result.machine_id)
     if machine_id:
         state.by_machine.setdefault(machine_id, []).append(result)
         state.machine_busy[machine_id] = state.machine_busy.get(machine_id, 0.0) + float(duration_hours)
-    operator_id = normalize_text_id(result.operator_id)
+    operator_id = clean_resource_id(result.operator_id)
     if operator_id:
         state.operator_busy[operator_id] = state.operator_busy.get(operator_id, 0.0) + float(duration_hours)
 

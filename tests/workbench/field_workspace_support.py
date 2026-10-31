@@ -42,9 +42,12 @@ def make_app(path):
 
     @app.before_request
     def database():
+        from core.infrastructure.sqlite_udf import register_schedule_time_sql_functions
+
         g.db = sqlite3.connect(str(path))
         g.db.row_factory = sqlite3.Row
         g.db.execute('PRAGMA foreign_keys=ON')
+        register_schedule_time_sql_functions(g.db)
         if request.method == 'GET' or request.path.endswith('/preview'):
             g.db.execute('PRAGMA query_only=ON')
         g.db.set_trace_callback(statements.append)

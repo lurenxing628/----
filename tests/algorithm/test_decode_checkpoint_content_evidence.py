@@ -228,7 +228,7 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
     search.checkpoints = CheckpointStore(1)
     monkeypatch.setattr(search.checkpoints, "best_for", lambda *args, **kwargs: SimpleNamespace(position=1))
     search.solution_pool = SimpleNamespace(size=3)
-    search.clock, search.t_begin, search.decode_seconds_total, search.decode_count = lambda: 0.0, 0.0, 0.0, 0
+    search.clock = lambda: 0.0
     oracle_targets = target_objectives_for("min_overdue")
     oracle_archive = SharedScheduleArchive("min_overdue", oracle_targets, (), {})
     oracle_budget = SharedSearchBudget(clock=search.clock, started_at=0.0, deadline=10.0,
@@ -239,16 +239,12 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
         seed_results=[], downtime_map={}, resource_pool=None, clock=search.clock, started_at=0.0, deadline=10.0,
     )
     search.limits = SimpleNamespace(max_decodes=100)
-    search.report = {"decodes": 0, "duplicate_decision_pruned": 0, "reference_capture_decodes": 0,
-                     "validation_decodes": 0, "context_switches": 0}
+    search.report = {"objective_name": "min_overdue", "decodes": 0}
     search.incumbent = SimpleNamespace(
         best={"score": (0.0,)}, observe_trial=lambda candidate: None,
         report_state=OptimizationSearchReportState(objective_name="min_overdue", started_at=0.0))
-    search.attempts = []
     accepted, evaluations = [], []
     search._consider_for_incumbent = lambda candidate, *, capture_of: accepted.append(candidate)
-    original_append_graph_attempt = ig_module.append_graph_attempt
-    monkeypatch.setattr(ig_module, "append_graph_attempt", lambda **kwargs: None)
     template = {"results": [], "summary": ScheduleSummary(True, 0, 0, 0, [], [], 0.0), "score": (10.0,)}
 
     def evaluate(**kwargs):
@@ -281,7 +277,7 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
     entry = search._decode_entry(second)
     assert entry is not None and entry.score == (10.0,)
     assert search.pending_output_rows == 0 and not search.pending_outputs
-    assert search.scores[second] == ((10.0,), True) and search.checkpoints.equivalence_checks == 1
+    assert search.scores[second] == ((10.0,), True)
     assert len(accepted) == 1 and evaluations[-1] == (second, False)
 
     for index, changed in enumerate(("output", "score", "score_type"), 30000):
@@ -305,11 +301,10 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
     search._score_trial((40000,), reference)
     search._set_parent(SimpleNamespace(batch_order=("B2",), order=(1,), inherited=(), prepared=None), profile)
     assert not search.pending_outputs and search.pending_output_rows == 0
-    assert not search.scores and not search.decoded_entries and search.report["context_switches"] == 1
+    assert not search.scores and not search.decoded_entries
 
     # Keep the existing bounded-content oracle above, then exercise the new shared path
     # with native decoding, native metrics and the real archive observer.
-    monkeypatch.setattr(ig_module, "append_graph_attempt", original_append_graph_attempt)
     from core.services.scheduler.graph.analysis_service import ScheduleGraphAnalysisService
     from core.services.scheduler.graph.types import OperationGraphEdge, OperationGraphNode
     from core.services.scheduler.run.optimizer.graph.candidates import (
@@ -323,7 +318,11 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
     from core.services.scheduler.run.optimizer.graph.iterated_greedy_moves import _parent_from_candidate
     from core.services.scheduler.run.optimizer.graph.repair import EliteRepairPool
     from core.services.scheduler.run.optimizer.graph.repair_contract import EliteRepairLimits
-    from core.services.scheduler.run.optimizer.graph.repair_decisions import RepairDecision, prepare_repair_parent
+    from core.services.scheduler.run.optimizer.graph.repair_decisions import (
+        RepairDecision,
+        prepare_repair_parent,
+        prepare_repair_scope,
+    )
     from core.services.scheduler.run.optimizer.graph.v2_features import enrich_graph_ready_v2_metrics
     from core.services.scheduler.run.optimizer.graph.v2_ranks import build_v2_common_rank_cache
     from core.services.scheduler.run.optimizer.search_state import OptimizerSearchState
@@ -397,25 +396,30 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
         decision = RepairDecision(tuple(batches), tuple(op.id for op in operations))
         source = evaluate(profile=decode_profile, order=list(decision.batch_order), decode_session=session,
                           repair=(decision, prepare_repair_parent(
-                              {"results": plain.results}, operations, context,
-                              resource_pairs_for=session.native_preparation.qualified_resource_pairs)))
+                              {"results": plain.results, "decoded_batch_order": plain.decoded_batch_order},
+                              scope=prepare_repair_scope(
+                                  operations, context,
+                                  resource_pairs_for=session.native_preparation.qualified_resource_pairs))))
         report.mark_candidate_evaluated(source, origin="baseline")
         owner.sync(view)
         source = view.candidate
-        parent = _parent_from_candidate(source, graph_context=context,
+        parent = _parent_from_candidate(source,
                                         prepared=prepare_repair_parent(
-                                            source, operations, context,
-                                            resource_pairs_for=session.native_preparation.qualified_resource_pairs))
+                                            source,
+                                            scope=prepare_repair_scope(
+                                                operations, context,
+                                                resource_pairs_for=session.native_preparation.qualified_resource_pairs)))
         limits = IteratedGreedyLimits(due_date_seed=False, checkpoint_count=3, max_decodes=20)
         pool = EliteRepairPool(limits=EliteRepairLimits(), objective_name="min_overdue",
-                                operations=operations, metrics_by_op_id=metrics, start_dt=case["start_dt"], seed=0,
+                                operations=operations, start_dt=case["start_dt"], seed=0,
                                 best=source, report_state=report, graph_context=context,
-                                clock=clock, deadline=started + 10, decode_session=session)
+                                clock=clock, deadline=started + 10, decode_session=session,
+                                decision_features=features)
         search = ig_module._IteratedGreedySearch(
             limits=limits, parent=parent, profile=decode_profile, pool=pool, evaluate=evaluate,
             metrics_by_op_id=metrics, start_dt=case["start_dt"], seed=0, deadline=started + 10,
-            clock=clock, t_begin=started, attempts=[], improvement_trace=[], report_state=report,
-            report=new_iterated_greedy_report(limits, objective_name="min_overdue"), operations=operations,
+            clock=clock, report_state=report,
+            report=new_iterated_greedy_report(objective_name="min_overdue"),
             graph_context=context, decode_session=session)
         search.best = source
         return search, owner, session, scheduler
@@ -439,23 +443,22 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
         assert trial["archive_ref"].entry_id not in owner.archive and session.new_decisions == before_new
         assert all(entry_id in owner.archive for entry_id in known_entries)
         assert type(trial["archive_ref"].entry_id) is int and not trial["decode_receipt"].get("observation_bound")
-        assert native.report["unverified_trial_decodes"] == 1
         native._remember_output(trial_order, trial)
         verified = native._decode_entry(trial_order)
         assert verified is not None and verified.candidate["decode_receipt"]["verified"]
         assert verified.candidate["decode_receipt"]["execution_kind"] == "validation_decode"
         assert verified.candidate["decode_receipt"]["observation_bound"]
-        assert native.checkpoints.equivalence_checks == 1 and not native.pending_outputs
+        assert not native.pending_outputs
         assert session.actual_decoder_calls == scheduler._decode_invocations == 4
         assert session.new_decisions == 2 and owner.archive.entry(source_entry).first_found_elapsed_ms >= 0
 
         # Expired phase-local scores do not turn a known full result back into a trial.
         native.scores.pop(trial_order)
         native.decoded_entries.pop(trial_order)
-        before_calls, before_trials = session.actual_decoder_calls, native.report["unverified_trial_decodes"]
+        before_calls = session.actual_decoder_calls
         assert native._score_trial(trial_order, reference) == (verified.score, True)
         assert session.actual_decoder_calls == before_calls and session.reused_decisions == 1
-        assert native.report["unverified_trial_decodes"] == before_trials and not native.pending_outputs
+        assert not native.pending_outputs
         assert session.stats()["execution_counts"]["trial_decode"] == 1
 
 

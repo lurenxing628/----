@@ -29,10 +29,20 @@ def _scope(export=False, related=False):
 
 def _read(scope, *, chain_target=None, bind_axis=True, include_chain=True):
     reader = ActualGanttService(g.db, current_app.logger)
+    token = request.args.get("snapshot_ref")
+    snapshot = None
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():
-            data, state = reader.workspace(scope, chain_target=chain_target, include_chain=include_chain)
-    snapshot = bind_read_snapshot(scope.scope(), state, request.args.get("snapshot_ref"))
+            if token is not None:
+                scope_dict, state = reader.prebind_scope(scope)
+                snapshot = bind_read_snapshot(scope_dict, state, token)
+            data, state = reader.workspace(
+                scope,
+                chain_target=chain_target,
+                include_chain=include_chain,
+            )
+    if snapshot is None:
+        snapshot = bind_read_snapshot(scope.scope(), state, None)
     if bind_axis:
         data = bind_axis_time(data, snapshot["as_of"], snapshot["snapshot_ref"])
     elif data.get("critical_chain") is not None:

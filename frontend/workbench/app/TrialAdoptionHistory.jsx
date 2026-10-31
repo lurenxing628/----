@@ -31,8 +31,9 @@
     function update(patch, reset = true) {
       if (reset) snapshot.current = null;
       const next = { ...query, ...patch, error: null, snapshot_ref: snapshot.current };
-      try { S.remember(ref, next); } catch (_) { setError(new Error('采用记录的筛选没有存上，返回后可能要重新选。')); return; }
-      setError(null); setQuery(next); refresh();
+      try { S.remember(ref, { page: next.page, size: next.size, status: next.status, snapshot_ref: next.snapshot_ref, tab: 'adoptions' }); setError(null); }
+      catch (_) { setError(new Error('采用记录的筛选没有存上，返回后可能要重新选。')); }
+      setQuery(next); refresh();
     }
     const result = read.result, d = result && result.data;
     return <section className="trial-adoption-history" aria-label="本试调方案的采用记录">
@@ -41,7 +42,7 @@
         <label>每页<select aria-label="采用记录每页" value={query.size || 20} disabled={read.busy || !!query.error} onChange={e => update({ size: Number(e.target.value), page: 1 })}>
           {[10, 20, 50].map(n => <option value={n} key={n}>{n} 条</option>)}</select></label>
         <U.Button icon="refresh-cw" aria-label="刷新采用记录" title="刷新采用记录" busy={read.busy}
-          onClick={() => { if (query.error) { history.replaceState({ ...history.state, trialAdoptionHistory: null }, '', location.href); } update({ page: 1, status: query.status || 'all', size: query.size || 20 }); }} />
+          onClick={() => update({ page: 1, status: query.status || 'all', size: query.size || 20 })} />
       </div><U.ErrorBox error={query.error || error || read.error} />
       {read.busy && <p role="status" className="tah-meta">正在读取这个试调方案的采用记录和当前正式计划…</p>}
       {d && <><div className="tah-meta">共 {d.total_adoptions} 次采用 <details className="wb-ref"><summary>本次查询详情</summary><p>刷新时间：{window.WorkbenchFormat.dateTime(result.meta.as_of, { seconds: true, fractions: true })}</p><window.WorkbenchReference entries={{ '试调方案编号': d.source.scenario_ref }} /></details></div>

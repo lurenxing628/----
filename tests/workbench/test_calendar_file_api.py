@@ -220,9 +220,11 @@ def test_legacy_null_shift_start_and_empty_remark_csv_roundtrip_without_false_di
             (DAY,),
         )
         conn.commit()
+        from core.infrastructure.transaction import TransactionManager
         from core.services.workbench.resource.operator_calendars import WorkbenchOperatorCalendarService
 
-        assert WorkbenchOperatorCalendarService(conn, "OP-CSV").month(2026, 10)["stats"]["work_days"] == 1
+        with TransactionManager(conn).transaction():
+            assert WorkbenchOperatorCalendarService(conn, "OP-CSV").month(2026, 10)["stats"]["work_days"] == 1
     legacy_op_export_prev = client.post(
         BASE + "/operator_calendar/export-preview",
         json={"range": {"start_date": DAY, "end_date": DAY}},

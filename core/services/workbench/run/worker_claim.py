@@ -7,7 +7,7 @@ from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_job import PROCESS_EXECUTOR_REF
 from core.services.workbench.facts.decision_read_models import public_job_status
-from core.services.workbench.facts.run_policy import require_admission, require_run_schema
+from core.services.workbench.facts.run_policy import require_admission
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 
@@ -33,7 +33,6 @@ def claim_run(conn, run_ref, now, retry_original=None) -> Tuple[Dict[str, Any], 
     repo = WorkbenchRunRepository(conn)
     try:
         with TransactionManager(conn).transaction(begin_immediate=True):
-            require_run_schema(repo)
             row = repo.get(run_ref) if retry_original is not None else repo.claim_head(run_ref)
             if row is None:
                 raise WorkbenchCommandRejected("entity_not_found", "找不到这次排产，页面没有打开。请到「排产记录」重新选择。", 404)
@@ -64,7 +63,6 @@ def require_retryable_claim(conn, original):
         raise RuntimeError("Claim retry verification requires a fresh connection")
     repo = WorkbenchRunRepository(conn)
     with TransactionManager(conn).transaction():
-        require_run_schema(repo)
         row = repo.get(original["job"]["run_ref"])
         _require_unchanged_unclaimed(repo, row, original)
 
@@ -73,7 +71,6 @@ def capture_claim_retry_state(conn, run_ref):
     """Remember both immutable records before the first claim can encounter BUSY."""
     repo = WorkbenchRunRepository(conn)
     with TransactionManager(conn).transaction():
-        require_run_schema(repo)
         row = repo.get(run_ref)
         _require_unclaimed_row(repo, row)
         return {"job": row, "admission": _admission(conn, row)}

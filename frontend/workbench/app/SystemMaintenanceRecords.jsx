@@ -3,8 +3,8 @@
   const A = window.SystemMaintenanceAPI, C = window.SystemMaintenanceControls;
   const emptyFilters = { query: '', type: '', status: '', level: '', file: '', start: '', end: '' };
   const types = { manual: '手动备份', auto: '自动备份', before_restore: '恢复前保护副本', unknown: '类型未知', restore: '恢复', cleanup: '清理', runtime: '运行日志', operation: '操作记录' };
-  // 恢复各阶段的叫法只在 SystemRestoreStatus.labels 维护一份；这里只补备份文件自己的两个状态。
-  const states = { unverified: '未校验', unknown: '结果不确定', ...window.SystemRestoreStatus.labels };
+  // 恢复各阶段的叫法只在 SystemRestoreStatus.labels 维护一份；这里只补备份文件与清理记录自己的状态。
+  const states = { unverified: '未校验', partial: '部分异常', skipped: '已跳过', unknown: '结果不确定', ...window.SystemRestoreStatus.labels };
   const levels = { INFO: '信息', WARNING: '警告', ERROR: '错误', DEBUG: '调试', CRITICAL: '严重', UNKNOWN: '未知' };
   const sources = { 'aps.log': '主日志（aps.log）', 'aps_error.log': '错误日志（aps_error.log）', 'launcher.log': '启动日志（launcher.log）', OperationLogs: '操作记录' };
   const levelText = value => levels[value] || value;

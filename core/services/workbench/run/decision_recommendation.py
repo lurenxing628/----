@@ -27,7 +27,17 @@ def _support(source, candidate_ref, kind, ref, tab, query, *, tasks=None, operat
     else:
         # operations excludes unavailable baselines before calling with before=True;
         # all other callers use before=False.
-        drill = cast(Dict[str, Any], drill_target(source, tasks=tasks, batch_ref=batch_ref, operation_ref=operation_ref, before=before))
+        drill = cast(
+            Dict[str, Any],
+            drill_target(
+                source,
+                tasks=tasks,
+                batch_ref=batch_ref,
+                operation_ref=operation_ref,
+                before=before,
+                task_intervals=source.task_intervals("reference" if before else candidate_ref),
+            ),
+        )
         if not before or source.comparison_mode == "admission_official":
             drill["candidate_ref"] = candidate_ref
         drill.update(selected_candidate_ref=candidate_ref, resource_view=source.resource_view)

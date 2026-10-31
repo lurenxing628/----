@@ -48,6 +48,7 @@ def test_saved_calendar_defaults_and_domain_default_periods():
     assert len(new["windows"]) == 2
     resources = project(modern)
     assert resources[OPERATOR]["windows"] == resources[MACHINE]["windows"]
+    assert resources[OPERATOR]["days"][0]["windows"] is resources[MACHINE]["days"][0]["windows"]
     assert resources[OPERATOR]["basis"] == "personal_or_operator_shift_calendar"
     assert all(row["provenance"] == "domain_default" for row in resources[OPERATOR]["windows"])
     assert resources[MACHINE]["days"][0]["downtime_scope_hours"] == 0.0
@@ -70,9 +71,9 @@ def test_night_tail_priority_overlay_and_downtime_use_exact_half_open_window():
     assert result["effective_hours"] == 0.75
     assert result["normal_available_hours"] == 1 and result["urgent_available_hours"] == 1.25
     assert [(row["start"], row["end"]) for row in result["windows"]] == [
-        ("2026-10-13T04:00:00", "2026-10-13T04:30:00"),
-        ("2026-10-13T05:15:00", "2026-10-13T05:30:00"),
-        ("2026-10-13T05:30:00", "2026-10-13T06:00:00")]
+        (datetime(2026, 10, 13, 4, 0), datetime(2026, 10, 13, 4, 30)),
+        (datetime(2026, 10, 13, 5, 15), datetime(2026, 10, 13, 5, 30)),
+        (datetime(2026, 10, 13, 5, 30), datetime(2026, 10, 13, 6, 0))]
     saved["tables"]["MachineDowntimes"] = [
         {"machine_id": "M1", "start_time": "2026-10-14T01:00:00", "end_time": "2026-10-14T00:00:00", "status": "active"}]
     invalid = project(saved, "2026-10-13T04:00:00", "2026-10-13T06:00:00")[MACHINE]
@@ -130,6 +131,8 @@ def test_microsecond_calendar_and_occupancy_preserve_device_and_person_hours():
                     "available_overlap_hours": unit if kind == "operator" else 0}
         for field, value in expected.items():
             assert resource[field] == pytest.approx(value, rel=1e-12, abs=0)
+        assert resource["has_overlap"] is (kind == "operator")
+        assert len(resource["conflict_segments"]) == (1 if kind == "operator" else 0)
         assert resource["utilization"] == 1
         for field in ("downtime_scope_hours", "downtime_available_hours"):
             assert calendar["days"][0][field] == pytest.approx(unit if kind == "machine" else 0, rel=1e-12, abs=0)
@@ -180,7 +183,7 @@ def test_declared_bounded_coverage_is_not_extended_with_implicit_defaults():
     result = project(saved, "2026-10-12T00:00:00", "2026-10-15T00:00:00",
                      coverage={"start": "2026-10-12T00:00:00", "end": "2026-10-14T00:00:00"})[MACHINE]
     assert [row["state"] for row in result["days"]] == ["available", "available", "unavailable"]
-    assert result["days"][-1]["end"] == "2026-10-15T00:00:00"
+    assert result["days"][-1]["end"] == datetime(2026, 10, 15, 0, 0)
     assert result["days"][-1]["issues"][0]["missing_fact"] == "calendar_coverage"
     with pytest.raises(WorkbenchCommandRejected) as exc:
         project(saved, "2020-01-01T00:00:00", "2031-01-01T00:00:00")

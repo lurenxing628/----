@@ -126,7 +126,7 @@ def _facet_query(kind, body, *, selection=False):
         if list_token is not None:
             bind_read_snapshot(query.scope(), state, list_token)
         snapshot = bind_read_snapshot(signature, state, facet_token)
-        data = reader.facet_selection(query, column, search, size) if selection else reader.facets(query, column, search, number, size)
+        data = reader.facet_selection(query, column, search) if selection else reader.facets(query, column, search, number, size)
         return query_success(data, snapshot)
 
 

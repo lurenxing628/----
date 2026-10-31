@@ -117,9 +117,10 @@ def prepare_run_result(computation, identities, *, run, capture, admission, fact
         packets[candidate["candidate_ref"]] = {"raw_tasks": candidate["tasks"], "intervals": intervals,
             "scheduled_op_ids": payload.scheduled_op_ids}
     models = build_decision_read_models(run, capture, result, candidates, packets,
-        facts=facts, admission=admission, process=result.get("unified_process"))
+        facts=facts, admission=admission, process=result["unified_process"])
     from data.repositories.workbench_run_repo import encode_decision_read_models, encode_result
     from data.repositories.workbench_run_result_repo import encode_candidate_rows
 
+    captured_facts = {"revisions": dict(facts.archive["revisions"]), "schema": facts.archive["schema"]}
     return PreparedRunResult(encode_candidate_rows(candidates), encode_result(result), encode_decision_read_models(models),
-                             models["run_model"]["header"])
+                             models["run_model"]["header"], captured_facts=captured_facts)

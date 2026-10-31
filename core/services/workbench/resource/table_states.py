@@ -68,11 +68,10 @@ def _supplier_state(facts: ResourceTableFacts, code, references):
     identity = facts.identity("supplier", code)
     supplier: dict[str, Any] = dict(facts.raw_record("supplier", code), ref=identity.ref, revision=identity.revision)
     supplier["profile"] = facts.raw_lookup("supplier_profiles", "supplier_id").get(code)
-    types = []
-    for key in sorted({row["op_type_id"] for row in facts.grouped("capabilities", "supplier_id")[code]}):
-        related = facts.raw_related("op_type", key)
-        if related is not None:
-            types.append(dict(related["record"], ref=related["identity"]["ref"], revision=related["identity"]["revision"]))
-    supplier["op_types"] = types
+    op_types = []
+    for key in facts.supplier_types(code):
+        op_type = facts.identity("op_type", key)
+        op_types.append(dict(facts.raw_record("op_type", key), ref=op_type.ref, revision=op_type.revision))
+    supplier["op_types"] = op_types
     supplier["references"] = {name: rows.get(code, []) for name, rows in references.items()}
     return supplier_write_state(identity, supplier)

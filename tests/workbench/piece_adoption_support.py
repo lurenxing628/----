@@ -51,7 +51,7 @@ def payload(prepared, results):
     return build_validated_schedule_payload(
         results, allowed_op_ids=prepared.schedule_output_allowed_op_ids, operations=prepared.payload_validation_operations,
         operation_sources=prepared.operation_sources,
-        missing_internal_resource_op_ids=prepared.missing_internal_resource_op_ids, schedule_errors=[],
+        missing_internal_resource_op_ids=prepared.missing_internal_resource_op_ids,
         point_validator=candidate_point_validator(prepared))
 
 

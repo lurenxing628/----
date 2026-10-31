@@ -259,7 +259,11 @@ def test_batch_qualification_uses_captured_skills_authorizations_and_supplier_bi
     conn.execute("DELETE FROM OperatorMachine WHERE operator_id='O1'")
     conn.commit()
     choices = client.get(BASE + '/choices', query_string={'batch_ref': ref_for(client), 'operation_ref': operation_ref}).get_json()['data']
-    assert '授权' in next(row for row in choices['operators'] if row['business_code'] == 'O1')['unavailable_reason']
+    # 候选资格只看人员自身；人机配对由前端按草稿判断、由提交校验兜住。
+    assert next(row for row in choices['operators'] if row['business_code'] == 'O1')['eligible']
+    assert {'machine_ref': ref_for(client, 'machine', 'M1'), 'operator_ref': ref_for(client, 'operator', 'O1')} not in choices['authorizations']
+    response = post(client, 'operation_update', {'operation_ref': operation_ref, 'fields': {'unit_hours': 3}}, key='captured-skills-update-003')
+    assert response.status_code >= 400 and '未被配置为可操作设备' in response.get_json()['error']['message']
     conn.execute("UPDATE BatchOperations SET source='external',machine_id=NULL,operator_id=NULL,supplier_id='S1',ext_days=1 WHERE batch_id='FREE-001'")
     conn.commit()
     # 供应商能力只认 WorkbenchSupplierOpTypes。
@@ -295,6 +299,25 @@ def test_batch_qualification_uses_captured_skills_authorizations_and_supplier_bi
     assert '合并外协段的供应商与保存的规则不一致' in rejected['error']['message']
 
 
+def test_choices_offer_a_new_authorized_pair_that_operation_update_commits(batch_client):
+    from tests.workbench.identity_metadata_support import insert_row
+
+    client, conn = batch_client, batch_client.batch_conn
+    conn.execute("UPDATE BatchOperations SET machine_id='M1',operator_id='O1' WHERE batch_id='FREE-001'")
+    insert_row(conn, 'Machines', dict(machine_id='M2', name='second-lathe', op_type_id='OT1', status='active'))
+    insert_row(conn, 'Operators', dict(operator_id='O2', name='second-operator', status='active'))
+    insert_row(conn, 'OperatorMachine', dict(operator_id='O2', machine_id='M2'))
+    insert_row(conn, 'OperatorSkill', dict(operator_id='O2', op_type_id='OT1'))
+    conn.commit()
+    operation_ref = detail(client)['data']['operations'][0]['ref']
+    choices = client.get(BASE + '/choices', query_string={'batch_ref': ref_for(client), 'operation_ref': operation_ref}).get_json()['data']
+    assert next(row for row in choices['machines'] if row['business_code'] == 'M2')['eligible']
+    assert next(row for row in choices['operators'] if row['business_code'] == 'O2')['eligible']
+    response = post(client, 'operation_update', {'operation_ref': operation_ref, 'fields': {
+        'machine_ref': ref_for(client, 'machine', 'M2'), 'operator_ref': ref_for(client, 'operator', 'O2')}}, key='new-authorized-pair-001')
+    assert response.status_code == 200 and response.get_json()['result'] == 'committed', response.get_json()
+
+
 def test_bulk_and_import_prepare_all_changes_before_writing(batch_client, monkeypatch):
     from core.infrastructure.transaction import TransactionManager
     from core.services.workbench.batch.bulk import WorkbenchBatchBulkService
@@ -305,18 +328,25 @@ def test_bulk_and_import_prepare_all_changes_before_writing(batch_client, monkey
 
     client, conn = batch_client, batch_client.batch_conn
     original_read, original_update = WorkbenchBatchFactsRepository.whole_tables, BatchRepository.update
-    reads, writes = [], []
+    original_entity_read = WorkbenchBatchFactsRepository.entity_tables
+    reads, entity_reads, writes = [], [], []
 
     def capture(repo):
         assert not writes
         reads.append(True)
         return original_read(repo)
 
+    def capture_entities(repo):
+        assert not writes
+        entity_reads.append(True)
+        return original_entity_read(repo)
+
     def update(repo, code, changes):
         writes.append(code)
         return original_update(repo, code, changes)
 
     monkeypatch.setattr(WorkbenchBatchFactsRepository, 'whole_tables', capture)
+    monkeypatch.setattr(WorkbenchBatchFactsRepository, 'entity_tables', capture_entities)
     monkeypatch.setattr(BatchRepository, 'update', update)
     refs = [ref_for(client), ref_for(client, key='B1')]
     reader = BatchFacts(conn)
@@ -324,15 +354,16 @@ def test_bulk_and_import_prepare_all_changes_before_writing(batch_client, monkey
         with reader.command_snapshot():
             result = WorkbenchBatchBulkService(conn, reader=reader).apply_normalized(
                 {'action': 'update', 'refs': sorted(refs), 'patch': {'remark': 'prepared-bulk'}})
-    assert result.result == 'committed' and len(reads) == 1 and set(writes) == {'FREE-001', 'B1'}
+    assert result.result == 'committed' and len(reads) == 0 and len(entity_reads) == 1 and set(writes) == {'FREE-001', 'B1'}
     reads.clear()
+    entity_reads.clear()
     writes.clear()
     document = {'operation': 'batch.import_confirm', 'can_confirm': True, 'deleted': [], 'mode': 'overwrite', 'warnings': [],
                 'rows': [{'action': 'update', 'entity_ref': ref, 'input': {'fields': {'remark': 'prepared-import'}}} for ref in refs]}
     with TransactionManager(conn).transaction(begin_immediate=True):
         with reader.command_snapshot():
             result = WorkbenchBatchFileService(conn, reader=reader).apply(document)
-    assert result.result == 'committed' and len(reads) == 1 and set(writes) == {'FREE-001', 'B1'}
+    assert result.result == 'committed' and len(reads) == 0 and len(entity_reads) == 1 and set(writes) == {'FREE-001', 'B1'}
 
 
 def test_sync_confirm_applies_templates_without_rebuilding_preview(batch_client, monkeypatch):
@@ -426,6 +457,7 @@ def test_quantity_split_with_bound_material_returns_the_created_batch_reference(
 
 
 def test_batch_import_preview_rejects_legacy_padded_batch_or_part_without_binding_trimmed_sibling(batch_client):
+    from core.models.workbench_batch_query import batch_scope
     from core.services.workbench.batch.files import WorkbenchBatchFileService
     from core.services.workbench.batch.queries import WorkbenchBatchQueryService
     from tests.workbench.identity_metadata_support import insert_row
@@ -439,7 +471,7 @@ def test_batch_import_preview_rejects_legacy_padded_batch_or_part_without_bindin
     reader = WorkbenchBatchQueryService(conn)
     with reader.detached_read_snapshot():
         exported = WorkbenchBatchFileService.export(
-            [row for row in reader.matched({}) if row["business_code"] == " B1 "]
+            [row for row in reader.matched(batch_scope({})) if row["business_code"] == " B1 "]
         )
     service = WorkbenchBatchFileService(conn)
     upload = service.read(exported, "overwrite")
@@ -455,3 +487,31 @@ def test_batch_import_preview_rejects_legacy_padded_batch_or_part_without_bindin
     part_row, = part_preview["rows"]
     assert part_row["action"] == "rejected"
     assert any("批次号或图号存在首尾空格，请先核对原记录。" in err for err in part_row["errors"])
+
+
+def test_legacy_padded_batch_ref_resolves_for_detail_update_copy_and_delete(batch_client):
+    from tests.workbench.identity_metadata_support import insert_row
+
+    client, conn = batch_client, batch_client.batch_conn
+    insert_row(conn, "Batches", dict(batch_id=" PAD-B1 ", part_no="P1", quantity=5, part_name="padded-batch",
+                                     priority="normal", ready_status="no", status="pending"))
+    conn.commit()
+    padded_ref = conn.execute(
+        "SELECT ref FROM WorkbenchEntityRefs WHERE kind='batch' AND entity_key=' PAD-B1 ' AND active=1"
+    ).fetchone()[0]
+
+    loaded = detail(client, padded_ref)
+    assert loaded["data"]["business_code"] == " PAD-B1 "
+
+    p_update = preview(client, refs=[padded_ref], patch={"remark": "padded-updated"})
+    assert confirm(client, p_update, key="padded-batch-update-01").status_code == 200
+    assert detail(client, padded_ref)["data"]["fields"]["remark"] == "padded-updated"
+
+    p_copy = preview(client, "copy", [padded_ref])
+    assert p_copy["rows"][0]["after"]["business_code"] == "PAD-B2"
+    copied = confirm(client, p_copy, key="padded-batch-copy-01")
+    assert copied.status_code == 200
+
+    p_del = preview(client, "delete", [padded_ref])
+    assert confirm(client, p_del, key="padded-batch-delete-01").status_code == 200
+    assert_error(client.get(BASE + "/" + padded_ref), "entity_not_found")

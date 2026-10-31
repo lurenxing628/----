@@ -32,7 +32,6 @@ __all__ = ["build_result_summary"]
 def build_result_summary(*, ctx: SummaryBuildContext) -> Dict[str, Any]:
     runtime_state = _build_runtime_state(
         batches=ctx.batches,
-        results=ctx.results,
         summary=ctx.summary,
         best_metrics=ctx.best_metrics,
     )

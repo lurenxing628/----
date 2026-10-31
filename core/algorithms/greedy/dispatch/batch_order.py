@@ -54,8 +54,7 @@ def _dispatch_one(
     batch_id = op.batch_id
     if not _validate_batch(op=op, batch_id=batch_id, batches=batches, state=state):
         return
-    errors_before = len(state.errors)
-    result, _blocked = schedule_op(
+    result, failure = schedule_op(
         ctx,
         op=op,
         batch=operation_batch(op, batches[batch_id]),
@@ -66,14 +65,14 @@ def _dispatch_one(
         auto_assign_enabled=auto_assign_enabled,
         resource_pool=resource_pool,
     )
-    if result and result.start_time and result.end_time:
+    if result is not None:
         state.record_dispatch_success(result)
     else:
         state.record_dispatch_failure(
             batch_id,
             block=True,
             failed_op=op,
-            error_message=(state.errors[-1] if len(state.errors) > errors_before else ""),
+            failure=failure,
         )
 
 
@@ -105,7 +104,6 @@ def schedule_op(
             batch_progress=state.batch_progress,
             external_group_cache=state.external_group_cache,
             base_time=base_time,
-            errors=state.errors,
             end_dt_exclusive=end_dt_exclusive,
         )
     return ctx.schedule_internal(
@@ -115,7 +113,6 @@ def schedule_op(
         machine_timeline=state.machine_timeline,
         operator_timeline=state.operator_timeline,
         base_time=base_time,
-        errors=state.errors,
         end_dt_exclusive=end_dt_exclusive,
         machine_downtimes=machine_downtimes,
         auto_assign_enabled=auto_assign_enabled,

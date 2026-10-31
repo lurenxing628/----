@@ -1,25 +1,22 @@
 """One transaction owns lossless production originals and their business views."""
 
-from typing import Any, NoReturn
+from collections.abc import Mapping
+from typing import Any
 
-from core.infrastructure.connection_guards import schema_contract_memo
+from core.infrastructure.schema_structure import SchemaStructure
+from core.infrastructure.sqlite_udf import receipt_revision_category
 from core.infrastructure.workbench_run_read_model_schema import READ_MODEL_TABLES
 from core.infrastructure.workbench_run_schema import RUN_TABLES
 from core.infrastructure.workbench_trial_schema import TRIAL_TABLES
-from core.models.content import content_text
-from core.models.workbench_preflight import SCHEDULING_PREFERENCES_ACTION, SCHEDULING_PREFERENCES_KEY
-from core.shared.strict_json import load_strict_json
+from core.models.content import content_text, same
+from core.models.workbench_preflight import SCHEDULING_PREFERENCES_KEY
+from core.services.workbench.facts.schema_compat import comparable_schema
+from core.services.workbench.facts.source_revisions import PREFLIGHT_SOURCE_KEYS, read_source_revisions
 from data.repositories.workbench_preflight_facts_repo import WorkbenchPreflightFactsRepository
 
-NON_INPUT_TABLES = frozenset(("OperationLogs", "SystemJobState") + RUN_TABLES + TRIAL_TABLES + READ_MODEL_TABLES + (
+NON_INPUT_TABLES = frozenset(("OperationLogs", "SystemJobState", "WorkbenchSourceRevisions") + RUN_TABLES + TRIAL_TABLES + READ_MODEL_TABLES + (
     "WorkbenchDashboardStates", "WorkbenchDashboardHistory",
     "WorkbenchDashboardExternalStates", "WorkbenchDashboardExternalHistory"))
-NON_INPUT_RECEIPT_ACTIONS = (SCHEDULING_PREFERENCES_ACTION, "scheduling.run")
-NON_INPUT_RECEIPT_PREFIXES = ("trial.", "dashboard.")
-
-
-def _unreadable_outcome() -> NoReturn:
-    raise ValueError("Receipt outcome is not strict JSON")
 
 
 def non_input_row(table, row, receipt_columns):
@@ -33,19 +30,7 @@ def non_input_row(table, row, receipt_columns):
     if table != "WorkbenchCommandReceipts" or len(row) != len(receipt_columns):
         return False
     receipt = dict(zip(receipt_columns, row))
-    action = receipt.get("action")
-    if type(action) is str and (action in NON_INPUT_RECEIPT_ACTIONS
-                               or action.startswith(NON_INPUT_RECEIPT_PREFIXES)):
-        return True
-    text = receipt.get("outcome_json")
-    if type(text) is not str:
-        return False
-    try:
-        outcome = load_strict_json(text, on_malformed=_unreadable_outcome)
-    except ValueError:
-        # 读不出的回执不算可省略的记账行，原样留在输入里。
-        return False
-    return type(outcome) is dict and outcome.get("result") == "unchanged"
+    return receipt_revision_category(receipt.get("action"), receipt.get("outcome_json")) != "production_input"
 
 
 class ProductionFactsCapture:
@@ -56,23 +41,78 @@ class ProductionFactsCapture:
         self.execution_service: Any = None
         self.runtime_resources = None
         self.execution_facts = {}
-        self.schema = sorted((kind, name, table, sql)
-                             for name, (kind, table, sql) in schema_contract_memo(conn).structure.objects.items())
+        self.structure = SchemaStructure(conn)
+        self.schema = [
+            [kind, name, table, sql]
+            for kind, name, table, sql in sorted(
+                (kind, name, table, sql)
+                for name, (kind, table, sql) in self.structure.objects.items()
+            )
+        ]
         self.table_names = {name for kind, name, _, _ in self.schema if kind == "table"}
-        self.repo = WorkbenchPreflightFactsRepository(conn, present_tables=self.table_names,
-            non_input_receipt_actions=NON_INPUT_RECEIPT_ACTIONS,
-            non_input_receipt_prefixes=NON_INPUT_RECEIPT_PREFIXES)
+        self.repo = WorkbenchPreflightFactsRepository(
+            conn, present_tables=self.table_names, structure=self.structure
+        )
         self.columns, self.tables, self._raw_tables, self._indexes = {}, {}, {}, {}
-        self.column_types, self._business_tables = {}, {}
+        self._business_tables = {}
         self._archives = {}
         self._latest_plans = {}
         self._content = None
+        self._revisions = None
+        self._comparable_schema = None
+        self._matched_archives = {}
+
+    @property
+    def revisions(self):
+        if self._revisions is None:
+            self._revisions = read_source_revisions(self.conn, PREFLIGHT_SOURCE_KEYS)
+        return self._revisions
+
+    @property
+    def comparable_schema(self):
+        if self._comparable_schema is None:
+            self._comparable_schema = comparable_schema(self.schema)
+        return self._comparable_schema
+
+    def matches_archive(self, archived):
+        if not isinstance(archived, Mapping):
+            return None
+        cached = self._matched_archives.get(id(archived))
+        if cached is not None and cached[0] is archived:
+            return cached[1]
+        revisions = archived.get("revisions")
+        if not isinstance(revisions, Mapping) or not revisions:
+            return None
+        matched = (
+            dict(revisions) == self.revisions
+            and same(comparable_schema(archived["schema"]), self.comparable_schema)
+        )
+        self._matched_archives[id(archived)] = (archived, matched)
+        return matched
+
+    def seed_from_named_archive(self, archived):
+        if self.matches_archive(archived) is not True:
+            return
+        columns = archived["columns"]
+        for name, rows in archived["tables"].items():
+            if name not in self.tables and name in columns:
+                self.columns[name] = list(columns[name])
+                self.tables[name] = list(rows)
+        self._archives[True] = archived
+
+    def _raw_table(self, name):
+        if name not in self._raw_tables:
+            if name not in self.tables:
+                self.table(name)
+            else:
+                cols = self.columns[name]
+                self._raw_tables[name] = [tuple(row[col] for col in cols) for row in self.tables[name]]
+        return self._raw_tables[name]
 
     def table(self, name):
         if name not in self.tables:
             columns, rows = self.repo.capture_table(name)
             self.columns[name], self._raw_tables[name] = columns, rows
-            self.column_types[name] = self.repo.column_types[name]
             self.tables[name] = [dict(zip(columns, row)) for row in rows]
         return self.tables[name]
 
@@ -80,7 +120,7 @@ class ProductionFactsCapture:
         """Apply the original registered SQLite codecs once, preserving the raw archive."""
         if name not in self._business_tables:
             originals = self.table(name)
-            codecs = self.repo.converters[name]
+            codecs = self.repo.table_converters(name)
             self._business_tables[name] = originals if not codecs else [
                 {**row, **{
                     column: convert(value.encode("utf-8") if isinstance(value, str) else value)
@@ -132,14 +172,20 @@ class ProductionFactsCapture:
                     self.table(name)
             receipt_columns = self.columns.get("WorkbenchCommandReceipts", [])
             tables = {}
-            for name, rows in self._raw_tables.items():
+            for name in list(self.tables):
                 if name in NON_INPUT_TABLES:
                     continue
+                rows = self._raw_table(name)
                 originals = [row for row in rows if not non_input_row(name, row, receipt_columns)]
                 tables[name] = ([dict(zip(self.columns[name], row)) for row in originals] if named
                                 else [list(row) for row in originals])
-            self._archives[named] = {"version": "production-facts-v2", "schema": self.schema,
-                "columns": {name: self.columns[name] for name in tables}, "tables": tables}
+            self._archives[named] = {
+                "version": "production-facts-v2",
+                "schema": self.schema,
+                "columns": {name: self.columns[name] for name in tables},
+                "tables": tables,
+                "revisions": dict(self.revisions),
+            }
         return self._archives[named]
 
     def content(self):

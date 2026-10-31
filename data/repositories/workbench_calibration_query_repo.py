@@ -1,19 +1,10 @@
 """Bounded original template/instance reads. This repository cannot write lineage or rule on it."""
 
-from core.infrastructure.connection_guards import schema_contract_memo
-from core.infrastructure.workbench_metadata_schema import workbench_metadata_contract_issues
-from core.infrastructure.workbench_process_schema import workbench_process_contract_issues
-
 from .base_repo import BaseRepository
 from .workbench_execution_repo import chunks
 
 
 class WorkbenchCalibrationQueryRepository(BaseRepository):
-    def schema_installed(self):
-        memo = schema_contract_memo(self.conn)
-        return not (memo.get_schema(workbench_metadata_contract_issues) or
-                    memo.get_schema(workbench_process_contract_issues))
-
     def part_identity(self, part_ref):
         """Active part identity's stored entity key, or None when the ref is no longer live."""
         return self.fetchone("SELECT entity_key FROM WorkbenchEntityRefs WHERE ref=? AND kind='part' AND active=1", (part_ref,))

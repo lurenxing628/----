@@ -6,8 +6,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable, Dict, Iterable
 
+from flask import g, request
+
 from core.errors import ValidationError
-from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.services.workbench import messages
 from web.public_token_registry import PublicTokenIssuer, resolve_public_token
 
@@ -15,6 +17,19 @@ from .read_context import fact_value
 
 _SCOPE = "workbench-write-v1"
 _TTL_SECONDS = 15 * 60
+
+
+def command_body(subject: str) -> Dict[str, Any]:
+    if request.args or not request.is_json:
+        raise WorkbenchCommandRejected("invalid_input", f"提交的内容格式不正确，{subject}还没有保存。请刷新页面后重新填写。", 400)
+    body = request.get_json()
+    if not isinstance(body, dict) or set(body) != {"request_key", "write_token", "input"}:
+        raise WorkbenchCommandRejected("invalid_input", f"提交的内容不完整或有多余项，{subject}还没有保存。请刷新页面后重新填写。", 400)
+    validate_request_key(body["request_key"])
+    g.workbench_request_key = body["request_key"]
+    if not isinstance(body["write_token"], str) or not body["write_token"]:
+        raise WorkbenchCommandRejected("invalid_input", f"本页数据已过期，{subject}还没有保存。请点「刷新资料」后重新填写。", 400)
+    return body
 
 
 @dataclass(frozen=True)

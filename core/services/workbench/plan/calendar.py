@@ -17,9 +17,14 @@ facts; sparse enormous spans return explicit unavailable, never a shortened rang
 from datetime import date, timedelta
 
 from core.services.capacity.plan_calendar_engine import SnapshotCalendarEngine
-from core.services.capacity.plan_calendar_io import CalendarFacts, ProjectionLimit, snapshot_values
+from core.services.capacity.plan_calendar_io import CalendarFacts, ProjectionLimit
 from core.services.capacity.plan_calendar_limits import MAX_CALENDAR_DATES, MAX_POLICY_CELLS
-from core.services.capacity.plan_calendar_windows import policy_projection, project_resource_calendars, unavailable
+from core.services.capacity.plan_calendar_windows import (
+    policy_projection,
+    project_resource_calendars,
+    public_projection,
+    unavailable,
+)
 
 from .calendar_context import public_resource, resource_ids
 
@@ -42,17 +47,17 @@ def _resource_projections(engine, facts, ids, bounds, global_calendar, resources
     return public, private
 
 
-def _unavailable_result(scope, time_scope, context, code):
+def _unavailable_result(scope, time_scope, code):
     global_cal = unavailable("global_calendar", code)
     dto = {"state": "unavailable", "plan_ref": scope.plan_ref, "time_scope": time_scope,
            "global": global_cal, "resources": None,
            "issues": global_cal["issues"], "windows_complete": False}
-    return dto, {"context": context, "state": "unavailable", "reason": code, "sources": None, "resources": None}
+    return dto, {"state": "unavailable", "reason": code, "sources": None, "resources": None}
 
 
 def project_plan_calendar(conn, *, scope, resources, selected, include_windows: bool = True):
     """selected/resources must already belong to the plan, selected in this transaction."""
-    rows, start, end, time_scope, context = selected
+    rows, start, end, time_scope = selected
     first, last, dates = range_days(start, end)
     point_days = [row["_point_work"] for row in rows if row.get("_point_work")]
     if point_days:
@@ -60,37 +65,33 @@ def project_plan_calendar(conn, *, scope, resources, selected, include_windows: 
         dates = (last - first).days + 1
     ids = {kind: resource_ids(rows, kind) for kind in ("machine", "operator")}
     if dates > MAX_CALENDAR_DATES:
-        return _unavailable_result(scope, time_scope, context, "calendar_range_limit")
+        return _unavailable_result(scope, time_scope, "calendar_range_limit")
     if dates * (1 + sum(len(value) for value in ids.values())) > MAX_POLICY_CELLS:
-        return _unavailable_result(scope, time_scope, context, "calendar_cell_limit")
+        return _unavailable_result(scope, time_scope, "calendar_cell_limit")
     reader = CalendarFacts(conn)
     try:
         reader.calendar(first.isoformat(), last.isoformat(), ids["operator"])
         reader.resources(ids["machine"], ids["operator"], [row["op_id"] for row in rows], start, end)
     except ProjectionLimit as exc:
-        return _unavailable_result(scope, time_scope, context, str(exc))
+        return _unavailable_result(scope, time_scope, str(exc))
     engine = SnapshotCalendarEngine(reader.rows)
     global_calendar = policy_projection(engine, first, last, start, end)
     public, private = _resource_projections(engine, reader.rows, ids, (first, last, start, end), global_calendar, resources)
     states = [global_calendar["state"]] + [item["state"] for item in public]
     state = "available" if all(item == "available" for item in states) else "unavailable" if all(
         item == "unavailable" for item in states) else "partial"
+    wired = {}
+    global_dto = public_projection(global_calendar, wired, include_windows=include_windows)
+    public_dto = [public_projection(item, wired, include_windows=include_windows) for item in public]
     if include_windows:
-        dto = {"state": state, "plan_ref": scope.plan_ref, "time_scope": time_scope,
-               "global": global_calendar, "resources": public, "issues": [],
-               "windows_complete": state != "unavailable"}
+        windows_complete = state != "unavailable"
     else:
         has_windows = bool(global_calendar.get("windows")) or any(
             bool(item.get("windows")) or bool(item.get("downtime_windows")) for item in public
         )
-        global_dto = dict(global_calendar, windows=[]) if global_calendar["state"] == "available" else dict(global_calendar)
-        public_dto = [
-            dict(item, windows=[], downtime_windows=[]) if item["state"] == "available" else dict(item)
-            for item in public
-        ]
-        dto = {"state": state, "plan_ref": scope.plan_ref, "time_scope": time_scope,
-               "global": global_dto, "resources": public_dto, "issues": [],
-               "windows_complete": not has_windows and state != "unavailable"}
-    facts = {"context": context, "state": state, "sources": snapshot_values(reader.rows), "resources": private,
-             "fact_count": reader.count, "policy_cells": dates * (1 + len(ids["operator"]))}
+        windows_complete = not has_windows and state != "unavailable"
+    dto = {"state": state, "plan_ref": scope.plan_ref, "time_scope": time_scope,
+           "global": global_dto, "resources": public_dto, "issues": [],
+           "windows_complete": windows_complete}
+    facts = {"state": state, "sources": reader.rows, "resources": private}
     return dto, facts

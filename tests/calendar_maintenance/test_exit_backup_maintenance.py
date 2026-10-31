@@ -219,3 +219,278 @@ def test_unreadable_stale_maintenance_lock_fails_closed_without_deleting_lock(tm
         maintenance_lock.is_maintenance_window_active(str(db_path))
     assert exc.value.code == "lock_state_unavailable"
     assert lock_path.exists()
+
+
+def test_maintenance_tasks_overview_and_records_share_one_result_classification(
+    schema_conn,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    import logging
+    from datetime import datetime
+
+    from core.infrastructure.logging import OperationLogger
+    from core.services.system.maintenance import backup_task, cleanup_task
+    from core.services.system.system_maintenance_service import _fmt_db_dt
+    from core.services.system.workbench_overview import build_system_overview
+    from core.services.workbench.system.maintenance_records import maintenance_records
+    from data.repositories.system_job_state_repo import SystemJobStateRepository
+
+    logger = logging.getLogger("tests.maintenance_unified_status")
+    op_logger = OperationLogger(schema_conn, logger=logger)
+    job_repo = SystemJobStateRepository(schema_conn, logger=logger)
+    now = datetime(2026, 10, 16, 8, 0, 0)
+    db_file = tmp_path / "aps.db"
+    db_file.write_bytes(b"sqlite-placeholder")
+    backup_dir = tmp_path / "backups"
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1) 备份目录不存在 + 日志条数未超保底：两项清理均为 skipped，overview 与 maintenance_records 一致
+    assert cleanup_task.maybe_run_auto_backup_cleanup(
+        schema_conn,
+        job_repo=job_repo,
+        now=now,
+        interval_minutes=60,
+        backup_dir=str(backup_dir),
+        keep_days=7,
+        max_backup_delete_per_run=10,
+        job_key="auto_backup_cleanup",
+        logger=logger,
+        op_logger=op_logger,
+        is_due_fn=lambda *_args: True,
+        fmt_db_dt_fn=_fmt_db_dt,
+    ) is True
+    assert cleanup_task.maybe_run_auto_log_cleanup(
+        schema_conn,
+        job_repo=job_repo,
+        now=now,
+        interval_minutes=60,
+        keep_days=7,
+        min_keep_logs=50,
+        max_log_delete_per_run=10,
+        job_key="auto_log_cleanup",
+        logger=logger,
+        op_logger=op_logger,
+        is_due_fn=lambda *_args: True,
+        fmt_db_dt_fn=_fmt_db_dt,
+    ) is True
+
+    overview = build_system_overview(
+        schema_conn,
+        db_path=str(db_file),
+        backup_dir=str(backup_dir),
+        log_dir=str(log_dir),
+    )
+    jobs_by_kind = {job["kind"]: job for job in overview["maintenance"]["jobs"]}
+    assert jobs_by_kind["auto_backup_cleanup"]["result"]["status"] == "skipped"
+    assert jobs_by_kind["auto_log_cleanup"]["result"]["status"] == "skipped"
+
+    rows, _sources = maintenance_records(schema_conn, str(backup_dir), None, journal_records=[])
+    cleanup_events = [row for row in rows if row["record_kind"] == "cleanup_event"]
+    assert [(row["event_source"], row["status"]) for row in cleanup_events] == [
+        ("operation_audit", "skipped"),
+        ("operation_audit", "skipped"),
+    ]
+
+    # 清空 OperationLogs 后走 latest_job_state_only 回退链，仍统一判为 skipped
+    schema_conn.execute("DELETE FROM OperationLogs")
+    schema_conn.commit()
+    fallback_rows, _ = maintenance_records(schema_conn, str(backup_dir), None, journal_records=[])
+    fallback_events = [row for row in fallback_rows if row["record_kind"] == "cleanup_event"]
+    assert {row["event_source"] for row in fallback_events} == {"latest_job_state_only"}
+    assert {row["status"] for row in fallback_events} == {"skipped"}
+
+    # 2) 局部异常：backup stat_failed 与 backup_cleanup delete_error_count > 0 均写 WARNING 且三处统一判为 partial
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    fake_backup = backup_dir / "aps_backup_20261016_080000_auto.db"
+    fake_backup.write_bytes(b"backup-bytes")
+    monkeypatch.setattr(backup_task.BackupManager, "backup", lambda self, suffix="auto": str(fake_backup))
+
+    orig_stat = backup_task.os.stat
+
+    def fail_stat(path, *args, **kwargs):
+        if str(path) == str(fake_backup):
+            raise OSError("simulated stat failure")
+        return orig_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(backup_task.os, "stat", fail_stat)
+    due, ok = backup_task.maybe_run_auto_backup(
+        schema_conn,
+        job_repo=job_repo,
+        now=now,
+        interval_minutes=60,
+        db_path=str(db_file),
+        backup_dir=str(backup_dir),
+        keep_days=7,
+        job_key="auto_backup",
+        logger=logger,
+        op_logger=op_logger,
+        is_due_fn=lambda *_args: True,
+        fmt_db_dt_fn=_fmt_db_dt,
+    )
+    assert (due, ok) == (True, True)
+
+    monkeypatch.setattr(
+        cleanup_task,
+        "cleanup_backups_with_limit",
+        lambda **_kwargs: (
+            1,
+            {
+                "cutoff": "2026-10-09 08:00:00",
+                "candidates": 2,
+                "min_keep": 3,
+                "kept_recent_count": 0,
+                "removed_sample": ["aps_backup_old.db"],
+                "mtime_error_count": 0,
+                "mtime_error_sample": [],
+                "unsafe_backup_count": 0,
+                "unsafe_backup_sample": [],
+                "delete_error_count": 1,
+                "delete_error_sample": [{"filename": "aps_backup_locked.db", "error": "locked"}],
+            },
+        ),
+    )
+    assert cleanup_task.maybe_run_auto_backup_cleanup(
+        schema_conn,
+        job_repo=job_repo,
+        now=now,
+        interval_minutes=60,
+        backup_dir=str(backup_dir),
+        keep_days=7,
+        max_backup_delete_per_run=10,
+        job_key="auto_backup_cleanup",
+        logger=logger,
+        op_logger=op_logger,
+        is_due_fn=lambda *_args: True,
+        fmt_db_dt_fn=_fmt_db_dt,
+    ) is True
+
+    logged = schema_conn.execute(
+        "SELECT action, log_level, detail FROM OperationLogs ORDER BY id ASC"
+    ).fetchall()
+    assert [(row[0], row[1], _strict(row[2])["status"]) for row in logged] == [
+        ("backup", "WARNING", "partial"),
+        ("cleanup", "WARNING", "partial"),
+    ]
+
+    overview_after = build_system_overview(
+        schema_conn,
+        db_path=str(db_file),
+        backup_dir=str(backup_dir),
+        log_dir=str(log_dir),
+    )
+    jobs_after = {job["kind"]: job for job in overview_after["maintenance"]["jobs"]}
+    assert jobs_after["auto_backup"]["result"]["status"] == "partial"
+    assert jobs_after["auto_backup_cleanup"]["result"]["status"] == "partial"
+
+    audit_rows, _ = maintenance_records(schema_conn, str(backup_dir), None, journal_records=[])
+    audit_cleanup = [row for row in audit_rows if row["record_kind"] == "cleanup_event" and row["event_source"] == "operation_audit"]
+    assert len(audit_cleanup) == 1 and audit_cleanup[0]["status"] == "partial"
+
+    schema_conn.execute("DELETE FROM OperationLogs")
+    schema_conn.commit()
+    latest_rows, _ = maintenance_records(schema_conn, str(backup_dir), None, journal_records=[])
+    latest_by_ref = {
+        row["event_ref"]: row["status"]
+        for row in latest_rows
+        if row["record_kind"] == "cleanup_event"
+    }
+    assert latest_by_ref == {
+        "auto_backup_cleanup": "partial",
+        "auto_log_cleanup": "skipped",
+    }
+
+    # 3) 计数字段类型损坏（如 mtime_error_count 为字符串 "1"、removed_count 为 null 或其他计数字段非法）：
+    # 系统概况与维护历史记录（含 OperationLogs 与 SystemJobState）均归为异常/未知，绝不报为 succeeded/completed
+    for bad_detail in (
+        '{"removed_count": 0, "mtime_error_count": "1"}',
+        '{"removed_count": null}',
+        '{"removed_count": null, "skipped": true}',
+        '{"removed_count": 0, "total": "bad"}',
+        '{"removed_count": 0, "kept_count": -1}',
+        '{"removed_count": 0, "time_cost_ms": null}',
+    ):
+        with schema_conn:
+            schema_conn.execute("DELETE FROM OperationLogs")
+            job_repo.set_last_run(
+                "auto_backup_cleanup",
+                last_run_time="2026-10-16 08:00:00",
+                last_run_detail=bad_detail,
+            )
+        overview_corrupt = build_system_overview(
+            schema_conn,
+            db_path=str(db_file),
+            backup_dir=str(backup_dir),
+            log_dir=str(log_dir),
+        )
+        jobs_corrupt = {job["kind"]: job for job in overview_corrupt["maintenance"]["jobs"]}
+        assert jobs_corrupt["auto_backup_cleanup"]["status"] == "partial"
+        assert jobs_corrupt["auto_backup_cleanup"]["result"]["status"] == "invalid"
+
+        corrupt_rows, corrupt_sources = maintenance_records(schema_conn, str(backup_dir), None, journal_records=[])
+        corrupt_by_ref = {
+            row["event_ref"]: row["status"]
+            for row in corrupt_rows
+            if row["record_kind"] == "cleanup_event"
+        }
+        assert corrupt_by_ref["auto_backup_cleanup"] == "unknown"
+        assert any(
+            item.get("code") == "maintenance_last_detail_invalid"
+            and item.get("job_key") == "auto_backup_cleanup"
+            for item in corrupt_sources
+        )
+
+        with schema_conn:
+            schema_conn.execute(
+                "INSERT INTO OperationLogs(log_time, log_level, module, action, detail) VALUES (?, 'INFO', 'system', 'cleanup', ?)",
+                ("2026-10-16 08:00:00", bad_detail),
+            )
+        audit_corrupt_rows, _ = maintenance_records(schema_conn, str(backup_dir), None, journal_records=[])
+        audit_corrupt_events = [
+            row for row in audit_corrupt_rows
+            if row["record_kind"] == "cleanup_event" and row["event_source"] == "operation_audit"
+        ]
+        assert len(audit_corrupt_events) == 1
+        assert audit_corrupt_events[0]["status"] == "unknown"
+
+    # 4) 展示裁剪不影响分类：error 前 1000 字符为空白、后续带错误正文时，
+    # 系统概况与维护历史记录（SystemJobState 与 OperationLogs）均判为 failed，且展示值保持 1000 字符裁剪
+    long_error_detail = f'{{"removed_count": 0, "error": "{" " * 1000}disk full"}}'
+    with schema_conn:
+        schema_conn.execute("DELETE FROM OperationLogs")
+        job_repo.set_last_run(
+            "auto_backup_cleanup",
+            last_run_time="2026-10-16 08:00:00",
+            last_run_detail=long_error_detail,
+        )
+    overview_long_error = build_system_overview(
+        schema_conn,
+        db_path=str(db_file),
+        backup_dir=str(backup_dir),
+        log_dir=str(log_dir),
+    )
+    jobs_long_error = {job["kind"]: job for job in overview_long_error["maintenance"]["jobs"]}
+    assert jobs_long_error["auto_backup_cleanup"]["result"]["status"] == "failed"
+    assert jobs_long_error["auto_backup_cleanup"]["result"]["values"]["error"] == " " * 1000
+
+    long_error_rows, _ = maintenance_records(schema_conn, str(backup_dir), None, journal_records=[])
+    long_error_by_ref = {
+        row["event_ref"]: row["status"]
+        for row in long_error_rows
+        if row["record_kind"] == "cleanup_event"
+    }
+    assert long_error_by_ref["auto_backup_cleanup"] == "failed"
+
+    with schema_conn:
+        schema_conn.execute(
+            "INSERT INTO OperationLogs(log_time, log_level, module, action, detail) VALUES (?, 'ERROR', 'system', 'cleanup', ?)",
+            ("2026-10-16 08:00:00", long_error_detail),
+        )
+    audit_long_error_rows, _ = maintenance_records(schema_conn, str(backup_dir), None, journal_records=[])
+    audit_long_error_events = [
+        row for row in audit_long_error_rows
+        if row["record_kind"] == "cleanup_event" and row["event_source"] == "operation_audit"
+    ]
+    assert len(audit_long_error_events) == 1
+    assert audit_long_error_events[0]["status"] == "failed"

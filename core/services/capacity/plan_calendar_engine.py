@@ -20,7 +20,6 @@ class SnapshotCalendarEngine(CalendarEngine):
         super().__init__(None, shift_facts=shifts)
         self.shift_profiles = shifts.profiles
         self._default_rows = tuple(facts.get("defaults", ()))
-        self._personal_error = None
         self.global_rows = {str(row["date"]): row for row in facts["global"]}
         self.personal_rows = {(row["operator_id"], str(row["date"])): row for row in facts["personal"]}
 

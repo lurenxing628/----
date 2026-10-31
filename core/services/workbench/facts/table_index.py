@@ -1,7 +1,7 @@
 """Whole-cell AND/OR filtering and toolbar-only distincts, independent of SQL."""
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_resource_table_query import MAX_FACET_KEYS, validate_facet_request
+from core.models.workbench_resource_table_query import MAX_FACET_KEYS
 
 
 class ResourceTableIndex:
@@ -32,8 +32,8 @@ class ResourceTableIndex:
         selected.sort(key=lambda value: (value["order"], value["label"], value["key"]))
         return selected
 
-    def facets(self, query, column, search="", number=1, size=100):
-        validate_facet_request(query, column, search, number, size)
+    def facets(self, column, search="", number=1, size=100):
+        """``column``/``search``/``number``/``size`` were validated at the request boundary."""
         selected = self._options(column, search)
         total = len(selected)
         pages = max(1, (total + size - 1) // size)
@@ -43,8 +43,7 @@ class ResourceTableIndex:
         return {"column": column, "basis": "toolbar_scope", "options": values, "row_count": len(self.rows),
                 "page": {"number": number, "size": size, "total": total, "pages": pages}}
 
-    def facet_selection(self, query, column, search="", size=100):
-        validate_facet_request(query, column, search, 1, size)
+    def facet_selection(self, column, search=""):
         options = self._options(column, search)
         if len(options) > MAX_FACET_KEYS:
             raise WorkbenchCommandRejected("capacity_exceeded", "搜索命中的不同值超过50000个，请缩小范围后重试；未截断结果。", 413)

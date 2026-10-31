@@ -57,6 +57,7 @@ def prepare_shared_graph_features(
     batches: Dict[str, Any], start_dt: datetime, downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
     seed_sr_list: List[ScheduleResult], resource_pool: Optional[Dict[str, Any]],
     deadline: float, clock: Callable[[], float],
+    native_preparation: Optional[Any] = None,
 ) -> Optional[SharedGraphFeatures]:
     """Build both existing bases and their ranks once before target stages are assembled."""
     if clock() >= deadline:
@@ -69,6 +70,7 @@ def prepare_shared_graph_features(
         seed_results=seed_sr_list, resource_pool=resource_pool,
         graph_ready_context=graph_ready_context,
         deadline=deadline, clock=clock,
+        native_preparation=native_preparation,
     )
     if metrics is None or clock() >= deadline:
         return None
@@ -89,10 +91,7 @@ def build_graph_search_stages(
     resource_pool: Optional[Dict[str, Any]],
     objective_name: str,
     deadline: float,
-    attempts: List[Dict[str, Any]],
-    improvement_trace: List[Dict[str, Any]],
     optimizer_algo_stats: Optional[Dict[str, Any]],
-    t_begin: float,
     readiness_gate_enabled: bool,
     graph_ready_context: Dict[str, Any],
     clock: Callable[[], float],
@@ -118,10 +117,7 @@ def build_graph_search_stages(
         resource_pool=resource_pool,
         objective_name=objective_name,
         deadline=deadline,
-        attempts=attempts,
-        improvement_trace=improvement_trace,
         optimizer_algo_stats=optimizer_algo_stats,
-        t_begin=t_begin,
         readiness_gate_enabled=readiness_gate_enabled,
         graph_ready_context=graph_ready_context,
         metrics_by_op_id=prepared_features.metrics_by_op_id,
@@ -147,10 +143,7 @@ def _build_weight_profile_stages(
     resource_pool: Optional[Dict[str, Any]],
     objective_name: str,
     deadline: float,
-    attempts: List[Dict[str, Any]],
-    improvement_trace: List[Dict[str, Any]],
     optimizer_algo_stats: Optional[Dict[str, Any]],
-    t_begin: float,
     readiness_gate_enabled: bool,
     graph_ready_context: Dict[str, Any],
     metrics_by_op_id: Dict[int, Dict[str, Any]],
@@ -172,24 +165,24 @@ def _build_weight_profile_stages(
         decode_session=decode_session,
     )
     pool = EliteRepairPool(limits=EliteRepairLimits(), objective_name=objective_name, operations=algo_ops_to_schedule,
-                           metrics_by_op_id=metrics_by_op_id, start_dt=start_dt, seed=version,
+                           start_dt=start_dt, seed=version,
                            best=best, report_state=search_report_state, graph_context=graph_ready_context,
-                           clock=clock, deadline=deadline, decode_session=decode_session)
-    search = GraphReadyProfileSearch(evaluate=evaluate, budget=budget, profile_count=len(profiles))
+                           clock=clock, deadline=deadline, decode_session=decode_session,
+                           decision_features=prepared_features.decision_features)
+    search = GraphReadyProfileSearch(evaluate=evaluate, budget=budget)
     state = GraphSearchState(best)
     stages: List[SearchStage] = [ProfileStage(
-        profiles=profiles, search=search, pool=pool, state=state, order=order, attempts=attempts,
-        improvement_trace=improvement_trace, search_report_state=search_report_state, clock=clock, t_begin=t_begin)]
+        profiles=profiles, search=search, pool=pool, state=state, order=order,
+        search_report_state=search_report_state)]
     repair = EliteRepairRun(pool, state=state, evaluate=evaluate, budget=budget, deadline=deadline, clock=clock,
-                            t_begin=t_begin, attempts=attempts, improvement_trace=improvement_trace,
                             report_state=search_report_state)
     stages.append(RepairStage(repair))
     greedy = IteratedGreedyRun(
         limits=IteratedGreedyLimits(), state=state,
         parent_profile=partial(iterated_greedy_parent_profile, pool=pool, profiles=profiles),
-        pool=pool, evaluate=evaluate, operations=algo_ops_to_schedule, graph_context=graph_ready_context,
+        pool=pool, evaluate=evaluate, graph_context=graph_ready_context,
         metrics_by_op_id=metrics_by_op_id, objective_name=objective_name, start_dt=start_dt, seed=version,
-        deadline=deadline, clock=clock, t_begin=t_begin, attempts=attempts, improvement_trace=improvement_trace,
+        deadline=deadline, clock=clock,
         report_state=search_report_state, decode_session=decode_session)
     stages.append(IteratedGreedyStage(greedy, startup_ready=lambda: bool(pool.elites) or not stages[0].available()))
     return GraphStageBundle(state, stages)

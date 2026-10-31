@@ -9,6 +9,7 @@ from flask import Flask
 from core.infrastructure.database import ensure_schema
 from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION, current_schema_contract_issues
 from core.infrastructure.schema_declaration import load_schema_sql
+from core.infrastructure.sqlite_udf import register_schedule_time_sql_functions
 from core.models.schedule_config_runtime_fields import default_snapshot_values
 from tests.workbench.run_jobs_support import JobCase
 
@@ -21,6 +22,7 @@ def connect(path):
     conn = sqlite3.connect(str(path), timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
+    register_schedule_time_sql_functions(conn)
     return conn
 
 

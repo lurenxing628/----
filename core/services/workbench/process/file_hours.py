@@ -61,7 +61,7 @@ class ProcessHoursFileOperations:
             if old[column] != value:
                 updates[column] = value
         if updates:
-            hours.revise_current(current, updates, expected_revision=old["revision"])
+            hours.revise_current(current, updates)
 
     def _group_update(self, group, total):
         count = self.repo.update_group_cycle(group["group_id"], {"total_days": total},

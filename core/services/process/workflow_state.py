@@ -7,11 +7,6 @@ from datetime import datetime, timezone
 from typing import NoReturn
 
 from core.errors import BusinessError, ErrorCode, ValidationError
-from core.infrastructure.connection_guards import schema_contract_memo
-from core.infrastructure.workbench_metadata_schema import workbench_metadata_contract_issues
-from core.infrastructure.workbench_process_schema import workbench_process_contract_issues
-from core.infrastructure.workbench_process_workflow_schema import workbench_process_workflow_contract_issues
-from core.infrastructure.workbench_resource_schema import workbench_resource_contract_issues
 from core.models.content import content_text, same, unpacked
 from core.models.resource_capabilities import supports_source
 from core.shared.strict_json import load_strict_json
@@ -23,25 +18,13 @@ from .template_source import TemplateSourceFacts
 _STAGES = ("route", "source", "hours")
 
 
-def _schema(conn, contracts=None):
-    # 逐行写入共用本命令的结构和叶子检查；独立读取使用本次请求的新实例。
-    contracts = contracts if contracts is not None else schema_contract_memo(conn)
-    issues = (contracts.get_schema(workbench_metadata_contract_issues)
-              + contracts.get_schema(workbench_resource_contract_issues)
-              + contracts.get_schema(workbench_process_contract_issues)
-              + contracts.get_schema(workbench_process_workflow_contract_issues))
-    if issues:
-        raise RuntimeError("Invalid process workflow storage: " + "; ".join(issues))
-
-
 def _ref(value):
     if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{48}", value) is None:
         raise RuntimeError("Missing process workflow entity identity; no metadata was repaired.")
     return value
 
 
-def _part(conn, part_no, contracts=None):
-    _schema(conn, contracts)
+def _part(conn, part_no):
     repo = WorkbenchProcessWorkflowRepository(conn)
     rows = repo.part_with_ref(part_no)
     if not rows:
@@ -204,11 +187,12 @@ def _read_facts(conn, part_no=None, *, stored=None, stage=None, cross_part_by_gr
             "records": records}
 
 
-def _project_facts(raw):
+def _project_facts(raw, *, source_facts=None):
     operations = raw["operations"]
     groups = _groups(raw["groups"], operations)
-    source_facts = TemplateSourceFacts(operations, groups.values(), raw["suppliers"],
-                                      raw["capabilities"], raw["suppliers"])
+    if source_facts is None:
+        source_facts = TemplateSourceFacts(operations, groups.values(), raw["suppliers"],
+                                           raw["capabilities"], raw["suppliers"])
     records = raw["records"]
     by_part, by_ref = {}, {}
     for op in operations:
@@ -328,32 +312,47 @@ def _view(stored, facts, *, operation_states=None):
     return result
 
 
-def workflow_snapshot(conn, *, tables=None, identities=None) -> dict:
+def workflow_snapshot(conn, *, tables=None, identities=None, source_facts=None, active_refs=None) -> dict:
     """Load JSON-safe workflow and per-operation states for the whole part catalog; callers own the read transaction."""
     if tables is None:
         raw = load_workflow_snapshot(conn)
     else:
-        _schema(conn)
-        raw = _workflow_inputs_from_tables(tables, identities, conn=conn)
-    return project_workflow_snapshot(raw)
+        refs = active_entity_refs(tables, identities) if active_refs is None else active_refs
+        if source_facts is None:
+            source_facts = build_template_source_facts(tables, refs)
+        raw = _workflow_inputs_from_tables(tables, conn=conn, source_facts=source_facts, active_refs=refs)
+    return project_workflow_snapshot(raw, source_facts=source_facts)
 
 
-def _active_refs(tables, identities):
+def active_entity_refs(tables, identities=None):
     if identities is not None:
         return {key: row["ref"] for key, row in identities.items()}
     return {(row["kind"], row["entity_key"]): row["ref"] for row in tables["WorkbenchEntityRefs"] if row["active"] == 1}
 
 
-def _workflow_inputs_from_tables(tables, identities, *, conn):
+def build_template_source_facts(tables, active_refs) -> TemplateSourceFacts:
+    suppliers = [
+        dict(row, ref=active_refs.get(("supplier", row["supplier_id"])))
+        for row in tables["Suppliers"]
+    ]
+    return TemplateSourceFacts(
+        tables["PartOperations"],
+        tables["ExternalGroups"],
+        suppliers,
+        tables["WorkbenchSupplierOpTypes"],
+        tables["WorkbenchSupplierProfiles"],
+    )
+
+
+def _workflow_inputs_from_tables(tables, *, conn, source_facts=None, active_refs=None):
     """Join the caller's captured raw collections; do not read a second catalog."""
     repo = WorkbenchProcessWorkflowRepository(conn)
     stored = (tables["WorkbenchProcessWorkflow"]
               if "WorkbenchProcessWorkflow" in tables else repo.stored_workflows())
     records = (tables["WorkbenchProcessOperationConfirmations"]
                if "WorkbenchProcessOperationConfirmations" in tables else repo.confirmations())
-    refs = _active_refs(tables, identities)
+    refs = active_entity_refs(tables) if active_refs is None else active_refs
     types = {row["op_type_id"]: row for row in tables["OpTypes"]}
-    profiles = {row["supplier_id"]: row for row in tables["WorkbenchSupplierProfiles"]}
     operations = []
     for row in tables["PartOperations"]:
         if row["status"] != "active":
@@ -364,32 +363,35 @@ def _workflow_inputs_from_tables(tables, identities, *, conn):
             type_ref=refs.get(("op_type", row["op_type_id"]))))
     operations.sort(key=operation_order)
     used = {row["ext_group_id"] for row in operations if row["ext_group_id"] is not None}
+    suppliers = []
+    if source_facts is None:
+        profiles = {row["supplier_id"]: row for row in tables["WorkbenchSupplierProfiles"]}
+        suppliers = [dict(row, ref=refs.get(("supplier", row["supplier_id"])),
+                          inactive_reason=profiles.get(row["supplier_id"], {}).get("inactive_reason"))
+                     for row in tables["Suppliers"]]
     return {"parts": [dict(row, ref=refs.get(("part", row["part_no"]))) for row in tables["Parts"]],
             "stored": stored, "facts": {
                 "operations": operations,
                 "groups": [dict(row, ref=refs.get(("template_external_group", row["group_id"])))
                            for row in tables["ExternalGroups"] if row["group_id"] in used],
-                "suppliers": [dict(row, ref=refs.get(("supplier", row["supplier_id"])),
-                                   inactive_reason=profiles.get(row["supplier_id"], {}).get("inactive_reason"))
-                              for row in tables["Suppliers"]],
-                "capabilities": tables["WorkbenchSupplierOpTypes"],
+                "suppliers": suppliers,
+                "capabilities": tables["WorkbenchSupplierOpTypes"] if source_facts is None else [],
                 "records": records}}
 
 
 def load_workflow_snapshot(conn, *, tables=None) -> dict:
     """Capture stored inputs; callers own the encompassing read transaction."""
     _require_transaction(conn)
-    _schema(conn)
     if tables is not None:
-        return _workflow_inputs_from_tables(tables, None, conn=conn)
+        return _workflow_inputs_from_tables(tables, conn=conn)
     repo = WorkbenchProcessWorkflowRepository(conn)
     return {"parts": repo.parts_with_refs(), "stored": repo.stored_workflows(), "facts": _read_facts(conn)}
 
 
-def project_workflow_snapshot(raw) -> dict:
+def project_workflow_snapshot(raw, *, source_facts=None) -> dict:
     """Project a captured catalog without retaining a SQLite read lock."""
     stored = {row["part_ref"]: row for row in raw["stored"]}
-    loaded = _project_facts(raw["facts"])
+    loaded = _project_facts(raw["facts"], source_facts=source_facts)
     result = {}
     for part in raw["parts"]:
         if not isinstance(part["part_no"], str):
@@ -407,10 +409,10 @@ def _require_transaction(conn):
         raise RuntimeError("Process confirmations require a caller transaction.")
 
 
-def start_workflow(conn, part_no, *, contracts) -> dict:
+def start_workflow(conn, part_no) -> dict:
     """Enroll a newly controlled template, even before any route exists."""
     _require_transaction(conn)
-    part, stored = _part(conn, part_no, contracts)
+    part, stored = _part(conn, part_no)
     if stored is None:
         WorkbenchProcessWorkflowRepository(conn).insert_workflow(part["ref"])
         stored = {stage + "_" + key: None for stage in _STAGES for key in ("content_json", "confirmed_at", "confirmed_by")}
@@ -432,7 +434,7 @@ def _save_operations(conn, part_ref, stage, per_op, records, states, stamp):
         records[(ref, stage)] = {"content_json": values[stage], "confirmed_at": stamp, "confirmed_by": None}
 
 
-def record_confirmation(conn, part_no, stage, *, contracts=None, cross_part_by_group=None, old_operations=()) -> dict:
+def record_confirmation(conn, part_no, stage, *, cross_part_by_group=None, old_operations=()) -> dict:
     """Confirm facts already written by the domain owner, atomically in its transaction.
 
     cross_part_by_group 是多零件命令共用的跨件分组索引；换掉路线时 old_operations 传该零件换路线前的工序，
@@ -441,7 +443,7 @@ def record_confirmation(conn, part_no, stage, *, contracts=None, cross_part_by_g
     _require_transaction(conn)
     if stage not in _STAGES:
         raise ValidationError("工艺确认阶段无效。", field="stage")
-    part, stored = _part(conn, part_no, contracts)
+    part, stored = _part(conn, part_no)
     facts = _facts(
         part,
         _load_facts(conn, part_no, stored=stored, stage=stage, cross_part_by_group=cross_part_by_group,

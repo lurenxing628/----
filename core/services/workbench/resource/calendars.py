@@ -5,11 +5,10 @@ from __future__ import annotations
 import calendar
 import uuid
 from datetime import date, datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager, in_transaction_context
-from core.models.calendar import WorkCalendar
 from core.models.workbench_calendar import (
     CALENDAR_PREVIEW_TTL_SECONDS,
     CalendarRangePreview,
@@ -90,7 +89,11 @@ class WorkbenchCalendarService:
                   *, projection: Optional[CalendarProjection] = None) -> Dict[str, Any]:
         state = states.get(day, {"row": None, "identity": None, "history": []})
         identity = state["identity"]
-        periods = self._calendar._engine.default_periods() if default_periods is None else default_periods
+        periods = (
+            (projection._default_periods if projection is not None else self._calendar._engine.default_periods())
+            if default_periods is None
+            else default_periods
+        )
         return {"date": day, "explicit": state["row"] is not None,
                 "calendar_ref": identity["ref"] if identity else None,
                 "revision": identity["revision"] if identity else None,
@@ -105,8 +108,9 @@ class WorkbenchCalendarService:
         The HTTP owner must bind this full snapshot to its short-lived write context.
         """
         day = calendar_date(date_value)
-        with self._tx.transaction():
-            return self._snapshot(day, self.range_states(day, day))
+        if not self.conn.in_transaction:
+            raise RuntimeError("日历读取必须在快照事务中执行。")
+        return self._snapshot(day, self.range_states(day, day))
 
     def month(self, year: int, month: int) -> Dict[str, Any]:
         """Private monthly read: one-based month, real date cells, Monday-first padding.
@@ -120,18 +124,19 @@ class WorkbenchCalendarService:
         first = date(year, month, 1)
         count = calendar.monthrange(year, month)[1]
         last, now = first.replace(day=count), self._now()
-        with self._tx.transaction():
-            states = self.range_states(first.isoformat(), last.isoformat())
-            periods = self._calendar._engine.default_periods()
-            rows = {day: state["row"] for day, state in states.items() if state["row"] is not None}
-            projection = CalendarProjection(rows, periods)
-            days = []
-            for offset in range(count):
-                day = first + timedelta(days=offset)
-                snapshot = self._snapshot(day.isoformat(), states, periods, projection=projection)
-                days.append({**snapshot, "day": day.day, "weekday": day.weekday(),
-                             "is_weekend": day.weekday() >= 5, "is_today": day == now.date()})
-            rows.update(self._following_row(last, days[-1]))
+        if not self.conn.in_transaction:
+            raise RuntimeError("日历读取必须在快照事务中执行。")
+        states = self.range_states(first.isoformat(), last.isoformat())
+        periods = self._calendar._engine.default_periods()
+        rows = {day: state["row"] for day, state in states.items() if state["row"] is not None}
+        projection = CalendarProjection(rows, periods)
+        days = []
+        for offset in range(count):
+            day = first + timedelta(days=offset)
+            snapshot = self._snapshot(day.isoformat(), states, periods, projection=projection)
+            days.append({**snapshot, "day": day.day, "weekday": day.weekday(),
+                         "is_weekend": day.weekday() >= 5, "is_today": day == now.date()})
+        rows.update(self._following_row(last, days[-1]))
         cells = [None] * first.weekday() + days
         cells += [None] * (-len(cells) % 7)
         return {"year": year, "month": month, "as_of": now.isoformat(timespec="seconds"),
@@ -162,26 +167,48 @@ class WorkbenchCalendarService:
     # 文件导入要一次处理上千天，逐日调 snapshot() 会开上千次事务、查上万次库（见 roadmap 4.7），
     # 所以这几个入口把"一次读回整段 / 算一天 / 写一天"拆开，由调用方持有一个事务。
 
-    def day_state(self, day: str, states: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
-        """某一天的完整状态。states 必须来自同一次 range_states。"""
-        return self._snapshot(day, states)
+    def projection(self, states: Optional[Dict[str, Dict[str, Any]]] = None, periods=None) -> CalendarProjection:
+        resolved = self._calendar._engine.default_periods() if periods is None else periods
+        rows = {day: state["row"] for day, state in (states or {}).items() if state["row"] is not None}
+        return CalendarProjection(rows, resolved)
 
-    def proposed_row(self, fields: Dict[str, Any], before: Dict[str, Any]) -> Optional[CalendarRow]:
-        """按领域规则算出这一天保存后的行；与界面走同一条一致性校验，不合规直接抛拒绝。
+    def day_state(self, day: str, states: Dict[str, Dict[str, Any]],
+                  *, projection: Optional[CalendarProjection] = None) -> Dict[str, Any]:
+        """某一天的完整状态。states 必须来自同一次 range_states。"""
+        periods = projection._default_periods if projection is not None else None
+        return self._snapshot(day, states, periods, projection=projection)
+
+    def proposed_state(
+        self,
+        fields: Dict[str, Any],
+        before: Dict[str, Any],
+        *,
+        projection: Optional[CalendarProjection] = None,
+    ) -> Tuple[Optional[CalendarRow], Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+        """按领域规则算出这一天保存后的行与生效时间窗；与界面走同一条一致性校验，不合规直接抛拒绝。
 
         fields 用的是界面字段名（type/hours/eff/allowNormal/allowUrgent/note），不经过界面的
         输入模型，所以文件可以表达界面表达不了的组合（例如假期带工时），取值合法性由调用方自己校验。
         """
         if not fields and "effective" in before:
-            return before["row"]
-        return self._window_checked(before["date"], self._proposed(fields, before))
+            return before["row"], before["row"], before["effective"]
+        model, row = self._proposed(fields, before, projection=projection)
+        if row == before["row"] and "effective" in before:
+            return model, row, before["effective"]
+        return model, row, self._window_checked(before["date"], model, projection=projection)
 
-    def _proposed(self, fields: Dict[str, Any], before: Dict[str, Any]) -> Optional[CalendarRow]:
+    def _proposed(
+        self,
+        fields: Dict[str, Any],
+        before: Dict[str, Any],
+        *,
+        projection: Optional[CalendarProjection] = None,
+    ) -> Tuple[Optional[CalendarRow], Optional[Dict[str, Any]]]:
         row = before["row"]
         if not fields:
-            return row
+            return row, row
         if row is not None:
-            reading = engine_read_row(row, effective=before.get("effective"))
+            reading = engine_read_row(row, effective=before.get("effective"), projection=projection)
             payload = dict(reading)
             if row.get("day_type") == "holiday" and (
                 row.get("efficiency") is None or isinstance(row.get("efficiency"), str) and not row["efficiency"].strip()
@@ -214,8 +241,12 @@ class WorkbenchCalendarService:
             if exc.field == "可用工时":
                 raise WorkbenchCommandRejected("constraint_conflict", exc.message) from exc
             raise
-        self._check_proposed(before, patch, proposed.to_dict(), derived_shift_window=derived)
-        return proposed
+        after = proposed.to_dict()
+        if row is not None:
+            self._check_proposed(
+                before, patch, after, derived_shift_window=derived, projection=projection
+            )
+        return proposed, after
 
     @staticmethod
     def _changed_shift_keys(reading: Optional[Dict[str, Any]], patch: Dict[str, Any]) -> set:
@@ -247,14 +278,16 @@ class WorkbenchCalendarService:
         elif shift_patch:
             raise ValidationError("这一天已按多时段设置，请修改逐段起止时间。", field="fields.periods")
 
-    def _window_checked(self, day: str, row: Optional[CalendarRow]) -> Optional[CalendarRow]:
+    def _window_checked(self, day: str, row: Optional[CalendarRow],
+                        *, projection: Optional[CalendarProjection] = None) -> Optional[Dict[str, Any]]:
         """保存前先把这一天的时间窗算一遍：算不出来（例如跨出 9999-12-31）就在预检和保存前拒绝，不等写库后整批回滚。
 
         范围预览本来就逐日算保存后的时间窗，不走这里，免得大范围预览重复计算。
         """
-        if row is not None:
-            effective_calendar_day(day, row, self._calendar._engine.default_periods())
-        return row
+        if row is None:
+            return None
+        periods = projection._default_periods if projection is not None else self._calendar._engine.default_periods()
+        return effective_calendar_day(day, row, periods, projection=projection)
 
     @staticmethod
     def _shift_window_is_derived(row: Optional[Dict[str, Any]], patch: Dict[str, Any], changed_shift: set) -> bool:
@@ -281,14 +314,15 @@ class WorkbenchCalendarService:
         return names
 
     def _check_proposed(self, before: Dict[str, Any], patch: Dict[str, Any], proposed: Dict[str, Any],
-                        *, derived_shift_window: bool) -> None:
+                        *, derived_shift_window: bool, projection: Optional[CalendarProjection] = None) -> None:
         row = before["row"]
         if row is not None:
             derived_names = self._derived_names(row, patch, derived_shift_window)
             changed = [name for name, value in row.items()
                        if name not in patch and name not in derived_names and proposed.get(name) != value]
             if changed and set(changed) - defaulted_blanks(before["date"], row, proposed, changed,
-                                                            before_effective=before.get("effective")):
+                                                            before_effective=before.get("effective"),
+                                                            projection=projection):
                 raise WorkbenchCommandRejected("constraint_conflict", "这一天没改的项会被规则改写，所以没有保存；请先核对原来的配置。")
 
     def _require_write_transaction(self) -> None:
@@ -306,19 +340,22 @@ class WorkbenchCalendarService:
 
     def _apply_day(self, action, payload, before):
         with self._calendar.normalization_operation():
-            after = self._window_checked(payload["date"], self._proposed(payload["fields"], before)) if action == "upsert" else None
-        return self._write(before, after)
+            after, row, _ = (
+                self.proposed_state(payload["fields"], before)
+                if action == "upsert"
+                else (None, None, None)
+            )
+        return self._write(before, after, row)
 
-    def _write(self, before, after) -> WorkbenchCommandOutcome:
-        return self.write_days([(before, after)])[0]
+    def _write(self, before, after, row) -> WorkbenchCommandOutcome:
+        return self.write_days([(before, after, row)])[0]
 
     def write_days(self, changes, *, include_refs=True):
         """Apply this prepared batch; only returned new refs need a post-write read."""
         self._require_write_transaction()
         results, calendars, deleted, created = [], [], [], []
-        for before, after in changes:
+        for before, after, row in changes:
             day, ref = before["date"], before["calendar_ref"]
-            row = after.to_dict() if isinstance(after, WorkCalendar) else after
             changed = row != before["row"]
             results.append(WorkbenchCommandOutcome("committed" if changed else "unchanged",
                                                    {"date": day, "calendar_ref": ref}))
@@ -349,16 +386,27 @@ class WorkbenchCalendarService:
             raise WorkbenchCommandRejected("snapshot_stale", "命中的日期已经变了，请重新点「预览变更」。")
         states = self.range_states(request["start_date"], request["end_date"])
         periods = self._calendar._engine.default_periods()
+        projection = self.projection(states, periods)
         days, calendars = [], []
         for index, day in enumerate(dates):
-            before = self._snapshot(day, states, periods)
+            before = self._snapshot(day, states, periods, projection=projection)
             if expected is not None and before != expected.days[index]["before"]:
                 raise WorkbenchCommandRejected("snapshot_stale", "范围里的日历已经变了，请重新点「预览变更」。")
-            model = self._proposed(request["fields"], before) if request["operation"] == "upsert" else None
+            if request["operation"] == "upsert":
+                model, row, after_effective = self.proposed_state(
+                    request["fields"], before, projection=projection
+                )
+            else:
+                model = row = None
+                after_effective = (
+                    before["effective"]
+                    if before["row"] is None
+                    else effective_calendar_day(day, None, periods, projection=projection)
+                )
             calendars.append(model)
-            row = model.to_dict() if isinstance(model, WorkCalendar) else model
             days.append({"date": day, "before": before,
-                         "after": {"explicit": row is not None, "row": row, "default_periods": periods, "effective": effective_calendar_day(day, model, periods)}})
+                         "after": {"explicit": row is not None, "row": row, "default_periods": periods,
+                                   "effective": after_effective}})
         return {"request": request, "dates": dates, "days": days, "calendars": calendars}
 
     def preview(self, payload: Dict[str, Any]) -> CalendarRangePreview:
@@ -393,6 +441,8 @@ class WorkbenchCalendarService:
             current = self._preview_days(preview.request, expected=preview)
         if current["days"] != preview.days:
             raise WorkbenchCommandRejected("snapshot_stale", "范围里的日历或命中的日期已经变了，请重新点「预览变更」。")
-        results = self.write_days([(item["before"], model) for item, model in zip(current["days"], current["calendars"])])
+        results = self.write_days(
+            [(item["before"], model, item["after"]["row"]) for item, model in zip(current["days"], current["calendars"])]
+        )
         return WorkbenchCommandOutcome("committed" if any(item.result == "committed" for item in results) else "unchanged",
                                        {"dates": [{**item.data, "result": item.result} for item in results]})

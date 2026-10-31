@@ -179,7 +179,7 @@ def test_execution_adapter_consumes_one_ledger_plan_task_and_resource_scope(ledg
     assert calls == {'plan': 1, 'tasks': 1, 'scope': 0, 'resources': 1, 'orphans': 1}
 
 
-@pytest.mark.parametrize("method", ["require_schema", "revision_clock"])
+@pytest.mark.parametrize("method", ["revision_clock", "scope_task_rows"])
 def test_execution_adapter_translates_ledger_read_rejection(ledger_case, monkeypatch, method):
     from core.errors import AppError
     from core.models.operation_execution_scope import OperationExecutionScope
@@ -214,3 +214,43 @@ def test_correct_remark_preserves_actual_operator_with_legacy_external_skill(led
     outcome = case.command("correct", original.report_ref, payload)
     assert outcome["result"] == "committed"
     assert case.report_projection(original.report_ref).remark == "remark only"
+
+
+def test_lightweight_execution_projection_skips_history_and_caches_parsed_period(ledger_case, monkeypatch):
+    from core.services.execution import projection as exec_projection
+    from core.services.workbench.execution import production_report_validation as report_validation
+
+    case = ledger_case
+    task = case.task(1, case.op_id)
+    saved = case.command("create", task, case.values(4, remark="initial"))["data"]["rows"][0]
+    op_ref = saved["operation_ref"]
+
+    history_calls = []
+    orig_history = exec_projection.build_correction_history
+
+    def counted_history(*args, **kwargs):
+        history_calls.append(True)
+        return orig_history(*args, **kwargs)
+
+    monkeypatch.setattr(exec_projection, "build_correction_history", counted_history)
+    with case.ledger.read_snapshot():
+        light = case.ledger.project_loaded(case.ledger.load([op_ref]), include_history=False)[0]
+    assert history_calls == []
+    assert len(light.reports) == 1 and light.reports[0].correction_history == []
+
+    with case.ledger.read_snapshot():
+        full = case.ledger.project_loaded(case.ledger.load([op_ref]), include_history=True)[0]
+    assert len(history_calls) == 1
+    assert len(full.reports[0].correction_history) == 1
+
+    # Verify actual_period, actual_period_basis, and _constraint_signature cache on ExecutionProjection.
+    first_period = exec_projection.actual_period(light)
+    first_basis = exec_projection.actual_period_basis(light)
+    first_sig = report_validation._constraint_signature(light)
+    assert "actual_period" in light.__dict__["_cache"]
+    assert "actual_period_basis" in light.__dict__["_cache"]
+    assert "constraint_signature" in light.__dict__["_cache"]
+
+    assert exec_projection.actual_period(light) is first_period
+    assert exec_projection.actual_period_basis(light) is first_basis
+    assert report_validation._constraint_signature(light) is first_sig

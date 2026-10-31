@@ -97,6 +97,7 @@ def _node_attrs(node: OperationGraphNode) -> Dict[str, Any]:
         "duration_minutes": node.duration_minutes,
         "machine_id": node.machine_id,
         "candidate_machine_ids": node.candidate_machine_ids,
+        "external_group_key": node.external_group_key,
     }
 
 

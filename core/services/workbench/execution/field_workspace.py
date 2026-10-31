@@ -6,11 +6,67 @@ from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.execution.processing_hours import hour_totals
+from core.services.execution.projection import materialize_operation_history, validated_correction_history
 from core.services.workbench.facts.execution_projection import attach_context
+from core.services.workbench.facts.source_revisions import EXECUTION_SOURCE_KEYS, read_source_revisions
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from data.repositories.workbench_field_query_repo import WorkbenchFieldQueryRepository
 
 from .field_workspace_scope import STATES, matches, matches_plan
+
+
+class _LazyReportDict(dict):
+    def __init__(self, values, *, history):
+        super().__init__(values)
+        self._history = history
+
+    def __getitem__(self, key):
+        if key == 'correction_history' and 'correction_history' not in self:
+            self['correction_history'] = validated_correction_history(self._history)
+        return super().__getitem__(key)
+
+
+def _build_lazy_reports(projection, histories, labels):
+    return [
+        _LazyReportDict(
+            {
+                'report_ref': report.report_ref,
+                'report_no': report.report_no,
+                'operation_ref': report.operation_ref,
+                'recorded_against_task_ref': report.recorded_against_task_ref,
+                'recorded_against_plan_ref': report.recorded_against_plan_ref,
+                'source': report.source,
+                'actual_start': report.actual_start,
+                'actual_end': report.actual_end,
+                'completed_quantity': report.completed_quantity,
+                'effective_processing_hours': report.effective_processing_hours,
+                'actual_machine_ref': report.actual_machine_ref,
+                'actual_operator_ref': report.actual_operator_ref,
+                'actual_machine_label': labels.get(report.actual_machine_ref),
+                'actual_operator_label': labels.get(report.actual_operator_ref),
+                'remark': report.remark,
+                'recorded_at': report.recorded_at,
+                'revision_ref': report.revision_ref,
+                'local_operator': report.local_operator,
+                'declared_operator': report.declared_operator,
+            },
+            history=histories[report.report_ref],
+        )
+        for report in projection.reports
+    ]
+
+
+class _CohortExecutionDict(dict):
+    def __init__(self, values, *, projection, histories, labels):
+        super().__init__(values)
+        self._projection = projection
+        self._histories = histories
+        self._labels = labels
+
+    def __getitem__(self, key):
+        if key == 'reports' and 'reports' not in self:
+            self['reports'] = _build_lazy_reports(self._projection, self._histories, self._labels)
+        return super().__getitem__(key)
 
 
 class FieldWorkspaceService:
@@ -35,9 +91,14 @@ class FieldWorkspaceService:
         current_plan = self.ledger._current_plan()
         return current_plan['plan_ref'] if current_plan is not None else None
 
-    def _labels(self, projections, plan_tasks):
-        refs = {row[key] for p in projections.values() for row in p['reports'] + [item['report'] for item in p['voided_reports']]
-                for key in ('actual_machine_ref', 'actual_operator_ref') if row[key]}
+    def _labels(self, facts, plan_tasks):
+        refs = {
+            history[-1]['values'][key]
+            for group in facts['reports'].values()
+            for history in group.values()
+            for key in ('actual_machine_ref', 'actual_operator_ref')
+            if history[-1]['values'].get(key)
+        }
         refs.update(task[key] for task in plan_tasks for key in ('machine_ref', 'operator_ref') if task[key])
         labels, codes = {}, {}
         for row in self.ledger.resources(refs):
@@ -51,52 +112,78 @@ class FieldWorkspaceService:
         plan_ref = self._plan_ref(scope)
         if plan_ref is None:
             return ({'plan': None, 'scope': dict(scope), 'tasks': [], 'summary': self._summary([])},
-                    content_text(self.ledger.revision_clock()), {})
-        plan, plan_state = self.plans.execution_workspace(
+                    content_text({'plan_revision': self.plans.references.read_revision(),
+                                  'ledger_revision': self.ledger.revision_clock(),
+                                  'revisions': read_source_revisions(self.conn, EXECUTION_SOURCE_KEYS)}), {})
+        plan = self.plans.execution_workspace(
             PlanReadScope(plan_ref, scope.get('range_start'), scope.get('range_end')),
         )
         plan_tasks = [task for task in plan['tasks'] if matches_plan(task, scope)]
         refs = [task['operation_ref'] for task in plan_tasks]
         facts = self.ledger.load_many(refs, comparison_plan_ref=plan_ref)
-        # 整份计划只投影、不签发写令牌：令牌只发给本次返回的那一页或那一条（page/detail）。
-        # 几千道任务逐条签发会把各页面共用的令牌登记表挤满，刚显示的报工令牌随即失效。
-        loaded = {item.operation_ref: item for item in self.ledger.project_loaded(facts, contexts=False)}
-        self._loaded = (facts, loaded)
-        projections = {ref: item.to_dict() for ref, item in loaded.items()}
-        labels, resource_codes = self._labels(projections, plan_tasks)
+        # 整份计划只做轻量投影、不展开更正历史和作废字典、不签发写令牌：
+        # 完整报工 DTO 与写令牌只发给本次返回的那一页或那一条（page/detail）。
+        loaded = {ref: self.ledger.project_operation(facts, ref, include_history=False) for ref in facts['operations']}
+        labels, resource_codes = self._labels(facts, plan_tasks)
+        self._loaded = (facts, loaded, labels)
         names = self.queries.batch_part_names({row['batch_id'] for row in plan_tasks})
         tasks, scope_tasks = [], []
         count_scope = {key: value for key, value in scope.items()
                        if key not in ('state', 'batch_ids', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to')}
         for row in plan_tasks:
-            task = self._task(row, projections[row['operation_ref']], labels, names)
+            ref = row['operation_ref']
+            task = self._cohort_task(row, loaded[ref], facts['reports'].get(ref, {}), facts['voids'], labels, names)
             # 报工页据此对外协工序不提供实际设备、人员选择；写入时仍以服务端校验为准。
-            task['source'] = facts['operations'][row['operation_ref']]['source']
+            task['source'] = facts['operations'][ref]['source']
             if matches(task, count_scope):
                 scope_tasks.append(task)
                 if not scope.get('state') or task['execution']['execution_state'] == scope['state']:
                     tasks.append(task)
         tasks.sort(key=lambda item: (item['batch_id'], int(item['sequence']), item['planned_start'], item['task_ref']))
         effective = dict(scope, plan_ref=plan_ref)
-        # Tokens have expiries and must not become part of the business fingerprint.
-        state_facts = self.ledger.fact_snapshot(facts, refs[0]) if len(refs) == 1 else facts['clock']
         summary = self._summary(tasks, scope_tasks)
-        state = content_text({'scope': effective, 'plan': plan_state, 'execution': state_facts, 'parts': names, 'labels': labels})
+        state = content_text({
+            'scope': effective,
+            'plan_revision': self.plans.references.read_revision(),
+            'ledger_revision': facts['clock'],
+            'revisions': read_source_revisions(self.conn, EXECUTION_SOURCE_KEYS),
+        })
         return {'plan': plan['plan'], 'scope': effective, 'tasks': tasks, 'summary': summary}, state, resource_codes
 
     @staticmethod
-    def _task(row, projection, labels, names):
-        if projection['current_task_ref'] != row['task_ref']:
-            projection['write_context'] = {'write_token': None, 'expires_at': None, 'capabilities': {'create': False},
-                'blocked_reasons': [{'code': 'plan_not_writable', 'message': '这条安排属于旧计划，不能在旧任务上新增报工。'}]}
-        for report in projection['reports'] + [item['report'] for item in projection['voided_reports']]:
-            for kind in ('machine', 'operator'):
-                report['actual_' + kind + '_label'] = labels.get(report['actual_' + kind + '_ref'])
+    def _cohort_task(row, projection, histories, voids, labels, names):
+        execution = _CohortExecutionDict(
+            {
+                'operation_ref': projection.operation_ref,
+                'current_task_ref': projection.current_task_ref,
+                'comparison_task_ref': projection.comparison_task_ref,
+                'target_quantity': projection.target_quantity,
+                'target_basis': projection.target_basis,
+                'known_completed_quantity': projection.known_completed_quantity,
+                'quantity_complete': projection.quantity_complete,
+                'unknown_record_count': projection.unknown_record_count,
+                'records_complete': projection.records_complete,
+                'first_actual_start': projection.first_actual_start,
+                'confirmed_finish': projection.confirmed_finish,
+                'execution_state': projection.execution_state,
+                'completion_basis': projection.completion_basis,
+                'data_quality': projection.data_quality,
+                'report_count': len(projection.reports),
+                'voided_report_count': sum(report_ref in voids for report_ref in histories),
+                'remaining_quantity': projection.remaining_quantity,
+                'remaining_plan': projection.remaining_plan,
+                'data_gaps': projection.data_gaps,
+                'voided_reports': [],
+            },
+            projection=projection,
+            histories=histories,
+            labels=labels,
+        )
         name = names.get(row['batch_id'])
         task = {'task_ref': row['task_ref'], 'plan_ref': row['plan_ref'], 'operation_ref': row['operation_ref'],
                 'batch_id': row['batch_id'], 'part_name': name if type(name) is str else '',
                 'sequence': row['sequence'], 'operation_label': str(row['sequence']) + ' ' + row['process_label'],
-                'planned_start': row['start'], 'planned_end': row['end'], 'execution': projection}
+                'planned_start': row['start'], 'planned_end': row['end'], 'execution': execution}
         for key in ('piece_id', 'quantity', 'batch_quantity', 'quantity_basis', 'quantity_reason'):
             task[key] = row[key]
         for key in ('event_kind', 'duration_seconds', 'occupies_resources'):
@@ -108,17 +195,35 @@ class FieldWorkspaceService:
         return task
 
     @staticmethod
-    def _summary(tasks, scope_tasks=None):
+    def _decorate_execution(task_ref, projection_dict, labels):
+        if projection_dict['current_task_ref'] != task_ref:
+            projection_dict['write_context'] = {
+                'write_token': None,
+                'expires_at': None,
+                'capabilities': {'create': False},
+                'blocked_reasons': [{'code': 'plan_not_writable', 'message': '这条安排属于旧计划，不能在旧任务上新增报工。'}],
+            }
+        for report in projection_dict['reports'] + [item['report'] for item in projection_dict['voided_reports']]:
+            for kind in ('machine', 'operator'):
+                report['actual_' + kind + '_label'] = labels.get(report['actual_' + kind + '_ref'])
+        return projection_dict
+
+    @staticmethod
+    def _task_reports(task):
+        return task['execution']._projection.reports
+
+    @classmethod
+    def _summary(cls, tasks, scope_tasks=None):
         counted = tasks if scope_tasks is None else scope_tasks
         state_counts = dict.fromkeys(STATES, 0)
         for task in counted:
             state_counts[task['execution']['execution_state']] += 1
-        reports = [report for task in counted for report in task['execution']['reports']]
+        reports = [report for task in counted for report in cls._task_reports(task)]
         hours = hour_totals(reports)
         if scope_tasks is None:
             report_count, complete_count = len(reports), state_counts['complete']
         else:
-            report_count = sum(len(task['execution']['reports']) for task in tasks)
+            report_count = sum(len(cls._task_reports(task)) for task in tasks)
             complete_count = sum(task['execution']['execution_state'] == 'complete' for task in tasks)
         return {'tasks': len(tasks), 'reports': report_count, 'complete': complete_count,
                 'incomplete': sum(task['execution']['data_quality'] != 'complete' for task in tasks),
@@ -128,25 +233,25 @@ class FieldWorkspaceService:
                 'unknown_hour_reports': hours['unknown_hour_events']}
 
     def _with_contexts(self, tasks):
-        """Issue write contexts for the returned rows only; cohort tasks stay token-free."""
-        factory = self.ledger.context_factory
-        if factory is None or self._loaded is None:
+        """Materialize full report/correction DTOs and issue write contexts for returned rows only."""
+        if self._loaded is None:
             return tasks
-        facts, loaded = self._loaded
-        result, attached_operations = [], {}
+        facts, loaded, labels = self._loaded
+        factory = self.ledger.context_factory
+        result, materialized_operations = [], {}
         for task in tasks:
             ref = task['operation_ref']
-            if ref not in attached_operations:
-                attached_operations[ref] = attach_context(loaded[ref], factory, self.ledger.fact_snapshot(facts, ref))
-            attached = attached_operations[ref]
-            if attached is loaded[ref]:
-                result.append(task)
-                continue
-            execution = task['execution']
-            reports = [dict(report, write_context=row.write_context) for report, row in zip(execution['reports'], attached.reports)]
-            # 旧计划上的任务保留 _task 写明的“不能新增报工”；已有报工仍可补录、更正、作废。
-            context = attached.write_context if execution['current_task_ref'] == task['task_ref'] else execution['write_context']
-            result.append(dict(task, execution=dict(execution, reports=reports, write_context=context)))
+            if ref not in materialized_operations:
+                full = materialize_operation_history(
+                    loaded[ref], facts['reports'].get(ref, {}), facts['voids']
+                )
+                if factory is not None:
+                    full = attach_context(full, factory, self.ledger.fact_snapshot(facts, ref))
+                materialized_operations[ref] = full
+            projection_dict = self._decorate_execution(
+                task['task_ref'], materialized_operations[ref].to_dict(), labels
+            )
+            result.append(dict(task, execution=projection_dict))
         return result
 
     def page(self, cohort, number, size):

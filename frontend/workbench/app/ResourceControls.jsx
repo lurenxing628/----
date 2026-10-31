@@ -262,10 +262,11 @@
   }
   function relationLabels(entity, key) {
     if (!entity) return [];
-    const objects = { op_type_ref: 'op_type', group_ref: 'group', shift_profile_ref: 'shift_profile', skill_refs: 'skills', op_type_refs: 'op_types' };
+    const objects = { op_type_ref: 'op_type', group_ref: 'group', shift_profile_ref: 'shift_profile', skill_refs: 'skills', op_type_refs: 'op_types',
+      actual_machine_ref: 'actual_machine', actual_operator_ref: 'actual_operator' };
     const related = entity.relationships[objects[key]], refs = entity.relationships[key];
     // 后端投影的多值关系同时给编号表和对象表（编号表由对象表导出），单值关系给对象或 null。
-    if (Array.isArray(refs)) return refs.map(ref => ({ ref, label: related.find(item => item.ref === ref).label }));
+    if (Array.isArray(related)) return related.map(item => ({ ref: item.ref, label: item.label }));
     if (C.object(related)) return [{ ref: refs, label: related.label }];
     return refs ? [{ ref: refs, label: null }] : [];
   }
@@ -295,19 +296,23 @@
         response.data.entities.forEach(item => { result[item.ref] = item; }); return result;
       });
     }, [response]);
-    const selected = field.multiple ? value : value ? [value] : [];
-    const originals = relationLabels(original, field.key);
-    const rows = response ? response.data.entities : [];
-    const available = new Map(rows.map(item => [item.ref, item]));
-    selected.forEach(ref => {
-      if (!available.has(ref)) {
-        const old = originals.find(item => item.ref === ref);
-        available.set(ref, known[ref] || { ref, label: old && old.label || '原关联（未在当前选项中）', status: 'missing', fields: {} });
-      }
-    });
+    const selected = React.useMemo(() => field.multiple ? value : value ? [value] : [], [field.multiple, value]);
+    const selectedSet = React.useMemo(() => new Set(selected), [selected]);
+    const originalByRef = React.useMemo(() => new Map(relationLabels(original, field.key).map(item => [item.ref, item])), [original, field.key]);
+    const options = React.useMemo(() => {
+      const rows = response ? response.data.entities : [];
+      const available = new Map(rows.map(item => [item.ref, item]));
+      selected.forEach(ref => {
+        if (!available.has(ref)) {
+          const old = originalByRef.get(ref);
+          available.set(ref, known[ref] || { ref, label: old && old.label || '原关联（未在当前选项中）', status: 'missing', fields: {} });
+        }
+      });
+      return Array.from(available.values());
+    }, [response, selected, originalByRef, known]);
     function selectable(item) { return (item.status === 'active' || field.kind === 'op_type' && item.status === null) && (!field.category || [field.category, "both"].includes(item.fields.category)); }
     function choose(ref, checked) {
-      if (field.multiple) onChange(checked ? selected.concat(ref) : selected.filter(item => item !== ref));
+      if (field.multiple) onChange(checked ? (selectedSet.has(ref) ? selected : selected.concat(ref)) : selected.filter(item => item !== ref));
       else onChange(ref);
     }
     const changePage = next => { setSnapshot(response.meta.snapshot_ref); setPage(next); };
@@ -315,7 +320,6 @@
       if (query === search && page === 1 && snapshot === undefined) request.reload();
       else { setQuery(search); setPage(1); setSnapshot(undefined); }
     };
-    const options = Array.from(available.values());
     return <div className={'field wb-field wb-choice' + (field.multiple ? ' full' : '') + (invalid ? ' err' : '')} data-field-path={'relationships.' + field.key}>
       <label htmlFor={id}>{field.label}</label>
       <div className="rowact"><div className="search wb-choice-search"><span className="ic"><Icon name="search" /></span>
@@ -323,10 +327,13 @@
           if (event.key === 'Enter') { event.preventDefault(); runSearch(); }
         }} /></div><Button icon="search" aria-label={'执行' + field.label + '搜索'} disabled={disabled} onClick={runSearch} /></div>
       {field.multiple ? <div id={id} role="group" aria-label={field.label} aria-invalid={invalid || undefined} aria-describedby={describedBy} tabIndex={invalid ? -1 : undefined} className="fchips wb-choice-options">
-        {options.map(item => <label key={item.ref} className={'fchip wb-choice-option' + (selected.includes(item.ref) ? ' on' : '')}>
-          <input type="checkbox" className="wb-choice-check" checked={selected.includes(item.ref)}
-            disabled={disabled || (!selected.includes(item.ref) && !selectable(item))} onChange={event => choose(item.ref, event.target.checked)} />
-          <span className="wb-choice-label">{item.label}{!selectable(item) ? '（停用 / 未确认）' : ''}</span></label>)}</div> :
+        {options.map(item => {
+          const isSelected = selectedSet.has(item.ref);
+          return <label key={item.ref} className={'fchip wb-choice-option' + (isSelected ? ' on' : '')}>
+            <input type="checkbox" className="wb-choice-check" checked={isSelected}
+              disabled={disabled || (!isSelected && !selectable(item))} onChange={event => choose(item.ref, event.target.checked)} />
+            <span className="wb-choice-label">{item.label}{!selectable(item) ? '（停用 / 未确认）' : ''}</span></label>;
+        })}</div> :
         <select id={id} value={value} disabled={disabled} aria-invalid={invalid || undefined} aria-describedby={describedBy} onChange={event => choose(event.target.value)}>
           <option value="">未选</option>{options.map(item => <option key={item.ref} value={item.ref} disabled={!selectable(item) && item.ref !== value}>
             {item.label}{!selectable(item) ? '（停用 / 未确认）' : ''}</option>)}</select>}

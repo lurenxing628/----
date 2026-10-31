@@ -54,18 +54,18 @@ def _bounded_operation_orders(
         if (source, target) in considered_moves:
             continue
         considered_moves.add((source, target))
-        if source not in ranks or target not in ranks or source == target:
+        if target not in ranks:
             continue
         src_idx, tgt_idx = ranks[source], ranks[target]
         insert_idx = tgt_idx - int(src_idx < tgt_idx)
         if insert_idx == src_idx:
             continue
         if insert_idx < src_idx:
-            if any(ranks.get(parent, -1) >= insert_idx for parent in predecessors.get(source, ())):
+            if any(ranks[parent] >= insert_idx for parent in predecessors[source]):
                 continue
             decision_order = order[:insert_idx] + (source,) + order[insert_idx:src_idx] + order[src_idx + 1:]
         else:
-            if any(source in predecessors.get(order[idx], ()) for idx in range(src_idx + 1, insert_idx + 1)):
+            if any(source in predecessors[order[idx]] for idx in range(src_idx + 1, insert_idx + 1)):
                 continue
             decision_order = order[:src_idx] + order[src_idx + 1:insert_idx + 1] + (source,) + order[insert_idx + 1:]
         if decision_order in seen:

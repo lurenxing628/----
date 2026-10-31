@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List
 
 from core.models.workbench_run_candidate import local_time, reject
-from core.services.capacity.plan_calendar_intervals import instant
 from core.services.workbench.facts.archived_calendar import ArchivedCalendar
 from core.services.workbench.facts.decision_metrics import RESOURCE_METRICS, metric_value
 from core.services.workbench.facts.official_scope_coverage import official_scope_coverage
@@ -75,12 +74,12 @@ class ResourceWindowMetrics:
     def __init__(self, inputs):
         self.inputs = inputs
         self.start, self.end, self.calendar = inputs.start, inputs.end, inputs.calendar
+        self._default_window_bounds = (local_time(self.start), local_time(self.end))
         self.resources = inputs.resources
         self._resource_by_ref = {row["ref"]: row for row in self.resources}
         self.tasks = {}
         self.indexes, self._window_rows, self._summaries, self._groups = {}, {}, {}, {}
         self._calendars = {}
-        self._calendar_times = {}
         self.pressure_threshold = 0.9
 
     def configure(self, threshold):
@@ -124,16 +123,7 @@ class ResourceWindowMetrics:
     def _prepare_calendars(self, resources):
         pending = [resource for resource in resources if resource["ref"] not in self._calendars]
         for ref, calendar in self.calendar.iter_resources(pending, self.start, self.end):
-            self._calendars[ref] = normalize_resource_calendar(calendar, self.start, self.end, parse_time=self._calendar_time)
-
-    def _calendar_time(self, value):
-        if not isinstance(value, str):
-            return instant(value)
-        parsed = self._calendar_times.get(value)
-        if parsed is None:
-            parsed = instant(value)
-            self._calendar_times[value] = parsed
-        return parsed
+            self._calendars[ref] = normalize_resource_calendar(calendar, self.start, self.end)
 
     def resource_calendar(self, resource):
         self._prepare_calendars([resource])
@@ -244,12 +234,31 @@ class DecisionResources(ResourceWindowMetrics):
 
     def drill(self, key, resource, *, tasks=None, start=None, end=None):
         source = self.source
-        low, high = local_time(start or self.start), local_time(end or self.end)
+        if start is None and end is None:
+            low, high = self._default_window_bounds
+        else:
+            low, high = local_time(start or self.start), local_time(end or self.end)
+        intervals = source.task_intervals(key)
         if tasks is None:
             tasks = self.task_group(key)[resource["ref"]]
-            tasks = [row for row in tasks if row["start"] is None or row["end"] is None or row.get("interval_comparable") is False or
-                     local_time(row["start"]) < high and local_time(row["end"]) > low]
-        value = drill_target(source, tasks=tasks, batch_ref=None, before=key == "reference", window=(low.isoformat(), high.isoformat()))
+            filtered = []
+            for row in tasks:
+                if row["start"] is None or row["end"] is None or not row["interval_comparable"]:
+                    filtered.append(row)
+                    continue
+                row_start, row_end = intervals[row["row_ref"]]
+                if row_start < high and row_end > low:
+                    filtered.append(row)
+            tasks = filtered
+        value = drill_target(
+            source,
+            tasks=tasks,
+            batch_ref=None,
+            before=key == "reference",
+            window=(low.isoformat(), high.isoformat()),
+            window_bounds=(low, high),
+            task_intervals=intervals,
+        )
         if value is None:
             return None
         value.update(resource_view=source.resource_view, resource_kind=resource["kind"], resource_ref=resource["ref"], comparison_tab="resources")

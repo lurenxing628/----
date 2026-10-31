@@ -21,7 +21,6 @@ from core.services.workbench.facts.decision_baseline import read_decision_baseli
 from core.services.workbench.facts.decision_baseline_source import decision_baseline_source_resolver
 from core.services.workbench.facts.decision_read_models import public_job_head, public_job_status
 from core.services.workbench.facts.run_data_context import RunDataContext
-from core.services.workbench.facts.run_policy import require_run_schema
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 
 from .input_admission import candidate_admission_issues
@@ -82,6 +81,7 @@ class WorkbenchRunService:
         accepted_at = self.clock().isoformat(timespec="microseconds")
         facts_text = prepared.capture.content()
         capture = {"input": prepared.settings, "facts_text": facts_text,
+                   "facts": prepared.capture.archive(),
                    "execution": [row.to_dict() for row in prepared.execution_projections],
                    "baseline": prepared.baseline, "run_options": prepared.run_options}
         facts = GenerationFacts(capture)
@@ -113,7 +113,6 @@ class WorkbenchRunService:
         """Separate authorization preview; an ordinary preflight never authorizes writes."""
         self._require_outer()
         with TransactionManager(self.conn).transaction():
-            require_run_schema(self.repo)
             used = self.repo.input_admitted(input_ref)
             prepared, snapshot = self._resolve(input_ref)
             settings, data = prepared.settings, prepared.data
@@ -132,7 +131,6 @@ class WorkbenchRunService:
                     "calendar_check": data["calendar_check"], "warnings": data["warnings"]}
 
     def accept(self, input_ref, write_token, request_key):
-        require_run_schema(self.repo)
         if not isinstance(input_ref, str) or not input_ref or len(input_ref) > 256:
             raise WorkbenchCommandRejected("invalid_input", "这份排产检查结果已失效，排产没有开始。请重新做一次排产检查。", 400)
 
@@ -181,16 +179,22 @@ class WorkbenchRunService:
     def get(self, run_ref):
         validate_run_ref(run_ref)
         with TransactionManager(self.conn).transaction():
-            require_run_schema(self.repo)
             row = self.repo.status(run_ref)
             if row is None:
                 raise WorkbenchCommandRejected("entity_not_found", "找不到这次排产，页面没有打开。请到「排产记录」重新选择。", 404)
             return public_job_status(row)
 
+    def get_head(self, run_ref):
+        validate_run_ref(run_ref)
+        with TransactionManager(self.conn).transaction():
+            row = self.repo.head(run_ref)
+            if row is None:
+                raise WorkbenchCommandRejected("entity_not_found", "找不到这次排产，页面没有打开。请到「排产记录」重新选择。", 404)
+            return row
+
     def lookup(self, request_key):
         validate_request_key(request_key)
         with TransactionManager(self.conn).transaction():
-            require_run_schema(self.repo)
             row = self.repo.status_by_request(request_key)
             if row is not None:
                 return public_job_status(row)

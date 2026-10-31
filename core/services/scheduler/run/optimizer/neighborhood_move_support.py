@@ -6,6 +6,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.algorithm_contracts.changeover_events import type_transition
 from core.algorithm_contracts.date_parsers import due_exclusive, parse_date
 
+_UNSET = object()
+
 
 def latest_result(results: List[Any]) -> Optional[Any]:
     # Decoded rows carry their batch id and sequence (ScheduleResult, schedule_seed_contracts).
@@ -38,14 +40,29 @@ def batch_due_date(batch: Any) -> Optional[date]:
     return parse_date(text) if text else None
 
 
+def prepare_batch_due_dates(
+    batches: Dict[str, Any],
+    *,
+    native_preparation: Any = None,
+) -> Dict[str, Optional[date]]:
+    if (
+        native_preparation is not None
+        and (batches is native_preparation.batches or set(batches) == set(native_preparation.batches))
+        and native_preparation.all_batch_due_dates_valid()
+    ):
+        return dict(native_preparation.parsed_due_dates())
+    return {bid: batch_due_date(batch) for bid, batch in batches.items()}
+
+
 def most_tardy_batch(
     *,
     finish_by_batch_rows: Dict[str, datetime],
     batches: Dict[str, Any],
+    due_by_batch: Optional[Dict[str, Optional[date]]] = None,
 ) -> Optional[str]:
     best: Optional[Tuple[str, float]] = None
     for bid, batch in batches.items():
-        due_date = batch_due_date(batch)
+        due_date = due_by_batch[bid] if due_by_batch is not None and bid in due_by_batch else batch_due_date(batch)
         finish_time = finish_by_batch_rows.get(bid)
         if due_date is None or finish_time is None:
             continue
@@ -62,10 +79,11 @@ def earliest_due_pressure_batch(
     *,
     finish_by_batch_rows: Dict[str, datetime],
     batches: Dict[str, Any],
+    due_by_batch: Optional[Dict[str, Optional[date]]] = None,
 ) -> str:
     best: Optional[Tuple[date, str]] = None
     for bid, batch in batches.items():
-        due_date = batch_due_date(batch)
+        due_date = due_by_batch[bid] if due_by_batch is not None and bid in due_by_batch else batch_due_date(batch)
         if due_date is None:
             continue
         finish_time = finish_by_batch_rows.get(bid)
@@ -77,16 +95,25 @@ def earliest_due_pressure_batch(
     return best[1] if best is not None else ""
 
 
-def bottleneck_machine_rows(results: List[Any]) -> List[Any]:
+def _group_by_machine(results: List[Any]) -> Dict[str, List[Any]]:
     grouped: Dict[str, List[Any]] = {}
     for result in results:
-        machine_id = str(result.machine_id or "").strip()
+        raw_machine = result.machine_id
+        machine_id = str(raw_machine) if raw_machine is not None and str(raw_machine).strip() else ""
         if machine_id:
             grouped.setdefault(machine_id, []).append(result)
+    return grouped
+
+
+def _bottleneck_from_groups(grouped: Dict[str, List[Any]]) -> List[Any]:
     if not grouped:
         return []
     machine_id = max(grouped, key=lambda mid: (busy_hours(grouped[mid]), len(grouped[mid]), mid))
     return grouped[machine_id]
+
+
+def bottleneck_machine_rows(results: List[Any]) -> List[Any]:
+    return _bottleneck_from_groups(_group_by_machine(results))
 
 
 def busy_hours(rows: List[Any]) -> float:
@@ -99,12 +126,7 @@ def busy_hours(rows: List[Any]) -> float:
     return float(total)
 
 
-def first_changeover_pair(results: List[Any]) -> Optional[Tuple[Any, Any]]:
-    grouped: Dict[str, List[Any]] = {}
-    for result in results:
-        machine_id = str(result.machine_id or "").strip()
-        if machine_id:
-            grouped.setdefault(machine_id, []).append(result)
+def _changeover_from_groups(grouped: Dict[str, List[Any]]) -> Optional[Tuple[Any, Any]]:
     for rows in grouped.values():
         previous = None
         previous_type = ""
@@ -117,6 +139,88 @@ def first_changeover_pair(results: List[Any]) -> Optional[Tuple[Any, Any]]:
                 return previous, row
             previous, previous_type = row, current_type
     return None
+
+
+def first_changeover_pair(results: List[Any]) -> Optional[Tuple[Any, Any]]:
+    return _changeover_from_groups(_group_by_machine(results))
+
+
+class LocalSearchResultFacts:
+    """Lazy per-result-list facts for ordinary local-search neighbourhood moves."""
+
+    def __init__(
+        self,
+        results: List[Any],
+        *,
+        batches: Optional[Dict[str, Any]] = None,
+        due_by_batch: Optional[Dict[str, Optional[date]]] = None,
+    ) -> None:
+        self.results = results
+        self._batches = batches
+        self._due_by_batch = due_by_batch
+        self._finish_map: Any = _UNSET
+        self._latest_row: Any = _UNSET
+        self._most_tardy_batch_id: Any = _UNSET
+        self._earliest_due_pressure_batch_id: Any = _UNSET
+        self._machine_groups: Any = _UNSET
+        self._bottleneck_rows: Any = _UNSET
+        self._bottleneck_latest_row: Any = _UNSET
+        self._changeover_pair: Any = _UNSET
+
+    def due_by_batch(self, batches: Dict[str, Any]) -> Dict[str, Optional[date]]:
+        if self._due_by_batch is None or (self._batches is not None and self._batches is not batches):
+            self._batches = batches
+            self._due_by_batch = prepare_batch_due_dates(batches)
+        return self._due_by_batch
+
+    def finish_map(self) -> Dict[str, datetime]:
+        if self._finish_map is _UNSET:
+            self._finish_map = finish_by_batch(self.results)
+        return self._finish_map
+
+    def latest_row(self) -> Optional[Any]:
+        if self._latest_row is _UNSET:
+            self._latest_row = latest_result(self.results)
+        return self._latest_row
+
+    def most_tardy_batch_id(self, batches: Dict[str, Any]) -> Optional[str]:
+        if self._most_tardy_batch_id is _UNSET:
+            self._most_tardy_batch_id = most_tardy_batch(
+                finish_by_batch_rows=self.finish_map(),
+                batches=batches,
+                due_by_batch=self.due_by_batch(batches),
+            )
+        return self._most_tardy_batch_id
+
+    def earliest_due_pressure_batch_id(self, batches: Dict[str, Any]) -> str:
+        if self._earliest_due_pressure_batch_id is _UNSET:
+            self._earliest_due_pressure_batch_id = earliest_due_pressure_batch(
+                finish_by_batch_rows=self.finish_map(),
+                batches=batches,
+                due_by_batch=self.due_by_batch(batches),
+            )
+        return self._earliest_due_pressure_batch_id
+
+    def machine_groups(self) -> Dict[str, List[Any]]:
+        if self._machine_groups is _UNSET:
+            self._machine_groups = _group_by_machine(self.results)
+        return self._machine_groups
+
+    def bottleneck_rows(self) -> List[Any]:
+        if self._bottleneck_rows is _UNSET:
+            self._bottleneck_rows = _bottleneck_from_groups(self.machine_groups())
+        return self._bottleneck_rows
+
+    def bottleneck_latest_row(self) -> Optional[Any]:
+        if self._bottleneck_latest_row is _UNSET:
+            rows = self.bottleneck_rows()
+            self._bottleneck_latest_row = latest_result(rows) if rows else None
+        return self._bottleneck_latest_row
+
+    def changeover_pair(self) -> Optional[Tuple[Any, Any]]:
+        if self._changeover_pair is _UNSET:
+            self._changeover_pair = _changeover_from_groups(self.machine_groups())
+        return self._changeover_pair
 
 
 def result_time_key(row: Any) -> Tuple[datetime, datetime, int]:
@@ -132,17 +236,10 @@ def op_type(result: Any) -> str:
 
 
 def pick_resource_pair(pool: Dict[str, Any]) -> Optional[Tuple[str, str, int]]:
-    operators_by_machine = pool.get("operators_by_machine")
-    pair_rank = pool.get("pair_rank")
-    if not isinstance(operators_by_machine, dict) or not isinstance(pair_rank, dict):
-        return None
-    for machine_id in sorted(str(key) for key in operators_by_machine.keys()):
-        operators = [
-            text
-            for item in operators_by_machine[machine_id]
-            for text in (str(item).strip(),)
-            if text
-        ]
+    operators_by_machine = pool["operators_by_machine"]
+    pair_rank = pool["pair_rank"]
+    for machine_id in sorted(operators_by_machine, key=str):
+        operators = operators_by_machine[machine_id]
         if len(operators) < 2:
             continue
         for operator_id in reversed(operators):
@@ -155,6 +252,7 @@ def pick_resource_pair(pool: Dict[str, Any]) -> Optional[Tuple[str, str, int]]:
 
 
 __all__ = [
+    "LocalSearchResultFacts",
     "bottleneck_machine_rows",
     "earliest_due_pressure_batch",
     "finish_by_batch",
@@ -162,4 +260,5 @@ __all__ = [
     "latest_result",
     "most_tardy_batch",
     "pick_resource_pair",
+    "prepare_batch_due_dates",
 ]

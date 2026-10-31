@@ -2,8 +2,8 @@
 
 from collections import defaultdict
 
+from core.infrastructure.sqlite_udf import parse_dt_for_sql
 from data.repositories.calendar_facts_repo import CalendarFactsRepository
-from data.repositories.schedule_time_sql import parse_dt_for_sql
 
 MAX_FACT_ROWS = 50000
 SQL_CHUNK = 400
@@ -13,15 +13,28 @@ class ProjectionLimit(ValueError):
     pass
 
 
+# SQLite's ORDER BY across storage classes: NULL, then numbers, TEXT (binary collation), BLOB.
+_STORAGE_CLASS_ORDER = {int: 1, float: 1, str: 2, bytes: 3}
+
+
+def _sqlite_order(value):
+    return (0, 0) if value is None else (_STORAGE_CLASS_ORDER[type(value)], value)
+
+
 class CapturedCalendarInputs:
-    """Current dashboard source rows plus SQL-prepared downtime facts; no connection."""
+    """Current dashboard source rows plus SQL-prepared downtime facts; no connection.
+
+    ``downtimes`` arrive in rowid order. Each machine's rows are sorted once by
+    (start_time, end_time) in SQLite's storage-class order; the stable sort keeps rowid
+    ties, matching CalendarFactsRepository.downtimes' ORDER BY machine_id,start_time,end_time.
+    """
 
     def __init__(self, *, machines, downtimes, schema_version, downtime_machine_ids):
         # schema_rows 只作日历来源说明（source.schema_version）原样带出，不参与日历计算。
         self.machine_rows, self.downtime_rows, self.schema_rows = machines, downtimes, schema_version
         # Downtimes were prepared only for these machines; other machines' calendars are unavailable.
         self.downtime_machine_ids = frozenset(downtime_machine_ids)
-        self._machines, self._downtimes, self._downtime_order = None, None, {}
+        self._machines, self._downtimes = None, None
 
     def _machine_rows(self, machine_ids, fields, limit):
         if self._machines is None:
@@ -48,14 +61,14 @@ class CapturedCalendarInputs:
         if self._downtimes is None:
             self._downtimes = defaultdict(list)
             for row, prepared in self.downtime_rows:
-                if prepared["__calendar_admitted"] == 1:
+                # Only the selected machines' admitted rows were prepared (valid is 0 or 1).
+                if prepared["__calendar_valid"] is not None:
                     self._downtimes[row["machine_id"]].append((row, prepared))
+            for rows in self._downtimes.values():
+                rows.sort(key=lambda item: (_sqlite_order(item[0]["start_time"]), _sqlite_order(item[0]["end_time"])))
         low, high, result = parse_dt_for_sql(start), parse_dt_for_sql(end), []
         for key in machine_ids:
-            if key not in self._downtime_order:
-                self._downtime_order[key] = sorted(self._downtimes.get(key, ()),
-                    key=lambda item: (item[0]["start_time"] or "", item[0]["end_time"] or "", item[0]["id"]))
-            for row, prepared in self._downtime_order[key]:
+            for row, prepared in self._downtimes.get(key, ()):
                 overlaps = (prepared["__calendar_valid"] == 1 and low is not None and high is not None
                             and prepared["__calendar_start"] < high and prepared["__calendar_end"] > low)
                 if overlaps or prepared["__calendar_valid"] == 0:
@@ -63,10 +76,6 @@ class CapturedCalendarInputs:
                     if len(result) >= limit:
                         return result
         return result
-
-
-def snapshot_values(value):
-    return value
 
 
 class CalendarFacts:

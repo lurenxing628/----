@@ -34,13 +34,10 @@ class CandidatePlan:
     used_strategy: Any = None
     used_params: Dict[str, Any] = field(default_factory=dict)
     best_order: List[str] = field(default_factory=list)
-    attempts: List[Dict[str, Any]] = field(default_factory=list)
-    improvement_trace: List[Dict[str, Any]] = field(default_factory=list)
     algo_mode: str = ""
     objective_name: str = ""
     algo_stats: Dict[str, Any] = field(default_factory=dict)
     time_budget_seconds: float = 0
-    search_report: Dict[str, Any] = field(default_factory=dict)
     sort_strategy: str = ""
     # Dispatch mode the plan really decoded with; a graph tier forces ``sgs`` whatever was configured.
     dispatch_mode: str = ""

@@ -240,7 +240,7 @@ async function contract(h, assert) {
   await nodes(contended.render(w.RunJobPanel, props)).find(node => node.type === w.RunJobControls.Confirmation).props.onConfirm();
   const kept = nodes(contended.render(w.RunJobPanel, props)).find(node => node.type === w.RunJobControls.Confirmation);
   assert(kept && kept.props.preview && !kept.props.busy, 'Lock contention keeps the confirmation and its preview');
-  assert(/另一个页面正在提交排产/.test(kept.props.error));
+  assert(/另一个页面正在处理排产记录，请稍后重试。/.test(kept.props.error));
   assert.deepStrictEqual(requests.map(row => row.path), ['/api/workbench/v1/scheduling/runs/preview']); assert.strictEqual(store.size, 0);
   w.navigator = { locks: { request: async (_key, _options, fn) => fn({}) } };
   await kept.props.onConfirm();
@@ -439,7 +439,9 @@ async function contract(h, assert) {
     render(); await turns(); render();
     return { lookups, posts, navigations, storage, view: () => view,
       record: () => nodes(view).find(node => node.type === w.RunJobControls.Record).props,
-      async rereadStorage() { failRecent = false; failPending = false; nodes(view).find(node => node.type === w.RunJobControls.Button && text(node) === '刷新上次操作记录').props.onClick(); render(); await turns(); render(); },
+      // Storage has recovered; a second panel of the same page only renders its initial state.
+      remount() { failRecent = false; failPending = false; return hooks().render(w.RunJobPanel, props); },
+      async rereadStorage() { failRecent = false; failPending = false; nodes(view).find(node => node.type === w.RunJobControls.Button && text(node) === '刷新上次操作记录').props.onClick(); render(); await turns(); render(); await turns(); render(); },
       async advance(target) {
         while (true) {
           const next = [...timers].filter(([, value]) => value.at <= target).sort((a, b) => a[1].at - b[1].at || a[0] - b[0])[0];
@@ -491,6 +493,13 @@ async function contract(h, assert) {
     assert(nodes(unfinished.view()).some(node => node.props && node.props.role === 'alert' && text(node).startsWith(options.failPending ? '存不下这次排产的操作记录' : 'QuotaExceededError')), 'The finish failure is shown as a storage error');
     h.equal(unfinished.navigations, []);
     assert(unfinished.storage.has(w.RunJobAPI.PENDING_KEY)); assert.strictEqual(unfinished.posts.length, 0);
+    if (options.failPending) {
+      const again = unfinished.remount();
+      const restored = nodes(again).find(node => node.type === w.RunJobControls.Record);
+      assert(restored && restored.props.intent.run_ref === runRef, 'A remount restores the unflushed attach from page memory');
+      assert(nodes(again).some(node => node.props && node.props.role === 'alert' && text(node).startsWith('存不下这次排产的操作记录')), 'A remount keeps reporting the unflushed attach');
+      assert.strictEqual(JSON.parse(unfinished.storage.get(w.RunJobAPI.PENDING_KEY)).run_ref, null, 'Mounting never writes the unflushed attach');
+    }
     await unfinished.rereadStorage();
     assert(!unfinished.storage.has(w.RunJobAPI.PENDING_KEY), 'Rereading storage after recovery finishes the pending intent');
     h.equal(unfinished.navigations, replaced ? [] : [['run', { run_ref: h.reference(3) }]]);

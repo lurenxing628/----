@@ -4,7 +4,7 @@ from datetime import date, datetime, time, timedelta
 from functools import lru_cache
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.algorithm_runtime.calendar_timing_memo import make_lineage_timing_guard, register_calendar_timing_guard
+from core.algorithm_runtime.calendar_timing_memo import register_native_timing_calendar
 from core.errors import BusinessError, ErrorCode, ValidationError
 from core.models.calendar import OperatorCalendar, WorkCalendar
 from core.models.calendar_periods import (
@@ -13,7 +13,6 @@ from core.models.calendar_periods import (
 )
 from core.models.enums import BatchPriority, CalendarDayType, YesNo
 from core.services.common.datetime_normalize import normalize_hhmm
-from core.services.common.normalize import normalize_text
 from core.shared.strict_parse import finite_float, is_non_finite_number
 from data.repositories import CalendarRepository, OperatorCalendarRepository
 
@@ -64,7 +63,8 @@ class CalendarEngine:
         self._default_periods_json: Optional[str] = None
         self._default_periods = None
         self._default_period_hours = 0.0
-        self._period_facts: Dict[str, tuple] = {}
+        self._period_facts: Dict[Optional[str], tuple] = {}
+        self._decoded_periods: Dict[Optional[str], Optional[List[Dict[str, Any]]]] = {}
         self._public_calendar_rows: Dict[str, Any] = {}
         self._operator_calendar_rows: Dict[str, Dict[str, Any]] = {}
         self._public_policy_cache: Dict[str, DayPolicy] = {}
@@ -85,6 +85,7 @@ class CalendarEngine:
         self._default_periods = None
         self._default_period_hours = 0.0
         self._period_facts.clear()
+        self._decoded_periods.clear()
         self._public_calendar_rows.clear()
         self._operator_calendar_rows.clear()
         self._public_policy_cache.clear()
@@ -109,9 +110,10 @@ class CalendarEngine:
 
     @staticmethod
     def _normalize_text(value: Any) -> Optional[str]:
-        if isinstance(value, str):
-            return value if value.strip() else None
-        return normalize_text(value)
+        if value is None:
+            return None
+        text = value if isinstance(value, str) else str(value)
+        return text if text.strip() else None
 
     def default_periods(self) -> List[Dict[str, Any]]:
         """The engine owns these parsed defaults; callers consume them read-only."""
@@ -119,12 +121,26 @@ class CalendarEngine:
             periods = read_default_periods(self.conn, capture=self.capture)
             self._default_periods = periods
             self._default_periods_json = encode_periods(periods)
+            self._decoded_periods[self._default_periods_json] = periods
             _, self._default_period_hours = self._period_facts_for_json(self._default_periods_json, periods)
         return self._default_periods
 
+    def decoded_periods_for_json(self, periods_json: Optional[str]) -> Optional[List[Dict[str, Any]]]:
+        if periods_json is None:
+            return None
+        if periods_json not in self._decoded_periods:
+            self._decoded_periods[periods_json] = decode_periods(periods_json)
+        return self._decoded_periods[periods_json]
+
     def _period_facts_for_json(self, periods_json, periods=None):
         if periods_json not in self._period_facts:
-            offsets = period_offsets(decode_periods(periods_json) if periods is None else periods)
+            if periods is None:
+                if periods_json not in self._decoded_periods:
+                    self._decoded_periods[periods_json] = decode_periods(periods_json)
+                periods = self._decoded_periods[periods_json]
+            else:
+                self._decoded_periods.setdefault(periods_json, periods)
+            offsets = period_offsets(periods)
             self._period_facts[periods_json] = offsets, offset_hours(offsets)
         return self._period_facts[periods_json]
 
@@ -281,6 +297,19 @@ class CalendarEngine:
 
     def get_efficiency(self, dt: datetime, operator_id: Optional[str] = None) -> float:
         return self.policy_for_datetime(dt, operator_id=operator_id).efficiency
+
+    def certified_slot_window(self, dt: datetime, *, priority=None, operator_id=None):
+        """Constant native policy span."""
+        policy = self.policy_for_datetime(dt, operator_id=operator_id)
+        if policy.date_str != dt.date().isoformat() or not policy.is_priority_allowed(priority):
+            return None
+        window = next(((start, end) for start, end in policy.work_windows() if start <= dt < end), None)
+        if window is None:
+            return None
+        start, end = window
+        if end.date() != dt.date():
+            end = datetime.combine(dt.date() + timedelta(days=1), datetime.min.time())
+        return start, end
 
     def capacity_hours_between(self, start: datetime, end: datetime, *, priority=None, operator_id=None) -> float:
         """Efficiency-weighted capacity over the same disjoint pieces used by scheduling."""
@@ -440,5 +469,4 @@ class CalendarEngine:
 
 
 # Subclasses that only change how calendar rows are resolved keep the engine's pure timing surface.
-register_calendar_timing_guard(CalendarEngine, make_lineage_timing_guard(CalendarEngine),
-                               calendar_days_guard=make_lineage_timing_guard(CalendarEngine))
+register_native_timing_calendar(CalendarEngine)

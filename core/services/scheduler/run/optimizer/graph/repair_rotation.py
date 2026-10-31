@@ -5,11 +5,9 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from core.services.scheduler.run.optimizer.candidate_fingerprint import score_strictly_better
 
-from .repair_accounting import RepairWorkAccounting
-
 
 def _pending_neighbors(elite: Dict[str, Any]) -> int:
-    return elite["neighborhood"].candidate_count - elite.get("decision_offset", 0)
+    return elite["neighborhood"].candidate_count - elite["decision_offset"]
 
 
 def _fresh_pool_elites(pool: Any, *groups: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -42,7 +40,7 @@ def _current_improvements(improved: List[Dict[str, Any]], best: Optional[Dict[st
 
 def _prepare_next_repair_round(
     pool: Any, *, improved_elites: List[Dict[str, Any]], deferred_elites: List[Dict[str, Any]],
-    repair_deadline: float, clock: Callable[[], float], accounting: RepairWorkAccounting,
+    repair_deadline: float, clock: Callable[[], float],
 ) -> Optional[Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]]:
     next_elites: List[Dict[str, Any]] = []
     next_slots = max(pool.limits.top_k - len(deferred_elites), 1)
@@ -50,14 +48,13 @@ def _prepare_next_repair_round(
         if clock() >= repair_deadline:
             break
         elite = pool.make_elite(improved["candidate"], improved["profile"])
-        for profile in improved.get("basis_profiles", ()):
+        for profile in improved["basis_profiles"]:
             if clock() >= repair_deadline:
                 break
             pool.add_basis_variant(elite, profile)
         next_elites.append(elite)
     if not next_elites and improved_elites:
         return None
-    accounting.observe(next_elites)
     next_elites.extend(deferred_elites)
     return next_elites[:pool.limits.top_k], next_elites[pool.limits.top_k:]
 
@@ -67,10 +64,5 @@ def _retain_pending_tail(elite: Dict[str, Any], deferred_elites: List[Dict[str, 
         deferred_elites.append(elite)
 
 
-def _defer_to_improved_elites(pool: Any, elites: List[Dict[str, Any]], elite_index: int,
-                             round_index: int, improved_elites: List[Dict[str, Any]]) -> bool:
-    if not improved_elites or round_index + 1 >= pool.limits.max_rounds:
-        return False
-    pool.report["repair_deferred_by_improvement"] += sum(
-        _pending_neighbors(elite) for elite in elites[elite_index:])
-    return True
+def _defer_to_improved_elites(pool: Any, round_index: int, improved_elites: List[Dict[str, Any]]) -> bool:
+    return bool(improved_elites) and round_index + 1 < pool.limits.max_rounds

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import io
+import os
+import sys
 import tempfile
 from functools import lru_cache
-from typing import Any, BinaryIO, Dict, List, cast
+from typing import Any, BinaryIO, Dict, List, Optional, cast
 
-from core.services.common.excel_templates import sanitize_export_cell
+from core.services.common.excel_templates import ensure_xlsx_cell_length, sanitize_export_cell
 from core.services.report.utilization import utilization_availability_note, utilization_percent
+from core.shared.strict_parse import ILLEGAL_XML_CHARS_RE
 
 
 @lru_cache(maxsize=None)
@@ -29,8 +32,18 @@ def _auto_width(ws) -> None:
         ws.column_dimensions[get_column_letter(col_idx)].width = min(max(content_width + 2, 12), 36)
 
 
+def _xlsx_cell(value: Any) -> Any:
+    return ensure_xlsx_cell_length(sanitize_export_cell(value))
+
+
+def _xlsx_identity_cell(value: Any) -> Any:
+    if isinstance(value, str):
+        value = ILLEGAL_XML_CHARS_RE.sub("", value)
+    return ensure_xlsx_cell_length(value)
+
+
 def _append_row(ws, values: List[Any]) -> None:
-    ws.append([sanitize_export_cell(v) for v in values])
+    ws.append([_xlsx_cell(v) for v in values])
 
 
 def _append_write_only_row(ws, values: List[Any], *, is_header: bool = False) -> None:
@@ -39,7 +52,7 @@ def _append_write_only_row(ws, values: List[Any], *, is_header: bool = False) ->
     bold, header_alignment, body_alignment = _cell_styles()
     row_cells: List[Any] = []
     for value in values:
-        cell = WriteOnlyCell(ws, value=sanitize_export_cell(value))
+        cell = WriteOnlyCell(ws, value=_xlsx_cell(value))
         if is_header:
             cell.font = bold
             cell.alignment = header_alignment
@@ -67,6 +80,39 @@ def _make_output_buffer(*, write_only: bool) -> BinaryIO:
     return io.BytesIO()
 
 
+def close_workbook(wb, *, saved: bool = False) -> None:
+    active_exc = sys.exc_info()[1]
+    cleanup_error: Optional[Exception] = None
+    if wb.write_only and not saved:
+        for sheet in wb._sheets:
+            writer = sheet._writer
+            if writer is not None:
+                if sheet._rows is not None:
+                    try:
+                        sheet._rows.close()
+                    except Exception as exc:
+                        if cleanup_error is None:
+                            cleanup_error = exc
+                try:
+                    writer.close()
+                except Exception as exc:
+                    if cleanup_error is None:
+                        cleanup_error = exc
+                try:
+                    if os.path.exists(writer.out):
+                        writer.cleanup()
+                except Exception as exc:
+                    if cleanup_error is None:
+                        cleanup_error = exc
+    try:
+        wb.close()
+    except Exception as exc:
+        if cleanup_error is None:
+            cleanup_error = exc
+    if cleanup_error is not None and active_exc is None:
+        raise cleanup_error
+
+
 _OVERDUE_HEADERS = ["类别", "批次号", "图号", "名称", "数量", "交期", "完工/截至时间", "超期(天)", "超期(小时)"]
 _EXECUTION_REVIEW_HEADERS = [
     "批次",
@@ -92,8 +138,8 @@ def append_summary_row(ws, values: List[Any], *, write_only: bool) -> None:
         from openpyxl.cell import WriteOnlyCell
 
         body_alignment = _cell_styles()[2]
-        cells = [WriteOnlyCell(ws, value=sanitize_export_cell(values[0])),
-                 WriteOnlyCell(ws, value=values[1])]
+        cells = [WriteOnlyCell(ws, value=_xlsx_cell(values[0])),
+                 WriteOnlyCell(ws, value=_xlsx_identity_cell(values[1]))]
         cells[1].data_type = "s"
         for cell in cells:
             cell.alignment = body_alignment
@@ -136,6 +182,7 @@ def export_overdue_xlsx(
     import openpyxl
 
     wb = openpyxl.Workbook(write_only=write_only)
+    saved = False
     try:
         _append_summary_sheet(wb, summary_rows, write_only=write_only)
         ws = wb.create_sheet("超期清单")
@@ -155,10 +202,11 @@ def export_overdue_xlsx(
 
         buf = _make_output_buffer(write_only=write_only)
         wb.save(buf)
+        saved = True
         buf.seek(0)
         return buf
     finally:
-        wb.close()
+        close_workbook(wb, saved=saved)
 
 
 def export_utilization_xlsx(
@@ -171,6 +219,7 @@ def export_utilization_xlsx(
     import openpyxl
 
     wb = openpyxl.Workbook(write_only=write_only)
+    saved = False
     try:
         _append_summary_sheet(wb, summary_rows, write_only=write_only)
         for kind, title, labels, rows in (
@@ -198,10 +247,11 @@ def export_utilization_xlsx(
                 _format_sheet(sheet)
         buf = _make_output_buffer(write_only=write_only)
         wb.save(buf)
+        saved = True
         buf.seek(0)
         return buf
     finally:
-        wb.close()
+        close_workbook(wb, saved=saved)
 
 
 def export_downtime_impact_xlsx(
@@ -213,6 +263,7 @@ def export_downtime_impact_xlsx(
     import openpyxl
 
     wb = openpyxl.Workbook(write_only=write_only)
+    saved = False
     try:
         _append_summary_sheet(wb, summary_rows, write_only=write_only)
         ws = wb.create_sheet("停机影响")
@@ -232,10 +283,11 @@ def export_downtime_impact_xlsx(
 
         buf = _make_output_buffer(write_only=write_only)
         wb.save(buf)
+        saved = True
         buf.seek(0)
         return buf
     finally:
-        wb.close()
+        close_workbook(wb, saved=saved)
 
 
 def export_execution_review_xlsx(
@@ -247,6 +299,7 @@ def export_execution_review_xlsx(
     import openpyxl
 
     wb = openpyxl.Workbook(write_only=write_only)
+    saved = False
     try:
         _append_summary_sheet(wb, summary_rows, write_only=write_only)
         ws = wb.create_sheet("计划和现场实际")
@@ -262,10 +315,11 @@ def export_execution_review_xlsx(
 
         buf = _make_output_buffer(write_only=write_only)
         wb.save(buf)
+        saved = True
         buf.seek(0)
         return buf
     finally:
-        wb.close()
+        close_workbook(wb, saved=saved)
 
 
 def _execution_review_values(row: Dict[str, Any]) -> List[Any]:

@@ -4,7 +4,7 @@ import json
 import subprocess
 from pathlib import Path
 
-from tests.workbench.node_runtime_support import node_runtime
+from tests._support.node_runtime_support import node_runtime
 
 
 def test_transport_contract_and_bounded_request_lifetime():
@@ -17,9 +17,9 @@ def test_transport_contract_and_bounded_request_lifetime():
     assert report["checks"] == len(report["cases"]) == 94
     cases = set(report["cases"])
     # Q2-A: one definite-rejection verdict for every command module.
-    for status in (400, 404, 409, 422, 503):
+    for status in (400, 404, 409, 413, 422, 503):
         assert f"rejected for committed:false HTTP {status}" in cases
-    for status in (403, 413, 500):
+    for status in (403, 500):
         assert f"not rejected for committed:false HTTP {status}" in cases
     assert "request_key_conflict is never a rejection" in cases
     assert "failure maps the backend failure envelope to the unified error" in cases

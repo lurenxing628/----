@@ -102,10 +102,10 @@ def test_master_workflow_reuses_catalog_identity_index(stage_conn, monkeypatch):
             scans.append(None)
             return super().__iter__()
 
-    def capture():
-        tables, present = original()
+    def capture(present):
+        tables = original(present)
         tables["WorkbenchEntityRefs"] = IdentityRows(tables["WorkbenchEntityRefs"])
-        return tables, present
+        return tables
 
     monkeypatch.setattr(facts.repo, "overview_tables", capture)
     with facts.read_snapshot():

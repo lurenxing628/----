@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, cast
 
-from core.models.workbench_run_candidate import RunCandidateReadScope, local_time
+from core.models.workbench_run_candidate import RunCandidateReadScope
 
 
 @dataclass(frozen=True)
@@ -29,11 +29,6 @@ def baseline_reason(code):
         "resource_identity_unavailable": "有一边没有可核对的设备人员编号，资源有没有变不清楚。",
     }
     return {"code": code, "message": messages[code]}
-
-
-def elapsed_hours(start, end):
-    """Wall-clock interval only. A real zero is kept, never replaced by a default."""
-    return (local_time(end) - local_time(start)).total_seconds() / 3600
 
 
 def _resource_identity(side, kind):
@@ -85,6 +80,8 @@ class RunBaselineComparison:
     baseline_segments: List[Dict[str, Any]]
     selected: bool
     candidate_status: Optional[str]
+    candidate_interval: Any
+    baseline_intervals: List[Any]
 
     def to_dict(self):
         candidate, segments = self.candidate, self.baseline_segments
@@ -97,8 +94,12 @@ class RunBaselineComparison:
         if status == "matched":
             candidate = cast(Dict[str, Any], candidate)
             baseline = segments[0]
-            delta.update(start_hours=elapsed_hours(baseline["start"], candidate["start"]),
-                         end_hours=elapsed_hours(baseline["end"], candidate["end"]),
+            base_span = self.baseline_intervals[0]
+            cand_span = self.candidate_interval
+            start_hours = (cand_span[0] - base_span[0]).total_seconds() / 3600
+            end_hours = (cand_span[1] - base_span[1]).total_seconds() / 3600
+            delta.update(start_hours=start_hours,
+                         end_hours=end_hours,
                          elapsed_hours=candidate["elapsed_hours"] - baseline["elapsed_hours"],
                          machine_changed=_resource_change(baseline, candidate, "machine"),
                          operator_changed=_resource_change(baseline, candidate, "operator"),

@@ -77,7 +77,7 @@ def estimate_point_event(calendar, *, setup_hours, unit_hours, quantity, machine
     if internal_duration_hours(setup_hours, unit_hours, quantity) != 0:
         raise PointEventError("point_duration_nonzero", "这道工序有实际工时，不是零工时工序。")
     point_event_dto(start, start)
-    if any(type(value) is not str or not value or value.strip() != value for value in (machine_id, operator_id)):
+    if any(type(value) is not str or not value.strip() for value in (machine_id, operator_id)):
         raise PointEventError("resource_required", "零工时工序也要选好设备和人员，虽然它不占设备人员时间。")
     if priority not in ("normal", "urgent", "critical"):
         raise PointEventError("priority_unknown", "零工时工序所在批次的优先级读不到，不能核对。")

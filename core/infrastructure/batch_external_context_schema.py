@@ -2,7 +2,7 @@
 
 from core.infrastructure.workbench_metadata_schema import canonical_sql
 
-from .schema_structure import SchemaStructure, schema_objects
+from .schema_structure import SchemaStructure
 
 _COLUMNS = (
     "operation_id", "part_no", "sequence", "template_operation_id", "template_status",
@@ -49,9 +49,8 @@ def objects():
     }
 
 
-def contract_issues(conn, *, structure=None):
-    structure = structure or SchemaStructure(conn)
-    actual = schema_objects(conn, structure=structure)
+def contract_issues(conn, *, structure: SchemaStructure):
+    actual = structure.sql
     issues = [("missing_batch_external_context:" if name not in actual else "invalid_batch_external_context:") + name
               for name, sql in objects().items()
               if name not in actual or canonical_sql(sql) != canonical_sql(actual[name])]

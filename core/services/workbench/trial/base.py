@@ -2,7 +2,6 @@
 
 from typing import Any, Dict, cast
 
-from core.models.schedule_plan_role import SOURCE_SCHEDULE
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
@@ -16,7 +15,8 @@ from core.services.scheduler.contracts.external_context import (
 from core.services.workbench.facts.candidate_archive import require_candidate_scope
 from core.services.workbench.facts.candidate_facts import archived_table
 from core.services.workbench.facts.candidate_projection import (
-    candidate_summary,
+    candidate_completeness,
+    candidate_label,
     validate_manifest,
 )
 from core.services.workbench.facts.candidate_store import CandidateStore
@@ -33,7 +33,7 @@ from data.repositories.workbench_trial_repo import new_ref
 
 from .effort import operation_types
 from .execution_anchors import attach_execution_anchors
-from .facts import ProductionFactsCapture, entity_maps, live_context
+from .facts import LiveTables, ProductionFactsCapture, entity_maps, live_context
 from .materials import plan_material_policy
 
 
@@ -85,13 +85,10 @@ def _plan(conn, ref, capture):
 def _plan_capture(conn, ref, capture):
     context = PlanReadContext(conn)
     with context.read_scope():
-        locator, _binding = context.references._resolved_record(ref)
-        source = SOURCE_SCHEDULE
+        locator = context.resolve(ref)
         table, kind = "Schedule", "schedule_row"
-        query = {"version": locator.version}
-        if table in capture.table_names:
-            selected = [row for row in capture.table(table) if row["version"] == locator.version]
-            context.seed_source_rows(selected, **query)
+        selected = [row for row in capture.table(table) if row["version"] == locator.version]
+        context.repo.seed_source_rows(locator.version, selected)
         _, entry, _ = context.selected(ref)
         tables = {"BatchOperations": capture.index("BatchOperations", "id"),
                   "Batches": capture.index("Batches", "batch_id")}
@@ -123,16 +120,17 @@ def _plan_capture(conn, ref, capture):
                       if row["kind"] == "operation" and row["active"] == 1}
         issues = [] if entry.completeness == "complete" else [issue("trial_base_incomplete", "基础方案不完整，暂无法评估交期。")]
         history = cast(Dict[str, Any], context.history(locator.version))
-        delivery_record = {"source": source, "summary": history["result_summary"], "result_status": history["result_status"]}
-        deferred, deferred_issues = archived_deferred_operation_evidence(delivery_record)
+        delivery_record = {"summary": history["result_summary"], "result_status": history["result_status"]}
+        parsed = context.parsed_summary(locator.version)
+        deferred, deferred_issues = archived_deferred_operation_evidence(parsed)
         runtime = _formal_effort_source(conn, ref, locator.version, delivery_record, list(raw.values()))
         slot_types = operation_types(result, refs, capture.index("OpTypes", "op_type_id"))
         types = runtime.get("operation_types")
         if types is None:
             types = {row["operation_ref"]: {"ref": None, "label": None} for row in result}
-        return result, {"identity": project_plan(entry, ref), "source_table": table, **runtime,
+        return result, {"identity": project_plan(entry, ref), **runtime,
                         "operation_types": types, "trial_operation_types": slot_types,
-                        "material_policy": plan_material_policy(history),
+                        "material_policy": plan_material_policy(parsed),
                         "deferred_operation_ids": sorted(deferred), "deferred_operation_issues": deferred_issues}, tables["BatchOperations"], operations, issues
 
 
@@ -185,17 +183,20 @@ def _candidate(conn, ref):
                 _attach_point_work(result[-1], prepared["point_work"])
             result[-1]["original"]["part"] = facts.tables["Parts"].get(batch["part_no"])
         scope = store.dispositions(receipt, facts, capture)
-        summary = candidate_summary(candidate, scope, scheduled_op_ids=scheduled_op_ids)
+        completeness = candidate_completeness(candidate, scope, scheduled_op_ids=scheduled_op_ids)
+        display_name = candidate_label(candidate)
         issues = []
         try:
-            expected = require_candidate_scope(run, candidate, scope, capture, scheduled_op_ids=scheduled_op_ids)
+            expected = require_candidate_scope(
+                run, candidate, scope, capture, scheduled_op_ids=scheduled_op_ids, completeness=completeness
+            )
             if {row["original"]["operation"]["id"] for row in result} != expected:
                 raise CandidateAdoptionBlocked("candidate_scope_incomplete", "候选任务范围不完整。")
         except CandidateAdoptionBlocked:
             issues.append(issue("trial_base_incomplete", "候选方案没有覆盖排产时的全部工序，没排上的工序也照样列出。"))
         work_types = facts.tables["OpTypes"]
         extra = {"identity": {"candidate_ref": ref, "run_ref": run_ref, "kind": "candidate",
-                               "display_name": summary["label"], "completeness": summary["completeness"]},
+                               "display_name": display_name, "completeness": completeness},
                  "capture": capture, "dispositions": scope, "operation_effort": receipt["operation_effort"],
                  "trial_operation_types": operation_types(result, facts.entity_refs, work_types),
                  "operation_types": operation_types(result, facts.entity_refs, work_types,
@@ -203,7 +204,7 @@ def _candidate(conn, ref):
         return result, extra, facts.tables["BatchOperations"], facts.operation_refs, issues, facts
 
 
-def prepare_base(conn, intent, *, execution_service):
+def prepare_base(conn, intent, *, execution_service, data_context=None):
     key, ref = next(iter(intent["base"].items()))
     capture = ProductionFactsCapture(conn)
     if key == "plan_ref":
@@ -217,8 +218,9 @@ def prepare_base(conn, intent, *, execution_service):
         reject("query_too_large", "完整基础范围超过10000条，未按可见范围截断。", 413)
     issues.extend(_date_issues(rows))
     _predecessors(rows, all_ops, operation_refs, issues)
-    admission = {"input": intent, "source": source, "facts": capture.archive(named=True), "base_issues": issues}
-    live = live_context(conn, rows, admission, capture, execution_service=execution_service, source_facts=source_facts)
+    admission = {"input": intent, "source": source, "facts": {"tables": LiveTables(capture)}, "base_issues": issues}
+    live = live_context(conn, rows, admission, capture, execution_service=execution_service,
+                        source_facts=source_facts, data_context=data_context)
     admission.update(baseline=live["baseline"], execution=live["execution"])
     _attach_original_context(rows, source, key, live, source_facts)
     issues.extend(attach_execution_anchors(conn, rows, live))

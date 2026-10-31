@@ -6,9 +6,6 @@ core.services.execution.ledger_reader; this module only returns what is stored.
 
 from typing import NoReturn
 
-from core.infrastructure.connection_guards import schema_contract_memo
-from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_contract_issues
-from core.infrastructure.workbench_execution_void_schema import execution_void_contract_issues
 from core.shared.strict_json import load_strict_json
 from data.repositories.base_repo import BaseRepository
 
@@ -41,11 +38,6 @@ def chunks(values):
 
 
 class WorkbenchExecutionRepository(BaseRepository):
-    def schema_issues(self):
-        """Ledger and void contract issues in storage order; empty when the schema is complete."""
-        memo = schema_contract_memo(self.conn)
-        return memo.get_schema(execution_ledger_contract_issues) + memo.get_schema(execution_void_contract_issues)
-
     def clock(self):
         """Ledger and plan identity revisions; None when either singleton row is missing."""
         row = self.fetchone("SELECT revision FROM WorkbenchExecutionLedgerClock WHERE singleton=1")

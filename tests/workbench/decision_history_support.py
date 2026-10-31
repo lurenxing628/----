@@ -18,7 +18,8 @@ from core.services.workbench.facts.decision_metrics import admission_operation_r
 from core.services.workbench.facts.decision_read_model import build_decision_read_models, prepare_admission_read_models
 from core.services.workbench.facts.decision_read_models import decode_model
 from core.services.workbench.history.conditions import (
-    compare_prepared_history_conditions,
+    analyze_prepared_history_conditions,
+    materialize_history_conditions,
     prepare_history_condition_side,
     prepare_history_condition_source,
 )
@@ -43,7 +44,9 @@ def compare_conditions(before_packet, after_packet, window):
     """两侧各自独立准备再比对；生产的成组读取经 HistoryReader 复用同一份准备结果。"""
     before, after = (prepare_history_condition_side(prepare_history_condition_source(packet), window)
                      for packet in (before_packet, after_packet))
-    return compare_prepared_history_conditions(before, after)
+    before_side, after_side, cond_analysis, configurations, objective = analyze_prepared_history_conditions(before, after)
+    conditions = materialize_history_conditions(before_side, after_side, cond_analysis)
+    return {"conditions": conditions, "configurations": configurations, "objective": objective}
 
 
 def exported_history_references(headers, rows):

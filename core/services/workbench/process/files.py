@@ -15,9 +15,9 @@ def file_operation(kind):
 
 
 class WorkbenchProcessFileService:
-    def __init__(self, conn, logger=None, reader=None):
+    def __init__(self, conn, logger=None):
         self.conn, self.logger = conn, logger
-        self.reader = reader or WorkbenchProcessQueryService(conn, logger)
+        self.reader = WorkbenchProcessQueryService(conn, logger)
 
     def _domain(self, kind):
         file_columns(kind)
@@ -47,16 +47,15 @@ class WorkbenchProcessFileService:
     def _prepare_import(self, kind, prepared, request):
         decoded, notices = prepared.parsed()
         target_ref = request["target_ref"]
-        if target_ref is not None and (not isinstance(target_ref, str) or len(target_ref) != 48
-                                       or any(c not in "0123456789abcdef" for c in target_ref)):
-            raise WorkbenchCommandRejected("entity_not_found", "零件记录不存在，请返回列表重新选择。", 404)
+        # The scoped reader rejects a malformed target_ref (404) before any read.
         reader = (WorkbenchProcessQueryService(self.conn, self.logger, part_ref=target_ref)
-                  if target_ref is not None and self.reader.repo.part_ref != target_ref else self.reader)
+                  if target_ref is not None else self.reader)
         with reader.read_snapshot() as state:
             if target_ref is not None:
                 reader.resolve(target_ref)
             domain = self._domain(kind)
-            rows, extra = domain.preview_rows(decoded, reader.facts(), target_ref)
+            facts = reader.raw_facts() if kind == "route" else reader.facts()
+            rows, extra = domain.preview_rows(decoded, facts, target_ref)
             for row in rows:
                 row.setdefault("route_summary", None)
             request.update(state=state, acknowledgements={

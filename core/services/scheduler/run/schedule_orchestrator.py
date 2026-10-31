@@ -47,7 +47,7 @@ def orchestrate_schedule_run(
         operations=schedule_input.payload_validation_operations,
         operation_sources=schedule_input.operation_sources,
         missing_internal_resource_op_ids=schedule_input.missing_internal_resource_op_ids,
-        schedule_errors=adopted_plan.summary.errors,
+        failure_details=adopted_plan.summary.failure_details,
         point_validator=point_validator,
     )
 
@@ -69,10 +69,7 @@ def orchestrate_schedule_run(
         time_budget_seconds=time_budget_seconds,
         best_score=adopted_plan.score,
         best_metrics=adopted_plan.metrics,
-        attempts=adopted_plan.attempts,
-        improvement_trace=adopted_plan.improvement_trace,
         frozen_op_ids=schedule_input.frozen_op_ids,
-        search_report=adopted_plan.search_report,
         missing_internal_resource_op_ids=schedule_input.missing_internal_resource_op_ids,
         scheduled_op_ids=validated_schedule_payload.scheduled_op_ids,
         freeze_meta=schedule_input.freeze_meta,

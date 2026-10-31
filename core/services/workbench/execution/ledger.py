@@ -33,22 +33,62 @@ class ExecutionLedgerService(ExecutionLedgerReader):
                 "reports": reports,
                 "voids": {ref: facts["voids"][ref] for ref in reports if ref in facts["voids"]}})
 
-    def project_loaded(self, facts, *, contexts=True):
-        projections = super().project_loaded(facts)
+    def project_loaded(self, facts, *, contexts=True, include_history: bool = True):
+        projections = super().project_loaded(facts, include_history=include_history)
         if not contexts or self.context_factory is None:
             return projections
         return [attach_context(row, self.context_factory,
                                self.fact_snapshot(facts, row.operation_ref)) for row in projections]
 
-    def workspace_projection(self, plan_ref, tasks):
+    def operation_workspace_projection(self, plan_ref, tasks, operation_ref):
         with self.read_snapshot():
             refs = [task["operation_ref"] for task in tasks]
             facts = self.load_many(refs, comparison_plan_ref=plan_ref)
             _check_workspace_tasks(tasks, facts, plan_ref)
-            projections = self.project_loaded(facts)
-            resources = self.resources({ref for row in projections for ref in projection_resource_refs(row)})
+            for ref in facts["operations"]:
+                if ref != operation_ref:
+                    self.validate_operation_reports(facts, ref)
+            events_count = sum(
+                len(history)
+                for group in facts["reports"].values()
+                for report_ref, history in group.items()
+                if report_ref not in facts["voids"]
+            )
+            if operation_ref in facts["operations"]:
+                projected = self.project_operation(facts, operation_ref, include_history=True)
+                if self.context_factory is not None:
+                    projected = attach_context(
+                        projected, self.context_factory, self.fact_snapshot(facts, operation_ref)
+                    )
+                raw_resources = self.resources(projection_resource_refs(projected))
+                plain = [projected.to_dict()]
+                resources = {
+                    "machines": [row for row in raw_resources if row["kind"] == "machine"],
+                    "operators": [row for row in raw_resources if row["kind"] == "operator"],
+                }
+            else:
+                plain = []
+                resources = {"machines": [], "operators": []}
+            return (
+                {"available": True, "time_basis": "factory_local", "projections": plain, "resources": resources},
+                events_count,
+            )
+
+    def workspace_projection(
+        self, plan_ref, tasks, *, include_history: bool = True, include_resources: bool = True
+    ):
+        with self.read_snapshot():
+            refs = [task["operation_ref"] for task in tasks]
+            facts = self.load_many(refs, comparison_plan_ref=plan_ref)
+            _check_workspace_tasks(tasks, facts, plan_ref)
+            projections = self.project_loaded(facts, include_history=include_history)
+            if include_resources:
+                raw_resources = self.resources({ref for row in projections for ref in projection_resource_refs(row)})
+                resources = {
+                    "machines": [row for row in raw_resources if row["kind"] == "machine"],
+                    "operators": [row for row in raw_resources if row["kind"] == "operator"],
+                }
+            else:
+                resources = {"machines": [], "operators": []}
             plain = [row.to_dict() for row in projections]
-            return {"available": True, "time_basis": "factory_local", "projections": plain,
-                    "resources": {"machines": [row for row in resources if row["kind"] == "machine"],
-                                  "operators": [row for row in resources if row["kind"] == "operator"]},
-                    "snapshot_facts": {"revisions": facts["clock"], "resources": resources}}
+            return {"available": True, "time_basis": "factory_local", "projections": plain, "resources": resources}

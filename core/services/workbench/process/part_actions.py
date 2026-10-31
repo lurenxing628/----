@@ -1,8 +1,9 @@
 """Part create/delete actions inside the caller's command and receipt transaction.
 
-prepare_create(payload, *, parts) -> Part.
+prepare_create(payload, *, parts=None) -> Part.
 apply_create(part) -> WorkbenchCommandOutcome persists the prepared part.
-preview_delete_normalized(refs, *, scope) -> ResourceActionPreview is read-only.
+preview_delete_normalized(refs, *, scope) -> ResourceActionPreview is read-only
+inside the caller's read snapshot.
 confirm_delete(preview, refs, *, scope) -> WorkbenchCommandOutcome rechecks the
 whole selection before mutation. A one-ref selection is single-part deletion.
 scope binds the original filters but never expands or trims explicit refs.
@@ -14,8 +15,6 @@ which rolls back all writes if any check or mutation fails.
 """
 
 from core.errors import BusinessError, ErrorCode, ValidationError
-from core.infrastructure.connection_guards import schema_contract_memo
-from core.infrastructure.transaction import TransactionManager
 from core.models.part import Part
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
@@ -30,28 +29,22 @@ from data.repositories.part_repo import PartRepository
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_process_part_facts_repo import WorkbenchProcessPartFactsRepository
 
-from .part_actions_facts import check_part_action_storage, plain_part_action_facts
+from .part_actions_facts import plain_part_action_facts
 
 
 class WorkbenchProcessPartActionService:
-    def __init__(self, conn, logger=None, contracts=None):
+    def __init__(self, conn, logger=None):
         self.conn = conn
         self.facts = WorkbenchProcessPartFactsRepository(conn, logger=logger)
         self.identities = WorkbenchIdentityRepository(conn, logger=logger)
-        self.tx = TransactionManager(conn)
-        # 文件逐行导入共用本命令的结构和连接事实；下一请求新建实例，命令内不执行 DDL。
-        self._contracts = contracts
-
-    @property
-    def contracts(self):
-        return self._contracts if self._contracts is not None else schema_contract_memo(self.conn)
 
     def _require_transaction(self):
         if not self.conn.in_transaction:
-            raise RuntimeError("零件保存和删除必须在外层工作台写事务中执行。")
+            raise RuntimeError("零件保存、删除和删除预检必须在外层工作台事务中执行。")
 
-    def prepare_create(self, payload, *, parts, route_parsed="no"):
-        if payload["business_code"] in parts:
+    def prepare_create(self, payload, *, parts=None, route_parsed="no"):
+        exists = PartRepository(self.conn).exists(payload["business_code"]) if parts is None else payload["business_code"] in parts
+        if exists:
             raise BusinessError(ErrorCode.PART_ALREADY_EXISTS, "图号“{}”已存在，这次没有保存。请改用别的图号，或去修改已有的那个零件。".format(payload["business_code"]))
         return Part(payload["business_code"], payload["label"], payload["route_raw"], route_parsed, payload["remark"])
 
@@ -60,7 +53,7 @@ class WorkbenchProcessPartActionService:
         workflow = None
         if enroll_workflow:
             try:
-                workflow = start_workflow(self.conn, part.part_no, contracts=self.contracts)
+                workflow = start_workflow(self.conn, part.part_no)
             except RuntimeError as exc:
                 raise WorkbenchCommandRejected("storage_failure", "工艺确认流程没有建立，这次没有保存零件。请刷新重试；仍不行请联系维护人员。", 500) from exc
         identity = self.identities.find_active("part", part.part_no)
@@ -72,15 +65,13 @@ class WorkbenchProcessPartActionService:
     def apply_create(self, part):
         """Persist the prepared initial fields, including an imported route state."""
         self._require_transaction()
-        check_part_action_storage(self.contracts)
         return self.create_part(part)
 
     def preview_delete_normalized(self, refs, *, scope):
+        self._require_transaction()
         request = {"refs": process_part_refs(refs), "scope": scope}
-        with self.tx.transaction():
-            check_part_action_storage(self.contracts)
-            preview, _ = self._prepare_delete(request)
-            return preview
+        preview, _ = self._prepare_delete(request)
+        return preview
 
     def _prepare_delete(self, request):
         captured = self.facts.capture(request["refs"])
@@ -100,7 +91,7 @@ class WorkbenchProcessPartActionService:
             snapshot = captured["parts"].get(identity.entity_key)
             if snapshot is None:
                 raise WorkbenchCommandRejected("entity_not_found", "零件已不存在，请返回列表重新选择。", 404)
-            expected = dict(snapshot, identity=captured["identities"].get(identity.ref))
+            expected = dict(snapshot, identity=raw)
             part = expected["part"]
             row.update(expected=plain_part_action_facts(expected), reference_count=len(expected["batches"]),
                        before={"business_code": part["part_no"], "label": part["part_name"],
@@ -117,8 +108,8 @@ class WorkbenchProcessPartActionService:
 
     @staticmethod
     def _check_delete(expected, code):
-        if not code.strip() or code != code.strip():
-            raise WorkbenchCommandRejected("constraint_conflict", "原图号是空的或前后有空格。请到基础资料核对图号。")
+        if not code.strip():
+            raise WorkbenchCommandRejected("constraint_conflict", "原图号是空的。请到基础资料核对图号。")
         if expected["batches"]:
             raise WorkbenchCommandRejected("constraint_conflict", "该零件已被批次使用，不能删除。")
         if expected["foreign_group_members"]:
@@ -130,7 +121,6 @@ class WorkbenchProcessPartActionService:
         self._require_transaction()
         try:
             request = {"refs": process_part_refs(refs), "scope": process_part_scope(scope)}
-            check_part_action_storage(self.contracts)
             current, rows = self._prepare_delete(request)
         except (ValidationError, WorkbenchCommandRejected) as exc:
             if isinstance(exc, WorkbenchCommandRejected) and exc.status >= 500:

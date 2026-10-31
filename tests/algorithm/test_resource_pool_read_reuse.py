@@ -6,8 +6,11 @@ from types import SimpleNamespace
 from core.services.personnel.operator_qualification import OperatorQualificationService
 from core.services.scheduler import resource_pool_builder
 from core.services.workbench.run.input_runtime import downtime_overlap, held_machine_downtimes, runtime_resource_facts
+from core.services.workbench.run.preflight import PreflightService
 from core.services.workbench.run.preflight_facts import PreflightFacts
 from tests._support.algo_operations import make_algo_op
+from tests.workbench.run_compute_support import prepare_run_input
+from tests.workbench.run_compute_support import run_case as run_case_fixture  # noqa: F401
 
 START = datetime(2026, 10, 14, 8)
 
@@ -158,3 +161,47 @@ def test_resource_pool_recognizes_chinese_primary_synonyms(schema_conn):
     assert pool is not None
     assert pool["pair_rank"] == {("O_LEGACY", "M_A"): 1, ("O_SKILLED", "M_A"): 0, ("O_LEGACY", "M_B"): 2}
     assert pool["operators_by_machine"] == {"M_A": ["O_SKILLED", "O_LEGACY"], "M_B": ["O_LEGACY"]}
+
+
+def test_padded_resource_identities_pass_preflight_and_candidate_input(run_case):
+    conn = run_case.conn
+    conn.execute("INSERT INTO Machines(machine_id, name, op_type_id) VALUES (' M1 ', 'Padded lathe', 'T1')")
+    conn.execute("INSERT INTO Operators(operator_id, name) VALUES (' O1 ', 'Padded operator')")
+    conn.execute("INSERT INTO OperatorMachine(operator_id, machine_id) VALUES (' O1 ', ' M1 ')")
+    conn.execute("INSERT INTO WorkbenchOperatorProfiles(operator_id, skills_declared) VALUES (' O1 ', 1)")
+    conn.execute("INSERT INTO OperatorSkill(operator_id, op_type_id) VALUES (' O1 ', 'T1')")
+    conn.execute("UPDATE BatchOperations SET machine_id=' M1 ', operator_id=' O1 ' WHERE id=?", (run_case.op_id,))
+    conn.commit()
+    assert not conn.execute("PRAGMA foreign_key_check").fetchall()
+
+    fixed_settings = run_case.settings("B1", missing_resource_policy="exclude")
+    preflight_fixed, _ = PreflightService(conn).evaluate(fixed_settings)
+    assert preflight_fixed["counts"]["ready_tasks"] == 1
+    assert preflight_fixed["counts"]["blocked_tasks"] == 0
+    assert preflight_fixed["blockers"] == []
+    assert preflight_fixed["tasks"][0]["status"] == "eligible"
+    assert preflight_fixed["tasks"][0]["issues"] == []
+
+    prepared_fixed = prepare_run_input(conn, fixed_settings, run_case.projections("B1"))
+    assert prepared_fixed.operations[0].machine_id == " M1 "
+    assert prepared_fixed.operations[0].operator_id == " O1 "
+    assert prepared_fixed.algo_ops_to_schedule[0].machine_id == " M1 "
+    assert prepared_fixed.algo_ops_to_schedule[0].operator_id == " O1 "
+
+    conn.execute("UPDATE BatchOperations SET machine_id=NULL, operator_id=NULL WHERE id=?", (run_case.op_id,))
+    conn.commit()
+    auto_settings = run_case.settings("B1", missing_resource_policy="auto_assign")
+    preflight_auto, _ = PreflightService(conn).evaluate(auto_settings)
+    assert preflight_auto["counts"]["auto_assign_required"] == 1
+    assert preflight_auto["counts"]["eligible_tasks"] == 1
+    assert preflight_auto["counts"]["blocked_tasks"] == 0
+    assert preflight_auto["blockers"] == []
+    assert preflight_auto["tasks"][0]["status"] == "auto_assign_required"
+
+    prepared_auto = prepare_run_input(conn, auto_settings, run_case.projections("B1"))
+    pool = prepared_auto.resource_pool
+    assert pool is not None
+    assert " M1 " in pool["machines_by_op_type"]["T1"]
+    assert pool["operators_by_machine"][" M1 "] == [" O1 "]
+    assert pool["machines_by_operator"][" O1 "] == [" M1 "]
+    assert (" O1 ", " M1 ") in pool["pair_rank"]

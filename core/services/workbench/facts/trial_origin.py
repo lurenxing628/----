@@ -3,7 +3,7 @@
 from collections import defaultdict
 
 from core.models.workbench_trial import reject
-from core.services.workbench.facts.candidate_facts import GenerationFacts
+from core.services.workbench.facts.candidate_store import cached_generation_facts
 from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
 
 
@@ -11,7 +11,7 @@ def delivery_origin(admission, rows, facts=None):
     source = admission["source"]
     if "capture" in source:
         capture = source["capture"]
-        facts = facts if facts is not None else GenerationFacts(capture)
+        facts = facts if facts is not None else cached_generation_facts(capture)
         selected = set(capture["input"]["batch_refs"])
         batches = {ref: facts.tables["Batches"][key] for (kind, key), ref in facts.entity_refs.items()
                    if kind == "batch" and ref in selected}
@@ -80,7 +80,7 @@ def operation_contexts(rows, admission, facts=None, *, origin=None):
     source = admission["source"]
     candidate = "capture" in source
     if candidate:
-        facts = facts if facts is not None else GenerationFacts(source["capture"])
+        facts = facts if facts is not None else cached_generation_facts(source["capture"])
         execution = facts.execution
     else:
         execution = admission["execution"]

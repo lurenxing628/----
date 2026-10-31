@@ -11,10 +11,8 @@ from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
 
 from .optimizer.config import (
     is_ortools_enabled,
-    ortools_time_limit_seconds,
     weighted_strategy_params,
 )
-from .optimizer.shared_budget import SharedSearchSkip
 from .optimizer.shared_decode import decode_and_metrics
 from .optimizer.step_report_hooks import (
     _record_ortools_candidate,
@@ -43,8 +41,7 @@ def _solve_ortools_order(
     if remaining < 1.0:
         return None
 
-    tl_cfg = ortools_time_limit_seconds(snapshot)
-    tl = max(1, min(int(tl_cfg), int(remaining)))
+    tl = max(1, min(int(snapshot.ortools_time_limit_seconds), int(remaining)))
     return try_solve_bottleneck_batch_order(
         operations=algo_ops_to_schedule,
         batches=batches,
@@ -98,6 +95,7 @@ def _evaluate_ortools_candidate(
         "dispatch_mode": dispatch_mode_cfg,
         "dispatch_rule": dispatch_rule_cfg,
         "order": list(ort_order),
+        "decoded_batch_order": decoded.decoded_batch_order,
         "metrics": decoded.metrics,
         "score": (float(decoded.summary.failed_ops),) + objective_score(objective_name, decoded.metrics),
         "algo_stats": decoded.algo_stats,
@@ -146,10 +144,7 @@ def run_ortools_warmstart(
     dispatch_mode_cfg: str,
     dispatch_rule_cfg: str,
     resource_pool: Optional[Dict[str, Any]],
-    attempts: List[Dict[str, Any]],
-    improvement_trace: List[Dict[str, Any]],
     best: Optional[Dict[str, Any]],
-    t_begin: float,
     optimizer_algo_stats: Dict[str, Any],
     readiness_gate_enabled: bool = False,
     graph_ready_context: Optional[Any] = None,
@@ -162,8 +157,6 @@ def run_ortools_warmstart(
 
     skip_reason = _ortools_warmstart_skip_reason(algo_mode=algo_mode, snapshot=cfg, deadline=deadline, now=now)
     if skip_reason == "time_budget":
-        _record_warmstart_shared_skip(attempts, SharedSearchSkip(skip_reason), strategy_enum,
-                                      dispatch_mode_cfg, dispatch_rule_cfg)
         decode_session.budget.reject(skip_reason)
     if skip_reason:
         return best
@@ -173,8 +166,6 @@ def run_ortools_warmstart(
     order_time_budget_seconds = remaining - decode_session.budget.estimate(kind)
     if order_time_budget_seconds < 1.0:
         reason = "time_budget" if remaining <= 0.0 else "estimated_decode_cost"
-        _record_warmstart_shared_skip(attempts, SharedSearchSkip(reason), strategy_enum,
-                                      dispatch_mode_cfg, dispatch_rule_cfg)
         decode_session.budget.reject(reason)
 
     try:
@@ -187,66 +178,38 @@ def run_ortools_warmstart(
             start_dt=start_dt,
             order_time_budget_seconds=order_time_budget_seconds,
         )
-    except OrtoolsWarmstartError as e:
+    except OrtoolsWarmstartError:
         # The optional warm start degrades visibly on its real failures; other errors are defects.
-        _record_ortools_optional_failure(
-            attempts=attempts,
-            strategy=strategy_enum,
-            dispatch_mode=dispatch_mode_cfg,
-            dispatch_rule=dispatch_rule_cfg,
-            optimizer_algo_stats=optimizer_algo_stats,
-            exc=e,
-        )
+        _record_ortools_optional_failure(optimizer_algo_stats=optimizer_algo_stats)
         return best
 
     if not ort_order:
         return best
     if now() >= deadline:
-        _record_warmstart_shared_skip(attempts, SharedSearchSkip("time_budget"), strategy_enum,
-                                      dispatch_mode_cfg, dispatch_rule_cfg)
         decode_session.budget.reject("time_budget")
         return best
 
-    try:
-        cand = _evaluate_ortools_candidate(
-            strategy=strategy_enum,
-            params=_ortools_strategy_params(cfg, strategy=strategy_enum),
-            start_dt=start_dt,
-            end_date=end_date,
-            ort_order=list(ort_order),
-            dispatch_mode_cfg=dispatch_mode_cfg,
-            dispatch_rule_cfg=dispatch_rule_cfg,
-            resource_pool=resource_pool,
-            objective_name=objective_name,
-            optimizer_algo_stats=optimizer_algo_stats,
-            readiness_gate_enabled=bool(readiness_gate_enabled),
-            graph_ready_context=graph_ready_context,
-            decode_session=decode_session,
-        )
-    except SharedSearchSkip as exc:
-        _record_warmstart_shared_skip(attempts, exc, strategy_enum, dispatch_mode_cfg, dispatch_rule_cfg)
-        raise
+    cand = _evaluate_ortools_candidate(
+        strategy=strategy_enum,
+        params=_ortools_strategy_params(cfg, strategy=strategy_enum),
+        start_dt=start_dt,
+        end_date=end_date,
+        ort_order=list(ort_order),
+        dispatch_mode_cfg=dispatch_mode_cfg,
+        dispatch_rule_cfg=dispatch_rule_cfg,
+        resource_pool=resource_pool,
+        objective_name=objective_name,
+        optimizer_algo_stats=optimizer_algo_stats,
+        readiness_gate_enabled=bool(readiness_gate_enabled),
+        graph_ready_context=graph_ready_context,
+        decode_session=decode_session,
+    )
 
     return _record_ortools_candidate(
         best=best,
         candidate=cand,
-        attempts=attempts,
-        improvement_trace=improvement_trace,
         search_report_state=search_report_state,
-        now=now,
-        t_begin=t_begin,
     )
-
-
-def _record_warmstart_shared_skip(
-    attempts: List[Dict[str, Any]], exc: SharedSearchSkip, strategy: SortStrategy, dispatch_mode: str, dispatch_rule: str,
-) -> None:
-    attempts.append({
-        "tag": f"ortools:bottleneck|{dispatch_mode}:{dispatch_rule}", "source": "ortools_warmstart",
-        "candidate_status": "skipped", "reason": exc.reason, "request_id": exc.request_id,
-        "decode_receipt": exc.receipt, "strategy": strategy.value,
-        "dispatch_mode": dispatch_mode, "dispatch_rule": dispatch_rule,
-    })
 
 
 __all__ = [

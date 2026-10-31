@@ -76,7 +76,7 @@ def test_actual_restore_rolls_back_a_current_schema_backup_missing_its_history_h
 
 
 def test_retained_sql_readers_parse_each_row_endpoint_once(tmp_path, monkeypatch):
-    from data.repositories import schedule_time_sql
+    from core.infrastructure import sqlite_udf
     from data.repositories.schedule_plan_query_repo import SchedulePlanQueryRepository
 
     path = str(tmp_path / "time-readers.db")
@@ -90,13 +90,13 @@ def test_retained_sql_readers_parse_each_row_endpoint_once(tmp_path, monkeypatch
                 (2,2,1,'bad','2026-10-15 09:00:00'),
                 (3,3,1,'2026-10-15 08:00:00.123456','2026-10-15 08:00:00.123456');
             UPDATE Batches SET due_date='2026-10-15';""")
-        original, calls = schedule_time_sql.parse_dt_for_sql, []
+        original, calls = sqlite_udf.parse_dt_for_sql, []
 
         def counted(value):
             calls.append(value)
             return original(value)
 
-        monkeypatch.setattr(schedule_time_sql, "parse_dt_for_sql", counted)
+        monkeypatch.setattr(sqlite_udf, "parse_dt_for_sql", counted)
         repo = SchedulePlanQueryRepository(conn)
         common = {"version": 1}
         rows = repo.list_detail_rows_between(**common, start_time="2026-10-15 08:00:00", end_time="2026-10-15 10:00:00")

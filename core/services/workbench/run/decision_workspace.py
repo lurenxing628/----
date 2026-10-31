@@ -6,6 +6,7 @@ from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_tasks import operation_labels, task_span
 from core.services.workbench.facts.delivery_projection import delivery_summary
 from core.services.workbench.facts.gantt_graph import candidate_gantt_graph, unavailable_graph
+from core.shared.strict_json import clone_json
 
 from .candidate_metrics import scoped_rows
 from .decision_source import DecisionSource
@@ -43,7 +44,13 @@ def _reference_workspace(source, batch_ref):
                             "message": "原正式来源将这道工序保留为待料暂缓。" if deferred else "受理时的正式安排尚未覆盖这道工序。"})
         unplanned.append(item)
     batches = {batch_ref} if batch_ref is not None else set(batch_refs) | ({None} if full_view else set())
-    tasks = scoped_rows(all_tasks, batches, source.scope["range_start"], source.scope["range_end"])
+    tasks = scoped_rows(
+        all_tasks,
+        batches,
+        source.scope["range_start"],
+        source.scope["range_end"],
+        task_intervals=source.task_intervals("reference"),
+    )
     tasks.sort(key=lambda row: (row["start"] is None, row["start"], row["operation_ref"], row["row_ref"]))
     unplanned = [row for row in unplanned if row["batch_ref"] in batches]
     unplanned.sort(key=lambda row: (row["sequence"] is None, row["sequence"], row["operation_ref"]))
@@ -51,13 +58,19 @@ def _reference_workspace(source, batch_ref):
     unplanned = [dict(row, operation_effort=source.preparation.compact("reference", row["operation_ref"])) for row in unplanned]
     if full_view:
         from core.services.workbench.facts.decision_delivery import project_decision_delivery
-        deliveries = project_decision_delivery(source.facts, all_tasks, batch_refs, deferred_ids=source.reference_deferred_ids)
+        deliveries = project_decision_delivery(
+            source.facts,
+            all_tasks,
+            batch_refs,
+            deferred_ids=source.reference_deferred_ids,
+            intervals=source.task_intervals("reference"),
+        )
     else:
         deliveries = source.completion.delivery("reference")
     deliveries = [row for row in deliveries if batch_ref is None or row["batch_ref"] == batch_ref]
     summary = delivery_summary(deliveries)
     timed = [row for row in all_tasks if row["start"] is not None and row["end"] is not None]
-    if len(arranged) == len(all_tasks) and len(timed) == len(all_tasks) and all(row.get("interval_comparable", True) for row in timed):
+    if len(arranged) == len(all_tasks) and len(timed) == len(all_tasks) and all(row["interval_comparable"] for row in timed):
         raw = [{"operation_ref": row["operation_ref"], "payload": {
             "machine_id": (row["machine"] or {}).get("ref"), "operator_id": (row["operator"] or {}).get("ref")}} for row in all_tasks]
         graph = candidate_gantt_graph(all_tasks, source.facts, raw, task_intervals=source.task_intervals("reference"))
@@ -70,11 +83,11 @@ def _reference_workspace(source, batch_ref):
                  "kind": "admission_official", "status": "completed" if summary["incomplete_batch_count"] == 0 else "partial",
                  "task_count": len(all_tasks), "completeness": "complete" if summary["incomplete_batch_count"] == 0 else "partial",
                  "metrics": {}, "capabilities": capabilities, "data_gaps": gaps}
-    return {"candidate": candidate, "reference": source.baseline, "plan_ref": source.baseline["plan_ref"], "scope": source.scope,
+    return {"candidate": candidate, "reference": dict(source.baseline), "plan_ref": source.baseline["plan_ref"], "scope": source.scope,
             "workspace_scope": {"resource_view": source.resource_view, "batch_refs": batch_refs,
                                 "operation_refs": sorted({row["operation_ref"] for row in all_tasks} | set(source.scope["operation_refs"]))},
             "generation": {"run_ref": source.run["run_ref"], "accepted_at": source.run["accepted_at"], "finished_at": source.run["finished_at"],
-                           "input": source.capture["input"], "baseline": source.baseline, "algorithm": None,
+                           "input": clone_json(source.capture["input"]), "baseline": dict(source.baseline), "algorithm": None,
                            "metadata_basis": "captured_at_run_admission", "execution_basis": "captured_at_run_admission", "data_gaps": gaps},
             "tasks": tasks, "task_count": len(tasks), "candidate_task_count": len(all_tasks), "tasks_complete": True,
             "task_span": task_span([row for row in tasks if row["start"] is not None and row["end"] is not None]), "candidate_span": task_span(timed),

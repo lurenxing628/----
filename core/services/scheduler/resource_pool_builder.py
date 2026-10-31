@@ -26,21 +26,38 @@ class CapturedResourceFacts:
     def __init__(self, tables, downtimes):
         capabilities = defaultdict(list)
         for row in tables.get("MachineOpTypes", ()):
-            capabilities[row["machine_id"]].append(row["op_type_id"])
-        self.machines = [Machine.from_row(dict(row, op_type_ids=tuple(capabilities[row["machine_id"]])))
-                         for row in sorted(tables["Machines"], key=lambda row: row["machine_id"])
-                         if row["status"] == MachineStatus.ACTIVE.value]
-        self.operators = {row["operator_id"]: row for row in tables["Operators"]}
-        self.links = tables["OperatorMachine"]
+            if str(row["machine_id"] or "").strip():
+                capabilities[row["machine_id"]].append(row["op_type_id"])
+        self.machines = [
+            Machine.from_row(dict(row, op_type_ids=tuple(capabilities[row["machine_id"]])))
+            for row in sorted(
+                (row for row in tables["Machines"] if str(row["machine_id"] or "").strip()),
+                key=lambda row: row["machine_id"],
+            )
+            if row["status"] == MachineStatus.ACTIVE.value
+        ]
+        self.operators = {
+            row["operator_id"]: row
+            for row in tables["Operators"]
+            if str(row["operator_id"] or "").strip()
+        }
+        self.links = [
+            row
+            for row in tables["OperatorMachine"]
+            if str(row["operator_id"] or "").strip() and str(row["machine_id"] or "").strip()
+        ]
         self._authorized_pairs = {(row["operator_id"], row["machine_id"]) for row in self.links}
         self._profiles = defaultdict(list)
         self._skills = defaultdict(list)
         for row in tables["WorkbenchOperatorProfiles"]:
-            self._profiles[row["operator_id"]].append(row)
+            if str(row["operator_id"] or "").strip():
+                self._profiles[row["operator_id"]].append(row)
         op_types = {row["op_type_id"]: row for row in tables["OpTypes"]}
         for row in tables["OperatorSkill"]:
-            self._skills[row["operator_id"]].append(
-                dict(row, category=op_types.get(row["op_type_id"], {}).get("category")))
+            if str(row["operator_id"] or "").strip():
+                self._skills[row["operator_id"]].append(
+                    dict(row, category=op_types.get(row["op_type_id"], {}).get("category"))
+                )
         self._qualifications = {}
         self.downtimes = downtimes
 

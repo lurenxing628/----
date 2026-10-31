@@ -150,7 +150,11 @@ class ReportDependencies:
         missing = list(dict.fromkeys(ref for ref in refs if ref not in self.projected))
         for start in range(0, len(missing), MAX_OPERATIONS):
             # Preview/command already owns the snapshot; dependency reads do not issue edit tokens.
-            rows = self.ledger.project_loaded(self.ledger.load(missing[start:start + MAX_OPERATIONS]), contexts=False)
+            rows = self.ledger.project_loaded(
+                self.ledger.load(missing[start:start + MAX_OPERATIONS]),
+                contexts=False,
+                include_history=False,
+            )
             self.projected.update((row.operation_ref, row) for row in rows)
         return [self.projected[ref] for ref in refs]
 

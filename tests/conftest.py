@@ -16,7 +16,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from core.infrastructure.database import ensure_schema  # noqa: E402,I001
 from tests._support.excel_templates import point_env_at_shared, publish_shared_dir, reset_shared_dir  # noqa: E402,I001
-from tools.full_test_debt_shards import classify_nodeid, is_perf_nodeid  # noqa: E402,I001
+from tools.full_test_debt_shards import classify_nodeid  # noqa: E402,I001
 from tools.test_debt_registry import active_xfail_entries_by_nodeid  # noqa: E402,I001
 from tools.test_registry import iter_required_tests  # noqa: E402
 
@@ -45,10 +45,6 @@ def pytest_collection_modifyitems(items):
         # -m "not serial" 走 xdist 并行、-m serial 串行（与上面 required 同一套自动打标机制）。
         if classify_nodeid(str(item.nodeid)) == "serial":
             item.add_marker(pytest.mark.serial)
-        # P5.3：按同一真相源给性能/重 E2E 用例打 perf，daily 门禁据此 -m "not perf" 剔出 push
-        # 快速路径（full gate 不 deselect、仍全量覆盖）。perf 与 serial 可并存（见 shards 注释）。
-        if is_perf_nodeid(str(item.nodeid)):
-            item.add_marker(pytest.mark.perf)
 
 
 def pytest_sessionfinish(session, exitstatus):
@@ -133,9 +129,12 @@ def _isolate_factory_exit_backup_globals():
 @pytest.fixture
 def schema_conn():
     """:memory: 连接 + 全量 schema.sql（FK ON + Row，对齐生产连接行为）。"""
+    from core.infrastructure.sqlite_udf import register_schedule_time_sql_functions
+
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
+    register_schedule_time_sql_functions(conn)
     conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
     conn.commit()
     yield conn
@@ -145,9 +144,12 @@ def schema_conn():
 @pytest.fixture
 def mem_conn():
     """空 :memory: 连接（FK ON + Row），建表交给测试自己（手写最小表场景）。"""
+    from core.infrastructure.sqlite_udf import register_schedule_time_sql_functions
+
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
+    register_schedule_time_sql_functions(conn)
     yield conn
     conn.close()
 

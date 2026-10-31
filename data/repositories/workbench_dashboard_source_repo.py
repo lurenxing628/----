@@ -1,11 +1,11 @@
 """Bounded SELECTs with original SQLite storage types, including legacy dates; no rulings here."""
 
-from core.infrastructure.connection_guards import schema_contract_memo
+from core.infrastructure.schema_probe import table_columns
 from core.models.enums import SOURCE_TYPE_VALUES, SourceType, read_source_type
-from core.models.workbench_dashboard import MAX_FACT_ROWS, MAX_ROWS, bounded
+from core.models.workbench_dashboard import MAX_FACT_ROWS, bounded
 
 from .calendar_facts_repo import DOWNTIME_STATUS_SQL
-from .schedule_time_sql import parse_dt_for_sql
+from .schedule_time_sql import time_dt
 
 TABLES = {"SchemaVersion", "BatchMaterialReviews", "BatchMaterialArrivals", "Batches", "BatchMaterials", "Materials", "MachineDowntimes", "Machines",
           "WorkbenchDashboardDowntimeRefs"}
@@ -24,7 +24,7 @@ def rows(conn, sql, params=(), *, select=None, limit=None):
         result.append(item)
         if limit is not None and len(result) >= limit:
             break
-    return bounded(result, MAX_FACT_ROWS if limit is None else max(limit, MAX_ROWS))
+    return bounded(result, MAX_FACT_ROWS) if limit is None else result
 
 
 def source_gap_rows(conn, limit):
@@ -48,24 +48,30 @@ def source_gap_rows(conn, limit):
 class DashboardSourceRepository:
     def __init__(self, conn):
         self.conn = conn
-        self.structure = schema_contract_memo(conn).structure
+        self._columns = {}
 
     def _select_list(self, name):
-        columns = [row[1] for row in self.structure.table_info(name)]
+        columns = self._columns.get(name)
+        if columns is None:
+            columns = self._columns[name] = table_columns(self.conn, name)
         return ",".join('+"' + column + '" AS "' + column + '"' for column in columns)
 
     def table(self, name):
-        return bounded(rows(self.conn, "SELECT " + self._select_list(name) + _FROM[name] + " ORDER BY rowid LIMIT ?", (MAX_FACT_ROWS + 1,)), MAX_FACT_ROWS)
+        return rows(self.conn, "SELECT " + self._select_list(name) + _FROM[name] + " ORDER BY rowid LIMIT ?", (MAX_FACT_ROWS + 1,))
 
     def downtime_capture(self, *, machine_ids):
-        """Keep raw rowid order and SQLite's time/status/order facts from one SELECT."""
+        """One rowid-ordered SELECT supplies the raw rows and SQLite's time/status facts.
+
+        ``captured`` and ``prepared`` share rowid order. Only selected machines' admitted rows are
+        parsed (``__calendar_valid`` is None for every other row); CapturedCalendarInputs orders
+        each machine's rows the way CalendarFactsRepository.downtimes does.
+        """
         wanted = frozenset(machine_ids)
         self.conn.create_function("aps_calendar_machine_selected", 1, lambda key: int(key in wanted))
         selected = "aps_calendar_machine_selected(md.machine_id) AND " + DOWNTIME_STATUS_SQL
-        private = [DOWNTIME_STATUS_SQL + " AS __calendar_admitted",
-                   selected + " AS __calendar_selected",
-                   "CASE WHEN " + selected + " THEN TRIM(CAST(md.start_time AS TEXT)) END AS __calendar_start",
-                   "CASE WHEN " + selected + " THEN TRIM(CAST(md.end_time AS TEXT)) END AS __calendar_end"]
+        private = [selected + " AS __calendar_selected",
+                   "CASE WHEN " + selected + " THEN " + time_dt("md", "start_time") + " END AS __calendar_start",
+                   "CASE WHEN " + selected + " THEN " + time_dt("md", "end_time") + " END AS __calendar_end"]
         cursor = None
         try:
             cursor = self.conn.execute("SELECT " + self._select_list("MachineDowntimes") + "," + ",".join(private) +
@@ -78,9 +84,8 @@ class DashboardSourceRepository:
                 captured.append(raw)
                 interval = dict(zip(names[boundary:], row[boundary:]))
                 if interval.pop("__calendar_selected"):
-                    start, end = parse_dt_for_sql(interval["__calendar_start"]), parse_dt_for_sql(interval["__calendar_end"])
-                    interval.update(__calendar_start=start, __calendar_end=end,
-                                    __calendar_valid=int(start is not None and end is not None and end > start))
+                    start, end = interval["__calendar_start"], interval["__calendar_end"]
+                    interval["__calendar_valid"] = int(start is not None and end is not None and end > start)
                 else:
                     interval["__calendar_valid"] = None
                 prepared.append((raw, interval))

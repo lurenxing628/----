@@ -2,7 +2,7 @@
 
 from core.infrastructure.workbench_metadata_schema import canonical_sql
 
-from .schema_structure import schema_objects
+from .schema_structure import SchemaStructure
 
 _REF = "TEXT NOT NULL CHECK(length({0})=48 AND {0} NOT GLOB '*[^0-9a-f]*')"
 
@@ -73,8 +73,8 @@ def workbench_outsourcing_objects():
     return objects
 
 
-def workbench_outsourcing_contract_issues(conn, *, structure=None):
-    actual = schema_objects(conn, structure=structure)
+def workbench_outsourcing_contract_issues(conn, *, structure: SchemaStructure):
+    actual = structure.sql
     return [("missing_outsourcing_schema:" if name not in actual else "invalid_outsourcing_schema:") + name
             for name, sql in workbench_outsourcing_objects().items()
             if name not in actual or canonical_sql(sql) != canonical_sql(actual[name])]

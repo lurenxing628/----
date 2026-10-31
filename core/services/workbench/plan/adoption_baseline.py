@@ -16,7 +16,7 @@ from core.services.workbench.facts.adoption_baseline_values import (
 )
 from core.shared.strict_json import canonical_json
 
-from .adoption_baseline_identity import baseline_tasks, verify_arranged, verify_capture
+from .adoption_baseline_identity import light_baseline_tasks, verify_arranged, verify_capture
 
 
 def read_adoption_source(conn, *, plan_ref, version, history, recorded=None, context=None):
@@ -45,8 +45,8 @@ def _read_adoption_source(conn, *, plan_ref, version, recorded, context):
         prepared_candidate = candidate_source_evidence(conn, audit)
         baseline, tables, arranged, generation, origin = (prepared_candidate[key] for key in
             ("baseline", "tables", "arranged", "generation_facts", "provenance"))
-        arranged_times = prepared_candidate.get("arranged_times")
-        indexed_tables = prepared_candidate.get("indexed_tables")
+        arranged_times = prepared_candidate["arranged_times"]
+        indexed_tables = prepared_candidate["indexed_tables"]
     else:
         evidence, prepared_trial = trial_source_evidence(conn, audit)
         baseline, tables, arranged, origin, arranged_times, indexed_tables = evidence
@@ -59,7 +59,7 @@ def _read_adoption_source(conn, *, plan_ref, version, recorded, context):
     require(len(arranged) == audit["row_count"], "adoption.complete_row_count")
     verified_out = {}
     current = verify_arranged(
-        conn, plan_ref, version, tables, arranged,
+        conn, plan_ref, version, arranged,
         context=context, arranged_times=arranged_times,
         indexed_tables=indexed_tables, verified_out=verified_out,
     )
@@ -67,8 +67,8 @@ def _read_adoption_source(conn, *, plan_ref, version, recorded, context):
             "tables": tables, "arranged": arranged, "selected": current, "generation_facts": generation,
             "candidate_source": prepared_candidate, "trial_source": prepared_trial,
             "indexed_tables": indexed_tables,
-            "verified_operation_keys": verified_out.get("verified_operation_keys"),
-            "selected_task_refs": verified_out.get("selected_task_refs"),
+            "verified_operation_keys": verified_out["verified_operation_keys"],
+            "selected_task_refs": verified_out["selected_task_refs"],
             "provenance": {"state": "available", "reason": None, **origin, "adopted_at": audit.get("adopted_at")}}
 
 
@@ -76,16 +76,16 @@ def read_adoption_baseline(conn, *, plan_ref, version, history, facts, point_ann
     """Return captured tasks and locator, or raise a classified evidence gap."""
     try:
         evidence = context.adoption_source(plan_ref, version, history, recorded=None)
-        basis, audit, receipt = (evidence[key] for key in ("basis", "audit", "receipt"))
-        facts["adoption"] = {"basis": basis, "audit": audit, "receipt": receipt}
-        baseline, tables, current = evidence["baseline"], evidence["tables"], evidence["selected"]
+        basis, baseline, tables = evidence["basis"], evidence["baseline"], evidence["tables"]
         facts["provenance"] = evidence["provenance"]
-        facts["adoption"].update(baseline=baseline, selected_rows=current)
+        facts["adoption"] = {}
         if baseline["version"] is None:
             fail("no_adoption_baseline", "recorded_empty_official_baseline")
         require(baseline["version"] < version and baseline["plan_ref"] != plan_ref, "adoption.baseline_precedes_selected")
-        before = baseline_tasks(conn, baseline, tables, facts["adoption"], point_annotator=point_annotator, context=context)
-        return {"basis": basis, "baseline": baseline, "tasks": before}
+        light_before, project_before = light_baseline_tasks(
+            conn, baseline, tables, facts["adoption"], point_annotator=point_annotator, context=context,
+        )
+        return {"basis": basis, "baseline": baseline, "tasks": light_before, "project_before": project_before}
     except WorkbenchCommandRejected as exc:
         if exc.status == 413:
             raise

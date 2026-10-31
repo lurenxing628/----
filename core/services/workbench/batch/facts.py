@@ -9,12 +9,12 @@ from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.services.process.workflow_state import load_workflow_snapshot, project_workflow_snapshot
-from data.repositories.workbench_batch_facts_repo import BATCH_FACT_TABLES, WorkbenchBatchFactsRepository
+from core.services.workbench.facts.source_revisions import BATCH_SOURCE_KEYS, read_source_revisions
+from data.repositories.workbench_batch_facts_repo import WorkbenchBatchFactsRepository
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
-from .execution import execution_content, load_execution, project_execution_snapshot, protects_execution
-from .snapshot_content import record_content
+from .execution import load_execution, project_execution_snapshot, protects_execution
 
 
 class BatchFacts:
@@ -46,6 +46,12 @@ class BatchFacts:
         with TransactionManager(self.conn).transaction():
             return self.repo.choice_tables()
 
+    def entity_tables(self) -> Dict[str, Any]:
+        facts = self._pinned()
+        if facts is not None:
+            return facts
+        return self.repo.entity_tables()
+
     def _load(self):
         facts = self._pinned()
         if facts is not None:
@@ -56,8 +62,9 @@ class BatchFacts:
             workflow = load_workflow_snapshot(self.conn, tables=tables)
             operation_refs = self.plan_refs.get_operation_refs(row["id"] for row in tables["BatchOperations"])
             execution = load_execution(self.conn, operation_refs.values())
+            revisions = read_source_revisions(self.conn, BATCH_SOURCE_KEYS)
         facts = {**tables, "workflow": project_workflow_snapshot(workflow), "operation_refs": operation_refs,
-                 "execution": project_execution_snapshot(execution)}
+                 "execution": project_execution_snapshot(execution), "revisions": revisions}
         if self._command and self.conn.in_transaction:
             self._facts, self._stamp = facts, self._write_stamp()
         return facts
@@ -74,14 +81,18 @@ class BatchFacts:
         return self._facts
 
     def fingerprint(self):
-        # Every read/write/preview guard uses this same complete fact domain.
-        # Only its private representation changes: column names and shared
-        # execution values are encoded once rather than once per operation.
-        facts = self.load()
-        compact = dict(facts, execution=execution_content(facts["execution"]))
-        for name in BATCH_FACT_TABLES:
-            compact[name] = record_content(facts[name])
-        return content_text(["batch-facts-v2", compact])
+        facts = self._pinned()
+        if facts is not None:
+            revisions = facts["revisions"]
+        else:
+            with TransactionManager(self.conn).transaction():
+                revisions = read_source_revisions(self.conn, BATCH_SOURCE_KEYS)
+        day = self._material_day
+        if day is None:
+            day = date.today().isoformat()
+            if self._command:
+                self._material_day = day
+        return content_text(["batch-facts-v3", revisions, day])
 
     @contextmanager
     def _pin(self, facts):
@@ -158,8 +169,8 @@ class BatchFacts:
             row = self._row(facts, "Batches", "batch_id", identity.entity_key)
         if row is None:
             raise WorkbenchCommandRejected("storage_failure", "批次和系统编号对不上，请联系维护人员核对资料。", 500)
-        if identity.entity_key != identity.entity_key.strip():
-            raise WorkbenchCommandRejected("constraint_conflict", "批次号存在首尾空格，请先核对原记录。")
+        if not identity.entity_key.strip():
+            raise WorkbenchCommandRejected("constraint_conflict", "批次号不能为空，请先核对原记录。")
         return row
 
 

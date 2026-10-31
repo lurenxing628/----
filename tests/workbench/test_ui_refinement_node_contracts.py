@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.workbench.node_runtime_support import node_runtime
+from tests._support.node_runtime_support import node_runtime
 
 ROOT = Path(__file__).resolve().parents[2]
 

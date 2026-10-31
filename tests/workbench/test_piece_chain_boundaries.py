@@ -41,8 +41,11 @@ def test_other_connection_drift_rejected_without_changing_old_work(trial_case):
         WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
     after = snapshot(case.conn)
     for table, rows in before.items():
-        if table not in ("WorkbenchRunJobs", "WorkbenchRunReceipts", "WorkbenchRunDecisionReadModels"):
+        if table not in ("WorkbenchRunJobs", "WorkbenchRunReceipts", "WorkbenchRunDecisionReadModels", "WorkbenchSourceRevisions"):
             assert after[table] == rows, table
+    assert [row for row in after["WorkbenchSourceRevisions"] if row[1] != ("str", "run_jobs")] == [
+        row for row in before["WorkbenchSourceRevisions"] if row[1] != ("str", "run_jobs")
+    ]
     models = after["WorkbenchRunDecisionReadModels"]
     assert models[:-1] == before["WorkbenchRunDecisionReadModels"]
     assert len(models) == len(before["WorkbenchRunDecisionReadModels"]) + 1
@@ -129,18 +132,18 @@ def test_closed_partial_piece_publication_keeps_adoption_and_protection_boundari
     assert caught.value.code == "official_scope_not_covered"
 
     with pytest.raises(CandidateRunInputError) as caught:
-        validate_candidate(prepared, [row for row in rows if row.op_id != ids["item-A", 20]], [],
+        validate_candidate(prepared, [row for row in rows if row.op_id != ids["item-A", 20]],
                            prepared_payload=payload(prepared, [row for row in rows if row.op_id != ids["item-A", 20]]))
     assert caught.value.code == "candidate_predecessor_missing"
     with pytest.raises(CandidateRunInputError) as caught:
-        validate_candidate(prepared, [row for row in rows if row.op_id != common], [],
+        validate_candidate(prepared, [row for row in rows if row.op_id != common],
                            prepared_payload=payload(prepared, [row for row in rows if row.op_id != common]))
     assert caught.value.code == "protected_seed_changed"
     late = [replace(row, start_time=row.start_time + timedelta(days=30),
                     end_time=row.end_time + timedelta(days=30)) if row.op_id == ids["item-A", 30] else row
             for row in rows]
     with pytest.raises(CandidateRunInputError) as caught:
-        validate_candidate(prepared, late, [], prepared_payload=payload(prepared, late))
+        validate_candidate(prepared, late, prepared_payload=payload(prepared, late))
     assert caught.value.code == "candidate_outside_window"
     reject([replace(row, operator_id="O2") if row.op_id == ids["item-A", 20] else row
             for row in rows], "piece_resource_invalid")

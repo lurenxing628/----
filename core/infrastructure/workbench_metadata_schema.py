@@ -6,7 +6,7 @@ import re
 from functools import lru_cache
 from typing import Dict, List, Tuple
 
-from .schema_structure import schema_objects
+from .schema_structure import SchemaStructure
 
 RESOURCE_TABLES: Dict[str, Tuple[str, Tuple[str, ...]]] = {
     "part": ("Parts", ("part_no",)),
@@ -217,8 +217,8 @@ def canonical_sql(sql: str) -> str:
     return text
 
 
-def workbench_metadata_contract_issues(conn, *, structure=None) -> List[str]:
-    actual = schema_objects(conn, structure=structure)
+def workbench_metadata_contract_issues(conn, *, structure: SchemaStructure) -> List[str]:
+    actual = structure.sql
     issues = []
     for name, sql in metadata_objects().items():
         if name not in actual:

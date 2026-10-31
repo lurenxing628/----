@@ -2,27 +2,11 @@
 
 from __future__ import annotations
 
-from typing import NoReturn
-
-from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
 from core.models.workbench_command import WorkbenchCommandRejected
 from data.repositories.workbench_plan_delivery_repo import WorkbenchPlanDeliveryRepository
 
 
-def _binding_error() -> NoReturn:
-    raise WorkbenchCommandRejected("plan_binding_invalid", "交付风险数据与所选计划不一致，请重新选择计划。")
-
-
 class PlanDeliveryRepository(WorkbenchPlanDeliveryRepository):
-    def validate_identity(self, scope, identity, *, context):
-        locator = context.resolve(scope.plan_ref)
-        if (identity.version, identity.requested_plan_role, identity.effective_plan_role) != (
-            locator.version, locator.plan_role, locator.plan_role,
-        ):
-            _binding_error()
-        if locator.plan_role != ROLE_ADOPTED or identity.source_table != SOURCE_SCHEDULE:
-            _binding_error()
-
     def task_rows(self, *, context, entry):
         details = context.detail_rows(entry)
         fields = ("schedule_id", "version", "op_id", "machine_id", "operator_id", "batch_id")
@@ -52,9 +36,6 @@ class PlanDeliveryRepository(WorkbenchPlanDeliveryRepository):
         issues = [] if {row["op_id"] for row in rows} == operation_ids else ["deferred_operation_source_missing"]
         return {row["batch_id"] for row in rows}, issues
 
-    def completion_record(self, identity, *, context):
-        history = context.history(identity.version)
-        if history is None:
-            _binding_error()
-        return {"source": SOURCE_SCHEDULE, "summary": history["result_summary"],
-                "result_status": history["result_status"]}
+    def completion_record(self, version, *, context):
+        history = context.history(version)
+        return {"summary": history["result_summary"], "result_status": history["result_status"]}

@@ -6,38 +6,42 @@ Only SGS can decide whether a shortlisted move is feasible or improves the objec
 """
 from __future__ import annotations
 
-from core.shared.strict_parse import is_exact_finite_number
-
 
 class InsertionScreen:
     def __init__(self, search, reference):
         self.search = search
+        self.predecessors = search.parent.predecessors
+        features = reference.features
+        if features is None:
+            features = reference.features = {}
+        # Every parent of one search shares its pool's predecessor map and the search's fixed metrics,
+        # so an entry's screen depends only on the entry.
+        cached = features.get("insertion_screen")
+        if cached is not None:
+            self.rows, self.due, self.weights, self.supported = cached
+            return
         self.rows = {}
         self.due = {}
         self.weights = {}
-        self.predecessors = search.parent.predecessors
         for row in reference.candidate["results"]:
             if row.op_id not in self.predecessors:
                 continue
             duration = (row.end_time - row.start_time).total_seconds() / 3600.0
-            if duration < 0:
-                continue
-            self.rows[row.op_id] = (str(row.batch_id), row.machine_id, row.operator_id, duration,
-                                    row.op_type_id or "")
+            batch = row.batch_id
+            self.rows[row.op_id] = (batch, row.machine_id, row.operator_id, duration, row.op_type_id or "")
             metric = search.metrics[row.op_id]
-            due = metric["due_deadline_hours"]
-            if is_exact_finite_number(due):
-                self.due[str(row.batch_id)] = float(due)
+            # GraphReady v2 features give every operation a finite due deadline (a placeholder without a due
+            # date) and a positive weighted processing time (graph/v2_features.py).
+            self.due[batch] = metric["due_deadline_hours"]
             pressure = metric["due_pressure"]
-            weighted = metric["weighted_due_pressure"]
-            weighted_hours = metric["weighted_processing_hours"]
             if pressure > 0:
-                self.weights[str(row.batch_id)] = weighted / pressure
-            elif duration > 0 and type(weighted_hours) in (int, float) and weighted_hours > 0:
-                self.weights[str(row.batch_id)] = duration / float(weighted_hours)
+                self.weights[batch] = metric["weighted_due_pressure"] / pressure
+            elif duration > 0:
+                self.weights[batch] = duration / metric["weighted_processing_hours"]
             else:
-                self.weights[str(row.batch_id)] = 1.0
+                self.weights[batch] = 1.0
         self.supported = set(self.rows) == set(reference.order)
+        features["insertion_screen"] = (self.rows, self.due, self.weights, self.supported)
 
     def _advance_state(self, ops, ends, machines, operators, batches, families, switches):
         """Point events still finish for successors but occupy no resource and never switch types.
@@ -64,7 +68,7 @@ class InsertionScreen:
         return switches
 
     def _objective_key(self, batches, switches):
-        tardiness = [(batch, max(end - self.due[batch], 0.0)) for batch, end in batches.items() if batch in self.due]
+        tardiness = [(batch, max(end - self.due[batch], 0.0)) for batch, end in batches.items()]
         overdue, total = sum(value > 0 for _, value in tardiness), sum(value for _, value in tardiness)
         makespan = max(batches.values(), default=0.0)
         objective = self.search.report["objective_name"]
@@ -98,7 +102,6 @@ class InsertionScreen:
             self.search._require_budget()
             known = self.search.scores.get(order)
             if known is not None:
-                self.search.report["duplicate_decision_pruned"] += 1
                 self.search._record_local_reuse("local_trial_reused")
                 if known[1] and (best_score is None or known[0] < best_score):
                     best_position, best_score = position, known[0]
@@ -141,8 +144,6 @@ class InsertionScreen:
             ranked.sort(key=lambda row: row[0])
         else:
             ranked.sort()
-        report = self.search.report["local_search"]
-        report["screened_positions"] += len(ranked)
         return [row[-1] for row in ranked], best_position, best_score
 
 

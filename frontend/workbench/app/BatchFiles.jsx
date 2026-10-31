@@ -21,8 +21,7 @@
     React.useEffect(() => () => { alive.current = false; serial.current++; }, []);
     React.useEffect(() => {
       if (!importing || !done || seen.current === command.result.receipt_ref) return;
-      try { B.receipt(command.result, 'import_confirm'); seen.current = command.result.receipt_ref; onCommitted(command.result); }
-      catch (error) { setError(error); }
+      seen.current = command.result.receipt_ref; onCommitted(command.result);
     }, [done, command.result]);
     function invalidate() {
       setPreview(null); setError(null); setAcknowledged(false); serial.current++;

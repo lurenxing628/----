@@ -80,17 +80,19 @@ class DecisionSource:
         self._candidate_reference(self.reference_ref)
         self._candidate_reference(self.selected_ref)
         self._projected, self._task_intervals, self._analysis, self._candidate_records = {}, {}, {}, {}
-        self._raw_tasks, self._candidate_sources, self._scheduled_op_ids = {}, {}, {}
+        self._raw_tasks, self._candidate_sources, self._scheduled_op_ids, self._prepared_tasks = {}, {}, {}, {}
         self._candidate_records.update({row["candidate_ref"]: row for row in prepared.get("rows", ())})
         for name in ("receipt", "capture", "facts", "disposition"):
             if name in prepared:
                 self.__dict__[name] = prepared[name]
         for candidate_ref, source in prepared.get("candidate_sources", {}).items():
             self._candidate_records[candidate_ref] = source.candidate
-            self._projected[candidate_ref] = source.tasks
+            if "tasks" in source.__dict__:
+                self._projected[candidate_ref] = source.tasks
             self._task_intervals[candidate_ref] = source.task_intervals
             self._raw_tasks[candidate_ref] = source.raw_tasks
             self._scheduled_op_ids[candidate_ref] = source.scheduled_op_ids
+            self._prepared_tasks[candidate_ref] = source.prepared_tasks
             self._candidate_sources[candidate_ref] = source
         self.scope = self._scope(range_start, range_end)
         self.scope["resource_refs"] = {kind: self.resource_cohort[kind + "_refs"] for kind in ("machine", "operator")}
@@ -162,7 +164,7 @@ class DecisionSource:
             if key == "reference":
                 self._analysis[key] = self.official["tasks"] if self.comparison_mode == "admission_official" else []
             elif key in self._projected:
-                self._analysis[key] = self._projected[key]
+                self._analysis[key] = [dict(row, interval_comparable=True) for row in self._projected[key]]
             else:
                 self._analysis[key] = analysis_arrangements(self._saved_projection(key, "arrangements"))
         return self._analysis[key]
@@ -243,27 +245,44 @@ class DecisionSource:
                 "metric_scope": "full_admission", "time_basis": "factory_local", "delta_basis": "candidate_minus_reference",
                 "run_options": dict(self.context["run_options"])}
 
-    def tasks(self, candidate_ref):
-        if candidate_ref not in self._projected:
+    def _validated_tasks(self, candidate_ref):
+        if candidate_ref not in self._task_intervals or candidate_ref not in self._raw_tasks:
             row = self.candidate_record(candidate_ref)
             self._raw_tasks[candidate_ref] = self.store.tasks(candidate_ref)
             prepared_tasks = {}
-            (verified, self._task_intervals[candidate_ref],
+            (_, self._task_intervals[candidate_ref],
              self._scheduled_op_ids[candidate_ref]) = validate_saved_tasks(
                 self._raw_tasks[candidate_ref], row, self.facts, prepared_tasks=prepared_tasks)
-            self._projected[candidate_ref] = project_validated_tasks(
-                verified, row, self.facts, self._task_intervals[candidate_ref], prepared_tasks=prepared_tasks)
+            self._prepared_tasks[candidate_ref] = prepared_tasks
+        return (
+            self._raw_tasks[candidate_ref],
+            self._task_intervals[candidate_ref],
+            self._scheduled_op_ids[candidate_ref],
+            self._prepared_tasks[candidate_ref],
+        )
+
+    def tasks(self, candidate_ref):
+        if candidate_ref not in self._projected:
+            if candidate_ref in self._candidate_sources:
+                self._projected[candidate_ref] = self._candidate_sources[candidate_ref].tasks
+            else:
+                row = self.candidate_record(candidate_ref)
+                raw_tasks, intervals, _, prepared_tasks = self._validated_tasks(candidate_ref)
+                self._projected[candidate_ref] = project_validated_tasks(
+                    raw_tasks, row, self.facts, intervals, prepared_tasks=prepared_tasks)
         return self._projected[candidate_ref]
 
     def candidate_source(self, candidate_ref):
         from core.services.workbench.facts.candidate_read_source import read_candidate_source
         if candidate_ref not in self._candidate_sources:
-            tasks = self.tasks(candidate_ref)
+            raw_tasks, intervals, scheduled_op_ids, prepared_tasks = self._validated_tasks(candidate_ref)
             packet = {"run": self.run, "rows": self.rows, "receipt": self.receipt,
                 "capture": self.capture, "facts": self.facts, "disposition": self.disposition,
-                "candidate": self.candidate_record(candidate_ref), "raw_tasks": self._raw_tasks[candidate_ref], "tasks": tasks,
-                "task_intervals": self._task_intervals[candidate_ref],
-                "scheduled_op_ids": self._scheduled_op_ids[candidate_ref]}
+                "candidate": self.candidate_record(candidate_ref), "raw_tasks": raw_tasks,
+                "task_intervals": intervals, "scheduled_op_ids": scheduled_op_ids,
+                "prepared_tasks": prepared_tasks}
+            if candidate_ref in self._projected:
+                packet["tasks"] = self._projected[candidate_ref]
             self._candidate_sources[candidate_ref] = read_candidate_source(self.store, candidate_ref, prepared=packet)
         return self._candidate_sources[candidate_ref]
 
@@ -289,7 +308,10 @@ class DecisionSource:
     def task_intervals(self, key):
         key = self.computation_key(key)
         if key not in self._task_intervals:
-            self._task_intervals[key] = {row["row_ref"]: task_interval(row) for row in self.analysis_tasks(key)}
+            if key == "reference" and self.comparison_mode == "admission_official" and "task_intervals" in self.official:
+                self._task_intervals[key] = self.official["task_intervals"]
+            else:
+                self._task_intervals[key] = {row["row_ref"]: task_interval(row) for row in self.analysis_tasks(key)}
         return self._task_intervals[key]
 
     @cached_property
@@ -324,7 +346,10 @@ class DecisionSource:
             # 只有产出候选结果的运行才保存工序处置；没有处置，就无法按原始来源重读排产时的正式计划。
             invalid_baseline()
         resolver = decision_baseline_source_resolver(self.store.conn)
-        return read_decision_baseline(self.capture, self.facts, self.disposition, source_resolver=resolver)
+        details = read_decision_baseline(self.capture, self.facts, self.disposition, source_resolver=resolver)
+        if self.comparison_mode == "admission_official":
+            self._task_intervals["reference"] = details["task_intervals"]
+        return details
 
     @cached_property
     def _official_reading(self):

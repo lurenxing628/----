@@ -21,7 +21,10 @@
       "path": "ui_kits/workbench/system-workbench-model.js"
     },
     {
-      "path": "ui_kits/workbench/AppShell.jsx"
+      "path": "ui_kits/workbench/AppShell.jsx",
+      "declarations": [
+        "Ico"
+      ]
     },
     {
       "path": "ui_kits/workbench/SystemManagementScreen.jsx",

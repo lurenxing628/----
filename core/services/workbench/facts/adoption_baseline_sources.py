@@ -5,6 +5,7 @@ from typing import Tuple, Union
 
 from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.infrastructure.read_evidence import verified_read
+from core.infrastructure.sqlite_udf import parse_dt_for_sql
 from core.models.content import same
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.facts.candidate_archive import load_adoption_candidate_with_key
@@ -15,7 +16,6 @@ from core.services.workbench.facts.candidate_store import cache_get, cache_memo,
 from core.services.workbench.facts.candidate_tasks import task_resource
 from core.services.workbench.facts.candidate_values import gap
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
-from data.repositories.schedule_time_sql import parse_dt_for_sql
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 
 from .adoption_baseline_values import fail, indexed, require
@@ -49,9 +49,6 @@ def _precompute_indexed_tables(tables):
             [row for row in source_refs if type(row) is dict and row.get("kind") == "operation" and row.get("active") == 1],
             "source_key",
         ),
-        "source_refs_id": id(source_refs),
-        "batch_operations_id": id(batch_ops),
-        "batches_id": id(batches),
     }
 
 
@@ -61,11 +58,6 @@ class CandidateAdmissionProof:
 
     baseline: dict
     tables: dict
-
-
-def _source_exists(conn, table, field, ref):
-    if not WorkbenchPlanBaselineRepository(conn).source_exists(table, field, ref):
-        fail("adoption_source_archived", table + "." + field)
 
 
 def _decode_rows(rows):
@@ -82,6 +74,8 @@ def candidate_source_evidence(conn, audit):
     except WorkbenchCommandRejected as exc:
         if exc.status == 413:
             raise
+        if exc.status == 404:
+            fail("adoption_source_archived", "candidate_source:" + exc.code)
         fail(gap="candidate_source:" + exc.code)
     require(candidate["run_ref"] == audit["run_ref"], "candidate.run_ref")
     # The recorded proof's version and field set were already checked with the audit.
@@ -95,11 +89,9 @@ def candidate_source_evidence(conn, audit):
 
 
 def _candidate_source(conn, audit):
-    candidate_ref, run_ref = audit["candidate_ref"], audit["run_ref"]
-    _source_exists(conn, "WorkbenchRunJobs", "run_ref", run_ref)
-    _source_exists(conn, "WorkbenchRunCandidates", "candidate_ref", candidate_ref)
+    candidate_ref = audit["candidate_ref"]
     run, candidate, scope, tasks, capture, _, facts, raw_key = load_adoption_candidate_with_key(
-        conn, candidate_ref, copy_on_read=False
+        conn, candidate_ref
     )
     cached = cache_get(_CANDIDATE_SOURCE_CACHE, raw_key) if raw_key is not None else None
     if cached is not None:
@@ -141,6 +133,8 @@ def trial_source_evidence(conn, audit):
     except WorkbenchCommandRejected as exc:
         if exc.status == 413:
             raise
+        if exc.status == 404:
+            fail("adoption_source_archived", "trial_source:" + exc.code)
         fail(gap="trial_source:" + exc.code)
     head = prepared.source[1]
     admission, proof = head["admission"], audit["proof"]
@@ -155,9 +149,7 @@ def trial_source_evidence(conn, audit):
 
 
 def _trial_source(conn, audit):
-    scenario_ref, draft_ref = audit["scenario_ref"], audit["draft_ref"]
-    _source_exists(conn, "WorkbenchTrialScenarios", "scenario_ref", scenario_ref)
-    _source_exists(conn, "WorkbenchTrialDrafts", "draft_ref", draft_ref)
+    scenario_ref = audit["scenario_ref"]
     prepared = trial_adoption_facts(conn, scenario_ref)
     saved, head, rows = prepared.source
     admission = head["admission"]

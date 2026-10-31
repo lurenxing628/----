@@ -6,6 +6,7 @@ from contextlib import contextmanager
 import pytest
 from flask import Blueprint, Flask, g
 
+from core.infrastructure.schema_structure import SchemaStructure
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_contract_issues
 from tests.workbench.identity_metadata_support import insert_row, seed_resources
 from web.routes.workbench.preflight import register_preflight_routes
@@ -49,7 +50,7 @@ def create_app(conn):
 
 @pytest.fixture(name="pf")
 def pf(schema_conn):
-    assert execution_ledger_contract_issues(schema_conn) == []
+    assert execution_ledger_contract_issues(schema_conn, structure=SchemaStructure(schema_conn)) == []
     seed(schema_conn)
     client = create_app(schema_conn).test_client()
     client.conn = schema_conn

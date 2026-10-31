@@ -48,7 +48,7 @@ def test_batch_copies_prepare_raw_sources_once_and_reuse_across_targets(lineage_
     selects = [sql for sql in trace if sql.lstrip().upper().startswith("SELECT")]
     assert not any("FROM WorkbenchPlanSourceRefs r" in sql or "FROM WorkbenchEntityRefs r" in sql or
                    "FROM BatchExternalContexts" in sql for sql in selects)
-    assert sum(" AS _lineage_bytes FROM WorkbenchTemplateLineageEvents" in sql for sql in selects) == 1
+    assert sum("FROM WorkbenchTemplateLineageEvents" in sql for sql in selects) == 1
     assert sum("e.event_id AS birth_event_id" in sql for sql in selects) == 6
     contexts = [dict(row) for row in conn.execute("SELECT c.* FROM BatchExternalContexts c JOIN BatchOperations o "
                                                 "ON o.id=c.operation_id WHERE o.batch_id LIKE 'PREP-%' ORDER BY o.id")]

@@ -4,11 +4,12 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Union
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_process_query import ProcessPageRequest
+from core.models.workbench_process_query import (
+    PROCESS_TABLE_COLUMNS,
+    normalize_process_page_base,
+)
 from core.models.workbench_resource_table_query import normalize_table_column_filters
 
-PROCESS_TABLE_COLUMNS = ("business_code", "label", "operation_count", "stage")
-PROCESS_STAGES = ("route", "source", "hours", "ready")
 MAX_PROCESS_SORT_KEYS = len(PROCESS_TABLE_COLUMNS)
 _SCOPE_FIELDS = {"query", "stage", "sort", "direction", "column_filters"}
 # The list and facet routes decode their JSON arguments strictly and share this duplicate-key text.
@@ -54,7 +55,7 @@ class ProcessTablePageRequest:
     _ordering: List[Dict[str, str]] = field(init=False, repr=False, compare=False)
 
     def __post_init__(self):
-        ProcessPageRequest(query=self.query, stage=self.stage, number=self.number, size=self.size)
+        normalize_process_page_base(self.query, self.stage, self.number, self.size)
         ordering = normalize_process_sort(self.sort, self.direction)
         object.__setattr__(self, "_ordering", ordering)
         if type(self.sort) is list:
@@ -98,8 +99,7 @@ def validate_process_facet_request(column, search, number, size):
 
 
 def process_facet_scope(query, column, search="", size=100):
-    """Bind facets to toolbar AND other columns, never the queried column itself."""
-    validate_process_facet_request(column, search, 1, size)
+    """Bind facets to toolbar AND other columns, never the queried column itself; arguments are already validated."""
     filters = {key: value for key, value in query.column_filters.items() if key != column}
     scope = {"kind": "part", "query": query.query, "stage": query.stage,
              **({"column_filters": filters} if filters else {})}

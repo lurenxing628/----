@@ -38,6 +38,12 @@ def test_read_only_zero_hours_and_unavailable_worker(pf, monkeypatch):
         saved = next(row for row in capture.archive(named=True)["tables"]["Batches"] if row["batch_id"] == "PF-0000")
         assert saved["due_date"] == "2026-9-9"
         assert raw["ready_date"] == saved["ready_date"] == ""
+        from core.services.workbench.facts.schema_compat import project_facts
+
+        archive = json.loads(capture.content())
+        without_columns = {"version": archive["version"], "schema": archive["schema"], "tables": archive["tables"]}
+        assert archive["version"] == "production-facts-v2" and archive["columns"]
+        assert same(project_facts(archive), project_facts(without_columns))
     finally:
         native.close()
     table_reads = Counter()
@@ -62,12 +68,8 @@ def test_read_only_zero_hours_and_unavailable_worker(pf, monkeypatch):
         repeated_binding = resolve_public_token(INPUT_SCOPE, repeated["input_ref"],
             message="Preflight input is unavailable", field="input_ref")
     assert repeated_binding["fingerprint"] == first_binding["fingerprint"]
-    from core.services.workbench.facts.schema_compat import project_facts
-
-    archive = json.loads(first_binding["fingerprint"])
-    without_columns = {"version": archive["version"], "schema": archive["schema"], "tables": archive["tables"]}
-    assert archive["version"] == "production-facts-v2" and archive["columns"]
-    assert same(project_facts(archive), project_facts(without_columns))
+    fingerprint = json.loads(first_binding["fingerprint"])
+    assert fingerprint[0] == "preflight-v2" and isinstance(fingerprint[1], dict)
     assert data["counts"]["ready_tasks"] == 1
     assert data["counts"]["blocked_tasks"] == 0
     assert data["calendar_check"] == "not_evaluated"

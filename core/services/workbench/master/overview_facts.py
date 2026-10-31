@@ -8,7 +8,12 @@ from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_metadata_schema import RESOURCE_TABLES
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_master_overview import public_ref
+from core.services.process.template_source import TemplateSourceFacts
 from core.services.process.workflow_state import workflow_snapshot
+from core.services.workbench.facts.source_revisions import (
+    MASTER_OVERVIEW_SOURCE_KEYS,
+    read_source_revisions,
+)
 from data.repositories.workbench_master_query_repo import MASTER_OVERVIEW_TABLES, WorkbenchMasterQueryRepository
 
 SOURCES = {
@@ -50,6 +55,9 @@ class MasterOverviewFacts:
         self._indexes = {}
         self._groups = {}
         self.material_day = None
+        self.present = set()
+        self.snapshot_state = None
+        self.template_source_facts = None
 
     def available(self, *tables):
         return all(table in self.tables for table in tables)
@@ -78,13 +86,27 @@ class MasterOverviewFacts:
             raise WorkbenchCommandRejected("storage_failure", "基础资料缺少有效的系统编号，请联系维护人员核对资料。", 500)
         return row["ref"]
 
-    def _load(self):
-        self.tables, self.identities, self._indexes, self._groups = {}, {}, {}, {}
-        self.gaps, self.workflow = [], None
+    def read_snapshot_state(self):
         self.material_day = date.today().isoformat()
-        self.tables, present = self.repo.overview_tables()
+        self.present = self.repo.present_tables()
+        revisions = (
+            read_source_revisions(self.conn, MASTER_OVERVIEW_SOURCE_KEYS)
+            if "WorkbenchSourceRevisions" in self.present
+            else {}
+        )
+        self.snapshot_state = {
+            "revisions": revisions,
+            "material_day": self.material_day,
+            "present": sorted(self.present),
+        }
+        return self.snapshot_state
+
+    def _load(self):
+        self.identities, self._indexes, self._groups = {}, {}, {}
+        self.gaps, self.workflow, self.template_source_facts = [], None, None
+        self.tables = self.repo.overview_tables(self.present)
         for name in TABLES:
-            if name not in present:
+            if name not in self.present:
                 self.gaps.append({"code": "source_unavailable", "source": name,
                                   "message": "数据来源 " + name + " 未读取，相关数量和检查结果都算不出来。"})
         for row in self.rows("WorkbenchEntityRefs"):
@@ -93,11 +115,29 @@ class MasterOverviewFacts:
                 if key in self.identities:
                     raise WorkbenchCommandRejected("storage_failure", "基础资料存在重复关联，请联系维护人员核对。", 500)
                 self.identities[key] = row
+        if self.available("PartOperations", "ExternalGroups", "OpTypes", "Suppliers",
+                          "WorkbenchSupplierOpTypes", "WorkbenchSupplierProfiles"):
+            suppliers = [
+                dict(row, ref=self.identities.get(("supplier", str(plain(row["supplier_id"]))), {}).get("ref"))
+                for row in self.rows("Suppliers")
+            ]
+            self.template_source_facts = TemplateSourceFacts(
+                self.rows("PartOperations"),
+                self.rows("ExternalGroups"),
+                suppliers,
+                self.rows("WorkbenchSupplierOpTypes"),
+                self.rows("WorkbenchSupplierProfiles"),
+            )
         required = ("Parts", "PartOperations", "ExternalGroups", "OpTypes", "Suppliers", "WorkbenchEntityRefs") + WORKFLOW
         metadata_sources = {table for table, _ in RESOURCE_TABLES.values()} | {"WorkbenchShiftPatternDays"}
-        if self.available(*required) and self.available(*RELATIONS[:9]) and metadata_sources <= present:
+        if self.available(*required) and self.available(*RELATIONS[:9]) and metadata_sources <= self.present:
             try:
-                self.workflow = workflow_snapshot(self.conn, tables=self.tables, identities=self.identities)
+                self.workflow = workflow_snapshot(
+                    self.conn,
+                    tables=self.tables,
+                    identities=self.identities,
+                    source_facts=self.template_source_facts,
+                )
             except RuntimeError as exc:
                 raise WorkbenchCommandRejected("storage_failure", "工艺确认的数据读得不完整，请联系维护人员核对资料。", 500) from exc
         else:
@@ -105,7 +145,11 @@ class MasterOverviewFacts:
                               "message": "工艺确认的来源读不完整，已有路线、归属或 0 工时都不能当成人工确认过。"})
 
     @contextmanager
-    def read_snapshot(self):
+    def read_snapshot(self, *, bind_snapshot=None):
         with TransactionManager(self.conn).transaction():
+            as_of = datetime.now().isoformat(timespec="seconds")
+            state = self.read_snapshot_state()
+            if bind_snapshot is not None:
+                bind_snapshot(state, as_of)
             self._load()
-            yield datetime.now().isoformat(timespec="seconds")
+            yield as_of

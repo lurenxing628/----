@@ -10,18 +10,15 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.algorithm_contracts.ordering import (
-    build_batch_sort_inputs,
     build_normalized_batches_map,
-    normalize_text_id,
+    clean_resource_id,
     operation_sort_key,
 )
 from core.algorithm_contracts.sort_strategies import SortStrategy, StrategyFactory
 from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult, ScheduleSummary
 from core.algorithm_runtime.algo_stats import increment_counter, make_algo_stats
-from core.algorithm_runtime.resource_quality import initialize_resource_quality
+from core.algorithm_runtime.resource_quality import MachineTypeState, initialize_resource_quality
 from core.algorithm_runtime.run_state import ScheduleRunState
-from core.algorithms.greedy.dispatch.batch_order import dispatch_batch_order
-from core.algorithms.greedy.dispatch.sgs import dispatch_sgs
 from core.models.batch import Batch
 from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
 
@@ -114,7 +111,6 @@ class GreedyScheduler:
             ctx, state=state, sorted_ops=sorted_ops, batches=batches, batch_order=batch_order,
             params=params, machine_downtimes=machine_downtimes, resource_pool=resource_pool,
             graph_ready_context=graph_ready_context,
-            batch_dispatch=dispatch_batch_order, sgs_dispatch=dispatch_sgs,
             decode_resume=decode_resume, decode_checkpoints=decode_checkpoints,
         )
         summary = _build_summary(state=state, warnings=warnings, sorted_ops=sorted_ops, duration=(datetime.now() - t0).total_seconds())
@@ -132,16 +128,14 @@ class GreedyScheduler:
         batch_progress: Dict[str, datetime],
         external_group_cache: Dict[Tuple[str, ...], Tuple[datetime, datetime]],
         base_time: datetime,
-        errors: List[str],
         end_dt_exclusive: Optional[datetime],
-    ) -> Tuple[Optional[ScheduleResult], bool]:
+    ) -> Tuple[Optional[ScheduleResult], Optional[Dict[str, Any]]]:
         return schedule_external(
             calendar=self.calendar,
             op=op,
             batch_progress=batch_progress,
             external_group_cache=external_group_cache,
             base_time=base_time,
-            errors=errors,
             end_dt_exclusive=end_dt_exclusive,
         )
 
@@ -153,16 +147,15 @@ class GreedyScheduler:
         machine_timeline: Dict[str, List[Tuple[datetime, datetime]]],
         operator_timeline: Dict[str, List[Tuple[datetime, datetime]]],
         base_time: datetime,
-        errors: List[str],
         end_dt_exclusive: Optional[datetime],
         machine_downtimes: Dict[str, List[Tuple[datetime, datetime]]],
         *,
         auto_assign_enabled: bool,
         resource_pool: Optional[Dict[str, Any]],
-        last_op_type_by_machine: Dict[str, str],
+        last_op_type_by_machine: MachineTypeState,
         machine_busy_hours: Dict[str, float],
         operator_busy_hours: Dict[str, float],
-    ) -> Tuple[Optional[ScheduleResult], bool]:
+    ) -> Tuple[Optional[ScheduleResult], Optional[Dict[str, Any]]]:
         return schedule_internal_operation(
             calendar=self.calendar,
             algo_stats=self.last_algo_stats,
@@ -173,7 +166,6 @@ class GreedyScheduler:
             machine_timeline=machine_timeline,
             operator_timeline=operator_timeline,
             base_time=base_time,
-            errors=errors,
             end_dt_exclusive=end_dt_exclusive,
             machine_downtimes=machine_downtimes,
             auto_assign_enabled=auto_assign_enabled,
@@ -196,7 +188,7 @@ class GreedyScheduler:
         end_dt_exclusive: Optional[datetime],
         machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
         resource_pool: Dict[str, Any],
-        last_op_type_by_machine: Dict[str, str],
+        last_op_type_by_machine: MachineTypeState,
         machine_busy_hours: Dict[str, float],
         operator_busy_hours: Dict[str, float],
         probe_only: bool = False,
@@ -226,9 +218,10 @@ def _normalize_machine_downtimes(machine_downtimes: Dict[str, List[Tuple[datetim
     if not machine_downtimes:
         return machine_downtimes
     return {
-        normalize_text_id(resource_id): sorted(segments, key=lambda segment: (segment[0], segment[1]))
+        resource_key: sorted(segments, key=lambda segment: (segment[0], segment[1]))
         for resource_id, segments in machine_downtimes.items()
-        if normalize_text_id(resource_id)
+        for resource_key in (clean_resource_id(resource_id),)
+        if resource_key
     }
 
 
@@ -256,6 +249,7 @@ def prepare_native_schedule_inputs(
             increment_counter(stats, "seed_overlap_filtered_count", dropped)
     from core.algorithm_contracts.schedule_point_evidence import point_seed_valid
     from core.algorithm_contracts.value_domains import INTERNAL
+    from core.algorithm_runtime.internal_slot import require_internal_hours
 
     from .external_groups import rebuild_external_group_cache_from_seeds
     from .seed import seed_external_group_keys, seed_resource_segments, seed_result_for_output
@@ -263,8 +257,8 @@ def prepare_native_schedule_inputs(
     seed_applications, external_seed_cache = [], {}
     for seed in normalized_seeds:
         occupies = seed.source == INTERNAL and not point_seed_valid(seed)
-        seed_applications.append((seed_result_for_output(seed), normalize_text_id(seed.machine_id) if occupies else "",
-                                  normalize_text_id(seed.operator_id) if occupies else "",
+        seed_applications.append((seed_result_for_output(seed), clean_resource_id(seed.machine_id) if occupies else "",
+                                  clean_resource_id(seed.operator_id) if occupies else "",
                                   seed_resource_segments(seed) if occupies else None))
     rebuild_external_group_cache_from_seeds(
         seed_results=normalized_seeds, operations=operations, external_group_cache=external_seed_cache,
@@ -286,6 +280,20 @@ def prepare_native_schedule_inputs(
         unseeded_operations=unseeded, resource_pool=resource_pool, graph_ready_context=context,
         warnings=tuple(warnings), algo_stats=stats, topology=topology,
     )
+    grouped_unseeded: Dict[str, List[OpForScheduleAlgo]] = {}
+    for op in unseeded:
+        if op.batch_id in normalized_batches:
+            grouped_unseeded.setdefault(op.batch_id, []).append(op)
+    internal_samples: List[float] = []
+    for batch_id, batch_ops in grouped_unseeded.items():
+        batch = normalized_batches[batch_id]
+        for op in sorted(batch_ops, key=lambda item: (item.seq, item.id)):
+            if op.source == INTERNAL:
+                hours = require_internal_hours(op, preparation.operation_batch(op, batch))
+                preparation.total_hours_by_op_id[op.id] = hours
+                internal_samples.append(hours)
+    if internal_samples:
+        preparation.average_internal_proc_hours = sum(internal_samples) / len(internal_samples)
     ctx = preparation.run_context = ScheduleRunContext.from_legacy_scheduler(scheduler, preparation)
     preparation.score_cache_factory = make_sgs_score_cache_factory(ctx, preparation=preparation)
     return preparation
@@ -296,19 +304,20 @@ def build_batch_order(
     params: ScheduleParams,
     *,
     batch_order_override: List[str],
+    preparation: NativeSchedulePreparation,
 ) -> Dict[str, int]:
     override_order = list(batch_order_override)
     if override_order and len(override_order) == len(batches):
         return {batch_id: index for index, batch_id in enumerate(override_order)}
-    batch_for_sort = build_batch_sort_inputs(
-        batches,
+    sorted_batch_ids = preparation.batch_order(
+        start_dt=params.base_time,
         strategy=params.strategy,
+        params=params.used_params,
     )
-    sorted_batches = StrategyFactory.create(params.strategy, **params.used_params).sort(batch_for_sort, base_date=params.base_time.date())
     if not override_order:
-        return {batch.batch_id: index for index, batch in enumerate(sorted_batches)}
+        return {batch_id: index for index, batch_id in enumerate(sorted_batch_ids)}
     seen = set(override_order)
-    override_order.extend([batch.batch_id for batch in sorted_batches if batch.batch_id not in seen])
+    override_order.extend([batch_id for batch_id in sorted_batch_ids if batch_id not in seen])
     return {batch_id: index for index, batch_id in enumerate(override_order)}
 
 
@@ -325,7 +334,7 @@ def _build_summary(*, state: ScheduleRunState, warnings: List[str], sorted_ops: 
         scheduled_ops=state.scheduled_count,
         failed_ops=state.failed_count,
         warnings=warnings,
-        errors=state.errors,
+        errors=[],
         duration_seconds=duration,
         failure_details=list(state.failure_details),
     )

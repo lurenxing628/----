@@ -33,7 +33,7 @@ class BudgetStagnation:
         self.explore_next = False
 
     def reference(self):
-        search, report = self.search, self.search.report["local_search"]
+        search = self.search
         reference = search.reference
         if reference is None:
             raise RuntimeError("Iterated greedy iteration started without a reference solution.")
@@ -50,7 +50,6 @@ class BudgetStagnation:
         self.last_progress = now
         self.explore_next = True
         search.non_improving = 0
-        report["diversification_requests"] += 1
         return restart_from_pool(search, reference)
 
     def consume_exploration(self):

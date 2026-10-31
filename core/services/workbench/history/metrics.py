@@ -2,9 +2,8 @@
 
 from typing import Optional, Union
 
-from core.services.capacity.plan_calendar_intervals import hours, instant
+from core.services.capacity.plan_calendar_intervals import hours
 from core.services.workbench.facts.candidate_projection import dispositions
-from core.services.workbench.facts.candidate_tasks import task_span
 from core.services.workbench.facts.candidate_values import number
 from core.services.workbench.facts.completion_scope import project_completion_summary
 from core.services.workbench.facts.decision_metrics import (
@@ -22,11 +21,11 @@ from core.services.workbench.facts.preparation_projection import (
 from core.services.workbench.facts.preparation_projection import (
     metric_summary as effort_metric,
 )
-from core.services.workbench.facts.resource_intervals import task_interval
 from core.services.workbench.facts.resource_projection import resource_cohort
 from core.services.workbench.run.decision_resource_engine import ResourceWindowInput, ResourceWindowMetrics
 from core.services.workbench.run.preflight import batch_dependencies, classify, task_row
 from core.services.workbench.trial.capacity import capacity_tasks as trial_resource_tasks
+from core.services.workbench.trial.constraints import build_trial_intervals
 from core.services.workbench.trial.preparation import after_preparation_rows, trial_changeovers
 from data.repositories.workbench_preflight_facts_repo import PREFLIGHT_TABLES
 
@@ -225,10 +224,10 @@ def _trial_preparation(saved, head, *, contexts):
         current_evidence={"kind": "scenario", "scenario_ref": saved["scenario_ref"]}, contexts=contexts)
 
 
-def _trial_resources(packet, projected, window, calendar):
-    original, tasks = (trial_resource_tasks(projected, side) for side in ("original", "current"))
-    intervals = {key: {row["row_ref"]: task_interval(row) for row in rows}
-                 for key, rows in (("reference", original), (packet["ref"], tasks))}
+def _trial_resources(packet, projected, window, calendar, *, trial_intervals):
+    original = trial_resource_tasks(projected, "original", intervals_by_row=trial_intervals["original_by_row"])
+    tasks = trial_resource_tasks(projected, "current", intervals_by_row=trial_intervals["current_by_row"])
+    intervals = {"reference": trial_intervals["original_by_row"], packet["ref"]: trial_intervals["current_by_row"]}
     cohort = resource_cohort([original, tasks], task_intervals=[intervals["reference"], intervals[packet["ref"]]])
     engine = ResourceWindowMetrics(ResourceWindowInput(
         window["start"], window["end"], calendar,
@@ -266,17 +265,21 @@ def _trial(packet, window, *, reader, metric_keys=None):
     operations, batches = set(condition.operations), set(condition.batches)
     deferred, ordinary = None, None
     completion_reason = metric_reason("trial_pending_members_missing", "保存的未安排数量与实际工序身份不齐，应排、待料和其他未安排范围待确认。")
-    _batches, _operations, deferred_ids, deferred_issues = condition.delivery_origin
-    if not deferred_issues:
-        effort_by_ref = {row["operation_ref"]: row for row in efforts}
-        missing = []
-        for ref in sorted(operations - scheduled):
-            operation = condition.operations[ref]
-            missing.append({**effort_by_ref.get(ref, {}), "operation_ref": ref, "sequence": operation["seq"],
-                "batch_ref": condition.original_entity_refs.get(("batch", operation["batch_id"])), "arranged": False,
-                "source": operation["source"], "allocation_state": "deferred" if operation["id"] in deferred_ids else "unplanned"})
-        completion = project_completion_summary([row["after"] for row in comparison["batches"]], missing)
-        deferred, ordinary = set(completion["deferred_operation_refs"]), set(completion["unplanned_operation_refs"])
+    need_completion = wanted is None or bool(
+        {"expected_operation_count", "unplanned_operation_count", "deferred_operation_count"} & wanted
+    )
+    if need_completion:
+        _batches, _operations, deferred_ids, deferred_issues = condition.delivery_origin
+        if not deferred_issues:
+            effort_by_ref = {row["operation_ref"]: row for row in efforts}
+            missing = []
+            for ref in sorted(operations - scheduled):
+                operation = condition.operations[ref]
+                missing.append({**effort_by_ref.get(ref, {}), "operation_ref": ref, "sequence": operation["seq"],
+                    "batch_ref": condition.original_entity_refs.get(("batch", operation["batch_id"])), "arranged": False,
+                    "source": operation["source"], "allocation_state": "deferred" if operation["id"] in deferred_ids else "unplanned"})
+            completion = project_completion_summary([row["after"] for row in comparison["batches"]], missing)
+            deferred, ordinary = set(completion["deferred_operation_refs"]), set(completion["unplanned_operation_refs"])
     for key, value in (("expected_operation_count", len(operations - deferred) if deferred is not None else None),
                        ("scheduled_operation_count", len(scheduled)),
                        ("unplanned_operation_count", len(ordinary) if ordinary is not None else None),
@@ -295,19 +298,35 @@ def _trial(packet, window, *, reader, metric_keys=None):
         values[key] = item
     need_changeovers = wanted is None or bool({"type_changeover_count", "changed_machine_count"} & wanted)
     need_makespan = wanted is None or "makespan_hours" in wanted
-    timed_tasks = [(task, task_interval(task)) for task in tasks] if (need_makespan or need_changeovers) else []
+    trial_intervals = (
+        build_trial_intervals(projected)
+        if (window["start"] is not None or need_makespan or need_changeovers)
+        else None
+    )
+    current_intervals = trial_intervals["current_by_row"] if trial_intervals is not None else {}
+    timed_tasks = (
+        [(task, current_intervals.get(task["row_ref"])) for task in tasks]
+        if (need_makespan or need_changeovers)
+        else []
+    )
     if need_makespan:
-        valid_tasks = [task for task, interval in timed_tasks if interval is not None]
-        span = task_span(valid_tasks)
-        makespan = hours([(instant(span["start"]), instant(span["end"]))]) if span is not None else None
-        missing_times = len(tasks) - len(valid_tasks)
+        valid_intervals = [interval for _, interval in timed_tasks if interval is not None]
+        makespan = (
+            hours([(min(start for start, _ in valid_intervals), max(end for _, end in valid_intervals))])
+            if valid_intervals
+            else None
+        )
+        missing_times = len(tasks) - len(valid_intervals)
         values["makespan_hours"] = metric_value(makespan if not missing_times else None, total=max(1, len(tasks)),
             unknown=missing_times if tasks else 1, subtotal=makespan, scope="full_candidate",
             reason=metric_reason("trial_arrangement_time_missing", "部分保存安排缺少可核对的时间区间，总时长保留已知跨度。") if missing_times or not tasks else None)
-        values["makespan_hours"]["covered_operation_refs"] = sorted({task["operation_ref"] for task in valid_tasks})
+        values["makespan_hours"]["covered_operation_refs"] = sorted(
+            {task["operation_ref"] for task, interval in timed_tasks if interval is not None}
+        )
     common = (trial_changeovers(projected, head["admission"], start=window["start"], end=window["end"],
-                               next_operation_refs=operations, facts=condition.original_facts)
-              if need_changeovers and window["start"] is not None else None)
+                               next_operation_refs=operations, facts=condition.original_facts, after_only=True,
+                               trial_intervals=trial_intervals)
+              if need_changeovers and window["start"] is not None and trial_intervals is not None else None)
     if common is not None:
         after = common["after"]
         arrangements = [task for task, interval in timed_tasks if task.get("source") != "external"
@@ -322,8 +341,10 @@ def _trial(packet, window, *, reader, metric_keys=None):
                                     "部分保存安排的工种、时间或实际顺序缺项。") if after["state"] != "complete" else None)
             item["covered_operation_refs"] = covered_refs
             values[key] = item
-    if window["start"] is not None:
-        resource_values = _trial_resources(packet, projected, window, condition.calendar)
+    if window["start"] is not None and trial_intervals is not None:
+        resource_values = _trial_resources(
+            packet, projected, window, condition.calendar, trial_intervals=trial_intervals
+        )
         values.update(resource_values if wanted is None else {key: item for key, item in resource_values.items() if key in wanted})
     else:
         window.update(state="unavailable", reason=metric_reason("history_resource_archive_missing", "资源窗口缺项，归档容量未知。"))

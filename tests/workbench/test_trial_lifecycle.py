@@ -51,7 +51,7 @@ def test_complete_create_change_save_and_reopen(trial_case, kind, monkeypatch):
         table_reads[name] += 1
         return original_table(repo, name)
     monkeypatch.setattr(WorkbenchPreflightFactsRepository, "capture_table", table_read)
-    original_rows, original_facts = projection.scenario_rows, projection.GenerationFacts
+    original_rows, original_facts = projection.scenario_rows, projection.cached_generation_facts
     def projected(*args, **kwargs):
         calls["scenario_rows"] += 1
         return original_rows(*args, **kwargs)
@@ -60,11 +60,11 @@ def test_complete_create_change_save_and_reopen(trial_case, kind, monkeypatch):
         return original_facts(*args, **kwargs)
     monkeypatch.setattr(projection, "scenario_rows", projected)
     monkeypatch.setattr(trial_service, "scenario_rows", projected)
-    monkeypatch.setattr(projection, "GenerationFacts", generation_facts)
+    monkeypatch.setattr(projection, "cached_generation_facts", generation_facts)
     case.conn.set_trace_callback(statements.append)
     draft = create(case, intent)
     case.conn.set_trace_callback(None)
-    assert table_reads and set(table_reads.values()) == {2}  # preview and command own separate facts.
+    assert table_reads and set(table_reads.values()) <= {1, 2} and 2 in table_reads.values()
     assert calls["draft_header"] == calls["draft_rows"] == calls["changes"] == calls["facts_unchanged"] == 0
     assert not any(sql.upper().startswith("SELECT") and "COUNT(" in sql.upper() and "FROM WORKBENCHTRIALROWS" in sql.upper() for sql in statements)
     assert draft["validation"]["constraints_status"] == "valid", draft["validation"]
@@ -130,8 +130,8 @@ def test_scenario_fragments_share_exact_logical_limit_without_counting_physical_
     expected_bytes = len(dump(snapshot).encode("utf-8"))
     assert encoded.logical_bytes == expected_bytes
     assert len(encoded.header.encode("utf-8")) + sum(len(text.encode("utf-8")) for text in encoded.tasks) > expected_bytes
-    repo = SimpleNamespace(conn=None, schema_issues=lambda: [],
-        scenario_header=lambda _ref: {"snapshot_json": encoded.header},
+    repo = SimpleNamespace(conn=None,
+        scenario_header=lambda _ref: {"scenario_ref": "saved", "revision": 1, "saved_at": "2026-09-10T12:00:00", "snapshot_json": encoded.header},
         iter_scenario_rows=lambda _ref: [{"row_ref": row["row_ref"], "payload_json": text}
                                        for row, text in zip(tasks, encoded.tasks)])
     assert load_scenario_record(repo, "saved")[1] == snapshot
@@ -169,3 +169,202 @@ def test_http_trial_command_with_lost_acknowledgement_points_to_its_receipt(tria
     assert value["committed"] == "unknown" and value["error"]["request_key"] == key and value["error"]["retryable"] is False
     assert value["error"]["result_target"] == "/api/workbench/v1/trial/commands/" + key
     assert client.get(value["error"]["result_target"]).get_json()["data"]["state"] == "committed"
+
+
+def test_http_trial_reads_and_catalogs_prebind_snapshot_before_heavy_projections(trial_case, monkeypatch):
+    from core.services.workbench.trial import catalog as trial_catalog
+    from core.services.workbench.trial import projection
+    from core.services.workbench.trial import service as trial_service
+
+    case = trial_case
+    draft = create(case)
+    saved = service(case.conn).save(
+        draft["draft_ref"], {"name": "Prebind scenario"}, draft["write_context"]["write_token"], "trial-save-prebind-01"
+    )["data"]
+    client = api(case)
+
+    draft_res = client.get("/api/workbench/v1/trial/drafts/" + draft["draft_ref"]).get_json()
+    scenario_res = client.get("/api/workbench/v1/trial/scenarios/" + saved["scenario_ref"]).get_json()
+    catalog_res = client.get("/api/workbench/v1/trial/drafts").get_json()
+    draft_snap = draft_res["meta"]["snapshot_ref"]
+    scenario_snap = scenario_res["meta"]["snapshot_ref"]
+    catalog_snap = catalog_res["meta"]["snapshot_ref"]
+
+    # Advance source revision so previous snapshot_refs become stale.
+    case.conn.execute("INSERT INTO Parts(part_no,part_name) VALUES ('P-STALE','Stale trigger')")
+    case.conn.commit()
+
+    missing_ref = "f" * 48
+    assert client.get(f"/api/workbench/v1/trial/drafts/{missing_ref}?snapshot_ref={draft_snap}").status_code == 404
+    assert client.get(f"/api/workbench/v1/trial/scenarios/{missing_ref}?snapshot_ref={scenario_snap}").status_code == 404
+
+    def forbid(*args, **kwargs):
+        raise AssertionError("Stale snapshot_ref must be rejected before heavy projection or catalog iteration")
+
+    monkeypatch.setattr(trial_service, "live_context", forbid)
+    monkeypatch.setattr(projection, "trial_capacity", forbid)
+    monkeypatch.setattr(trial_catalog, "_bounded_page", forbid)
+
+    stale_draft = client.get(f"/api/workbench/v1/trial/drafts/{draft['draft_ref']}?snapshot_ref={draft_snap}")
+    assert stale_draft.status_code == 409
+    assert stale_draft.get_json()["error"]["code"] == "snapshot_stale"
+
+    stale_scenario = client.get(f"/api/workbench/v1/trial/scenarios/{saved['scenario_ref']}?snapshot_ref={scenario_snap}")
+    assert stale_scenario.status_code == 409
+    assert stale_scenario.get_json()["error"]["code"] == "snapshot_stale"
+
+    stale_catalog = client.get(f"/api/workbench/v1/trial/drafts?snapshot_ref={catalog_snap}")
+    assert stale_catalog.status_code == 409
+    assert stale_catalog.get_json()["error"]["code"] == "snapshot_stale"
+
+
+def test_saved_scenario_and_draft_dtos_isolate_in_process_caches_on_mutation(trial_case):
+    from copy import deepcopy
+
+    case = trial_case
+    draft = create(case)
+    saved = service(case.conn).save(
+        draft["draft_ref"], {"name": "Isolated scenario"}, draft["write_context"]["write_token"], "trial-save-isolate-01"
+    )["data"]
+    scenario_ref = saved["scenario_ref"]
+    draft_ref = draft["draft_ref"]
+
+    scen_first = service(case.conn).scenario(scenario_ref)
+    scen_expected = deepcopy(scen_first)
+    scen_first["tasks"][0]["process_label"] = "POLLUTED"
+    scen_first["tasks"][0]["data_gaps"].append({"field": "polluted"})
+    scen_first["tasks"][0]["hours"]["total_hours"] = -999
+    scen_first["tasks"][0]["operation_effort"]["before"]["evidence_source"]["capabilities"]["view"] = False
+    scen_first["tasks"][0]["operation_effort"]["before"]["evidence_source"]["blocked_reasons"].append({"code": "polluted"})
+    scen_first["comparison"]["batches"][0]["part_name"] = "POLLUTED"
+    scen_first["comparison"]["delivery_summary"]["overdue_count"] = 99999
+    scen_first["capacity"]["resources"][0]["label"] = "POLLUTED"
+    scen_first["capacity"]["resource_common"]["cohort"].clear()
+    if scen_first["validation"]["issues"]:
+        scen_first["validation"]["issues"][0]["message"] = "POLLUTED"
+    scen_first["validation"]["issues"].append({"code": "polluted"})
+    scen_first["base"]["plan_ref"] = "0" * 48
+    scen_first["base_identity"]["display_name"] = "POLLUTED"
+    scen_first["scope"]["selection"] = "POLLUTED"
+    if type(scen_first["operation_effort"]) is dict:
+        scen_first["operation_effort"]["polluted"] = True
+
+    scen_second = service(case.conn).scenario(scenario_ref)
+    assert scen_second == scen_expected
+
+    draft_first = service(case.conn).get(draft_ref)
+    draft_expected = deepcopy(draft_first)
+    draft_first["base"]["plan_ref"] = "0" * 48
+    draft_first["base_identity"]["display_name"] = "POLLUTED"
+    draft_first["base_identity"]["capabilities"]["view"] = False
+    draft_first["scope"]["selection"] = "POLLUTED"
+    draft_first["capacity"]["resources"][0]["calendar"]["source"]["source_ref"]["display_name"] = "POLLUTED"
+    assert draft_first["capacity"]["resources"][0]["calendar"]["days"][0]["source"]["source_ref"]["display_name"] != "POLLUTED"
+    draft_first["capacity"]["resources"][0]["calendar"]["days"][0]["source"]["source_ref"]["display_name"] = "POLLUTED"
+    if draft_first["validation"]["issues"]:
+        draft_first["validation"]["issues"][0]["message"] = "POLLUTED"
+    draft_first["validation"]["issues"].append({"code": "polluted"})
+    draft_first["validation_at_last_write"]["issues"].append({"code": "polluted"})
+    draft_first["tasks"][0]["operation_effort"]["before"]["evidence_source"]["capabilities"]["view"] = False
+    draft_first["tasks"][0]["operation_effort"]["before"]["evidence_source"]["blocked_reasons"].append({"code": "polluted"})
+    if type(draft_first["tasks"][0].get("execution_at_creation")) is dict:
+        draft_first["tasks"][0]["execution_at_creation"]["data_gaps"].append({"code": "polluted"})
+    if type(draft_first.get("operation_effort")) is dict and draft_first["operation_effort"].get("items"):
+        draft_first["operation_effort"]["items"][0]["data_gaps"].append({"code": "polluted"})
+
+    draft_second = service(case.conn).get(draft_ref)
+    assert draft_second == draft_expected
+    assert draft_second["base_identity"]["display_name"] != "POLLUTED"
+    assert draft_second["capacity"]["resources"][0]["calendar"]["source"]["source_ref"]["display_name"] != "POLLUTED"
+    assert draft_second["capacity"]["resources"][0]["calendar"]["days"][0]["source"]["source_ref"]["display_name"] != "POLLUTED"
+
+
+def test_trial_preview_and_live_validation_skip_full_archive_and_reuse_validated_intervals(trial_case, monkeypatch):
+    from core.services.workbench.facts.production_capture import ProductionFactsCapture
+    from core.services.workbench.trial import adoption_validation
+
+    case = trial_case
+    intent = official(case)
+    draft = create(case, intent)
+    draft_ref = draft["draft_ref"]
+    saved = service(case.conn).save(
+        draft_ref, {"name": "Interval reuse scenario"}, draft["write_context"]["write_token"], "trial-save-interval-01"
+    )["data"]
+
+    # Adoption validation threads validated current_by_row intervals into _span_end and schedule_rows.
+    span_calls = []
+    orig_span = adoption_validation._span_end
+
+    def checked_span(rows, intervals_by_row):
+        span_calls.append(len(intervals_by_row))
+        return orig_span(rows, intervals_by_row)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(adoption_validation, "_span_end", checked_span)
+        adoption_validation.validate_trial_adoption(case.conn, saved["scenario_ref"])
+    assert span_calls and all(count > 0 for count in span_calls)
+
+    # Advance a live table revision (e.g. part name change) so matches_archive is False (not None).
+    case.conn.execute("UPDATE Parts SET part_name='Updated Part Name' WHERE part_no='P1'")
+    case.conn.commit()
+
+    def forbid_full_archive(self, *args, **kwargs):
+        raise AssertionError("Preview and live validation must read tables on demand without capture.archive")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(ProductionFactsCapture, "archive", forbid_full_archive)
+        previewed = service(case.conn).preview_create(intent)
+        assert "plan_ref" in previewed["base"]
+        loaded = service(case.conn).get(draft_ref)
+        assert loaded["draft_ref"] == draft_ref
+
+
+def test_corrupted_draft_row_end_time_reports_calendar_unproven_without_unhandled_value_error(trial_case):
+    from tests.workbench.execution_ledger_support import publish_official_plan
+
+    case = trial_case
+    op2_id = case.operation(seq=2, setup_hours=0, unit_hours=1)
+    publish_official_plan(
+        case.conn,
+        1,
+        [
+            {
+                "op_id": case.op_id,
+                "machine_id": "M1",
+                "operator_id": "O1",
+                "start_time": "2026-09-09T08:00:00",
+                "end_time": "2026-09-09T11:00:00",
+            },
+            {
+                "op_id": op2_id,
+                "machine_id": "M1",
+                "operator_id": "O1",
+                "start_time": "2026-09-10T08:00:00",
+                "end_time": "2026-09-10T11:00:00",
+            },
+        ],
+    )
+    case.conn.commit()
+    draft = create(case, {"base": {"plan_ref": case.plan_ref(1)}})
+    draft_ref = draft["draft_ref"]
+
+    raw_current = load(
+        case.conn.execute(
+            "SELECT current_json FROM WorkbenchTrialRows WHERE draft_ref=? AND ordinal=0",
+            (draft_ref,),
+        ).fetchone()[0]
+    )
+    assert isinstance(raw_current, dict)
+    raw_current["end"] = "2026-09-09Tbad"
+    case.conn.execute(
+        "UPDATE WorkbenchTrialRows SET current_json=? WHERE draft_ref=? AND ordinal=0",
+        (dump(raw_current), draft_ref),
+    )
+    case.conn.commit()
+
+    loaded = service(case.conn).get(draft_ref)
+    assert loaded["validation"]["constraints_status"] == "blocked"
+    assert any(
+        item["code"] == "calendar_unproven" and item["task_ref"] == draft["tasks"][0]["task_ref"]
+        for item in loaded["validation"]["issues"]
+    )

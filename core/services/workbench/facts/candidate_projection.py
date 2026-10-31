@@ -14,13 +14,30 @@ _METRICS = ("overdue_count", "total_tardiness_hours", "makespan_hours", "changeo
 UNIFIED_GENERATION_VERSION = "unified_search_v1"
 
 
-def business_candidate_fields(artifact):
-    """Business facts every candidate of the unified search records; any other artifact is corrupt."""
-    fields = ("generation_policy_version", "representative_objectives", "evaluations", "origin",
-              "first_found_elapsed_ms", "search_evidence_ref")
-    if any(field not in artifact for field in fields) or artifact["generation_policy_version"] != UNIFIED_GENERATION_VERSION:
+_BUSINESS_CANDIDATE_FIELDS = (
+    "generation_policy_version",
+    "representative_objectives",
+    "evaluations",
+    "origin",
+    "first_found_elapsed_ms",
+    "search_evidence_ref",
+)
+_SUMMARY_CANDIDATE_FIELDS = tuple(field for field in _BUSINESS_CANDIDATE_FIELDS if field != "evaluations")
+
+
+def _validate_business_candidate_fields(artifact):
+    if (
+        any(field not in artifact for field in _BUSINESS_CANDIDATE_FIELDS)
+        or artifact["generation_policy_version"] != UNIFIED_GENERATION_VERSION
+    ):
         corrupt()
-    return {field: artifact[field] for field in fields}
+
+
+def business_candidate_fields(artifact, *, include_evaluations: bool = True):
+    """Business facts every candidate of the unified search records; any other artifact is corrupt."""
+    _validate_business_candidate_fields(artifact)
+    fields = _BUSINESS_CANDIDATE_FIELDS if include_evaluations else _SUMMARY_CANDIDATE_FIELDS
+    return {field: clone_json(artifact[field]) for field in fields}
 
 
 def dispositions(receipt, *, expected_refs):
@@ -145,12 +162,28 @@ def metrics(artifact):
     return result
 
 
-def candidate_summary(row, disposition, *, scheduled_op_ids):
-    artifact, gaps = row["artifact"], []
+def _check_candidate_row(row, artifact):
     if row["status"] != "completed" or artifact.get("status") != row["status"] or artifact.get("sequence") != row["sequence"]:
         corrupt()
-    label = text(artifact.get("label"), "label", gaps)
+
+
+def candidate_completeness(row, disposition, *, scheduled_op_ids):
+    artifact = row["artifact"]
+    _check_candidate_row(row, artifact)
+    _validate_business_candidate_fields(artifact)
+    return completion(row, disposition, scheduled_op_ids)
+
+
+def candidate_label(row):
+    return text(row["artifact"].get("label"), "label", [])
+
+
+def candidate_summary(row, disposition, *, scheduled_op_ids):
+    artifact, gaps = row["artifact"], []
+    _check_candidate_row(row, artifact)
+    business_fields = business_candidate_fields(artifact)
     completeness = completion(row, disposition, scheduled_op_ids)
+    label = text(artifact.get("label"), "label", gaps)
     status = "partial" if completeness == "partial" else row["status"]
     reasons = blocked_reasons()
     return {"candidate_ref": row["candidate_ref"], "run_ref": row["run_ref"], "label": label,
@@ -158,21 +191,20 @@ def candidate_summary(row, disposition, *, scheduled_op_ids):
             "completeness": completeness, "metrics": metrics(artifact),
             "metric_scopes": {"delivery": "completed_batches_only", "resources": "scheduled_results_only"},
             "capabilities": read_capabilities(), "blocked_reasons": reasons, "data_gaps": gaps,
-            **business_candidate_fields(artifact)}
+            **business_fields}
 
 
-def algorithm_facts(artifact):
+def algorithm_facts(artifact, *, business_fields):
     mode = text(artifact.get("algo_mode"), "algo_mode", [])
     strategy = text(artifact.get("used_strategy"), "used_strategy", [])
     return {"mode": mode, "mode_label": choice_label_map_for("algo_mode").get(mode) if mode is not None else None,
             "strategy": strategy, "strategy_label": choice_label_map_for("sort_strategy").get(strategy) if strategy is not None else None,
-            **business_candidate_fields(artifact),
+            **business_fields,
             "primary_objective": artifact["objective_name"], "target_objectives": list(artifact["target_objectives"])}
 
 
 def algorithm_summary(artifact):
-    fields = business_candidate_fields(artifact)
-    summary_fields = {k: clone_json(v) for k, v in fields.items() if k != "evaluations"}
+    summary_fields = business_candidate_fields(artifact, include_evaluations=False)
     mode = text(artifact.get("algo_mode"), "algo_mode", [])
     strategy = text(artifact.get("used_strategy"), "used_strategy", [])
     return {

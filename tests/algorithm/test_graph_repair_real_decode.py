@@ -4,15 +4,25 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import replace
 from datetime import timedelta
+from functools import partial
 from itertools import islice
 from types import SimpleNamespace
 
 from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithm_contracts.types import ScheduleResult
-from core.services.scheduler.run.optimizer.candidate_fingerprint import build_candidate_fingerprint
+from core.services.scheduler.run.optimizer.candidate_fingerprint import (
+    build_candidate_fingerprint,
+    schedule_content_key,
+)
 from core.services.scheduler.run.optimizer.graph.candidates import (
     PreparedDecisionFeatures,
     evaluate_graph_ready_candidate,
+)
+from core.services.scheduler.run.optimizer.graph.iterated_greedy import _IteratedGreedySearch
+from core.services.scheduler.run.optimizer.graph.iterated_greedy_contract import (
+    IteratedGreedyLimits,
+    ig_decode_profile,
+    new_iterated_greedy_report,
 )
 from core.services.scheduler.run.optimizer.graph.iterated_greedy_moves import _parent_from_candidate
 from core.services.scheduler.run.optimizer.graph.repair import EliteRepairPool
@@ -21,6 +31,7 @@ from core.services.scheduler.run.optimizer.graph.repair_decisions import (
     RepairDecision,
     iter_resource_decisions,
     prepare_repair_parent,
+    prepare_repair_scope,
 )
 from core.services.scheduler.run.optimizer.graph.repair_neighbors import RepairNeighborhood
 from core.services.scheduler.run.optimizer.graph.repair_portfolio import (
@@ -109,7 +120,8 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
     context["successor_op_ids_by_op_id"].update({99: {1}, 1: {2}})
     pool = {"machines_by_op_type": {"OT-BENCH": ["MC-BENCH", "MC-ALT"]},
             "machines_by_operator": {},
-            "operators_by_machine": {"MC-BENCH": ["OP-BENCH"], "MC-ALT": ["OP-ALT"]}}
+            "operators_by_machine": {"MC-BENCH": ["OP-BENCH"], "MC-ALT": ["OP-ALT"]},
+            "pair_rank": {}}
     downtime = {"MC-ALT": [(START_DT, START_DT + timedelta(hours=4))]}
     original = deepcopy((operations, context, pool, seed))
     metrics = enrich_graph_ready_v2_metrics(
@@ -152,7 +164,10 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
     assigned[2].machine_id, assigned[2].operator_id = "MC-BENCH", "OP-BENCH"
     plain_parent = run(assigned, decode_profile=base_profile, order=list(BASE_BATCH_ORDER))
     pairs_for = sessions[-1].native_preparation.qualified_resource_pairs
-    decoded_parent = prepare_repair_parent(plain_parent, operations, context, resource_pairs_for=pairs_for)
+    decoded_parent = prepare_repair_parent(
+        plain_parent,
+        scope=prepare_repair_scope(operations, context, resource_pairs_for=pairs_for),
+    )
 
     def unused_ranking(*args, **kwargs):
         raise AssertionError("Explicit decisions must not prepare discarded profile ranks")
@@ -189,8 +204,11 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
         "operation_order": [2, 4, 3, 1],
     })
     inherited = ((3, "MC-ALT", "OP-ALT"), (4, "MC-BENCH", "OP-BENCH"))
-    stale_prepared = prepare_repair_parent(stale_parent, mutable_operations, context, resource_pairs_for=pairs_for)
-    parent = _parent_from_candidate(stale_parent, graph_context=context, prepared=stale_prepared)
+    stale_prepared = prepare_repair_parent(
+        stale_parent,
+        scope=prepare_repair_scope(mutable_operations, context, resource_pairs_for=pairs_for),
+    )
+    parent = _parent_from_candidate(stale_parent, prepared=stale_prepared)
     assert parent is not None and parent.inherited == inherited
     assert parent.order.index(1) < parent.order.index(2)
     portfolio = build_repair_portfolio(
@@ -209,19 +227,22 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
         assert sum(left != right for left, right in zip(decision.resource_overrides, inherited)) == 1
 
     # Both basis variants consume the same decoded parent facts, including qualified selections.
+    from core.services.scheduler.run.optimizer import shared_decode
     from core.services.scheduler.run.optimizer.graph import repair_decisions
 
     counts = {}
     with monkeypatch.context() as patch:
-        for name in ("_operations_by_id", "_decoded_rows", "decoded_topological_order", "resource_timeline_groups",
-                     "decoded_batch_order"):
-            original_helper = getattr(repair_decisions, name)
+        # The decoded batch order is computed once at the decode boundary; parent preparation only reads it.
+        for module, name in ((repair_decisions, "_operations_by_id"), (repair_decisions, "_decoded_rows"),
+                             (repair_decisions, "decoded_topological_order"),
+                             (repair_decisions, "resource_timeline_groups"), (shared_decode, "decoded_batch_order")):
+            original_helper = getattr(module, name)
 
             def counted(*args, _name=name, _helper=original_helper, **kwargs):
                 counts[_name] = counts.get(_name, 0) + 1
                 return _helper(*args, **kwargs)
 
-            patch.setattr(repair_decisions, name, counted)
+            patch.setattr(module, name, counted)
 
         profiles = resolve_v2_profiles(seed=0, objective_name="min_overdue")
         successor = next(item for item in profiles if item.feature_basis == SUCCESSOR_WORKLOAD_BASIS
@@ -230,21 +251,36 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
                         and item.formula_version.startswith("graph_ready_v2"))
         elite_pool = EliteRepairPool(
             limits=EliteRepairLimits(), objective_name="min_overdue", operations=mutable_operations,
-            metrics_by_op_id=metrics, start_dt=START_DT, seed=0, best=stale_parent,
+            start_dt=START_DT, seed=0, best=stale_parent,
             report_state=OptimizationSearchReportState(objective_name="min_overdue", started_at=0.0),
             graph_context=context, clock=lambda: 0.0, deadline=10.0, decode_session=sessions[-1],
+            decision_features=features,
         )
         elite = elite_pool.make_elite(stale_parent, successor)
         prepared_parent = elite["prepared_parent"]
         elite_pool.add_basis_variant(elite, baseline)
         assert elite["prepared_parent"] is prepared_parent
         assert len(elite["neighborhood"].variants) == 2
+        other_elite = elite_pool.make_elite(dict(stale_parent), successor)
+        assert other_elite["prepared_parent"] is prepared_parent
+        rebuilt_wrapper = dict(
+            stale_parent,
+            archive_ref=SimpleNamespace(
+                entry_id=stale_parent["archive_ref"].entry_id,
+                evidence_revision=stale_parent["archive_ref"].evidence_revision,
+            ),
+        )
+        assert elite_pool.prepare_parent(rebuilt_wrapper) is prepared_parent
         # The iterated-greedy start pool builds an elite's parent from the elite's own preparation.
-        ig_parent = _parent_from_candidate(stale_parent, graph_context=context, prepared=elite["prepared_parent"])
+        ig_parent = _parent_from_candidate(stale_parent, prepared=elite["prepared_parent"])
         assert ig_parent.predecessors is prepared_parent.predecessors
         assert ig_parent.successors is prepared_parent.successors
         # The IG start and its start pool ask for the same candidate again: it is prepared only once.
         assert elite_pool.prepare_parent(stale_parent) is prepared_parent
+        elite_pool.sync_ig_candidates(rebuilt_wrapper)
+        assert elite_pool._parent_key(stale_parent) in elite_pool._prepared_parents
+        elite_pool.sync_ig_candidates()
+        assert not elite_pool._prepared_parents
         _, internal_overrides = repair_decisions.repair_decision_inputs(
             RepairDecision(parent.batch_order, parent.order, inherited), prepared_parent)
         assert internal_overrides == {3: ("MC-ALT", "OP-ALT"), 4: ("MC-BENCH", "OP-BENCH")}
@@ -268,9 +304,12 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
     event_operations[3].source = "external"
     event_parent = dict(stale_parent, results=[replace(row, machine_id=None, operator_id=None, end_time=row.start_time)
                                              if row.op_id == 3 else row for row in alternative["results"]])
-    event_prepared = prepare_repair_parent(event_parent, event_operations, context, resource_pairs_for=pairs_for)
+    event_prepared = prepare_repair_parent(
+        event_parent,
+        scope=prepare_repair_scope(event_operations, context, resource_pairs_for=pairs_for),
+    )
     assert event_prepared.inherited_resources == ()
-    assert list(iter_resource_decisions(operations=event_operations, batch_order=parent.batch_order,
+    assert list(iter_resource_decisions(batch_order=parent.batch_order,
                                         operation_order=parent.order, prepared_parent=event_prepared)) == []
     assert (operations, context, pool, seed) == original
 
@@ -279,7 +318,6 @@ def test_repair_positions_and_move_prefixes_preserve_exact_consumption(monkeypat
     from core.models.objective import target_objectives_for
     from core.services.scheduler.run.optimizer import neighborhood_move_support, neighborhood_moves
     from core.services.scheduler.run.optimizer.graph import operation_neighbors
-    from core.services.scheduler.run.optimizer.graph.repair_accounting import RepairWorkAccounting
     from core.services.scheduler.run.optimizer.shared_archive import SharedScheduleArchive
     from core.services.scheduler.run.optimizer.shared_budget import SharedSearchBudget
     from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession
@@ -323,11 +361,16 @@ def test_repair_positions_and_move_prefixes_preserve_exact_consumption(monkeypat
     )
     visit_report = OptimizationSearchReportState(objective_name="min_overdue", started_at=0.0)
     visit_pool = EliteRepairPool(
-        limits=EliteRepairLimits(), objective_name="min_overdue", operations=[], metrics_by_op_id={},
-        start_dt=START_DT, seed=0, best=None, report_state=visit_report, graph_context={},
+        limits=EliteRepairLimits(), objective_name="min_overdue", operations=[],
+        start_dt=START_DT, seed=0, best=None, report_state=visit_report,
+        graph_context={"predecessor_op_ids_by_op_id": {}, "successor_op_ids_by_op_id": {}},
         clock=lambda: 0.0, deadline=10.0, decode_session=session,
+        decision_features=PreparedDecisionFeatures({}, build_v2_common_rank_cache({})),
     )
-    elite = {"neighborhood": parent, "candidate": {}, "prepared_parent": None, "decision_offset": 0, "stream_offsets": {}, "portfolio_id": 1}
+    visit_candidate = {"archive_ref": SimpleNamespace(entry_id=1, evidence_revision=None), "results": [],
+                       "decoded_batch_order": ()}
+    elite = {"neighborhood": parent, "candidate": visit_candidate, "prepared_parent": None, "decision_offset": 0,
+             "stream_offsets": {}}
 
     def skipped_neighbor(**_kwargs):
         # A neighbour the shared session declines to decode (production skip reason) still yields once.
@@ -335,9 +378,9 @@ def test_repair_positions_and_move_prefixes_preserve_exact_consumption(monkeypat
 
     visit_kwargs = dict(
         elite=elite, state=SimpleNamespace(best=None), evaluate=skipped_neighbor,
-        clock=lambda: 0,
-        t_begin=0, attempts=[], improvement_trace=[], report_state=visit_report,
-        before_decode=lambda: None, improved_elites=[], accounting=RepairWorkAccounting(),
+        report_state=visit_report,
+        improved_elites=[],
+        active_groups=([elite],),
     )
     expanded.clear()
     assert len(list(repair._repair_one_elite(visit_pool, **visit_kwargs))) == 8
@@ -345,7 +388,6 @@ def test_repair_positions_and_move_prefixes_preserve_exact_consumption(monkeypat
     expanded.clear()
     assert len(list(repair._repair_one_elite(visit_pool, **visit_kwargs))) == 1
     assert expanded == [8] and elite["decision_offset"] == 9
-    assert visit_pool.report["repair_pruning_report"]["generated_candidates"] == 9
 
     generated = []
 
@@ -381,7 +423,7 @@ def test_repair_positions_and_move_prefixes_preserve_exact_consumption(monkeypat
     def invalid_moves():
         for index in range(33):
             inspected.append(index)
-            yield "operation_time_insert", 1, 1
+            yield "operation_time_insert", 1, 99
 
     assert list(operation_neighbors._bounded_operation_orders(operation_order, ranks, predecessors, invalid_moves(), 8)) == []
     assert inspected == list(range(32))
@@ -392,8 +434,9 @@ def test_repair_positions_and_move_prefixes_preserve_exact_consumption(monkeypat
                for index, (batch, kind) in enumerate((("BA", "A"), ("blank", ""), ("BB", "B"), ("BC", "C")))]
     batch_map = {batch_id: make_batch(batch_id=batch_id, due_date=due)
                  for batch_id, due in (("BA", "2025-12-31"), ("BB", "2026-01-01"), ("BC", None))}
-    counts = {"sort_key": 0, "due": 0, "tardy": 0}
-    for name, key in (("result_time_key", "sort_key"), ("batch_due_date", "due"), ("most_tardy_batch", "tardy")):
+    counts = {"sort_key": 0, "due": 0, "tardy": 0, "finish": 0}
+    for name, key in (("result_time_key", "sort_key"), ("batch_due_date", "due"), ("most_tardy_batch", "tardy"),
+                      ("finish_by_batch", "finish")):
         helper = getattr(neighborhood_move_support, name)
 
         def counted(*args, _key=key, _helper=helper, **kwargs):
@@ -401,17 +444,23 @@ def test_repair_positions_and_move_prefixes_preserve_exact_consumption(monkeypat
             return _helper(*args, **kwargs)
 
         monkeypatch.setattr(neighborhood_move_support, name, counted)
-        if name == "most_tardy_batch":
+        if name in ("most_tardy_batch", "finish_by_batch"):
             monkeypatch.setattr(neighborhood_moves, name, counted)
-    changed = neighborhood_moves.changeover_block_move(["BA", "BB", "BC"], results)
+    result_facts = neighborhood_move_support.LocalSearchResultFacts(results, batches=batch_map)
+    changed = neighborhood_moves.changeover_block_move(["BA", "BB", "BC"], results, result_facts=result_facts)
     assert changed.batch_order == ("BA", "BC", "BB")
     assert counts["sort_key"] == len(results)
-    window = neighborhood_moves.time_window_move(["BC", "BB", "BA"], results, batch_map)
+    window = neighborhood_moves.time_window_move(["BC", "BB", "BA"], results, batch_map, result_facts=result_facts)
     assert window.batch_order == ("BA", "BC", "BB")
     assert counts["due"] == len(batch_map)
-    tardy = neighborhood_moves.tardy_window_move(["BC", "BB", "BA"], results, batch_map)
+    assert counts["finish"] == 1
+    tardy = neighborhood_moves.tardy_window_move(["BC", "BB", "BA"], results, batch_map, result_facts=result_facts)
     assert tardy.batch_order == window.batch_order
     assert counts["tardy"] == 1
+    assert counts["finish"] == 1
+    assert counts["due"] == len(batch_map)
+    assert neighborhood_moves.changeover_block_move(["BA", "BB", "BC"], results, result_facts=result_facts) == changed
+    assert counts["sort_key"] == len(results)
 
     # Graph repair changeover signals ignore point events, do not bridge across unknown types,
     # and require the same nonblank machine on critical-block pairs.
@@ -474,7 +523,7 @@ def test_optimizer_changeover_signals_follow_type_identity_and_skip_point_events
     # Joint-window switch pressure: point rows stay resource neighbours but never count as switches.
     rows = [row(1, "TA", "N1", 0), row(2, "TB", "N1", 1, hours=0), row(3, "TA", "N2", 1), row(4, "TB", "N2", 2),
             row(5, None, "N2", 3), row(6, "TA", "N2", 4)]
-    reference = SimpleNamespace(order=(1, 2, 3, 4, 5, 6), candidate={"results": rows})
+    reference = SimpleNamespace(order=(1, 2, 3, 4, 5, 6), candidate={"results": rows}, features=None)
     index = _WindowIndex(SimpleNamespace(_require_budget=lambda: None), reference)
     assert {op_id: index.switches[op_id] for op_id in reference.order} == {1: 0, 2: 0, 3: 1, 4: 1, 5: 0, 6: 0}
     assert 2 in index.adjacent[1] and 3 in index.adjacent[2]
@@ -493,6 +542,10 @@ def test_optimizer_changeover_signals_follow_type_identity_and_skip_point_events
     )
     screen = InsertionScreen(search, reference)
     assert screen.supported and 2 in screen.rows
+    other_search = SimpleNamespace(parent=search.parent, metrics=search.metrics, report={"objective_name": "min_overdue"})
+    reused_screen = InsertionScreen(other_search, reference)
+    assert reused_screen.search is other_search
+    assert reused_screen.rows is screen.rows and reused_screen.due is screen.due and reused_screen.weights is screen.weights
     ends, machines, families = {}, {}, {}
     switches = screen._advance_state(reference.order, ends, machines, {}, {}, families, 0)
     assert ends[2] == 1.0 and ends[3] == 2.0
@@ -515,3 +568,110 @@ def test_graph_ready_type_group_rank_follows_type_identity_not_label():
     rank ={op.id: metrics[op.id]["changeover_family_rank"] for op in operations if op.id in metrics}
     assert rank[operations[0].id] != rank[operations[1].id]
     assert {rank[op.id] for op in operations[2:] if op.id in rank} == {2}
+
+
+def _same_content_decodes():
+    """Separate resources make every priority order decode one schedule, enumerated in its own pick order."""
+    from core.models.objective import target_objectives_for
+    from core.services.scheduler.run.optimizer.multi_start import _evaluate_multi_start_candidate
+    from core.services.scheduler.run.optimizer.shared_archive import SharedScheduleArchive
+    from core.services.scheduler.run.optimizer.shared_budget import SharedSearchBudget
+    from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession
+
+    operations, batches = graph_ready_benchmark_operations(), graph_ready_benchmark_batches()
+    context = graph_ready_benchmark_context()
+    for op in operations:
+        op.machine_id, op.operator_id = f"M-{op.id}", f"O-{op.id}"
+    targets = target_objectives_for("min_overdue")
+    archive = SharedScheduleArchive("min_overdue", targets, [op.id for op in operations], batches)
+    session = SharedDecodeSession(
+        archive=archive, budget=SharedSearchBudget(clock=lambda: 0.0, started_at=0.0, deadline=10.0,
+                                                   target_objectives=targets, configured_seconds=10),
+        scheduler=_scheduler(), operations=operations, batches=batches, seed_results=[], downtime_map={},
+        resource_pool=None, graph_ready_context=context, clock=lambda: 0.0, started_at=0.0, deadline=10.0,
+    )
+    metrics = enrich_graph_ready_v2_metrics(
+        context["node_metrics_by_op_id"], operations=operations, batches=batches, start_dt=START_DT,
+        seed_results=[], resource_pool=None, downtime_map={}, graph_ready_context=context,
+        calendar_service=ContinuousCalendar(), deadline=float("inf"), clock=lambda: 0.0,
+    )
+    assert metrics is not None
+    features = PreparedDecisionFeatures(metrics, build_v2_common_rank_cache(metrics))
+    plain = _evaluate_multi_start_candidate(
+        strategy=SortStrategy.PRIORITY_FIRST, params={}, start_dt=START_DT, end_date=None,
+        order=list(reversed(batches)), dispatch_mode="batch_order", dispatch_rule="slack", resource_pool=None,
+        objective_name="min_overdue", optimizer_algo_stats=None, readiness_gate_enabled=False,
+        graph_ready_context=None, decode_session=session,
+    )
+    report = OptimizationSearchReportState(objective_name="min_overdue", started_at=0.0)
+    pool = EliteRepairPool(
+        limits=EliteRepairLimits(), objective_name="min_overdue", operations=operations, start_dt=START_DT,
+        seed=0, best=plain, report_state=report, graph_context=context, clock=lambda: 0.0, deadline=10.0,
+        decode_session=session, decision_features=features,
+    )
+    profile = next(item for item in resolve_v2_profiles(seed=0, objective_name="min_overdue")
+                   if item.slug == "v2_successor_edd")
+    evaluate = partial(
+        evaluate_graph_ready_candidate, strategy=SortStrategy.PRIORITY_FIRST, params={}, start_dt=START_DT,
+        end_date=None, dispatch_rule="slack", resource_pool=None, objective_name="min_overdue",
+        optimizer_algo_stats=None, readiness_gate_enabled=False, version=0, clock=lambda: 0.0,
+        prepared_decision_features=features,
+    )
+    return SimpleNamespace(archive=archive, session=session, batches=batches, context=context, metrics=metrics,
+                           plain=plain, report=report, pool=pool, profile=profile, evaluate=evaluate)
+
+
+def test_same_content_parents_share_one_preparation_whatever_their_enumeration_order():
+    case = _same_content_decodes()
+    plain, pool = case.plain, case.pool
+    graph = case.evaluate(profile=case.profile, order=list(case.batches), decode_session=case.session)
+    # One content identity reached by an ordinary and a graph decode, each in its own native enumeration.
+    assert schedule_content_key(plain["results"]) == schedule_content_key(graph["results"])
+    assert plain["archive_ref"].entry_id is not None
+    assert plain["archive_ref"].entry_id == graph["archive_ref"].entry_id
+    assert [row.op_id for row in plain["results"]] != [row.op_id for row in graph["results"]]
+    assert plain["results"] is not graph["results"]
+
+    pool.observe(graph, case.profile, fingerprint=pool.fingerprint(graph))
+    elite = pool.elites[0]
+    assert elite["candidate"] is graph
+    assert pool.prepare_parent(plain) is elite["prepared_parent"]
+    assert len(pool._prepared_parents) == 1
+
+
+def test_full_validation_keeps_its_own_enumeration_when_its_content_is_archived():
+    """A resumed trial reaching archived content in another enumeration still validates bit for bit."""
+    case = _same_content_decodes()
+    plain, archive = case.plain, case.archive
+    entry_id = plain["archive_ref"].entry_id
+    parent = _parent_from_candidate(plain, prepared=case.pool.prepare_parent(plain))
+    assert parent is not None
+    search = _IteratedGreedySearch(
+        limits=IteratedGreedyLimits(due_date_seed=False, checkpoint_count=3, max_decodes=20), parent=parent,
+        profile=ig_decode_profile(case.profile), pool=case.pool, evaluate=case.evaluate,
+        metrics_by_op_id=case.metrics, start_dt=START_DT, seed=0, deadline=10.0, clock=lambda: 0.0,
+        report_state=case.report, report=new_iterated_greedy_report(objective_name="min_overdue"),
+        graph_context=case.context, decode_session=case.session,
+    )
+    search.best = plain
+    reference = search._decode_entry((1, 2, 3, 4))
+    assert reference is not None
+    trial_order = (1, 3, 2, 4)
+    resume = search.checkpoints.best_for(reference.checkpoints, base_order=reference.order, trial_order=trial_order)
+    assert resume is not None and resume.prefix_length == 1
+    trial = search._decode(trial_order, resume=resume)
+    assert not trial["decode_receipt"]["verified"]
+    # The resumed trial reaches the archived content, but enumerates it differently from the archived decode.
+    archived = archive.results(entry_id)
+    assert trial["archive_ref"].entry_id == entry_id
+    assert schedule_content_key(trial["results"]) == schedule_content_key(archived)
+    assert [row.op_id for row in trial["results"]] != [row.op_id for row in archived]
+
+    search._remember_output(trial_order, trial)
+    verified = search._decode_entry(trial_order)
+    assert verified is not None
+    assert verified.candidate["decode_receipt"]["execution_kind"] == "validation_decode"
+    assert verified.candidate["archive_ref"].entry_id == entry_id
+    assert verified.candidate["results"] is not archived
+    assert [row.op_id for row in verified.candidate["results"]] == [row.op_id for row in trial["results"]]
+    assert not search.pending_outputs

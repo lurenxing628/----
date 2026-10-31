@@ -319,3 +319,59 @@ def test_decode_reports_rejects_duplicate_sheets_element_in_workbook():
         decode_reports(target.getvalue())
     assert exc_info.value.code == "invalid_input"
     assert exc_info.value.status == 422
+
+
+@pytest.mark.parametrize(
+    ("sheet_patch", "expected_message"),
+    [
+        (
+            lambda xml_text: xml_text.replace(
+                "</sheetData>",
+                '</sheetData><mergeCells count="1"><mergeCell ref="A1:B1"/></mergeCells>',
+                1,
+            ),
+            "第一张报工记录表里不能有合并单元格。",
+        ),
+        (
+            lambda xml_text: xml_text.replace(
+                "</sheetData>",
+                '<row r="5002"><c r="A5002" t="inlineStr"><is><t>R-5002</t></is></c></row></sheetData>',
+                1,
+            ),
+            "最多允许 5000 行，且原始行号不能重复或倒序。",
+        ),
+    ],
+)
+def test_decode_reports_validates_first_sheet_even_when_renamed_to_non_xml_extension(
+    sheet_patch, expected_message
+):
+    xlsx = encode_reports([_sample_row()], summaries=[], metadata=[])
+    source = BytesIO(xlsx)
+    target = BytesIO()
+    with ZipFile(source, "r") as zin, ZipFile(target, "w", ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "[Content_Types].xml":
+                data = (
+                    data.decode("utf-8")
+                    .replace("/xl/worksheets/sheet1.xml", "/xl/worksheets/sheet1.bin")
+                    .encode("utf-8")
+                )
+                zout.writestr(item, data)
+            elif item.filename == "xl/_rels/workbook.xml.rels":
+                data = (
+                    data.decode("utf-8")
+                    .replace("worksheets/sheet1.xml", "worksheets/sheet1.bin")
+                    .encode("utf-8")
+                )
+                zout.writestr(item, data)
+            elif item.filename == "xl/worksheets/sheet1.xml":
+                patched_xml = sheet_patch(data.decode("utf-8"))
+                zout.writestr("xl/worksheets/sheet1.bin", patched_xml.encode("utf-8"))
+            else:
+                zout.writestr(item, data)
+    with pytest.raises(WorkbenchCommandRejected) as exc_info:
+        decode_reports(target.getvalue())
+    assert exc_info.value.code == "invalid_input"
+    assert exc_info.value.status == 422
+    assert str(exc_info.value) == expected_message

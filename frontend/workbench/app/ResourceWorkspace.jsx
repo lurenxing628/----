@@ -192,7 +192,7 @@
       setDialog({ ...history.pop(), history }); setContextError(null); setEditContext(null); setContextReview(null);
     }
     function edit(action, stockOnly = false) {
-      setDialog(current => ({ ...current, action, stockOnly }));
+      if (command.reset()) setDialog(current => ({ ...current, action, stockOnly }));
     }
     function close() { if (!command.locked && !contextBusy && command.reset()) { setDialog(null); setEditContext(null); setContextReview(null); refreshGeneration.current++; } }
     function continueNavigation() {

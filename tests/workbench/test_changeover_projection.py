@@ -70,25 +70,20 @@ def test_actual_type_identity_drives_shared_events_and_runtime_result_seed_count
                               start_time=first.start_time, end_time=first.end_time, op_id=first.op_id,
                               op_type_name=first.op_type_name, op_type_id=first.op_type_id, seed_mode=False)
     same = slot_changeover_penalty(state, op=operations[1], machine_id="M1", start=results[1].start_time,
-                                    end=results[1].end_time, legacy_penalty=1)
+                                    end=results[1].end_time)
     different = slot_changeover_penalty(state, op=make_algo_op(id=3, op_type_id="T2", op_type_name="车削"),
-                                         machine_id="M1", start=results[1].start_time, end=results[1].end_time,
-                                         legacy_penalty=0)
+                                         machine_id="M1", start=results[1].start_time, end=results[1].end_time)
     assert same == 0 and different == 1
     point = datetime.fromisoformat(at("09:30:00"))
     update_machine_last_state(last_end_by_machine=ends, last_op_type_by_machine=state, machine_id="M1",
                               start_time=point, end_time=point, op_id=4, op_type_name="磨削", op_type_id="T3", seed_mode=False)
-    assert slot_changeover_penalty(state, op=operations[1], machine_id="M1", start=point, end=results[2].end_time,
-                                    legacy_penalty=1) == 0
-    assert slot_changeover_penalty(state, op=operations[2], machine_id="M1", start=point, end=point,
-                                    legacy_penalty=1) == 0
+    assert slot_changeover_penalty(state, op=operations[1], machine_id="M1", start=point, end=results[2].end_time) == 0
+    assert slot_changeover_penalty(state, op=operations[2], machine_id="M1", start=point, end=point) == 0
     point_only = MachineTypeState()
     update_machine_last_state(last_end_by_machine={}, last_op_type_by_machine=point_only, machine_id="M1",
                               start_time=point, end_time=point, op_id=4, op_type_name="磨削", op_type_id="T3", seed_mode=False)
-    assert slot_changeover_penalty(point_only, op=operations[1], machine_id="M1", start=point, end=results[2].end_time,
-                                    legacy_penalty=1) == 0
-    assert slot_changeover_penalty({"M1": "磨削"}, op=operations[1], machine_id="M1", start=point,
-                                    end=results[2].end_time, legacy_penalty=1) == 1
+    assert slot_changeover_penalty(point_only, op=operations[1], machine_id="M1", start=point, end=results[2].end_time) == 0
+    assert slot_changeover_penalty(None, op=operations[1], machine_id="M1", start=point, end=results[2].end_time) == 0
 
 
 def test_window_uses_next_start_and_retains_full_sequence_predecessor():

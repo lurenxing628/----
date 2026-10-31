@@ -5,14 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict
 
-from core.errors import ValidationError
-
-from .acceptance import ACCEPTANCE_IMPROVE_ONLY
-
-PROFILE_BASELINE = "baseline"
-PROFILE_VNS_SA = "vns_sa"
-PROFILE_GRAPH_READY = "graph_ready"
-
 ITERATION_CEILING = 5000
 RESTART_FLOOR = 50
 RESTART_CEILING = 800
@@ -40,23 +32,10 @@ def derive_grasp_ig_limits(time_budget_seconds: int) -> Dict[str, Any]:
     }
 
 
-def _profile_for_algo_mode(algo_mode: str) -> str:
-    text = str(algo_mode).strip().lower()
-    if text == "improve":
-        return PROFILE_VNS_SA
-    if text == "greedy":
-        return PROFILE_BASELINE
-    raise ValidationError(
-        f"未知的计算模式“{algo_mode}”，无法确定搜索方案。",
-        field="algo_mode",
-    )
-
-
 @dataclass(frozen=True)
 class CandidateProfile:
     """单次 optimizer 运行的搜索 profile 合同。"""
 
-    acceptance: str
     candidate_construction: Dict[str, Any]
     ortools_warmstart_enabled: bool
 
@@ -68,23 +47,14 @@ def build_candidate_profile(
     ortools_enabled: bool,
     graph_sgs_required: bool,
 ) -> CandidateProfile:
-    """解析并校验搜索 profile 合同。"""
-    profile = _profile_for_algo_mode(algo_mode)
-    if graph_sgs_required and profile == PROFILE_VNS_SA:
-        profile = PROFILE_GRAPH_READY
-
-    configured_budget = int(time_budget_seconds)
-    if configured_budget < 1:
-        raise ValidationError("时间预算必须为不小于 1 的整数。", field="time_budget_seconds")
-
-    enabled = profile in (PROFILE_VNS_SA, PROFILE_GRAPH_READY)
+    """解析搜索 profile 合同。"""
+    enabled = algo_mode == "improve"
     candidate_construction = (
-        derive_grasp_ig_limits(configured_budget)
-        if enabled and profile != PROFILE_GRAPH_READY
+        derive_grasp_ig_limits(time_budget_seconds)
+        if enabled and not graph_sgs_required
         else {}
     )
     return CandidateProfile(
-        acceptance=ACCEPTANCE_IMPROVE_ONLY,
         candidate_construction=candidate_construction,
         ortools_warmstart_enabled=bool(ortools_enabled) and enabled,
     )
@@ -93,9 +63,6 @@ def build_candidate_profile(
 __all__ = [
     "CandidateProfile",
     "ITERATION_CEILING",
-    "PROFILE_BASELINE",
-    "PROFILE_GRAPH_READY",
-    "PROFILE_VNS_SA",
     "RESTART_CEILING",
     "RESTART_FLOOR",
     "build_candidate_profile",

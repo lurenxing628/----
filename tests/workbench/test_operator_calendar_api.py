@@ -62,10 +62,16 @@ def command(client, ref, action, payload, token, key="operator-calendar-request-
 
 def test_save_one_day_then_clear_it(client):
     ref = ref_of(client, "OP001")
-    token = month(client, ref)["write_context"]["write_token"]
+    initial_resp = client.get(BASE + ref + "/calendar/month", query_string={"year": 2026, "month": 10}).get_json()
+    token = initial_resp["data"]["write_context"]["write_token"]
+    snapshot_ref = initial_resp["meta"]["snapshot_ref"]
+    repeated = client.get(BASE + ref + "/calendar/month", query_string={"year": 2026, "month": 10, "snapshot_ref": snapshot_ref})
+    assert repeated.status_code == 200
     saved = command(client, ref, "upsert", {"date": DAY, "fields": WORK}, token)
     assert saved.status_code == 200, saved.get_data(as_text=True)
     assert saved.get_json()["result"] == "committed"
+    stale = client.get(BASE + ref + "/calendar/month", query_string={"year": 2026, "month": 10, "snapshot_ref": snapshot_ref})
+    assert stale.status_code == 409 and stale.get_json()["error"]["code"] == "snapshot_stale"
     row = stored(client, "OP001", DAY)
     assert row is not None
     assert row["shift_start"] == "09:00" and row["shift_end"] == "17:30" and row["shift_hours"] == 8.5
@@ -204,3 +210,27 @@ def test_range_preview_read_failure_reports_nothing_committed(client):
     response = client.post(BASE + ref + "/calendar/range-preview",
                            json={"input": {"start_date": "2026-10-01", "end_date": "2026-10-07"}})
     assert_read_failure(response)
+
+
+def test_month_and_range_preview_avoid_resource_dependency_queries_and_prebind_stale_token(client, monkeypatch):
+    from core.services.workbench.resource.operator_calendars import WorkbenchOperatorCalendarService
+    from core.services.workbench.resource.table_facts import capture_change_facts
+
+    monkeypatch.setattr(
+        "core.services.workbench.resource.queries.capture_change_facts",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("operator calendar should not capture resource change facts")),
+    )
+    ref = ref_of(client, "OP001")
+    initial = client.get(BASE + ref + "/calendar/month", query_string={"year": 2026, "month": 10}).get_json()
+    snapshot_ref = initial["meta"]["snapshot_ref"]
+    token = initial["data"]["write_context"]["write_token"]
+    assert command(client, ref, "upsert", {"date": DAY, "fields": WORK}, token).status_code == 200
+    assert capture_change_facts is not None
+
+    monkeypatch.setattr(
+        WorkbenchOperatorCalendarService,
+        "month",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("stale month token should fail before reading month")),
+    )
+    stale = client.get(BASE + ref + "/calendar/month", query_string={"year": 2026, "month": 10, "snapshot_ref": snapshot_ref})
+    assert stale.status_code == 409 and stale.get_json()["error"]["code"] == "snapshot_stale"

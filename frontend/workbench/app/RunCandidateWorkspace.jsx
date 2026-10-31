@@ -174,7 +174,7 @@
             <div role="tabpanel" id="rc-detail-panel" aria-labelledby={'rc-detail-tab-' + tab}>{tab === 'history' ? <><C.ErrorBox error={historyError} />{!historyPaused && historyRead.result && !historyError && <Analysis.History data={historyRead.result.data}
               onPlan={plan => onNavigate('analysis', { ...historyOrigin, plan_ref: plan.plan_ref })} />}</> :
               tab === 'delivery' ? analysis && <Analysis.Batches key={analysis.candidate_ref} data={analysis} onLast={task => { lastOperation(task); setTab('tasks'); }}
-                onBatch={row => onNavigate('gantt', { ...historyOrigin, run_ref: analysis.run_ref, candidate_ref: analysis.candidate_ref, batch_ref: row.batch_ref, candidate_tab: 'tasks' })} /> : tab === 'unplanned' && shown.unplanned_operations === null ? <div className="rc-notice">未记录排产时的未排工序明细。</div> :
+                onBatch={row => onNavigate('gantt', { ...historyOrigin, run_ref: analysis.run_ref, candidate_ref: analysis.candidate_ref, batch_ref: row.batch_ref, candidate_tab: 'tasks' })} /> :
               <window.RunCandidateGantt.TaskList key={tab + ':' + query + ':' + result.meta.snapshot_ref} tasks={tab === 'tasks' ? tasks : unplanned} selected={chosen}
                 onDetails={task => { setSelected({ task, result }); setDetailsOpen(true); }} planned={tab === 'tasks'} />}</div></section>
         </div>{!['delivery', 'history'].includes(tab) && (view !== 'gantt' || detailsOpen) && <C.Detail task={chosen} data={shown} prepared={prepared} onRelated={taskRef => lastOperation({ row_ref: taskRef })}

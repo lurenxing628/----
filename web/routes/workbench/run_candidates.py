@@ -80,7 +80,7 @@ def run_candidate_export(candidate_ref):
     if fmt not in ("csv", "xlsx") or not token:
         reject("invalid_input", "没有选好导出格式，或数据已更新，没有开始下载。请点「刷新」后重新点「导出」。", 400)
     scope = _scope(candidate_ref)
-    data, state = WorkbenchRunCandidateQueryService(g.db).workspace(scope)
+    data, state = WorkbenchRunCandidateQueryService(g.db).export_workspace(scope)
     snapshot = bind_read_snapshot(scope.scope(), state, token)
     download = write_run_candidate_export(data, snapshot, fmt)
     if len(download.content) > MAX_RESPONSE_BYTES:

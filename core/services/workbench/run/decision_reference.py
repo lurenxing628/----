@@ -11,4 +11,5 @@ def official_reference_metrics(source, *, metric_keys=None):
         return source.memberships.expand(raw_metrics), source.memberships.expand(source.official["coverage"])
     return project_official_core_metrics(source.analysis_tasks("reference"), source.scope["operation_refs"],
         source.reference_deferred_refs, source.baseline["state"] == "available",
-        source.completion.delivery("reference"), metric_keys=metric_keys)
+        source.completion.delivery("reference"), task_intervals=source.task_intervals("reference"),
+        metric_keys=metric_keys)

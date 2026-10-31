@@ -127,3 +127,184 @@ def test_delete_cross_page_explicit_refs_survive_filter_and_match_actual_js_cont
     assert set(codes[1:-1]) <= remaining
     for table in ("Batches", "BatchOperations", "Schedule", "Suppliers", "ExternalGroups"):
         assert api.snapshot()[1][table] == before[1][table]
+
+
+def test_single_part_detail_prebinds_before_projection_and_tracks_shared_identity_revisions(collection_api, monkeypatch):
+    from core.services.workbench.process.queries import WorkbenchProcessQueryService
+
+    api = collection_api
+    with api.database() as conn:
+        conn.executemany(
+            "INSERT INTO Suppliers(supplier_id,name,default_days,status) VALUES (?,?,3.0,'active')",
+            [(f"BULK-SUP-{idx:04d}", f"Bulk Supplier {idx:04d}") for idx in range(1001)],
+        )
+        conn.commit()
+
+    ref = api.ref(code="PROC-001")
+    queries = []
+    orig_init = WorkbenchProcessQueryService.__init__
+
+    def traced_init(self, conn, *args, **kwargs):
+        conn.set_trace_callback(queries.append)
+        orig_init(self, conn, *args, **kwargs)
+
+    monkeypatch.setattr(WorkbenchProcessQueryService, "__init__", traced_init)
+    first_detail = success(api.client.get(f"/api/workbench/v1/entities/part/{ref}"))
+    token = first_detail["meta"]["snapshot_ref"]
+    assert len(first_detail["data"]["operations"]) == 3
+    # Valid detail read must not scan all 1,001 suppliers or full OpTypes / WorkbenchOpTypePolicies tables.
+    assert not any('SELECT * FROM "Suppliers" ORDER BY rowid' in sql for sql in queries)
+    assert not any('SELECT * FROM "OpTypes" ORDER BY rowid' in sql for sql in queries)
+    assert not any('SELECT * FROM "WorkbenchOpTypePolicies"' in sql for sql in queries)
+
+    # Advance a shared dictionary table so the token becomes stale.
+    with api.database() as conn:
+        conn.execute("UPDATE Suppliers SET name='Updated Bulk Supplier' WHERE supplier_id='BULK-SUP-0000'")
+        conn.commit()
+
+    queries.clear()
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            WorkbenchProcessQueryService,
+            "resolved_detail",
+            lambda *a, **kw: pytest.fail("Stale process_detail must reject before resolved_detail projection"),
+        )
+        stale_res = api.client.get(f"/api/workbench/v1/entities/part/{ref}", query_string={"snapshot_ref": token})
+    assert rejected(stale_res, "snapshot_stale", 409)
+    assert not any("FROM Suppliers" in sql or 'FROM "Suppliers"' in sql for sql in queries)
+    assert not any('FROM "WorkbenchSupplierProfiles"' in sql for sql in queries)
+    assert not any('FROM "WorkbenchSupplierOpTypes"' in sql for sql in queries)
+
+    # Missing part ref still returns 404 before snapshot binding.
+    missing_res = api.client.get(f"/api/workbench/v1/entities/part/{'f' * 48}", query_string={"snapshot_ref": token})
+    assert rejected(missing_res, "entity_not_found", 404)
+
+    # Updating op_type or supplier identity in WorkbenchEntityRefs bumps op_types / suppliers revision and invalidates snapshot.
+    for kind, key in (("op_type", "PROC-IN"), ("supplier", "PROC-S")):
+        fresh_token = success(api.client.get(f"/api/workbench/v1/entities/part/{ref}"))["meta"]["snapshot_ref"]
+        with api.database() as conn:
+            conn.execute(
+                "UPDATE WorkbenchEntityRefs SET revision = revision + 1 WHERE kind = ? AND entity_key = ?",
+                (kind, key),
+            )
+            conn.commit()
+        after_identity_change = api.client.get(
+            f"/api/workbench/v1/entities/part/{ref}", query_string={"snapshot_ref": fresh_token}
+        )
+        assert rejected(after_identity_change, "snapshot_stale", 409)
+
+
+def test_legacy_padded_part_ref_can_be_deleted_and_raw_facts_skip_workflow_enrichment(collection_api, monkeypatch):
+    from core.services.process import workflow_state
+    from core.services.workbench.process import queries as process_queries
+    from core.services.workbench.process.file_export import select_export_parts
+    from core.services.workbench.process.queries import WorkbenchProcessQueryService
+    from tests.workbench.identity_metadata_support import insert_row
+
+    api = collection_api
+    with api.database() as conn:
+        insert_row(conn, "Parts", dict(part_no=" PAD-PART-1 ", part_name="padded-part"))
+        conn.commit()
+        padded_ref = conn.execute(
+            "SELECT ref FROM WorkbenchEntityRefs WHERE kind='part' AND entity_key=' PAD-PART-1 ' AND active=1"
+        ).fetchone()[0]
+
+    preview_doc = success(api.send("bulk-preview", api.bound([padded_ref], {})))["data"]
+    assert preview_doc["summary"]["delete"] == 1 and preview_doc["summary"]["rejected"] == 0
+    delete_res = api.send(
+        "bulk-confirm",
+        {
+            "request_key": "delete-padded-part-01",
+            "write_token": preview_doc["write_context"]["write_token"],
+            "input": {"preview_ref": preview_doc["preview_ref"]},
+        },
+    )
+    assert success(delete_res)["result"] == "committed"
+    assert rejected(api.client.get(f"/api/workbench/v1/entities/part/{padded_ref}"), "entity_not_found", 404)
+
+    # raw_facts for explicit export and route export must not call workflow_snapshot.
+    with api.database() as conn:
+        reader = WorkbenchProcessQueryService(conn)
+        with monkeypatch.context() as patch:
+            patch.setattr(
+                process_queries,
+                "workflow_snapshot",
+                lambda *a, **kw: pytest.fail("Explicit export must use raw_facts without workflow_snapshot"),
+            )
+            with reader.read_snapshot():
+                parts, facts = select_export_parts(
+                    reader,
+                    {"selection": "explicit", "refs": [api.ref(code="PROC-001")], "scope": {}},
+                    scope={},
+                )
+                assert len(parts) == 1 and "workflow" not in facts
+
+        # Single-part resolved_detail constructs TemplateSourceFacts only once.
+        source_calls = []
+        orig_build = workflow_state.build_template_source_facts
+
+        def counted_build(*args, **kwargs):
+            source_calls.append(True)
+            return orig_build(*args, **kwargs)
+
+        with monkeypatch.context() as patch:
+            patch.setattr(process_queries, "build_template_source_facts", counted_build)
+            with reader.read_snapshot():
+                reader.detail(api.ref(code="PROC-001"))
+        assert len(source_calls) == 1
+
+    # Pure text route-file preview/import (part_name / remark only, no route change) must not load supplier catalogs.
+    with api.database() as conn:
+        conn.executemany(
+            "INSERT INTO Suppliers(supplier_id,name,default_days,status) VALUES (?,?,3.0,'active')",
+            [(f"ROUTE-SUP-{idx:04d}", f"Route Supplier {idx:04d}") for idx in range(50)],
+        )
+        conn.commit()
+        from core.services.workbench.process.files import WorkbenchProcessFileService
+
+        service = WorkbenchProcessFileService(conn)
+        csv_bytes = "图号,名称,备注\r\n'PROC-001,'更新后的零件名,'更新后的备注\r\n".encode("utf-8-sig")
+        queries = []
+        conn.set_trace_callback(queries.append)
+        try:
+            preview, extra = service.preview_import("route", csv_bytes, file_format="csv")
+        finally:
+            conn.set_trace_callback(None)
+        preview_doc = preview.as_dict()
+        assert preview_doc["rows"][0]["result"] == "update"
+        assert set(preview_doc["rows"][0]["changes"]) == {"label", "remark"}
+        assert extra["affected_groups"] == []
+        assert not any('SELECT * FROM "Suppliers"' in sql for sql in queries)
+        assert not any("WorkbenchSupplierProfiles" in sql for sql in queries)
+        assert not any("WorkbenchSupplierOpTypes" in sql for sql in queries)
+        assert not any('SELECT * FROM "OpTypes"' in sql for sql in queries)
+        assert not any("WorkbenchOpTypePolicies" in sql for sql in queries)
+        assert not any("kind IN ('op_type','supplier')" in sql for sql in queries)
+
+    create_req = api.create_body()
+    create_queries = []
+    orig_reader_init = WorkbenchProcessQueryService.__init__
+
+    def traced_reader_init(self, conn, *args, **kwargs):
+        conn.set_trace_callback(create_queries.append)
+        orig_reader_init(self, conn, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(WorkbenchProcessQueryService, "__init__", traced_reader_init)
+        patch.setattr(
+            WorkbenchProcessQueryService,
+            "raw_facts",
+            lambda *a, **kw: pytest.fail("process_create must not call reader.raw_facts()"),
+        )
+        created_res = success(api.send("create", create_req))["data"]
+        assert created_res["business_code"] == "API-NEW"
+        assert any("SELECT 1 FROM Parts WHERE part_no =" in sql for sql in create_queries)
+        assert not any('SELECT * FROM "PartOperations"' in sql for sql in create_queries)
+        assert not any("ExternalGroups" in sql for sql in create_queries)
+
+        dup_req = api.create_body({"business_code": "PROC-001", "label": "Dup", "route_raw": "", "remark": ""})
+        create_queries.clear()
+        rejected(api.send("create", dup_req), "constraint_conflict", 409)
+        assert any("SELECT 1 FROM Parts WHERE part_no =" in sql for sql in create_queries)
+        assert not any("PartOperations" in sql for sql in create_queries)
+        assert not any("ExternalGroups" in sql for sql in create_queries)

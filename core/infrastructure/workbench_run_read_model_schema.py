@@ -1,6 +1,6 @@
 """Immutable projections of the original run archive."""
 
-from .schema_structure import schema_objects
+from .schema_structure import SchemaStructure
 from .workbench_metadata_schema import canonical_sql
 
 READ_MODEL_TABLES = ("WorkbenchRunAdmissionReadModels", "WorkbenchRunDecisionReadModels", "WorkbenchRunCandidateReadModels")
@@ -43,8 +43,8 @@ def objects():
     return definitions
 
 
-def contract_issues(conn, *, structure=None):
-    actual = schema_objects(conn, structure=structure)
+def contract_issues(conn, *, structure: SchemaStructure):
+    actual = structure.sql
     return [("missing_run_read_model:" if name not in actual else "invalid_run_read_model:") + name
             for name, sql in objects().items()
             if name not in actual or canonical_sql(sql) != canonical_sql(actual[name])]

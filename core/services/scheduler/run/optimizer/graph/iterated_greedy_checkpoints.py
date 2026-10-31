@@ -6,7 +6,7 @@ re-validates the prefix and fails loudly on any mismatch (see ``dispatch/sgs_che
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 from core.algorithms.greedy.dispatch.sgs_checkpoint import DecodeCheckpoint, DecodeCheckpointRequest
 
@@ -31,11 +31,6 @@ def common_prefix_length(first: Sequence[int], second: Sequence[int]) -> int:
 class CheckpointStore:
     def __init__(self, count: int) -> None:
         self.count = count
-        self.full_decodes = 0
-        self.resumed_decodes = 0
-        self.picks_total = 0
-        self.picks_saved = 0
-        self.equivalence_checks = 0
         self.disabled_reason: Optional[str] = None
 
     @property
@@ -59,22 +54,6 @@ class CheckpointStore:
         shared = common_prefix_length(base_order, trial_order)
         return max((item for item in checkpoints if item.prefix_length <= shared),
                    key=lambda item: item.position, default=None)
-
-    def note_decode(self, size: int, *, resumed_from: Optional[DecodeCheckpoint]) -> None:
-        self.picks_total += size
-        if resumed_from is None:
-            self.full_decodes += 1
-        else:
-            self.resumed_decodes += 1
-            self.picks_saved += resumed_from.position
-
-    def summary(self) -> Dict[str, Any]:
-        result: Dict[str, Any] = {"count": self.count, "full_decodes": self.full_decodes, "resumed_decodes": self.resumed_decodes,
-                "picks_total": self.picks_total, "picks_saved": self.picks_saved,
-                "equivalence_checks": self.equivalence_checks}
-        if self.disabled_reason is not None:
-            result["disabled_reason"] = self.disabled_reason
-        return result
 
 
 __all__ = ["CheckpointStore", "checkpoint_positions", "common_prefix_length"]

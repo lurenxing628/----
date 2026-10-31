@@ -16,13 +16,23 @@ from tests.workbench.field_workspace_support import FieldAPI, _ledger_fixture  #
 from tests.workbench.point_downstream_support import ACTUAL, FIELD, app_for, read
 
 
-def _three_tasks(case):
+def _three_tasks(case, *, record_source=False):
     second, third = case.op('OP2', seq=2), case.op('OP3', seq=3)
-    case.plan(2, [case.op_id, second, third])
-    for op_id, start, end in ((case.op_id, '08:00:00', '10:00:00'),
-                              (second, '10:00:00', '12:00:00'), (third, '12:00:00', '14:00:00')):
-        case.conn.execute('UPDATE Schedule SET start_time=?,end_time=? WHERE version=2 AND op_id=?',
-                          ('2026-09-09T' + start, '2026-09-09T' + end, op_id))
+    rows = [
+        {
+            'op_id': op_id,
+            'machine_id': 'M1',
+            'operator_id': 'O1',
+            'start_time': '2026-09-09T' + start,
+            'end_time': '2026-09-09T' + end,
+        }
+        for op_id, start, end in (
+            (case.op_id, '08:00:00', '10:00:00'),
+            (second, '10:00:00', '12:00:00'),
+            (third, '12:00:00', '14:00:00'),
+        )
+    ]
+    publish_official_plan(case.conn, 2, rows, record_source=record_source)
     case.conn.commit()
     case.path = case.conn.execute('PRAGMA database_list').fetchone()[2]
     return case.plan_ref(2), [case.task(2, op_id) for op_id in (case.op_id, second, third)]
@@ -62,12 +72,14 @@ def test_unrelated_plan_projection_cannot_block_execution_cohort(ledger_case, mo
     assert detail['data']['task'] == row
     assert actual['data']['calendar']['time_scope']['range_start'] == scope['range_start']
     assert actual['data']['calendar']['time_scope']['range_end'] == scope['range_end']
+    assert actual['data']['critical_chain']['state'] == 'unavailable'
+    assert actual['data']['critical_chain']['reason_code'] == 'process_order_unavailable'
     assert all_rows(case.conn) == before
 
 
-def test_scoped_actual_chain_retains_outside_predecessors_and_snapshot(ledger_case):
+def test_scoped_actual_chain_retains_outside_predecessors_and_snapshot(ledger_case, monkeypatch):
     case = ledger_case
-    plan_ref, refs = _three_tasks(case)
+    plan_ref, refs = _three_tasks(case, record_source=True)
     client = app_for(case).test_client()
     scope = dict(plan_ref=plan_ref, range_start='2026-09-09T12:00:00', range_end='2026-09-09T14:00:00')
     actual = read(client, ACTUAL, **scope)
@@ -82,10 +94,69 @@ const C = h.runtime.ActualGanttContract, flipped = h.clone(sourceData.payload);
 assert.strictEqual(C.workspace(sourceData.payload, sourceData.query), sourceData.payload);
 flipped.data.critical_chain.nodes[0].in_scope = true;
 assert.throws(() => C.workspace(flipped, sourceData.query), /关键链节点与当前计划或范围不一致/);
+const payload = h.clone(sourceData.payload), item = payload.data.items[0], taskRef = item.task.task_ref;
+let reportNoReads = 0;
+const reports = Array.from({ length: 1000 }, (_, index) => {
+  const ref = (index + 1).toString(16).padStart(48, '0'), no = 'RG-' + String(index + 1).padStart(4, '0');
+  return {
+    report_ref: ref,
+    get report_no() { reportNoReads++; return no; },
+    actual_start: item.task.start,
+    actual_end: item.task.end,
+    completed_quantity: 1,
+    effective_processing_hours: 0.1,
+    actual_machine_ref: item.task.machine_ref,
+    actual_operator_ref: item.task.operator_ref,
+    recorded_at: item.task.end,
+    correction_history: [],
+    remark: ''
+  };
+});
+item.execution = {
+  ...item.execution,
+  execution_state: 'partial',
+  known_completed_quantity: 10,
+  remaining_quantity: 0,
+  confirmed_finish: null,
+  data_gaps: [{ report_ref: reports[0].report_ref, message: '待核对数量' }],
+  reports,
+  remaining_plan: null
+};
+const origUseMemo = h.runtime.React.useMemo, slots = [];
+let cursor = 0;
+const same = (a, b) => a && b && a.length === b.length && a.every((v, i) => v === b[i]);
+h.runtime.React.useMemo = (fn, deps) => {
+  const i = cursor++;
+  if (!slots[i] || !same(slots[i].deps, deps)) slots[i] = { deps, value: fn() };
+  return slots[i].value;
+};
+try {
+  const view = { mode: 'machine', query: '', selected: taskRef, report: null, late: 'all', collapsed: {}, onlySelected: false, details: true, chain: false };
+  const baseStates = { 0: sourceData.query, 2: payload, 3: false, 4: null, 5: view };
+  cursor = 0;
+  const firstTree = h.render(h.runtime.ActualGanttWorkspace, { initialContext: { plan_ref: sourceData.query.plan_ref, task_ref: taskRef }, onNavigate() {} },
+    { Content: { ...baseStates, 8: null, 11: null } });
+  const selectNode = h.walk(firstTree).find(node => node.type === 'select' && node.props['aria-label'] === '选择报工详情');
+  assert(selectNode && selectNode.children[1].length === 1000);
+  const readsBeforeHover = reportNoReads;
+  cursor = 0;
+  const hoverTree = h.render(h.runtime.ActualGanttWorkspace, { initialContext: { plan_ref: sourceData.query.plan_ref, task_ref: taskRef }, onNavigate() {} },
+    { Content: { ...baseStates, 8: { item, report: reports[0], title: '报工提示', x: 180, y: 120 }, 11: [taskRef] } });
+  assert.strictEqual(reportNoReads - readsBeforeHover, 0, 'Hovering with 1,000 reports and details open must read report_no 0 extra times');
+  const selectAfter = h.walk(hoverTree).find(node => node.type === 'select' && node.props['aria-label'] === '选择报工详情');
+  assert.strictEqual(selectAfter.children[1].length, 1000);
+} finally {
+  h.runtime.React.useMemo = origUseMemo;
+}
 return true;
 """, {'payload': actual, 'query': scope})['result'] is True
     token = actual['meta']['snapshot_ref']
-    related = read(client, ACTUAL + '/chain', **scope, snapshot_ref=token, target_task_ref=refs[-1])
+    with monkeypatch.context() as patch:
+        from core.services.workbench.execution.ledger import ExecutionLedgerService
+
+        patch.setattr(ExecutionLedgerService, 'workspace_projection',
+                      lambda *args, **kwargs: pytest.fail('Related chain without resource filter projected ledger'))
+        related = read(client, ACTUAL + '/chain', **scope, snapshot_ref=token, target_task_ref=refs[-1])
     assert related['data']['critical_chain']['task_refs'] == refs
     case.conn.execute("UPDATE Schedule SET end_time='2026-09-09T09:30:00' WHERE version=2 AND op_id=?", (case.op_id,))
     case.conn.commit()
@@ -210,7 +281,7 @@ def test_internal_execution_cohort_uses_actual_endpoint_budget(ledger_case):
     before = all_rows(case.conn)
     reader = queries.WorkbenchPlanQueryService(case.conn)
     with reader.read_snapshot():
-        data, _ = reader.execution_workspace(PlanReadScope(plan_ref))
+        data = reader.execution_workspace(PlanReadScope(plan_ref))
     assert data['task_count'] == 3 and data['tasks_complete'] is True
     client = app_for(case).test_client()
     field = client.get(FIELD + '/tasks', query_string=dict(plan_ref=plan_ref, size=1, page=2))
@@ -224,6 +295,7 @@ def test_actual_large_plan_applies_finish_batch_and_overlap_before_ledger(ledger
     from flask import g
 
     from core.services.workbench.execution import actual_gantt
+    from core.services.workbench.plan.read_context import PlanReadContext
 
     case = ledger_case
     batches = ['SCALE-' + str(index).zfill(3) for index in range(200)]
@@ -242,22 +314,24 @@ def test_actual_large_plan_applies_finish_batch_and_overlap_before_ledger(ledger
         low = start + timedelta(days=index // 200, minutes=index % 200)
         schedule.append({"op_id": row['id'], "machine_id": "M1", "operator_id": "O1",
                          "start_time": low.isoformat(), "end_time": (low + timedelta(minutes=1)).isoformat()})
-    publish_official_plan(case.conn, 2, schedule)
+    publish_official_plan(case.conn, 2, schedule, record_source=True)
     case.conn.commit()
     case.path = case.conn.execute('PRAGMA database_list').fetchone()[2]
     plan_ref, projected, statements = case.plan_ref(2), [], []
-    enriched, enrich_rows = [], actual_gantt.PlanReadContext._enrich_rows
+    enriched, enrich_rows = [], PlanReadContext._enrich_rows
 
     def enrich(context, entry, prepared):
         enriched.append(len(prepared))
         return enrich_rows(context, entry, prepared)
 
-    monkeypatch.setattr(actual_gantt.PlanReadContext, "_enrich_rows", enrich)
+    monkeypatch.setattr(PlanReadContext, "_enrich_rows", enrich)
     original = actual_gantt.ExecutionLedgerService.workspace_projection
 
-    def project(ledger, ref, tasks):
+    def project(ledger, ref, tasks, *, include_history=True, include_resources=True):
         projected.append(len(tasks))
-        return original(ledger, ref, tasks)
+        return original(
+            ledger, ref, tasks, include_history=include_history, include_resources=include_resources
+        )
 
     monkeypatch.setattr(actual_gantt.ExecutionLedgerService, 'workspace_projection', project)
     monkeypatch.setattr(queries.WorkbenchPlanQueryService, 'execution_workspace',
@@ -360,3 +434,41 @@ def test_execution_batch_arguments_reject_duplicate_keys_and_nonfinite_numbers_a
     assert (field.value.code, field.value.status, str(field.value)) == ('invalid_input', 400, '批次范围无效。')
     # The file-preview form scope arrives already decoded, so its list is checked as is.
     assert normalize_scope({'batch_ids': ['B2', 'B1', 'B2']}) == {'batch_ids': ['B1', 'B2']}
+
+
+def test_actual_gantt_rejects_stale_snapshot_before_projection(ledger_case, monkeypatch):
+    from core.services.workbench.execution.actual_gantt import ActualGanttService
+    from core.services.workbench.execution.ledger import ExecutionLedgerService
+
+    case = ledger_case
+    plan_ref, _ = _three_tasks(case)
+    client = app_for(case).test_client()
+    token = read(client, ACTUAL, plan_ref=plan_ref)["meta"]["snapshot_ref"]
+    case.conn.execute("UPDATE Schedule SET end_time='2026-09-09T09:30:00' WHERE version=2 AND op_id=?", (case.op_id,))
+    case.conn.commit()
+    monkeypatch.setattr(ActualGanttService, "_planned",
+                        lambda *a, **kw: pytest.fail("should not project planned tasks on stale snapshot"))
+    monkeypatch.setattr(ExecutionLedgerService, "workspace_projection",
+                        lambda *a, **kw: pytest.fail("should not project ledger on stale snapshot"))
+    for path, extra in ((ACTUAL, {}), (ACTUAL + "/export", {"format": "csv"})):
+        response = client.get(path, query_string={"plan_ref": plan_ref, "snapshot_ref": token, **extra})
+        assert response.status_code == 409 and response.get_json()["error"]["code"] == "snapshot_stale"
+
+
+def test_critical_chain_skips_long_point_event_chain_without_recursion_error():
+    from core.services.scheduler.gantt.critical_chain import compute_critical_chain_from_dependencies
+
+    rows = [{"op_code": "op-0", "operation_ref": "ref-0", "start_time": "2026-10-12 08:00", "end_time": "2026-10-12 09:00"}]
+    predecessor_ids = {"op-0": []}
+    for index in range(1, 1201):
+        code = f"op-{index}"
+        rows.append({"op_code": code, "operation_ref": f"ref-{index}", "start_time": "2026-10-12 09:00", "end_time": "2026-10-12 09:00"})
+        predecessor_ids[code] = [f"op-{index - 1}"]
+    rows.append({"op_code": "op-1201", "operation_ref": "ref-1201", "start_time": "2026-10-12 09:00", "end_time": "2026-10-12 10:00"})
+    predecessor_ids["op-1201"] = ["op-1200"]
+
+    result = compute_critical_chain_from_dependencies(rows, predecessor_ids, include_points=False)
+    assert result["ids"] == ["op-0", "op-1201"]
+    assert result["dropped_count"] == 1200
+    assert result["critical_chain_partial"] is True
+    assert len(result["edges"]) == 1 and result["edges"][0]["from"] == "op-0" and result["edges"][0]["to"] == "op-1201"

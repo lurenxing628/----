@@ -4,15 +4,11 @@ from __future__ import annotations
 
 from .base_repo import BaseRepository
 from .schedule_detail_query import build_schedule_detail_sql
-from .schedule_time_sql import register_schedule_time_sql_functions, time_dt
+from .schedule_time_sql import time_dt
 from .workbench_execution_repo import stored_report_values
 
 
 class WorkbenchReportFactsRepository(BaseRepository):
-    def __init__(self, conn, logger=None):
-        super().__init__(conn, logger=logger)
-        register_schedule_time_sql_functions(conn)
-
     def plan_rows(self, version, *, date_from, date_to, batch_id, limit):
         where, params = ["s.version = ?"], [version]
         if date_from is not None:

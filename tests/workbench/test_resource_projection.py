@@ -29,9 +29,10 @@ def task(row, operation, start, end, **values):
 
 
 def day_calendar(start, end, windows, *, state="available"):
-    return {"date": start[:10], "start": start, "end": end, "state": state, "issues": [] if state == "available" else [
+    low_dt, high_dt = instant(start), instant(end)
+    return {"date": low_dt.date().isoformat(), "start": low_dt, "end": high_dt, "state": state, "issues": [] if state == "available" else [
         {"code": "calendar_unavailable", "message": "保存班表缺项。"}],
-            "windows": [{"start": low, "end": high, "allow_normal": True, "allow_urgent": False}
+            "windows": [{"start": instant(low), "end": instant(high), "allow_normal": True, "allow_urgent": False}
                         for low, high in windows] if state == "available" else None}
 
 
@@ -444,7 +445,7 @@ def test_resource_grains_keep_actual_work_windows_weekly_weights_and_rest_span_e
     assert calendar_reads == [saved]
     assert len(measurement_reads) == 1 and measurement_reads[0][0] == MACHINE["ref"]
     assert len(value_reads) == len(set(value_reads))
-    assert saved["days"][0]["start"] == start
+    assert saved["days"][0]["start"] == instant(start)
     assert index.retain_statistics_values is measurement.retain_statistics_values is True
     before_pressure = len(value_reads)
     assert pressure_from_index(index, MACHINE, normalized)["window_metrics"] == window
@@ -502,7 +503,7 @@ def test_multiday_prefix_accumulation_preserves_exact_in_calendar_and_zero_capac
     from datetime import datetime, timedelta
     from pathlib import Path
 
-    from tests.workbench.node_runtime_support import node_runtime
+    from tests._support.node_runtime_support import node_runtime
 
     base = datetime(2026, 10, 14)
     range_start = base.isoformat()

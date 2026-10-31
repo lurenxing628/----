@@ -105,9 +105,8 @@ def schedule_external(
     batch_progress: Dict[str, datetime],
     external_group_cache: Dict[Tuple[str, ...], Tuple[datetime, datetime]],
     base_time: datetime,
-    errors: List[str],
     end_dt_exclusive: Optional[datetime],
-) -> Tuple[Optional[ScheduleResult], bool]:
+) -> Tuple[Optional[ScheduleResult], Optional[Dict[str, Any]]]:
     """排产外部工序：不占资源，只占用自然日周期。
 
     排产输入构建已把周期规范成正有限数：合并组读 ext_group_total_days，单道读 ext_days；这里直接使用。
@@ -119,16 +118,19 @@ def schedule_external(
     )
     if end_dt_exclusive is not None and end >= end_dt_exclusive:
         deadline = (end_dt_exclusive - timedelta(seconds=1)).strftime("%Y-%m-%d")
-        target = f"外协组 {op.ext_group_id}" if is_merged else f"外协工序 {op.op_code}"
-        errors.append(
-            f"排产窗口截止到 {deadline}：{target}（批次 {bid}）预计完工 {end.strftime('%Y-%m-%d %H:%M')} 超出窗口"
-        )
-        return None, True
+        return None, {
+            "code": "schedule_window_exceeded",
+            "source": EXTERNAL,
+            "deadline": deadline,
+            "estimated_end_time": end.strftime("%Y-%m-%d %H:%M"),
+            "ext_merge_mode": op.ext_merge_mode,
+            "ext_group_id": op.ext_group_id,
+        }
     # Only a group block that fits the window becomes the shared start/end of its members.
     if is_merged:
         external_group_cache.setdefault(external_group_key(op), (start, end))
 
-    return _external_result(op, start, end), False
+    return _external_result(op, start, end), None
 
 
 def _external_result(op: OpForScheduleAlgo, start: datetime, end: datetime) -> ScheduleResult:

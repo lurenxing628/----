@@ -13,7 +13,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional
 
 from core.errors import ValidationError
-from core.infrastructure.transaction import TransactionManager, in_transaction_context
+from core.infrastructure.transaction import in_transaction_context
 from core.infrastructure.workbench_metadata_schema import entity_key
 from core.models.calendar import OperatorCalendar
 from core.models.calendar_periods import decode_periods
@@ -66,7 +66,6 @@ class WorkbenchOperatorCalendarService:
         self._clock = clock
         self._calendar = CalendarService(conn, logger=logger) if calendar_service is None else calendar_service
         self._query = WorkbenchCalendarQueryRepository(conn, logger=logger)
-        self._tx = TransactionManager(conn)
 
     @staticmethod
     def normalize(action: str, payload: Any) -> Dict[str, Any]:
@@ -121,15 +120,16 @@ class WorkbenchOperatorCalendarService:
         first = date(year, month, 1)
         count = calendar_module.monthrange(year, month)[1]
         last, now = first.replace(day=count), self._now()
-        with self._tx.transaction():
-            states = self.range_states(first.isoformat(), last.isoformat())
-            default_periods = self._calendar._engine.default_periods()
-            days = []
-            for offset in range(count):
-                day = first + timedelta(days=offset)
-                state = self._state(day.isoformat(), states)
-                days.append({**state, "day": day.day, "weekday": day.weekday(),
-                             "is_weekend": day.weekday() >= 5, "is_today": day == now.date()})
+        if not self.conn.in_transaction:
+            raise RuntimeError("个人日历读取必须在快照事务中执行。")
+        states = self.range_states(first.isoformat(), last.isoformat())
+        default_periods = self._calendar._engine.default_periods()
+        days = []
+        for offset in range(count):
+            day = first + timedelta(days=offset)
+            state = self._state(day.isoformat(), states)
+            days.append({**state, "day": day.day, "weekday": day.weekday(),
+                         "is_weekend": day.weekday() >= 5, "is_today": day == now.date()})
         cells = [None] * first.weekday() + days
         cells += [None] * (-len(cells) % 7)
         readings = []
@@ -257,8 +257,9 @@ class WorkbenchOperatorCalendarService:
     def preview_range_clear(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """只读：这段日期里有哪些天是单独设过的，清除后会恢复成班次或全局日历。"""
         request = self.normalize("range_clear", payload)
-        with self._tx.transaction():
-            states = self.range_states(request["start_date"], request["end_date"])
+        if not self.conn.in_transaction:
+            raise RuntimeError("个人日历读取必须在快照事务中执行。")
+        states = self.range_states(request["start_date"], request["end_date"])
         days = [self._state(day, states) for day, state in states.items() if state["row"] is not None]
         return {"request": request, "days": days, "count": len(days)}
 

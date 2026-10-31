@@ -25,8 +25,6 @@ class SystemRestoreManager(BackupManager):
         if suffix == "before_restore":
             signature = backup_signature(path)
             self._source_content["protection"] = file_content(path)
-            if not same(signature, backup_signature(path)):
-                raise RuntimeError("恢复前保护副本在读取时发生了变化。")
             verification = {**self.record["source_verification"], "protection": "captured"}
             self.journal.record(self.record, "protecting", protection={
                 "filename": os.path.basename(path), "signature": signature}, source_verification=verification)

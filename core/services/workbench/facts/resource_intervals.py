@@ -27,7 +27,7 @@ def resource_cohort(task_pools, *, task_intervals=None):
     resources = {}
     for source_index, tasks in enumerate(task_pools):
         for task in tasks:
-            interval = task_interval(task) if task_intervals is None else task_intervals[source_index][task["row_ref"]]
+            interval = task_interval(task) if task_intervals is None else task_intervals[source_index].get(task["row_ref"])
             if task.get("source") == "external" or interval is not None and interval[0] == interval[1]:
                 continue
             for kind in KINDS:
@@ -41,7 +41,7 @@ def resource_cohort(task_pools, *, task_intervals=None):
 def occupying_tasks(tasks, low, high, *, task_intervals=None):
     """Tasks occupying a resource inside [low, high); external work and point events never do, unknown times stay."""
     for task in tasks:
-        interval = task_interval(task) if task_intervals is None else task_intervals[task["row_ref"]]
+        interval = task_interval(task) if task_intervals is None else task_intervals.get(task["row_ref"])
         if task.get("source") == "external" or interval is not None and interval[0] == interval[1]:
             continue
         if interval is not None and not (interval[0] < high and interval[1] > low):

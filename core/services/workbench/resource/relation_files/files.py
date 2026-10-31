@@ -350,7 +350,7 @@ class WorkbenchRelationFileService:
     def _links_for(self, codes) -> List[Dict[str, Any]]:
         if not codes:
             return []
-        if self.reader._snapshot_metrics is not None:
+        if self.reader._table_warmed:
             grouped = self.reader._table_reader().grouped("authorizations", "operator_id")
             return [link for code in sorted({x for x in codes if x}) for link in grouped[code]]
         return self.links.list_simple_rows_for_operators(codes)
@@ -371,7 +371,7 @@ class WorkbenchRelationFileService:
                 "skill_level": EXPORT_LABELS["skill_level"][normalize_skill_level_stored(link["skill_level"])],
                 "is_primary": EXPORT_LABELS["is_primary"][normalize_yes_no_stored(link["is_primary"])],
             })
-        if self.reader._snapshot_metrics is not None:
+        if self.reader._table_warmed:
             metrics = self.reader._table_reader().metrics
             operators = metrics.kind_records("operator")
             machines = metrics.kind_records("machine")

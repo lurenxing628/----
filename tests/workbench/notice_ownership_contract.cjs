@@ -206,10 +206,11 @@ async function contract(h, assert) {
     await assert.rejects(M.command(restoreIntent, 'write-context', {}), error => w.APSWorkbenchTransport.rejected(error) === definite,
       'committed ' + committed + ' with HTTP ' + status + (definite ? ' is' : ' is not') + ' a definite rejection');
   }
-  const originalStorage = w.localStorage, originalCrypto = w.crypto, originalOutcome = w.SystemMaintenanceControls.Outcome;
+  const originalStorage = w.localStorage, originalCrypto = w.crypto, originalNavigator = w.navigator, originalOutcome = w.SystemMaintenanceControls.Outcome;
   const savedMaintenance = new Map(); let rejectedCommand, rejectedLookups = 0;
   w.localStorage = { getItem: key => savedMaintenance.get(key) || null, setItem: (key, value) => savedMaintenance.set(key, value), removeItem: key => savedMaintenance.delete(key) };
   w.crypto = { getRandomValues: bytes => bytes.fill(34) };
+  w.navigator = { locks: { request: async (_key, _options, callback) => callback({}) } };
   w.SystemMaintenanceControls.Outcome = ({ command }) => { rejectedCommand = command; return null; };
   M.host = async () => readyHost; M.lookup = async () => { rejectedLookups++; return { kind: 'not_recorded', terminal: false }; }; answerWith(false);
   h.render(w.SystemMaintenanceWorkspace, { ...workspaceProps, tab: 'overview' }, { Workspace: { 6: readyHost, 8: false } });
@@ -238,7 +239,7 @@ async function contract(h, assert) {
   savedMaintenance.set(w.SystemMaintenanceAPI.PENDING_KEY, JSON.stringify(otherIntent));
   assert.throws(() => w.SystemMaintenanceAPI.pending().finish(restoreIntent), /上次操作记录已变化/);
   assert.strictEqual(w.SystemMaintenanceAPI.pending().read().request_key, otherIntent.request_key, 'A different pending operation must be retained');
-  w.localStorage = originalStorage; w.crypto = originalCrypto;
+  w.localStorage = originalStorage; w.crypto = originalCrypto; w.navigator = originalNavigator;
   Object.assign(M, maintenanceOriginal); w.fetch = () => { throw new Error('Unexpected network request'); };
 
   const dashboardRead = w.DashboardSession.useRead, dashboardCommand = w.DashboardSession.useCommand;

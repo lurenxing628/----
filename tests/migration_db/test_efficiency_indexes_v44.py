@@ -11,6 +11,7 @@ from core.infrastructure import database
 from core.infrastructure.efficiency_indexes_schema import ADDED, contract_issues
 from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION, current_schema_contract_issues
 from core.infrastructure.schema_declaration import load_schema_sql
+from core.infrastructure.schema_structure import SchemaStructure
 from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandOutcome
 from core.models.workbench_run_history import RunHistoryScope
@@ -123,18 +124,19 @@ def test_declared_efficiency_indexes_contract_and_archive_projection(indexed_db)
     _path, conn = indexed_db
     _operations(conn)
     archived = ProductionFactsCapture(conn).content()
+    archived_facts = json.loads(archived)
     ref = _run(conn, 1, "2026-10-17T08:00:00", time="2026-10-17T08:01:00.100000", archive=archived)
     conn.commit()
 
     assert conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()[0] == CURRENT_SCHEMA_VERSION
-    assert contract_issues(conn) == current_schema_contract_issues(
+    assert contract_issues(conn, structure=SchemaStructure(conn)) == current_schema_contract_issues(
         conn, schema_version=CURRENT_SCHEMA_VERSION, schema_sql=load_schema_sql()) == []
     indexes = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='index'")}
     assert set(ADDED) <= indexes
     assert conn.execute("SELECT facts_json FROM WorkbenchRunJobs WHERE run_ref=?", (ref,)).fetchone()[0] == archived
-    assert production_facts_match(conn, archived)
+    assert production_facts_match(conn, archived_facts)
     current = ProductionFactsCapture(conn).content()
-    assert project_facts(json.loads(archived)) == project_facts(json.loads(current))
+    assert project_facts(archived_facts) == project_facts(json.loads(current))
 
     for mutation in (
             "CREATE INDEX idx_undeclared_efficiency_change ON Parts(part_name)",
@@ -144,6 +146,6 @@ def test_declared_efficiency_indexes_contract_and_archive_projection(indexed_db)
         try:
             for sql in mutation.split(";"):
                 conn.execute(sql)
-            assert not production_facts_match(conn, archived)
+            assert not production_facts_match(conn, archived_facts)
         finally:
             conn.rollback()

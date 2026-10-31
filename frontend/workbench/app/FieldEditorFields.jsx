@@ -4,8 +4,16 @@
   function FieldEditorFields({ task, record, action, adapter, draft, suggestions, disabled, first, change, error }) {
     const Field = window.ResourceControls.Field;
     const readonly = key => disabled || action === 'supplement' && record[key] != null && record[key] !== '';
+    const original = React.useMemo(() => record ? {
+      relationships: {
+        actual_machine_ref: record.actual_machine_ref,
+        actual_machine: record.actual_machine_ref && record.actual_machine_label ? { ref: record.actual_machine_ref, label: record.actual_machine_label } : null,
+        actual_operator_ref: record.actual_operator_ref,
+        actual_operator: record.actual_operator_ref && record.actual_operator_label ? { ref: record.actual_operator_ref, label: record.actual_operator_label } : null
+      }
+    } : null, [record]);
     const choices = (key, label, kind) => <window.ResourceControls.Choice adapter={adapter} field={{ key, label, kind }} value={draft[key]} disabled={readonly(key)} error={error}
-      original={record ? { relationships: { [key]: record[key], [key.replace('_ref', '_label')]: record[key.replace('_ref', '_label')] } } : null} onChange={value => change(key, value)} />;
+      original={original} onChange={value => change(key, value)} />;
     const amount = value => value !== '' && Number.isFinite(Number(value)) ? Number(value) : null;
     const quantity = amount(draft.completed_quantity), effectiveHours = amount(draft.effective_processing_hours);
     const previousQuantity = record ? Number(record.completed_quantity) : 0;

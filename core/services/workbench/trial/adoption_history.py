@@ -4,11 +4,10 @@ from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
 from core.models.workbench_trial import reference, reject
-from core.services.common.bounded_plan_query import PagePlanQueryService
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from core.services.workbench.plan.read_context import PlanReadContext
-from data.repositories.workbench_command_repo import WorkbenchCommandRepository
+from core.shared.strict_json import clone_json
 from data.repositories.workbench_trial_adoption_history import TrialAdoptionHistoryRepository
 
 from .adoption_history_evidence import audit_fields, gap, invalid, receipt_plan, scenario_evidence
@@ -43,18 +42,18 @@ class WorkbenchTrialAdoptionHistoryService:
 
     def _read(self, scope, page, context):
         repo = TrialAdoptionHistoryRepository(self.conn)
-        saved, header, draft = scenario_evidence(self.conn, scope["scenario_ref"], repo)
+        saved, header, draft = scenario_evidence(self.conn, scope["scenario_ref"])
         refs = context.references
         revision = refs.read_revision()
         # Same catalog repository as the public plan catalog, so detail validation cannot diverge.
         catalog = context.repo
+        query = context.plan_query
         # This is current-state evidence only. It never chooses the requested scene.
-        current_version = catalog.latest_version()
-        query = PagePlanQueryService(catalog, current_version)
+        current_version = query.latest
         reader = WorkbenchPlanQueryService(self.conn, references=refs)
         rows, plans, all_items, seen = adoption_receipts(repo, scope["scenario_ref"]), [], [], set()
         for row in rows:
-            plan = receipt_plan(row, saved)
+            plan = receipt_plan(row)
             if plan["plan_ref"] in seen:
                 invalid()
             seen.add(plan["plan_ref"])
@@ -62,9 +61,8 @@ class WorkbenchTrialAdoptionHistoryService:
         versions = [plan["version"] for plan in plans]
         catalog.prefetch_history_rows(versions)
         histories = [history_audit_row(catalog.history_rows(version)) for version in versions]
-        command_repo = WorkbenchCommandRepository(self.conn)
         for row, plan, history in zip(rows, plans, histories):
-            audit, audit_gaps = audit_fields(row, plan, saved, header, history=history, command_repo=command_repo)
+            audit, audit_gaps = audit_fields(row, plan, saved, history=history)
             identity, issues = self._identity(context, reader, query, plan)
             state = "unavailable" if identity is None or not identity["capabilities"]["view"] else (
                 "current" if identity["is_current_official"] else "historical")
@@ -79,7 +77,8 @@ class WorkbenchTrialAdoptionHistoryService:
         pages = (len(items) + scope["size"] - 1) // scope["size"]
         if page > max(1, pages):
             reject("invalid_input", "翻页位置已失效，请回到第 1 页重新查询。", 400)
-        source = {"base": saved["base"], "base_identity": saved["base_identity"], "baseline": saved["baseline"],
+        source = {"base": clone_json(saved["base"]), "base_identity": clone_json(saved["base_identity"]),
+                  "baseline": clone_json(saved["baseline"]),
                   "name": saved["name"], "saved_at": header["saved_at"], "saved_by": header["local_operator"],
                   "save_request_key": header["request_key"], "draft_ref": saved["draft_ref"], "scenario_ref": saved["scenario_ref"]}
         content = {"scenario_ref": saved["scenario_ref"], "draft_ref": saved["draft_ref"],

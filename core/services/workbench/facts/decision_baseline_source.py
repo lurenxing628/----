@@ -167,7 +167,7 @@ def _decision_baseline_source_resolver(conn, *, candidate_provider):
     snapshot; metadata and point witnesses retain their saved source context.
     """
     sources = {}
-    candidates = CandidateStore(conn, copy_on_read=False)
+    candidates = CandidateStore(conn)
 
     def resolve(*, plan_ref, version, history):
         key = ("decision_baseline_source", plan_ref, version, history.get("version"), history.get("result_summary"))
@@ -185,7 +185,11 @@ def _decision_baseline_source_resolver(conn, *, candidate_provider):
                 key = ("candidate", audit["candidate_ref"])
                 if key not in sources:
                     prepared = candidate_provider(audit["candidate_ref"]) if candidate_provider is not None else None
-                    sources[key] = prepared if prepared is not None else read_candidate_source(candidates, audit["candidate_ref"])
+                    sources[key] = (
+                        prepared
+                        if prepared is not None
+                        else read_candidate_source(candidates, audit["candidate_ref"])
+                    )
                 source = sources[key]
                 evidence, points = candidate_evidence(source, audit), _candidate_points
             else:
@@ -206,9 +210,5 @@ def _decision_baseline_source_resolver(conn, *, candidate_provider):
             if exc.status != 404:
                 raise
             return _gap("adoption_source_archived", "此正式版本的原候选、试排场景或草稿已归档或删除。")
-        except (KeyError, TypeError) as exc:
-            raise WorkbenchCommandRejected(
-                "adoption_snapshot_invalid", "此正式版本的采用资料缺少来源编号或原始安排字段。",
-            ) from exc
 
     return resolve

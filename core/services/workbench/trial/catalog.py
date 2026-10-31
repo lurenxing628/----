@@ -4,39 +4,39 @@ from core.models.content import content_text
 from core.models.workbench_trial import reference, reject
 from core.models.workbench_trial_catalog import MAX_CATALOG_ROWS, TrialCatalogScope
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
-from core.services.workbench.facts.trial_policy import require_trial_schema
+from core.services.workbench.facts.source_revisions import TRIAL_SOURCE_KEYS, read_source_revisions
 from data.repositories.workbench_trial_catalog_repo import WorkbenchTrialCatalogRepository
-from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 
 
 class WorkbenchTrialCatalogService:
     def __init__(self, conn):
         self.conn = conn
 
-    def catalog(self, scope: TrialCatalogScope):
+    def catalog(self, scope: TrialCatalogScope, *, bind_snapshot=None):
         with candidate_read_snapshot(self.conn):
-            require_trial_schema(WorkbenchTrialRepository(self.conn))
-            rows, page, content = _bounded_page(WorkbenchTrialCatalogRepository(self.conn), scope)
+            revisions = read_source_revisions(self.conn, TRIAL_SOURCE_KEYS)
+            content = content_text(revisions)
+            snapshot = bind_snapshot(content) if bind_snapshot is not None else content
+            rows, page = _bounded_page(WorkbenchTrialCatalogRepository(self.conn), scope)
             items = [_summary(row, scope.collection) for row in rows]
             return {"items": items, "page": page, "scope": scope.scope(), "state": "available" if items else "empty",
-                    "selection": None, "validation_state": "not_evaluated"}, content
+                    "selection": None, "validation_state": "not_evaluated"}, snapshot
 
 
 def _bounded_page(repo, scope):
-    """One page plus the complete header content; retain the directory row cap."""
-    selected, directory, total = [], [], 0
+    """One page while retaining the directory row cap."""
+    selected, total = [], 0
     offset = (scope.page - 1) * scope.size
     for row in repo.iter_rows(scope, MAX_CATALOG_ROWS):
         total += 1
         if total > MAX_CATALOG_ROWS:
-            reject("query_too_large", "完整目录超过100000条或32 MiB摘要上限，请用状态或明确来源缩小范围；未截断。", 413)
-        directory.append(row)
+            reject("query_too_large", f"完整目录超过{MAX_CATALOG_ROWS}条上限，请用状态或明确来源缩小范围；未截断。", 413)
         if offset < total <= offset + scope.size:
             selected.append(row)
     pages = (total + scope.size - 1) // scope.size
     if scope.page > max(pages, 1):
         reject("invalid_input", "目录页码超过当前范围，请明确刷新目录。", 400)
-    return selected, {"number": scope.page, "size": scope.size, "total": total, "pages": pages}, content_text(directory)
+    return selected, {"number": scope.page, "size": scope.size, "total": total, "pages": pages}
 
 
 def _source_label(row):

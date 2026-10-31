@@ -1,11 +1,10 @@
 """Private, SELECT-only plan catalog entry builders; never serialize this module directly to HTML/API.
 
-_role_entry(query, history, latest) builds one PlanCatalogEntry for the
+_role_entry(query, history) builds one PlanCatalogEntry for the
 workbench catalog (core/services/workbench/plan/queries.py). The caller owns
-the connection, the read snapshot and the paging; query.repo must provide
-validate_detail_times (PointPlanCatalogRepository in production), which raises
-ValueError for invalid detail times or unproven zero-duration work. Capacity
-rejections propagate.
+the connection, the read snapshot and the paging. resolve_existing_plan admits
+detail times through query.repo.get_plan_time_span, which raises ValueError for
+invalid detail times or unproven zero-duration work. Capacity rejections propagate.
 """
 
 from __future__ import annotations
@@ -15,9 +14,10 @@ from typing import Any, Dict, Literal, Optional, Tuple
 
 from core.models.schedule_plan_identity import PlanIdentity
 from core.models.schedule_plan_resolution import SchedulePlanResolution
-from core.models.schedule_plan_role import ROLE_ADOPTED, plan_role_label
+from core.models.schedule_plan_role import ADOPTED_PLAN_LABEL, ROLE_ADOPTED
 from core.models.scheduler_history_parser import ResultSummaryParseResult
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.common.plan_identity import normalized_result_status
 from core.services.common.plan_query import SchedulePlanQueryService
 
 Completeness = Literal["complete", "partial", "invalid", "unknown"]
@@ -40,8 +40,6 @@ class PlanCatalogEntry:
     locator: PlanCatalogLocator
     kind: Literal["official"]
     display_name: str
-    is_latest_version: bool
-    schedule_result_status: Optional[str]
     completeness: Completeness
     can_view: bool
     blocked_reasons: Tuple[PlanCatalogIssue, ...]
@@ -57,24 +55,21 @@ def _history_state(
         return "invalid", (PlanCatalogIssue("summary_invalid", summary_parse.reason),)
     if summary_parse.payload is None:
         return "unknown", (PlanCatalogIssue("summary_missing", "排产摘要缺失，无法确认方案身份。"),)
-    status = str(history.get("result_status") or "").strip().lower()
-    statuses: Dict[str, Completeness] = {"success": "complete", "partial": "partial", "failed": "invalid"}
+    status = normalized_result_status(history["result_status"])
+    statuses: Dict[Optional[str], Completeness] = {"success": "complete", "partial": "partial", "failed": "invalid"}
     state = statuses.get(status, "unknown")
     if summary_parse.payload.get("is_simulation"):
         state = "unknown"
     return state, ()
 
 
-def _role_entry(
-    query: SchedulePlanQueryService, history: Dict[str, Any], latest: Optional[int],
-) -> PlanCatalogEntry:
+def _role_entry(query: SchedulePlanQueryService, history: Dict[str, Any]) -> PlanCatalogEntry:
     version = int(history["version"])
     completeness, issues = _history_state(history, query.parse_history_summary(history))
     identity = None
     resolution = None
     try:
-        resolution = query.resolve_existing_plan(version, ROLE_ADOPTED)
-        query.repo.validate_detail_times(resolution)
+        resolution = query.resolve_existing_plan(version)
         identity = resolution.plan_identity
     except (ValueError, TypeError, OverflowError) as exc:
         if isinstance(exc, WorkbenchCommandRejected) and exc.status == 413:
@@ -84,9 +79,7 @@ def _role_entry(
     return PlanCatalogEntry(
         locator=PlanCatalogLocator(version, ROLE_ADOPTED),
         kind="official",
-        display_name=plan_role_label(ROLE_ADOPTED),
-        is_latest_version=version == latest,
-        schedule_result_status=history.get("result_status"),
+        display_name=ADOPTED_PLAN_LABEL,
         completeness=completeness,
         can_view=identity is not None and not issues,
         blocked_reasons=issues,

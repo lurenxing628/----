@@ -8,13 +8,13 @@ from pathlib import Path
 
 import pytest
 
+from tests._support.node_runtime_support import node_runtime
 from tests.workbench.dashboard_external_handling_support import (
     external_handling_case as external_handling_fixture,  # noqa: F401
 )
 from tests.workbench.dashboard_external_support import external_case as external_fixture  # noqa: F401
 from tests.workbench.dashboard_support import api, follow  # noqa: F401
 from tests.workbench.dashboard_support import dashboard_case as dashboard_fixture  # noqa: F401
-from tests.workbench.node_runtime_support import node_runtime
 from tests.workbench.point_downstream_support import ACTUAL, app_for, read
 from tests.workbench.run_candidate_support import candidate_case as candidate_fixture  # noqa: F401
 
@@ -96,8 +96,8 @@ def test_first_screen_list_and_analysis_share_one_fact_read(dashboard_case, monk
     assert len(calls) == 1
     assert len(snapshots) == 1
     contents = json.loads(snapshots[0])
-    assert type(contents["raw"]["external"]) is dict and type(contents["raw"]["candidate_catalog"]) is dict
-    assert all("facts" not in guard for ref, guard in contents["view"]["items"])
+    assert isinstance(contents["revisions"], dict) and contents["plan_state"] == "loaded" and "raw" not in contents
+    assert set(contents) == {"revisions", "plan_state", "plan_issues", "execution_issues"}
     assert body["data"]["analysis_error"] is None
     assert body["data"]["analysis"]["plan"] == body["data"]["plan"]
     assert body["data"]["analysis"]["as_of"] == body["meta"]["as_of"]
@@ -329,25 +329,31 @@ def test_dashboard_materializes_only_page_and_detail_facts_without_changing_snap
     reader = service.WorkbenchDashboardService(dashboard_case.conn, clock=lambda: NOW)
     with reader.read_snapshot():
         sources = reader.load()
-    original, calls = service.typed, []
+    calls = []
+    original_decorate = service.WorkbenchDashboardService._decorate
+    original_materialize = service.WorkbenchDashboardService._materialize_item
 
-    def typed(value):
-        calls.append(value)
-        return original(value)
+    def decorate(self, item, saved, identity, now):
+        result = original_decorate(self, item, saved, identity, now)
+        calls.append(set(result["_guard"]))
+        return result
 
-    monkeypatch.setattr(service, "typed", typed)
+    def materialize_item(item):
+        is_new = "_snapshot" not in item
+        original_materialize(item)
+        if is_new:
+            calls.append(set(item["_facts"]))
+
+    monkeypatch.setattr(service.WorkbenchDashboardService, "_decorate", decorate)
+    monkeypatch.setattr(service.WorkbenchDashboardService, "_materialize_item", staticmethod(materialize_item))
     data = reader.project(sources)
     assert len(data["items"]) > 1 and all("_snapshot" not in item for item in data["items"])
     assert len(calls) == len(data["items"]) and all("facts" not in value for value in calls)
-    legacy_guards = []
     for item in data["items"]:
-        snapshot = original({"facts": original(item["_facts"]), "source_state": item["source_state"],
+        snapshot = {"facts": item["_facts"], "source_state": item["source_state"],
             "identity": item["_guard"]["identity"], "revision": item["_guard"]["revision"],
-            "source": item["source"], "risk": item["risk"], "handling": item["_handling"]})
-        legacy_guards.append((item["item_ref"], {key: value for key, value in snapshot.items() if key != "facts"}))
-    expected = sources.facts.snapshot_contents(view={"stored": sources.stored,
-        "external_stored": sources.external[2], "items": legacy_guards})
-    assert data["snapshot_contents"] == expected
+            "source": item["source"], "risk": item["risk"], "handling": item["_handling"]}
+        assert item["_guard"] == {key: value for key, value in snapshot.items() if key != "facts"}
     guard_calls = len(calls)
     public = reader.workspace(data, DashboardQuery(size=1))
     assert len(public["items"]) == 1 and len(calls) == guard_calls + 1
@@ -359,7 +365,6 @@ def test_dashboard_materializes_only_page_and_detail_facts_without_changing_snap
     untouched = next(item for item in data["items"] if "_snapshot" not in item)
     detail = reader.detail(data, untouched["item_ref"])
     assert detail is untouched and "_snapshot" in detail and len(calls) == guard_calls + 2
-    assert data["snapshot_contents"] == expected
 
 
 def test_dashboard_analysis_reuses_streamed_pressure_without_retaining_calendar_geometry(dashboard_case, monkeypatch):
@@ -411,7 +416,7 @@ def test_dashboard_analysis_reuses_streamed_pressure_without_retaining_calendar_
     assert index._measurements == {}
     assert facts.raw["resource_pressure"]["calendar"]["resources"] is None
     assert facts.raw["resource_pressure"]["occupancy"] is None
-    assert set(facts.raw["resource_pressure"]) == {"context", "constraints", "unknown_source_operations", "calendar", "occupancy"}
+    assert set(facts.raw["resource_pressure"]) == {"constraints", "unknown_source_operations", "calendar", "occupancy"}
 
     def no_geometry(value):
         if isinstance(value, dict):

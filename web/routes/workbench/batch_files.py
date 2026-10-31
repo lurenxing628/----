@@ -99,21 +99,24 @@ def batch_export_preview():
     scope = batch_scope(body["scope"])
     if body["selection"] not in ("selected", "filtered") or not scope.get("snapshot_ref"):
         raise WorkbenchCommandRejected("invalid_input", "请先选好导出当前筛选还是导出选中的批次，没有开始下载。数据已更新时请先点「刷新」，再点「下载批次清单」。", 400)
+    if body["selection"] == "selected":
+        refs = body.get("refs")
+        if not isinstance(refs, list) or not 1 <= len(refs) <= MAX_ROWS:
+            raise WorkbenchCommandRejected("invalid_input", "导出要选 1 至 5000 批批次且不能重复，没有开始下载。请重新选择后点「下载批次清单」。", 400)
+        refs = [public_ref(ref) for ref in refs]
+        if len(set(refs)) != len(refs):
+            raise WorkbenchCommandRejected("invalid_input", "选中的批次有重复，没有开始下载。请重新选择后点「下载批次清单」。", 400)
+    elif "refs" in body:
+        raise WorkbenchCommandRejected("invalid_input", "导出当前筛选时不能再带选中的批次，没有开始下载。请重新选择后点「下载批次清单」。", 400)
+    else:
+        refs = []
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
     with batch_read_snapshot(reader) as fingerprint:
         bind_read_snapshot(snapshot_scope(scope), fingerprint, scope["snapshot_ref"])
         if body["selection"] == "selected":
-            refs = body.get("refs")
-            if not isinstance(refs, list) or not 1 <= len(refs) <= MAX_ROWS:
-                raise WorkbenchCommandRejected("invalid_input", "导出要选 1 至 5000 批批次且不能重复，没有开始下载。请重新选择后点「下载批次清单」。", 400)
-            refs = [public_ref(ref) for ref in refs]
-            if len(set(refs)) != len(refs):
-                raise WorkbenchCommandRejected("invalid_input", "选中的批次有重复，没有开始下载。请重新选择后点「下载批次清单」。", 400)
             for ref in refs:
                 reader.resolve(ref)
         else:
-            if "refs" in body:
-                raise WorkbenchCommandRejected("invalid_input", "导出当前筛选时不能再带选中的批次，没有开始下载。请重新选择后点「下载批次清单」。", 400)
             refs = reader.selection(scope)["refs"]
         token = save_preview("export", None, {"refs": refs}, fingerprint)
         snapshot = bind_read_snapshot({"kind": "batch_export", "export_ref": token}, fingerprint)

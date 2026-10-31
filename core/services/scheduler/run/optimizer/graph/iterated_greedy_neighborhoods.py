@@ -27,9 +27,7 @@ _FACTOR_CHANGE_CAP = 8
 
 class AdaptiveValue:
     def __init__(self, initial: float) -> None:
-        if not 0.0 <= float(initial) <= 1.0:
-            raise ValueError("AdaptiveValue initial value must lie in [0, 1]")
-        self.value = float(initial)
+        self.value = initial
         self.num_changes = 0
 
     def _factor(self) -> float:
@@ -37,7 +35,7 @@ class AdaptiveValue:
         return 1.0 + 1.0 / math.sqrt(min(self.num_changes, _FACTOR_CHANGE_CAP) + 1)
 
     def clamp(self, low: float, high: float) -> None:
-        self.value = min(max(self.value, float(low)), float(high))
+        self.value = min(max(self.value, low), high)
 
     def increase(self) -> None:
         factor = self._factor()
@@ -52,17 +50,10 @@ class DestroyGenerator:
     name = ""
 
     def __init__(self, *, initial_size: int, max_size: int) -> None:
-        if not 1 <= int(initial_size) <= int(max_size):
-            raise ValueError("destroy size must satisfy 1 <= initial <= max")
-        self.initial_size = int(initial_size)
-        self.max_size = int(max_size)
+        self.initial_size = initial_size
+        self.max_size = max_size
         self.reset()
         self.calls = 0
-        self.improving = 0
-        self.fully_solved = 0
-        self.idle = 0
-        self.degenerate = 0
-        self.time_seconds = 0.0
         self.last_improved = False
         self.completion_feedback = False
 
@@ -86,12 +77,8 @@ class DestroyGenerator:
     def select(self, order: Sequence[int], *, size: int, rnd: random.Random, features: Dict[str, Any]) -> Tuple[int, ...]:
         raise NotImplementedError
 
-    def record(self, elapsed_seconds: float, *, improved: bool, fully_solved: bool, idle: bool, worse: bool = False) -> None:
+    def record(self, *, improved: bool, fully_solved: bool, idle: bool, worse: bool = False) -> None:
         self.calls += 1
-        self.time_seconds += max(float(elapsed_seconds), 0.0)
-        self.improving += int(improved)
-        self.fully_solved += int(fully_solved)
-        self.idle += int(idle)
         self.last_improved = bool(improved and fully_solved and not worse)
         # Large, independently budgeted tasks use completion feedback. Small
         # instances keep their prior idle/worse feedback. Neither completion
@@ -102,22 +89,15 @@ class DestroyGenerator:
             self.difficulty.increase()
         self.difficulty.clamp(*self._bounds())
 
-    def summary(self) -> Dict[str, Any]:
-        return {"calls": self.calls, "improving": self.improving, "fully_solved": self.fully_solved, "idle": self.idle,
-                "degenerate": self.degenerate, "time_ms": int(self.time_seconds * 1000),
-                "difficulty": round(self.difficulty.value, 4), "size": self.size()}
-
 
 def _bounded(size: int, order: Sequence[int]) -> int:
-    return min(int(size), len(order) - 1) if len(order) > 1 else 0
+    return min(size, len(order) - 1) if len(order) > 1 else 0
 
 
-def _window(items: List[int], *, size: int, rnd: random.Random) -> Tuple[int, ...]:
+def _window(items: Tuple[int, ...], *, size: int, rnd: random.Random) -> Tuple[int, ...]:
     size = min(size, len(items))
-    if size <= 0:
-        return ()
     start = rnd.randint(0, len(items) - size)
-    return tuple(items[start:start + size])
+    return items[start:start + size]
 
 
 class TimeWindowGenerator(DestroyGenerator):
@@ -127,9 +107,7 @@ class TimeWindowGenerator(DestroyGenerator):
         count = _bounded(size, order)
         if count <= 0:
             return ()
-        starts = features["starts"]
-        by_start = sorted(order, key=lambda op_id: starts.get(op_id, math.inf))
-        return _window(by_start, size=count, rnd=rnd)
+        return _window(features["by_start"], size=count, rnd=rnd)
 
 
 class ResourceWindowGenerator(DestroyGenerator):
@@ -139,20 +117,12 @@ class ResourceWindowGenerator(DestroyGenerator):
         count = _bounded(size, order)
         if count <= 0:
             return ()
-        starts, machines = features["starts"], features["machines"]
-        loaded = [op_id for op_id in order if machines.get(op_id)]
-        by_machine: Dict[str, List[int]] = {}
-        for op_id in loaded:
-            by_machine.setdefault(machines[op_id], []).append(op_id)
-        candidates = [op_id for op_id in loaded if len(by_machine[machines[op_id]]) >= 2]
+        candidates = features["machine_candidates"]
         if not candidates:
-            # No machine carries two operations: the window degenerates to a time window (reported).
-            self.degenerate += 1
-            by_start = sorted(order, key=lambda op_id: starts.get(op_id, math.inf))
-            return _window(by_start, size=count, rnd=rnd)
-        machine = machines[rnd.choice(candidates)]  # proportional to the machine's load
-        on_machine = sorted(by_machine[machine], key=lambda op_id: starts.get(op_id, math.inf))
-        return _window(on_machine, size=count, rnd=rnd)
+            # No machine carries two operations: the window degenerates to a time window.
+            return _window(features["by_start"], size=count, rnd=rnd)
+        machine = features["machines"][rnd.choice(candidates)]  # proportional to the machine's load
+        return _window(features["by_machine"][machine], size=count, rnd=rnd)
 
 
 class TardyRandomGenerator(DestroyGenerator):
@@ -167,7 +137,7 @@ def tardy_random_destroy(order: Sequence[int], *, rnd: random.Random, size: int,
     count = _bounded(size, order)
     if count <= 0:
         return ()
-    flagged = [op_id for op_id in order if signals.get(op_id, 0.0) > 0.0]
+    flagged = [op_id for op_id in order if signals[op_id] > 0.0]
     rnd.shuffle(flagged)
     flagged.sort(key=lambda op_id: -signals[op_id])
     chosen = flagged[:min(len(flagged), (count + 1) // 2)]
@@ -191,9 +161,7 @@ class GeneratorRotation:
     """Continue after an improvement; consume each failed call once before rotating."""
 
     def __init__(self, generators: Sequence[DestroyGenerator]) -> None:
-        if not generators:
-            raise ValueError("at least one destroy generator is required")
-        self.generators = list(generators)
+        self.generators = generators
         self._index = 0
         self._completed_calls = self.generators[0].calls
 

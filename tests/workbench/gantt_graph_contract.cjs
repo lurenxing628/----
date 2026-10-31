@@ -148,10 +148,20 @@ const candidateLayout = (value, mode, query, width = 1000, operationRefs = null)
   const candidate = M.selectPrepared(M.groupPrepared(M.prepare(value), mode), query, operationRefs, null);
   return B.layoutPrepared(B.selectPrepared(candidate, B.groupPrepared(B.prepare(null), mode), query, operationRefs, false), width);
 };
+const preparePlan = (value, baselineItems = null) => {
+  const M = window.PlanGanttModel, taskFacts = M.prepareTasks(value);
+  return M.combinePrepared(taskFacts, M.prepareBaseline(value, taskFacts, baselineItems), M.prepareOccupancy(value, null, null, taskFacts.labels));
+};
+const planLayout = (value, mode, query = '', changedOnly = false, baseline = false, width = 1000) => {
+  const M = window.PlanGanttModel, facts = preparePlan(value);
+  const grouped = M.groupPrepared(facts, mode);
+  const baselineGrouped = baseline ? M.groupBaseline(facts, mode) : null;
+  return M.layoutPrepared(M.selectPrepared(grouped, query, changedOnly, baseline, facts, baselineGrouped), width);
+};
 const width = 1000;
 for (const candidate of [false, true]) {
   const layout = query => candidate ? candidateLayout(candidateData, 'machine', query, width)
-    : window.PlanGanttModel.layoutPrepared(window.PlanGanttModel.selectPrepared(window.PlanGanttModel.groupPrepared(window.PlanGanttModel.prepare(data), 'machine'), query), width);
+    : planLayout(data, 'machine', query, false, false, width);
   const model = layout(''), options = { candidate }, viewport = { left: 0, top: 0, width, height: model.height };
   if (!candidate) assert.strictEqual(model.rows.find(row => row.id === ref(200)).occupancy, occupancy, 'Resource summary uses the existing occupancy projection');
   const positions = G.locations(model, options), locationIndex = G.locationIndex(positions);
@@ -183,14 +193,14 @@ for (const candidate of [false, true]) {
 const baselineItems = [{ operation_ref: tasks[3].operation_ref, change: 'moved',
   before: { ...tasks[3], start: at(7), end: at(8), machine_ref: ref(202) } }];
 data.projections.baseline = { state: 'available', items: [], item_count: 1, items_complete: false };
-const unloadedPlan = window.PlanGanttModel.prepare(data);
+const unloadedPlan = preparePlan(data);
 assert.equal(unloadedPlan.baselineLoaded, false);
 assert.equal(unloadedPlan.before.length, 0);
-const onDemandPlan = window.PlanGanttModel.prepare(data, baselineItems);
+const onDemandPlan = preparePlan(data, baselineItems);
 assert.equal(onDemandPlan.baselineLoaded, true);
 assert.equal(onDemandPlan.before.length, 1);
-data.projections.baseline = { state: 'available', items: baselineItems };
-const comparison = window.PlanGanttModel.layoutPrepared(window.PlanGanttModel.selectPrepared(window.PlanGanttModel.groupPrepared(window.PlanGanttModel.prepare(data), 'machine'), '', false, true), width);
+data.projections.baseline = { state: 'available', items: baselineItems, items_complete: true };
+const comparison = planLayout(data, 'machine', '', false, true, width);
 assert(comparison.rows.filter(row => row.before).every(row => row.occupancy === null), 'Baseline rows must not present current-plan utilization');
 const current = G.locations(comparison).get(ref(4));
 assert.equal(current.start, window.PlanGanttModel.instant(at(10))); assert.equal(current.end, window.PlanGanttModel.instant(at(11)));
@@ -292,7 +302,8 @@ assert(pointCalls.every(call => call.start === prepared.start && call.end === pr
 assert(compact.rows.filter(row => row.point).length > wide.rows.filter(row => row.point).length);
 assert.deepEqual(clone(compact.rows.filter(row => !row.point && !row.baseline).map(row => row.items.map(item => [item.task.row_ref, item.start, item.end, item.overlap]))),
   clone(wide.rows.filter(row => !row.point && !row.baseline).map(row => row.items.map(item => [item.task.row_ref, item.start, item.end, item.overlap]))));
-const preparedPlan = window.PlanGanttModel.selectPrepared(window.PlanGanttModel.groupPrepared(window.PlanGanttModel.prepare(data), 'machine'), 'piece-b', false, true), planSorts = [context.__normalSorts, context.__pointSorts];
+const planFacts = preparePlan(data);
+const preparedPlan = window.PlanGanttModel.selectPrepared(window.PlanGanttModel.groupPrepared(planFacts, 'machine'), 'piece-b', false, true, planFacts, window.PlanGanttModel.groupBaseline(planFacts, 'machine')), planSorts = [context.__normalSorts, context.__pointSorts];
 const hiddenLanes = window.PlanGanttModel.layoutPrepared(preparedPlan, 640), hiddenWide = window.PlanGanttModel.layoutPrepared(preparedPlan, 10000);
 assert.deepEqual([context.__normalSorts, context.__pointSorts], planSorts);
 const shown = hiddenLanes.rows.find(row => !row.before && !row.point);

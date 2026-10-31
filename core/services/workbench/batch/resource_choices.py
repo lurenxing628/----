@@ -40,17 +40,21 @@ class BatchResourceFacts:
                 self.qualification_errors[code] = exc
         return self.qualifications.get(code)
 
+    def operator_qualification_issues(self, operator_id, op_type_id):
+        if operator_id not in self.catalogs["operator"]:
+            return []
+        skills = self.qualification(operator_id)
+        if operator_id in self.qualification_errors:
+            return [{"code": "operator_qualification_invalid", "message": str(self.qualification_errors[operator_id])}]
+        if skills is not None and op_type_id not in skills:
+            return [{"code": "data_gap", "message": "所选人员未登记本工种资格。"}]
+        return []
+
     def operator_issues(self, operator_id, op_type_id, machine_id):
         issues = []
         if operator_id and machine_id and (operator_id, machine_id) not in self.links:
             issues.append({"code": "data_gap", "message": "所选人员未获设备操作授权。"})
-        if operator_id in self.catalogs["operator"]:
-            skills = self.qualification(operator_id)
-            if operator_id in self.qualification_errors:
-                issues.append({"code": "operator_qualification_invalid", "message": str(self.qualification_errors[operator_id])})
-            elif skills is not None and op_type_id not in skills:
-                issues.append({"code": "data_gap", "message": "所选人员未登记本工种资格。"})
-        return issues
+        return issues + self.operator_qualification_issues(operator_id, op_type_id)
 
     def require_operator(self, operator_id, op_type_id, machine_id):
         if not operator_id:
@@ -78,14 +82,10 @@ class BatchResourceFacts:
         if (kind == "supplier") != (op["source"] == "external"):
             return "不适用于此工序归属"
         if kind == "operator":
-            issues = self.operator_issues(code, op["op_type_id"], op["machine_id"])
+            issues = self.operator_qualification_issues(code, op["op_type_id"])
             return issues[0]["message"] if issues else ""
         if kind == "machine":
-            if op["op_type_id"] not in self.machine_types.get(code, ()):
-                return "未具备该工序工种能力"
-            if op["operator_id"] and (op["operator_id"], code) not in self.links:
-                return "所选人员未获设备操作授权。"
-            return ""
+            return "" if op["op_type_id"] in self.machine_types.get(code, ()) else "未具备该工序工种能力"
         return "" if self.supplier_capable(code, op["op_type_id"]) else "未具备该工序工种能力"
 
 

@@ -1,7 +1,7 @@
 """Service-side rulings over dashboard storage facts; the repositories only read and write rows."""
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_dashboard import HANDLING_FIELDS, MAX_BYTES, MAX_ROWS, STATUSES, bounded, reference
+from core.models.workbench_dashboard import HANDLING_FIELDS, MAX_ROWS, STATUSES, bounded, reference
 from core.shared.strict_json import load_strict_json
 
 
@@ -41,18 +41,14 @@ def read_receipt_mappings(repo, refs):
 
 def read_stored(repo):
     """Decode every stored handling state."""
-    result, identities, size, count = {}, {}, 0, 0
+    result, identities, count = {}, {}, 0
     for row in repo.stored_rows(MAX_ROWS):
         count += 1
         bounded(range(count), MAX_ROWS)
-        size += row.pop("_stored_body_bytes")
-        bounded(range(size), MAX_BYTES)
         identity = row.pop("_identity")
-        row.pop("_tail_after_json")
-        receipt = row.pop("_receipt_ref")
         row["handling"] = load_handling(row.pop("handling_json"))
         row["origin"] = _load_object(row.pop("origin_json"))
-        if (receipt is None or row["origin"].get("item_ref") != row["item_ref"]
+        if (row["origin"].get("item_ref") != row["item_ref"]
                 or row["origin"].get("category") != row["category"]
                 or type(row["origin"].get("source")) is not dict):
             corrupt()
@@ -70,7 +66,7 @@ def read_external_stored(repo, receipts):
         members = captured["header"]["target"]["operation_refs"] if captured is not None else []
         if source.get("outsourcing_ref") != outsourcing_ref or source.get("operation_refs") != members or not members:
             corrupt()
-    return stored, identities
+    return stored
 
 
 def require_identity(repo, item_ref):

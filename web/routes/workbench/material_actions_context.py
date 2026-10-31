@@ -14,8 +14,8 @@ from werkzeug.exceptions import HTTPException
 from core.errors import AppError, ValidationError
 from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_material_file import MaterialPreview, normalize_scope
-from core.services.workbench.material.files import local_created_at
+from core.models.workbench_material_file import MaterialPreview, scope_request
+from core.services.workbench.messages import local_created_at
 from web.public_token_registry import issue_public_token_with_expiry, resolve_public_token
 
 from .api_responses import api_endpoint
@@ -66,12 +66,9 @@ def opaque_ref(value):
 
 
 def scope_input(body):
-    scope = normalize_scope(body["scope"])
-    size = body.get("page_size", 20)
-    if type(size) is not int or not 1 <= size <= 200:
-        raise WorkbenchCommandRejected("invalid_input", "每页条数必须是1至200之间的整数。", 400)
-    token = opaque_ref(body["snapshot_ref"])
-    return scope, {"kind": "material", "size": size, **scope}, token
+    """The viewed list's validated request, its read-binding scope and snapshot token."""
+    request = scope_request(body["scope"], size=body.get("page_size", 20))
+    return request, request.scope(), opaque_ref(body["snapshot_ref"])
 
 
 def issue_binding(namespace, binding):

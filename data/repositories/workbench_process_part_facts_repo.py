@@ -6,13 +6,12 @@ from .base_repo import BaseRepository
 class WorkbenchProcessPartFactsRepository(BaseRepository):
     def capture(self, refs):
         identities, snapshots = {}, {}
-        refs = list(dict.fromkeys(refs))
         for start in range(0, len(refs), 400):
             selected = refs[start:start + 400]
             marks = ",".join("?" for _ in selected)
             rows = self.fetchall("SELECT * FROM WorkbenchEntityRefs WHERE ref IN (" + marks + ")", selected)
             identities.update({row["ref"]: row for row in rows})
-            codes = list(dict.fromkeys(row["entity_key"] for row in rows if row["kind"] == "part" and row["active"]))
+            codes = [row["entity_key"] for row in rows if row["kind"] == "part" and row["active"]]
             if not codes:
                 continue
             code_marks = ",".join("?" for _ in codes)

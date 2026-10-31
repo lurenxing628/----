@@ -18,7 +18,6 @@ class InternalScheduleCallback(Protocol):
         machine_timeline: Dict[str, List[Tuple[datetime, datetime]]],
         operator_timeline: Dict[str, List[Tuple[datetime, datetime]]],
         base_time: datetime,
-        errors: List[str],
         end_dt_exclusive: Optional[datetime],
         machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
         auto_assign_enabled: bool,
@@ -26,7 +25,7 @@ class InternalScheduleCallback(Protocol):
         last_op_type_by_machine: Optional[Dict[str, str]],
         machine_busy_hours: Optional[Dict[str, float]],
         operator_busy_hours: Optional[Dict[str, float]],
-    ) -> Tuple[Optional[ScheduleResult], bool]: ...
+    ) -> Tuple[Optional[ScheduleResult], Optional[Dict[str, Any]]]: ...
 
 
 class ExternalScheduleCallback(Protocol):
@@ -37,9 +36,8 @@ class ExternalScheduleCallback(Protocol):
         batch_progress: Dict[str, datetime],
         external_group_cache: Dict[Tuple[str, ...], Tuple[datetime, datetime]],
         base_time: datetime,
-        errors: List[str],
         end_dt_exclusive: Optional[datetime],
-    ) -> Tuple[Optional[ScheduleResult], bool]: ...
+    ) -> Tuple[Optional[ScheduleResult], Optional[Dict[str, Any]]]: ...
 
 
 class AutoAssignAttemptCallback(Protocol):

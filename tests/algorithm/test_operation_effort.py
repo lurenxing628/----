@@ -38,7 +38,7 @@ def test_effort_matches_slot_and_keeps_standard_hours_before_efficiency(piece, s
     slot = estimate_internal_slot(
         calendar=FixedEfficiencyCalendar(), op=op, batch=work, machine_id="M1", operator_id="O1",
         base_time=start, prev_end=start, machine_timeline=[], operator_timeline=[], end_dt_exclusive=None,
-        machine_downtimes=[], last_op_type_by_machine={}, abort_after=None,
+        machine_downtimes=[], last_op_type_by_machine=None, abort_after=None,
     )
     assert effort.required_standard_hours == validate_internal_hours(op, work) == required
     assert effort.setup_standard_hours == setup
@@ -135,7 +135,7 @@ def test_batch_order_dispatch_supplies_required_operation_input(source, callback
     op, batch = _warmstart_op(1, "B1", piece="P1"), make_batch(quantity=20)
     op.source = source
     ctx, state = MagicMock(), MagicMock()
-    ctx.schedule_internal.return_value = ctx.schedule_external.return_value = (None, False)
+    ctx.schedule_internal.return_value = ctx.schedule_external.return_value = (None, {"code": "schedule_window_exceeded"})
     _dispatch_one(
         ctx, op=op, batches={"B1": batch}, state=state, base_time=datetime(2026, 10, 13),
         end_dt_exclusive=None, machine_downtimes={}, auto_assign_enabled=False, resource_pool=None,
@@ -194,7 +194,7 @@ def test_external_candidate_window_waits_for_material_like_the_placement(merged)
     state = ScheduleRunState(base_time=base)
     window = external_candidate_window(calendar, state.external_group_cache, op=op, prev_end=base)
     result, blocked = schedule_external(calendar=calendar, op=op, batch_progress={},
-                                        external_group_cache={}, base_time=base, errors=[], end_dt_exclusive=None)
+                                        external_group_cache={}, base_time=base, end_dt_exclusive=None)
     assert not blocked and window == (result.start_time, result.end_time)
     assert window[0] == datetime(2026, 10, 16)
     if merged:
@@ -210,12 +210,12 @@ def test_merged_external_group_is_cached_only_when_it_fits_the_window():
 
     base = datetime(2026, 10, 13, 8)
     op, calendar = _external_op(merged=True, total_days=5.0, material_ready_date=None), _NaturalDayCalendar()
-    cache, errors = {}, []
+    cache = {}
     result, blocked = schedule_external(calendar=calendar, op=op, batch_progress={}, external_group_cache=cache, base_time=base,
-                                        errors=errors, end_dt_exclusive=base + timedelta(days=2))
-    assert result is None and blocked and len(errors) == 1
+                                        end_dt_exclusive=base + timedelta(days=2))
+    assert result is None and blocked["code"] == "schedule_window_exceeded"
     assert cache == {}
     result, blocked = schedule_external(calendar=calendar, op=op, batch_progress={}, external_group_cache=cache, base_time=base,
-                                        errors=errors, end_dt_exclusive=base + timedelta(days=10))
+                                        end_dt_exclusive=base + timedelta(days=10))
     assert result is not None and not blocked
     assert cache == {external_group_key(op): (result.start_time, result.end_time)}

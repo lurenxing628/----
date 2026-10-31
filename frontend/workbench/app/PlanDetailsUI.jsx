@@ -20,7 +20,7 @@
   function TimeValue({ value }) {
     return value ? <time title={M.timeLabel(value)}>{F.compactDateTime(value)}</time> : '暂无数据';
   }
-  function CalendarWindows({ windows, windowsComplete = true, loading = false, error = null, onRetry }) {
+  function CalendarWindows({ windows, windowsComplete, loading, error, onRetry }) {
     const [open, setOpen] = React.useState(false), [page, setPage] = React.useState(0);
     if (windows === null) return '暂无数据';
     if (!windowsComplete) {
@@ -39,19 +39,19 @@
     return collapsible ? <details className="wb-gantt-detail-section"><summary>{title}</summary><div className="wb-gantt-detail-section-body">{children}</div></details>
       : <section><h3>{title}</h3>{children}</section>;
   }
-  function Route({ prepared, selected, onRelated, disabled, collapsible, graphLoading, graphError, onRetryGraph }) {
+  function Route({ prepared, graph, selected, onRelated, disabled, collapsible, graphLoading, graphError, onRetryGraph }) {
     if (selected.before) return <section><h3>完整工艺路线</h3><p className="plan-muted">切换到当前安排查看完整工艺路线。</p></section>;
-    const graph = prepared.graph && prepared.graph.graph;
-    if (graph && graph.state === 'available' && graph.nodes_complete === false) {
+    const graphData = graph && graph.graph;
+    if (graphData && graphData.state === 'available' && graphData.nodes_complete === false) {
       return <DetailSection title="完整工艺路线" collapsible={collapsible}>
         {graphError
-          ? <><p className="plan-muted">{graphError.message || '工序衔接图读取失败。'}</p>{onRetryGraph && <Button icon="refresh-cw" onClick={onRetryGraph}>重试工序衔接图</Button>}</>
+          ? <><p className="plan-muted">{graphError.message || '工序衔接图读取失败。'}</p><Button icon="refresh-cw" onClick={onRetryGraph}>重试工序衔接图</Button></>
           : <p className="plan-muted">{graphLoading ? '正在读取完整工艺路线…' : '正在准备完整工艺路线…'}</p>}
       </DetailSection>;
     }
-    return <window.GanttRouteList index={prepared.graph} targetRef={selected.task.task_ref} loadedRefs={prepared.loadedRefs} onSelect={onRelated} disabled={disabled} collapsible={collapsible} />;
+    return <window.GanttRouteList index={graph} targetRef={selected.task.task_ref} loadedRefs={prepared.loadedRefs} onSelect={onRelated} disabled={disabled} collapsible={collapsible} />;
   }
-  function TaskDetail({ data, prepared, selected, onSelect, onRelated, onCollapse, renderTrial, scope, query, disabled, baselineLoading, baselineError, onRetryBaseline, graphLoading, graphError, onRetryGraph }) {
+  function TaskDetail({ data, prepared, graph, selected, onSelect, onRelated, onCollapse, renderTrial, scope, query, disabled, baselineLoading, baselineError, onRetryBaseline, graphLoading, graphError, onRetryGraph }) {
     const task = selected && selected.task, labels = prepared.labels;
     const baseline = data.projections.baseline;
     const comparison = task && baseline.state === 'available' && prepared.comparisons.get(task.operation_ref);
@@ -92,14 +92,14 @@
           taskOrigin: { plan_ref: data.plan.plan_ref, operation_ref: task.operation_ref, task_ref: task.task_ref },
           disabled: disabled || selected.before || task.plan_ref !== data.plan.plan_ref, label: '调整此工序' })}</div>
       </>}</section>
-      {task && <><Route prepared={prepared} selected={selected} onRelated={onRelated} disabled={disabled} collapsible={compact} graphLoading={graphLoading} graphError={graphError} onRetryGraph={onRetryGraph} />
+      {task && <><Route prepared={prepared} graph={graph} selected={selected} onRelated={onRelated} disabled={disabled} collapsible={compact} graphLoading={graphLoading} graphError={graphError} onRetryGraph={onRetryGraph} />
       {compact && <DetailSection title="计划来源" collapsible><Facts items={[
         ['计划来源整批量', M.quantityLabel(task.batch_quantity, task.quantity_reason)],
         ['数量依据', task.quantity_reason ? M.quantityReasons[task.quantity_reason] : task.quantity_basis === 'run_admission' ? '来自上次排产候选方案的数据，已核对采用记录' : '来自新增试调草稿时的数据，已核对采用记录']
       ]} /></DetailSection>}
       {baseline.state === 'available' && <DetailSection title="原安排对照" collapsible={compact}>{!prepared.baselineLoaded
         ? baselineError
-          ? <><p className="plan-muted">{baselineError.message || '原安排对照读取失败。'}</p>{onRetryBaseline && <Button icon="refresh-cw" onClick={onRetryBaseline}>重试原安排对照</Button>}</>
+          ? <><p className="plan-muted">{baselineError.message || '原安排对照读取失败。'}</p><Button icon="refresh-cw" onClick={onRetryBaseline}>重试原安排对照</Button></>
           : <p className="plan-muted">{baselineLoading ? '正在读取原安排对照…' : '未找到对应对照记录'}</p>
         : comparison ? <>
         <Facts items={[
@@ -183,7 +183,7 @@
       {projection.state !== 'available' && <div className="plan-note">{projection.state === 'not_applicable' ? '当前范围未指定有效交期。' : projection.state === 'partial' ? '部分资料缺失，查看下方原因。' : '资料缺失，暂无法判断。'}</div>}
       {tab === 'calendar' && !windowsComplete && (capacityError || capacityLoading) && <div className="wb-surface-body plan-read-state" data-plan-capacity-state={capacityError ? 'error' : 'loading'}>
         {capacityError && <p className="plan-muted">{capacityError.message || '资源班表时段读取失败。'}</p>}
-        {capacityError && onRetryCapacity && <Button icon="refresh-cw" onClick={onRetryCapacity}>重试加载班表时段</Button>}
+        {capacityError && <Button icon="refresh-cw" onClick={onRetryCapacity}>重试加载班表时段</Button>}
         {!capacityError && capacityLoading && <p className="plan-muted">正在加载可排时段明细…</p>}
       </div>}
       {tab === 'load' && <details className="plan-table-help"><summary>负荷怎么算</summary><div>
@@ -194,7 +194,7 @@
         <p>可排总时长是允许排产的时段长度，已扣除停机和停用时间。</p>
         <p>折算标准工时按许可时段乘以效率计算。普通件和急件可共用同一时段，两项不能相加。</p>
       </div></details>}
-      <Issues issues={projection.issues || []} />
+      {tab !== 'risk' && <Issues issues={projection.issues} />}
       <div className="plan-projection-table wb-table-frame" data-wb-scroll-key="plan-projection-table" data-sticky-head data-sticky-actions><table className="wb-table" aria-label={tab === 'risk' ? '交付风险列表' : tab === 'load' ? '资源负荷列表' : '资源班表列表'}>
         <caption className="wb-visually-hidden">{tab === 'risk' ? '交付风险列表' : tab === 'load' ? '资源负荷列表' : '资源班表列表'}</caption>
         <thead><tr>{(tab === 'risk' ? ['批次 / 零件', '交期', '工序安排 / 预计完工', '交付风险', '未安排', '原因'] : tab === 'load' ? ['资源', '可排总时长（小时）', '班内已占（小时）', '占用比例', '异常', '详情'] : ['资源', '可排总时长（小时）', '可排时段', '详情']).map((label, index) => <th scope="col" className={index === 0 ? 'wb-col-key' : undefined} key={label}>{label}</th>)}</tr></thead>

@@ -6,7 +6,6 @@
 所以界面存不了的组合文件也存不了。工时不是可填列：它由班次起止算出来，导出时作为只读列带出。
 """
 
-from dataclasses import replace
 from datetime import date
 from typing import Any, Dict, List, Optional, cast
 
@@ -54,7 +53,7 @@ from ..operator_calendars import WorkbenchOperatorCalendarService, engine_read_r
 from ..queries import WorkbenchResourceQueryService
 from .file_codec import read_calendar_file, read_clock, read_date, read_number
 from .file_writer import check_capacity, number_text, percent_text, write_calendar_file
-from .files import DAY_TYPE_TEXT, YES_NO_TEXT, check_range, range_fingerprint, row_blocked, zero_hour_workday_note
+from .files import DAY_TYPE_TEXT, YES_NO_TEXT, check_range, row_blocked, zero_hour_workday_note
 
 KIND = "operator_calendar"
 
@@ -97,8 +96,9 @@ class WorkbenchOperatorCalendarFileService:
         with self._domain_calendar.normalization_operation():
             rows = self._build_rows(source)
             calendars = {row["row"]: row.pop("calendar") for row in rows if "calendar" in row}
-            return replace(CalendarFilePreview.build(self.kind + ".import", request, rows, notices, source=prepared),
-                           calendars=calendars)
+            return CalendarFilePreview.build(
+                self.kind + ".import", request, rows, notices, source=prepared, calendars=calendars
+            )
 
     def _build_rows(self, source) -> List[Dict[str, Any]]:
         rows = [self._parse_row(item) for item in source]
@@ -374,32 +374,41 @@ class WorkbenchOperatorCalendarFileService:
             return [identity.entity_key for identity in reader.resolve_refs(refs)]
         return reader.toolbar_matching_keys(ResourcePageRequest(kind="operator"))
 
+    def validate_export_scope(self, *, start_date: str, end_date: str, selected_refs=None) -> List[str]:
+        check_range(start_date, end_date)
+        return self._codes_for(selected_refs)
+
     def _rows_for(self, start_date: str, end_date: str, codes: List[str]):
         """只导出这段时间里单独设置过的日期；没设置过的天按班次或全局日历走，不出现在文件里。"""
         rows = []
         codes = sorted(set(codes))
         operators = self.repo.raw_many("operator", codes)
         states = self._states_for(codes, start_date, end_date)
-        fingerprint = {}
         for code in codes:
             label = operators[code]["name"]
-            fingerprint[code] = {"label": label, "days": range_fingerprint(states[code])}
             for state in states[code].values():
                 if state["row"] is not None:
                     rows.append(self._public(state["row"], label))
-        return fingerprint, rows
+        return rows
 
-    def _states_and_rows(self, start_date: str, end_date: str, selected_refs=None):
+    def preview_export(self, *, start_date: str, end_date: str, selected_refs=None, codes: List[str]):
         if not self.conn.in_transaction:
             raise RuntimeError("个人日历范围读取必须在快照事务中执行。")
-        check_range(start_date, end_date)
-        return self._rows_for(start_date, end_date, self._codes_for(selected_refs))
-
-    def preview_export(self, *, start_date: str, end_date: str, selected_refs=None, rows):
+        states = self._states_for(sorted(set(codes)), start_date, end_date)
+        count = sum(
+            state["row"] is not None
+            for operator_states in states.values()
+            for state in operator_states.values()
+        )
         arguments: Dict[str, Any] = {"start_date": start_date, "end_date": end_date}
         if selected_refs is not None:
             arguments["selected_refs"] = selected_refs
-        return arguments, len(rows)
+        return arguments, count
+
+    def export_rows(self, start_date: str, end_date: str, *, codes: List[str]):
+        if not self.conn.in_transaction:
+            raise RuntimeError("个人日历范围读取必须在快照事务中执行。")
+        return self._rows_for(start_date, end_date, codes)
 
     def export(self, file_format, *, rows) -> FileDownload:
         check_capacity(len(rows), file_format)

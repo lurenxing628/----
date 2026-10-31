@@ -5,7 +5,7 @@ const SM_TOOL_ICONS = {
   'rotate-ccw': [['path', { d: 'M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8' }], ['path', { d: 'M3 3v5h5' }]]
 };
 function SMIcon({ name }) {
-  const nodes = SM_TOOL_ICONS[name] || (window.APSFieldReports && window.APSFieldReports.iconNodes && window.APSFieldReports.iconNodes[name]);
+  const nodes = SM_TOOL_ICONS[name] || window.APSFieldReports.iconNodes[name];
   if (!nodes) return null;
   return <svg className="sm-icon" data-sm-icon={name} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     {nodes.map(([tag, attrs], index) => React.createElement(tag, { ...attrs, key: index }))}
@@ -19,22 +19,48 @@ function SMUnavailable({ title, children }) {
   return <div className="sm-empty"><SMIcon name="folder-open" /><h4>{title}</h4><p>{children}</p></div>;
 }
 function SMExport({ disabled, onClick, children }) {
-  const { TransferButton, ControlButton } = window.APSWorkbenchUI;
-  const ready = window.APSFieldReports && window.APSFieldReports.iconNodes && window.APSFieldReports.iconNodes['file-output'];
-  return ready ? <TransferButton className="sm-button" kind="export" disabled={disabled} onClick={onClick}>{children}</TransferButton> :
-    <ControlButton className="sm-button" disabled title="缺少导出图标，暂时不能导出">{children}</ControlButton>;
+  const { TransferButton } = window.APSWorkbenchUI;
+  return <TransferButton className="sm-button" kind="export" disabled={disabled} onClick={onClick}>{children}</TransferButton>;
 }
 
-function SystemManagementScreen({ theme, onToggleTheme, onSetTheme }) {
+function SystemManagementScreen() {
   const model = window.APSSystemWorkbench, { MetricStrip, Metric, ControlButton } = window.APSWorkbenchUI;
-  const inspect = () => model.inspectEnvironment(window, { theme, onToggleTheme, onSetTheme });
+  const inspect = () => model.inspectEnvironment(window);
   const [report, setReport] = React.useState(null), [notice, setNotice] = React.useState('');
-  React.useEffect(() => { setReport(inspect()); }, [theme, onToggleTheme, onSetTheme]);
+  React.useEffect(() => { setReport(inspect()); }, []);
   const ready = report ? report.checks.filter(item => item.status === 'available').length : 0;
+  function download(w, filename, mime, text) {
+    if (!model.canDownload(w)) throw new Error('当前浏览器不支持本地文件导出');
+    let url, anchor;
+    try {
+      url = w.URL.createObjectURL(new w.Blob([text], { type: mime }));
+      anchor = w.document.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      anchor.hidden = true;
+      w.document.body.appendChild(anchor);
+      anchor.click();
+    } finally {
+      if (anchor) anchor.remove();
+      if (url) w.setTimeout(() => w.URL.revokeObjectURL(url), 1000);
+    }
+  }
   const exportDiagnostic = () => {
     try {
       const current = inspect();
-      model.download(window, '当前原型诊断.json', 'application/json;charset=utf-8', model.diagnosticJSON(current));
+      download(window, '当前原型诊断.json', 'application/json;charset=utf-8',
+        JSON.stringify({
+          schema: 'aps-system-workbench-prototype-v1',
+          schemaVersion: current.schemaVersion,
+          scope: current.scope,
+          checkedAt: current.checkedAt,
+          protocol: current.protocol,
+          service: current.service,
+          database: current.database,
+          backupHealth: current.backupHealth,
+          ...(notice ? { notice } : {}),
+          checks: current.checks
+        }, null, 2));
       setNotice('已生成当前原型诊断 JSON；是否保存以浏览器下载结果为准。');
     } catch (_) {
       setNotice('导出没有完成，本机数据没有任何改动。请用 Chrome 打开后重试。');

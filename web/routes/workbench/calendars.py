@@ -18,8 +18,10 @@ from flask import current_app, g, request
 from werkzeug.exceptions import HTTPException
 
 from core.errors import AppError
+from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.commands import WorkbenchCommandService
+from core.services.workbench.facts.source_revisions import CALENDAR_SOURCE_KEYS, read_source_revisions
 from core.services.workbench.resource.calendars import WorkbenchCalendarService
 from web.api_responses import failure, json_response, query_success
 
@@ -27,9 +29,9 @@ from .api_responses import api_endpoint, read_endpoint
 from .calendar_defaults import register_calendar_defaults_routes
 from .calendars_preview import release_preview, resolve_preview, retain_preview
 from .calendars_projection import calendar_day, calendar_preview, calendar_snapshot
-from .materials import _command_body
 from .read_context import bind_read_snapshot
 from .write_context import (
+    command_body,
     issue_write_context,
     preview_write_context,
     validate_preview_confirmation,
@@ -50,6 +52,8 @@ def _month_input():
         if re.fullmatch(r"[1-9][0-9]{0,3}", text) is None:
             raise WorkbenchCommandRejected("invalid_input", "请填写有效的年份和 1 至 12 的月份，当前月份没有变化。", 400)
         values[key] = int(text)
+    if not 1 <= values["month"] <= 12:
+        raise WorkbenchCommandRejected("invalid_input", "请填写有效的年份和 1 至 12 的月份，当前月份没有变化。", 400)
     return values
 
 
@@ -61,9 +65,11 @@ def _day_subject(day):
 @api_endpoint
 def calendar_month():
     values = _month_input()
-    month = _service().month(**values)
+    with TransactionManager(g.db).transaction():
+        revisions = read_source_revisions(g.db, CALENDAR_SOURCE_KEYS)
+        snapshot = bind_read_snapshot({"kind": "calendar", **values}, revisions, request.args.get("snapshot_ref"))
+        month = _service().month(**values)
     states = [calendar_snapshot(day) for day in month["days"]]
-    snapshot = bind_read_snapshot({"kind": "calendar", **values}, states, request.args.get("snapshot_ref"))
     days = []
     for day, state in zip(month["days"], states):
         public = {**calendar_day(state), **{key: day[key] for key in ("day", "weekday", "is_weekend", "is_today")}}
@@ -77,7 +83,7 @@ def calendar_month():
 
 @api_endpoint
 def calendar_day_command(action):
-    body = _command_body()
+    body = command_body("日历")
     domain = _service()
     payload = domain.normalize(action, body["input"])
     subject, command = _day_subject(payload["date"]), "calendar." + action
@@ -119,7 +125,7 @@ def _build_preview(domain, payload):
 
 @api_endpoint
 def calendar_range_confirm():
-    body = _command_body()
+    body = command_body("日历")
     domain = _service()
     payload = domain.normalize("confirm", body["input"])
     ref = payload["preview_ref"]

@@ -51,7 +51,7 @@
   function Rows({ model, view, width, viewport, left, top, height, labelWidth, dense, active, onSelect, onHover, onChainTarget, patch }) {
     const scale = width / (model.end - model.start), nowX = (model.asOf - model.start) * scale;
     const visible = React.useMemo(() => M.visibleRows(model.rows, Math.max(0, top - 100), top + height + 100).map(row => ({ row,
-      visibleMarks: row.kind === 'group' ? [] : row.marks.filter(mark => (mark.end - model.start) * scale >= left - 12 && (mark.start - model.start) * scale <= left + viewport + 12)
+      visibleMarks: row.kind === 'group' ? [] : M.visibleMarks(row.marks, model.start, scale, left, viewport)
     })), [model, top, height, width, left, viewport]);
     const ticks = React.useMemo(() => M.ticks(model, width, left, viewport), [model.start, model.end, width, left, viewport]);
     return <>{visible.map(({ row, visibleMarks }) => {

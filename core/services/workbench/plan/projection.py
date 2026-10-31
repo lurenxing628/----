@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+from core.infrastructure.sqlite_udf import parse_dt_for_sql
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.facts.zero_duration import point_event_dto
 from core.shared.strict_parse import is_exact_positive_int
-from data.repositories.schedule_time_sql import parse_dt_for_sql
 
 _REASONS = {
     "summary_invalid": "这次排产的摘要无效，确认不了计划是否完整。请刷新后重试。",
@@ -59,27 +59,24 @@ def public_time(value):
     return parsed.replace(" ", "T")
 
 
-def _required_text(value):
+def required_text(value):
     if type(value) is not str or not value.strip():
         raise WorkbenchCommandRejected("plan_unavailable", "有安排缺批次号或工序名称，读不全。请到批次管理核对。")
     return value
 
 
-def _sequence(value):
+def sequence(value):
     wire = wire_positive_int64(value)
     if wire is None:
         raise WorkbenchCommandRejected("plan_unavailable", "工序号无效，请到批次管理核对。")
     return wire
 
 
-def _resource_ref(row, kind, identities):
+def resource_ref(row, kind, identities):
     key = row[kind + "_id"]
     if key is None or key == "":
         return None
-    identity = identities[kind].get(str(key))
-    if identity is None:
-        raise WorkbenchCommandRejected("identity_missing", "安排关联的设备或人员编号缺失，请到资料总览核对。")
-    return identity.ref
+    return identities[kind][str(key)].ref
 
 
 def _captured_quantities(operation, batch, execution, basis):
@@ -140,31 +137,58 @@ def _source_quantities(basis, arranged, source):
         for row in saved}
 
 
-def project_tasks(plan_ref, rows, task_refs, operation_refs, resources, *, facts, context):
+def project_light_tasks(plan_ref, rows, task_refs, operation_refs, resources, origins, *, context):
     tasks = []
-    quantities, quantity_reason, origins = context.adopted_task_facts(plan_ref) if rows else ({}, None, None)
-    facts["resource_directory"] = [resource for row in rows for resource in
-        (origins or {}).get(row["op_id"], {}).get("resource_directory", [])]
     for row in rows:
-        start, end = (value.replace(" ", "T") for value in context.row_times(plan_ref, row))
+        start, end = context.row_times(plan_ref, row)
         piece = row.get("piece_id")
         if piece is not None:
-            piece = _required_text(piece)
+            required_text(piece)
+        required_text(row["batch_id"])
+        sequence(row["seq"])
+        required_text(row["op_type_name"])
+        supplier = origins.get(row["op_id"], {}).get("supplier")
+        supplier_ref = supplier["ref"] if supplier is not None else None
+        tasks.append({
+            "task_ref": task_refs[row["schedule_id"]],
+            "operation_ref": operation_refs[row["op_id"]],
+            "machine_ref": resource_ref(row, "machine", resources),
+            "operator_ref": resource_ref(row, "operator", resources),
+            "supplier_ref": supplier_ref,
+            "start": start,
+            "end": end,
+            "_row": row,
+        })
+    if len({task["task_ref"] for task in tasks}) != len(tasks):
+        raise WorkbenchCommandRejected("task_binding_invalid", "计划里有安排编号重复，确认不了完整范围。请刷新后重试。")
+    return tasks
+
+
+def project_tasks(plan_ref, rows, task_refs, operation_refs, resources, *, facts, context):
+    tasks = []
+    quantities, quantity_reason, origins = context.adopted_task_facts(plan_ref) if rows else ({}, None, {})
+    facts["resource_directory"] = [resource for row in rows for resource in
+        origins.get(row["op_id"], {}).get("resource_directory", [])]
+    for row in rows:
+        start, end = context.row_times(plan_ref, row)
+        piece = row.get("piece_id")
+        if piece is not None:
+            piece = required_text(piece)
         presentation = quantities.get(row["op_id"], {"piece_id": piece, "quantity": None, "batch_quantity": None,
                                                     "quantity_basis": "unknown", "quantity_reason": quantity_reason})
-        supplier = origins.get(row["op_id"], {}).get("supplier") if origins is not None else None
+        supplier = origins.get(row["op_id"], {}).get("supplier")
         # Schedule has no supplier assignment: only the adopted source can prove it.
         supplier_ref = supplier["ref"] if supplier is not None else None
         tasks.append({"task_ref": task_refs[row["schedule_id"]], "operation_ref": operation_refs[row["op_id"]],
-                      "plan_ref": plan_ref, "batch_id": _required_text(row["batch_id"]),
-                      "sequence": _sequence(row["seq"]), "process_label": _required_text(row["op_type_name"]),
+                      "plan_ref": plan_ref, "batch_id": required_text(row["batch_id"]),
+                      "sequence": sequence(row["seq"]), "process_label": required_text(row["op_type_name"]),
                       **presentation,
-                      "machine_ref": _resource_ref(row, "machine", resources),
-                      "operator_ref": _resource_ref(row, "operator", resources),
+                      "machine_ref": resource_ref(row, "machine", resources),
+                      "operator_ref": resource_ref(row, "operator", resources),
                       "supplier_ref": supplier_ref, "start": start, "end": end})
         if start == end:
-            from datetime import datetime
-            tasks[-1].update(point_event_dto(datetime.fromisoformat(start), datetime.fromisoformat(end)))
+            low_dt, high_dt = context.row_datetime_interval(plan_ref, row)
+            tasks[-1].update(point_event_dto(low_dt, high_dt))
     if len({task["task_ref"] for task in tasks}) != len(tasks):
         raise WorkbenchCommandRejected("task_binding_invalid", "计划里有安排编号重复，确认不了完整范围。请刷新后重试。")
     return tasks

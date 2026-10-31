@@ -2,15 +2,14 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, cast
 
+from core.infrastructure.sqlite_udf import decode_interval_summary, require_dt_for_sql
+
 from .base_repo import BaseRepository
 from .schedule_detail_query import build_schedule_detail_sql
 from .schedule_rows import ScheduleDetailRow, ScheduleTimeSpanRow
 from .schedule_time_sql import (
     DETAIL_OVERLAP_OR_BAD_TIME_SQL,
-    decode_interval_summary,
     interval_summary_sql,
-    register_schedule_time_sql_functions,
-    require_dt_for_sql,
 )
 
 SCHEDULE_PLAN_ROWS_SQL = """
@@ -30,10 +29,6 @@ WHERE version = ?
 
 class SchedulePlanQueryRepository(BaseRepository):
     """按正式排产版本读取排产明细。"""
-
-    def __init__(self, conn, logger=None):
-        super().__init__(conn, logger=logger)
-        register_schedule_time_sql_functions(conn)
 
     def latest_version(self) -> Optional[int]:
         return self.fetchvalue("SELECT MAX(version) FROM ScheduleHistory WHERE version > 0", default=None)
@@ -60,7 +55,7 @@ class SchedulePlanQueryRepository(BaseRepository):
     ) -> Optional[Dict[str, Any]]:
         return self.fetchone(
             """
-            SELECT id AS source_row_id, lock_status
+            SELECT id AS source_row_id
             FROM Schedule
             WHERE version = ?
             ORDER BY id ASC

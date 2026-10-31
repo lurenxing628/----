@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Set, Tuple
 
+from core.algorithm_contracts.value_domains import INTERNAL
+
 from .id_policy import display_id, make_machine_node_id
 from .nx_runtime import import_networkx
 from .types import OperationGraphNode
@@ -135,7 +137,7 @@ def summarize_operation_machine_matching(
     ready_nodes: Iterable[OperationGraphNode],
 ) -> ResourceMatchingSummary:
     """Return report-only maximum matching summary for first-wave ready operations."""
-    nodes = list(ready_nodes)
+    nodes = [node for node in ready_nodes if node.source == INTERNAL]
     if not nodes:
         return ResourceMatchingSummary(
             status="empty",

@@ -1,21 +1,26 @@
 from __future__ import annotations
 
 import sqlite3
-from dataclasses import replace
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional
 
+from core.infrastructure.read_evidence import verified_read
+from core.models.schedule_plan_identity import PlanIdentity
 from core.models.schedule_plan_resolution import SchedulePlanResolution
-from core.models.schedule_plan_role import (
-    ROLE_ADOPTED,
-    SOURCE_SCHEDULE,
-    VALID_PLAN_ROLES,
-    _normalize_role,
-)
 from core.models.scheduler_history_parser import ResultSummaryParseResult, parse_result_summary_payload
 from data.repositories.schedule_plan_query_repo import SchedulePlanQueryRepository
 from data.repositories.schedule_rows import ScheduleDetailRow
 
 from .plan_identity import build_plan_identity
+
+
+def snapshot_summary_parse(conn: sqlite3.Connection, raw_summary: Any) -> ResultSummaryParseResult:
+    """Decode one stored ``result_summary`` text once per read-evidence snapshot.
+
+    The parse depends on the text alone, so every reader of the same text in the
+    snapshot shares it; outside a snapshot this is a plain parse.
+    """
+    return verified_read(conn, ("result_summary_parse", raw_summary),
+                         lambda: parse_result_summary_payload(raw_summary))
 
 
 class SchedulePlanQueryService:
@@ -27,62 +32,50 @@ class SchedulePlanQueryService:
         logger=None,
         repo: Optional[SchedulePlanQueryRepository] = None,
     ):
+        self.conn = conn
         self.repo: Any = repo if repo is not None else SchedulePlanQueryRepository(conn, logger=logger)
-        self._parsed_summaries: Dict[Tuple[Any, Any], ResultSummaryParseResult] = {}
+        self._parsed_summaries: Dict[Any, ResultSummaryParseResult] = {}
 
     def parse_history_summary(self, history_row: Mapping[str, Any]) -> ResultSummaryParseResult:
         raw_summary = history_row.get("result_summary")
-        key = (history_row.get("version"), raw_summary)
-        cached = self._parsed_summaries.get(key)
+        cached = self._parsed_summaries.get(raw_summary)
         if cached is None:
-            cached = parse_result_summary_payload(raw_summary)
-            self._parsed_summaries[key] = cached
+            cached = snapshot_summary_parse(self.conn, raw_summary)
+            self._parsed_summaries[raw_summary] = cached
         return cached
 
     def _latest_official_version(self) -> Optional[int]:
         return self.repo.latest_version()
 
-    def _with_plan_identity(self, resolution: SchedulePlanResolution) -> SchedulePlanResolution:
-        history_row = self.repo.get_history_identity_row(int(resolution.version)) or {}
+    def _build_plan_identity(self, version: int) -> PlanIdentity:
+        history_row = self.repo.get_history_identity_row(version) or {}
         source_row = self.repo.get_first_plan_identity_row(
-            version=int(resolution.version),
+            version=version,
         ) or {}
-        identity = build_plan_identity(
-            version=int(resolution.version),
+        return build_plan_identity(
+            version=version,
             source_row_id=source_row.get("source_row_id"),
             schedule_result_status=history_row.get("result_status"),
-            result_summary=history_row.get("result_summary"),
             latest_official_version=self._latest_official_version(),
-            schedule_lock_status=source_row.get("lock_status"),
             summary_parse=self.parse_history_summary(history_row),
         )
-        return replace(resolution, plan_identity=identity)
 
-    def _resolve_validated_plan(self, version: int, requested_role: str) -> SchedulePlanResolution:
-        return self._with_plan_identity(SchedulePlanResolution(
-            version=int(version),
-            requested_role=requested_role,
-            selected_role=ROLE_ADOPTED,
-            source_table=SOURCE_SCHEDULE,
-            status="resolved_adopted",
-            message="",
-        ))
+    def _resolve_validated_plan(self, version: int) -> SchedulePlanResolution:
+        normalized_version = int(version)
+        return SchedulePlanResolution(
+            version=normalized_version,
+            plan_identity=self._build_plan_identity(normalized_version),
+        )
 
-    def resolve_plan(self, version: int, role: Optional[str] = None) -> SchedulePlanResolution:
-        requested_role = _normalize_role(role)
-        if requested_role not in VALID_PLAN_ROLES:
-            raise ValueError(f"未知的排产方案角色：{requested_role}")
-        return self._resolve_validated_plan(version, requested_role)
+    def resolve_plan(self, version: int) -> SchedulePlanResolution:
+        return self._resolve_validated_plan(version)
 
-    def resolve_existing_plan(self, version: int, role: str = ROLE_ADOPTED) -> SchedulePlanResolution:
-        if role not in VALID_PLAN_ROLES:
-            raise ValueError(f"未知的排产方案角色：{role}")
-
+    def resolve_existing_plan(self, version: int) -> SchedulePlanResolution:
         if self.repo.get_plan_time_span(
             version=int(version),
         ) is None:
             raise ValueError("所选方案没有可查看的明细。")
-        return self._resolve_validated_plan(version, role)
+        return self._resolve_validated_plan(version)
 
     def list_plan_detail_rows_between_for_resolution(
         self,

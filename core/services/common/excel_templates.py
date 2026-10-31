@@ -13,7 +13,20 @@ from __future__ import annotations
 
 from typing import Any
 
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.shared.strict_parse import ILLEGAL_XML_CHARS_RE
+
+XLSX_MAX_CELL_CHARS = 32767
+
+
+def ensure_xlsx_cell_length(value: Any) -> Any:
+    if isinstance(value, str) and len(value) > XLSX_MAX_CELL_CHARS:
+        raise WorkbenchCommandRejected(
+            "export_too_large",
+            "单元格内容超过 XLSX 上限，请改用 CSV 导出；系统没有截断内容。",
+            413,
+        )
+    return value
 
 
 def sanitize_export_cell(value: Any) -> Any:

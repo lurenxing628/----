@@ -48,7 +48,7 @@ def process_facets(column, selection=False):
     with reader.read_snapshot() as state:
         snapshot = bind_read_snapshot(process_facet_scope(query, column, search, size), state, token)
         table = reader.table()
-        data = table.facet_selection(query, column, search, size) if selection else table.facets(query, column, search, number, size)
+        data = table.facet_selection(query, column, search) if selection else table.facets(query, column, search, number, size)
     return query_success(data, snapshot)
 
 

@@ -3,10 +3,12 @@
 from contextlib import contextmanager
 from datetime import datetime
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List, cast
 
 from core.infrastructure.read_evidence import read_evidence_scope
+from core.models.scheduler_history_parser import ResultSummaryParseResult
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.common.bounded_plan_query import PagePlanQueryService
 from core.services.workbench.facts.adoption_baseline_values import AdoptionBaselineUnavailable
 from core.services.workbench.facts.zero_duration_evidence import overlaps
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
@@ -31,10 +33,20 @@ class PlanReadContext:
         self._enriched = {}
         self._entities, self._points, self._tasks, self._calendar_selections = {}, {}, {}, {}
         self._adopted, self._task_memberships, self._task_resources, self._task_work = {}, {}, {}, {}
-        self._projected_resources = {}
-        self._intervals, self._datetime_intervals, self._plan_time_maps = {}, {}, {}
+        self._process_orders = {}
         self._raw_sources = {}
         self._raw_tasks = {}
+        self._snapshot_state = None
+        self._scope_depth = 0
+
+    def snapshot_state(self) -> Dict[str, Any]:
+        if self._snapshot_state is None:
+            from core.services.workbench.facts.source_revisions import PLAN_SOURCE_KEYS, read_source_revisions
+            self._snapshot_state = {
+                "plan_revision": self.references.read_revision(),
+                "sources": read_source_revisions(self.conn, PLAN_SOURCE_KEYS),
+            }
+        return self._snapshot_state
 
     @cached_property
     def _source_repo(self) -> "WorkbenchPlanBaselineRepository":
@@ -43,10 +55,21 @@ class PlanReadContext:
 
     @contextmanager
     def read_scope(self):
-        with read_evidence_scope(self.conn), self.references.read_bindings(
-            history_reader=self.repo.history_rows,
-        ):
-            yield self
+        if self._scope_depth > 0:
+            self._scope_depth += 1
+            try:
+                yield self
+            finally:
+                self._scope_depth -= 1
+            return
+        self._scope_depth = 1
+        try:
+            with read_evidence_scope(self.conn), self.references.read_bindings(
+                history_reader=self.repo.history_rows,
+            ):
+                yield self
+        finally:
+            self._scope_depth = 0
 
     def resolve(self, plan_ref):
         if plan_ref not in self._locators:
@@ -67,8 +90,8 @@ class PlanReadContext:
     def source_key(query):
         return query["version"]
 
-    def source_rows(self, entry=None, **query):
-        return self.repo.source_rows(**(self.query(entry) if entry is not None else query))
+    def source_rows(self, *, version):
+        return self.repo.source_rows(version)
 
     def attach_points(self, rows, **query):
         prepared = self.repo.prepared_rows(**query)
@@ -76,18 +99,17 @@ class PlanReadContext:
         return [dict(row, _point_work=points[row.get("schedule_id", row.get("id"))])
                 if row.get("schedule_id", row.get("id")) in points else row for row in rows]
 
-    def seed_source_rows(self, rows, **query):
-        """Accept raw rows already captured by this transaction's source owner."""
-        key = self.source_key(query)
-        valid = all(row["version"] == query["version"] for row in rows)
-        if not valid:
-            raise WorkbenchCommandRejected("plan_binding_invalid", "安排原件与所选计划不一致，请刷新后重试。")
-        if key in self.repo._source_rows:
-            raise RuntimeError("Plan arrangements already captured in this context")
-        self.repo._source_rows[key] = rows
-
     def history(self, version):
         return self.repo.get_history_identity_row(version)
+
+    @cached_property
+    def plan_query(self) -> PagePlanQueryService:
+        """This transaction's only plan query; its summary-parse cache serves every reader in it."""
+        return PagePlanQueryService(self.repo, self.repo.latest_version())
+
+    def parsed_summary(self, version) -> ResultSummaryParseResult:
+        # Callers read a version ``selected`` already admitted, so its history row exists.
+        return self.plan_query.parse_history_summary(cast(Dict[str, Any], self.history(version)))
 
     def history_rows(self, version: int) -> List[Dict[str, Any]]:
         return self.repo.history_rows(version)
@@ -142,27 +164,17 @@ class PlanReadContext:
             points = {row["id"]: row["_point_work"] for row in missing if row.get("_point_work")}
             cache.update((row["schedule_id"], dict(row, _point_work=points[row["schedule_id"]])
                           if row["schedule_id"] in points else row) for row in rows)
-        return sorted((cache[row["id"]] for row in prepared), key=lambda row: (row["start_time"], row["schedule_id"]))
+        dt_intervals = self.repo.datetime_intervals(**query)
+        return sorted(
+            (cache[row["id"]] for row in prepared),
+            key=lambda row: (dt_intervals[row["schedule_id"]][0], row["schedule_id"]),
+        )
 
     def intervals(self, entry):
-        query = self.query(entry)
-        return self._interval_map(query)
+        return self.repo.intervals(**self.query(entry))
 
     def peek_source_intervals(self, **query):
-        """Reuse only a completed whole-source map; never load or prove a plan.
-
-        Scoped selections do not populate this map. It is installed only after
-        all prepared rows and their parsed intervals have completed, so an
-        absent/in-progress source keeps the caller's ordinary validation path.
-        """
-        return self._intervals.get(self.source_key(query))
-
-    def _interval_map(self, query):
-        key = self.source_key(query)
-        if key not in self._intervals:
-            self._intervals[key] = {row["id"]: interval for row, interval in zip(
-                self.repo.prepared_rows(**query), self.repo.parsed_intervals(**query))}
-        return self._intervals[key]
+        return self.repo.peek_intervals(**query)
 
     def scoped_rows(self, entry, scope):
         query = self.query(entry)
@@ -172,13 +184,15 @@ class PlanReadContext:
             if scope.range_start is None:
                 self._scoped[key] = self.detail_rows(entry)
             else:
-                times = self.intervals(entry)
+                times = self.datetime_intervals(entry)
+                range_start = datetime.fromisoformat(scope.range_start)
+                range_end = datetime.fromisoformat(scope.range_end)
                 complete = source_key in self._details
                 rows = self._details[source_key] if complete else self.repo.prepared_rows(**query)
                 selected = []
                 for row in rows:
                     low, high = times[row["schedule_id"] if complete else row["id"]]
-                    if overlaps(low.replace(" ", "T"), high.replace(" ", "T"), scope.range_start, scope.range_end):
+                    if overlaps(low, high, range_start, range_end):
                         selected.append(row)
                 self._scoped[key] = selected if complete else self._enrich_rows(entry, selected)
         return self._scoped[key]
@@ -192,18 +206,53 @@ class PlanReadContext:
             cache.update((key, found.get(key)) for key in missing)
         return {key: cache[key] for key in keys if cache[key] is not None}
 
-    def resources(self, rows, *, baseline=False):
-        resources, state = {}, {}
+    def resources(self, rows):
+        resources = self.resource_identities(rows)
+        state = {
+            kind: [(key, value.ref, value.revision) for key, value in sorted(mapping.items())]
+            for kind, mapping in resources.items()
+        }
+        return resources, state
+
+    def resource_identities(self, rows):
+        resources = {}
         for kind in ("machine", "operator", "supplier", "batch"):
             keys = sorted({str(row[kind + "_id"]) for row in rows if row[kind + "_id"] not in (None, "")})
             mapping = self.active_map(kind, keys)
             if set(mapping) != set(keys):
-                message = ("对比工序关联的设备、人员或批次找不到编号。请刷新后重试。" if baseline else
-                           "安排关联的批次、设备或人员编号缺失，请到资料总览核对。")
-                raise WorkbenchCommandRejected("identity_missing", message)
+                raise WorkbenchCommandRejected("identity_missing", "安排关联的批次、设备或人员编号缺失，请到资料总览核对。")
             resources[kind] = mapping
-            state[kind] = [(key, value.ref, value.revision) for key, value in sorted(mapping.items())]
-        return resources, state
+        return resources
+
+    def rows_span(self, rows):
+        if not rows:
+            return None
+        intervals = self.repo.datetime_intervals(rows[0]["version"])
+        starts = []
+        ends = []
+        for row in rows:
+            low, high = intervals[row["schedule_id"]]
+            starts.append(low)
+            ends.append(high)
+        return {"start": min(starts).isoformat(), "end": max(ends).isoformat()}
+
+    def rows_resource_facts(self, plan_ref, rows, resources):
+        _, _, origins = self.adopted_task_facts(plan_ref) if rows else ({}, None, {})
+        archived = [
+            resource
+            for row in rows
+            for resource in origins.get(row["op_id"], {}).get("resource_directory", [])
+        ]
+        used_refs = set()
+        for row in rows:
+            for kind in ("machine", "operator"):
+                key = row[kind + "_id"]
+                if key not in (None, ""):
+                    used_refs.add((kind, resources[kind][str(key)].ref))
+            supplier = origins.get(row["op_id"], {}).get("supplier")
+            if supplier is not None:
+                used_refs.add(("supplier", supplier["ref"]))
+        return archived, used_refs
 
     def task_refs(self, plan_ref, rows):
         return self.references.get_task_refs(plan_ref, ((row["schedule_id"], row["op_id"], row["version"]) for row in rows))
@@ -211,15 +260,10 @@ class PlanReadContext:
     def operation_refs(self, ids):
         return self.references.get_operation_refs(ids)
 
-    def projected_tasks(self, plan_ref, rows):
+    def projected_tasks(self, plan_ref, rows, *, resources):
+        """``resources`` are the caller's identities covering at least ``rows``."""
         from .projection import project_tasks
         cache = self._tasks.setdefault(plan_ref, {})
-        cached_resources = self._projected_resources.get(plan_ref)
-        if cached_resources is not None and cached_resources[0] is rows:
-            resources, state = cached_resources[1], cached_resources[2]
-        else:
-            resources, state = self.resources(rows)
-            self._projected_resources[plan_ref] = (rows, resources, state)
         missing = [row for row in rows if row["schedule_id"] not in cache]
         if missing:
             task_refs = self.task_refs(plan_ref, missing)
@@ -228,28 +272,25 @@ class PlanReadContext:
             tasks = project_tasks(plan_ref, missing, task_refs, operations, resources, facts=facts, context=self)
             cache.update((row["schedule_id"], task) for row, task in zip(missing, tasks))
             self._task_resources.setdefault(plan_ref, []).extend(facts["resource_directory"])
-        return [cache[row["schedule_id"]] for row in rows], {"resource_directory": list(self._task_resources.get(plan_ref, ()))}, resources, state
+        return [cache[row["schedule_id"]] for row in rows], {"resource_directory": list(self._task_resources.get(plan_ref, ()))}
 
     def row_times(self, plan_ref, row):
-        if plan_ref not in self._plan_time_maps:
-            locator, _record = self.references._resolved_record(plan_ref)
-            self._plan_time_maps[plan_ref] = self._interval_map({"version": locator.version})
-        return self._plan_time_maps[plan_ref][row["schedule_id"]]
+        return self.repo.intervals(self.resolve(plan_ref).version)[row["schedule_id"]]
 
-    def calendar_selection(self, entry, scope, resources, plan_span):
+    def row_datetime_interval(self, plan_ref, row):
+        return self.repo.datetime_intervals(self.resolve(plan_ref).version)[row["schedule_id"]]
+
+    def calendar_selection(self, entry, scope, plan_span):
         from .calendar_context import selected_context
         key = (scope.plan_ref, scope.range_start, scope.range_end)
         if key not in self._calendar_selections:
-            self._calendar_selections[key] = selected_context(self.conn, entry, scope,
-                self.scoped_rows(entry, scope), resources, plan_span)
+            self._calendar_selections[key] = selected_context(
+                self.conn, scope, self.scoped_rows(entry, scope), plan_span
+            )
         return self._calendar_selections[key]
 
     def datetime_intervals(self, entry):
-        key = self.source_key(self.query(entry))
-        if key not in self._datetime_intervals:
-            self._datetime_intervals[key] = {key: (datetime.fromisoformat(low), datetime.fromisoformat(high))
-                                           for key, (low, high) in self.intervals(entry).items()}
-        return self._datetime_intervals[key]
+        return self.repo.datetime_intervals(**self.query(entry))
 
     def all_task_refs(self, plan_ref):
         if plan_ref not in self._task_memberships:

@@ -15,24 +15,22 @@ No draft evaluation, scheduling, latest-plan fallback, or identity allocation.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
+from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
 from core.models.workbench_plan_scope import PlanReadScope
-from core.services.common.bounded_plan_query import PagePlanQueryService
 from core.services.scheduler.workbench_plan_catalog import PlanCatalogEntry, _role_entry
 from core.services.workbench.facts.adoption_baseline_values import REASONS as ADOPTION_REASONS
 from core.services.workbench.facts.adoption_baseline_values import AdoptionBaselineUnavailable
 
 from .adoption_baseline import read_adoption_baseline
-from .projection import project_plan
+from .projection import project_light_tasks, project_plan
 from .read_context import PlanReadContext
 
 _CHANGE_FIELDS = ("start", "end", "machine_ref", "operator_ref")
 _REASONS = {
     **ADOPTION_REASONS,
-    "not_recorded": "此版本未记录初始计划，无法对比。",
     "baseline_binding_invalid": "试调方案或初始计划编号已失效，无法对比。",
     "baseline_unavailable": "试调依据的那份计划摘要或明细无效，对不全，这里不显示对比。",
     "baseline_task_invalid": "对比工序的时间、批次信息或编号不完整，给不出完整对比。请刷新后重试。",
@@ -42,7 +40,6 @@ _REASONS = {
 def _unavailable(code, facts):
     data = {"state": "unavailable", "reason_code": code, "reason": _REASONS[code],
             "baseline_plan": None, "items": [], "item_count": 0, "items_complete": False}
-    facts["outcome"] = data
     return data, facts
 
 
@@ -73,48 +70,64 @@ def _comparison_items(before_tasks, after_tasks, scope):
 
 
 class _BaselineReader:
-    def __init__(self, conn, entry, scope, context, *, include_items=False):
+    def __init__(self, conn, entry, scope, context, *, include_items=False, page=None, size=None):
         self.conn, self.entry, self.scope = conn, entry, scope
         self.context, self.repo, self.references = context, context.repo, context.references
         self.include_items = include_items
-        self.facts = {"scope": scope.scope(), "selected_plan_ref": scope.plan_ref}
+        self.page, self.size = page, size
+        self.facts = {}
 
     def read(self):
         locator = self.context.resolve(self.scope.plan_ref)
         selected = self.entry.locator
-        if locator != WorkbenchPlanLocator(selected.version, selected.plan_role):
+        if (locator.version, locator.plan_role) != (selected.version, selected.plan_role):
             raise WorkbenchCommandRejected("invalid_input", "所选计划已经变了，不能跨计划对比。请刷新计划列表后重新选择。", 400)
-        return self._adopted(locator)
-
-    def _adopted(self, locator):
-        if locator.plan_role != "adopted":
-            return _unavailable("not_recorded", self.facts)
         evidence = read_adoption_baseline(self.conn, plan_ref=self.scope.plan_ref, version=locator.version,
             history=self.repo.get_history_identity_row(locator.version), facts=self.facts,
             point_annotator=lambda rows: self.context.attach_points(rows, version=rows[0]["version"]) if rows else rows,
             context=self.context)
         base = evidence["baseline"]
-        base_entry = self._base_entry(WorkbenchPlanLocator(base["version"], "adopted"))
+        base_entry = self._base_entry(base["version"])
         if base_entry is None or not base_entry.can_view:
             return _unavailable("baseline_unavailable", self.facts)
         current = self.context.detail_rows(self.entry)
-        after, after_facts, resources, state = self.context.projected_tasks(self.scope.plan_ref, current)
-        self.facts["resource_directory"] = after_facts["resource_directory"]
-        return self._comparison(base_entry, base["plan_ref"], evidence["tasks"], after, state, evidence["basis"])
+        after = self._light_current_tasks(current)
+        return self._comparison(
+            base_entry, base["plan_ref"], evidence["tasks"], after, evidence["basis"],
+            project_before=evidence["project_before"],
+        )
 
-    def _base_entry(self, locator):
-        history = self.repo.get_history_identity_row(locator.version)
-        self.facts["base_history"] = history
+    def _light_current_tasks(self, current):
+        resources = self.context.resource_identities(current)
+        source_evidence = self.context.adopted_source(self.scope.plan_ref)
+        task_refs = source_evidence["selected_task_refs"]
+        op_sources = source_evidence["indexed_tables"]["operation_sources"]
+        operations = {row["op_id"]: op_sources[str(row["op_id"])]["ref"] for row in current}
+        _, _, origins = self.context.adopted_task_facts(self.scope.plan_ref) if current else ({}, None, {})
+        self.facts["resource_directory"] = [
+            resource
+            for row in current
+            for resource in origins.get(row["op_id"], {}).get("resource_directory", [])
+        ]
+        return project_light_tasks(
+            self.scope.plan_ref, current, task_refs, operations, resources, origins, context=self.context,
+        )
+
+    def _base_entry(self, version):
+        history = self.repo.get_history_identity_row(version)
         if history is None:
             return None
-        query = PagePlanQueryService(self.repo, self.repo.latest_version())
-        return _role_entry(query, history, query.latest)
+        query = self.context.plan_query
+        return _role_entry(query, history)
 
-    def _comparison(self, base_entry, base_ref, before, after, resource_state, basis):
+    def _comparison(self, base_entry, base_ref, before, after, basis, *, project_before):
         items = _comparison_items(before, after, self.scope)
         visible = [item for item in items if item["before_in_scope"] or item["after_in_scope"]]
         self.facts["compared_tasks"] = [
-            task for item in visible for task in (item["before"], item["after"]) if task is not None
+            {k: v for k, v in task.items() if k != "_row"}
+            for item in visible
+            for task in (item["before"], item["after"])
+            if task is not None
         ]
         data = {
             "state": "available", "reason_code": None, "reason": None,
@@ -129,15 +142,54 @@ class _BaselineReader:
             "item_count": len(visible),
             "items_complete": len(visible) == 0,
         }
-        self.facts.update({"complete_comparison": data, "resources": resource_state})
         if not self.include_items:
             return data, self.facts
-        compact_visible = [
-            dict(item, after={"task_ref": item["after"]["task_ref"]})
-            if item["after_in_scope"] and item["after"] is not None else item
-            for item in visible
+        target_visible = (
+            visible[(self.page - 1) * self.size : self.page * self.size]
+            if self.page is not None and self.size is not None
+            else visible
+        )
+        before_rows = [
+            item["before"]["_row"]
+            for item in target_visible
+            if item["before"] is not None
         ]
-        return dict(data, items=compact_visible, item_count=len(visible), items_complete=True), self.facts
+        before_tasks = {task["task_ref"]: task for task in project_before(before_rows)} if before_rows else {}
+        out_of_scope_rows = [
+            item["after"]["_row"]
+            for item in target_visible
+            if item["after"] is not None and not item["after_in_scope"]
+        ]
+        out_of_scope_tasks = {}
+        if out_of_scope_rows:
+            projected_out, _ = self.context.projected_tasks(
+                self.scope.plan_ref, out_of_scope_rows,
+                resources=self.context.resource_identities(out_of_scope_rows))
+            out_of_scope_tasks = {task["task_ref"]: task for task in projected_out}
+        compact_visible = [
+            dict(
+                item,
+                before=(
+                    None
+                    if item["before"] is None
+                    else before_tasks[item["before"]["task_ref"]]
+                ),
+                after=(
+                    None
+                    if item["after"] is None
+                    else {"task_ref": item["after"]["task_ref"]}
+                    if item["after_in_scope"]
+                    else out_of_scope_tasks[item["after"]["task_ref"]]
+                ),
+            )
+            for item in target_visible
+        ]
+        return dict(
+            data,
+            items=compact_visible,
+            item_count=len(visible),
+            items_complete=(len(compact_visible) == len(visible)),
+        ), self.facts
 
 
 def build_plan_baseline(
@@ -147,6 +199,8 @@ def build_plan_baseline(
     scope: PlanReadScope,
     context: PlanReadContext,
     include_items: bool = False,
+    page: Optional[int] = None,
+    size: Optional[int] = None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """Return (public DTO, PRIVATE snapshot facts), never a snapshot token itself.
 
@@ -159,18 +213,17 @@ def build_plan_baseline(
     """
     if not conn.in_transaction:
         raise RuntimeError("Baseline reads require a caller-owned read transaction.")
-    reader = _BaselineReader(conn, entry, scope, context, include_items=include_items)
+    reader = _BaselineReader(
+        conn, entry, scope, context, include_items=include_items, page=page, size=size,
+    )
     try:
         with context.read_scope():
             return reader.read()
     except AdoptionBaselineUnavailable as exc:
-        reader.facts["evidence_gap"] = exc.gap
         return _unavailable(exc.code, reader.facts)
-    except WorkbenchPlanReferenceError as exc:
-        reader.facts["reference_error"] = exc.code
+    except WorkbenchPlanReferenceError:
         return _unavailable("baseline_binding_invalid", reader.facts)
     except WorkbenchCommandRejected as exc:
         if exc.code not in ("plan_unavailable", "identity_missing", "task_binding_invalid"):
             raise
-        reader.facts["projection_error"] = exc.code
         return _unavailable("baseline_task_invalid", reader.facts)

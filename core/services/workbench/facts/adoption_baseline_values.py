@@ -5,6 +5,7 @@ from typing import NoReturn
 from core.infrastructure.read_evidence import verified_read
 from core.models.content import same
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.common.plan_query import snapshot_summary_parse
 from core.shared.strict_json import load_strict_json
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
@@ -22,6 +23,7 @@ REASONS = {
 
 _SOURCES = {"workbench_candidate_adoption": ("candidate_adoption", "scheduling.candidate.adopt", "candidate_ref", "run_ref"),
             "workbench_trial_adoption": ("trial_adoption", "trial.scenario.adopt", "scenario_ref", "draft_ref")}
+_EVIDENCE_BYTES = 64 * 1024 * 1024
 
 
 class AdoptionBaselineUnavailable(Exception):
@@ -51,7 +53,18 @@ def stored(text):
                             on_duplicate=lambda: fail(gap="duplicate_json_key"),
                             on_nonfinite=lambda: fail(gap="nonfinite_json_number"),
                             expected=dict, on_unexpected=lambda: fail(gap="json_object"),
-                            limit=(64 * 1024 * 1024, _evidence_too_large))
+                            limit=(_EVIDENCE_BYTES, _evidence_too_large))
+
+
+def _recorded_audit(conn, raw):
+    """Bound the stored text before any decode; reuse the snapshot's one summary parse,
+    and re-read rejected text strictly for its exact gap."""
+    if type(raw) is not str:
+        fail(gap="json_storage_type")
+    if len(raw.encode("utf-8", "surrogatepass")) > _EVIDENCE_BYTES:
+        _evidence_too_large()
+    audit = snapshot_summary_parse(conn, raw).payload
+    return stored(raw) if audit is None else audit
 
 
 def schedule_rows(conn, version):
@@ -79,7 +92,7 @@ def _read_adoption_record(conn, plan_ref, version, raw, *, receipt, receipt_resu
     # Every official version is written by a candidate or trial adoption together with its audit.
     if raw is None:
         fail("adoption_evidence_missing", "ScheduleHistory")
-    audit = stored(raw)
+    audit = _recorded_audit(conn, raw)
     source = audit.get("source")
     if type(source) is not str or source not in _SOURCES:
         fail("adoption_evidence_missing", "ScheduleHistory.adoption_source")

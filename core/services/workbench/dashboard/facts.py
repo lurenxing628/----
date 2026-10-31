@@ -1,5 +1,6 @@
 """Current-official and unified execution adapters under one caller read snapshot."""
 
+import json
 from typing import Any, Dict, Optional, cast
 
 from core.infrastructure.read_evidence import read_evidence_scope
@@ -10,7 +11,9 @@ from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.capacity.plan_calendar_io import CapturedCalendarInputs
+from core.services.workbench import messages
 from core.services.workbench.execution.ledger import ExecutionLedgerService
+from core.services.workbench.facts.source_revisions import DASHBOARD_SOURCE_KEYS, read_source_revisions
 from core.services.workbench.plan.calendar_context import resource_ids
 from core.services.workbench.plan.delivery import read_plan_delivery
 from core.services.workbench.plan.projection import project_plan
@@ -23,10 +26,6 @@ from .policy import entity_refs_from_rows
 
 UNAVAILABLE = {"identity_missing", "plan_binding_invalid", "task_binding_invalid", "plan_unavailable",
                "execution_ledger_unavailable", "constraint_conflict", "entity_not_found"}
-
-
-def typed(value: Any) -> Any:
-    return value
 
 
 def source_issue(code, message):
@@ -45,7 +44,7 @@ class _EntityRefs:
 
 
 class DashboardFacts:
-    def __init__(self, conn, now):
+    def __init__(self, conn, now, *, source_revisions=None):
         self.conn, self.now = conn, now
         self.repo: DashboardSourceRepository
         self.raw, self.plan, self.delivery, self.tasks, self.execution = {}, None, None, [], None
@@ -56,8 +55,21 @@ class DashboardFacts:
         self.candidates = {"state": "unavailable", "run_count": None, "issues": []}
         self._ledger = None
         self.pressure_metrics: Optional[ResourcePressureMetrics] = None
+        self.source_revisions: Optional[Dict[str, int]] = source_revisions
         self._entity_refs = {}
         self._observations = {}
+        self._downtime_index: Optional[Dict[str, Any]] = None
+
+    @staticmethod
+    def precheck_binding(conn, scope, binding) -> Dict[str, int]:
+        revisions = read_source_revisions(conn, DASHBOARD_SOURCE_KEYS)
+        if binding is not None:
+            if binding.scope != content_text(scope):
+                raise WorkbenchCommandRejected("snapshot_stale", messages.STALE)
+            # Same-scope bindings were issued here from snapshot_contents(), which always records revisions.
+            if json.loads(binding.fingerprint[1])["revisions"] != revisions:
+                raise WorkbenchCommandRejected("snapshot_stale", messages.STALE)
+        return revisions
 
     def entity_refs(self, kind, keys):
         """Active permanent refs keyed by business key; missing or duplicated keys are identity gaps."""
@@ -78,6 +90,8 @@ class DashboardFacts:
             return self._load_sources(include_candidates=include_candidates)
 
     def _load_sources(self, *, include_candidates=True):
+        if self.source_revisions is None:
+            self.source_revisions = read_source_revisions(self.conn, DASHBOARD_SOURCE_KEYS)
         for table in ("SchemaVersion", "BatchMaterialReviews", "BatchMaterialArrivals", "Batches", "BatchMaterials", "Materials", "Machines", "WorkbenchDashboardDowntimeRefs"):
             self.raw[table] = self.repo.table(table)
         self._plan()
@@ -87,7 +101,7 @@ class DashboardFacts:
             self._load_execution()
             self.raw["analysis_batch_refs"] = self.entity_refs("batch", [row["batch_id"] for row in self.tasks])
         if include_candidates:
-            self.candidates, self.raw["candidate_catalog"] = candidate_catalog(self.conn)
+            self.candidates = candidate_catalog(self.conn)
         return self
 
     def _capture_calendar_inputs(self, machine_ids):
@@ -96,15 +110,22 @@ class DashboardFacts:
             schema_version=self.raw["SchemaVersion"], downtime_machine_ids=machine_ids)
 
     def observations(self, category):
-        """List and analysis share each full projection; summaries are caller-owned views."""
+        """List and analysis share each full projection and summary; a caller that changes a summary copies it."""
         self.project()
         if category not in self._observations:
             from .downtime import downtime
             from .execution import actual
 
             self._observations[category] = {"actual": actual, "downtime": downtime}[category](self)
-        rows, summary = self._observations[category]
-        return rows, dict(summary)
+        return self._observations[category]
+
+    def downtime_index(self):
+        """One parse of the captured downtime rows, shared by the downtime list, overlap count and analysis records."""
+        if self._downtime_index is None:
+            from .downtime import downtime_index
+
+            self._downtime_index = downtime_index(self.raw["MachineDowntimes"], self.raw["WorkbenchDashboardDowntimeRefs"])
+        return self._downtime_index
 
     def project(self):
         """报工投影只用已读出的台账事实，可在读事务结束后做，不再碰数据库。"""
@@ -121,37 +142,32 @@ class DashboardFacts:
 
     def _captured_plan(self, context):
         version = context.repo.latest_version()
-        self.raw["latest_official_version"] = version
         if version is None:
             self.plan_issues = [source_issue("no_official_plan", "当前没有正式计划，未改读候选结果。")]
             return
-        self.raw["ScheduleHistory"] = sorted(context.history_rows(version), key=lambda row: row["id"])
         self.raw["Schedule"] = context.source_rows(version=version)
         try:
             ref = context.references.get_plan_ref(WorkbenchPlanLocator(version, "adopted"))
             _, entry, span = context.selected(ref)
             plan = project_plan(entry, ref)
-            identity = entry.plan_identity
-            if identity is None or not plan["is_current_official"] or plan["kind"] != "official" or identity.source_table != "schedule":
+            if not plan["is_current_official"]:
                 raise WorkbenchCommandRejected("plan_unavailable", "正式计划记录无效，请刷新重试。")
             self.plan = plan
             scope = PlanReadScope(ref)
-            self.delivery, self.delivery_facts = read_plan_delivery(self.conn, scope=scope, identity=identity, context=context)
+            self.delivery, self.delivery_facts = read_plan_delivery(self.conn, scope=scope, context=context)
             original_rows = context.scoped_rows(entry, scope)
             self.task_rows = [dict(row, source=read_source_type(row["source"])) for row in original_rows]
             self.raw["plan_task_sources"] = [(row["schedule_id"], row["source"]) for row in original_rows]
-            self.tasks, _, resources, resource_state = context.projected_tasks(ref, original_rows)
+            resources, resource_state = context.resources(original_rows)
+            self.tasks, _ = context.projected_tasks(ref, original_rows, resources=resources)
             self.task_intervals = context.datetime_intervals(entry)
-            self.raw["plan_resource_identities"] = resource_state
-            self.raw["plan_identity_revision"] = context.references.read_revision()
             self.plan_state = "loaded"
             self._capture_calendar_inputs(resource_ids(original_rows, "machine"))
             self.pressure, self.raw["resource_pressure"], self.pressure_metrics = capture_resource_pressure(
                 self.conn, entry=entry, scope=scope, resources=resources, identities=resource_state, plan_span=span,
                 context=context, plan_tasks=(self.tasks, self.task_rows), captured_calendar=self.calendar_inputs)
-        except WorkbenchPlanReferenceError as exc:
+        except WorkbenchPlanReferenceError:
             self._plan_failure("plan_binding_invalid", "正式计划记录已失效，请刷新重试。")
-            self.raw["plan_reference_failure"] = exc.code
         except WorkbenchCommandRejected as exc:
             if exc.code not in UNAVAILABLE:
                 raise
@@ -177,7 +193,10 @@ class DashboardFacts:
     def _project_execution(self, ledger, facts):
         try:
             self.execution_facts = facts
-            self.execution = {row.operation_ref: row.to_dict() for row in ledger.project_loaded(facts, contexts=False)}
+            self.execution = {
+                row.operation_ref: row.to_dict()
+                for row in ledger.project_loaded(facts, contexts=False, include_history=False)
+            }
             for task in self.tasks:
                 projection = self.execution[task["operation_ref"]]
                 if projection["current_task_ref"] != task["task_ref"] or projection["comparison_task_ref"] != task["task_ref"]:
@@ -191,10 +210,7 @@ class DashboardFacts:
         self.execution = None
         self.execution_issues = [source_issue(exc.code, str(exc))]
 
-    def snapshot_contents(self, *, view=None):
-        """Encode original sources and their view state once, without nested source documents."""
-        return content_text({"raw": self.raw, "plan": self.plan, "state": self.plan_state,
-                             "tasks": self.tasks, "task_rows": self.task_rows,
-                             "delivery": self.delivery_facts, "execution": self.execution_facts,
-                             "plan_issues": self.plan_issues, "execution_issues": self.execution_issues,
-                             "view": view})
+    def snapshot_contents(self):
+        """Encode source revisions and view state once, without nested source documents."""
+        return content_text({"revisions": self.source_revisions, "plan_state": self.plan_state,
+                             "plan_issues": self.plan_issues, "execution_issues": self.execution_issues})

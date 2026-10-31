@@ -323,7 +323,13 @@ def test_official_reference_uses_only_the_current_admission_scope(candidate_case
                   "end": (datetime.fromisoformat(tasks[0]["start"]) + timedelta(hours=50)).isoformat(),
                   "interval_comparable": False})
     values, coverage = project_official_core_metrics(
-        tasks, expected_refs, source.reference_deferred_refs, True, source.delivery("reference"))
+        tasks,
+        expected_refs,
+        source.reference_deferred_refs,
+        True,
+        source.delivery("reference"),
+        task_intervals=source.task_intervals("reference"),
+    )
     assert values["makespan_hours"] == overview["baseline"]["metrics"]["makespan_hours"]
     assert values["makespan_hours"]["value"] == 0.75
     assert coverage == {key: overview["baseline"]["coverage"][key] for key in ("schedulable", "delivery")}
@@ -374,9 +380,29 @@ def test_detail_snapshot_downloads_all_filtered_pages_and_preserves_cell_types(c
         if fmt == "xlsx":
             assert exported[0]["批次编号"].data_type == "s"
             assert exported[0]["数量"].data_type == "n" and exported[0]["数量"].value == 3
+    from collections import Counter
+
+    from core.services.workbench.run import decision_impact
+
+    effort_calls, task_calls = Counter(), []
+    original_effort, original_tasks = decision_impact.archived_standard_effort, DecisionSource.analysis_tasks
+
+    def count_effort(*args, **kwargs):
+        effort_calls["calls"] += 1
+        return original_effort(*args, **kwargs)
+
+    def count_tasks(self, key):
+        task_calls.append(self.computation_key(key))
+        return original_tasks(self, key)
+
     operation_query = {"selected_candidate_ref": refs[0], "reference_candidate_ref": refs[0],
                        "resource_ref": candidate_case.ref("machine", "M1"), "sort": "sequence", "order": "asc"}
-    first_operations = detail(client, run_ref, "operations", **operation_query)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(decision_impact, "archived_standard_effort", count_effort)
+        patch.setattr(DecisionSource, "analysis_tasks", count_tasks)
+        first_operations = detail(client, run_ref, "operations", **operation_query)
+    assert effort_calls["calls"] == 20
+    assert set(task_calls) <= {refs[0], "reference"}
     operation_token = first_operations["meta"]["snapshot_ref"]
     next_operations = detail(client, run_ref, "operations", **dict(operation_query, page=2, snapshot_ref=operation_token))
     operation_rows = first_operations["data"]["items"] + next_operations["data"]["items"]
@@ -415,3 +441,48 @@ def test_detail_snapshot_downloads_all_filtered_pages_and_preserves_cell_types(c
         book.close()
     stale = client.get(path, query_string=dict(query, snapshot_ref=token, section="batches", format="csv", change_kind="unknown"))
     assert stale.status_code == 409 and stale.get_json()["error"]["code"] == "snapshot_stale"
+
+
+def test_unselected_point_operation_resources_stay_in_filter_options_without_task_decode(candidate_case, monkeypatch):
+    from tests.workbench.test_run_decision_resource_api import add_pair, representative_archive
+
+    case = candidate_case
+    add_pair(case)
+    case.conn.execute("UPDATE BatchOperations SET setup_hours=0,unit_hours=0 WHERE id=?", (case.op_id,))
+    case.conn.commit()
+    run_ref, refs = representative_archive(
+        case,
+        monkeypatch,
+        count=2,
+        edits={-1: lambda row: row.update(machine_id="M2", operator_id="O2")},
+    )
+    client, _ = api(case)
+    m1_ref, m2_ref = case.ref("machine", "M1"), case.ref("machine", "M2")
+    o1_ref, o2_ref = case.ref("operator", "O1"), case.ref("operator", "O2")
+    expected_resources = {m1_ref, m2_ref, o1_ref, o2_ref}
+    query = {"selected_candidate_ref": refs[0], "reference_candidate_ref": refs[0]}
+
+    task_calls = []
+    original_tasks = DecisionSource.analysis_tasks
+
+    def count_tasks(self, key):
+        task_calls.append(self.computation_key(key))
+        return original_tasks(self, key)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(DecisionSource, "analysis_tasks", count_tasks)
+        unfiltered = detail(client, run_ref, "operations", **query)["data"]
+        filtered_empty = detail(client, run_ref, "operations", **dict(query, resource_ref=m2_ref))["data"]
+    assert set(task_calls) <= {refs[0], "reference"}
+    assert {row["ref"] for row in unfiltered["filter_options"]["resources"]} == expected_resources
+    assert filtered_empty["items"] == []
+
+    filtered_match = detail(
+        client,
+        run_ref,
+        "operations",
+        selected_candidate_ref=refs[0],
+        reference_candidate_ref=refs[-1],
+        resource_ref=m2_ref,
+    )["data"]
+    assert [row["operation_ref"] for row in filtered_match["items"]] == [operation_ref(case, case.op_id)]

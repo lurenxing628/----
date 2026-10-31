@@ -17,7 +17,7 @@ def prepare_candidate_validation_context(schedule_input):
     }
 
 
-def validate_candidate(schedule_input, results, errors, *, prepared_payload=None, context=None):
+def validate_candidate(schedule_input, results, *, prepared_payload=None, context=None):
     if context is None:
         context = prepare_candidate_validation_context(schedule_input)
     payload = prepared_payload
@@ -26,7 +26,6 @@ def validate_candidate(schedule_input, results, errors, *, prepared_payload=None
             results, allowed_op_ids=schedule_input.schedule_output_allowed_op_ids,
             operations=schedule_input.payload_validation_operations,
             missing_internal_resource_op_ids=schedule_input.missing_internal_resource_op_ids,
-            schedule_errors=errors,
             point_validator=context["point_validator"],
             operation_sources=schedule_input.operation_sources,
         )

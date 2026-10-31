@@ -11,8 +11,6 @@ from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
 from core.algorithm_contracts.value_domains import INTERNAL
 from core.errors import ValidationError
 
-from .candidate_payload import decoded_batch_order
-
 
 @dataclass(frozen=True)
 class RepairDecision:
@@ -25,6 +23,27 @@ class RepairDecision:
     batch_order: Tuple[str, ...]
     operation_order: Tuple[int, ...] = ()
     resource_overrides: Tuple[Tuple[int, str, str], ...] = ()
+
+
+@dataclass(frozen=True)
+class PreparedRepairScope:
+    operations_by_id: Dict[int, Any]
+    mutable_operation_ids: FrozenSet[int]
+    mutable_batch_ids: FrozenSet[str]
+    predecessors: Dict[int, set]
+    successors: Dict[int, set]
+    changeable_op_ids: FrozenSet[int]
+    changeable_operations: Tuple[Any, ...]
+    qualified_pairs_by_op_id: Dict[int, Tuple[Tuple[str, str], ...]]
+    resource_pairs_for: Callable[[Any], Tuple[Tuple[str, str], ...]]
+
+    def sorted_pairs_for(self, op: Any) -> Tuple[Tuple[str, str], ...]:
+        op_id = op.id
+        cached = self.qualified_pairs_by_op_id.get(op_id)
+        if cached is None:
+            cached = tuple(sorted(self.resource_pairs_for(op)))
+            self.qualified_pairs_by_op_id[op_id] = cached
+        return cached
 
 
 @dataclass(frozen=True)
@@ -44,53 +63,77 @@ class RepairParentPreparation:
     latest_end_time: Optional[datetime]
     inherited_resources: Tuple[Tuple[int, str, str], ...]
     decoded_batch_order: Tuple[str, ...]
-    resource_pairs_for: Callable[[Any], Tuple[Tuple[str, str], ...]]
+    scope: PreparedRepairScope
 
 
-def prepare_repair_parent(
-    candidate: Dict[str, Any], operations: List[Any], graph_context: Dict[str, Any], *,
+def prepare_repair_scope(
+    operations: List[Any],
+    graph_context: Dict[str, Any],
+    *,
     resource_pairs_for: Callable[[Any], Tuple[Tuple[str, str], ...]],
-) -> RepairParentPreparation:
-    """Prepare the decoded parent's static facts once; basis-specific signals remain separate.
-
-    ``resource_pairs_for`` is the decode session's qualified-pair rule (NativeSchedulePreparation)."""
+) -> PreparedRepairScope:
     by_id = _operations_by_id(operations)
     mutable = frozenset(by_id)
     mutable_batches = frozenset(op.batch_id for op in operations)
+    predecessor_map = graph_context["predecessor_op_ids_by_op_id"]
+    successor_map = graph_context["successor_op_ids_by_op_id"]
+    predecessors = {op_id: set(predecessor_map[op_id]) & mutable for op_id in mutable}
+    successors = {op_id: set(successor_map[op_id]) & mutable for op_id in mutable}
+    changeable_operations = tuple(op for op in operations if _can_change_resources(op))
+    changeable_op_ids = frozenset(op.id for op in changeable_operations)
+    return PreparedRepairScope(
+        operations_by_id=by_id,
+        mutable_operation_ids=mutable,
+        mutable_batch_ids=mutable_batches,
+        predecessors=predecessors,
+        successors=successors,
+        changeable_op_ids=changeable_op_ids,
+        changeable_operations=changeable_operations,
+        qualified_pairs_by_op_id={},
+        resource_pairs_for=resource_pairs_for,
+    )
+
+
+def prepare_repair_parent(
+    candidate: Dict[str, Any],
+    *,
+    scope: PreparedRepairScope,
+) -> RepairParentPreparation:
+    """Prepare the decoded parent's static facts once from the shared repair scope; basis-specific signals remain separate."""
+    by_id = scope.operations_by_id
+    mutable = scope.mutable_operation_ids
+    mutable_batches = scope.mutable_batch_ids
     rows = _decoded_rows(candidate, by_id)
     current = {op_id: (row.machine_id, row.operator_id) for op_id, row in rows.items()}
-    inherited = _inherited_resource_rows(current, by_id)
+    inherited = _inherited_resource_rows(current, changeable_op_ids=scope.changeable_op_ids)
     timelines_by_resource = resource_timeline_groups(candidate["results"])
     timelines = list(timelines_by_resource.values())
     batch_ends = {}
     for row in candidate["results"]:
         batch_ends[row.batch_id] = max(batch_ends.get(row.batch_id, row.end_time), row.end_time)
     changeovers = _batch_changeovers(timelines_by_resource, mutable_batches)
-    predecessors, order = {}, ()
+    predecessors: Dict[int, set] = {}
+    successors: Dict[int, set] = scope.successors
+    order: Tuple[int, ...] = ()
     if mutable and set(rows) == mutable:
-        predecessors = {op_id: set(graph_context["predecessor_op_ids_by_op_id"].get(op_id, ())) & mutable
-                        for op_id in mutable}
-        order = decoded_topological_order(rows, predecessors)
+        predecessors = scope.predecessors
+        order = decoded_topological_order(rows, predecessors, successors)
     return RepairParentPreparation(
         operations_by_id=by_id, mutable_operation_ids=mutable, mutable_batch_ids=mutable_batches,
         decoded_rows=rows, current_resources=current, predecessors=predecessors,
-        successors={op_id: set(graph_context["successor_op_ids_by_op_id"].get(op_id, ())) & mutable
-                    for op_id in mutable}, operation_order=order,
+        successors=successors, operation_order=order,
         operation_ranks={op_id: index for index, op_id in enumerate(order)}, resource_timelines=timelines,
         batch_end_times=batch_ends, changeovers_by_batch=changeovers,
         latest_end_time=max((row.end_time for row in rows.values()), default=None),
-        inherited_resources=inherited, decoded_batch_order=tuple(candidate.get("decoded_batch_order")
-                                                               or decoded_batch_order(candidate["results"])),
-        resource_pairs_for=resource_pairs_for,
+        inherited_resources=inherited, decoded_batch_order=tuple(candidate["decoded_batch_order"]),
+        scope=scope,
     )
 
 
-def decoded_topological_order(rows: Dict[int, Any], predecessors: Dict[int, set]) -> Tuple[int, ...]:
-    successors: Dict[int, List[int]] = defaultdict(list)
+def decoded_topological_order(
+    rows: Dict[int, Any], predecessors: Dict[int, set], successors: Dict[int, set],
+) -> Tuple[int, ...]:
     pending = {op_id: len(parents) for op_id, parents in predecessors.items()}
-    for op_id, parents in predecessors.items():
-        for parent in parents:
-            successors[parent].append(op_id)
     ready = [(rows[op_id].start_time, rows[op_id].end_time, op_id) for op_id, count in pending.items() if not count]
     heapq.heapify(ready)
     order = []
@@ -153,23 +196,21 @@ _MAX_RESOURCE_DECISIONS = 8
 
 
 def iter_resource_decisions(
-    *, operations: List[Any], batch_order: Tuple[str, ...], operation_order: Tuple[int, ...],
+    *, batch_order: Tuple[str, ...], operation_order: Tuple[int, ...],
     prepared_parent: RepairParentPreparation,
 ) -> Iterator[RepairDecision]:
     """Yield bounded one-operation moves from a prepared decoded parent, preserving its accepted overrides."""
     current = prepared_parent.current_resources
     batch_order_tuple, op_order_tuple = tuple(batch_order), tuple(operation_order)
     inherited = {op_id: (machine, operator) for op_id, machine, operator in prepared_parent.inherited_resources}
-    resource_pairs_for = prepared_parent.resource_pairs_for
+    scope = prepared_parent.scope
     generated = 0
-    for op in operations:
-        if not _can_change_resources(op):
-            continue
+    for op in scope.changeable_operations:
         if op.id not in current:
             _invalid("results", reason="graph_ready_repair_scope_mismatch")
         if not all(current[op.id]):
             continue  # A point event without a selected pair does not introduce resources.
-        for pair in sorted(resource_pairs_for(op)):
+        for pair in scope.sorted_pairs_for(op):
             if pair == current[op.id]:
                 continue
             overrides = dict(inherited)
@@ -185,9 +226,12 @@ def _operations_by_id(operations: List[OpForScheduleAlgo]) -> Dict[int, OpForSch
     return {op.id: op for op in operations}
 
 
-def _inherited_resource_rows(current, by_id):
-    return tuple((op_id, machine, operator) for op_id, (machine, operator) in sorted(current.items())
-                 if _can_change_resources(by_id[op_id]) and machine and operator)
+def _inherited_resource_rows(current, *, changeable_op_ids: FrozenSet[int]):
+    return tuple(
+        (op_id, machine, operator)
+        for op_id, (machine, operator) in sorted(current.items())
+        if op_id in changeable_op_ids and machine and operator
+    )
 
 
 def _can_change_resources(op: OpForScheduleAlgo) -> bool:

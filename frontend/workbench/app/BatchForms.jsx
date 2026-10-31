@@ -26,8 +26,7 @@
     }, [adapter], !entity);
     React.useEffect(() => {
       if (command.phase !== 'done' || seen.current === command.result.receipt_ref) return;
-      try { B.receipt(command.result, action, entity && entity.ref); seen.current = command.result.receipt_ref; onCommitted(command.result); }
-      catch (error) { setError(error); }
+      seen.current = command.result.receipt_ref; onCommitted(command.result);
     }, [command.phase, command.result]);
     const locked = command.locked || command.phase === 'done' || loading;
     async function reload() {
@@ -89,12 +88,11 @@
       <p>确认后，将用上表中的工艺工序替换本批次现有工序。</p></>;
   }
   function Preview({ preview, command, onClose, onCommitted }) {
-    const seen = React.useRef(null), [error, setError] = React.useState(null), [acknowledged, setAcknowledged] = React.useState(false);
+    const seen = React.useRef(null), [acknowledged, setAcknowledged] = React.useState(false);
     const action = preview.operation.split('.')[1], subject = action === 'bulk_confirm' ? preview.preview_ref : preview.entity_ref;
     React.useEffect(() => {
       if (command.phase !== 'done' || seen.current === command.result.receipt_ref) return;
-      try { B.receipt(command.result, action, subject); seen.current = command.result.receipt_ref; onCommitted(command.result); }
-      catch (error) { setError(error); }
+      seen.current = command.result.receipt_ref; onCommitted(command.result);
     }, [command.phase, command.result]);
     const value = row => row ? <><div>{[row.business_code, row.relationships.part_no, ...B.fields.map(key => window.BatchControls.display(key, row.fields[key]))].join(' · ')}</div>
       {row.operations.map((op, index) => <div key={index}>{op.business_code} · {op.sequence} · {op.label} · {op.source === 'external' ? '外协' : '自制'} ·
@@ -113,7 +111,7 @@
       <div className="modal-b">{action === 'sync_confirm' ? <SyncPreview preview={preview} /> : <div className="batch-preview wb-table-frame" data-sticky-head><table className="tbl wb-table"><caption className="wb-visually-hidden">批次变更前后对照</caption><thead><tr><th scope="col">原记录</th><th scope="col">确认后</th></tr></thead><tbody>
         {preview.rows.map(row => <tr key={row.entity_ref}><td>{value(row.before)}</td><td>{value(row.after)}</td></tr>)}
       </tbody></table></div>}
-        <Issues issues={preview.warnings} /><ErrorBox error={error} />
+        <Issues issues={preview.warnings} />
         {deleting && command.phase !== 'done' && <label className="batch-check"><input type="checkbox" checked={acknowledged} disabled={command.locked} onChange={event => setAcknowledged(event.target.checked)} />
           {single ? '已核对明细，确认删除批次 ' + single + '。' : '已核对全部明细，确认删除这 ' + window.WorkbenchFormat.number(preview.rows.length, { digits: 0 }) + ' 个批次。'}</label>}
         <window.ResourceForms.Feedback command={command} action={deleting ? 'delete' : 'save'} /></div>

@@ -3,6 +3,7 @@
 from typing import Any, Dict
 
 from core.models.enums import OperationRequirementRole, SourceType
+from core.shared.strict_json import clone_json
 
 PREPARATION_METRIC_VERSION = "decision-preparation-v4"
 PREPARATION_METRICS = (
@@ -47,13 +48,17 @@ def project_operation_effort(runtime, standard, *, allocation_state, source_avai
         result = {field: runtime.get(field) for field in _FIELDS}
         result.update(execution_quantity_basis=execution["target_basis"],
                       execution_target_quantity=execution["target_quantity"], remaining_quantity=execution["remaining_quantity"])
-        result["data_gaps"] = list(runtime.get("data_gaps", []))
+        result["data_gaps"] = [dict(gap) for gap in runtime.get("data_gaps", [])]
         unknown = sum(result[field] is None for field in ("setup_standard_hours", "processing_standard_hours", "required_standard_hours"))
         result["state"] = ("not_applicable" if result["source"] == SourceType.EXTERNAL.value else
                            "unavailable" if unknown == 3 else "partial" if unknown else "complete")
     if runtime is None and result["requirement_role"] == OperationRequirementRole.COMPLETED.value and allocation_state == "unknown":
         allocation_state = OperationRequirementRole.COMPLETED.value
-    result.update(allocation_state=allocation_state, evidence_source=evidence_source, standard=standard)
+    result.update(
+        allocation_state=allocation_state,
+        evidence_source=clone_json(evidence_source),
+        standard=clone_json(standard),
+    )
     return result
 
 

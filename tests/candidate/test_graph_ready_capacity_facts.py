@@ -62,24 +62,43 @@ def test_pair_blocking_is_prepared_once_across_feature_bases_and_operation_windo
     assert (at(16), at(40), "urgent", "O1") in calls and (start, at(40), "urgent", "O1") in calls
     fields = ("residual_capacity_window_hours", "residual_capacity_blocked_hours", "residual_capacity_hours")
     views = (result[1], result[2], result[2][BASELINE_ORDERING_FIELD])
-    assert [tuple(row[key] for key in fields) for row in views] == [(16, 4, 12), (12, 0, 12), (20, 2, 18)]
+    assert [row["due_budget_hours"] for row in views] == [16.0, 12.0, 20.0]
+    assert all(key not in row for row in views for key in fields + ("residual_capacity_start_offset_hours",))
 
     resource_seeds = v2_capacity.seed_results_by_resource_id(seeds)
     prepared_blocking = v2_capacity.FixedResourceBlockingFacts(
         downtime_map=downtime, seed_results_by_resource_id=resource_seeds
     )
-    for op in operations:
-        row = result[op.id]
+    windows = (
+        (operations[0], start, at(16), (16, 4, 12)),
+        (operations[1], at(16), at(40), (12, 0, 12)),
+        (operations[1], start, at(40), (20, 2, 18)),
+    )
+    for op, window_start, due_exclusive, expected in windows:
         standalone = v2_capacity.residual_capacity_for_operation(
-            op, batch=batches[op.batch_id], start_dt=at(row["residual_capacity_start_offset_hours"]),
-            due_exclusive=at(16 if op.id == 1 else 40), calendar_service=calendar,
+            op, batch=batches[op.batch_id], start_dt=window_start,
+            due_exclusive=due_exclusive, calendar_service=calendar,
             resource_pool=pool, prepared=prepared_blocking)
-        assert tuple(standalone[key] for key in fields) == tuple(row[key] for key in fields)
+        assert tuple(standalone[key] for key in fields) == expected
     changed = v2_capacity.residual_capacity_for_operation(
         operations[0], batch=batches["B1"], start_dt=start, due_exclusive=at(16), calendar_service=calendar,
         resource_pool=pool, prepared=v2_capacity.FixedResourceBlockingFacts(
             downtime_map={}, seed_results_by_resource_id=resource_seeds))
     assert changed["residual_capacity_blocked_hours"] == 3 and changed["residual_capacity_hours"] == 13
+
+    calls.clear()
+    no_due_result = enrich_graph_ready_v2_metrics(
+        {1: {"bottleneck_machine_score": 1}},
+        operations=[operations[0]],
+        batches={"B1": make_batch(batch_id="B1", quantity=1, priority="normal", due_date=None, ready_date=None)},
+        start_dt=start, calendar_service=calendar, seed_results=seeds,
+        resource_pool=pool, downtime_map=downtime,
+        graph_ready_context={"predecessor_op_ids_by_op_id": {1: set()}},
+        deadline=float("inf"), clock=lambda: 0.0)
+    assert no_due_result is not None
+    assert calls == []
+    assert no_due_result[1]["bottleneck_due_gate"] == 0.0
+    assert no_due_result[1][BASELINE_ORDERING_FIELD]["bottleneck_due_gate"] == 0.0
 
 
 def test_graph_resource_preparation_is_shared_by_full_and_per_operation_inputs(monkeypatch):

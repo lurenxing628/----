@@ -19,11 +19,6 @@
       "count": 1
     },
     {
-      "path": "core/services/common/plan_query.py",
-      "kind": "private_symbol",
-      "count": 1
-    },
-    {
       "path": "core/services/scheduler/run/optimizer/graph/iterated_greedy.py",
       "kind": "private_symbol",
       "count": 2
@@ -51,7 +46,7 @@
     {
       "path": "core/services/scheduler/run/optimizer/graph/iterated_greedy_run.py",
       "kind": "private_symbol",
-      "count": 4
+      "count": 3
     },
     {
       "path": "core/services/scheduler/run/optimizer/graph/iterated_greedy_start.py",
@@ -86,7 +81,7 @@
     {
       "path": "core/services/scheduler/summary/summary_runtime_state.py",
       "kind": "private_symbol",
-      "count": 2
+      "count": 1
     },
     {
       "path": "core/services/system/workbench_overview.py",
@@ -179,19 +174,9 @@
       "count": 1
     },
     {
-      "path": "web/routes/workbench/calendars.py",
-      "kind": "private_symbol",
-      "count": 1
-    },
-    {
       "path": "web/routes/workbench/resource_table_queries.py",
       "kind": "private_symbol",
       "count": 2
-    },
-    {
-      "path": "web/routes/workbench/resources.py",
-      "kind": "private_symbol",
-      "count": 1
     },
     {
       "path": "web/routes/workbench/run_candidate_baseline.py",

@@ -29,8 +29,6 @@ class WorkbenchResourceService:
     def prepare(self, action, payload, checked, preparation):
         identity = None if action == "create" else preparation.identity(self.kind, checked["identity"]["ref"])
         code = payload["business_code"] if identity is None else identity.entity_key
-        if code != code.strip():
-            raise WorkbenchCommandRejected("constraint_conflict", "这条旧记录的编号前后带空格，请先修正编号。")
         raw = {} if checked is None else checked["record"]
         if action == "delete":
             if any(checked["dependencies"].values()):
@@ -132,7 +130,7 @@ class WorkbenchResourceService:
         if profile != previous or original is None and profile != default:
             related["profile"] = profile
 
-    def apply_prepared(self, change):
+    def apply_prepared(self, change, *, read_identity: bool = True):
         if not self.conn.in_transaction:
             raise RuntimeError("资源保存必须由工作台最外层事务负责。")
         code, identity = change.business_code, change.identity
@@ -141,9 +139,10 @@ class WorkbenchResourceService:
         elif change.action == "create":
             model, key = {"op_type": (OpType, "op_type_id"), "machine": (Machine, "machine_id"), "operator": (Operator, "operator_id")}[self.kind]
             self.rows.create(model(**{key: code, **change.fields}))
-            identity = self.identities.find_active(self.kind, code)
-            if identity is None:
-                raise RuntimeError("新增资源没有永久引用。")
+            if read_identity:
+                identity = self.identities.find_active(self.kind, code)
+                if identity is None:
+                    raise RuntimeError("新增资源没有永久引用。")
         elif change.fields:
             self.rows.update(code, change.fields)
         related = change.related
@@ -158,4 +157,7 @@ class WorkbenchResourceService:
         if "profile" in related:
             self.repo.set_operator_profile(code, **related["profile"])
         changed = change.action != "update" or bool(change.fields or related)
-        return WorkbenchCommandOutcome("committed" if changed else "unchanged", {"entity_ref": identity.ref, "business_code": code})
+        return WorkbenchCommandOutcome(
+            "committed" if changed else "unchanged",
+            {"entity_ref": None if identity is None else identity.ref, "business_code": code},
+        )

@@ -5,8 +5,6 @@ from typing import NoReturn
 
 from core.errors import ValidationError
 
-from .native_snapshot import UNSUPPORTED, content_snapshot
-
 _CERTIFICATES = {}
 
 
@@ -20,7 +18,7 @@ def checkpoint_calendar_signature(calendar):
     if snapshot is None:
         unsupported_calendar()
     value = snapshot(calendar)
-    if value is None or content_snapshot(value) is UNSUPPORTED:
+    if value is None:
         unsupported_calendar()
     return value
 

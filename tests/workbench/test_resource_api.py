@@ -118,12 +118,12 @@ def test_plain_resource_pages_share_batch_states_and_read_dependencies_once(reso
         type_counts.clear()
         scopes.clear()
         with monkeypatch.context() as scoped:
-            scoped.setattr(WorkbenchResourceTableRepository, "assigned_counts", read_counts)
-            scoped.setattr(WorkbenchResourceMetricsRepository, "op_type_dependencies", read_type_counts)
             scoped.setattr(WorkbenchResourceQueryRepository, "scope_state", read_scope)
             with reader.read_snapshot() as fingerprint:
                 rows, total = reader.repo.page(query)
                 expected = [reader.detail(row["ref"]) for row in rows]
+                scoped.setattr(WorkbenchResourceTableRepository, "assigned_counts", read_counts)
+                scoped.setattr(WorkbenchResourceMetricsRepository, "op_type_dependencies", read_type_counts)
                 scoped.setattr(WorkbenchResourceTableRepository, "page_relations", read_relations)
                 records, page = reader.page(query)
                 codes = tuple(row["business_code"] for row in rows)

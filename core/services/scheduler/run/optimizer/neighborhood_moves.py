@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .neighborhood_move_support import (
+    LocalSearchResultFacts,
     bottleneck_machine_rows,
     earliest_due_pressure_batch,
     finish_by_batch,
@@ -51,35 +52,60 @@ def noop_move(name: str, *, order: List[str]) -> NeighborhoodMove:
     )
 
 
-def critical_chain_move(order: List[str], results: List[Any]) -> NeighborhoodMove:
-    latest = latest_result(results)
+def critical_chain_move(
+    order: List[str],
+    results: List[Any],
+    *,
+    result_facts: Optional[LocalSearchResultFacts] = None,
+) -> NeighborhoodMove:
+    latest = result_facts.latest_row() if result_facts is not None else latest_result(results)
     if latest is None:
         return noop_move(CRITICAL_CHAIN, order=order)
     return _pull_batch_earlier(CRITICAL_CHAIN, order, batch_id=latest.batch_id)
 
 
-def tardy_window_move(order: List[str], results: List[Any], batches: Dict[str, Any]) -> NeighborhoodMove:
-    finish_rows = finish_by_batch(results)
-    bid = most_tardy_batch(finish_by_batch_rows=finish_rows, batches=batches)
+def tardy_window_move(
+    order: List[str],
+    results: List[Any],
+    batches: Dict[str, Any],
+    *,
+    result_facts: Optional[LocalSearchResultFacts] = None,
+) -> NeighborhoodMove:
+    if result_facts is not None:
+        bid = result_facts.most_tardy_batch_id(batches)
+    else:
+        finish_rows = finish_by_batch(results)
+        bid = most_tardy_batch(finish_by_batch_rows=finish_rows, batches=batches)
     if not bid:
         return noop_move(TARDY_WINDOW, order=order)
     return _pull_batch_earlier(TARDY_WINDOW, order, batch_id=bid)
 
 
-def bottleneck_machine_move(order: List[str], results: List[Any]) -> NeighborhoodMove:
-    rows = bottleneck_machine_rows(results)
-    if not rows:
-        return noop_move(BOTTLENECK_MACHINE, order=order)
-    latest = latest_result(rows)
+def bottleneck_machine_move(
+    order: List[str],
+    results: List[Any],
+    *,
+    result_facts: Optional[LocalSearchResultFacts] = None,
+) -> NeighborhoodMove:
+    if result_facts is not None:
+        latest = result_facts.bottleneck_latest_row()
+    else:
+        rows = bottleneck_machine_rows(results)
+        latest = latest_result(rows) if rows else None
     if latest is None:
         return noop_move(BOTTLENECK_MACHINE, order=order)
     return _pull_batch_earlier(BOTTLENECK_MACHINE, order, batch_id=latest.batch_id)
 
 
-def changeover_block_move(order: List[str], results: List[Any]) -> NeighborhoodMove:
-    pair = first_changeover_pair(results)
+def changeover_block_move(
+    order: List[str],
+    results: List[Any],
+    *,
+    result_facts: Optional[LocalSearchResultFacts] = None,
+) -> NeighborhoodMove:
+    pair = result_facts.changeover_pair() if result_facts is not None else first_changeover_pair(results)
     if pair is None:
-        fallback = critical_chain_move(order, results)
+        fallback = critical_chain_move(order, results, result_facts=result_facts)
         if fallback.noop:
             return noop_move(CHANGEOVER_BLOCK, order=order)
         return NeighborhoodMove(
@@ -94,8 +120,9 @@ def changeover_block_move(order: List[str], results: List[Any]) -> NeighborhoodM
 
 
 def resource_alternative_move(order: List[str], resource_pool: Optional[Dict[str, Any]]) -> NeighborhoodMove:
-    pool = resource_pool or {}
-    picked = pick_resource_pair(pool)
+    if not resource_pool:
+        return noop_move(RESOURCE_ALTERNATIVE, order=order)
+    picked = pick_resource_pair(resource_pool)
     if picked is None:
         return noop_move(RESOURCE_ALTERNATIVE, order=order)
     operator_id, machine_id, _old_rank = picked
@@ -106,9 +133,18 @@ def resource_alternative_move(order: List[str], resource_pool: Optional[Dict[str
     )
 
 
-def time_window_move(order: List[str], results: List[Any], batches: Dict[str, Any]) -> NeighborhoodMove:
-    finish_rows = finish_by_batch(results)
-    bid = earliest_due_pressure_batch(finish_by_batch_rows=finish_rows, batches=batches)
+def time_window_move(
+    order: List[str],
+    results: List[Any],
+    batches: Dict[str, Any],
+    *,
+    result_facts: Optional[LocalSearchResultFacts] = None,
+) -> NeighborhoodMove:
+    if result_facts is not None:
+        bid = result_facts.earliest_due_pressure_batch_id(batches)
+    else:
+        finish_rows = finish_by_batch(results)
+        bid = earliest_due_pressure_batch(finish_by_batch_rows=finish_rows, batches=batches)
     if not bid:
         return noop_move(TIME_WINDOW, order=order)
     return _pull_batch_earlier(TIME_WINDOW, order, batch_id=bid)

@@ -116,7 +116,7 @@
           } else window.WorkbenchNavigation.remember(boot, activePage.current, captured.scroll, captured.context);
           if (historyGuard.current) historyGuard.current.sync();
         }
-        catch (error) { setPage(old => ({ ...old, error: error.message })); }
+        catch (error) { setNavigationError(error.message); }
       };
       const memory = window.WorkbenchNavigation.scrollMemory(save); scrollMemory.current = memory;
       const scroll = () => {
@@ -127,7 +127,10 @@
       const restore = () => { restoring.current = true; memory.cancel(); setMessages([]); setNavigationError('');
         let next = currentPage();
         const captured = !next.error && pageSnapshots.current.get(next.key);
-        if (captured) { window.WorkbenchNavigation.remember(boot, next, captured.scroll, captured.context); next = history.state.workbench; }
+        if (captured) {
+          try { window.WorkbenchNavigation.remember(boot, next, captured.scroll, captured.context); next = history.state.workbench; }
+          catch (error) { setNavigationError(error.message); }
+        }
         activePage.current = next; setPage(next); };
       if (!activePage.current.error) historyGuard.current = window.WorkbenchNavigation.guardHistory(boot, {
         hasDirty: () => window.WorkbenchGuards.hasDirty(), confirmLeave: () => window.WorkbenchGuards.confirmLeave(),
@@ -196,7 +199,7 @@
         pageSnapshots.current.set(key, { ...pageSnapshots.current.get(key), context: nextContext });
         if (scrollMemory.current) scrollMemory.current.schedule();
       }
-      catch (error) { setPage(old => ({ ...old, error: error.message })); }
+      catch (error) { setNavigationError(error.message); }
     }, [view, page.key]);
     return <><window.WorkbenchControlStyles /><window.WorkbenchControls /><window.WorkbenchNumberControls /><window.WorkbenchGuardHost />
     <window.WorkbenchPageContext.Provider key={view + ':' + page.key} remember={rememberPage} navigate={navigate}>

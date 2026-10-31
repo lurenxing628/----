@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import asdict
 
 import pytest
 
@@ -43,7 +44,7 @@ def test_config_snapshot_includes_hidden_fields_and_ignores_retired_fields(confi
     conn, repo, _database = config_store
     snap = _stored_snapshot(conn)
     assert snap.auto_assign_persist == "yes"
-    assert snap.to_dict()["auto_assign_persist"] == "yes"
+    assert asdict(snap)["auto_assign_persist"] == "yes"
     assert snap.graph_analysis_mode == "on"
     assert snap.graph_block_on_cycle == "no"
     assert snap.graph_critical_weight == 500
@@ -52,17 +53,17 @@ def test_config_snapshot_includes_hidden_fields_and_ignores_retired_fields(confi
     runtime_keys = {spec.key for spec in list_runtime_config_fields()}
     page_keys = {spec.key for spec in list_config_fields()}
     for key in RETIRED_CONFIG_FIELDS:
-        assert not hasattr(snap, key) and key not in snap.to_dict()
+        assert not hasattr(snap, key) and key not in asdict(snap)
         assert key not in runtime_keys and key not in page_keys
     assert snap.graph_debug_export == "no"
     assert repo.get_value("objective") == "min_overdue"
     assert snap.graph_analysis_mode == "on"
-    assert snap.to_dict()["graph_critical_weight"] == 500
+    assert asdict(snap)["graph_critical_weight"] == 500
 
 
 def test_legacy_preset_keeps_budget_and_saved_rows_during_reads_and_restart(config_store) -> None:
     conn, repo, database = config_store
-    payload = dict(_stored_snapshot(conn).to_dict(), time_budget_seconds=47)
+    payload = dict(asdict(_stored_snapshot(conn)), time_budget_seconds=47)
     payload.update({key: "Retired malformed value" for key in RETIRED_CONFIG_FIELDS})
     original_json = json.dumps(payload)
     legacy_key = "preset.legacy-explicit-budget"
@@ -80,7 +81,7 @@ def test_legacy_preset_keeps_budget_and_saved_rows_during_reads_and_restart(conf
     adapted = build_schedule_config_snapshot(
         rows=[{"config_key": key, "config_value": value} for key, value in json.loads(repo.get_value(legacy_key)).items()]
     )
-    assert adapted.time_budget_seconds == 47 and not set(RETIRED_CONFIG_FIELDS) & set(adapted.to_dict())
+    assert adapted.time_budget_seconds == 47 and not set(RETIRED_CONFIG_FIELDS) & set(asdict(adapted))
     assert repo.get_value(legacy_key) == original_json
     assert [tuple(row) for row in conn.execute("SELECT * FROM ScheduleConfig ORDER BY config_key")] == rows_before
 

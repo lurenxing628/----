@@ -29,7 +29,7 @@ def _columns(sql, name):
         if sorted(ordered) != sorted(names.values()):
             raise ValueError("Archived column definitions are incomplete: " + name)
         return tuple(ordered)
-    return tuple(ddl_columns(sql, name, restricted=True))
+    return tuple(ddl_columns(sql, name))
 
 
 def archived_columns(value, table):
@@ -114,6 +114,10 @@ def _performance_index(row):
             and table == expected.partition(" ON ")[2].split("(", 1)[0])
 
 
+def comparable_schema(schema):
+    return [list(row) for row in schema if not (_derived_schema(row) or _performance_index(row))]
+
+
 def project_facts(value):
     """Pure comparison value; preserve other fields, old digests and unknown DDL."""
     table_names = {row[1] for row in value["schema"] if len(row) == 4 and row[0] == "table"}
@@ -122,6 +126,6 @@ def project_facts(value):
     for name in READ_MODEL_TABLES:
         tables.pop(name, None)
     schema = [row for row in value["schema"] if not (_derived_schema(row) or _performance_index(row))]
-    result = {key: item for key, item in value.items() if key != "columns"}
+    result = {key: item for key, item in value.items() if key not in ("columns", "revisions")}
     result.update(schema=schema, tables=tables)
     return result

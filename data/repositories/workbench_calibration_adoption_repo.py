@@ -2,17 +2,12 @@
 
 import secrets
 
-from core.infrastructure.connection_guards import schema_contract_memo
-from core.infrastructure.workbench_calibration_adoption_schema import contract_issues
 from core.models.workbench_template_lineage import snapshot
 
 from .base_repo import BaseRepository
 
 
 class WorkbenchCalibrationAdoptionRepository(BaseRepository):
-    def schema_installed(self):
-        return not schema_contract_memo(self.conn).get_schema(contract_issues)
-
     def template(self, template_operation_ref):
         """Active template row joined with its permanent refs, or None; part_ref may be None."""
         return self.fetchone("""SELECT o.*, r.ref AS template_operation_ref, r.revision AS template_revision,

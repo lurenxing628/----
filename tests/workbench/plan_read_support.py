@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from flask import Blueprint, Flask, g
 
+from core.infrastructure.sqlite_udf import register_schedule_time_sql_functions
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 from tests.workbench.plan_catalog_support import history, seed_operation
@@ -24,6 +25,7 @@ def connect(path):
     conn = sqlite3.connect(str(path))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    register_schedule_time_sql_functions(conn)
     return conn
 
 

@@ -3,7 +3,7 @@
 from core.infrastructure.workbench_metadata_schema import canonical_sql
 from core.models.workbench_template_lineage import OPERATION_COLUMNS, SEMANTIC_COLUMNS, STATE_COLUMNS
 
-from .schema_structure import schema_objects
+from .schema_structure import SchemaStructure
 
 _REF = "TEXT NOT NULL CHECK(length({0})=48 AND {0} NOT GLOB '*[^0-9a-f]*')"
 _STAMP = "strftime('%Y-%m-%dT%H:%M:%fZ','now')"
@@ -103,8 +103,8 @@ def template_lineage_objects():
     return objects
 
 
-def template_lineage_contract_issues(conn, *, structure=None):
-    actual = schema_objects(conn, structure=structure)
+def template_lineage_contract_issues(conn, *, structure: SchemaStructure):
+    actual = structure.sql
     return [("missing_template_lineage:" if name not in actual else "invalid_template_lineage:") + name
             for name, sql in template_lineage_objects().items()
             if name not in actual or canonical_sql(actual[name]) != canonical_sql(sql)]

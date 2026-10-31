@@ -14,9 +14,10 @@ finish_by_batch 里的值是被失败截断的部分完工时间，按它做超�
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
-from typing import Any, Callable, Dict, List, Set, Tuple
+from datetime import date, datetime, timedelta
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
+from core.algorithm_contracts.date_parsers import due_exclusive as due_exclusive_from_date
 from core.algorithm_contracts.types import ScheduleResult
 from core.algorithms.evaluation_completion import parse_due_exclusive_datetime
 from core.models.batch import Batch
@@ -30,8 +31,8 @@ _NEAR_DUE_DELTA = timedelta(days=NEAR_DUE_WINDOW_DAYS)
 
 
 def incomplete_batch_ids_from_failure_details(
-    failure_details: Any,
-    finish_by_batch: Dict[str, datetime],
+    failure_details: Sequence[Mapping[str, Any]],
+    finish_by_batch: Mapping[str, datetime],
 ) -> Set[str]:
     """排产未完成批次集合：有失败/跳过工序明细、且已有部分完工结果的批次。
 
@@ -39,9 +40,7 @@ def incomplete_batch_ids_from_failure_details(
     unscheduled"未形成完工结果"口径；此集合专圈"部分成功后失败截断"的批次。
     """
     incomplete: Set[str] = set()
-    for detail in failure_details or ():
-        if not isinstance(detail, dict):
-            continue
+    for detail in failure_details:
         # Failure details always carry a non-empty batch_id (run_state._failure_detail; archived
         # details are validated by delivery_completeness._batch_details).
         batch_id = detail["batch_id"]
@@ -151,6 +150,7 @@ def _build_overdue_items(
     summary: Any,
     append_summary_warning_fn: Callable[[Any, str], None],
     incomplete_batch_ids: Set[str],
+    due_by_batch: Dict[str, Optional[date]],
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     overdue_items: List[Dict[str, Any]] = []
     near_due_items: List[Dict[str, Any]] = []
@@ -159,18 +159,30 @@ def _build_overdue_items(
     excluded_incomplete = incomplete_batch_ids
 
     for batch_id, batch in batches.items():
-        due_exclusive, due_text, due_invalid = parse_due_exclusive_datetime(batch.due_date)
-        if due_invalid:
-            invalid_due_count += 1
-            _record_invalid_due(batch_id=str(batch_id), invalid_due_ids_sample=invalid_due_ids_sample)
-            continue
-        if due_exclusive is None:
-            continue
+        batch_key = str(batch_id)
+        if batch_key in due_by_batch:
+            due_day = due_by_batch[batch_key]
+            if due_day is None:
+                continue
+            due_exclusive = due_exclusive_from_date(due_day)
+            due_text = (
+                due_day.isoformat()
+                if isinstance(batch.due_date, (date, datetime))
+                else str(batch.due_date or "").strip()
+            )
+        else:
+            due_exclusive, due_text, due_invalid = parse_due_exclusive_datetime(batch.due_date)
+            if due_invalid:
+                invalid_due_count += 1
+                _record_invalid_due(batch_id=batch_key, invalid_due_ids_sample=invalid_due_ids_sample)
+                continue
+            if due_exclusive is None:
+                continue
 
-        finish_time = finish_by_batch.get(str(batch_id))
+        finish_time = finish_by_batch.get(batch_key)
         if finish_time is None:
             continue
-        if str(batch_id) in excluded_incomplete:
+        if batch_key in excluded_incomplete:
             # 排产未完成批次：finish 是被失败截断的部分完工时间，不参与超期/临期
             # "健康"分类，整体改走"排产未完成"风险清单（audit 2026-07-20 A18）。
             continue

@@ -10,7 +10,7 @@ from core.services.workbench.facts.run_input_codec import execution_snapshots_ma
 from .jobs_facts import production_facts_match, run_baseline, run_execution_projections
 
 
-def check_admission_current(conn, capture, *, current_capture):
+def check_admission_current(conn, capture, *, current_capture, captured_facts):
     text = capture["facts_text"]
     if type(text) is not str:
         raise CandidateAdoptionBlocked("candidate_artifact_invalid", "排产时记下的数据校验不通过，不能采用，正式计划没有改动。请重新排产后再试。")
@@ -23,7 +23,7 @@ def check_admission_current(conn, capture, *, current_capture):
     versions = {row["version"] for row in current_capture.table("ScheduleHistory")}
     if any(row["version"] not in versions for row in schedule):
         raise CandidateAdoptionBlocked("official_history_inconsistent", "有正式安排找不到所属的版本记录，不能采用。请联系维护人员核对。")
-    if not production_facts_match(conn, text, capture=current_capture):
+    if not production_facts_match(conn, captured_facts, capture=current_capture):
         raise WorkbenchCommandRejected("snapshot_stale", "排产之后，排产范围、报工记录、设备人员或班表有变化，这次没有采用，正式计划没有改动。请重新排产后再试。")
     projections = run_execution_projections(conn, capture["input"], capture=current_capture,
         service=current_capture.execution_service)

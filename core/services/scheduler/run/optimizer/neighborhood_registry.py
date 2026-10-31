@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 
 from core.errors import ValidationError
 
+from .neighborhood_move_support import LocalSearchResultFacts
 from .neighborhood_moves import (
     ALLOWED_NEIGHBORHOODS,
     BOTTLENECK_MACHINE,
@@ -45,20 +46,21 @@ def build_neighborhood_move(
     rnd: Any,
     current_dispatch_rule: str = "",
     valid_dispatch_rules: List[str],
+    result_facts: Optional[LocalSearchResultFacts] = None,
 ) -> NeighborhoodMove:
     key = validate_neighborhood_name(name)
     if key == CRITICAL_CHAIN:
-        return critical_chain_move(order, results)
+        return critical_chain_move(order, results, result_facts=result_facts)
     if key == TARDY_WINDOW:
-        return tardy_window_move(order, results, batches)
+        return tardy_window_move(order, results, batches, result_facts=result_facts)
     if key == BOTTLENECK_MACHINE:
-        return bottleneck_machine_move(order, results)
+        return bottleneck_machine_move(order, results, result_facts=result_facts)
     if key == CHANGEOVER_BLOCK:
-        return changeover_block_move(order, results)
+        return changeover_block_move(order, results, result_facts=result_facts)
     if key == RESOURCE_ALTERNATIVE:
         return resource_alternative_move(order, resource_pool)
     if key == TIME_WINDOW:
-        return time_window_move(order, results, batches)
+        return time_window_move(order, results, batches, result_facts=result_facts)
     return sgs_dispatch_rule_move(order, current_dispatch_rule, valid_dispatch_rules, rnd)
 
 

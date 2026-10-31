@@ -120,12 +120,29 @@ def ensure_sample_revision(sample):
     return sample
 
 
+def ensure_sample_reports(sample, *, report_histories):
+    reports = sample["reports"]
+    if reports and type(reports[0]) is not dict:
+        from core.services.execution import projection as execution_projection
+
+        histories = report_histories[sample["execution_operation_ref"]]
+        materialized = []
+        for report in reports:
+            item = report.to_dict()
+            item["correction_history"] = execution_projection.build_correction_history(
+                histories[report.report_ref],
+                operation_ref=report.operation_ref,
+                report_ref=report.report_ref,
+            )
+            item.pop("write_context")
+            materialized.append(item)
+        sample["reports"] = materialized
+    return sample
+
+
 def _sample_origin(candidate, *, lineage_origin, lineage_events):
     projection, lineage = candidate.execution, candidate.lineage
     revision_refs = [row.revision_ref for row in projection.reports]
-    reports = [report.to_dict() for report in projection.reports]
-    for report in reports:
-        report.pop("write_context")
     state = {"source_ref": projection.operation_ref,
              "report_revision_refs": revision_refs,
              "data_gaps": projection.data_gaps,
@@ -142,7 +159,7 @@ def _sample_origin(candidate, *, lineage_origin, lineage_events):
             "sample_revision": state, "report_refs": [row.report_ref for row in projection.reports],
             "report_revision_refs": revision_refs,
             "confirmed_finish": projection.confirmed_finish,
-            "reports": reports, "data_gaps": projection.data_gaps}
+            "reports": projection.reports, "data_gaps": projection.data_gaps}
 
 
 def review_sample(candidate, *, template, as_of, lineage_origin, lineage_events):

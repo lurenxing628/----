@@ -10,6 +10,7 @@ import json
 import subprocess
 from pathlib import Path
 
+from tests._support.node_runtime_support import node_runtime
 from tests._support.paths import REPO_ROOT
 
 HARNESS = Path(__file__).with_name("gantt_current_runtime.cjs")
@@ -18,7 +19,7 @@ HARNESS = Path(__file__).with_name("gantt_current_runtime.cjs")
 def run_current_js(program, data=None):
     """Execute one explicit assertion program against private shipped assets."""
     completed = subprocess.run(
-        ["node", str(HARNESS)],
+        [node_runtime(), str(HARNESS)],
         input=json.dumps({"root": str(REPO_ROOT), "program": program, "data": data}),
         text=True, capture_output=True, check=False, cwd=str(REPO_ROOT), timeout=40,
     )

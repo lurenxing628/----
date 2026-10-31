@@ -21,12 +21,11 @@ class _WindowIndex:
 
     def __init__(self, search, reference):
         self.positions = {op_id: rank for rank, op_id in enumerate(reference.order)}
-        self.rows = {int(row.op_id): row for row in reference.candidate["results"]
-                     if int(row.op_id) in self.positions}
+        self.rows = {row.op_id: row for row in reference.candidate["results"] if row.op_id in self.positions}
         self.resources, self.adjacent, self.switches = {}, defaultdict(set), defaultdict(int)
         queues = defaultdict(list)
         for op_id, row in self.rows.items():
-            resources = frozenset((kind, str(value)) for kind, value in (
+            resources = frozenset((kind, value) for kind, value in (
                 ("machine_id", row.machine_id), ("operator_id", row.operator_id)) if value)
             self.resources[op_id] = resources
             for resource in resources:
@@ -66,21 +65,21 @@ def _index_for(search, reference):
 def _pressure(search, index, features, op_id):
     metric = search.metrics[op_id]
     signal = features["signals"][op_id]
-    due_pressure = float(metric["due_pressure"])
+    due_pressure = metric["due_pressure"]
     objective = search.report["objective_name"]
     if objective == "min_weighted_tardiness":
-        weighted = float(metric["weighted_due_pressure"])
+        weighted = metric["weighted_due_pressure"]
         factor = weighted / due_pressure if due_pressure > 0 else 1.0
         return -signal * factor, -weighted, -signal, -index.positions[op_id]
     if objective == "min_changeover":
         return -index.switches[op_id], -signal, -due_pressure, -index.positions[op_id]
-    return -signal, -due_pressure, -int(bool(metric["is_on_critical_path"])), -index.positions[op_id]
+    return -signal, -due_pressure, -metric["is_on_critical_path"], -index.positions[op_id]
 
 
 def _related(search, index, op_id):
     related = set(index.adjacent[op_id])
-    related.update(search.parent.predecessors.get(op_id, ()))
-    related.update(search.parent.successors.get(op_id, ()))
+    related.update(search.parent.predecessors[op_id])
+    related.update(search.parent.successors[op_id])
     return related.intersection(index.rows)
 
 
@@ -103,7 +102,7 @@ def joint_removed(search, reference, removed, size):
     Call only for the large-instance resource-window generator with its bounded
     destruction size. A one-operation neighbourhood stays a one-operation window.
     """
-    count = min(int(size), _MAX_JOINT_SIZE, len(reference.order) - 1)
+    count = min(size, _MAX_JOINT_SIZE, len(reference.order) - 1)
     if count <= 0 or not removed:
         return ()
     index, features = _index_for(search, reference)

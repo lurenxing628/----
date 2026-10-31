@@ -2,7 +2,7 @@
 
 from core.infrastructure.workbench_metadata_schema import canonical_sql
 
-from .schema_structure import schema_objects
+from .schema_structure import SchemaStructure
 
 ADOPTIONS = "WorkbenchCalibrationAdoptions"
 _REF = "TEXT NOT NULL CHECK(length({0})=48 AND {0} NOT GLOB '*[^0-9a-f]*')"
@@ -46,8 +46,8 @@ def objects():
     return result
 
 
-def contract_issues(conn, *, structure=None):
-    actual = schema_objects(conn, structure=structure)
+def contract_issues(conn, *, structure: SchemaStructure):
+    actual = structure.sql
     return [("missing_calibration_adoption:" if name not in actual else "invalid_calibration_adoption:") + name
             for name, sql in objects().items()
             if name not in actual or canonical_sql(actual[name]) != canonical_sql(sql)]

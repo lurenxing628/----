@@ -1,6 +1,6 @@
 """Stage bindings and dated batch allocations, separate from general stock."""
 
-from .schema_structure import schema_objects
+from .schema_structure import SchemaStructure
 from .workbench_metadata_schema import canonical_sql
 
 
@@ -44,8 +44,8 @@ def objects():
     }
 
 
-def contract_issues(conn, *, structure=None):
-    actual = schema_objects(conn, structure=structure)
+def contract_issues(conn, *, structure: SchemaStructure):
+    actual = structure.sql
     return [("missing_material_stages:" if name not in actual else "invalid_material_stages:") + name
             for name, sql in objects().items()
             if name not in actual or canonical_sql(sql) != canonical_sql(actual[name])]

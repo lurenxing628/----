@@ -1,13 +1,13 @@
 (function () {
   'use strict';
-  const C = window.DashboardContract, KEY = 'aps_dashboard_pending_v1', EVENT = KEY + '_changed';
-  function valid(v) {
+  const C = window.DashboardContract, T = window.APSWorkbenchTransport, KEY = 'aps_dashboard_pending_v1', EVENT = KEY + '_changed';
+  function valid(v, checkReceipt = true) {
     try { return v && v.version === 1 && /^dashboard-[a-f0-9]{48}$/.test(v.request_key) && C.ref(v.item_ref) && ['transition', 'reopen'].includes(v.action)
       && ['pending', 'confirmed', 'rejected'].includes(v.phase) && C.object(v.input) && C.object(v.source) && C.object(v.risk)
-      && !!C.baseHandling(v.before) && !!C.baseHandling(C.expected(v)) && (v.phase !== 'confirmed' || !!C.receipt(v.receipt, v)); } catch (_) { return false; }
+      && !!C.baseHandling(v.before) && !!C.baseHandling(C.expected(v)) && (v.phase !== 'confirmed' || (checkReceipt ? !!C.receipt(v.receipt, v) : C.object(v.receipt))); } catch (_) { return false; }
   }
-  const { read, save } = window.APSWorkbenchTransport.pendingStore({
-    key: KEY, event: EVENT, validate: valid,
+  const { read, flush, save } = T.pendingStore({
+    key: KEY, event: EVENT, validate: valid, validateWrite: v => valid(v, false),
     readError: '上次操作记录读不出来，不能开始新的处置。请重新打开页面。',
     corruptError: '上次操作记录已损坏，不能开始新的处置。请不要再操作，联系维护人员。',
     invalidError: '上次操作记录不完整，不能重新提交。请不要再操作，联系维护人员。',
@@ -20,9 +20,9 @@
     const [saved, setSaved] = React.useState(initial.saved), [storageError, setStorageError] = React.useState(initial.error);
     const [error, setError] = React.useState(null), [busy, setBusy] = React.useState(false), [notice, setNotice] = React.useState('');
     const mounted = React.useRef(false), running = React.useRef(false), active = React.useRef(saved); active.current = saved;
-    function sync(event) {
+    function sync(event, load = read) {
       try {
-        const v = event && event.type === EVENT ? event.detail : read();
+        const v = event && event.type === EVENT ? event.detail : load();
         if (!C.equal(v, active.current)) { active.current = v; setSaved(v); setError(null); setNotice(''); }
         setStorageError(null);
       } catch (e) {
@@ -35,7 +35,7 @@
       window.addEventListener('storage', changed); window.addEventListener(EVENT, changed);
       return () => { mounted.current = false; window.removeEventListener('storage', changed); window.removeEventListener(EVENT, changed); };
     }, []);
-    // C.command/C.lookup already checked the receipt; a failed local write belongs to storageError.
+    // C.command/C.lookup already checked the receipt; a failed local write belongs to storageError. Callers hold the cross-page lock.
     function accept(v, original) {
       if (!C.equal(active.current, original)) { if (mounted.current) sync(); return; }
       const confirmed = { ...original, phase: 'confirmed', receipt: v };
@@ -50,7 +50,11 @@
     async function lookup(preserveError = false) {
       if (running.current || !active.current || active.current.phase !== 'pending') return;
       const original = active.current; running.current = true; setBusy(true); if (!preserveError) setError(null);
-      try { const v = await C.lookup(original); if (v) accept(v, original); else if (mounted.current && C.equal(active.current, original)) setNotice('还是没有查到结果。请稍后再点「查询结果」，不要重复提交。'); }
+      try {
+        const v = await C.lookup(original);
+        if (v) await T.exclusive(KEY, { wait: true }, () => accept(v, original));
+        else if (mounted.current && C.equal(active.current, original)) setNotice('还是没有查到结果。请稍后再点「查询结果」，不要重复提交。');
+      }
       catch (e) { if (mounted.current && C.equal(active.current, original)) setError(e); }
       finally { running.current = false; if (mounted.current) setBusy(false); }
     }
@@ -60,19 +64,19 @@
       running.current = true; setBusy(true); setError(null); setNotice('');
       let original, needLookup = false;
       try {
-        if (!navigator.locks || typeof navigator.locks.request !== 'function') { if (mounted.current) setError(new Error('当前浏览器不支持，请用 Chrome 打开。')); return; }
-        await navigator.locks.request(KEY, { ifAvailable: true }, async acquired => {
-          if (!acquired) { if (mounted.current) setError(new Error('另一个页面正在处置，这里没有开始新的处置。请先完成那边的处置。')); return; }
+        // 新处置的本机记录、提交和结果写回在跨页互斥里串行，持锁跨过提交命令。
+        const { acquired } = await T.exclusive(KEY, {}, async () => {
           if (!mounted.current) return;
-          if (!item.write_context || item.write_context.capabilities[action] !== true) { if (mounted.current) setError(new Error('这条记录现在不能处置，请刷新后重试。')); return; }
-          original = { version: 1, request_key: window.APSWorkbenchTransport.requestKey('dashboard'),
+          if (!item.write_context || item.write_context.capabilities[action] !== true) { setError(new Error('这条记录现在不能处置，请刷新后重试。')); return; }
+          original = { version: 1, request_key: T.requestKey('dashboard'),
             phase: 'pending', item_ref: item.item_ref, subject: item.subject, action, input, before: C.baseHandling(item.handling), source: item.source, risk: item.risk };
-          save(original, null); active.current = original;
+          try { save(original, null); } catch (e) { setStorageError(e); return; }
+          active.current = original;
           try { accept(await C.command(original, item.write_context.write_token), original); }
           catch (e) {
             if (!C.equal(active.current, original)) { if (mounted.current) sync(); return; }
             // Receipt owns the rejected/pending outcome; the error box owns the failure reason.
-            if (window.APSWorkbenchTransport.rejected(e)) {
+            if (T.rejected(e)) {
               const rejected = { ...original, phase: 'rejected' };
               try { save(rejected, original); active.current = rejected; }
               catch (storageErr) {
@@ -87,20 +91,25 @@
             }
           }
         });
-      } catch (e) { if (mounted.current) setStorageError(e); }
+        if (!acquired && mounted.current) setError(new Error('另一个页面正在处置，这里没有开始新的处置。请先完成那边的处置。'));
+      } catch (e) { if (mounted.current) setError(e); }
       finally { running.current = false; if (mounted.current) setBusy(false); }
       // Only an unanswered command follows up; the lookup keeps the submit failure unless it finds a receipt or fails itself.
       if (mounted.current && needLookup && active.current && active.current.request_key === original.request_key && active.current.phase === 'pending') await lookup(true);
     }
-    function finish() {
+    // 丢弃用户眼前这条已有结论的本机记录，写入在跨页互斥里做；返回是否已清掉。
+    async function finish() {
       if (running.current) return false;
       try {
         const value = active.current && active.current.phase !== 'pending' ? active.current : read();
         C.check(value && value.phase !== 'pending', '上次处置的结果还没有确认，不能丢弃这条记录。请先点「查询结果」。');
-        save(null, value); setError(null); setNotice(''); return true;
+        await T.exclusive(KEY, { wait: true }, () => save(null, value));
+        setError(null); setNotice(''); return true;
       } catch (e) { setStorageError(e); return false; }
     }
-    return { saved, busy, error, storageError, notice, lookup: () => lookup(), submit, finish, sync };
+    // 「刷新上次操作记录」在跨页互斥里把本页没写进去的记录写回再读。
+    const reload = () => T.exclusive(KEY, { wait: true }, () => sync(undefined, flush)).catch(setStorageError);
+    return { saved, busy, error, storageError, notice, lookup: () => lookup(), submit, finish, sync: reload };
   }
   function useRead(load, dependencies, enabled = true) { return window.APSResourceSession.useQuery(load, dependencies, enabled); }
   const tabs = { items: '处置清单', analysis: '影响分析', compare: '方案对比', records: '处置历史' };

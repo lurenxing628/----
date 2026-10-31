@@ -255,7 +255,7 @@ def read_decision_baseline(capture, facts, disposition, *, source_resolver):
     version = admission.baseline["version"]
     identity = _official_identity(admission)
     if version is None:
-        return {"identity": identity, "tasks": [], "source_refs": [], "source_states": [], "deferred_operation_ids": [],
+        return {"identity": identity, "tasks": [], "task_intervals": {}, "source_refs": [], "source_states": [], "deferred_operation_ids": [],
                 "operation_efforts": {}, "operation_standards": {}, "operation_types": {}}
     saved_by_version = defaultdict(list)
     for row in admission.schedule:
@@ -298,7 +298,7 @@ def read_decision_baseline(capture, facts, disposition, *, source_resolver):
         if selected_version == version:
             identity.update({key: source[key] for key in ("source_candidate_ref", "source_run_ref")})
     tasks.sort(key=lambda row: (row["operation_ref"], row["official_version"], row["row_ref"]))
-    return {"identity": identity, "tasks": tasks, "source_refs": source_refs, "source_states": source_states,
+    return {"identity": identity, "tasks": tasks, "task_intervals": admission.segment_intervals, "source_refs": source_refs, "source_states": source_states,
             "deferred_operation_ids": sorted(deferred_ids - {row["op_id"] for row in bound}),
             "operation_efforts": effort_by_ref,
             "operation_standards": standards_by_ref, "operation_types": types_by_ref}

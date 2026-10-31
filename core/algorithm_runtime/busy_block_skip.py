@@ -1,8 +1,6 @@
 """Skip only fully occupied time inside a certified constant native work window."""
 
-from datetime import datetime
-
-from .downtime import SegmentOverlapIndex
+from .calendar_timing_memo import MemoizedTimingCalendar, native_timing_calendar
 
 
 def _native_union_end(segment_groups, start, limit):
@@ -19,26 +17,11 @@ def _native_union_end(segment_groups, start, limit):
     return cursor
 
 
-def _native_indexes(segment_groups):
-    return all(isinstance(index, SegmentOverlapIndex) and index.has_native_coverage() for index in segment_groups)
-
-
 def _certified_window(calendar, earliest, priority, operator_id):
-    certify = getattr(calendar, "certified_slot_window", None)
-    if certify is None:
+    """Only native calendars, directly or behind the decode memo, certify constant work windows."""
+    if not (isinstance(calendar, MemoizedTimingCalendar) or native_timing_calendar(calendar)):
         return None
-    window = certify(earliest, priority=priority, operator_id=operator_id)
-    if window is None:
-        return None
-    if (type(window) is not tuple or len(window) != 2 or any(type(value) is not datetime for value in window)
-            or not window[0] <= earliest < window[1]):
-        raise RuntimeError("Calendar returned an invalid constant work-window certificate")
-    return window
-
-
-def _can_extend_union(segment_groups, shift_to, next_shift):
-    return (next_shift > shift_to and type(segment_groups) in (tuple, list)
-            and type(shift_to) is datetime and shift_to.tzinfo is None and _native_indexes(segment_groups))
+    return calendar.certified_slot_window(earliest, priority=priority, operator_id=operator_id)
 
 
 def advance_busy_block(calendar, *, earliest, shift_to, segment_groups, total_base, priority, operator_id, abort_after):
@@ -51,6 +34,6 @@ def advance_busy_block(calendar, *, earliest, shift_to, segment_groups, total_ba
         (end for index in segment_groups for end in (index.covered_end(shift_to),) if end is not None and shift_to < end <= window[1]),
         default=shift_to,
     )
-    if _can_extend_union(segment_groups, shift_to, next_shift):
+    if next_shift > shift_to:
         return _native_union_end(segment_groups, next_shift, window[1])
     return next_shift

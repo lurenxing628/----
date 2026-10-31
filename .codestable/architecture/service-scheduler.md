@@ -20,15 +20,16 @@ implements: []
 
 工作台的 `core/services/workbench/run/` 拥有排产预检、持久受理、worker、候选保存和正式采用。`core/services/scheduler/run/` 消费准备好的输入，执行算法、校验结果并生成摘要。正式版本在采用事务中分配，计算阶段使用明确的版本上下文。
 
-`core/services/scheduler/__init__.py` 不再装配或再导出服务。实际消费者从各职责文件深路径导入；当前保留以下真实服务职责：
+`core/services/scheduler/__init__.py` 不再装配或再导出服务，消费者从各职责子包深路径直接导入：
 
-| 服务 | 当前职责 |
+| 子包 / 模块 | 当前职责 |
 |---|---|
-| `CalendarService` | 工作日历及资源班次查询 |
-| `OperationExecutionFeedbackService` | 现场执行反馈与事件写入 |
-| `ScheduleService` | 批次工序查询和内制、外协字段编辑 |
+| `calendar/service.py` | 提供 `CalendarService`，负责工作日历及资源班次查询 |
+| `execution/` | 提供 `ExecutionFactProvider`、`execution_snapshot.py` 与执行台账适配（`execution_ledger_adapter.py`、`execution_ledger_guard.py`） |
+| `run/`、`summary/`、`contracts/`、`graph/`、`config/`、`gantt/` | 纯计算编排、摘要组装、公开投影合同、工序图分析、配置解析与甘特构建 |
+| 根包支撑模块 | `resource_pool_builder.py`、`schedule_lock.py`、`template_lineage*.py`、`workbench_plan_catalog.py` 各司其职 |
 
-批次主数据位于 `core/services/batch/`。原 `ScheduleService.run_schedule/_run_schedule_impl`、输入 collector 的生产采集链和 `schedule_persistence.py` 已退役；`schedule_input_contracts.py` 保留共同输入合同，输入领域校验、资源事实和实际错误类型仍由当前消费者使用。排产配置通过 `core/models/schedule_config_runtime*` 的共同字段、Snapshot 和解析规则进入计算；旧配置服务装配及页面保存入口已经退出。
+批次主数据位于 `core/services/batch/`，现场报工与批次工序维护已归入 `core/services/workbench/execution/` 与 `core/services/workbench/batch/`。原 `ScheduleService`、`OperationExecutionFeedbackService`、输入 collector 的生产采集链和 `schedule_persistence.py` 均已退役；`schedule_input_contracts.py` 保留共同输入合同，输入领域校验、资源事实和实际错误类型仍由当前消费者使用。排产配置通过 `core/models/schedule_config_runtime*` 的共同字段、Snapshot 和解析规则进入计算；旧配置服务装配及页面保存入口已经退出。
 
 ## 2. 当前分层
 
@@ -76,7 +77,7 @@ implements: []
 
 摘要对象在计算内交接，持久化文本在实际保存边界生成并直接落库。Web 的 `json_response` 对最终信封编码 UTF-8，并发送同一份字节；大小限制也针对实际产物。内部 `execution_workspace` 的 HTTP 大小预演已删除。归档读取消费保存证据，公式与内容确认由原落档、采用和迁移边界负责。
 
-当前 Schema 为 43：v41/v42 的保存读模型和原生业务目标候选继续保留，v43 只调整实际查询所需索引。`schema_compat.py` 接纳明确的 v39—v43 表示差异，业务行和未声明结构变化继续参与事实比较。普通启动检查结构；新库、升级、恢复等数据进入边界执行完整数据合同。
+当前 Schema 为 44：v41/v42 的保存读模型和原生业务目标候选继续保留，v43/v44 增加 `WorkbenchSourceRevisions` 与单遍效率索引。`schema_compat.py` 接纳明确的 v39—v44 表示差异，业务行和未声明结构变化继续参与事实比较。普通启动检查结构，低版本非空库拒绝启动、不执行历史增量升级迁移；新库与恢复边界执行完整数据合同。
 
 ## 6. 相关入口与历史演进
 

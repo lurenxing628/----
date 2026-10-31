@@ -2,13 +2,16 @@
 
 import re
 
-from flask import g, request
+from flask import current_app, g, request
 
 from core.models.content import content_text
 from core.models.workbench_command import validate_request_key
-from core.models.workbench_trial import fields
+from core.models.workbench_trial import create_input, fields, reference
 from core.models.workbench_trial_catalog import TrialCatalogScope
 from core.services.workbench import messages
+from core.services.workbench.facts.run_data_context import RunDataContext
+from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
+from core.services.workbench.facts.source_revisions import TRIAL_SOURCE_KEYS, read_source_revisions
 from core.services.workbench.trial.catalog import WorkbenchTrialCatalogService
 from web.api_responses import json_response, query_success
 
@@ -17,10 +20,19 @@ from .read_context import bind_read_snapshot
 from .write_context import issue_write_context, validate_write_context
 
 
+def _data_context():
+    return RunDataContext(g.db, journal_dir=current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR"))
+
+
 def _service():
     from core.services.workbench.trial.service import WorkbenchTrialService
 
-    return WorkbenchTrialService(g.db, context_factory=issue_write_context, context_validator=validate_write_context)
+    return WorkbenchTrialService(
+        g.db,
+        context_factory=issue_write_context,
+        context_validator=validate_write_context,
+        data_context=_data_context(),
+    )
 
 
 def _body(command=False):
@@ -36,17 +48,26 @@ def _body(command=False):
     return value
 
 
-def _query(data, scope):
+def _query(read, scope, *, precheck=None):
     allowed = {"snapshot_ref"}
     if set(request.args) - allowed or any(len(request.args.getlist(key)) != 1 for key in request.args):
         from core.models.workbench_trial import reject
         reject("invalid_input", messages.STALE, 400)
-    return query_success(data, bind_read_snapshot(scope, content_text(data), request.args.get("snapshot_ref")))
+    with candidate_read_snapshot(g.db):
+        checked = precheck() if precheck is not None else None
+        state = {
+            "revisions": read_source_revisions(g.db, TRIAL_SOURCE_KEYS),
+            "data_context_ref": _data_context().ref(),
+        }
+        snapshot = bind_read_snapshot(scope, content_text(state), request.args.get("snapshot_ref"))
+        data = read(checked) if precheck is not None else read()
+    return query_success(data, snapshot)
 
 
 @read_endpoint
 def trial_create_preview():
-    return _query(_service().preview_create(_body()), {"kind": "trial_create_preview"})
+    intent = create_input(_body())
+    return _query(lambda: _service().preview_create(intent), {"kind": "trial_create_preview"})
 
 
 @api_endpoint
@@ -57,7 +78,13 @@ def trial_create():
 
 @api_endpoint
 def trial_read(draft_ref):
-    return _query(_service().get(draft_ref), {"draft_ref": draft_ref})
+    reference(draft_ref)
+    service = _service()
+    return _query(
+        lambda header: service.get(draft_ref, header=header),
+        {"draft_ref": draft_ref},
+        precheck=lambda: service.require_draft_header(draft_ref),
+    )
 
 
 @api_endpoint
@@ -80,14 +107,28 @@ def trial_discard(draft_ref):
 
 @api_endpoint
 def trial_scenario(scenario_ref):
-    return _query(_service().scenario(scenario_ref), {"scenario_ref": scenario_ref})
+    reference(scenario_ref)
+    service = _service()
+    return _query(
+        lambda header: service.scenario(scenario_ref, header=header),
+        {"scenario_ref": scenario_ref},
+        precheck=lambda: service.require_scenario_header(scenario_ref),
+    )
 
 
 @api_endpoint
 def trial_receipt(request_key):
-    result = _service().lookup(request_key)
-    return _query({"state": "committed" if result else "not_observed", "receipt": result,
-                   "can_retry_automatically": False}, {"request_key": request_key})
+    validate_request_key(request_key)
+    service = _service()
+    return _query(
+        lambda result: {
+            "state": "committed" if result else "not_observed",
+            "receipt": result,
+            "can_retry_automatically": False,
+        },
+        {"request_key": request_key},
+        precheck=lambda: service.lookup(request_key),
+    )
 
 
 def _catalog(collection):
@@ -104,8 +145,11 @@ def _catalog(collection):
         numbers[key] = int(raw)
     scope = TrialCatalogScope(collection, status=request.args.get("status", "all"),
         base_kind=request.args.get("base_kind"), base_ref=request.args.get("base_ref"), **numbers)
-    data, content = WorkbenchTrialCatalogService(g.db).catalog(scope)
-    return query_success(data, bind_read_snapshot(scope.scope(), content, request.args.get("snapshot_ref")))
+    data, snapshot = WorkbenchTrialCatalogService(g.db).catalog(
+        scope,
+        bind_snapshot=lambda content: bind_read_snapshot(scope.scope(), content, request.args.get("snapshot_ref")),
+    )
+    return query_success(data, snapshot)
 
 
 @api_endpoint

@@ -6,7 +6,12 @@
     const api = window.APSResourceAPI.create('batches'), C = window.APSBatchContract;
     const entity = ref => { if (!C.ref(ref)) throw window.APSResourceContract.failure('这个批次已失效，请返回批次列表重新选择。'); return root + '/' + ref; };
     return {
-      pendingKey: api.pendingKey, readPending: api.readPending, savePending: api.savePending, clearPending: api.clearPending, lookup: api.lookup,
+      pendingKey: api.pendingKey, readPending: api.readPending, savePending: api.savePending, clearPending: api.clearPending,
+      async lookup(key, intent) {
+        const result = await api.lookup(key);
+        if (result.state !== 'not_recorded') C.receipt(result, intent.action, intent.ref, intent.operation_ref);
+        return result;
+      },
       list(kind, scope, signal) { if (kind !== 'batch') throw window.APSResourceContract.failure('批次类别不正确。'); return api.preview(root + '/query', scope, signal); },
       detail(kind, ref, signal) { if (kind !== 'batch') throw window.APSResourceContract.failure('批次类别不正确。'); return api.query(entity(ref), {}, signal); },
       operationChoices(batchRef, operationRef, signal) { return api.query(root + '/choices', { batch_ref: batchRef, operation_ref: operationRef }, signal); },
@@ -37,8 +42,7 @@
           path = root + (action === 'bulk_confirm' ? '/bulk-confirm' : '/import-confirm');
         } else path = entity(ref) + '/' + (['sync_confirm', 'split_confirm'].includes(action) ? action.replace('_', '-') : action);
         const result = await api.execute(path, body);
-        C.receipt(result, action, ref);
-        return result;
+        return C.receipt(result, action, ref, body.input.operation_ref);
       }
     };
   }

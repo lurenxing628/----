@@ -5,7 +5,7 @@ from datetime import date, datetime
 import pytest
 
 from core.services.capacity.plan_calendar_engine import SnapshotCalendarEngine
-from core.services.capacity.plan_calendar_windows import policy_projection
+from core.services.capacity.plan_calendar_windows import available_intervals, policy_projection
 from core.services.scheduler.calendar.service import CalendarService
 
 DAY = "2026-10-05"
@@ -39,6 +39,7 @@ def test_lunch_is_neither_processing_nor_capacity_and_native_slot_stops_at_noon(
     projected = policy_projection(engine, date.fromisoformat(DAY), date.fromisoformat(DAY), dt("00:00"), dt("23:59"))
     assert projected["available_hours"] == 8 and projected["effective_hours"] == 6.4
     assert len(projected["windows"]) == 2
+    assert available_intervals(projected) == [(dt("08:00"), dt("12:00")), (dt("13:00"), dt("17:00"))]
 
 
 def test_split_night_uses_explicit_next_day_without_filling_the_break(schema_conn):

@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import Any, Mapping, NoReturn, Optional, Sequence, Tuple
+from typing import Any, NoReturn, Optional, Sequence, Tuple
 
 from core.algorithm_contracts.material_release import released_start
 from core.algorithm_contracts.types import OpForScheduleAlgo
@@ -14,7 +14,7 @@ from core.shared.field_labels import display_field_label
 from .busy_block_skip import advance_busy_block
 from .downtime import SegmentOverlapIndex
 from .operation_effort import internal_requirement_parts
-from .resource_quality import slot_changeover_penalty
+from .resource_quality import MachineTypeState, slot_changeover_penalty
 from .sgs_estimate_reuse import current_sgs_handoff
 from .slot_overlap_reuse import SlotOverlapReuse
 
@@ -60,14 +60,6 @@ def _raise_if_invalid_hours_number(field: str, raw_value: Any) -> None:
         raise ValidationError(f"“{label}”必须是有限数字", field=field)
     if parsed < 0:
         raise ValidationError(f"“{label}”必须大于等于 0", field=field)
-
-
-def _changeover_penalty(op: OpForScheduleAlgo, machine_id: str, last_op_type_by_machine: Optional[Mapping[str, str]]) -> int:
-    if not last_op_type_by_machine:
-        return 0
-    # Tail types are recorded stripped and non-empty (runtime_state); a machine without one has no changeover.
-    last_type = last_op_type_by_machine.get(machine_id)
-    return 1 if last_type is not None and last_type != op.op_type_name else 0
 
 
 def _resolve_total_base(op: OpForScheduleAlgo, batch: Batch, total_hours_base: Optional[float]) -> float:
@@ -189,12 +181,11 @@ def _walk(
 
 def refresh_changeover_penalty(
     estimate: InternalSlotEstimate, *, op: OpForScheduleAlgo, machine_id: str,
-    last_op_type_by_machine: Optional[Mapping[str, str]],
+    last_op_type_by_machine: Optional[MachineTypeState],
 ) -> InternalSlotEstimate:
     """``estimate`` with the changeover penalty a fresh scan ending at the same slot would report now."""
     penalty = slot_changeover_penalty(
         last_op_type_by_machine, op=op, machine_id=machine_id, start=estimate.start_time, end=estimate.end_time,
-        legacy_penalty=_changeover_penalty(op, machine_id, last_op_type_by_machine),
     )
     return estimate if penalty == estimate.changeover_penalty else replace(estimate, changeover_penalty=penalty)
 
@@ -212,7 +203,7 @@ def estimate_internal_slot(
     operator_timeline: Sequence[Tuple[datetime, datetime]],
     end_dt_exclusive: Optional[datetime],
     machine_downtimes: Sequence[Tuple[datetime, datetime]],
-    last_op_type_by_machine: Optional[Mapping[str, str]],
+    last_op_type_by_machine: Optional[MachineTypeState],
     abort_after: Optional[datetime],
     total_hours_base: Optional[float] = None,
     overlap_reuse: Optional[SlotOverlapReuse] = None,
@@ -223,7 +214,6 @@ def estimate_internal_slot(
         calendar = handoff.timing_calendar(calendar)
     total_base = _resolve_total_base(op, batch, total_hours_base)
     priority = batch.priority
-    changeover_penalty = _changeover_penalty(op, machine_id, last_op_type_by_machine)
     segment_groups = _slot_segments(
         machine_timeline=machine_timeline,
         operator_timeline=operator_timeline,
@@ -240,7 +230,7 @@ def estimate_internal_slot(
     if aborted:
         return InternalSlotEstimate(
             machine_id=machine_id, operator_id=operator_id, start_time=start_time, end_time=end_time,
-            total_hours=total_hours, changeover_penalty=changeover_penalty, abort_after_hit=True,
+            total_hours=total_hours, changeover_penalty=0, abort_after_hit=True,
         )
     return InternalSlotEstimate(
         machine_id=machine_id,
@@ -250,7 +240,7 @@ def estimate_internal_slot(
         total_hours=total_hours,
         changeover_penalty=slot_changeover_penalty(
             last_op_type_by_machine, op=op, machine_id=machine_id,
-            start=start_time, end=end_time, legacy_penalty=changeover_penalty,
+            start=start_time, end=end_time,
         ),
         blocked_by_window=bool(end_dt_exclusive is not None and end_time >= end_dt_exclusive),
     )

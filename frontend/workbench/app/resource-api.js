@@ -51,9 +51,12 @@
       || ['route_confirm', 'source_confirm', 'hours_confirm', 'groups_confirm'].includes(value.action) && typeof value.ref === 'string' && /^[0-9a-f]{48}$/.test(value.ref));
     if (['process_bulk', 'process_route_import', 'process_hours_import'].includes(value.kind)) return value.action === 'confirm'
       && previewRef(/^[A-Za-z0-9_-]{32}$/) && value.category === undefined;
-    if (value.kind === 'batch') return value.category === undefined && (value.action === 'create' && value.ref === null
-      || ['update', 'delete', 'operation_update', 'materials_update', 'split_confirm', 'sync_confirm'].includes(value.action) && typeof value.ref === 'string' && /^[0-9a-f]{48}$/.test(value.ref)
-      || ['bulk_confirm', 'import_confirm'].includes(value.action) && previewRef(/^[A-Za-z0-9_-]{32}$/));
+    if (value.kind === 'batch') {
+      return value.category === undefined && (value.action === 'create' && value.ref === null
+        || ['update', 'delete', 'materials_update', 'split_confirm', 'sync_confirm'].includes(value.action) && typeof value.ref === 'string' && /^[0-9a-f]{48}$/.test(value.ref)
+        || value.action === 'operation_update' && typeof value.ref === 'string' && /^[0-9a-f]{48}$/.test(value.ref) && typeof value.operation_ref === 'string' && /^[0-9a-f]{48}$/.test(value.operation_ref)
+        || ['bulk_confirm', 'import_confirm'].includes(value.action) && previewRef(/^[A-Za-z0-9_-]{32}$/));
+    }
     if (value.kind === 'execution') return value.category === undefined
       && (['create', 'supplement', 'correct', 'report_void'].includes(value.action) && typeof value.ref === 'string' && /^[0-9a-f]{48}$/.test(value.ref)
         || value.action === 'import_confirm' && previewRef(/^[A-Za-z0-9_-]{32}$/));
@@ -72,6 +75,7 @@
     // A retained preview ref is also its confirmation credential; recovery only looks up the request key.
     if (intent.ref !== undefined && !(typeof intent.ref === 'string' && /^[A-Za-z0-9_-]{32}$/.test(intent.ref))) stored.ref = intent.ref;
     if (intent.category !== undefined) stored.category = intent.category;
+    if (intent.kind === 'batch' && intent.action === 'operation_update') stored.operation_ref = intent.operation_ref;
     return stored;
   }
   function matchesNamespace(namespace, intent) {
@@ -95,6 +99,7 @@
       validateWrite: intent => validIntent(intent) && matchesNamespace(namespace, intent),
       encode: pendingRecord,
       readError: () => unconfirmed('读不到上次操作记录，请重新打开页面；暂时不能继续保存。'),
+      conflictError: () => failure('上次操作记录已变化，请刷新页面后核对结果。'),
       invalidWriteError: () => failure('操作编号无法保存，本次没有提交。'),
       writeError: () => failure('本次没有提交：操作编号没能保存，请重新打开页面。'),
       removeError: () => failure('结果已确认，但上次操作记录没清掉；重新打开页面后可以再点「查询结果」。')
@@ -144,8 +149,8 @@
       download(path, scope, signal, options = {}) { return T.download(absolute(path), scope, { types: fileTypes, timeout: 20000, ...options, signal }); },
       pendingKey,
       readPending: pending.read,
-      savePending(intent) { pending.write(intent); },
-      clearPending() { pending.write(null); }
+      savePending(intent) { return pending.save(intent, null); },
+      clearPending(expected) { return pending.save(null, pendingRecord(expected)); }
     };
     return api;
   }

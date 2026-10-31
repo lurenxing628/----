@@ -5,11 +5,10 @@ from __future__ import annotations
 from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass, replace
-from datetime import datetime
 from typing import Any, Dict, FrozenSet, Iterable, Iterator, List, Mapping, Optional, Set, Tuple, cast
 
-from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
-from core.algorithms.evaluation import ScheduleMetrics, objective_score
+from core.algorithm_contracts.types import ScheduleResult
+from core.algorithms.evaluation import objective_score
 from core.models.objective import normalize_objective_name, objective_metric_keys, target_objectives_for
 
 from .candidate_fingerprint import schedule_content_key
@@ -101,6 +100,27 @@ class _StoredSchedule:
     evidence_origin: Dict[str, Any]
 
 
+def decoded_batch_order(results: List[ScheduleResult]) -> Tuple[str, ...]:
+    """Batches in the order the decoded schedule actually starts them.
+
+    The order is fixed by the content key's fields, so one content identity has one order: the archive
+    derives it once when it first owns a payload, and a decode that is not archived derives its own.
+    """
+    order: List[str] = []
+    seen = set()
+    for result in sorted(
+        results,
+        key=lambda item: (item.start_time, item.end_time, item.seq, item.op_id),
+    ):
+        # ScheduleResult.op_id/batch_id/seq are required (core/algorithm_contracts/types.py).
+        batch_id = result.batch_id
+        if batch_id in seen:
+            continue
+        seen.add(batch_id)
+        order.append(batch_id)
+    return tuple(order)
+
+
 def _snapshot_candidate(candidate: Dict[str, Any]) -> Dict[str, Any]:
     # Fixed business seeds and input resource pools remain owned by the run input.
     # All other containers belong to this completed decode, including its decisions. Search attempt
@@ -110,7 +130,14 @@ def _snapshot_candidate(candidate: Dict[str, Any]) -> Dict[str, Any]:
            for key, value in candidate.items() if key not in ("results", "summary", "metrics")}
     out["results"] = [replace(result) for result in candidate["results"]]
     out["summary"] = deepcopy(candidate["summary"])
-    out["metrics"] = deepcopy(candidate["metrics"])
+    metrics = candidate["metrics"]
+    out["metrics"] = replace(
+        metrics,
+        invalid_due_batch_ids_sample=list(metrics.invalid_due_batch_ids_sample),
+        unscheduled_batch_ids_sample=list(metrics.unscheduled_batch_ids_sample),
+        _due_by_batch=dict(metrics._due_by_batch),
+        _finish_by_batch=dict(metrics._finish_by_batch),
+    )
     return out
 
 
@@ -187,6 +214,9 @@ class SharedScheduleArchive:
     def results(self, entry_id: int) -> List[ScheduleResult]:
         return self._entries[entry_id].payload["results"]
 
+    def decoded_order(self, entry_id: int) -> Tuple[str, ...]:
+        return self._entries[entry_id].payload["decoded_batch_order"]
+
     def materialize(self, entry_id: int, *, objective: Optional[str] = None) -> Dict[str, Any]:
         """Give a public result independent ownership at its publication boundary."""
         objective = self.primary_objective if objective is None else objective
@@ -198,8 +228,6 @@ class SharedScheduleArchive:
 
     def register_decode(self, candidate: Dict[str, Any], *, verified: bool, elapsed_ms: int) -> ArchiveObservation:
         """Own a new verified decode; unknown trials retain only a temporary number."""
-        if not self._has_completed_payload(candidate):
-            return ArchiveObservation(reason="candidate_payload_missing")
         completion = candidate["metrics"].completion
         if completion.expected_operation_count != len(self.expected_operation_ids):
             return ArchiveObservation(reason="completion_scope_mismatch")
@@ -220,7 +248,8 @@ class SharedScheduleArchive:
         if not stored.evidence_origin or observed.evidence_updated or observed.restored:
             stored.evidence_origin = origin
             stored.payload.update({key: value for key, value in candidate.items()
-                                   if key not in ("results", "summary", "metrics", "score", "archive_ref")})
+                                   if key not in ("results", "summary", "metrics", "score", "archive_ref",
+                                                  "decoded_batch_order")})
 
     def _register_verified(self, candidate: Dict[str, Any], *, elapsed_ms: int,
                            content_key: ContentKey) -> ArchiveObservation:
@@ -233,7 +262,8 @@ class SharedScheduleArchive:
             if not self._evidence_can_upgrade(stored.score_scope, scope):
                 return ArchiveObservation(entry_id=identity.entry_id, reused=True)
             evaluations = self._objective_evaluations(candidate)
-            payload = dict(candidate, results=stored.payload["results"])
+            payload = dict(candidate, results=stored.payload["results"],
+                           decoded_batch_order=stored.payload["decoded_batch_order"])
             self._remove_partial_entry(stored, keep_empty_scope=not scope.is_complete)
             stored.payload = payload
             stored.score_scope = scope
@@ -250,7 +280,7 @@ class SharedScheduleArchive:
             identity = _ContentIdentity(self._next_entry_id, content_key, elapsed_ms)
             self._next_entry_id += 1
             self._identities[content_key] = identity
-        payload = dict(candidate)
+        payload = dict(candidate, decoded_batch_order=decoded_batch_order(candidate["results"]))
         stored = _StoredSchedule(identity, payload, scope, evaluations, {})
         self._entries[identity.entry_id] = stored
         initialized, improved = self._update_best(stored)
@@ -310,13 +340,6 @@ class SharedScheduleArchive:
         if objective not in self.target_objectives:
             raise KeyError(objective)
 
-    @staticmethod
-    def _has_completed_payload(candidate: Dict[str, Any]) -> bool:
-        return (isinstance(candidate, dict) and isinstance(candidate.get("results"), list)
-                and (not candidate["results"] or isinstance(candidate["results"][0], ScheduleResult))
-                and isinstance(candidate.get("summary"), ScheduleSummary)
-                and isinstance(candidate.get("metrics"), ScheduleMetrics))
-
     def _score_scope(self, candidate: Dict[str, Any]) -> ScheduleScoreScope:
         results = candidate["results"]
         summary = candidate["summary"]
@@ -340,24 +363,16 @@ class SharedScheduleArchive:
                 completion.components_known,
                 is_complete,
             )
-        arranged = [result for result in results
-                    if isinstance(result.start_time, datetime) and isinstance(result.end_time, datetime)
-                    and result.end_time >= result.start_time]
-        operation_ids = frozenset(result.op_id for result in arranged)
+        # A partial scope is never complete: completeness needs every condition the branch above checks.
+        operation_ids = frozenset(result.op_id for result in results)
         complete_batches = (
             self.batch_ids
             if not completion.incomplete_batch_ids
             else self.batch_ids - frozenset(completion.incomplete_batch_ids)
         )
-        is_complete = bool(
-            operation_ids == self.expected_operation_ids and len(arranged) == len(operation_ids)
-            and len(arranged) == len(results) and summary.failed_ops == 0
-            and summary.success is True
-            and completion.missing_operation_count == 0 and completion.unexpected_result_count == 0
-            and completion.objective_defined and completion.complete_batch_count == len(self.batch_ids)
-        )
         return ScheduleScoreScope(operation_ids, complete_batches, completion.objective_scope,
-                                  completion.components_known, is_complete)
+                                  completion.components_known, False)
+
     def _update_best(self, stored: _StoredSchedule) -> Tuple[Tuple[str, ...], Tuple[str, ...]]:
         entry_id = stored.identity.entry_id
         if stored.score_scope.is_complete:
@@ -437,4 +452,4 @@ class SharedScheduleArchive:
 
 
 __all__ = ["ArchiveObservation", "CandidateArchiveRef", "PartialScheduleGroup", "ScheduleArchiveEntry", "ScheduleEvaluation",
-           "ScheduleScoreScope", "SharedScheduleArchive"]
+           "ScheduleScoreScope", "SharedScheduleArchive", "decoded_batch_order"]

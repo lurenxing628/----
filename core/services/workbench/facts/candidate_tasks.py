@@ -28,7 +28,7 @@ def operation_labels(facts, ref, payload=None, *, prepared=None):
         op = facts.operation(ref, payload, gaps)
     base = facts.base_operation_labels(ref, op, gaps)
     # Callers extend their own gap list and execution context; the capture's shared base stays unchanged.
-    result = {**base, "data_gaps": list(base["data_gaps"])}
+    result = {**base, "data_gaps": [dict(item) for item in base["data_gaps"]]}
     if base["execution_at_generation"] is not None:
         result["execution_at_generation"] = dict(base["execution_at_generation"])
     return result, op
@@ -37,18 +37,18 @@ def operation_labels(facts, ref, payload=None, *, prepared=None):
 def validate_task_payload(payload, *, seen, expected=None):
     if set(payload) != {"op_id", "machine_id", "operator_id", "start_time", "end_time", "source", "locked"}:
         corrupt()
-    op = payload.get("op_id")
+    op = payload["op_id"]
     if type(op) is not int or op <= 0 or op in seen:
         corrupt()
     seen.add(op)
     if expected is not None and op not in expected:
         corrupt()
     try:
-        start, end = local_time(payload.get("start_time")), local_time(payload.get("end_time"))
-    except (ValueError, TypeError):
+        start, end = local_time(payload["start_time"]), local_time(payload["end_time"])
+    except ValueError:
         corrupt()
-    if (start > end or type(payload.get("source")) is not str or payload["source"] not in OPERATION_SOURCES
-            or type(payload.get("locked")) is not bool
+    if (start > end or type(payload["source"]) is not str or payload["source"] not in OPERATION_SOURCES
+            or type(payload["locked"]) is not bool
             or any(payload[key] is not None and type(payload[key]) is not str for key in ("machine_id", "operator_id"))):
         corrupt()
     return op, start, end
@@ -63,15 +63,9 @@ def _task_dto(row, facts, start, end, *, prepared):
     if start == end:
         task.update(point_event_dto(start, end))
     for kind in ("machine", "operator"):
-        task[kind] = task_resource(facts, kind, payload.get(kind + "_id"), gaps)
+        task[kind] = task_resource(facts, kind, payload[kind + "_id"], gaps)
     task["supplier"] = task_resource(facts, "supplier", operation.get("supplier_id"), gaps)
     return task
-
-
-def tasks_projection_with_intervals(rows, candidate, facts):
-    prepared_tasks = {}
-    rows, intervals, ids = validate_saved_tasks(rows, candidate, facts, prepared_tasks=prepared_tasks)
-    return project_validated_tasks(rows, candidate, facts, intervals, prepared_tasks=prepared_tasks), intervals, ids
 
 
 def validate_saved_tasks(rows, candidate, facts, *, prepared_tasks):
@@ -136,17 +130,42 @@ def unplanned_projection(disposition, tasks, facts):
     return result
 
 
-def filter_workspace(tasks, unplanned, scope):
+def scope_workspace_tasks(source, scope):
+    facts = source.facts
+    raw_tasks = source.raw_tasks
+    scheduled_refs = {row["operation_ref"] for row in raw_tasks}
+    unplanned_disposition = {ref: row for ref, row in source.disposition.items() if ref not in scheduled_refs}
     if scope.batch_ref is not None:
-        known = {row["batch_ref"] for row in tasks + unplanned}
+        known = (
+            {facts.operation_batch_ref(row["operation_ref"]) for row in raw_tasks}
+            | {facts.operation_batch_ref(ref) for ref in unplanned_disposition}
+        )
         if scope.batch_ref not in known:
             from core.models.workbench_run_candidate import reject
             reject("entity_not_found", "该批次不在候选方案中，请重新选择。", 404)
-        tasks = [row for row in tasks if row["batch_ref"] == scope.batch_ref]
-        unplanned = [row for row in unplanned if row["batch_ref"] == scope.batch_ref]
+        raw_tasks = [row for row in raw_tasks if facts.operation_batch_ref(row["operation_ref"]) == scope.batch_ref]
+        unplanned_disposition = {
+            ref: row for ref, row in unplanned_disposition.items()
+            if facts.operation_batch_ref(ref) == scope.batch_ref
+        }
     if scope.range_start is not None:
         start, end = local_time(scope.range_start), local_time(scope.range_end)
-        tasks = [row for row in tasks if overlaps(local_time(row["start"]), local_time(row["end"]), start, end)]
+        raw_tasks = [
+            row
+            for row in raw_tasks
+            for low, high in (source.task_intervals[row["row_ref"]],)
+            if overlaps(low, high, start, end)
+        ]
+    tasks = (
+        source.tasks
+        if len(raw_tasks) == len(source.raw_tasks)
+        else source.project_tasks(raw_tasks)
+    )
+    unplanned = (
+        source.unplanned
+        if scope.batch_ref is None
+        else source.project_unplanned(unplanned_disposition)
+    )
 
     def order(row):
         if scope.sort == "sequence":
@@ -167,6 +186,16 @@ def _sequence_order(row):
     """
     sequence = row["sequence"]
     return sequence is None, 0 if sequence is None else int(sequence), row["operation_ref"]
+
+
+def interval_span(intervals):
+    if not intervals:
+        return None
+    values = intervals.values()
+    return {
+        "start": min(start for start, _ in values).isoformat(),
+        "end": max(end for _, end in values).isoformat(),
+    }
 
 
 def task_span(tasks):

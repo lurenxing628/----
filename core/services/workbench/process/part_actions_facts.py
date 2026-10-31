@@ -4,10 +4,6 @@ import math
 from collections import defaultdict
 from datetime import date, datetime
 
-from core.infrastructure.connection_guards import foreign_keys_enabled
-from core.infrastructure.workbench_metadata_schema import workbench_metadata_contract_issues
-from core.infrastructure.workbench_process_schema import workbench_process_contract_issues
-from core.infrastructure.workbench_process_workflow_schema import workbench_process_workflow_contract_issues
 from core.models.workbench_command import WorkbenchCommandRejected
 
 from .projection import require_ref
@@ -46,15 +42,6 @@ def checked_process_facts(identity, facts):
             group_parts[row["ext_group_id"]].add(row["part_no"])
     check_process_template(operations, groups, part_no, group_parts)
     return identity, part, operations, groups, facts["workflow"][part_no]["workflow"]
-
-
-def check_part_action_storage(contracts):
-    # 本命令不执行 DDL、不改外键设置；逐行写入共用首次入口的检查结果。
-    issues = (contracts.get_schema(workbench_metadata_contract_issues)
-              + contracts.get_schema(workbench_process_contract_issues)
-              + contracts.get_schema(workbench_process_workflow_contract_issues))
-    if not contracts.get(foreign_keys_enabled) or issues:
-        raise WorkbenchCommandRejected("storage_failure", "工艺数据的保存设置不完整，这次没有改动任何资料。请刷新重试；仍不行请联系维护人员。", 500)
 
 
 def plain_part_action_facts(value):

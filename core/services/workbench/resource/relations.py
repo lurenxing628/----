@@ -11,6 +11,7 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_resource_query import ResourcePageRequest
 from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
+from core.services.workbench.facts.source_revisions import RESOURCE_SOURCE_KEYS, read_source_revisions
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_resource_relation_repo import WorkbenchResourceRelationRepository
 
@@ -76,22 +77,22 @@ class WorkbenchResourceRelationService:
         return identity, parent
 
     @contextmanager
-    def read_snapshot(self, kind, ref, query):
+    def read_snapshot(self, kind, ref, query, *, bind_snapshot=None):
         with TransactionManager(self.conn).transaction():
-            identity, parent = self._parent(kind, ref, query.relation)
+            identity, _parent = self._parent(kind, ref, query.relation)
+            revisions = read_source_revisions(self.conn, RESOURCE_SOURCE_KEYS)
+            fingerprint = {"parent_identity": asdict(identity), "revisions": revisions}
+            snapshot = bind_snapshot(fingerprint) if bind_snapshot is not None else None
             rows = self.repo.rows(identity.entity_key, query.relation)
             records = self._records(rows)
-            facts = self.repo.facts(query.relation, list(records))
-            self._validate_facts(query.relation, facts)
-            qualifications = self._qualifications(query.relation, records, facts)
-            fingerprint = {"parent_identity": asdict(identity), "parent": parent, "rows": rows, "facts": facts}
-            yield fingerprint, self._page(identity, query, rows, qualifications, facts)
+            data = self._page(identity, query, rows, records)
+            yield (fingerprint if bind_snapshot is None else snapshot), data
 
     def _records(self, rows):
         records = {}
         for row in rows:
             code = row["business_code"]
-            if not isinstance(code, str) or not code or code != code.strip() or "\x00" in code or code in records:
+            if not isinstance(code, str) or not code.strip() or "\x00" in code or code in records:
                 _invalid_facts("关联的资源编号不合法或者有重复")
             if row["name"] is None:
                 _invalid_facts("关联指向的资源已经不存在")
@@ -126,7 +127,7 @@ class WorkbenchResourceRelationService:
         except OperatorQualificationError as exc:
             raise WorkbenchCommandRejected("storage_failure", "人员资格资料读不出来。请到资料总览核对后重试。", 500) from exc
 
-    def _page(self, parent, query, rows, qualifications, facts):
+    def _page(self, parent, query, rows, records):
         # rows already use SQLite's business_code ASC order; preserve its ASCII-only lower rule.
         needle = query.query.translate(_ASCII_LOWER)
         needle_bytes = needle.encode("utf-8")
@@ -139,17 +140,20 @@ class WorkbenchResourceRelationService:
             raise WorkbenchCommandRejected("snapshot_stale", "翻页位置已失效，请回到第 1 页重新查询。")
         start = (query.number - 1) * query.size
         page_rows = matching[start:start + query.size]
+        page_codes = [row["business_code"] for row in page_rows]
+        page_records = {code: records[code] for code in page_codes}
+        facts = self.repo.facts(query.relation, page_codes)
+        self._validate_facts(query.relation, facts)
+        qualifications = self._qualifications(query.relation, page_records, facts)
         if query.relation == "operators" and page_rows:
-            page_codes = {row["business_code"] for row in page_rows}
             machine_types = defaultdict(set)
             for row in facts["machine_capabilities"]:
                 machine_types[row["machine_id"]].add(row["op_type_id"])
             sorted_machine_types = {machine_id: sorted(types) for machine_id, types in machine_types.items()}
             authorizations = defaultdict(list)
             for row in facts["authorizations"]:
-                if row["operator_id"] in page_codes:
-                    authorizations[row["operator_id"]].append(
-                        dict(row, op_type_ids=sorted_machine_types.get(row["machine_id"], [])))
+                authorizations[row["operator_id"]].append(
+                    dict(row, op_type_ids=sorted_machine_types.get(row["machine_id"], [])))
         entities = []
         for row in page_rows:
             code = row["business_code"]

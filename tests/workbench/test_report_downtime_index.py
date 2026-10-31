@@ -161,8 +161,8 @@ def test_downtime_overlap_clips_to_query_window_and_zero_duration_point_events_d
         "state": "available",
         "windows": [
             {
-                "start": "2026-10-17 00:00:00",
-                "end": "2026-10-17 08:00:00",
+                "start": datetime(2026, 10, 17, 0, 0),
+                "end": datetime(2026, 10, 17, 8, 0),
                 "allow_normal": True,
                 "allow_urgent": True,
             }

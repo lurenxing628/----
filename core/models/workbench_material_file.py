@@ -97,13 +97,25 @@ def table_descriptor():
     }
 
 
-def normalize_scope(scope: Any) -> Dict[str, Any]:
-    """Filter identity without pagination. {} explicitly means the full collection."""
+def scope_request(scope: Any, *, size: Any = 20) -> MaterialPageRequest:
+    """Filter identity without a page number; ``size`` is the viewed list's page size. {} means the full collection."""
     allowed = {"query", "status", "sort", "direction", "column_filters"}
     if type(scope) is not dict or any(type(key) is not str or key not in allowed for key in scope):
         raise ValidationError("物料范围只能包含搜索、状态、排序和列筛选，不接受页码。", field="scope")
-    query = MaterialPageRequest(**scope)
-    return {key: value for key, value in query.scope().items() if key not in ("kind", "size")}
+    return MaterialPageRequest(**scope, size=size)
+
+
+def wire_scope(request: MaterialPageRequest) -> Dict[str, Any]:
+    """A validated request's scope as its wire dictionary, without kind or page size."""
+    return {key: value for key, value in request.scope().items() if key not in ("kind", "size")}
+
+
+def normalize_scope(scope: Any) -> Dict[str, Any]:
+    """The scope's wire dictionary, without kind or page size.
+
+    A route's already validated request is projected as is; a stored or raw dict is validated first.
+    """
+    return wire_scope(scope if type(scope) is MaterialPageRequest else scope_request(scope))
 
 
 def normalize_refs(refs: Any, *, allow_empty: bool = False):

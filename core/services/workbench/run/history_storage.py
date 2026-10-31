@@ -1,7 +1,5 @@
 """Read one SQL page of immutable admission and decision projections."""
 
-from core.infrastructure.connection_guards import schema_contract_memo
-from core.infrastructure.workbench_run_schema import workbench_run_contract_issues
 from core.models.workbench_run_history import (
     MAX_DIRECTORY_BYTES,
     MAX_DOCUMENT_BYTES,
@@ -24,12 +22,7 @@ class RunHistoryStore:
         self.conn = conn
         self.repo = WorkbenchRunHistoryQueryRepository(conn)
 
-    def require_schema(self):
-        if schema_contract_memo(self.conn).get_schema(workbench_run_contract_issues):
-            reject("run_schema_unavailable", "排产记录结构不完整，请联系维护人员。", 503)
-
     def read(self, scope):
-        self.require_schema()
         total = self.repo.count_jobs(scope)
         run_count = total if scope.state == "all" and scope.accepted_from is None else self.repo.count_jobs()
         rows, byte_count = [], 0

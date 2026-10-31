@@ -30,8 +30,6 @@ class WorkbenchSupplierService:
     def prepare(self, action, payload, checked, preparation):
         identity = None if action == "create" else preparation.identity("supplier", checked["identity"]["ref"])
         code = payload["business_code"] if identity is None else identity.entity_key
-        if not code or code != code.strip():
-            raise WorkbenchCommandRejected("constraint_conflict", "供应商编号含首尾空白，请先修正编号。")
         supplier = checked["supplier"] if checked is not None else {}
         if action == "delete":
             if any(supplier["references"].values()):
@@ -70,7 +68,7 @@ class WorkbenchSupplierService:
     def _stored_status(status):
         return ("active", None) if status == "active" else ("inactive", "pending_review" if status == "pending_review" else "disabled")
 
-    def apply_prepared(self, change):
+    def apply_prepared(self, change, *, read_identity: bool = True):
         if not self.conn.in_transaction:
             raise RuntimeError("供应商操作必须在外层工作台命令事务中执行。")
         code, identity = change.business_code, change.identity
@@ -78,9 +76,10 @@ class WorkbenchSupplierService:
             self._delete(code)
         elif change.action == "create":
             self._suppliers.create(Supplier(supplier_id=code, **change.fields))
-            identity = self._identities.find_active("supplier", code)
-            if identity is None:
-                raise RuntimeError("新增供应商缺少永久引用。")
+            if read_identity:
+                identity = self._identities.find_active("supplier", code)
+                if identity is None:
+                    raise RuntimeError("新增供应商缺少永久引用。")
         elif change.fields:
             self._suppliers.update(code, change.fields)
         if "op_types" in change.related:
@@ -89,7 +88,10 @@ class WorkbenchSupplierService:
             reason, exists = change.related["reason"]
             self._query.write_reason(code, reason, exists=exists)
         changed = change.action != "update" or bool(change.fields or change.related)
-        return WorkbenchCommandOutcome("committed" if changed else "unchanged", {"entity_ref": identity.ref, "business_code": code})
+        return WorkbenchCommandOutcome(
+            "committed" if changed else "unchanged",
+            {"entity_ref": None if identity is None else identity.ref, "business_code": code},
+        )
 
     def _delete(self, code):
         try:

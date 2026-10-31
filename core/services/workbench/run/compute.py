@@ -51,7 +51,7 @@ def _candidate_payloads(conn, schedule_input, comparison, *, selected_payload):
                          if any(op.piece_id is not None for op in schedule_input.operations) else None)
         for candidate in comparison.candidates:
             payloads[candidate.candidate_key] = validate_candidate(
-                schedule_input, candidate.results, list(candidate.summary.errors),
+                schedule_input, candidate.results,
                 prepared_payload=(selected_payload if candidate.candidate_key == comparison.selection.selected_candidate_key else None),
                 context=validation_context,
             )

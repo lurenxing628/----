@@ -182,11 +182,11 @@ async function commands() {
 }
 
 async function verdicts() {
-  // Q2-A: only committed:false within 400/404/409/422/503 is a definite rejection; request_key_conflict never is.
+  // Q2-A: only committed:false within 400/404/409/413/422/503 is a definite rejection; request_key_conflict never is.
   const { T } = runtime(() => null);
   const verdict = (code, committed, status) => T.rejected(T.failure(failurePayload(code, committed), status));
-  for (const status of [400, 404, 409, 422, 503]) await check('rejected for committed:false HTTP ' + status, () => assert.equal(verdict('stale_write', false, status), true));
-  for (const status of [401, 403, 405, 413, 429, 500, 502]) await check('not rejected for committed:false HTTP ' + status, () => assert.equal(verdict('stale_write', false, status), false));
+  for (const status of [400, 404, 409, 413, 422, 503]) await check('rejected for committed:false HTTP ' + status, () => assert.equal(verdict('stale_write', false, status), true));
+  for (const status of [401, 403, 405, 429, 500, 502]) await check('not rejected for committed:false HTTP ' + status, () => assert.equal(verdict('stale_write', false, status), false));
   await check('request_key_conflict is never a rejection', () => assert.equal(verdict('request_key_conflict', false, 409), false));
   for (const committed of ['unknown', true]) await check('not rejected when committed is ' + committed, () => assert.equal(verdict('stale_write', committed, 409), false));
   // A local failure (status null: the request was never sent, or a read never got an answer) is also a definite non-commit.

@@ -28,52 +28,17 @@ def graph_priority_preorder(keys: Dict[int, Tuple[float, ...]]) -> Tuple[Tuple[i
 class GraphReadyProfileSearch:
     """Profile construction uses the run's shared decode admission and receipts."""
 
-    def __init__(self, *, evaluate: Callable[..., Dict[str, Any]],
-                 budget: GraphReadySearchBudget, profile_count: int) -> None:
+    def __init__(self, *, evaluate: Callable[..., Dict[str, Any]], budget: GraphReadySearchBudget) -> None:
         self._evaluate = evaluate
         self.budget = budget
-        self.report: Dict[str, Any] = {
-            "proof": "shared_decode_request_v1", "cache_scope": "shared_session", "shared_skip_by_reason": {},
-            "configured_profiles": profile_count, "considered_profiles": 0,
-            "predecode_pruned_profiles": 0,
-            "skipped_before_decode": 0, "equivalent_profiles": [],
-            "skipped_by_estimated_decode_cost": 0, "stagnation_stop": None,
-        }
 
     def can_start(self) -> bool:
         return self.budget.available()
 
     def evaluate(self, *, profile: GraphReadyWeightProfile, order: List[str]) -> Optional[Dict[str, Any]]:
-        self.report["considered_profiles"] += 1
-        started = False
-
-        def before_decode() -> None:
-            nonlocal started
-            self.budget.profile_decodes += 1
-            started = True
-
-        evaluation_started = self.budget.clock()
         try:
-            candidate = self._evaluate(profile=profile, order=order, before_decode=before_decode)
+            return self._evaluate(profile=profile, order=order)
         except SharedSearchSkip as exc:
-            self.report["skipped_before_decode"] += 1
-            counts = self.report["shared_skip_by_reason"]
-            counts[exc.reason] = counts.get(exc.reason, 0) + 1
-            if exc.reason == "estimated_decode_cost":
-                self.report["skipped_by_estimated_decode_cost"] += 1
             if exc.reason in ("estimated_decode_cost", "time_budget"):
                 self.budget.stop_reason = exc.reason
             return None
-        if started:
-            self.budget.record_profile_cost(self.budget.clock() - evaluation_started)
-        else:
-            self.report["predecode_pruned_profiles"] += 1
-            self.report["equivalent_profiles"].append({"profile_slug": profile.slug,
-                                                        "request_id": candidate["decode_receipt"]["request_id"]})
-        return candidate
-
-    def publish(self, *, attempts: List[Dict[str, Any]]) -> None:
-        self.report["unvisited_profiles"] = self.report["configured_profiles"] - self.report["considered_profiles"]
-        self.report.update(self.budget.summary())
-        attempts.append({"tag": "graph_ready_profile_efficiency", "candidate_status": "phase_summary",
-                         "profile_efficiency": self.report})

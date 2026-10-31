@@ -11,7 +11,6 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Sequence
 
-from core.algorithm_runtime.resource_quality import MachineTypeState
 from core.errors import ValidationError
 
 from .sgs_checkpoint_tail_bulk import install_reconverged_tail
@@ -20,7 +19,7 @@ if TYPE_CHECKING:
     from .sgs_checkpoint import DecodeCheckpoint
 
 _STATE_FIELDS = ("base_time", "external_group_cache", "machine_timeline", "operator_timeline",
-                 "machine_busy_hours", "operator_busy_hours", "last_end_by_machine", "errors",
+                 "machine_busy_hours", "operator_busy_hours", "last_end_by_machine",
                  "blocked_batches", "failed_count", "seed_count",
                  "missing_seed_machine_count", "missing_seed_operator_count", "missing_seed_machine_samples",
                  "missing_seed_operator_samples", "failure_details", "batch_failure_sources")
@@ -50,7 +49,7 @@ put different operation IDs into equal slots. Zero-length/overlapping rows decli
 
 
 def _same_types(left, right):
-    if type(left) is not MachineTypeState or type(right) is not MachineTypeState or dict(left) != dict(right):
+    if dict(left) != dict(right):
         return False
     if left._entries == right._entries:
         return True

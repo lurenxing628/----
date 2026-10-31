@@ -8,8 +8,10 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Sequence
 
+from core.infrastructure.sqlite_udf import parse_dt_for_sql
+
 from .base_repo import BaseRepository
-from .schedule_time_sql import overlap_or_bad_time_sql, parse_dt_for_sql, register_schedule_time_sql_functions
+from .schedule_time_sql import overlap_or_bad_time_sql
 
 DOWNTIME_STATUS_SQL = "(md.status='active' OR md.status IS NULL OR md.status NOT IN ('active','cancelled'))"
 
@@ -19,10 +21,6 @@ _DOWNTIMES_SQL = ("SELECT machine_id,start_time,end_time,status FROM MachineDown
 
 
 class CalendarFactsRepository(BaseRepository):
-    def __init__(self, conn, logger=None):
-        super().__init__(conn, logger=logger)
-        register_schedule_time_sql_functions(conn)
-
     def _bounded(self, sql: str, params: Sequence[Any], limit: int) -> List[Dict[str, Any]]:
         return self.fetchall(sql + " LIMIT ?", list(params) + [limit])
 

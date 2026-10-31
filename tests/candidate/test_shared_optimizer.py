@@ -17,7 +17,6 @@ from core.algorithm_contracts.types import ScheduleResult
 from core.algorithms import evaluation_completion as evaluation_inputs
 from core.algorithms.evaluation import compute_metrics, objective_score, prepare_evaluation_context
 from core.algorithms.greedy import scheduler as native_scheduler_module
-from core.algorithms.greedy.auto_assign import qualified_resource_pairs
 from core.algorithms.greedy.dispatch.sgs_checkpoint import DecodeCheckpointRequest
 from core.algorithms.greedy.scheduler import GreedyScheduler
 from core.models.objective import objective_metric_keys, target_objectives_for
@@ -46,7 +45,10 @@ from core.services.scheduler.run.optimizer.graph.iterated_greedy_run import Iter
 from core.services.scheduler.run.optimizer.graph.ready import GraphStageBundle
 from core.services.scheduler.run.optimizer.graph.repair import EliteRepairPool
 from core.services.scheduler.run.optimizer.graph.repair_contract import EliteRepairLimits
-from core.services.scheduler.run.optimizer.graph.repair_decisions import prepare_repair_parent
+from core.services.scheduler.run.optimizer.graph.repair_decisions import (
+    prepare_repair_parent,
+    prepare_repair_scope,
+)
 from core.services.scheduler.run.optimizer.graph.stages import GraphSearchState, IteratedGreedyStage
 from core.services.scheduler.run.optimizer.graph.v2_features import enrich_graph_ready_v2_metrics
 from core.services.scheduler.run.optimizer.graph.v2_ranks import build_v2_common_rank_cache
@@ -178,6 +180,7 @@ def _linear_fixture():
         "machines_by_op_type": {"OT-BENCH": ["MC-BENCH", "MC-ALT"]},
         "machines_by_operator": {},
         "operators_by_machine": {"MC-BENCH": ["OP-BENCH"], "MC-ALT": ["OP-ALT"]},
+        "pair_rank": {},
     }
     downtime = {"MC-ALT": [(START_DT, START_DT + timedelta(hours=4))]}
     return operations, batches, context, pool, downtime, _fixed_seed()
@@ -274,7 +277,7 @@ def _assert_controlled_worse_reference_keeps_source():
         operations.append(make_algo_op(id=op_id, op_code=f"OP{op_id}", batch_id=batch_id, seq=10, setup_hours=hours,
                                        unit_hours=0.0, op_type_id="T", op_type_name="T"))
         batches[batch_id] = make_batch(batch_id=batch_id, due_date="2026-01-01")
-    pool = {"machines_by_op_type": {"T": ["M"]}, "machines_by_operator": {}, "operators_by_machine": {"M": ["O"]}}
+    pool = {"machines_by_op_type": {"T": ["M"]}, "machines_by_operator": {}, "operators_by_machine": {"M": ["O"]}, "pair_rank": {}}
     scheduler = GreedyScheduler(calendar_service=ContinuousCalendar(), config_service=_config(mode="greedy"))
     started_at = monotonic()
     decoded = production_decode(
@@ -289,7 +292,7 @@ def _assert_controlled_worse_reference_keeps_source():
                 "metrics": metrics, "score": (float(summary.failed_ops),) + objective_score("min_overdue", metrics),
                 "dispatch_mode": "batch_order", "dispatch_rule": "slack", "order": ["B3", "B2", "B1"],
                 "resource_pool": pool, "candidate_origin": "multi_start", "seed_result_count": 0,
-                "locked_seed_range": []}
+                "locked_seed_range": [], "decoded_batch_order": decoded.decoded_batch_order}
     assert summary.success and summary.failed_ops == 0
     assert (metrics.overdue_count, metrics.total_tardiness_hours) == (1, 6.0)
     archive = SharedScheduleArchive("min_overdue", target_objectives_for("min_overdue"), {1, 2, 3}, set(batches))
@@ -324,8 +327,17 @@ def _assert_controlled_worse_reference_keeps_source():
         "graph_priority_key_by_op_id": {op.id: (0.0,) for op in operations},
         "node_metrics_by_op_id": {node.raw["id"]: node_metrics[node.node_id] for node in nodes},
     }
-    parent = _parent_from_candidate(source, graph_context=context, prepared=prepare_repair_parent(
-        source, operations, context, resource_pairs_for=partial(qualified_resource_pairs, resource_pool=pool)))
+    owned_seeds, owned_downtime = [], {}
+    decode_budget = SharedSearchBudget(clock=monotonic, started_at=started_at, deadline=started_at + 1,
+                                       target_objectives=archive.target_objectives, configured_seconds=1)
+    session.decode_session = SharedDecodeSession(
+        archive=archive, budget=decode_budget, scheduler=scheduler, operations=operations, batches=batches,
+        seed_results=owned_seeds, downtime_map=owned_downtime, resource_pool=pool, graph_ready_context=context,
+        clock=monotonic, started_at=started_at, deadline=started_at + 1, event_sink=session.record_event,
+    )
+    parent = _parent_from_candidate(source, prepared=prepare_repair_parent(
+        source, scope=prepare_repair_scope(
+            operations, context, resource_pairs_for=session.decode_session.native_preparation.qualified_resource_pairs)))
     assert parent is not None and parent.order == (3, 2, 1)
     assert parent.inherited == ((1, "M", "O"), (2, "M", "O"), (3, "M", "O"))
     graph_metrics = enrich_graph_ready_v2_metrics(
@@ -336,22 +348,13 @@ def _assert_controlled_worse_reference_keeps_source():
     assert graph_metrics is not None
     profile = ig_decode_profile(next(p for p in resolve_v2_profiles(seed=0, objective_name="min_overdue") if p.slug == "balanced"))
     limits = IteratedGreedyLimits(due_date_seed=False, checkpoint_count=2, max_decodes=2, max_iterations=1)
-    ig_report = new_iterated_greedy_report(limits, objective_name="min_overdue")
-    owned_seeds, owned_downtime = [], {}
-    decode_budget = SharedSearchBudget(clock=monotonic, started_at=started_at, deadline=started_at + 1,
-                                       target_objectives=archive.target_objectives, configured_seconds=1)
-    session.decode_session = SharedDecodeSession(
-        archive=archive, budget=decode_budget, scheduler=scheduler, operations=operations, batches=batches,
-        seed_results=owned_seeds, downtime_map=owned_downtime, resource_pool=pool, graph_ready_context=context,
-        clock=monotonic, started_at=started_at, deadline=started_at + 1, event_sink=session.record_event,
-    )
+    ig_report = new_iterated_greedy_report(objective_name="min_overdue")
+    decision_features = PreparedDecisionFeatures(graph_metrics, build_v2_common_rank_cache(graph_metrics))
     repair_pool = EliteRepairPool(limits=EliteRepairLimits(), objective_name="min_overdue",
-                                  operations=operations, metrics_by_op_id=graph_metrics, start_dt=START_DT, seed=0,
+                                  operations=operations, start_dt=START_DT, seed=0,
                                   best=source, report_state=report, graph_context=context,
                                   clock=monotonic, deadline=started_at + 1.0,
-                                  decode_session=session.decode_session)
-
-    decision_features = PreparedDecisionFeatures(graph_metrics, build_v2_common_rank_cache(graph_metrics))
+                                  decode_session=session.decode_session, decision_features=decision_features)
 
     def evaluate(**kwargs):
         return evaluate_graph_ready_candidate(
@@ -365,8 +368,8 @@ def _assert_controlled_worse_reference_keeps_source():
     search = _IteratedGreedySearch(
         limits=limits, parent=parent, profile=profile, pool=repair_pool, evaluate=evaluate,
         metrics_by_op_id=graph_metrics, start_dt=START_DT, seed=0, deadline=started_at + 1.0, clock=monotonic,
-        t_begin=started_at, attempts=[], improvement_trace=[], report_state=report,
-        report=ig_report, operations=operations, graph_context=context, decode_session=session.decode_session,
+        report_state=report,
+        report=ig_report, graph_context=context, decode_session=session.decode_session,
     )
     search.best = source
     session.phase = "controlled_reference_order"
@@ -375,7 +378,6 @@ def _assert_controlled_worse_reference_keeps_source():
     assert reference is not None and reference.order == (1, 2, 3)
     assert scheduler._decode_invocations - before_decodes == ig_report["decodes"] == 1
     assert session.decode_session.actual_decoder_calls == 1
-    assert search.checkpoints.full_decodes == 1 and search.checkpoints.resumed_decodes == 0
     assert len(reference.checkpoints) == 2
     assert reference.candidate["summary"].success and reference.candidate["summary"].failed_ops == 0
     assert (reference.candidate["metrics"].overdue_count, reference.candidate["metrics"].total_tardiness_hours) == (2, 10.0)
@@ -439,9 +441,9 @@ def test_unaffordable_required_ig_capture_stops_stage_and_preserves_other_work()
     state = GraphSearchState(view.candidate)
     run = IteratedGreedyRun(
         limits=search.limits, state=state, parent_profile=lambda candidate: search.profile,
-        pool=search.pool, evaluate=search.evaluate, operations=search.operations, graph_context=search.graph_context,
+        pool=search.pool, evaluate=search.evaluate, graph_context=search.graph_context,
         metrics_by_op_id=search.metrics, objective_name=view.objective, start_dt=search.start_dt,
-        seed=0, deadline=deadline, clock=clock, t_begin=now - 8.0, attempts=[], improvement_trace=[],
+        seed=0, deadline=deadline, clock=clock,
         report_state=view.report, decode_session=decoder,
     )
     run.search, run.report, run.started_at = search, search.report, now
@@ -450,7 +452,7 @@ def test_unaffordable_required_ig_capture_stops_stage_and_preserves_other_work()
         keys=[SortStrategy.FIFO.value], dispatch_modes=["sgs", "batch_order"], dispatch_rule_cfg="slack",
         valid_dispatch_rules=["slack"], start_dt=START_DT, end_date=None,
         cfg=scheduler.config, resource_pool=decoder.resource_pool,
-        objective_name=view.objective, deadline=deadline, t_begin=now - 8.0,
+        objective_name=view.objective, deadline=deadline,
         build_order=lambda strategy, params: list(decoder.batches), clock=clock,
         search_report_state=view.report, state=view.state, decode_session=decoder,
     )
@@ -472,7 +474,6 @@ def test_unaffordable_required_ig_capture_stops_stage_and_preserves_other_work()
     assert decoder.actual_decoder_calls == before_calls and decoder.skipped_requests == before_skips + 2
     assert _next_stage(view) is ordinary
     ordinary.run_task()
-    assert ordinary.efficiency["decoded_candidates"] == 1
     assert decoder.actual_decoder_calls == before_calls + 1 and decoder.skipped_requests == before_skips + 2
     assert _next_stage(view) is None
     ig.finish()
@@ -487,12 +488,12 @@ def test_unaffordable_required_ig_capture_stops_stage_and_preserves_other_work()
         budget.record_decode("sgs_resume", 0.8)
         budget.record_decode("batch_order_full", 0.1)
     capped_limits = replace(search.limits, max_decodes=2)
-    capped_report = new_iterated_greedy_report(capped_limits, objective_name=view.objective)
+    capped_report = new_iterated_greedy_report(objective_name=view.objective)
     capped_search = _IteratedGreedySearch(
         limits=capped_limits, parent=old_parent, profile=old_profile, pool=search.pool, evaluate=search.evaluate,
         metrics_by_op_id=search.metrics, start_dt=search.start_dt, seed=2, deadline=deadline, clock=clock,
-        t_begin=now - 8.0, attempts=[], improvement_trace=[], report_state=view.report,
-        report=capped_report, operations=search.operations, graph_context=search.graph_context, decode_session=decoder,
+        report_state=view.report,
+        report=capped_report, graph_context=search.graph_context, decode_session=decoder,
     )
     capped_search.best, capped_search.reference = reference.candidate, reference
     before_calls, before_skips = decoder.actual_decoder_calls, decoder.skipped_requests
@@ -524,8 +525,8 @@ def test_unaffordable_required_ig_capture_stops_stage_and_preserves_other_work()
     mode_stage = LocalSearchStage(
         best=sgs_best, version=0, deadline=deadline, batches=decoder.batches,
         start_dt=START_DT, end_date=None,
-        resource_pool=decoder.resource_pool, objective_name=view.objective, attempts=[], improvement_trace=[],
-        optimizer_algo_stats=None, t_begin=now - 8.0, readiness_gate_enabled=False,
+        resource_pool=decoder.resource_pool, objective_name=view.objective,
+        optimizer_algo_stats=None, readiness_gate_enabled=False,
         clock=clock, rng_factory=Random, search_report_state=view.report, decode_session=decoder,
     )
     assert mode_stage.vns_state.neighborhoods == ("sgs_dispatch_rule",)
@@ -547,8 +548,8 @@ def test_unaffordable_required_ig_capture_stops_stage_and_preserves_other_work()
     local_stage = LocalSearchStage(
         best=view.candidate, version=0, deadline=deadline, batches=decoder.batches,
         start_dt=START_DT, end_date=None,
-        resource_pool=decoder.resource_pool, objective_name=view.objective, attempts=[], improvement_trace=[],
-        optimizer_algo_stats=None, t_begin=now - 8.0, readiness_gate_enabled=False,
+        resource_pool=decoder.resource_pool, objective_name=view.objective,
+        optimizer_algo_stats=None, readiness_gate_enabled=False,
         clock=clock, rng_factory=Random, search_report_state=view.report, decode_session=decoder,
     )
     grasp_stage = GraspIGStage(
@@ -556,44 +557,44 @@ def test_unaffordable_required_ig_capture_stops_stage_and_preserves_other_work()
         start_dt=START_DT, end_date=None, base_strategy=SortStrategy.FIFO, base_params={},
         build_order=lambda strategy, params: list(reversed(decoder.batches)), dispatch_rule_cfg="cr",
         resource_pool=decoder.resource_pool, objective_name=view.objective, deadline=deadline,
-        optimizer_algo_stats=None, t_begin=now - 8.0, readiness_gate_enabled=False,
+        optimizer_algo_stats=None, readiness_gate_enabled=False,
         clock=clock, rng_factory=Random, search_report_state=view.report, state=view.state, decode_session=decoder,
     )
     graph_budget = GraphReadySearchBudget(deadline=deadline, clock=clock)
     profiles = [p for slug in ("v2_spt", "v2_successor_edd") for p in resolve_v2_profiles(seed=0, objective_name="min_overdue") if p.slug == slug]
     graph_evaluate = partial(search.evaluate, decode_session=decoder)
-    profile_search = GraphReadyProfileSearch(evaluate=graph_evaluate, budget=graph_budget, profile_count=len(profiles))
+    profile_search = GraphReadyProfileSearch(evaluate=graph_evaluate, budget=graph_budget)
     repair_pool = EliteRepairPool(
-        limits=EliteRepairLimits(), objective_name=view.objective, operations=search.operations,
-        metrics_by_op_id=search.metrics, start_dt=START_DT, seed=0, best=view.candidate, report_state=view.report,
+        limits=EliteRepairLimits(), objective_name=view.objective, operations=decoder.operations,
+        start_dt=START_DT, seed=0, best=view.candidate, report_state=view.report,
         graph_context=search.graph_context, clock=clock, deadline=deadline, decode_session=decoder,
+        decision_features=search.pool.decision_features,
     )
     assert view.candidate is not None
-    repair_pool.observe(view.candidate, profiles[0])
+    repair_pool.observe(view.candidate, profiles[0], fingerprint=repair_pool.fingerprint(view.candidate))
     profile_stage = ProfileStage(
         profiles=profiles, search=profile_search, pool=repair_pool, state=state,
-        order=list(decoder.batches), attempts=[], improvement_trace=[], search_report_state=view.report,
-        clock=clock, t_begin=now - 8.0,
+        order=list(decoder.batches), search_report_state=view.report,
     )
     repair_run = EliteRepairRun(
         pool=repair_pool, state=state, evaluate=graph_evaluate, budget=graph_budget,
-        deadline=deadline, clock=clock, t_begin=now - 8.0, attempts=[], improvement_trace=[],
+        deadline=deadline, clock=clock,
         report_state=view.report,
     )
     repair_stage = RepairStage(repair_run)
-    trial_report = new_iterated_greedy_report(search.limits, objective_name=view.objective)
+    trial_report = new_iterated_greedy_report(objective_name=view.objective)
     trial_search = _IteratedGreedySearch(
         limits=search.limits, parent=old_parent, profile=old_profile, pool=repair_pool, evaluate=search.evaluate,
         metrics_by_op_id=search.metrics, start_dt=search.start_dt, seed=1, deadline=deadline, clock=clock,
-        t_begin=now - 8.0, attempts=[], improvement_trace=[], report_state=view.report,
-        report=trial_report, operations=search.operations, graph_context=search.graph_context, decode_session=decoder,
+        report_state=view.report,
+        report=trial_report, graph_context=search.graph_context, decode_session=decoder,
     )
     trial_search.best, trial_search.reference = reference.candidate, reference
     trial_run = IteratedGreedyRun(
         limits=search.limits, state=state, parent_profile=lambda candidate: old_profile,
-        pool=repair_pool, evaluate=search.evaluate, operations=search.operations, graph_context=search.graph_context,
+        pool=repair_pool, evaluate=search.evaluate, graph_context=search.graph_context,
         metrics_by_op_id=search.metrics, objective_name=view.objective, start_dt=search.start_dt,
-        seed=1, deadline=deadline, clock=clock, t_begin=now - 8.0, attempts=[], improvement_trace=[],
+        seed=1, deadline=deadline, clock=clock,
         report_state=view.report, decode_session=decoder,
     )
     trial_run.search, trial_run.report, trial_run.started_at = trial_search, trial_report, now
@@ -889,7 +890,6 @@ def test_real_shared_optimizer_preserves_start_archive_resource_bridge_and_piece
             assert plan.origin["origin"] == entry.evidence_origin["origin"]
             assert plan.dispatch_mode == plan.used_params["dispatch_mode"]
             assert plan.dispatch_rule == plan.adopted_dispatch_rule == plan.used_params["dispatch_rule"]
-            assert plan.attempts == [] and plan.search_report == {}
         selection = public.selection.to_dict()
         assert set(selection) == {"generation_policy_version", "selection_policy_version", "primary_objective", "target_objectives",
             "selected_candidate_key", "objective_winners", "objective_winner_reasons", "objective_field_order", "selected_score",
@@ -1202,7 +1202,7 @@ def test_shared_ig_sync_keeps_same_evidence_pointer_and_defers_new_parent():
         candidate = {"results": results, "summary": summary, "strategy": strategy, "params": params,
                      "metrics": metrics, "score": (0.0,) + objective_score(objective, metrics),
                      "dispatch_mode": mode, "dispatch_rule": "slack", "resource_pool": pool,
-                     "order": list(batch_order or batches)}
+                     "order": list(batch_order or batches), "decoded_batch_order": result.decoded_batch_order}
         if keep_receipt:
             candidate["decode_receipt"] = result.receipt
         return candidate
@@ -1234,10 +1234,12 @@ def test_shared_ig_sync_keeps_same_evidence_pointer_and_defers_new_parent():
             clock=monotonic, started_at=started_at, deadline=deadline, event_sink=session.record_event,
         )
         session.decode_session = decoder
-        parent = _parent_from_candidate(parent_candidate, graph_context=_context,
+        parent = _parent_from_candidate(parent_candidate,
                                         prepared=prepare_repair_parent(
-                                            parent_candidate, operations, _context,
-                                            resource_pairs_for=decoder.native_preparation.qualified_resource_pairs))
+                                            parent_candidate,
+                                            scope=prepare_repair_scope(
+                                                operations, _context,
+                                                resource_pairs_for=decoder.native_preparation.qualified_resource_pairs)))
         assert parent is not None
         reference = PoolEntry(order=parent.order, score=tuple(candidate["score"]), candidate=candidate,
                               batch_order=parent.batch_order, resource_overrides=parent.inherited)
@@ -1249,15 +1251,16 @@ def test_shared_ig_sync_keeps_same_evidence_pointer_and_defers_new_parent():
         assert decision_metrics is not None
         profile = ig_decode_profile(next(p for p in resolve_v2_profiles(seed=0, objective_name="min_overdue") if p.slug == "balanced"))
         limits = IteratedGreedyLimits(due_date_seed=False)
+        decision_features = PreparedDecisionFeatures(decision_metrics, build_v2_common_rank_cache(decision_metrics))
         repair_pool = EliteRepairPool(
             limits=EliteRepairLimits(), objective_name=view.objective, operations=operations,
-            metrics_by_op_id=decision_metrics, start_dt=START_DT, seed=0, best=candidate, report_state=report,
+            start_dt=START_DT, seed=0, best=candidate, report_state=report,
             graph_context=_context, clock=monotonic, deadline=deadline, decode_session=decoder,
+            decision_features=decision_features,
         )
         evaluate = partial(
             evaluate_graph_ready_candidate,
-            prepared_decision_features=PreparedDecisionFeatures(decision_metrics,
-                                                                build_v2_common_rank_cache(decision_metrics)),
+            prepared_decision_features=decision_features,
             strategy=SortStrategy.FIFO, params={}, start_dt=START_DT, end_date=None,
             dispatch_rule="slack", resource_pool=pool, objective_name=view.objective, optimizer_algo_stats=None,
             readiness_gate_enabled=False, version=0, clock=monotonic, decode_session=decoder,
@@ -1265,16 +1268,16 @@ def test_shared_ig_sync_keeps_same_evidence_pointer_and_defers_new_parent():
         graph_state = GraphSearchState(view.candidate)
         run = IteratedGreedyRun(
             limits=limits, state=graph_state, parent_profile=lambda candidate: profile,
-            pool=repair_pool, evaluate=evaluate, operations=operations, graph_context=_context,
+            pool=repair_pool, evaluate=evaluate, graph_context=_context,
             metrics_by_op_id=decision_metrics, objective_name=view.objective, start_dt=START_DT, seed=0,
-            deadline=deadline, clock=monotonic, t_begin=started_at, attempts=[], improvement_trace=[],
+            deadline=deadline, clock=monotonic,
             report_state=report, decode_session=decoder,
         )
         search = _IteratedGreedySearch(
             limits=limits, parent=parent, profile=profile, pool=repair_pool, evaluate=evaluate,
             metrics_by_op_id=decision_metrics, start_dt=START_DT, seed=0, deadline=deadline, clock=monotonic,
-            t_begin=started_at, attempts=[], improvement_trace=[], report_state=report,
-            report=run.report, operations=operations, graph_context=_context, decode_session=decoder,
+            report_state=report,
+            report=run.report, graph_context=_context, decode_session=decoder,
         )
         search.best, search.reference = candidate, reference
         run.search, run.iteration = search, PausedIteration(search)
@@ -1365,8 +1368,8 @@ def test_shared_ig_sync_keeps_same_evidence_pointer_and_defers_new_parent():
     ordinary_stage = LocalSearchStage(
         best=ordinary_candidate, version=0, deadline=life.started_at + 1,
         batches=batches, start_dt=START_DT, end_date=None,
-        resource_pool=pool, objective_name=ordinary_view.objective, attempts=[], improvement_trace=[],
-        optimizer_algo_stats=None, t_begin=life.started_at, readiness_gate_enabled=False,
+        resource_pool=pool, objective_name=ordinary_view.objective,
+        optimizer_algo_stats=None, readiness_gate_enabled=False,
         clock=monotonic, rng_factory=Random, search_report_state=ordinary_view.report, decode_session=life_decoder,
     )
     ordinary_view.local_stage = ordinary_stage
@@ -1384,10 +1387,12 @@ def test_shared_ig_sync_keeps_same_evidence_pointer_and_defers_new_parent():
     assert len(captured) == 2 and schedule_content_key(checkpoint_source["results"]) == schedule_content_key(old_reference["results"])
 
     def pool_entry(candidate, *, checkpoints=()):
-        parent = _parent_from_candidate(candidate, graph_context=_context,
+        parent = _parent_from_candidate(candidate,
                                         prepared=prepare_repair_parent(
-                                            candidate, operations, _context,
-                                            resource_pairs_for=partial(qualified_resource_pairs, resource_pool=pool)))
+                                            candidate,
+                                            scope=prepare_repair_scope(
+                                                operations, _context,
+                                                resource_pairs_for=life_decoder.native_preparation.qualified_resource_pairs)))
         assert parent is not None
         return PoolEntry(order=parent.order, score=tuple(candidate["score"]), candidate=candidate,
                          batch_order=parent.batch_order, resource_overrides=parent.inherited,

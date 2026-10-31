@@ -3,8 +3,6 @@
 import threading
 from contextlib import contextmanager
 
-from core.infrastructure.connection_guards import schema_contract_memo
-from core.infrastructure.workbench_run_schema import workbench_run_contract_issues
 from core.models.workbench_run_candidate import (
     MAX_ARTIFACT_BYTES,
     MAX_CANDIDATES,
@@ -15,7 +13,6 @@ from core.models.workbench_run_candidate import (
     reference,
     reject,
 )
-from core.shared.strict_json import clone_json
 from data.repositories.workbench_run_candidate_repo import WorkbenchRunCandidateRepository
 
 from .candidate_facts import GenerationFacts
@@ -49,35 +46,17 @@ def cache_memo(cache, key, value, limit=32):
         return value
 
 
-def _copy_capture(cached):
-    return {
-        "input": clone_json(cached["input"]),
-        "execution": clone_json(cached["execution"]),
-        "baseline": clone_json(cached["baseline"]),
-        "facts_text": cached["facts_text"],
-    }
-
-
-def _copy_scope(scope):
-    return clone_json(scope)
-
-
-def _copy_receipt(result):
-    return clone_json(result)
-
-
-def _candidate_record(row, *, copy_on_read=True):
+def _candidate_record(row):
     cached = cache_get(_CANDIDATE_RECORD_CACHE, row)
     if cached is not None:
-        return dict(cached, artifact=clone_json(cached["artifact"])) if copy_on_read else cached
+        return cached
     bounded_size(row[6], MAX_ARTIFACT_BYTES)
     bounded_size(row[3], MAX_TASKS)
     if type(row[4]) is not int or row[4] < 0:
         corrupt()
     record = {"candidate_ref": reference(row[0], stored=True), "run_ref": reference(row[1], stored=True),
               "status": row[2], "task_count": row[3], "sequence": row[4], "artifact": stored_json(row[5])}
-    cache_memo(_CANDIDATE_RECORD_CACHE, row, record, limit=64)
-    return dict(record, artifact=clone_json(record["artifact"])) if copy_on_read else record
+    return cache_memo(_CANDIDATE_RECORD_CACHE, row, record, limit=64)
 
 
 def _execution_cache_key(execution):
@@ -131,9 +110,8 @@ def cached_generation_facts(capture, *, raw_row=None):
 
 
 class CandidateStore:
-    def __init__(self, conn, *, copy_on_read: bool = True):
+    def __init__(self, conn):
         self.conn = conn
-        self.copy_on_read = copy_on_read
         self.repo = WorkbenchRunCandidateRepository(conn)
         self._last_run_row = None
         self._last_receipt_row = None
@@ -144,8 +122,6 @@ class CandidateStore:
     @contextmanager
     def snapshot(self):
         with candidate_read_snapshot(self.conn):
-            if schema_contract_memo(self.conn).get_schema(workbench_run_contract_issues):
-                reject("candidate_schema_unavailable", "排产记录结构不完整，请联系维护人员。", 503)
             yield
 
     def run(self, run_ref):
@@ -175,13 +151,13 @@ class CandidateStore:
             result = cache_memo(_RECEIPT_CACHE, (row[1], row[2]), stored_json(row[1]))
         if row[0] != run["state"] or result.get("state") != run["state"]:
             corrupt()
-        return _copy_receipt(result) if self.copy_on_read else result
+        return result
 
     def candidates(self, run_ref):
         rows, total_bytes, seen = [], 0, set()
         for row in self.repo.candidate_rows(run_ref, MAX_CANDIDATES + 1):
             bounded_size(len(rows) + 1, MAX_CANDIDATES)
-            record = _candidate_record(row, copy_on_read=self.copy_on_read)
+            record = _candidate_record(row)
             total_bytes += row[6]
             bounded_size(total_bytes, MAX_COLLECTION_BYTES)
             if row[0] in seen or row[1] != run_ref:
@@ -195,7 +171,7 @@ class CandidateStore:
         row = self.repo.candidate_row(candidate_ref)
         if row is None:
             reject("entity_not_found", "未找到该永久候选，未改查最新结果。", 404)
-        record = _candidate_record(row, copy_on_read=self.copy_on_read)
+        record = _candidate_record(row)
         self._last_candidate_row_by_ref[record["candidate_ref"]] = row
         return record
 
@@ -225,13 +201,12 @@ class CandidateStore:
         self._last_capture_row = row
         cached = cache_get(_CAPTURE_CACHE, row)
         if cached is not None:
-            return _copy_capture(cached) if self.copy_on_read else cached
+            return cached
         for size in row[4:]:
             bounded_size(size, MAX_FACT_BYTES)
         parsed = {"input": stored_json(row[0]), "execution": stored_json(row[1], list),
                   "baseline": stored_json(row[2]), "facts_text": row[3]}
-        cache_memo(_CAPTURE_CACHE, row, parsed)
-        return _copy_capture(parsed) if self.copy_on_read else parsed
+        return cache_memo(_CAPTURE_CACHE, row, parsed)
 
     def generation_facts(self, capture):
         return cached_generation_facts(capture, raw_row=self._last_capture_row)
@@ -242,10 +217,9 @@ class CandidateStore:
             key = (raw_receipt[1], raw_capture[0], raw_capture[3])
             cached = cache_get(_DISPOSITIONS_CACHE, key)
             if cached is not None:
-                return _copy_scope(cached) if self.copy_on_read else cached
+                return cached
             scope = completed_dispositions(receipt, expected_refs=admission_operation_refs(facts, capture["input"]))
-            cached = cache_memo(_DISPOSITIONS_CACHE, key, _copy_scope(scope) if self.copy_on_read else scope)
-            return _copy_scope(cached) if self.copy_on_read else cached
+            return cache_memo(_DISPOSITIONS_CACHE, key, scope)
         return completed_dispositions(receipt, expected_refs=admission_operation_refs(facts, capture["input"]))
 
     def scheduled_op_ids(self, candidate):
@@ -274,7 +248,7 @@ class CandidateStore:
         self._last_task_rows_by_ref[candidate_ref] = raw_rows
         cached = cache_get(_TASKS_CACHE, (candidate_ref, raw_rows))
         if cached is not None:
-            return [dict(row, payload=clone_json(row["payload"])) for row in cached] if self.copy_on_read else cached
+            return cached
         result = [
             {
                 "row_ref": reference(row[0], stored=True),
@@ -283,8 +257,7 @@ class CandidateStore:
             }
             for row in raw_rows
         ]
-        cache_memo(_TASKS_CACHE, (candidate_ref, raw_rows), result)
-        return [dict(row, payload=clone_json(row["payload"])) for row in result] if self.copy_on_read else result
+        return cache_memo(_TASKS_CACHE, (candidate_ref, raw_rows), result)
 
     def build_adoption_raw_key(self, candidate_ref, admission_head):
         if self._last_run_row is None or self._last_capture_row is None:
@@ -298,8 +271,3 @@ class CandidateStore:
             self._last_capture_row,
             self._last_task_rows_by_ref.get(candidate_ref),
         )
-
-
-class ReadOnlyCandidateStore(CandidateStore):
-    def __init__(self, conn):
-        super().__init__(conn, copy_on_read=False)

@@ -12,7 +12,7 @@ from core.services.workbench.facts.resource_projection import (
 )
 
 
-def scoped_rows(rows, batch_refs, start, end):
+def scoped_rows(rows, batch_refs, start, end, *, task_intervals):
     """Select displayed task rows; changeover sequences are formed before this."""
     low, high = local_time(start), local_time(end)
     result = []
@@ -22,7 +22,8 @@ def scoped_rows(rows, batch_refs, start, end):
         if row["start"] is None or row["end"] is None:
             result.append(row)
             continue
-        first, last = local_time(row["start"]), local_time(row["end"])
+        span = task_intervals.get(row.get("row_ref"))
+        first, last = span if span is not None else (local_time(row["start"]), local_time(row["end"]))
         if first == last:
             if low <= first < high:
                 result.append(row)

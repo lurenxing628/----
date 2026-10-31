@@ -1,8 +1,7 @@
 """Serialization and formal scoring of a decoded graph candidate."""
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
@@ -11,17 +10,28 @@ from core.services.scheduler.run.optimizer.graph_ready_profiles import (
     GraphReadyWeightProfile,
 )
 
-from .reporting import public_params
+
+def public_params(params: Dict[str, Any]) -> Dict[str, Any]:
+    out = dict(params)
+    # The weighted strategy rebuilds its parameters, so only other strategies carry the profile.
+    profile = out.get("graph_ready_profile")
+    if profile is not None:
+        out["graph_ready_profile"] = _public_profile(profile)
+    return out
+
+
+def _public_profile(profile: Dict[str, Any]) -> Dict[str, Any]:
+    return {key: profile[key] for key in (
+        "schema_version", "candidate_origin", "weight_profile_slug", "candidate_policy", "max_weight_profiles")}
 
 
 def build_graph_ready_candidate_payload(
-    *, res: List[ScheduleResult], summ: ScheduleSummary, used_strat: SortStrategy,
+    *, res: List[ScheduleResult], decoded_order: Tuple[str, ...], summ: ScheduleSummary, used_strat: SortStrategy,
     used_params: Dict[str, Any], metrics: ScheduleMetrics, profile: GraphReadyWeightProfile,
     order: List[str], dispatch_rule: str, objective_name: str, algo_stats: Dict[str, Any],
     resource_pool: Optional[Dict[str, Any]], runtime_ms: int,
     profile_dict: Dict[str, Any], repair_decision: Optional[Any] = None,
 ) -> Dict[str, Any]:
-    decoded_order = decoded_batch_order(res)
     result_order = _result_batch_order(decoded_order, decision_order=order)
     payload = {
         "results": res,
@@ -48,29 +58,8 @@ def build_graph_ready_candidate_payload(
     return payload
 
 
-def decoded_batch_order(results: List[ScheduleResult]) -> List[str]:
-    order: List[str] = []
-    seen = set()
-    for result in sorted(
-        results,
-        key=lambda item: (
-            item.start_time or datetime.max,
-            item.end_time or datetime.max,
-            item.seq,
-            item.op_id,
-        ),
-    ):
-        # ScheduleResult.op_id/batch_id/seq are required (core/algorithm_contracts/types.py).
-        batch_id = result.batch_id
-        if batch_id in seen:
-            continue
-        seen.add(batch_id)
-        order.append(batch_id)
-    return order
-
-
-def _result_batch_order(decoded_batch_order: List[str], *, decision_order: List[str]) -> List[str]:
-    out = list(decoded_batch_order)
+def _result_batch_order(decoded_order: Tuple[str, ...], *, decision_order: List[str]) -> List[str]:
+    out = list(decoded_order)
     seen = set(out)
     for batch_id in decision_order:
         if batch_id not in seen:

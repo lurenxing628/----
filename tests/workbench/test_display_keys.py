@@ -18,7 +18,7 @@ from core.services.workbench.master.overview import MasterOverviewService
 from core.services.workbench.master.overview_graph import MasterOverviewGraph
 from core.services.workbench.system.maintenance_records import _event
 from core.shared.strict_json import canonical_json
-from tests.workbench.node_runtime_support import node_runtime
+from tests._support.node_runtime_support import node_runtime
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -76,8 +76,8 @@ def test_exact_issue_and_cell_keys_filter_and_restore_the_same_business_values()
     query.column_filters = normalize_process_column_filters({"label": {"mode": "exclude", "values": [cell.key]}})
     assert index.matching_keys(query) == ["second"]
     assert normalize_calibration_filters({"part_no": condition["label"]})["part_no"]["values"] == [cell.key]
-    browser({"master": master, "facets": index.facets(query, "label", size=2),
-             "selection": index.facet_selection(query, "label", size=2), "key": cell.key, "ref": ref}, r"""
+    browser({"master": master, "facets": index.facets("label", size=2),
+             "selection": index.facet_selection("label"), "key": cell.key, "ref": ref}, r"""
 const C=window.APSMasterOverviewContract, M=window.ResourceTableFilterModel, ref=data.ref, fresh=data.key;
 C.list(raw(data.master), data.master.scope);
 const broken=plain(data.master); broken.rows[0].entity_ref='display-only'; assert.throws(()=>C.list(raw(broken)));

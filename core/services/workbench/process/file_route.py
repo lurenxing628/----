@@ -11,7 +11,6 @@ Affected part refs include unchanged rows for the coordinator's read refresh.
 from contextlib import ExitStack
 from functools import lru_cache
 
-from core.infrastructure.connection_guards import schema_contract_memo
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.process.workflow_state import record_confirmation
 from data.repositories.part_repo import PartRepository
@@ -19,7 +18,6 @@ from data.repositories.part_repo import PartRepository
 from .file_route_preview import RouteFilePreview, reject_duplicates
 from .group_defaults import default_suppliers
 from .part_actions import WorkbenchProcessPartActionService
-from .part_actions_facts import check_part_action_storage
 from .route_apply import apply_route, discard_groups
 from .route_facts import ProcessRouteFacts
 
@@ -27,32 +25,26 @@ from .route_facts import ProcessRouteFacts
 class ProcessRouteFileOperations:
     def __init__(self, conn, logger):
         self.conn, self.logger = conn, logger
-        # 新建零件、确认路线共用本命令的结构和连接事实；命令内不执行 DDL、不改外键设置。
         self.facts = {}
-
-    @property
-    def contracts(self):
-        return schema_contract_memo(self.conn)
 
     def preview_rows(self, decoded_rows, facts, target_ref):
         if not self.conn.in_transaction:
             raise RuntimeError("路线文件预检必须在调用方的完整事实快照事务中执行。")
         self.facts = facts
         indexed = ProcessRouteFacts(facts)
-        self.current_identities = indexed.identities
         self.parts = indexed.parts
         with ExitStack() as stack:
             preview = RouteFilePreview(self.conn, self.logger, indexed, target_ref, stack)
             rows = [preview.row(source) for source in decoded_rows]
             reject_duplicates(rows)
             extra = {"affected_groups": preview.affected_groups(rows), "zero_review_required": False}
+        self.current_identities = indexed.identities
         return rows, extra
 
     def apply_rows(self, rows):
         if not self.conn.in_transaction:
             raise RuntimeError("路线文件保存必须在外层BEGIN IMMEDIATE事务中执行。")
-        check_part_action_storage(self.contracts)
-        creator = WorkbenchProcessPartActionService(self.conn, self.logger, self.contracts)
+        creator = WorkbenchProcessPartActionService(self.conn, self.logger)
         self.creations = {row["row"]: creator.prepare_create(row["input"],
             parts=self.parts,
             route_parsed="yes" if row["related"]["route"] is not None else "no")
@@ -94,7 +86,6 @@ class ProcessRouteFileOperations:
                     self.conn,
                     row["business_code"],
                     "route",
-                    contracts=self.contracts,
                     cross_part_by_group=cross_part_by_group,
                     old_operations=operations,
                 )

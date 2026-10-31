@@ -2,7 +2,11 @@
 
 from datetime import datetime
 
-from .conditions import analyze_prepared_history_conditions, materialize_history_conditions
+from .conditions import (
+    analyze_prepared_history_conditions,
+    compare_history_configurations,
+    materialize_history_conditions,
+)
 from .metric_gate import gate_history_metric
 from .metrics import project_history_metrics
 
@@ -100,24 +104,51 @@ def missing_packet(code="reference_required", message="请选择明确基准运�
     return {"kind": "empty", "ref": None, "entry_ref": None, "source_issue": reason(code, message)}
 
 
-def _shared_window(entry, query):
+def _shared_window(entry, query, *, descriptor=None, reader=None):
     if query["range_start"] is not None:
         return {"start": query["range_start"], "end": query["range_end"]}
-    window = entry["reading_context"]["resource_window"] if entry is not None else {}
+    if entry is not None and "reading_context" in entry:
+        window = entry["reading_context"]["resource_window"]
+    elif descriptor is not None and reader is not None:
+        from .metric_window import history_window
+
+        window = history_window(reader.read(descriptor), query)
+    else:
+        window = {}
     return {"start": window.get("start"), "end": window.get("end")}
 
 
-def condition_pair(reader, before_descriptor, after_descriptor, after, query, cache, *, include_rows=True, all_rows=False):
-    window = _shared_window(after, query)
+def _comparison_packets(reader, before_descriptor, after_descriptor):
+    before = reader.read(before_descriptor) if before_descriptor is not None else missing_packet()
+    selected = reader.read(after_descriptor) if after_descriptor is not None else missing_packet(
+        "selection_required", "请选择实际历史条目。")
+    return before, selected
+
+
+def configuration_pair(reader, before_descriptor, after_descriptor):
+    before, selected = _comparison_packets(reader, before_descriptor, after_descriptor)
+    configurations, objective = compare_history_configurations(
+        reader.prepared_condition_source(before),
+        reader.prepared_condition_source(selected),
+    )
+    return {"conditions": {"state": "unavailable", "summary": None},
+            "configurations": configurations, "objective": objective}
+
+
+def condition_pair(reader, before_descriptor, after_descriptor, after, query, cache, *, include_rows=True,
+                   include_configurations=True, all_rows=False):
+    window = _shared_window(after, query, descriptor=after_descriptor, reader=reader)
     key = (before_descriptor["entry_ref"] if before_descriptor else None,
            after_descriptor["entry_ref"] if after_descriptor else None, window["start"], window["end"])
     if key not in cache:
-        before = reader.read(before_descriptor) if before_descriptor is not None else missing_packet()
-        selected = reader.read(after_descriptor) if after_descriptor is not None else missing_packet(
-            "selection_required", "请选择实际历史条目。")
+        before, selected = _comparison_packets(reader, before_descriptor, after_descriptor)
         cache[key] = analyze_prepared_history_conditions(reader.condition_side(before, window),
-                                                         reader.condition_side(selected, window))
+                                                         reader.condition_side(selected, window),
+                                                         include_configurations=include_configurations)
     before_side, after_side, cond_analysis, configurations, objective = cache[key]
+    if include_configurations and configurations is None:
+        configurations, objective = compare_history_configurations(before_side, after_side)
+        cache[key] = (before_side, after_side, cond_analysis, configurations, objective)
     if not include_rows:
         return {"conditions": {"state": cond_analysis["state"], "summary": cond_analysis["summary"]},
                 "configurations": configurations, "objective": objective}

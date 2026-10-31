@@ -6,8 +6,9 @@ from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.workbench_run_candidate import reference, reject
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.decision_metrics import METRIC_VERSION
+from core.services.workbench.facts.preparation_projection import preparation_delta
 
-from .decision_impact import filter_options
+from .decision_impact import filter_options, option_resources
 from .decision_queries import parse_page
 from .decision_source import DecisionSource
 
@@ -34,13 +35,7 @@ def normalize_preparation_filters(section, *, batch_ref=None, machine_ref=None, 
 
 
 def preparation_options(source, section):
-    machines = {}
-    before = source.official["tasks"] if source.comparison_mode == "admission_official" else []
-    tasks = before + [task for candidate in source.rows for task in source.analysis_tasks(candidate["candidate_ref"])]
-    for task in tasks:
-        machine = task["machine"]
-        if machine is not None and machine["ref"] is not None:
-            machines[machine["ref"]] = {**machine, "kind": "machine"}
+    machines = option_resources(source, view="full_candidate", kinds=("machine",))
     if section == "preparation":
         for ref in source.scope["operation_refs"]:
             operation = source.facts.tables["BatchOperations"].get(source.facts.operations[ref], {})
@@ -52,6 +47,26 @@ def preparation_options(source, section):
             "batches": filter_options(source, "batches")["batches"] if section == "preparation" else []}
 
 
+def _preparation_matches(source, projection, ref, after_row, filters):
+    if filters["batch_ref"] is not None and source.operation_batch_ref(ref) != filters["batch_ref"]:
+        return False
+    if filters["allocation_state"] != "all" and after_row["allocation_state"] != filters["allocation_state"]:
+        return False
+    return filters["machine_ref"] is None or projection.matches_machine(ref, filters["machine_ref"])
+
+
+def _preparation_sort_value(projection, ref, before_row, after_row, sort):
+    if sort in ("after_setup_hours", "after_required_hours"):
+        return after_row["setup_standard_hours" if sort == "after_setup_hours" else "required_standard_hours"]
+    if sort == "setup_delta_hours":
+        return preparation_delta(
+            {"value": after_row["setup_standard_hours"], "total_count": 1, "covered_operation_refs": [ref]},
+            {"value": before_row["setup_standard_hours"], "total_count": 1, "covered_operation_refs": [ref]},
+        )["value"]
+    labels = projection.label_for(ref)
+    return labels["batch_label"] if sort == "batch_id" else labels[sort]
+
+
 def preparation_details(source, filters, *, page: Union[int, str] = 1, size: Union[int, str] = 20, all_rows=False):
     section = filters["section"]
     if source.selected_ref is None:
@@ -61,46 +76,36 @@ def preparation_details(source, filters, *, page: Union[int, str] = 1, size: Uni
         reject("entity_not_found", "所选批次不在这次排产归档的受理范围。", 404)
     if filters["machine_ref"] is not None and filters["machine_ref"] not in {row["ref"] for row in options["machines"]}:
         reject("entity_not_found", "所选设备不在这次排产归档的安排与需求范围。", 404)
-    projection = source.preparation if section == "preparation" else source.changeovers
-    rows = projection.impacts()
-    if section == "preparation" and filters["work_scope"] == "remaining":
-        remaining = source.completion.remaining_operation_refs(source.selected_ref)
-        rows = [row for row in rows if row["operation_ref"] in remaining]
-    rows = [row for row in rows if _matches(row, filters)]
-    identity = "operation_ref" if section == "preparation" else "event_ref"
-    ordered, unknown = [], []
-    for row in sorted(rows, key=lambda item: item[identity]):
-        (unknown if _sort_value(row, filters["sort"]) is None else ordered).append(row)
-    ordered.sort(key=lambda item: _sort_value(item, filters["sort"]), reverse=filters["order"] == "desc")
-    rows = ordered + unknown
     page, size = parse_page(page), parse_page(size, size=True)
     offset = (page - 1) * size
+    if section == "preparation":
+        projection = source.preparation
+        before, after = projection.rows_by_ref("reference"), projection.rows_by_ref(source.selected_ref)
+        refs = list(source.scope["operation_refs"])
+        if filters["work_scope"] == "remaining":
+            remaining = source.completion.remaining_operation_refs(source.selected_ref)
+            refs = [ref for ref in refs if ref in remaining]
+        refs = [ref for ref in refs if _preparation_matches(source, projection, ref, after[ref], filters)]
+        ordered, unknown = [], []
+        for ref in sorted(refs):
+            value = _preparation_sort_value(projection, ref, before[ref], after[ref], filters["sort"])
+            if value is None:
+                unknown.append(ref)
+            else:
+                ordered.append((value, ref))
+        ordered.sort(key=lambda pair: pair[0], reverse=filters["order"] == "desc")
+        sorted_refs = [pair[1] for pair in ordered] + unknown
+        total = len(sorted_refs)
+        page_refs = sorted_refs if all_rows else sorted_refs[offset:offset + size]
+        items = projection.impacts(page_refs)
+    else:
+        projection = source.changeovers
+        items, total = projection.paged_impacts(filters, offset=offset, size=size, all_rows=all_rows)
     return {"run_ref": source.run["run_ref"], "scope": source.scope, "baseline": source.baseline,
             "candidate": {"candidate_ref": source.selected_ref, "label": source.selected["artifact"].get("label")},
-            "filters": filters, "filter_options": options, "items": rows if all_rows else rows[offset:offset + size],
-            "page": {"number": page, "size": size, "total": len(rows), "has_more": offset + size < len(rows)},
+            "filters": filters, "filter_options": options, "items": items,
+            "page": {"number": page, "size": size, "total": total, "has_more": offset + size < total},
             "summary": projection.public_summary(), "metric_version": METRIC_VERSION}
-
-
-def _matches(row, filters):
-    if filters["section"] == "changeovers":
-        return ((filters["machine_ref"] is None or row["machine_ref"] == filters["machine_ref"])
-                and (filters["event_side"] == "all" or row["event_side"] == filters["event_side"]))
-    if filters["batch_ref"] is not None and row["batch_ref"] != filters["batch_ref"]:
-        return False
-    if filters["allocation_state"] != "all" and row["after"]["allocation_state"] != filters["allocation_state"]:
-        return False
-    return filters["machine_ref"] is None or any(machine["ref"] == filters["machine_ref"] for side in (row["before"], row["after"]) for machine in side["machines"])
-
-
-def _sort_value(row, sort):
-    if sort in ("after_setup_hours", "after_required_hours"):
-        return row["after"]["setup_standard_hours" if sort == "after_setup_hours" else "required_standard_hours"]
-    if sort == "setup_delta_hours":
-        return row["deltas"]["setup_standard_hours"]["value"]
-    if sort == "next_batch_id":
-        return row["next"]["batch_label"]
-    return row.get(sort)
 
 
 def read_preparation_details(conn, run_ref, section, *, selected_candidate_ref=None, comparison_mode="candidates", reference_candidate_ref=None,

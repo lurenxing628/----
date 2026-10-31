@@ -24,6 +24,14 @@ def count_process_export_rows(kind, parts, facts, file_format):
     return count
 
 
+def _requires_workflow_table(query):
+    return (
+        query.stage is not None
+        or "stage" in query.column_filters
+        or any(item["field"] == "stage" for item in query.ordering())
+    )
+
+
 def select_export_parts(reader, request, *, scope):
     selection = request["selection"]
     if ("refs" in request) != (selection == "explicit"):
@@ -34,7 +42,7 @@ def select_export_parts(reader, request, *, scope):
     if target_ref is not None and (selection != "explicit" or refs != [target_ref] or request["scope"]):
         raise WorkbenchCommandRejected("invalid_input", "详情只能导出当前零件，不能切换为其他范围。", 400)
     normalized = scope
-    parts = {row["ref"]: row for row in reader.facts()["parts"]}
+    parts = {row["ref"]: row for row in reader.raw_facts()["parts"]}
     if selection == "explicit":
         selected = resource_refs(refs, allow_empty=True)
         for ref in selected:
@@ -43,7 +51,9 @@ def select_export_parts(reader, request, *, scope):
                 raise WorkbenchCommandRejected("storage_failure", "零件编号和实际资料对不上。请刷新列表后重新选择。", 500)
     else:
         normalized = process_table_scope({}) if selection == "all" else normalized
-        selected = [row["ref"] for row in reader.table().matching_rows(process_table_request(normalized))]
+        query = process_table_request(normalized)
+        table = reader.table() if _requires_workflow_table(query) else reader.raw_table()
+        selected = [row["ref"] for row in table.matching_rows(query)]
     return [parts[ref] for ref in selected], {} if target_ref is not None else normalized
 
 

@@ -1,9 +1,12 @@
 (function () {
   'use strict';
-  const A = window.RunJobAPI, U = window.RunJobControls;
-  function savedRecord() {
-    const store = A.pending(), pending = store.read(), recent = pending ? null : store.recent();
-    return { intent: pending || recent && recent.intent, pending: !!pending, resolution: recent && recent.resolution, error: '' };
+  const A = window.RunJobAPI, U = window.RunJobControls, T = window.APSWorkbenchTransport;
+  // 本机记录还原成界面状态：本页还没写进磁盘的记录（读取错误带 saved）照样还原，错误交给 storageError。
+  function savedRecord(load = A.pending().read) {
+    let pending, error = '';
+    try { pending = load(); } catch (e) { if (e.saved === undefined) throw e; pending = e.saved; error = e.message; }
+    const recent = pending ? null : A.pending().recent();
+    return { intent: pending || recent && recent.intent, pending: !!pending, resolution: recent && recent.resolution, error };
   }
   function RunJobPanel({ preflight, preflightOwner, onRecheck, onNavigate }) {
     const [initial] = React.useState(() => { try { return savedRecord(); } catch (e) { return { intent: null, pending: false, error: e.message }; } });
@@ -43,7 +46,7 @@
     React.useEffect(() => {
       function changed(event) {
         if (![A.PENDING_KEY, A.RECENT_KEY, null].includes(event.key)) return;
-        try { const saved = savedRecord(); closeConfirmation(); setIntent(saved.intent); setPendingActive(saved.pending); setResolution(saved.resolution || 'unresolved'); setRun(null); setVerified(false); setStorageError(''); refresh(); }
+        try { const saved = savedRecord(); closeConfirmation(); setIntent(saved.intent); setPendingActive(saved.pending); setResolution(saved.resolution || 'unresolved'); setRun(null); setVerified(false); setStorageError(saved.error); refresh(); }
         catch (e) { setStorageError(e.message); }
       }
       window.addEventListener('storage', changed); return () => window.removeEventListener('storage', changed);
@@ -60,6 +63,30 @@
         if (unsettledSince === null) unsettledSince = started;
         if (Date.now() - unsettledSince >= 60000) { done = true; setRetryPaused(true); }
       }
+      // 查到的结论写回本机记录：查询在锁外，写回在跨页互斥里重新读当前记录。记录已不存在说明这次排产已经结束，只同步界面；
+      // 已换成别的提交就不再动它，交给 storage 事件。result 为 null 表示数据来源已替换。返回写回后的意图、是否已结束和本机存储错误。
+      function settle(result) {
+        return T.exclusive(A.PENDING_KEY, { wait: true }, () => {
+          const store = A.pending(), saved = store.flush();
+          if (!saved) return { intent: activeIntent.current, finished: true, error: null };
+          if (saved.request_key !== intent.request_key) return null;
+          const attached = result && !saved.run_ref ? { ...saved, run_ref: result.run_ref } : saved, finished = !result || A.terminal(result);
+          try {
+            if (attached !== saved) store.attach(saved, result.run_ref);
+            if (finished) store.finish(attached, result ? 'found' : 'context_replaced');
+            return { intent: attached, finished, error: null };
+          } catch (error) { return { intent: attached, finished: false, error }; }
+        });
+      }
+      async function record(result) {
+        let outcome;
+        try { outcome = (await settle(result)).value; }
+        catch (e) { if (current()) setStorageError(e.message); return; }
+        if (!outcome || !current()) return;
+        activeIntent.current = outcome.intent; setIntent(outcome.intent);
+        if (outcome.error) { setStorageError(outcome.error.message); return; }
+        if (outcome.finished) { setPendingActive(false); if (result && A.terminal(result)) onNavigate('run', { run_ref: result.run_ref }); }
+      }
       async function query() {
         if (!current() || querying || document.hidden || done) return;
         querying = true; const localController = new AbortController(); controller = localController; setChecking(true); const started = Date.now();
@@ -71,8 +98,7 @@
             setVerified(false);
             if (found.resolution === 'context_replaced') {
               setRun(null); done = true;
-              try { A.pending().finish(activeIntent.current, 'context_replaced'); setPendingActive(false); }
-              catch (e) { setStorageError(e.message); }
+              if (pendingActive) await record(null);
             } else if (!pendingActive) {
               setRun(null); done = true;
             } else unresolved(started);
@@ -82,21 +108,7 @@
           // 活跃任务保持正常读取频率；待恢复记录、未决结果和读取失败沿用退避。
           if (!result.recovery_required) attempt = 0;
           setRun(result); setVerified(true); unsettledSince = null; done = A.terminal(result);
-          if (pendingActive && !activeIntent.current.run_ref) {
-            const attached = { ...activeIntent.current, run_ref: result.run_ref };
-            try { A.pending().attach(activeIntent.current, result.run_ref); }
-            catch (e) {
-              activeIntent.current = attached; setIntent(attached);
-              setStorageError(e.message); return;
-            }
-            activeIntent.current = attached; setIntent(attached);
-          }
-          if (done && pendingActive) {
-            try { A.pending().finish(activeIntent.current, 'found'); }
-            catch (e) { setStorageError(e.message); return; }
-            setPendingActive(false);
-            onNavigate('run', { run_ref: result.run_ref });
-          }
+          if (pendingActive && (done || !activeIntent.current.run_ref)) await record(result);
         } catch (e) { if (current() && !localController.signal.aborted) { setLastChecked(Date.now()); setResolution('lookup_failed'); setVerified(false); fail(e, e.code === 'run_result_inconsistent' ? A.message(e) : '查询暂未成功，请点「查询结果」重试。'); unresolved(started); } }
         finally {
           if (controller === localController) {
@@ -175,13 +187,12 @@
       locked.current = true; setSubmitting(true); setBusy(true); clearError();
       let original, storageFailed = false;
       try {
-        // Keep admission and the durable identity claim serialized across browser tabs.
-        if (!navigator.locks || typeof navigator.locks.request !== 'function') { if (alive.current) fail(null, '当前浏览器不支持，请用 Chrome 打开。'); return; }
-        await navigator.locks.request(A.PENDING_KEY, { ifAvailable: true }, async lock => {
-          if (!lock) { if (alive.current) fail(null, '另一个页面正在提交排产，请稍后点「查询结果」。'); return; }
+        // Keep admission and the durable identity claim serialized across browser tabs; the lock is held across admission.
+        const { acquired } = await T.exclusive(A.PENDING_KEY, {}, async () => {
           if (!alive.current || currentPreview.current !== preview || preview.input_ref !== activeInput.current) return;
           if (pendingActive) { fail(null, '上次排产还没确认结果，不能开始下一次排产。'); return; }
-          original = A.pending().begin(preview.input_ref, null, preview.data_context_ref);
+          try { original = A.pending().begin(preview.input_ref, preview.data_context_ref); }
+          catch (e) { storageFailed = true; if (alive.current) setStorageError(e.message); return; }
           confirmationSession.current = null; currentPreview.current = null;
           activeIntent.current = original; setIntent(original); setPendingActive(true); setResolution('unresolved'); setRun(null); setVerified(false); setConfirming(false);
           try {
@@ -195,14 +206,15 @@
             try { const saved = A.pending().attach(original, receipt.run_ref); if (owned) { activeIntent.current = saved; setIntent(saved); } }
             catch (_) { if (alive.current) setStorageError('排产已接收，但本机没能保存这次排产的编号。请不要重新提交，到排产记录页查看结果。'); }
           } catch (e) {
-            if (window.APSWorkbenchTransport.rejected(e)) {
+            if (T.rejected(e)) {
               if (alive.current) { activeIntent.current = null; setIntent(null); setPendingActive(false); setRun(null); fail(e); }
               try { A.pending().reject(original); }
               catch (storageErr) { if (alive.current) setStorageError(storageErr.message); }
             } else if (alive.current) fail(null, window.WorkbenchTerms.outcomes.pending('排产'));
           }
         });
-      } catch (e) { storageFailed = true; if (alive.current) setStorageError(e.message); }
+        if (!acquired && alive.current) fail(null, '另一个页面正在处理排产记录，请稍后重试。');
+      } catch (e) { if (alive.current) fail(e, e.message); }
       finally {
         locked.current = false;
         if (alive.current) {
@@ -212,9 +224,12 @@
         }
       }
     }
-    function rereadStorage() {
-      try { const saved = savedRecord(); setIntent(saved.intent); setPendingActive(saved.pending); setResolution(saved.resolution || 'unresolved'); setStorageError(''); setVerified(false); setRun(null); refresh(); }
-      catch (e) { setStorageError(e.message); }
+    // 「刷新上次操作记录」在跨页互斥里把本页没写进去的记录写回再读。
+    async function rereadStorage() {
+      try {
+        const saved = (await T.exclusive(A.PENDING_KEY, { wait: true }, () => savedRecord(A.pending().flush))).value;
+        setIntent(saved.intent); setPendingActive(saved.pending); setResolution(saved.resolution || 'unresolved'); setStorageError(saved.error); setVerified(false); setRun(null); refresh();
+      } catch (e) { setStorageError(e.message); }
     }
     const selected = preflight && preflight.normalized_input && preflight.normalized_input.batch_refs;
     const effective = preflight && preview && preflight.input_ref === preview.input_ref ? preflight.effective_config : null;

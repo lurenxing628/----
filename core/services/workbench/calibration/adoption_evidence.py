@@ -16,7 +16,7 @@ from core.models.workbench_template_lineage import snapshot
 
 from .adoption_policy import require_template
 from .facts import CalibrationFacts
-from .samples import ensure_sample_revision, number
+from .samples import ensure_sample_reports, ensure_sample_revision, number
 
 
 def _source_revisions(facts):
@@ -29,8 +29,6 @@ def _source_revisions(facts):
 def read_evidence(conn, repo, template_ref, intent, clock: Callable[[], datetime]):
     if not conn.in_transaction:
         raise RuntimeError("Calibration evidence requires a caller-owned SQLite snapshot.")
-    if not repo.schema_installed():
-        raise WorkbenchCommandRejected("adoption_schema_unavailable", "采用记录结构未升级，请完成统一版本升级后重试。", 503)
     as_of = clock()
     facts_reader = CalibrationFacts(conn, as_of=as_of)
     with facts_reader.read_snapshot():
@@ -43,7 +41,10 @@ def read_evidence(conn, repo, template_ref, intent, clock: Callable[[], datetime
         suggestion = {key: value for key, value in row.items() if key not in
                       ("generated_at", "capabilities", "blocked_reasons", "write_context")}
         selected = {sample["sample_ref"]: sample for sample in facts["samples_by_template"].get(template_ref, []) if sample["selected"]}
-        samples = [selected[ref] for ref in suggestion["sample_refs"]]
+        samples = [
+            ensure_sample_reports(selected[ref], report_histories=facts["report_histories"])
+            for ref in suggestion["sample_refs"]
+        ]
         preview_intent = {key: intent[key] for key in ("reason", "declared_operator")}
         binding = {"schema_version": 2, "source": "production", "intent": preview_intent,
                    "template": snapshot(template), "source_revisions": _source_revisions(facts),
@@ -51,7 +52,7 @@ def read_evidence(conn, repo, template_ref, intent, clock: Callable[[], datetime
                    "suggestion": suggestion, "latest_adoption": latest}
         method_blockers = [reason for reason in row["blocked_reasons"]
                            if reason["code"] == SUGGESTION_BELOW_PRECISION_CODE]
-        blockers = _blockers(template, suggestion, facts["lineage_available"], method_blockers)
+        blockers = _blockers(template, suggestion, method_blockers)
         evidence = CalibrationAdoptionEvidence(template, suggestion, samples, binding, as_of.isoformat(timespec="seconds"), blockers)
         encoded = evidence.audit_document()
         if len(encoded.encode("utf-8")) > MAX_EVIDENCE_BYTES:
@@ -59,10 +60,8 @@ def read_evidence(conn, repo, template_ref, intent, clock: Callable[[], datetime
         return evidence
 
 
-def _blockers(template, suggestion, lineage_available, method_blockers):
+def _blockers(template, suggestion, method_blockers):
     blockers = []
-    if not lineage_available:
-        blockers.append(issue("template_lineage_missing", "找不到已确认的模板来源，不能采用。"))
     if template["source"] != "internal":
         blockers.append(issue("processing_basis_unconfirmed", "只有已确认按自制加工计算的模板才能采用。"))
     value = number(suggestion["suggested_unit_hours"])

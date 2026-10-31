@@ -13,7 +13,7 @@ from decimal import Decimal
 from typing import MutableMapping
 
 from core.models.resource_capabilities import machine_type_index, supports_source
-from core.services.capacity.plan_calendar_intervals import instant
+from core.services.capacity.plan_calendar_intervals import instant, wire
 from core.services.common.normalization_matrix import skill_level_rank
 from core.services.personnel.operator_machine_normalizers import normalize_skill_level_stored, normalize_yes_no_stored
 
@@ -372,12 +372,14 @@ def _calendar(projection: _Projection, resources, known, window):
                 else:
                     windows.append(value)
             for row in windows:
-                key = entity + ":window:" + row["start"] + ":" + row["end"]
+                wired_row = {**row, "start": wire(row["start"]), "end": wire(row["end"])}
+                key = entity + ":window:" + wired_row["start"] + ":" + wired_row["end"]
                 for field in ("start", "end", "efficiency", "allow_normal", "allow_urgent"):
-                    projection.add(category, key, label, field, row[field], "tables", "windows:" + entity)
+                    projection.add(category, key, label, field, wired_row[field], "tables", "windows:" + entity)
             for row in day.get("downtime_windows") or []:
-                key = entity + ":downtime:" + row["start"] + ":" + row["end"]
-                projection.fields(category, key, label, row, ("start", "end"), "tables.MachineDowntimes", "windows:" + entity)
+                wired_row = {"start": wire(row["start"]), "end": wire(row["end"])}
+                key = entity + ":downtime:" + wired_row["start"] + ":" + wired_row["end"]
+                projection.fields(category, key, label, wired_row, ("start", "end"), "tables.MachineDowntimes", "windows:" + entity)
 def _execution(projection: _Projection, operations, resources):
     source, category = projection.source, "execution_baseline"
     execution = source.execution
@@ -509,9 +511,9 @@ def _saved_objective(source, packet, artifact, algo):
     # A run's saved business selection fixes the primary objective and its field order.
     saved_name = selection.get("primary_objective", name)
     orders = selection.get("objective_field_order")
-    order = orders.get(saved_name, _MISSING) if type(orders) is dict and type(saved_name) is str else _MISSING
+    order = orders.get(saved_name, []) if type(orders) is dict and type(saved_name) is str else []
     if applicable(saved_name, order):
-        return _side(source.source("receipt.selection"), {"name": saved_name, "field_order": order})
+        return _side(source.source("receipt.selection"), {"name": saved_name, "field_order": list(order)})
     sources = ((algo, "candidate.artifact.summary.algo", True), (((receipt.get("summary") or {}).get("algo") or {}), "receipt.summary.algo", False))
     for values, path, owned in sources:
         schema = values.get("best_score_schema")
@@ -543,6 +545,8 @@ def _experiments(source, packet):
                 value, path = artifact[key], "candidate.artifact." + key
             else:
                 value, path = None, source.input_path(key) or ((source._origins.get("input") or "capture.input") + "." + key)
+            if key == "target_objectives" and isinstance(value, list):
+                value = list(value)
             projection.add("algorithm", "run_options", "本次保存的优化策略和预算", key, value, path, "algorithm", present=key in inputs or key in selection or key in artifact)
     algo = ((artifact.get("summary") or {}).get("algo") or {})
     for prefix, values, path in (("chosen", artifact, "candidate.artifact"), ("actual_summary", algo, "candidate.artifact.summary.algo"), ("effective_config", algo.get("config_snapshot") or {}, "candidate.artifact.summary.algo.config_snapshot")):
@@ -581,19 +585,17 @@ def prepare_history_condition_side(prepared, window):
     conditions.rows = {**baseline.rows, **conditions.rows}
     conditions.families = {**baseline.families, **conditions.families}
     return {"conditions": conditions, "configurations": prepared["configurations"], "objective": prepared["objective"]}
-def analyze_prepared_history_conditions(before, after):
-    """Analyze prepared sides without materializing full production condition rows."""
-    cond_analysis = _analyze_comparison(before["conditions"], after["conditions"], _CATEGORIES)
+def compare_history_configurations(before, after):
     configurations = _compare(before["configurations"], after["configurations"], (("algorithm", "算法实验设置"),))
     previous, current = before["objective"], after["objective"]
     objective_state = "unknown" if "unknown" in (previous["state"], current["state"]) else ("equal" if previous["value"] == current["value"] else "different")
     objective = {"category": "algorithm", "entity": {"key": "objective", "label": "优化目标"}, "state": objective_state, "field": "objective", "before": previous, "after": current}
+    return configurations, objective
+def analyze_prepared_history_conditions(before, after, *, include_configurations=True):
+    """Analyze prepared sides without materializing full production condition rows."""
+    cond_analysis = _analyze_comparison(before["conditions"], after["conditions"], _CATEGORIES)
+    configurations, objective = compare_history_configurations(before, after) if include_configurations else (None, None)
     return before, after, cond_analysis, configurations, objective
 def materialize_history_conditions(before, after, cond_analysis, *, condition_page=1, condition_size=None, all_rows=True):
     """Materialize the requested page or all rows of production conditions."""
     return _materialize_comparison(before["conditions"], after["conditions"], cond_analysis, page=condition_page, size=condition_size, all_rows=all_rows)
-def compare_prepared_history_conditions(before, after, *, condition_page=1, condition_size=None, all_rows=True):
-    """Compare prepared sides without changing their shared projections."""
-    before_side, after_side, cond_analysis, configurations, objective = analyze_prepared_history_conditions(before, after)
-    conditions = materialize_history_conditions(before_side, after_side, cond_analysis, condition_page=condition_page, condition_size=condition_size, all_rows=all_rows)
-    return {"conditions": conditions, "configurations": configurations, "objective": objective}

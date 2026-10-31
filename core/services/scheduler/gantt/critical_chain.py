@@ -4,18 +4,12 @@ from datetime import datetime, timedelta
 from heapq import heappop, heappush
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.algorithm_contracts.ordering import clean_resource_id
 from core.services.common.plan_task_identity import public_task_id as _public_task_id
 from core.shared.local_datetime import format_local_datetime as _fmt_dt
 from core.shared.local_datetime import parse_local_datetime
 
 from .task_labels import public_task_label as _public_task_label
-
-
-def _identity_text(value: Any) -> str:
-    if value is None:
-        return ""
-    text = value if type(value) is str else str(value)
-    return text if text.strip() else ""
 
 
 def _public_node_label(nodes: Dict[str, Dict[str, Any]], node_id: str) -> str:
@@ -61,7 +55,7 @@ def _build_nodes(
         if not st or not et or st > et or (st == et and not include_points):
             dropped += 1
             continue
-        op_code = _identity_text(r.get("op_code"))
+        op_code = clean_resource_id(r.get("op_code"))
         task_id = op_code or _public_task_id(r)
 
         nodes[task_id] = {
@@ -69,13 +63,13 @@ def _build_nodes(
             "sort_id": str(r.get("operation_ref") or task_id),
             "start": st,
             "end": et,
-            "batch_id": _identity_text(r.get("batch_id")),
-            "piece_id": _identity_text(r.get("piece_id")),
+            "batch_id": clean_resource_id(r.get("batch_id")),
+            "piece_id": clean_resource_id(r.get("piece_id")),
             # 工序号只在按批次分组的 rows 路径使用，上游 plan.projection._sequence 已校验为正整数；
             # 依赖路径（gantt_graph）的行不带 seq。
             "seq": r.get("seq"),
-            "machine_id": _identity_text(r.get("machine_id")),
-            "operator_id": _identity_text(r.get("operator_id")),
+            "machine_id": clean_resource_id(r.get("machine_id")),
+            "operator_id": clean_resource_id(r.get("operator_id")),
             "label": _public_task_label(r),
         }
     return nodes, dropped
@@ -211,7 +205,7 @@ def _edge_type_stats(edges: List[Dict[str, Any]]) -> Dict[str, int]:
 def _explicit_sink(rows: List[Dict[str, Any]], nodes: Dict[str, Dict[str, Any]], target_id: str) -> Tuple[str, str]:
     if type(target_id) is not str or not target_id.strip():
         return "", "target_invalid"
-    identities = [_identity_text(row.get("op_code")) or _public_task_id(row) for row in rows]
+    identities = [clean_resource_id(row.get("op_code")) or _public_task_id(row) for row in rows]
     if len(set(identities)) != len(identities):
         return "", "target_identity_conflict"
     if target_id not in identities:
@@ -256,21 +250,78 @@ def _chain_result(nodes, proc_prev, *, dropped_count, sink_id):
     }
 
 
-def compute_critical_chain_from_dependencies(rows, predecessor_ids):
+def _effective_predecessors(
+    key: str,
+    nodes: Dict[str, Dict[str, Any]],
+    predecessor_ids: Dict[str, List[str]],
+    memo: Dict[str, List[str]],
+) -> List[str]:
+    visiting = {key}
+    stack: List[Tuple[str, int]] = [(key, 0)]
+    while stack:
+        current, index = stack[-1]
+        parents = predecessor_ids.get(current, [])
+        while index < len(parents):
+            parent = parents[index]
+            index += 1
+            if parent in nodes or parent not in predecessor_ids or parent in memo:
+                continue
+            if parent in visiting:
+                raise ValueError("工艺前后关系形成循环，无法计算关键链。")
+            stack[-1] = (current, index)
+            visiting.add(parent)
+            stack.append((parent, 0))
+            break
+        else:
+            stack.pop()
+            visiting.remove(current)
+            resolved: List[str] = []
+            seen: set = set()
+            for parent in parents:
+                if parent in nodes:
+                    if parent not in seen:
+                        seen.add(parent)
+                        resolved.append(parent)
+                elif parent in predecessor_ids:
+                    for anc in memo[parent]:
+                        if anc not in seen:
+                            seen.add(anc)
+                            resolved.append(anc)
+            memo[current] = resolved
+    return memo[key]
+
+
+def compute_critical_chain_from_dependencies(
+    rows,
+    predecessor_ids,
+    *,
+    target_id: Optional[str] = None,
+    include_points: bool = True,
+):
     """Use captured process edges, including joins and point operations.
 
     Process order breaks equal-time ties and keeps downstream point stages in
     the chain; permanent operation identities keep adoption from changing it.
     """
-    nodes, dropped = _build_nodes(rows, include_points=True)
-    if not nodes:
+    nodes, dropped = _build_nodes(rows, include_points=include_points)
+    if target_id is not None:
+        sink_id, reason = _explicit_sink(rows, nodes, target_id)
+        if reason:
+            return _unavailable_result(reason)
+    elif not nodes:
         return _empty_result(dropped_count=dropped)
+    else:
+        sink_id = None
     previous: Dict[str, List[str]] = {}
     counts: Dict[str, int] = {}
     following: Dict[str, List[str]] = {key: [] for key in nodes}
     ready = []
+    memo: Dict[str, List[str]] = {}
     for key, node in nodes.items():
-        parents = [parent for parent in predecessor_ids.get(key, []) if parent in nodes]
+        if include_points or dropped == 0:
+            parents = [parent for parent in predecessor_ids.get(key, []) if parent in nodes]
+        else:
+            parents = _effective_predecessors(key, nodes, predecessor_ids, memo)
         previous[key] = parents
         count = len(parents)
         counts[key] = count
@@ -290,4 +341,9 @@ def compute_critical_chain_from_dependencies(rows, predecessor_ids):
                 heappush(ready, (nodes[child]["start"], nodes[child]["end"], nodes[child]["sort_id"], child))
     if order != len(nodes):
         raise ValueError("工艺前后关系形成循环，无法计算关键链。")
-    return _chain_result(nodes, previous, dropped_count=dropped, sink_id=_sink_id(nodes))
+    return _chain_result(
+        nodes,
+        previous,
+        dropped_count=dropped,
+        sink_id=sink_id if sink_id is not None else _sink_id(nodes),
+    )

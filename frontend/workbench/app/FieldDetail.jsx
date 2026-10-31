@@ -5,15 +5,31 @@
     const [selected, setSelected] = React.useState(null), [tip, setTip] = React.useState(null);
     const axisHost = React.useRef(null), [width, setWidth] = React.useState(640);
     const printing = window.WorkbenchControls.usePrintLayout(), V = window.GanttPresentation;
-    const parse = value => value ? window.PlanGanttModel.instant(value) : null;
-    const plan = { ...task, start: task.planned_start, end: task.planned_end };
-    const rows = [{ key: 'plan', label: '计划安排', detail: '所选计划', start: plan.start, end: plan.end, point: window.PointContract.isPoint(plan) },
-      ...task.execution.reports.map(row => ({ key: row.report_ref, label: '实际报工', detail: row.report_no, start: row.actual_start, end: row.actual_end,
-        point: !!row.actual_start && (!row.actual_end || row.actual_start === row.actual_end) }))];
-    const points = rows.flatMap(row => [parse(row.start), parse(row.end)]).filter(Number.isFinite);
-    const bounds = window.PointGanttModel.bounds(Math.min(...points), Math.max(...points), rows.some(row => row.point));
-    const axis = V.axis({ ...bounds, width, viewport: width });
-    const position = value => (parse(value) - bounds.start) / (bounds.end - bounds.start) * 100;
+    const { plan, rows, axis } = React.useMemo(() => {
+      const parse = value => value ? window.PlanGanttModel.instant(value) : null;
+      const planRow = { ...task, start: task.planned_start, end: task.planned_end };
+      const rawRows = [{ key: 'plan', label: '计划安排', detail: '所选计划', start: planRow.start, end: planRow.end, point: window.PointContract.isPoint(planRow) },
+        ...task.execution.reports.map(row => ({ key: row.report_ref, label: '实际报工', detail: row.report_no, start: row.actual_start, end: row.actual_end,
+          point: !!row.actual_start && (!row.actual_end || row.actual_start === row.actual_end) }))].map(row => ({
+        ...row, startMs: parse(row.start), endMs: parse(row.end)
+      }));
+      const points = rawRows.flatMap(row => [row.startMs, row.endMs]).filter(Number.isFinite);
+      const bounds = window.PointGanttModel.bounds(Math.min(...points), Math.max(...points), rawRows.some(row => row.point));
+      const piece = C.pieceLabel(task), range = bounds.end - bounds.start;
+      const position = ms => (ms - bounds.start) / range * 100;
+      return {
+        plan: planRow,
+        axis: V.axis({ ...bounds, width, viewport: width }),
+        rows: rawRows.map(row => {
+          const title = (row.key === 'plan' ? row.point ? '零工时工序，无资源占用。' : '计划安排' : row.point ? '报工时刻' : '实际报工时段')
+            + '\n' + task.operation_label + ' · ' + piece + '\n' + row.detail + '\n' + C.date(row.start) + ' 至 ' + (row.end ? C.date(row.end) : '结束未填写');
+          const left = row.startMs !== null ? position(row.startMs) : 0;
+          const span = row.end ? position(row.endMs) - left : 0;
+          const lines = V.taskLines({ process: task.operation_label, batch: row.detail, piece }, 'machine', span / 100 * width);
+          return { ...row, title, left, span, lines };
+        })
+      };
+    }, [task, width]);
     React.useLayoutEffect(() => {
       const measure = () => setWidth(axisHost.current.clientWidth);
       measure(); const observer = new ResizeObserver(measure); observer.observe(axisHost.current);
@@ -29,10 +45,7 @@
       <div className="field-timeline-axis-row"><div className="field-timeline-corner">计划 / 实际</div><div ref={axisHost} className="field-timeline-axis">
         <window.GanttPresentationUI.Axis axis={axis} width={width} printing={printing} /></div></div>
       {rows.map(row => {
-        const title = (row.key === 'plan' ? row.point ? '零工时工序，无资源占用。' : '计划安排' : row.point ? '报工时刻' : '实际报工时段')
-          + '\n' + task.operation_label + ' · ' + C.pieceLabel(task) + '\n' + row.detail + '\n' + C.date(row.start) + ' 至 ' + (row.end ? C.date(row.end) : '结束未填写');
-        const left = position(row.start), span = row.end ? position(row.end) - left : 0;
-        const lines = V.taskLines({ process: task.operation_label, batch: row.detail, piece: C.pieceLabel(task) }, 'machine', span / 100 * width);
+        const { title, left, span, lines } = row;
         return <div key={row.key} className="field-timeline-row" data-field-time-kind={row.key === 'plan' ? 'plan' : 'report'}>
           <div className="field-timeline-label"><strong>{row.label}</strong><small>{row.detail}{!row.end && ' · 结束待补'}</small></div><div className="field-timeline-track">
           {axis.ticks.map(tick => <i key={tick.at} className="field-timeline-grid" style={{ left: tick.x / width * 100 + '%' }} aria-hidden="true" />)}

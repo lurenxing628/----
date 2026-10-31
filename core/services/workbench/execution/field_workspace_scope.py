@@ -6,8 +6,6 @@ from datetime import datetime
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.shared.strict_json import load_strict_json
 
-from .actual_gantt_scope import matches_execution_resource
-
 STATES = ('unreported', 'started', 'partial', 'complete')
 FILTERS = ('plan_ref', 'query', 'state', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'range_start', 'range_end', 'batch_ids')
 PARAMETERS = FILTERS + ('page', 'size', 'snapshot_ref', 'source', 'task_ref', 'operation_ref')
@@ -97,8 +95,16 @@ def matches(task, scope):
     if scope.get('query'):
         searchable = [task['batch_id'], task['operation_label'], task['part_name'], task['piece_id'],
                       task['planned_machine_label'], task['planned_operator_label']]
-        for report in task['execution']['reports']:
-            searchable.extend(report[key] for key in ('report_no', 'actual_machine_label', 'actual_operator_label'))
+        execution = task['execution']
+        labels = execution._labels
+        for report in execution._projection.reports:
+            searchable.extend(
+                (
+                    report.report_no,
+                    labels.get(report.actual_machine_ref),
+                    labels.get(report.actual_operator_ref),
+                )
+            )
         if scope['query'].casefold() not in ' '.join(value for value in searchable if isinstance(value, str)).casefold():
             return False
     return _matches_resource(task, scope)
@@ -117,4 +123,11 @@ def _matches_resource(task, scope):
     if not scope.get('resource_ref'):
         return True
     kind, ref = scope['resource_type'], scope['resource_ref']
-    return matches_execution_resource({kind + '_ref': task['planned_' + kind + '_ref']}, task['execution'], kind, ref)
+    projection = task['execution']._projection
+    field = kind + '_ref'
+    if task['planned_' + field] == ref:
+        return True
+    if projection.remaining_plan and projection.remaining_plan.get(field) == ref:
+        return True
+    actual_attr = 'actual_' + field
+    return any(getattr(report, actual_attr) == ref for report in projection.reports)

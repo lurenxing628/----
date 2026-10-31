@@ -11,7 +11,7 @@ from .preparation_projection import preparation_summary
 def _remaining_operation(row: Mapping[str, Any]) -> Dict[str, Any]:
     result = {key: value for key, value in row.items() if key != "disposition"}
     disposition = row["disposition"]
-    result.update(disposition_status=disposition.get("status"), reasons=list(disposition.get("issues", [])))
+    result.update(disposition_status=disposition["status"], reasons=[dict(item) for item in disposition["issues"]])
     return result
 
 
@@ -34,9 +34,10 @@ def _pending_operations(work_items, batch_refs, *, available):
 def _remaining_reasons(rows):
     reasons = []
     for row in rows:
-        for reason in (row.get("disposition") or {}).get("issues", []):
-            if reason not in reasons:
-                reasons.append(reason)
+        if "disposition" in row:
+            for reason in row["disposition"]["issues"]:
+                if reason not in reasons:
+                    reasons.append(dict(reason))
     return reasons
 
 
