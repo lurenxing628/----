@@ -22,18 +22,20 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
-from core.infrastructure.safe_files import read_fixed_text, remove_fixed_file
+from core.infrastructure.safe_files import read_fixed_text
 
 _EXPECTED_CONTRACT_VERSION = 1
 
@@ -217,23 +219,6 @@ def _read_runtime_contract(log_dir: str) -> Optional[Tuple[str, int, str]]:
     return host, port, db_path
 
 
-def _clear_runtime_contract_files(log_dir: str) -> None:
-    paths = _runtime_contract_paths(log_dir)
-    failures = []
-    for path in paths:
-        try:
-            remove_fixed_file(path, allow_symlink=False)
-        except FileNotFoundError:
-            pass
-        except OSError as exc:
-            failures.append(f"{path}: {exc}")
-    if failures:
-        raise RuntimeError(f"无法清理旧的运行时契约文件：{failures}")
-    remaining = [path for path in paths if os.path.lexists(path)]
-    if remaining:
-        raise RuntimeError(f"无法清理旧的运行时契约文件：{remaining}")
-
-
 def _assert_process_running(p: subprocess.Popen, context: str) -> None:
     exit_code = p.poll()
     if exit_code is not None:
@@ -363,9 +348,16 @@ def _assert_runtime_db_path(db_path: str) -> None:
         raise RuntimeError(f"运行时 DB 文件不存在：{normalized}")
 
 
+def _build_isolated_env(shared_data_root: Optional[str] = None) -> Dict[str, str]:
+    env = {key: value for key, value in os.environ.items() if not key.upper().startswith("APS_")}
+    if shared_data_root is not None:
+        env["APS_SHARED_DATA_ROOT"] = shared_data_root
+    return env
+
+
 def main() -> int:
     # Runtime path resolution is needed by the CLI only, not its reusable probes.
-    from web.bootstrap.launcher_paths import resolve_prelaunch_log_dir, resolve_runtime_db_path
+    from web.bootstrap.launcher_paths import is_portable_runtime
 
     if len(sys.argv) < 2:
         print("用法：python validate_dist_exe.py \"dist\\\\排产系统\\\\排产系统.exe\"")
@@ -378,7 +370,11 @@ def main() -> int:
 
     print(f"[validate] 启动：{exe_path}")
     cwd = os.path.dirname(exe_path)
-    log_dir = resolve_prelaunch_log_dir(cwd, frozen=True)
+    portable = is_portable_runtime(cwd)
+    portable_user_data = os.path.abspath(os.path.join(cwd, "user-data"))
+    if portable and os.path.lexists(portable_user_data):
+        print(f"[validate] 验收失败：便携目录已存在 user-data，拒绝覆盖或清理既有数据：{portable_user_data}")
+        return 5
 
     try:
         _assert_networkx_bundled(exe_path)
@@ -387,24 +383,32 @@ def main() -> int:
         print(f"[validate] 验收失败：{e}")
         return 7
 
+    temp_shared_dir: Optional[str] = None
+    p: Optional[subprocess.Popen] = None
+    exit_code = 5
+    data_root = portable_user_data
     try:
-        _clear_runtime_contract_files(log_dir)
-    except Exception as e:
-        print(f"[validate] 验收失败：{e}")
-        return 5
+        if portable:
+            child_env = _build_isolated_env()
+        else:
+            temp_shared_dir = os.path.abspath(tempfile.mkdtemp(prefix="aps-validate-dist-"))
+            data_root = temp_shared_dir
+            child_env = _build_isolated_env(data_root)
 
-    p = subprocess.Popen(
-        [exe_path],
-        cwd=cwd,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
-    )
+        log_dir = os.path.join(data_root, "logs")
+        expected_db_path = _normalize_db_path(os.path.join(data_root, "db", "aps.db"))
 
-    try:
+        p = subprocess.Popen(
+            [exe_path],
+            cwd=cwd,
+            env=child_env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+        )
+
         host, port, db_path = _wait_for_runtime_contract(log_dir, p, timeout_s=20.0)
         _assert_runtime_db_path(db_path)
-        expected_db_path = _normalize_db_path(resolve_runtime_db_path(cwd, frozen=True))
         if _normalize_db_path(db_path) != expected_db_path:
             raise RuntimeError(f"运行时数据库偏离交付目录配置：expected={expected_db_path} actual={db_path}")
         _wait_port_open(host, port, p, timeout_s=20.0)
@@ -427,6 +431,7 @@ def main() -> int:
         for path in _RETIRED_PAGE_PATHS:
             _assert_retired_page(base, path)
 
+        static_failed = False
         for rel in _STATIC_BUNDLE_ANCHORS:
             static_url = "/" + rel
             try:
@@ -434,30 +439,64 @@ def main() -> int:
             except urllib.error.HTTPError as e:
                 print(f"[validate] GET {static_url} -> {int(getattr(e, 'code', 500))}")
                 print("[validate] 验收失败：静态关键载荷不可访问。")
-                return 6
+                exit_code = 6
+                static_failed = True
+                break
             if not payload:
                 print(f"[validate] GET {static_url} -> 200 (0 bytes)")
                 print("[validate] 验收失败：静态关键载荷返回空内容。")
-                return 6
+                exit_code = 6
+                static_failed = True
+                break
             print(f"[validate] GET {static_url} -> 200 ({len(payload)} bytes)")
 
-        _assert_process_running(p, "页面检查通过后进程已退出。")
-        print("[validate] 验收通过：exe 冷启动、运行时契约、工作台 HTML 引导、旧入口退役与 static 关键载荷均正常。")
-        return 0
+        if not static_failed:
+            _assert_process_running(p, "页面检查通过后进程已退出。")
+            exit_code = 0
     except Exception as e:
         print(f"[validate] 验收失败：{e}")
-        return 5
+        exit_code = 5
     finally:
-        try:
-            p.terminate()
-            p.wait(timeout=5)
-        except Exception as e:
-            print(f"[validate] 警告：terminate 失败：{e}")
+        child_alive = False
+        if p is not None:
             try:
-                p.kill()
+                p.terminate()
                 p.wait(timeout=5)
-            except Exception as kill_e:
-                print(f"[validate] 警告：kill 失败：{kill_e}")
+            except Exception as e:
+                print(f"[validate] 警告：terminate 失败：{e}")
+                try:
+                    p.kill()
+                    p.wait(timeout=5)
+                except Exception as kill_e:
+                    print(f"[validate] 警告：kill 失败：{kill_e}")
+            child_alive = p.poll() is None
+            if child_alive:
+                print(f"[validate] 验收失败：子进程未能终止（pid={p.pid}），保留隔离数据目录：{data_root}")
+                if exit_code == 0:
+                    exit_code = 5
+        if not child_alive:
+            if portable:
+                if os.path.lexists(portable_user_data):
+                    try:
+                        shutil.rmtree(portable_user_data)
+                    except Exception as cleanup_e:
+                        if exit_code == 0:
+                            print(f"[validate] 验收失败：便携目录 user-data 清理失败：{cleanup_e}")
+                            exit_code = 5
+                        else:
+                            print(f"[validate] 警告：便携目录 user-data 清理失败：{cleanup_e}")
+            elif temp_shared_dir is not None and os.path.lexists(temp_shared_dir):
+                try:
+                    shutil.rmtree(temp_shared_dir)
+                except Exception as cleanup_e:
+                    if exit_code == 0:
+                        print(f"[validate] 验收失败：临时隔离目录清理失败：{cleanup_e}")
+                        exit_code = 5
+                    else:
+                        print(f"[validate] 警告：临时隔离目录清理失败：{cleanup_e}")
+    if exit_code == 0:
+        print("[validate] 验收通过：exe 冷启动、运行时契约、工作台 HTML 引导、旧入口退役与 static 关键载荷均正常。")
+    return exit_code
 
 
 if __name__ == "__main__":

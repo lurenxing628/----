@@ -26,6 +26,13 @@ def dependency_errors(entries: list) -> list:
     return errors
 
 
+def vendor_wheel_errors(repo_root: Path = REPO_ROOT) -> list:
+    wheels_dir = repo_root / "vendor" / "wheels"
+    if not list(wheels_dir.glob("networkx-3.1-*.whl")):
+        return ["vendor/wheels/networkx-3.1-*.whl: missing offline wheel"]
+    return []
+
+
 def main() -> int:
     errors = []
     if sys.platform != "win32" or platform.release() != "7":
@@ -36,6 +43,7 @@ def main() -> int:
         errors.append("CPython 3.8 x64 is required")
     manifest = json.loads((REPO_ROOT / "packaging/win7/offline-manifest.json").read_text(encoding="utf-8"))
     errors.extend(dependency_errors(manifest["files"]))
+    errors.extend(vendor_wheel_errors(REPO_ROOT))
     if errors:
         for error in errors:
             print("[preflight] " + error)

@@ -176,7 +176,7 @@ ISCC.exe installer\aps_win7_legacy.iss
 ### 安装前强制清理（主程序包 / legacy 包）
 
 - 当 `APS_Main_Setup.exe` 或 `APS_Legacy_Full_Setup.exe` 检测到本机存在 APS 运行实例、旧主程序安装目录、`shared-data` 或当前安装账户的 legacy 目录时，会在真正复制文件前弹出一次确认框。
-- 你确认后，安装器会先解析可用停机 helper（优先运行时锁/契约中的 `exe_path`，其次注册表 `HKLM\SOFTWARE\APS\MainAppDir`，最后当前 `{app}`），再用 `--runtime-stop` 尝试关闭 APS。
+- 你确认后，安装器在安装阶段只提取并执行安装包内置的受控临时停机辅助程序（位于安装器专属 `{tmp}` 目录下，绝不从磁盘既存安装目录或状态目录加载可执行程序；卸载阶段则仅从受保护的 `Program Files` 白名单安装目录解析停机辅助程序），再用 `--runtime-stop` 尝试关闭 APS；若未能确认现有实例已停止，安装器会立即中止且不执行目录清理。
 - 若当前目标删除范围涉及 APS 专用 Chrome，安装器会一并请求关闭 APS Chrome 进程。
 - 强制清理会删除：
   - 旧主程序安装目录
@@ -246,7 +246,7 @@ ISCC.exe installer\aps_win7_legacy.iss
 - “添加或删除程序”中会出现两个独立条目：
   - `排产系统`
   - `APS Chrome109 运行时`
-- 卸载主程序包时，会先解析可用停机 helper，并对 `shared-data`、当前安装账户 legacy 目录、安装目录轮询执行 `--runtime-stop`；如果关闭失败，会提示用户是否继续卸载
+- 卸载主程序包时，会先从受信任安装目录解析可用停机 helper，并对 `shared-data`、当前安装账户 legacy 目录、安装目录轮询执行 `--runtime-stop`；如果关闭失败，会提示用户是否继续卸载
 - 卸载主程序包时会弹出二次确认：
   - 选择“是”：同时彻底清空共享数据目录下的 `db`、`logs`、`backups`、`templates_excel`
   - 选择“否”：仅卸载程序文件，保留共享数据

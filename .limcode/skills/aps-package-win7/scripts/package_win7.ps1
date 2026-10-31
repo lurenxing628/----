@@ -112,39 +112,13 @@ function Resolve-DistDir {
     throw "dist output directory not found."
 }
 
-function Resolve-Iscc {
-    if ($env:ISCC_EXE -and (Test-Path $env:ISCC_EXE)) {
-        return $env:ISCC_EXE
+function Resolve-Iscc([string]$repoRoot) {
+    $resolver = Join-Path $repoRoot "tools\resolve_iscc.ps1"
+    $resolved = & $resolver
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($resolved)) {
+        throw "ISCC.exe not found or invalid ISCC_EXE/INNO_HOME. Install Inno Setup 6 or set ISCC_EXE/INNO_HOME."
     }
-
-    if ($env:INNO_HOME) {
-        $candidate = Join-Path $env:INNO_HOME "ISCC.exe"
-        if (Test-Path $candidate) {
-            return $candidate
-        }
-    }
-
-    $defaultIscc = Join-Path $env:LOCALAPPDATA "Programs\Inno Setup 6\ISCC.exe"
-    if (Test-Path $defaultIscc) {
-        return $defaultIscc
-    }
-
-    return $null
-}
-
-function Set-HostPortDefaults {
-    if (-not $env:APS_HOST) {
-        $env:APS_HOST = "127.0.0.1"
-    }
-
-    if (-not $env:APS_PORT) {
-        $ports = @(5000, 20000, 30000, 40000, 50000)
-        $chosen = Get-FreePort $ports
-        if (-not $chosen) {
-            throw "No free port found. Please set APS_PORT manually."
-        }
-        $env:APS_PORT = "$chosen"
-    }
+    return $resolved.Trim()
 }
 
 function Test-DistExeStartup([string]$distDir) {
@@ -532,8 +506,6 @@ function New-ChromeRuntimePayload([string]$sourceDir, [string]$payloadDir) {
 }
 
 function Invoke-MainPackageBuild([string]$iscc) {
-    Set-HostPortDefaults
-
     Invoke-CmdBat "build_win7_onedir.bat"
     $distDir = Resolve-DistDir
     Test-DistExeStartup $distDir
@@ -546,7 +518,6 @@ function Invoke-MainPackageBuild([string]$iscc) {
 }
 
 function Invoke-PortablePackageBuild {
-    Set-HostPortDefaults
     $chrome = "tools\Chrome.109.0.5414.120.x64\chrome.exe"
     Initialize-OfflineChrome109 $chrome
     Test-PathOrThrow $chrome "Missing offline Chrome109 before portable build."
@@ -585,7 +556,6 @@ function Invoke-ChromeRuntimeBuild([string]$iscc) {
 }
 
 function Invoke-LegacyPackageBuild([string]$iscc) {
-    Set-HostPortDefaults
     $chrome = "tools\Chrome.109.0.5414.120.x64\chrome.exe"
     Initialize-OfflineChrome109 $chrome
     Test-PathOrThrow $chrome "Missing $chrome. Provide offline Chrome109 at tools\\Chrome.109.0.5414.120.x64\\chrome.exe or tools\\ungoogled-chromium_109*.zip"
@@ -624,17 +594,14 @@ try {
         return
     }
 
-    $iscc = Resolve-Iscc
-    if (-not $iscc) {
-        throw "ISCC.exe not found. Install Inno Setup 6 or set ISCC_EXE/INNO_HOME."
-    }
+    $iscc = Resolve-Iscc $repoRoot
     $outputs = New-Object System.Collections.Generic.List[string]
 
     if ($Legacy) {
         Invoke-LegacyPackageBuild $iscc
         $outputs.Add("installer\output\APS_Legacy_Full_Setup.exe") | Out-Null
         Write-Host ("DONE: " + ($outputs -join ", ") + "  (legacy fallback)")
-        Write-Host ("VALIDATED: dist exe cold start OK  (APS_HOST=" + $env:APS_HOST + " APS_PORT=" + $env:APS_PORT + ")")
+        Write-Host "VALIDATED: dist exe cold start OK (isolated validate_dist_exe.py runtime)"
         return
     }
 
@@ -650,7 +617,7 @@ try {
 
     Write-Host ("DONE: " + ($outputs -join ", "))
     if ($buildMain) {
-        Write-Host ("VALIDATED: dist exe cold start OK  (APS_HOST=" + $env:APS_HOST + " APS_PORT=" + $env:APS_PORT + ")")
+        Write-Host "VALIDATED: dist exe cold start OK (isolated validate_dist_exe.py runtime)"
     }
 } finally {
     Pop-Location

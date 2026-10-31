@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import logging
 import os
 import subprocess
@@ -31,37 +30,11 @@ def _log_warning(logger: Optional[logging.Logger], message: str, *args) -> None:
 
 
 def _windows_pid_state(pid_i: int) -> Optional[bool]:
-    if launcher_win32.available():
-        try:
-            return launcher_win32.pid_exists(pid_i)
-        except OSError as exc:
-            _log_warning(None, "Windows pid 探测失败，运行时身份状态未知：pid=%s error=%s", pid_i, exc)
-            return None
     try:
-        result = subprocess.run(
-            ["tasklist", "/FI", f"PID eq {pid_i}", "/NH", "/FO", "CSV"],
-            capture_output=True,
-            text=True,
-            timeout=8,
-            check=False,
-        )
-    except Exception as exc:
-        _log_warning(None, "枚举 Windows pid 失败，运行时身份状态未知：pid=%s error=%s", pid_i, exc)
+        return launcher_win32.pid_exists(pid_i)
+    except OSError as exc:
+        _log_warning(None, "Windows pid 探测失败，运行时身份状态未知：pid=%s error=%s", pid_i, exc)
         return None
-    if result.returncode != 0:
-        _log_warning(
-            None,
-            "枚举 Windows pid 返回失败，运行时身份状态未知：pid=%s rc=%s stderr=%s",
-            pid_i,
-            result.returncode,
-            result.stderr.strip(),
-        )
-        return None
-    for line in result.stdout.splitlines():
-        line_s = line.strip()
-        if line_s.startswith('"') and f',"{pid_i}",' in line_s:
-            return True
-    return False
 
 
 def _posix_pid_state(pid_i: int) -> Optional[bool]:
@@ -97,7 +70,7 @@ def run_powershell_text(script: str) -> Tuple[Optional[int], str]:
             errors="ignore",
             timeout=_POWERSHELL_TIMEOUT_S,
             check=False,
-    )
+        )
     except Exception as exc:
         _log_warning(None, "PowerShell 运行失败，相关运行时能力不可确认：%s", exc)
         return None, ""
@@ -108,134 +81,15 @@ def run_powershell_text(script: str) -> Tuple[Optional[int], str]:
     return result.returncode, output
 
 
-def _run_powershell_bytes(script: str) -> Tuple[Optional[int], bytes, bytes]:
-    """运行 PowerShell 并返回 (rc, stdout 字节, stderr 字节)，不做任何文本解码。
-
-    可能含非 ASCII（如中文安装路径）的输出必须走本通道：Win7 PowerShell 2.0
-    的控制台输出编码不可控（OEM/cp936），文本通道按 UTF-8 + errors=ignore 解码
-    会把中文字节静默吞掉，导致运行时身份误判（audit 2026-07-19 D02）。
-    只捕获子进程可预期的失败（缺 PowerShell、超时等），留痕后返回 None 三元组；
-    其余异常照常抛出，不做宽兜底。
-    """
-    if os.name != "nt":
-        return None, b"", b""
-    try:
-        result = subprocess.run(
-            ["powershell", "-NoProfile", "-Command", script],
-            capture_output=True,
-            timeout=_POWERSHELL_TIMEOUT_S,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        _log_warning(None, "PowerShell 运行失败，相关运行时能力不可确认：%s", exc)
-        return None, b"", b""
-    return result.returncode, result.stdout, result.stderr
-
-
-def _decode_base64_path_output(output: bytes, pid_i: int) -> Optional[str]:
-    """解码 base64 通道输出的进程路径；任何失败都留痕并返回 None（身份未知）。
-
-    不做 errors=ignore/replace 兜底：解不出来就是无法确认运行时身份，
-    让 _pid_matches_contract 的三态判定走安全侧（None）。
-    """
-    try:
-        text = output.decode("ascii")
-    except UnicodeDecodeError as exc:
-        _log_warning(
-            None,
-            "进程路径输出应为 base64（纯 ASCII）但含其他字节，无法确认运行时身份：pid=%s error=%s raw=%r",
-            pid_i,
-            exc,
-            output[:200],
-        )
-        return None
-    token = ""
-    for line in text.splitlines():
-        line_s = line.strip()
-        if line_s:
-            token = line_s
-            break
-    if not token:
-        _log_warning(None, "进程路径查询返回成功但无输出，无法确认运行时身份：pid=%s", pid_i)
-        return None
-    try:
-        raw = base64.b64decode(token, validate=True)
-    except ValueError as exc:
-        # binascii.Error 是 ValueError 子类
-        _log_warning(
-            None,
-            "进程路径 base64 解码失败，无法确认运行时身份：pid=%s error=%s token=%r",
-            pid_i,
-            exc,
-            token[:200],
-        )
-        return None
-    try:
-        value_s = raw.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        _log_warning(
-            None,
-            "进程路径 UTF-8 解码失败，无法确认运行时身份：pid=%s error=%s raw=%r",
-            pid_i,
-            exc,
-            raw[:200],
-        )
-        return None
-    value_s = value_s.strip()
-    if not value_s:
-        _log_warning(None, "进程路径解码结果为空，无法确认运行时身份：pid=%s", pid_i)
-        return None
-    return value_s
-
-
 def _query_process_executable_path(pid: int) -> Optional[str]:
     if os.name != "nt":
         return None
-    if launcher_win32.available():
-        try:
-            path = launcher_win32.executable_path(pid)
-            return os.path.normcase(os.path.abspath(path)) if path else ""
-        except OSError as exc:
-            _log_warning(None, "查询进程路径失败，无法确认运行时身份：pid=%s error=%s", pid, exc)
-            return None
-    script = (
-        "$ErrorActionPreference='Stop';"
-        f"$pid0={pid};"
-        "$proc = $null;"
-        "if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) {"
-        "try { $proc = Get-CimInstance Win32_Process -Filter \"ProcessId=$pid0\" -ErrorAction Stop | Select-Object -First 1 }"
-        "catch { $proc = $null }"
-        "}"
-        "if ($null -eq $proc) {"
-        "if (-not (Get-Command Get-WmiObject -ErrorAction SilentlyContinue)) { exit 1 };"
-        "try { $proc = Get-WmiObject Win32_Process -Filter \"ProcessId=$pid0\" -ErrorAction Stop | Select-Object -First 1 }"
-        "catch { exit 1 }"
-        "}"
-        "$path = [string]$proc.ExecutablePath;"
-        "if ($null -eq $path -or $path.Trim().Length -eq 0) { exit 2 };"
-        # 路径可能含中文：Win7 PS2.0 上 [Console]::OutputEncoding=UTF8 技巧不可靠，
-        # 改输出路径 UTF-8 字节的 base64（PS2.0/.NET2.0 即支持 ToBase64String），
-        # base64 是纯 ASCII，任何控制台代码页都不会损坏它。
-        "Write-Output ([Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($path)));"
-        "exit 0"
-    )
-    rc, stdout_bytes, stderr_bytes = _run_powershell_bytes(script)
-    if rc == 2:
-        _log_warning(None, "进程路径为空，无法确认运行时身份：pid=%s", pid)
-        return ""
-    if rc is None or rc != 0:
-        _log_warning(
-            None,
-            "查询进程路径失败，无法确认运行时身份：pid=%s rc=%s stderr=%r",
-            pid,
-            rc,
-            stderr_bytes[:200],
-        )
+    try:
+        path = launcher_win32.executable_path(pid)
+        return os.path.normcase(os.path.abspath(path)) if path else ""
+    except OSError as exc:
+        _log_warning(None, "查询进程路径失败，无法确认运行时身份：pid=%s error=%s", pid, exc)
         return None
-    value_s = _decode_base64_path_output(stdout_bytes, pid)
-    if value_s is None:
-        return None
-    return os.path.normcase(os.path.abspath(value_s))
 
 
 def _pid_matches_contract(pid: int, expected_exe_path: str) -> Optional[bool]:

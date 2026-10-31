@@ -12,36 +12,12 @@ chcp 65001 >nul 2>&1
 
 echo [build] repo: %CD%
 
-rem 1) Check Python and PyInstaller before deleting build artifacts
+rem 1) Check Python, offline dependencies, and vendor wheels before deleting build artifacts
 python scripts\check_win7_build.py
 if not %errorlevel%==0 (
   echo [build] Win7 build preflight failed. Run setup_win7_build.bat first.
   popd >nul 2>&1
   endlocal & exit /b 2
-)
-
-rem 1.5) Install NetworkX offline from the in-repo wheel BEFORE freezing.
-rem      PyInstaller freezes networkx only if it exists in the build env;
-rem      install it from vendor/wheels so the package never silently ships without it.
-set "NX_WHEEL="
-for %%f in (vendor\wheels\networkx-3.1-*.whl) do set "NX_WHEEL=%%f"
-if not defined NX_WHEEL (
-  echo [build] 缺少离线 wheel：vendor\wheels\networkx-3.1-*.whl，无法保证离线包含 NetworkX。
-  popd >nul 2>&1
-  endlocal & exit /b 5
-)
-echo [build] install NetworkX offline from "%NX_WHEEL%"
-python -m pip install --no-index --no-deps --force-reinstall "%NX_WHEEL%"
-if not %errorlevel%==0 (
-  echo [build] 离线安装 NetworkX 失败。
-  popd >nul 2>&1
-  endlocal & exit /b 6
-)
-python -c "import networkx, sys; sys.exit(0 if networkx.__version__=='3.1' else 1)"
-if not %errorlevel%==0 (
-  echo [build] NetworkX 版本校验失败（期望 3.1）。
-  popd >nul 2>&1
-  endlocal & exit /b 7
 )
 
 rem 2) Clean old artifacts (optional)
@@ -60,32 +36,18 @@ if exist dist (
 
 rem 3) Build
 echo [build] Run PyInstaller (onedir)...
-if exist vendor (
-  echo [build] include vendor directory.
-  python -m PyInstaller --noconfirm --clean --onedir --windowed ^
-    --add-data "templates;templates" ^
-    --add-data "static;static" ^
-    --add-data "templates_excel;templates_excel" ^
-    --add-data "plugins;plugins" ^
-    --add-data "vendor;vendor" ^
-    --add-data "schema.sql;." ^
-    --hidden-import networkx ^
-    --hidden-import core.services.scheduler.calendar.service ^
-    --name "排产系统" ^
-    app.py
-) else (
-  echo [build] vendor 目录不存在，跳过 vendor 数据目录。
-  python -m PyInstaller --noconfirm --clean --onedir --windowed ^
-    --add-data "templates;templates" ^
-    --add-data "static;static" ^
-    --add-data "templates_excel;templates_excel" ^
-    --add-data "plugins;plugins" ^
-    --add-data "schema.sql;." ^
-    --hidden-import networkx ^
-    --hidden-import core.services.scheduler.calendar.service ^
-    --name "排产系统" ^
-    app.py
-)
+echo [build] include vendor directory.
+python -m PyInstaller --noconfirm --clean --onedir --windowed ^
+  --add-data "templates;templates" ^
+  --add-data "static;static" ^
+  --add-data "templates_excel;templates_excel" ^
+  --add-data "plugins;plugins" ^
+  --add-data "vendor;vendor" ^
+  --add-data "schema.sql;." ^
+  --hidden-import networkx ^
+  --hidden-import core.services.scheduler.calendar.service ^
+  --name "排产系统" ^
+  app.py
 set "RC=%ERRORLEVEL%"
 if %RC%==0 (
   rem The onedir payload owns the launcher consumed by smoke tests and every installer.

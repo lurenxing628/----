@@ -75,7 +75,6 @@ Type: filesandordirs; Name: "{#SharedDataRoot}\templates_excel"; Check: ShouldDe
 var
   DeleteSharedData: Boolean;
   MigrationNote: String;
-  PreInstallWarning: String;
   SkipLegacyMigration: Boolean;
 
 function TryDeleteDirTree(const DirName: String; var ErrorMessage: String): Boolean; forward;
@@ -217,115 +216,6 @@ begin
   end;
 end;
 
-function TryLoadTextFile(const FileName: String; var Text: String): Boolean;
-var
-  RawText: AnsiString;
-begin
-  Text := '';
-  if not FileExists(FileName) then
-  begin
-    Result := False;
-    Exit;
-  end;
-  RawText := '';
-  Result := LoadStringFromFile(FileName, RawText);
-  if Result then
-    Text := RawText;
-end;
-
-function ExtractKeyValue(const Text, KeyName: String): String;
-var
-  SearchText: String;
-  Remaining: String;
-  LineText: String;
-  BreakPos: Integer;
-begin
-  Result := '';
-  SearchText := KeyName + '=';
-  Remaining := Text;
-  while Remaining <> '' do
-  begin
-    BreakPos := Pos(#10, Remaining);
-    if BreakPos > 0 then
-    begin
-      LineText := Copy(Remaining, 1, BreakPos - 1);
-      Delete(Remaining, 1, BreakPos);
-    end
-    else
-    begin
-      LineText := Remaining;
-      Remaining := '';
-    end;
-    if (LineText <> '') and (LineText[Length(LineText)] = #13) then
-      Delete(LineText, Length(LineText), 1);
-    if Pos(SearchText, LineText) = 1 then
-    begin
-      Result := Trim(Copy(LineText, Length(SearchText) + 1, MaxInt));
-      Exit;
-    end;
-  end;
-end;
-
-function UnescapeJsonString(const Value: String): String;
-var
-  Index: Integer;
-begin
-  Result := '';
-  Index := 1;
-  while Index <= Length(Value) do
-  begin
-    if (Value[Index] = '\') and (Index < Length(Value)) then
-    begin
-      if (Value[Index + 1] = '\') or (Value[Index + 1] = '"') or (Value[Index + 1] = '/') then
-      begin
-        Result := Result + Value[Index + 1];
-        Index := Index + 2;
-        Continue;
-      end;
-    end;
-    Result := Result + Value[Index];
-    Index := Index + 1;
-  end;
-end;
-
-function ExtractJsonStringValue(const Text, KeyName: String): String;
-var
-  Marker: String;
-  Remaining: String;
-  ColonPos: Integer;
-  Index: Integer;
-begin
-  Result := '';
-  Marker := '"' + KeyName + '"';
-  ColonPos := Pos(Marker, Text);
-  if ColonPos = 0 then
-    Exit;
-  Remaining := Copy(Text, ColonPos + Length(Marker), MaxInt);
-  ColonPos := Pos(':', Remaining);
-  if ColonPos = 0 then
-    Exit;
-  Delete(Remaining, 1, ColonPos);
-  Remaining := Trim(Remaining);
-  if (Remaining = '') or (Remaining[1] <> '"') then
-    Exit;
-  Delete(Remaining, 1, 1);
-  Index := 1;
-  while Index <= Length(Remaining) do
-  begin
-    if Remaining[Index] = '"' then
-      Break;
-    if (Remaining[Index] = '\') and (Index < Length(Remaining)) then
-    begin
-      Result := Result + Remaining[Index] + Remaining[Index + 1];
-      Index := Index + 2;
-      Continue;
-    end;
-    Result := Result + Remaining[Index];
-    Index := Index + 1;
-  end;
-  Result := Trim(UnescapeJsonString(Result));
-end;
-
 function StateDirHasRuntimeSignals(const StateDir: String): Boolean;
 var
   StateDirValue: String;
@@ -345,36 +235,6 @@ begin
     FileExists(AddBackslash(StateDirValue) + 'aps_launch_error.txt');
 end;
 
-function ResolveHelperExeFromStateDir(const StateDir: String): String;
-var
-  Text: String;
-  Candidate: String;
-begin
-  Result := '';
-  if Trim(StateDir) = '' then
-    Exit;
-
-  if TryLoadTextFile(AddBackslash(StateDir) + 'aps_runtime.lock', Text) then
-  begin
-    Candidate := ExtractKeyValue(Text, 'exe_path');
-    if (Candidate <> '') and FileExists(Candidate) then
-    begin
-      Result := Candidate;
-      Exit;
-    end;
-  end;
-
-  if TryLoadTextFile(AddBackslash(StateDir) + 'aps_runtime.json', Text) then
-  begin
-    Candidate := ExtractJsonStringValue(Text, 'exe_path');
-    if (Candidate <> '') and FileExists(Candidate) then
-    begin
-      Result := Candidate;
-      Exit;
-    end;
-  end;
-end;
-
 function KnownRuntimeSignalsExist: Boolean;
 var
   RegisteredAppDir: String;
@@ -387,26 +247,74 @@ begin
     StateDirHasRuntimeSignals(AppLogDirPath(ExpandConstant('{app}')));
 end;
 
+function IsSameOrUnderDir(const CandidateDir, RootDir: String): Boolean;
+var
+  NormalizedCandidate: String;
+  NormalizedRoot: String;
+begin
+  Result := False;
+  if (Trim(CandidateDir) = '') or (Trim(RootDir) = '') then
+    Exit;
+  NormalizedCandidate := Lowercase(AddBackslash(Trim(CandidateDir)));
+  NormalizedRoot := Lowercase(AddBackslash(Trim(RootDir)));
+  Result := Pos(NormalizedRoot, NormalizedCandidate) = 1;
+end;
+
+function IsUnderProtectedProgramFiles(const DirPath: String): Boolean;
+begin
+  Result :=
+    IsSameOrUnderDir(DirPath, ExpandConstant('{pf}')) or
+    IsSameOrUnderDir(DirPath, ExpandConstant('{commonpf}')) or
+    IsSameOrUnderDir(DirPath, ExpandConstant('{pf32}')) or
+    IsSameOrUnderDir(DirPath, ExpandConstant('{commonpf32}'));
+  if (not Result) and IsWin64 then
+    Result :=
+      IsSameOrUnderDir(DirPath, ExpandConstant('{pf64}')) or
+      IsSameOrUnderDir(DirPath, ExpandConstant('{commonpf64}'));
+end;
+
+function IsTrustedInstallDir(const DirPath: String): Boolean;
+var
+  TrimmedDir: String;
+begin
+  Result := False;
+  TrimmedDir := Trim(DirPath);
+  if Length(TrimmedDir) <= 3 then
+    Exit;
+  if Pos('..', TrimmedDir) > 0 then
+    Exit;
+  if not IsUnderProtectedProgramFiles(TrimmedDir) then
+    Exit;
+  Result := True;
+end;
+
 function ResolveStopHelperExe: String;
 var
   RegisteredAppDir: String;
+  CurrentAppDir: String;
   Candidate: String;
 begin
-  Result := ResolveHelperExeFromStateDir(SharedLogDirPath);
-  if Result <> '' then
-    Exit;
-
-  Result := ResolveHelperExeFromStateDir(LegacyLogDirPath);
-  if Result <> '' then
-    Exit;
-
-  RegisteredAppDir := RegisteredMainAppDirPath;
-  if RegisteredAppDir <> '' then
+  Result := '';
+  if not IsUninstaller then
   begin
-    Result := ResolveHelperExeFromStateDir(AppLogDirPath(RegisteredAppDir));
-    if Result <> '' then
-      Exit;
-    Candidate := AppExePathFromDir(RegisteredAppDir);
+    try
+      ExtractTemporaryFiles('{app}\*');
+      Candidate := AddBackslash(ExpandConstant('{tmp}')) + '{app}\{#MyAppExeName}';
+      if FileExists(Candidate) then
+      begin
+        Result := Candidate;
+        Exit;
+      end;
+    except
+      Log('ResolveStopHelperExe: failed to extract temporary stop helper: ' + GetExceptionMessage);
+    end;
+    Exit;
+  end;
+
+  CurrentAppDir := ExpandConstant('{app}');
+  if IsTrustedInstallDir(CurrentAppDir) then
+  begin
+    Candidate := AppExePathFromDir(CurrentAppDir);
     if (Candidate <> '') and FileExists(Candidate) then
     begin
       Result := Candidate;
@@ -414,13 +322,16 @@ begin
     end;
   end;
 
-  Result := ResolveHelperExeFromStateDir(AppLogDirPath(ExpandConstant('{app}')));
-  if Result <> '' then
-    Exit;
-
-  Candidate := AppExePathFromDir(ExpandConstant('{app}'));
-  if (Candidate <> '') and FileExists(Candidate) then
-    Result := Candidate;
+  RegisteredAppDir := RegisteredMainAppDirPath;
+  if IsTrustedInstallDir(RegisteredAppDir) then
+  begin
+    Candidate := AppExePathFromDir(RegisteredAppDir);
+    if (Candidate <> '') and FileExists(Candidate) then
+    begin
+      Result := Candidate;
+      Exit;
+    end;
+  end;
 end;
 
 procedure AppendMessage(var Summary: String; const MessageLine: String);
@@ -652,17 +563,21 @@ end;
 function RunPreInstallFullWipe(const StopApsChrome: Boolean; var FailureReason: String): Boolean;
 var
   StopOk: Boolean;
-  StopFailure: String;
   DeleteErrors: String;
   DeleteError: String;
   RegisteredAppDir: String;
 begin
   FailureReason := '';
   DeleteErrors := '';
-  StopFailure := '';
   StopOk := TryStopKnownApsRuntime(StopApsChrome);
   if not StopOk then
-    StopFailure := '目录已清理，但无法确认 APS 已正常退出。';
+  begin
+    FailureReason :=
+      '安装前强制清理未执行：未能确认现有 APS 实例已安全停止（缺少受信任的停机辅助程序或进程仍在运行）。' +
+      #13#10#13#10 + '请先关闭正在运行的 APS 后重试。';
+    Result := False;
+    Exit;
+  end;
 
   if not TryDeleteDirTree(SharedDataRootPath, DeleteError) then
     AppendMessage(DeleteErrors, DeleteError);
@@ -679,25 +594,11 @@ begin
 
   if DeleteErrors <> '' then
   begin
-    FailureReason := '安装前强制清理未完成：' + #13#10 + DeleteErrors;
-    if StopFailure <> '' then
-      FailureReason := FailureReason + #13#10#13#10 + StopFailure;
-    FailureReason := FailureReason + #13#10#13#10 + '请确认 APS 已关闭且目录未被占用后重试。';
+    FailureReason :=
+      '安装前强制清理未完成：' + #13#10 + DeleteErrors +
+      #13#10#13#10 + '请确认 APS 已关闭且目录未被占用后重试。';
     Result := False;
     Exit;
-  end;
-
-  PreInstallWarning := '';
-  if StopFailure <> '' then
-  begin
-    PreInstallWarning := StopFailure;
-    Log('preinstall wipe warning: ' + StopFailure);
-    MsgBox(
-      StopFailure + #13#10#13#10 +
-      '请确认 APS 窗口已经关闭，再继续本次安装。',
-      mbInformation,
-      MB_OK
-    );
   end;
 
   SkipLegacyMigration := True;
@@ -709,7 +610,6 @@ function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';
   NeedsRestart := False;
-  PreInstallWarning := '';
   SkipLegacyMigration := False;
   if HasInstallCleanupTargets then
   begin
@@ -811,12 +711,6 @@ begin
 #endif
     '迁移说明：' + #13#10 +
     MigrationNote;
-
-  if PreInstallWarning <> '' then
-    MessageText :=
-      MessageText + #13#10#13#10 +
-      '安装前提示：' + #13#10 +
-      PreInstallWarning;
 
   MsgBox(MessageText, mbInformation, MB_OK);
 end;

@@ -127,8 +127,8 @@ def _runtime_identity(contract: Optional[Dict[str, Any]], lock_payload: Optional
     lock_pid = lock_payload["pid"] if lock_payload else 0
     expected_exe_path = str((contract or {}).get("exe_path") or (lock_payload or {}).get("exe_path") or "").strip()
     pid = contract_pid if contract_pid > 0 else lock_pid
-    pid_match = _runtime_pid_match(contract_pid, lock_pid, expected_exe_path)
     pid_state = _pid_state(pid) if pid > 0 else False
+    pid_match = _pid_matches_contract(pid, expected_exe_path) if pid_state is True and expected_exe_path else None
     return {
         "contract_pid": contract_pid,
         "lock_pid": lock_pid,
@@ -139,12 +139,25 @@ def _runtime_identity(contract: Optional[Dict[str, Any]], lock_payload: Optional
     }
 
 
-def _runtime_pid_match(contract_pid: int, lock_pid: int, expected_exe_path: str) -> Optional[bool]:
-    if contract_pid > 0 and expected_exe_path:
-        return _pid_matches_contract(contract_pid, expected_exe_path)
-    if lock_pid > 0 and expected_exe_path:
-        return _pid_matches_contract(lock_pid, expected_exe_path)
-    return None
+def _lock_active_for_identity(lock_payload: Optional[Dict[str, Any]], identity: Dict[str, Any]) -> bool:
+    if not lock_payload:
+        return False
+    lock_pid = lock_payload["pid"]
+    lock_exe_path = str(lock_payload.get("exe_path") or identity["expected_exe_path"] or "").strip()
+    if lock_pid == identity["pid"] and lock_exe_path == identity["expected_exe_path"]:
+        pid_state = identity["pid_exists"]
+        if pid_state is False:
+            return False
+        if pid_state is None:
+            launcher_log_warning(
+                None,
+                "运行时锁 pid 状态无法确认，按仍可能活跃处理：pid=%s",
+                lock_pid,
+                state_dir=str(lock_payload.get("state_dir") or ""),
+            )
+            return True
+        return identity["pid_match"] is not False
+    return is_runtime_lock_active(lock_payload, expected_exe_path=identity["expected_exe_path"])
 
 
 def _endpoint_status(contract: Optional[Dict[str, Any]], endpoint_files: RuntimeEndpointReadResult) -> Dict[str, Any]:
@@ -191,7 +204,7 @@ def _classify_runtime_state(runtime_dir_or_state_dir: str) -> Dict[str, Any]:
     endpoint = _endpoint_status(contract, endpoint_files)
     endpoint_uncertain = bool(endpoint_files.uncertain and not contract_result.ok)
     lock_unknown = lock_result.status not in {LOCK_STATUS_MISSING, LOCK_STATUS_VALID}
-    lock_active = bool(lock_unknown or (lock_payload and is_runtime_lock_active(lock_payload, expected_exe_path=identity["expected_exe_path"])))
+    lock_active = bool(lock_unknown or _lock_active_for_identity(lock_payload, identity))
     state = _runtime_state_name(
         endpoint_up=bool(endpoint["endpoint_up"]),
         contract=contract,

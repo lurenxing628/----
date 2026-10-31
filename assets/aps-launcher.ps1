@@ -203,7 +203,21 @@ function Read-ApsHealth($Runtime, $Budget) {
     }
 }
 
-function Test-ApsHealth($Context, $Runtime, $Budget) {
+function Test-ApsHealthPayload($Response) {
+    if ($null -eq $Response) { return $false }
+    $health = $Response.body
+    $healthVersion = 0
+    if (-not [int]::TryParse([string](Get-ApsValue $health 'contract_version'), [ref]$healthVersion) -or $healthVersion -ne 1 -or
+        (Get-ApsValue $health 'app') -cne 'aps') { return $false }
+    $status = Get-ApsValue $health 'status'
+    if ($Response.status -eq 503) {
+        $available = Get-ApsValue $health 'operations_available'
+        return ($status -ceq 'recovery_required' -and $available -is [bool] -and $available -eq $false)
+    }
+    return ($Response.status -eq 200 -and $status -ceq 'ok')
+}
+
+function Test-ApsHealth($Context, $Runtime, $Budget, [ref]$HealthResponse = $null) {
     # Codes match the former launcher: 0 ready, 1 pending, 2 invalid, 3 recovery, 4 other owner.
     $contract = $Runtime.contract
     if ($null -eq $contract) { return 1 }
@@ -222,20 +236,20 @@ function Test-ApsHealth($Context, $Runtime, $Budget) {
         $expectedDatabase = [IO.Path]::GetFullPath([string]$Context.db).ToLowerInvariant()
     } catch { return 2 }
     if ($database -cne $expectedDatabase) { return 2 }
-    try { $response = Read-ApsHealth $Runtime $Budget }
-    catch [ArgumentException] { return 2 }
-    catch { return 1 }
+    $response = if ($null -ne $HealthResponse) { $HealthResponse.Value } else { $null }
+    if ($null -eq $response) {
+        try {
+            $response = Read-ApsHealth $Runtime $Budget
+            if ($null -ne $HealthResponse) { $HealthResponse.Value = $response }
+        }
+        catch [ArgumentException] { return 2 }
+        catch { return 1 }
+    }
+    if (-not (Test-ApsHealthPayload $response)) { return 2 }
     $health = $response.body
-    $healthPid = 0L; $healthVersion = 0
-    if (-not [long]::TryParse([string](Get-ApsValue $health 'pid'), [ref]$healthPid) -or $healthPid -ne $contractPid -or
-        -not [int]::TryParse([string](Get-ApsValue $health 'contract_version'), [ref]$healthVersion) -or $healthVersion -ne 1 -or
-        (Get-ApsValue $health 'app') -cne 'aps') { return 2 }
-    $status = Get-ApsValue $health 'status'
+    $healthPid = 0L
+    if (-not [long]::TryParse([string](Get-ApsValue $health 'pid'), [ref]$healthPid) -or $healthPid -ne $contractPid) { return 2 }
     $recovery = $response.status -eq 503
-    if ($recovery) {
-        $available = Get-ApsValue $health 'operations_available'
-        if ($status -cne 'recovery_required' -or $available -isnot [bool] -or $available -ne $false) { return 2 }
-    } elseif ($response.status -ne 200 -or $status -cne 'ok') { return 2 }
     $healthDatabase = [string](Get-ApsValue $health 'db_path')
     if (-not $healthDatabase) { return 2 }
     try { $healthDatabase = [IO.Path]::GetFullPath($healthDatabase.Trim()).ToLowerInvariant() }
@@ -259,7 +273,8 @@ function Get-ApsExistingState($Context, $Budget) {
             return @{ state = 'blocked'; reason = 'lock_executable_unproven' }
         }
     }
-    $code = Test-ApsHealth $Context $runtime $Budget
+    $healthResponse = $null
+    $code = Test-ApsHealth $Context $runtime $Budget ([ref]$healthResponse)
     if ($code -eq 4) { return @{ state = 'other'; reason = 'health_owner_mismatch' } }
     if ($code -eq 0 -or $code -eq 3) {
         if ($active -and [string]$runtime.lock.pid -ne [string](Get-ApsValue $runtime.contract 'pid')) {
@@ -274,13 +289,13 @@ function Get-ApsExistingState($Context, $Budget) {
     if ($runtime.lockState -eq 'unknown') { return @{ state = 'blocked'; reason = 'lock_query_unknown' } }
     # Presence alone blocks another spawn; it can never authorize reuse.
     if ($runtime.hostName -and $runtime.port -gt 0 -and $runtime.port -le 65535) {
-        try {
-            $presence = Read-ApsHealth $runtime $Budget
-            if (($presence.status -eq 200 -or $presence.status -eq 503) -and
-                (Get-ApsValue $presence.body 'app') -ceq 'aps' -and (Get-ApsValue $presence.body 'contract_version') -eq 1) {
-                return @{ state = 'blocked'; reason = 'healthy_without_owner_proof' }
-            }
-        } catch { Write-ApsLog $Context ('app_presence_pending=' + $_.Exception.Message) }
+        if ($null -eq $healthResponse) {
+            try { $healthResponse = Read-ApsHealth $runtime $Budget }
+            catch { Write-ApsLog $Context ('app_presence_pending=' + $_.Exception.Message) }
+        }
+        if (Test-ApsHealthPayload $healthResponse) {
+            return @{ state = 'blocked'; reason = 'healthy_without_owner_proof' }
+        }
     }
     return @{ state = 'absent'; reason = 'no_active_instance' }
 }

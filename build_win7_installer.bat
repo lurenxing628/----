@@ -6,7 +6,6 @@ pushd "%~dp0" >nul 2>&1
 if errorlevel 1 exit /b 1
 chcp 65001 >nul 2>&1
 
-set "PF=%ProgramFiles%"
 set "PF86=%ProgramFiles(x86)%"
 set "LOG_DIR=%CD%\installer\output"
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul 2>&1
@@ -31,7 +30,8 @@ if not defined DIST_ROOT goto :dist_missing
 
 echo.
 echo [installer] Step 2/2: build main setup.exe (Inno Setup)...
-call :find_iscc
+set "ISCC="
+for /f "usebackq delims=" %%I in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%CD%\tools\resolve_iscc.ps1"`) do if not defined ISCC set "ISCC=%%I"
 if not defined ISCC goto :iscc_missing
 
 echo [installer] ISCC: "%ISCC%"
@@ -78,14 +78,3 @@ start "" notepad "%LOG%" >nul 2>&1
 pause
 popd >nul 2>&1
 endlocal & exit /b 12
-
-:find_iscc
-set "ISCC="
-if defined ISCC_EXE if exist "%ISCC_EXE%" set "ISCC=%ISCC_EXE%" & goto :eof
-if defined INNO_HOME if exist "%INNO_HOME%\ISCC.exe" set "ISCC=%INNO_HOME%\ISCC.exe" & goto :eof
-if exist "%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" set "ISCC=%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" & goto :eof
-if exist "%PF86%\Inno Setup 6\ISCC.exe" set "ISCC=%PF86%\Inno Setup 6\ISCC.exe" & goto :eof
-if exist "%PF%\Inno Setup 6\ISCC.exe" set "ISCC=%PF%\Inno Setup 6\ISCC.exe" & goto :eof
-for /f "delims=" %%I in ('where ISCC.exe 2^>nul') do if not defined ISCC set "ISCC=%%I"
-goto :eof
-

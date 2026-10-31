@@ -43,11 +43,6 @@ Root: HKLM; Subkey: "SOFTWARE\APS"; ValueType: string; ValueName: "ChromeDir"; V
 var
   DeleteChromeProfile: Boolean;
 
-function ShouldDeleteChromeProfile: Boolean;
-begin
-  Result := DeleteChromeProfile;
-end;
-
 function PowerShellExePath: String;
 begin
   Result := ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe');
