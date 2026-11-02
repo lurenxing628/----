@@ -111,8 +111,12 @@ def _pruning(case, calendar):
     ops_by_batch: Dict[str, list] = {}
     for op in case["operations"]:
         ops_by_batch.setdefault(op.batch_id, []).append(op)
-    graph = _prepare_graph_ready_state(preparation.graph_ready_context, ops_by_batch=ops_by_batch)
-    assert graph is not None
+    # The same request context a decode receives: the run's graph input with this request's admitted keys.
+    topology = preparation.graph_topology()
+    context = case["graph_ready_context"]
+    request = dict(context, score_enabled=True, graph_priority_key_by_op_id=graph_priority_key_map(
+        context["graph_priority_key_by_op_id"], schedulable_ids=topology.schedulable_ids))
+    graph = _prepare_graph_ready_state(topology, request, ops_by_batch=ops_by_batch, skip_initial_frontier=False)
     pruning = GraphPriorityPruning.for_cache(cache, graph)
     assert pruning is not None
     return pruning, graph
@@ -153,15 +157,16 @@ def test_priority_pruning_selects_lowest_admitted_key_group_and_rejects_missing_
         assert exc.value.field == "graph_ready_context"
 
 
-def test_priority_pruning_requires_uniform_admitted_key_width():
+def test_priority_key_admission_rejects_mixed_widths_and_yields_static_orders():
+    admitted = graph_priority_key_map({3: (1.0, 0.0), 1: (0.0, 5.0), 2: (1.0, 0.0)}, schedulable_ids=frozenset({1, 2, 3}))
+    assert admitted.order == (1, 2, 3) and admitted.preorder == ((1,), (2, 3))
+    assert graph_priority_key_map(admitted, schedulable_ids=admitted.schedulable_ids) is admitted
     case = _saturated_case(batch_count=2, ops_per_batch=1)
-    case["graph_ready_context"]["graph_priority_key_by_op_id"] = graph_priority_key_map(
-        {1: (0.0,), 2: (1.0, 0.0)},
-        schedulable_ids={1, 2},
-    )
-    with native_calendar() as calendar:
-        pruning, _graph = _pruning(case, calendar)
-    assert not pruning.supported
+    case["graph_ready_context"]["graph_priority_key_by_op_id"] = {1: (0.0,), 2: (1.0, 0.0)}
+    with native_calendar() as calendar, pytest.raises(ValidationError) as exc:
+        _decode(calendar, case, cache_enabled=True)
+    assert exc.value.field == "graph_ready_context"
+    assert exc.value.message == "图评分 key 长度必须一致。"
 
 
 @pytest.mark.parametrize("invalid", [float("nan"), float("inf")])

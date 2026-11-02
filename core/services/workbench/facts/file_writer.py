@@ -39,8 +39,6 @@ _CATEGORY_NAMES = {"internal": "自制", "external": "外协"}
 
 
 def check_capacity(count, fmt):
-    if type(fmt) is not str or fmt not in ("csv", "xlsx"):
-        raise file_error("只能下载 CSV 或 XLSX，没有开始下载。请重新选择格式。", field="format")
     if fmt == "xlsx" and count + 1 > XLSX_MAX_ROWS:
         raise file_error("行数超过 XLSX 能放的 1048576 行（含表头），请改用 CSV。", count + 1)
 
@@ -84,7 +82,6 @@ def _escaped_text(value, field, row, fmt):
 
 
 def write_resource_file(kind, rows, fmt, *, template=False, category=None):
-    check_capacity(0, fmt)
     descriptor = table_descriptor(kind)
     filename = ((_CATEGORY_NAMES[category] if category else "") + descriptor["file_stem"]
                 + ("导入模板" if template else "清单"))
@@ -146,7 +143,6 @@ def write_template_xlsx(rows, filename, template, descriptor, *, cell_value, min
             ws.column_dimensions[get_column_letter(index)].width = max(min_width, len(column["label"]) * 2 + 4)
         ws.append(_headers(ws, template, descriptor))
         for count, row in enumerate(rows, 1):
-            check_capacity(count, "xlsx")
             cells = []
             for field in fields:
                 value = cell_value(row[field], field, count + 1)

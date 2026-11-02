@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from datetime import datetime
 from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
 
 from .downtime import SegmentOverlapIndex
@@ -13,7 +12,6 @@ class SlotOverlapReuse:
     """One latest, exact segment snapshot per resource, owned by one SGS run."""
 
     def __init__(self) -> None:
-        self._owned_certificate = owned_segment_certificate
         self._entries: Dict[Tuple[str, str], Tuple[Tuple[Segment, ...], SegmentOverlapIndex]] = {}
         self._certificates: Dict[Tuple[str, str], Any] = {}
         self._downtime_sources: Dict[str, Tuple[Any, int]] = {}
@@ -38,9 +36,8 @@ class SlotOverlapReuse:
             reused = self._reuse_downtime(resource_id, segments, entry)
             if reused is not None:
                 return reused
-        # Short immutable snapshots are cheaper than certifying an owner's full protocol.
-        # Inspect the previous snapshot, not the caller's mutable sequence (no extra reads).
-        certificate = self._owned_certificate(segments) if entry is not None and len(entry[0]) >= 128 else None
+        # Native owners certify (identity, revision) in O(1) without scanning segments.
+        certificate = owned_segment_certificate(segments)
         if certificate is not None and entry is not None and self._certificates.get(key) == certificate:
             entry[1].begin_estimate()
             return entry[1]
@@ -55,32 +52,7 @@ class SlotOverlapReuse:
             index = entry[1]
         if kind == "downtime":
             self._downtime_sources[resource_id] = (segments, len(snapshot))
-        if len(snapshot) >= 128 and (entry is None or len(entry[0]) < 128):
-            certificate = self._owned_certificate(segments)
         self._certificates[key] = certificate
-        index.begin_estimate()
-        return index
-
-
-class _ShortSlotOverlapReuse(SlotOverlapReuse):
-    """The original snapshot path, selected once for a small decode."""
-
-    def index(self, kind: str, resource_id: str, segments: Sequence[Segment]) -> SegmentOverlapIndex:
-        key = (kind, resource_id)
-        entry = self._entries.get(key)
-        if kind == "downtime":
-            reused = self._reuse_downtime(resource_id, segments, entry)
-            if reused is not None:
-                return reused
-        snapshot = segments if isinstance(segments, tuple) else tuple(segments)
-        if entry is None or entry[0] != snapshot:
-            derived = entry[1].with_appended_segment(snapshot) if entry is not None else None
-            index = derived if derived is not None else SegmentOverlapIndex(snapshot)
-            self._entries[key] = (snapshot, index)
-        else:
-            index = entry[1]
-        if kind == "downtime":
-            self._downtime_sources[resource_id] = (segments, len(snapshot))
         index.begin_estimate()
         return index
 
@@ -90,13 +62,13 @@ def overlap_reuse_for(timeline: Dict[str, List[Segment]]) -> Optional[SlotOverla
 
 
 @contextmanager
-def sgs_overlap_reuse(timeline: Dict[str, List[Segment]], *, expected_operations: int) -> Iterator[None]:
+def sgs_overlap_reuse(timeline: Dict[str, List[Segment]]) -> Iterator[None]:
     # Borrowed legacy dicts stay untouched, including their identity and aliases.
     if not isinstance(timeline, SlotReuseTimeline):
         yield
         return
     previous = timeline.overlap_reuse
-    timeline.overlap_reuse = _ShortSlotOverlapReuse() if expected_operations < 128 else SlotOverlapReuse()
+    timeline.overlap_reuse = SlotOverlapReuse()
     try:
         yield
     finally:

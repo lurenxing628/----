@@ -1,6 +1,5 @@
 """System-only opaque contexts and response boundary. No shared namespace edits."""
 
-import os
 from datetime import datetime
 from functools import wraps
 from types import MappingProxyType
@@ -50,9 +49,7 @@ def system_endpoint(function):
 
 
 def database_scope():
-    if current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR"):
-        return journal().database_scope
-    return os.path.normcase(os.path.realpath(current_app.config["DATABASE_PATH"]))
+    return journal().database_scope
 
 
 def issue_context(kind, value, *, database=None):
@@ -88,7 +85,7 @@ def command_body():
 
 
 def journal():
-    return SystemMaintenanceJournal(current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR"), current_app.config["DATABASE_PATH"])
+    return SystemMaintenanceJournal(current_app.config["WORKBENCH_SYSTEM_JOURNAL_DIR"], current_app.config["DATABASE_PATH"])
 
 
 def query_payload(data):

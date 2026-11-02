@@ -37,19 +37,19 @@ def file_bytes(rows, file_format, headers=HEADERS, *, formulas=False):
         wb.close()
 
 
-def confirm_import(conn, preview, content, file_format, *, key=KEY, guard=None, command=None):
+def confirm_import(conn, preview, *, key=KEY, guard=None, command=None):
     return (command or WorkbenchCommandService(conn)).execute(
         request_key=key, action="material.import", context_ref="material.collection",
-        normalized_input=preview.intent(), guard=guard or (lambda: None),
-        mutate=lambda _: WorkbenchMaterialFileService(conn).confirm_import(preview, content, file_format=file_format, scope={}),
+        normalized_input=preview.document, guard=guard or (lambda: None),
+        mutate=lambda _: WorkbenchMaterialFileService(conn).confirm_import(preview),
     )
 
 
-def confirm_delete(conn, preview, refs, *, key=KEY, scope=None, guard=None, command=None):
+def confirm_delete(conn, preview, *, key=KEY, guard=None, command=None):
     return (command or WorkbenchCommandService(conn)).execute(
         request_key=key, action="material.bulk_delete", context_ref="material.collection",
-        normalized_input=preview.intent(), guard=guard or (lambda: None),
-        mutate=lambda _: WorkbenchMaterialBulkService(conn).confirm_delete(preview, refs, scope=scope or {}),
+        normalized_input=preview.document, guard=guard or (lambda: None),
+        mutate=lambda _: WorkbenchMaterialBulkService(conn).confirm_delete(preview),
     )
 
 

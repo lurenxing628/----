@@ -15,7 +15,6 @@ class WorkbenchRunCandidateAdoptionService(AdoptionCommandHost):
     _blocked_error = CandidateAdoptionBlocked
     _disabled_code = "candidate_adoption_not_connected"
     _outer_message = "Candidate adoption must own the outer transaction"
-    _authorization_message = "Candidate adoption authorization callbacks are not connected"
     _point_message = "这个方案里有零工时工序，界面还显示不出来，暂时不能采用。请联系维护人员。"
     _stale_message = "还没有确认采用，正式计划没有改动。请先点「预检」核对，再点「采用」。"
     _busy_message = "正在排产，这次采用没有执行，正式计划没有改动。请等排产结束后重试。"
@@ -25,7 +24,7 @@ class WorkbenchRunCandidateAdoptionService(AdoptionCommandHost):
         self._outer()
         validate_run_ref(candidate_ref)
         try:
-            evidence, context_factory, data_context_ref = self._prepare_preview(candidate_ref, validate_adoption)
+            evidence, data_context_ref = self._prepare_preview(candidate_ref, validate_adoption)
         except CandidateAdoptionBlocked as exc:
             reason = {"code": exc.code, "message": str(exc), "severity": "blocker"}
             return {"candidate_ref": candidate_ref, "validation": {"status": "blocked", "can_adopt": False,
@@ -33,7 +32,7 @@ class WorkbenchRunCandidateAdoptionService(AdoptionCommandHost):
                     "capabilities": {ADOPT_ACTION: False}, "blocked_reasons": [reason]},
                     "data_context_ref": self.data_context.ref()}
         return {"candidate_ref": candidate_ref, "run_ref": evidence.run_ref,
-                **self._preview_result(candidate_ref, evidence, context_factory, data_context_ref)}
+                **self._preview_result(candidate_ref, evidence, data_context_ref)}
 
     def adopt(self, candidate_ref, write_token, request_key, value):
         validate_run_ref(candidate_ref)

@@ -4,9 +4,7 @@ from dataclasses import dataclass
 from itertools import zip_longest
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.errors import ValidationError
 from core.models.objective import normalize_objective_name
-from core.shared.strict_parse import finite_float
 
 from .graph_ready_feature_basis import BATCH_WORKLOAD_BASIS, SUCCESSOR_WORKLOAD_BASIS
 
@@ -22,6 +20,8 @@ GRAPH_READY_SELECTION_TIEBREAKER = (
     "runtime_ms",
     "candidate_origin",
 )
+
+_WEIGHT_FIELDS = ("critical_path", "successor_count", "downstream_work_hours", "bottleneck_machine")
 
 GRAPH_READY_DEFAULT_WEIGHT_PROFILES: Tuple[Dict[str, Any], ...] = (
     {"slug": "balanced", "critical_path": 2.0, "successor_count": 1.0, "downstream_work_hours": 1.0, "bottleneck_machine": 1.0},
@@ -82,17 +82,9 @@ def profile_payload(profile: GraphReadyWeightProfile, *, version: Optional[int])
     return payload
 
 
-def finite_number(value: Any, *, field: str, reason: str = "graph_ready_bad_node_metrics",
-                  error_field: str = "graph_ready_context") -> float:
-    number = finite_float(value)
-    if number is None:
-        raise ValidationError(f"图指标 {field} 必须是有限数字。", field=error_field, details={"reason": reason})
-    return number
-
-
 def _build_profile(index: int, raw: Dict[str, Any]) -> GraphReadyWeightProfile:
-    raw_weights = {field: _finite_non_negative_weight(raw.get(field), field=field) for field in _weight_fields()}
-    # raw comes only from this module's constant tables, each naming a literal slug.
+    # raw comes only from this module's constant tables: each names a literal slug and all four float weights.
+    raw_weights = {field: raw[field] for field in _WEIGHT_FIELDS}
     return GraphReadyWeightProfile(
         slug=raw["slug"],
         profile_order=index,
@@ -106,17 +98,6 @@ def _build_profile(index: int, raw: Dict[str, Any]) -> GraphReadyWeightProfile:
         objective_name=str(raw.get("objective_name") or "min_overdue"),
         feature_basis=str(raw.get("feature_basis") or SUCCESSOR_WORKLOAD_BASIS),
     )
-
-
-def _finite_non_negative_weight(value: Any, *, field: str) -> float:
-    number = finite_number(value, field=field, reason="graph_ready_bad_weight", error_field="graph_ready_weight")
-    if number < 0:
-        raise ValidationError(f"图权重 {field} 必须是非负数。", field="graph_ready_weight")
-    return number
-
-
-def _weight_fields() -> Tuple[str, str, str, str]:
-    return ("critical_path", "successor_count", "downstream_work_hours", "bottleneck_machine")
 
 
 def _graph_ready_v2_profile_specs(*, seed: int, objective_name: str) -> Tuple[Dict[str, Any], ...]:

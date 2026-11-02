@@ -1,7 +1,7 @@
 """Serialization and formal scoring of a decoded graph candidate."""
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
@@ -28,7 +28,7 @@ def _public_profile(profile: Dict[str, Any]) -> Dict[str, Any]:
 def build_graph_ready_candidate_payload(
     *, res: List[ScheduleResult], decoded_order: Tuple[str, ...], summ: ScheduleSummary, used_strat: SortStrategy,
     used_params: Dict[str, Any], metrics: ScheduleMetrics, profile: GraphReadyWeightProfile,
-    order: List[str], dispatch_rule: str, objective_name: str, algo_stats: Dict[str, Any],
+    order: Sequence[str], dispatch_rule: str, objective_name: str, algo_stats: Dict[str, Any],
     resource_pool: Optional[Dict[str, Any]], runtime_ms: int,
     profile_dict: Dict[str, Any], repair_decision: Optional[Any] = None,
 ) -> Dict[str, Any]:
@@ -58,7 +58,7 @@ def build_graph_ready_candidate_payload(
     return payload
 
 
-def _result_batch_order(decoded_order: Tuple[str, ...], *, decision_order: List[str]) -> List[str]:
+def _result_batch_order(decoded_order: Tuple[str, ...], *, decision_order: Sequence[str]) -> List[str]:
     out = list(decoded_order)
     seen = set(out)
     for batch_id in decision_order:

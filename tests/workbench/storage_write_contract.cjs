@@ -5,7 +5,7 @@ const { routeFetch, envelope, failure, json: respond, deferred, browser } = requ
 const root = path.resolve(__dirname, '../..'), app = path.join(root, 'frontend/workbench/app');
 const names = ['WorkbenchTerms.js', 'transport.js', 'resource-contract.js', 'resource-api.js', 'resource-session.js',
   'ProcessContract.js', 'ProcessAPI.js', 'BatchContract.js', 'BatchAPI.js',
-  'DashboardContract.js', 'OutsourcingContract.js', 'TrialContract.js', 'TrialAdoptionAPI.js', 'CalibrationAdoptionAPI.js',
+  'DashboardContract.js', 'OutsourcingContract.js', 'TrialContract.js', 'TrialAdoptionAPI.js', 'CalibrationAPI.js', 'CalibrationAdoptionAPI.js',
   'DashboardSession.js', 'OutsourcingSession.js', 'TrialAdoptionState.js', 'CalibrationAdoptionState.js', 'RunAdoptionAPI.js', 'RunAdoptionAction.jsx',
   'TrialAdoptionControls.jsx', 'CalibrationAdoptionControls.jsx', 'RunAdoptionControls.jsx',
   'RunJobAPI.js', 'SystemMaintenanceAPI.js', 'TrialAPI.js', 'TrialViewState.js'];
@@ -71,26 +71,43 @@ function hooks() {
 }
 async function main() {
   // Run writes have one current-intent read; RECENT must succeed before PENDING is removed.
-  const runStore = storage(); w.localStorage = runStore; const pending = w.RunJobAPI.pending(), inputRef = 'i'.repeat(32);
+  const runStore = storage(); w.localStorage = runStore; const pending = w.RunJobAPI.pending, inputRef = 'i'.repeat(32);
   reset(); const intent = pending.begin(inputRef, dataContext); assert.equal(counters.reads, 1); assert.equal(counters.parses, 0);
   assert.equal(intent.schema_version, 2); assert.equal(intent.data_context_ref, dataContext); assert.equal(intent.request_key, 'run-' + '05'.repeat(24));
   reset(); const attached = pending.attach(intent, ref(1)); assert.equal(counters.reads, 1); assert.equal(counters.parses, 1);
   reset(); pending.finish(attached, 'found'); assert.equal(counters.reads, 1); assert.equal(counters.parses, 1);
   assert.deepEqual(runStore.writes.slice(-2), [['set', w.RunJobAPI.RECENT_KEY], ['remove', w.RunJobAPI.PENDING_KEY]]);
   assert.equal(pending.read(), null); assert.equal(pending.recent().resolution, 'found');
-  // L07: a run cannot start without the preview's data source.
-  assert.throws(() => pending.begin(inputRef), /读到的排产数据不完整/); assert.equal(pending.read(), null);
-  const retry = pending.begin(inputRef, dataContext), quota = new Error('QuotaExceededError'); runStore.failSet = quota;
-  assert.throws(() => pending.finish(retry, 'found'), error => error === quota);
-  assert.equal(pending.read().request_key, retry.request_key, 'A failed RECENT write leaves PENDING intact');
-  runStore.failSet = null; runStore.failRemove = new Error('removeItem unavailable');
-  assert.throws(() => pending.finish(retry, 'found'), /无法更新/);
-  assert.throws(() => pending.read(), /无法更新/); assert.equal(pending.recent().intent.request_key, retry.request_key);
-  assert.throws(() => pending.reject(retry), /无法更新/); runStore.failRemove = null;
+  // A finish whose RECENT write fails registers the whole settlement before any write: the error and read() carry saved:null,
+  // the disk keeps the old record and RECENT stays owed.
+  const RECENT = w.RunJobAPI.RECENT_KEY, PENDING = w.RunJobAPI.PENDING_KEY, recentWrites = () => runStore.writes.filter(row => row[1] === RECENT).length;
+  const owed = pending.begin(inputRef, dataContext), quota = new Error('QuotaExceededError'); runStore.failSet = quota;
+  let firstFailure; assert.throws(() => pending.finish(owed, 'found'), error => { firstFailure = error; return /无法更新/.test(error.message) && error.saved === null; });
+  const sameFailure = error => error.message === firstFailure.message && error.saved === null;
+  assert.throws(() => pending.read(), sameFailure, 'The registered finish stays reported while RECENT is owed');
+  await assert.rejects(w.APSWorkbenchTransport.exclusive(PENDING, { wait: true }, () => pending.flush()), sameFailure, 'A failed flush replay reports the same error as the first attempt and read()');
+  assert.equal(JSON.parse(runStore.data.get(PENDING)).input_ref, inputRef);
+  // A new begin replays the owed RECENT write first; while that replay fails the old settlement stays and the new record is never written.
+  const nextRef = 'j'.repeat(32), writesBefore = runStore.writes.length;
+  assert.throws(() => pending.begin(nextRef, dataContext), error => /无法更新/.test(error.message) && error.saved === null);
+  assert.deepEqual(runStore.writes.slice(writesBefore), [['set', RECENT]], 'A failed replay writes nothing for the new begin');
+  assert.equal(JSON.parse(runStore.data.get(PENDING)).input_ref, inputRef);
+  assert.throws(() => pending.read(), error => error.saved === null, 'The old settlement is not replaced by a failed begin');
+  runStore.failSet = null;
+  const next = pending.begin(nextRef, dataContext);
+  assert.equal(pending.recent().intent.input_ref, inputRef, 'The owed RECENT write lands before the new begin');
+  assert.equal(pending.read().input_ref, nextRef);
+  // A settlement whose own removal fails keeps saved:null; retries by the initiator only write the removal, the completed RECENT write never runs twice.
+  runStore.failRemove = new Error('removeItem unavailable');
+  assert.throws(() => pending.finish(next, 'found'), error => /无法更新/.test(error.message) && error.saved === null);
+  assert.equal(pending.recent().intent.input_ref, nextRef, 'RECENT is written before the failed removal'); const recentCount = recentWrites();
+  assert.throws(() => pending.finish(next, 'found'), /无法更新/); assert.throws(() => pending.reject(next), /无法更新/);
+  assert.equal(recentWrites(), recentCount, 'A completed callback is never replayed'); runStore.failRemove = null;
   assert.throws(() => pending.read(), /无法更新/, 'read() never writes; the unflushed removal stays reported');
-  await w.APSWorkbenchTransport.exclusive(w.RunJobAPI.PENDING_KEY, { wait: true }, () => pending.flush()); assert.equal(pending.read(), null);
-  const late = Promise.resolve().then(() => pending.finish(retry, 'found'));
-  const newer = { ...retry, request_key: 'run-' + 'f'.repeat(48) }; runStore.data.set(w.RunJobAPI.PENDING_KEY, JSON.stringify(newer));
+  await w.APSWorkbenchTransport.exclusive(PENDING, { wait: true }, () => pending.flush()); assert.equal(pending.read(), null);
+  assert.equal(recentWrites(), recentCount, 'flush writes back only the removal');
+  const late = Promise.resolve().then(() => pending.finish(next, 'found'));
+  const newer = { ...next, request_key: 'run-' + 'f'.repeat(48) }; runStore.data.set(PENDING, JSON.stringify(newer));
   await assert.rejects(late, /记录已变化/); assert.equal(pending.read().request_key, newer.request_key);
   reset(); pending.reject(newer); assert.equal(counters.reads, 1); assert.equal(counters.parses, 1);
   // L07: a stored intent without schema_version 2 and data_context_ref is a damaged record, never restored.
@@ -98,7 +115,7 @@ async function main() {
   assert.throws(() => pending.read(), /排产操作记录不完整/, 'A legacy pending intent is rejected');
   runStore.data.set(w.RunJobAPI.PENDING_KEY, JSON.stringify(intent)); assert.equal(pending.read().request_key, intent.request_key, 'A current pending intent restores');
 
-  w.localStorage = storage(); const maintenance = w.SystemMaintenanceAPI.pending();
+  w.localStorage = storage(); const maintenance = w.SystemMaintenanceAPI.pending;
   reset(); const maintenanceIntent = maintenance.begin('create'); assert.equal(counters.reads, 1); assert.equal(counters.parses, 0);
   assert.equal(maintenance.read().request_key, maintenanceIntent.request_key); maintenance.finish(maintenanceIntent);
   w.localStorage = storage(); reset(); const trialKey = w.TrialAPI.reserve(); assert.equal(counters.reads, 1);
@@ -117,13 +134,13 @@ async function main() {
     candidate_count: 0, excluded_count: 0, sample_refs: [], sample_revisions: [], exclusion_reasons: [], method_version: 'v1' };
   const sessions = [
     { name: 'DashboardSession', contract: 'DashboardContract', leaf: 'expected', contexts: 0, mount: module => module.useCommand(),
-      value: { version: 1, request_key: 'dashboard-' + 'a'.repeat(48), phase: 'pending', item_ref: ref(9), action: 'transition', input: { target_status: 'following' }, before: handling, source: {}, risk: {} } },
+      value: { version: 1, request_key: 'dashboard-' + 'a'.repeat(48), phase: 'pending', item_ref: ref(9), subject: '风险', action: 'transition', input: { target_status: 'following' }, before: handling, source: {}, risk: {} } },
     { name: 'OutsourcingSession', contract: 'OutsourcingContract', leaf: 'facts', contexts: 0, mount: module => module.useCommand(),
       value: { version: 1, request_key: 'outsourcing-' + 'a'.repeat(48), phase: 'pending', input: { ...after, target: w.OutsourcingContract.target(target), declared_operator: values.declared_operator, reason: values.reason }, after, target } },
     // The trial adoption intent always carries the preview's data source, so validating it parses that one field.
     { name: 'TrialAdoptionState', contract: 'TrialAdoptionAPI', leaf: 'overview', contexts: 1, mount: module => module.useSession({ disabled: true, onAdopted() {} }),
       value: { schema_version: 1, request_key: 'trial-adoption-' + 'a'.repeat(48), phase: 'pending', scenario_ref: scope.scenario_ref, preview: trialScope, input: values } },
-    { name: 'CalibrationAdoptionState', contract: 'CalibrationAdoptionAPI', leaf: 'binding', contexts: 0, mount: module => module.useSession({ detail: null, stale: true }),
+    { name: 'CalibrationAdoptionState', contract: 'CalibrationAPI', leaf: 'validBinding', contexts: 0, mount: module => module.useSession({ detail: null, stale: true }),
       value: { version: 1, request_key: 'calibration-' + 'a'.repeat(48), phase: 'pending', baseline, input: values } }
   ];
   const sessionCounts = {};
@@ -131,8 +148,9 @@ async function main() {
     const module = w[row.name], contract = w[row.contract], leaf = contract[row.leaf], host = hooks(); w.localStorage = storage();
     contract[row.leaf] = (...args) => { counters.validations++; return leaf(...args); };
     const session = host.render(() => row.mount(module)); host.flush(); reset();
+    // Writes are built from already validated previews and stored records: saving reads the disk once and validates nothing.
     assert.equal(module.save(row.value, null), row.value); assert.equal(events.at(-1).detail, row.value);
-    assert.deepEqual(counters, { reads: 1, parses: 0, validations: 1 }); assert.equal(contextParses, row.contexts); sessionCounts[row.name] = { ...counters };
+    assert.deepEqual(counters, { reads: 1, parses: 0, validations: 0 }); assert.equal(contextParses, 0); sessionCounts[row.name] = { ...counters };
     reset(); w.dispatchEvent(events.at(-1)); assert.deepEqual(counters, { reads: 0, parses: 0, validations: 0 }); assert.equal(contextParses, 0);
     w.dispatchEvent({ type: 'storage', key: module.KEY }); assert.deepEqual(counters, { reads: 1, parses: 1, validations: 1 }); assert.equal(contextParses, row.contexts);
     assert.equal(JSON.stringify(module.read()), JSON.stringify(row.value));
@@ -183,23 +201,21 @@ async function main() {
   const element = w.RunAdoptionAction({ candidateRef: ref(10), candidateCatalog: [] });
   adoptionHost.render(() => element.type(element.props)); adoptionHost.flush();
   const candidate = { candidate_ref: ref(10), run_ref: ref(11), baseline: { plan_ref: null, version: null }, task_count: 1, scope_complete: true, data_context_ref: dataContext };
-  const validIntent = w.RunAdoptionAPI.validIntent; let localValidations = 0;
-  w.RunAdoptionAPI.validIntent = value => { localValidations++; return validIntent(value); };
-  reset(); const adopted = w.RunAdoptionAPI.pending().begin(candidate, values, null);
-  assert.equal(counters.reads, 1); assert.equal(counters.parses, 0); assert.equal(localValidations, 0, 'RunAdoptionAction consumes the verified local event');
+  reset(); const adopted = w.RunAdoptionAPI.pending.begin(candidate, values, null);
+  assert.equal(counters.reads, 1); assert.equal(counters.parses, 0, 'RunAdoptionAction consumes the verified local event');
   assert.equal(events.at(-1).detail, adopted); assert.equal(adopted.data_context_ref, dataContext);
-  assert.equal(w.RunAdoptionAPI.pending().read().request_key, adopted.request_key); adoptionHost.unmount(); w.RunAdoptionAPI.validIntent = validIntent;
+  assert.equal(w.RunAdoptionAPI.pending.read().request_key, adopted.request_key); adoptionHost.unmount();
   // A definitive 404 non-commit (the candidate is gone) releases PENDING like the other adoption transports.
   routes['POST /api/workbench/v1/scheduling/candidates/*/adopt'] = () => respond(failure('entity_not_found', '所选候选方案已不存在。'), 404);
   const gone = await w.RunAdoptionAPI.adopt(adopted, 'w'.repeat(32)).then(() => assert.fail('A missing candidate is not adopted'), error => error);
   assert.equal(gone.message, '所选候选方案已不存在。'); assert.equal(w.APSWorkbenchTransport.rejected(gone), true);
   assert.equal(fetch.calls.at(-1).body.request_key, adopted.request_key);
-  assert.equal(w.RunAdoptionAPI.pending().reject(adopted, gone).phase, 'rejected');
+  assert.equal(w.RunAdoptionAPI.pending.reject(adopted, gone).phase, 'rejected');
   // A record cleared elsewhere returns the draft to the remembered-handler default and drops the stale lookup error.
   routes['GET /api/workbench/v1/scheduling/candidates/*/adoption-commands/*'] = () => { throw new Error('网络中断'); };
   w.localStorage = storage(); const runHost = hooks(), runElement = w.RunAdoptionAction({ candidateRef: ref(10), candidateCatalog: [] });
   const renderRun = () => runHost.render(() => runElement.type(runElement.props)), runDialog = () => renderRun().props.children.find(child => child && child.type === 'dialog');
-  renderRun(); runHost.flush(); w.RunAdoptionAPI.pending().begin(candidate, values, null);
+  renderRun(); runHost.flush(); w.RunAdoptionAPI.pending.begin(candidate, values, null);
   renderRun().props.children[0].props.onClick(); renderRun(); runHost.flush(); await tick();
   lookupCall = fetch.calls.at(-1);
   assert.equal(lookupCall.path, '/api/workbench/v1/scheduling/candidates/' + ref(10) + '/adoption-commands/' + adopted.request_key);
@@ -236,12 +252,21 @@ async function main() {
     write_context: { write_token: 'w'.repeat(32), expires_at: '2026-10-22T10:00:00', capabilities: { 'trial.scenario.adopt': true }, blocked_reasons: [] } }, { as_of: '2026-10-22T09:00:00' });
   routes['POST /api/workbench/v1/trial/scenarios/*/adopt'] = offline(trialAdopts);
   const renderTrial = () => trialHost.render(() => w.TrialAdoptionState.useSession({ scenarioRef: scope.scenario_ref, data: trialData, disabled: false, onAdopted() {} }));
-  renderTrial(); trialHost.flush(); renderTrial().change({ reason: values.reason, declared_operator: values.declared_operator });
+  renderTrial(); trialHost.flush(); renderTrial().change({ reason: ' ' + values.reason + '  ', declared_operator: values.declared_operator + ' ' });
   await renderTrial().inspect(); renderTrial().setConsent(true);
   assert.equal(renderTrial().preview.data_context_ref, dataContext);
   await refused(renderTrial, noLocks, session => session.submit(), '当前浏览器不支持，请用 Chrome 打开。', trialAdopts);
   await refused(renderTrial, contended, session => session.submit(), '另一个页面正在处理这次采用，请先在那个页面点「查询结果」。', trialAdopts);
-  w.navigator = granted; await renderTrial().submit(); assert.equal(trialAdopts.length, 1);
+  // The submit entry trims the draft once; inside the lock only the raw draft fields are compared, so the form decoder runs once
+  // and the command carries the trimmed values.
+  w.navigator = granted;
+  {
+    const trialInput = w.TrialAdoptionAPI.input; let trialInputs = 0;
+    w.TrialAdoptionAPI.input = (...args) => { trialInputs++; return trialInput(...args); };
+    try { await renderTrial().submit(); } finally { w.TrialAdoptionAPI.input = trialInput; }
+    assert.equal(trialInputs, 1, '入口只规整一次，锁内只核对草稿未变');
+  }
+  assert.equal(trialAdopts.length, 1); assert.deepEqual(trialAdopts[0].input, values);
   assert.equal(renderTrial().error, w.WorkbenchTerms.outcomes.unknown('采用')); assert.equal(renderTrial().saved.phase, 'pending');
   w.localStorage = storage(); renderTrial().sync();
   routes['POST /api/workbench/v1/trial/scenarios/*/adopt'] = stale(() => { w.localStorage.failSet = quota; });
@@ -322,6 +347,9 @@ async function main() {
   const calibrationAdopts = [], calibrationHost = hooks();
   routes[PREVIEW] = () => calibrationPreview; routes[ADOPT] = offline(calibrationAdopts);
   w.localStorage = storage();
+  // The suggestion row is checked once by the preview boundary; render identity, pre-submit and in-lock comparisons, the new record and its write only project.
+  const validBinding = w.CalibrationAPI.validBinding; let bindingChecks = 0;
+  w.CalibrationAPI.validBinding = row => { bindingChecks++; return validBinding(row); };
   const renderCalibration = () => calibrationHost.render(() => w.CalibrationAdoptionState.useSession({ detail: calibrationDetail, stale: false }));
   renderCalibration(); calibrationHost.flush(); renderCalibration().change(calibrationInput);
   await renderCalibration().inspect(); renderCalibration().setConsent(true);
@@ -330,6 +358,9 @@ async function main() {
   await refused(renderCalibration, contended, session => session.submit(), '另一个页面正在采用，请先在那边查询结果。', calibrationAdopts);
   w.navigator = granted; await renderCalibration().submit(); assert.equal(calibrationAdopts.length, 1);
   assert.equal(calibrationAdopts[0].request_key, 'calibration-' + '05'.repeat(24));
+  assert.deepEqual(calibrationAdopts[0].input, { ...calibrationInput, confirm: true });
+  assert.equal(bindingChecks, 1, 'Only the preview response is checked against the shared binding rule');
+  w.CalibrationAPI.validBinding = validBinding;
   calibrationHost.unmount();
 
   // A precheck that lands after another page wrote a pending record cannot submit over it; a cross-page release clears the draft and error;
@@ -471,7 +502,7 @@ async function main() {
     w.localStorage = storage();
     let lookupGate = deferred();
     routes['GET /api/workbench/v1/scheduling/candidates/*/adoption-commands/*'] = () => lookupGate.promise;
-    const firstAdopt = w.RunAdoptionAPI.pending().begin(candidate, values, null);
+    const firstAdopt = w.RunAdoptionAPI.pending.begin(candidate, values, null);
     const secondAdopt = { ...firstAdopt, request_key: 'adoption-' + 'd'.repeat(48) };
     const thirdAdopt = { ...firstAdopt, request_key: 'adoption-' + 'e'.repeat(48) };
     const raceRunHost = hooks(), raceRunElement = w.RunAdoptionAction({ candidateRef: ref(10), candidateCatalog: [] });
@@ -579,7 +610,7 @@ async function main() {
 
     const candidateA = { ...candidate, candidate_ref: ref(5) }, crossCandPosts = [];
     w.localStorage = storage();
-    const rejectedA = w.RunAdoptionAPI.pending().reject(w.RunAdoptionAPI.pending().begin(candidateA, values, null), gone);
+    const rejectedA = w.RunAdoptionAPI.pending.reject(w.RunAdoptionAPI.pending.begin(candidateA, values, null), gone);
     routes['POST /api/workbench/v1/scheduling/candidates/*/adopt-preview'] = call => envelope({
       ...candidateA, candidate_ref: call.path.split('/').at(-2), validation: { status: 'valid', can_adopt: true, issues: [] },
       write_context: { write_token: 'w'.repeat(32), expires_at: '2026-10-22T10:00:00', capabilities: { 'scheduling.candidate.adopt': true }, blocked_reasons: [] }

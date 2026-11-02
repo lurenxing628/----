@@ -212,8 +212,11 @@ async function contract(h, assert) {
     { ok: true, result: 'accepted', job_ref: runRef, run_ref: runRef, status_target: '/api/workbench/v1/scheduling/runs/' + runRef,
       receipt_ref: 'a'.repeat(32), replayed: false, data: { ...admitted, scope_summary: { ...jobScope, run_options: runnable.data.run_options } }, data_context_ref: dataContext };
   // D02: a data context is only the JSON form; the removed 64-hex value is a damaged stored intent.
-  assert(!w.RunJobAPI.validIntent({schema_version:2,input_ref:inputRef,request_key:'run-'+ 'b'.repeat(48),run_ref:null,data_context_ref:'d'.repeat(64)}), 'A 64-hex data context is not restored');
-  assert(!w.RunJobAPI.validIntent({schema_version:2,input_ref:inputRef,request_key:'run-'+ 'b'.repeat(48),run_ref:null,data_context_ref:JSON.stringify({database_scope:'/tmp/aps-context.db',successful_restores:[true]})}), 'Restore identities keep their actual type');
+  for (const badContext of ['d'.repeat(64), JSON.stringify({database_scope:'/tmp/aps-context.db',successful_restores:[true]})]) {
+    store.set(w.RunJobAPI.PENDING_KEY, JSON.stringify({schema_version:2,input_ref:inputRef,request_key:'run-'+ 'b'.repeat(48),run_ref:null,data_context_ref:badContext}));
+    assert.throws(() => w.RunJobAPI.pending.read(), /排产操作记录不完整/);
+  }
+  store.clear();
   const panel = hooks(), props = { preflight: runnable.data, onNavigate() {} };
   requests.length = 0;
   panel.render(w.RunJobPanel, props); panel.flush(); await turns();
@@ -229,7 +232,7 @@ async function contract(h, assert) {
   assert.strictEqual(requests[1].body.input_ref, runnable.data.input_ref); assert.strictEqual(requests[1].body.write_token, runnablePreview.data.write_context.write_token);
   assert(/^run-[0-9a-f]{48}$/.test(requests[1].body.request_key));
   const acceptedRecord = nodes(panel.render(w.RunJobPanel, props)).find(node => node.type === w.RunJobControls.Record).props;
-  assert.strictEqual(acceptedRecord.run.run_ref, runRef); assert.strictEqual(acceptedRecord.intent.run_ref, runRef);
+  assert.strictEqual(acceptedRecord.run.run_ref, runRef); assert.strictEqual(JSON.parse(store.get(w.RunJobAPI.PENDING_KEY)).run_ref, runRef);
   assert.strictEqual(acceptedRecord.verified, true, 'The 202 receipt must be confirmed and attached to its saved intent');
   panel.unmount();
 
@@ -258,7 +261,7 @@ async function contract(h, assert) {
   const unattachedTree = unattached.render(w.RunJobPanel, props), unattachedRecord = nodes(unattachedTree).find(node => node.type === w.RunJobControls.Record).props;
   assert.deepStrictEqual(requests.map(row => row.path), ['/api/workbench/v1/scheduling/runs/preview', '/api/workbench/v1/scheduling/runs']);
   assert.strictEqual(unattachedRecord.run.run_ref, runRef); assert.strictEqual(unattachedRecord.verified, true, 'The accepted run is shown before the local attach');
-  assert.strictEqual(unattachedRecord.intent.run_ref, null); assert.strictEqual(JSON.parse(store.get(w.RunJobAPI.PENDING_KEY)).run_ref, null);
+  assert.strictEqual(JSON.parse(store.get(w.RunJobAPI.PENDING_KEY)).run_ref, null);
   const unattachedAlerts = nodes(unattachedTree).filter(node => node.props && node.props.role === 'alert').map(text);
   assert(unattachedAlerts.some(value => value.startsWith('排产已接收，但本机没能保存这次排产的编号。请不要重新提交，到排产记录页查看结果。')), 'The attach failure is reported as an accepted run with a storage problem');
   assert(!unattachedAlerts.some(value => value.includes(w.WorkbenchTerms.outcomes.pending('排产'))), 'The attach failure is not shown as an unconfirmed submission');
@@ -284,14 +287,28 @@ async function contract(h, assert) {
   assert.throws(() => C.result({ ...configBlocked, data: { ...configBlocked.data, blockers: [] } }, modern.data.normalized_input), /排产检查结果/);
   answer(previewFor(configBlocked), 200);
   await assert.rejects(() => w.RunJobAPI.preview(configBlocked.data.input_ref), /排产数据/, '成功preview必须有实际run_options');
-  // Q2-A: every committed:false 400/404/409/422/503 is a definite rejection, not only the codes the run module once listed; 403/500 are not.
+  // Every valid committed:false failure envelope (including 403/500) is a definite rejection; request_key_conflict never is.
   const usedIntent = { schema_version: 2, input_ref: modern.data.input_ref, request_key: 'run-' + 'a'.repeat(48), run_ref: null, data_context_ref: dataContext };
   for (const [code, status, definite] of [['input_already_used', 409, true], ['batch_locked', 409, true], ['invalid_input', 400, true], ['entity_not_found', 404, true],
-    ['constraint_conflict', 422, true], ['request_lifecycle_stopping', 503, true], ['permission_denied', 403, false], ['storage_failure', 500, false]]) {
+    ['constraint_conflict', 422, true], ['request_lifecycle_stopping', 503, true], ['permission_denied', 403, true], ['storage_failure', 500, true],
+    ['request_key_conflict', 409, false]]) {
     answer({ ok: false, committed: false, error: { code, message: '这份排产检查没有受理。', fields: [], retryable: false, request_ref: 'a'.repeat(32) } }, status);
     await assert.rejects(() => w.RunJobAPI.accept(usedIntent, writeToken), error => error.code === code && w.APSWorkbenchTransport.rejected(error) === definite,
       code + ' with HTTP ' + status + (definite ? ' is' : ' is not') + ' a definite rejection');
   }
+  store.clear();
+  w.fetch = async url => new URL(url, w.location.href).pathname.endsWith('/runs/preview') ? response(runnablePreview, 200) :
+    ({ ok: false, status: 500, headers: { get: () => 'application/json' }, json: async () => ({ ok: false, committed: false,
+      error: { code: 'storage_failure', message: '批次编号和原记录对不上，检查没有继续。', fields: [], retryable: false, request_ref: 'a'.repeat(32) } }) });
+  const rejectedPanel = hooks();
+  rejectedPanel.render(w.RunJobPanel, props); rejectedPanel.flush(); await turns();
+  await nodes(rejectedPanel.render(w.RunJobPanel, props)).find(node => node.type === w.RunJobControls.Confirmation).props.onConfirm();
+  const rejectedTree = rejectedPanel.render(w.RunJobPanel, props);
+  const rejectedAlerts = nodes(rejectedTree).filter(node => node.props && node.props.role === 'alert').map(text);
+  assert(!store.has(w.RunJobAPI.PENDING_KEY), 'A definite rejection clears the pending intent');
+  assert(rejectedAlerts.includes('批次编号和原记录对不上，检查没有继续。'), 'A definite storage_failure rejection shows the backend message');
+  assert(!rejectedAlerts.some(value => value.includes(w.WorkbenchTerms.outcomes.pending('排产'))), 'A definite rejection is never shown as a pending submission');
+  rejectedPanel.unmount();
   w.fetch = routedFetch;
   assert.equal(w.RunPresentation.stage({ ...admitted, stage: 'computing', scope_summary: { ...jobScope, run_options: options(17) } }), '正在共同优化方案');
 
@@ -490,19 +507,22 @@ async function contract(h, assert) {
     assert.deepStrictEqual(unfinished.lookups, [0], 'A local finish failure stops polling instead of retrying the lookup');
     assert.strictEqual(record.resolution, replaced ? 'context_replaced' : 'found'); assert.strictEqual(record.verified, !replaced);
     assert.strictEqual(replaced ? record.run : record.run.state, replaced ? null : 'complete');
-    assert(nodes(unfinished.view()).some(node => node.props && node.props.role === 'alert' && text(node).startsWith(options.failPending ? '存不下这次排产的操作记录' : 'QuotaExceededError')), 'The finish failure is shown as a storage error');
+    assert(nodes(unfinished.view()).some(node => node.props && node.props.role === 'alert' && text(node).startsWith(options.failPending ? '存不下这次排产的操作记录' : '本机无法更新上次操作记录')), 'The finish failure is shown as a storage error');
     h.equal(unfinished.navigations, []);
     assert(unfinished.storage.has(w.RunJobAPI.PENDING_KEY)); assert.strictEqual(unfinished.posts.length, 0);
     if (options.failPending) {
       const again = unfinished.remount();
       const restored = nodes(again).find(node => node.type === w.RunJobControls.Record);
-      assert(restored && restored.props.intent.run_ref === runRef, 'A remount restores the unflushed attach from page memory');
+      assert(restored && restored.props.title === '本次排产', 'A remount restores the pending record');
+      assert.throws(() => w.RunJobAPI.pending.read(), error => error.saved.run_ref === runRef, 'A remount restores the unflushed attach from page memory');
       assert(nodes(again).some(node => node.props && node.props.role === 'alert' && text(node).startsWith('存不下这次排产的操作记录')), 'A remount keeps reporting the unflushed attach');
       assert.strictEqual(JSON.parse(unfinished.storage.get(w.RunJobAPI.PENDING_KEY)).run_ref, null, 'Mounting never writes the unflushed attach');
     }
     await unfinished.rereadStorage();
     assert(!unfinished.storage.has(w.RunJobAPI.PENDING_KEY), 'Rereading storage after recovery finishes the pending intent');
-    h.equal(unfinished.navigations, replaced ? [] : [['run', { run_ref: h.reference(3) }]]);
+    // 结束登记欠着的最近排产写入由重读时的 flush 补上，页面改显示这条最近排产，不再自动跳转；只写回了关联的记录仍按查询结果收尾并跳转。
+    if (options.failRecent) assert.strictEqual(JSON.parse(unfinished.storage.get(w.RunJobAPI.RECENT_KEY)).resolution, replaced ? 'context_replaced' : 'found', 'The flush replays the owed recent write');
+    h.equal(unfinished.navigations, options.failRecent ? [] : [['run', { run_ref: h.reference(3) }]]);
     unfinished.stop();
   }
   return { preferences: 'read/write contracts', workspace: 'restore and save-before-check', run: 'preview-before-confirmed-accept',

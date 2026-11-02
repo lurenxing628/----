@@ -388,10 +388,11 @@ def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments
 
 
 def test_shared_resource_window_uses_saved_capacity_and_keeps_missing_capacity_unknown(history_case):
+    from core.services.workbench.facts.trial_origin import TrialOrigin
     from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
     from core.services.workbench.history.conditions_source import ConditionSource
     from core.services.workbench.history.metrics import _metric, _path, _trial, metric_definitions
-    from core.services.workbench.trial.constraints import build_trial_intervals
+    from core.services.workbench.trial.constraints import build_archived_trial_intervals
     from core.services.workbench.trial.projection import comparison as trial_comparison
     from tests.workbench.trial_support import change, create
     from tests.workbench.trial_support import service as trial_service
@@ -451,9 +452,10 @@ def test_shared_resource_window_uses_saved_capacity_and_keeps_missing_capacity_u
     draft = change(case, draft, task=1, start="2026-09-09T09:00:00", key="history-windowed-switch-second")["data"]
     saved = trial_service(case.conn).save(draft["draft_ref"], {"name": "Saved windowed switches"},
         draft["write_context"]["write_token"], "history-windowed-switch-save")["data"]
-    saved, head, rows = load_saved_scenario(case.conn, saved["scenario_ref"])
+    scenario = load_saved_scenario(case.conn, saved["scenario_ref"])
+    saved = scenario.saved
     packet: Dict[str, Any] = {"kind": "trial", "ref": saved["scenario_ref"], "entry_ref": "scenario:" + saved["scenario_ref"],
-              "saved": saved, "head": head, "rows": rows}
+              "saved": saved, "head": scenario.head, "rows": scenario.rows, "origin": scenario.origin}
     reader = SimpleNamespace(condition_source=ConditionSource)
     for start, end, expected in (("2026-09-09T08:00:00", "2026-09-09T10:00:00", 1),
                                  ("2026-09-10T00:00:00", "2026-09-11T00:00:00", 0)):
@@ -500,6 +502,7 @@ def test_shared_resource_window_uses_saved_capacity_and_keeps_missing_capacity_u
     definitions = {row["key"]: row for row in metric_definitions()}
     for deferred_ids, deferred_count, ordinary_count, expected_count in (([second], 1, 0, 1), ([], 0, 1, 2)):
         source.update(deferred_operation_ids=deferred_ids, deferred_operation_issues=[])
+        partial["origin"] = TrialOrigin(partial["head"]["admission"], partial["rows"])
         if ordinary_count:
             partial["saved"]["unplanned_operations"] = []
             ledger = partial["saved"]["operation_effort"]
@@ -508,8 +511,10 @@ def test_shared_resource_window_uses_saved_capacity_and_keeps_missing_capacity_u
             partial["saved"]["tasks"],
             partial["saved"]["validation"],
             partial["rows"],
-            partial["head"]["admission"],
-            trial_intervals=build_trial_intervals(partial["rows"]),
+            partial["origin"],
+            trial_intervals=build_archived_trial_intervals(
+                partial["rows"], execution=partial["head"]["admission"]["execution"]
+            ),
         )
         metrics, _, _ = _trial(partial, {"start": "2026-09-09T08:00:00", "end": "2026-09-09T10:00:00", "cohort": {}},
                                reader=reader)

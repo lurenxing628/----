@@ -34,9 +34,8 @@
     function readContext() { return { scope: durableScope(q), tab,
       ...(selected ? { item_ref: selected, history_page: historyPage } : {}), ...(analysisBatch ? { analysis_batch_ref: analysisBatch } : {}),
       ...(Object.keys(comparisonState.context).length ? { comparison: comparisonState.context } : {}) }; }
-    function openTarget(n, current, overview = false) {
-      P.navigationTarget(n);
-      const context = { ...(overview ? {} : n.context), return_to: { view: 'dashboard', context: current } };
+    function openTarget(n, current) {
+      const context = { ...n.context, return_to: { view: 'dashboard', context: current } };
       if (n.view === 'outsourcing') { setOutsourcing(context); return; }
       if (n.view === 'batches' && context.batch_ref) context.entity_ref = context.batch_ref;
       onNavigate(n.view, context);
@@ -53,7 +52,7 @@
     }
     function confirmNavigation() {
       try {
-        openTarget(navigationConfirmation.navigation, navigationConfirmation.current, true);
+        openTarget(navigationConfirmation.navigation, navigationConfirmation.current);
         setNavigationConfirmation(null);
       } catch (error) { setNavError(error); }
     }

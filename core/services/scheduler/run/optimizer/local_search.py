@@ -114,7 +114,6 @@ class LocalSearchStage(SearchStage):
         best: Optional[Dict[str, Any]],
         version: int,
         deadline: float,
-        batches: Dict[str, Any],
         start_dt: datetime,
         end_date: Optional[date],
         resource_pool: Optional[Dict[str, Any]],
@@ -145,11 +144,7 @@ class LocalSearchStage(SearchStage):
         if self._skip_reason:
             return
         best = cast(Dict[str, Any], best)
-        local_state = LocalSearchState.from_best(
-            best,
-            batches=batches,
-            due_by_batch=decode_session.due_by_batch(batches),
-        )
+        local_state = LocalSearchState.from_best(best, due_batches=decode_session.evaluation_context.due_batches)
         strategy_state = resolve_current_strategy_state(best)
         active_neighborhoods = _active_neighborhoods(
             neighborhoods=neighborhoods, cur_dispatch_mode=strategy_state[2],
@@ -161,7 +156,7 @@ class LocalSearchStage(SearchStage):
         run = _LocalSearchRun(
             rnd=rng_factory(int(version)),
             search_report_state=search_report_state,
-            batches=batches, start_dt=start_dt,
+            start_dt=start_dt,
             end_date=end_date, resource_pool=resource_pool,
             objective_name=objective_name, optimizer_algo_stats=optimizer_algo_stats,
             readiness_gate_enabled=readiness_gate_enabled,
@@ -189,7 +184,8 @@ class LocalSearchStage(SearchStage):
             return
         self.local_state.set_best(candidate)
         if (candidate["archive_ref"].entry_id != prev_best["archive_ref"].entry_id
-                or candidate.get("order") != prev_best.get("order")):
+                # Producers keep their own sequence type (read-only tuple or list); compare by content.
+                or tuple(candidate["order"]) != tuple(prev_best["order"])):
             self._tried_sgs_rules.clear()
         if (self.stop_reason == "estimated_decode_cost"
                 and self._best_dispatch_mode(self.local_state) not in self._unaffordable_modes):

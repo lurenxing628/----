@@ -76,7 +76,7 @@ def workbench_dashboard_objects():
     return result
 
 
-def workbench_dashboard_contract_issues(conn, *, structure: SchemaStructure):
+def workbench_dashboard_contract_issues(structure: SchemaStructure):
     actual = structure.sql
     issues = [("missing_dashboard_schema:" if name not in actual else "invalid_dashboard_schema:") + name
               for name, sql in workbench_dashboard_objects().items()

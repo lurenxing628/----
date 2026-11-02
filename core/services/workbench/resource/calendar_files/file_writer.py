@@ -15,7 +15,6 @@ from core.models.workbench_calendar_file import (
 from core.services.workbench.facts.file_writer import (
     ILLEGAL,
     XLSX_MAX_CELL_CHARACTERS,
-    check_capacity,
     write_template_xlsx,
 )
 from core.services.workbench.facts.table_cells import number_text
@@ -53,7 +52,6 @@ def _value(value, field, row, fmt):
 
 
 def write_calendar_file(kind, rows, fmt, *, template=False):
-    check_capacity(0, fmt)
     descriptor = table_descriptor(kind)
     filename = descriptor["file_stem"] + ("导入模板" if template else "清单")
     if fmt == "csv":

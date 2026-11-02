@@ -49,12 +49,12 @@ def _occupancy_groups(rows, start, end, constraints, *, intervals):
     return groups, unknown
 
 
-def _resource_occupancy(kind, key, operations, calendar, resources, label):
+def _resource_occupancy(kind, key, operations, calendar, resources, label, *, include_segments: bool):
     intervals = [interval for fragments in operations.values() for interval in union(fragments)]
     row = public_resource(kind, key, resources, None)
     row["label"] = calendar["label"] if calendar is not None else label
     available = available_intervals(calendar) if calendar is not None else None
-    metrics = _bounding_window_metrics(intervals, available)
+    metrics = _bounding_window_metrics(intervals, available, include_segments=include_segments)
     arranged_hours, occupied_hours, overlap_hours = (metrics[field] for field in (
         "span_summed_hours", "span_occupied_hours", "span_overlap_hours"))
     issues = list(calendar["issues"]) if calendar is not None else [issue("calendar_unavailable")]
@@ -76,22 +76,28 @@ def _resource_occupancy(kind, key, operations, calendar, resources, label):
                conflict_basis="work_calendar_reservation_overlap",
                issues=issues,
                conflict_segments=metrics["conflict_segments"], segments=metrics["segments"])
-    return row
+    return row, metrics["segments_complete"]
 
 
-def _bounding_window_metrics(intervals, available):
+def _bounding_window_metrics(intervals, available, *, include_segments: bool):
     """Utilization metrics over the span that covers every arranged and available interval."""
     bounds = intervals + (available or [])
     first = min((low for low, _ in bounds), default=datetime.min)
     last = max((high for _, high in bounds), default=first)
     calculator = ResourceUtilizationMetrics.from_normalized_availability(intervals, available)
     conflicts = [(low, high, count) for low, high, count in calculator.calendar.load.rows if count > 1] if calculator.calendar is not None else None
+    raw_segments = calculator.segments
+    segments_complete = include_segments or all(count > 1 for _, _, count in raw_segments)
+    kept_segments = raw_segments if include_segments else [
+        segment for segment in raw_segments if segment[2] > 1
+    ]
     return {**calculator.window(first, last, precision=None),
             "available_overlap_hours": hours([(low, high) for low, high, _count in conflicts]) if conflicts is not None else None,
             "conflict_segments": [{"start": wire(low), "end": wire(high), "concurrent_operations": count}
                                   for low, high, count in conflicts] if conflicts is not None else None,
             "segments": [{"start": wire(low), "end": wire(high), "concurrent_operations": count}
-                         for low, high, count in calculator.segments]}
+                         for low, high, count in kept_segments],
+            "segments_complete": segments_complete}
 
 
 def _capacity_measures(metrics):
@@ -108,16 +114,27 @@ def _capacity_measures(metrics):
             "outside_available_hours": outside, "capacity_shortfall_hours": shortage}, utilization, shortage > 1e-9
 
 
-def project_plan_occupancy(*, scope, resources, calendar_facts, selected, include_segments: bool = True, intervals):
+def project_plan_occupancy(*, scope, resources, calendar_facts, selected, include_segments: bool):
     """calendar_facts is the private result of project_plan_calendar over the same selection."""
-    rows, start, end, time_scope = selected
+    rows, start, end, time_scope = selected.rows, selected.start, selected.end, selected.time_scope
     constraints = TaskConstraints(calendar_facts)
-    groups, unknown = _occupancy_groups(rows, start, end, constraints, intervals=intervals)
+    groups, unknown = _occupancy_groups(rows, start, end, constraints, intervals=selected.intervals)
     calendars = calendar_facts["resources"]
     labels = {(kind, str(row[kind + "_id"])): row[kind + "_name"] for row in rows for kind in ("machine", "operator")}
-    public = [_resource_occupancy(kind, key, operations, calendars[kind].get(key) if calendars is not None else None,
-                                  resources, labels[kind, key])
-              for (kind, key), operations in sorted(groups.items())]
+    public = []
+    segments_complete = True
+    for (kind, key), operations in sorted(groups.items()):
+        row, row_complete = _resource_occupancy(
+            kind,
+            key,
+            operations,
+            calendars[kind][key] if calendars is not None else None,
+            resources,
+            labels[kind, key],
+            include_segments=include_segments,
+        )
+        public.append(row)
+        segments_complete = segments_complete and row_complete
     issues = constraints.public()
     if unknown:
         issues.append(issue("assignment_source_unknown", operation_count=len(unknown)))
@@ -126,15 +143,12 @@ def project_plan_occupancy(*, scope, resources, calendar_facts, selected, includ
         value == "unavailable" for value in states) else "partial"
     if unknown:
         state = "partial" if public else "unavailable"
-    if include_segments:
-        dto = {"state": state, "plan_ref": scope.plan_ref, "time_scope": time_scope,
-               "basis": "selected_plan_only", "resources": public, "issues": issues,
-               "segments_complete": True}
-    else:
-        has_single_segments = any(s["concurrent_operations"] == 1 for row in public for s in row["segments"])
-        public_dto = [dict(row, segments=[s for s in row["segments"] if s["concurrent_operations"] > 1])
-                      for row in public]
-        dto = {"state": state, "plan_ref": scope.plan_ref, "time_scope": time_scope,
-               "basis": "selected_plan_only", "resources": public_dto, "issues": issues,
-               "segments_complete": not has_single_segments}
-    return dto
+    return {
+        "state": state,
+        "plan_ref": scope.plan_ref,
+        "time_scope": time_scope,
+        "basis": "selected_plan_only",
+        "resources": public,
+        "issues": issues,
+        "segments_complete": segments_complete,
+    }

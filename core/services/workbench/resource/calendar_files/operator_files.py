@@ -13,7 +13,7 @@ from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models.calendar import OperatorCalendar
 from core.models.calendar_period_columns import export_period_columns, parse_period_columns
-from core.models.workbench_action_values import FileDownload
+from core.models.workbench_action_values import AtomicActionPreview
 from core.models.workbench_calendar import operator_clock
 from core.models.workbench_calendar_file import (
     CLOCK_FIELDS,
@@ -26,7 +26,6 @@ from core.models.workbench_calendar_file import (
     READONLY,
     REQUIRED,
     UI_FIELDS,
-    CalendarFilePreview,
     file_columns,
     import_request,
     row_identity,
@@ -38,9 +37,7 @@ from core.models.workbench_command import (
 from core.models.workbench_operator_calendar import apply_rest_day_rules
 from core.models.workbench_resource_action import (
     action_row,
-    check_resource_preview,
     reject_action_row,
-    resource_refs,
 )
 from core.models.workbench_resource_file_source import PreparedImportSource
 from core.models.workbench_resource_input import resource_text
@@ -52,8 +49,8 @@ from data.repositories.workbench_resource_file_repo import WorkbenchResourceFile
 from ..operator_calendars import WorkbenchOperatorCalendarService, engine_read_row
 from ..queries import WorkbenchResourceQueryService
 from .file_codec import read_calendar_file, read_clock, read_date, read_number
-from .file_writer import check_capacity, number_text, percent_text, write_calendar_file
-from .files import DAY_TYPE_TEXT, YES_NO_TEXT, check_range, row_blocked, zero_hour_workday_note
+from .file_writer import number_text, percent_text
+from .files import DAY_TYPE_TEXT, YES_NO_TEXT, row_blocked, zero_hour_workday_note
 
 KIND = "operator_calendar"
 
@@ -80,25 +77,24 @@ class WorkbenchOperatorCalendarFileService:
     # ---------- 导入 ----------
 
     def _prepare_source(self, content, *, file_format, mode):
-        request = import_request(self.kind, content, file_format, mode)
+        request = import_request(self.kind, file_format, mode)
         source, notices = read_calendar_file(self.kind, content, file_format)
-        prepared = PreparedImportSource.build(self.kind + ".import", request, source, notices, content=content)
-        request["actual_source_ref"] = prepared.source_ref
-        return prepared, request
+        return PreparedImportSource.build(request, source, notices)
 
-    def preview_import(self, content, *, file_format, mode="upsert"):
-        prepared, request = self._prepare_source(content, file_format=file_format, mode=mode)
+    def preview_import(self, content, *, file_format, mode):
+        prepared = self._prepare_source(content, file_format=file_format, mode=mode)
         with self.tx.transaction():
-            return self._preview_import(prepared, request)
+            return self._preview_import(prepared)[0]
 
-    def _preview_import(self, prepared: PreparedImportSource, request: Dict[str, Any]):
+    def _preview_import(self, prepared: PreparedImportSource):
+        request = prepared.request()
         source, notices = prepared.parsed()
         with self._domain_calendar.normalization_operation():
             rows = self._build_rows(source)
             calendars = {row["row"]: row.pop("calendar") for row in rows if "calendar" in row}
-            return CalendarFilePreview.build(
-                self.kind + ".import", request, rows, notices, source=prepared, calendars=calendars
-            )
+            return AtomicActionPreview.build(
+                self.kind + ".import", request, rows, notices, source=prepared
+            ), calendars
 
     def _build_rows(self, source) -> List[Dict[str, Any]]:
         rows = [self._parse_row(item) for item in source]
@@ -343,18 +339,12 @@ class WorkbenchOperatorCalendarFileService:
                 "remark": row["remark"], "operator_label": label, "shift_hours": number_text(row["shift_hours"]),
                 **export_period_columns(row)}
 
-    def confirm_import(self, preview, content, *, file_format, mode="upsert"):
+    def confirm_import(self, preview):
         if not self.conn.in_transaction:
             raise RuntimeError("个人日历文件导入确认必须在外层工作台写事务中执行。")
-        try:
-            prepared = PreparedImportSource.confirmation(preview, content)
-            request = prepared.request_for(self.kind + ".import", file_format, mode)
-            current = self._preview_import(prepared, request)
-        except ValidationError as exc:
-            raise WorkbenchCommandRejected(
-                "stale_write", "文件或个人日历已经变了，没有导入。请点「重新预检」后再确认。") from exc
-        body = check_resource_preview(preview, current)
-        calendars = [current.calendars[row["row"]] for row in body["rows"] if row["result"] != "unchanged"]
+        current, models = self._preview_import(preview.source)
+        body = preview.check_current(current)
+        calendars = [models[row["row"]] for row in body["rows"] if row["result"] != "unchanged"]
         if calendars:
             self._domain_calendar._admin.operator_calendar_repo.upsert_many(calendars)
             self._domain_calendar._engine.clear_policy_cache()
@@ -367,16 +357,12 @@ class WorkbenchOperatorCalendarFileService:
 
     # ---------- 导出 ----------
 
-    def _codes_for(self, selected_refs) -> List[str]:
+    def export_codes(self, selected_refs) -> List[str]:
+        """本次读事务里导出的人员工号：给了已准入的 refs 就逐个核对仍在，None 表示当前全部人员。"""
         reader = self._reader()
         if selected_refs is not None:
-            refs = resource_refs(selected_refs, allow_empty=True)
-            return [identity.entity_key for identity in reader.resolve_refs(refs)]
-        return reader.toolbar_matching_keys(ResourcePageRequest(kind="operator"))
-
-    def validate_export_scope(self, *, start_date: str, end_date: str, selected_refs=None) -> List[str]:
-        check_range(start_date, end_date)
-        return self._codes_for(selected_refs)
+            return [identity.entity_key for identity in reader.resolve_refs(selected_refs)]
+        return reader.matching_keys(ResourcePageRequest(kind="operator"))
 
     def _rows_for(self, start_date: str, end_date: str, codes: List[str]):
         """只导出这段时间里单独设置过的日期；没设置过的天按班次或全局日历走，不出现在文件里。"""
@@ -391,25 +377,17 @@ class WorkbenchOperatorCalendarFileService:
                     rows.append(self._public(state["row"], label))
         return rows
 
-    def preview_export(self, *, start_date: str, end_date: str, selected_refs=None, codes: List[str]):
+    def preview_export(self, *, start_date: str, end_date: str, codes: List[str]):
         if not self.conn.in_transaction:
             raise RuntimeError("个人日历范围读取必须在快照事务中执行。")
         states = self._states_for(sorted(set(codes)), start_date, end_date)
-        count = sum(
+        return sum(
             state["row"] is not None
             for operator_states in states.values()
             for state in operator_states.values()
         )
-        arguments: Dict[str, Any] = {"start_date": start_date, "end_date": end_date}
-        if selected_refs is not None:
-            arguments["selected_refs"] = selected_refs
-        return arguments, count
 
     def export_rows(self, start_date: str, end_date: str, *, codes: List[str]):
         if not self.conn.in_transaction:
             raise RuntimeError("个人日历范围读取必须在快照事务中执行。")
         return self._rows_for(start_date, end_date, codes)
-
-    def export(self, file_format, *, rows) -> FileDownload:
-        check_capacity(len(rows), file_format)
-        return write_calendar_file(self.kind, rows, file_format)

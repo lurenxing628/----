@@ -11,7 +11,7 @@ from web.api_responses import query_success
 
 from .api_responses import api_endpoint
 from .read_budget import PLAN_READ_SLOTS
-from .read_context import bind_read_snapshot
+from .read_context import snapshot_binder
 
 
 def _query(extra=()):
@@ -28,7 +28,7 @@ def decision_history():
         from core.services.workbench.history.queries import read_decision_history
 
         data, snapshot, _state = read_decision_history(
-            g.db, values, bind_snapshot=lambda scope, state: bind_read_snapshot(scope, state, token)
+            g.db, values, bind_snapshot=snapshot_binder(token)
         )
     return query_success(data, snapshot)
 
@@ -52,7 +52,7 @@ def decision_history_export():
             g.db,
             values,
             section=section if fmt == "csv" else None,
-            bind_snapshot=lambda scope, state: bind_read_snapshot(scope, state, token),
+            bind_snapshot=snapshot_binder(token),
         )
     download = (write_decision_xlsx("history", data, snapshot, section) if fmt == "xlsx" else
                 write_history_export(data, snapshot, fmt, section))

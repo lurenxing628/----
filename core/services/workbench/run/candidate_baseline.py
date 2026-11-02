@@ -111,12 +111,13 @@ class WorkbenchRunCandidateBaselineQueryService:
     def __init__(self, conn):
         self.store = CandidateStore(conn)
 
-    def baseline(self, scope):
+    def baseline(self, scope, *, bind_snapshot):
         store = self.store
         with store.snapshot():
             source = read_candidate_source(store, scope.candidate_ref)
             admission, refs, raw_by_ref, source_state = self._source(source)
-            return self._baseline(source, admission, refs, raw_by_ref, source_state, scope)
+            snapshot = bind_snapshot(scope.scope(), {**source.snapshot_identity, "baseline_source": source_state})
+            return self._baseline(source, admission, refs, raw_by_ref, scope), snapshot
 
     def _source(self, source):
         from core.services.workbench.plan.point_evidence import official_point_work
@@ -142,7 +143,7 @@ class WorkbenchRunCandidateBaselineQueryService:
             _check_raw_task_window(source.raw_tasks, admission, source.disposition, task_intervals=source.task_intervals)
             return admission, refs, raw_by_ref, source_state
 
-    def _baseline(self, source, admission, refs, raw_by_ref, source_state, scope):
+    def _baseline(self, source, admission, refs, raw_by_ref, scope):
         target_refs = refs
         if scope.batch_ref is not None:
             known_batches = {admission.facts.operation_batch_ref(ref) for ref in refs}
@@ -190,7 +191,7 @@ class WorkbenchRunCandidateBaselineQueryService:
         data = self._dto(source.run, candidate_summary(source.candidate, source.disposition,
                                                        scheduled_op_ids=source.scheduled_op_ids),
                          admission, rows, len(refs), scope)
-        return data, {**source.snapshot_identity, "baseline_source": source_state}
+        return data
 
     @staticmethod
     def _dto(run, candidate, admission, rows, count, scope):

@@ -5,7 +5,7 @@ non-finite numbers are rejected. Uploaded import files share one byte limit. Cod
 shared here, wording stays with the route.
 """
 
-from typing import Optional, Tuple
+from typing import AbstractSet, Optional, Tuple
 
 from flask import current_app, request
 
@@ -29,6 +29,21 @@ def read_upload_file(too_large: str) -> bytes:
     if len(content) > limit:
         rejecter(too_large, "invalid_input", 413)()
     return content
+
+
+def read_upload_form(required: AbstractSet[str], *, optional: AbstractSet[str] = frozenset(), transport: str, shape: str):
+    """The multipart form around exactly one ``file``: every ``required`` key, any ``optional`` one, each once.
+
+    URL arguments or a non-multipart body are rejected with ``transport`` before ``request.files`` is read,
+    so they stay a 400 even when the body is too large; a wrong file or form shape is rejected with ``shape``.
+    """
+    if request.args or request.mimetype != "multipart/form-data":
+        rejecter(transport)()
+    keys = set(request.form)
+    if (set(request.files) != {"file"} or len(request.files.getlist("file")) != 1 or not required <= keys
+            or keys - required - optional or any(len(request.form.getlist(key)) != 1 for key in keys)):
+        rejecter(shape)()
+    return request.form
 
 
 def read_json_body(*, transport: str, malformed: str, incomplete: str, duplicate: Optional[str] = None,

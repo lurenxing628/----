@@ -46,7 +46,7 @@ def objects():
     return result
 
 
-def contract_issues(conn, *, structure: SchemaStructure):
+def contract_issues(structure: SchemaStructure):
     actual = structure.sql
     return [("missing_calibration_adoption:" if name not in actual else "invalid_calibration_adoption:") + name
             for name, sql in objects().items()

@@ -419,9 +419,10 @@ class WorkbenchCalendarService:
         request, now = self.normalize("preview", payload), self._now()
         with self._tx.transaction(), self._calendar.normalization_operation():
             facts = self._preview_days(request)
-        facts.update(preview_ref=uuid.uuid4().hex, created_at=now.isoformat(timespec="seconds"),
-                     expires_at=(now + timedelta(seconds=CALENDAR_PREVIEW_TTL_SECONDS)).isoformat(timespec="seconds"))
-        return CalendarRangePreview(**facts)
+        return CalendarRangePreview(
+            preview_ref=uuid.uuid4().hex, created_at=now.isoformat(timespec="seconds"),
+            expires_at=(now + timedelta(seconds=CALENDAR_PREVIEW_TTL_SECONDS)).isoformat(timespec="seconds"),
+            request=facts["request"], dates=facts["dates"], days=facts["days"])
 
     def confirm(self, normalized_input: Dict[str, Any], preview: CalendarRangePreview) -> WorkbenchCommandOutcome:
         """Private confirm callback, inside the same outer write transaction and receipt.

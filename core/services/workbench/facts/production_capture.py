@@ -50,9 +50,7 @@ class ProductionFactsCapture:
             )
         ]
         self.table_names = {name for kind, name, _, _ in self.schema if kind == "table"}
-        self.repo = WorkbenchPreflightFactsRepository(
-            conn, present_tables=self.table_names, structure=self.structure
-        )
+        self.repo = WorkbenchPreflightFactsRepository(conn, structure=self.structure)
         self.columns, self.tables, self._raw_tables, self._indexes = {}, {}, {}, {}
         self._business_tables = {}
         self._archives = {}

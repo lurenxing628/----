@@ -1,18 +1,18 @@
 (function () {
   'use strict';
   const C = window.DashboardContract, T = window.APSWorkbenchTransport, KEY = 'aps_dashboard_pending_v1', EVENT = KEY + '_changed';
-  function valid(v, checkReceipt = true) {
-    try { return v && v.version === 1 && /^dashboard-[a-f0-9]{48}$/.test(v.request_key) && C.ref(v.item_ref) && ['transition', 'reopen'].includes(v.action)
+  // 磁盘记录的唯一校验点；写入的记录由已校验的条目与表单构造，写前不再重验。
+  function valid(v) {
+    try { return v && v.version === 1 && /^dashboard-[a-f0-9]{48}$/.test(v.request_key) && C.ref(v.item_ref) && C.text(v.subject) && ['transition', 'reopen'].includes(v.action)
       && ['pending', 'confirmed', 'rejected'].includes(v.phase) && C.object(v.input) && C.object(v.source) && C.object(v.risk)
-      && !!C.baseHandling(v.before) && !!C.baseHandling(C.expected(v)) && (v.phase !== 'confirmed' || (checkReceipt ? !!C.receipt(v.receipt, v) : C.object(v.receipt))); } catch (_) { return false; }
+      && !!C.handling(v.before) && !!C.handling(C.expected(v)) && (v.phase !== 'confirmed' || !!C.receipt(v.receipt, v)); } catch (_) { return false; }
   }
   const { read, flush, save } = T.pendingStore({
-    key: KEY, event: EVENT, validate: valid, validateWrite: v => valid(v, false),
+    key: KEY, event: EVENT, validate: valid,
     readError: '上次操作记录读不出来，不能开始新的处置。请重新打开页面。',
     corruptError: '上次操作记录已损坏，不能开始新的处置。请不要再操作，联系维护人员。',
     invalidError: '上次操作记录不完整，不能重新提交。请不要再操作，联系维护人员。',
     conflictError: '上次操作已在另一个页面变化，这里没有覆盖它。请刷新后重试。',
-    invalidWriteError: '值班台读到的数据不完整，请刷新后重试。',
     writeError: '上次操作记录保存不了，不能开始处置。请重新打开页面。'
   });
   function useCommand() {

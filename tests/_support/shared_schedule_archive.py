@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta
 
+from core.algorithm_contracts.resource_occupancy import project_internal_occupancies
 from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
 from core.algorithms.evaluation import compute_metrics, objective_score
@@ -34,7 +35,9 @@ def _candidate(results, *, objective="min_tardiness", failures=(), fixed_seed=()
     fixed_ids = {row.op_id for row in seeds}
     metrics = compute_metrics(
         rows, BATCHES, expected_operations=[op for op in OPERATIONS if op.id not in fixed_ids],
-        seed_results=seeds, failure_details=failures,
+        seed_results=seeds,
+        seed_occupancies_by_op_id={row.op_id: project_internal_occupancies(row) for row in seeds},
+        failure_details=failures,
     )
     missing = 3 - len({row.op_id for row in rows} & {1, 2, 3})
     summary = ScheduleSummary(

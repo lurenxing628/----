@@ -33,7 +33,6 @@ class PlanReadContext:
         self._enriched = {}
         self._entities, self._points, self._tasks, self._calendar_selections = {}, {}, {}, {}
         self._adopted, self._task_memberships, self._task_resources, self._task_work = {}, {}, {}, {}
-        self._process_orders = {}
         self._raw_sources = {}
         self._raw_tasks = {}
         self._snapshot_state = None
@@ -285,7 +284,10 @@ class PlanReadContext:
         key = (scope.plan_ref, scope.range_start, scope.range_end)
         if key not in self._calendar_selections:
             self._calendar_selections[key] = selected_context(
-                self.conn, scope, self.scoped_rows(entry, scope), plan_span
+                scope,
+                self.scoped_rows(entry, scope),
+                plan_span,
+                intervals=self.datetime_intervals(entry),
             )
         return self._calendar_selections[key]
 

@@ -128,7 +128,10 @@ def test_supplement_keeps_known_facts_through_correction(ledger_case):
 
 
 def test_file_confirmation_retains_source_after_read_expiry_and_rechecks_write_expiry(field_api, monkeypatch):
+    from datetime import datetime
+
     from core.services.workbench.commands import WorkbenchCommandService
+    from core.services.workbench.execution.production_report import WorkbenchProductionReportService
     from web import public_token_registry
     from web.routes.workbench.execution_files import PREVIEW_NAMESPACE
     from web.routes.workbench.read_context import _SCOPE
@@ -159,4 +162,25 @@ def test_file_confirmation_retains_source_after_read_expiry_and_rechecks_write_e
         patch.setattr(WorkbenchCommandService, 'execute', expired_after_prefetch)
         response = api.client.post(BASE + '/files/confirm', json=api.confirm_body(preview))
     assert response.status_code == 409 and response.get_json()['error']['code'] == 'stale_write'
+    assert all_rows(api.case.conn) == before
+
+    orig_init = WorkbenchProductionReportService.__init__
+    current_clock = datetime(2026, 9, 8, 12)
+
+    def init_with_clock(self, conn, *, clock=None, **kwargs):
+        orig_init(self, conn, clock=clock or (lambda: current_clock), **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(WorkbenchProductionReportService, '__init__', init_with_clock)
+        rejected_preview = success(api.upload(exported.data))
+        assert not rejected_preview['data']['can_confirm']
+        current_clock = datetime(2026, 9, 10, 12)
+        response = api.client.post(BASE + '/files/confirm', json=api.confirm_body(rejected_preview))
+        assert response.status_code == 409 and response.get_json()['error']['code'] == 'stale_write'
+
+        valid_preview = success(api.upload(exported.data))
+        assert valid_preview['data']['can_confirm']
+        current_clock = datetime(2026, 9, 8, 12)
+        rollback_response = api.client.post(BASE + '/files/confirm', json=api.confirm_body(valid_preview))
+        assert rollback_response.status_code == 409 and rollback_response.get_json()['error']['code'] == 'stale_write'
     assert all_rows(api.case.conn) == before

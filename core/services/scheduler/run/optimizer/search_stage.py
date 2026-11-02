@@ -21,8 +21,7 @@ class SearchStage:
         raise NotImplementedError
 
     def finish(self) -> None:
-        """Publish the report at search completion, including a stage that never ran."""
-        raise NotImplementedError
+        """Publish the report at search completion, including a stage that never ran; most stages have none."""
 
 
 __all__ = ["SearchStage"]

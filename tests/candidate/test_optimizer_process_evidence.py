@@ -424,15 +424,18 @@ def test_unknown_and_unverified_results_do_not_claim_valid_or_complete_milestone
                                     prepared=prepare_repair_parent(
                                         baseline,
                                         scope=prepare_repair_scope(
-                                            operations, context,
+                                            operations, session.native_preparation.graph_topology(),
                                             resource_pairs_for=session.native_preparation.qualified_resource_pairs)))
     assert parent is not None
     graph_metrics = enrich_graph_ready_v2_metrics(context["node_metrics_by_op_id"], operations=operations,
                                                   batches=batches, start_dt=START_DT, graph_ready_context=context,
                                                   calendar_service=scheduler.calendar, downtime_map={}, seed_results=[],
-                                                  deadline=float("inf"), clock=lambda: 0.0)
+                                                  deadline=float("inf"), clock=lambda: 0.0,
+                                                  native_preparation=session.native_preparation)
     assert graph_metrics is not None
-    decision_features = PreparedDecisionFeatures(graph_metrics, build_v2_common_rank_cache(graph_metrics))
+    decision_features = PreparedDecisionFeatures(
+        graph_metrics, build_v2_common_rank_cache(graph_metrics),
+        schedulable_ids=session.native_preparation.graph_topology().schedulable_ids)
     evaluate = partial(evaluate_graph_ready_candidate,
         prepared_decision_features=decision_features,
         strategy=SortStrategy.PRIORITY_FIRST, params={}, start_dt=START_DT, end_date=None, dispatch_rule="slack",
@@ -441,7 +444,7 @@ def test_unknown_and_unverified_results_do_not_claim_valid_or_complete_milestone
     search = _IteratedGreedySearch(limits=limits, parent=parent, profile=profile, pool=pool, evaluate=evaluate,
         metrics_by_op_id=graph_metrics, start_dt=START_DT, seed=0, deadline=2.0, clock=clock,
         report_state=recorder, report=report,
-        decode_session=session, graph_context=context)
+        decode_session=session)
     tracker = search.incumbent
     original, capture, improved = _candidate(20.0), _candidate(20.0), _candidate(8.0)
     identity_by_id.update({id(original): _identity("original"), id(capture): _identity("original"),

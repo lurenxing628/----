@@ -91,11 +91,11 @@
     const stored = Object.fromEntries(Object.entries(query).filter(([key]) => queryKeys.includes(key)));
     const shared = { comparison_mode: scope.comparison_mode, resource_view: scope.resource_view, selected_candidate_ref: scope.selected_candidate_ref, range_start: scope.range_start, range_end: scope.range_end,
       ...(scope.comparison_mode === 'candidates' ? { reference_candidate_ref: scope.reference.candidate_ref } : {}) };
-    const q = window.RunDecisionAPI.processScope(runRef, { ...stored, ...shared, process_candidate_ref: stored.process_candidate_ref || scope.selected_candidate_ref || undefined }), key = JSON.stringify(q);
+    const q = window.RunDecisionAPI.processScope(runRef, { ...stored, ...shared }), key = JSON.stringify(q);
     const [paused, setPaused] = React.useState(false);
     React.useEffect(() => { setPaused(false); }, [runRef, key, result.meta.snapshot_ref]);
     const read = window.APSResourceSession.useQuery(signal => window.RunDecisionAPI.process(runRef, q, signal), [runRef, key, result.meta.snapshot_ref], enabled && !paused);
-    const detail = read.result && (!q.process_candidate_ref || read.result.data.candidate.candidate_ref === q.process_candidate_ref) ? read.result : null, data = detail && detail.data;
+    const detail = read.result, data = detail && detail.data;
     function update(change, paging = false) {
       const next = { ...q, ...change, page: paging ? change.page : 1 }; delete next.snapshot_ref;
       if (data && !next.objective) next.objective = data.selected_objective.name;

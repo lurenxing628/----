@@ -119,12 +119,12 @@ def test_field_visible_finish_dates_narrow_before_ledger_and_keep_inclusive_days
     monkeypatch.setattr(ledger_reader, "MAX_OPERATIONS", 2)
     reader = FieldWorkspaceService(case.conn)
     with reader.read_snapshot():
-        full, _, _ = reader.cohort({})
+        full, _ = reader.cohort(reader.prepare_read({}))
     assert full["summary"]["tasks"] == 3 and [len(group) for group in reads] == [2, 1]
     reads.clear()
     scope = {"plan_finish_date_from": "2026-01-01", "plan_finish_date_to": "2026-01-02", "state": "unreported"}
     with reader.read_snapshot():
-        selected, _, _ = reader.cohort(scope)
+        selected, _ = reader.cohort(reader.prepare_read(scope))
     assert [task["planned_end"][:10] for task in selected["tasks"]] == ["2026-01-01", "2026-01-02"]
     assert selected["summary"]["tasks"] == selected["summary"]["state_scope_tasks"] == 2
     assert [len(group) for group in reads] == [2]
@@ -158,7 +158,7 @@ def test_field_page_constructs_report_dicts_only_for_sliced_page_tasks(ledger_ca
 
     reader = FieldWorkspaceService(case.conn)
     with reader.read_snapshot():
-        cohort, _, _ = reader.cohort({})
+        cohort, _ = reader.cohort(reader.prepare_read({}))
     assert cohort["summary"]["tasks"] == 30 and cohort["summary"]["reports"] == 30
     assert len(lazy_calls) == 0 and len(to_dict_calls) == 0
 

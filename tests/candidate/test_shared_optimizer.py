@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 import pytest
 
+from core.algorithm_contracts.resource_occupancy import project_internal_occupancies
 from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithm_contracts.types import ScheduleResult
 from core.algorithms import evaluation_completion as evaluation_inputs
@@ -81,7 +82,7 @@ from tests._support.optimizer_graph_ready_benchmark import (
     graph_ready_benchmark_context,
     graph_ready_benchmark_operations,
 )
-from tests._support.schedule_decode import production_decode
+from tests._support.schedule_decode import production_decode, production_session
 from tests._support.shared_schedule_archive import _observe_decoded, _register_decode
 
 
@@ -173,7 +174,6 @@ def _linear_fixture():
         op.machine_id = op.operator_id = None
     context = graph_ready_benchmark_context()
     context["fixed_op_ids"] = {99}
-    context["fixed_op_sources_by_op_id"] = {99: "seed"}
     context["predecessor_op_ids_by_op_id"].update({99: set(), 1: {99}, 2: {1}})
     context["successor_op_ids_by_op_id"].update({99: {1}, 1: {2}})
     pool = {
@@ -262,7 +262,9 @@ def _assert_arrangement(results, *, operations, seed, context, pool, downtime):
 def _assert_target_evaluations(archive, entry_id, *, operations, batches, seed):
     candidate = archive.materialize(entry_id)
     metrics = compute_metrics(candidate["results"], batches, expected_operations=operations,
-                              seed_results=[seed], failure_details=candidate["summary"].failure_details)
+                              seed_results=[seed],
+                              seed_occupancies_by_op_id={seed.op_id: project_internal_occupancies(seed)},
+                              failure_details=candidate["summary"].failure_details)
     entry = archive.entry(entry_id)
     assert set(entry.evaluations) == set(target_objectives_for("min_overdue"))
     for objective, evaluation in entry.evaluations.items():
@@ -287,6 +289,7 @@ def _assert_controlled_worse_reference_keeps_source():
     )
     results, summary, strategy, params = decoded.results, decoded.summary, decoded.used_strategy, decoded.used_params
     metrics = compute_metrics(results, batches, expected_operations=operations, seed_results=[],
+                              seed_occupancies_by_op_id={},
                               failure_details=summary.failure_details)
     ordinary = {"results": results, "summary": summary, "strategy": strategy, "params": params,
                 "metrics": metrics, "score": (float(summary.failed_ops),) + objective_score("min_overdue", metrics),
@@ -320,7 +323,7 @@ def _assert_controlled_worse_reference_keeps_source():
     nodes = build_operation_nodes_from_rows(operations, batches=batches, resource_pool=pool)
     node_metrics = ScheduleGraphAnalysisService().analyze_precedence(nodes, []).node_metrics
     context = {
-        "enabled": True, "schedulable_op_ids": {1, 2, 3}, "fixed_op_ids": set(), "fixed_op_sources_by_op_id": {},
+        "enabled": True, "schedulable_op_ids": {1, 2, 3}, "fixed_op_ids": set(),
         "predecessor_op_ids_by_op_id": {op.id: set() for op in operations},
         "successor_op_ids_by_op_id": {op.id: set() for op in operations},
         "sort_key_by_op_id": {op.id: (0, op.seq, op.id) for op in operations},
@@ -335,24 +338,27 @@ def _assert_controlled_worse_reference_keeps_source():
         seed_results=owned_seeds, downtime_map=owned_downtime, resource_pool=pool, graph_ready_context=context,
         clock=monotonic, started_at=started_at, deadline=started_at + 1, event_sink=session.record_event,
     )
+    native_preparation = session.decode_session.native_preparation
     parent = _parent_from_candidate(source, prepared=prepare_repair_parent(
         source, scope=prepare_repair_scope(
-            operations, context, resource_pairs_for=session.decode_session.native_preparation.qualified_resource_pairs)))
+            operations, native_preparation.graph_topology(),
+            resource_pairs_for=native_preparation.qualified_resource_pairs)))
     assert parent is not None and parent.order == (3, 2, 1)
     assert parent.inherited == ((1, "M", "O"), (2, "M", "O"), (3, "M", "O"))
     graph_metrics = enrich_graph_ready_v2_metrics(
         context["node_metrics_by_op_id"], operations=operations, batches=batches, start_dt=START_DT,
         calendar_service=scheduler.calendar, resource_pool=pool, downtime_map={}, graph_ready_context=context,
-        seed_results=[], deadline=float("inf"), clock=lambda: 0.0,
+        seed_results=[], deadline=float("inf"), clock=lambda: 0.0, native_preparation=native_preparation,
     )
     assert graph_metrics is not None
     profile = ig_decode_profile(next(p for p in resolve_v2_profiles(seed=0, objective_name="min_overdue") if p.slug == "balanced"))
     limits = IteratedGreedyLimits(due_date_seed=False, checkpoint_count=2, max_decodes=2, max_iterations=1)
     ig_report = new_iterated_greedy_report(objective_name="min_overdue")
-    decision_features = PreparedDecisionFeatures(graph_metrics, build_v2_common_rank_cache(graph_metrics))
+    decision_features = PreparedDecisionFeatures(graph_metrics, build_v2_common_rank_cache(graph_metrics),
+                                                 schedulable_ids=native_preparation.graph_topology().schedulable_ids)
     repair_pool = EliteRepairPool(limits=EliteRepairLimits(), objective_name="min_overdue",
                                   operations=operations, start_dt=START_DT, seed=0,
-                                  best=source, report_state=report, graph_context=context,
+                                  best=source, report_state=report,
                                   clock=monotonic, deadline=started_at + 1.0,
                                   decode_session=session.decode_session, decision_features=decision_features)
 
@@ -369,7 +375,7 @@ def _assert_controlled_worse_reference_keeps_source():
         limits=limits, parent=parent, profile=profile, pool=repair_pool, evaluate=evaluate,
         metrics_by_op_id=graph_metrics, start_dt=START_DT, seed=0, deadline=started_at + 1.0, clock=monotonic,
         report_state=report,
-        report=ig_report, graph_context=context, decode_session=session.decode_session,
+        report=ig_report, decode_session=session.decode_session,
     )
     search.best = source
     session.phase = "controlled_reference_order"
@@ -441,7 +447,7 @@ def test_unaffordable_required_ig_capture_stops_stage_and_preserves_other_work()
     state = GraphSearchState(view.candidate)
     run = IteratedGreedyRun(
         limits=search.limits, state=state, parent_profile=lambda candidate: search.profile,
-        pool=search.pool, evaluate=search.evaluate, graph_context=search.graph_context,
+        pool=search.pool, evaluate=search.evaluate,
         metrics_by_op_id=search.metrics, objective_name=view.objective, start_dt=search.start_dt,
         seed=0, deadline=deadline, clock=clock,
         report_state=view.report, decode_session=decoder,
@@ -453,7 +459,7 @@ def test_unaffordable_required_ig_capture_stops_stage_and_preserves_other_work()
         valid_dispatch_rules=["slack"], start_dt=START_DT, end_date=None,
         cfg=scheduler.config, resource_pool=decoder.resource_pool,
         objective_name=view.objective, deadline=deadline,
-        build_order=lambda strategy, params: list(decoder.batches), clock=clock,
+        build_order=lambda strategy, params: tuple(decoder.batches), clock=clock,
         search_report_state=view.report, state=view.state, decode_session=decoder,
     )
     view.stages = [ig, ordinary]
@@ -493,7 +499,7 @@ def test_unaffordable_required_ig_capture_stops_stage_and_preserves_other_work()
         limits=capped_limits, parent=old_parent, profile=old_profile, pool=search.pool, evaluate=search.evaluate,
         metrics_by_op_id=search.metrics, start_dt=search.start_dt, seed=2, deadline=deadline, clock=clock,
         report_state=view.report,
-        report=capped_report, graph_context=search.graph_context, decode_session=decoder,
+        report=capped_report, decode_session=decoder,
     )
     capped_search.best, capped_search.reference = reference.candidate, reference
     before_calls, before_skips = decoder.actual_decoder_calls, decoder.skipped_requests
@@ -523,7 +529,7 @@ def test_unaffordable_required_ig_capture_stops_stage_and_preserves_other_work()
     batch_best = dict(view.candidate, dispatch_mode="batch_order", dispatch_rule="slack",
                       order=["B3", "B1", "B2"])
     mode_stage = LocalSearchStage(
-        best=sgs_best, version=0, deadline=deadline, batches=decoder.batches,
+        best=sgs_best, version=0, deadline=deadline,
         start_dt=START_DT, end_date=None,
         resource_pool=decoder.resource_pool, objective_name=view.objective,
         optimizer_algo_stats=None, readiness_gate_enabled=False,
@@ -539,6 +545,21 @@ def test_unaffordable_required_ig_capture_stops_stage_and_preserves_other_work()
     assert mode_stage.strategy_state[2] == "batch_order"
     assert mode_stage.vns_state.neighborhoods != ("sgs_dispatch_rule",)
 
+    # Candidate orders keep their producer's sequence type (MultiStart stores the shared read-only tuple);
+    # an incumbent change compares orders by content, so the same order as a tuple keeps the SGS rules tried.
+    order_stage = LocalSearchStage(
+        best=sgs_best, version=0, deadline=deadline,
+        start_dt=START_DT, end_date=None,
+        resource_pool=decoder.resource_pool, objective_name=view.objective,
+        optimizer_algo_stats=None, readiness_gate_enabled=False,
+        clock=clock, rng_factory=Random, search_report_state=view.report, decode_session=decoder,
+    )
+    order_stage._tried_sgs_rules.add("slack")
+    order_stage.best = dict(sgs_best, order=tuple(sgs_best["order"]))
+    assert order_stage._tried_sgs_rules == {"slack"}
+    order_stage.best = dict(sgs_best, order=tuple(reversed(sgs_best["order"])))
+    assert not order_stage._tried_sgs_rules
+
     # When every decode kind exceeds the remaining time, each stage stops on its first budget rejection
     # instead of staying available and tail-spinning across thousands of no-decode actions.
     for _ in range(3):
@@ -546,7 +567,7 @@ def test_unaffordable_required_ig_capture_stops_stage_and_preserves_other_work()
         budget.record_decode("sgs_full", 6.0, unpruned_sgs=True)
         budget.record_decode("sgs_resume", 6.0)
     local_stage = LocalSearchStage(
-        best=view.candidate, version=0, deadline=deadline, batches=decoder.batches,
+        best=view.candidate, version=0, deadline=deadline,
         start_dt=START_DT, end_date=None,
         resource_pool=decoder.resource_pool, objective_name=view.objective,
         optimizer_algo_stats=None, readiness_gate_enabled=False,
@@ -555,7 +576,7 @@ def test_unaffordable_required_ig_capture_stops_stage_and_preserves_other_work()
     grasp_stage = GraspIGStage(
         version=7, candidate_construction=derive_grasp_ig_limits(10),
         start_dt=START_DT, end_date=None, base_strategy=SortStrategy.FIFO, base_params={},
-        build_order=lambda strategy, params: list(reversed(decoder.batches)), dispatch_rule_cfg="cr",
+        build_order=lambda strategy, params: tuple(reversed(decoder.batches)), dispatch_rule_cfg="cr",
         resource_pool=decoder.resource_pool, objective_name=view.objective, deadline=deadline,
         optimizer_algo_stats=None, readiness_gate_enabled=False,
         clock=clock, rng_factory=Random, search_report_state=view.report, state=view.state, decode_session=decoder,
@@ -567,7 +588,7 @@ def test_unaffordable_required_ig_capture_stops_stage_and_preserves_other_work()
     repair_pool = EliteRepairPool(
         limits=EliteRepairLimits(), objective_name=view.objective, operations=decoder.operations,
         start_dt=START_DT, seed=0, best=view.candidate, report_state=view.report,
-        graph_context=search.graph_context, clock=clock, deadline=deadline, decode_session=decoder,
+        clock=clock, deadline=deadline, decode_session=decoder,
         decision_features=search.pool.decision_features,
     )
     assert view.candidate is not None
@@ -587,12 +608,12 @@ def test_unaffordable_required_ig_capture_stops_stage_and_preserves_other_work()
         limits=search.limits, parent=old_parent, profile=old_profile, pool=repair_pool, evaluate=search.evaluate,
         metrics_by_op_id=search.metrics, start_dt=search.start_dt, seed=1, deadline=deadline, clock=clock,
         report_state=view.report,
-        report=trial_report, graph_context=search.graph_context, decode_session=decoder,
+        report=trial_report, decode_session=decoder,
     )
     trial_search.best, trial_search.reference = reference.candidate, reference
     trial_run = IteratedGreedyRun(
         limits=search.limits, state=state, parent_profile=lambda candidate: old_profile,
-        pool=repair_pool, evaluate=search.evaluate, graph_context=search.graph_context,
+        pool=repair_pool, evaluate=search.evaluate,
         metrics_by_op_id=search.metrics, objective_name=view.objective, start_dt=search.start_dt,
         seed=1, deadline=deadline, clock=clock,
         report_state=view.report, decode_session=decoder,
@@ -619,6 +640,30 @@ def test_piece_graph_repeats_sequences_per_piece_without_duplicate_seq_warnings(
     assert public is not None and diagnostics is not None
     assert public["warning_count"] == 0
     assert diagnostics["warnings_sample"] == []
+
+
+def test_piece_graph_reported_join_is_fixed_successor_not_released():
+    """现场乱序报工：共同后道 JOIN 已报工成为固定后继，两件第 30 道仍待排；拓扑编译与 SGS 释放都不把它当待排工序。"""
+    cfg = _config(mode="greedy", graph="off")
+    prepared, seed99 = _piece_fixture(cfg)
+    join = next(op for op in prepared.algo_ops if op.id == 100)
+    seed100 = replace(seed99, op_id=100, op_code=join.op_code, seq=join.seq,
+                      start_time=START_DT + timedelta(hours=1), end_time=START_DT + timedelta(hours=2))
+    prepared.algo_ops_to_schedule = [op for op in prepared.algo_ops_to_schedule if op.id != 100]
+    prepared.seed_results = [asdict(seed99), asdict(seed100)]
+    context = piece_graph_preparer(prepared)(prepared).graph_ready_context
+    assert 100 in context["fixed_op_ids"]
+    assert all(100 in context["successor_op_ids_by_op_id"][op_id] for op_id in (3, 4))
+    decoded = production_decode(
+        GreedyScheduler(calendar_service=ContinuousCalendar(), config_service=cfg),
+        operations=prepared.algo_ops_to_schedule, batches=prepared.batches, strategy=SortStrategy.FIFO,
+        strategy_params={}, start_dt=START_DT, dispatch_mode="sgs", dispatch_rule="slack", resource_pool=None,
+        machine_downtimes={}, seed_results=[seed99, seed100], graph_ready_context=context,
+    )
+    assert decoded.summary.success and decoded.summary.failed_ops == 0
+    rows = {row.op_id: row for row in decoded.results}
+    assert len(rows) == len(decoded.results) and set(rows) == {1, 2, 3, 4, 99, 100}
+    assert rows[100] == seed100
 
 
 def test_real_shared_optimizer_preserves_start_archive_resource_bridge_and_piece_dag(monkeypatch, record_property):
@@ -909,12 +954,14 @@ def test_shared_decode_ledger_reuses_effective_requests_and_restores_only_explic
     scheduler = RecordingScheduler(calendar_service=ContinuousCalendar(), config_service=_config())
     seed_results, order = [seed], list(batches)
     profile = next(p for p in resolve_v2_profiles(seed=0, objective_name="min_overdue") if p.slug == "graph_neutral")
-    metrics_by_op_id = enrich_graph_ready_v2_metrics(context["node_metrics_by_op_id"], operations=operations,
-                                                     batches=batches, start_dt=START_DT, graph_ready_context=context,
-                                                     calendar_service=scheduler.calendar, downtime_map={},
-                                                     seed_results=[], deadline=float("inf"), clock=lambda: 0.0)
+    metrics_by_op_id = enrich_graph_ready_v2_metrics(
+        context["node_metrics_by_op_id"], operations=operations, batches=batches, start_dt=START_DT,
+        graph_ready_context=context, calendar_service=scheduler.calendar, downtime_map={}, seed_results=[],
+        deadline=float("inf"), clock=lambda: 0.0,
+        native_preparation=production_session(scheduler, operations=operations, batches=batches).native_preparation)
     assert metrics_by_op_id is not None
-    decision_features = PreparedDecisionFeatures(metrics_by_op_id, build_v2_common_rank_cache(metrics_by_op_id))
+    decision_features = PreparedDecisionFeatures(metrics_by_op_id, build_v2_common_rank_cache(metrics_by_op_id),
+                                                 schedulable_ids=frozenset(metrics_by_op_id))
     context = dict(context, score_enabled=True,
                    graph_priority_key_by_op_id=decision_features.priority_keys_for_profile(profile))
     targets = target_objectives_for("min_overdue")
@@ -1197,6 +1244,7 @@ def test_shared_ig_sync_keeps_same_evidence_pointer_and_defers_new_parent():
         )
         results, summary, strategy, params = result.results, result.summary, result.used_strategy, result.used_params
         metrics = compute_metrics(results, batches, expected_operations=operations, seed_results=[seed],
+                                  seed_occupancies_by_op_id={seed.op_id: project_internal_occupancies(seed)},
                                   failure_details=summary.failure_details)
         assert summary.success and summary.failed_ops == 0
         candidate = {"results": results, "summary": summary, "strategy": strategy, "params": params,
@@ -1238,7 +1286,7 @@ def test_shared_ig_sync_keeps_same_evidence_pointer_and_defers_new_parent():
                                         prepared=prepare_repair_parent(
                                             parent_candidate,
                                             scope=prepare_repair_scope(
-                                                operations, _context,
+                                                operations, decoder.native_preparation.graph_topology(),
                                                 resource_pairs_for=decoder.native_preparation.qualified_resource_pairs)))
         assert parent is not None
         reference = PoolEntry(order=parent.order, score=tuple(candidate["score"]), candidate=candidate,
@@ -1247,15 +1295,18 @@ def test_shared_ig_sync_keeps_same_evidence_pointer_and_defers_new_parent():
         decision_metrics = enrich_graph_ready_v2_metrics(metrics, operations=operations, batches=batches,
                                                          start_dt=START_DT, graph_ready_context=_context,
                                                          calendar_service=scheduler.calendar, downtime_map={},
-                                                         seed_results=[], deadline=float("inf"), clock=lambda: 0.0)
+                                                         seed_results=[], deadline=float("inf"), clock=lambda: 0.0,
+                                                         native_preparation=decoder.native_preparation)
         assert decision_metrics is not None
         profile = ig_decode_profile(next(p for p in resolve_v2_profiles(seed=0, objective_name="min_overdue") if p.slug == "balanced"))
         limits = IteratedGreedyLimits(due_date_seed=False)
-        decision_features = PreparedDecisionFeatures(decision_metrics, build_v2_common_rank_cache(decision_metrics))
+        decision_features = PreparedDecisionFeatures(
+            decision_metrics, build_v2_common_rank_cache(decision_metrics),
+            schedulable_ids=decoder.native_preparation.graph_topology().schedulable_ids)
         repair_pool = EliteRepairPool(
             limits=EliteRepairLimits(), objective_name=view.objective, operations=operations,
             start_dt=START_DT, seed=0, best=candidate, report_state=report,
-            graph_context=_context, clock=monotonic, deadline=deadline, decode_session=decoder,
+            clock=monotonic, deadline=deadline, decode_session=decoder,
             decision_features=decision_features,
         )
         evaluate = partial(
@@ -1268,7 +1319,7 @@ def test_shared_ig_sync_keeps_same_evidence_pointer_and_defers_new_parent():
         graph_state = GraphSearchState(view.candidate)
         run = IteratedGreedyRun(
             limits=limits, state=graph_state, parent_profile=lambda candidate: profile,
-            pool=repair_pool, evaluate=evaluate, graph_context=_context,
+            pool=repair_pool, evaluate=evaluate,
             metrics_by_op_id=decision_metrics, objective_name=view.objective, start_dt=START_DT, seed=0,
             deadline=deadline, clock=monotonic,
             report_state=report, decode_session=decoder,
@@ -1277,7 +1328,7 @@ def test_shared_ig_sync_keeps_same_evidence_pointer_and_defers_new_parent():
             limits=limits, parent=parent, profile=profile, pool=repair_pool, evaluate=evaluate,
             metrics_by_op_id=decision_metrics, start_dt=START_DT, seed=0, deadline=deadline, clock=monotonic,
             report_state=report,
-            report=run.report, graph_context=_context, decode_session=decoder,
+            report=run.report, decode_session=decoder,
         )
         search.best, search.reference = candidate, reference
         run.search, run.iteration = search, PausedIteration(search)
@@ -1367,7 +1418,7 @@ def test_shared_ig_sync_keeps_same_evidence_pointer_and_defers_new_parent():
     assert ordinary_candidate is not None
     ordinary_stage = LocalSearchStage(
         best=ordinary_candidate, version=0, deadline=life.started_at + 1,
-        batches=batches, start_dt=START_DT, end_date=None,
+        start_dt=START_DT, end_date=None,
         resource_pool=pool, objective_name=ordinary_view.objective,
         optimizer_algo_stats=None, readiness_gate_enabled=False,
         clock=monotonic, rng_factory=Random, search_report_state=ordinary_view.report, decode_session=life_decoder,
@@ -1391,7 +1442,7 @@ def test_shared_ig_sync_keeps_same_evidence_pointer_and_defers_new_parent():
                                         prepared=prepare_repair_parent(
                                             candidate,
                                             scope=prepare_repair_scope(
-                                                operations, _context,
+                                                operations, life_decoder.native_preparation.graph_topology(),
                                                 resource_pairs_for=life_decoder.native_preparation.qualified_resource_pairs)))
         assert parent is not None
         return PoolEntry(order=parent.order, score=tuple(candidate["score"]), candidate=candidate,
@@ -1555,6 +1606,7 @@ def test_graph_features_skipped_when_sgs_decode_unaffordable_and_aborted_on_dead
     ) as mocked_residual:
         aborted = prepare_shared_graph_features(
             graph_ready_context=context,
+            schedulable_ids=frozenset(op.id for op in operations),
             scheduler=scheduler,
             algo_ops_to_schedule=operations,
             batches=batches,
@@ -1564,6 +1616,8 @@ def test_graph_features_skipped_when_sgs_decode_unaffordable_and_aborted_on_dead
             resource_pool=pool,
             deadline=210.0,
             clock=lambda: feature_timer.value,
+            native_preparation=production_session(scheduler, operations=operations, batches=batches,
+                                                  seed_results=[seed], resource_pool=pool).native_preparation,
         )
     assert aborted is None
     assert mocked_residual.call_count == 1
@@ -1591,6 +1645,7 @@ def test_graph_features_skipped_when_sgs_decode_unaffordable_and_aborted_on_dead
     ) as mocked_chain_residual:
         aborted_in_release = prepare_shared_graph_features(
             graph_ready_context=chain_context,
+            schedulable_ids=frozenset(op.id for op in operations),
             scheduler=expiring_scheduler,
             algo_ops_to_schedule=operations,
             batches=batches,
@@ -1600,6 +1655,8 @@ def test_graph_features_skipped_when_sgs_decode_unaffordable_and_aborted_on_dead
             resource_pool=pool,
             deadline=310.0,
             clock=lambda: release_timer.value,
+            native_preparation=production_session(expiring_scheduler, operations=operations, batches=batches,
+                                                  seed_results=[seed], resource_pool=pool).native_preparation,
         )
     assert aborted_in_release is None
     assert calendar_calls == 1

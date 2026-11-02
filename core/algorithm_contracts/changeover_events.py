@@ -206,26 +206,15 @@ def count_known_changeovers(by_machine) -> int:
     """Count known type transitions across internal machine sequences with the same validity rules as event projection."""
     total = 0
     for machine_ref, machine_rows in by_machine.items():
-        if not machine_ref:
+        if not machine_ref or len(machine_rows) < 2:
             continue
-        timed = []
         types_by_op = {}
-        blocked = False
         for row in machine_rows:
-            start, end = row.start_time, row.end_time
-            if start is not None and start == end:
-                continue
-            if start is None or end is None or not (start < end):
-                blocked = True
-                break
-            timed.append(row)
             if row.op_id > 0 and row.op_type_id:
                 types_by_op.setdefault(row.op_id, set()).add(row.op_type_id)
-        if blocked or len(timed) < 2:
-            continue
         inconsistent = {op_id for op_id, values in types_by_op.items() if len(values) > 1}
-        timed.sort(key=lambda item: (item.start_time, item.end_time, item.op_id))
-        for previous, current in zip(timed, timed[1:]):
+        ordered = sorted(machine_rows, key=lambda item: (item.start_time, item.end_time, item.op_id))
+        for previous, current in zip(ordered, ordered[1:]):
             if previous.op_id <= 0 or current.op_id <= 0 or previous.op_id == current.op_id:
                 continue
             if previous.op_id in inconsistent or current.op_id in inconsistent:

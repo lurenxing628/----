@@ -43,7 +43,7 @@ def objects():
     return definitions
 
 
-def contract_issues(conn, *, structure: SchemaStructure):
+def contract_issues(structure: SchemaStructure):
     actual = structure.sql
     return [("missing_run_read_model:" if name not in actual else "invalid_run_read_model:") + name
             for name, sql in objects().items()

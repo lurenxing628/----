@@ -4,7 +4,7 @@ from __future__ import annotations
 import time
 from datetime import date, datetime
 from functools import partial
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, cast
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional, Sequence, Set, Tuple, cast
 
 from core.algorithm_contracts.dispatch_rules import dispatch_rule_search_pool
 from core.algorithm_contracts.sort_strategies import SortStrategy
@@ -42,26 +42,13 @@ def _resolve_multi_start_strategy_params(
     return weighted_strategy_params(cfg)
 
 
-def _get_cached_multi_start_order(
-    *,
-    strategy: SortStrategy,
-    params: Dict[str, Any],
-    order_cache: Dict[Tuple[str, Tuple[Tuple[str, Any], ...]], List[str]],
-    build_order: Any,
-) -> List[str]:
-    cache_key = (str(strategy.value), tuple(sorted((str(key), value) for key, value in params.items())))
-    if cache_key not in order_cache:
-        order_cache[cache_key] = list(build_order(strategy, params))
-    return order_cache[cache_key]
-
-
 def _evaluate_multi_start_candidate(
     *,
     strategy: SortStrategy,
     params: Dict[str, Any],
     start_dt: datetime,
     end_date: Optional[date],
-    order: List[str],
+    order: Sequence[str],
     dispatch_mode: str,
     dispatch_rule: str,
     resource_pool: Optional[Dict[str, Any]],
@@ -114,8 +101,7 @@ def _evaluate_multi_start_candidate(
 def _iter_multi_start_specs(
     *, keys: List[str], dispatch_modes: List[str], snapshot: ScheduleConfigSnapshot,
     deadline_reached: Callable[[], bool], rules_by_mode: Dict[str, List[str]],
-    order_cache: Dict[Tuple[str, Tuple[Tuple[str, Any], ...]], List[str]],
-    build_order: Callable[[SortStrategy, Dict[str, Any]], List[str]],
+    build_order: Callable[[SortStrategy, Dict[str, Any]], Tuple[str, ...]],
 ) -> Iterator[Tuple[str, str, SortStrategy, Dict[str, Any]]]:
     strategy_cache: Dict[str, Tuple[SortStrategy, Dict[str, Any]]] = {}
     for dm in dispatch_modes:
@@ -137,21 +123,8 @@ def _iter_multi_start_specs(
                 first_strategy = (strategy, params)
             else:
                 if not seen_orders:
-                    seen_orders.add(
-                        tuple(
-                            _get_cached_multi_start_order(
-                                strategy=first_strategy[0],
-                                params=first_strategy[1],
-                                order_cache=order_cache,
-                                build_order=build_order,
-                            )
-                        )
-                    )
-                order_key = tuple(
-                    _get_cached_multi_start_order(
-                        strategy=strategy, params=params, order_cache=order_cache, build_order=build_order,
-                    )
-                )
+                    seen_orders.add(build_order(*first_strategy))
+                order_key = build_order(strategy, params)
                 if order_key in seen_orders:
                     continue
                 seen_orders.add(order_key)
@@ -162,7 +135,7 @@ def _iter_multi_start_specs(
 
 
 class MultiStartStage(SearchStage):
-    """One configured construction per task, retaining the prepared order cache."""
+    """One configured construction per task over the preparation's cached read-only batch orders."""
 
     name = "multi_start"
 
@@ -170,7 +143,7 @@ class MultiStartStage(SearchStage):
         self, *, keys: List[str], dispatch_modes: List[str], dispatch_rule_cfg: str,
         valid_dispatch_rules: List[str], start_dt: datetime, end_date: Optional[date],
         cfg: ScheduleConfigSnapshot, resource_pool: Optional[Dict[str, Any]], objective_name: str, deadline: float,
-        build_order: Any,
+        build_order: Callable[[SortStrategy, Dict[str, Any]], Tuple[str, ...]],
         optimizer_algo_stats: Optional[Dict[str, Any]] = None, readiness_gate_enabled: bool = False,
         graph_ready_context: Optional[Any] = None,
         clock: Optional[Callable[[], float]] = None,
@@ -179,7 +152,6 @@ class MultiStartStage(SearchStage):
         decode_session: SharedDecodeSession,
     ) -> None:
         self.state = state
-        self.order_cache: Dict[Tuple[str, Tuple[Tuple[str, Any], ...]], List[str]] = {}
         self.build_order = build_order
         self.now = clock or time.time
         self.deadline = deadline
@@ -197,21 +169,19 @@ class MultiStartStage(SearchStage):
         }
         self.specs = _iter_multi_start_specs(
             keys=keys, dispatch_modes=dispatch_modes, snapshot=cfg,
-            deadline_reached=self._deadline_reached, rules_by_mode=rules_by_mode,
-            order_cache=self.order_cache, build_order=self.build_order,
+            deadline_reached=self._deadline_reached, rules_by_mode=rules_by_mode, build_order=build_order,
         )
         self.index = 0
         self._pending_spec: Optional[Tuple[str, str, SortStrategy, Dict[str, Any]]] = None
         self._unaffordable_modes: Set[str] = set()
         self._stop_reason: Optional[str] = None
         self.exhausted = False
-        self.finished = False
 
     def _deadline_reached(self) -> bool:
         return self.now() >= self.deadline
 
     def available(self) -> bool:
-        if self.finished or self.exhausted:
+        if self.exhausted:
             return False
         while self._pending_spec is None or self._pending_spec[0] in self._unaffordable_modes:
             self._pending_spec = next(self.specs, None)
@@ -226,19 +196,17 @@ class MultiStartStage(SearchStage):
             return "time_budget"
         if self.exhausted:
             return self._stop_reason or "specs_exhausted"
-        return "finished" if self.finished else None
+        return None
 
     def run_task(self) -> None:
-        if self.finished or self.exhausted or (self._pending_spec is None and not self.available()):
+        if self.exhausted or (self._pending_spec is None and not self.available()):
             return
         dm, rule, strategy, params = cast(
             Tuple[str, str, SortStrategy, Dict[str, Any]], self._pending_spec,
         )
         self._pending_spec = None
         self.index += 1
-        order = _get_cached_multi_start_order(
-            strategy=strategy, params=params, order_cache=self.order_cache, build_order=self.build_order,
-        )
+        order = self.build_order(strategy, params)
         if self._deadline_reached():
             return
         decode_started = self.now()
@@ -260,6 +228,3 @@ class MultiStartStage(SearchStage):
             best=self.state.best, candidate=candidate,
             search_report_state=self.search_report_state,
         )
-
-    def finish(self) -> None:
-        self.finished = True

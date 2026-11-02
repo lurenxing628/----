@@ -1,6 +1,8 @@
 """Single and imported permissions apply one final write per changed relationship."""
 
+import re
 from collections import Counter
+from io import BytesIO
 
 import pytest
 from flask import Blueprint, Flask, g
@@ -8,6 +10,7 @@ from flask import Blueprint, Flask, g
 from core.infrastructure.transaction import TransactionManager
 from core.models.operator_machine import OperatorMachine
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_resource_action import resource_scope_request
 from core.services.personnel.operator_machine_service import OperatorMachineService
 from core.services.workbench.facts.table_cells import text_cell
 from core.services.workbench.resource.operator_machine_permissions import WorkbenchOperatorMachinePermissions
@@ -17,6 +20,7 @@ from data.repositories.operator_machine_repo import OperatorMachineRepository
 from tests.workbench.identity_metadata_support import insert_row
 from tests.workbench.resource_entity_support import identity_for, resource_database  # noqa: F401
 from tests.workbench.resource_file_support import file_bytes
+from web.bootstrap.app_config import Config
 from web.routes.workbench.operator_machine_permissions import register_operator_machine_routes
 from web.routes.workbench.relation_files import register_relation_file_routes
 from web.routes.workbench.resources import register_resource_routes
@@ -134,13 +138,13 @@ def test_relation_import_applies_implicit_primary_change_once_and_keeps_untouche
     service = WorkbenchRelationFileService(conn, "operator_machine")
     content = file_bytes([("O1", "M1", "", ""), ("O1", "M2", "熟练", ""), ("O1", "M3", "普通", "是")],
                          headers=("工号", "设备编号", "技能等级", "主操设备"))
-    preview = service.preview_import(content, file_format="csv")
+    preview = service.preview_import(content, file_format="csv", mode="upsert")
     assert [row["result"] for row in preview.as_dict()["rows"]] == ["update", "update", "new"]
     written = _writes(monkeypatch)
     sql = []
     conn.set_trace_callback(sql.append)
     with TransactionManager(conn).transaction():
-        service.confirm_import(preview, content, file_format="csv")
+        service.confirm_import(preview)
     conn.set_trace_callback(None)
     assert _rows(conn) == [("M1", "expert", "no"), ("M2", "expert", "no"), ("M3", "normal", "yes")]
     assert len(written) == 3 and len(set(written)) == 3
@@ -151,16 +155,16 @@ def test_relation_import_applies_implicit_primary_change_once_and_keeps_untouche
     conn.commit()
     content = file_bytes([("O1", "M2", "", "是")],
                          headers=("工号", "设备编号", "技能等级", "主操设备"))
-    preview = service.preview_import(content, file_format="csv")
+    preview = service.preview_import(content, file_format="csv", mode="upsert")
     assert list(preview.as_dict()["rows"][0]["changes"]) == ["is_primary"]
     with TransactionManager(conn).transaction():
-        service.confirm_import(preview, content, file_format="csv")
+        service.confirm_import(preview)
     assert _rows(conn)[1] == ("M2", "high", "yes")
 
     conn.execute("UPDATE OperatorMachine SET skill_level='mystery',is_primary='no' WHERE machine_id='M2'")
     conn.commit()
     with pytest.raises(ValueError, match="mystery"):
-        service.preview_import(content, file_format="csv")
+        service.preview_import(content, file_format="csv", mode="upsert")
 
 
 def test_relation_export_uses_toolbar_scope_and_preserves_column_filters(resource_conn):
@@ -173,8 +177,8 @@ def test_relation_export_uses_toolbar_scope_and_preserves_column_filters(resourc
     with TransactionManager(conn).transaction():
         conn.set_trace_callback(trace.append)
         try:
-            arguments, count = service.preview_export("filtered", scope={"query": "Alpha"})
-            rows = service.export_rows("csv", **arguments)
+            arguments, count = service.preview_export("filtered", request=resource_scope_request("operator", {"query": "Alpha"}))
+            rows = service.export_rows(**arguments)
         finally:
             conn.set_trace_callback(None)
     assert count == len(rows) == 1
@@ -182,18 +186,17 @@ def test_relation_export_uses_toolbar_scope_and_preserves_column_filters(resourc
     assert not any(sql.startswith("SELECT * FROM Operators ORDER BY") for sql in trace)
     scope = {"column_filters": {"label": {"mode": "include", "values": [text_cell("Bravo").key]}}}
     with TransactionManager(conn).transaction():
-        arguments, count = service.preview_export("filtered", scope=scope)
-        rows = service.export_rows("csv", **arguments)
+        arguments, count = service.preview_export("filtered", request=resource_scope_request("operator", scope))
+        rows = service.export_rows(**arguments)
     assert count == len(rows) == 1
     assert rows[0]["operator_code"] == "O2" and rows[0]["operator_label"] == "Bravo"
 
 
-@pytest.mark.parametrize("selection", ("filtered", "selected"))
-def test_relation_export_routes_reuse_request_reader(resource_conn, selection):
-    conn = resource_conn
+def _relation_client(conn):
     app = Flask(__name__)
-    app.config.update(TESTING=True, SECRET_KEY="relation-reader-fixture")
-    bp = Blueprint("relation_reader_test", __name__)
+    app.config.update(TESTING=True, SECRET_KEY="relation-route-fixture",
+                      EXCEL_MAX_UPLOAD_BYTES=Config.EXCEL_MAX_UPLOAD_BYTES)
+    bp = Blueprint("relation_route_test", __name__)
     register_resource_routes(bp)
     register_relation_file_routes(bp)
     app.register_blueprint(bp)
@@ -202,7 +205,45 @@ def test_relation_export_routes_reuse_request_reader(resource_conn, selection):
     def isolated_connection():
         g.db = conn
 
-    client = app.test_client()
+    return app.test_client()
+
+
+def test_relation_import_routes_confirm_the_retained_preview_once(resource_conn):
+    conn = resource_conn
+    _machines(conn)
+    client, path = _relation_client(conn), "/api/workbench/v1/relation-files/operator_machine/"
+    content = file_bytes([("O1", "M2", "熟练", "否")], headers=("工号", "设备编号", "技能等级", "主操设备"))
+    response = client.post(path + "preview", content_type="multipart/form-data",
+                           data={"file": (BytesIO(content), "relation.csv"), "format": "csv", "mode": "upsert"})
+    assert response.status_code == 200, response.get_json()
+    preview = response.get_json()["data"]
+    assert re.fullmatch(r"[0-9a-f]{32}", preview["actual_source_ref"])
+    body = {"request_key": "relation-import-0001", "write_token": preview["write_context"]["write_token"],
+            "input": {"preview_ref": preview["preview_ref"]}}
+    first = client.post(path + "confirm", json=body)
+    assert first.status_code == 200 and first.get_json()["result"] == "committed", first.get_json()
+    assert _rows(conn) == [("M1", "expert", "yes"), ("M2", "expert", "no")]
+    replay = client.post(path + "confirm", json=body)
+    assert replay.status_code == 200 and replay.get_json()["replayed"] is True, replay.get_json()
+    assert replay.get_json()["receipt_ref"] == first.get_json()["receipt_ref"]
+    assert replay.get_json()["data"] == first.get_json()["data"]
+    assert _rows(conn) == [("M1", "expert", "yes"), ("M2", "expert", "no")]
+
+
+@pytest.mark.parametrize("extra", ({"format": "txt"}, {"mode": "replace"}))
+def test_relation_upload_admission_rejects_format_and_mode(resource_conn, extra):
+    content = file_bytes([("O1", "M1", "普通", "否")], headers=("工号", "设备编号", "技能等级", "主操设备"))
+    response = _relation_client(resource_conn).post(
+        "/api/workbench/v1/relation-files/operator_machine/preview", content_type="multipart/form-data",
+        data={"file": (BytesIO(content), "relation.csv"), "format": "csv", "mode": "upsert", **extra})
+    error = response.get_json()["error"]
+    assert (response.status_code, error["code"], error["fields"]) == (400, "invalid_input", [])
+
+
+@pytest.mark.parametrize("selection", ("filtered", "selected"))
+def test_relation_export_routes_reuse_request_reader(resource_conn, selection):
+    conn = resource_conn
+    client = _relation_client(conn)
     scope = {"query": "O1", "sort": "label"} if selection == "filtered" else {"query": "O1"}
     listed = client.get("/api/workbench/v1/entities/operator", query_string=scope)
     assert listed.status_code == 200, listed.get_json()
@@ -259,6 +300,13 @@ def test_permission_routes_accept_existing_write_context_and_replay_receipt(reso
     preview = response.get_json()["data"]
     body = {"request_key": "operator-permission-0001", "write_token": preview["write_context"]["write_token"],
             "input": {"preview_ref": preview["preview_ref"]}}
+    other = identity_for(conn, "operator", "EMPTY")
+    assert other is not None
+    before = _rows(conn)
+    response = client.post("/api/workbench/v1/entities/operator/" + other.ref + "/machine-permissions/confirm",
+                           json={**body, "request_key": "operator-permission-0002"})
+    assert response.status_code == 409 and response.get_json()["error"]["code"] == "stale_write", response.get_json()
+    assert _rows(conn) == before
     response = client.post(path + "confirm", json=body)
     assert response.status_code == 200 and response.get_json()["result"] == "committed", response.get_json()
     assert _rows(conn) == [("M2", "expert", "yes")]

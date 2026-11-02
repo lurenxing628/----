@@ -7,6 +7,7 @@ from uuid import uuid4
 import openpyxl
 
 from core.infrastructure.transaction import TransactionManager
+from core.models.workbench_resource_action import resource_scope_request
 from core.models.workbench_table_descriptor import INSTRUCTION_SHEET
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource.bulk import WorkbenchResourceBulkService
@@ -77,21 +78,21 @@ def decode(download, fmt, *, check_text=True):
         wb.close()
 
 
-def confirm(conn, kind, preview, content=None, fmt="csv", *, command=None, key=None, guard=None):
+def confirm(conn, kind, preview, *, command=None, key=None, guard=None):
     request = preview.as_dict()["request"]
     action = preview.as_dict()["operation"]
     def mutate(_):
         if action.endswith("bulk_delete"):
-            return WorkbenchResourceBulkService(conn, kind).confirm_delete(preview, request["refs"], scope=request["scope"])
-        return WorkbenchResourceFileService(conn, kind).confirm_import(preview, content, file_format=fmt, scope=request["scope"])
+            return WorkbenchResourceBulkService(conn, kind).confirm_delete(preview)
+        return WorkbenchResourceFileService(conn, kind).confirm_import(preview)
     return (command or WorkbenchCommandService(conn)).execute(
         request_key=key or "resource-file-" + uuid4().hex, action=action, context_ref=request.get("actual_source_ref", action),
-        normalized_input=preview.intent(), guard=guard or (lambda: None), mutate=mutate)
+        normalized_input=preview.document, guard=guard or (lambda: None), mutate=mutate)
 
 
-def exported(conn, kind, fmt, *, category=None, selected_refs=None, query=""):
-    service, selected_scope = WorkbenchResourceFileService(conn, kind), {**scope(category), "query": query}
+def exported(conn, kind, fmt, *, category=None):
+    service, request = WorkbenchResourceFileService(conn, kind), resource_scope_request(kind, scope(category))
     # 和下载路由一样：读快照里只读行，事务结束后再生成文件。
     with TransactionManager(conn).transaction():
-        rows = service.export_rows(fmt, scope=selected_scope, selected_refs=selected_refs)
-    return service.write_export(rows, fmt, scope=selected_scope)
+        rows = service.export_rows(fmt, request=request)
+    return service.write_export(rows, fmt, request=request)

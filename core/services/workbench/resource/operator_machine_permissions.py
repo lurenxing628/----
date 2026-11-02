@@ -2,8 +2,9 @@
 
 from core.errors import ValidationError
 from core.models.operator_machine import OperatorMachine
+from core.models.workbench_action_values import AtomicActionPreview
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
-from core.models.workbench_resource_action import ResourceActionPreview, check_resource_preview, resource_refs
+from core.models.workbench_resource_action import resource_refs
 from core.services.personnel.operator_machine_normalizers import (
     normalize_skill_level_stored,
     normalize_yes_no_stored,
@@ -28,9 +29,13 @@ def _row_result(old, target):
 
 
 def _field_changes(old, target):
-    return {key: [old.get(key) if old else None, target.get(key) if target else None]
-            for key in ("skill_level", "is_primary")
-            if (old or {}).get(key) != (target or {}).get(key)}
+    result = {}
+    for key in ("skill_level", "is_primary"):
+        before = old[key] if old is not None else None
+        after = target[key] if target is not None else None
+        if before != after:
+            result[key] = [before, after]
+    return result
 
 
 def _permission_row(number, ref, machine, previous, target):
@@ -74,7 +79,7 @@ class WorkbenchOperatorMachinePermissions:
                    for row in rows if row["result"] in ("new", "update")]
         removed = [(code, row["business_code"]) for row in rows if row["result"] == "delete"]
         changes = self.domain.prepare_changes(preparation.authorizations("operator", code), targets, removed=removed)
-        return ResourceActionPreview.build(OPERATION, request, rows), changes
+        return AtomicActionPreview.build(OPERATION, request, rows), changes
 
     def _machine_snapshots(self, preparation, refs):
         identities = {ref: preparation.identity("machine", ref) for ref in refs}
@@ -106,9 +111,13 @@ class WorkbenchOperatorMachinePermissions:
         request = preview.as_dict()["request"]
         try:
             current, changes = self._prepare(request["operator_ref"], request["machine_permissions"])
-        except (ValidationError, WorkbenchCommandRejected) as exc:
+        except WorkbenchCommandRejected as exc:
+            if exc.status >= 500:
+                raise
             raise WorkbenchCommandRejected("stale_write", "人员、设备或关联已变化，请重新预检。") from exc
-        body = check_resource_preview(preview, current)
+        except ValidationError as exc:
+            raise WorkbenchCommandRejected("stale_write", "人员、设备或关联已变化，请重新预检。") from exc
+        body = preview.check_current(current)
         code = body["request"]["expected_operator"]["record"]["operator_id"]
         rows = body["rows"]
         self.domain.apply_changes(changes)

@@ -2,45 +2,24 @@
   'use strict';
   const T = window.APSWorkbenchTransport, C = window.TrialContract, ROOT = '/api/workbench/v1', BASE = ROOT + '/trial';
   const PENDING_KEY = 'aps_workbench_trial_pending_v1';
-  const CONFLICT_MESSAGE = '上次操作记录已变化，没有清除其他操作记录。';
   const validKey = v => typeof v === 'string' && /^trial-[a-f0-9]{48}$/.test(v);
+  // 待确认试调提交的 key。服务端结论已定、本机删不掉时，共享存储登记这次清除：read() 带 saved: null 报出，持锁 flush() 写回。
   const store = T.pendingStore({
     key: PENDING_KEY, raw: true, validate: validKey,
     readError: '读不到上次操作记录，暂时不能提交。请重新打开页面。',
     invalidError: '上次操作记录已损坏，没有删除也没有覆盖。请重新打开页面。',
-    conflictError: CONFLICT_MESSAGE,
+    conflictError: '上次操作记录已变化，没有清除其他操作记录。',
     writeError: '存不下上次操作记录，这次没有提交。请重新打开页面。',
     removeError: '上次提交的结果已确认，但上次操作记录没清掉。请点「刷新」后重新查询。'
   });
-  function pending() {
-    const key = store.read();
-    if (api.settled && api.settled.key !== key) api.settled = null;
-    return key;
-  }
   function reserve() {
-    C.check(!api.settled, window.WorkbenchTerms.outcomes.pending('试调提交'));
-    try {
-      const key = store.save(T.requestKey('trial'), null);
-      api.settled = null;
-      return key;
-    } catch (error) {
-      if (error && error.conflict === true) throw new Error(window.WorkbenchTerms.outcomes.pending('试调提交'));
-      throw error;
-    }
-  }
-  function clear(key, note) {
-    try { store.save(null, key); }
+    try { return store.save(T.requestKey('trial'), null); }
     catch (error) {
-      if (error && error.conflict === true) {
-        if (api.settled && api.settled.key === key) api.settled = null;
-      } else {
-        api.settled = { key, note };
-      }
+      if (error.conflict === true) throw new Error(window.WorkbenchTerms.outcomes.pending('试调提交'));
       throw error;
     }
-    if (api.settled && api.settled.key === key) api.settled = null;
-    return true;
   }
+  const clear = key => store.save(null, key);
   async function read(path, q, signal, validate) {
     const value = await T.read(ROOT + path, q, { signal, timeout: 60000 });
     if (validate) return validate(value);
@@ -54,18 +33,18 @@
       && d.write_context && d.write_context.capabilities['trial.create'] === true && typeof d.write_context.write_token === 'string');
     C.validation(d.validation); return v;
   }
+  // key 是 reserve 刚写入的记录，token 已由预检核过。
   async function command(intent, token, key) {
-    C.check(validKey(key) && typeof token === 'string');
     const suffix = intent.action === 'create' ? '/drafts' : '/drafts/' + intent.draft_ref + '/' + intent.action;
     return C.receipt(await T.command(BASE + suffix, { request_key: key, write_token: token, input: intent.input },
       { timeout: 60000, expect: BASE + '/commands/' + key }), intent);
   }
+  // key 是本存储读到并校验过的记录。
   async function lookup(key) {
-    C.check(validKey(key)); const v = await read('/trial/commands/' + key), d = v.data;
+    const v = await read('/trial/commands/' + key), d = v.data;
     C.check(['committed', 'not_observed'].includes(d.state) && d.can_retry_automatically === false);
     if (d.state === 'committed') C.receipt(d.receipt); else C.check(d.receipt === null);
     return d;
   }
-  const api = { read, preview, command, lookup, pending, reserve, clear, settled: null, PENDING_KEY };
-  window.TrialAPI = api;
+  window.TrialAPI = { read, preview, command, lookup, pending: store.read, flush: store.flush, reserve, clear, PENDING_KEY };
 })();

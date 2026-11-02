@@ -1,5 +1,6 @@
 """Actual type identity, full-sequence predecessors and incomplete event facts."""
 
+from dataclasses import replace
 from datetime import datetime
 from types import SimpleNamespace
 
@@ -7,6 +8,7 @@ import pytest
 
 from core.algorithm_contracts.changeover_events import count_known_changeovers
 from core.algorithm_runtime.resource_quality import MachineTypeState, slot_changeover_penalty
+from core.algorithm_runtime.run_state import ScheduleRunState
 from core.algorithm_runtime.runtime_state import update_machine_last_state
 from core.algorithms.greedy.internal_operation import _build_internal_result
 from core.services.scheduler.run.freeze_window_seed_rows import build_seed_results
@@ -74,15 +76,25 @@ def test_actual_type_identity_drives_shared_events_and_runtime_result_seed_count
     different = slot_changeover_penalty(state, op=make_algo_op(id=3, op_type_id="T2", op_type_name="车削"),
                                          machine_id="M1", start=results[1].start_time, end=results[1].end_time)
     assert same == 0 and different == 1
+    # A point event, fresh or seeded, is an event only: no busy hours, tail end, tail type or neighbour row.
     point = datetime.fromisoformat(at("09:30:00"))
-    update_machine_last_state(last_end_by_machine=ends, last_op_type_by_machine=state, machine_id="M1",
-                              start_time=point, end_time=point, op_id=4, op_type_name="磨削", op_type_id="T3", seed_mode=False)
-    assert slot_changeover_penalty(state, op=operations[1], machine_id="M1", start=point, end=results[2].end_time) == 0
-    assert slot_changeover_penalty(state, op=operations[2], machine_id="M1", start=point, end=point) == 0
-    point_only = MachineTypeState()
-    update_machine_last_state(last_end_by_machine={}, last_op_type_by_machine=point_only, machine_id="M1",
-                              start_time=point, end_time=point, op_id=4, op_type_name="磨削", op_type_id="T3", seed_mode=False)
-    assert slot_changeover_penalty(point_only, op=operations[1], machine_id="M1", start=point, end=results[2].end_time) == 0
+    point_result = replace(first, op_id=4, op_code="point", start_time=point, end_time=point,
+                           op_type_name="磨削", op_type_id="T3")
+    run = ScheduleRunState(base_time=first.start_time)
+    run.record_dispatch_success(first)
+    run.record_dispatch_success(point_result)
+    run.record_seed_result(replace(point_result, op_id=5), occupancies=())
+    assert run.last_end_by_machine == {"M1": first.end_time}
+    assert dict(run.last_op_type_by_machine) == {"M1": first.op_type_name}
+    assert run.machine_busy_hours == {"M1": 1.0} and run.operator_busy_hours == {"O1": 1.0}
+    assert slot_changeover_penalty(run.last_op_type_by_machine, op=operations[1], machine_id="M1", start=point,
+                                   end=results[2].end_time) == 0
+    assert slot_changeover_penalty(run.last_op_type_by_machine, op=operations[2], machine_id="M1", start=point, end=point) == 0
+    point_only = ScheduleRunState(base_time=point)
+    point_only.record_dispatch_success(point_result)
+    assert point_only.last_end_by_machine == {} and dict(point_only.last_op_type_by_machine) == {}
+    assert slot_changeover_penalty(point_only.last_op_type_by_machine, op=operations[1], machine_id="M1", start=point,
+                                   end=results[2].end_time) == 0
     assert slot_changeover_penalty(None, op=operations[1], machine_id="M1", start=point, end=results[2].end_time) == 0
 
 

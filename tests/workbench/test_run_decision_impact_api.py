@@ -140,10 +140,24 @@ def test_operation_filters_preserve_identity_and_distinguish_material_deferral(c
     assert item["unplanned_operation_refs"] == ([] if mode == "stage" else [second_ref])
     assert item["after"]["deferred_operation_count"] == (1 if mode == "stage" else 0)
     assert item["after"]["ordinary_unscheduled_operation_count"] == (0 if mode == "stage" else 1)
-    operations = detail(client, run_ref, "operations", **dict(query, batch_ref=batch_ref))["data"]
+    from core.services.workbench.facts import candidate_tasks
+    from core.services.workbench.run import decision_impact
+
+    workspace = client.get(BASE + "/candidates/" + selected).get_json()["data"]
+    unplanned = {row["operation_ref"]: row for row in workspace["unplanned_operations"]}
+    assert set(unplanned) == {second_ref}
+    assert unplanned[second_ref]["status"] == ("skipped" if mode == "stage" else "unscheduled")
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            candidate_tasks,
+            "unplanned_projection",
+            lambda *_: pytest.fail("operation_impacts must not call unplanned_projection"),
+        )
+        operations = detail(client, run_ref, "operations", **dict(query, batch_ref=batch_ref))["data"]
     missing = next(row for row in operations["items"] if row["operation_ref"] == second_ref)
     assert missing["after"] is None
     assert missing["after_state"]["status"] == ("deferred" if mode == "stage" else "missing")
+    assert missing["after_state"]["reason"] == missing["before_state"]["reason"] == unplanned[second_ref]["reason"]
     assert missing["status_changed"] is False
     assert missing["drill"]["selected"]["operation_ref"] == second_ref
     assert missing["drill"]["selected"]["candidate_ref"] == selected
@@ -161,15 +175,106 @@ def test_operation_filters_preserve_identity_and_distinguish_material_deferral(c
         assert [row["operation_ref"] for row in unknown["items"]] == [second_ref]
         assert missing["before_state"]["status"] == "deferred"
         assert missing["changed_fields"] == [] and missing["change_kinds"] == ["unknown"]
-        current, _ = read_decision_details(case.conn, run_ref, "batches", **query, delivery_filter="attention", sort="current_priority")
+        current, _ = read_decision_details(case.conn, run_ref, "batches", bind_snapshot=lambda scope, state: state, **query, delivery_filter="attention", sort="current_priority")
         assert [row["batch_ref"] for row in current["items"]] == [batch_ref]
         assert current["items"][0]["attention_kinds"] == ["deferred"]
         assert current["items"][0]["operation_unknown_count"] == 1
+        assert missing["after_state"]["reason"]["code"] == "input_operation_skipped"
         assert missing["after_state"]["reason"]["message"].startswith("缺料未安排")
+        for seq in range(3, 24):
+            case.operation(seq=seq)
+        case.conn.commit()
+        accepted = case.accept(key="impact-stage-paged-run", settings=case.settings(material_strategy="stage"))
+        paged_result = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+        paged_run_ref, paged_selected = paged_result["run_ref"], paged_result["candidates"][0]["candidate_ref"]
+        paged_workspace = client.get(BASE + "/candidates/" + paged_selected).get_json()["data"]
+        paged_unplanned = {row["operation_ref"]: row["reason"] for row in paged_workspace["unplanned_operations"]}
+        assert len(paged_unplanned) == 22
+        reason_calls = []
+        original_reason = decision_impact.unplanned_reason
+
+        def count_reason(row):
+            reason_calls.append(row["operation_ref"])
+            return original_reason(row)
+
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(
+                candidate_tasks,
+                "unplanned_projection",
+                lambda *_: pytest.fail("operation_impacts must not call unplanned_projection"),
+            )
+            patch.setattr(decision_impact, "unplanned_reason", count_reason)
+            official_page = detail(
+                client,
+                paged_run_ref,
+                "operations",
+                comparison_mode="admission_official",
+                selected_candidate_ref=paged_selected,
+            )
+            assert len(reason_calls) == 19
+            reason_calls.clear()
+            first_page = detail(
+                client,
+                paged_run_ref,
+                "operations",
+                selected_candidate_ref=paged_selected,
+                reference_candidate_ref=paged_selected,
+                change_kind="unknown",
+            )
+            assert len(reason_calls) == 40
+            token = first_page["meta"]["snapshot_ref"]
+            second_page = detail(
+                client,
+                paged_run_ref,
+                "operations",
+                selected_candidate_ref=paged_selected,
+                reference_candidate_ref=paged_selected,
+                change_kind="unknown",
+                page=2,
+                snapshot_ref=token,
+            )
+            assert len(reason_calls) == 44
+        arranged_ref = operation_ref(case, case.op_id)
+        for row in official_page["data"]["items"]:
+            assert row["before_state"] == {
+                "status": "unavailable",
+                "reason": {"code": "arrangement_source_unavailable", "message": "该来源没有产出可查看的任务安排。"},
+            }
+            if row["operation_ref"] == arranged_ref:
+                assert row["after_state"] == {"status": "arranged", "reason": None}
+            else:
+                assert row["after_state"]["reason"] == paged_unplanned[row["operation_ref"]]
+        all_paged_items = first_page["data"]["items"] + second_page["data"]["items"]
+        assert len(all_paged_items) == 22
+        for row in all_paged_items:
+            assert row["after_state"]["reason"] == row["before_state"]["reason"] == paged_unplanned[row["operation_ref"]]
+        export_resp = client.get(
+            BASE + "/runs/" + paged_run_ref + "/decision/export",
+            query_string={
+                "selected_candidate_ref": paged_selected,
+                "reference_candidate_ref": paged_selected,
+                "snapshot_ref": token,
+                "section": "operations",
+                "change_kind": "unknown",
+                "format": "csv",
+            },
+        )
+        assert export_resp.status_code == 200, export_resp.get_json()
+        assert int(export_resp.headers["X-Workbench-Row-Count"]) == 22
+        exported_deferred = list(csv.DictReader(io.StringIO(export_resp.data.decode("utf-8-sig"))))
+        assert [row["工序永久编号"] for row in exported_deferred] == [row["operation_ref"] for row in all_paged_items]
+        assert all(
+            row["基准未排说明"] == row["所选未排说明"] == paged_unplanned[row["工序永久编号"]]["message"]
+            for row in exported_deferred
+        )
     else:
         # The unplanned operation has no machine in either saved arrangement.
         assert {row["operation_ref"] for row in filtered["items"]} == {operation_ref(case, case.op_id)}
         assert missing["before_state"]["status"] == "missing" and missing["changed_fields"] == []
+        assert missing["after_state"]["reason"] == {
+            "code": "candidate_operation_unscheduled",
+            "message": "这个候选方案没有给这道工序排时间。",
+        }
         changed = detail(client, run_ref, "operations", **dict(query, change_kind="changed"))["data"]
         assert changed["items"] == []
 
@@ -309,6 +414,8 @@ def test_official_reference_uses_only_the_current_admission_scope(candidate_case
     assert {row["operation_ref"] for row in workspace["tasks"]} == expected_refs
     assert {row["batch_ref"] for row in workspace["tasks"]} == {case.ref("batch", "B1")}
     assert all(row["machine"]["ref"] == case.ref("machine", "M1") for row in workspace["tasks"])
+    assert workspace["gantt_graph"]["state"] == "available"
+    assert workspace["gantt_graph"]["scope"] == "admission_official"
     operations = detail(client, run_ref, "operations", **query)["data"]
     assert {row["operation_ref"] for row in operations["items"] if row["before"] is not None} == expected_refs
     assert {row["ref"] for row in operations["filter_options"]["resources"]} == {
@@ -333,6 +440,14 @@ def test_official_reference_uses_only_the_current_admission_scope(candidate_case
     assert values["makespan_hours"] == overview["baseline"]["metrics"]["makespan_hours"]
     assert values["makespan_hours"]["value"] == 0.75
     assert coverage == {key: overview["baseline"]["coverage"][key] for key in ("schedulable", "delivery")}
+
+    from core.services.workbench.run.decision_workspace import _reference_workspace
+
+    source.before_tasks = [{**row, "machine": {"ref": None, "label": None}} for row in source.before_tasks]
+    degraded = _reference_workspace(source, None)
+    assert degraded["gantt_graph"]["state"] == "unavailable"
+    assert degraded["gantt_graph"]["scope"] == "admission_official"
+    assert len(degraded["tasks"]) == 1 and degraded["tasks"][0]["machine"] == {"ref": None, "label": None}
 
 
 def test_detail_snapshot_downloads_all_filtered_pages_and_preserves_cell_types(candidate_case):

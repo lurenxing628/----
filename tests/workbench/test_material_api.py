@@ -7,6 +7,7 @@ from io import BytesIO
 
 import pytest
 
+from core.models.workbench_material_query import MaterialPageRequest
 from core.services.workbench.material.file_codec import write_material_file
 from tests.workbench.material_file_support import codec_rows, file_bytes
 
@@ -148,24 +149,25 @@ def test_material_file_holds_one_batch_preparation_and_export_skips_write_snapsh
         conn.commit()
         content = file_bytes([("M1", 10), ("M2", 20)], "csv", ("物料编号", "库存数量"))
         service = WorkbenchMaterialFileService(conn)
-        preview = service.preview_import(content, file_format="csv", scope={})
+        preview = service.preview_import(content, file_format="csv", mode="upsert")
         monkeypatch.setattr(WorkbenchMaterialFileRepository, "capture", captured)
         with monkeypatch.context() as patch:
             patch.setattr(MaterialRepository, "update", fail_second)
             with pytest.raises(WorkbenchCommandUncertain):
-                confirm_import(conn, preview, content, "csv", key="material-prepared-rollback")
+                confirm_import(conn, preview, key="material-prepared-rollback")
         assert len(calls) == 1 and writes == ["M1", "M2"]
         assert [row[0] for row in conn.execute("SELECT stock_qty FROM Materials ORDER BY material_id")] == [1, 2]
         calls.clear()
-        result = confirm_import(conn, preview, content, "csv", key="material-prepared-rollback")
+        result = confirm_import(conn, preview, key="material-prepared-rollback")
         assert len(calls) == 1 and result["result"] == "committed"
         with service.reader.read_snapshot():
-            exported = service.export_rows("csv", scope={})
+            exported = service.export_rows("csv", request=MaterialPageRequest())
         assert [row["stock_qty"] for row in exported] == [10, 20]
         refs = [row[0] for row in conn.execute("SELECT ref FROM WorkbenchEntityRefs WHERE kind='material' AND active=1 ORDER BY entity_key")]
-        delete = WorkbenchMaterialBulkService(conn).preview_delete(refs, scope={})
+        with service.reader.read_snapshot():
+            delete = WorkbenchMaterialBulkService(conn).preview_delete(refs, scope=MaterialPageRequest())
         calls.clear()
-        assert confirm_delete(conn, delete, refs, key="material-prepared-delete")["data"]["deleted_count"] == 2
+        assert confirm_delete(conn, delete, key="material-prepared-delete")["data"]["deleted_count"] == 2
         assert len(calls) == 1 and conn.execute("SELECT COUNT(*) FROM Materials").fetchone()[0] == 0
 
 
@@ -218,6 +220,7 @@ def test_material_xlsx_export_import_preserves_cr_and_crlf(app_client, monkeypat
 
 def test_padded_existing_material_can_update_delete_and_bulk_delete_by_ref(app_client):
     from core.services.workbench.material.bulk import WorkbenchMaterialBulkService
+    from core.services.workbench.material.queries import WorkbenchMaterialQueryService
     from tests.workbench.material_file_support import confirm_delete
 
     with _database(app_client) as conn:
@@ -270,13 +273,24 @@ def test_padded_existing_material_can_update_delete_and_bulk_delete_by_ref(app_c
     assert _detail(app_client, ref_mat1_plain)["fields"]["stock_qty"] == 11
 
     with _database(app_client) as conn:
-        preview = WorkbenchMaterialBulkService(conn).preview_delete([ref_mat2_padded], scope={})
+        with pytest.raises(RuntimeError):
+            WorkbenchMaterialBulkService(conn).preview_delete([ref_mat2_padded], scope=MaterialPageRequest())
+        statements = []
+        conn.set_trace_callback(statements.append)
+        try:
+            # 与批量预检路由相同：预检复用调用方的读快照事务，不再嵌套保存点。
+            with WorkbenchMaterialQueryService(conn).read_snapshot():
+                preview = WorkbenchMaterialBulkService(conn).preview_delete([ref_mat2_padded], scope=MaterialPageRequest())
+        finally:
+            conn.set_trace_callback(None)
+        assert any(sql.upper().startswith("BEGIN") for sql in statements)
+        assert not any("SAVEPOINT" in sql.upper() for sql in statements)
         with app_client.application.app_context():
             from web.routes.workbench.material_actions_context import issue_preview
 
             issued = issue_preview(preview)
             assert issued["can_confirm"] is True and issued["rows"][0]["result"] == "delete"
-        outcome = confirm_delete(conn, preview, [ref_mat2_padded], key="padded-mat2-bulk-delete-00001")
+        outcome = confirm_delete(conn, preview, key="padded-mat2-bulk-delete-00001")
         assert outcome["result"] == "committed" and outcome["data"]["deleted_count"] == 1
         remaining = dict(conn.execute("SELECT material_id, stock_qty FROM Materials").fetchall())
         assert remaining == {"MAT1": 11, "MAT2": 9}
@@ -312,3 +326,12 @@ def test_resource_and_material_input_rejects_nul_character_before_diff_filtering
         "api-nul-update-00001",
     )
     assert rejected_update.status_code == 422
+
+
+@pytest.mark.parametrize("extra", ({"format": "txt"}, {"mode": "replace"}))
+def test_material_upload_admission_rejects_format_and_mode(app_client, extra):
+    response = app_client.post("/api/workbench/v1/imports/material/preview", data={
+        "file": (BytesIO(file_bytes([("MAT-ADM", "round")], "csv", ("物料编号", "规格"))), "input.csv"),
+        "format": "csv", "mode": "upsert", **extra}, content_type="multipart/form-data")
+    error = response.get_json()["error"]
+    assert (response.status_code, error["code"], error["fields"]) == (400, "invalid_input", [])

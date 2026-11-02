@@ -143,12 +143,8 @@ def _projection(source, scope):
     missing_resources = sum(row["source"] not in OPERATION_SOURCES or
                             row["source"] == "internal" and (not row["machine"] or row["machine"]["ref"] is None)
                             for row in before + after)
-    time_scope = {"range_start": start, "range_end": end, "interval": "half_open_overlap",
-                  "membership": "either_side_overlap", "counterpart_policy": "retain_complete_counterpart",
-                  "time_basis": "factory_local", "unplanned_policy": "included_without_time_interval",
-                  "unknown_or_zero_interval_policy": "included_without_time_interval"}
     result = {"candidate": source.saved_candidate_catalog(source.selected_ref), "generation": generation,
-            "baseline": baseline, "time_scope": time_scope, "batch_ref": scope.batch_ref, "batch_refs": refs,
+            "baseline": baseline, "time_scope": _time_scope(source), "batch_ref": scope.batch_ref, "batch_refs": refs,
             "batches": batches, "resources": resources, "resource_common": resource_common,
             "summary": {"before": {**delivery_summary(before_delivery), "changeovers": old_cost},
                         "after": {**delivery_summary(after_delivery), "changeovers": new_cost},
@@ -165,9 +161,18 @@ def _projection(source, scope):
     return result
 
 
-def read_candidate_comparison(conn, scope):
+def _time_scope(source):
+    return {"range_start": source.scope["range_start"], "range_end": source.scope["range_end"],
+            "interval": "half_open_overlap", "membership": "either_side_overlap",
+            "counterpart_policy": "retain_complete_counterpart", "time_basis": "factory_local",
+            "unplanned_policy": "included_without_time_interval",
+            "unknown_or_zero_interval_policy": "included_without_time_interval"}
+
+
+def read_candidate_comparison(conn, scope, *, bind_snapshot):
     store = CandidateStore(conn)
     with store.snapshot(), read_evidence_scope(conn):
         source = analysis_source(store, scope.candidate_ref, range_start=scope.range_start, range_end=scope.range_end)
-        data = _projection(source, scope)
-        return data, analysis_state(source)
+        snapshot = bind_snapshot({**scope.scope(), **_time_scope(source), "kind": "dashboard-candidate-comparison"},
+                                 analysis_state(source))
+        return _projection(source, scope), snapshot

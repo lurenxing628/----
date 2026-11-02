@@ -12,9 +12,10 @@ from core.infrastructure.sqlite_udf import register_schedule_time_sql_functions
 from core.infrastructure.workbench_trial_schema import TRIAL_TABLES
 from core.models.content import same
 from core.models.schedule_config_runtime_fields import default_snapshot_values
+from core.services.workbench.facts.system_journal import system_journal_directory
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from core.services.workbench.trial.service import WorkbenchTrialService
-from tests.workbench.run_jobs_support import JobCase
+from tests.workbench.run_jobs_support import JobCase, data_context
 from web.routes.workbench.trial import register_trial_routes
 from web.routes.workbench.write_context import issue_write_context, validate_write_context
 
@@ -32,7 +33,8 @@ def connect(path, factory=sqlite3.Connection):
 
 def service(conn):
     return WorkbenchTrialService(conn, context_factory=issue_write_context,
-        context_validator=validate_write_context, clock=lambda: NOW, actor_provider=lambda: "trial-local-user")
+        context_validator=validate_write_context, data_context=data_context(conn), clock=lambda: NOW,
+        actor_provider=lambda: "trial-local-user")
 
 
 @pytest.fixture
@@ -58,6 +60,7 @@ def trial_case(tmp_path):
     case.config(algo_mode="greedy", graph_candidate_weight_count=3, time_budget_seconds=60,
                 ortools_enabled="no", freeze_window_enabled="no")
     case.app = Flask("trial-tests")
+    case.app.config["WORKBENCH_SYSTEM_JOURNAL_DIR"] = system_journal_directory(str(path))
     with case.app.app_context():
         yield case
     conn.close()

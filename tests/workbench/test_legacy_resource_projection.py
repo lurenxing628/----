@@ -63,7 +63,7 @@ def test_old_candidate_comparison_fixed_cohort_and_archived_capacity(candidate_c
     _, candidates = reassigned_run(case, monkeypatch=monkeypatch)
     rows = []
     for candidate in (candidates[0], candidates[-1]):
-        data, _ = read_candidate_comparison(case.conn, RunCandidateReadScope(candidate, **WINDOW))
+        data, _ = read_candidate_comparison(case.conn, RunCandidateReadScope(candidate, **WINDOW), bind_snapshot=lambda scope, state: state)
         common = data["resource_common"]
         assert common["source"] == "archived_resource_calendar"
         assert common["cohort_basis"] == "all_saved_candidates_and_admission_official"
@@ -135,7 +135,7 @@ return (async () => {
     case.conn.execute("UPDATE WorkbenchCalendarDefaults SET periods_json='[]'")
     case.conn.execute("UPDATE Machines SET name='Current renamed machine'")
     case.conn.commit()
-    reread, _ = read_candidate_comparison(case.conn, RunCandidateReadScope(candidates[0], **WINDOW))
+    reread, _ = read_candidate_comparison(case.conn, RunCandidateReadScope(candidates[0], **WINDOW), bind_snapshot=lambda scope, state: state)
     assert reread["resources"] == rows[0]["resources"]
     assert reread["resource_common"] == rows[0]["resource_common"]
 

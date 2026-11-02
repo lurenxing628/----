@@ -7,6 +7,7 @@ from core.services.capacity.plan_calendar_intervals import IntervalIndex, instan
 from core.services.capacity.resource_utilization_metrics import ResourceUtilizationMetrics
 from core.services.workbench.facts import resource_calendar, resource_intervals, resource_projection
 from core.services.workbench.facts.resource_calendar import normalize_resource_calendar
+from core.services.workbench.facts.resource_pressure import DEFAULT_PRESSURE_THRESHOLD
 from core.services.workbench.facts.resource_projection import (
     ResourceTaskIndex,
     resource_cohort,
@@ -40,13 +41,17 @@ def calendar(*days):
     return {"days": list(days)}
 
 
+def task_interval_map(tasks):
+    return {row["row_ref"]: resource_intervals.task_interval(row) for row in tasks}
+
+
 def test_operation_segments_merge_before_independent_demand_and_conflict_sweep(monkeypatch):
     start, end = at("08:00:00"), at("11:00:00")
     rows = [task("a1", "op:a", start, at("10:00:00")), task("a2", "op:a", at("09:00:00"), end),
             task("b", "op:b", at("09:00:00"), at("10:00:00")),
             task("c", "op:c", at("09:00:00"), at("10:00:00"))]
     saved = calendar(day_calendar(start, end, [(start, end)]))
-    parsed = {row["row_ref"]: resource_intervals.task_interval(row) for row in rows}
+    parsed = task_interval_map(rows)
     normalized_inputs, original_union = [], plan_calendar_intervals.union
 
     def unexpected_parse(_row):
@@ -75,14 +80,14 @@ def test_operation_segments_merge_before_independent_demand_and_conflict_sweep(m
     assert index.segments(MACHINE) == [{"start": start, "end": at("09:00:00"), "concurrent_operations": 1},
                                        {"start": at("09:00:00"), "end": at("10:00:00"), "concurrent_operations": 3},
                                        {"start": at("10:00:00"), "end": end, "concurrent_operations": 1}]
-    day = index.days(MACHINE, saved, details=True)[0]
+    day = index.periods(MACHINE, saved, threshold=DEFAULT_PRESSURE_THRESHOLD, grain="day", details=True)[0]
     assert day["operation_count"] == 3
     assert day["conflicts"] == [{"start": at("09:00:00"), "end": at("10:00:00"),
                                  "operation_refs": ["op:a", "op:b", "op:c"], "row_refs": ["a1", "a2", "b", "c"]}]
     # Two disjoint segments of one operation within a day still count once.
-    split = ResourceTaskIndex([task("s1", "op:a", start, at("09:00:00")),
-                               task("s2", "op:a", at("10:00:00"), end)], start, end)
-    assert split.days(MACHINE, saved)[0]["operation_count"] == 1
+    split_rows = [task("s1", "op:a", start, at("09:00:00")), task("s2", "op:a", at("10:00:00"), end)]
+    split = ResourceTaskIndex(split_rows, start, end, task_intervals=task_interval_map(split_rows))
+    assert split.periods(MACHINE, saved, threshold=DEFAULT_PRESSURE_THRESHOLD, grain="day")[0]["operation_count"] == 1
     # Multiplicity changes leave adjacent overlap pieces; their span stays one union.
     varied = ResourceUtilizationMetrics.from_normalized_availability(
         [(instant(start), instant(at("12:00:00"))), (instant(at("09:00:00")), instant(end)),
@@ -205,7 +210,7 @@ def test_partial_calendar_preserves_known_subtotals_and_does_not_label_unknown_d
     rows = [task("a", "op:a", start, end), task("right", "op:right", end, at("03:00:00", "2026-09-10"))]
     saved = calendar(day_calendar(start, midnight, [(start, midnight)]),
                      day_calendar(midnight, end, [], state="unavailable"))
-    index = ResourceTaskIndex(rows, start, end)
+    index = ResourceTaskIndex(rows, start, end, task_intervals=task_interval_map(rows))
     whole = index.window(MACHINE, saved)
     assert whole["state"] == "partial" and whole["unknown_days"] == 1
     assert whole["available_hours"] is whole["occupied_hours"] is whole["outside_calendar_hours"] is None
@@ -223,20 +228,21 @@ def test_partial_calendar_preserves_known_subtotals_and_does_not_label_unknown_d
     zero = measurement.cell(point, point, zero_days)
     assert zero["calendar_state"] == "partial" and zero["unknown_days"] == 1
     assert zero["available_hours"] is None and zero["known_available_hours"] == 0
-    zero_index = ResourceTaskIndex(rows, midnight, midnight)
+    zero_index = ResourceTaskIndex(rows, midnight, midnight, task_intervals=task_interval_map(rows))
     zero_index.window(MACHINE, measurement.calendar)
-    assert zero_index.day_filter_summary(MACHINE, measurement.calendar) is None
+    assert zero_index.day_filter_summary(MACHINE, measurement.calendar, threshold=DEFAULT_PRESSURE_THRESHOLD) is None
     assert measurement.calendar.days_in(instant(at("23:30:00")), point) == [
         measurement.days[0]._replace(low=instant(at("23:30:00")))]
     assert measurement.calendar.days_in(point, instant(at("01:00:00", "2026-09-10"))) == [
         measurement.days[1]._replace(high=instant(at("01:00:00", "2026-09-10")))]
-    selected = index.days(MACHINE, saved, dates=["2026-09-10"], details=True)
+    selected = index.periods(
+        MACHINE, saved, start=midnight, end=end, details=True, threshold=DEFAULT_PRESSURE_THRESHOLD, grain="day"
+    )
     assert len(selected) == 1 and selected[0]["span_occupied_hours"] == 2
     assert selected[0]["outside_calendar_hours"] is selected[0]["known_outside_calendar_hours"] is None
     assert selected[0]["zero_capacity_task"] is None
     assert [row["row_ref"] for row in selected[0]["tasks"]] == ["a"]
     assert selected[0]["contribution_operation_count"] is selected[0]["known_contribution_operation_count"] is None
-    assert index.days(MACHINE, saved, dates=[]) == []
     confirmed_zero = calendar(day_calendar(start, midnight, []),
                               day_calendar(midnight, end, [], state="unavailable"))
     value = index.window(MACHINE, confirmed_zero)
@@ -251,11 +257,11 @@ def test_partial_calendar_preserves_known_subtotals_and_does_not_label_unknown_d
         day_calendar(first, at("00:00:00", tuesday), [(minute_rows[0]["start"], minute_rows[0]["end"])]),
         day_calendar(at("00:00:00", tuesday), at("00:00:00", wednesday), [(minute_rows[1]["start"], minute_rows[1]["end"])]),
         day_calendar(at("00:00:00", wednesday), last, [], state="unavailable"))
-    minute_index = ResourceTaskIndex(minute_rows, first, last)
+    minute_index = ResourceTaskIndex(minute_rows, first, last, task_intervals=task_interval_map(minute_rows))
     minute_window = minute_index.window(MACHINE, minute_calendar)
-    minute_filter = minute_index.day_filter_summary(MACHINE, minute_calendar)
+    minute_filter = minute_index.day_filter_summary(MACHINE, minute_calendar, threshold=DEFAULT_PRESSURE_THRESHOLD)
     assert minute_filter is not None
-    assert minute_filter == _period_summary(minute_index.period_facts(MACHINE, minute_calendar),
+    assert minute_filter == _period_summary(minute_index.period_facts(MACHINE, minute_calendar, threshold=DEFAULT_PRESSURE_THRESHOLD),
                                            minute_window["daily_peak_utilization"])
     assert minute_window["conflict"] is None and minute_filter["conflict"] is False
     assert minute_filter["unknown_period_count"] == 1 and minute_filter["state"] == "partial"
@@ -264,9 +270,11 @@ def test_partial_calendar_preserves_known_subtotals_and_does_not_label_unknown_d
         assert fact["available_hours"] is fact["occupied_hours"] is fact["outside_calendar_hours"] is None
         assert fact["known_available_hours"] == fact["known_occupied_hours"] == 0.8
         assert fact["known_outside_calendar_hours"] == 0
-    transient_minutes = ResourceTaskIndex(minute_rows, first, last, retain_statistics_values=False)
+    transient_minutes = ResourceTaskIndex(
+        minute_rows, first, last, task_intervals=task_interval_map(minute_rows), retain_statistics_values=False
+    )
     assert transient_minutes.window(MACHINE, minute_calendar) == minute_window
-    assert transient_minutes.day_filter_summary(MACHINE, minute_calendar) == minute_filter
+    assert transient_minutes.day_filter_summary(MACHINE, minute_calendar, threshold=DEFAULT_PRESSURE_THRESHOLD) == minute_filter
     transient_measurement = transient_minutes._measurement(
         MACHINE, minute_calendar, retain_statistics_values=transient_minutes.retain_statistics_values)
     assert len(transient_measurement._value_cache) == 1
@@ -279,8 +287,9 @@ def test_known_zero_capacity_external_and_point_tasks_use_saved_assignments():
     rows = [task("a", "op:a", start, end, source=None),
             task("point", "op:p", start, start, machine=point_machine, event_kind="point", occupies_resources=False),
             task("external", "op:e", start, end, source="external", machine=external_machine)]
-    assert resource_cohort([rows]) == [MACHINE, OPERATOR]
-    index = ResourceTaskIndex(rows, start, end)
+    parsed = {row["row_ref"]: resource_intervals.task_interval(row) for row in rows}
+    assert resource_cohort([rows], task_intervals=[parsed]) == [MACHINE, OPERATOR]
+    index = ResourceTaskIndex(rows, start, end, task_intervals=parsed)
     zero = index.window(MACHINE, calendar(day_calendar(start, end, [])))
     assert zero["available_hours"] == zero["occupied_hours"] == zero["summed_load_hours"] == 0
     assert zero["span_occupied_hours"] == zero["outside_calendar_hours"] == 2
@@ -299,50 +308,63 @@ def test_unknown_workload_and_absent_arrangements_keep_capacity_and_idle_semanti
     parsed = {row["row_ref"]: resource_intervals.task_interval(row) for row in rows}
     partial_index = ResourceTaskIndex(rows, start, end, task_intervals=parsed)
     partial = partial_index.window(MACHINE, saved)
-    partial_filter = partial_index.day_filter_summary(MACHINE, saved)
+    partial_filter = partial_index.day_filter_summary(MACHINE, saved, threshold=DEFAULT_PRESSURE_THRESHOLD)
     assert partial_filter is not None
-    assert partial_filter == _period_summary(partial_index.period_facts(MACHINE, saved), partial["daily_peak_utilization"])
+    assert partial_filter == _period_summary(partial_index.period_facts(MACHINE, saved, threshold=DEFAULT_PRESSURE_THRESHOLD), partial["daily_peak_utilization"])
     assert partial["unknown_days"] == 0 and partial_filter["unknown_period_count"] == 1
     assert partial["available_hours"] == 2 and partial["state"] == "partial"
     assert partial["occupied_hours"] is partial["span_occupied_hours"] is partial["task_count"] is None
     assert partial["known_occupied_hours"] == partial["known_span_occupied_hours"] == 1
     assert partial["known_task_count"] == partial["known_operation_count"] == partial["unknown_workload_count"] == 1
-    assert partial["conflict"] is None
+    assert partial["conflict"] is None and partial["high_pressure"] is None and partial["utilization_ratio"] is None
+    measured = partial_index._measurements[MACHINE["kind"], MACHINE["ref"]][1]
+    lowered = partial_index.window(MACHINE, saved, threshold=0.5)
+    assert lowered["high_pressure"] is True and lowered["utilization_ratio"] is None and lowered["pressure_threshold"] == 0.5
+    assert partial_index._measurements[MACHINE["kind"], MACHINE["ref"]][1] is measured
     assert partial["issues"] == [{"code": "task_time_unknown", "message": "保存任务的时间或点事件依据缺项，占用和负荷保留已知小计。", "field": "task_time"}]
     transient_single = ResourceTaskIndex(rows, start, end, task_intervals=parsed, retain_statistics_values=False)
     assert transient_single.window(MACHINE, saved) == partial
     assert len(transient_single._measurement(
         MACHINE, saved, retain_statistics_values=transient_single.retain_statistics_values)._value_cache) == 1
-    details = ResourceTaskIndex(rows, start, end).periods(MACHINE, saved, details=True)[0]
+    details = ResourceTaskIndex(rows, start, end, task_intervals=task_interval_map(rows)).periods(
+        MACHINE, saved, threshold=DEFAULT_PRESSURE_THRESHOLD, details=True
+    )[0]
     assert details["contribution_operation_count"] is None and details["known_contribution_operation_count"] == 1
-    absent = ResourceTaskIndex([], start, end, work_available=False).window(MACHINE, saved)
+    absent = ResourceTaskIndex([], start, end, work_available=False, task_intervals=task_interval_map([])).window(MACHINE, saved)
     assert absent["available_hours"] == 2
     assert absent["occupied_hours"] is absent["known_occupied_hours"] is absent["task_count"] is None
     assert absent["issues"][0]["code"] == "arrangements_unavailable"
-    absent_zero = ResourceTaskIndex([], start, end, work_available=False).window(MACHINE, calendar(day_calendar(start, end, [])))
+    absent_zero = ResourceTaskIndex(
+        [], start, end, work_available=False, task_intervals=task_interval_map([])
+    ).window(MACHINE, calendar(day_calendar(start, end, [])))
     assert absent_zero["zero_capacity_task"] is None
-    idle = ResourceTaskIndex([], start, end).window(MACHINE, saved)
+    idle = ResourceTaskIndex([], start, end, task_intervals=task_interval_map([])).window(MACHINE, saved)
     assert idle["state"] == "complete" and idle["occupied_hours"] == idle["utilization_ratio"] == 0
     assert idle["high_pressure"] is idle["zero_capacity_task"] is idle["conflict"] is False
-    idle_unknown = ResourceTaskIndex([], start, end).window(MACHINE, calendar(day_calendar(start, end, [], state="unavailable")))
+    idle_unknown = ResourceTaskIndex(
+        [], start, end, task_intervals=task_interval_map([])
+    ).window(MACHINE, calendar(day_calendar(start, end, [], state="unavailable")))
     assert idle_unknown["zero_capacity_task"] is False
-    zero_index = ResourceTaskIndex([task("clipped", "op:clipped", at("07:00:00"), at("09:00:00"))], start, start)
+    clipped_rows = [task("clipped", "op:clipped", at("07:00:00"), at("09:00:00"))]
+    zero_index = ResourceTaskIndex(clipped_rows, start, start, task_intervals=task_interval_map(clipped_rows))
     zero_calendar = calendar(day_calendar(start, start, [], state="unavailable"))
-    zero_week = zero_index.periods(MACHINE, zero_calendar, grain="week")[0]
+    zero_week = zero_index.periods(MACHINE, zero_calendar, threshold=DEFAULT_PRESSURE_THRESHOLD, grain="week")[0]
     assert zero_week["task_count"] == zero_week["operation_count"] == 1
     assert zero_week["conflict"] is None
     assert zero_week["high_pressure"] is zero_week["zero_capacity_task"] is False
-    zero_fact = zero_index.period_facts(MACHINE, zero_calendar, grain="week")[0]
+    zero_fact = zero_index.period_facts(MACHINE, zero_calendar, threshold=DEFAULT_PRESSURE_THRESHOLD, grain="week")[0]
     assert {field: zero_week[field] for field in zero_fact} == zero_fact
-    assert zero_index.day_filter_summary(MACHINE, zero_calendar) is None
-    transient_zero = ResourceTaskIndex([task("clipped", "op:clipped", at("07:00:00"), at("09:00:00"))],
-                                       start, start, retain_statistics_values=False)
-    assert transient_zero.periods(MACHINE, zero_calendar, grain="week")[0] == zero_week
+    assert zero_index.day_filter_summary(MACHINE, zero_calendar, threshold=DEFAULT_PRESSURE_THRESHOLD) is None
+    transient_zero = ResourceTaskIndex(
+        clipped_rows, start, start, task_intervals=task_interval_map(clipped_rows), retain_statistics_values=False
+    )
+    assert transient_zero.periods(MACHINE, zero_calendar, threshold=DEFAULT_PRESSURE_THRESHOLD, grain="week")[0] == zero_week
     transient_zero_values = transient_zero._measurement(
         MACHINE, zero_calendar, retain_statistics_values=transient_zero.retain_statistics_values)._value_cache
     assert transient_zero_values == zero_index._measurement(
         MACHINE, zero_calendar, retain_statistics_values=zero_index.retain_statistics_values)._value_cache
-    missing_identity = ResourceTaskIndex([task("lost", "op:lost", start, end, machine=None)], start, end)
+    lost_rows = [task("lost", "op:lost", start, end, machine=None)]
+    missing_identity = ResourceTaskIndex(lost_rows, start, end, task_intervals=task_interval_map(lost_rows))
     assert missing_identity.identity_issues == [{"code": "resource_identity_unknown",
                                                "message": "保存任务缺少永久资源身份，资源汇总保留覆盖缺口。",
                                                "field": "machine", "kind": "machine"}]
@@ -351,8 +373,9 @@ def test_unknown_workload_and_absent_arrangements_keep_capacity_and_idle_semanti
 def test_unproven_formal_zero_interval_keeps_assigned_cohort_and_unknown_workload():
     start, end = at("08:00:00"), at("10:00:00")
     row = task("formal", "op:formal", start, start, interval_comparable=False)
-    assert resource_cohort([[row]]) == [MACHINE, OPERATOR]
-    value = ResourceTaskIndex([row], start, end, task_intervals={row["row_ref"]: resource_intervals.task_interval(row)}).window(
+    parsed = {row["row_ref"]: resource_intervals.task_interval(row)}
+    assert resource_cohort([[row]], task_intervals=[parsed]) == [MACHINE, OPERATOR]
+    value = ResourceTaskIndex([row], start, end, task_intervals=parsed).window(
         MACHINE, calendar(day_calendar(start, end, [(start, end)])))
     assert value["available_hours"] == 2 and value["unknown_workload_count"] == 1
     assert value["span_occupied_hours"] is value["occupied_hours"] is value["utilization_ratio"] is None
@@ -370,7 +393,7 @@ def test_resource_grains_keep_actual_work_windows_weekly_weights_and_rest_span_e
             task("short", "op:short", at("09:00:00", tuesday), at("10:00:00", tuesday))]
     saved = calendar(day_calendar(start, boundary, [(at("08:00:00", monday), at("16:00:00", monday))]),
                      day_calendar(boundary, end, [(at("08:00:00", tuesday), at("10:00:00", tuesday))]))
-    index = ResourceTaskIndex(rows, start, end, pressure_threshold=0.95)
+    index = ResourceTaskIndex(rows, start, end, task_intervals=task_interval_map(rows))
     calendar_reads, measurement_reads, value_reads = [], [], []
     prepared_reads = []
     original_days = resource_calendar.calendar_days
@@ -399,13 +422,13 @@ def test_resource_grains_keep_actual_work_windows_weekly_weights_and_rest_span_e
     monkeypatch.setattr(resource_projection._ResourceMeasurement, "__init__", record_measurement)
     monkeypatch.setattr(resource_projection._ResourceMeasurement, "_values", record_values)
     normalized = normalize_resource_calendar(saved, start, end)
-    window = index.window(MACHINE, normalized)
+    window = index.window(MACHINE, normalized, threshold=0.95)
     window_reads = list(value_reads)
     assert len(window_reads) == 3
     assert prepared_reads == [(instant(start), instant(boundary)), (instant(boundary), instant(end))]
-    day_facts = index.period_facts(MACHINE, normalized, grain="day")
-    days = index.periods(MACHINE, normalized, grain="day")
-    assert index.day_filter_summary(MACHINE, normalized) == _period_summary(day_facts, window["daily_peak_utilization"])
+    day_facts = index.period_facts(MACHINE, normalized, threshold=0.95, grain="day")
+    days = index.periods(MACHINE, normalized, threshold=0.95, grain="day")
+    assert index.day_filter_summary(MACHINE, normalized, threshold=0.95) == _period_summary(day_facts, window["daily_peak_utilization"])
     assert "day_filter_summary" not in window
     assert [{field: row[field] for field in fact} for row, fact in zip(days, day_facts)] == day_facts
     assert value_reads == window_reads
@@ -420,7 +443,7 @@ def test_resource_grains_keep_actual_work_windows_weekly_weights_and_rest_span_e
     assert days[0]["calendar_state"] == "complete" and days[0]["available_hours"] == 8
     assert days[0]["zero_capacity_task"] is None
     assert days[0]["zero_capacity_reason"]["code"] == "actual_work_fragments_not_recorded"
-    week = index.periods(MACHINE, normalized, grain="week", details=True)[0]
+    week = index.periods(MACHINE, normalized, threshold=0.95, grain="week", details=True)[0]
     assert week["available_hours"] == 10 and week["occupied_hours"] == 9
     assert week["utilization_ratio"] == pytest.approx(0.9)
     assert week["daily_peak_utilization"] == 1 and week["high_pressure_period_count"] == 1
@@ -429,10 +452,10 @@ def test_resource_grains_keep_actual_work_windows_weekly_weights_and_rest_span_e
     assert week["zero_capacity_task"] is None and week["zero_capacity_reason"]["code"] == "actual_work_fragments_not_recorded"
     assert len(week["tasks"]) == len({row["row_ref"] for row in week["tasks"]}) == 2
     assert [row["occupied_hours"] for row in week["tasks"]] == [8, 1]
-    shifts = index.periods(MACHINE, normalized, grain="shift")
+    shifts = index.periods(MACHINE, normalized, threshold=0.95, grain="shift")
     assert [(row["start"], row["end"]) for row in shifts] == [
         (at("08:00:00", monday), at("16:00:00", monday)), (at("08:00:00", tuesday), at("10:00:00", tuesday))]
-    hours = index.periods(MACHINE, normalized, grain="hour", details=True)
+    hours = index.periods(MACHINE, normalized, threshold=0.95, grain="hour", details=True)
     active = next(row for row in hours if row["start"] == at("08:00:00", monday))
     assert active["operation_count"] == 1 and active["occupied_hours"] == 1
     rest = next(row for row in hours if row["start"] == at("22:00:00", monday))
@@ -448,17 +471,19 @@ def test_resource_grains_keep_actual_work_windows_weekly_weights_and_rest_span_e
     assert saved["days"][0]["start"] == instant(start)
     assert index.retain_statistics_values is measurement.retain_statistics_values is True
     before_pressure = len(value_reads)
-    assert pressure_from_index(index, MACHINE, normalized)["window_metrics"] == window
+    default_window = index.window(MACHINE, normalized)
+    assert default_window == {**window, "pressure_threshold": DEFAULT_PRESSURE_THRESHOLD}
+    assert pressure_from_index(index, MACHINE, normalized)["window_metrics"] == default_window
     assert len(value_reads) == before_pressure
-    transient = ResourceTaskIndex(rows, start, end, pressure_threshold=0.95, retain_statistics_values=False)
-    assert transient.window(MACHINE, normalized) == window
+    transient = ResourceTaskIndex(rows, start, end, task_intervals=task_interval_map(rows), retain_statistics_values=False)
+    assert transient.window(MACHINE, normalized, threshold=0.95) == window
     transient_measurement = transient._measurement(MACHINE, normalized, retain_statistics_values=transient.retain_statistics_values)
     assert transient_measurement.retain_statistics_values is False
     assert len(transient_measurement._value_cache) == 1
-    assert transient.day_filter_summary(MACHINE, normalized) == index.day_filter_summary(MACHINE, normalized)
+    assert transient.day_filter_summary(MACHINE, normalized, threshold=0.95) == index.day_filter_summary(MACHINE, normalized, threshold=0.95)
     visible_keys = {days[0]["group_key"]}
-    assert transient.periods(MACHINE, normalized, details=True, group_keys=visible_keys) == index.periods(
-        MACHINE, normalized, details=True, group_keys=visible_keys)
+    assert transient.periods(MACHINE, normalized, threshold=0.95, details=True, group_keys=visible_keys) == index.periods(
+        MACHINE, normalized, threshold=0.95, details=True, group_keys=visible_keys)
     assert len(transient_measurement._value_cache) == 2
     day = transient_measurement.days[0]
     retained = transient_measurement.values(day.low, day.high, [day])
@@ -472,29 +497,55 @@ def test_resource_grains_keep_actual_work_windows_weekly_weights_and_rest_span_e
     day = transient_measurement.days[1]
     transient_measurement.values(day.low, day.high, [day], retain=False)
     assert len(transient_measurement._value_cache) == 2
-    assert transient.periods(MACHINE, normalized, grain="week", details=True)[0] == week
+    assert transient.periods(MACHINE, normalized, threshold=0.95, grain="week", details=True)[0] == week
 
 
-def test_selected_plan_conflict_segments_keep_night_reservations_and_three_operation_hours_distinct():
+def test_selected_plan_conflict_segments_keep_night_reservations_and_three_operation_hours_distinct(monkeypatch):
     from types import SimpleNamespace
 
     from core.services.capacity.plan_calendar_intervals import instant
+    from core.services.workbench.plan import occupancy
     from core.services.workbench.plan.occupancy import _resource_occupancy
 
     saved = {**day_calendar(at("00:00:00"), at("00:00:00", "2026-09-10"), [(at("08:00:00"), at("09:00:00"))]),
              "label": "归档设备", "basis": "global_calendar_machine_availability"}
     day = (instant(at("08:00:00")), instant(at("09:00:00")))
+    solo = (instant(at("10:00:00")), instant(at("11:00:00")))
     night = (instant(at("22:00:00")), instant(at("23:00:00")))
     refs = {"machine": {"M1": SimpleNamespace(ref=MACHINE["ref"])}}
-    mixed = _resource_occupancy("machine", "M1", {ref: [day, night] for ref in ("one", "two", "three")}, saved, refs, "设备")
+    mixed, mixed_complete = _resource_occupancy(
+        "machine", "M1", {ref: [day, night] for ref in ("one", "two", "three")}, saved, refs, "设备",
+        include_segments=True,
+    )
+    assert mixed_complete is True
     assert mixed["overlap_hours"] == 2 and mixed["available_overlap_hours"] == 1
     assert mixed["has_overlap"] is True and mixed["capacity_insufficient"] is True
     assert mixed["conflict_segments"] == [{"start": at("08:00:00"), "end": at("09:00:00"), "concurrent_operations": 3}]
     assert len(mixed["segments"]) == 2
-    rest = _resource_occupancy("machine", "M1", {"one": [night], "two": [night]}, saved, refs, "设备")
+    rest, rest_complete = _resource_occupancy(
+        "machine", "M1", {"one": [night], "two": [night]}, saved, refs, "设备",
+        include_segments=True,
+    )
+    assert rest_complete is True
     assert rest["overlap_hours"] == 1 and rest["available_overlap_hours"] == 0
     assert rest["has_overlap"] is False and rest["capacity_insufficient"] is False and rest["conflict_segments"] == []
     assert rest["outside_available_hours"] == 1 and rest["outside_calendar_basis"] == "reservation_span_outside_work_calendar"
+
+    wired_points, original_wire = [], occupancy.wire
+
+    def tracked_wire(value):
+        wired_points.append(value)
+        return original_wire(value)
+
+    monkeypatch.setattr(occupancy, "wire", tracked_wire)
+    summary_row, summary_complete = _resource_occupancy(
+        "machine", "M1", {"one": [day, solo], "two": [day, night]}, saved, refs, "设备",
+        include_segments=False,
+    )
+    assert summary_complete is False
+    assert summary_row["segments"] == [{"start": at("08:00:00"), "end": at("09:00:00"), "concurrent_operations": 2}]
+    assert summary_row["conflict_segments"] == [{"start": at("08:00:00"), "end": at("09:00:00"), "concurrent_operations": 2}]
+    assert wired_points == [day[0], day[1], day[0], day[1]]
 
 
 def test_multiday_prefix_accumulation_preserves_exact_in_calendar_and_zero_capacity_invariants():
@@ -544,10 +595,10 @@ def test_multiday_prefix_accumulation_preserves_exact_in_calendar_and_zero_capac
     rows.append(task("d11-rest", "op:d11-rest", (day11 + timedelta(hours=9)).isoformat(), (day11 + timedelta(hours=11)).isoformat()))
 
     saved = calendar(*days_payload)
-    index = ResourceTaskIndex(rows, range_start, range_end)
+    index = ResourceTaskIndex(rows, range_start, range_end, task_intervals=task_interval_map(rows))
     whole, day_rows = index.window_with_days(MACHINE, saved)
-    shift_rows = index.periods(MACHINE, saved, grain="shift")
-    week_rows = index.periods(MACHINE, saved, grain="week")
+    shift_rows = index.periods(MACHINE, saved, threshold=DEFAULT_PRESSURE_THRESHOLD, grain="shift")
+    week_rows = index.periods(MACHINE, saved, threshold=DEFAULT_PRESSURE_THRESHOLD, grain="week")
 
     for day_row in day_rows[1:10]:
         assert day_row["outside_calendar_hours"] == 0.0

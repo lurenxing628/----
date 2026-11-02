@@ -5,12 +5,6 @@
     const read = window.APSResourceSession.useQuery(load, deps, enabled);
     return { ...read, busy: read.loading };
   }
-  function returnContext(value) {
-    const result = {};
-    for (const key of ['run_ref', 'candidate_ref', 'plan_ref', 'batch_ref']) if (value && A.ref(value[key])) result[key] = value[key];
-    for (const key of ['range_start', 'range_end']) if (value && A.time(value[key])) result[key] = value[key];
-    return result;
-  }
   // One 导出 button opens the format dialog, the same walk as the plan, trial and actual-gantt exports.
   function Export({ result, scope, query }) {
     const [busy, setBusy] = React.useState(false), [error, setError] = React.useState(null), [done, setDone] = React.useState(''), [format, setFormat] = React.useState(null);
@@ -125,8 +119,7 @@
       <div className="rc-heading scheduling-page-tools">{navigation}<div className="rc-tools">
         <div className="rc-nav">
           {(initialContext.return_decision_context || initialContext.reference_candidate_ref || initialContext.comparison_mode) && <C.Button icon="chevron-left" className="btn link" onClick={() => onNavigate('analysis', initialContext.return_decision_context || { run_ref: runRef, candidate_ref: candidateRef, reference_candidate_ref: initialContext.reference_candidate_ref, comparison_mode: initialContext.comparison_mode || 'candidates', ...scope })}>返回方案对比</C.Button>}
-          <C.Button icon="chevron-left" className="btn link" onClick={() => onNavigate(runHistoryReturn.view, runHistoryReturn.context)}>返回排产记录</C.Button>
-          {initialContext.return_plan_context && A.ref(initialContext.return_plan_context.plan_ref) && <C.Button icon="chevron-left" className="btn link" onClick={() => onNavigate('analysis', returnContext(initialContext.return_plan_context))}>返回正式计划</C.Button>}</div>
+          <C.Button icon="chevron-left" className="btn link" onClick={() => onNavigate(runHistoryReturn.view, runHistoryReturn.context)}>返回排产记录</C.Button></div>
         <div className="rc-actions">
           {!isReference && renderAdoption(candidateRef, { candidateDisplay: shown && shown.candidate.candidate_ref === candidateRef ? { candidate_ref: candidateRef, label: shown.candidate.label || '候选名称未填写' } : undefined, candidateCatalog: directory.result ? directory.result.data.candidates : [] })}
           {!isReference && renderTrial({ candidateRef, scope, query, disabled: !shown || read.busy || invalid })}

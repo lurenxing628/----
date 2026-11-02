@@ -7,7 +7,6 @@ from werkzeug.exceptions import HTTPException
 
 from core.errors import AppError
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_process_query import ProcessPageRequest
 from core.models.workbench_process_table_query import DUPLICATE_QUERY_MESSAGE, ProcessTablePageRequest
 from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from core.shared.strict_json import load_strict_json
@@ -30,18 +29,15 @@ def _list_query():
         if re.fullmatch(r"[1-9][0-9]{0,6}", text) is None:
             raise WorkbenchCommandRejected("invalid_input", "页码或每页条数填写不对，列表没有变化。请回到第 1 页重新查询。", 400)
         values[key] = int(text)
+    # Both HTTP spellings stay accepted: sort=<column>&direction=<asc|desc>, or a JSON list of sort keys.
+    unreadable = rejecter("排序或筛选内容读不出来，当前筛选没有变化。请点「清除筛选」后重新选择。")
+    duplicate = rejecter(DUPLICATE_QUERY_MESSAGE)
     ordering = request.args.get("sort", "business_code")
-    if "column_filters" in request.args or ordering.lstrip().startswith("["):
-        unreadable = rejecter("排序或筛选内容读不出来，当前筛选没有变化。请点「清除筛选」后重新选择。")
-        duplicate = rejecter(DUPLICATE_QUERY_MESSAGE)
-        sort = load_strict_json(ordering, on_malformed=unreadable, on_duplicate=duplicate) if ordering.lstrip().startswith("[") else ordering
-        filters = load_strict_json(request.args.get("column_filters", "{}"), on_malformed=unreadable, on_duplicate=duplicate)
-        return ProcessTablePageRequest(query=request.args.get("query", ""), stage=request.args.get("stage") or None,
-                                       number=values["page"], size=values["size"], sort=sort,
-                                       direction=request.args.get("direction", "asc"), column_filters=filters)
-    return ProcessPageRequest(query=request.args.get("query", ""), stage=request.args.get("stage") or None,
-                              number=values["page"], size=values["size"], sort=ordering,
-                              direction=request.args.get("direction", "asc"))
+    sort = load_strict_json(ordering, on_malformed=unreadable, on_duplicate=duplicate) if ordering.lstrip().startswith("[") else ordering
+    filters = load_strict_json(request.args.get("column_filters", "{}"), on_malformed=unreadable, on_duplicate=duplicate)
+    return ProcessTablePageRequest(query=request.args.get("query", ""), stage=request.args.get("stage") or None,
+                                   number=values["page"], size=values["size"], sort=sort,
+                                   direction=request.args.get("direction", "asc"), column_filters=filters)
 
 
 @api_endpoint
@@ -82,10 +78,10 @@ def process_route_preview(ref):
             raise WorkbenchCommandRejected("invalid_input", "工序号太大，页面上填不准，路线没有保存；系统没有替你四舍五入。请改用整段路线文字录入。", 422)
         reader = WorkbenchProcessQueryService(g.db, current_app.logger, part_ref=ref)
         with reader.read_snapshot() as state:
-            reader.resolve(ref)
+            identity = reader.resolve(ref)
             if token is not None:
                 bind_read_snapshot({"kind": "part", "entity_ref": ref}, state, token)
-            data, _, affected = reader.prepare_route(ref, body)
+            data, _, affected = reader.prepare_route(identity, body)
             data["affected_groups"] = []
             if data["can_confirm_route"]:
                 affected_refs = {row["ref"] for row in affected}

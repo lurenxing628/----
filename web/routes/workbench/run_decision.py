@@ -7,7 +7,7 @@ from typing import Dict
 from flask import current_app, g, request, send_file
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES
+from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES, reference
 from core.services.workbench.decision_file_export import write_decision_xlsx
 from core.services.workbench.run.decision import read_run_decision, read_run_decision_summary
 from core.services.workbench.run.decision_completion_queries import read_completion_batches
@@ -22,7 +22,7 @@ from web.api_responses import failure_payload, json_response, query_payload, que
 
 from .api_responses import api_endpoint
 from .read_budget import PLAN_READ_SLOTS
-from .read_context import bind_read_snapshot
+from .read_context import bind_read_snapshot, snapshot_binder
 
 _QUERY = ("comparison_mode", "reference_candidate_ref", "selected_candidate_ref", "range_start", "range_end", "resource_view")
 _FILTERS = ("batch_ref", "resource_ref", "change_kind", "sort", "order", "delivery_filter", "selected_batch_ref")
@@ -32,7 +32,11 @@ _RESOURCE_PERIOD_FILTERS = ("grain", "pressure_threshold", "display_start", "dis
 def _query(allowed) -> Dict[str, str]:
     if set(request.args) - set(allowed) or any(len(request.args.getlist(key)) != 1 for key in request.args):
         raise WorkbenchCommandRejected("invalid_input", "比较条件含重复或不支持的项，请重新选择比较范围。", 422)
-    return {key: request.args[key] for key in allowed if key in request.args}
+    values = {key: request.args[key] for key in allowed if key in request.args}
+    for name in ("selected_candidate_ref", "reference_candidate_ref"):
+        if name in values:
+            reference(values[name])
+    return values
 
 
 def _response(data, snapshot):
@@ -44,18 +48,14 @@ def _read(run_ref, reader):
     values = _query(allowed)
     query = {key: values[key] for key in _QUERY if key in values}
     with PLAN_READ_SLOTS.slot():
-        data, state = reader(g.db, run_ref, **query)
-    snapshot = bind_read_snapshot({"kind": "run-decision", **data["scope"]}, state, request.args.get("snapshot_ref"))
-    return data, snapshot
+        return reader(g.db, run_ref, bind_snapshot=snapshot_binder(request.args.get("snapshot_ref")), **query)
 
 
 def _detail(run_ref, section):
     values = _query(_QUERY + _FILTERS + ("page", "size", "snapshot_ref"))
     token = values.pop("snapshot_ref", None)
     with PLAN_READ_SLOTS.slot():
-        data, state = read_decision_details(g.db, run_ref, section, **values)
-    snapshot = bind_read_snapshot({"kind": "run-decision", **data["scope"], "filters": data["filters"]}, state, token)
-    return _response(data, snapshot)
+        return _response(*read_decision_details(g.db, run_ref, section, bind_snapshot=snapshot_binder(token), **values))
 
 
 @api_endpoint
@@ -73,9 +73,7 @@ def run_decision_completion_batches(run_ref):
     values = _query(_QUERY + ("completion_filter", "sort", "order", "page", "size", "snapshot_ref"))
     token = values.pop("snapshot_ref", None)
     with PLAN_READ_SLOTS.slot():
-        data, state = read_completion_batches(g.db, run_ref, **values)
-    snapshot = bind_read_snapshot({"kind": "run-decision", **data["scope"], "filters": data["filters"]}, state, token)
-    return _response(data, snapshot)
+        return _response(*read_completion_batches(g.db, run_ref, bind_snapshot=snapshot_binder(token), **values))
 
 
 @api_endpoint
@@ -83,9 +81,7 @@ def run_decision_process(run_ref):
     values = _query(_QUERY + ("process_candidate_ref", "objective", "record_kind", "sort", "order", "page", "size", "snapshot_ref"))
     token = values.pop("snapshot_ref", None)
     with PLAN_READ_SLOTS.slot():
-        data, state = read_process_details(g.db, run_ref, **values)
-    snapshot = bind_read_snapshot({"kind": "run-decision", **data["scope"], "filters": data["filters"]}, state, token)
-    return _response(data, snapshot)
+        return _response(*read_process_details(g.db, run_ref, bind_snapshot=snapshot_binder(token), **values))
 
 
 def _preparation_detail(run_ref, section):
@@ -93,9 +89,7 @@ def _preparation_detail(run_ref, section):
     values = _query(_QUERY + filters + ("page", "size", "snapshot_ref"))
     token = values.pop("snapshot_ref", None)
     with PLAN_READ_SLOTS.slot():
-        data, state = read_preparation_details(g.db, run_ref, section, **values)
-    snapshot = bind_read_snapshot({"kind": "run-decision", **data["scope"], "filters": data["filters"]}, state, token)
-    return _response(data, snapshot)
+        return _response(*read_preparation_details(g.db, run_ref, section, bind_snapshot=snapshot_binder(token), **values))
 
 
 @api_endpoint
@@ -115,9 +109,7 @@ def _resource_detail(run_ref, section):
     values = _query(_QUERY + filters + ("page", "size", "snapshot_ref"))
     token = values.pop("snapshot_ref", None)
     with PLAN_READ_SLOTS.slot():
-        data, state = read_resource_details(g.db, run_ref, section, **values)
-    snapshot = bind_read_snapshot({"kind": "run-decision", **data["scope"], "filters": data["filters"]}, state, token)
-    return _response(data, snapshot)
+        return _response(*read_resource_details(g.db, run_ref, section, bind_snapshot=snapshot_binder(token), **values))
 
 
 @api_endpoint
@@ -135,9 +127,7 @@ def run_decision_reference_workspace(run_ref):
     values = _query(_QUERY + ("batch_ref", "snapshot_ref"))
     token = values.pop("snapshot_ref", None)
     with PLAN_READ_SLOTS.slot():
-        data, state = read_reference_workspace(g.db, run_ref, **values)
-    snapshot = bind_read_snapshot({"kind": "run-decision-reference", **data["scope"], "batch_ref": data["batch_ref"]}, state, token)
-    return _response(data, snapshot)
+        return _response(*read_reference_workspace(g.db, run_ref, bind_snapshot=snapshot_binder(token), **values))
 
 
 @api_endpoint
@@ -150,6 +140,27 @@ def run_decision(run_ref):
 def run_decision_summary(run_ref):
     data, snapshot = _read(run_ref, read_run_decision_summary)
     return _response(data, snapshot)
+
+
+def _resource_workspace_binder(summary_token):
+    """Bind the summary with its own token; a stale resource-view token stays the view's own error."""
+    def bind(scope, state, resource):
+        snapshot = bind_read_snapshot(scope, state, summary_token) if summary_token is not None else None
+        resource_snapshot, error = None, None
+        if resource is not None:
+            filters, token = resource
+            try:
+                resource_snapshot = bind_read_snapshot({**scope, "filters": filters}, state, token,
+                                                       as_of=snapshot["as_of"] if snapshot is not None else None)
+            except WorkbenchCommandRejected as exc:
+                error = exc
+            else:
+                if snapshot is None:
+                    snapshot = bind_read_snapshot(scope, state, as_of=resource_snapshot["as_of"])
+        if snapshot is None:
+            snapshot = bind_read_snapshot(scope, state)
+        return snapshot, resource_snapshot, error
+    return bind
 
 
 def _resource_error(error):
@@ -172,24 +183,11 @@ def run_decision_resource_workspace(run_ref):
     if resource_token is not None:
         resource_query["snapshot_ref"] = resource_token
     with PLAN_READ_SLOTS.slot():
-        data, resource_data, resource_query, resource_error, state = read_resource_workspace(
-            g.db, run_ref, resource_query=resource_query, **summary_query)
-    scope = {"kind": "run-decision", **data["scope"]}
-    snapshot = bind_read_snapshot(scope, state, summary_token) if summary_token is not None else None
-    resource_result = None
-    if resource_error is not None:
-        resource_result = _resource_error(resource_error)
-    elif resource_data is not None:
-        try:
-            resource_snapshot = bind_read_snapshot({**scope, "filters": resource_data["filters"]}, state,
-                resource_query.get("snapshot_ref"), as_of=snapshot["as_of"] if snapshot is not None else None)
-            resource_result = query_payload(resource_data, resource_snapshot)
-            if snapshot is None:
-                snapshot = bind_read_snapshot(scope, state, as_of=resource_snapshot["as_of"])
-        except WorkbenchCommandRejected as exc:
-            resource_result = _resource_error(exc)
-    if snapshot is None:
-        snapshot = bind_read_snapshot(scope, state)
+        data, resource_data, resource_query, resource_error, snapshot, resource_snapshot = read_resource_workspace(
+            g.db, run_ref, resource_query=resource_query, bind_snapshot=_resource_workspace_binder(summary_token),
+            **summary_query)
+    resource_result = (_resource_error(resource_error) if resource_error is not None
+                       else query_payload(resource_data, resource_snapshot) if resource_data is not None else None)
     return json_response(query_payload({**data, "resource_result": resource_result, "resource_query": resource_query}, snapshot),
         byte_limit=MAX_RESPONSE_BYTES, too_large_code="candidate_capacity_exceeded")
 
@@ -203,8 +201,7 @@ def run_decision_export(run_ref):
     if not token:
         raise WorkbenchCommandRejected("invalid_input", "请刷新方案比较后导出当前资料。", 422)
     with PLAN_READ_SLOTS.slot():
-        data, scope, state = read_decision_export(g.db, run_ref, section, fmt=fmt, **values)
-        snapshot = bind_read_snapshot(scope, state, token)
+        data, snapshot = read_decision_export(g.db, run_ref, section, bind_snapshot=snapshot_binder(token), fmt=fmt, **values)
     download = (write_decision_xlsx("run", data, snapshot, section) if fmt == "xlsx" else
                 write_run_decision_export(data, snapshot, fmt, section))
     response = send_file(BytesIO(download.content), mimetype=download.mime_type, as_attachment=True,

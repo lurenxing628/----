@@ -216,3 +216,42 @@ def test_point_event_calendar_catches_shift_validation_and_business_errors(dashb
     at = datetime.fromisoformat(row["start_time"])
     constraints.check(row, at, at, row_start=at, row_end=at)
     assert "assignment_calendar_unavailable" in constraints.private()
+
+
+def test_dashboard_capture_consumes_selected_calendar_days_for_earlier_point_before_midnight(dashboard_case, monkeypatch):
+    from core.services.workbench.plan.calendar_context import SelectedPlanContext
+    from core.services.workbench.plan.read_context import PlanReadContext
+
+    case = dashboard_case
+    case.conn.execute("UPDATE Schedule SET start_time='2026-09-09T08:00:00',end_time='2026-09-10T00:00:00'")
+    case.conn.commit()
+    calendar_ranges = []
+    original_calendar = CalendarFacts.calendar
+    original_selection = PlanReadContext.calendar_selection
+
+    def record_calendar(self, first_iso, last_iso, operators):
+        calendar_ranges.append((first_iso, last_iso))
+        return original_calendar(self, first_iso, last_iso, operators)
+
+    def select_with_earlier_point(self, entry, scope, plan_span):
+        selected = original_selection(self, entry, scope, plan_span)
+        point_row = dict(
+            selected.rows[0],
+            _point_work={
+                "operation": {"setup_hours": 0.0, "unit_hours": 0.0},
+                "batch": {"priority": "normal"},
+                "quantity": 1,
+            },
+        )
+        return SelectedPlanContext(
+            rows=[point_row],
+            start=selected.start,
+            end=selected.end,
+            time_scope=selected.time_scope,
+            intervals={point_row["schedule_id"]: (datetime(2026, 9, 9, 10, 0), datetime(2026, 9, 9, 10, 0))},
+        )
+
+    monkeypatch.setattr(CalendarFacts, "calendar", record_calendar)
+    monkeypatch.setattr(PlanReadContext, "calendar_selection", select_with_earlier_point)
+    _capture(case)
+    assert calendar_ranges == [("2026-09-08", "2026-09-09")]

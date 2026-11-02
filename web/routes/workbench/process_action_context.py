@@ -4,21 +4,20 @@ from flask import g
 
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.models.workbench_process_file import INSTRUCTIONS, TEMPLATE_VERSION, public_columns
-from core.models.workbench_resource_action import ResourceActionPreview, public_action_row
+from core.models.workbench_resource_action import public_action_row
 
 from .process_json import read_process_json
-from .resource_action_context import resolve_context, retain_context
-from .write_context import preview_write_context, validate_preview_confirmation
+from .resource_action_context import EXPIRED_MESSAGE
+from .write_context import preview_write_context, resolve_action_preview, retain_action_preview
 
 # 工艺文件导入和零件批量删除出了预检结果后，弹窗里的预检按钮都改叫「重新预检」；这里的提示都在那之后出现。
 PREVIEW_SCOPE = "workbench-process-action-preview-v1"
 EXPORT_SCOPE = "workbench-process-file-export-v1"
 
 
-def action_preview(preview, command, *, kind=None, content=None, extra, body=None):
-    ref, expiry = retain_context(PREVIEW_SCOPE, preview.document, content)
-    if body is None:
-        body = preview.as_dict()
+def action_preview(preview, command, *, kind=None, extra):
+    ref, expiry = retain_action_preview(PREVIEW_SCOPE, preview)
+    body = preview.as_dict()
     context = preview_write_context(ref, expiry, [command])
     rejected = bool(body["summary"]["rejected"])
     if rejected:
@@ -47,11 +46,5 @@ def confirmed_body(input_keys):
 
 
 def checked_preview(ref, operation, write_token):
-    if type(ref) is not str or not ref:
-        raise WorkbenchCommandRejected("invalid_input", "预检结果已过期，工艺资料没有改动。请点「重新预检」。", 400)
-    document, content = resolve_context(PREVIEW_SCOPE, ref, "stale_write")
-    preview = ResourceActionPreview(document)
-    if preview.as_dict()["operation"] != operation:
-        raise WorkbenchCommandRejected("stale_write", "预检结果和这次工艺操作对不上，工艺资料没有改动。请点「重新预检」。")
-    validate_preview_confirmation(write_token, ref)
-    return preview, content
+    return resolve_action_preview(PREVIEW_SCOPE, ref, operation, write_token, expired_message=EXPIRED_MESSAGE,
+                                  mismatch_message="预检结果和这次工艺操作对不上，工艺资料没有改动。请点「重新预检」。")

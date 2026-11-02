@@ -35,18 +35,18 @@ _INPUT_PROBLEMS = {
 }
 
 
-def validate_trial_adoption(conn, scenario_ref, *, data_context=None):
+def validate_trial_adoption(conn, scenario_ref, *, data_context):
     try:
         with candidate_read_snapshot(conn), ledger_read_snapshot(conn) as execution_service:
-            saved, head, rows = load_saved_scenario(conn, scenario_ref)
+            scenario = load_saved_scenario(conn, scenario_ref)
+            saved, head, rows = scenario.saved, scenario.head, scenario.rows
             admission = head["admission"]
             capture = ProductionFactsCapture(conn)
-            live = live_context(
-                conn, rows, admission, capture=capture, execution_service=execution_service, data_context=data_context
-            )
+            live = live_context(conn, scenario.origin, capture, execution_service=execution_service,
+                                data_context=data_context)
             _current_baseline(admission, live)
             _original_work(rows, live)
-            checked, settings, held = _scenario_validation(conn, saved, admission, rows, live)
+            checked, settings, held, trial_intervals = _scenario_validation(conn, saved, admission, rows, live)
             issues = [row for row in checked["issues"] if row["code"] != "scenario_adoption_not_connected"]
             if issues:
                 raise TrialAdoptionBlocked("scenario_constraint_unproven", "试调方案没有通过当前的完整核对，正式计划没有改变。", issues)
@@ -56,7 +56,7 @@ def validate_trial_adoption(conn, scenario_ref, *, data_context=None):
             prepared = prepare_trial_adoption_input(conn, settings, projections, live, held=held, capture=capture)
             _complete_scope(rows, prepared)
             # Pending stage work follows the run's end date; the saved rows keep their own span.
-            intervals_by_row = live["trial_intervals"]["current_by_row"]
+            intervals_by_row = trial_intervals["current_by_row"]
             prepared = replace(prepared, end_date_norm=_span_end(rows, intervals_by_row))
             payload = validate_candidate(prepared, schedule_rows(rows, intervals_by_row))
             if payload.scheduled_op_ids != prepared.schedule_output_allowed_op_ids:
@@ -103,13 +103,13 @@ def _scenario_validation(conn, saved, admission, rows, live):
         issues.append(item)
     validator = TrialValidator(conn, dict(admission, base_issues=issues), rows, live)
     checked = validator.evaluate_saved(check_baseline=False)
-    return checked, validator.settings, validator.held
+    return checked, validator.settings, validator.held, validator.trial_intervals
 
 
 def _original_work(rows, live):
-    tables = live["facts"]["tables"]
-    ops = {row["id"]: row for row in tables["BatchOperations"]}
-    batches = {row["batch_id"]: row for row in tables["Batches"]}
+    capture = live["capture"]
+    ops = capture.index("BatchOperations", "id")
+    batches = capture.index("Batches", "batch_id")
     refs = live["preflight_facts"].refs
     for row in rows:
         original = row["original"]

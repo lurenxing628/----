@@ -36,9 +36,10 @@
       && typeof payload.receipt_ref === 'string' && !!payload.receipt_ref && typeof payload.replayed === 'boolean'
       && object(payload.data) && Array.isArray(payload.warnings);
   }
-  function validIntent(value, recovery = false) {
+  // 本机记录的唯一校验点（只在读取磁盘时调用）。预检编号同时是确认凭据，pendingRecord 不把它写进磁盘，所以这类记录允许不带 ref。
+  function validIntent(value) {
     if (!object(value) || typeof value.request_key !== 'string' || !/^resource-[0-9a-f]{48}$/.test(value.request_key)) return false;
-    const previewRef = pattern => recovery && value.ref === undefined || typeof value.ref === 'string' && pattern.test(value.ref);
+    const previewRef = pattern => value.ref === undefined || typeof value.ref === 'string' && pattern.test(value.ref);
     if (value.kind === 'operator' && (value.action === 'machine_permissions' || calendarActions.has(value.action)))
       return value.category === undefined && typeof value.ref === 'string' && /^[0-9a-f]{48}$/.test(value.ref);
     if (value.kind === 'machine' && ['downtime_create', 'downtime_update', 'downtime_cancel'].includes(value.action))
@@ -95,12 +96,10 @@
     const pendingKey = 'aps_workbench_resource_pending_v1' + (namespace === 'resources' ? '' : '_' + namespace);
     const pending = T.pendingStore({
       key: pendingKey, storage: () => sessionStorage,
-      validate: intent => validIntent(intent, true) && matchesNamespace(namespace, intent),
-      validateWrite: intent => validIntent(intent) && matchesNamespace(namespace, intent),
+      validate: intent => validIntent(intent) && matchesNamespace(namespace, intent),
       encode: pendingRecord,
       readError: () => unconfirmed('读不到上次操作记录，请重新打开页面；暂时不能继续保存。'),
       conflictError: () => failure('上次操作记录已变化，请刷新页面后核对结果。'),
-      invalidWriteError: () => failure('操作编号无法保存，本次没有提交。'),
       writeError: () => failure('本次没有提交：操作编号没能保存，请重新打开页面。'),
       removeError: () => failure('结果已确认，但上次操作记录没清掉；重新打开页面后可以再点「查询结果」。')
     });

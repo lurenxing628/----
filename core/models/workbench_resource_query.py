@@ -9,6 +9,12 @@ from core.models.workbench_resource_table_query import normalize_column_filters,
 RESOURCE_KINDS = ("op_type", "machine", "operator", "supplier", "machine_group", "shift_profile")
 
 
+def resource_kind(kind):
+    if kind not in RESOURCE_KINDS:
+        raise WorkbenchCommandRejected("entity_not_found", "没有这个资源页面。请从左边的资料总览重新进入。", 404)
+    return kind
+
+
 @dataclass(frozen=True)
 class ResourcePageRequest:
     kind: str
@@ -22,7 +28,7 @@ class ResourcePageRequest:
     column_filters: Dict = field(default_factory=dict)
 
     def __post_init__(self):
-        if self.kind not in RESOURCE_KINDS or type(self.query) is not str or len(self.query) > 200:
+        if type(self.query) is not str or len(self.query) > 200:
             raise WorkbenchCommandRejected("invalid_input", "资源类型或搜索条件不正确。", 400)
         statuses = {"op_type": (None,), "machine": (None, "active", "maintain", "inactive"),
                     "operator": (None, "active", "leave", "inactive"),

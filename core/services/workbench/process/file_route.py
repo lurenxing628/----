@@ -1,8 +1,8 @@
 """Atomic route-file domain operations, subordinate to the file coordinator.
 
 preview_rows consumes decoded rows and complete facts from the caller's one read
-snapshot. The coordinator binds bytes, scope, target and all facts, then compares
-the entire ResourceActionPreview document again under BEGIN IMMEDIATE before
+snapshot. The coordinator binds the retained source, scope, target and all facts, then compares
+the entire AtomicActionPreview document again under BEGIN IMMEDIATE before
 calling apply_rows. Private row data carries only the selected write inputs.
 Neither method owns the caller's commit, receipt, file token or public stage DTO.
 Affected part refs include unchanged rows for the coordinator's read refresh.
@@ -33,6 +33,8 @@ class ProcessRouteFileOperations:
         self.facts = facts
         indexed = ProcessRouteFacts(facts)
         self.parts = indexed.parts
+        # This command's cross-part group index; record_confirmation updates it row by row.
+        self.group_members = indexed.group_members
         with ExitStack() as stack:
             preview = RouteFilePreview(self.conn, self.logger, indexed, target_ref, stack)
             rows = [preview.row(source) for source in decoded_rows]
@@ -53,13 +55,9 @@ class ProcessRouteFileOperations:
         def default_catalog():
             return default_suppliers(self.facts["references"])
 
-        cross_part_by_group = {}
-        for op in self.facts["operations"]:
-            if op["status"] == "active" and op["ext_group_id"] is not None:
-                cross_part_by_group.setdefault(op["ext_group_id"], []).append(op)
         results, affected_refs = [], set()
         for row in rows:
-            result = self._apply_row(row, default_catalog, creator, cross_part_by_group=cross_part_by_group)
+            result = self._apply_row(row, default_catalog, creator, cross_part_by_group=self.group_members)
             results.append(result)
             affected_refs.add(result["entity_ref"])
         return results, sorted(affected_refs)
@@ -68,10 +66,12 @@ class ProcessRouteFileOperations:
         route = row["related"]["route"]
         fields = {}
         if row["action"] == "create":
-            route_parsed = "yes" if route is not None else "no"
-            outcome = creator.create_part(self.creations[row["row"]], enroll_workflow=route is None)
-            ref = outcome.data["entity_ref"]
-            part = {"part_no": row["business_code"], "route_raw": row["after"]["route_raw"], "route_parsed": route_parsed}
+            if route is None:
+                outcome = creator.apply_create(self.creations[row["row"]])
+                return {"row": row["row"], "result": "committed",
+                        "entity_ref": outcome.data["entity_ref"], "business_code": row["business_code"]}
+            PartRepository(self.conn).create(self.creations[row["row"]])
+            part = {"part_no": row["business_code"], "route_raw": row["after"]["route_raw"], "route_parsed": "yes"}
             operations = []
         else:
             ref = row["entity_ref"]
@@ -82,7 +82,7 @@ class ProcessRouteFileOperations:
             apply_route(self.conn, part, operations, route, self.current_identities,
                         part_updates=fields, default_catalog_reader=default_catalog_reader)
             try:
-                record_confirmation(
+                ref = record_confirmation(
                     self.conn,
                     row["business_code"],
                     "route",

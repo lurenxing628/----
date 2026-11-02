@@ -178,4 +178,3 @@ class CalendarRangePreview:
     request: Dict[str, Any]
     dates: List[str]
     days: List[Dict[str, Any]]
-    calendars: List[Any]

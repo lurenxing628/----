@@ -1,10 +1,10 @@
 """Private material batch contracts; no HTTP tokens or database connections.
 
 MaterialPreview.document is canonical JSON retained with the original file source.
-as_dict() returns the parsed document dictionary. The API binds its opaque preview
-reference to that source and the short-lived write context.
-Use intent() as CommandService.normalized_input and replay that original intent
-before resolving an expired preview. Never rebuild a preview to replay a receipt.
+as_dict() returns the read-only body dictionary built at construction time. The API
+binds its opaque preview reference to that source and the short-lived write context.
+Confirmation routes pass {"preview_ref": ref} as CommandService.normalized_input and
+replay that original intent before resolving an expired preview.
 
 Document shape: {version, operation, request, commit_policy: 'atomic', rows,
 summary}. Rows contain {row, business_code, action, input, expected, result,
@@ -19,7 +19,7 @@ from typing import Any, Dict
 
 from core.errors import ValidationError
 from core.models.workbench_action_values import AtomicActionPreview
-from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_identity import is_entity_ref
 from core.models.workbench_material_query import MaterialPageRequest
 from core.models.workbench_table_descriptor import DEFAULT_IMPORT_BYTE_LIMIT, UPSERT_ONLY
 
@@ -110,47 +110,20 @@ def wire_scope(request: MaterialPageRequest) -> Dict[str, Any]:
     return {key: value for key, value in request.scope().items() if key not in ("kind", "size")}
 
 
-def normalize_scope(scope: Any) -> Dict[str, Any]:
-    """The scope's wire dictionary, without kind or page size.
-
-    A route's already validated request is projected as is; a stored or raw dict is validated first.
-    """
-    return wire_scope(scope if type(scope) is MaterialPageRequest else scope_request(scope))
-
-
 def normalize_refs(refs: Any, *, allow_empty: bool = False):
     if type(refs) is not list or (not refs and not allow_empty):
         raise ValidationError("请先选择要操作的物料。", field="refs")
-    if any(type(ref) is not str or len(ref) != 48 or any(c not in "0123456789abcdef" for c in ref) for ref in refs):
+    if any(not is_entity_ref(ref) for ref in refs):
         raise ValidationError("物料选择已失效，请刷新后重新选择。", field="refs")
     if len(set(refs)) != len(refs):
         raise ValidationError("物料选择里有重复，请重新选择。", field="refs")
     return refs
 
 
-def file_request(content: Any, file_format: str, mode: str, scope: Any):
-    if type(content) is not bytes:
-        raise ValidationError("文件内容必须是 bytes。", field="file")
-    if file_format not in ("csv", "xlsx") or type(file_format) is not str:
-        raise ValidationError("物料文件仅支持 CSV 和 XLSX。", field="format")
-    if mode != "upsert" or type(mode) is not str:
-        raise ValidationError("物料只支持按编号增量更新，不支持整库替换。", field="mode")
-    normalized = normalize_scope(scope)
-    if normalized["query"] or normalized["status"] is not None or normalized.get("column_filters"):
-        raise ValidationError("物料导入按文件编号操作，不支持筛选范围导入。", field="scope")
-    return {"format": file_format, "mode": mode, "scope": normalized}
-
-
 @dataclass(frozen=True)
 class MaterialPreview(AtomicActionPreview):
     storage_failure_message = "这批物料数据算不出完整预检结果，没有写入任何数据。请刷新后重新预检。"
-
-
-def check_preview(original: MaterialPreview, current: MaterialPreview):
-    if original.document != current.document:
-        raise WorkbenchCommandRejected("stale_write", "物料数据已更新，没有写入数据。请点「重新预检」并核对整批内容。")
-    if current.as_dict()["summary"]["rejected"]:
-        raise WorkbenchCommandRejected("constraint_conflict", "预检里有不通过的行，这一批没有写入任何数据。请改好后重新预检。")
+    stale_message = "物料数据已更新，没有写入数据。请点「重新预检」并核对整批内容。"
 
 
 def preview_row(number, *, action=None, normalized=None):

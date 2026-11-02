@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from typing import Any, Dict, Optional, Tuple, Union, cast
 
 from core.infrastructure.transaction import TransactionManager
@@ -64,7 +64,8 @@ class WorkbenchPlanQueryService:
     def read_snapshot(self):
         previous = self._active_context
         try:
-            with TransactionManager(self.conn).transaction():
+            scope = nullcontext() if self.conn.in_transaction else TransactionManager(self.conn).transaction()
+            with scope:
                 context = PlanReadContext(
                     self.conn, self.logger, references=self.references, entities=self.entities,
                 )
@@ -271,7 +272,7 @@ class WorkbenchPlanQueryService:
             )
             occupancy = project_plan_occupancy(
                 scope=scope, resources=resources, calendar_facts=calendar_facts, selected=selected,
-                include_segments=True, intervals=context.datetime_intervals(entry),
+                include_segments=True,
             )
             scope_dict = scope.scope()
             result: Dict[str, Any] = {

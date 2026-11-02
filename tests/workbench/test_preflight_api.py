@@ -4,6 +4,7 @@
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.workbench.run.preflight_facts import PreflightFacts
 from tests.workbench.preflight_support import checked, payload
 from tests.workbench.preflight_support import pf as pf_fixture  # noqa: F401
 from tests.workbench.run_candidate_support import candidate_case as candidate_fixture  # noqa: F401
@@ -96,11 +97,17 @@ def test_input_ref_uses_the_run_worker_facts_scope(pf, change, stale):
     with pf.application.app_context():
         pf.conn.execute("BEGIN")
         try:
-            if stale:
-                with pytest.raises(WorkbenchCommandRejected, match="有变化"):
-                    evaluate_preflight_input_prepared(pf.conn, data["input_ref"])
-            else:
-                assert evaluate_preflight_input_prepared(pf.conn, data["input_ref"]).data["normalized_input"] == payload(pf)
+            facts = PreflightFacts(pf.conn)
+            with facts.snapshot(fingerprint=False):
+                if stale:
+                    with pytest.raises(WorkbenchCommandRejected, match="有变化"):
+                        evaluate_preflight_input_prepared(pf.conn, data["input_ref"], facts=facts)
+                else:
+                    first = evaluate_preflight_input_prepared(pf.conn, data["input_ref"], facts=facts)
+                    second = evaluate_preflight_input_prepared(pf.conn, data["input_ref"], facts=facts)
+                    assert first.data["normalized_input"] == second.data["normalized_input"] == payload(pf)
+                    assert first.preflight_facts is second.preflight_facts is facts
+                    assert first.capture is second.capture is facts.capture
         finally:
             pf.conn.rollback()
 

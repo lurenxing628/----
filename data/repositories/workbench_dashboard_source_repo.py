@@ -63,8 +63,9 @@ class DashboardSourceRepository:
         """One rowid-ordered SELECT supplies the raw rows and SQLite's time/status facts.
 
         ``captured`` and ``prepared`` share rowid order. Only selected machines' admitted rows are
-        parsed (``__calendar_valid`` is None for every other row); CapturedCalendarInputs orders
-        each machine's rows the way CalendarFactsRepository.downtimes does.
+        parsed (``__calendar_valid`` is None for every other row); CapturedCalendarInputs keeps
+        (machine_id, rowid) capture order like CalendarFactsRepository.downtimes, and
+        CalendarFacts.read_downtimes stably sorts admitted rows by (start_time, end_time).
         """
         wanted = frozenset(machine_ids)
         self.conn.create_function("aps_calendar_machine_selected", 1, lambda key: int(key in wanted))

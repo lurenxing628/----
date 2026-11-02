@@ -217,7 +217,7 @@ def canonical_sql(sql: str) -> str:
     return text
 
 
-def workbench_metadata_contract_issues(conn, *, structure: SchemaStructure) -> List[str]:
+def workbench_metadata_contract_issues(structure: SchemaStructure) -> List[str]:
     actual = structure.sql
     issues = []
     for name, sql in metadata_objects().items():

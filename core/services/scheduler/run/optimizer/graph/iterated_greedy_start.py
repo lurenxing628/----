@@ -47,7 +47,8 @@ def _due_date_reference(search: Any, source: Any) -> Optional[PoolEntry]:
     from .iterated_greedy_seed import build_due_date_seed
 
     order = build_due_date_seed(parent=search.parent, candidate=source, metrics=search.metrics,
-                                graph_context=search.graph_context, start_dt=search.start_dt,
+                                topology=search.decode_session.native_preparation.graph_topology(),
+                                start_dt=search.start_dt,
                                 clock=search.clock, deadline=search.deadline)
     if order is None:
         return None

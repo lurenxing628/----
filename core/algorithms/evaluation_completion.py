@@ -23,9 +23,16 @@ OBJECTIVE_SCOPE_UNKNOWN = "unknown"
 
 @dataclass(frozen=True)
 class PreparedBatchDue:
+    """One batch's due facts, parsed once per evaluation input set.
+
+    ``due_date`` and ``due_exclusive`` are both ``None`` for no due date and for an invalid one
+    (``due_invalid`` tells them apart); ``due_exclusive`` is ``due_exclusive(due_date)``.
+    """
+
     batch_id: str
     priority_weight: float
     due_invalid: bool
+    due_date: Optional[date]
     due_exclusive: Optional[datetime]
     due_text: str
 
@@ -39,6 +46,7 @@ class PreparedEvaluationContext:
     batch_by_op_id: Dict[int, str]
     batch_ids: FrozenSet[str]
     priority_weights: Dict[str, float]
+    # Every batch's due facts, in batch input order.
     due_batches: Tuple[PreparedBatchDue, ...]
 
 
@@ -56,10 +64,10 @@ def prepare_evaluation_context(
         priority = normalize_priority(batch.priority, default="normal")
         weight = float(PRIORITY_WEIGHT[priority])
         priority_weights[bid] = weight
-        due_datetime, due_text, due_invalid = parse_due_exclusive_datetime(batch.due_date)
+        due_date, due_datetime, due_text, due_invalid = _due_facts(batch.due_date)
         due_batches.append(PreparedBatchDue(
             batch_id=bid, priority_weight=weight, due_invalid=due_invalid,
-            due_exclusive=due_datetime, due_text=due_text,
+            due_date=due_date, due_exclusive=due_datetime, due_text=due_text,
         ))
     return PreparedEvaluationContext(
         expected_keys=frozenset(keys), expected_by_batch=expected_by_batch, batch_by_op_id=batch_by_op_id,
@@ -92,10 +100,15 @@ def _parse_due_date_state(value: Any) -> Tuple[Optional[date], bool]:
     return parsed, parsed is None
 
 
+def _due_facts(value: Any) -> Tuple[Optional[date], Optional[datetime], str, bool]:
+    parsed, invalid = _parse_due_date_state(value)
+    return parsed, due_exclusive(parsed) if parsed is not None else None, _due_text(value), invalid
+
+
 def parse_due_exclusive_datetime(value: Any) -> Tuple[Optional[datetime], str, bool]:
     """交期指标与风险摘要共用的日期、展示文本及坏值口径。"""
-    parsed, invalid = _parse_due_date_state(value)
-    return due_exclusive(parsed) if parsed is not None else None, _due_text(value), invalid
+    _parsed, due_datetime, due_text, invalid = _due_facts(value)
+    return due_datetime, due_text, invalid
 
 
 @dataclass(frozen=True)
@@ -269,9 +282,8 @@ def _result_key(result: ScheduleResult) -> OperationKey:
 
 
 def _has_time_range(result: ScheduleResult) -> bool:
-    start, end = result.start_time, result.end_time
     # Zero-duration operations are legal and still satisfy their expected ID.
-    return start is not None and end is not None and end >= start
+    return result.end_time >= result.start_time
 
 
 def _failure_batches(details: Iterable[Dict[str, Any]], batch_by_op_id: Dict[int, str]) -> Set[str]:

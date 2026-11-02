@@ -8,11 +8,12 @@ from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_batch_material import normalize_material_changes
 from core.models.workbench_trial_adoption import TrialAdoptionBlocked
 from core.services.workbench.batch.materials import WorkbenchBatchMaterialService
+from core.services.workbench.facts.trial_origin import TrialOrigin
 from core.services.workbench.facts.trial_policy import load_draft, load_scenario
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from core.services.workbench.trial import projection
-from core.services.workbench.trial.constraints import build_trial_intervals
+from core.services.workbench.trial.constraints import build_archived_trial_intervals
 from core.services.workbench.trial.preparation import preparation_projection
 from core.services.workbench.trial.service import WorkbenchTrialService
 from tests.workbench.run_candidate_adoption_support import INTENT
@@ -57,8 +58,8 @@ def test_trial_route_coverage_keeps_creation_snapshot_after_current_route_grows(
     head, rows = load_draft(service(case.conn).repo, draft["draft_ref"])
     case.operation(seq=2)
     current = projection.comparison(
-        draft["tasks"], {"constraints_status": "valid"}, rows, head["admission"],
-        trial_intervals=build_trial_intervals(rows),
+        draft["tasks"], {"constraints_status": "valid"}, rows, TrialOrigin(head["admission"], rows),
+        trial_intervals=build_archived_trial_intervals(rows, execution=head["admission"]["execution"]),
     )
     row, = current["batches"]
     assert row["after"]["operation_count"] == row["before"]["operation_count"] == 1
@@ -92,8 +93,8 @@ def test_trial_missing_origin_operation_never_claims_whole_batch_finish(trial_ca
     draft = create(case, official(case, ids=[case.op_id]))
     head, rows = load_draft(service(case.conn).repo, draft["draft_ref"])
     comparison = projection.comparison(
-        draft["tasks"], {"constraints_status": "valid"}, rows, head["admission"],
-        trial_intervals=build_trial_intervals(rows),
+        draft["tasks"], {"constraints_status": "valid"}, rows, TrialOrigin(head["admission"], rows),
+        trial_intervals=build_archived_trial_intervals(rows, execution=head["admission"]["execution"]),
     )
     row, = comparison["batches"]
     assert row["completion_state"] == "incomplete" and row["risk"] == "unknown"
@@ -162,8 +163,9 @@ def test_candidate_trial_retains_explicit_material_deferral_from_run_capture(tri
     official_head, official_rows = load_draft(service(case.conn).repo, official_draft["draft_ref"])
     historical = deepcopy(official_head["admission"])
     historical["source"]["operation_effort"] = None
-    pairs, unknown = preparation_projection(official_rows, historical, None,
-                                            current_evidence={"kind": "trial", "draft_ref": official_draft["draft_ref"]})
+    pairs, unknown = preparation_projection(historical, None,
+                                            current_evidence={"kind": "trial", "draft_ref": official_draft["draft_ref"]},
+                                            contexts=TrialOrigin(historical, official_rows).contexts(official_rows))
     assert pairs[pending["operation_ref"]]["after"]["allocation_state"] == "deferred"
     assert pairs[pending["operation_ref"]]["after"]["required_standard_hours"] is None
     assert unknown["after"]["deferred_setup_hours"]["value"] is None
@@ -200,7 +202,8 @@ def test_candidate_trial_retains_explicit_material_deferral_from_run_capture(tri
     current = create(case, {"base": {"plan_ref": adopted["official_plan"]["plan_ref"]}}, key="stage-source-current-formal-trial")
     current_saved = service(case.conn).save(current["draft_ref"], {"name": "Current formal material deferral"},
         current["write_context"]["write_token"], "stage-source-current-formal-save")["data"]
-    raw_saved, raw_head, raw_rows = load_saved_scenario(case.conn, current_saved["scenario_ref"])
+    raw = load_saved_scenario(case.conn, current_saved["scenario_ref"])
+    raw_saved, raw_head, raw_rows = raw.saved, raw.head, raw.rows
     assert raw_saved == current_saved and raw_saved["scope_complete"] is False
     assert {item["operation_ref"] for item in raw_saved["unplanned_operations"]} == {pending["operation_ref"]}
     assert raw_saved["task_count"] == len(raw_saved["tasks"]) == len(raw_rows) == len(current["tasks"])
@@ -212,8 +215,8 @@ def test_candidate_trial_retains_explicit_material_deferral_from_run_capture(tri
     head, rows = load_draft(service(case.conn).repo, draft["draft_ref"])
     case.operation(seq=3)
     comparison = projection.comparison(
-        draft["tasks"], {"constraints_status": "valid"}, rows, head["admission"],
-        trial_intervals=build_trial_intervals(rows),
+        draft["tasks"], {"constraints_status": "valid"}, rows, TrialOrigin(head["admission"], rows),
+        trial_intervals=build_archived_trial_intervals(rows, execution=head["admission"]["execution"]),
     )
     row, = comparison["batches"]
     assert row["completion_state"] == "deferred" and row["risk"] == "unknown"
@@ -250,8 +253,8 @@ def test_trial_includes_selected_batch_with_only_material_deferred_operations(tr
     checked = {"constraints_status": "blocked", "issues": [{"code": "calendar_duration_conflict", "severity": "blocker",
                                                              "task_ref": draft["tasks"][0]["task_ref"]}]}
     scoped = projection.comparison(
-        draft["tasks"], checked, rows, head["admission"],
-        trial_intervals=build_trial_intervals(rows),
+        draft["tasks"], checked, rows, TrialOrigin(head["admission"], rows),
+        trial_intervals=build_archived_trial_intervals(rows, execution=head["admission"]["execution"]),
     )
     deliveries = {row["batch_id"]: row for row in scoped["batches"]}
     assert deliveries["B1"]["completion_state"] == "unknown"

@@ -39,6 +39,11 @@ def file_content(path):
         return stream.read()
 
 
+def system_journal_directory(database_path):
+    # Bind the default to the database, not an installation/log/backup directory.
+    return os.path.realpath(database_path) + ".system-journal"
+
+
 class SystemMaintenanceJournal:
     def __init__(self, directory, database_path):
         if not directory or not os.path.isabs(directory):
@@ -49,7 +54,10 @@ class SystemMaintenanceJournal:
         # The default journal travels with user-data. Its existing history keeps
         # the same identity after a move; a separately configured directory must
         # still prove that it belongs to the currently configured database path.
-        self._follows_database = os.path.normcase(os.path.realpath(directory)) == database + ".system-journal"
+        self._follows_database = (
+            os.path.normcase(os.path.realpath(directory))
+            == database + ".system-journal"
+        )
         self._database_scope = None
         self._records = None
         self._entry_names = None

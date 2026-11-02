@@ -5,8 +5,11 @@ decode_process_file(kind, content, fmt) -> list of
 mapping, errors: [{row, field, code, message}]}. File/header/limit failures raise
 ValidationError with details.row. All duplicate-key occurrences are diagnosed.
 Never partially apply this list: the caller must reject a batch with any errors.
+kind, fmt (csv|xlsx) and the bounded content arrive admitted by the upload route;
+fmt selects the CSV or XLSX reader.
 
-encode_process_file(kind, rows, fmt) -> FileDownload. Rows is a one-pass
+encode_process_file(kind, rows, fmt) -> FileDownload. kind and fmt arrive admitted
+by the export and template routes. Rows is a one-pass
 iterable of canonical mappings, not decoded row envelopes; [] emits headers only.
 No import cap applies to exports. Missing keys and empty strings emit blanks;
 None emits \\N. Literal leading backslashes are doubled. CSV prefixes every
@@ -20,22 +23,27 @@ assertions belong to the domain; this codec never fills absent fields.
 from core.errors import ValidationError
 from core.models.workbench_process_file import (
     IMPORT_ROW_LIMIT,
-    INSTRUCTIONS,
     LABELS,
     REQUIRED,
-    TEMPLATE_VERSION,
-    check_format,
     file_columns,
     file_error,
-    public_columns,
 )
 from core.models.workbench_table_descriptor import extra_sheet_notice
+from core.services.workbench.facts.file_source import FileReadMessages, source_rows
 
-from .file_reader import check_bytes, read_rows
 from .file_values import decode_value, numeric_diagnostic
 from .file_writer import write_csv, write_xlsx
 
-__all__ = ["decode_process_file", "encode_process_file", "public_columns", "file_columns", "TEMPLATE_VERSION", "INSTRUCTIONS"]
+__all__ = ["decode_process_file", "encode_process_file"]
+
+_CSV_ERROR = "CSV 必须是 UTF-8 编码，系统不猜编码，也不替你补引号。请另存为 UTF-8 后重新上传。"
+_READ_MESSAGES = FileReadMessages(
+    csv_encoding=_CSV_ERROR,
+    csv_format=_CSV_ERROR,
+    xlsx_empty="这个 XLSX 里没有工作表。请用 Excel 另存为 xlsx 后重新上传。",
+    xlsx_read="这个 XLSX 读不出来。请确认文件完整、单元格格式正常后重新上传。",
+    xlsx_cell="不接受公式或 Excel 错误单元格，请填写实际值。",
+)
 
 
 def _headers(kind, values):
@@ -101,11 +109,8 @@ def _duplicates(kind, rows):
 
 
 def decode_process_file(kind, content, fmt):
-    file_columns(kind)
-    check_format(fmt)
-    check_bytes(content, fmt)
     state = {"sheets": 1}
-    source = read_rows(content, fmt, state)
+    source = source_rows(content, fmt, state, error=file_error, messages=_READ_MESSAGES)
     try:
         header = next(source, None)
         if header is None or header[2]:
@@ -125,6 +130,4 @@ def decode_process_file(kind, content, fmt):
 
 
 def encode_process_file(kind, rows, fmt, *, template=False):
-    file_columns(kind)
-    check_format(fmt)
     return write_csv(kind, rows) if fmt == "csv" else write_xlsx(kind, rows, template)

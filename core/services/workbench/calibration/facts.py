@@ -74,11 +74,6 @@ class CalibrationFacts:
 
     @contextmanager
     def read_snapshot(self, *, clock=None):
-        if self.ledger._snapshot_clock is not None:
-            if clock is not None:
-                self.as_of = clock()
-            yield self.as_of
-            return
         with self.ledger.read_snapshot():
             if clock is not None:
                 self.as_of = clock()

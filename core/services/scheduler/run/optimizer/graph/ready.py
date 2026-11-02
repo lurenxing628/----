@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from functools import partial
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, FrozenSet, List, Optional, Sequence, Tuple
 
 from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
@@ -13,7 +13,6 @@ from core.services.scheduler.run.optimizer.search_stage import SearchStage
 
 from .budget import GraphReadySearchBudget
 from .candidates import PreparedDecisionFeatures, evaluate_graph_ready_candidate
-from .context import graph_node_metrics_by_op_id
 from .iterated_greedy_contract import IteratedGreedyLimits
 from .iterated_greedy_run import IteratedGreedyRun
 from .predecode import GraphReadyProfileSearch
@@ -24,6 +23,7 @@ from .v2_features import enrich_graph_ready_v2_metrics
 from .v2_ranks import build_v2_common_rank_cache
 
 if TYPE_CHECKING:
+    from core.algorithms.greedy.schedule_preparation import NativeSchedulePreparation
     from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
     from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession
 
@@ -34,10 +34,12 @@ class SharedGraphFeatures:
 
     metrics_by_op_id: Dict[int, Dict[str, Any]]
     v2_common_rank_cache: Dict[str, Dict[int, float]]
+    schedulable_ids: FrozenSet[int]
     decision_features: PreparedDecisionFeatures = field(init=False)
 
     def __post_init__(self) -> None:
-        self.decision_features = PreparedDecisionFeatures(self.metrics_by_op_id, self.v2_common_rank_cache)
+        self.decision_features = PreparedDecisionFeatures(self.metrics_by_op_id, self.v2_common_rank_cache,
+                                                          schedulable_ids=self.schedulable_ids)
 
 
 @dataclass
@@ -47,24 +49,23 @@ class GraphStageBundle:
     state: GraphSearchState
     stages: List[SearchStage]
 
-    def finish(self) -> None:
-        for stage in self.stages:
-            stage.finish()
-
 
 def prepare_shared_graph_features(
-    *, graph_ready_context: Dict[str, Any], scheduler: GreedyScheduler, algo_ops_to_schedule: List[OpForScheduleAlgo],
+    *, graph_ready_context: Dict[str, Any], schedulable_ids: FrozenSet[int], scheduler: GreedyScheduler,
+    algo_ops_to_schedule: List[OpForScheduleAlgo],
     batches: Dict[str, Any], start_dt: datetime, downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
     seed_sr_list: List[ScheduleResult], resource_pool: Optional[Dict[str, Any]],
     deadline: float, clock: Callable[[], float],
-    native_preparation: Optional[Any] = None,
+    native_preparation: NativeSchedulePreparation,
 ) -> Optional[SharedGraphFeatures]:
-    """Build both existing bases and their ranks once before target stages are assembled."""
+    """Build both existing bases and their ranks once before target stages are assembled.
+
+    ``schedulable_ids`` is the preparation's ``topology.schedulable_ids``, shared by every key admission.
+    """
     if clock() >= deadline:
         return None
-    schedulable_ids = {op.id for op in algo_ops_to_schedule}
     metrics = enrich_graph_ready_v2_metrics(
-        graph_node_metrics_by_op_id(graph_ready_context, schedulable_ids=schedulable_ids),
+        graph_ready_context["node_metrics_by_op_id"],
         operations=algo_ops_to_schedule, batches=batches,
         start_dt=start_dt, calendar_service=scheduler.calendar, downtime_map=downtime_map,
         seed_results=seed_sr_list, resource_pool=resource_pool,
@@ -74,7 +75,7 @@ def prepare_shared_graph_features(
     )
     if metrics is None or clock() >= deadline:
         return None
-    return SharedGraphFeatures(metrics, build_v2_common_rank_cache(metrics))
+    return SharedGraphFeatures(metrics, build_v2_common_rank_cache(metrics), schedulable_ids)
 
 
 def build_graph_search_stages(
@@ -86,14 +87,13 @@ def build_graph_search_stages(
     end_date: Optional[date],
     base_strategy: SortStrategy,
     base_params: Dict[str, Any],
-    build_order: Callable[[SortStrategy, Dict[str, Any]], List[str]],
+    build_order: Callable[[SortStrategy, Dict[str, Any]], Tuple[str, ...]],
     dispatch_rule_cfg: str,
     resource_pool: Optional[Dict[str, Any]],
     objective_name: str,
     deadline: float,
     optimizer_algo_stats: Optional[Dict[str, Any]],
     readiness_gate_enabled: bool,
-    graph_ready_context: Dict[str, Any],
     clock: Callable[[], float],
     search_report_state: OptimizationSearchReportState,
     prepared_features: SharedGraphFeatures,
@@ -119,7 +119,6 @@ def build_graph_search_stages(
         deadline=deadline,
         optimizer_algo_stats=optimizer_algo_stats,
         readiness_gate_enabled=readiness_gate_enabled,
-        graph_ready_context=graph_ready_context,
         metrics_by_op_id=prepared_features.metrics_by_op_id,
         clock=clock,
         search_report_state=search_report_state,
@@ -145,11 +144,10 @@ def _build_weight_profile_stages(
     deadline: float,
     optimizer_algo_stats: Optional[Dict[str, Any]],
     readiness_gate_enabled: bool,
-    graph_ready_context: Dict[str, Any],
     metrics_by_op_id: Dict[int, Dict[str, Any]],
     clock: Callable[[], float],
     search_report_state: OptimizationSearchReportState,
-    order: List[str],
+    order: Sequence[str],
     prepared_features: SharedGraphFeatures,
     decode_session: SharedDecodeSession,
 ) -> GraphStageBundle:
@@ -166,7 +164,7 @@ def _build_weight_profile_stages(
     )
     pool = EliteRepairPool(limits=EliteRepairLimits(), objective_name=objective_name, operations=algo_ops_to_schedule,
                            start_dt=start_dt, seed=version,
-                           best=best, report_state=search_report_state, graph_context=graph_ready_context,
+                           best=best, report_state=search_report_state,
                            clock=clock, deadline=deadline, decode_session=decode_session,
                            decision_features=prepared_features.decision_features)
     search = GraphReadyProfileSearch(evaluate=evaluate, budget=budget)
@@ -180,7 +178,7 @@ def _build_weight_profile_stages(
     greedy = IteratedGreedyRun(
         limits=IteratedGreedyLimits(), state=state,
         parent_profile=partial(iterated_greedy_parent_profile, pool=pool, profiles=profiles),
-        pool=pool, evaluate=evaluate, graph_context=graph_ready_context,
+        pool=pool, evaluate=evaluate,
         metrics_by_op_id=metrics_by_op_id, objective_name=objective_name, start_dt=start_dt, seed=version,
         deadline=deadline, clock=clock,
         report_state=search_report_state, decode_session=decode_session)
@@ -191,14 +189,11 @@ def _build_weight_profile_stages(
 def _candidate_order(
     best: Optional[Dict[str, Any]],
     *,
-    build_order: Callable[[SortStrategy, Dict[str, Any]], List[str]],
+    build_order: Callable[[SortStrategy, Dict[str, Any]], Tuple[str, ...]],
     base_strategy: SortStrategy,
     base_params: Dict[str, Any],
-) -> List[str]:
-    order = list((best or {}).get("order") or [])
-    if order:
-        return order
-    return list(build_order(base_strategy, base_params))
+) -> Sequence[str]:
+    return (best or {}).get("order") or build_order(base_strategy, base_params)
 
 
 __all__ = [

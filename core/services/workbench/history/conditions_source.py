@@ -1,14 +1,8 @@
 """Saved condition facts with separate trial work and environment provenance."""
 
 from core.services.workbench.facts.archived_calendar import ArchivedCalendar
-from core.services.workbench.facts.candidate_facts import (
-    entity_ref_rows,
-    index_rows,
-    operation_ref_rows,
-)
-from core.services.workbench.facts.candidate_store import cached_generation_facts
+from core.services.workbench.facts.candidate_facts import entity_ref_rows
 from core.services.workbench.facts.candidate_values import corrupt
-from core.services.workbench.facts.trial_origin import delivery_origin, operation_contexts
 
 
 def _table_paths(rows, key, prefix):
@@ -34,7 +28,7 @@ class ConditionSource:
         self.available = self.kind != "empty"
         self.archive = self.input = self.execution = self.baseline = None
         self.artifact = self.raw_tasks = self.trial_rows = self.saved = self.calendar = None
-        self.facts = self.original_facts = self.delivery_origin = self.trial_contexts = None
+        self.facts = self.original_facts = self.origin = self.trial_contexts = None
         self.operations, self.batches, self.entity_refs = {}, {}, {}
         self.original_entity_refs = {}
         self._input_paths = {}
@@ -101,41 +95,32 @@ class ConditionSource:
             if batch_ref not in self.batches:
                 self.batches[batch_ref] = original["batch"]
                 self._batch_paths[batch_ref] = f"rows[{index}].original.batch"
-        self._trial_unplanned(admission)
+        self._trial_unplanned(packet["origin"])
         self._trial_input(admission)
 
-    def _trial_unplanned(self, admission):
-        source = admission["source"]
-        capture = source.get("capture")
-        facts = None
-        if capture is not None and type(capture) is not dict:
-            corrupt()
-        if capture is not None and capture.get("facts_text") is not None:
-            facts = cached_generation_facts(capture)
-            operations, batches, refs = facts.tables["BatchOperations"], facts.tables["Batches"], facts.operations
+    def _trial_unplanned(self, origin):
+        facts = origin.facts
+        if facts is not None:
+            op_rows = facts.tables["BatchOperations"].values()
+            batch_rows = facts.tables["Batches"].values()
             entity_refs = facts.entity_refs
             prefix = "head.admission.source.capture.facts_text"
         else:
-            operations, batches = index_rows(self.table("BatchOperations"), "id"), index_rows(self.table("Batches"), "batch_id")
-            refs, entity_refs = operation_ref_rows(self.table("WorkbenchPlanSourceRefs")), self.entity_refs
+            op_rows, batch_rows = self.table("BatchOperations"), self.table("Batches")
+            entity_refs = self.entity_refs
             prefix = self._origins["environment"]
+        self.origin = origin
         self.original_facts = facts
         self.original_entity_refs = entity_refs
         self._origins["original"] = prefix
-        op_paths = _table_paths(operations.values(), "id", prefix + ".tables.BatchOperations")
-        batch_paths = _table_paths(batches.values(), "batch_id", prefix + ".tables.Batches")
-        self.delivery_origin = delivery_origin(admission, self.trial_rows, facts)
-        self.trial_contexts = operation_contexts(self.trial_rows, admission, facts, origin=self.delivery_origin)
-        for ref in self.trial_contexts:
-            key = refs.get(ref)
-            if key not in operations or ref in self.operations:
-                continue
-            operation = operations[key]
-            self.operations[ref], self._operation_paths[ref] = operation, op_paths[key]
-            batch_id = operation.get("batch_id")
-            batch_ref = entity_refs.get(("batch", batch_id))
-            if batch_ref is not None and batch_id in batches and batch_ref not in self.batches:
-                self.batches[batch_ref], self._batch_paths[batch_ref] = batches[batch_id], batch_paths[batch_id]
+        op_paths = _table_paths(op_rows, "id", prefix + ".tables.BatchOperations")
+        batch_paths = _table_paths(batch_rows, "batch_id", prefix + ".tables.Batches")
+        self.trial_contexts = origin.contexts(self.trial_rows)
+        for ref, member in origin.unarranged.items():
+            operation, batch_ref, batch = member["operation"], member["batch_ref"], member["batch"]
+            self.operations[ref], self._operation_paths[ref] = operation, op_paths[operation["id"]]
+            if batch_ref not in self.batches:
+                self.batches[batch_ref], self._batch_paths[batch_ref] = batch, batch_paths[batch["batch_id"]]
 
     def _trial_input(self, admission):
         source = admission["source"]

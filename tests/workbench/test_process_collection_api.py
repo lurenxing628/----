@@ -129,6 +129,28 @@ def test_delete_cross_page_explicit_refs_survive_filter_and_match_actual_js_cont
         assert api.snapshot()[1][table] == before[1][table]
 
 
+@pytest.mark.parametrize("mutation,code,status", [
+    ("UPDATE Parts SET part_name='renamed' WHERE part_no='PROC-002'", "stale_write", 409),
+    ("INSERT INTO Batches(batch_id,part_no,part_name,quantity,due_date) VALUES ('REG-B','PROC-002','x',1,'2026-12-01')",
+     "stale_write", 409),
+])
+def test_part_delete_confirm_rechecks_current_facts_atomically(collection_api, mutation, code, status):
+    command = collection_api.delete_body()
+    collection_api.execute(mutation)
+    before = collection_api.snapshot()
+    rejected(collection_api.send("bulk-confirm", command), code, status)
+    assert collection_api.snapshot() == before
+
+
+def test_part_delete_confirm_refuses_a_preview_with_rejected_rows(collection_api):
+    collection_api.execute("INSERT INTO Batches(batch_id,part_no,part_name,quantity,due_date) "
+                           "VALUES ('REG-B','PROC-002','x',1,'2026-12-01')")
+    command = collection_api.delete_body()
+    before = collection_api.snapshot()
+    rejected(collection_api.send("bulk-confirm", command), "constraint_conflict", 409)
+    assert collection_api.snapshot() == before
+
+
 def test_single_part_detail_prebinds_before_projection_and_tracks_shared_identity_revisions(collection_api, monkeypatch):
     from core.services.workbench.process.queries import WorkbenchProcessQueryService
 
@@ -195,6 +217,7 @@ def test_single_part_detail_prebinds_before_projection_and_tracks_shared_identit
 
 
 def test_legacy_padded_part_ref_can_be_deleted_and_raw_facts_skip_workflow_enrichment(collection_api, monkeypatch):
+    from core.models.workbench_process_table_query import ProcessTablePageRequest
     from core.services.process import workflow_state
     from core.services.workbench.process import queries as process_queries
     from core.services.workbench.process.file_export import select_export_parts
@@ -232,12 +255,8 @@ def test_legacy_padded_part_ref_can_be_deleted_and_raw_facts_skip_workflow_enric
                 lambda *a, **kw: pytest.fail("Explicit export must use raw_facts without workflow_snapshot"),
             )
             with reader.read_snapshot():
-                parts, facts = select_export_parts(
-                    reader,
-                    {"selection": "explicit", "refs": [api.ref(code="PROC-001")], "scope": {}},
-                    scope={},
-                )
-                assert len(parts) == 1 and "workflow" not in facts
+                parts = select_export_parts(reader, [api.ref(code="PROC-001")], ProcessTablePageRequest())
+                assert len(parts) == 1
 
         # Single-part resolved_detail constructs TemplateSourceFacts only once.
         source_calls = []
@@ -267,7 +286,7 @@ def test_legacy_padded_part_ref_can_be_deleted_and_raw_facts_skip_workflow_enric
         queries = []
         conn.set_trace_callback(queries.append)
         try:
-            preview, extra = service.preview_import("route", csv_bytes, file_format="csv")
+            preview, extra = service.preview_import("route", csv_bytes, file_format="csv", mode="upsert", target_ref=None)
         finally:
             conn.set_trace_callback(None)
         preview_doc = preview.as_dict()

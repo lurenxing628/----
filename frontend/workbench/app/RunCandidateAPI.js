@@ -71,7 +71,6 @@
     d.candidates.forEach(c => { summary(c, runRef); check(q.status === 'all' || c.status === q.status); });
     check(new Set(d.candidates.map(c => c.candidate_ref)).size === d.candidates.length); return d;
   }
-  const validateCatalog = (v, runRef, query) => _validateCatalog(v, runRef, catalogScope(query));
   function workspaceScope(candidateRef, query) {
     check(ref(candidateRef), '请选择有效的候选方案。');
     check(shape(query, [], ['range_start', 'range_end', 'batch_ref', 'sort', 'order', 'snapshot_ref']));
@@ -223,7 +222,6 @@
       sequence: nullableNumber, processLabel: nullableText, completeCount: d.candidate_task_count }));
     return d;
   }
-  const validateWorkspace = (v, candidateRef, query) => _validateWorkspace(v, candidateRef, workspaceScope(candidateRef, query));
   // 文件名非空与后缀由传输层按 Content-Type 断言；这里只核对本领域业务头与当前读取范围。
   function download(value, result) {
     const d = result.data;
@@ -252,6 +250,6 @@
     return { blob: file.blob, filename: file.filename, candidate_ref: file.header('X-Workbench-Candidate-Ref'),
       snapshot_ref: file.header('X-Workbench-Snapshot-Ref'), task_count: headerCount('X-Workbench-Task-Count'), row_count: headerCount('X-Workbench-Row-Count') };
   }
-  window.RunCandidateAPI = { identity, catalog, workspace, export: exportFile, check, ref, time, timeKey, version, shape, summary, validateIdentity, validateCatalog, catalogScope,
-    validateWorkspace, workspaceScope, download, metricKeys, operationKeys, executionKeys, quantityContext };
+  window.RunCandidateAPI = { identity, catalog, workspace, export: exportFile, check, ref, time, timeKey, version, shape, summary, validateIdentity, catalogScope,
+    workspaceScope, download, metricKeys, operationKeys, executionKeys, quantityContext };
 })();

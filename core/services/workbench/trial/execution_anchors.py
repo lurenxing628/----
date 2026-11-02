@@ -10,9 +10,8 @@ from core.services.workbench.run.input_external import execution_groups
 
 def _selected_has_actuals(rows, live):
     """Anchors only matter when a selected operation already reported actual production."""
-    selected = {row["operation_ref"] for row in rows}
-    return any(ref in selected and (value["first_actual_start"] or value["reports"])
-               for ref, value in live["execution"].items())
+    execution = live["execution"]
+    return any(execution[row["operation_ref"]]["execution_state"] != "unreported" for row in rows)
 
 
 def _prior_plan_projections(version, live):
@@ -20,7 +19,7 @@ def _prior_plan_projections(version, live):
     facts = live["preflight_facts"]
     prior_ids = set(facts.latest_plan_rows(version))
     refs = facts.operation_refs
-    prior_refs = {refs[op_id] for op_id in prior_ids if op_id in refs}
+    prior_refs = {refs[op_id] for op_id in prior_ids}
     return [facts.execution_projections[ref] for ref in sorted(prior_refs)]
 
 
@@ -92,9 +91,7 @@ def resolve_execution_anchors(conn, rows, live):
         return {}, anchor_issue(exc)
 
 
-def attach_execution_anchors(conn, rows, live):
-    anchors, problem = resolve_execution_anchors(conn, rows, live)
-    live["execution_anchors"] = (anchors, problem)
+def attach_execution_anchors(rows, anchors, problem):
     if problem is not None:
         return [problem]
     for row in rows:

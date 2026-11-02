@@ -6,7 +6,7 @@ from core.models.workbench_run_baseline import RunCandidateBaselineScope
 from core.services.workbench.run.candidate_baseline import WorkbenchRunCandidateBaselineQueryService
 
 from .api_responses import api_endpoint
-from .read_context import bind_read_snapshot
+from .read_context import snapshot_binder
 from .run_candidates import _WORKSPACE_ARGS, _arguments, _response
 
 
@@ -16,9 +16,8 @@ def run_candidate_baseline(candidate_ref):
     scope = RunCandidateBaselineScope(candidate_ref, request.args.get("range_start"), request.args.get("range_end"),
                                       request.args.get("batch_ref"), request.args.get("sort", "sequence"),
                                       request.args.get("order", "asc"))
-    data, state = WorkbenchRunCandidateBaselineQueryService(g.db).baseline(scope)
-    snapshot = bind_read_snapshot(scope.scope(), state, request.args.get("snapshot_ref"))
-    return _response(data, snapshot)
+    return _response(*WorkbenchRunCandidateBaselineQueryService(g.db).baseline(
+        scope, bind_snapshot=snapshot_binder(request.args.get("snapshot_ref"))))
 
 
 def register_run_candidate_baseline_routes(bp):

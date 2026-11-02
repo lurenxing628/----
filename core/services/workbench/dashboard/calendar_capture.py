@@ -11,9 +11,11 @@ from core.services.capacity.plan_calendar_limits import MAX_CALENDAR_DATES
 from core.services.capacity.plan_calendar_windows import policy_projection
 from core.services.workbench.facts.current_resource_calendar import calendar_from_sources
 from core.services.workbench.facts.resource_intervals import resource_identity_issues
-from core.services.workbench.facts.resource_pressure import pressure_from_index
+from core.services.workbench.facts.resource_pressure import (
+    DEFAULT_PRESSURE_THRESHOLD,
+    pressure_from_index,
+)
 from core.services.workbench.facts.resource_projection import ResourceTaskIndex, resource_cohort
-from core.services.workbench.plan.calendar import range_days
 from core.services.workbench.plan.calendar_context import public_resource, resource_ids
 from core.services.workbench.plan.occupancy_constraints import TaskConstraints
 
@@ -124,7 +126,10 @@ class ResourcePressureMetrics:
                 if resource["ref"] != days_ref:
                     summaries[key] = pressure_from_index(index, resource, calendar, include_days=False)
                 elif key in summaries:
-                    detailed[key] = dict(summaries[key], days=index.days(resource, calendar))
+                    detailed[key] = dict(
+                        summaries[key],
+                        days=index.periods(resource, calendar, threshold=DEFAULT_PRESSURE_THRESHOLD, grain="day"),
+                    )
                 else:
                     detailed[key] = pressure_from_index(index, resource, calendar)
                     summaries[key] = dict(detailed[key], days=[])
@@ -175,12 +180,10 @@ def _constraint_projection(
 
 
 def capture_resource_pressure(conn, *, entry, scope, resources, identities, plan_span, context, captured_calendar, plan_tasks):
-    rows, start, end, time_scope = context.calendar_selection(entry, scope, plan_span)
-    dt_intervals = context.datetime_intervals(entry)
-    first, last, dates = range_days(start, end)
-    if any(row.get("_point_work") for row in rows):
-        last = max(last, end.date())
-        dates = (last - first).days + 1
+    selected = context.calendar_selection(entry, scope, plan_span)
+    rows, start, end, time_scope = selected.rows, selected.start, selected.end, selected.time_scope
+    dt_intervals = selected.intervals
+    first, last, dates = selected.calendar_days
     ids = {kind: resource_ids(rows, kind) for kind in ("machine", "operator")}
     calendar = {"state": "unavailable", "sources": None, "resources": None}
     try:

@@ -1,7 +1,5 @@
 """All same-run candidates under one admission archive and one viewing reference."""
 
-from core.infrastructure.read_evidence import read_evidence_scope
-from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.decision_metrics import (
     metric_definitions,
     metric_delta,
@@ -10,7 +8,7 @@ from core.services.workbench.facts.decision_metrics import (
 from .decision_impact import operation_changes
 from .decision_recommendation import recommendation
 from .decision_reference import official_reference_metrics
-from .decision_source import DecisionSource
+from .decision_session import decision_read, decision_snapshot_scope
 
 CORE_METRIC_KEYS = (
     "expected_operation_count", "scheduled_operation_count", "unplanned_operation_count", "deferred_operation_count",
@@ -22,25 +20,18 @@ CORE_CANDIDATE_COVERAGE = ("schedulable", "delivery", "search")
 CORE_BASELINE_COVERAGE = ("schedulable", "delivery")
 
 
-def read_run_decision(conn, run_ref, *, comparison_mode="candidates", reference_candidate_ref=None,
-                      selected_candidate_ref=None, range_start=None, range_end=None, resource_view="selected_batches"):
-    return _read_projection(conn, run_ref, decision_overview, comparison_mode=comparison_mode,
-        reference_candidate_ref=reference_candidate_ref, selected_candidate_ref=selected_candidate_ref,
-        range_start=range_start, range_end=range_end, resource_view=resource_view)
+def read_run_decision(conn, run_ref, *, bind_snapshot, **query):
+    return _read_projection(conn, run_ref, decision_overview, bind_snapshot, query)
 
 
-def read_run_decision_summary(conn, run_ref, *, comparison_mode="candidates", reference_candidate_ref=None,
-                              selected_candidate_ref=None, range_start=None, range_end=None, resource_view="selected_batches"):
-    return _read_projection(conn, run_ref, decision_summary, comparison_mode=comparison_mode,
-        reference_candidate_ref=reference_candidate_ref, selected_candidate_ref=selected_candidate_ref,
-        range_start=range_start, range_end=range_end, resource_view=resource_view)
+def read_run_decision_summary(conn, run_ref, *, bind_snapshot, **query):
+    return _read_projection(conn, run_ref, decision_summary, bind_snapshot, query)
 
 
-def _read_projection(conn, run_ref, projection, **query):
-    store = CandidateStore(conn)
-    with store.snapshot(), read_evidence_scope(conn):
-        source = DecisionSource(store, run_ref, **query)
-        return projection(source), source.state()
+def _read_projection(conn, run_ref, projection, bind_snapshot, query):
+    with decision_read(conn, run_ref, **query) as source:
+        snapshot = bind_snapshot(decision_snapshot_scope(source), source.state())
+        return projection(source), snapshot
 
 
 def _core_candidates(source):

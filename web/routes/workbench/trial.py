@@ -2,26 +2,22 @@
 
 import re
 
-from flask import current_app, g, request
+from flask import g, request
 
 from core.models.content import content_text
 from core.models.workbench_command import validate_request_key
 from core.models.workbench_trial import create_input, fields, reference
 from core.models.workbench_trial_catalog import TrialCatalogScope
 from core.services.workbench import messages
-from core.services.workbench.facts.run_data_context import RunDataContext
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.facts.source_revisions import TRIAL_SOURCE_KEYS, read_source_revisions
 from core.services.workbench.trial.catalog import WorkbenchTrialCatalogService
 from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint, read_endpoint
+from .data_context import request_data_context
 from .read_context import bind_read_snapshot
 from .write_context import issue_write_context, validate_write_context
-
-
-def _data_context():
-    return RunDataContext(g.db, journal_dir=current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR"))
 
 
 def _service():
@@ -31,7 +27,7 @@ def _service():
         g.db,
         context_factory=issue_write_context,
         context_validator=validate_write_context,
-        data_context=_data_context(),
+        data_context=request_data_context(),
     )
 
 
@@ -48,7 +44,7 @@ def _body(command=False):
     return value
 
 
-def _query(read, scope, *, precheck=None):
+def _query(read, scope, *, data_context, precheck=None):
     allowed = {"snapshot_ref"}
     if set(request.args) - allowed or any(len(request.args.getlist(key)) != 1 for key in request.args):
         from core.models.workbench_trial import reject
@@ -57,7 +53,7 @@ def _query(read, scope, *, precheck=None):
         checked = precheck() if precheck is not None else None
         state = {
             "revisions": read_source_revisions(g.db, TRIAL_SOURCE_KEYS),
-            "data_context_ref": _data_context().ref(),
+            "data_context_ref": data_context.ref(),
         }
         snapshot = bind_read_snapshot(scope, content_text(state), request.args.get("snapshot_ref"))
         data = read(checked) if precheck is not None else read()
@@ -67,7 +63,9 @@ def _query(read, scope, *, precheck=None):
 @read_endpoint
 def trial_create_preview():
     intent = create_input(_body())
-    return _query(lambda: _service().preview_create(intent), {"kind": "trial_create_preview"})
+    service = _service()
+    return _query(lambda: service.preview_create(intent), {"kind": "trial_create_preview"},
+                  data_context=service.data_context)
 
 
 @api_endpoint
@@ -83,6 +81,7 @@ def trial_read(draft_ref):
     return _query(
         lambda header: service.get(draft_ref, header=header),
         {"draft_ref": draft_ref},
+        data_context=service.data_context,
         precheck=lambda: service.require_draft_header(draft_ref),
     )
 
@@ -112,6 +111,7 @@ def trial_scenario(scenario_ref):
     return _query(
         lambda header: service.scenario(scenario_ref, header=header),
         {"scenario_ref": scenario_ref},
+        data_context=service.data_context,
         precheck=lambda: service.require_scenario_header(scenario_ref),
     )
 
@@ -127,6 +127,7 @@ def trial_receipt(request_key):
             "can_retry_automatically": False,
         },
         {"request_key": request_key},
+        data_context=service.data_context,
         precheck=lambda: service.lookup(request_key),
     )
 

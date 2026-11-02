@@ -395,8 +395,10 @@ def test_operator_zero_hour_workday_roundtrip_and_fullwidth_clock_rejected(clien
 def test_operator_calendar_identity_binding_readonly_formula_and_xlsx_crlf_roundtrip(client, monkeypatch):
     import openpyxl.xml
 
+    insert_operator = ("INSERT INTO Operators(operator_id,name,created_at,updated_at) "
+                       "VALUES ('OP-REF','王五','2026-01-01 08:00:00','2026-01-01 08:00:00')")
     with database(client) as conn:
-        conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('OP-REF','王五')")
+        conn.execute(insert_operator)
         conn.commit()
 
     preview_bytes = file_bytes(
@@ -411,6 +413,23 @@ def test_operator_calendar_identity_binding_readonly_formula_and_xlsx_crlf_round
     assert prev_resp.status_code == 200, prev_resp.get_data(as_text=True)
     prev_data = prev_resp.get_json()["data"]
     assert prev_data["can_confirm"] is True
+
+    # 删除后按同编号同字段重建人员（永久 ref 改变、Operators 行逐字段相同），旧预检确认必须 stale_write
+    with database(client) as conn:
+        conn.execute("DELETE FROM Operators WHERE operator_id='OP-REF'")
+        conn.execute(insert_operator)
+        conn.commit()
+    stale = client.post(
+        BASE + "/operator_calendar/confirm",
+        json={
+            "request_key": "op-ref-stale-00001",
+            "write_token": prev_data["write_context"]["write_token"],
+            "input": {"preview_ref": prev_data["preview_ref"]},
+        },
+    )
+    assert stale.status_code == 409 and stale.get_json()["error"]["code"] == "stale_write"
+    with database(client) as conn:
+        assert not conn.execute("SELECT 1 FROM OperatorCalendar WHERE operator_id='OP-REF'").fetchall()
 
     # 只读参考列填 Excel 公式（=1+1）时，预检跳过只读列的公式报错并正常通过
     xlsx_with_readonly_formula = file_bytes(
@@ -466,3 +485,84 @@ def test_operator_calendar_identity_binding_readonly_formula_and_xlsx_crlf_round
     target_row, = roundtrip_data["rows"]
     assert target_row["result"] == "unchanged" and target_row["changes"] == {}
     assert target_row["after"]["remark"] == "多行\r\n备注"
+
+    # D11: export-preview 传非法假值 snapshot_ref 时直接 400 拒绝，不静默降级为无令牌
+    bad_snapshot = client.post(
+        BASE + "/operator_calendar/export-preview",
+        json={"range": {"start_date": DAY, "end_date": DAY}, "snapshot_ref": ""},
+    )
+    assert bad_snapshot.status_code == 400 and bad_snapshot.get_json()["error"]["code"] == "invalid_input"
+
+    # D08: 预检时被工号不存在挡住的超长日期跨度，确认时人员已补建后触发 ValidationError(422) 而非 stale_write(409)
+    span_bytes = file_bytes(
+        [("OP-REF", "2020-01-01", "工作日", "08:00", "16:00"), ("OP-LATE", "2026-10-01", "工作日", "08:00", "16:00")],
+        headers=("工号", "日期", "类型", "班次开始", "班次结束"),
+    )
+    span_prev = client.post(
+        BASE + "/operator_calendar/preview",
+        data={"file": (BytesIO(span_bytes), "operator_calendar.csv"), "format": "csv", "mode": "upsert"},
+        content_type="multipart/form-data",
+    ).get_json()["data"]
+    with database(client) as conn:
+        conn.execute("INSERT INTO Operators(operator_id,name,created_at,updated_at) VALUES ('OP-LATE','赵六','2026-01-01 08:00:00','2026-01-01 08:00:00')")
+        conn.commit()
+    span_confirm = client.post(
+        BASE + "/operator_calendar/confirm",
+        json={
+            "request_key": "op-span-validation-00003",
+            "write_token": span_prev["write_context"]["write_token"],
+            "input": {"preview_ref": span_prev["preview_ref"]},
+        },
+    )
+    assert span_confirm.status_code == 422 and span_confirm.get_json()["error"]["code"] == "invalid_input"
+
+    # SRC-23: 导出绑定保存 row_count，下载在选中人员解析与快照核验后立即检查 XLSX 容量，早于 _public 投影；来源变化时超限下载优先返回 snapshot_stale
+    from core.services.workbench.facts import file_writer
+    from core.services.workbench.resource.calendar_files.operator_files import WorkbenchOperatorCalendarFileService
+
+    op_ref = client.get("/api/workbench/v1/entities/operator", query_string={"query": "OP-REF"}).get_json()["data"]["entities"][0]["ref"]
+    scoped_prev = client.post(
+        BASE + "/operator_calendar/export-preview",
+        json={"range": {"start_date": DAY, "end_date": DAY}, "scope": {"operator_refs": [op_ref]}},
+    )
+    assert scoped_prev.status_code == 200 and scoped_prev.get_json()["data"]["row_count"] == 1
+    scoped_export_ref = scoped_prev.get_json()["data"]["export_ref"]
+
+    monkeypatch.setattr(file_writer, "XLSX_MAX_ROWS", 2)
+    boundary_xlsx = client.get(
+        BASE + "/operator_calendar/export",
+        query_string={"export_ref": scoped_export_ref, "format": "xlsx"},
+    )
+    assert boundary_xlsx.status_code == 200
+
+    public_calls, orig_public = [], WorkbenchOperatorCalendarFileService._public
+
+    def tracked_public(self, *args, **kwargs):
+        public_calls.append(True)
+        return orig_public(self, *args, **kwargs)
+
+    monkeypatch.setattr(WorkbenchOperatorCalendarFileService, "_public", tracked_public)
+    monkeypatch.setattr(file_writer, "XLSX_MAX_ROWS", 1)
+    over_xlsx = client.get(
+        BASE + "/operator_calendar/export",
+        query_string={"export_ref": scoped_export_ref, "format": "xlsx"},
+    )
+    assert over_xlsx.status_code == 422 and over_xlsx.get_json()["error"]["code"] == "invalid_input"
+    assert public_calls == []
+
+    csv_ok = client.get(
+        BASE + "/operator_calendar/export",
+        query_string={"export_ref": scoped_export_ref, "format": "csv"},
+    )
+    assert csv_ok.status_code == 200 and len(public_calls) == 1
+
+    public_calls.clear()
+    with database(client) as conn:
+        conn.execute("UPDATE OperatorCalendar SET shift_hours=6 WHERE operator_id='OP-REF' AND date=?", (DAY,))
+        conn.commit()
+    stale_xlsx = client.get(
+        BASE + "/operator_calendar/export",
+        query_string={"export_ref": scoped_export_ref, "format": "xlsx"},
+    )
+    assert stale_xlsx.status_code == 409 and stale_xlsx.get_json()["error"]["code"] == "snapshot_stale"
+    assert public_calls == []

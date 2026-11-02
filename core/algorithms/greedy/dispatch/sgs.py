@@ -71,7 +71,7 @@ def dispatch_sgs(
     batch_ids = sorted(ops_by_batch, key=lambda item: (batch_order.get(item, 999999), item))
     next_idx: Dict[str, int] = {batch_id: 0 for batch_id in batch_ids}
     avg_proc_hours, total_hours_by_op_id = _average_proc_hours(ctx, ops_by_batch=ops_by_batch, batches=batches)
-    with sgs_overlap_reuse(state.machine_timeline, expected_operations=len(sorted_ops) + len(state.results)):
+    with sgs_overlap_reuse(state.machine_timeline):
         _run_sgs_loop(
             ctx,
             state,
@@ -154,15 +154,19 @@ def _run_sgs_loop(
     decode_resume: Optional[DecodeCheckpoint] = None,
     decode_checkpoints: Optional[DecodeCheckpointRequest] = None,
 ) -> None:
-    graph_state = _prepare_graph_ready_state(
-        graph_ready_context,
-        ops_by_batch=ops_by_batch,
-        skip_initial_frontier=decode_resume is not None,
-    )
-    if graph_state is not None and isinstance(graph_ready_context, dict) and graph_ready_context.get("piece_scope"):
-        graph_state["end_time_by_op_id"] = {row.op_id: row.end_time for row in state.results}
-        if state.readiness_gate_enabled:
-            graph_state["ready_starts_by_batch_id"] = ctx.native_preparation.parsed_ready_starts()
+    graph_state: Optional[Dict[str, Any]] = None
+    if graph_ready_context is not None:
+        graph_state = _prepare_graph_ready_state(
+            ctx.native_preparation.graph_topology(),
+            graph_ready_context,
+            ops_by_batch=ops_by_batch,
+            skip_initial_frontier=decode_resume is not None,
+        )
+        # Only a piece graph carries piece_scope.
+        if graph_ready_context.get("piece_scope"):
+            graph_state["end_time_by_op_id"] = {row.op_id: row.end_time for row in state.results}
+            if state.readiness_gate_enabled:
+                graph_state["ready_starts_by_batch_id"] = ctx.native_preparation.parsed_ready_starts()
     # Picks completed so far; a resumed decode continues from the checkpoint's count and progress.
     position = 0
     if decode_resume is not None:
@@ -312,7 +316,7 @@ def _score_candidate(
     graph_state: Optional[Dict[str, Any]] = None,
     attempt_sink: Optional[Any] = None,
 ) -> Tuple[float, ...]:
-    state = operation_dispatch_state(state, graph_state, op, batch)
+    state = operation_dispatch_state(state, graph_state, op)
     batch = resolve_operation_batch(ctx, op, batch)
     def score() -> Tuple[float, ...]:
         if op.source == EXTERNAL:

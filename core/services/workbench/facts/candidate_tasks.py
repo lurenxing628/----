@@ -1,5 +1,7 @@
 """Task labels and execution context are projections of the captured generation."""
 
+from typing import Any, Dict, Mapping
+
 from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.models.workbench_run_candidate import local_time
 
@@ -108,6 +110,19 @@ def project_validated_tasks(rows, candidate, facts, intervals, *, prepared_tasks
     return result
 
 
+def unplanned_reason(row: Mapping[str, Any]) -> Dict[str, Any]:
+    skipped = row["status"] == "skipped"
+    message = "这个候选方案没有给这道工序排时间。"
+    if skipped:
+        issues = row.get("issues") or []
+        material_wait = any(issue.get("code") in ("material_not_ready", "material_after_window") for issue in issues)
+        explanations = [issue["message"] for issue in issues if type(issue.get("message")) is str and issue["message"].strip()]
+        message = ("缺料未安排：" if material_wait else "排产时未安排：") + (
+            "；".join(explanations) if explanations else "具体原因未记录。")
+    return {"code": "input_operation_skipped" if skipped else "candidate_operation_unscheduled",
+            "message": message}
+
+
 def unplanned_projection(disposition, tasks, facts):
     scheduled = {row["operation_ref"] for row in tasks}
     result = []
@@ -115,17 +130,8 @@ def unplanned_projection(disposition, tasks, facts):
         if ref in scheduled:
             continue
         item, _ = operation_labels(facts, ref)
-        skipped = row["status"] == "skipped"
-        message = "这个候选方案没有给这道工序排时间。"
-        if skipped:
-            issues = row.get("issues") or []
-            material_wait = any(issue.get("code") in ("material_not_ready", "material_after_window") for issue in issues)
-            explanations = [issue["message"] for issue in issues if type(issue.get("message")) is str and issue["message"].strip()]
-            message = ("缺料未安排：" if material_wait else "排产时未安排：") + (
-                "；".join(explanations) if explanations else "具体原因未记录。")
-        item.update(row_ref=None, status="skipped" if skipped else "unscheduled",
-                    reason={"code": "input_operation_skipped" if skipped else "candidate_operation_unscheduled",
-                            "message": message})
+        item.update(row_ref=None, status="skipped" if row["status"] == "skipped" else "unscheduled",
+                    reason=unplanned_reason(row))
         result.append(item)
     return result
 

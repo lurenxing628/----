@@ -7,7 +7,6 @@ from core.algorithm_contracts.types import OpForScheduleAlgo
 from core.algorithm_runtime.internal_slot import estimate_internal_slot
 from core.models.batch import Batch
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
-from core.services.scheduler.execution.execution_ledger_guard import fact_resource_segments
 from core.services.scheduler.run.schedule_input_seed_metadata import (
     merged_actual_group_intervals,
     merged_external_group_identity,
@@ -30,7 +29,7 @@ def _resource_overlaps(rows, execution_facts):
     for row in rows:
         if row.source == "internal" and row.start_time < row.end_time:
             fact = execution_facts.get(row.op_id)
-            segments = fact_resource_segments(fact) if fact is not None else ()
+            segments = fact.execution_resource_segments if fact is not None else ()
             if not segments:
                 segments = ((row.start_time, row.end_time, row.machine_id, row.operator_id),)
             for start, end, machine, operator in segments:

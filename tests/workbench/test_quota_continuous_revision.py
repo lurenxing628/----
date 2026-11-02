@@ -47,14 +47,14 @@ def confirm_hours(case):
 def import_hours(case, value, fmt):
     content = encode_process_file('hours', [{'business_code': 'P1', 'sequence': 1, 'unit_hours': value}], fmt).content
     files = WorkbenchProcessFileService(case.conn)
-    preview, extra = files.preview_import('hours', content, file_format=fmt)
+    preview, extra = files.preview_import('hours', content, file_format=fmt, mode='upsert', target_ref=None)
     body = preview.as_dict()
     assert 'file_sha256' not in body['request']
     assert body['summary']['update'] == 1 and body['summary']['rejected'] == 0
     assert 'skipped_count' not in extra
     assert body['rows'][0]['changes']['unit_hours']['after'] == value
     with TransactionManager(case.conn).transaction(begin_immediate=True):
-        result = files.confirm_import(preview, content, discard_group_refs=[], confirm_zero_unit_hours=False)
+        result = files.confirm_import(preview, discard_group_refs=[], confirm_zero_unit_hours=False)
     assert result.result == 'committed'
     assert result.data['rows'][0]['result'] == 'committed'
     assert current(case)['unit_hours'] == value
@@ -64,7 +64,7 @@ def test_all_writers_preserve_existing_batches_and_plans_after_adoption(ready_ad
     case = ready_adoption_case
     adopt(case)
     before = snapshot(case.conn)
-    assert not contract_issues(case.conn, structure=SchemaStructure(case.conn))
+    assert not contract_issues(SchemaStructure(case.conn))
     ref, revision = case.template_ref, current(case)['revision']
     with TransactionManager(case.conn).transaction(begin_immediate=True):
         old = current(case)
@@ -166,15 +166,21 @@ def test_history_is_append_only_but_templates_are_revisable(ready_adoption_case)
     assert latest is not None and latest['new_unit_hours'] == 3
 
 
-def test_import_rechecks_changes_and_rolls_back_without_a_file_hash(ready_adoption_case):
+def test_import_rejects_preview_made_stale_by_a_newer_import_without_a_file_hash(ready_adoption_case):
     case = ready_adoption_case
     adopt(case)
     confirm_hours(case)
     files = WorkbenchProcessFileService(case.conn)
     content = encode_process_file('hours', [{'business_code': 'P1', 'sequence': 1, 'unit_hours': 5}], 'csv').content
-    preview, _ = files.preview_import('hours', content, file_format='csv')
+    preview, _ = files.preview_import('hours', content, file_format='csv', mode='upsert', target_ref=None)
+    assert 'file_sha256' not in preview.as_dict()['request']
     changed = encode_process_file('hours', [{'business_code': 'P1', 'sequence': 1, 'unit_hours': 6}], 'csv').content
-    with pytest.raises(WorkbenchCommandRejected, match='预检'):
+    other, _ = files.preview_import('hours', changed, file_format='csv', mode='upsert', target_ref=None)
+    with TransactionManager(case.conn).transaction(begin_immediate=True):
+        files.confirm_import(other, discard_group_refs=[], confirm_zero_unit_hours=False)
+    assert current(case)['unit_hours'] == 6
+    with pytest.raises(WorkbenchCommandRejected) as rejected:
         with TransactionManager(case.conn).transaction(begin_immediate=True):
-            files.confirm_import(preview, changed, discard_group_refs=[], confirm_zero_unit_hours=False)
-    assert current(case)['unit_hours'] == 3
+            files.confirm_import(preview, discard_group_refs=[], confirm_zero_unit_hours=False)
+    assert rejected.value.code == 'stale_write'
+    assert current(case)['unit_hours'] == 6

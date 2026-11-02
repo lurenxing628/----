@@ -49,7 +49,7 @@
         {fields.map(field => <td key={field}>{absent && field !== 'available_hours' ? '比较基准缺失' : <Metric value={value} field={field} />}{side === 'after' && <small>{deltaText(data.summary.deltas[field], field)}</small>}</td>)}
         <td>{['high_pressure_count', 'zero_capacity_task_count', 'conflict_resource_count', 'unknown_day_resource_count'].map(field => { const def = metricDefinition(field, kind, definitions); return (value[field] === null || value[field] > 0) && <span key={field}>{def.label} {scalar(value[field])} {def.unit}{field === 'high_pressure_count' && value[field] === null && value.known_high_pressure_count !== null && <small>已知 {scalar(value.known_high_pressure_count)} {def.unit}</small>}</span>; })}</td></tr>; })}</tbody></table></div></div>;
   }
-  function Calculation({ data, definitions }) {
+  function Calculation({ data }) {
     const fields = ['summed_load_hours', 'demand_ratio', 'balance_cv'];
     return <details className="rres-basis"><summary>详细占用统计与计算说明</summary><div className="wb-table-frame"><table className="wb-table"><thead><tr><th scope="col">方案</th>{fields.map(field => <th scope="col" key={field}>{T.resource_metric_labels[field]}{field.endsWith('_hours') && <small>小时</small>}</th>)}<th scope="col">班表资料</th></tr></thead><tbody>{[['before', '比较基准'], ['after', '当前方案']].map(([side, label]) => { const value = data.summary[side], absent = side === 'before' && data.baseline.state !== 'available'; return <tr key={side}><th scope="row">{label}</th>{fields.map(field => <td key={field}>{absent ? '比较基准缺失' : <Metric value={value} field={field} />}{side === 'after' && <small>{deltaText(data.summary.deltas[field], field)}</small>}</td>)}<td>已保存 {scalar(value.known_capacity_count)} · 待确认 {scalar(value.unknown_capacity_count)} 个</td></tr>; })}</tbody></table></div>
       <p>可排总时长来自保存的资源班表，未乘效率。班表内已占时间将同时占用的时段计一次；逐工序占用合计分别计算各道工序，重叠时会重复计入。两项除以可排总时长得到占用比例和需求比例，需求比例可超过 100%。高负荷用于关注资源使用情况，需求超载与资源冲突分别核对。</p>
@@ -208,7 +208,7 @@
       {days.result && <SelectedWindow result={days.result} definitions={overview.metric_definitions} query={{ ...dayQ, focus_date: stored.heatmap_focus && stored.heatmap_focus.resource_ref === dayRef ? stored.heatmap_focus.date : null }} whole={!stored.day_bucket_start} onQuery={dayQuery} onClose={closeDays} onWhole={wholeDays} onDrill={onDrill} enabled={enabled} />}
       {data && <details className="rres-statistics"><summary>数据来源</summary><div className="rres-full-table"><h3>统计范围详细对照 · {data.page.total} 个资源</h3><Summary data={data} definitions={overview.metric_definitions} />
         {data.items.length ? <ResourceTable data={data} definitions={overview.metric_definitions} onFocus={focus} onDrill={onDrill} /> : <p className="rc-empty">当前筛选没有资源记录。</p>}</div>
-        <Coverage data={data} /><Calculation data={data} definitions={overview.metric_definitions} /><Rankings data={data} onFocus={focus} onAll={sort => change({ sort, order: 'desc', resource_ref: undefined })} /></details>}
+        <Coverage data={data} /><Calculation data={data} /><Rankings data={data} onFocus={focus} onAll={sort => change({ sort, order: 'desc', resource_ref: undefined })} /></details>}
     </section>;
   }
   window.RunDecisionResources = { Pane, ResourceTable, Days, SelectedWindow, Summary, Coverage, RangeControls, scalar, metricState, metricText, deltaText, metricDefinition, Flags, storedQuery };

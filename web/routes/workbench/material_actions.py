@@ -17,9 +17,11 @@ the domain mutation revalidates every original fact under the same transaction.
 
 from __future__ import annotations
 
-from flask import current_app, g, request
+from flask import current_app, g
 
-from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
+from core.models.workbench_action_values import UPSERT_IMPORT_MODES
+from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_table_descriptor import FILE_FORMATS
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.material.bulk import WorkbenchMaterialBulkService
 from core.services.workbench.material.files import WorkbenchMaterialFileService
@@ -28,15 +30,17 @@ from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
 from .material_actions_context import (
+    EXPIRED_MESSAGE,
+    PREVIEW_SCOPE,
     issue_preview,
     json_body,
-    opaque_ref,
     read_endpoint,
-    resolve_preview,
     scope_input,
 )
 from .read_context import bind_read_snapshot
-from .request_json import read_upload_file
+from .request_json import read_upload_file, read_upload_form
+from .resource_action_context import confirm_body
+from .write_context import resolve_action_preview
 
 
 @read_endpoint
@@ -55,14 +59,10 @@ def material_bulk_preview():
 
 
 def _upload():
-    if request.args or request.mimetype != "multipart/form-data":
-        raise WorkbenchCommandRejected("invalid_input", "没有收到上传的文件，物料没有改动。请重新选择文件后点「开始预检」。", 400)
-    if (set(request.files) != {"file"} or len(request.files.getlist("file")) != 1
-            or set(request.form) != {"format", "mode"}
-            or any(len(request.form.getlist(key)) != 1 for key in request.form)):
-        raise WorkbenchCommandRejected("invalid_input", "一次只能上传一个文件，并且要选好格式和导入方式；物料没有改动。请重新选择后点「开始预检」。", 400)
-    file_format, mode = request.form["format"], request.form["mode"]
-    if file_format not in ("csv", "xlsx") or mode != "upsert":
+    form = read_upload_form({"format", "mode"}, transport="没有收到上传的文件，物料没有改动。请重新选择文件后点「开始预检」。",
+                            shape="一次只能上传一个文件，并且要选好格式和导入方式；物料没有改动。请重新选择后点「开始预检」。")
+    file_format, mode = form["format"], form["mode"]
+    if file_format not in FILE_FORMATS or mode not in UPSERT_IMPORT_MODES:
         raise WorkbenchCommandRejected("invalid_input", "物料导入只支持 CSV 或 XLSX，并且按物料编号增量更新；物料没有改动。请换用正确的文件后点「开始预检」。", 400)
     content = read_upload_file("文件超过本机允许的大小，一行都没有导入，也没有只导入前半部分。请缩小文件后重新点「开始预检」。")
     return content, file_format, mode
@@ -72,43 +72,30 @@ def _upload():
 def material_import_preview():
     content, file_format, mode = _upload()
     service = WorkbenchMaterialFileService(g.db, current_app.logger)
-    preview = service.preview_import(content, file_format=file_format, mode=mode, scope={})
-    data = issue_preview(preview, preview.source)
+    preview = service.preview_import(content, file_format=file_format, mode=mode)
+    data = issue_preview(preview)
     snapshot = bind_read_snapshot({"kind": "material", "operation": "material.import",
                                    "preview_ref": data["preview_ref"]}, data["preview_ref"])
     return query_success(data, snapshot, preview.as_dict()["notices"])
 
 
-def _confirm_body():
-    body = json_body({"request_key", "write_token", "input"})
-    validate_request_key(body["request_key"])
-    g.workbench_request_key = body["request_key"]
-    opaque_ref(body["write_token"])
-    if type(body["input"]) is not dict or set(body["input"]) != {"preview_ref"}:
-        raise WorkbenchCommandRejected("invalid_input", "只能确认刚才预检过的那一批，物料没有改动。请点「重新预检」。", 400)
-    opaque_ref(body["input"]["preview_ref"])
-    return body
-
-
-def _apply_preview(action, checked):
-    preview, content = checked
-    original = preview.as_dict()["request"]
+def _apply_preview(action, preview):
     if action == "material.bulk_delete":
-        return WorkbenchMaterialBulkService(g.db, current_app.logger).confirm_delete(
-            preview, original["refs"], scope=original["scope"])
-    return WorkbenchMaterialFileService(g.db, current_app.logger).confirm_import(
-        preview, content, file_format=original["format"], mode=original["mode"], scope=original["scope"])
+        return WorkbenchMaterialBulkService(g.db, current_app.logger).confirm_delete(preview)
+    return WorkbenchMaterialFileService(g.db, current_app.logger).confirm_import(preview)
 
 
 @api_endpoint
 def material_action_confirm(action):
-    body = _confirm_body()
+    body = confirm_body("只能确认刚才预检过的那一批，物料没有改动。请点「重新预检」。")
     ref = body["input"]["preview_ref"]
     outcome = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action=action, context_ref=ref,
         normalized_input={"preview_ref": ref},
-        guard=lambda: resolve_preview(ref, action, body["write_token"]),
-        mutate=lambda checked: _apply_preview(action, checked))
+        guard=lambda: resolve_action_preview(
+            PREVIEW_SCOPE, ref, action, body["write_token"], expired_message=EXPIRED_MESSAGE,
+            mismatch_message="预检结果不适用于这次操作，物料没有改动。请点「重新预检」。"),
+        mutate=lambda preview: _apply_preview(action, preview))
     return json_response(outcome)
 
 

@@ -2,16 +2,14 @@
 
 from typing import Union
 
-from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.workbench_run_candidate import reject
-from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.decision_metrics import METRIC_VERSION
 from core.services.workbench.facts.preparation_projection import preparation_summary, public_preparation_metrics
 
 from .decision_completion import compact_completion
 from .decision_queries import parse_page
 from .decision_recommendation import detail_drill
-from .decision_source import DecisionSource
+from .decision_session import decision_read, decision_snapshot_scope
 
 COMPLETION_FILTERS = {
     "all": None,
@@ -62,10 +60,9 @@ def _batch_row(source, key, item):
 
 
 def completion_batches(source, filters, *, page: Union[int, str] = 1, size: Union[int, str] = 20):
-    key = source.selected_ref
+    key, candidate = source.selected_ref, source.selected
     if key is None:
         reject("invalid_input", "请选择本次排产中的候选后查看工序安排。", 422)
-    candidate = source._candidate_reference(key)
     scope = source.completion.scope(key)
     membership = COMPLETION_FILTERS[filters["completion_filter"]]
     refs = set(source.scope["batch_refs"] if membership is None else scope[membership])
@@ -89,11 +86,9 @@ def completion_batches(source, filters, *, page: Union[int, str] = 1, size: Unio
             "metric_version": METRIC_VERSION}
 
 
-def read_completion_batches(conn, run_ref, *, completion_filter="all", sort="batch_id", order="asc",
+def read_completion_batches(conn, run_ref, *, bind_snapshot, completion_filter="all", sort="batch_id", order="asc",
                             page: Union[int, str] = 1, size: Union[int, str] = 20, **query):
     filters = normalize_completion_filters(completion_filter=completion_filter, sort=sort, order=order)
-    store = CandidateStore(conn)
-    with store.snapshot(), read_evidence_scope(conn):
-        source = DecisionSource(store, run_ref, **query)
-        data = completion_batches(source, filters, page=page, size=size)
-        return data, source.state()
+    with decision_read(conn, run_ref, **query) as source:
+        snapshot = bind_snapshot(decision_snapshot_scope(source, filters=filters), source.state())
+        return completion_batches(source, filters, page=page, size=size), snapshot

@@ -51,10 +51,9 @@ def _frozen_operations(conn, arranged, *, context, evidence):
 
 
 def _trial_relations(trial_source, refs):
-    _, _, rows = trial_source.source
     known = set(refs.values())
     relations = {}
-    for row in rows:
+    for row in trial_source.source.rows:
         original = row["original"]
         op_id = original["operation"]["id"]
         require(op_id in refs and row["operation_ref"] == refs[op_id], "process_order.trial_operation_identity")
@@ -122,7 +121,6 @@ def _cached_candidate_relations(operations, batches, refs):
             _RELATIONS_CACHE.move_to_end(rel_key)
             return rel_key, cached
     relations = frozen_process_relations(operations, batches, refs)
-    _acyclic(relations)
     with _CACHE_LOCK:
         _RELATIONS_CACHE[rel_key] = relations
         while len(_RELATIONS_CACHE) > 16:
@@ -130,49 +128,22 @@ def _cached_candidate_relations(operations, batches, refs):
     return rel_key, relations
 
 
-def load_frozen_plan_process_order(conn, *, plan_ref, context: PlanReadContext):
-    if plan_ref in context._process_orders:
-        return context._process_orders[plan_ref]
-    evidence = context.adopted_source(plan_ref)
-    if evidence is None:
-        context._process_orders[plan_ref] = None
-        return None
-    basis, arranged, selected = (
-        evidence[key] for key in ("basis", "arranged", "selected")
-    )
-    operations, batches, refs = _frozen_operations(conn, arranged, context=context, evidence=evidence)
-    rel_key = None
-    if basis == "candidate_adoption":
-        rel_key, relations = _cached_candidate_relations(operations, batches, refs)
-    else:
-        relations = _trial_relations(evidence["trial_source"], refs)
-        _acyclic(relations)
-    task_refs = _task_bindings(plan_ref, selected, relations, refs, context=context, evidence=evidence)
-    frozen = {
-        "basis": basis,
-        "selected": selected,
-        "operations": operations,
-        "refs": refs,
-        "relations": relations,
-        "task_refs": task_refs,
-        "rel_key": rel_key,
-    }
-    context._process_orders[plan_ref] = frozen
-    return frozen
-
-
-def _process_order(conn, *, plan_ref, context, include_nodes=True):
+def _process_order(conn, *, plan_ref, context, include_nodes):
     try:
-        frozen = load_frozen_plan_process_order(conn, plan_ref=plan_ref, context=context)
-        if frozen is None:
+        evidence = context.adopted_source(plan_ref)
+        if evidence is None:
             return _unavailable("process_order_not_recorded")
-        basis = frozen["basis"]
-        selected = frozen["selected"]
-        operations = frozen["operations"]
-        refs = frozen["refs"]
-        relations = frozen["relations"]
-        task_refs = frozen["task_refs"]
-        rel_key = frozen["rel_key"]
+        basis, arranged, selected = (
+            evidence[key] for key in ("basis", "arranged", "selected")
+        )
+        operations, batches, refs = _frozen_operations(conn, arranged, context=context, evidence=evidence)
+        rel_key = None
+        if basis == "candidate_adoption":
+            rel_key, relations = _cached_candidate_relations(operations, batches, refs)
+        else:
+            relations = _trial_relations(evidence["trial_source"], refs)
+            _acyclic(relations)
+        task_refs = _task_bindings(plan_ref, selected, relations, refs, context=context, evidence=evidence)
         data = {"state": "available", "basis": "run_admission" if basis == "candidate_adoption" else "trial_creation",
                 "issues": []}
         if not include_nodes:

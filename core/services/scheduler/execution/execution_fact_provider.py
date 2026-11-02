@@ -30,7 +30,7 @@ class ExecutionFact:
     quantity_basis: Optional[str] = None
     execution_effective_intervals: Tuple[Tuple[datetime, datetime], ...] = ()
     execution_protection_reasons: Tuple[str, ...] = ()
-    execution_protection_content: Optional[Dict[str, Any]] = None
+    execution_resource_segments: Tuple[Tuple[datetime, datetime, str, str], ...] = ()
 
     def __post_init__(self) -> None:
         if not self.state_revision:

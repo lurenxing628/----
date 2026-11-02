@@ -27,6 +27,7 @@ from .write_context import issue_write_context, validate_write_context
 
 if TYPE_CHECKING:
     from core.services.workbench.run.preflight import PreparedPreflight
+    from core.services.workbench.run.preflight_facts import PreflightFacts
 
 INPUT_SCOPE = "workbench-preflight-input-v1"
 
@@ -46,8 +47,8 @@ def _require_current(original, current):
         raise WorkbenchCommandRejected("snapshot_stale", "排产检查之后批次范围或现场记录有变化，这次排产没有开始。请重新点「开始排产检查」。")
 
 
-def evaluate_preflight_input_prepared(conn, input_ref, *, facts=None) -> "PreparedPreflight":
-    """Private same-transaction continuation; it never enters the public token."""
+def evaluate_preflight_input_prepared(conn, input_ref: str, *, facts: "PreflightFacts") -> "PreparedPreflight":
+    """Private same-transaction continuation; caller owns transaction and PreflightFacts."""
     from core.services.workbench.run.preflight import PreflightService
 
     normalized, original = _preflight_binding(conn, input_ref)

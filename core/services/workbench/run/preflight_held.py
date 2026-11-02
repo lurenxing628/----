@@ -195,12 +195,9 @@ def _completed(facts, operations, projections):
     raw = defaultdict(list)
     for op in operations:
         projection = projections[facts.operation_ref(op)]
-        if projection["execution_state"] != "complete" or projection["confirmed_finish"] is None:
+        if projection["execution_state"] != "complete":
             continue
-        try:
-            raw[op["batch_id"]].append((op, parse_operation_event_time(projection["confirmed_finish"])))
-        except (AppError, ValueError, TypeError):
-            continue  # 完工时间读不出来由报工核对另行拦下
+        raw[op["batch_id"]].append((op, parse_operation_event_time(projection["confirmed_finish"])))
     result = {}
     for batch_id, entries in raw.items():
         all_items = [(op["seq"], finish) for op, finish in entries]

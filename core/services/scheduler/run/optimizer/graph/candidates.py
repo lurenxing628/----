@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, FrozenSet, Optional, Sequence, Tuple
 
 from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithms.greedy.dispatch.sgs_graph import graph_priority_key_map
@@ -17,7 +17,6 @@ from core.services.scheduler.run.optimizer.graph_ready_profiles import (
 )
 
 from .candidate_payload import build_graph_ready_candidate_payload
-from .context import optional_non_negative_number
 from .repair_decisions import RepairDecision, RepairParentPreparation, repair_decision_inputs
 from .v2_keys import v2_formula_specs, v2_priority_key_for_metric
 from .v2_ranks import metric_bonus, normalized_v2_metrics_by_op_id
@@ -37,12 +36,17 @@ def _profile_identity(profile: GraphReadyWeightProfile) -> Tuple[Any, ...]:
 
 
 class PreparedDecisionFeatures:
-    """Admit each effective profile once against one owned, fixed feature set."""
+    """Admit each effective profile once against one owned, fixed feature set.
+
+    ``schedulable_ids`` is the preparation's own ``topology.schedulable_ids``; keys admitted against it pass
+    every later decode request by identity.
+    """
 
     def __init__(self, metrics_by_op_id: Dict[int, Dict[str, Any]],
-                 v2_common_rank_cache: Dict[str, Dict[int, float]]) -> None:
+                 v2_common_rank_cache: Dict[str, Dict[int, float]], *, schedulable_ids: FrozenSet[int]) -> None:
         self.metrics_by_op_id = metrics_by_op_id
         self.v2_common_rank_cache = v2_common_rank_cache
+        self.schedulable_ids = schedulable_ids
         self._baseline_metrics: Optional[Dict[int, Dict[str, Any]]] = None
         self._normalized_metrics_by_basis_seed: Dict[Tuple[str, int], Dict[int, Dict[str, Any]]] = {}
         self._priority_keys_by_profile: Dict[Tuple[Any, ...], ValidatedGraphPriorityKeys] = {}
@@ -64,7 +68,7 @@ class PreparedDecisionFeatures:
         keys = graph_priority_key_map(_priority_keys_for_profile(
             self.selected_metrics(profile), profile=profile, v2_common_rank_cache=self.v2_common_rank_cache,
             normalized_metrics_cache=self._normalized_metrics_by_basis_seed,
-        ), schedulable_ids=frozenset(self.metrics_by_op_id))
+        ), schedulable_ids=self.schedulable_ids)
         self._priority_keys_by_profile[identity] = keys
         return keys
 
@@ -76,7 +80,7 @@ def evaluate_graph_ready_candidate(
     params: Dict[str, Any],
     start_dt: datetime,
     end_date: Optional[date],
-    order: List[str],
+    order: Sequence[str],
     dispatch_rule: str,
     resource_pool: Optional[Dict[str, Any]],
     objective_name: str,
@@ -121,7 +125,7 @@ def evaluate_graph_ready_candidate(
         redecode_reason=redecode_reason,
         operation_resources=operation_resources,
         strategy=strategy, strategy_params=_candidate_params(params, profile_dict=full_profile_payload), start_dt=start_dt,
-        end_date=end_date, batch_order_override=list(order),
+        end_date=end_date, batch_order_override=order,
         dispatch_mode="sgs", dispatch_rule=dispatch_rule,
         readiness_gate_enabled=readiness_gate_enabled, graph_enabled=True,
         graph_score_enabled=True,
@@ -178,7 +182,7 @@ def _priority_keys_for_profile(
 
 
 def _v1_priority_key(metric: Dict[str, Any], *, profile: GraphReadyWeightProfile) -> Tuple[float, ...]:
-    rank = optional_non_negative_number(metric.get("critical_path_rank"), field="critical_path_rank")
+    rank = metric["critical_path_rank"]
     bonus = metric_bonus(metric, weights=profile.effective_weights)
     return (
         float(round(-bonus, 6)),

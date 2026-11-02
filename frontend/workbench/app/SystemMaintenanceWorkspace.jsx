@@ -11,7 +11,7 @@
     changed.current = onChanged;
     function settle(value, targetIntent, problem = null) {
       if (!current.current || current.current.request_key !== targetIntent.request_key) return false;
-      if (!A.pending().settle(targetIntent, value, problem)) return false;
+      if (!A.pending.settle(targetIntent, value, problem)) return false;
       found.current = value;
       if (mounted.current) { setResult(value); if (value && value.host) setHost(value.host); }
       return true;
@@ -33,7 +33,7 @@
       try {
         await T.exclusive(A.PENDING_KEY, { wait: true }, () => {
           if (!problem) settle(value, original);
-          else if (current.current && current.current.request_key === original.request_key && A.pending().settle(original, found.current, problem) && mounted.current) setError(problem);
+          else if (current.current && current.current.request_key === original.request_key && A.pending.settle(original, found.current, problem) && mounted.current) setError(problem);
         });
       } catch (error) { if (mounted.current) setError(error); }
       finally { await inspectHost(); running.current = false; if (mounted.current) setBusy(false); }
@@ -72,7 +72,7 @@
       try {
         // 维护操作的本机记录、提交和结果写回在跨页互斥里串行，持锁跨过维护命令。
         const { acquired } = await T.exclusive(A.PENDING_KEY, {}, async () => {
-          try { original = A.pending().begin(action, selected); } catch (problem) { setStorageError(problem); return; }
+          try { original = A.pending.begin(action, selected); } catch (problem) { setStorageError(problem); return; }
           startedHere.current = action === 'restore';
           setSelection(selected);
           current.current = original; setIntent(original); settle(null, original); setError(null); setBusy(true);
@@ -83,11 +83,11 @@
                 if (settle({ kind: 'rejected', terminal: true, intent: original }, original, problem)) {
                   if (mounted.current) setError(problem);
                   try {
-                    A.pending().finish(original); current.current = null;
+                    A.pending.finish(original); current.current = null;
                     if (mounted.current) setIntent(null);
                   } catch (storageProblem) { if (mounted.current) setStorageError(storageProblem); }
                 }
-              } else if (A.pending().settle(original, null, problem) && mounted.current) {
+              } else if (A.pending.settle(original, null, problem) && mounted.current) {
                 setError(problem);
               }
             }
@@ -109,7 +109,7 @@
       if (suspended || running.current || !current.current || !found.current || !found.current.terminal) return;
       const original = current.current, completed = found.current;
       running.current = true;
-      try { await T.exclusive(A.PENDING_KEY, { wait: true }, () => A.pending().finish(original, true)); }
+      try { await T.exclusive(A.PENDING_KEY, { wait: true }, () => A.pending.finish(original, true)); }
       catch (problem) { setStorageError(problem); return; }
       finally { running.current = false; }
       current.current = null; found.current = null; startedHere.current = false;

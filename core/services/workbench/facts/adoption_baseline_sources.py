@@ -1,7 +1,7 @@
 """Reuse RunBaseline verification and CQ's immutable saved-scenario contract."""
 
 from dataclasses import dataclass
-from typing import Tuple, Union
+from typing import Union
 
 from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.infrastructure.read_evidence import verified_read
@@ -15,7 +15,7 @@ from core.services.workbench.facts.candidate_projection import baseline_capture,
 from core.services.workbench.facts.candidate_store import cache_get, cache_memo, cached_generation_facts
 from core.services.workbench.facts.candidate_tasks import task_resource
 from core.services.workbench.facts.candidate_values import gap
-from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
+from core.services.workbench.facts.trial_scenario_archive import SavedTrialScenario, load_saved_scenario
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 
 from .adoption_baseline_values import fail, indexed, require
@@ -136,7 +136,7 @@ def trial_source_evidence(conn, audit):
         if exc.status == 404:
             fail("adoption_source_archived", "trial_source:" + exc.code)
         fail(gap="trial_source:" + exc.code)
-    head = prepared.source[1]
+    head = prepared.source.head
     admission, proof = head["admission"], audit["proof"]
     require(head["draft_ref"] == audit["draft_ref"], "trial.draft_ref")
     values = [("scenario_ref", audit["scenario_ref"]), ("draft_ref", audit["draft_ref"]),
@@ -151,7 +151,7 @@ def trial_source_evidence(conn, audit):
 def _trial_source(conn, audit):
     scenario_ref = audit["scenario_ref"]
     prepared = trial_adoption_facts(conn, scenario_ref)
-    saved, head, rows = prepared.source
+    saved, head, rows = prepared.source.saved, prepared.source.head, prepared.source.rows
     admission = head["admission"]
     archive = admission["facts"]
     tables = {}
@@ -208,7 +208,7 @@ class _TrialResourceFacts:
 
 @dataclass(frozen=True)
 class TrialAdoptionFacts:
-    source: Tuple[dict, dict, list]
+    source: SavedTrialScenario
     resources: Union[GenerationFacts, _TrialResourceFacts]
     assigned_resources: _TrialResourceFacts
     operations: dict
@@ -216,12 +216,11 @@ class TrialAdoptionFacts:
 
 def prepare_trial_adoption_facts(source):
     """Preserve original supplier metadata and draft-time assigned resources."""
-    _saved, head, rows = source
-    admission = head["admission"]
+    admission = source.head["admission"]
     assigned = _TrialResourceFacts(admission["facts"])
     capture = admission["source"].get("capture")
     resources = assigned if capture is None else cached_generation_facts(capture)
-    operations = {row["original"]["operation"]["id"]: row["original"]["operation"] for row in rows}
+    operations = {row["original"]["operation"]["id"]: row["original"]["operation"] for row in source.rows}
     return TrialAdoptionFacts(source, resources, assigned, operations)
 
 

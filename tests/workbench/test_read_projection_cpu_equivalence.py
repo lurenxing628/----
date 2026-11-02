@@ -81,6 +81,22 @@ def test_different_plan_load_keeps_both_historical_task_mappings(ledger_case, mo
     assert all_rows(case.conn) == before
 
 
+def test_ledger_snapshot_joins_an_open_transaction_instead_of_nesting_a_savepoint(ledger_case):
+    from core.infrastructure.transaction import TransactionManager
+
+    case = ledger_case
+    statements = []
+    with TransactionManager(case.conn).transaction():
+        case.conn.set_trace_callback(statements.append)
+        try:
+            with case.ledger.read_snapshot():
+                facts = case.ledger.load_many([_operation_ref(case)])
+        finally:
+            case.conn.set_trace_callback(None)
+        assert case.conn.in_transaction
+    assert facts["operations"] and not any("SAVEPOINT" in sql.upper() for sql in statements)
+
+
 def test_cross_layer_schema_checks_share_leaf_contracts_in_one_snapshot(candidate_case, monkeypatch):
     from collections import Counter
 
@@ -104,9 +120,9 @@ def test_cross_layer_schema_checks_share_leaf_contracts_in_one_snapshot(candidat
     for name, symbol in checks:
         original = vars(migration_state)[symbol]
 
-        def checked(conn, *, structure, _name=name, _original=original):
+        def checked(*args, _name=name, _original=original, **kwargs):
             calls[_name] += 1
-            return _original(conn, structure=structure)
+            return _original(*args, **kwargs)
 
         monkeypatch.setattr(migration_state, symbol, checked)
 

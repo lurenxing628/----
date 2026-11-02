@@ -474,7 +474,7 @@ function schedulingNavigationContracts() {
     for (const output of compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources: [{ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') }] }).outputs)
       vm.runInNewContext(output.code, { React: localReact, window: local });
   };
-  load('RunHistoryAPI.js'); load('SchedulingWorkspace.jsx');
+  load('RunHistoryAPI.js'); load('DecisionHistoryAPI.js'); load('PlanNavigation.js'); load('SchedulingWorkspace.jsx');
   const onNavigate = (page, context) => links.push({ page, context }), context = { ...original, return_history_context: historyQuery };
   const analysis = local.PlanCenterWorkspace({ view: 'analysis', initialContext: context, onNavigate });
   const candidate = nodes(analysis).find(node => node.type === 'candidate-workspace'), navigation = candidate.props.navigation;
@@ -492,12 +492,18 @@ function schedulingNavigationContracts() {
     assert(work.props.navigation); assert.equal(nodes(expand(work.props.navigation)).filter(node => node.props.className === 'scheduling-navigation').length, 1); assert.equal(work.props.view, view); assert.strictEqual(work.props.initialContext, context);
   }
   for (const view of ['analysis', 'gantt', 'delay']) {
-    const tree = expand(local.PlanCenterWorkspace({ view, initialContext: { plan_ref: planRef }, onNavigate })), work = nodes(tree).find(node => node.type === 'formal-workspace');
+    const formal = { plan_ref: planRef };
+    const tree = expand(local.PlanCenterWorkspace({ view, initialContext: formal, onNavigate })), work = nodes(tree).find(node => node.type === 'formal-workspace');
     assert(work && work.props.navigation); assert.equal(nodes(tree).filter(node => node.props.className === 'scheduling-navigation').length, 0);
+    assert.strictEqual(work.props.initialContext, formal, '正式计划分支把导航边界接受的原对象交给计划页，不拷贝');
     assert.equal(nodes(expand(work.props.navigation)).filter(node => node.props.className === 'scheduling-navigation').length, 1, '正式计划工作区继续拥有原导航：' + view);
   }
   const history = expand(local.PlanCenterWorkspace({ view: 'analysis', initialContext: { source: 'run_history', history_query: historyQuery }, onNavigate }));
   const historyWork = nodes(history).find(node => node.type === 'history-workspace'); assert.equal(nodes(history).filter(node => node.props.className === 'scheduling-navigation').length, 0); assert(historyWork.props.navigation); assert.equal(nodes(expand(historyWork.props.navigation)).filter(node => node.props.className === 'scheduling-navigation').length, 1); assert.deepEqual(clone(historyWork.props.initialContext), historyQuery);
+  // 页面记忆里的列表条件带着本次快照钉（RunHistoryWorkspace 的 remembered）；“排产记录”入口发出的返回条件不带它。
+  const pinned = expand(local.PlanCenterWorkspace({ view: 'analysis', initialContext: { source: 'run_history', history_query: { ...historyQuery, snapshot_ref: 'S'.repeat(32) } }, onNavigate }));
+  nodes(expand(nodes(pinned).find(node => node.type === 'history-workspace').props.navigation)).find(node => node.type === 'button' && node.props.icon === 'history').props.onClick();
+  assert.deepEqual(clone(links.at(-1)), { page: 'analysis', context: { source: 'run_history', history_topic: 'run_catalog', history_query: historyQuery } }, '返回排产记录去掉快照钉，其余列表条件原样带回');
   load('RunCandidateWorkspace.jsx');
   const comparison = local.RunCandidateWorkspace(candidate.props);
   assert.equal(comparison.type, 'comparison-workspace'); assert.strictEqual(comparison.props.navigation, navigation, '实际候选分发器继续透传导航到比较组件');
@@ -956,7 +962,7 @@ async function processPaneContracts() {
     preview: { candidate_ref: first, run_ref: runRef, baseline: { plan_ref: planRef, version: 7 }, task_count: 3, scope_complete: true }, data_context_ref: JSON.stringify({ database_scope: '/current.db', successful_restores: [] }) }, savedPending = clone(pending);
   for (const candidateCatalog of [[], data.candidates]) {
     const adoptionState = hooks(), adoptionLocal = { ...window, WorkbenchHandlerMemory: { read: () => ({ value: '经办人' }) }, addEventListener() {}, removeEventListener() {},
-      RunAdoptionControls: { Button: 'button', Dialog: 'adoption-dialog' }, RunAdoptionAPI: { ref: window.RunCandidateAPI.ref, pending: () => ({ read: () => pending }), lookup: async () => null, EVENT: 'adoption-event', PENDING_KEY: 'adoption-pending' } };
+      RunAdoptionControls: { Button: 'button', Dialog: 'adoption-dialog' }, RunAdoptionAPI: { ref: window.RunCandidateAPI.ref, pending: { read: () => pending }, lookup: async () => null, EVENT: 'adoption-event', PENDING_KEY: 'adoption-pending' } };
     for (const output of compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources: [{ path: 'RunAdoptionAction.jsx', code: fs.readFileSync(path.join(app, 'RunAdoptionAction.jsx'), 'utf8') }] }).outputs)
       vm.runInNewContext(output.code, { React: adoptionState.React, window: adoptionLocal, AbortController, DOMException });
     const adoptionProps = { candidateRef: third, candidateDisplay: { candidate_ref: third, label: data.candidates[2].label }, candidateCatalog };
@@ -1073,8 +1079,11 @@ async function unifiedGenerationContracts() {
   const envelope = value => ({ ok: true, schema_version: 1, data: value, warnings: [], meta: { request_ref: '1'.repeat(32),
     source: 'production', time_basis: 'factory_local', snapshot_ref: snapshot, as_of: '2026-10-15T02:00:00' } });
   const catalog = envelope(raw.candidate_catalog), workspace = envelope(raw.candidate_workspace), plan = envelope(raw.adopted_plan_workspace);
-  assert.strictEqual(local.RunCandidateAPI.validateCatalog(catalog, savedRun, {}), raw.candidate_catalog);
-  assert.strictEqual(local.RunCandidateAPI.validateWorkspace(workspace, savedCandidate, {}), raw.candidate_workspace);
+  let catalogAnswer = catalog, workspaceAnswer = workspace;
+  routes['GET /api/workbench/v1/scheduling/runs/*/candidates'] = () => catalogAnswer;
+  routes['GET /api/workbench/v1/scheduling/candidates/*/workspace'] = () => workspaceAnswer;
+  assert.deepEqual((await local.RunCandidateAPI.catalog(savedRun, {})).data, raw.candidate_catalog);
+  assert.deepEqual((await local.RunCandidateAPI.workspace(savedCandidate, {})).data, raw.candidate_workspace);
   assert.strictEqual(local.APSPlanContract.workspace(plan, raw.adopted_plan_workspace.plan.plan_ref, {}), plan);
   const algorithm = raw.candidate_workspace.generation.algorithm;
   assert.deepEqual(algorithm.target_objectives, ['min_overdue', 'min_tardiness', 'min_changeover'], '真实 canonical JSON 往返保留保存的主目标优先顺序');
@@ -1085,8 +1094,10 @@ async function unifiedGenerationContracts() {
   for (const value of [workspace, plan]) {
     const wrong = clone(value), item = wrong.data.generation ? wrong.data.generation.algorithm : wrong.data.provenance.algorithm;
     item.target_objectives.reverse();
-    assert.throws(() => wrong.data.generation ? local.RunCandidateAPI.validateWorkspace(wrong, savedCandidate, {})
-      : local.APSPlanContract.workspace(wrong, raw.adopted_plan_workspace.plan.plan_ref, {}), undefined, '两消费者均拒绝错序算法合同');
+    if (wrong.data.generation) {
+      workspaceAnswer = wrong;
+      await assert.rejects(() => local.RunCandidateAPI.workspace(savedCandidate, {}), undefined, '两消费者均拒绝错序算法合同');
+    } else assert.throws(() => local.APSPlanContract.workspace(wrong, raw.adopted_plan_workspace.plan.plan_ref, {}), undefined, '两消费者均拒绝错序算法合同');
   }
   const extra = clone(plan); extra.data.provenance.algorithm.unrecorded = true;
   assert.throws(() => local.APSPlanContract.workspace(extra, raw.adopted_plan_workspace.plan.plan_ref, {}), undefined, '新采用来源不接未声明字段');
@@ -1121,6 +1132,9 @@ async function unifiedGenerationContracts() {
     assert.deepEqual(Object.keys(process.summary).sort(), ['elapsed_ms', 'first_complete_elapsed_ms', 'first_improvement_elapsed_ms', 'last_improvement_elapsed_ms'].sort());
     assert.equal(process.summary.last_improvement_elapsed_ms, null, '真实快速生成未改善，按保存事实显示');
   }
+  assert.strictEqual(API.processDetails(envelope(processRaw.process_by_objective.min_tardiness), nativeRun, {}), processRaw.process_by_objective.min_tardiness);
+  assert.throws(() => API.processDetails(envelope(processRaw.process_by_objective.min_tardiness), nativeRun, { objective: 'min_overdue' }), /优化方向/);
+  assert.throws(() => API.processDetails(envelope(processRaw.process_by_objective.min_tardiness), nativeRun, { process_candidate_ref: first }), /过程来源定位/);
   const controlledRaw = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/unified_process_controlled.json'), 'utf8'));
   assert.equal(controlledRaw.provenance.actual_http, false); assert.equal(controlledRaw.provenance.solver_calls, 0);
   const improved = controlledRaw.improvement, improvementQuery = { ...improved.filters,
@@ -1289,33 +1303,36 @@ async function adoptionContextContracts() {
   routes['GET /api/workbench/v1/scheduling/candidates/*/adoption-commands/*'] = call => { calls.push(call.path.split('/').pop()); return lookupAnswer; };
   routes['POST /api/workbench/v1/scheduling/candidates/*/adopt-preview'] = call => { previews++; return preview(call.path.split('/').at(-2)); };
   // Every saved intent carries its data source (schema_version 2); records without it are no longer readable.
-  assert.throws(() => A.pending().begin(summary, input, null), undefined, '没有数据来源的采用意图不能开始');
-  const modern = A.pending().begin({ ...summary, data_context_ref: oldContext }, input, null);
-  assert.equal(modern.schema_version, 2); assert.equal(modern.data_context_ref, oldContext); assert(A.validIntent(modern));
-  for (const legacy of [{ ...modern, schema_version: 1 }, (({ data_context_ref, ...rest }) => ({ ...rest, schema_version: 1 }))(modern), { ...modern, data_context_ref: 'd'.repeat(64) }])
-    assert.equal(A.validIntent(legacy), false, '旧版或散列来源的采用意图不再可读');
-  storage.setItem(A.PENDING_KEY, JSON.stringify({ ...modern, schema_version: 1 }));
-  assert.throws(() => A.pending().read(), /不完整/, '本机存着旧版采用记录时拦下新采用'); storage.setItem(A.PENDING_KEY, JSON.stringify(modern));
-  assert(!A.validIntent({ ...modern, data_context_ref: JSON.stringify({ database_scope: '/old.db', successful_restores: [true] }) }));
+  assert.deepEqual(clone(A.input({ confirm: true, reason: '  ' + '原'.repeat(1000) + '  ', declared_operator: '  ' + '人'.repeat(100) + '  ' })),
+    { confirm: true, reason: '原'.repeat(1000), declared_operator: '人'.repeat(100) });
+  assert.throws(() => A.input({ confirm: true, reason: '原'.repeat(1001), declared_operator: '人' }), /原因/);
+  const modern = A.pending.begin({ ...summary, data_context_ref: oldContext }, input, null);
+  assert.equal(modern.schema_version, 2); assert.equal(modern.data_context_ref, oldContext); assert.equal(A.pending.read().request_key, modern.request_key);
+  for (const legacy of [{ ...modern, schema_version: 1 }, (({ data_context_ref, ...rest }) => ({ ...rest, schema_version: 1 }))(modern), { ...modern, data_context_ref: 'd'.repeat(64) },
+    { ...modern, data_context_ref: JSON.stringify({ database_scope: '/old.db', successful_restores: [true] }) }]) {
+    storage.setItem(A.PENDING_KEY, JSON.stringify(legacy));
+    assert.throws(() => A.pending.read(), /不完整/, '旧版或散列来源的采用意图不再可读');
+  }
+  storage.setItem(A.PENDING_KEY, JSON.stringify(modern));
   lookupAnswer = status(modern, 'context_replaced'); const lookupStart = network.calls.length, proof = await A.lookup(modern);
   assert.equal(proof.resolution, 'context_replaced');
   const lookupRequest = network.calls[lookupStart];
   assert.equal(lookupRequest.path, '/api/workbench/v1/scheduling/candidates/' + first + '/adoption-commands/' + modern.request_key);
   assert.equal(lookupRequest.query.run_ref, runRef); assert.equal(lookupRequest.query.data_context_ref, oldContext); assert.equal(lookupRequest.method, 'GET');
   lookupAnswer = status(modern, 'unresolved'); assert.equal(await A.lookup(modern), null, 'An in-flight record remains protected');
-  assert.throws(() => A.pending().dismissReplaced(modern, clone(proof)), /不能丢弃/, 'A copied or forged proof cannot authorize dismissal');
+  assert.throws(() => A.pending.dismissReplaced(modern, clone(proof)), /不能丢弃/, 'A copied or forged proof cannot authorize dismissal');
   const changed = { ...modern, input: { ...modern.input, reason: '另一个提交内容' } };
   storage.setItem(A.PENDING_KEY, JSON.stringify(changed));
-  assert.throws(() => A.pending().dismissReplaced(changed, proof), /不能丢弃/, 'Proofs bind the entire original intent, not just its request key');
-  assert.throws(() => A.pending().dismissReplaced(modern, proof), /记录已变化/, 'CAS preserves a newer stored record');
-  assert.deepEqual(clone(A.pending().read()), clone(changed));
+  assert.throws(() => A.pending.dismissReplaced(changed, proof), /不能丢弃/, 'Proofs bind the entire original intent, not just its request key');
+  assert.throws(() => A.pending.dismissReplaced(modern, proof), /记录已变化/, 'CAS preserves a newer stored record');
+  assert.deepEqual(clone(A.pending.read()), clone(changed));
   storage.setItem(A.PENDING_KEY, JSON.stringify(modern));
   const blockedStorage = { ...storage, removeItem() { throw new Error('disk full'); } };
   local.localStorage = blockedStorage;
-  assert.throws(() => A.pending().dismissReplaced(modern, proof), /存不下/);
+  assert.throws(() => A.pending.dismissReplaced(modern, proof), /存不下/);
   local.localStorage = storage;
-  assert.equal(A.pending().read().request_key, modern.request_key);
-  A.pending().dismissReplaced(clone(modern), proof); assert.equal(A.pending().read(), null);
+  assert.equal(A.pending.read().request_key, modern.request_key);
+  A.pending.dismissReplaced(clone(modern), proof); assert.equal(A.pending.read(), null);
   lookupAnswer = receipt(modern);
   assert.strictEqual((await A.lookup(modern)).data.candidate_ref, first, 'Committed results from another candidate remain recoverable');
   storage.setItem(A.PENDING_KEY, JSON.stringify(modern)); calls.length = 0;
@@ -1337,7 +1354,7 @@ async function adoptionContextContracts() {
   assert.equal(dialog().props.replacedInfo, null, 'Starting a new query invalidates the previous dismissal proof');
   resolveLookup(status(modern, 'unresolved')); await settle();
   assert.equal(dialog().props.replacedInfo, null); assert(!footer().some(node => text(node) === '结束旧来源待确认记录'));
-  assert.equal(A.pending().read().request_key, modern.request_key);
+  assert.equal(A.pending.read().request_key, modern.request_key);
   lookupValue = status(modern, 'context_replaced'); dialog().props.onLookup(); await settle();
   const next = { ...modern, request_key: 'adoption-' + 'f'.repeat(48), candidate_ref: third, preview: { ...modern.preview, candidate_ref: third } };
   lookupValue = status(next, 'unresolved'); storage.setItem(A.PENDING_KEY, JSON.stringify(next));
@@ -1346,12 +1363,12 @@ async function adoptionContextContracts() {
   await settle(); assert(!dialog().props.notice.includes('数据库已切换或恢复'));
   lookupValue = receipt(next); dialog().props.onLookup(); await settle();
   assert(dialog().props.result); assert.equal(dialog().props.replacedInfo, null);
-  dialog().props.onFinish(); await settle(); assert.equal(A.pending().read(), null);
+  dialog().props.onFinish(); await settle(); assert.equal(A.pending.read(), null);
   storage.setItem(A.PENDING_KEY, JSON.stringify(modern)); lookupValue = status(modern, 'context_replaced');
   local.dispatchEvent(new CustomEvent(A.EVENT, { detail: modern })); await settle();
   nodes(tree).find(node => node.type === 'button').props.onClick(); await settle();
   nodes(expand(dialog().type(dialog().props).props.footer)).find(node => node.type === 'button' && text(node) === '结束旧来源待确认记录').props.onClick();
-  await settle(); assert.equal(A.pending().read(), null); assert.equal(dialog(), undefined);
+  await settle(); assert.equal(A.pending.read(), null); assert.equal(dialog(), undefined);
   nodes(tree).find(node => node.type === 'button').props.onClick(); await settle();
   assert.equal(previews, 1); assert.equal(dialog().props.preview.candidate_ref, third, 'Ending the proven old-source record restores current-candidate actions');
   state.unmount();

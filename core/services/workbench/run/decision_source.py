@@ -5,6 +5,7 @@ from typing import Any, Dict, NamedTuple, Optional, overload
 
 from core.models.workbench_preflight import preflight_window
 from core.models.workbench_run_candidate import local_time, reference, reject
+from core.services.scheduler.run.optimizer.shared_process import UNIFIED_PROCESS_VERSION
 from core.services.workbench.facts.candidate_baseline import invalid_baseline
 from core.services.workbench.facts.candidate_projection import completed_dispositions, validate_manifest
 from core.services.workbench.facts.candidate_tasks import project_validated_tasks, validate_saved_tasks
@@ -75,10 +76,11 @@ class DecisionSource:
         basis_header = {**self.header, "selection": self.memberships.expand(self.header.get("selection"))} if self.header else None
         self.basis = selection_basis(basis_header, self.rows)
         self.comparison_mode, self.resource_view = comparison_mode, resource_view
-        self.reference_ref = (reference_candidate_ref or self.basis["selected_candidate_ref"]) if comparison_mode == "candidates" else None
-        self.selected_ref = selected_candidate_ref or self.basis["selected_candidate_ref"]
-        self._candidate_reference(self.reference_ref)
-        self._candidate_reference(self.selected_ref)
+        self.reference_ref = ((reference_candidate_ref if reference_candidate_ref is not None else self.basis["selected_candidate_ref"])
+                              if comparison_mode == "candidates" else None)
+        self.selected_ref = selected_candidate_ref if selected_candidate_ref is not None else self.basis["selected_candidate_ref"]
+        self._reference_row = self._candidate_reference(self.reference_ref)
+        self.selected = self._candidate_reference(self.selected_ref)
         self._projected, self._task_intervals, self._analysis, self._candidate_records = {}, {}, {}, {}
         self._raw_tasks, self._candidate_sources, self._scheduled_op_ids, self._prepared_tasks = {}, {}, {}, {}
         self._candidate_records.update({row["candidate_ref"]: row for row in prepared.get("rows", ())})
@@ -162,7 +164,7 @@ class DecisionSource:
         key = self.computation_key(key)
         if key not in self._analysis:
             if key == "reference":
-                self._analysis[key] = self.official["tasks"] if self.comparison_mode == "admission_official" else []
+                self._analysis[key] = self.official_tasks if self.comparison_mode == "admission_official" else []
             elif key in self._projected:
                 self._analysis[key] = [dict(row, interval_comparable=True) for row in self._projected[key]]
             else:
@@ -202,9 +204,13 @@ class DecisionSource:
 
     @cached_property
     def saved_process(self):
-        if self.run["state"] in ("queued", "running"):
-            return None
-        return decode_model(self.repo.decision_read_model(self.run["run_ref"], ("process",)), ("process",))["process"]
+        """完成运行的共同过程存档，在存储边界一次性核验版本，以及它与本次 run_options 的目标目录一致。"""
+        process = decode_model(self.repo.decision_read_model(self.run["run_ref"], ("process",)), ("process",))["process"]
+        options = self.context["run_options"]
+        if (process["version"] != UNIFIED_PROCESS_VERSION or process["primary_objective"] != options["primary_objective"]
+                or process["target_objectives"] != options["target_objectives"]):
+            corrupt()
+        return process
 
     @overload
     def _candidate_reference(self, candidate_ref: None) -> None: ...
@@ -215,7 +221,6 @@ class DecisionSource:
     def _candidate_reference(self, candidate_ref: Optional[str]) -> Optional[Dict[str, Any]]:
         if candidate_ref is None:
             return
-        reference(candidate_ref)
         candidate = next((row for row in self.rows if row["candidate_ref"] == candidate_ref), None)
         if candidate is None:
             if self.store.candidate_run(candidate_ref) != self.run["run_ref"]:
@@ -288,13 +293,12 @@ class DecisionSource:
 
     def delivery(self, key):
         if self.computation_key(key) == "reference" and self.official_changed:
-            return project_decision_delivery(self.facts, self.official["tasks"], self.scope["batch_refs"],
+            return project_decision_delivery(self.facts, self.official_tasks, self.scope["batch_refs"],
                 deferred_ids=self.reference_deferred_ids, available=self.baseline["state"] == "available",
                 intervals=self.task_intervals("reference"))
         return self.saved_projection(key, "delivery")
 
     def delivery_detail(self, candidate_ref):
-        self._candidate_reference(candidate_ref)
         return self.saved_projection(candidate_ref, "delivery_detail")
 
     def result_available(self, candidate_ref):
@@ -364,13 +368,20 @@ class DecisionSource:
             value["deferred_operation_refs"] = sorted(ref for ref, op in self.facts.operations.items()
                                                       if op in value["deferred_operation_ids"])
             return OfficialReading(value, True)
-        value = dict(model)
-        value["tasks"] = analysis_arrangements(model["arrangements"])
-        return OfficialReading(value, False)
+        return OfficialReading(model, False)
 
     @property
     def official(self):
         return self._official_reading.model
+
+    @cached_property
+    def official_tasks(self):
+        """The admitted official plan's tasks, expanded only when a consumer reads them.
+
+        They stay distinct from ``analysis_tasks("reference")``, which is the reference candidate in candidates mode.
+        """
+        reading = self._official_reading
+        return reading.model["tasks"] if reading.changed else analysis_arrangements(reading.model["arrangements"])
 
     @property
     def official_changed(self):
@@ -387,7 +398,7 @@ class DecisionSource:
     def baseline(self):
         if self.comparison_mode == "admission_official":
             return {**self.official["identity"], "candidate_ref": None}
-        row = next((item for item in self.rows if item["candidate_ref"] == self.reference_ref), None)
+        row = self._reference_row
         return {"kind": "candidate", "candidate_ref": self.reference_ref, "baseline_ref": None, "version": None,
                 "source_candidate_ref": None, "label": row["artifact"].get("label") if row else None,
                 "state": "available" if row else "selection_required"}
@@ -419,7 +430,10 @@ class DecisionSource:
         for key in keys:
             if key == "reference":
                 if self.comparison_mode == "admission_official" and self.official_changed:
-                    pools = resource_cohort([self.resource_before_tasks])
+                    pools = resource_cohort(
+                        [self.resource_before_tasks],
+                        task_intervals=[self.task_intervals("reference")],
+                    )
                 else:
                     pools = self.official["resource_views"][self.resource_view]["resources"] if self.comparison_mode == "admission_official" else []
             else:
@@ -467,10 +481,6 @@ class DecisionSource:
     @cached_property
     def reference_deferred_refs(self):
         return self.deferred_refs if self.comparison_mode == "candidates" else set(self.memberships.refs(self.official["deferred_operation_refs"], "operation"))
-
-    @property
-    def selected(self):
-        return next((row for row in self.rows if row["candidate_ref"] == self.selected_ref), None)
 
     def state(self):
         return {"run": self.run, "capture_ref": self.run["run_ref"], "metric_version": METRIC_VERSION,

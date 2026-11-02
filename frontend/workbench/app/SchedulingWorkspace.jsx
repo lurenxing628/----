@@ -4,10 +4,8 @@
   function runHistoryDestination(context) {
     const origin = context.return_decision_context || context;
     const saved = context.return_history_context || origin.return_history_context || context.history_query || origin.history_query || {};
-    const returnPlan = context.return_plan_context || origin.return_plan_context || saved.return_plan_context;
-    const restored = window.RunHistoryAPI.context({ ...saved, ...(returnPlan ? { return_plan_context: returnPlan } : {}) });
     return { view: 'analysis', context: { source: 'run_history', history_topic: 'run_catalog',
-      history_query: window.RunHistoryAPI.returnContext(restored.query, restored.returnPlan) } };
+      history_query: window.RunHistoryAPI.returnContext(window.RunHistoryAPI.scope(saved)) } };
   }
   function trialAction(onNavigate, { planRef, candidateRef, scope, query, disabled, taskOrigin, historyOrigin, label = '试调' }) {
     const display = { query };
@@ -82,7 +80,6 @@
     return <div className="scheduling-navigation">{children}</div>;
   }
   function HistoryReturn({ context, onNavigate }) {
-    if (!context.return_decision_history_context && !(context.return_decision_context && context.return_decision_context.return_decision_history_context)) return null;
     return window.DecisionHistoryAPI.returnState(context) ? <U.Button icon="chevron-left" onClick={() => onNavigate('analysis', window.DecisionHistoryAPI.historyContext(context))}>返回历史走势</U.Button> : null;
   }
   function RunWorkspace({ onNavigate, initialContext }) {
@@ -96,9 +93,12 @@
   function PlanCenterWorkspace({ view, onNavigate, initialContext }) {
     const context = initialContext, candidate = Object.prototype.hasOwnProperty.call(context, 'run_ref') || Object.prototype.hasOwnProperty.call(context, 'candidate_ref');
     const history = !candidate && context.source === 'run_history';
+    let formal = null, formalError = null;
+    if (!candidate && !history) { try { formal = window.APSPlanNavigation.accept(context); } catch (error) { formalError = error; } }
     const runHistoryReturn = runHistoryDestination(context);
     function renderTrial(value) { return trialAction(onNavigate, { ...value, historyOrigin: window.DecisionHistoryAPI.returnState(context) }); }
     const navigation = <Navigation>
+      {formal && formal.return_to && <U.Button icon="chevron-left" onClick={() => onNavigate(formal.return_to.view, formal.return_to.context)}>返回</U.Button>}
       {!history && <HistoryReturn context={context} onNavigate={onNavigate} />}
       <U.Button icon="files" aria-pressed={!candidate && !history} onClick={() => onNavigate(view, {})}>计划版本</U.Button>
       {!candidate && <U.Button icon="history" aria-pressed={history} onClick={() => onNavigate(runHistoryReturn.view, runHistoryReturn.context)}>排产记录</U.Button>}
@@ -106,7 +106,8 @@
     return candidate ? <window.RunCandidateWorkspace view={view} initialContext={initialContext} onNavigate={onNavigate} runHistoryReturn={runHistoryReturn} navigation={navigation}
       renderAdoption={(candidateRef, metadata) => <window.RunAdoptionAction candidateRef={candidateRef} {...metadata} onNavigate={onNavigate} />} renderTrial={renderTrial} /> : history ?
       <window.RunHistoryWorkspace initialContext={context.history_query} pageContext={context} onNavigate={onNavigate} navigation={navigation} /> :
-      <window.PlanWorkspace view={view} initialContext={initialContext} onNavigate={onNavigate} renderTrial={renderTrial} navigation={navigation} />;
+      formalError ? <section className="plana plan-workspace">{navigation}<p role="alert">{formalError.message}</p></section> :
+      <window.PlanWorkspace view={view} initialContext={formal} onNavigate={onNavigate} renderTrial={renderTrial} navigation={navigation} />;
   }
   window.RunWorkspace = RunWorkspace;
   window.PlanCenterWorkspace = PlanCenterWorkspace;

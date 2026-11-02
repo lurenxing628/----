@@ -14,7 +14,7 @@ from web.api_responses import query_success
 from web.runtime_host import restore_host
 
 from .read_context import bind_read_snapshot
-from .system_context import database_scope, issue_context, journal, query_payload, system_endpoint
+from .system_context import issue_context, journal, query_payload, system_endpoint
 from .system_log_snapshots import resolve_log_snapshot, retain_log_snapshot
 
 
@@ -22,12 +22,12 @@ def restore_available():
     return callable(current_app.extensions.get("workbench_system_restore_guard"))
 
 
-def file_capabilities(journal_records, *, event_journal, reason):
-    if not reason:
-        try:
-            event_journal.assert_ready(journal_records)
-        except WorkbenchCommandRejected as exc:
-            reason = str(exc)
+def file_capabilities(journal_records, *, event_journal):
+    reason = ""
+    try:
+        event_journal.assert_ready(journal_records)
+    except WorkbenchCommandRejected as exc:
+        reason = str(exc)
     can_restore = restore_available()
     return {"create": not bool(reason), "delete": not bool(reason),
             "restore": not bool(reason) and can_restore, "blocked_reason": reason,
@@ -56,13 +56,12 @@ def collection(kind, *, event_journal=None, journal_records=None):
 
 @system_endpoint
 def system_collection(kind):
-    event_journal = (journal() if kind == "backups" and
-                     current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR") else None)
+    event_journal = journal() if kind == "backups" else None
     host = restore_host(current_app) if event_journal is not None else None
     records = None
     if event_journal is not None:
         records = host.capture_maintenance_records() if host is not None else event_journal.collection()
-    database = (event_journal.scope_from_records(records) if event_journal is not None else database_scope()) if kind == "backups" else None
+    database = event_journal.scope_from_records(records) if event_journal is not None else None
     with TransactionManager(g.db).transaction():
         rows, sources, query, snapshot = collection(kind, event_journal=event_journal, journal_records=records)
     count, size, page = len(rows), query["page_size"], query["page"]
@@ -80,9 +79,7 @@ def system_collection(kind):
     data = {"rows": public, "page": {"number": page, "size": size, "total": count, "pages": pages},
             "sources": sources, "scope": "backup-files-and-maintenance-events" if kind == "backups" else "bounded-log-windows"}
     if kind == "backups":
-        reason = ("" if event_journal is not None else
-                  "还没有配置维护目录，备份和恢复暂时不能用。请先在系统维护页设置维护目录。")
-        data.update({"capabilities": file_capabilities(records, event_journal=event_journal, reason=reason),
+        data.update({"capabilities": file_capabilities(records, event_journal=event_journal),
                      "create_context": {"write_token": issue_context("create", {}, database=database)}})
     return query_success(data, snapshot)
 

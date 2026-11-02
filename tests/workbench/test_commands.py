@@ -126,8 +126,10 @@ def test_token_clock_starts_under_the_registry_lock_and_preserves_receipt_replay
 
     from flask import Flask
 
+    from core.models.workbench_action_values import AtomicActionPreview
     from web import public_token_registry as tokens
-    from web.routes.workbench.resource_action_context import PREVIEW_SCOPE, resolve_context, retain_context
+    from web.routes.workbench.resource_action_context import EXPIRED_MESSAGE, IMPORT_MISMATCH_MESSAGE, PREVIEW_SCOPE
+    from web.routes.workbench.write_context import resolve_action_preview, retain_action_preview
 
     app, clock = Flask("token-lock-clock"), [1000.0]
     monkeypatch.setattr(tokens, "time", SimpleNamespace(time=lambda: clock[0]))
@@ -163,8 +165,14 @@ def test_token_clock_starts_under_the_registry_lock_and_preserves_receipt_replay
         assert not thread.is_alive()
         return result
 
+    preview = AtomicActionPreview.build("op_type.create", {}, [])
+
+    def confirm(ref):
+        return lambda: resolve_action_preview(PREVIEW_SCOPE, ref, "op_type.create", ref, expired_message=EXPIRED_MESSAGE,
+                                              mismatch_message=IMPORT_MISMATCH_MESSAGE)
+
     with app.app_context():
-        ref, _ = retain_context(PREVIEW_SCOPE, "pending-preview")
+        ref, _ = retain_action_preview(PREVIEW_SCOPE, preview)
         issuer = tokens.PublicTokenIssuer("token-lock-reissue", ttl_seconds=100)
         original, original_expiry = issuer.issue_with_expiry("value")
     monkeypatch.setattr(tokens, "_LOCK", ObservedLock())
@@ -172,8 +180,7 @@ def test_token_clock_starts_under_the_registry_lock_and_preserves_receipt_replay
     assert renewed["value"][0] != original
     assert original_expiry == 1100.0 and renewed["value"][1] == 1160.0
 
-    intent = {"context_ref": ref, "normalized_input": {"preview_ref": ref},
-              "guard": lambda: resolve_context(PREVIEW_SCOPE, ref, "stale_write")}
+    intent = {"context_ref": ref, "normalized_input": {"preview_ref": ref}, "guard": confirm(ref)}
     changes = schema_conn.total_changes
     rejected = wait_across_clock(lambda: run(schema_conn, **intent), 1899.0, 1901.0)
     assert isinstance(rejected.get("error"), WorkbenchCommandRejected)
@@ -183,9 +190,8 @@ def test_token_clock_starts_under_the_registry_lock_and_preserves_receipt_replay
     assert WorkbenchCommandService(schema_conn).lookup(KEY) is None
 
     with app.app_context():
-        fresh, _ = retain_context(PREVIEW_SCOPE, "pending-preview")
-        intent.update(context_ref=fresh, normalized_input={"preview_ref": fresh},
-                      guard=lambda: resolve_context(PREVIEW_SCOPE, fresh, "stale_write"))
+        fresh, _ = retain_action_preview(PREVIEW_SCOPE, preview)
+        intent.update(context_ref=fresh, normalized_input={"preview_ref": fresh}, guard=confirm(fresh))
         first = run(schema_conn, **intent)
         clock[0] = 2802.0
         with pytest.raises(WorkbenchCommandRejected, match="预检结果已过期"):

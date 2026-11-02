@@ -93,7 +93,7 @@ def graph_ready_benchmark_batches() -> Dict[str, Batch]:
     }
 
 
-def graph_ready_benchmark_context(*, include_bottleneck: bool = True) -> Dict[str, Any]:
+def graph_ready_benchmark_context() -> Dict[str, Any]:
     metrics_by_op_id: Dict[int, Dict[str, Any]] = {
         1: {
             "is_on_critical_path": False,
@@ -128,17 +128,11 @@ def graph_ready_benchmark_context(*, include_bottleneck: bool = True) -> Dict[st
             "bottleneck_machine_score": 8.0,
         },
     }
-    if not include_bottleneck:
-        metrics_by_op_id = {
-            op_id: {key: value for key, value in metric.items() if key != "bottleneck_machine_score"}
-            for op_id, metric in metrics_by_op_id.items()
-        }
     op_ids = set(metrics_by_op_id)
     return {
         "enabled": True,
         "schedulable_op_ids": op_ids,
         "fixed_op_ids": set(),
-        "fixed_op_sources_by_op_id": {},
         "predecessor_op_ids_by_op_id": {op_id: set() for op_id in op_ids},
         "successor_op_ids_by_op_id": {op_id: set() for op_id in op_ids},
         "sort_key_by_op_id": {

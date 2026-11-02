@@ -149,7 +149,7 @@ def test_adopted_external_supplier_uses_original_lineage_and_null_resources_are_
         return result["candidates"][0]["candidate_ref"]
 
     original = run("supplier-original-run-0001")
-    first, _ = read_candidate_analysis(case.conn, original)
+    first, _ = read_candidate_analysis(case.conn, original, bind_snapshot=lambda scope, state: state)
     assert first["metrics"]["changed_operation_count"]["value"] == 2
     assert first["metrics"]["machine_change_count"]["value"] == 0
     assert first["before_metrics"]["overdue_count"]["reason"]["code"] == "no_admission_baseline"
@@ -167,7 +167,7 @@ def test_adopted_external_supplier_uses_original_lineage_and_null_resources_are_
         adopted = adopter.adopt(saved["scenario_ref"], preview["write_context"]["write_token"], "supplier-trial-adoption", INTENT)
         assert adopted["ok"], adopted
     unchanged = run("supplier-unchanged-run-0002")
-    comparison, _ = read_candidate_analysis(case.conn, unchanged)
+    comparison, _ = read_candidate_analysis(case.conn, unchanged, bind_snapshot=lambda scope, state: state)
     assert comparison["metrics"]["changed_operation_count"]["value"] == 0
     assert comparison["metrics"]["machine_change_count"]["value"] == 0
     assert comparison["operations"]["issues"] == []
@@ -176,14 +176,14 @@ def test_adopted_external_supplier_uses_original_lineage_and_null_resources_are_
     case.conn.execute("UPDATE BatchOperations SET supplier_id='XS2' WHERE id=?", (external,))
     case.conn.commit()
     changed = run("supplier-changed-run-0003")
-    baseline, _ = WorkbenchRunCandidateBaselineQueryService(case.conn).baseline(RunCandidateBaselineScope(changed))
+    baseline, _ = WorkbenchRunCandidateBaselineQueryService(case.conn).baseline(RunCandidateBaselineScope(changed), bind_snapshot=lambda scope, state: state)
     row = next(item for item in baseline["comparisons"] if item["candidate"]["source"] == "external")
     assert row["baseline_segments"][0]["source"] == "external"
     assert row["baseline_segments"][0]["supplier"] == {"ref": case.ref("supplier", "XS1"), "label": "Original supplier"}
     assert row["candidate"]["supplier"] == {"ref": case.ref("supplier", "XS2"), "label": "Second supplier"}
     assert row["delta"]["supplier_changed"] is True
     assert row["delta"]["machine_changed"] is False and row["delta"]["operator_changed"] is False
-    comparison, _ = read_candidate_analysis(case.conn, changed)
+    comparison, _ = read_candidate_analysis(case.conn, changed, bind_snapshot=lambda scope, state: state)
     assert comparison["metrics"]["changed_operation_count"]["value"] == 1
     assert comparison["metrics"]["machine_change_count"]["value"] == 0
 
@@ -235,6 +235,7 @@ def test_run_without_candidate_results_cannot_reread_its_admission_official_plan
     from core.services.workbench.facts.decision_read_model import build_failure_read_models
     from core.services.workbench.facts.decision_read_models import decode_model
     from core.services.workbench.run.decision_export import read_decision_export
+    from core.services.workbench.run.decision_process import read_process_details
     from data.repositories.workbench_run_repo import WorkbenchRunRepository
 
     conn = candidate_case.conn
@@ -251,5 +252,18 @@ def test_run_without_candidate_results_cannot_reread_its_admission_official_plan
         conn.commit()
     # 只有产出候选结果的运行才保存工序处置；按原始来源重读排产时的正式计划需要它们。
     with pytest.raises(WorkbenchCommandRejected) as rejected:
-        read_decision_export(conn, run_ref, "recommendation", comparison_mode="admission_official")
+        read_decision_export(conn, run_ref, "recommendation", bind_snapshot=lambda scope, state: state, comparison_mode="admission_official")
     assert rejected.value.code == "candidate_baseline_invalid"
+    # 没有候选就没有过程 anchor：过程查看和整份导出都在解析 anchor 时返回 404，不读取过程存档。
+    statements = []
+    conn.set_trace_callback(statements.append)
+    try:
+        for read in (lambda: read_process_details(conn, run_ref, bind_snapshot=lambda scope, state: state),
+                     lambda: read_decision_export(conn, run_ref, "all", bind_snapshot=lambda scope, state: state)):
+            with pytest.raises(WorkbenchCommandRejected) as missing:
+                read()
+            assert (missing.value.code, missing.value.status, str(missing.value)) == (
+                "entity_not_found", 404, "这次排产还没有保存候选计算记录。")
+    finally:
+        conn.set_trace_callback(None)
+    assert not any("PROCESS_JSON" in sql.upper() for sql in statements)

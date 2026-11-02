@@ -47,7 +47,6 @@ def _scope_tasks(ledger, scopes):
         by_identity[key] = {
             "operation_ref": row[4],
             "task_ref": row[5],
-            "plan_ref": row[6],
             "source": row[7],
             "setup_hours": setup_hours,
             "unit_hours": unit_hours,
@@ -86,7 +85,7 @@ def _load_projections(ledger, refs, execution_projections):
     return projections, plan, ledger.revision_clock()["ledger_revision"]
 
 
-def _adapt_scope_facts(facts, tasks, projections, plan, ledger_revision, resources, refs_by_op):
+def _adapt_scope_facts(facts, tasks, projections, plan, ledger_revision, resources):
     result = {}
     for scope, task in tasks.items():
         projection = projections[task["operation_ref"]]
@@ -105,12 +104,9 @@ def _adapt_scope_facts(facts, tasks, projections, plan, ledger_revision, resourc
         if changes is None:
             result[scope] = replace(fact, target_quantity=projection.target_quantity, quantity_basis=projection.target_basis)
             continue
-        projection_resources = {ref: resources.get(ref) for ref in refs_by_op[task["operation_ref"]]}
-        protection = {"scope_task": task, "ledger_revision": ledger_revision,
-                      "projection": _snapshot_projection(projection), "resources": projection_resources}
         revision = fact.state_revision + ":ledger-v2:" + str(ledger_revision)
         result[scope] = replace(fact, target_quantity=projection.target_quantity, quantity_basis=projection.target_basis,
-                               state_revision=revision, execution_protection_content=protection, **changes)
+                                state_revision=revision, **changes)
     return result
 
 
@@ -124,18 +120,8 @@ def adapt_ledger_facts(ledger, facts, *, execution_projections):
         tasks = _scope_tasks(ledger, facts)
         refs = list(dict.fromkeys(task["operation_ref"] for task in tasks.values()))
         projections, plan, ledger_revision = _load_projections(ledger, refs, execution_projections)
-        refs_by_op = {op_ref: projection_resource_refs(row) for op_ref, row in projections.items()}
-        resource_refs = {ref for refs_set in refs_by_op.values() for ref in refs_set}
+        resource_refs = {ref for row in projections.values() for ref in projection_resource_refs(row)}
         resources = {row["ref"]: row for row in ledger.resources(resource_refs)}
-        return _adapt_scope_facts(facts, tasks, projections, plan, ledger_revision, resources, refs_by_op)
+        return _adapt_scope_facts(facts, tasks, projections, plan, ledger_revision, resources)
     except WorkbenchCommandRejected as exc:
         raise _unavailable(exc.code) from exc
-
-
-def _snapshot_projection(projection):
-    payload = projection.to_dict()
-    payload.pop("write_context")
-    payload.pop("comparison_task_ref")
-    for report in payload["reports"]:
-        report.pop("write_context")
-    return payload

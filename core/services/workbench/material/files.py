@@ -1,29 +1,27 @@
 """Private material upsert/import/export orchestration; no Flask or token storage.
 
-preview_import(content: bytes, *, file_format, scope, mode='upsert') returns a
-MaterialPreview. scope={} binds the material collection; filtered imports and
-replace/append-only modes are unsupported by the prototype. Blank cells/columns
-are omitted, \\N clears only nullable fields. Headers and escaping are documented
-in material_file_codec.
+preview_import(content: bytes, *, file_format, mode) returns a
+MaterialPreview. The upload route admits csv|xlsx and mode=upsert. Blank
+cells/columns are omitted, \\N clears only nullable fields. Headers and
+escaping are documented in material_file_codec.
 created_at is exported for reference and is never part of imported changes.
 
-confirm_import(preview, content, *, file_format, scope, mode='upsert') requires an
-outer CommandService write transaction. Bind the original in-memory preview to
-the API's temporary write context, pass preview.intent() as normalized_input,
-and call confirmation from mutate. All facts/inputs are rechecked before writes;
-the outer command transaction rolls back the whole batch on any domain failure.
-Referenced updates are flagged requires_confirmation in the approved preview.
+confirm_import(preview) requires an outer CommandService write transaction. The
+preview carries its parsed source (preview.source). Bind the original in-memory
+preview to the API's temporary write context and pass {"preview_ref": ref} as
+normalized_input. All facts/inputs are rechecked before writes; the outer command
+transaction rolls back the whole batch on any domain failure. Referenced updates
+are flagged requires_confirmation in the approved preview.
 
-export_rows(file_format, *, scope=None, selected_refs=None) requires the caller's
-already validated read-snapshot transaction and exactly one explicit scope or
-ref list. Pass that snapshot's reader to the service to reuse its captured rows.
+export_rows(file_format, *, request=None, selected_refs=None) requires the caller's
+already validated read-snapshot transaction and exactly one validated
+MaterialPageRequest or ref list. Pass that snapshot's reader to the service to
+reuse its captured rows.
 Filters export every matching row in query order; selected refs retain their
 explicit order. The 2000-row import cap does not apply to either selection.
 XLSX is limited only by worksheet capacity; CSV has no worksheet row/cell cap.
-write_export(rows, file_format) encodes those rows after the read transaction
+write_material_file(rows, file_format) encodes those rows after the read transaction
 ends and returns FileDownload(filename, mime_type, content: bytes, row_count).
-template(file_format='xlsx') returns header-only bytes, with XLSX field examples
-in header comments (no demo records that could accidentally be imported).
 """
 
 from __future__ import annotations
@@ -37,13 +35,8 @@ from core.models.workbench_material_file import (
     COLUMNS,
     MATERIAL_COLUMNS,
     MaterialPreview,
-    check_preview,
-    file_request,
-    normalize_refs,
-    normalize_scope,
     preview_row,
     reject_row,
-    scope_request,
 )
 from core.models.workbench_resource_file_source import PreparedImportSource
 from core.models.workbench_resource_input import resource_text
@@ -51,7 +44,7 @@ from core.services.workbench import messages
 from data.repositories.workbench_material_file_repo import WorkbenchMaterialFileRepository
 
 from .bulk import full_material_snapshot
-from .file_codec import check_export_capacity, read_material_file, write_material_file
+from .file_codec import check_export_capacity, read_material_file
 from .queries import WorkbenchMaterialQueryService
 from .service import WorkbenchMaterialService
 from .table_facts import MaterialRow
@@ -65,20 +58,19 @@ class WorkbenchMaterialFileService:
         self.repo = WorkbenchMaterialFileRepository(conn, logger=logger)
         self.tx = TransactionManager(conn)
 
-    def _prepare_source(self, content, *, file_format, scope, mode="upsert"):
-        request = file_request(content, file_format, mode, scope)
+    def _prepare_source(self, content, *, file_format, mode):
+        request = {"format": file_format, "mode": mode}
         source, notices = read_material_file(content, file_format)
-        prepared = PreparedImportSource.build("material.import", request, source, notices, content=content)
-        request["actual_source_ref"] = prepared.source_ref
-        return prepared, request
+        return PreparedImportSource.build(request, source, notices)
 
-    def preview_import(self, content, *, file_format, scope, mode="upsert"):
-        prepared, request = self._prepare_source(content, file_format=file_format, scope=scope, mode=mode)
+    def preview_import(self, content, *, file_format, mode):
+        prepared = self._prepare_source(content, file_format=file_format, mode=mode)
         with self.tx.transaction():
-            preview, _ = self._prepare_import(prepared, request)
+            preview, _ = self._prepare_import(prepared)
             return preview
 
-    def _prepare_import(self, prepared, request):
+    def _prepare_import(self, prepared):
+        request = prepared.request()
         source, notices = prepared.parsed()
         codes = {code for row in source for code in (row["values"].get("business_code"),)
                  if type(code) is str}
@@ -124,8 +116,6 @@ class WorkbenchMaterialFileService:
                 self._classify(row, raw)
         except ValidationError as exc:
             reject_row(row, exc.message, field=exc.field or "input")
-        except WorkbenchCommandRejected as exc:
-            reject_row(row, str(exc), code=exc.code)
         return row
 
     @staticmethod
@@ -163,45 +153,30 @@ class WorkbenchMaterialFileService:
         row["result"] = "update" if row["changes"] else "unchanged"
         row["requires_confirmation"] = bool(row["changes"] and row["expected"]["requirements"])
 
-    def confirm_import(self, preview, content, *, file_format, scope, mode="upsert"):
+    def confirm_import(self, preview):
         if not self.conn.in_transaction:
             raise RuntimeError("物料导入确认必须在外层工作台写事务中执行。")
-        try:
-            prepared = PreparedImportSource.confirmation(preview, content)
-            request = prepared.request_for("material.import", file_format, mode, normalize_scope(scope))
-        except (ValidationError, WorkbenchCommandRejected) as exc:
-            raise WorkbenchCommandRejected("stale_write", "文件内容、模式或范围已变化，请重新预检。") from exc
-        current, rows = self._prepare_import(prepared, request)
-        check_preview(preview, current)
+        current, rows = self._prepare_import(preview.source)
+        body = preview.check_current(current)
         changes = [self.adapter.prepare_checked(row["action"], row["input"], row["expected"]) for row in rows]
         outcomes = self.adapter.apply_prepared_many(changes)
         results = [{"row": row["row"], "result": outcome.result, **outcome.data}
                    for row, outcome in zip(rows, outcomes)]
         result = "committed" if any(row["result"] == "committed" for row in results) else "unchanged"
-        summary = {key: sum(row["result"] == key for row in rows)
-                   for key in ("new", "update", "unchanged", "delete", "rejected")}
-        return WorkbenchCommandOutcome(result, {"rows": results, "summary": summary})
+        return WorkbenchCommandOutcome(result, {"rows": results, "summary": body["summary"]})
 
-    def export_rows(self, file_format, *, scope=None, selected_refs=None):
-        """在调用方已验证的读快照里读完整份导出行；编码文件交给 write_export，在读事务结束后做。"""
+    def export_rows(self, file_format, *, request=None, selected_refs=None):
+        """在调用方已验证的读快照里读完整份导出行；编码文件交给 write_material_file，在读事务结束后做。"""
         snapshot = self.reader._snapshot
         if not self.conn.in_transaction or snapshot is None:
             raise RuntimeError("物料导出必须在调用方已验证的查询快照事务中执行。")
-        if (scope is None) == (selected_refs is None):
-            raise ValidationError("导出要么按筛选范围，要么按勾选的记录，只能选一种。", field="scope")
         if selected_refs is None:
-            rows = self.reader.matching_rows(scope_request(scope))
+            rows = self.reader.matching_rows(request)
             check_export_capacity(len(rows), file_format)
         else:
-            refs = normalize_refs(selected_refs, allow_empty=True)
-            check_export_capacity(len(refs), file_format)
-            rows = self.reader.selected_rows(refs)
+            check_export_capacity(len(selected_refs), file_format)
+            rows = self.reader.selected_rows(selected_refs)
         return [self._export_row(row) for row in rows]
-
-    @staticmethod
-    def write_export(rows, file_format):
-        """只用 export_rows 读出的行生成 CSV/XLSX，不再查库，可在读事务之外调用。"""
-        return write_material_file(rows, file_format)
 
     @staticmethod
     def _export_row(row: MaterialRow):
@@ -209,7 +184,3 @@ class WorkbenchMaterialFileService:
         exported = dict(zip(COLUMNS, (raw[key] for key in MATERIAL_COLUMNS)))
         exported["created_at"] = messages.local_created_at(raw["created_at"])
         return exported
-
-    @staticmethod
-    def template(file_format="xlsx"):
-        return write_material_file([], file_format, template=True)

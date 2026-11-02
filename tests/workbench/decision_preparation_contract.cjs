@@ -64,15 +64,19 @@ function fixture(query = {}, section = 'preparation') {
     filters, filter_options: { batches: [{ ref: batch, label: 'B-01' }], machines: [{ ref: machine, label: '车床01', kind: 'machine' }] }, items: items.slice((q.page - 1) * q.size, q.page * q.size), page: { number: q.page, size: q.size, total: items.length, has_more: q.page * q.size < items.length },
     metric_version: 'decision-preparation-v4', summary: { scope: section === 'preparation' ? 'full_admission' : 'fixed_changeover_window', before: { ...clone(values), ...changeoverFacts(section) }, after: { ...clone(values), ...changeoverFacts(section) }, deltas: Object.fromEntries(Object.keys(values).map(key => [key, delta(0)])), ...(section === 'preparation' ? { role_totals: { before: clone(roles), after: clone(roles) } } : {}) } } };
 }
-function identities() {
+async function identities() {
   const archive = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/decision_preparation_workspace.json'), 'utf8'));
-  assert.strictEqual(window.RunCandidateAPI.validateWorkspace(archive.payload, archive.candidate_ref, { batch_ref: archive.batch_ref }), archive.payload.data, '实际已排和待料workspace保留永久工种与compact需求');
+  let workspaceAnswer = archive.payload;
+  routes['GET /api/workbench/v1/scheduling/candidates/*/workspace'] = () => workspaceAnswer;
+  assert.deepEqual((await window.RunCandidateAPI.workspace(archive.candidate_ref, { batch_ref: archive.batch_ref })).data, archive.payload.data, '实际已排和待料workspace保留永久工种与compact需求');
   for (const section of ['tasks', 'unplanned_operations']) {
     const wrong = clone(archive.payload); wrong.data[section][0].process_type_ref = 'current-live-id';
-    assert.throws(() => window.RunCandidateAPI.validateWorkspace(wrong, archive.candidate_ref, { batch_ref: archive.batch_ref }));
+    workspaceAnswer = wrong;
+    await assert.rejects(() => window.RunCandidateAPI.workspace(archive.candidate_ref, { batch_ref: archive.batch_ref }));
     for (const key of ['operation_effort', 'process_type_ref', 'process_type_label']) {
       const missing = clone(archive.payload); delete missing.data[section][0][key];
-      assert.throws(() => window.RunCandidateAPI.validateWorkspace(missing, archive.candidate_ref, { batch_ref: archive.batch_ref }));
+      workspaceAnswer = missing;
+      await assert.rejects(() => window.RunCandidateAPI.workspace(archive.candidate_ref, { batch_ref: archive.batch_ref }));
     }
   }
   const compact = value => Object.fromEntries(Object.entries(value).filter(([key]) => !['machine', 'machines', 'arrangements'].includes(key)));
@@ -305,5 +309,5 @@ async function transport() {
     assert.equal(params.get('work_scope'), section === 'preparation' ? 'remaining' : null); assert.equal(params.get('batch_ref'), section === 'preparation' ? batch : null);
   }
 }
-async function main() { identities(); await session(); await transport(); console.log('decision preparation contract: saved target/effort vs AJ execution facts, neutral coverage, exact remaining row/drill, work scope paging/filters/export, retry/cancellation passed'); }
+async function main() { await identities(); await session(); await transport(); console.log('decision preparation contract: saved target/effort vs AJ execution facts, neutral coverage, exact remaining row/drill, work scope paging/filters/export, retry/cancellation passed'); }
 main().catch(error => { console.error(error); process.exitCode = 1; });

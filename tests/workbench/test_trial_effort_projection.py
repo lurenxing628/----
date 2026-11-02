@@ -4,10 +4,10 @@ from copy import deepcopy
 
 from core.models.workbench_trial_codec import load
 from core.services.workbench.facts.candidate_facts import GenerationFacts
-from core.services.workbench.facts.trial_origin import delivery_origin, operation_contexts
+from core.services.workbench.facts.trial_origin import TrialOrigin
 from core.services.workbench.facts.trial_policy import load_draft, load_scenario
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
-from core.services.workbench.trial.constraints import build_trial_intervals
+from core.services.workbench.trial.constraints import build_archived_trial_intervals
 from core.services.workbench.trial.effort import operation_types
 from core.services.workbench.trial.preparation import apply_preparation, preparation_projection, trial_changeovers
 from core.services.workbench.trial.projection import unplanned_operations
@@ -62,7 +62,8 @@ return {shipped_contract:true, preparation_panel:true, csv_exports:true};
     assert isinstance(stored, dict) and stored["operation_effort"] == effort
     saved = service(case.conn).save(draft["draft_ref"], {"name": "Saved preparation"},
                                    adjusted["write_context"]["write_token"], "trial-effort-save-01")["data"]
-    reread, _, rows = load_saved_scenario(case.conn, saved["scenario_ref"])
+    scenario = load_saved_scenario(case.conn, saved["scenario_ref"])
+    reread, rows = scenario.saved, scenario.rows
     assert reread["operation_effort"] == saved["operation_effort"] == adjusted["operation_effort"]
     assert rows[0]["current"]["operation_effort"] == effort
 
@@ -110,14 +111,15 @@ def test_trial_retained_requirement_keeps_original_target_separate_from_creation
     head, rows = load_draft(service(case.conn).repo, draft["draft_ref"])
     outside = deepcopy(head["admission"])
     outside["source"]["capture"]["input"]["batch_refs"] = []
-    assert delivery_origin(outside, rows)[0] == {}
-    contexts = operation_contexts(rows, outside)
+    origin = TrialOrigin(outside, rows)
+    assert origin.batches == {}
+    contexts = origin.contexts(rows)
     context = contexts[task["operation_ref"]]
     original = rows[0]["original"]
     assert context["operation"] is original["operation"] and context["execution"] is original["execution"]
     assert context["batch"] is original["batch"] and context["batch_ref"] == original["batch_ref"]
     assert context["row"] is rows[0] and context["arranged"] is True
-    pairs, retained = preparation_projection(rows, outside, draft["operation_effort"], contexts=contexts,
+    pairs, retained = preparation_projection(outside, draft["operation_effort"], contexts=contexts,
                                              current_evidence={"kind": "trial", "draft_ref": draft["draft_ref"]})
     assert set(pairs) == {row["operation_ref"] for row in rows}
     assert pairs[task["operation_ref"]]["after"]["required_standard_hours"] == 7
@@ -216,7 +218,8 @@ def test_trial_switches_follow_actual_type_identity_and_saved_complete_arrangeme
                               [{"op_id": second["original"]["operation"]["id"], "op_type_id": None}])
     assert unknown[second["operation_ref"]] == {"ref": None, "label": None}
     unknown_source = dict(head["admission"], source=dict(head["admission"]["source"], operation_types=unknown))
-    assert trial_changeovers(rows, unknown_source, trial_intervals=build_trial_intervals(rows))["before"]["count"] is None
+    intervals = build_archived_trial_intervals(rows, execution=unknown_source["execution"])
+    assert trial_changeovers(rows, TrialOrigin(unknown_source, rows), trial_intervals=intervals)["before"]["count"] is None
     updated = change(case, draft, task=1, start="2026-09-09T12:00:00")["data"]
     assert updated["comparison"]["changeovers"] == 0
     assert updated["comparison"]["changeover_common"]["before"]["count"] == 1

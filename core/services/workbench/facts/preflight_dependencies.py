@@ -31,7 +31,7 @@ def predecessor_satisfied(row):
     if row["status"] == "protected" and row.get("external_execution_cycle"):
         return True
     return (row["status"] == "protected" and row["execution"]["execution_state"] == "complete"
-            and bool(row["execution"]["confirmed_finish"]) and row["execution"]["data_quality"] != "invalid")
+            and row["execution"]["data_quality"] != "invalid")
 
 
 def exclude_predecessors(row, predecessors):

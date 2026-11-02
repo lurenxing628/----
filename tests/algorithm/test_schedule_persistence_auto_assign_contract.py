@@ -457,6 +457,7 @@ def test_whitespace_padded_resource_identities_stay_distinct_from_trimmed_siblin
             make_algo_op(id=1, op_code="B001_01", batch_id="B001", seq=1),
             make_algo_op(id=2, op_code="B001_02", batch_id="B001", seq=2),
         ],
+        seed_occupancies_by_op_id={},
         failure_details=(),
     )
     assert eval_metrics.machine_used_count == 2

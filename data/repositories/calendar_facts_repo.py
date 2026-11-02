@@ -17,7 +17,7 @@ DOWNTIME_STATUS_SQL = "(md.status='active' OR md.status IS NULL OR md.status NOT
 
 _DOWNTIMES_SQL = ("SELECT machine_id,start_time,end_time,status FROM MachineDowntimes md "
                   "WHERE machine_id IN ({marks}) AND " + DOWNTIME_STATUS_SQL + " "
-                  "AND " + overlap_or_bad_time_sql("md") + " ORDER BY machine_id,start_time,end_time")
+                  "AND " + overlap_or_bad_time_sql("md") + " ORDER BY md.machine_id,md.rowid")
 
 
 class CalendarFactsRepository(BaseRepository):

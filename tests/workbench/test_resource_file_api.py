@@ -76,7 +76,7 @@ def test_real_registration_public_preview_and_committed_restart_replay(client, k
     assert preview["write_context"]["expires_at"] == preview["expires_at"]
     assert snapshot(client) == before
     assert preview["operation"] == kind + ".import" and preview["commit_policy"] == "atomic"
-    assert preview["scope"]["category"] == category
+    assert "scope" not in preview
     if category:
         assert preview["category"] == category
     row = preview["rows"][0]
@@ -125,6 +125,16 @@ def test_resource_import_rejects_english_column_names(client, kind):
     assert snapshot(client) == before
 
 
+@pytest.mark.parametrize("kind,category,extra", (("machine", None, {"format": "txt"}), ("machine", None, {"mode": "replace"}),
+                                                  ("op_type", "both", {})))
+def test_resource_upload_admission_rejects_before_reading_the_file(client, kind, category, extra):
+    before = snapshot(client)
+    response = upload(client, kind, [("R1", "Resource 1", "自制" if kind == "op_type" else "可用")], category=category, extra=extra)
+    error = response.get_json()["error"]
+    assert (response.status_code, error["code"], error["fields"]) == (400, "invalid_input", [])
+    assert snapshot(client) == before
+
+
 @pytest.mark.parametrize("fmt", ("csv", "xlsx"))
 def test_export_file_is_written_after_the_read_snapshot_is_released(client, monkeypatch, fmt):
     """整份导出行在读快照里读完；生成文件时读事务已结束，不挡别人提交写入。资源、物料两条下载路由同一做法。"""
@@ -133,6 +143,7 @@ def test_export_file_is_written_after_the_read_snapshot_is_released(client, monk
     from core.services.workbench.material import files as material_files
     from core.services.workbench.resource import files as resource_files
     from tests.workbench.material_actions_api_support import export_preview, register_actions, seed
+    from web.routes.workbench import material_actions_export
 
     register_actions(client.application)
     assert command(client, "machine", new_preview(client, "machine")).status_code == 200
@@ -150,7 +161,7 @@ def test_export_file_is_written_after_the_read_snapshot_is_released(client, monk
     spy(resource_files.WorkbenchResourceFileService, "export_rows", "read")
     spy(resource_files, "write_resource_file", "write")
     spy(material_files.WorkbenchMaterialFileService, "export_rows", "read")
-    spy(material_files, "write_material_file", "write")
+    spy(material_actions_export, "write_material_file", "write")
     listed = client.get(BASE + "/entities/machine", query_string={"size": 200})
     assert listed.status_code == 200, listed.get_data(as_text=True)
     approved = client.post(BASE + "/exports/machine/preview", json={
@@ -423,50 +434,34 @@ def test_resource_import_allows_keeping_existing_bound_work_type_when_pruning_li
     assert confirmed.get_json()["result"] == "committed"
 
 
-def test_calendar_and_operator_calendar_import_previews_retain_parsed_body_without_reparse(client, monkeypatch):
-    from types import SimpleNamespace
+@pytest.mark.parametrize("query,status", [("op_type?format=csv&category=both", 422), ("op_type?format=csv", 400),
+                                          ("op_type?format=csv&category=internal", 200), ("machine?format=csv", 200),
+                                          ("machine?format=csv&category=internal", 400)])
+def test_resource_template_admits_category_at_route(client, query, status):
+    response = client.get(BASE + "/templates/" + query)
+    assert response.status_code == status, response.get_data(as_text=True)
+    if status == 422:
+        assert [field["path"] for field in response.get_json()["error"]["fields"]] == ["category"]
 
-    import core.models.workbench_action_values as action_values
-    from core.infrastructure.transaction import TransactionManager
-    from core.services.workbench.resource.calendar_files.files import WorkbenchCalendarFileService
-    from core.services.workbench.resource.calendar_files.operator_files import (
-        WorkbenchOperatorCalendarFileService,
+
+def test_resource_xlsx_import_rejects_nonstandard_workbook_package(client):
+    from zipfile import ZipFile
+
+    template_xlsx = client.get(BASE + "/templates/machine?format=xlsx").data
+    patched = BytesIO()
+    with ZipFile(BytesIO(template_xlsx)) as src, ZipFile(patched, "w") as dst:
+        for item in src.infolist():
+            data = src.read(item.filename)
+            if item.filename == "[Content_Types].xml":
+                data = data.replace(
+                    b"spreadsheetml.sheet.main+xml",
+                    b"spreadsheetml.template.main+xml",
+                )
+            dst.writestr(item, data)
+    response = client.post(
+        BASE + "/imports/machine/preview",
+        data={"file": (BytesIO(patched.getvalue()), "machine.xlsx"), "format": "xlsx", "mode": "upsert"},
+        content_type="multipart/form-data",
     )
-
-    with database(client) as conn:
-        conn.execute("INSERT INTO Operators(operator_id,name,status) VALUES ('CAL-OP1','Calendar Operator','active')")
-        conn.commit()
-
-        work_bytes = (
-            "日期,类型,可排工时（小时）,效率（%）,允许普通件,允许急件,备注,班次开始,班次结束\n"
-            "2026-10-15,工作日,8,100,是,是,测试全局日历,08:00,16:00\n"
-        ).encode()
-        op_bytes = (
-            "工号,日期,类型,班次开始,班次结束,效率（%）,允许普通件,允许急件,备注\n"
-            "CAL-OP1,2026-10-15,工作日,09:00,17:00,100,是,是,测试个人日历\n"
-        ).encode()
-
-        monkeypatch.setattr(
-            action_values,
-            "json",
-            SimpleNamespace(
-                dumps=action_values.json.dumps,
-                loads=lambda *a, **kw: pytest.fail("CalendarFilePreview lost _parsed cache and reparsed JSON"),
-            ),
-        )
-
-        work_svc = WorkbenchCalendarFileService(conn, "work_calendar")
-        work_preview = work_svc.preview_import(work_bytes, file_format="csv")
-        assert work_preview._parsed is not None
-        assert work_preview.as_dict()["summary"]["new"] == 1
-        with TransactionManager(conn).transaction(begin_immediate=True):
-            work_outcome = work_svc.confirm_import(work_preview, work_bytes, file_format="csv")
-        assert work_outcome.result == "committed"
-
-        op_svc = WorkbenchOperatorCalendarFileService(conn)
-        op_preview = op_svc.preview_import(op_bytes, file_format="csv")
-        assert op_preview._parsed is not None
-        assert op_preview.as_dict()["summary"]["new"] == 1
-        with TransactionManager(conn).transaction(begin_immediate=True):
-            op_outcome = op_svc.confirm_import(op_preview, op_bytes, file_format="csv")
-        assert op_outcome.result == "committed"
+    assert response.status_code == 422
+    assert "标准 XLSX 工作簿" in response.get_json()["error"]["message"]

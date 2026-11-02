@@ -7,8 +7,7 @@ from dataclasses import asdict, dataclass
 
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_identity import WorkbenchEntityIdentity
-from core.models.workbench_resource_query import RESOURCE_KINDS
+from core.models.workbench_identity import WorkbenchEntityIdentity, is_entity_ref
 from core.models.workbench_resource_table_query import table_query_required, toolbar_scope
 from core.services.workbench.facts.source_revisions import RESOURCE_SOURCE_KEYS, read_source_revisions
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
@@ -36,8 +35,6 @@ class ResourceReadRecord:
 
 class WorkbenchResourceQueryService:
     def __init__(self, conn, kind, logger=None):
-        if kind not in RESOURCE_KINDS:
-            raise WorkbenchCommandRejected("entity_not_found", "没有这个资源页面。请从左边的资料总览重新进入。", 404)
         self.conn, self.kind = conn, kind
         self.repo = WorkbenchResourceQueryRepository(conn, logger=logger)
         self.identities = WorkbenchIdentityRepository(conn, logger=logger)
@@ -174,9 +171,7 @@ class WorkbenchResourceQueryService:
                 "readiness": resource_readiness(counts, metrics, calendar, process)}
 
     def resolve_refs(self, refs):
-        for ref in refs:
-            if type(ref) is not str or len(ref) != 48 or any(char not in "0123456789abcdef" for char in ref):
-                raise WorkbenchCommandRejected("entity_not_found", "这条资源记录已失效，页面没有打开。请从列表重新选择。", 404)
+        """refs 已由 resource_refs 准入；这里只核对每个身份仍在且属于本类资源。"""
         if not refs:
             return []
         by_ref = (self._identities_by_ref if self._identities_by_ref is not None else {
@@ -193,6 +188,8 @@ class WorkbenchResourceQueryService:
         return result
 
     def resolve(self, ref):
+        if not is_entity_ref(ref):
+            raise WorkbenchCommandRejected("entity_not_found", "这条资源记录已失效，页面没有打开。请从列表重新选择。", 404)
         return self.resolve_refs([ref])[0]
 
     def current_with_identity(self, identity):
@@ -240,7 +237,7 @@ class WorkbenchResourceQueryService:
             records = self._table_page_records(rows)
         page = {"number": query.number, "size": query.size, "total": total,
                 "pages": max(1, (total + query.size - 1) // query.size), "sort": [{"field": query.sort, "direction": query.direction}],
-                "metrics": metrics.metrics(self.kind, keys if keys is not None else self.toolbar_matching_keys(query))}
+                "metrics": metrics.metrics(self.kind, keys if keys is not None else self.matching_keys(query))}
         return records, page
 
     def _op_type_page(self, rows, metrics):
@@ -284,12 +281,10 @@ class WorkbenchResourceQueryService:
         return cache[key]
 
     def matching_keys(self, query):
-        return self.table_index(query).matching_keys(query)
-
-    def toolbar_matching_keys(self, query):
-        """Toolbar-scope keys straight from SQL; column filters and business-column sorts must use matching_keys."""
         if table_query_required(query):
-            raise WorkbenchCommandRejected("invalid_input", "列筛选与业务列排序请使用查询服务的 matching_keys 统一入口。", 400)
+            return self.table_index(query).matching_keys(query)
+        if query.kind != self.kind:
+            raise WorkbenchCommandRejected("invalid_input", "查询类型与当前资源不一致。", 400)
         return self.repo.toolbar_keys(query)
 
     def facets(self, query, column, search="", number=1, size=100):

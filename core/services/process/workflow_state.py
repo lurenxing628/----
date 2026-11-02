@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
-from typing import NoReturn
+from typing import NoReturn, Tuple
 
 from core.errors import BusinessError, ErrorCode, ValidationError
 from core.models.content import content_text, same, unpacked
@@ -236,10 +236,10 @@ def _facts(part, loaded, stored=None, *, stage=None):
 
 
 def _confirmation(row, content, prefix="", *, missing_original=False):
-    recorded = bool(row and isinstance(row.get(prefix + "confirmed_at"), str) and row[prefix + "confirmed_at"].strip()
-                    and (row.get(prefix + "confirmed_by") is None or isinstance(row[prefix + "confirmed_by"], str)
+    recorded = bool(row and isinstance(row[prefix + "confirmed_at"], str) and row[prefix + "confirmed_at"].strip()
+                    and (row[prefix + "confirmed_by"] is None or isinstance(row[prefix + "confirmed_by"], str)
                          and row[prefix + "confirmed_by"].strip()))
-    saved = row.get(prefix + "content_json") if row else None
+    saved = row[prefix + "content_json"] if row else None
     valid = bool(recorded and content is not None and saved == content)
     result = {"state": "confirmed" if valid else "unconfirmed",
             "confirmed_at": row[prefix + "confirmed_at"] if valid else None,
@@ -255,7 +255,7 @@ def _invalid_saved_source() -> NoReturn:
 
 
 def _saved_groups(stored):
-    saved = stored.get("source_content_json") if stored else None
+    saved = stored["source_content_json"] if stored else None
     if saved is None:
         return None
     parsed = load_strict_json(saved, on_malformed=_invalid_saved_source)
@@ -409,14 +409,14 @@ def _require_transaction(conn):
         raise RuntimeError("Process confirmations require a caller transaction.")
 
 
-def start_workflow(conn, part_no) -> dict:
+def start_workflow(conn, part_no) -> Tuple[str, dict]:
     """Enroll a newly controlled template, even before any route exists."""
     _require_transaction(conn)
     part, stored = _part(conn, part_no)
     if stored is None:
         WorkbenchProcessWorkflowRepository(conn).insert_workflow(part["ref"])
         stored = {stage + "_" + key: None for stage in _STAGES for key in ("content_json", "confirmed_at", "confirmed_by")}
-    return _view(stored, _facts(part, _load_facts(conn, part_no, stored=stored), stored))
+    return part["ref"], _view(stored, _facts(part, _load_facts(conn, part_no, stored=stored), stored))
 
 
 def _save_operations(conn, part_ref, stage, per_op, records, states, stamp):
@@ -431,10 +431,9 @@ def _save_operations(conn, part_ref, stage, per_op, records, states, stamp):
         else:
             repo.update_confirmation(part_ref=part_ref, operation_ref=ref, stage=stage, content_json=values[stage],
                                      confirmed_at=stamp)
-        records[(ref, stage)] = {"content_json": values[stage], "confirmed_at": stamp, "confirmed_by": None}
 
 
-def record_confirmation(conn, part_no, stage, *, cross_part_by_group=None, old_operations=()) -> dict:
+def record_confirmation(conn, part_no, stage, *, cross_part_by_group=None, old_operations=()) -> str:
     """Confirm facts already written by the domain owner, atomically in its transaction.
 
     cross_part_by_group 是多零件命令共用的跨件分组索引；换掉路线时 old_operations 传该零件换路线前的工序，
@@ -471,7 +470,4 @@ def record_confirmation(conn, part_no, stage, *, cross_part_by_group=None, old_o
         _save_operations(conn, part["ref"], stage, per_op, records, op_states, stamp)
     if _confirmation(stored, content, stage + "_")["state"] != "confirmed":
         repo.set_stage_confirmation(part_ref=part["ref"], stage=stage, content_json=content, confirmed_at=stamp)
-        stored = dict(stored, **{stage + "_content_json": content, stage + "_confirmed_at": stamp,
-                                 stage + "_confirmed_by": None})
-    # 路线确认不改工序确认记录和来源资料，沿用上面算好的工序状态；来源、工时确认刚写了记录，要重算。
-    return _view(stored, facts, operation_states=op_states if stage == "route" else None)
+    return part["ref"]

@@ -5,6 +5,8 @@
   const states = window.WorkbenchTerms.execution_states;
   const reportActions = window.WorkbenchTerms.report_actions;
   const fields = ['completed_quantity', 'actual_start', 'actual_end', 'effective_processing_hours', 'actual_machine_ref', 'actual_operator_ref', 'remark'];
+  // 现场记录一次最多按 5000 个批次筛选（后端 core/services/workbench/execution/field_workspace_scope.py 的 _batches）。
+  const batchLimit = 5000;
   const ref = value => typeof value === 'string' && /^[0-9a-f]{48}$/.test(value);
   const nullable = value => value === null || Number.isFinite(value) && value >= 0;
   const time = value => value === null || typeof value === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d$/.test(value);
@@ -101,5 +103,5 @@
   // not :00, so nothing is lost while whole-minute times read as minutes. WorkbenchFormat has no auto option yet.
   const hasSeconds = value => typeof value === 'string' && /:\d\d:(?!00(?:\.0+)?$)\d\d(?:\.\d+)?$/.test(value);
   const date = value => window.WorkbenchFormat.dateTime(value, { seconds: hasSeconds(value), fractions: true });
-  window.FieldContract = { states, reportActions, fields, ref, task, report, query, blocked, draft, input, display, date, quantity, hours, pieceLabel, planQuantity, quantityReasons, validTime };
+  window.FieldContract = { states, reportActions, fields, batchLimit, ref, task, report, query, blocked, draft, input, display, date, quantity, hours, pieceLabel, planQuantity, quantityReasons, validTime };
 })();

@@ -30,7 +30,7 @@
       && shape(v.baseline, ['plan_ref', 'version']) && (v.baseline.plan_ref === null ? v.baseline.version === null : ref(v.baseline.plan_ref) && count(v.baseline.version) && v.baseline.version > 0)
       && count(v.task_count) && v.task_count > 0 && v.scope_complete === true;
   }
-  // 采用范围的投影只取字段、不校验：预检结果在 previewResult 里核过，写入的记录再由 save 整体校验。
+  // 采用范围的投影只取字段、不校验：预检结果在 previewResult 里核过。
   const overviewFields = v => ({ candidate_ref: v.candidate_ref, run_ref: v.run_ref, baseline: v.baseline, task_count: v.task_count, scope_complete: v.scope_complete });
   // candidateRef 已由 preview() 在拼路径前核过。
   function previewResult(v, candidateRef) {
@@ -49,10 +49,9 @@
     return d;
   }
   function input(v) {
-    check(shape(v, ['confirm', 'reason', 'declared_operator']) && v.confirm === true, '请勾选确认后再正式采用。');
-    for (const [name, limit] of [['reason', 1000], ['declared_operator', 100]]) {
-      check(text(v[name]) && v[name].trim().length > 0 && Array.from(v[name]).length <= limit && !v[name].includes('\x00'), '请填写采用原因和经办人。');
-    }
+    check(shape(v, ['confirm', 'reason', 'declared_operator']) && v.confirm === true, '请勾选确认正式采用。');
+    for (const [name, limit] of [['reason', 1000], ['declared_operator', 100]]) check(text(v[name]) && v[name].trim()
+      && Array.from(v[name].trim()).length <= limit && !v[name].includes('\0'), '请填写采用原因（1 至 1000 字）和经办人（1 至 100 字）。');
     return { confirm: true, reason: v.reason.trim(), declared_operator: v.declared_operator.trim() };
   }
   function receipt(v, intent) {
@@ -75,27 +74,25 @@
         && ['unresolved', 'context_replaced'].includes(v.resolution) && v.may_be_in_flight === (v.resolution === 'unresolved'));
       if (v.resolution === 'unresolved') return null;
       const info = { resolution: 'context_replaced', message: v.message };
-      replacedProofs.set(info, JSON.stringify(intent)); return info;
+      replacedProofs.set(info, T.canonical(intent)); return info;
     }
     return receipt(v, intent);
   }
   function validIntent(v) {
     if (!shape(v, ['schema_version', 'candidate_ref', 'request_key', 'input', 'preview', 'phase', 'data_context_ref']) || v.schema_version !== 2 || !ref(v.candidate_ref)
       || !contextRef(v.data_context_ref) || !key(v.request_key) || !summary(v.preview) || v.preview.candidate_ref !== v.candidate_ref || !['pending', 'rejected'].includes(v.phase)) return false;
-    try { return JSON.stringify(input(v.input)) === JSON.stringify(v.input); } catch (_) { return false; }
+    try { return T.equal(input(v.input), v.input); } catch (_) { return false; }
   }
   const { read, flush, save } = T.pendingStore({
     key: PENDING_KEY, event: EVENT, validate: validIntent,
-    same: (a, b) => JSON.stringify(a) === JSON.stringify(b),
     readError: '读不到上次采用的操作记录，不要重新采用。',
     corruptError: '本机存的采用操作记录已损坏，已拦下新采用。请不要再操作，联系维护人员。',
     invalidError: '本机存的采用操作记录不完整，已拦下新采用。请不要再操作，联系维护人员。',
     conflictError: '上次采用记录已变化，没有覆盖其他操作。',
-    invalidWriteError: '读到的采用数据不完整，请刷新重试。',
     writeError: '存不下采用的操作记录，没有开始新的采用。请重新打开页面。'
   });
-  // intent/previous 只来自本存储已校验的记录：save 写入前整体校验，previous 还要与磁盘上已校验的当前值相等才写得进去。
-  // value 是 previewResult 核过的可采用预检，values 是 input() 规整过的填写内容；各转换只检查业务状态。
+  // intent/previous 只来自本存储读到并校验过的记录，previous 还要与磁盘上的当前值相等才写得进去。
+  // value 是 previewResult 核过的可采用预检，values 是 input() 规整过的填写内容；各转换只检查业务状态，写前不再重验。
   const adoptionPending = { read, flush,
     begin(value, values, previous) {
       check(!previous || previous.phase === 'rejected' && previous.candidate_ref === value.candidate_ref, '上次采用还没确认结果，不能重新提交。');
@@ -105,13 +102,11 @@
     reject(intent, error) { check(T.rejected(error), '没有确认拒绝结果，已保留上次操作。'); return save({ ...intent, phase: 'rejected' }, intent); },
     cancelRejected(intent) { check(intent.phase === 'rejected', '结果还没确认，不能丢弃上次操作。'); return save(null, intent); },
     dismissReplaced(intent, info) {
-      check(intent.phase === 'pending' && replacedProofs.get(info) === JSON.stringify(intent), '结果还没确认，不能丢弃上次操作。');
+      check(intent.phase === 'pending' && replacedProofs.get(info) === T.canonical(intent), '结果还没确认，不能丢弃上次操作。');
       return save(null, intent);
     },
     finish(intent) { return save(null, intent); }
   };
-  // 采用操作记录只存在本页的 window.localStorage，全页共用这一份。
-  const pending = () => adoptionPending;
   const candidatePath = candidateRef => BASE + 'scheduling/candidates/' + candidateRef;
   async function preview(candidateRef, signal) {
     check(ref(candidateRef));
@@ -126,5 +121,5 @@
     const query = new URLSearchParams({ run_ref: intent.preview.run_ref, data_context_ref: intent.data_context_ref });
     return lookupResult(await T.lookup(candidatePath(intent.candidate_ref) + '/adoption-commands/' + intent.request_key + '?' + query, { signal, timeout: 30000 }), intent);
   }
-  window.RunAdoptionAPI = { preview, adopt, lookup, receipt, input, pending, ref, validIntent, contextRef, PENDING_KEY, EVENT };
+  window.RunAdoptionAPI = { preview, adopt, lookup, receipt, input, pending: adoptionPending, ref, contextRef, PENDING_KEY, EVENT };
 })();

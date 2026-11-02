@@ -8,7 +8,6 @@ from core.services.execution.ledger_reader import ExecutionLedgerReader
 from core.services.execution.projection import projection_resource_refs
 from core.services.scheduler.execution.execution_plan_identity import current_execution_plan
 from core.services.workbench.facts.execution_projection import ExecutionContextFactory, attach_context
-from core.services.workbench.facts.plan_serialization import plain_plan_facts
 
 
 def _check_workspace_tasks(tasks, facts, plan_ref):
@@ -28,10 +27,13 @@ class ExecutionLedgerService(ExecutionLedgerReader):
     @staticmethod
     def fact_snapshot(facts, operation_ref):
         reports = facts["reports"].get(operation_ref, {})
-        return plain_plan_facts({"operation": facts["operations"][operation_ref],
-                "current_task": facts["current_tasks"].get(operation_ref), "plan": facts["plan"],
-                "reports": reports,
-                "voids": {ref: facts["voids"][ref] for ref in reports if ref in facts["voids"]}})
+        return {
+            "operation": facts["operations"][operation_ref],
+            "current_task": facts["current_tasks"].get(operation_ref),
+            "plan": facts["plan"],
+            "reports": reports,
+            "voids": {ref: facts["voids"][ref] for ref in reports if ref in facts["voids"]},
+        }
 
     def project_loaded(self, facts, *, contexts=True, include_history: bool = True):
         projections = super().project_loaded(facts, include_history=include_history)
@@ -74,21 +76,16 @@ class ExecutionLedgerService(ExecutionLedgerReader):
                 events_count,
             )
 
-    def workspace_projection(
-        self, plan_ref, tasks, *, include_history: bool = True, include_resources: bool = True
-    ):
+    def workspace_projection(self, plan_ref, tasks, *, include_history: bool = True):
         with self.read_snapshot():
             refs = [task["operation_ref"] for task in tasks]
             facts = self.load_many(refs, comparison_plan_ref=plan_ref)
             _check_workspace_tasks(tasks, facts, plan_ref)
             projections = self.project_loaded(facts, include_history=include_history)
-            if include_resources:
-                raw_resources = self.resources({ref for row in projections for ref in projection_resource_refs(row)})
-                resources = {
-                    "machines": [row for row in raw_resources if row["kind"] == "machine"],
-                    "operators": [row for row in raw_resources if row["kind"] == "operator"],
-                }
-            else:
-                resources = {"machines": [], "operators": []}
+            raw_resources = self.resources({ref for row in projections for ref in projection_resource_refs(row)})
+            resources = {
+                "machines": [row for row in raw_resources if row["kind"] == "machine"],
+                "operators": [row for row in raw_resources if row["kind"] == "operator"],
+            }
             plain = [row.to_dict() for row in projections]
             return {"available": True, "time_basis": "factory_local", "projections": plain, "resources": resources}

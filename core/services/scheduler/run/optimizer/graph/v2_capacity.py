@@ -5,8 +5,8 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from core.algorithm_contracts.operator_eligibility import qualified_operators
+from core.algorithm_contracts.resource_occupancy import PreparedSeedApplication
 from core.algorithm_contracts.value_domains import INTERNAL
-from core.algorithms.greedy.seed import seed_resource_segments
 from core.errors import ValidationError
 from core.shared.strict_parse import finite_float, is_non_finite_number
 
@@ -20,7 +20,6 @@ class FixedResourceBlockingFacts:
                  seed_results_by_resource_id: Dict[str, Dict[str, List[Tuple[datetime, datetime]]]]) -> None:
         self._downtime_map = downtime_map
         self._seed_results = seed_results_by_resource_id
-        self._downtime_segments: Dict[str, List[Tuple[datetime, datetime]]] = {}
         self._pairs: Dict[Tuple[str, Optional[str]], List[Tuple[datetime, datetime]]] = {}
         self._window_capacities: Dict[Tuple[str, Optional[str], Any, datetime, datetime], Tuple[float, float, float]] = {}
         self._calendar_windows: Dict[Tuple[Optional[str], Any, datetime, datetime], float] = {}
@@ -38,10 +37,8 @@ class FixedResourceBlockingFacts:
     def segments_for(self, machine_id: str, operator_id: Optional[str]) -> List[Tuple[datetime, datetime]]:
         key = machine_id, operator_id
         if key not in self._pairs:
-            if machine_id not in self._downtime_segments:
-                self._downtime_segments[machine_id] = _valid_segments(self._downtime_map.get(machine_id) or [])
             self._pairs[key] = _merge_segments(
-                self._downtime_segments[machine_id]
+                self._downtime_map.get(machine_id, [])
                 + self._resource_seeds("machine", machine_id)
                 + self._resource_seeds("operator", operator_id)
             )
@@ -112,7 +109,7 @@ def residual_capacity_for_operation(
             bottleneck_machine_count=1 if machine_ids else 0,
         )
 
-    priority = batch.priority if batch is not None else None
+    priority = batch.priority
     machine_operators = pool.machine_operators(op, machine_ids=machine_ids, key=resource_key)
     effective_candidate_machine_count = len(machine_operators)
     candidates = [
@@ -147,33 +144,17 @@ def residual_capacity_for_operation(
     )
 
 
-def seed_results_by_resource_id(seed_results: Iterable[Any]) -> Dict[str, Dict[str, List[Tuple[datetime, datetime]]]]:
+def seed_results_by_resource_id(
+    seed_applications: Iterable[PreparedSeedApplication],
+) -> Dict[str, Dict[str, List[Tuple[datetime, datetime]]]]:
     out: Dict[str, Dict[str, List[Tuple[datetime, datetime]]]] = {"machine": {}, "operator": {}}
-    for result in seed_results:
-        if str(result.source or INTERNAL).strip().lower() != INTERNAL:
-            continue
-        segments = seed_resource_segments(result)
-        if segments:
-            for seg_start, seg_end, seg_machine_id, seg_operator_id in segments:
-                if not (isinstance(seg_start, datetime) and isinstance(seg_end, datetime) and seg_end > seg_start):
-                    continue
-                span = (seg_start, seg_end)
-                if seg_machine_id:
-                    out["machine"].setdefault(seg_machine_id, []).append(span)
-                if seg_operator_id:
-                    out["operator"].setdefault(seg_operator_id, []).append(span)
-            continue
-        if not (
-            isinstance(result.start_time, datetime)
-            and isinstance(result.end_time, datetime)
-            and result.end_time > result.start_time
-        ):
-            continue
-        span = (result.start_time, result.end_time)
-        if result.machine_id:
-            out["machine"].setdefault(result.machine_id, []).append(span)
-        if result.operator_id:
-            out["operator"].setdefault(result.operator_id, []).append(span)
+    for app in seed_applications:
+        for occ in app.occupancies:
+            span = (occ.start_time, occ.end_time)
+            if occ.machine_id:
+                out["machine"].setdefault(occ.machine_id, []).append(span)
+            if occ.operator_id:
+                out["operator"].setdefault(occ.operator_id, []).append(span)
     return out
 
 
@@ -363,14 +344,6 @@ class _ResourcePoolView:
                 pairs.append((machine_id, operator_ids))
             self._machine_operators[key] = tuple(pairs)
         return self._machine_operators[key]
-
-
-def _valid_segments(segments: Iterable[Tuple[datetime, datetime]]) -> List[Tuple[datetime, datetime]]:
-    return [
-        (start, end)
-        for start, end in segments
-        if isinstance(start, datetime) and isinstance(end, datetime) and end > start
-    ]
 
 
 def _merge_segments(segments: Iterable[Tuple[datetime, datetime]]) -> List[Tuple[datetime, datetime]]:

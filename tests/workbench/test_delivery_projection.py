@@ -120,10 +120,10 @@ def test_unspecified_candidate_analysis_and_adopted_plan_share_projection(candid
     _, refs = compute(case)
     candidate = refs[0]
     saved = case.conn.execute("SELECT artifact_json FROM WorkbenchRunCandidates WHERE candidate_ref=?", (candidate,)).fetchone()[0]
-    workspace, _ = WorkbenchRunCandidateQueryService(case.conn).workspace(RunCandidateReadScope(candidate))
+    workspace, _ = WorkbenchRunCandidateQueryService(case.conn).workspace(RunCandidateReadScope(candidate), bind_snapshot=lambda scope, state: state)
     assert workspace["delivery_risks"]["items"][0]["risk"] == "not_applicable"
     assert workspace["delivery_risks"]["summary"]["state"] == "not_applicable"
-    analysis, _ = read_candidate_analysis(case.conn, candidate)
+    analysis, _ = read_candidate_analysis(case.conn, candidate, bind_snapshot=lambda scope, state: state)
     for key in ("overdue_count", "total_tardiness_hours"):
         assert analysis["metrics"][key]["state"] == "not_applicable" and analysis["metrics"][key]["value"] is None
     assert json.loads(saved) == json.loads(case.conn.execute("SELECT artifact_json FROM WorkbenchRunCandidates WHERE candidate_ref=?", (candidate,)).fetchone()[0])
@@ -180,7 +180,7 @@ def test_stage_adoption_keeps_deferred_operation_evidence(candidate_case):
                 "available_quantity": 0, "operation_ref": operation_ref, "arrivals": []}]}))
     _, refs = compute(case, case.settings(material_strategy="stage", batch_refs=[case.ref("batch", "B1"), case.ref("batch", "B2")]))
     assert refs
-    workspace, _ = WorkbenchRunCandidateQueryService(case.conn).workspace(RunCandidateReadScope(refs[0]))
+    workspace, _ = WorkbenchRunCandidateQueryService(case.conn).workspace(RunCandidateReadScope(refs[0]), bind_snapshot=lambda scope, state: state)
     assert len(workspace["delivery_risks"]["items"]) == 2
     assert all(batch["completion_state"] == "deferred" and batch["ordinary_unscheduled_operation_count"] == 0
                for batch in workspace["delivery_risks"]["items"])

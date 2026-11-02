@@ -24,9 +24,9 @@ def _sqlite_order(value):
 class CapturedCalendarInputs:
     """Current dashboard source rows plus SQL-prepared downtime facts; no connection.
 
-    ``downtimes`` arrive in rowid order. Each machine's rows are sorted once by
-    (start_time, end_time) in SQLite's storage-class order; the stable sort keeps rowid
-    ties, matching CalendarFactsRepository.downtimes' ORDER BY machine_id,start_time,end_time.
+    ``downtimes`` arrive in rowid order and keep each machine's rowid capture order,
+    matching CalendarFactsRepository.downtimes' ORDER BY md.machine_id,md.rowid;
+    CalendarFacts.read_downtimes stably sorts admitted rows by (start_time, end_time).
     """
 
     def __init__(self, *, machines, downtimes, schema_version, downtime_machine_ids):
@@ -64,8 +64,6 @@ class CapturedCalendarInputs:
                 # Only the selected machines' admitted rows were prepared (valid is 0 or 1).
                 if prepared["__calendar_valid"] is not None:
                     self._downtimes[row["machine_id"]].append((row, prepared))
-            for rows in self._downtimes.values():
-                rows.sort(key=lambda item: (_sqlite_order(item[0]["start_time"]), _sqlite_order(item[0]["end_time"])))
         low, high, result = parse_dt_for_sql(start), parse_dt_for_sql(end), []
         for key in machine_ids:
             for row, prepared in self._downtimes.get(key, ()):
@@ -108,6 +106,18 @@ class CalendarFacts:
         self.rows[name] = result
         return result
 
+    def read_downtimes(self, machine_ids, start, end):
+        rows = self.keyed(
+            "downtimes",
+            self.captured.downtimes if self.captured is not None else self.repo.downtimes,
+            machine_ids,
+            (end, start),
+        )
+        rows.sort(
+            key=lambda row: (row["machine_id"], _sqlite_order(row["start_time"]), _sqlite_order(row["end_time"]))
+        )
+        return rows
+
     def calendar(self, first, last, operators):
         self.select("defaults", self.repo.defaults)
         self.select("global", self.repo.global_calendar, first, last)
@@ -127,10 +137,10 @@ class CalendarFacts:
         self.keyed("authorizations", self.repo.authorizations, operator_ids)
         self.keyed("skill_profiles", self.repo.skill_profiles, operator_ids)
         self.keyed("skills", self.repo.skills, operator_ids)
-        self.keyed("downtimes", self.captured.downtimes if self.captured is not None else self.repo.downtimes, machine_ids, (end, start))
+        self.read_downtimes(machine_ids, start, end)
 
     def resource_states(self, machine_ids, operator_ids, start, end):
         """Status-only machine/operator rows plus overlapping downtimes, for utilization calendars."""
         self.keyed("machines", self.captured.machine_states if self.captured is not None else self.repo.machine_states, machine_ids)
         self.keyed("operators", self.repo.operators, operator_ids)
-        self.keyed("downtimes", self.captured.downtimes if self.captured is not None else self.repo.downtimes, machine_ids, (end, start))
+        self.read_downtimes(machine_ids, start, end)

@@ -1,13 +1,13 @@
 """Snapshot-bound process reads and route differences, without template writes."""
 
 from collections import defaultdict
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from typing import Any, Dict
 
 from core.infrastructure.transaction import TransactionManager
 from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_identity import WorkbenchEntityIdentity
+from core.models.workbench_identity import WorkbenchEntityIdentity, is_entity_ref
 from core.services.process.workflow_state import (
     active_entity_refs,
     build_template_source_facts,
@@ -28,7 +28,7 @@ from .route_facts import ProcessRouteFacts
 
 def _check_part_ref(ref):
     """A part ref is 48 lowercase hex characters; anything else names no part."""
-    if not isinstance(ref, str) or len(ref) != 48 or any(c not in "0123456789abcdef" for c in ref):
+    if not is_entity_ref(ref):
         raise WorkbenchCommandRejected("entity_not_found", "零件记录不存在，请返回列表重新选择。", 404)
 
 
@@ -73,9 +73,6 @@ class _RawProcessFacts(dict):
 
 class WorkbenchProcessQueryService:
     def __init__(self, conn, logger=None, *, part_ref=None):
-        # An empty string is a supplied ref too; only None means the whole collection.
-        if part_ref is not None:
-            _check_part_ref(part_ref)
         self.conn = conn
         self.repo = WorkbenchProcessQueryRepository(conn, logger=logger, part_ref=part_ref)
         self.identities = WorkbenchIdentityRepository(conn, logger=logger)
@@ -304,7 +301,8 @@ class WorkbenchProcessQueryService:
 
     @contextmanager
     def read_snapshot(self):
-        with TransactionManager(self.conn).transaction():
+        scope = nullcontext() if self.conn.in_transaction else TransactionManager(self.conn).transaction()
+        with scope:
             previous = self._facts
             previous_raw = self._raw_facts
             previous_closure = self._closure
@@ -369,8 +367,11 @@ class WorkbenchProcessQueryService:
         return self._table
 
     def resolve(self, ref):
-        if self.repo.part_ref is None or ref != self.repo.part_ref:
-            _check_part_ref(ref)
+        _check_part_ref(ref)
+        return self.identity_of(ref)
+
+    def identity_of(self, ref):
+        """格式已准入的零件 ref 对应的当前身份；已删除或不是零件时报 404。"""
         if self._identities_by_ref is not None and (self.repo.part_ref is None or self.repo.part_ref == ref):
             row = self._identities_by_ref.get(ref)
             identity = WorkbenchEntityIdentity(row["ref"], row["kind"], row["entity_key"], row["revision"], bool(row["active"])) if row else None
@@ -442,15 +443,15 @@ class WorkbenchProcessQueryService:
         result["changes"] = {key: [public_sequence(seq) for seq in values] for key, values in result["changes"].items()}
         return result
 
-    def prepare_route(self, ref, body):
+    def prepare_route(self, identity, body):
         """Parse and prepare the current route once, then project its review."""
         from .part_actions_facts import checked_process_facts
         from .route_apply import affected_group_rows
         from .route_preview import ProcessRoutePreviewService
 
         facts = self.facts()
-        checked = checked_process_facts(self.resolve(ref), facts)
-        identity, part, operations, groups, _ = checked
+        checked = checked_process_facts(identity, facts)
+        _, part, operations, groups, _ = checked
         route_facts = ProcessRouteFacts(facts)
         parser = ProcessRoutePreviewService(self.conn, facts=route_facts)
         with parser.reference_snapshot():
@@ -465,4 +466,4 @@ class WorkbenchProcessQueryService:
             affected = affected_group_rows(groups, operations, changed)
         entity = self._project_detail(identity, part, operations, groups, facts["workflow"][identity.entity_key],
                                       facts)
-        return self.route_difference(ref, preview, entity), checked, affected
+        return self.route_difference(identity.ref, preview, entity), checked, affected

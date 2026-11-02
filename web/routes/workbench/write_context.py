@@ -4,14 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable, Dict, Iterable
+from typing import Any, Callable, Dict, Iterable, Tuple
 
 from flask import g, request
 
 from core.errors import ValidationError
+from core.models.workbench_action_values import AtomicActionPreview
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.services.workbench import messages
-from web.public_token_registry import PublicTokenIssuer, resolve_public_token
+from web.public_token_registry import PublicTokenIssuer, issue_public_token_with_expiry, resolve_public_token
 
 from .read_context import fact_value
 
@@ -94,3 +95,22 @@ def validate_preview_confirmation(write_token: str, preview_ref: str) -> None:
     """Call after resolving the live preview and checking its operation."""
     if write_token != preview_ref:
         raise WorkbenchCommandRejected("stale_write", "预检结果和这次操作对不上，还没有保存。请重新预检。")
+
+
+def retain_action_preview(scope: str, preview: AtomicActionPreview) -> Tuple[str, str]:
+    """Retain the frozen preview itself; the same document reissues the same ref, which is also its write token."""
+    token, expiry = issue_public_token_with_expiry(scope, preview, key=preview.document, ttl_seconds=_TTL_SECONDS)
+    return token, datetime.fromtimestamp(expiry).isoformat(timespec="seconds")
+
+
+def resolve_action_preview(scope: str, ref: str, operation: str, write_token: str, *,
+                           expired_message: str, mismatch_message: str) -> AtomicActionPreview:
+    """The retained preview of this operation, confirmed with its own ref as write token."""
+    try:
+        preview = resolve_public_token(scope, ref, message=expired_message, field="preview_ref")
+    except ValidationError as exc:
+        raise WorkbenchCommandRejected("stale_write", expired_message) from exc
+    if preview.as_dict()["operation"] != operation:
+        raise WorkbenchCommandRejected("stale_write", mismatch_message)
+    validate_preview_confirmation(write_token, ref)
+    return preview

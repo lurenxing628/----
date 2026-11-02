@@ -122,7 +122,10 @@ def test_microsecond_calendar_and_occupancy_preserve_device_and_person_hours():
                 field = mode + measure
                 assert calendar[field] == calendar["days"][0][field]
                 assert calendar[field] == pytest.approx(duration * unit * factor, rel=1e-12, abs=0)
-        resource = _resource_occupancy(kind, key, operations, {**calendar, "label": kind}, refs, kind)
+        resource, complete = _resource_occupancy(
+            kind, key, operations, {**calendar, "label": kind}, refs, kind, include_segments=True
+        )
+        assert complete is True
         assert resource["available_hours"] == calendar["available_hours"]
         expected = {"arranged_hours": 4 * unit, "occupied_hours": 3 * unit, "overlap_hours": unit,
                     "excess_arranged_hours": unit, "available_occupied_hours": duration * unit,

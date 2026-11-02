@@ -2,14 +2,16 @@
 
 import sqlite3
 from collections import Counter
-from datetime import datetime
+from datetime import date, datetime
 
 import pytest
 
 from core.infrastructure.sqlite_udf import SQL_PARSE_FUNCTION, parse_dt_for_sql, register_schedule_time_sql_functions
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_dashboard import DashboardAnalysisQuery
+from core.services.capacity.plan_calendar_engine import SnapshotCalendarEngine
 from core.services.capacity.plan_calendar_io import CalendarFacts, CapturedCalendarInputs, ProjectionLimit
+from core.services.capacity.plan_calendar_windows import project_resource_calendars
 from core.services.workbench.dashboard import downtime, execution
 from core.services.workbench.dashboard import facts as facts_module
 from core.services.workbench.dashboard.analysis import read_dashboard_analysis
@@ -17,7 +19,7 @@ from core.services.workbench.dashboard.analysis_projection import project_dashbo
 from core.services.workbench.dashboard.service import WorkbenchDashboardService
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from core.services.workbench.plan.read_context import PlanReadContext
-from data.repositories.calendar_facts_repo import CalendarFactsRepository
+from data.repositories.calendar_facts_repo import _DOWNTIMES_SQL, CalendarFactsRepository
 from data.repositories.workbench_dashboard_source_repo import DashboardSourceRepository
 from data.repositories.workbench_plan_catalog_repo import WorkbenchPlanCatalogRepository
 
@@ -130,7 +132,8 @@ def test_captured_calendar_preserves_sql_status_time_types_order_and_budget():
     limited = CalendarFacts(conn, captured=captured)
     limited.count = 49999
     with pytest.raises(ProjectionLimit, match="calendar_fact_limit"):
-        limited.keyed("downtimes", captured.downtimes, ["M1"], ("2026-09-10T11:00:00", "2026-09-10T09:00:00"))
+        limited.read_downtimes(["M1"], "2026-09-10T09:00:00", "2026-09-10T11:00:00")
+    assert "downtimes" not in limited.rows
     with pytest.raises(ProjectionLimit, match="calendar_unavailable"):
         captured.downtimes(["M2"], "2026-09-10T11:00:00", "2026-09-10T09:00:00", limit=100)
     conn.close()
@@ -153,10 +156,13 @@ def test_captured_calendar_orders_mixed_storage_types_like_the_calendar_sql():
     assert [row["id"] for row in raw] == list(range(1, len(rows) + 1))
     captured = CapturedCalendarInputs(machines=[], downtimes=prepared, schema_version=[], downtime_machine_ids=["M1"])
     window = ("2026-09-10T11:00:00", "2026-09-10T07:00:00")
-    expected = CalendarFactsRepository(conn).downtimes(["M1"], *window, limit=100)
-    assert captured.downtimes(["M1"], *window, limit=100) == expected
-    # SQLite's storage-class order: numbers, then TEXT, then BLOB; equal starts by end, TEXT before BLOB.
-    assert [(row["start_time"], row["end_time"]) for row in expected] == [
+    expected_capture = CalendarFactsRepository(conn).downtimes(["M1"], *window, limit=100)
+    assert captured.downtimes(["M1"], *window, limit=100) == expected_capture
+    assert [(row["start_time"], row["end_time"]) for row in expected_capture] == [(row[1], row[2]) for row in rows]
+    admitted = CalendarFacts(conn).read_downtimes(["M1"], window[1], window[0])
+    assert CalendarFacts(conn, captured=captured).read_downtimes(["M1"], window[1], window[0]) == admitted
+    # SQLite's storage-class order after admission: numbers, then TEXT, then BLOB; equal starts by end, TEXT before BLOB.
+    assert [(row["start_time"], row["end_time"]) for row in admitted] == [
         (rows[index][1], rows[index][2]) for index in (4, 1, 6, 5, 0, 2, 3)]
     conn.close()
 
@@ -175,12 +181,83 @@ def test_mixed_storage_downtimes_on_a_plan_machine_read_like_the_calendar_sql(da
     with reader.read_snapshot():
         facts = reader.load().facts
         expected = CalendarFactsRepository(case.conn).downtimes(["DM1"], *window, limit=100)
+        admitted = CalendarFacts(case.conn).read_downtimes(["DM1"], window[1], window[0])
     assert facts.plan_state == "loaded" and len(expected) == 4
     assert facts.calendar_inputs.downtimes(["DM1"], *window, limit=100) == expected
+    assert CalendarFacts(case.conn, captured=facts.calendar_inputs).read_downtimes(["DM1"], window[1], window[0]) == admitted
     client = api(case, monkeypatch)
     for path, params in (("/api/workbench/v1/dashboard", {}), ("/api/workbench/v1/dashboard/analysis", {"section": "downtime"})):
         response = client.get(path, query_string=params)
         assert response.status_code == 200, response.get_json()
+
+
+def test_downtime_capture_avoids_temp_btree_and_unifies_admitted_resource_projections(dashboard_case):
+    case = dashboard_case
+    for marks, keys in (("?", ("DM1",)), ("?,?", ("DM1", "DM2"))):
+        plan_rows = case.conn.execute(
+            "EXPLAIN QUERY PLAN " + _DOWNTIMES_SQL.format(marks=marks) + " LIMIT ?",
+            (*keys, "2026-09-10T00:00:00", "2026-09-09T00:00:00", 1),
+        ).fetchall()
+        assert all("TEMP B-TREE" not in " ".join(str(col) for col in row).upper() for row in plan_rows), plan_rows
+
+    case.conn.executemany(
+        "INSERT INTO MachineDowntimes(machine_id,start_time,end_time,status,reason_detail) VALUES ('DM1',?,?,'active',?)",
+        [
+            ("2026-09-09T15:00:00", "2026-09-09T16:00:00", "Afternoon calibration"),
+            ("2026-09-09T10:00:00", "2026-09-09T12:00:00", "Late morning overlap"),
+            ("2026-09-09T08:00:00", "2026-09-09T09:30:00", "Early morning overlap"),
+        ],
+    )
+    case.conn.commit()
+
+    repo = DashboardSourceRepository(case.conn)
+    _, prepared = repo.downtime_capture(machine_ids=["DM1"])
+    captured = CapturedCalendarInputs(
+        machines=repo.table("Machines"),
+        downtimes=prepared,
+        schema_version=repo.table("SchemaVersion"),
+        downtime_machine_ids=["DM1"],
+    )
+    start_str, end_str = "2026-09-09T00:00:00", "2026-09-10T00:00:00"
+    direct_head = CalendarFactsRepository(case.conn).downtimes(["DM1"], end_str, start_str, limit=2)
+    assert captured.downtimes(["DM1"], end_str, start_str, limit=2) == direct_head
+    assert [(row["start_time"], row["end_time"]) for row in direct_head] == [
+        ("2026-09-09T09:00:00", "2026-09-09T11:00:00"),
+        ("2026-09-09T15:00:00", "2026-09-09T16:00:00"),
+    ]
+
+    first, last = date(2026, 9, 8), date(2026, 9, 9)
+    start, end = datetime(2026, 9, 9, 0, 0), datetime(2026, 9, 10, 0, 0)
+    expected_sorted = [
+        ("2026-09-09T08:00:00", "2026-09-09T09:30:00"),
+        ("2026-09-09T09:00:00", "2026-09-09T11:00:00"),
+        ("2026-09-09T10:00:00", "2026-09-09T12:00:00"),
+        ("2026-09-09T15:00:00", "2026-09-09T16:00:00"),
+    ]
+    expected_merged = [
+        {"start": datetime(2026, 9, 9, 8, 0), "end": datetime(2026, 9, 9, 12, 0)},
+        {"start": datetime(2026, 9, 9, 15, 0), "end": datetime(2026, 9, 9, 16, 0)},
+    ]
+    projections = []
+    for mode in ("resources", "resource_states"):
+        for source in (None, captured):
+            reader = CalendarFacts(case.conn, captured=source)
+            reader.calendar(first.isoformat(), last.isoformat(), ["DO1"])
+            if mode == "resources":
+                reader.resources(["DM1"], ["DO1"], [case.op], start, end)
+            else:
+                reader.resource_states(["DM1"], ["DO1"], start, end)
+            assert [(row["start_time"], row["end_time"]) for row in reader.rows["downtimes"]] == expected_sorted
+            engine = SnapshotCalendarEngine(reader.rows)
+            projected = {
+                (kind, key): item
+                for kind, key, _raw, item in project_resource_calendars(
+                    engine, reader.rows, {"machine": ["DM1"], "operator": ["DO1"]}, first, last, start, end
+                )
+            }
+            assert projected["machine", "DM1"]["downtime_windows"] == expected_merged
+            projections.append(projected["machine", "DM1"])
+    assert all(item == projections[0] for item in projections[1:])
 
 
 def test_nonrisk_tasks_share_complete_machine_downtime_identity_evidence():

@@ -1,7 +1,6 @@
 """Pure views of one saved shared-optimization process and its actual origins."""
 
 from core.models.objective import best_score_schema, comparison_metric_key, objective_choice_labels
-from core.models.workbench_run_candidate import reject
 from core.services.scheduler.run.optimizer.shared_process import UNIFIED_PROCESS_VERSION
 
 from .candidate_values import corrupt
@@ -47,21 +46,16 @@ def _stages(actions, phase_seconds):
             for phase, rows in grouped.items()]
 
 
-def project_unified_process(process, *, objective=None, candidate, candidates=()):
-    """Consume parsed saved facts with permanent scope members; perform no reads."""
-    if process["version"] != UNIFIED_PROCESS_VERSION:
-        corrupt()
-    selected = process["primary_objective"] if objective is None else objective
-    if selected not in process["target_objectives"]:
-        reject("invalid_input", "请选择本次排产的优化方向。", 422)
+def project_unified_process(process, *, objective, candidate, candidates=()):
+    """Project one resolved target direction of parsed saved facts with permanent scope members; perform no reads."""
     objectives = [_objective(name) for name in process["target_objectives"]]
-    descriptor = next(row for row in objectives if row["name"] == selected)
+    descriptor = next(row for row in objectives if row["name"] == objective)
     scopes = {scope_ref: {key: scope[key] for key in _SCOPE_FIELDS} for scope_ref, scope in process["scopes"].items()}
     events = {event["event_id"]: event for event in process["events"]}
     first_complete = [event["elapsed_ms"] for event in events.values()
                       if event["event_type"] == "archive_observation" and event["verified"] is True
                       and event.get("scope_ref") is not None and scopes[event["scope_ref"]]["is_complete"] is True]
-    target = process["targets"][selected]
+    target = process["targets"][objective]
     if len(target["points"]) > 200:
         corrupt()
     points = []
@@ -75,7 +69,7 @@ def project_unified_process(process, *, objective=None, candidate, candidates=()
             corrupt()
         points.append({**point, "phase": source["phase"], "verified": source["verified"],
                        "primary_value": point["score"][field_order.index(key)]})
-    actions = [action for action in process["actions"] if action["search_objective"] == selected]
+    actions = [action for action in process["actions"] if action["search_objective"] == objective]
     current = _candidate(candidate)
     evidence = current["search_evidence_ref"]
     source_event = events.get(evidence["source_event_id"]) if evidence is not None else None
@@ -87,7 +81,7 @@ def project_unified_process(process, *, objective=None, candidate, candidates=()
             "counts": process["counts"], "budget": process["budget"], "stop_reason": process["stop_reason"],
             "bridges": process["bridges"], "objectives": objectives, "selected_objective": descriptor,
             "progress": {"points": points, "sampling": target["sampling"]}, "scopes": scopes,
-            "actions": actions, "stages": _stages(actions, process["budget"]["objectives"][selected]["phase_elapsed_seconds"]),
+            "actions": actions, "stages": _stages(actions, process["budget"]["objectives"][objective]["phase_elapsed_seconds"]),
             "candidate": current, "candidates": [_candidate(row) for row in candidates], "source_event": source_event}
 
 

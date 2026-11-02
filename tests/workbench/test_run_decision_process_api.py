@@ -8,6 +8,7 @@ import pytest
 from openpyxl import load_workbook
 
 from core.services.scheduler.run.optimizer.shared_process import UNIFIED_PROCESS_VERSION
+from core.services.workbench.run import decision_process, decision_process_export
 from core.services.workbench.run.decision_process_export import UNIFIED_PROCESS_CSV_HEADERS
 from tests.workbench.run_candidate_support import BASE, api, compute, retained
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
@@ -93,7 +94,7 @@ def check_scope_exports(rows, scopes, fmt):
             exported_value(row, label, value, fmt)
 
 
-def test_real_shared_process_queries_and_exports_preserve_one_snapshot(candidate_case):
+def test_real_shared_process_queries_and_exports_preserve_one_snapshot(candidate_case, monkeypatch):
     case = candidate_case
     case.config(algo_mode="improve", dispatch_mode="sgs", dispatch_rule="slack", time_budget_seconds=1, objective="min_overdue")
     run_ref, refs = compute(case)
@@ -176,12 +177,30 @@ def test_real_shared_process_queries_and_exports_preserve_one_snapshot(candidate
         empty = detail(client, run_ref, "process", **dict(progress_query, page=(total + 19) // 20 + 1, snapshot_ref=token))["data"]
         assert empty["items"] == [] and empty["page"]["total"] == total and empty["page"]["has_more"] is False
         assert first["data"]["page"]["size"] == 20 and wide["data"]["page"]["size"] == 50
+        projections = []
+        for module in (decision_process, decision_process_export):
+            monkeypatch.setattr(module, "project_unified_process", lambda *args, _project=module.project_unified_process, **kwargs:
+                                projections.append(kwargs["objective"]) or _project(*args, **kwargs))
+        export_path = BASE + "/runs/" + run_ref + "/decision/export"
+        statements.clear()
         for changed in ({"objective": "min_overdue"}, {"order": "asc"}, {"sort": "event_index"}):
             expect_error(client, path, dict(progress_query, snapshot_ref=token, **changed), 409, "snapshot_stale")
+            for section, fmt in (("process", "csv"), ("process", "xlsx"), ("all", "xlsx")):
+                expect_error(client, export_path, dict(progress_query, snapshot_ref=token, section=section, format=fmt,
+                                                       filter_section="process", **changed), 409, "snapshot_stale")
+        # A stale binding is rejected from the resolved candidate and direction before the saved process is read or projected.
+        assert projections == [] and not any("PROCESS_JSON" in sql.upper() for sql in statements)
+        statements.clear()
+        assert detail(client, run_ref, "process", **dict(progress_query, snapshot_ref=token))["data"]["items"] == first["data"]["items"]
+        assert projections == ["min_tardiness"] and sum("PROCESS_JSON" in sql.upper() for sql in statements) == 1
+        statements.clear()
         for invalid in ({"objective": "min_weighted_tardiness"}, {"record_kind": "raw"}, {"record_kind": "attempts", "sort": "event_index"},
                         {"record_kind": "attempts", "sort": "primary_value"}, {"page": 0}, {"size": 27}, {"order": "random"}):
             expect_error(client, path, dict(query, **invalid), 422, "invalid_input")
-        expect_error(client, path, dict(query, process_candidate_ref="bad"), 400, "invalid_input")
+        assert not any("PROCESS_JSON" in sql.upper() for sql in statements)
+        for name in ("process_candidate_ref", "selected_candidate_ref", "reference_candidate_ref"):
+            for bad_value in ("bad", ""):
+                expect_error(client, path, dict(query, **{name: bad_value}), 400, "invalid_input")
         expect_error(client, path, dict(query, process_candidate_ref="f" * 48), 404, "entity_not_found")
         expect_error(client, BASE + "/runs/" + "e" * 48 + "/decision/process", {}, 404, "entity_not_found")
         progress = first["data"]

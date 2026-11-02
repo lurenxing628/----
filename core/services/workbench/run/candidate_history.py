@@ -47,17 +47,17 @@ def _entry(conn, row, candidate_ref, run_ref, context):
             "can_open": not issues, "evidence_gaps": issues}
 
 
-def read_candidate_history(conn, candidate_ref):
+def read_candidate_history(conn, candidate_ref, *, bind_snapshot):
     reference(candidate_ref)
     store = CandidateStore(conn)
     receipts = WorkbenchRunCandidateRepository(conn)
     with store.snapshot(), read_evidence_scope(conn):
         context = PlanReadContext(conn)
         with context.read_scope():
-            return _read_candidate_history(conn, candidate_ref, store, receipts, context)
+            return _read_candidate_history(conn, candidate_ref, store, receipts, context, bind_snapshot)
 
 
-def _read_candidate_history(conn, candidate_ref, store, receipts, context):
+def _read_candidate_history(conn, candidate_ref, store, receipts, context, bind_snapshot):
     run_ref = store.candidate_run(candidate_ref)
     rows, byte_count = [], 0
     for row in receipts.adoption_receipts(ADOPT_ACTION, candidate_ref, 10001):
@@ -66,11 +66,12 @@ def _read_candidate_history(conn, candidate_ref, store, receipts, context):
         bounded_size(byte_count, MAX_RESPONSE_BYTES)
         rows.append(row)
     items = [_entry(conn, row, candidate_ref, run_ref, context) for row in rows]
+    snapshot = bind_snapshot({"kind": "run-candidate-adoption-history", "candidate_ref": candidate_ref},
+                             {"read_contract_version": 1, "candidate_ref": candidate_ref, "run_ref": run_ref,
+                              "receipts": [{"receipt_ref": item["receipt_ref"], "can_open": item["can_open"],
+                                            "issue_codes": sorted(issue["code"] for issue in item["evidence_gaps"])}
+                                           for item in items]})
     data = {"candidate_ref": candidate_ref, "run_ref": run_ref, "items": items,
             "total": len(items), "state": "available" if items else "empty",
             "basis": "original_candidate_receipts_and_official_adoption_audits"}
-    state = {"read_contract_version": 1, "candidate_ref": candidate_ref, "run_ref": run_ref,
-             "receipts": [{"receipt_ref": item["receipt_ref"], "can_open": item["can_open"],
-                           "issue_codes": sorted(issue["code"] for issue in item["evidence_gaps"])}
-                          for item in items]}
-    return data, state
+    return data, snapshot

@@ -7,9 +7,12 @@ from types import MappingProxyType
 import pytest
 from flask import Flask
 
+from core.infrastructure.connection_guards import main_database_path
 from core.infrastructure.sqlite_udf import register_schedule_time_sql_functions
 from core.models.schedule_config_runtime_fields import default_snapshot_values
 from core.models.workbench_run_job import new_run_ref
+from core.services.workbench.facts.run_data_context import RunDataContext
+from core.services.workbench.facts.system_journal import system_journal_directory
 from core.services.workbench.run.jobs import WorkbenchRunService
 from core.services.workbench.run.preflight import PreflightService
 from tests.workbench.run_compute_support import RunCase
@@ -26,10 +29,14 @@ def connection(path):
     return conn
 
 
+def data_context(conn):
+    return RunDataContext(conn, system_journal_directory(main_database_path(conn)))
+
+
 def service(conn, enabled=True):
     return WorkbenchRunService(conn, integration_enabled=enabled, input_resolver=evaluate_preflight_input_prepared,
         context_factory=issue_write_context, context_validator=validate_write_context,
-        clock=lambda: datetime(2026, 9, 10, 12))
+        clock=lambda: datetime(2026, 9, 10, 12), data_context=data_context(conn))
 
 
 class JobCase(RunCase):
@@ -73,6 +80,7 @@ def job_case(schema_conn, tmp_path):
     case.config(algo_mode="greedy", time_budget_seconds=60,
                 ortools_enabled="no", freeze_window_enabled="no")
     case.app = Flask(__name__)
+    case.app.config["WORKBENCH_SYSTEM_JOURNAL_DIR"] = system_journal_directory(str(path))
     with case.app.app_context():
         yield case
     conn.close()

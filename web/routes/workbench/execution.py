@@ -26,9 +26,10 @@ def field_query(task_ref=None):
     reader = FieldWorkspaceService(g.db, context_factory=issue_write_context)
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():
-            cohort, state, _ = reader.cohort(scope)
+            read_state = reader.prepare_read(scope)
+            snapshot = bind_read_snapshot({'kind': 'field', **read_state.effective_scope}, read_state.state, args.get('snapshot_ref'))
+            cohort, _ = reader.cohort(read_state)
     # 读事务已结束：定位页码、给这一页签发报工令牌只用已算好的范围，不再占着读锁。
-    snapshot = bind_read_snapshot({'kind': 'field', **cohort['scope']}, state, args.get('snapshot_ref'))
     if args.get('task_ref'):
         # 定位页码只在已算好的范围里查，不签报工令牌；令牌由下面 page() 给这一页签发一次。
         index = next((index for index, row in enumerate(cohort['tasks']) if row['task_ref'] == args['task_ref']), None)

@@ -161,9 +161,8 @@ def test_piece_operation_dispatch_state_prev_end_uses_operation_release_floor():
         "end_time_by_op_id": {1: piece_end},
         "predecessor_op_ids_by_op_id": {2: {1}, 3: set()},
     }
-    batch = make_batch(quantity=2)
-    dependent = operation_dispatch_state(state, graph_state, make_algo_op(id=2), batch)
-    independent = operation_dispatch_state(state, graph_state, make_algo_op(id=3), batch)
+    dependent = operation_dispatch_state(state, graph_state, make_algo_op(id=2))
+    independent = operation_dispatch_state(state, graph_state, make_algo_op(id=3))
     assert dependent.prev_end("B1") == piece_end
     assert independent.prev_end("B1") == base
     assert state.prev_end("B1") == batch_end

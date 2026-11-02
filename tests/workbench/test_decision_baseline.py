@@ -24,6 +24,7 @@ from core.services.workbench.facts.decision_baseline_source import (
     _operation_metadata,
     decision_baseline_source_resolver,
 )
+from core.services.workbench.facts.trial_scenario_archive import SavedTrialScenario
 from core.services.workbench.facts.zero_duration_evidence import CandidatePointReader
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.run_candidate_adoption_support import INTENT, service
@@ -265,17 +266,20 @@ def test_source_runtime_effort_and_type_keep_saved_context_without_recalculation
                                 {"kind": "op_type", "entity_key": "TURN", "ref": type_ref, "active": 1}],
         "OpTypes": [{"op_type_id": "MILL", "name": "铣削工种"}, {"op_type_id": "TURN", "name": "车削工种"}]}}}}
     rows = [{"operation_ref": op_ref, "original": {"operation": operation, "execution": facts.execution[op_ref]}}]
-    trial_evidence = {"basis": "trial_adoption", "trial_source": prepare_trial_adoption_facts(({}, head, rows))}
+    trial_evidence = {"basis": "trial_adoption",
+                      "trial_source": prepare_trial_adoption_facts(SavedTrialScenario({}, head, rows))}
     # A base requirement cannot supply a missing saved trial's current ledger.
-    assert _operation_metadata(({"operation_effort": None}, head, rows), trial_evidence) == (None, types, standards)
+    assert _operation_metadata(SavedTrialScenario({"operation_effort": None}, head, rows), trial_evidence) == (
+        None, types, standards)
     saved = {"operation_effort": ledger}
-    assert _operation_metadata((saved, head, rows), trial_evidence)[0] is ledger
+    assert _operation_metadata(SavedTrialScenario(saved, head, rows), trial_evidence)[0] is ledger
     rows[0]["current"] = {"operation_effort": ledger["items"][0]}
-    assert _operation_metadata((saved, head, rows), trial_evidence)[1] == old_types
+    assert _operation_metadata(SavedTrialScenario(saved, head, rows), trial_evidence)[1] == old_types
     rows[0]["current"] = {}
-    assert _operation_metadata((saved, head, rows), trial_evidence)[1] == types
+    assert _operation_metadata(SavedTrialScenario(saved, head, rows), trial_evidence)[1] == types
     head["admission"]["source"].pop("operation_types")
-    assert _operation_metadata(({"operation_effort": None}, head, rows), trial_evidence)[1] == {op_ref: {"ref": None, "label": None}}
+    assert _operation_metadata(SavedTrialScenario({"operation_effort": None}, head, rows), trial_evidence)[1] == {
+        op_ref: {"ref": None, "label": None}}
 
 
 @pytest.mark.parametrize("captured", [False, True])
@@ -315,7 +319,7 @@ def test_trial_resolver_prepares_each_scenario_once_and_keeps_original_resource_
     def load(conn, ref):
         assert ref == scenario_ref
         calls["scenario"] += 1
-        return saved, head, rows
+        return SavedTrialScenario(saved, head, rows)
 
     def generation(capture):
         assert capture is source["capture"]

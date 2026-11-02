@@ -5,7 +5,10 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, Optional
 
-from core.services.workbench.facts.system_journal import assert_system_maintenance_ready
+from core.services.workbench.facts.system_journal import (
+    assert_system_maintenance_ready,
+    system_journal_directory,
+)
 from web.runtime_host import RESTORE_HOST_EXTENSION, normalize_runtime_db_path
 
 from .workbench_request_lifecycle import lookup_workbench_request_lifecycle
@@ -15,11 +18,6 @@ if TYPE_CHECKING:
     from .workbench_system_restore import WorkbenchSystemRestoreHost
 
 RECOVERY = "workbench_system_restore_recovery"
-
-
-def system_journal_directory(database_path):
-    # Bind the default to the database, not an installation/log/backup directory.
-    return os.path.realpath(database_path) + ".system-journal"
 
 
 def prepare_system_restore_startup(app):

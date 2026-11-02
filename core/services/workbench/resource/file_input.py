@@ -37,14 +37,14 @@ class ResourceFileInput:
     def __init__(self, reader, preparation):
         self.reader, self.preparation, self.kind = reader, preparation, reader.kind
 
-    def normalize(self, action, code, values, before, scope):
-        changes = self._changes(values, before, scope)
+    def normalize(self, action, code, values, before, category):
+        changes = self._changes(values, before, category)
         self._clear_fields(changes)
         payload: Dict[str, Any] = {"fields": {}}
         related = {}
         if action == "create":
             payload["business_code"] = code
-            self._new_fields(changes, scope)
+            self._new_fields(changes, category)
         for key, value in changes.items():
             if key == "label":
                 payload["label"] = value
@@ -57,8 +57,8 @@ class ResourceFileInput:
                 payload["fields"][key] = value
         return self.reader.domain.normalize_input(action, payload), related
 
-    def _changes(self, values, before, scope):
-        if self.kind == "op_type" and "category" in values and not supports_source(values["category"], scope["category"]):
+    def _changes(self, values, before, category):
+        if self.kind == "op_type" and "category" in values and not supports_source(values["category"], category):
             raise ValidationError("文件里的归属和这次导入选的归属不一样，这一行没有导入。请分开导入自制和外协工种。", field="category")
         # 状态在解码时已换成代号（页面叫法「在岗」「启用」也一样），和原值一样就是没改。
         changes = {key: value for key, value in values.items() if key in WRITABLE[self.kind]
@@ -73,9 +73,9 @@ class ResourceFileInput:
         return (self.kind == "operator" and before is not None and not before["skills_declared"]
                 and values.get("skill_codes") == [] and "skills_declared" not in values)
 
-    def _new_fields(self, changes, scope):
+    def _new_fields(self, changes, category):
         if self.kind == "op_type":
-            changes.setdefault("category", scope["category"])
+            changes.setdefault("category", category)
         elif "status" not in changes:
             raise ValidationError("新增的记录必须填状态，这一行没有导入。请在" + _column(self.kind, "status") + "里填好状态。", field="status")
 
@@ -116,7 +116,7 @@ def proposed_fields(kind, code, before, payload, related):
             after[field] = sorted(item["identity"]["entity_key"] for item in facts)
         else:
             after[field] = facts["identity"]["entity_key"] if facts else None
-    if kind == "op_type" and not supports_source(after.get("category"), "external") and "default_merge_mode" not in payload["fields"]:
+    if kind == "op_type" and not supports_source(after["category"], "external") and "default_merge_mode" not in payload["fields"]:
         after["default_merge_mode"] = None
     if before is not None:
         # Server-generated timestamp and changed relation provenance are not known until commit.

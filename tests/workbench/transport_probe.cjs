@@ -171,6 +171,17 @@ async function commands() {
       assert.equal(client.timers(), 0);
     });
   }
+  for (const [name, respond, status] of [
+    ['HTTP 500 with body status 409', async () => json({ ...failurePayload('stale_write', false), status: 409 }, 500), 500],
+    ['HTTP 200 failure body', async () => json(failurePayload('stale_write', false), 200), 200]
+  ]) {
+    await check('command invalid failure response is uncertain: ' + name, async () => {
+      const { client, outcome } = await run(respond);
+      await assert.rejects(outcome, error => shaped(error, { message: pending, code: 'invalid_response', committed: 'unknown', status })
+        && client.T.uncertain(error) && !client.T.rejected(error));
+      assert.equal(client.timers(), 0);
+    });
+  }
   await check('command echo that names another request is not followed', async () => {
     const { client, outcome } = await run(() => json(failurePayload('stale_write', false, { request_key: 'run-' + 'd'.repeat(48), result_target: expect }), 409));
     await assert.rejects(outcome, error => error.code === 'invalid_response' && error.committed === 'unknown' && client.T.uncertain(error) && error.requestRef === 'f'.repeat(32));
@@ -182,18 +193,16 @@ async function commands() {
 }
 
 async function verdicts() {
-  // Q2-A: only committed:false within 400/404/409/413/422/503 is a definite rejection; request_key_conflict never is.
+  // Every valid failure envelope with committed:false is a definite rejection; request_key_conflict and invalid responses never are.
   const { T } = runtime(() => null);
   const verdict = (code, committed, status) => T.rejected(T.failure(failurePayload(code, committed), status));
-  for (const status of [400, 404, 409, 413, 422, 503]) await check('rejected for committed:false HTTP ' + status, () => assert.equal(verdict('stale_write', false, status), true));
-  for (const status of [401, 403, 405, 429, 500, 502]) await check('not rejected for committed:false HTTP ' + status, () => assert.equal(verdict('stale_write', false, status), false));
+  for (const status of [400, 401, 403, 404, 405, 409, 413, 422, 429, 500, 502, 503]) await check('rejected for committed:false HTTP ' + status, () => assert.equal(verdict('stale_write', false, status), true));
   await check('request_key_conflict is never a rejection', () => assert.equal(verdict('request_key_conflict', false, 409), false));
   for (const committed of ['unknown', true]) await check('not rejected when committed is ' + committed, () => assert.equal(verdict('stale_write', committed, 409), false));
   // A local failure (status null: the request was never sent, or a read never got an answer) is also a definite non-commit.
   await check('rejected for a local failure that never reached the server', () => {
     assert.equal(T.rejected({ committed: false, status: null }), true);
-    assert.equal(T.rejected({ committed: false, status: undefined }), false);
-    assert.equal(T.rejected({ committed: false, status: 500 }), false);
+    assert.equal(T.rejected({ committed: false, code: 'request_key_conflict', status: 409 }), false);
     let guard; try { T.url('/api/other'); } catch (error) { guard = error; }
     assert(shaped(guard, { committed: false, status: null }) && T.rejected(guard));
   });

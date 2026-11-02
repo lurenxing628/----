@@ -25,7 +25,10 @@ from core.services.workbench.facts.resource_projection import resource_cohort
 from core.services.workbench.run.decision_resource_engine import ResourceWindowInput, ResourceWindowMetrics
 from core.services.workbench.run.preflight import batch_dependencies, classify, task_row
 from core.services.workbench.trial.capacity import capacity_tasks as trial_resource_tasks
-from core.services.workbench.trial.constraints import build_trial_intervals
+from core.services.workbench.trial.constraints import (
+    build_archived_trial_intervals,
+    build_current_trial_spans,
+)
 from core.services.workbench.trial.preparation import after_preparation_rows, trial_changeovers
 from data.repositories.workbench_preflight_facts_repo import PREFLIGHT_TABLES
 
@@ -225,9 +228,13 @@ def _trial_preparation(saved, head, *, contexts):
 
 
 def _trial_resources(packet, projected, window, calendar, *, trial_intervals):
-    original = trial_resource_tasks(projected, "original", intervals_by_row=trial_intervals["original_by_row"])
-    tasks = trial_resource_tasks(projected, "current", intervals_by_row=trial_intervals["current_by_row"])
-    intervals = {"reference": trial_intervals["original_by_row"], packet["ref"]: trial_intervals["current_by_row"]}
+    original, original_intervals = trial_resource_tasks(
+        projected, "original", intervals_by_row=trial_intervals["original_by_row"],
+        occupancy_by_row=trial_intervals["original_occupancy_by_row"])
+    tasks, current_intervals = trial_resource_tasks(
+        projected, "current", intervals_by_row=trial_intervals["current_by_row"],
+        occupancy_by_row=trial_intervals["current_occupancy_by_row"])
+    intervals = {"reference": original_intervals, packet["ref"]: current_intervals}
     cohort = resource_cohort([original, tasks], task_intervals=[intervals["reference"], intervals[packet["ref"]]])
     engine = ResourceWindowMetrics(ResourceWindowInput(
         window["start"], window["end"], calendar,
@@ -268,18 +275,22 @@ def _trial(packet, window, *, reader, metric_keys=None):
     need_completion = wanted is None or bool(
         {"expected_operation_count", "unplanned_operation_count", "deferred_operation_count"} & wanted
     )
-    if need_completion:
-        _batches, _operations, deferred_ids, deferred_issues = condition.delivery_origin
-        if not deferred_issues:
-            effort_by_ref = {row["operation_ref"]: row for row in efforts}
-            missing = []
-            for ref in sorted(operations - scheduled):
-                operation = condition.operations[ref]
-                missing.append({**effort_by_ref.get(ref, {}), "operation_ref": ref, "sequence": operation["seq"],
-                    "batch_ref": condition.original_entity_refs.get(("batch", operation["batch_id"])), "arranged": False,
-                    "source": operation["source"], "allocation_state": "deferred" if operation["id"] in deferred_ids else "unplanned"})
-            completion = project_completion_summary([row["after"] for row in comparison["batches"]], missing)
-            deferred, ordinary = set(completion["deferred_operation_refs"]), set(completion["unplanned_operation_refs"])
+    if need_completion and not condition.origin.deferred_issues:
+        effort_by_ref = {row["operation_ref"]: row for row in efforts}
+        missing = [
+            {
+                **effort_by_ref[ref],
+                "operation_ref": ref,
+                "sequence": member["operation"]["seq"],
+                "batch_ref": member["batch_ref"],
+                "arranged": False,
+                "source": member["operation"]["source"],
+                "allocation_state": "deferred" if member["deferred"] else "unplanned",
+            }
+            for ref, member in sorted(condition.origin.unarranged.items())
+        ]
+        completion = project_completion_summary([row["after"] for row in comparison["batches"]], missing)
+        deferred, ordinary = set(completion["deferred_operation_refs"]), set(completion["unplanned_operation_refs"])
     for key, value in (("expected_operation_count", len(operations - deferred) if deferred is not None else None),
                        ("scheduled_operation_count", len(scheduled)),
                        ("unplanned_operation_count", len(ordinary) if ordinary is not None else None),
@@ -298,11 +309,16 @@ def _trial(packet, window, *, reader, metric_keys=None):
         values[key] = item
     need_changeovers = wanted is None or bool({"type_changeover_count", "changed_machine_count"} & wanted)
     need_makespan = wanted is None or "makespan_hours" in wanted
-    trial_intervals = (
-        build_trial_intervals(projected)
-        if (window["start"] is not None or need_makespan or need_changeovers)
-        else None
-    )
+    need_resources = window["start"] is not None
+    if need_resources:
+        trial_intervals = build_archived_trial_intervals(
+            projected,
+            execution=head["admission"]["execution"],
+        )
+    elif need_makespan or need_changeovers:
+        trial_intervals = build_current_trial_spans(projected)
+    else:
+        trial_intervals = None
     current_intervals = trial_intervals["current_by_row"] if trial_intervals is not None else {}
     timed_tasks = (
         [(task, current_intervals.get(task["row_ref"])) for task in tasks]
@@ -323,9 +339,8 @@ def _trial(packet, window, *, reader, metric_keys=None):
         values["makespan_hours"]["covered_operation_refs"] = sorted(
             {task["operation_ref"] for task, interval in timed_tasks if interval is not None}
         )
-    common = (trial_changeovers(projected, head["admission"], start=window["start"], end=window["end"],
-                               next_operation_refs=operations, facts=condition.original_facts, after_only=True,
-                               trial_intervals=trial_intervals)
+    common = (trial_changeovers(projected, condition.origin, start=window["start"], end=window["end"],
+                               next_operation_refs=operations, after_only=True, trial_intervals=trial_intervals)
               if need_changeovers and window["start"] is not None and trial_intervals is not None else None)
     if common is not None:
         after = common["after"]

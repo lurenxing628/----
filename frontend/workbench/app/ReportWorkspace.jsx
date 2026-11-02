@@ -25,12 +25,15 @@
       version: Number.isSafeInteger(captionPlan.version) ? window.WorkbenchTerms.plan_version(captionPlan.version) : undefined,
       range: data.scope.plan_finish_date_from && data.scope.plan_finish_date_to ? '计划完工 ' + data.scope.plan_finish_date_from + ' 至 ' + data.scope.plan_finish_date_to : undefined
     } : null);
-    window.WorkbenchPageContext.useSnapshot(data ? {
-      scope: window.ReportAPI.scope(data.scope), topic: data.topic,
-      table: { topic: data.topic, page: data.page.number, size: data.page.size, sort: data.page.sort[0].field,
-        direction: data.page.sort[0].direction }, selected, chartsOpen,
-      catalogOpen: catalog, scroll, resourceView, detailView, returnTo: initialContext.returnTo
-    } : null, !!data && !request.busy && !request.error);
+    function pageContext(currentScroll = scroll) {
+      return {
+        scope: window.ReportAPI.scope(data.scope), topic: data.topic,
+        table: { topic: data.topic, page: data.page.number, size: data.page.size, sort: data.page.sort[0].field,
+          direction: data.page.sort[0].direction }, selected, chartsOpen,
+        catalogOpen: catalog, scroll: currentScroll, resourceView, detailView, returnTo: initialContext.returnTo
+      };
+    }
+    window.WorkbenchPageContext.useSnapshot(data ? pageContext() : null, !!data && !request.busy && !request.error);
     React.useEffect(() => {
       let frame = 0;
       const remember = event => {
@@ -84,9 +87,7 @@
     }, [mode, !!data]);
     function currentContext() {
       const node = root.current, table = node && (node.querySelector('.rw-primary-table') || node.querySelector('.rw-table-scroll')), main = node && node.closest('.main-content');
-      return { scope: window.ReportAPI.scope(data.scope), topic: data.topic, table: window.ReportAPI.table(state, data.topic),
-        selected, chartsOpen, resourceView, detailView, catalogOpen: catalog, returnTo: initialContext.returnTo,
-        scroll: { tableLeft: table ? table.scrollLeft : 0, tableTop: table ? table.scrollTop : 0, mainTop: main ? main.scrollTop : 0, windowTop: window.pageYOffset } };
+      return pageContext({ tableLeft: table ? table.scrollLeft : 0, tableTop: table ? table.scrollTop : 0, mainTop: main ? main.scrollTop : 0, windowTop: window.pageYOffset });
     }
     const go = (target, resume = false) => {
       if (!resume && initialContext.returnTo && initialContext.returnTo.view === target) return onNav(target, initialContext.returnTo.context);

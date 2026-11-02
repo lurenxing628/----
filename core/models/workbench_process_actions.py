@@ -1,11 +1,12 @@
 """Strict part creation and explicit selection contracts for process actions."""
 
+from dataclasses import dataclass
+
 from core.errors import ValidationError
+from core.models.workbench_action_values import AtomicActionPreview
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_process_query import ProcessPageRequest
+from core.models.workbench_identity import is_entity_ref
 from core.models.workbench_process_route import MAX_ROUTE_TEXT_BYTES
-from core.models.workbench_process_table_query import process_table_scope
-from core.models.workbench_resource_action import ResourceActionPreview, resource_refs
 from core.models.workbench_resource_input import resource_object, resource_text
 
 
@@ -34,24 +35,15 @@ def _check_text(value, label, field):
         raise ValidationError(label + "包含无法保存的字符，请核对。", field=field) from exc
 
 
-def process_part_refs(refs):
-    # Keep the resource selection contract, including selections beyond one page.
-    try:
-        return resource_refs(refs)
-    except ValidationError as exc:
-        raise ValidationError("请选择有效的零件记录，选择列表不能为空或重复。", field="refs") from exc
+def process_part_refs(refs, *, allow_empty=False):
+    if type(refs) is not list or (not refs and not allow_empty):
+        raise ValidationError("请选择有效的零件记录，选择列表不能为空或重复。", field="refs")
+    if any(not is_entity_ref(ref) for ref in refs) or len(set(refs)) != len(refs):
+        raise ValidationError("请选择有效的零件记录，选择列表不能为空或重复。", field="refs")
+    return refs
 
 
-def process_part_scope(scope):
-    if type(scope) is dict and ("column_filters" in scope or type(scope.get("sort")) is list):
-        return process_table_scope(scope)
-    resource_object(scope, {"query", "stage", "sort", "direction"}, "scope")
-    query = ProcessPageRequest(**scope)
-    return {key: value for key, value in query.scope().items() if key not in ("kind", "size")}
-
-
-def check_process_part_preview(original, current):
-    if not isinstance(original, ResourceActionPreview) or original.document != current.document:
-        raise WorkbenchCommandRejected("stale_write", "零件资料、删除选择或筛选条件已变化，请重新预检。")
-    if current.as_dict()["summary"]["rejected"]:
-        raise WorkbenchCommandRejected("constraint_conflict", "有零件不能删除，本次未删除任何零件，请先核对预检结果。")
+@dataclass(frozen=True)
+class PartDeletePreview(AtomicActionPreview):
+    stale_message = "零件资料、删除选择或筛选条件已变化，请重新预检。"
+    rejected_message = "有零件不能删除，本次未删除任何零件，请先核对预检结果。"

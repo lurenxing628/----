@@ -3,34 +3,22 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
-from datetime import datetime
 from functools import wraps
-from types import MappingProxyType
-from typing import Optional
 
 from werkzeug.exceptions import HTTPException
 
-from core.errors import AppError, ValidationError
-from core.models.content import content_text
+from core.errors import AppError
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_material_file import MaterialPreview, scope_request
+from core.models.workbench_material_file import scope_request
 from core.services.workbench.messages import local_created_at
-from web.public_token_registry import issue_public_token_with_expiry, resolve_public_token
 
 from .api_responses import api_endpoint
 from .request_json import read_json_body
-from .write_context import preview_write_context, validate_preview_confirmation
+from .write_context import preview_write_context, retain_action_preview
 
 PREVIEW_SCOPE = "workbench-material-preview-v1"
 EXPORT_SCOPE = "workbench-material-export-v1"
-TTL_SECONDS = 900
-
-
-@dataclass(frozen=True)
-class RetainedPreview:
-    preview: MaterialPreview
-    content: Optional[bytes]
+EXPIRED_MESSAGE = "预检结果已过期，物料没有改动，范围也没有自动更换。请点「重新预检」。"
 
 
 def read_endpoint(function):
@@ -71,25 +59,9 @@ def scope_input(body):
     return request, request.scope(), opaque_ref(body["snapshot_ref"])
 
 
-def issue_binding(namespace, binding):
-    value = MappingProxyType(binding)
-    key = (value["read_binding"].scope, value["snapshot_ref"], content_text(value["arguments"]))
-    token, expiry = issue_public_token_with_expiry(namespace, value, key=key, ttl_seconds=TTL_SECONDS)
-    return token, datetime.fromtimestamp(expiry).isoformat(timespec="seconds")
-
-
-def resolve_binding(namespace, token, *, field, code):
-    try:
-        binding = resolve_public_token(namespace, token, message="预检结果已过期，物料没有改动。请点「重新预检」。", field=field)
-    except ValidationError as exc:
-        raise WorkbenchCommandRejected(code, "预检结果已过期，物料没有改动，范围也没有自动更换。请点「重新预检」。") from exc
-    return binding
-
-
-def issue_preview(preview, content=None):
-    ref, expiry = issue_public_token_with_expiry(PREVIEW_SCOPE, RetainedPreview(preview, content),
-                                               key=preview.document, ttl_seconds=TTL_SECONDS)
-    expires_at = datetime.fromtimestamp(expiry).isoformat(timespec="seconds")
+def issue_preview(preview):
+    """Retain the frozen preview itself; an import preview already carries its parsed source."""
+    ref, expires_at = retain_action_preview(PREVIEW_SCOPE, preview)
     document = preview.as_dict()
     action = document["operation"]
     context = preview_write_context(ref, expires_at, [action])
@@ -104,15 +76,6 @@ def issue_preview(preview, content=None):
         result.update({key: document["request"][key] for key in ("actual_source_ref", "format", "mode")})
         result["template_version"] = 1
     return result
-
-
-def resolve_preview(ref, action, write_token):
-    binding = resolve_binding(PREVIEW_SCOPE, ref, field="preview_ref", code="stale_write")
-    preview, content = binding.preview, binding.content
-    if preview.as_dict()["operation"] != action:
-        raise WorkbenchCommandRejected("stale_write", "预检结果不适用于这次操作，物料没有改动。请点「重新预检」。")
-    validate_preview_confirmation(write_token, ref)
-    return preview, content
 
 
 # Stored material column -> public field name shown in preview rows.

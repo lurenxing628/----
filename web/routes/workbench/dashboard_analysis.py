@@ -60,11 +60,6 @@ def dashboard_candidate_comparison(candidate_ref):
     binding = resolve_read_snapshot(token) if token is not None else None
     # 整份候选加正式计划基线一起重建，和看板、现场页一起排读额度。
     with PLAN_READ_SLOTS.slot():
-        data, state = read_candidate_comparison(g.db, scope)
-    snapshot = bind_read_snapshot(
-        {**scope.scope(), **data["time_scope"], "kind": "dashboard-candidate-comparison"},
-        state,
-        token,
-        binding=binding,
-    )
+        data, snapshot = read_candidate_comparison(
+            g.db, scope, bind_snapshot=lambda read_scope, state: bind_read_snapshot(read_scope, state, token, binding=binding))
     return _response(data, snapshot)

@@ -2,10 +2,10 @@
   'use strict';
   const A = window.RunJobAPI, U = window.RunJobControls, T = window.APSWorkbenchTransport;
   // 本机记录还原成界面状态：本页还没写进磁盘的记录（读取错误带 saved）照样还原，错误交给 storageError。
-  function savedRecord(load = A.pending().read) {
+  function savedRecord(load = A.pending.read) {
     let pending, error = '';
     try { pending = load(); } catch (e) { if (e.saved === undefined) throw e; pending = e.saved; error = e.message; }
-    const recent = pending ? null : A.pending().recent();
+    const recent = pending ? null : A.pending.recent();
     return { intent: pending || recent && recent.intent, pending: !!pending, resolution: recent && recent.resolution, error };
   }
   function RunJobPanel({ preflight, preflightOwner, onRecheck, onNavigate }) {
@@ -15,10 +15,9 @@
     const [retryPaused, setRetryPaused] = React.useState(false), [lastChecked, setLastChecked] = React.useState(null);
     const [run, setRun] = React.useState(null), [preview, setPreview] = React.useState(null), [confirming, setConfirming] = React.useState(false);
     const [confirmationData, setConfirmationData] = React.useState(null), [timeBudget, setTimeBudget] = React.useState(null), [submitting, setSubmitting] = React.useState(false);
-    const [error, setError] = React.useState(''), [errorDetails, setErrorDetails] = React.useState(null), [notice, setNotice] = React.useState(''), [busy, setBusy] = React.useState(false);
-    // 错误正文只说人话；版本号之类的技术细节走 A.details 进折叠编号区。
-    const fail = (e, text) => { setError(text || A.message(e)); setErrorDetails(A.details(e)); };
-    const clearError = () => { setError(''); setErrorDetails(null); };
+    const [error, setError] = React.useState(''), [notice, setNotice] = React.useState(''), [busy, setBusy] = React.useState(false);
+    const fail = (e, text) => { setError(text || A.failure(e)); };
+    const clearError = () => { setError(''); };
     const [unavailable, setUnavailable] = React.useState('');
     const [verified, setVerified] = React.useState(false);
     const [checking, setChecking] = React.useState(false), [paused, setPaused] = React.useState(document.hidden), [revision, refresh] = React.useReducer(v => v + 1, 0);
@@ -67,7 +66,7 @@
       // 已换成别的提交就不再动它，交给 storage 事件。result 为 null 表示数据来源已替换。返回写回后的意图、是否已结束和本机存储错误。
       function settle(result) {
         return T.exclusive(A.PENDING_KEY, { wait: true }, () => {
-          const store = A.pending(), saved = store.flush();
+          const store = A.pending, saved = store.flush();
           if (!saved) return { intent: activeIntent.current, finished: true, error: null };
           if (saved.request_key !== intent.request_key) return null;
           const attached = result && !saved.run_ref ? { ...saved, run_ref: result.run_ref } : saved, finished = !result || A.terminal(result);
@@ -151,7 +150,7 @@
     function previewFailure(error, owner, controller) {
       if (!ownsPreview(owner, controller)) return;
       fail(error, A.previewMessage(error));
-      if (['run_schema_unavailable', 'run_worker_not_connected'].includes(error.code)) setUnavailable(A.message(error));
+      if (error.code === 'run_worker_not_connected') setUnavailable(A.message(error));
     }
     function finishPreview(owner, controller) {
       if (previewRequest.current !== controller) return;
@@ -191,7 +190,7 @@
         const { acquired } = await T.exclusive(A.PENDING_KEY, {}, async () => {
           if (!alive.current || currentPreview.current !== preview || preview.input_ref !== activeInput.current) return;
           if (pendingActive) { fail(null, '上次排产还没确认结果，不能开始下一次排产。'); return; }
-          try { original = A.pending().begin(preview.input_ref, preview.data_context_ref); }
+          try { original = A.pending.begin(preview.input_ref, preview.data_context_ref); }
           catch (e) { storageFailed = true; if (alive.current) setStorageError(e.message); return; }
           confirmationSession.current = null; currentPreview.current = null;
           activeIntent.current = original; setIntent(original); setPendingActive(true); setResolution('unresolved'); setRun(null); setVerified(false); setConfirming(false);
@@ -203,12 +202,12 @@
               setRun(receipt.data); setVerified(true);
               setNotice(receipt.dispatch_pending ? '排产已接收，交给计算程序时没有确认。正在查询结果，没有重新提交。' : '');
             }
-            try { const saved = A.pending().attach(original, receipt.run_ref); if (owned) { activeIntent.current = saved; setIntent(saved); } }
+            try { const saved = A.pending.attach(original, receipt.run_ref); if (owned) { activeIntent.current = saved; setIntent(saved); } }
             catch (_) { if (alive.current) setStorageError('排产已接收，但本机没能保存这次排产的编号。请不要重新提交，到排产记录页查看结果。'); }
           } catch (e) {
             if (T.rejected(e)) {
               if (alive.current) { activeIntent.current = null; setIntent(null); setPendingActive(false); setRun(null); fail(e); }
-              try { A.pending().reject(original); }
+              try { A.pending.reject(original); }
               catch (storageErr) { if (alive.current) setStorageError(storageErr.message); }
             } else if (alive.current) fail(null, window.WorkbenchTerms.outcomes.pending('排产'));
           }
@@ -227,7 +226,7 @@
     // 「刷新上次操作记录」在跨页互斥里把本页没写进去的记录写回再读。
     async function rereadStorage() {
       try {
-        const saved = (await T.exclusive(A.PENDING_KEY, { wait: true }, () => savedRecord(A.pending().flush))).value;
+        const saved = (await T.exclusive(A.PENDING_KEY, { wait: true }, () => savedRecord(A.pending.flush))).value;
         setIntent(saved.intent); setPendingActive(saved.pending); setResolution(saved.resolution || 'unresolved'); setStorageError(saved.error); setVerified(false); setRun(null); refresh();
       } catch (e) { setStorageError(e.message); }
     }
@@ -242,9 +241,9 @@
         {intent && resolution !== 'context_replaced' && <U.Button icon="refresh-cw" busy={checking || busy} onClick={() => { setNotice(''); refresh(); }}>查询结果</U.Button>}
       </div>{reason && <p className="rj-muted rj-action-reason">{reason}</p>}</div>
       {storageError && <div className="rj-notice" role="alert">{storageError}<div className="rj-tools"><U.Button icon="refresh-cw" disabled={busy} onClick={rereadStorage}>刷新上次操作记录</U.Button></div></div>}
-      {error && <div className="rj-notice" role="alert">{error}{errorDetails && <window.WorkbenchReference entries={errorDetails} />}</div>}{notice && <div className="rj-notice" role="status">{notice}</div>}
+      {error && <div className="rj-notice" role="alert">{error}</div>}{notice && <div className="rj-notice" role="status">{notice}</div>}
       {preview && !confirming && <><U.Scope preview={preview} effective={effective} /><U.Reasons rows={preview.write_context.blocked_reasons} /></>}
-      {intent && <U.Record run={run} intent={intent} title={pendingActive ? '本次排产' : '上次排产'} paused={paused} retryPaused={retryPaused} lastChecked={lastChecked} resolution={resolution} checking={checking} verified={verified} onNavigate={onNavigate} />}
+      {intent && <U.Record run={run} title={pendingActive ? '本次排产' : '上次排产'} paused={paused} retryPaused={retryPaused} lastChecked={lastChecked} resolution={resolution} checking={checking} verified={verified} onNavigate={onNavigate} />}
       {confirming && confirmationData && <U.Confirmation preview={preview} preflight={confirmationData} effective={confirmationData.effective_config}
         batches={confirmationData.included_batches.concat(confirmationData.excluded_batches)} operationCount={confirmationData.counts.selected_tasks}
         timeBudget={timeBudget} onBudgetChange={recheckBudget} busy={busy} submitting={submitting} error={error}

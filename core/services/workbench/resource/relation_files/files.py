@@ -11,26 +11,22 @@ from typing import Any, Dict, List, Set, Tuple
 from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models.operator_machine import OperatorMachine
-from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
+from core.models.workbench_action_values import AtomicActionPreview
+from core.models.workbench_command import WorkbenchCommandOutcome
 from core.models.workbench_relation_file import (
     EXPORT_LABELS,
     READONLY,
     REQUIRED,
-    import_request,
-    relation_kind,
     row_identity,
 )
 from core.models.workbench_resource_action import (
-    ResourceActionPreview,
     action_row,
-    check_resource_preview,
     reject_action_row,
-    resource_page_scope,
     resource_refs,
 )
 from core.models.workbench_resource_file_source import PreparedImportSource
 from core.models.workbench_resource_input import resource_text
-from core.models.workbench_resource_table_query import table_query_required
+from core.models.workbench_resource_query import ResourcePageRequest
 from core.services.personnel.operator_machine_normalizers import (
     normalize_skill_level_stored,
     normalize_yes_no_stored,
@@ -41,7 +37,6 @@ from data.repositories.workbench_resource_file_repo import WorkbenchResourceFile
 
 from ..queries import WorkbenchResourceQueryService
 from .file_codec import read_relation_file
-from .file_writer import check_capacity, write_relation_file
 
 #: 导入只认导出写出的中文，反查同一张表。
 _IMPORT_CODES = {key: {label: code for code, label in labels.items()} for key, labels in EXPORT_LABELS.items()}
@@ -58,7 +53,7 @@ def _blocked(row) -> bool:
 
 class WorkbenchRelationFileService:
     def __init__(self, conn, kind, logger=None, *, reader=None):
-        self.conn, self.kind = conn, relation_kind(kind)
+        self.conn, self.kind = conn, kind
         self.repo = WorkbenchResourceFileRepository(conn, logger)
         self.links = OperatorMachineRepository(conn, logger)
         self.domain = OperatorMachineService(conn, logger)
@@ -68,18 +63,18 @@ class WorkbenchRelationFileService:
     # ---------- 导入 ----------
 
     def _prepare_source(self, content, *, file_format, mode):
-        request = import_request(self.kind, content, file_format, mode)
+        request = {"format": file_format, "mode": mode, "scope": {}}
         source, notices = read_relation_file(self.kind, content, file_format)
-        prepared = PreparedImportSource.build(self.kind + ".import", request, source, notices, content=content)
-        request["actual_source_ref"] = prepared.source_ref
-        return prepared, request, source, notices
+        return PreparedImportSource.build(request, source, notices)
 
-    def preview_import(self, content, *, file_format, mode="upsert"):
-        prepared, request, source, notices = self._prepare_source(content, file_format=file_format, mode=mode)
+    def preview_import(self, content, *, file_format, mode):
+        prepared = self._prepare_source(content, file_format=file_format, mode=mode)
         with self.tx.transaction():
-            return self._prepare_import(prepared, request, source, notices)[0]
+            return self._prepare_import(prepared)[0]
 
-    def _prepare_import(self, prepared, request, source, notices):
+    def _prepare_import(self, prepared):
+        request = prepared.request()
+        source, notices = prepared.parsed()
         codes = {entity: {item["values"][field] for item in source
                           if type(item["values"].get(field)) is str} for field, entity in _ENTITY_OF.items()}
         preparation = self.reader.preparation(codes=codes)
@@ -105,7 +100,7 @@ class WorkbenchRelationFileService:
             )
             targets.append(OperatorMachine(after["operator_code"], after["machine_code"], skill_level, is_primary))
         changes = self.domain.prepare_changes(current_rows, targets, primaries=primaries)
-        return ResourceActionPreview.build(self.kind + ".import", request, rows, notices, source=prepared), changes
+        return AtomicActionPreview.build(self.kind + ".import", request, rows, notices, source=prepared), changes
 
     def _build_rows(self, source, preparation) -> Tuple[List[Dict[str, Any]], Dict[str, Set[str]]]:
         rows = [self._parse_row(item) for item in source]
@@ -300,18 +295,11 @@ class WorkbenchRelationFileService:
             row["notes"].append("这一行没有填主操设备，但同一份文件把主操给了别的设备，所以这里会变成非主操。")
             row["requires_confirmation"] = True
 
-    def confirm_import(self, preview, content, *, file_format, mode="upsert"):
+    def confirm_import(self, preview):
         if not self.conn.in_transaction:
             raise RuntimeError("关系导入确认必须在外层工作台写事务中执行。")
-        try:
-            prepared = PreparedImportSource.confirmation(preview, content)
-            request = prepared.request_for(self.kind + ".import", file_format, mode)
-            source, notices = prepared.parsed()
-            current, changes = self._prepare_import(prepared, request, source, notices)
-        except ValidationError as exc:
-            raise WorkbenchCommandRejected(
-                "stale_write", "文件或相关资料已经变了，没有导入。请点「重新预检」后再确认。") from exc
-        body = check_resource_preview(preview, current)
+        current, changes = self._prepare_import(preview.source)
+        body = preview.check_current(current)
         rows = body["rows"]
         self.domain.apply_changes(changes)
         results = [{"row": row["row"], "business_code": row["business_code"],
@@ -322,30 +310,16 @@ class WorkbenchRelationFileService:
 
     # ---------- 导出 ----------
 
-    def preview_export(self, selection, *, scope, selected_refs=None):
+    def preview_export(self, selection, *, request, selected_refs=None):
+        """Export arguments holding the validated operator request (and any explicit refs), with their row count."""
         if not self.conn.in_transaction:
             raise RuntimeError("关系导出预览必须在已验证的查询快照事务中执行。")
-        if selection not in ("all", "filtered", "selected") or (selection != "selected" and selected_refs is not None):
-            raise WorkbenchCommandRejected(
-                "invalid_input", "导出前要先选清楚是全部、当前筛选还是勾选的人员，没有开始下载。请重新选择导出范围。", 400)
-        scope, query = resource_page_scope("operator", scope)
         if selection == "selected":
             refs = resource_refs(selected_refs, allow_empty=True)
             codes = [identity.entity_key for identity in self.reader.resolve_refs(refs)]
-            return {"scope": scope, "selected_refs": refs}, len(self._links_for(codes))
-        if selection == "all":
-            all_scope = {"query": "", "status": None, "category": None, "sort": "business_code", "direction": "asc"}
-            if scope != all_scope:
-                effective, query = resource_page_scope("operator", {})
-            else:
-                effective = scope
-        else:
-            effective = scope
-        codes = self._codes_for_scope(query)
-        return {"scope": effective}, len(self._links_for(codes))
-
-    def _codes_for_scope(self, query) -> List[str]:
-        return self.reader.matching_keys(query) if table_query_required(query) else self.reader.toolbar_matching_keys(query)
+            return {"request": request, "selected_refs": refs}, len(self._links_for(codes))
+        effective = ResourcePageRequest(kind="operator") if selection == "all" else request
+        return {"request": effective}, len(self._links_for(self.reader.matching_keys(effective)))
 
     def _links_for(self, codes) -> List[Dict[str, Any]]:
         if not codes:
@@ -385,23 +359,12 @@ class WorkbenchRelationFileService:
             row["machine_label"] = machine["name"] if machine is not None else None
         return rows
 
-    def export_rows(self, file_format, *, scope, selected_refs=None):
-        """在已验证的读快照里读完整份导出行；编码文件交给 write_export，在读事务结束后做。"""
+    def export_rows(self, *, request, selected_refs=None):
+        """在已验证的读快照里读完整份导出行；编码文件交给 write_relation_file，在读事务结束后做。"""
         if not self.conn.in_transaction:
             raise RuntimeError("关系导出必须在已验证的查询快照事务中执行。")
-        _, query = resource_page_scope("operator", scope)
         if selected_refs is None:
-            codes = self._codes_for_scope(query)
+            codes = self.reader.matching_keys(request)
         else:
-            codes = [identity.entity_key for identity in self.reader.resolve_refs(resource_refs(selected_refs, allow_empty=True))]
-        rows = self._rows_for(codes)
-        check_capacity(len(rows), file_format)
-        return rows
-
-    def write_export(self, rows, file_format):
-        """只用 export_rows 读出的行生成 CSV/XLSX，不再查库，可在读事务之外调用。"""
-        return write_relation_file(self.kind, rows, file_format)
-
-    @staticmethod
-    def template(kind, file_format="xlsx"):
-        return write_relation_file(relation_kind(kind), [], file_format, template=True)
+            codes = [identity.entity_key for identity in self.reader.resolve_refs(selected_refs)]
+        return self._rows_for(codes)

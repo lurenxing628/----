@@ -32,10 +32,10 @@ def test_exit_backup_maintenance(db_path, tmp_path, monkeypatch) -> None:
 
     from core.infrastructure.backup import maintenance_window
     from core.infrastructure.database import get_connection
+    from core.services.workbench.facts.system_journal import system_journal_directory
     from data.repositories.system_config_repo import SystemConfigRepository
     from web.bootstrap import factory as factory_mod
     from web.bootstrap.launcher_shutdown import RuntimeExitBackupManager
-    from web.bootstrap.workbench_system_restore_recovery import system_journal_directory
 
     backup_dir = os.path.join(str(tmp_path), "backups")
     os.makedirs(backup_dir, exist_ok=True)
@@ -95,9 +95,9 @@ def test_unconfirmed_config_connection_close_skips_exit_backup_with_its_own_reas
     from flask import Flask
 
     from core.infrastructure.database import get_connection
+    from core.services.workbench.facts.system_journal import system_journal_directory
     from data.repositories.system_config_repo import SystemConfigRepository
     from web.bootstrap.launcher_shutdown import RuntimeExitBackupManager, read_exit_backup_enabled, run_exit_backup
-    from web.bootstrap.workbench_system_restore_recovery import system_journal_directory
 
     conn = get_connection(db_path)
     try:
@@ -233,6 +233,7 @@ def test_maintenance_tasks_overview_and_records_share_one_result_classification(
     from core.services.system.maintenance import backup_task, cleanup_task
     from core.services.system.system_maintenance_service import _fmt_db_dt
     from core.services.system.workbench_overview import build_system_overview
+    from core.services.workbench.facts.system_journal import SystemMaintenanceJournal
     from core.services.workbench.system.maintenance_records import maintenance_records
     from data.repositories.system_job_state_repo import SystemJobStateRepository
 
@@ -245,6 +246,9 @@ def test_maintenance_tasks_overview_and_records_share_one_result_classification(
     backup_dir = tmp_path / "backups"
     log_dir = tmp_path / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
+    journal_dir = tmp_path / "journal"
+    journal_dir.mkdir(parents=True, exist_ok=True)
+    journal = SystemMaintenanceJournal(str(journal_dir), str(db_file))
 
     # 1) 备份目录不存在 + 日志条数未超保底：两项清理均为 skipped，overview 与 maintenance_records 一致
     assert cleanup_task.maybe_run_auto_backup_cleanup(
@@ -286,7 +290,7 @@ def test_maintenance_tasks_overview_and_records_share_one_result_classification(
     assert jobs_by_kind["auto_backup_cleanup"]["result"]["status"] == "skipped"
     assert jobs_by_kind["auto_log_cleanup"]["result"]["status"] == "skipped"
 
-    rows, _sources = maintenance_records(schema_conn, str(backup_dir), None, journal_records=[])
+    rows, _sources = maintenance_records(schema_conn, str(backup_dir), journal, journal_records=[])
     cleanup_events = [row for row in rows if row["record_kind"] == "cleanup_event"]
     assert [(row["event_source"], row["status"]) for row in cleanup_events] == [
         ("operation_audit", "skipped"),
@@ -296,7 +300,7 @@ def test_maintenance_tasks_overview_and_records_share_one_result_classification(
     # 清空 OperationLogs 后走 latest_job_state_only 回退链，仍统一判为 skipped
     schema_conn.execute("DELETE FROM OperationLogs")
     schema_conn.commit()
-    fallback_rows, _ = maintenance_records(schema_conn, str(backup_dir), None, journal_records=[])
+    fallback_rows, _ = maintenance_records(schema_conn, str(backup_dir), journal, journal_records=[])
     fallback_events = [row for row in fallback_rows if row["record_kind"] == "cleanup_event"]
     assert {row["event_source"] for row in fallback_events} == {"latest_job_state_only"}
     assert {row["status"] for row in fallback_events} == {"skipped"}
@@ -384,13 +388,13 @@ def test_maintenance_tasks_overview_and_records_share_one_result_classification(
     assert jobs_after["auto_backup"]["result"]["status"] == "partial"
     assert jobs_after["auto_backup_cleanup"]["result"]["status"] == "partial"
 
-    audit_rows, _ = maintenance_records(schema_conn, str(backup_dir), None, journal_records=[])
+    audit_rows, _ = maintenance_records(schema_conn, str(backup_dir), journal, journal_records=[])
     audit_cleanup = [row for row in audit_rows if row["record_kind"] == "cleanup_event" and row["event_source"] == "operation_audit"]
     assert len(audit_cleanup) == 1 and audit_cleanup[0]["status"] == "partial"
 
     schema_conn.execute("DELETE FROM OperationLogs")
     schema_conn.commit()
-    latest_rows, _ = maintenance_records(schema_conn, str(backup_dir), None, journal_records=[])
+    latest_rows, _ = maintenance_records(schema_conn, str(backup_dir), journal, journal_records=[])
     latest_by_ref = {
         row["event_ref"]: row["status"]
         for row in latest_rows
@@ -428,7 +432,7 @@ def test_maintenance_tasks_overview_and_records_share_one_result_classification(
         assert jobs_corrupt["auto_backup_cleanup"]["status"] == "partial"
         assert jobs_corrupt["auto_backup_cleanup"]["result"]["status"] == "invalid"
 
-        corrupt_rows, corrupt_sources = maintenance_records(schema_conn, str(backup_dir), None, journal_records=[])
+        corrupt_rows, corrupt_sources = maintenance_records(schema_conn, str(backup_dir), journal, journal_records=[])
         corrupt_by_ref = {
             row["event_ref"]: row["status"]
             for row in corrupt_rows
@@ -446,7 +450,7 @@ def test_maintenance_tasks_overview_and_records_share_one_result_classification(
                 "INSERT INTO OperationLogs(log_time, log_level, module, action, detail) VALUES (?, 'INFO', 'system', 'cleanup', ?)",
                 ("2026-10-16 08:00:00", bad_detail),
             )
-        audit_corrupt_rows, _ = maintenance_records(schema_conn, str(backup_dir), None, journal_records=[])
+        audit_corrupt_rows, _ = maintenance_records(schema_conn, str(backup_dir), journal, journal_records=[])
         audit_corrupt_events = [
             row for row in audit_corrupt_rows
             if row["record_kind"] == "cleanup_event" and row["event_source"] == "operation_audit"
@@ -474,7 +478,7 @@ def test_maintenance_tasks_overview_and_records_share_one_result_classification(
     assert jobs_long_error["auto_backup_cleanup"]["result"]["status"] == "failed"
     assert jobs_long_error["auto_backup_cleanup"]["result"]["values"]["error"] == " " * 1000
 
-    long_error_rows, _ = maintenance_records(schema_conn, str(backup_dir), None, journal_records=[])
+    long_error_rows, _ = maintenance_records(schema_conn, str(backup_dir), journal, journal_records=[])
     long_error_by_ref = {
         row["event_ref"]: row["status"]
         for row in long_error_rows
@@ -487,7 +491,7 @@ def test_maintenance_tasks_overview_and_records_share_one_result_classification(
             "INSERT INTO OperationLogs(log_time, log_level, module, action, detail) VALUES (?, 'ERROR', 'system', 'cleanup', ?)",
             ("2026-10-16 08:00:00", long_error_detail),
         )
-    audit_long_error_rows, _ = maintenance_records(schema_conn, str(backup_dir), None, journal_records=[])
+    audit_long_error_rows, _ = maintenance_records(schema_conn, str(backup_dir), journal, journal_records=[])
     audit_long_error_events = [
         row for row in audit_long_error_rows
         if row["record_kind"] == "cleanup_event" and row["event_source"] == "operation_audit"

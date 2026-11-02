@@ -9,6 +9,9 @@
   const states = { loaded: '已读取', no_data: '无数据', no_official_plan: '无正式计划', unavailable: '暂无数据', not_applicable: '未指定交期' };
   const fields = ['owner', 'deadline', 'action', 'remark', 'completed_at', 'completion_evidence', 'evidence_reference_text', 'evidence_ref'];
   const labels = { status: '处置状态', owner: '责任人', deadline: '责任期限', action: '处置行动', remark: '原因说明', completed_at: '完成时间', completion_evidence: '具体完成结果', evidence_reference_text: '凭据说明', evidence_ref: '已核验附件编号' };
+  // 正式计划甘特的上下文只由目的页 APSPlanNavigation.accept 接收校验（plan_ref 由 workspaceScope 核），值班台原样转发，不在这里镜像。
+  // 批次页的 batch_ref 值班台自己要读（openTarget 映射成 entity_ref）；现场实际甘特与现场记录的定位键在这里核。
+  const navigationKeys = { fieldgantt: ['plan_ref', 'task_ref', 'operation_ref'], field: ['plan_ref', 'task_ref', 'operation_ref'], batches: ['batch_ref'] };
   const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
   const ref = v => typeof v === 'string' && /^[a-f0-9]{48}$/.test(v);
   const text = v => typeof v === 'string' && v.length > 0;
@@ -24,8 +27,9 @@
       && q.source === 'production' && (q.snapshot_ref === undefined || text(q.snapshot_ref)), '值班台筛选条件无效，当前筛选没有变化。请重新选择筛选条件。');
     q.query = q.query.trim(); return q;
   }
+  // 处置状态的唯一校验点（读取条目、历史和本机记录时各核一次）；baseHandling 只从校验过的处置里取基础字段。
   function handling(h) { check(object(h) && Object.prototype.hasOwnProperty.call(statuses, h.status) && fields.every(k => h[k] === null || typeof h[k] === 'string')); return h; }
-  function baseHandling(h) { handling(h); return Object.fromEntries(['status', ...fields].map(k => [k, h[k]])); }
+  const baseHandling = h => Object.fromEntries(['status', ...fields].map(k => [k, h[k]]));
   function item(row) {
     check(object(row) && ref(row.item_ref) && Object.keys(categories).slice(1).includes(row.category) && text(row.subject)
       && object(row.source) && ['current', 'not_currently_evaluated'].includes(row.source_state) && object(row.risk)
@@ -39,11 +43,15 @@
       check(row.source.kind === 'outsourcing_receipt' && ref(row.source.outsourcing_ref) && ['single', 'merged'].includes(row.source.target_kind)
         && row.source.time_basis === 'factory_local' && row.source.tracking_basis === 'manual_receipt_facts' && row.navigation.length === 1);
       if (row.source.receipt !== undefined) check(object(row.source.receipt) && row.source.receipt.outsourcing_ref === row.source.outsourcing_ref);
-      const n = row.navigation[0]; check(object(n) && n.view === 'outsourcing' && object(n.context) && Object.keys(n.context).length === 1
-        && n.context.outsourcing_ref === row.source.outsourcing_ref && n.query_target === '/api/workbench/v1/outsourcing/receipts/' + row.source.outsourcing_ref
-        && n.enabled === (row.source_state === 'current'), '这条外协登记的跳转目标不对，页面没有跳转。请刷新后重试。');
-    } else row.navigation.forEach(n => check(object(n) && ['gantt', 'fieldgantt', 'batches', 'analysis'].includes(n.view) && object(n.context) && typeof n.enabled === 'boolean'
-      && Object.keys(n.context).every(k => ['plan_ref', 'batch_ref', 'task_ref', 'operation_ref'].includes(k) && ref(n.context[k]))));
+      const n = row.navigation[0]; check(object(n) && n.view === 'outsourcing' && object(n.context)
+        && n.enabled === (row.source_state === 'current')
+        && (n.enabled ? Object.keys(n.context).length === 1 && n.context.outsourcing_ref === row.source.outsourcing_ref
+          : Object.keys(n.context).length === 0 && text(n.reason)), '这条外协登记的跳转目标不对，页面没有跳转。请刷新后重试。');
+    } else row.navigation.forEach(n => {
+      check(object(n) && object(n.context) && typeof n.enabled === 'boolean');
+      if (n.view !== 'gantt') check(Object.prototype.hasOwnProperty.call(navigationKeys, n.view)
+        && Object.keys(n.context).every(k => navigationKeys[n.view].includes(k) && ref(n.context[k])));
+    });
     return row;
   }
   // 信封已由 transport 校验；值班台翻页和详情都钉在这次读取的数据版本上，所以数据版本不能为空。
@@ -155,6 +163,6 @@
     if (v.state === 'not_recorded') { check(v.ok === true && v.receipt === null && v.may_be_in_flight === true); return null; }
     return receipt(v, intent);
   }
-  window.DashboardContract = { categories, statuses, states, fields, labels, object, ref, text, equal, check, scope, baseHandling, catalog, expected, receipt,
+  window.DashboardContract = { categories, statuses, states, fields, labels, object, ref, text, equal, check, scope, handling, baseHandling, catalog, expected, receipt,
     read, list, detail, command, lookup };
 })();

@@ -4,22 +4,18 @@ from typing import Union, cast
 
 from core.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
+from core.models.workbench_action_values import AtomicActionPreview
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_resource_action import (
-    ResourceActionPreview,
-    action_kind,
     action_row,
     check_category,
-    check_resource_preview,
     reject_action_row,
-    resource_page_scope,
     resource_refs,
-    resource_scope,
 )
 from core.models.workbench_resource_file import READONLY, RELATIONS, WRITABLE, import_request
 from core.models.workbench_resource_file_source import PreparedImportSource
 from core.models.workbench_resource_input import resource_text
-from core.models.workbench_resource_table_query import table_query_required
+from core.models.workbench_resource_query import ResourcePageRequest
 from core.services.workbench.facts.file_codec import read_resource_file
 from core.services.workbench.facts.file_writer import check_capacity, write_resource_file
 from data.repositories.workbench_resource_file_repo import WorkbenchResourceFileRepository
@@ -33,25 +29,25 @@ from .suppliers import WorkbenchSupplierService
 
 class WorkbenchResourceFileService:
     def __init__(self, conn, kind, logger=None, reader=None):
-        self.conn, self.kind = conn, action_kind(kind)
+        self.conn, self.kind = conn, kind
         self.reader = reader if reader is not None else WorkbenchResourceQueryService(conn, kind, logger)
         self.adapter = cast(Union[WorkbenchResourceService, WorkbenchSupplierService], self.reader.domain)
         self.repo = WorkbenchResourceFileRepository(conn, logger)
         self.tx = TransactionManager(conn)
 
-    def _prepare_source(self, content, *, file_format, scope, mode):
-        request = import_request(self.kind, content, file_format, mode, scope)
+    def _prepare_source(self, content, *, file_format, mode, category):
+        request = import_request(self.kind, file_format, mode, category=category)
         source, notices = read_resource_file(self.kind, content, file_format)
-        prepared = PreparedImportSource.build(self.kind + ".import", request, source, notices, content=content)
-        request["actual_source_ref"] = prepared.source_ref
-        return prepared, request
+        return PreparedImportSource.build(request, source, notices)
 
-    def preview_import(self, content, *, file_format, scope, mode="upsert"):
-        prepared, request = self._prepare_source(content, file_format=file_format, scope=scope, mode=mode)
+    def preview_import(self, content, *, file_format, mode, category):
+        prepared = self._prepare_source(content, file_format=file_format, mode=mode, category=category)
         with self.tx.transaction():
-            return self._prepare_import(prepared, request)[0]
+            return self._prepare_import(prepared)[0]
 
-    def _prepare_import(self, prepared, request):
+    def _prepare_import(self, prepared):
+        request = prepared.request()
+        category = request["category"] if self.kind == "op_type" else None
         source, notices = prepared.parsed()
         codes = sorted({item["values"]["business_code"].strip() for item in source
                         if isinstance(item["values"].get("business_code"), str)})
@@ -61,12 +57,12 @@ class WorkbenchResourceFileService:
         states = preparation.states(self.kind, existing)
         histories = self.repo.identity_histories(self.kind, [code for code in codes if code not in states])
         inputs = ResourceFileInput(self.reader, preparation)
-        planned = [self._import_row(item, request["scope"], preparation, states, references, histories, inputs) for item in source]
+        planned = [self._import_row(item, category, preparation, states, references, histories, inputs) for item in source]
         rows = [row for row, _change in planned]
         self._duplicates(rows, "business_code", source)
         if self.kind == "op_type":
             self._duplicates(rows, "label", source)
-        preview = ResourceActionPreview.build(self.kind + ".import", request, rows, notices, source=prepared)
+        preview = AtomicActionPreview.build(self.kind + ".import", request, rows, notices, source=prepared)
         return preview, [change for _row, change in planned]
 
     def _capture_import(self, source, codes):
@@ -107,7 +103,7 @@ class WorkbenchResourceFileService:
                 for row in repeated:
                     reject_action_row(row, "文件里有重复的编号或名称，这些行都没有导入：第 " + numbers + " 行。请去掉重复项后重新上传。", field=field, code="duplicate_entry")
 
-    def _import_row(self, source, scope, preparation, states, references, histories, inputs):
+    def _import_row(self, source, category, preparation, states, references, histories, inputs):
         row = action_row(source["row"])
         row["errors"] = list(source["errors"])
         values = source["values"]
@@ -133,9 +129,9 @@ class WorkbenchResourceFileService:
                 authorizations = preparation.authorizations(self.kind, code) if self.kind in ("machine", "operator") else ()
                 row.update(entity_ref=identity.ref, expected=expected,
                            before=flat_resource(self.kind, identity, state, authorizations), reference_count=reference_count(expected))
-                check_category(self.kind, raw, scope)
+                check_category(self.kind, raw, category)
             if not row["errors"]:
-                row["input"], row["related"] = inputs.normalize(row["action"], code, values, row["before"], scope)
+                row["input"], row["related"] = inputs.normalize(row["action"], code, values, row["before"], category)
                 change = self.adapter.prepare(row["action"], row["input"], row["expected"]["state"], preparation)
                 self._classify(row)
         except ValidationError as exc:
@@ -158,22 +154,17 @@ class WorkbenchResourceFileService:
             return
         row["changes"] = {key: {"before": before[key], "after": row["after"][key]} for key in WRITABLE[self.kind]
                           if key in row["after"] and not same_value(before[key], row["after"][key], key)}
-        if self.kind == "operator" and row["after"].get("skills_declared") != before["skills_declared"]:
+        if self.kind == "operator" and row["after"]["skills_declared"] != before["skills_declared"]:
             row["changes"]["skills_declared"] = {"before": before["skills_declared"], "after": row["after"]["skills_declared"]}
         row["result"] = "update" if row["changes"] else "unchanged"
         row["requires_confirmation"] = bool(row["changes"] and (row["related"] or row["reference_count"]
                                             or set(row["changes"]) & {"status", "default_days", "default_merge_mode", "category"}))
 
-    def confirm_import(self, preview, content, *, file_format, scope, mode="upsert"):
+    def confirm_import(self, preview):
         if not self.conn.in_transaction:
             raise RuntimeError("资源导入确认必须在外层工作台写事务中执行。")
-        try:
-            prepared = PreparedImportSource.confirmation(preview, content)
-            request = prepared.request_for(self.kind + ".import", file_format, mode, resource_scope(self.kind, scope))
-            current, changes = self._prepare_import(prepared, request)
-        except ValidationError as exc:
-            raise WorkbenchCommandRejected("stale_write", "文件或导入范围已经变了，没有导入。请点「重新预检」后再确认。") from exc
-        document = check_resource_preview(preview, current)
+        current, changes = self._prepare_import(preview.source)
+        document = preview.check_current(current)
         results = []
         created_codes = []
         for row, change in zip(document["rows"], changes):
@@ -192,65 +183,42 @@ class WorkbenchResourceFileService:
         result = "committed" if any(row["result"] == "committed" for row in results) else "unchanged"
         return WorkbenchCommandOutcome(result, {"rows": results, "summary": document["summary"]})
 
-    def preview_export(self, selection, *, scope, selected_refs=None):
+    def preview_export(self, selection, *, request, selected_refs=None):
+        """Export arguments holding the validated request (and any explicit refs), with their row count."""
         if not self.conn.in_transaction:
             raise RuntimeError("资源导出预览必须在已验证的查询快照事务中执行。")
-        if selection not in ("all", "filtered", "selected") or (selection != "selected" and selected_refs is not None):
-            raise WorkbenchCommandRejected("invalid_input", "导出前要先选清楚是全部、当前筛选还是勾选的记录，没有开始下载。请重新选择导出范围。", 400)
-        scope, query = resource_page_scope(self.kind, scope)
         if selection == "selected":
             refs = resource_refs(selected_refs, allow_empty=True)
             preparation = self.reader.preparation(refs=refs)
             for ref in refs:
                 identity = preparation.identity(self.kind, ref)
-                check_category(self.kind, preparation.facts.raw_record(self.kind, identity.entity_key), scope)
-            return {"scope": scope, "selected_refs": refs}, len(refs)
-        if selection == "all":
-            all_scope = {"query": "", "status": None, "category": scope["category"], "sort": "business_code", "direction": "asc"}
-            if scope != all_scope:
-                effective, query = resource_page_scope(self.kind, {"category": scope["category"]})
-            else:
-                effective = scope
-        else:
-            effective = scope
-        matching = (self.reader.matching_keys(query) if table_query_required(query) else
-                    self.reader.toolbar_matching_keys(query))
-        return {"scope": effective}, len(matching)
+                check_category(self.kind, preparation.facts.raw_record(self.kind, identity.entity_key), request.category)
+            return {"request": request, "selected_refs": refs}, len(refs)
+        effective = ResourcePageRequest(kind=self.kind, category=request.category) if selection == "all" else request
+        matching = self.reader.matching_keys(effective)
+        return {"request": effective}, len(matching)
 
-    def export_rows(self, file_format, *, scope, selected_refs=None):
+    def export_rows(self, file_format, *, request, selected_refs=None):
         """在已验证的读快照里读完整份导出行；编码文件交给 write_export，在读事务结束后做。"""
         if not self.conn.in_transaction:
             raise RuntimeError("资源导出必须在已验证的查询快照事务中执行。")
-        scope, query = resource_page_scope(self.kind, scope)
         if selected_refs is None:
-            matching = (self.reader.matching_keys(query) if table_query_required(query) else
-                        self.reader.toolbar_matching_keys(query))
+            matching = self.reader.matching_keys(request)
             check_capacity(len(matching), file_format)
             preparation = self.reader.preparation()
             identities = [preparation.identity_by_code(self.kind, code) for code in matching]
         else:
-            refs = resource_refs(selected_refs, allow_empty=True)
-            check_capacity(len(refs), file_format)
-            preparation = self.reader.preparation(refs=refs, machine_authorizations=(self.kind == "machine"))
-            identities = [preparation.identity(self.kind, ref) for ref in refs]
-        return list(self._export_rows(identities, scope, preparation))
+            check_capacity(len(selected_refs), file_format)
+            preparation = self.reader.preparation(refs=selected_refs, machine_authorizations=(self.kind == "machine"))
+            identities = [preparation.identity(self.kind, ref) for ref in selected_refs]
+        return list(self._export_rows(identities, preparation))
 
-    def write_export(self, rows, file_format, *, scope):
+    def write_export(self, rows, file_format, *, request):
         """只用 export_rows 读出的行生成 CSV/XLSX，不再查库，可在读事务之外调用。"""
-        category = scope.get("category") if isinstance(scope, dict) else resource_scope(self.kind, scope)["category"]
-        return write_resource_file(self.kind, rows, file_format, category=category)
+        return write_resource_file(self.kind, rows, file_format, category=request.category)
 
-    def _export_rows(self, identities, scope, preparation):
+    def _export_rows(self, identities, preparation):
         for identity in identities:
             state = preparation.export_state(self.kind, identity.entity_key)
             authorizations = preparation.authorizations(self.kind, identity.entity_key) if self.kind in ("machine", "operator") else ()
-            flat = flat_resource(self.kind, identity, state, authorizations)
-            check_category(self.kind, flat, scope)
-            yield flat
-
-    @staticmethod
-    def template(kind, file_format="xlsx", *, category=None):
-        action_kind(kind)
-        if (kind == "op_type" and category not in ("internal", "external")) or (kind != "op_type" and category is not None):
-            raise ValidationError("下载工种模板要先选自制还是外协，没有开始下载。请选好归属后重试。", field="category")
-        return write_resource_file(kind, [], file_format, template=True, category=category)
+            yield flat_resource(self.kind, identity, state, authorizations)

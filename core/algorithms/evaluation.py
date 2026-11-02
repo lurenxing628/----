@@ -3,11 +3,11 @@ from __future__ import annotations
 import math
 import statistics
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from datetime import date, datetime
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
 from core.algorithm_contracts.changeover_events import count_known_changeovers
-from core.algorithm_contracts.ordering import clean_resource_id
+from core.algorithm_contracts.resource_occupancy import ResourceOccupancy, project_internal_occupancies
 from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
 from core.algorithm_contracts.value_domains import INTERNAL
 from core.algorithms.evaluation_completion import (
@@ -98,7 +98,7 @@ class _ResultMetricState:
     finish_by_batch: Dict[str, datetime] = field(default_factory=dict)
     min_start: Optional[datetime] = None
     max_end: Optional[datetime] = None
-    by_machine: Dict[str, List[ScheduleResult]] = field(default_factory=dict)
+    by_machine: Dict[str, List[ResourceOccupancy]] = field(default_factory=dict)
     min_internal_start: Optional[datetime] = None
     max_internal_end: Optional[datetime] = None
     machine_busy: Dict[str, float] = field(default_factory=dict)
@@ -132,6 +132,7 @@ def compute_metrics(
     *,
     expected_operations: Iterable[OpForScheduleAlgo],
     failure_details: Iterable[Dict[str, Any]],
+    seed_occupancies_by_op_id: Mapping[int, Tuple[ResourceOccupancy, ...]],
     seed_results: Iterable[ScheduleResult] = (),
     prepared: Optional[PreparedEvaluationContext] = None,
 ) -> ScheduleMetrics:
@@ -145,19 +146,15 @@ def compute_metrics(
         batches=batches, expected_operations=expected_operations, seed_results=seed_results,
     )
     completion = collect_batch_completion(results, prepared=context, failure_details=failure_details)
-    result_state = _collect_result_metric_state(results)
+    result_state = _collect_result_metric_state(
+        results,
+        seed_occupancies_by_op_id=seed_occupancies_by_op_id,
+    )
     due_state = _compute_due_metrics(context, result_state.finish_by_batch, completion=completion)
     utilization = _build_utilization_metrics(result_state)
+    # Invalid due dates stay absent here: due-risk summaries count a missing key as an invalid due date.
     due_by_batch: Dict[str, Optional[date]] = {
-        batch_due.batch_id: (
-            None
-            if batch_due.due_exclusive is None
-            else (
-                date.max
-                if batch_due.due_exclusive == datetime.max
-                else (batch_due.due_exclusive - timedelta(days=1)).date()
-            )
-        )
+        batch_due.batch_id: batch_due.due_date
         for batch_due in context.due_batches
         if not batch_due.due_invalid
     }
@@ -171,8 +168,8 @@ def compute_metrics(
         changeover_count=count_known_changeovers(result_state.by_machine),
         weighted_tardiness_hours=float(due_state.weighted_tardiness_hours),
         makespan_internal_hours=float(utilization.makespan_internal_hours),
-        machine_used_count=int(len(utilization.machine_hours)),
-        operator_used_count=int(len(utilization.operator_hours)),
+        machine_used_count=len(utilization.machine_hours),
+        operator_used_count=len(utilization.operator_hours),
         machine_busy_hours_total=float(sum(utilization.machine_hours) if utilization.machine_hours else 0.0),
         operator_busy_hours_total=float(sum(utilization.operator_hours) if utilization.operator_hours else 0.0),
         machine_util_avg=float(utilization.machine_util_avg),
@@ -180,7 +177,7 @@ def compute_metrics(
         machine_load_cv=float(_cv(utilization.machine_hours)),
         operator_load_cv=float(_cv(utilization.operator_hours)),
         internal_horizon_hours=float(utilization.makespan_internal_hours),
-        util_defined=bool(utilization.util_defined),
+        util_defined=utilization.util_defined,
         invalid_due_count=int(due_state.invalid_due_count),
         unscheduled_batch_count=int(due_state.unscheduled_batch_count),
         invalid_due_batch_ids_sample=due_state.invalid_due_batch_ids_sample,
@@ -191,21 +188,29 @@ def compute_metrics(
     )
 
 
-def _collect_result_metric_state(results: List[ScheduleResult]) -> _ResultMetricState:
+def _collect_result_metric_state(
+    results: List[ScheduleResult],
+    *,
+    seed_occupancies_by_op_id: Mapping[int, Tuple[ResourceOccupancy, ...]],
+) -> _ResultMetricState:
     # A18: this maximum describes observed output only. _compute_due_metrics
     # checks completion evidence before treating it as the batch finish time;
     # partial output still contributes real resource usage, never a forecast.
     state = _ResultMetricState()
     for result in results:
         st, et = result.start_time, result.end_time
-        if st is None or et is None:
-            continue
         # 旧种子在存储边界可能缺批次号（空串），这类结果不计入批次完工。
         bid = result.batch_id.strip() if isinstance(result.batch_id, str) else ""
         if bid:
             _record_batch_finish(state, bid=bid, start_time=st, end_time=et)
         if result.source == INTERNAL:
-            _record_internal_result(state, result=result, start_time=st, end_time=et)
+            occupancies = (
+                seed_occupancies_by_op_id[result.op_id]
+                if result.op_id in seed_occupancies_by_op_id
+                else project_internal_occupancies(result)
+            )
+            for occ in occupancies:
+                _record_internal_occupancy(state, occ=occ)
     return state
 
 
@@ -219,27 +224,23 @@ def _record_batch_finish(state: _ResultMetricState, *, bid: str, start_time: dat
         state.finish_by_batch[bid] = end_time
 
 
-def _record_internal_result(
+def _record_internal_occupancy(
     state: _ResultMetricState,
     *,
-    result: ScheduleResult,
-    start_time: datetime,
-    end_time: datetime,
+    occ: ResourceOccupancy,
 ) -> None:
-    if state.min_internal_start is None or start_time < state.min_internal_start:
-        state.min_internal_start = start_time
-    if state.max_internal_end is None or end_time > state.max_internal_end:
-        state.max_internal_end = end_time
+    if state.min_internal_start is None or occ.start_time < state.min_internal_start:
+        state.min_internal_start = occ.start_time
+    if state.max_internal_end is None or occ.end_time > state.max_internal_end:
+        state.max_internal_end = occ.end_time
 
-    duration_hours = _duration_hours(start_time, end_time)
-    # 种子资源编号来自上一版排程存储，保留已落库原始文本（None 或空白串视为未占资源）。
-    machine_id = clean_resource_id(result.machine_id)
-    if machine_id:
-        state.by_machine.setdefault(machine_id, []).append(result)
-        state.machine_busy[machine_id] = state.machine_busy.get(machine_id, 0.0) + float(duration_hours)
-    operator_id = clean_resource_id(result.operator_id)
-    if operator_id:
-        state.operator_busy[operator_id] = state.operator_busy.get(operator_id, 0.0) + float(duration_hours)
+    duration_hours = (occ.end_time - occ.start_time).total_seconds() / 3600.0
+    # 种子资源编号来自上一版排程存储，保留已落库原始文本（None 或空白串已在构造占用时归一为空串）。
+    if occ.machine_id:
+        state.by_machine.setdefault(occ.machine_id, []).append(occ)
+        state.machine_busy[occ.machine_id] = state.machine_busy.get(occ.machine_id, 0.0) + duration_hours
+    if occ.operator_id:
+        state.operator_busy[occ.operator_id] = state.operator_busy.get(occ.operator_id, 0.0) + duration_hours
 
 
 def _compute_due_metrics(
@@ -300,7 +301,7 @@ def _record_tardiness_if_overdue(
 
 def _build_utilization_metrics(state: _ResultMetricState) -> _UtilizationMetrics:
     horizon = float(_hours_between(state.min_internal_start, state.max_internal_end))
-    # Busy hours only accumulate non-negative durations (_record_internal_result).
+    # Busy hours only accumulate positive occupancy durations (_record_internal_occupancy).
     machine_hours = list(state.machine_busy.values())
     operator_hours = list(state.operator_busy.values())
     return _UtilizationMetrics(
@@ -309,7 +310,7 @@ def _build_utilization_metrics(state: _ResultMetricState) -> _UtilizationMetrics
         operator_hours=operator_hours,
         machine_util_avg=_util_avg(machine_hours, horizon),
         operator_util_avg=_util_avg(operator_hours, horizon),
-        util_defined=bool(horizon > 0),
+        util_defined=horizon > 0,
     )
 
 
@@ -317,10 +318,6 @@ def _hours_between(start_time: Optional[datetime], end_time: Optional[datetime])
     if start_time is None or end_time is None or end_time <= start_time:
         return 0.0
     return (end_time - start_time).total_seconds() / 3600.0
-
-
-def _duration_hours(start_time: datetime, end_time: datetime) -> float:
-    return max((end_time - start_time).total_seconds() / 3600.0, 0.0)
 
 
 def _util_avg(hours: List[float], horizon: float) -> float:

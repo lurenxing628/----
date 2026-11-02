@@ -1,32 +1,31 @@
 """Private atomic bulk deletion, without HTTP or token persistence.
 
-preview_delete(refs, *, scope) -> MaterialPreview. refs is the explicit ordered
-selection (including hidden selected rows); scope is filter context, never an
-instruction to expand that selection. No writes or reference repair occur.
+preview_delete(refs, *, scope) -> MaterialPreview is read-only inside the
+caller's read snapshot transaction. refs is the explicit ordered selection
+(including hidden selected rows); scope is the viewed list's validated
+MaterialPageRequest, filter context and never an instruction to expand that
+selection. No writes or reference repair occur.
 
-confirm_delete(preview, refs, *, scope) -> WorkbenchCommandOutcome. Call inside
+confirm_delete(preview) -> WorkbenchCommandOutcome. Call inside
 WorkbenchCommandService.execute.mutate after the outer guard validates the
-temporary preview/write context. Set normalized_input=preview.intent(). The
+temporary preview/write context. Set normalized_input={"preview_ref": ref}. The
 original frozen preview must come from that context, not from a browser DTO.
-Confirmation rechecks the entire request and every row before any delete. The
-outer command transaction rolls back the whole batch if a domain operation fails.
+Confirmation rebuilds every row of the preview's own request before any delete.
+The outer command transaction rolls back the whole batch if a domain operation fails.
 """
 
 from __future__ import annotations
 
 from dataclasses import asdict
 
-from core.errors import ValidationError
-from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_material_file import (
     MaterialPreview,
-    check_preview,
     normalize_refs,
-    normalize_scope,
     preview_row,
     reject_row,
+    wire_scope,
 )
 from data.repositories.workbench_material_file_repo import WorkbenchMaterialFileRepository
 
@@ -52,13 +51,13 @@ class WorkbenchMaterialBulkService:
         self.conn = conn
         self.adapter = WorkbenchMaterialService(conn, logger=logger)
         self.repo = WorkbenchMaterialFileRepository(conn, logger=logger)
-        self.tx = TransactionManager(conn)
 
     def preview_delete(self, refs, *, scope):
-        request = {"refs": normalize_refs(refs), "scope": normalize_scope(scope)}
-        with self.tx.transaction():
-            preview, _ = self._prepare_delete(request)
-            return preview
+        if not self.conn.in_transaction:
+            raise RuntimeError("物料批量删除预检必须在外层读快照事务中执行。")
+        request = {"refs": normalize_refs(refs), "scope": wire_scope(scope)}
+        preview, _ = self._prepare_delete(request)
+        return preview
 
     def _prepare_delete(self, request):
         captured = self.repo.capture(refs=request["refs"])
@@ -82,17 +81,11 @@ class WorkbenchMaterialBulkService:
             row["result"] = "delete"
         return row
 
-    def confirm_delete(self, preview, refs, *, scope):
+    def confirm_delete(self, preview):
         if not self.conn.in_transaction:
             raise RuntimeError("批量删除必须在外层工作台写事务中执行。")
-        if not isinstance(preview, MaterialPreview):
-            raise WorkbenchCommandRejected("stale_write", "找不到刚才的预检结果，没有写入数据。请点「重新预检」。")
-        try:
-            request = {"refs": normalize_refs(refs), "scope": normalize_scope(scope)}
-        except (ValidationError, WorkbenchCommandRejected) as exc:
-            raise WorkbenchCommandRejected("stale_write", "物料选择或范围已变化，请重新预检。") from exc
-        current, rows = self._prepare_delete(request)
-        check_preview(preview, current)
+        current, rows = self._prepare_delete(preview.as_dict()["request"])
+        preview.check_current(current)
         prepared = [self.adapter.prepare_checked("delete", row["input"], row["expected"]) for row in rows]
         outcomes = self.adapter.apply_prepared_many(prepared)
         results = [{"row": row["row"], "result": outcome.result, **outcome.data}

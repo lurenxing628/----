@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict
 
 from core.algorithm_contracts.operation_effort import RUNTIME_REQUIREMENT_BASIS
 from core.infrastructure.read_evidence import read_evidence_scope
@@ -20,7 +20,6 @@ from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.decision_baseline import read_decision_baseline
 from core.services.workbench.facts.decision_baseline_source import decision_baseline_source_resolver
 from core.services.workbench.facts.decision_read_models import public_job_head, public_job_status
-from core.services.workbench.facts.run_data_context import RunDataContext
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 
 from .input_admission import candidate_admission_issues
@@ -40,10 +39,19 @@ class AdmittedRun:
     read_models: Dict[str, Any]
 
 
+def read_run_head(conn, run_ref):
+    validate_run_ref(run_ref)
+    with TransactionManager(conn).transaction():
+        row = WorkbenchRunRepository(conn).head(run_ref)
+        if row is None:
+            raise WorkbenchCommandRejected("entity_not_found", "找不到这次排产，页面没有打开。请到「排产记录」重新选择。", 404)
+        return row
+
+
 class WorkbenchRunService:
     def __init__(self, conn, *, integration_enabled=False,
-                 input_resolver: Optional[Callable[..., PreparedPreflight]] = None, context_factory=None,
-                 context_validator=None, clock=None, data_context=None):
+                 input_resolver: Callable[..., PreparedPreflight], context_factory,
+                 context_validator, clock=None, data_context):
         self.conn = conn
         self.repo = WorkbenchRunRepository(conn)
         self.integration_enabled = integration_enabled is True
@@ -51,15 +59,13 @@ class WorkbenchRunService:
         self.context_factory = context_factory
         self.context_validator = context_validator
         self.clock = clock or datetime.now
-        self.data_context = data_context or RunDataContext(conn)
+        self.data_context = data_context
 
     def _require_outer(self):
         if self.conn.in_transaction:
             raise RuntimeError("Run service must own the outer transaction")
 
     def _resolve(self, input_ref):
-        if not callable(self.input_resolver):
-            raise WorkbenchCommandRejected("run_worker_not_connected", messages.UNAVAILABLE, 503)
         facts = PreflightFacts(self.conn)
         with read_evidence_scope(self.conn), facts.snapshot(fingerprint=False):
             prepared = self.input_resolver(self.conn, input_ref, facts=facts)
@@ -122,8 +128,6 @@ class WorkbenchRunService:
             context = {"write_token": None, "expires_at": None,
                        "capabilities": {"scheduling.run": False}, "blocked_reasons": reasons}
             if not reasons:
-                if not callable(self.context_factory) or not callable(self.context_validator):
-                    raise RuntimeError("Run authorization callbacks are not connected")
                 context = self.context_factory(input_ref, ["scheduling.run"], snapshot)
             return {"input_ref": input_ref, "normalized_input": settings, "write_context": context,
                     "run_options": prepared.run_options,
@@ -148,8 +152,6 @@ class WorkbenchRunService:
                 prepared, snapshot = self._resolve(input_ref)
                 if self._reasons(prepared.data):
                     raise WorkbenchCommandRejected("constraint_conflict", "排产检查还有缺资料的项，这次排产没有开始。请先按上面列出的项补齐。")
-                if not callable(self.context_validator):
-                    raise RuntimeError("Run authorization validator is not connected")
                 self.context_validator(write_token, input_ref, "scheduling.run", snapshot)
                 return self._prepare_admission(prepared, input_ref, request_key, snapshot["data_context_ref"])
 
@@ -183,14 +185,6 @@ class WorkbenchRunService:
             if row is None:
                 raise WorkbenchCommandRejected("entity_not_found", "找不到这次排产，页面没有打开。请到「排产记录」重新选择。", 404)
             return public_job_status(row)
-
-    def get_head(self, run_ref):
-        validate_run_ref(run_ref)
-        with TransactionManager(self.conn).transaction():
-            row = self.repo.head(run_ref)
-            if row is None:
-                raise WorkbenchCommandRejected("entity_not_found", "找不到这次排产，页面没有打开。请到「排产记录」重新选择。", 404)
-            return row
 
     def lookup(self, request_key):
         validate_request_key(request_key)

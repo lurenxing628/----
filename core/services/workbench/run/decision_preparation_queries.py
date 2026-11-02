@@ -2,15 +2,13 @@
 
 from typing import Union
 
-from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.workbench_run_candidate import reference, reject
-from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.decision_metrics import METRIC_VERSION
 from core.services.workbench.facts.preparation_projection import preparation_delta
 
 from .decision_impact import filter_options, option_resources
 from .decision_queries import parse_page
-from .decision_source import DecisionSource
+from .decision_session import decision_read, decision_snapshot_scope
 
 PREPARATION_SORTS = ("sequence", "batch_id", "after_setup_hours", "after_required_hours", "setup_delta_hours")
 CHANGEOVER_SORTS = ("next_start", "machine_label", "next_batch_id")
@@ -108,17 +106,13 @@ def preparation_details(source, filters, *, page: Union[int, str] = 1, size: Uni
             "summary": projection.public_summary(), "metric_version": METRIC_VERSION}
 
 
-def read_preparation_details(conn, run_ref, section, *, selected_candidate_ref=None, comparison_mode="candidates", reference_candidate_ref=None,
-                             range_start=None, range_end=None, resource_view="selected_batches", batch_ref=None, machine_ref=None,
-                             allocation_state="all", work_scope="all", event_side="all", sort=None, order="asc",
-                             page: Union[int, str] = 1, size: Union[int, str] = 20):
+def read_preparation_details(conn, run_ref, section, *, bind_snapshot, selected_candidate_ref=None, batch_ref=None,
+                             machine_ref=None, allocation_state="all", work_scope="all", event_side="all", sort=None,
+                             order="asc", page: Union[int, str] = 1, size: Union[int, str] = 20, **query):
     if selected_candidate_ref is None:
         reject("invalid_input", "明细需要指定所选候选方案。", 422)
     filters = normalize_preparation_filters(section, batch_ref=batch_ref, machine_ref=machine_ref, allocation_state=allocation_state,
                                             work_scope=work_scope, event_side=event_side, sort=sort, order=order)
-    store = CandidateStore(conn)
-    with store.snapshot(), read_evidence_scope(conn):
-        source = DecisionSource(store, run_ref, selected_candidate_ref=selected_candidate_ref, comparison_mode=comparison_mode,
-                                reference_candidate_ref=reference_candidate_ref, range_start=range_start, range_end=range_end, resource_view=resource_view)
-        data = preparation_details(source, filters, page=page, size=size)
-        return data, source.state()
+    with decision_read(conn, run_ref, selected_candidate_ref=selected_candidate_ref, **query) as source:
+        snapshot = bind_snapshot(decision_snapshot_scope(source, filters=filters), source.state())
+        return preparation_details(source, filters, page=page, size=size), snapshot

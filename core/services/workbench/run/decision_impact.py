@@ -5,7 +5,7 @@ from datetime import timedelta
 from typing import Any, Dict
 
 from core.models.workbench_run_candidate import local_time
-from core.services.workbench.facts.candidate_tasks import operation_labels, unplanned_projection
+from core.services.workbench.facts.candidate_tasks import operation_labels, unplanned_reason
 from core.services.workbench.facts.common_completed_delivery import common_completed_delivery
 from core.services.workbench.facts.decision_metrics import operation_change_metrics
 from core.services.workbench.facts.delivery_projection import delivery_batch_delta, delivery_summary
@@ -217,18 +217,6 @@ def operation_impacts(source, operation_refs=None):
         return []
     old, new = source.analysis_groups("reference"), source.analysis_groups(source.selected_ref)
     comparisons = source.operation_comparisons
-    need_after_reasons = any(comparisons[ref]["after_state"]["status"] in ("deferred", "missing") for ref in refs)
-    need_before_reasons = source.comparison_mode == "candidates" and any(
-        comparisons[ref]["before_state"]["status"] in ("deferred", "missing") for ref in refs
-    )
-    reasons = (
-        {row["operation_ref"]: row["reason"] for row in unplanned_projection(source.disposition, source.analysis_tasks(source.selected_ref), source.facts)}
-        if need_after_reasons else {}
-    )
-    reference_reasons = (
-        {row["operation_ref"]: row["reason"] for row in unplanned_projection(source.disposition, source.analysis_tasks("reference"), source.facts)}
-        if need_before_reasons else {}
-    )
     result = []
     available = source.result_available(source.selected_ref)
     window_bounds = (local_time(source.scope["range_start"]), local_time(source.scope["range_end"]))
@@ -241,12 +229,13 @@ def operation_impacts(source, operation_refs=None):
             before_state=dict(comparisons[ref]["before_state"]),
             after_state=dict(comparisons[ref]["after_state"]),
         )
-        for side, saved in (("after", reasons), ("before", reference_reasons)):
-            if delta[side + "_state"]["status"] in ("deferred", "missing") and ref in saved:
-                delta[side + "_state"]["reason"] = saved[ref]
         before, after = delta["before"], delta["after"]
         execution = source.facts.execution[ref]
         disposition = source.disposition[ref]
+        if delta["after_state"]["status"] in ("deferred", "missing"):
+            delta["after_state"]["reason"] = unplanned_reason(disposition)
+        if source.comparison_mode == "candidates" and delta["before_state"]["status"] in ("deferred", "missing"):
+            delta["before_state"]["reason"] = unplanned_reason(disposition)
         constraints = {"protected_at_admission": disposition["status"] == "protected",
                        "selected_locked": after["locked"] if after else None, "reference_locked": before["locked"] if before else None,
                        "lock_basis": "saved_arrangement_marker", "protection_basis": "admission_execution_and_dispositions",

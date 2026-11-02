@@ -49,7 +49,7 @@ def workbench_dashboard_external_objects():
     return result
 
 
-def workbench_dashboard_external_contract_issues(conn, *, structure: SchemaStructure):
+def workbench_dashboard_external_contract_issues(structure: SchemaStructure):
     actual = structure.sql
     return [("missing_dashboard_external_schema:" if name not in actual else "invalid_dashboard_external_schema:") + name
             for name, sql in workbench_dashboard_external_objects().items()

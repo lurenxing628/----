@@ -56,15 +56,20 @@
       <span className="fg-muted">当前显示 {shownCount} / {graph.critical_task_refs.length} 道关键工序 · 与图中的金色标记一致</span>
     </div>;
   }
+  // 批次范围全程是完整批次号的列表：逐个添加、逐个移除，批次号原样保留（可含逗号、全角逗号和首尾空格），不拆分也不去空白。
   function Range({ scope, resources, onApply, busy }) {
-    const [draft, setDraft] = React.useState(scope), [batches, setBatches] = React.useState((scope.batch_ids || []).join(','));
-    React.useEffect(() => { setDraft(scope); setBatches((scope.batch_ids || []).join(',')); }, [scope]);
+    const [draft, setDraft] = React.useState(scope), [batches, setBatches] = React.useState(scope.batch_ids || []), [entry, setEntry] = React.useState('');
+    const [listOpen, setListOpen] = React.useState(false);
+    React.useEffect(() => { setDraft(scope); setBatches(scope.batch_ids || []); setEntry(''); }, [scope]);
     const patch = value => setDraft(previous => ({ ...previous, ...value }));
     const selectable = resources ? resources.filter(r => r.kind !== 'supplier') : null;
-    return <form className="fg-range" onSubmit={event => { event.preventDefault(); const next = { ...draft };
+    // 正在输入的批次号作为一个完整编号并入；全是空白不算批次号，列表里已有的不重复加入。
+    const withEntry = () => entry.trim() && !batches.includes(entry) ? batches.concat(entry) : batches;
+    function add() { setBatches(withEntry()); setEntry(''); }
+    return <form className="fg-range" onSubmit={event => { event.preventDefault(); const next = { ...draft }, ids = withEntry();
       Object.keys(next).forEach(key => { if (next[key] === '' || next[key] === null) delete next[key]; });
       if (!next.resource_ref) delete next.resource_type;
-      if (batches.trim()) next.batch_ids = batches.split(/[,，]+/).map(v => v.trim()).filter(Boolean); else delete next.batch_ids;
+      if (ids.length) next.batch_ids = ids; else delete next.batch_ids;
       delete next.snapshot_ref; onApply(next);
     }}>
       {scope.range_start && <span className="fg-muted">原计划时段 {M.time(scope.range_start)} 至 {M.time(scope.range_end)}<small>按原计划时段有重叠来挑工序；选中的工序保留全部有效报工</small></span>}
@@ -74,7 +79,13 @@
         {resources === null ? <option value={draft.resource_ref || ''}>{draft.resource_ref ? '已选资源（选项待读取）' : '资源选项待读取'}</option> : <><option value="">全部计划或实际资源</option>
           {draft.resource_ref && !selectable.some(r => r.ref === draft.resource_ref) && <option value={draft.resource_ref}>已选资源（当前范围无记录）</option>}
           {selectable.map(r => <option key={r.ref} value={r.ref}>{M.views[r.kind]} · {r.label || r.business_code}</option>)}</>}</select></label>
-      <label>批次<input className="fg-batches" aria-label="批次范围" placeholder="多个批次用逗号分隔" value={batches} onChange={e => setBatches(e.target.value)} /></label>
+      <label>批次<input className="fg-batches" aria-label="批次号" placeholder="输入完整批次号" value={entry} onChange={e => setEntry(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add(); } }} /></label>
+      <Button icon="plus" disabled={!entry.trim()} onClick={add}>添加批次</Button>
+      {batches.length > 0 && <details className="fg-batch-list" open={listOpen} onToggle={e => setListOpen(e.currentTarget.open)}><summary>已选 {batches.length} 个批次</summary>
+        {listOpen && <span className="chipline" role="list" aria-label="批次范围">{batches.map(id => <span className="chip" role="listitem" key={id}><span className="fg-batch-id">{id}</span>
+          <Button className="mini" icon="x" aria-label={'移除批次 ' + id} onClick={() => setBatches(batches.filter(value => value !== id))} /></span>)}</span>}
+        <Button icon="x" onClick={() => { setBatches([]); setEntry(''); }}>清空批次</Button></details>}
       <Button type="submit" icon="search" busy={busy}>应用范围</Button><Button icon="x" aria-label="清除来源范围" disabled={busy} onClick={() => onApply({ plan_ref: scope.plan_ref })} />
     </form>;
   }

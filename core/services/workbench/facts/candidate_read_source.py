@@ -17,6 +17,11 @@ from .candidate_values import corrupt
 from .gantt_graph import candidate_gantt_graph
 
 
+def candidate_snapshot_identity(run_ref, candidate_ref):
+    """Permanent source identity; query scope is bound by the read context."""
+    return {"read_contract_version": 1, "run_ref": run_ref, "candidate_ref": candidate_ref}
+
+
 @dataclass(frozen=True)
 class CandidateReadSource:
     run: dict
@@ -36,9 +41,7 @@ class CandidateReadSource:
 
     @property
     def snapshot_identity(self):
-        """Permanent source identity; query scope is bound by the read context."""
-        return {"read_contract_version": 1, "run_ref": self.run["run_ref"],
-                "candidate_ref": self.candidate["candidate_ref"]}
+        return candidate_snapshot_identity(self.run["run_ref"], self.candidate["candidate_ref"])
 
     @cached_property
     def tasks(self):
@@ -74,7 +77,18 @@ class CandidateReadSource:
 
     @cached_property
     def gantt_graph(self):
-        return candidate_gantt_graph(self.tasks, self.facts, self.raw_tasks, task_intervals=self.task_intervals)
+        resource_keys = {
+            row["row_ref"]: (row["payload"]["machine_id"], row["payload"]["operator_id"])
+            for row in self.raw_tasks
+        }
+        return candidate_gantt_graph(
+            self.tasks,
+            self.facts,
+            resource_keys,
+            scope="full_candidate",
+            unavailable_reason="此候选方案未保存完整的工艺前后关系，暂时无法显示关联线和关键链。",
+            task_intervals=self.task_intervals,
+        )
 
     @cached_property
     def operation_effort_projection(self):

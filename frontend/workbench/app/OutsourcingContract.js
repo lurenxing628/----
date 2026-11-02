@@ -17,26 +17,32 @@
     return n[0] > 0 && date.toISOString().slice(0, 19) === v;
   }
   function stamp(v) { const s = typeof v === 'string' && v.length === 16 ? v + ':00' : v; check(time(s), '请按 2026-09-13 08:30 这样填写日期和时间。'); return s; }
+  // 回厂事实与外协目标：校验只在读取、预检、回执、本机记录和表单这些边界各做一次；已校验的值用 factValues / targetValues 直接取字段。
+  const factValues = v => Object.fromEntries(fields.map(k => [k, v[k]]));
   function facts(v, now) {
     check(object(v) && fields.every(k => Object.prototype.hasOwnProperty.call(v, k)) && time(v.sent) && time(v.planned)
       && (v.returned === null || time(v.returned)) && Object.prototype.hasOwnProperty.call(states, v.confirmedState));
     check(v.planned >= v.sent && (v.returned === null || v.returned >= v.sent), '计划回厂和实际回厂不能早于实际发出。');
     check((v.confirmedState === 'returned') === (v.returned !== null), '已回厂状态和实际回厂时间要一起填。还没回厂就点「清除实际回厂」。');
     if (now) check(v.sent <= now && (v.returned === null || v.returned <= now), '实际发出和实际回厂不能填未来时间，以系统的工厂时间为准。');
-    return Object.fromEntries(fields.map(k => [k, v[k]]));
+    return factValues(v);
   }
-  function target(t, publicData = false) {
+  // 登记用的目标只认类型、批次、供应商和排好序的工序编号。
+  const targetValues = t => ({ kind: t.kind, batch_ref: t.batch_ref, supplier_ref: t.supplier_ref, operation_refs: t.operation_refs.slice().sort() });
+  function target(t) {
     check(object(t) && ['single', 'merged'].includes(t.kind) && ref(t.batch_ref) && ref(t.supplier_ref) && Array.isArray(t.operation_refs)
       && t.operation_refs.length >= 1 && t.operation_refs.length <= 200 && t.operation_refs.every(ref) && new Set(t.operation_refs).size === t.operation_refs.length
       && (t.kind === 'single') === (t.operation_refs.length === 1), '单工序要选 1 道，合并发出至少选 2 道，而且不能重复。');
-    const operation_refs = t.operation_refs.slice().sort();
-    if (publicData) {
-      check(t.grouping_basis === 'explicit_receipt_membership' && object(t.batch) && t.batch.ref === t.batch_ref && object(t.supplier) && t.supplier.ref === t.supplier_ref
-        && Array.isArray(t.operations) && t.operations.length === t.operation_refs.length && equal(t.operations.map(o => o.operation_ref).sort(), operation_refs));
-      if (t.part !== undefined) { check(object(t.part) && ref(t.part.ref)); entityLabel(t.part, t.part.ref); }
-      if (t.source_resolution !== undefined) resolution(t.source_resolution);
-    }
-    return { kind: t.kind, batch_ref: t.batch_ref, supplier_ref: t.supplier_ref, operation_refs };
+    return targetValues(t);
+  }
+  // 后端回显的目标还带名称与成员，按登记规则核过后再核这些公开字段。
+  function publicTarget(t) {
+    const { operation_refs } = target(t);
+    check(t.grouping_basis === 'explicit_receipt_membership' && object(t.batch) && t.batch.ref === t.batch_ref && object(t.supplier) && t.supplier.ref === t.supplier_ref
+      && Array.isArray(t.operations) && t.operations.length === t.operation_refs.length && equal(t.operations.map(o => o.operation_ref).sort(), operation_refs));
+    if (t.part !== undefined) { check(object(t.part) && ref(t.part.ref)); entityLabel(t.part, t.part.ref); }
+    if (t.source_resolution !== undefined) resolution(t.source_resolution);
+    return t;
   }
   function boundary(e, t) { check(object(e) && e.automatically_reported === false && equal(e.operation_refs.slice().sort(), t.operation_refs.slice().sort())
     && e.service === 'WorkbenchProductionReportService' && text(e.reason), '回厂登记数据无效，请刷新重试。'); }
@@ -48,7 +54,7 @@
     check(object(v) && ref(v.outsourcing_ref) && ref(v.latest_fact_ref) && count(v.history_count) && v.history_count >= 1 && typeof v.can_preview === 'boolean'
       && ['current', 'identity_drift', 'source_unavailable'].includes(v.source_state) && Array.isArray(v.issues) && v.tracking_basis === 'manual_receipt_facts'
       && time(v.confirmed_at) && text(v.declared_operator) && text(v.local_operator) && text(v.reason));
-    facts(v); target(v.target, true); boundary(v.execution, v.target);
+    facts(v); publicTarget(v.target); boundary(v.execution, v.target);
     check(v.awaiting_return === (v.returned === null) && typeof v.overdue === 'boolean'); return v;
   }
   function query(kind, value) {
@@ -91,18 +97,18 @@
           && text(h.declared_operator) && text(h.local_operator) && text(h.reason)); facts(h.after); if (h.before !== null) facts(h.before); });
         check(d.history.page.total === d.item.history_count && (q.page !== 1 || d.history.items[0].fact_ref === d.item.latest_fact_ref));
         check(new Set(d.history.items.map(h => h.fact_ref)).size === d.history.items.length);
-        if (q.page === 1) check(equal(d.history.items[0].after, facts(d.item)));
+        if (q.page === 1) check(equal(d.history.items[0].after, factValues(d.item)));
         d.history.items.forEach((h, i, rows) => { if (i + 1 < rows.length) check(h.previous_fact_ref === rows[i + 1].fact_ref && equal(h.before, rows[i + 1].after)); });
       }
     }
     return v;
   }
   function previewResult(v, input) {
-    const d = v.data; target(d.target, true); facts(d.after, v.meta.as_of); boundary(d.execution, d.target);
+    const d = v.data; publicTarget(d.target); facts(d.after, v.meta.as_of); boundary(d.execution, d.target);
     // 新登记的 input 只有 target、没有 outsourcing_ref，后端回显 null。
     check(equal(d.input, input) && d.outsourcing_ref === (input.outsourcing_ref ?? null) && d.can_confirm === true
       && object(d.write_context) && text(d.write_context.write_token) && d.write_context.capabilities.confirm === true);
-    if (input.target) check(d.before === null && equal(target(d.target), input.target)); else facts(d.before);
+    if (input.target) check(d.before === null && equal(targetValues(d.target), input.target)); else facts(d.before);
     check(equal(d.after, { ...d.before, ...Object.fromEntries(fields.filter(k => Object.prototype.hasOwnProperty.call(input, k)).map(k => [k, input[k]])) })); return v;
   }
   function receipt(v, intent) {
@@ -131,5 +137,5 @@
     if (v.state === 'not_recorded') { check(v.ok === true && v.receipt === null && v.may_be_in_flight === true); return null; }
     return receipt(v, intent);
   }
-  window.OutsourcingContract = { states, fields, labels, object, ref, text, check, equal, stamp, facts, target, receipt, read, preview, command, lookup };
+  window.OutsourcingContract = { states, fields, labels, object, ref, text, check, equal, stamp, facts, target, publicTarget, targetValues, receipt, read, preview, command, lookup };
 })();

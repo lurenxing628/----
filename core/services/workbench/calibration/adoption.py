@@ -16,7 +16,7 @@ from .adoption_policy import adopt_checked_quota
 
 
 class WorkbenchCalibrationAdoptionService:
-    def __init__(self, conn, *, integration_enabled=False, context_factory=None, context_validator=None,
+    def __init__(self, conn, *, integration_enabled=False, context_factory, context_validator,
                  clock=None, actor_provider=None):
         self.conn = conn
         self.integration_enabled = integration_enabled is True
@@ -30,10 +30,6 @@ class WorkbenchCalibrationAdoptionService:
     def _enabled(self):
         if not self.integration_enabled:
             raise WorkbenchCommandRejected("calibration_adoption_not_connected", messages.UNAVAILABLE, 503)
-        factory, validator = self.context_factory, self.context_validator
-        if not callable(factory) or not callable(validator):
-            raise RuntimeError("Calibration adoption write-context callbacks are not connected.")
-        return factory, validator
 
     def _outer(self):
         if self.conn.in_transaction:
@@ -43,11 +39,11 @@ class WorkbenchCalibrationAdoptionService:
         self._outer()
         public_ref(template_operation_ref)
         intent = preview_input(value)
-        factory, _ = self._enabled()
+        self._enabled()
         with TransactionManager(self.conn).transaction():
             evidence = read_evidence(self.conn, self.repo, template_operation_ref, intent, self.clock)
             context = (closed_context(evidence.blockers) if evidence.blockers else
-                       factory(template_operation_ref, [ADOPT_ACTION], evidence.snapshot))
+                       self.context_factory(template_operation_ref, [ADOPT_ACTION], evidence.snapshot))
             return {"template_operation_ref": template_operation_ref, "suggestion": evidence.suggestion,
                     "generated_at": evidence.generated_at, "input": intent, "samples": evidence.samples,
                     "effect_scope": "future_template_use_only", "latest_adoption": evidence.snapshot["latest_adoption"],
@@ -58,11 +54,11 @@ class WorkbenchCalibrationAdoptionService:
         intent = adoption_input(value)
 
         def guard():
-            _, validator = self._enabled()
+            self._enabled()
             if type(write_token) is not str or not write_token:
                 raise WorkbenchCommandRejected("stale_write", messages.STALE)
             evidence = read_evidence(self.conn, self.repo, template_operation_ref, intent, self.clock)
-            validator(write_token, template_operation_ref, ADOPT_ACTION, evidence.snapshot)
+            self.context_validator(write_token, template_operation_ref, ADOPT_ACTION, evidence.snapshot)
             evidence.require_adoptable()
             return evidence
 

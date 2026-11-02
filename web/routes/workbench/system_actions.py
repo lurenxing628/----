@@ -22,26 +22,23 @@ def system_config_save():
     body = command_body()
     service = SystemConfigWorkspace(g.db, current_app.logger, current_app.config.get("BACKUP_KEEP_DAYS", 7))
     with maintenance_window(current_app.config["DATABASE_PATH"], logger=current_app.logger, action="workbench_config"):
-        records = journal() if current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR") else None
-        entries = records.records() if records is not None else ()
+        records = journal()
+        entries = records.records()
         if any(row["request_key"] == body["request_key"] for row in entries):
             raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号已经用在文件维护上了，这次没有重复执行。请点「查询结果」核对上次的结果。")
         def guard():
-            if records is not None:
-                records.assert_ready(entries)
-                return service.check(resolve_context("config", body["write_token"], database=records.scope_from_records(entries)))
-            return service.check(resolve_context("config", body["write_token"]))
+            records.assert_ready(entries)
+            return service.check(resolve_context("config", body["write_token"], database=records.scope_from_records(entries)))
         return json_response(service.save(request_key=body["request_key"], values=body["input"], guard=guard))
 
 
 @system_endpoint
 def system_result(request_key):
     validate_request_key(request_key)
-    if current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR"):
-        records = journal()
-        row = records.lookup(request_key)
-        if row:
-            return query_payload({"kind": "file_operation", "operation": records.public(row, True)})
+    records = journal()
+    row = records.lookup(request_key)
+    if row:
+        return query_payload({"kind": "file_operation", "operation": records.public(row, True)})
     commands = WorkbenchCommandService(g.db, current_app.logger)
     stored = commands.repo.get(request_key)
     if stored is not None:
@@ -66,7 +63,7 @@ def system_job_result(job_ref):
 
 def _file_service():
     return SystemFileWorkspace(database_path=current_app.config["DATABASE_PATH"], backup_dir=current_app.config["BACKUP_DIR"],
-                               journal_dir=current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR"), logger=current_app.logger)
+                               journal_dir=current_app.config["WORKBENCH_SYSTEM_JOURNAL_DIR"], logger=current_app.logger)
 
 
 def _restore_runner(manager, path):

@@ -18,7 +18,7 @@ from core.services.workbench.run.candidates import WorkbenchRunCandidateQuerySer
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint
-from .read_context import bind_read_snapshot
+from .read_context import snapshot_binder
 
 _WORKSPACE_ARGS = ("range_start", "range_end", "batch_ref", "sort", "order", "snapshot_ref")
 
@@ -50,27 +50,23 @@ def run_candidate_list(run_ref):
     _arguments(("status", "sort", "order", "page", "size", "snapshot_ref"))
     scope = RunCandidateCatalogScope(run_ref, request.args.get("status", "all"), request.args.get("sort", "sequence"),
                                      request.args.get("order", "asc"), _integer("page", "1"), _integer("size", "20"))
-    data, state = WorkbenchRunCandidateQueryService(g.db).catalog(scope)
-    snapshot = bind_read_snapshot(scope.scope(), state, request.args.get("snapshot_ref"))
-    return _response(data, snapshot)
+    return _response(*WorkbenchRunCandidateQueryService(g.db).catalog(
+        scope, bind_snapshot=snapshot_binder(request.args.get("snapshot_ref"))))
 
 
 @api_endpoint
 def run_candidate_workspace(candidate_ref):
     _arguments(_WORKSPACE_ARGS)
     scope = _scope(candidate_ref)
-    data, state = WorkbenchRunCandidateQueryService(g.db).workspace(scope)
-    snapshot = bind_read_snapshot(scope.scope(), state, request.args.get("snapshot_ref"))
-    return _response(data, snapshot)
+    return _response(*WorkbenchRunCandidateQueryService(g.db).workspace(
+        scope, bind_snapshot=snapshot_binder(request.args.get("snapshot_ref"))))
 
 
 @api_endpoint
 def run_candidate_identity(candidate_ref):
     _arguments(("snapshot_ref",))
-    data, state = WorkbenchRunCandidateQueryService(g.db).identity(candidate_ref)
-    snapshot = bind_read_snapshot({"kind": "run-candidate-identity", "candidate_ref": candidate_ref},
-                                  state, request.args.get("snapshot_ref"))
-    return _response(data, snapshot)
+    return _response(*WorkbenchRunCandidateQueryService(g.db).identity(
+        candidate_ref, bind_snapshot=snapshot_binder(request.args.get("snapshot_ref"))))
 
 
 @api_endpoint
@@ -80,8 +76,7 @@ def run_candidate_export(candidate_ref):
     if fmt not in ("csv", "xlsx") or not token:
         reject("invalid_input", "没有选好导出格式，或数据已更新，没有开始下载。请点「刷新」后重新点「导出」。", 400)
     scope = _scope(candidate_ref)
-    data, state = WorkbenchRunCandidateQueryService(g.db).export_workspace(scope)
-    snapshot = bind_read_snapshot(scope.scope(), state, token)
+    data, snapshot = WorkbenchRunCandidateQueryService(g.db).export_workspace(scope, bind_snapshot=snapshot_binder(token))
     download = write_run_candidate_export(data, snapshot, fmt)
     if len(download.content) > MAX_RESPONSE_BYTES:
         reject("candidate_capacity_exceeded", "候选方案导出文件超过 32 MB，请缩小范围后重新导出。", 413)
@@ -94,21 +89,19 @@ def run_candidate_export(candidate_ref):
     return response
 
 
-def _analysis_response(candidate_ref, kind, reader):
+def _analysis_response(candidate_ref, reader):
     _arguments(("snapshot_ref",))
-    data, state = reader(g.db, candidate_ref)
-    snapshot = bind_read_snapshot({"kind": kind, "candidate_ref": candidate_ref}, state, request.args.get("snapshot_ref"))
-    return _response(data, snapshot)
+    return _response(*reader(g.db, candidate_ref, bind_snapshot=snapshot_binder(request.args.get("snapshot_ref"))))
 
 
 @api_endpoint
 def run_candidate_analysis(candidate_ref):
-    return _analysis_response(candidate_ref, "run-candidate-full-analysis", read_candidate_analysis)
+    return _analysis_response(candidate_ref, read_candidate_analysis)
 
 
 @api_endpoint
 def run_candidate_adoptions(candidate_ref):
-    return _analysis_response(candidate_ref, "run-candidate-adoption-history", read_candidate_history)
+    return _analysis_response(candidate_ref, read_candidate_history)
 
 
 def register_run_candidate_routes(bp):

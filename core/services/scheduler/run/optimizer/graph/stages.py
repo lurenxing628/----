@@ -1,7 +1,7 @@
 """The three graph phase stages as rotation units: weight profiles, elite repair, iterated greedy."""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence
 
 from core.services.scheduler.run.optimizer.candidate_comparison import candidate_is_preferred
 from core.services.scheduler.run.optimizer.graph_ready_profiles import GraphReadyWeightProfile
@@ -27,7 +27,7 @@ class ProfileStage(SearchStage):
     name = "profiles"
 
     def __init__(self, *, profiles: List[GraphReadyWeightProfile], search: GraphReadyProfileSearch, pool: EliteRepairPool,
-                 state: GraphSearchState, order: List[str],
+                 state: GraphSearchState, order: Sequence[str],
                  search_report_state: OptimizationSearchReportState) -> None:
         self.profiles = list(profiles)
         self.search = search
@@ -67,9 +67,6 @@ class ProfileStage(SearchStage):
         self.search_report_state.mark_candidate_accepted(candidate, origin=profile.candidate_origin,
                                                          fingerprint=fingerprint)
         self.state.best = candidate
-
-    def finish(self) -> None:
-        return None
 
 
 class RepairStage(SearchStage):

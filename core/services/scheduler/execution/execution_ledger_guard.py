@@ -1,55 +1,31 @@
 """Preserve actual execution across plan versions."""
 
-from datetime import datetime
-
 from core.errors import AppError, ErrorCode
 from core.models.enums import SourceType
-from core.models.operation_execution_scope import parse_operation_event_time
+from core.services.execution.projection import (
+    actual_period,
+    is_point_work,
+    report_segments,
+)
 
 _STATUSES = {"unreported": "not_started", "started": "processing", "partial": "processing",
              "complete": "completed"}
 
 
-def is_point_work(source, setup_hours, unit_hours, target_quantity):
-    values = (setup_hours, unit_hours, target_quantity)
-    return (
-        source == SourceType.INTERNAL.value
-        and type(target_quantity) is int
-        and all(
-            type(value) in (int, float) and 0 <= value <= 9007199254740991
-            for value in values
-        )
-        and setup_hours == 0
-        and (unit_hours == 0 or target_quantity == 0)
-    )
-
-
-def _actual_time(value):
-    return None if value is None else parse_operation_event_time(value)
-
-
-def _resource_id(refs, resources, kind, reasons):
-    refs = set(refs)
-    if None in refs or len(refs) != 1:
+def _resource_id(ref, resources, kind, reasons):
+    if ref is None:
         reasons.append("execution_ledger_actual_resource_missing_or_multiple")
         return None
-    resource = resources.get(next(iter(refs)))
+    resource = resources.get(ref)
     if not resource or resource["kind"] != kind or not resource["available"]:
         reasons.append("execution_ledger_actual_resource_unavailable")
         return None
     return resource["business_code"]
 
 
-def _report_segments(projection):
-    return sorted(
-        ((_actual_time(report.actual_start), _actual_time(report.actual_end), report) for report in projection.reports),
-        key=lambda segment: (segment[0] or datetime.min, segment[1] or datetime.min),
-    )
-
-
-def _actual_intervals(reasons, report_segments, *, is_point):
+def _actual_intervals(reasons, segments, *, is_point):
     intervals = []
-    for start, end, report in report_segments:
+    for start, end, report in segments:
         valid_point = is_point and end == start and report.effective_processing_hours == 0
         if start is None or end is None or (end <= start and not valid_point):
             reasons.append("execution_ledger_actual_interval_missing")
@@ -91,30 +67,53 @@ def _protected_intervals(status, reasons, report_segments, *, is_point):
     return intervals
 
 
-def _actual_resources(projection, resources, *, source, reasons, report_segments=()):
-    machine, operator = None, None
+def _actual_resources(projection, resources, *, source, reasons, report_segments, include_segments):
+    machine, operator, segments = None, None, ()
     if source == SourceType.EXTERNAL.value:
-        fields = ("actual_machine_ref", "actual_operator_ref")
-        if any(getattr(report, field) is not None for report in projection.reports for field in fields):
+        if any(
+            report.actual_machine_ref is not None or report.actual_operator_ref is not None
+            for report in projection.reports
+        ):
             reasons.append("execution_ledger_external_resource_conflict")
     elif source == SourceType.INTERNAL.value:
         if projection.reports:
-            primary = next(
-                (seg[2] for seg in report_segments if seg[0] is not None and seg[1] is not None and seg[0] < seg[1]),
-                report_segments[0][2],
-            )
-            resolved = {}
-            for field, kind in (("actual_machine_ref", "machine"), ("actual_operator_ref", "operator")):
-                refs = {getattr(report, field) for report in projection.reports}
-                codes = {ref: _resource_id((ref,), resources, kind, reasons) for ref in refs}
-                resolved[field] = codes[getattr(primary, field)]
-            machine, operator = resolved["actual_machine_ref"], resolved["actual_operator_ref"]
+            positive = [
+                (start, end, report)
+                for start, end, report in report_segments
+                if start is not None and end is not None and start < end
+            ]
+            primary = positive[0][2] if positive else report_segments[0][2]
+            machine_codes = {
+                ref: _resource_id(ref, resources, "machine", reasons)
+                for ref in {report.actual_machine_ref for report in projection.reports}
+            }
+            operator_codes = {
+                ref: _resource_id(ref, resources, "operator", reasons)
+                for ref in {report.actual_operator_ref for report in projection.reports}
+            }
+            machine = machine_codes[primary.actual_machine_ref]
+            operator = operator_codes[primary.actual_operator_ref]
+            if include_segments and len(positive) > 1:
+                resolved = tuple(
+                    (
+                        start,
+                        end,
+                        machine_codes[report.actual_machine_ref],
+                        operator_codes[report.actual_operator_ref],
+                    )
+                    for start, end, report in positive
+                )
+                if all(
+                    machine_id is not None and operator_id is not None
+                    for _, _, machine_id, operator_id in resolved
+                ):
+                    segments = resolved
         else:
-            machine = _resource_id((), resources, "machine", reasons)
-            operator = _resource_id((), resources, "operator", reasons)
+            machine = _resource_id(None, resources, "machine", reasons)
+            operator = _resource_id(None, resources, "operator", reasons)
     else:
         reasons.append("execution_ledger_operation_source_invalid")
-    return machine, operator
+    return machine, operator, segments
 
 
 def ledger_fact_changes(projection, resources, *, source, setup_hours, unit_hours):
@@ -124,39 +123,28 @@ def ledger_fact_changes(projection, resources, *, source, setup_hours, unit_hour
     is_point = is_point_work(source, setup_hours, unit_hours, projection.target_quantity)
     reasons = []
     status = _protected_status(projection, reasons, gap_codes)
-    report_segments = _report_segments(projection)
-    first_start = _actual_time(projection.first_actual_start)
-    confirmed_finish = _actual_time(projection.confirmed_finish)
-    intervals = _protected_intervals(status, reasons, report_segments, is_point=is_point)
-    machine, operator = _actual_resources(projection, resources, source=source, reasons=reasons,
-                                          report_segments=report_segments)
+    segments = report_segments(projection)
+    first_start, confirmed_finish = actual_period(projection)
+    intervals = _protected_intervals(status, reasons, segments, is_point=is_point)
+    include_segments = (
+        status == "completed"
+        and first_start != confirmed_finish
+        and len(projection.reports) > 1
+    )
+    machine, operator, resource_segments = _actual_resources(
+        projection,
+        resources,
+        source=source,
+        reasons=reasons,
+        report_segments=segments,
+        include_segments=include_segments,
+    )
     return {"actual_status": status, "actual_start_time": first_start,
             "actual_end_time": confirmed_finish, "actual_machine_id": machine,
             "actual_operator_id": operator, "ledger_operation_ref": projection.operation_ref,
             "ledger_execution_state": projection.execution_state, "remaining_quantity": projection.remaining_quantity,
-            "execution_effective_intervals": intervals, "execution_protection_reasons": tuple(dict.fromkeys(reasons))}
-
-
-def fact_resource_segments(fact):
-    """Return multi-report actual occupancy; the plan row retains the earliest resource pair."""
-    if fact.actual_start_time is not None and fact.actual_start_time == fact.actual_end_time:
-        return ()
-    content = fact.execution_protection_content
-    if fact.actual_status == "completed" and content is not None:
-        reports = content["projection"]["reports"]
-        if len(reports) > 1:
-            resources = content["resources"]
-            segments = tuple(sorted(
-                (start, end,
-                 resources[report["actual_machine_ref"]]["business_code"],
-                 resources[report["actual_operator_ref"]]["business_code"])
-                for report in reports
-                for start, end in ((parse_operation_event_time(report["actual_start"]),
-                                    parse_operation_event_time(report["actual_end"])),)
-                if start < end
-            ))
-            return segments if len(segments) > 1 else ()
-    return ()
+            "execution_effective_intervals": intervals, "execution_protection_reasons": tuple(dict.fromkeys(reasons)),
+            "execution_resource_segments": resource_segments}
 
 
 def _raise_reconciliation(op_id, state, remaining_quantity, reasons):

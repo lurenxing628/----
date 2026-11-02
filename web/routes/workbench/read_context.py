@@ -78,3 +78,8 @@ def bind_read_snapshot(scope, fingerprint, token=None, *, as_of=None, binding=No
     reference, _ = issuer.issue_bound_with_expiry(
         lambda canonical: ReadBinding(scope_value, canonical, as_of), key=(scope_value, as_of))
     return {"snapshot_ref": reference, "as_of": as_of}
+
+
+def snapshot_binder(token):
+    """The ``bind_snapshot(scope, state)`` callback a read service calls before projecting."""
+    return lambda scope, state: bind_read_snapshot(scope, state, token)

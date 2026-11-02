@@ -25,6 +25,7 @@ from core.services.workbench.facts.decision_baseline import same_saved_arrangeme
 from core.services.workbench.facts.decision_baseline_source import decision_baseline_source_resolver
 from core.services.workbench.facts.material_deferral_evidence import archived_deferred_operation_evidence
 from core.services.workbench.facts.preflight_checks import stored_date
+from core.services.workbench.facts.trial_origin import TrialOrigin
 from core.services.workbench.facts.zero_duration_evidence import point_basis
 from core.services.workbench.plan.projection import project_plan
 from core.services.workbench.plan.read_context import PlanReadContext
@@ -32,7 +33,7 @@ from core.services.workbench.run.piece_adoption_trial import trial_piece_predece
 from data.repositories.workbench_trial_repo import new_ref
 
 from .effort import operation_types
-from .execution_anchors import attach_execution_anchors
+from .execution_anchors import attach_execution_anchors, resolve_execution_anchors
 from .facts import LiveTables, ProductionFactsCapture, entity_maps, live_context
 from .materials import plan_material_policy
 
@@ -116,8 +117,6 @@ def _plan_capture(conn, ref, capture):
                 if point_work is None:
                     point_work = context.point_work(locator.version)
                 _attach_point_work(result[-1], point_work[item["op_id"]])
-        operations = {int(row["source_key"]): row["ref"] for row in capture.table("WorkbenchPlanSourceRefs")
-                      if row["kind"] == "operation" and row["active"] == 1}
         issues = [] if entry.completeness == "complete" else [issue("trial_base_incomplete", "基础方案不完整，暂无法评估交期。")]
         history = cast(Dict[str, Any], context.history(locator.version))
         delivery_record = {"summary": history["result_summary"], "result_status": history["result_status"]}
@@ -131,7 +130,7 @@ def _plan_capture(conn, ref, capture):
         return result, {"identity": project_plan(entry, ref), **runtime,
                         "operation_types": types, "trial_operation_types": slot_types,
                         "material_policy": plan_material_policy(parsed),
-                        "deferred_operation_ids": sorted(deferred), "deferred_operation_issues": deferred_issues}, tables["BatchOperations"], operations, issues
+                        "deferred_operation_ids": sorted(deferred), "deferred_operation_issues": deferred_issues}, tables["BatchOperations"], issues
 
 
 def _formal_effort_source(conn, ref, version, record, rows):
@@ -201,30 +200,30 @@ def _candidate(conn, ref):
                  "trial_operation_types": operation_types(result, facts.entity_refs, work_types),
                  "operation_types": operation_types(result, facts.entity_refs, work_types,
                       candidate["artifact"].get("results", []))}
-        return result, extra, facts.tables["BatchOperations"], facts.operation_refs, issues, facts
+        return result, extra, facts.tables["BatchOperations"], issues
 
 
-def prepare_base(conn, intent, *, execution_service, data_context=None):
+def prepare_base(conn, intent, *, execution_service, data_context):
     key, ref = next(iter(intent["base"].items()))
     capture = ProductionFactsCapture(conn)
-    if key == "plan_ref":
-        rows, source, all_ops, operation_refs, issues = _plan(conn, ref, capture)
-        source_facts = None
-    else:
-        rows, source, all_ops, operation_refs, issues, source_facts = _candidate(conn, ref)
+    rows, source, all_ops, issues = _plan(conn, ref, capture) if key == "plan_ref" else _candidate(conn, ref)
     if not rows:
         reject("trial_base_empty", "基础方案没有真实任务行，未从摘要重造任务。")
     if len(rows) > MAX_TRIAL_TASKS:
         reject("query_too_large", "完整基础范围超过10000条，未按可见范围截断。", 413)
+    facts = {"tables": LiveTables(capture)}
+    origin = TrialOrigin({"source": source, "facts": facts}, rows)
     issues.extend(_date_issues(rows))
-    _predecessors(rows, all_ops, operation_refs, issues)
-    admission = {"input": intent, "source": source, "facts": {"tables": LiveTables(capture)}, "base_issues": issues}
-    live = live_context(conn, rows, admission, capture, execution_service=execution_service,
-                        source_facts=source_facts, data_context=data_context)
-    admission.update(baseline=live["baseline"], execution=live["execution"])
-    _attach_original_context(rows, source, key, live, source_facts)
-    issues.extend(attach_execution_anchors(conn, rows, live))
-    return admission, rows, live
+    _predecessors(rows, all_ops, origin.refs_by_op_id, issues)
+    live = live_context(conn, origin, capture, execution_service=execution_service, data_context=data_context)
+    admission = origin.admission = {
+        "input": intent, "source": source, "facts": facts, "base_issues": issues,
+        "baseline": live["baseline"], "execution": live["execution"],
+    }
+    _attach_original_context(rows, origin, live)
+    resolved_anchors = resolve_execution_anchors(conn, rows, live)
+    issues.extend(attach_execution_anchors(rows, *resolved_anchors))
+    return admission, rows, live, resolved_anchors
 
 
 def _original_external_facts(original_tables, live):
@@ -236,14 +235,13 @@ def _original_external_facts(original_tables, live):
     return by_operation, member_index(by_operation, operations or [])
 
 
-def _attach_original_context(rows, source, key, live, facts):
-    original_execution = ({row["operation_ref"]: row for row in source["capture"]["execution"]}
-                          if key == "candidate_ref" else live["execution"])
-    original_tables = facts.archive if facts is not None else None
+def _attach_original_context(rows, origin, live):
+    original_execution = origin.source_execution
+    original_tables = origin.facts.archive if origin.facts is not None else None
     by_operation, members = _original_external_facts(original_tables, live)
     for row in rows:
         original = row["original"]
-        original.setdefault("execution", original_execution.get(row["operation_ref"]))
+        original.setdefault("execution", original_execution[row["operation_ref"]])
         original["external_group"] = None
         op = original["operation"]
         if op["source"] == "external":

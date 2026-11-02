@@ -114,14 +114,14 @@ def test_candidate_comparison_keeps_original_adopted_point_after_hours_change(tr
     result = WorkbenchRunWorker(case.conn).execute(accepted['run_ref'])
     assert result['state'] == 'complete', result
     ref = result['candidates'][0]['candidate_ref']
-    data, _ = WorkbenchRunCandidateBaselineQueryService(case.conn).baseline(RunCandidateBaselineScope(ref))
+    data, _ = WorkbenchRunCandidateBaselineQueryService(case.conn).baseline(RunCandidateBaselineScope(ref), bind_snapshot=lambda scope, state: state)
     row, = data['comparisons']
     previous, = row['baseline_segments']
     assert previous['event_kind'] == 'point' and previous['interval_comparable']
     assert previous['elapsed_hours'] == 0 and previous['occupies_resources'] is False
     assert row['status'] == 'matched' and row['comparison_available']
     assert row['delta']['start_hours'] == 24 and row['delta']['elapsed_hours'] == current_unit_hours * 3
-    analysis, _ = read_candidate_analysis(case.conn, ref)
+    analysis, _ = read_candidate_analysis(case.conn, ref, bind_snapshot=lambda scope, state: state)
     assert analysis['operations']['unknown_operation_refs'] == []
     assert analysis['operations']['changed_operation_refs'] == [row['operation_ref']]
     assert analysis['metrics']['changed_operation_count']['value'] == 1
@@ -137,13 +137,13 @@ def test_equal_legacy_interval_is_not_a_point_when_current_hours_become_zero(tri
     case.conn.execute('UPDATE BatchOperations SET unit_hours=0 WHERE id=?', (case.op_id,))
     case.conn.commit()
     _, refs = compute(case, case.settings(start_date='2026-09-10'))
-    data, _ = WorkbenchRunCandidateBaselineQueryService(case.conn).baseline(RunCandidateBaselineScope(refs[0]))
+    data, _ = WorkbenchRunCandidateBaselineQueryService(case.conn).baseline(RunCandidateBaselineScope(refs[0]), bind_snapshot=lambda scope, state: state)
     row, = data['comparisons']
     previous, = row['baseline_segments']
     assert not previous['interval_comparable'] and 'event_kind' not in previous
     assert row['status'] == 'not_comparable' and not row['comparison_available']
     assert any(gap['field'] == 'point_evidence' and gap['code'] == 'source_missing' for gap in previous['data_gaps'])
-    analysis, _ = read_candidate_analysis(case.conn, refs[0])
+    analysis, _ = read_candidate_analysis(case.conn, refs[0], bind_snapshot=lambda scope, state: state)
     assert analysis['before_metrics']['overdue_count']['unknown_count'] == 1
     assert 'schedule_time_invalid' in analysis['batches'][0]['before']['issues']
 

@@ -44,9 +44,9 @@ def _rescheduled_ids(rows, live):
 
     资料不全、会被采用拦下的工序这里不再细分，它们的批次无论如何都采用不了。
     """
-    tables = live["facts"]["tables"]
-    ops = {row["id"]: row for row in tables["BatchOperations"]}
-    batches = {row["batch_id"]: row for row in tables["Batches"]}
+    capture = live["capture"]
+    ops = capture.index("BatchOperations", "id")
+    batches = capture.index("Batches", "batch_id")
     result = set()
     for row in rows:
         original = row["original"]
@@ -96,10 +96,10 @@ def keeps_frozen(row, seed):
 class TrialProtection:
     def __init__(self, live, frozen):
         self.frozen = frozen
-        tables = live["facts"]["tables"]
-        self.identities = {row["ref"]: row for row in tables["WorkbenchPlanSourceRefs"] if row["kind"] == "operation"}
+        facts = live["preflight_facts"]
+        self.operation_refs = facts.operation_refs
         self.execution = live["execution"]
-        capture = live["preflight_facts"].capture
+        capture = facts.capture
         self.operations = capture.index("BatchOperations", "id")
         self.batches = capture.index("Batches", "batch_id")
 
@@ -112,9 +112,7 @@ class TrialProtection:
 
     def _identity(self, row):
         # 正式计划里的锁定标记不再起作用：已开工做完的由 _execution 拦，按不重排时段保留的由 _frozen 说明是哪个时段。
-        op_id = row["original"]["operation"]["id"]
-        identity = self.identities.get(row["operation_ref"])
-        if identity is None or identity["active"] != 1 or identity["source_key"] != str(op_id):
+        if self.operation_refs.get(row["original"]["operation"]["id"]) != row["operation_ref"]:
             return issue("operation_identity_changed", "该工序已删除或被替换，无法继续调整。", row["task_ref"])
         return None
 
@@ -126,8 +124,7 @@ class TrialProtection:
         if execution["data_quality"] == "invalid":
             return issue("execution_unproven", "这道工序的报工记录有问题，不能用试调改安排。请到现场记录核对后重试。", ref)
         for facts in (execution, original["execution"]):
-            if (facts["execution_state"] != "unreported" or facts["reports"]
-                    or facts["first_actual_start"] or facts["confirmed_finish"]):
+            if facts["execution_state"] != "unreported":
                 return issue("execution_protected", "这道工序已经开工、报工或完工，不能用试调改安排。", ref)
         return None
 

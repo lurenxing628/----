@@ -28,10 +28,10 @@ def completion_source(deliveries, pending, selected):
     rows = [{"candidate_ref": key, "status": "completed",
              "artifact": {"label": "候选 " + str(index)}}
             for index, key in enumerate(deliveries, 1)]
+    selected_row = next(row for row in rows if row["candidate_ref"] == selected)
     source = SimpleNamespace(run={"run_ref": RUN}, scope=scope, baseline={"kind": "candidate", "candidate_ref": FIRST,
-                            "state": "available"}, selected_ref=selected, rows=rows, reference_ref=FIRST,
+                            "state": "available"}, selected_ref=selected, selected=selected_row, rows=rows, reference_ref=FIRST,
                              comparison_mode="candidates", resource_view="selected_batches")
-    source._candidate_reference = lambda key: next(row for row in rows if row["candidate_ref"] == key)
     source.completion = SimpleNamespace(
         delivery=deliveries.__getitem__, scope=lambda key, coverage=None: scopes[key],
         remaining_batches=lambda key: {row["batch_ref"]: row for row in scopes[key]["remaining_batches"]},

@@ -6,19 +6,19 @@ from core.models.workbench_command import WorkbenchCommandRejected, validate_req
 from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint, read_endpoint
+from .data_context import request_data_context
 from .read_context import bind_read_snapshot
 from .write_context import issue_write_context, validate_write_context
 
 
 def _service():
-    from core.services.workbench.facts.run_data_context import RunDataContext
     from core.services.workbench.run.candidate_adoption import WorkbenchRunCandidateAdoptionService
 
     return WorkbenchRunCandidateAdoptionService(g.db,
         integration_enabled=current_app.config.get("WORKBENCH_CANDIDATE_ADOPTION_ENABLED") is True,
         point_rendering_enabled=current_app.config.get("WORKBENCH_POINT_RENDERING_ENABLED") is True,
         context_factory=issue_write_context, context_validator=validate_write_context,
-        data_context=RunDataContext(g.db, current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR")))
+        data_context=request_data_context())
 
 
 def _body(fields):

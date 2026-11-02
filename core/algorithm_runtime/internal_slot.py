@@ -214,14 +214,18 @@ def estimate_internal_slot(
         calendar = handoff.timing_calendar(calendar)
     total_base = _resolve_total_base(op, batch, total_hours_base)
     priority = batch.priority
-    segment_groups = _slot_segments(
-        machine_timeline=machine_timeline,
-        operator_timeline=operator_timeline,
-        machine_downtimes=machine_downtimes,
-        overlap_reuse=overlap_reuse,
-        machine_id=machine_id,
-        operator_id=operator_id,
-    )
+    if total_base == 0.0:
+        # A zero-hour operation is a point event: no busy or downtime segment can steer it.
+        segment_groups = _slot_segments(machine_timeline=(), operator_timeline=(), machine_downtimes=())
+    else:
+        segment_groups = _slot_segments(
+            machine_timeline=machine_timeline,
+            operator_timeline=operator_timeline,
+            machine_downtimes=machine_downtimes,
+            overlap_reuse=overlap_reuse,
+            machine_id=machine_id,
+            operator_id=operator_id,
+        )
     start_time, end_time, total_hours, aborted = _walk(
         calendar, handoff, release=released_start(op, max(prev_end, base_time)), total_base=total_base,
         priority=priority, machine_id=machine_id, operator_id=operator_id, segment_groups=segment_groups,

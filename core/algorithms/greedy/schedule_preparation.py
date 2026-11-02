@@ -1,11 +1,14 @@
 """Fixed native inputs owned by one scheduling operation or search session."""
 
+from __future__ import annotations
+
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from types import MappingProxyType
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Set, Tuple, Union
 
+from core.algorithm_contracts.resource_occupancy import PreparedSeedApplication, ResourceOccupancy
 from core.algorithm_contracts.sort_strategies import BatchForSort, SortStrategy, StrategyFactory
 from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
 from core.algorithm_runtime.checkpoint_calendar import (
@@ -19,6 +22,9 @@ from core.errors import ValidationError
 from core.models.batch import Batch
 from core.shared.strict_parse import parse_optional_date, parse_optional_datetime
 
+if TYPE_CHECKING:
+    from .dispatch.sgs_graph import PreparedGraphReadyTopology
+
 _NO_PLACED_GROUPS = MappingProxyType({})
 
 
@@ -30,7 +36,8 @@ class NativeSchedulePreparation:
     records_by_token: Dict[int, Any]
     batches: Dict[str, Batch]
     seed_results: List[ScheduleResult]
-    seed_applications: Any
+    seed_applications: Tuple[PreparedSeedApplication, ...]
+    seed_occupancies_by_op_id: Mapping[int, Tuple[ResourceOccupancy, ...]]
     seed_external_group_cache: Dict[Any, Any]
     seed_op_ids: Set[int]
     unseeded_operations: List[OpForScheduleAlgo]
@@ -38,7 +45,8 @@ class NativeSchedulePreparation:
     graph_ready_context: Any
     warnings: Tuple[str, ...]
     algo_stats: Dict[str, Any]
-    topology: Any
+    # Compiled once from graph_ready_context; None exactly when the run has no graph input.
+    topology: Optional[PreparedGraphReadyTopology]
     score_cache_factory: Any = None
     resource_candidates: Dict[Any, Any] = field(default_factory=dict)
     resource_claims: Dict[int, Any] = field(default_factory=dict)
@@ -70,6 +78,12 @@ class NativeSchedulePreparation:
     run_context: Any = field(init=False, repr=False, compare=False)
     _calendar_signature: Any = field(init=False, repr=False, default=None)
     _checkpoint_parts: Any = field(init=False, repr=False, default=None)
+
+    def graph_topology(self) -> PreparedGraphReadyTopology:
+        """The compiled graph facts every graph-mode consumer shares, including its schedulable id set."""
+        if self.topology is None:
+            raise ValueError("本次排产没有图输入，不能按图模式解码或搜索。")
+        return self.topology
 
     def parsed_due_dates(self) -> Dict[str, Optional[date]]:
         if not self._all_due_dates_parsed:
@@ -121,7 +135,7 @@ class NativeSchedulePreparation:
             self._parsed_ready_starts = ready_starts
         return self._parsed_ready_starts
 
-    def batch_sort_inputs(self, *, strategy: SortStrategy) -> List[BatchForSort]:
+    def batch_sort_inputs(self, *, strategy: SortStrategy) -> Tuple[BatchForSort, ...]:
         cached = self._batch_sort_inputs.get(strategy)
         if cached is None:
             created_at: Optional[Dict[str, Optional[datetime]]]
@@ -153,7 +167,7 @@ class NativeSchedulePreparation:
                 for batch_id, batch in self.batches.items()
             )
             self._batch_sort_inputs[strategy] = cached
-        return list(cached)
+        return cached
 
     def batch_order(
         self,
@@ -161,7 +175,7 @@ class NativeSchedulePreparation:
         start_dt: Union[datetime, date],
         strategy: SortStrategy,
         params: Optional[Dict[str, Any]] = None,
-    ) -> List[str]:
+    ) -> Tuple[str, ...]:
         base_date = start_dt.date() if isinstance(start_dt, datetime) else start_dt
         raw_params = params or {}
         normalized_params = (
@@ -179,7 +193,7 @@ class NativeSchedulePreparation:
             sorter = StrategyFactory.create(strategy, **raw_params)
             cached = tuple(item.batch_id for item in sorter.sort(sortable, base_date=base_date))
             self._batch_orders[key] = cached
-        return list(cached)
+        return cached
 
     def certified_external_operation(self, op: OpForScheduleAlgo) -> bool:
         cached = self._certified_external_by_op_id.get(op.id)
@@ -224,7 +238,10 @@ class NativeSchedulePreparation:
         claim = None
         op_id, batch_id, piece = op.id, op.batch_id, op.piece_id
         source = str(op.source or "internal").strip().lower()
-        if (type(op_id) is int and op_id > 0 and type(batch_id) in (str, int) and batch_id
+        # A zero-hour operation is a point event and claims no resource time. Only operations whose batch is
+        # missing lack prepared hours; dispatch retires them before any placement is compared.
+        point_event = self.total_hours_by_op_id.get(op_id) == 0.0
+        if (type(op_id) is int and op_id > 0 and type(batch_id) in (str, int) and batch_id and not point_event
                 and source == "internal" and (piece is None or (type(piece) is str and piece and piece.strip() == piece))):
             pairs = frozenset(self.qualified_resource_pairs(op))
             claim = ResourceClaim(token, op_id, str(batch_id).strip(), (str(batch_id).strip(), piece), pairs,

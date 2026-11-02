@@ -43,7 +43,7 @@ def workflow_objects() -> Dict[str, str]:
     }
 
 
-def workbench_process_workflow_contract_issues(conn, *, structure: SchemaStructure) -> List[str]:
+def workbench_process_workflow_contract_issues(structure: SchemaStructure) -> List[str]:
     """Read-only exact contract check, including legal but incorrect DDL."""
     actual = structure.sql
     return [("missing_workbench_process_workflow: " if name not in actual else "bad_workbench_process_workflow: ") + name

@@ -1,13 +1,20 @@
 """No-op relationship files keep historical primaries with linear row inspections."""
 
 import pytest
+from flask import Blueprint, Flask, g
 
+from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_resource_query import ResourcePageRequest
+from core.services.workbench.facts import file_writer
 from core.services.workbench.resource.queries import WorkbenchResourceQueryService
 from core.services.workbench.resource.relation_files import files as module
 from core.services.workbench.resource.relation_files.file_codec import read_relation_file
 from core.services.workbench.resource.relation_files.file_writer import write_relation_file
 from tests.workbench.calendar_file_support import file_bytes
-from tests.workbench.resource_entity_support import identity_for, resource_database  # noqa: F401
+from tests.workbench.identity_metadata_support import insert_row
+from tests.workbench.resource_entity_support import identity_for, resource_database, resource_row  # noqa: F401
+from web.routes.workbench.relation_files import register_relation_file_routes
+from web.routes.workbench.resources import register_resource_routes
 
 
 def test_primary_planning_groups_rows_once_and_preserves_unchanged_legacy_groups(monkeypatch):
@@ -88,7 +95,8 @@ def test_relation_export_in_read_snapshot_reuses_loaded_table_facts(resource_con
     conn.set_trace_callback(statements.append)
     try:
         with reader.read_snapshot():
-            _, cold_count = service.preview_export("selected", scope={}, selected_refs=[operator.ref])
+            _, cold_count = service.preview_export("selected", request=ResourcePageRequest(kind="operator"),
+                                                   selected_refs=[operator.ref])
     finally:
         conn.set_trace_callback(None)
     selects = [sql for sql in statements if sql.lstrip().upper().startswith("SELECT")]
@@ -101,23 +109,105 @@ def test_relation_export_in_read_snapshot_reuses_loaded_table_facts(resource_con
     monkeypatch.setattr(service.repo, "raw_many", unexpected)
     with reader.read_snapshot():
         reader._table_reader()
-        args, count = service.preview_export("selected", scope={}, selected_refs=[operator.ref])
-        rows = service.export_rows("csv", **args)
+        args, count = service.preview_export("selected", request=ResourcePageRequest(kind="operator"),
+                                             selected_refs=[operator.ref])
+        rows = service.export_rows(**args)
     assert count == 1 and len(rows) == 1
     assert rows[0]["operator_code"] == "O1" and rows[0]["machine_code"] == "M1"
 
+    app = Flask(__name__)
+    app.config.update(TESTING=True, SECRET_KEY="relation-export-capacity")
+    bp = Blueprint("relation_export_capacity", __name__)
+    register_resource_routes(bp)
+    register_relation_file_routes(bp)
+    app.register_blueprint(bp)
 
-def test_relation_confirm_import_rejects_same_second_recreated_operator_or_machine(resource_conn, monkeypatch):
-    import openpyxl.xml
+    @app.before_request
+    def _bind_db():
+        g.db = conn
 
-    conn = resource_conn
-    service = module.WorkbenchRelationFileService(conn, "operator_machine")
-    content = file_bytes(
-        [("EMPTY", "M1", "普通", "否")],
-        headers=("工号", "设备编号", "技能等级", "主操设备"),
+    client = app.test_client()
+    listed = client.get("/api/workbench/v1/entities/operator", query_string={"query": "O1"})
+    assert listed.status_code == 200
+    preview = client.post(
+        "/api/workbench/v1/relation-files/operator_machine/export-preview",
+        json={
+            "selection": "selected",
+            "scope": {"query": "O1"},
+            "snapshot_ref": listed.get_json()["meta"]["snapshot_ref"],
+            "refs": [operator.ref],
+        },
     )
-    preview = service.preview_import(content, file_format="csv")
-    assert preview.as_dict()["summary"]["rejected"] == 0
+    assert preview.status_code == 200
+    export_ref = preview.get_json()["data"]["export_ref"]
+
+    monkeypatch.setattr(file_writer, "XLSX_MAX_ROWS", 2)
+    boundary_xlsx = client.get(
+        "/api/workbench/v1/relation-files/operator_machine/export",
+        query_string={"export_ref": export_ref, "format": "xlsx"},
+    )
+    assert boundary_xlsx.status_code == 200
+
+    projected, original_rows_for = [], module.WorkbenchRelationFileService._rows_for
+
+    def tracked_rows_for(self, codes):
+        projected.append(list(codes))
+        return original_rows_for(self, codes)
+
+    monkeypatch.setattr(module.WorkbenchRelationFileService, "_rows_for", tracked_rows_for)
+    monkeypatch.setattr(file_writer, "XLSX_MAX_ROWS", 1)
+    over_xlsx = client.get(
+        "/api/workbench/v1/relation-files/operator_machine/export",
+        query_string={"export_ref": export_ref, "format": "xlsx"},
+    )
+    assert over_xlsx.status_code == 422 and over_xlsx.get_json()["error"]["code"] == "invalid_input"
+    assert projected == []
+
+    csv_ok = client.get(
+        "/api/workbench/v1/relation-files/operator_machine/export",
+        query_string={"export_ref": export_ref, "format": "csv"},
+    )
+    assert csv_ok.status_code == 200 and len(projected) == 1
+
+    projected.clear()
+    conn.execute("UPDATE OperatorMachine SET skill_level='normal' WHERE operator_id='O1' AND machine_id='M1'")
+    conn.commit()
+    stale_xlsx = client.get(
+        "/api/workbench/v1/relation-files/operator_machine/export",
+        query_string={"export_ref": export_ref, "format": "xlsx"},
+    )
+    assert stale_xlsx.status_code == 409 and stale_xlsx.get_json()["error"]["code"] == "snapshot_stale"
+    assert projected == []
+
+
+def test_relation_confirm_import_rejects_operator_recreated_with_identical_row(resource_conn):
+    conn = resource_conn
+    operator = {"operator_id": "OP-REF", "name": "王五",
+                "created_at": "2026-01-01 08:00:00", "updated_at": "2026-01-01 08:00:00"}
+    insert_row(conn, "Operators", operator)
+    conn.commit()
+    service = module.WorkbenchRelationFileService(conn, "operator_machine")
+    content = file_bytes([("OP-REF", "M1", "普通", "否")], headers=("工号", "设备编号", "技能等级", "主操设备"))
+    preview = service.preview_import(content, file_format="csv", mode="upsert")
+    row, = preview.as_dict()["rows"]
+    assert row["result"] == "new"
+
+    # 删除后按同编号同字段重建人员：触发器换出新的永久 ref，Operators 行逐字段相同。
+    conn.execute("DELETE FROM Operators WHERE operator_id='OP-REF'")
+    insert_row(conn, "Operators", operator)
+    conn.commit()
+    assert resource_row(conn, "operator", "OP-REF") == row["expected"]["operator"]["record"]
+    assert identity_for(conn, "operator", "OP-REF").ref != row["expected"]["operator"]["identity"]["ref"]
+
+    with pytest.raises(WorkbenchCommandRejected) as exc:
+        with service.tx.transaction():
+            service.confirm_import(preview)
+    assert exc.value.code == "stale_write"
+    assert not conn.execute("SELECT 1 FROM OperatorMachine WHERE operator_id='OP-REF'").fetchall()
+
+
+def test_relation_xlsx_roundtrip_keeps_crlf_in_reference_labels(monkeypatch):
+    import openpyxl.xml
 
     monkeypatch.setattr(openpyxl.xml, "LXML", False)
     download = write_relation_file(
@@ -140,7 +230,7 @@ def test_relation_confirm_import_rejects_same_second_recreated_operator_or_machi
 def test_relation_import_rejects_null_marker_on_required_columns(resource_conn):
     service = module.WorkbenchRelationFileService(resource_conn, "operator_machine")
     content = file_bytes([("O1", "M1", r"\N", r"\N")], headers=("工号", "设备编号", "技能等级", "主操设备"))
-    preview = service.preview_import(content, file_format="csv").as_dict()
+    preview = service.preview_import(content, file_format="csv", mode="upsert").as_dict()
     assert preview["summary"]["rejected"] == 1
     row = preview["rows"][0]
     assert row["result"] == "rejected"

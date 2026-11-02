@@ -3,17 +3,17 @@
 from flask import current_app, g
 
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
-from core.models.workbench_resource_action import ResourceActionPreview
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource.operator_machine_permissions import OPERATION, WorkbenchOperatorMachinePermissions
 from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot
-from .resource_action_context import json_body, opaque_ref, read_endpoint, resolve_context, retain_context
-from .write_context import preview_write_context, validate_preview_confirmation, validate_write_context
+from .resource_action_context import EXPIRED_MESSAGE, json_body, opaque_ref, read_endpoint
+from .write_context import preview_write_context, resolve_action_preview, retain_action_preview, validate_write_context
 
 SCOPE = "workbench-operator-machine-permissions-v1"
+_MISMATCH_MESSAGE = "预检与所选人员不一致，请重新预检。"
 
 
 @read_endpoint
@@ -24,7 +24,7 @@ def operator_machine_preview(ref):
         preview = service.preview(ref, body["machine_permissions"])
         value = preview.as_dict()
         validate_write_context(body["write_token"], ref, "operator.update", value["request"]["expected_operator"])
-        preview_ref, expiry = retain_context(SCOPE, preview.document)
+        preview_ref, expiry = retain_action_preview(SCOPE, preview)
         data = {"operator_ref": ref, "preview_ref": preview_ref, "expires_at": expiry,
                 "rows": value["rows"], "summary": value["summary"], "commit_policy": "atomic",
                 "write_context": preview_write_context(preview_ref, expiry, [OPERATION])}
@@ -33,12 +33,11 @@ def operator_machine_preview(ref):
 
 
 def _resolve(ref, preview_ref, write_token):
-    document, _ = resolve_context(SCOPE, preview_ref, "stale_write")
-    preview = ResourceActionPreview(document)
-    body = preview.as_dict()
-    if body["operation"] != OPERATION or body["request"]["operator_ref"] != ref:
-        raise WorkbenchCommandRejected("stale_write", "预检与所选人员不一致，请重新预检。")
-    validate_preview_confirmation(write_token, preview_ref)
+    preview = resolve_action_preview(SCOPE, preview_ref, OPERATION, write_token,
+                                     expired_message=EXPIRED_MESSAGE, mismatch_message=_MISMATCH_MESSAGE)
+    # The URL names the operator being changed; a preview of another operator must not be confirmed here.
+    if preview.as_dict()["request"]["operator_ref"] != ref:
+        raise WorkbenchCommandRejected("stale_write", _MISMATCH_MESSAGE)
     return preview
 
 

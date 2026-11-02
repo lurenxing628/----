@@ -1,7 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const { compile } = require('../../scripts/workbench/compile.cjs');
-const { routeFetch, envelope: success, browser, loadTransport } = require('./route_fetch.cjs');
+const { routeFetch, envelope: success, meta, browser, loadTransport } = require('./route_fetch.cjs');
 const root = path.resolve(__dirname, '../..'), ref = 'a'.repeat(48), part = 'b'.repeat(48), sample = 'c'.repeat(48);
 const React = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
   useState: value => [value, () => {}], useEffect() {}, Fragment: 'fragment' };
@@ -13,7 +13,7 @@ const window = { ResourceControls: { Button: 'button', Modal: 'modal' }, Calibra
   APSProcessContract: { externalGroup: () => true } };
 const context = vm.createContext({ window, React, setTimeout, clearTimeout, AbortController });
 const routes = {}, fetch = routeFetch(routes); browser(context, fetch); loadTransport(context);
-const names = ['CalibrationAdoptionAPI.js', 'CalibrationAdoptionControls.jsx', 'ProcessFileContract.js', 'ProcessFilePreview.jsx'];
+const names = ['ResourceTableFilterModel.js', 'CalibrationAPI.js', 'CalibrationAdoptionAPI.js', 'CalibrationAdoptionControls.jsx', 'ProcessFileContract.js', 'ProcessFilePreview.jsx'];
 const built = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
   sources: names.map(name => ({ path: name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') })), check_combined: true });
 for (const output of built.outputs) vm.runInContext(output.code, context);
@@ -47,6 +47,33 @@ function text(node) { if (node == null || typeof node === 'boolean') return ''; 
   // Previously saved receipts still render and can be queried after the upgrade.
   receipt.data.locked = true;
   assert.equal((await api.lookup(intent)).data.adoption_ref, receipt.data.adoption_ref);
+  // 定额统一取严：列表行、明细、采用预检和本机记录都按 CalibrationAPI.validBinding 校验；负定额是数据损坏，直接拒绝，偏差百分比可以为负。
+  // 行按后端 build_suggestion 生成：偏差 = (建议 - 原定额) / 原定额 × 100，绝对偏差取其绝对值，再并上读取快照（service.workspace）。
+  const listMeta = meta({ as_of: generated }), blockers = [{ code: 'adoption_preflight_required', message: '请先预检所选模板；通过后可采用建议定额并锁定。' }];
+  const closed = { view: true, export: true, adopt: false, lock: false };
+  const backendRow = (old, suggested) => {
+    const percent = (suggested - old) / old * 100;
+    return { ...suggestion, old_unit_hours: old, suggested_unit_hours: suggested, status: 'suggested', deviation_percent: percent,
+      absolute_deviation_percent: Math.abs(percent), deviation_basis: 'relative', over_20_percent: Math.abs(percent) > 20, generated_at: generated,
+      capabilities: closed, blocked_reasons: blockers, write_context: { write_token: null, expires_at: null, capabilities: [], blocked_reasons: blockers },
+      snapshot_ref: listMeta.snapshot_ref, as_of: listMeta.as_of };
+  };
+  const listView = row => success({ scope: { kind: 'calibration', method_version: suggestion.method_version, query: '', part_ref: null, source: null,
+      status: 'all', deviation: 'all', size: 20, sort: 'part_no', direction: 'asc' }, method_version: suggestion.method_version,
+    source_constraints: [], lineage_available: true, capabilities: closed, blocked_reasons: blockers,
+    summary: { total: 1, suggested: 1, insufficient_data: 0, over_20_percent: Number(row.over_20_percent) },
+    exports: { url: '/api/workbench/v1/calibration/export', formats: ['csv', 'xlsx'], scope: 'all_filtered_suggestions', snapshot_required: true },
+    items: [row], page: { number: 1, size: 20, total: 1, total_pages: 1, has_more: false } }, listMeta);
+  const readList = row => { routes['GET /api/workbench/v1/calibration'] = () => listView(row); return window.CalibrationAPI.readView({}); };
+  assert.equal((await readList(backendRow(3, 6))).data.items[0].deviation_percent, 100);
+  assert.equal((await readList(backendRow(12, 6))).data.items[0].deviation_percent, -50, 'A suggestion below the old quota keeps its negative deviation');
+  await assert.rejects(readList(backendRow(-3, 6)), /校准列表或分页数量不一致/, 'A negative old quota is corrupt data');
+  await assert.rejects(readList(backendRow(3, -6)), /校准列表或分页数量不一致/, 'A negative suggested quota is corrupt data');
+  await assert.rejects(readList({ ...backendRow(3, 6), absolute_deviation_percent: -100 }), /校准列表或分页数量不一致/, 'Absolute deviation is never negative');
+  // The adoption preview applies the same rule: a template whose quota turned negative after the list read is rejected, not compared.
+  envelope.data.suggestion = backendRow(-3, 6);
+  await assert.rejects(api.preview(suggestion, input), /读到的采用结果不完整或来源不一致/, 'Adoption preview rejects a negative quota');
+  envelope.data.suggestion = suggestion;
   const session = { preview, draft: input, consent: true, busy: false };
   const dialog = text(window.CalibrationAdoptionControls.Dialog({ session, detail: { suggestion, samples }, stale: false }));
   assert(dialog.includes('以后可以继续人工修改、导入或采用新建议'));

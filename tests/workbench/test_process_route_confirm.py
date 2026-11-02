@@ -50,9 +50,9 @@ def test_route_review_reuses_current_facts_for_parser_and_choices(stage_conn, mo
         assert set(facts["workflow"]) == {"PROC-001"}
         monkeypatch.setattr(WorkbenchProcessQueryRepository, "references", reread)
         monkeypatch.setattr(WorkbenchProcessQueryRepository, "identities", reread)
-        preview, _, affected = reader.prepare_route(identity.ref,
+        preview, _, affected = reader.prepare_route(identity,
                                                     {"mode": "text", "route_raw": "10车削30检验"})
-        mixed_preview, _, _ = reader.prepare_route(identity.ref,
+        mixed_preview, _, _ = reader.prepare_route(identity,
                                                    {"mode": "text", "route_raw": "10车削20:热处理"})
     assert len(calls) == 2 and preview["can_confirm_route"]
     assert not mixed_preview["can_confirm_route"]

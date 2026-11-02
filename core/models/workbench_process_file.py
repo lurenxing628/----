@@ -9,6 +9,7 @@ from core.errors import ValidationError
 from core.models.workbench_resource_file import IMPORT_ROW_LIMIT
 from core.models.workbench_table_descriptor import (
     DEFAULT_IMPORT_BYTE_LIMIT,
+    FILE_FORMATS,
     UPSERT_ONLY,
     instructions_text,
 )
@@ -32,10 +33,6 @@ SOURCE_LABELS = {"internal": "自制", "external": "外协"}
 TEMPLATE_VERSION = 1
 INT64_MAX = 9223372036854775807
 XLSX_EXACT_INTEGER_MAX = 2 ** 53
-# 上限的唯一来源是表描述协议，别在这里另写一份 16MB：注释写着"Matches Config"，
-# 可两边都是独立字面量，改一边不会有任何东西红。app_config.EXCEL_MAX_UPLOAD_BYTES 也取这个值。
-IMPORT_BYTE_LIMIT = DEFAULT_IMPORT_BYTE_LIMIT
-XLSX_EXPANDED_BYTE_LIMIT = 64 * 1024 * 1024
 
 
 DISPLAY_NAMES = {"route": "零件工艺路线", "hours": "零件工序工时"}
@@ -136,7 +133,7 @@ def table_descriptor(kind):
         "general_rules": _GENERAL_RULES[kind],
         "sample_rows": _SAMPLE_ROWS[kind],
         "row_limit": IMPORT_ROW_LIMIT,
-        "byte_limit": IMPORT_BYTE_LIMIT,
+        "byte_limit": DEFAULT_IMPORT_BYTE_LIMIT,
         "modes": UPSERT_ONLY,
     }
 
@@ -152,7 +149,7 @@ def file_columns(kind):
 
 
 def check_format(file_format):
-    if type(file_format) is not str or file_format not in ("csv", "xlsx"):
+    if file_format not in FILE_FORMATS:
         raise file_error("工艺文件仅支持 CSV 和 XLSX。", field="format")
 
 

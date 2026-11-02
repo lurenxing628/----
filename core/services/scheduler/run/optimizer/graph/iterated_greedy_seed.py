@@ -12,10 +12,13 @@ import math
 from dataclasses import dataclass
 from datetime import datetime
 from itertools import chain, combinations
-from typing import Any, Callable, Dict, FrozenSet, Iterator, List, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Any, Callable, Dict, FrozenSet, Iterator, List, Optional, Tuple, cast
 
 from core.algorithm_contracts.types import ScheduleResult
 from core.algorithm_contracts.value_domains import INTERNAL
+
+if TYPE_CHECKING:
+    from core.algorithms.greedy.dispatch.sgs_graph import PreparedGraphReadyTopology
 
 _MAX_PROBES = 2048
 
@@ -45,7 +48,7 @@ class _Budget:
 
 
 def build_due_date_seed(*, parent: Any, candidate: Dict[str, Any], metrics: Dict[int, Dict[str, Any]],
-                        graph_context: Dict[str, Any], start_dt: datetime,
+                        topology: PreparedGraphReadyTopology, start_dt: datetime,
                         clock: Callable[[], float], deadline: float) -> Optional[Tuple[int, ...]]:
     """Return a complete op-id tuple only when its estimated key strictly beats the original.
 
@@ -56,7 +59,7 @@ def build_due_date_seed(*, parent: Any, candidate: Dict[str, Any], metrics: Dict
     search: Optional[_SeedSearch] = None
     try:
         budget.check()
-        _check_graph(graph_context)
+        _check_graph(topology)
         order = parent.order
         jobs, offset = _observed_jobs(candidate, metrics, start_dt, budget)
         budget.check()
@@ -77,12 +80,12 @@ def build_due_date_seed(*, parent: Any, candidate: Dict[str, Any], metrics: Dict
     return search.best_order if search is not None else None
 
 
-def _check_graph(graph: Dict[str, Any]) -> None:
-    if graph["fixed_op_ids"]:
+def _check_graph(topology: PreparedGraphReadyTopology) -> None:
+    if topology.fixed_ids:
         raise _NotApplicable("fixed_operations")
-    # The graph links are validated bidirectional at decode preparation, and the parent's links are their
-    # mutable slice, so the full predecessor map alone decides whether any precedence exists.
-    if any(graph["predecessor_op_ids_by_op_id"].values()):
+    # The compiled links are bidirectional and the parent's links are their mutable slice,
+    # so the full predecessor map alone decides whether any precedence exists.
+    if any(topology.predecessors.values()):
         raise _NotApplicable("precedence_constraints")
 
 

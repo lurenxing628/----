@@ -81,7 +81,6 @@ def run_local_search_candidate_round(
     rnd: Any,
     search_report_state: OptimizationSearchReportState,
     no_improve: int,
-    batches: Dict[str, Any],
     start_dt: datetime,
     end_date: Optional[date],
     resource_pool: Optional[Dict[str, Any]],
@@ -91,17 +90,14 @@ def run_local_search_candidate_round(
     valid_dispatch_rules: List[str],
     decode_session: SharedDecodeSession,
 ) -> LocalSearchRoundResult:
-    current_results = local_state.current["results"]
     move = build_neighborhood_move(
         vns_state.current_neighborhood(),
         order=local_state.current_order,
-        results=current_results,
-        batches=batches,
         resource_pool=local_state.current_resource_pool or resource_pool,
         rnd=rnd,
         current_dispatch_rule=cur_dispatch_rule,
         valid_dispatch_rules=valid_dispatch_rules,
-        result_facts=local_state.facts_for(current_results, batches=batches),
+        result_facts=local_state.current_facts,
     )
     if move.noop:
         return LocalSearchRoundResult(no_improve + 1, False)

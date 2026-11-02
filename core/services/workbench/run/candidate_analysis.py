@@ -14,10 +14,11 @@ from .candidate_comparison import (
 )
 
 
-def read_candidate_analysis(conn, candidate_ref):
+def read_candidate_analysis(conn, candidate_ref, *, bind_snapshot):
     store = CandidateStore(conn)
     with store.snapshot(), read_evidence_scope(conn):
         source = analysis_source(store, candidate_ref)
+        snapshot = bind_snapshot({"kind": "run-candidate-full-analysis", "candidate_ref": candidate_ref}, analysis_state(source))
         refs = sorted(source.input["batch_refs"])
         before = source.delivery("reference")
         after = [row for row in source.delivery_detail(candidate_ref) if row["batch_ref"] in refs]
@@ -36,4 +37,4 @@ def read_candidate_analysis(conn, candidate_ref):
                           "operation_identity": "permanent_operation_reference", "comparison": "candidate_minus_admission_official",
                           "current_entities_consulted": False, "recommendation": None},
                 "capabilities": {"view": True, "adopt": False, "edit_draft": False, "report_actual": False}}
-        return data, analysis_state(source)
+        return data, snapshot

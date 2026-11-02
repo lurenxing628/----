@@ -42,10 +42,10 @@ class ScheduleResult:
     op_code: str
     batch_id: str
     seq: int
-    machine_id: Optional[str] = None
-    operator_id: Optional[str] = None
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None
+    machine_id: Optional[str]
+    operator_id: Optional[str]
+    start_time: datetime
+    end_time: datetime
     source: str = INTERNAL  # internal/external
     op_type_name: Optional[str] = None
     seed_source: Optional[str] = None

@@ -2,11 +2,13 @@
 
 from datetime import datetime, timedelta
 
+from core.algorithms.greedy.scheduler import GreedyScheduler
 from core.services.scheduler.run.optimizer.graph import v2_capacity
 from core.services.scheduler.run.optimizer.graph.v2_features import enrich_graph_ready_v2_metrics
 from core.services.scheduler.run.optimizer.graph_ready_feature_basis import BASELINE_ORDERING_FIELD
 from tests._support.algo_operations import make_algo_op, make_batch, make_schedule_result
 from tests._support.optimizer_graph_ready_benchmark import ContinuousCalendar
+from tests._support.schedule_decode import config_snapshot, production_session
 
 
 def test_pair_blocking_is_prepared_once_across_feature_bases_and_operation_windows(monkeypatch):
@@ -15,7 +17,7 @@ def test_pair_blocking_is_prepared_once_across_feature_bases_and_operation_windo
     def at(hours):
         return start + timedelta(hours=hours)
 
-    calls, merges, downtime_reads = [], [], []
+    calls, merges = [], []
 
     class Calendar:
         def capacity_hours_between(self, low, high, *, priority, operator_id):
@@ -32,32 +34,30 @@ def test_pair_blocking_is_prepared_once_across_feature_bases_and_operation_windo
                                   start_time=at(1), end_time=at(3)),
              make_schedule_result(op_id=92, batch_id="B0", source="internal", machine_id="M2", operator_id="O1",
                                   start_time=at(2), end_time=at(4))]
-    downtime = {"M1": [(at(4), at(5)), (start, start), (None, start)]}
+    downtime = {"M1": [(at(4), at(5))]}
     pool = {"machines_by_op_type": {"OT1": ["M1"]}, "operators_by_machine": {"M1": ["O1"]},
             "machines_by_operator": {}, "operator_skills": {"O1": ["OT1"]}}
-    original_merge, original_downtime = v2_capacity._merge_segments, v2_capacity._valid_segments
+    original_merge = v2_capacity._merge_segments
 
     def merge(values):
         merges.append(list(values))
         return original_merge(values)
 
-    def valid_downtime(values):
-        downtime_reads.append(list(values))
-        return original_downtime(values)
-
     calendar = Calendar()
+    scheduler = GreedyScheduler(calendar_service=calendar, config_service=config_snapshot())
+    preparation = production_session(scheduler, operations=operations, batches=batches, seed_results=seeds,
+                                     resource_pool=pool).native_preparation
     with monkeypatch.context() as scoped:
         scoped.setattr(v2_capacity, "_merge_segments", merge)
-        scoped.setattr(v2_capacity, "_valid_segments", valid_downtime)
         result = enrich_graph_ready_v2_metrics(
             {1: {"bottleneck_machine_score": 1}, 2: {"bottleneck_machine_score": 1}},
             operations=operations, batches=batches, start_dt=start, calendar_service=calendar, seed_results=seeds,
             resource_pool=pool, downtime_map=downtime,
             graph_ready_context={"predecessor_op_ids_by_op_id": {1: set(), 2: set()}},
-            deadline=float("inf"), clock=lambda: 0.0)
+            deadline=float("inf"), clock=lambda: 0.0, native_preparation=preparation)
     assert result is not None
 
-    assert len(merges) == 1 and len(downtime_reads) == 1
+    assert len(merges) == 1
     assert len(calls) == 5 and calls.count((start, at(16), "normal", "O1")) == 1
     assert (at(16), at(40), "urgent", "O1") in calls and (start, at(40), "urgent", "O1") in calls
     fields = ("residual_capacity_window_hours", "residual_capacity_blocked_hours", "residual_capacity_hours")
@@ -65,7 +65,7 @@ def test_pair_blocking_is_prepared_once_across_feature_bases_and_operation_windo
     assert [row["due_budget_hours"] for row in views] == [16.0, 12.0, 20.0]
     assert all(key not in row for row in views for key in fields + ("residual_capacity_start_offset_hours",))
 
-    resource_seeds = v2_capacity.seed_results_by_resource_id(seeds)
+    resource_seeds = v2_capacity.seed_results_by_resource_id(preparation.seed_applications)
     prepared_blocking = v2_capacity.FixedResourceBlockingFacts(
         downtime_map=downtime, seed_results_by_resource_id=resource_seeds
     )
@@ -86,15 +86,18 @@ def test_pair_blocking_is_prepared_once_across_feature_bases_and_operation_windo
             downtime_map={}, seed_results_by_resource_id=resource_seeds))
     assert changed["residual_capacity_blocked_hours"] == 3 and changed["residual_capacity_hours"] == 13
 
+    no_due_batches = {"B1": make_batch(batch_id="B1", quantity=1, priority="normal", due_date=None, ready_date=None)}
+    no_due_preparation = production_session(scheduler, operations=[operations[0]], batches=no_due_batches,
+                                            seed_results=seeds, resource_pool=pool).native_preparation
     calls.clear()
     no_due_result = enrich_graph_ready_v2_metrics(
         {1: {"bottleneck_machine_score": 1}},
         operations=[operations[0]],
-        batches={"B1": make_batch(batch_id="B1", quantity=1, priority="normal", due_date=None, ready_date=None)},
+        batches=no_due_batches,
         start_dt=start, calendar_service=calendar, seed_results=seeds,
         resource_pool=pool, downtime_map=downtime,
         graph_ready_context={"predecessor_op_ids_by_op_id": {1: set()}},
-        deadline=float("inf"), clock=lambda: 0.0)
+        deadline=float("inf"), clock=lambda: 0.0, native_preparation=no_due_preparation)
     assert no_due_result is not None
     assert calls == []
     assert no_due_result[1]["bottleneck_due_gate"] == 0.0
@@ -135,8 +138,12 @@ def test_graph_resource_preparation_is_shared_by_full_and_per_operation_inputs(m
 
 
 def test_multi_segment_seed_result_blocks_each_resource_only_during_its_segment():
+    from core.algorithm_contracts.resource_occupancy import (
+        PreparedSeedApplication,
+        project_internal_occupancies,
+    )
     from core.algorithm_contracts.types import ScheduleResult
-    from core.algorithms.greedy.seed import with_seed_resource_segments
+    from core.algorithms.greedy.seed import seed_resource_segments, with_seed_resource_segments
 
     start = datetime(2026, 10, 14, 8)
     at = lambda hours: start + timedelta(hours=hours)
@@ -149,6 +156,10 @@ def test_multi_segment_seed_result_blocks_each_resource_only_during_its_segment(
         seed_base,
         [(at(0), at(2), "M1", "O1"), (at(2), at(4), "M2", "O2")],
     )
+    seed_app = PreparedSeedApplication(
+        seed,
+        project_internal_occupancies(seed, actual_segments=seed_resource_segments(seed) or ()),
+    )
     pool = {
         "machines_by_op_type": {"OT1": ["M1", "M2"]},
         "machines_by_operator": {},
@@ -157,7 +168,7 @@ def test_multi_segment_seed_result_blocks_each_resource_only_during_its_segment(
     }
     prepared = v2_capacity.FixedResourceBlockingFacts(
         downtime_map={},
-        seed_results_by_resource_id=v2_capacity.seed_results_by_resource_id([seed]),
+        seed_results_by_resource_id=v2_capacity.seed_results_by_resource_id([seed_app]),
     )
     batch = make_batch(batch_id="B1", quantity=1, priority="normal", due_date="2026-10-14", ready_date=None)
     for machine_id, operator_id in (("M1", "O1"), ("M2", "O2")):

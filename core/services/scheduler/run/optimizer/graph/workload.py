@@ -90,8 +90,7 @@ def _bucket_releases(
 ) -> Tuple[Dict[Tuple[str, ...], Set[Tuple[str, ...]]], Dict[Tuple[str, ...], datetime]]:
     links: Dict[Tuple[str, ...], Set[Tuple[str, ...]]] = {bucket: set() for bucket in buckets.values()}
     release = {bucket: start_dt for bucket in links}
-    seed_ends = {int(item.op_id): item.end_time for item in seed_results
-                 if isinstance(item.end_time, datetime)}
+    seed_ends = {item.op_id: item.end_time for item in seed_results}
     ready_by_batch: Dict[str, Optional[datetime]] = {}
     for op_id, bucket in buckets.items():
         batch_id = str(operations[op_id].batch_id)

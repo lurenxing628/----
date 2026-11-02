@@ -19,7 +19,6 @@ class WorkbenchTrialAdoptionService(AdoptionCommandHost):
     _blocked_error = TrialAdoptionBlocked
     _disabled_code = "scenario_adoption_not_connected"
     _outer_message = "Scenario adoption must own the outer transaction"
-    _authorization_message = "Scenario adoption authorization callbacks are not connected"
     _point_message = UNAVAILABLE
     _stale_message = "请先点「预检」并核对试调方案，再采用。"
     _busy_message = "正在排产，这次采用没有执行。请等排产结束后重新点「确认正式采用」。"
@@ -32,14 +31,14 @@ class WorkbenchTrialAdoptionService(AdoptionCommandHost):
         self._outer()
         reference(scenario_ref)
         try:
-            evidence, context_factory, data_context_ref = self._prepare_preview(scenario_ref, self._validate)
+            evidence, data_context_ref = self._prepare_preview(scenario_ref, self._validate)
         except TrialAdoptionBlocked as exc:
             return {"scenario_ref": scenario_ref,
                     "validation": {"status": "blocked", "can_adopt": False, "issues": exc.issues},
                     "write_context": {"write_token": None, "expires_at": None,
                         "capabilities": {ADOPT_ACTION: False}, "blocked_reasons": exc.issues}}
         return {"scenario_ref": scenario_ref, "draft_ref": evidence.draft_ref,
-                **self._preview_result(scenario_ref, evidence, context_factory, data_context_ref)}
+                **self._preview_result(scenario_ref, evidence, data_context_ref)}
 
     def adopt(self, scenario_ref, write_token, request_key, value):
         reference(scenario_ref)

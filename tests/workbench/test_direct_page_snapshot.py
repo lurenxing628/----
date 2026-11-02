@@ -465,6 +465,7 @@ def test_shared_receipt_classification_route_boundaries_and_dashboard_stored_row
         DATABASE_PATH=str(tmp_path / "schema.db"),
         LOG_DIR=str(log_dir),
         BACKUP_DIR=str(backup_dir),
+        WORKBENCH_SYSTEM_JOURNAL_DIR=str(tmp_path / "journal"),
     )
     bp = Blueprint("shard_d_routes", __name__)
     register_material_routes(bp)

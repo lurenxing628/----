@@ -67,10 +67,11 @@ def graph_ready_public_fields(*, mode: str, is_dag: bool, graph_block_on_cycle: 
     }
 
 
-def schedule_input_op_id_sets(schedule_input: ScheduleRunInput) -> Tuple[Set[int], Set[int], Set[int]]:
+def schedule_input_op_id_sets(schedule_input: ScheduleRunInput) -> Tuple[Set[int], Set[int]]:
+    """(schedulable, fixed): fixed operations are the frozen ones plus every seeded one."""
     schedulable_op_ids = {op.id for op in schedule_input.algo_ops_to_schedule}
     seed_op_ids = {seed["op_id"] for seed in schedule_input.seed_results}
-    return schedulable_op_ids, schedule_input.frozen_op_ids | seed_op_ids, seed_op_ids
+    return schedulable_op_ids, schedule_input.frozen_op_ids | seed_op_ids
 
 
 def sort_key_by_op_id(nodes: List[OperationGraphNode], *, schedulable_op_ids: Set[int]) -> Dict[int, Tuple[int, int, int]]:
@@ -101,17 +102,16 @@ def build_predecessor_successor_maps(
 
 
 def build_graph_ready_context(
-    schedule_input: ScheduleRunInput,
     *,
     nodes: List[OperationGraphNode],
     edges: List[OperationGraphEdge],
     enabled: bool,
     score_context: Dict[str, Any],
-    op_id_sets: Optional[Tuple[Set[int], Set[int], Set[int]]] = None,
+    op_id_sets: Tuple[Set[int], Set[int]],
 ) -> Optional[Dict[str, Any]]:
     if not enabled:
         return None
-    schedulable_op_ids, fixed_op_ids, seed_op_ids = op_id_sets or schedule_input_op_id_sets(schedule_input)
+    schedulable_op_ids, fixed_op_ids = op_id_sets
     predecessor_map, successor_map = build_predecessor_successor_maps(nodes, edges)
     context = {
         "enabled": True,
@@ -121,7 +121,6 @@ def build_graph_ready_context(
         "predecessor_op_ids_by_op_id": predecessor_map,
         "successor_op_ids_by_op_id": successor_map,
         "sort_key_by_op_id": sort_key_by_op_id(nodes, schedulable_op_ids=schedulable_op_ids),
-        "fixed_op_sources_by_op_id": {op_id: ("seed" if op_id in seed_op_ids else "frozen") for op_id in sorted(fixed_op_ids)},
     }
     # An enabled graph always has a score projection (available or disabled with its reason).
     context.update(score_context)

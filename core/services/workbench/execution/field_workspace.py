@@ -1,6 +1,8 @@
 """Read/display orchestration only. AJ owns every execution projection and write."""
 
 from contextlib import contextmanager
+from dataclasses import dataclass
+from typing import Any, Dict, Mapping, Optional
 
 from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
@@ -13,6 +15,13 @@ from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from data.repositories.workbench_field_query_repo import WorkbenchFieldQueryRepository
 
 from .field_workspace_scope import STATES, matches, matches_plan
+
+
+@dataclass(frozen=True)
+class FieldReadState:
+    plan_ref: Optional[str]
+    effective_scope: Dict[str, Any]
+    state: str
 
 
 class _LazyReportDict(dict):
@@ -106,21 +115,40 @@ class FieldWorkspaceService:
             codes[row['ref']] = row['business_code']
         return labels, codes
 
-    def cohort(self, scope):
+    def prepare_read(self, scope: Mapping[str, Any]) -> FieldReadState:
         if not self.conn.in_transaction:
             raise RuntimeError('Field cohort requires caller read snapshot.')
         plan_ref = self._plan_ref(scope)
         if plan_ref is None:
-            return ({'plan': None, 'scope': dict(scope), 'tasks': [], 'summary': self._summary([])},
-                    content_text({'plan_revision': self.plans.references.read_revision(),
-                                  'ledger_revision': self.ledger.revision_clock(),
-                                  'revisions': read_source_revisions(self.conn, EXECUTION_SOURCE_KEYS)}), {})
-        plan = self.plans.execution_workspace(
+            effective = dict(scope)
+            state = content_text({
+                'plan_revision': self.plans.references.read_revision(),
+                'ledger_revision': self.ledger.revision_clock(),
+                'revisions': read_source_revisions(self.conn, EXECUTION_SOURCE_KEYS),
+            })
+            return FieldReadState(None, effective, state)
+        _, plan_state = self.plans.prebind_scope(
             PlanReadScope(plan_ref, scope.get('range_start'), scope.get('range_end')),
+        )
+        effective = dict(scope, plan_ref=plan_ref)
+        state = content_text({
+            'scope': effective,
+            'plan_revision': plan_state['plan_revision'],
+            'ledger_revision': self.ledger.revision_clock(),
+            'revisions': plan_state['sources'],
+        })
+        return FieldReadState(plan_ref, effective, state)
+
+    def cohort(self, read: FieldReadState):
+        if read.plan_ref is None:
+            return {'plan': None, 'scope': dict(read.effective_scope), 'tasks': [], 'summary': self._summary([])}, {}
+        scope = read.effective_scope
+        plan = self.plans.execution_workspace(
+            PlanReadScope(read.plan_ref, scope.get('range_start'), scope.get('range_end')),
         )
         plan_tasks = [task for task in plan['tasks'] if matches_plan(task, scope)]
         refs = [task['operation_ref'] for task in plan_tasks]
-        facts = self.ledger.load_many(refs, comparison_plan_ref=plan_ref)
+        facts = self.ledger.load_many(refs, comparison_plan_ref=read.plan_ref)
         # 整份计划只做轻量投影、不展开更正历史和作废字典、不签发写令牌：
         # 完整报工 DTO 与写令牌只发给本次返回的那一页或那一条（page/detail）。
         loaded = {ref: self.ledger.project_operation(facts, ref, include_history=False) for ref in facts['operations']}
@@ -140,15 +168,8 @@ class FieldWorkspaceService:
                 if not scope.get('state') or task['execution']['execution_state'] == scope['state']:
                     tasks.append(task)
         tasks.sort(key=lambda item: (item['batch_id'], int(item['sequence']), item['planned_start'], item['task_ref']))
-        effective = dict(scope, plan_ref=plan_ref)
         summary = self._summary(tasks, scope_tasks)
-        state = content_text({
-            'scope': effective,
-            'plan_revision': self.plans.references.read_revision(),
-            'ledger_revision': facts['clock'],
-            'revisions': read_source_revisions(self.conn, EXECUTION_SOURCE_KEYS),
-        })
-        return {'plan': plan['plan'], 'scope': effective, 'tasks': tasks, 'summary': summary}, state, resource_codes
+        return {'plan': plan['plan'], 'scope': dict(scope), 'tasks': tasks, 'summary': summary}, resource_codes
 
     @staticmethod
     def _cohort_task(row, projection, histories, voids, labels, names):

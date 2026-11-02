@@ -11,6 +11,7 @@ from core.services.scheduler.graph.validators import collect_graph_warnings
 from core.services.scheduler.run.schedule_graph_dispatch_context import (
     build_graph_ready_context,
     graph_input_scope,
+    schedule_input_op_id_sets,
 )
 from core.services.scheduler.run.schedule_graph_report import (
     ScheduleGraphDispatchPreparation,
@@ -59,12 +60,13 @@ def piece_graph_preparer(prepared):
         weights = graph_score_weights(candidate_input.cfg)
         score_requested = graph_score_requested(weights)
         nodes, edges, order, metrics, payload = _piece_graph_data(prepared, score_requested=score_requested)
+        op_id_sets = schedule_input_op_id_sets(candidate_input)
         score, score_public, score_diagnostics = build_graph_score_projection(
             mode="on", is_dag=True, score_requested=score_requested,
             score_weights=weights, nodes=nodes, node_metrics=metrics,
-            topological_order=order, schedule_input=candidate_input)
+            topological_order=order, op_id_sets=op_id_sets)
         context: Any = build_graph_ready_context(
-            candidate_input, nodes=nodes, edges=edges, enabled=True, score_context=score
+            nodes=nodes, edges=edges, enabled=True, score_context=score, op_id_sets=op_id_sets
         )
         context["piece_scope"] = True
         public, diagnostics = _project_graph_analysis_payload(mode="on", payload=payload, elapsed_ms=0,

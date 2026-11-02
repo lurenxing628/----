@@ -15,10 +15,10 @@
       if (next !== null) { event.preventDefault(); change(choices[next][0]); }
     }}>{choices.map(([key, label]) => <C.Button key={key} role="tab" id={'dh-topic-' + key} aria-selected={value === key} aria-controls="dh-history-content" tabIndex={value === key ? 0 : -1} onClick={() => change(key)}>{label}</C.Button>)}</div>;
   }
-  function Session({ start, onNavigate, navigation, pageContext }) {
-    const [query, setQuery] = React.useState(start.query), [revision, refresh] = React.useReducer(v => v + 1, 0);
+  function Session({ initialQuery, onNavigate, navigation, pageContext }) {
+    const [query, setQuery] = React.useState(initialQuery), [revision, refresh] = React.useReducer(v => v + 1, 0);
     const read = useRead(query, revision), result = read.result, data = result && result.data;
-    const remembered = { ...pageContext, source: 'run_history', history_topic: 'run_catalog', history_query: { ...A.returnContext(query, start.returnPlan), ...(result ? { snapshot_ref: result.meta.snapshot_ref } : {}) } };
+    const remembered = { ...pageContext, source: 'run_history', history_topic: 'run_catalog', history_query: { ...A.returnContext(query), ...(result ? { snapshot_ref: result.meta.snapshot_ref } : {}) } };
     window.WorkbenchPageContext.useSnapshot(remembered);
     function reload() { setQuery(q => { const next = { ...q, page: 1 }; delete next.snapshot_ref; return next; }); refresh(); }
     function apply(q) { setQuery(q); refresh(); }
@@ -28,14 +28,12 @@
       apply(A.scope(q));
     }
     function open(run) {
-      const context = { run_ref: run.run_ref, return_history_context: A.returnContext(query, start.returnPlan) };
-      if (Object.keys(start.returnPlan).length) context.return_plan_context = start.returnPlan;
-      onNavigate('analysis', context);
+      onNavigate('analysis', { run_ref: run.run_ref, return_history_context: A.returnContext(query) });
     }
     return <div className="plana run-history-workspace" data-run-history-workspace aria-busy={read.busy}>
       <h2 className="wb-page-title">排产记录</h2>
       <header className="rh-heading scheduling-page-tools">{navigation}<div className="rh-tools">
-        <C.Button icon="chevron-left" aria-label="返回正式计划" onClick={() => onNavigate('analysis', start.returnPlan)}>返回正式计划</C.Button>
+        <C.Button icon="chevron-left" aria-label="返回正式计划" onClick={() => onNavigate('analysis', {})}>返回正式计划</C.Button>
         <C.Button icon="refresh-cw" aria-label="刷新排产记录" busy={read.busy} onClick={reload} /></div></header>
       <TopicTabs value="run_catalog" onChange={topic => onNavigate('analysis', { ...remembered, history_topic: topic })} />
       <div id="dh-history-content" role="tabpanel" aria-labelledby="dh-topic-run_catalog"><C.Filters value={query} busy={read.busy} onApply={apply} />
@@ -55,10 +53,10 @@
   function RunHistoryWorkspace({ initialContext, pageContext, onNavigate, navigation }) {
     if (pageContext.history_topic === 'decision_history') return <window.DecisionHistoryWorkspace initialContext={pageContext.decision_history_context || {}} pageContext={pageContext}
       onNavigate={onNavigate} navigation={navigation} renderTopics={context => <TopicTabs value="decision_history" onChange={topic => onNavigate('analysis', { ...context, history_topic: topic })} />} />;
-    let start;
-    try { start = A.context(initialContext); }
+    let query;
+    try { query = A.scope(initialContext); }
     catch (error) { return <div className="plana run-history-workspace" data-run-history-workspace><h2 className="wb-page-title">排产记录</h2><C.ErrorBox error={error} /></div>; }
-    return <Session key={JSON.stringify(start)} start={start} pageContext={pageContext} onNavigate={onNavigate} navigation={navigation} />;
+    return <Session key={JSON.stringify(query)} initialQuery={query} pageContext={pageContext} onNavigate={onNavigate} navigation={navigation} />;
   }
   window.RunHistoryWorkspace = RunHistoryWorkspace;
 })();

@@ -6,40 +6,51 @@
   // The three plan-centre tabs share the heading and task detail; the body differs: analysis = projection tables,
   // gantt = the gantt board, delay = projection tables plus resource overlap. Selecting a batch or a related task on a
   // tab without the gantt only selects it for the task detail; the gantt locates it when that tab is shown.
+  // The initial focus comes from the navigation context (APSPlanNavigation): a task focus is selected_task_ref/side; a batch
+  // focus is selected_batch_ref, resolved exactly through delivery_risks to that batch's first scheduled task.
   function WorkspaceSession({ view, initialContext, renderTrial, navigation, onNavigate }) {
     const [selection, setSelection] = React.useState(() => initialContext.plan_ref ? { plan_ref: initialContext.plan_ref, display_name: '指定计划' } : null);
     const [scope, setScope] = React.useState(() => {
       const result = {};
-      for (const key of ['range_start', 'range_end', 'snapshot_ref']) if (initialContext[key] !== undefined) result[key] = initialContext[key];
+      for (const key of ['range_start', 'range_end']) if (initialContext[key] !== undefined) result[key] = initialContext[key];
       return result;
     });
     const [range, setRange] = React.useState({ start: scope.range_start || '', end: scope.range_end || '' });
     const [rangeOpen, setRangeOpen] = React.useState(false), [rangeError, setRangeError] = React.useState(null), [paused, setPaused] = React.useState(false);
-    const [query, setQuery] = React.useState(typeof initialContext.query === 'string' ? initialContext.query : ''), [selected, setSelected] = React.useState(null);
+    const [query, setQuery] = React.useState(initialContext.query === undefined ? '' : initialContext.query), [selected, setSelected] = React.useState(null);
     const [projectionTab, setProjectionTab] = React.useState(initialContext.projection_tab || 'risk');
     const [projectionPage, setProjectionPage] = React.useState(initialContext.projection_page || 0);
     const [relatedRef, setRelatedRef] = React.useState(null);
-    const [detailsOpen, setDetailsOpen] = React.useState(!!initialContext.selected_task_ref);
+    const [detailsOpen, setDetailsOpen] = React.useState(initialContext.selected_task_ref !== undefined || initialContext.selected_batch_ref !== undefined);
     const detailsToggle = React.useRef(null);
-    const initialTask = React.useRef(typeof initialContext.selected_task_ref === 'string'
-      ? { ref: initialContext.selected_task_ref, side: initialContext.selected_task_side === 'before' ? 'before' : 'current' } : null);
+    const initialFocus = React.useRef(initialContext.selected_task_ref !== undefined
+      ? { ref: initialContext.selected_task_ref, side: initialContext.selected_task_side === 'before' ? 'before' : 'current' }
+      : initialContext.selected_batch_ref !== undefined ? { batch: initialContext.selected_batch_ref } : null);
     // APSPlanAPI.workspace 自己校验读取范围（PlanContract.workspaceScope）。
     const read = S.useQuery(signal => window.APSPlanAPI.workspace(selection.plan_ref, scope, signal), [selection && selection.plan_ref, scope], !!selection && !paused);
     const result = read.result, data = result && result.data;
+    function batchTask(batchId) { return data.tasks.find(row => row.batch_id === batchId); }
     const taskFacts = React.useMemo(() => data ? M.prepareTasks(data) : null, [data]);
     const baseGraph = React.useMemo(() => data ? window.GanttGraph.create(data.gantt_graph) : null, [data]);
     const baseOccupancy = React.useMemo(() => data ? M.prepareOccupancy(data, null, null, taskFacts && taskFacts.labels) : null, [data, taskFacts]);
     const chosen = selected && selected.result === result ? selected : null;
-    const pendingBefore = Boolean(initialTask.current && initialTask.current.side === 'before' && data
+    const pendingBefore = Boolean(initialFocus.current && initialFocus.current.side === 'before' && data
       && data.projections.baseline.state === 'available' && data.projections.baseline.items_complete === false
       && data.projections.baseline.item_count > 0);
     React.useEffect(() => {
       if (!data || read.loading || read.error) return;
-      const target = relatedRef ? { ref: relatedRef, side: 'current' } : initialTask.current;
+      const target = relatedRef ? { ref: relatedRef, side: 'current' } : initialFocus.current;
       if (!relatedRef && pendingBefore) return;
-      // The saved task belongs to this session's first successful read only.
-      initialTask.current = null;
+      // The saved focus belongs to this session's first successful read only.
+      initialFocus.current = null;
       if (!target) return;
+      if (target.batch) {
+        const risk = data.projections.delivery_risks.items.find(row => row.batch_ref === target.batch);
+        const task = risk && batchTask(risk.batch_id);
+        if (task) setSelected({ task, before: false, result, ...(view === 'gantt' ? { locate: true } : {}) });
+        else setRangeError(C.failure(risk ? '该批次在这份计划里没有已排工序，没有改选其他工序。' : '这份计划里找不到该批次，没有改选其他工序。'));
+        return;
+      }
       const before = target.side === 'before';
       const original = before && data.projections.baseline.items.find(row => row.before && row.before.task_ref === target.ref);
       const task = before ? original && original.before : taskFacts.taskIndex.get(target.ref)?.task;
@@ -49,19 +60,19 @@
       if (relatedRef) setRelatedRef(null);
     }, [relatedRef, result, read.loading, read.error]);
     const remembered = { ...initialContext, ...(selection ? { plan_ref: selection.plan_ref } : {}), query, projection_tab: projectionTab, projection_page: projectionPage };
-    for (const key of ['range_start', 'range_end', 'snapshot_ref', 'selected_task_ref', 'selected_task_side']) delete remembered[key];
+    for (const key of ['range_start', 'range_end', 'selected_task_ref', 'selected_task_side', 'selected_batch_ref']) delete remembered[key];
     Object.assign(remembered, scope, chosen ? { selected_task_ref: chosen.task.task_ref, selected_task_side: chosen.before ? 'before' : 'current' }
-      : pendingBefore ? { selected_task_ref: initialTask.current.ref, selected_task_side: 'before' } : {});
+      : pendingBefore ? { selected_task_ref: initialFocus.current.ref, selected_task_side: 'before' } : {});
     window.WorkbenchPageContext.useSnapshot(remembered, !!data && !read.loading && !read.error && !paused);
     function choose(plan) {
-      initialTask.current = null;
+      initialFocus.current = null;
       setSelection(plan); setScope({}); setRange({ start: '', end: '' }); setRangeOpen(false); setRangeError(null); setPaused(false); setQuery(''); setSelected(null); setRelatedRef(null); setDetailsOpen(false); setProjectionPage(0); read.reload();
     }
     function refresh() {
-      initialTask.current = null;
-      const next = { ...scope }; delete next.snapshot_ref; setScope(next); setRangeError(null); setPaused(false); setSelected(null); setRelatedRef(null); setProjectionPage(0); read.reload();
+      initialFocus.current = null;
+      setRangeError(null); setPaused(false); setSelected(null); setRelatedRef(null); setProjectionPage(0); read.reload();
     }
-    function selectTask(task, before = false, locate = false) { initialTask.current = null; setSelected(task ? { task, before, result, ...(locate ? { locate: true } : {}) } : null); }
+    function selectTask(task, before = false, locate = false) { initialFocus.current = null; setSelected(task ? { task, before, result, ...(locate ? { locate: true } : {}) } : null); }
     function openResource(resource) {
       const member = taskFacts.resourceMembers.get(resource.resource_ref), task = member && member[0] && member[0].task;
       const target = { ...remembered, query: '', resource_kind: resource.kind };
@@ -76,13 +87,13 @@
     }
     function changeScope(next) {
       const changed = scope.range_start !== next.range_start || scope.range_end !== next.range_end;
-      initialTask.current = null;
+      initialFocus.current = null;
       setScope(next); setRange({ start: next.range_start || '', end: next.range_end || '' });
       if (changed) setProjectionPage(0);
       setRangeOpen(false); setRangeError(null); setPaused(false); setSelected(null); read.reload();
     }
     function selectRelated(ref) {
-      initialTask.current = null;
+      initialFocus.current = null;
       const fact = taskFacts.taskIndex.get(ref), task = fact && fact.task;
       setQuery(''); setRangeError(null);
       if (task) setSelected({ task, before: false, result, locate: true });
@@ -121,14 +132,14 @@
     const baselineLoading = baselineState.result === result ? baselineState.loading : false;
     const baselineError = baselineState.result === result ? baselineState.error : null;
     const baselineNeeded = baselineState.result === result ? baselineState.needed : false;
-    const restoringBefore = Boolean(initialTask.current && initialTask.current.side === 'before' && (baselineLoading || baselineError));
+    const restoringBefore = Boolean(initialFocus.current && initialFocus.current.side === 'before' && (baselineLoading || baselineError));
     const shouldLoadBaseline = Boolean(data && !read.loading && !read.error && !paused
       && data.projections.baseline.state === 'available'
       && data.projections.baseline.items_complete === false
       && data.projections.baseline.item_count > 0
       && !Array.isArray(activeBaselineItems)
       && !baselineError
-      && (baselineNeeded || chosen && (view !== 'gantt' || detailsOpen) || initialTask.current && initialTask.current.side === 'before'));
+      && (baselineNeeded || chosen && (view !== 'gantt' || detailsOpen) || initialFocus.current && initialFocus.current.side === 'before'));
     const requestBaseline = React.useCallback(() => {
       setBaselineState(current => current.needed && current.result === result && !current.error ? current : {
         result, items: current.result === result ? current.items : null, loading: false, error: null, needed: true
@@ -143,9 +154,9 @@
         if (controller.signal.aborted) return;
         const items = response.data.items;
         setBaselineState({ result, items, loading: false, error: null, needed: true });
-        if (initialTask.current && initialTask.current.side === 'before') {
-          const target = initialTask.current;
-          initialTask.current = null;
+        if (initialFocus.current && initialFocus.current.side === 'before') {
+          const target = initialFocus.current;
+          initialFocus.current = null;
           const original = items.find(row => row.before && row.before.task_ref === target.ref);
           if (original && original.before) setSelected({ task: original.before, before: true, result, ...(view === 'gantt' && original.before_in_scope ? { locate: true } : {}) });
           else setRangeError(C.failure('要恢复的原安排已不存在。'));
@@ -286,9 +297,9 @@
             <div className="stat wb-metric" key={label} data-tone={tone === 'warn' && value === 0 ? 'neutral' : tone}><span className="sl wb-metric-label">{label}</span><span className="sv wb-metric-value">{value}</span></div>)}
         </div>}</section>
       {data && <div className={'plan-main' + (view === 'gantt' ? ' wb-gantt-detail-layout' : '')} data-details-open={(view === 'gantt' ? detailsOpen : !!chosen) || undefined}><div className={view === 'gantt' ? 'wb-gantt-main-column' : undefined}>
-          {view === 'gantt' && <window.PlanGantt key={'gantt:' + data.plan.plan_ref} data={effectiveData} prepared={effectivePrepared} graph={effectiveGraph} asOf={result.meta.as_of} selected={chosen} onSelect={selectTask} query={query} onQuery={setQuery} initialMode={initialContext.resource_kind} initialBaseline={!!initialTask.current && initialTask.current.side === 'before'} onRequestBaseline={requestBaseline} baselineLoading={baselineLoading} baselineError={baselineError} graphLoading={graphLoading} graphError={graphError} onRetryGraph={requestGraph}
+          {view === 'gantt' && <window.PlanGantt key={'gantt:' + data.plan.plan_ref} data={effectiveData} prepared={effectivePrepared} graph={effectiveGraph} asOf={result.meta.as_of} selected={chosen} onSelect={selectTask} query={query} onQuery={setQuery} initialMode={initialContext.resource_kind} initialBaseline={!!initialFocus.current && initialFocus.current.side === 'before'} onRequestBaseline={requestBaseline} baselineLoading={baselineLoading} baselineError={baselineError} graphLoading={graphLoading} graphError={graphError} onRetryGraph={requestGraph}
             toolbarActions={<span ref={detailsToggle}><Button icon={detailsOpen ? 'panel-right-close' : 'panel-right-open'} aria-expanded={detailsOpen} aria-controls="plan-gantt-detail" onClick={() => setDetailsOpen(!detailsOpen)}>{detailsOpen ? '收起详情' : '详情'}</Button></span>} />}
-          {view !== 'gantt' && <ProjectionTables prepared={effectivePrepared} key={'risk:' + result.meta.snapshot_ref} data={effectiveData} tab={projectionTab} onTab={setProjectionTab} page={projectionPage} onPage={setProjectionPage} onResource={openResource} onBatch={batch => { setQuery(batch); const task = data.tasks.find(row => row.batch_id === batch); if (task) selectTask(task, false, true); }} capacityLoading={capacityLoading} capacityError={capacityError} onRetryCapacity={requestCapacity} />}
+          {view !== 'gantt' && <ProjectionTables prepared={effectivePrepared} key={'risk:' + result.meta.snapshot_ref} data={effectiveData} tab={projectionTab} onTab={setProjectionTab} page={projectionPage} onPage={setProjectionPage} onResource={openResource} onBatch={batch => { setQuery(batch); const task = batchTask(batch); if (task) selectTask(task, false, true); }} capacityLoading={capacityLoading} capacityError={capacityError} onRetryCapacity={requestCapacity} />}
           {view === 'delay' && <Conflicts prepared={effectivePrepared} key={'conflicts:' + result.meta.snapshot_ref} data={effectiveData} />}
         </div>{(view === 'gantt' ? detailsOpen : !!chosen) && <TaskDetail data={effectiveData} prepared={effectivePrepared} graph={effectiveGraph} selected={chosen} onSelect={selectTask} onRelated={selectRelated}
           onCollapse={view === 'gantt' ? collapseDetails : undefined}
@@ -299,7 +310,7 @@
   }
   function PlanWorkspace(props) {
     const context = props.initialContext;
-    const navigation = [context.plan_ref, context.range_start, context.range_end, context.snapshot_ref];
+    const navigation = [context.plan_ref, context.range_start, context.range_end];
     return <WorkspaceSession key={JSON.stringify(navigation)} {...props} />;
   }
   window.PlanWorkspace = PlanWorkspace;

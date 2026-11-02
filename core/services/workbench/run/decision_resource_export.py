@@ -101,15 +101,20 @@ def coverage_operation_rows(source, coverage):
     """Keep every saved coverage identity in its own Excel row."""
     baseline = source.baseline
     common = [source.run["run_ref"], baseline_ref(baseline), source.selected_ref]
-    official_labels = {row["operation_ref"]: row for row in source.official["tasks"]}
+    official_labels = None
     labels_by_ref = {}
     for side, side_label in (("before", "基准"), ("after", "所选")):
         if side == "before" and baseline["state"] != "available":
             continue
         for field, category in _COVERAGE_KINDS:
             for ref in coverage[side][field]:
-                if ref not in labels_by_ref:
-                    labels_by_ref[ref] = operation_labels(source.facts, ref)[0] if ref in source.facts.operations else official_labels.get(ref, {})
+                if ref not in labels_by_ref and ref in source.facts.operations:
+                    labels_by_ref[ref] = operation_labels(source.facts, ref)[0]
+                elif ref not in labels_by_ref:
+                    # Only an official operation outside this run's facts expands the official tasks.
+                    if official_labels is None:
+                        official_labels = {row["operation_ref"]: row for row in source.official_tasks}
+                    labels_by_ref[ref] = official_labels.get(ref, {})
                 labels = labels_by_ref[ref]
                 yield common + [side_label, category, ref, labels.get("batch_ref"), labels.get("batch_label"),
                                 labels.get("sequence"), labels.get("process_label")]

@@ -136,12 +136,18 @@ def test_preferences_save_does_not_expire_existing_preflight_or_worker_facts(pf)
     assert save(pf, payload(pf), read(pf)["write_context"]["write_token"]).status_code == 200
     assert _facts_content(pf.conn) == before
     assert production_facts_match(pf.conn, captured_facts)
+    from core.services.workbench.run.preflight_facts import PreflightFacts
     from web.routes.workbench.preflight import evaluate_preflight_input_prepared
 
     with pf.application.app_context():
         pf.conn.execute("BEGIN")
         try:
-            assert evaluate_preflight_input_prepared(pf.conn, checked.get_json()["data"]["input_ref"]).data["normalized_input"] == payload(pf)
+            facts = PreflightFacts(pf.conn)
+            with facts.snapshot(fingerprint=False):
+                prepared = evaluate_preflight_input_prepared(
+                    pf.conn, checked.get_json()["data"]["input_ref"], facts=facts
+                )
+            assert prepared.data["normalized_input"] == payload(pf)
         finally:
             pf.conn.rollback()
 

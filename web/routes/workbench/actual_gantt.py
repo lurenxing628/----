@@ -5,7 +5,6 @@ from io import BytesIO
 from flask import current_app, g, request, send_file
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_execution_input import public_ref
 from core.services.workbench.execution.actual_gantt import MAX_ACTUAL_RESPONSE_BYTES, ActualGanttService, bind_axis_time
 from core.services.workbench.execution.actual_gantt_export import actual_gantt_csv
 from core.services.workbench.execution.actual_gantt_scope import COHORT_KEYS, VIEW_KEYS, ActualGanttScope
@@ -16,10 +15,8 @@ from .read_budget import PLAN_READ_SLOTS
 from .read_context import bind_read_snapshot
 
 
-def _scope(export=False, related=False):
+def _scope(export=False):
     allowed = set(COHORT_KEYS) | {"snapshot_ref"}
-    if related:
-        allowed.add("target_task_ref")
     if export:
         allowed |= set(VIEW_KEYS) | {"format"}
     if set(request.args) - allowed or any(len(request.args.getlist(key)) != 1 for key in request.args):
@@ -27,7 +24,7 @@ def _scope(export=False, related=False):
     return ActualGanttScope.parse({key: request.args[key] for key in COHORT_KEYS if key in request.args})
 
 
-def _read(scope, *, chain_target=None, bind_axis=True, include_chain=True):
+def _read(scope, *, full_workspace):
     reader = ActualGanttService(g.db, current_app.logger)
     token = request.args.get("snapshot_ref")
     snapshot = None
@@ -36,37 +33,18 @@ def _read(scope, *, chain_target=None, bind_axis=True, include_chain=True):
             if token is not None:
                 scope_dict, state = reader.prebind_scope(scope)
                 snapshot = bind_read_snapshot(scope_dict, state, token)
-            data, state = reader.workspace(
-                scope,
-                chain_target=chain_target,
-                include_chain=include_chain,
-            )
+            data, state = reader.workspace(scope, full_workspace=full_workspace)
     if snapshot is None:
         snapshot = bind_read_snapshot(scope.scope(), state, None)
-    if bind_axis:
-        data = bind_axis_time(data, snapshot["as_of"], snapshot["snapshot_ref"])
-    elif data.get("critical_chain") is not None:
-        data["critical_chain"]["snapshot_ref"] = snapshot["snapshot_ref"]
+    data = bind_axis_time(data, snapshot["as_of"])
     return data, snapshot
 
 
 @api_endpoint
 def actual_gantt_workspace():
-    data, snapshot = _read(_scope())
+    data, snapshot = _read(_scope(), full_workspace=True)
     return query_success(data, snapshot, byte_limit=MAX_ACTUAL_RESPONSE_BYTES,
         too_large_message="这次要读的现场甘特数据太多，系统没有给出不完整结果。请缩小日期范围或减少所选批次后点「刷新」。")
-
-
-@api_endpoint
-def actual_gantt_related_chain():
-    scope = _scope(related=True)
-    target = request.args.get("target_task_ref")
-    public_ref(target)
-    if not request.args.get("snapshot_ref"):
-        raise WorkbenchCommandRejected("snapshot_required", "数据已更新，关联工序还没有打开。请点「刷新」后重新选择。", 400)
-    data, snapshot = _read(scope, chain_target=target, bind_axis=False)
-    return query_success({key: data[key] for key in ("plan", "scope", "critical_chain")}, snapshot,
-                         byte_limit=MAX_ACTUAL_RESPONSE_BYTES)
 
 
 @api_endpoint
@@ -74,7 +52,7 @@ def actual_gantt_export():
     scope = _scope(export=True)
     if not request.args.get("snapshot_ref") or request.args.get("format") != "csv":
         raise WorkbenchCommandRejected("invalid_input", "数据已更新，没有开始下载。请点「刷新」后重新点「导出」，再点「下载 CSV」。", 400)
-    data, snapshot = _read(scope, include_chain=False)
+    data, snapshot = _read(scope, full_workspace=False)
     content, rows, operations = actual_gantt_csv(data, snapshot, {key: request.args[key] for key in VIEW_KEYS if key in request.args})
     if len(content) > MAX_ACTUAL_RESPONSE_BYTES:
         raise WorkbenchCommandRejected("query_too_large", "现场甘特 CSV 超过 32 MB，请缩小范围后重新导出。", 413)
@@ -88,5 +66,4 @@ def actual_gantt_export():
 
 def register_actual_gantt_routes(bp):
     bp.add_url_rule("/api/workbench/v1/actual-gantt", view_func=actual_gantt_workspace, methods=["GET"])
-    bp.add_url_rule("/api/workbench/v1/actual-gantt/chain", view_func=actual_gantt_related_chain, methods=["GET"])
     bp.add_url_rule("/api/workbench/v1/actual-gantt/export", view_func=actual_gantt_export, methods=["GET"])

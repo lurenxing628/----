@@ -78,7 +78,7 @@ def _packet(kind, ref, entry_ref):
     if kind == "run":
         data.update(capture=None, facts=None, candidate=None, receipt=None, raw_tasks=None)
     elif kind == "trial":
-        data.update(saved=None, head=None, rows=[])
+        data.update(saved=None, head=None, rows=[], origin=None)
     else:
         raise ValueError("Unknown saved history source")
     return data
@@ -238,12 +238,11 @@ class HistoryReader:
 
     def _read_trial(self, packet, refs, descriptor):
         source = _cached(self._scenarios, refs["scenario_ref"], lambda: load_saved_scenario(self.conn, refs["scenario_ref"]))
-        saved, head, rows = source
         audit = self._verify_adoption_record(descriptor)
         trial_evidence(source, audit)
-        if len(rows) != audit["row_count"]:
+        if len(source.rows) != audit["row_count"]:
             raise WorkbenchCommandRejected("history_source_invalid", "采用记录与原试调安排条数不一致。", 500)
-        packet.update(saved=saved, head=head, rows=rows)
+        packet.update(saved=source.saved, head=source.head, rows=source.rows, origin=source.origin)
 
     def source_state(self, descriptor):
         """Saved sources bind their permanent references, state and known gaps."""

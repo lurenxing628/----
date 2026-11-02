@@ -3,12 +3,6 @@
   const M = window.ActualGanttModel, C = window.ActualGanttContract, W = window.ActualGanttWindow;
   const { Button, ErrorBox, Modal } = window.ResourceControls;
   const { Toolbar, Range, Chain } = window.ActualGanttControls;
-  // Remembered view positions per navigation context; capped so a long session does not keep growing this map.
-  const sessions = new Map(), SESSION_LIMIT = 20;
-  function remember(key, value) {
-    sessions.delete(key); sessions.set(key, value);
-    while (sessions.size > SESSION_LIMIT) sessions.delete(sessions.keys().next().value);
-  }
   function savedView(value) {
     if (value === undefined) return null;
     const object = item => item !== null && typeof item === 'object' && !Array.isArray(item);
@@ -34,7 +28,6 @@
     let issue = Object.keys(input).some(key => !allowed.includes(key)) ? '查询条件无效，请清除筛选后重试。' : null;
     if (input.baseline_ref && input.baseline_ref !== (context.plan_ref || input.plan_ref)) issue = '现场实际甘特以所选计划为对比基准，没有换成另一个计划版本。';
     if (input.query !== undefined && (typeof input.query !== 'string' || input.query.length > 200)) issue = '来源搜索条件无效。';
-    if (context.return_to && !['gantt', 'field', 'analysis', 'reports', 'review', 'dashboard'].includes(context.return_to.view)) issue = '返回页面未登记。';
     if (context.report_ref !== undefined && !C.ref(context.report_ref)) issue = '来源报工编号无效，请从现场记录重新打开。';
     if (context.report_ref !== undefined && !C.ref(taskRef)) issue = '报工关联的任务资料缺失，请刷新后重选。';
     for (const key of ['plan_ref', 'source', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'batch_ids'])
@@ -46,19 +39,19 @@
       selected: taskRef === undefined ? null : taskRef, report: context.report_ref === undefined ? null : context.report_ref };
   }
   function Content({ onNavigate, initialContext }) {
-    const seed = React.useMemo(() => initial(initialContext), []), key = JSON.stringify(initialContext), saved = sessions.get(key);
-    const [scope, setScope] = React.useState(saved ? saved.scope : seed.scope), [refresh, setRefresh] = React.useState(0);
+    const seed = React.useMemo(() => initial(initialContext), []);
+    const [scope, setScope] = React.useState(seed.scope), [refresh, setRefresh] = React.useState(0);
     const [result, setResult] = React.useState(null), [loading, setLoading] = React.useState(false), [error, setError] = React.useState(null);
-    const [view, setView] = React.useState(saved ? saved.view : seed.persisted ? seed.persisted.view : { mode: seed.scope.resource_type || 'machine', query: seed.query, selected: seed.selected,
+    const [view, setView] = React.useState(seed.persisted ? seed.persisted.view : { mode: seed.scope.resource_type || 'machine', query: seed.query, selected: seed.selected,
       report: seed.report, late: 'all', collapsed: {}, onlySelected: false, details: false, chain: false });
-    const [zoom, setZoom] = React.useState(saved ? saved.zoom : seed.persisted ? seed.persisted.zoom : 1), [position, setPosition] = React.useState({ left: 0, top: 0, width: 1000, height: 480 });
+    const [zoom, setZoom] = React.useState(seed.persisted ? seed.persisted.zoom : 1), [position, setPosition] = React.useState({ left: 0, top: 0, width: 1000, height: 480 });
     const [hover, setHover] = React.useState(null), [exporting, setExporting] = React.useState(false), [exportBusy, setExportBusy] = React.useState(false);
     const [chainTarget, setChainTarget] = React.useState(null);
-    const [locateNotice, setLocateNotice] = React.useState('');
-    const [exportError, setExportError] = React.useState(null), [exportNotice, setExportNotice] = React.useState(''), [restore, setRestore] = React.useState(saved ? saved.position : seed.persisted ? seed.persisted.position : null);
+    const [locateNotice, setLocateNotice] = React.useState(''), [navigationNotice, setNavigationNotice] = React.useState(null);
+    const [exportError, setExportError] = React.useState(null), [exportNotice, setExportNotice] = React.useState(''), [restore, setRestore] = React.useState(seed.persisted ? seed.persisted.position : null);
     const [chainOpen, setChainOpen] = React.useState(false);
-    const board = React.useRef(null), detailsPanel = React.useRef(null), frame = React.useRef(null), pending = React.useRef(!saved && !seed.persisted && seed.report && seed.selected ? { task: seed.selected } : null), downloadController = React.useRef(null);
-    const defaultWindowApplied = React.useRef(!!saved || !!seed.persisted);
+    const board = React.useRef(null), detailsPanel = React.useRef(null), frame = React.useRef(null), pending = React.useRef(!seed.persisted && seed.report && seed.selected ? { task: seed.selected } : null), downloadController = React.useRef(null);
+    const defaultWindowApplied = React.useRef(!!seed.persisted);
     const measuredWidth = React.useRef(null), zoomRef = React.useRef(zoom), restoreRef = React.useRef(restore);
     zoomRef.current = zoom; restoreRef.current = restore;
     const { labelWidth, viewport } = W.dimensions(position.width);
@@ -118,10 +111,14 @@
     const stats = React.useMemo(() => data ? M.metrics(data) : null, [data]);
     const taskIndex = prepared && prepared.taskIndex;
     const snapshotPosition = model ? W.capture(position, viewport, model, zoom) : null;
-    window.WorkbenchPageContext.useSnapshot(data ? {
-      plan_ref: data.plan.plan_ref, scope: data.scope, task_ref: view.selected,
-      actual_view: { view, zoom, position: snapshotPosition }, return_to: initialContext.return_to
-    } : null, !!data && !loading && !error && !seed.issue && !restore);
+    function pageContext() {
+      return {
+        plan_ref: scope.plan_ref, task_ref: view.selected, scope: { ...scope, query: view.query },
+        ...(snapshotPosition ? { actual_view: { view, zoom, position: snapshotPosition } } : {}),
+        ...(initialContext.return_to ? { return_to: initialContext.return_to } : {})
+      };
+    }
+    window.WorkbenchPageContext.useSnapshot(data ? pageContext() : null, !!data && !loading && !error && !seed.issue && !restore);
     const measure = () => {
       const node = board.current; if (!node) return;
       const previousWidth = measuredWidth.current;
@@ -165,7 +162,6 @@
       }
       measure();
     }, [width, model, restore, position.width]);
-    React.useEffect(() => { if (snapshotPosition && !restore) remember(key, { scope, view, zoom, position: snapshotPosition }); }, [key, scope, view, zoom, position, model, restore]);
     React.useEffect(() => { setHover(null); setChainTarget(null); }, [view, position.top, position.left]);
     function zoomTo(next) { pending.current = { center: W.anchor(model, view.selected, view.report) }; setZoom(Math.max(1, Math.min(1024, next))); }
     function fitView() { pending.current = { center: .5 }; setZoom(1); pan(0); }
@@ -190,7 +186,7 @@
     }
     function apply(next) {
       try {
-        C.scope(next); defaultWindowApplied.current = false; pending.current = null; setRestore(null);
+        C.scope(next); defaultWindowApplied.current = false; pending.current = null; setRestore(null); setNavigationNotice(null);
         setResult(null); setLoading(true); setScope(next); patch({ collapsed: {} }); setError(null); setExportNotice('');
       } catch (failure) { setError(failure); }
     }
@@ -244,29 +240,42 @@
       } catch (failure) { if (!controller.signal.aborted) setExportError(failure); }
       finally { if (downloadController.current === controller) { downloadController.current = null; setExportBusy(false); } }
     }
-    function navigate(viewName) {
-      const returnContext = { plan_ref: scope.plan_ref, task_ref: view.selected, scope: { ...scope, query: view.query } };
+    function returnTarget() {
+      return { view: 'fieldgantt', context: pageContext() };
+    }
+    function openField() {
+      // 现场实际甘特可按 10000 个批次读取，现场记录只接受 FieldContract.batchLimit 个；超出时原样保留批次范围，请用户先缩小。
+      const limit = window.FieldContract.batchLimit;
+      if (scope.batch_ids && scope.batch_ids.length > limit) {
+        setNavigationNotice({ message: '现场记录最多按 ' + limit + ' 个批次查看，当前范围有 ' + scope.batch_ids.length + ' 个批次。请先缩小批次范围，再打开现场记录。' }); return;
+      }
       const destinationScope = { ...scope, query: view.query };
       // Actual uses [] for all batches; Field represents that scope by omission.
-      if (viewName === 'field' && destinationScope.batch_ids !== undefined && destinationScope.batch_ids.length === 0)
-        delete destinationScope.batch_ids;
-      const task = selected && selected.task;
-      let locator;
-      if (viewName === 'field') {
-        const query = view.query.trim().toLowerCase();
-        const targetTask = selected && M.fieldSearchText(selected, model.labels).includes(query) ? task : null;
-        locator = targetTask ? { task_ref: targetTask.task_ref, operation_ref: targetTask.operation_ref } : {};
-      } else locator = { task_ref: view.selected, operation_ref: task ? task.operation_ref : undefined };
-      if (snapshotPosition) remember(JSON.stringify(returnContext), { scope, view, zoom, position: snapshotPosition });
-      onNavigate(viewName, { plan_ref: scope.plan_ref, ...locator,
-        scope: destinationScope, return_to: { view: 'fieldgantt', context: returnContext } });
+      if (destinationScope.batch_ids !== undefined && destinationScope.batch_ids.length === 0) delete destinationScope.batch_ids;
+      const query = view.query.trim().toLowerCase();
+      const task = selected && M.fieldSearchText(selected, model.labels).includes(query) ? selected.task : null;
+      onNavigate('field', { plan_ref: scope.plan_ref, ...(task ? { task_ref: task.task_ref, operation_ref: task.operation_ref } : {}),
+        scope: destinationScope, return_to: returnTarget() });
+    }
+    // 正式计划甘特只按计划时段读取：完工日期、资源和非空批次条件带不过去，先列出来，用户确认后才按时段（无时段时按完整计划）打开。
+    // 有选中工序时只带定位、不带搜索词（计划页定位即清空搜索）；空 batch_ids 表示全部批次，不算受限。
+    function openPlan(confirmed) {
+      const limits = [...(scope.plan_finish_date_from ? ['计划完工日期 ' + scope.plan_finish_date_from + ' 至 ' + scope.plan_finish_date_to] : []),
+        ...(scope.resource_ref ? ['指定' + M.views[scope.resource_type]] : []), ...(scope.batch_ids && scope.batch_ids.length ? ['指定的 ' + scope.batch_ids.length + ' 个批次'] : [])];
+      if (limits.length && !confirmed) {
+        setNavigationNotice({ plan: true, message: '计划甘特只按计划时段读取，带不过去这些条件：' + limits.join('、') + '。确认后按'
+          + (scope.range_start ? '当前时段' : '完整计划') + '打开' + (view.selected ? '，并定位所选工序' : '') + '。' }); return;
+      }
+      onNavigate('gantt', { plan_ref: scope.plan_ref, ...(scope.range_start ? { range_start: scope.range_start, range_end: scope.range_end } : {}),
+        ...(view.selected ? { selected_task_ref: view.selected } : view.query ? { query: view.query } : {}), return_to: returnTarget() });
     }
     return <div className="plana fg-page fg-live" data-actual-gantt>
       <div className="fg-heading"><div><h2 className="wb-page-title">现场实际甘特</h2><span className="fg-muted wb-page-context">{data ? data.plan.display_name + ' · ' + window.WorkbenchTerms.data_as_of(M.time(result.meta.as_of)) : loading ? '正在读取计划与现场记录' : '计划与现场记录'}</span></div>
         <div className="wb-actions"><Button icon="refresh-cw" aria-label="刷新实际甘特" busy={loading} onClick={reload} />
-          <Button icon="chart-gantt" onClick={() => navigate('gantt')}>计划甘特</Button><Button icon="arrow-right" onClick={() => navigate('field')}>现场记录</Button>
-          {initialContext.return_to && <Button icon="chevron-left" onClick={() => { const target = initialContext.return_to; if (['gantt', 'field', 'analysis', 'reports', 'review', 'dashboard'].includes(target.view)) onNavigate(target.view, target.context); }}>返回</Button>}</div></div>
-      <ErrorBox error={error} />
+          <Button icon="chart-gantt" onClick={() => openPlan(false)}>计划甘特</Button><Button icon="arrow-right" onClick={openField}>现场记录</Button>
+          {initialContext.return_to && <Button icon="chevron-left" onClick={() => onNavigate(initialContext.return_to.view, initialContext.return_to.context)}>返回</Button>}</div></div>
+      <ErrorBox error={error} />{navigationNotice && <><p className="fg-note" role="status">{navigationNotice.message}</p>{navigationNotice.plan && <span className="wb-actions">
+        <Button icon="chart-gantt" onClick={() => openPlan(true)}>确认打开计划甘特</Button><Button icon="x" onClick={() => setNavigationNotice(null)}>取消</Button></span>}</>}
       {scope.plan_ref && <Range scope={scope} resources={data ? data.resources : null} onApply={apply} busy={loading} />}
       {!data && <window.WorkbenchControls.EmptyState kind={loading ? 'loading' : error ? 'error' : 'empty'} title={loading ? '正在读取计划与现场记录…' : error ? '现场实际甘特未读取成功' : '暂无现场实际甘特数据'}
         action={error && !loading ? <Button icon="refresh-cw" onClick={reload}>刷新</Button> : undefined} />}
@@ -304,7 +313,7 @@
                 {selected.execution.remaining_plan && <p>剩余安排：{M.time(selected.execution.remaining_plan.start)} 至 {M.time(selected.execution.remaining_plan.end)}</p>}
                 {gapReportButtons}
                 {report && <p>登记：{M.time(report.recorded_at)} · 历史版本 {report.correction_history.length} 条</p>}</>}
-              <Button icon="arrow-right" onClick={() => navigate('field')}>到现场记录核对或补齐</Button>
+              <Button icon="arrow-right" onClick={openField}>到现场记录核对或补齐</Button>
             </div></details>
             <details className="wb-gantt-detail-section" open><summary>完整工艺路线</summary><div className="wb-gantt-detail-section-body">
               <window.GanttRouteList index={graph} targetRef={selected.task.task_ref} loadedRefs={model.shownRefs}

@@ -1,12 +1,9 @@
 """全局工作日历文件的列目录。文件只改列出的日期，不删除整行；清除某一天请用日历页的范围清除。"""
 
-from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple
 
-from core.errors import ValidationError
 from core.models.calendar_period_columns import PERIOD_CLOCKS, PERIOD_COLUMNS, PERIOD_DAYS, period_column_label
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_resource_action import ResourceActionPreview
 from core.models.workbench_table_descriptor import (
     DEFAULT_IMPORT_BYTE_LIMIT,
     UPSERT_ONLY,
@@ -191,12 +188,7 @@ def row_identity(kind: str, values: Dict[str, Any]) -> Optional[str]:
     return code + " / " + day if type(code) is str else None
 
 
-def import_request(kind: str, content: bytes, file_format: str, mode: str) -> Dict[str, Any]:
-    calendar_kind(kind)
-    if type(content) is not bytes or file_format not in ("csv", "xlsx"):
-        raise ValidationError("只能导入 CSV 或 XLSX 文件，没有导入。请重新选择文件。", field="file")
-    if mode != "upsert":
-        raise WorkbenchCommandRejected("invalid_input", "日历文件只支持按日期增量导入，没有导入。请重新选择导入方式。", 400)
+def import_request(kind: str, file_format: str, mode: str) -> Dict[str, Any]:
     return {"kind": kind, "mode": mode, "format": file_format, "scope": {}}
 
 
@@ -228,19 +220,3 @@ def table_descriptor(kind: str) -> Dict[str, Any]:
 
 #: 预检响应里的那段提示，和说明表的通用规则同一份来源。
 INSTRUCTIONS = {kind: instructions_text(table_descriptor(kind)) for kind in CALENDAR_KINDS}
-
-
-@dataclass(frozen=True)
-class CalendarFilePreview(ResourceActionPreview):
-    calendars: dict = field(default_factory=dict, repr=False, compare=False)
-
-    @classmethod
-    def build(cls, operation, request, rows, notices=(), *, source=None, calendars=None):
-        return super().build(
-            operation,
-            request,
-            rows,
-            notices,
-            source=source,
-            calendars={} if calendars is None else calendars,
-        )

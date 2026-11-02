@@ -11,13 +11,15 @@ import pytest
 from flask import Flask
 
 from core.services.workbench.facts.run_data_context import RunDataContext
-from core.services.workbench.facts.system_journal import SystemMaintenanceJournal
+from core.services.workbench.facts.system_journal import (
+    SystemMaintenanceJournal,
+    system_journal_directory,
+)
 from tests.workbench.system_maintenance_support import SystemTestAPI
 from web.bootstrap import factory, launcher_paths
 from web.bootstrap.workbench_system_restore_recovery import (
     RECOVERY,
     prepare_system_restore_startup,
-    system_journal_directory,
 )
 
 

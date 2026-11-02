@@ -45,7 +45,7 @@ class _OperationDispatchState:
         return getattr(self._state, name)
 
 
-def operation_dispatch_state(state, graph_state, op: OpForScheduleAlgo, batch: Batch) -> Any:
+def operation_dispatch_state(state, graph_state, op: OpForScheduleAlgo) -> Any:
     if graph_state is None or "end_time_by_op_id" not in graph_state:
         return state
     states = graph_state.setdefault("operation_dispatch_states", {})

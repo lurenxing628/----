@@ -23,7 +23,7 @@ def objects():
     return result
 
 
-def contract_issues(conn, *, structure: SchemaStructure):
+def contract_issues(structure: SchemaStructure):
     actual = structure.sql
     return [("missing_machine_capabilities:" if name not in actual else "invalid_machine_capabilities:") + name
             for name, sql in objects().items()

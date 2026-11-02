@@ -37,7 +37,7 @@ def _dispatch_selected(
         ctx,
         op=op,
         batch=batch,
-        state=operation_dispatch_state(state, graph_state, op, batches[batch_id]),
+        state=operation_dispatch_state(state, graph_state, op),
         base_time=state.base_time,
         end_dt_exclusive=end_dt_exclusive,
         machine_downtimes=machine_downtimes,

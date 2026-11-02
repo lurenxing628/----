@@ -1,26 +1,28 @@
 (function () {
   'use strict';
-  const A = window.CalibrationAdoptionAPI, T = window.APSWorkbenchTransport, KEY = 'aps_calibration_adoption_pending_v1', EVENT = KEY + '_changed';
-  function valid(value, checkReceipt = true) {
+  const A = window.CalibrationAdoptionAPI, C = window.CalibrationAPI, T = window.APSWorkbenchTransport, KEY = 'aps_calibration_adoption_pending_v1', EVENT = KEY + '_changed';
+  // 磁盘记录的唯一校验点：绑定按建议行规则、填写内容按采用表单规则、已采用的回执按回执规则各核一次。
+  function valid(value) {
     try {
       return value && value.version === 1 && A.key(value.request_key) && ['pending', 'rejected', 'committed'].includes(value.phase)
-        && A.equal(A.input(value.input, true), value.input) && A.equal(A.binding(value.baseline), value.baseline)
-        && (value.phase !== 'committed' || (checkReceipt ? !!A.receipt(value.receipt, value) : Boolean(value.receipt && typeof value.receipt === 'object')));
+        && A.equal(A.confirmation(A.input({ reason: value.input.reason, declared_operator: value.input.declared_operator })), value.input)
+        && C.validBinding(value.baseline) && A.equal(A.binding(value.baseline), value.baseline)
+        && (value.phase !== 'committed' || !!A.receipt(value.receipt, value));
     } catch (_) { return false; }
   }
   const { read, flush, save } = T.pendingStore({
-    key: KEY, event: EVENT, validate: valid, validateWrite: v => valid(v, false),
+    key: KEY, event: EVENT, validate: valid,
     readError: '无法读取上次采用操作的记录，暂时不能开始新的采用。',
     corruptError: '上次采用的操作记录已损坏。请不要再操作，联系维护人员；不能换个编号重新提交。',
     invalidError: '上次采用的操作记录不完整。请不要再操作，联系维护人员；不能换个编号重新提交。',
     conflictError: '上次操作已变化，没有覆盖其他页面的采用记录。',
-    invalidWriteError: '读到的采用结果不完整或来源不一致，没有确认采用。',
     writeError: '无法保存这次采用操作的记录，没有开始新的采用。'
   });
+  // preview 是 A.preview 校验过的可采用预检，previous 只会是 null 或本存储读到的被拒记录。
   function begin(preview, previous) {
     A.check(!previous || previous.phase === 'rejected' && previous.baseline.template_operation_ref === preview.suggestion.template_operation_ref, '上次操作的结果还没确认，不能开始新的采用。');
     return save({ version: 1, request_key: T.requestKey('calibration'),
-      phase: 'pending', baseline: A.binding(preview.suggestion), input: A.input({ ...preview.input, confirm: true }, true) }, previous);
+      phase: 'pending', baseline: A.binding(preview.suggestion), input: A.confirmation(preview.input) }, previous);
   }
   function storageMessage(e, current = e && e.saved) {
     if (current && current.phase === 'committed') return '已收到采用结果，但本机没能保存这次操作记录。';
@@ -100,13 +102,13 @@
       lock.current = true; setBusy(true); setPreview(null); setConsent(false); setError(''); setNotice('');
       const controller = new AbortController(); request.current = controller;
       try { const value = await A.preview(detail.suggestion, values, controller.signal);
-        if (mounted.current && !controller.signal.aborted && !source.current.stale && A.equal(detail, source.current.detail)) setPreview(value);
+        if (mounted.current && !controller.signal.aborted && !source.current.stale && A.equal(detail, source.current.detail) && A.equal(draft, source.current.draft)) setPreview(value);
       } catch (e) { if (mounted.current && !controller.signal.aborted) setError(e.message); }
       finally { lock.current = false; if (mounted.current) setBusy(false); }
     }
     async function submit() {
       if (lock.current || stale || storageError || !preview || !preview.validation.can_adopt || !consent || !detail || saved && saved.phase !== 'rejected'
-        || !A.equal(A.binding(detail.suggestion), A.binding(preview.suggestion)) || !A.equal(A.input(draft), preview.input)) return;
+        || !A.equal(A.binding(detail.suggestion), A.binding(preview.suggestion))) return;
       const initialActive = active.current;
       lock.current = true; setBusy(true); setError(''); setNotice('');
       try {
@@ -116,8 +118,7 @@
           if (!mounted.current || latest.stale || latest.storageError || !latest.detail || latest.preview !== preview || !latest.consent
             || !A.equal(active.current, initialActive)
             || active.current && (active.current.phase !== 'rejected' || active.current.baseline.template_operation_ref !== latest.detail.suggestion.template_operation_ref)
-            || !A.equal(A.binding(latest.detail.suggestion), A.binding(preview.suggestion))
-            || !A.equal(A.input(latest.draft), preview.input)) return;
+            || !A.equal(A.binding(latest.detail.suggestion), A.binding(preview.suggestion))) return;
           let original;
           try { original = begin(preview, active.current); } catch (e) { setStorageError(e.message); return; }
           active.current = original; source.current = { ...source.current, preview: null, consent: false }; setSaved(original); setPreview(null); setConsent(false);

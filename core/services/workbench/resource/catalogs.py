@@ -14,8 +14,6 @@ _KIND_NAMES = {"machine_group": "设备组", "shift_profile": "班次档"}
 
 class WorkbenchResourceCatalogService:
     def __init__(self, conn, kind, logger=None):
-        if kind not in ("machine_group", "shift_profile"):
-            raise ValueError("Unsupported resource catalog")
         self.conn, self.kind = conn, kind
         self.repo = WorkbenchResourceStateRepository(conn, logger=logger)
         self.identities = WorkbenchIdentityRepository(conn, logger=logger)

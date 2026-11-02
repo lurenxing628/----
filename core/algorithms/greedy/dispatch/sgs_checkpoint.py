@@ -22,7 +22,7 @@ from core.errors import ValidationError
 
 CHECKPOINT_FIELD = "decode_checkpoint"
 _PROGRESS_SETS = ("completed_or_fixed_op_ids", "blocked_op_ids", "ready_op_ids")
-_STATIC_CONTEXT_KEYS = ("enabled", "schedulable_op_ids", "fixed_op_ids", "fixed_op_sources_by_op_id",
+_STATIC_CONTEXT_KEYS = ("enabled", "schedulable_op_ids", "fixed_op_ids",
                         "predecessor_op_ids_by_op_id", "successor_op_ids_by_op_id", "sort_key_by_op_id",
                         "piece_scope", "score_enabled")
 
@@ -77,14 +77,6 @@ class DecodeCheckpointRequest:
             self.tail_reuse.arm(self.signature)
 
 
-def graph_key_order(graph_state: Dict[str, Any]) -> List[int]:
-    """Operations sorted by graph priority key; ties by op_id so the prefix check stays conservative."""
-    keys = graph_state["graph_priority_key_by_op_id"]
-    if not graph_state["score_enabled"] or not keys:
-        _invalid("解码断点只支持启用图评分键的图模式派工。", reason="decode_checkpoint_requires_graph_keys")
-    return sorted(keys, key=lambda op_id: (keys[op_id], op_id))
-
-
 class CheckpointPlan:
     """Per-decode bookkeeping for an armed request: pick sequence plus captures at the asked positions."""
 
@@ -94,14 +86,15 @@ class CheckpointPlan:
             _invalid("解码断点请求尚未绑定本次解码的输入签名。", reason="decode_checkpoint_not_armed")
         self.request = request
         self.signature = request.signature
+        keys = graph_state["graph_priority_key_by_op_id"]
+        if not graph_state["score_enabled"] or not keys:
+            _invalid("解码断点只支持启用图评分键的图模式派工。", reason="decode_checkpoint_requires_graph_keys")
         if request.tail_reuse is not None:
-            keys = graph_state["graph_priority_key_by_op_id"]
-            if not graph_state["score_enabled"] or not keys:
-                _invalid("解码断点只支持启用图评分键的图模式派工。", reason="decode_checkpoint_requires_graph_keys")
-            self.order: List[int] = []
+            self.order: Tuple[int, ...] = ()
             self.position_of: Dict[int, int] = {}
         else:
-            self.order = graph_key_order(graph_state)
+            # Admission already sorted the keys by (key, op_id); ties by op_id keep the prefix check conservative.
+            self.order = keys.order
             self.position_of = {op_id: index for index, op_id in enumerate(self.order)}
         self.picked: List[int] = []
         self.furthest = -1
@@ -122,7 +115,7 @@ class CheckpointPlan:
             return
         checkpoint = DecodeCheckpoint(
             position=position,
-            prefix_op_ids=tuple(self.order[: self.furthest + 1]),
+            prefix_op_ids=self.order[: self.furthest + 1],
             picked_op_ids=tuple(self.picked),
             signature=self.signature,
             state=state.clone(),
@@ -147,7 +140,8 @@ def snapshot_graph_progress(graph_state: Dict[str, Any]) -> Dict[str, Any]:
     progress: Dict[str, Any] = {name: set(graph_state[name]) for name in _PROGRESS_SETS}
     progress["remaining_predecessor_count_by_op_id"] = dict(graph_state["remaining_predecessor_count_by_op_id"])
     progress["schedulable_op_ids"] = frozenset(graph_state["op_by_id"])
-    progress["checkpoint_priority_keys"] = dict(graph_state["graph_priority_key_by_op_id"])
+    # Admitted keys never change, so the checkpoint keeps the decode's own key object.
+    progress["checkpoint_priority_keys"] = graph_state["graph_priority_key_by_op_id"]
     if "end_time_by_op_id" in graph_state:
         progress["end_time_by_op_id"] = dict(graph_state["end_time_by_op_id"])
     return progress
@@ -270,7 +264,6 @@ __all__ = [
     "DecodeCheckpointRequest",
     "decode_input_signature",
     "decode_output_contents",
-    "graph_key_order",
     "plan_decode_checkpoints",
     "resume_graph_progress",
     "snapshot_graph_progress",

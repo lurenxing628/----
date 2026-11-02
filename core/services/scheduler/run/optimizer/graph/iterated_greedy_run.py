@@ -22,7 +22,7 @@ class IteratedGreedyRun:
 
     def __init__(self, *, limits: IteratedGreedyLimits, state: Any,
                  parent_profile: Callable[[Optional[Dict[str, Any]]], Optional[GraphReadyWeightProfile]],
-                 pool: Any, evaluate: Callable[..., Dict[str, Any]], graph_context: Dict[str, Any],
+                 pool: Any, evaluate: Callable[..., Dict[str, Any]],
                  metrics_by_op_id: Dict[int, Dict[str, Any]], objective_name: str, start_dt: Any, seed: int, deadline: float,
                  clock: Callable[[], float], report_state: OptimizationSearchReportState,
                  decode_session: SharedDecodeSession) -> None:
@@ -32,7 +32,6 @@ class IteratedGreedyRun:
         self.pool = pool
         self.evaluate = evaluate
         self.decode_session = decode_session
-        self.graph_context = graph_context
         self.metrics_by_op_id = metrics_by_op_id
         self.start_dt = start_dt
         self.seed = int(seed)
@@ -87,8 +86,7 @@ class IteratedGreedyRun:
             limits=self.limits, parent=parent, profile=profile, pool=self.pool, evaluate=self.evaluate,
             metrics_by_op_id=self.metrics_by_op_id, start_dt=self.start_dt, seed=self.seed,
             deadline=self.deadline, clock=self.clock,
-            report_state=self.report_state, report=self.report,
-            graph_context=self.graph_context, decode_session=self.decode_session)
+            report_state=self.report_state, report=self.report, decode_session=self.decode_session)
         self.search.best = best
         self.search._start_reference()
 

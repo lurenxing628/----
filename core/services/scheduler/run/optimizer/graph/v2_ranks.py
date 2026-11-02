@@ -35,7 +35,7 @@ _BASIS_INVARIANT_RANK_FIELDS = frozenset({
 
 def metric_bonus(metric: Dict[str, Any], *, weights: Dict[str, float]) -> float:
     return float(
-        (weights["critical_path"] if metric.get("is_on_critical_path") else 0.0)
+        (weights["critical_path"] if metric["is_on_critical_path"] else 0.0)
         + float(metric["impact_count"]) * weights["successor_count"]
         + (float(metric["downstream_critical_minutes"]) / 60.0) * weights["downstream_work_hours"]
         + float(metric["bottleneck_machine_score"]) * weights["bottleneck_machine"]
@@ -52,12 +52,12 @@ def normalized_v2_metrics_by_op_id(
     """Rank-normalized metrics for one basis and jitter seed, built once into the owner's cache."""
     if not metrics_by_op_id:
         return {}
-    cache_key = (profile.feature_basis, int(profile.jitter_seed))
+    cache_key = (profile.feature_basis, profile.jitter_seed)
     base = normalized_metrics_cache.get(cache_key)
     if base is None:
-        base = {int(op_id): dict(metric) for op_id, metric in metrics_by_op_id.items()}
+        base = {op_id: dict(metric) for op_id, metric in metrics_by_op_id.items()}
         _attach_common_rank_cache(base, v2_common_rank_cache)
-        jitter_by_op_id = _jitter_by_op_id(tuple(base), int(profile.jitter_seed))
+        jitter_by_op_id = _jitter_by_op_id(tuple(base), profile.jitter_seed)
         for op_id, metric in base.items():
             metric["graph_ready_v2_jitter"] = jitter_by_op_id[op_id]
         normalized_metrics_cache[cache_key] = base
@@ -73,13 +73,12 @@ def normalized_v2_metrics_by_op_id(
 
 
 def build_v2_common_rank_cache(metrics_by_op_id: Dict[int, Dict[str, Any]]) -> Dict[str, Dict[int, float]]:
-    metrics = {int(op_id): metric for op_id, metric in metrics_by_op_id.items()}
     cache: Dict[str, Dict[int, float]] = {}
     for field in V2_COMMON_RANK_FIELDS:
-        values = {op_id: float(metric[field]) for op_id, metric in metrics.items()}
+        values = {op_id: float(metric[field]) for op_id, metric in metrics_by_op_id.items()}
         cache[field + "_rank01"] = _rank01_by_op_id(values)
-    if metrics and all(BASELINE_ORDERING_FIELD in row for row in metrics.values()):
-        baseline = {op_id: row[BASELINE_ORDERING_FIELD] for op_id, row in metrics.items()}
+    if metrics_by_op_id:
+        baseline = {op_id: row[BASELINE_ORDERING_FIELD] for op_id, row in metrics_by_op_id.items()}
         for field in V2_COMMON_RANK_FIELDS:
             rank_field = field + "_rank01"
             if rank_field in _BASIS_INVARIANT_RANK_FIELDS:

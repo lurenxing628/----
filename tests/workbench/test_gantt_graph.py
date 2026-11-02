@@ -6,7 +6,11 @@ from io import StringIO
 
 from core.models.workbench_plan_scope import PlanReadScope
 from core.models.workbench_run_candidate import RunCandidateReadScope
-from core.services.workbench.facts.gantt_graph import build_gantt_graph
+from core.services.workbench.facts.gantt_graph import (
+    build_gantt_graph,
+    project_scoped_gantt_graph,
+    unavailable_graph,
+)
 from core.services.workbench.plan.export import HEADERS, write_plan_export
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from core.services.workbench.run.candidates import WorkbenchRunCandidateQueryService
@@ -18,7 +22,7 @@ from tests.workbench.run_candidate_support import compute, public
 
 def candidate_workspace(case, candidate_ref, **scope):
     data, _ = WorkbenchRunCandidateQueryService(case.conn).workspace(
-        RunCandidateReadScope(candidate_ref, **scope))
+        RunCandidateReadScope(candidate_ref, **scope), bind_snapshot=lambda scope, state: state)
     public(data)
     return data
 
@@ -133,7 +137,11 @@ def test_candidate_and_adopted_graph_keep_full_frozen_route_across_range_and_bom
     assert "edges" not in invalidated
 
 
-def test_zero_duration_split_and_join_are_graph_nodes_after_adoption(trial_case):
+def test_zero_duration_split_and_join_are_graph_nodes_after_adoption(trial_case, monkeypatch):
+    from core.services.capacity.plan_calendar_io import CalendarFacts
+    from core.services.workbench.execution.actual_gantt import ActualGanttService
+    from core.services.workbench.execution.actual_gantt_scope import ActualGanttScope
+
     case = trial_case
     ids = piece_layout(case)
     case.conn.execute("UPDATE BatchOperations SET unit_hours=0 WHERE seq IN (20,40)")
@@ -167,6 +175,26 @@ def test_zero_duration_split_and_join_are_graph_nodes_after_adoption(trial_case)
     assert all(row["时间计算方式"] == "'含起点，不含结束时刻" for row in half_open)
     assert all(row["范围终点"] == "'" + plan["plan_span"]["end"] for row in full + half_open)
 
+    start_day = datetime.fromisoformat(plan["plan_span"]["start"]).date()
+    midnight_end = datetime.combine(start_day + timedelta(days=1), datetime.min.time()).isoformat()
+    calendar_ranges = []
+    original_calendar = CalendarFacts.calendar
+
+    def record_calendar(self, first_iso, last_iso, operators):
+        calendar_ranges.append((first_iso, last_iso))
+        return original_calendar(self, first_iso, last_iso, operators)
+
+    monkeypatch.setattr(CalendarFacts, "calendar", record_calendar)
+    plan_workspace(case, plan_ref, range_start=plan["plan_span"]["start"], range_end=midnight_end)
+    actual_service = ActualGanttService(case.conn)
+    with actual_service.read_snapshot():
+        actual_service.workspace(
+            ActualGanttScope(plan_ref, range_start=plan["plan_span"]["start"], range_end=midnight_end),
+            full_workspace=True,
+        )
+    expected_range = ((start_day - timedelta(days=1)).isoformat(), start_day.isoformat())
+    assert calendar_ranges == [expected_range, expected_range]
+
 
 def test_shared_graph_keeps_20k_nodes_all_predecessors_and_complete_critical_facts():
     start = datetime(2026, 1, 1, 8)
@@ -197,24 +225,47 @@ def test_shared_graph_keeps_20k_nodes_all_predecessors_and_complete_critical_fac
     assert all(edge["edge_type"] == "process" for edge in graph["critical_edges"])
 
 
-def test_plan_and_candidate_public_dtos_isolate_in_process_caches_on_mutation(trial_case):
+def test_plan_and_candidate_public_dtos_isolate_in_process_caches_on_mutation(trial_case, monkeypatch):
     from copy import deepcopy
+
+    import pytest
 
     from core.services.workbench.execution.actual_gantt import ActualGanttService
     from core.services.workbench.execution.actual_gantt_scope import ActualGanttScope
+    from core.services.workbench.facts import resource_intervals
     from core.services.workbench.facts.candidate_store import CandidateStore
+    from core.services.workbench.run import decision_source
     from core.services.workbench.run.candidate_baseline import (
         WorkbenchRunCandidateBaselineQueryService,
     )
     from core.services.workbench.run.decision_impact import operation_impacts
     from core.services.workbench.run.decision_preparation import DecisionPreparation
     from core.services.workbench.run.decision_source import DecisionSource
+    from data.repositories.workbench_run_repo import WorkbenchRunRepository
 
     case = trial_case
     _, run_ref, refs = piece_candidate(case)
     candidate_ref = refs[0]
 
-    cand_first, _ = WorkbenchRunCandidateQueryService(case.conn).workspace(RunCandidateReadScope(candidate_ref))
+    official_saved = DecisionSource(CandidateStore(case.conn), run_ref, comparison_mode="admission_official")
+    assert official_saved.official_changed is False
+    with monkeypatch.context() as official_reread_scope:
+        official_reread_scope.setattr(WorkbenchRunRepository, "dependencies_match", lambda _self, _expected: False)
+        official_reread_scope.setattr(
+            resource_intervals,
+            "task_interval",
+            lambda _row: pytest.fail("resource_cohort should reuse prepared reference task_intervals"),
+        )
+        official_reread_scope.setattr(
+            decision_source,
+            "task_interval",
+            lambda _row: pytest.fail("DecisionSource should reuse official_details task_intervals"),
+        )
+        official_reread = DecisionSource(CandidateStore(case.conn), run_ref, comparison_mode="admission_official")
+        assert official_reread.official_changed is True
+        assert official_reread.resource_cohort == official_saved.resource_cohort
+
+    cand_first, _ = WorkbenchRunCandidateQueryService(case.conn).workspace(RunCandidateReadScope(candidate_ref), bind_snapshot=lambda scope, state: state)
     cand_expected = deepcopy(cand_first)
     cand_first["candidate"]["representative_objectives"].append("polluted-objective")
     cand_first["candidate"]["evaluations"]["polluted"] = {"value": 999}
@@ -223,7 +274,7 @@ def test_plan_and_candidate_public_dtos_isolate_in_process_caches_on_mutation(tr
     cand_first["generation"]["algorithm"]["origin"]["polluted"] = True
     cand_first["generation"]["algorithm"]["target_objectives"].append("polluted-target")
 
-    cand_second, _ = WorkbenchRunCandidateQueryService(case.conn).workspace(RunCandidateReadScope(candidate_ref))
+    cand_second, _ = WorkbenchRunCandidateQueryService(case.conn).workspace(RunCandidateReadScope(candidate_ref), bind_snapshot=lambda scope, state: state)
     assert cand_second == cand_expected
 
     plan_ref = adopt_candidate(case, candidate_ref)["data"]["official_plan"]["plan_ref"]
@@ -245,7 +296,7 @@ def test_plan_and_candidate_public_dtos_isolate_in_process_caches_on_mutation(tr
 
     actual_one = ActualGanttService(case.conn)
     with actual_one.read_snapshot():
-        actual_first, _ = actual_one.workspace(ActualGanttScope(plan_ref))
+        actual_first, _ = actual_one.workspace(ActualGanttScope(plan_ref), full_workspace=True)
     actual_expected = deepcopy(actual_first)
     actual_first["gantt_graph"]["nodes"][0]["process_label"] = "POLLUTED"
     actual_first["gantt_graph"]["nodes"][0]["predecessor_operation_refs"].append("d" * 48)
@@ -255,7 +306,7 @@ def test_plan_and_candidate_public_dtos_isolate_in_process_caches_on_mutation(tr
 
     actual_two = ActualGanttService(case.conn)
     with actual_two.read_snapshot():
-        actual_second, _ = actual_two.workspace(ActualGanttScope(plan_ref))
+        actual_second, _ = actual_two.workspace(ActualGanttScope(plan_ref), full_workspace=True)
     assert actual_second == actual_expected
 
     service_three = WorkbenchPlanQueryService(case.conn)
@@ -263,11 +314,11 @@ def test_plan_and_candidate_public_dtos_isolate_in_process_caches_on_mutation(tr
         graph_third, _, _ = service_three.gantt_graph(PlanReadScope(plan_ref))
     assert graph_third == graph_expected
 
-    base_first, _ = WorkbenchRunCandidateBaselineQueryService(case.conn).baseline(RunCandidateReadScope(candidate_ref))
+    base_first, _ = WorkbenchRunCandidateBaselineQueryService(case.conn).baseline(RunCandidateReadScope(candidate_ref), bind_snapshot=lambda scope, state: state)
     base_expected = deepcopy(base_first)
     base_first["generation"]["input"]["batch_refs"].append("polluted")
     base_first["generation"]["input"]["polluted"] = True
-    base_second, _ = WorkbenchRunCandidateBaselineQueryService(case.conn).baseline(RunCandidateReadScope(candidate_ref))
+    base_second, _ = WorkbenchRunCandidateBaselineQueryService(case.conn).baseline(RunCandidateReadScope(candidate_ref), bind_snapshot=lambda scope, state: state)
     assert base_second == base_expected
 
     decision_one = DecisionSource(CandidateStore(case.conn), run_ref)
@@ -298,3 +349,12 @@ def test_plan_and_candidate_public_dtos_isolate_in_process_caches_on_mutation(tr
     impacts_with_issue[0]["constraints"]["reasons"].append({"code": "polluted"})
     assert decision_two.disposition[first_op_ref] == disposition_expected
     assert operation_impacts(decision_two, [first_op_ref]) == impacts_with_issue_expected
+
+    cached_unavailable = unavailable_graph("full_plan", "工序顺序数据不完整。")
+    scoped_unavailable = project_scoped_gantt_graph(cached_unavailable, {"B1"}, include_nodes=True)
+    scoped_unavailable["nodes"].append({"task_ref": "polluted"})
+    scoped_unavailable["critical_task_refs"].append("polluted")
+    scoped_unavailable["critical_edges"].append({"from_task_ref": "polluted"})
+    assert cached_unavailable["nodes"] == []
+    assert cached_unavailable["critical_task_refs"] == []
+    assert cached_unavailable["critical_edges"] == []

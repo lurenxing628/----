@@ -1,4 +1,4 @@
-"""Original-byte import planning and full-cohort exports; AJ validates all facts."""
+"""Import planning from the retained decoded file and full-cohort exports; AJ validates all facts."""
 
 import uuid
 from typing import Any, Dict, List, NamedTuple, Optional, Union
@@ -124,24 +124,21 @@ class FieldReportFileService:
                 self._preview_error(exc, rows, positions)
         rejected = sum(bool(row['errors']) for row in rows)
         summary = {'total': len(rows), 'blank': sum(row['result'] == 'blank' for row in rows), 'rejected': rejected,
-                   'changed': check['summary']['changed'] if check else 0, 'unchanged': check['summary']['unchanged'] if check else 0}
+                   'changed': check['changed'] if check else 0, 'unchanged': check['unchanged'] if check else 0}
         public = [{'row': row['row'], 'result': row['result'], 'errors': row['errors']} for row in rows]
         return {'rows': public, 'summary': summary, 'can_confirm': not rejected and bool(items), 'commit_policy': 'atomic',
-                'actual_source_ref': source_ref, 'items': items,
-                'snapshot': check['snapshot'] if check else None, 'scope': cohort['scope']}, preparation
+                'actual_source_ref': source_ref, 'scope': cohort['scope']}, preparation
 
     def _checked_rows(self, items, rows, positions):
         preparation = self.production.prepare_batch(items) if items else None
         checked = preparation.rows if preparation else []
         changed = len(preparation.appended) if preparation else 0
-        check = {'summary': {'changed': changed, 'unchanged': len(checked) - changed},
-                 'snapshot': preparation.snapshot if preparation else {}}
         mapped = dict(zip(positions, checked))
         for row in rows:
             if row['row'] in mapped:
                 item = mapped[row['row']]
                 row['result'] = item['result'] if item['result'] == 'unchanged' else item['action']
-        return check, preparation
+        return {'changed': changed, 'unchanged': len(checked) - changed}, preparation
 
     @staticmethod
     def _preview_error(exc, rows, positions):

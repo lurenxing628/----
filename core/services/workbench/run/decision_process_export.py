@@ -1,6 +1,5 @@
 """Export tables from the same projection of one run's saved shared process."""
 
-from core.services.scheduler.run.optimizer.shared_process import UNIFIED_PROCESS_VERSION
 from core.services.workbench.facts.unified_process import project_unified_process
 from core.shared.strict_json import canonical_json
 
@@ -90,14 +89,13 @@ def _unified_point(point, objective):
            for index, label in enumerate(_SCORE_UNITS)}}
 
 
-def _unified_records(exports):
-    """A run exports exactly its one saved shared process."""
-    (saved,) = exports
+def _unified_records(saved):
+    """Export one run's saved shared process."""
     records = {title: [] for title, _ in _UNIFIED_TABLE_FIELDS}
     current = saved["projected"]
     process = saved["process"]
     source_event, candidate = current["source_event"], current["candidate"]
-    records["共同计算"].append({"record_kind": "run_process_summary", "过程版本": UNIFIED_PROCESS_VERSION,
+    records["共同计算"].append({"record_kind": "run_process_summary", "过程版本": current["process_version"],
         "共同计时来源": process["clock"], "共同总耗时（毫秒）": current["summary"]["elapsed_ms"],
         "首次完整解（毫秒）": current["summary"]["first_complete_elapsed_ms"], "停止原因": current["stop_reason"],
         "主目标": process["primary_objective"], "目标方向目录": canonical_json(process["target_objectives"]),

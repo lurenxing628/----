@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithm_contracts.ordering import clean_resource_id, normalize_text_id
+from core.algorithm_contracts.resource_occupancy import ResourceOccupancy, project_internal_occupancies
 from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
 from core.algorithm_contracts.value_domains import INTERNAL
 
@@ -74,23 +75,23 @@ class ScheduleRunState:
     def prev_end(self, batch_id: str) -> datetime:
         return self.batch_progress.get(batch_id, self.base_time)
 
-    def advance_batch(self, batch_id: str, end_time: Optional[datetime]) -> None:
-        if not batch_id or not isinstance(end_time, datetime):
+    def advance_batch(self, batch_id: str, end_time: datetime) -> None:
+        if not batch_id:
             return
         self.batch_progress[batch_id] = max(self.batch_progress.get(batch_id, self.base_time), end_time)
 
-    def record_seed_result(self, result: ScheduleResult, *, segments: Any) -> None:
+    def record_seed_result(self, result: ScheduleResult, *, occupancies: Tuple[ResourceOccupancy, ...]) -> None:
         self.results.append(result)
         self.seed_count += 1
         self.advance_batch(normalize_text_id(result.batch_id), result.end_time)
-        self._record_internal_usage(result, seed_mode=True, segments=segments)
+        self._record_internal_usage(result, seed_mode=True, occupancies=occupancies)
         if result.source == INTERNAL:
             self._record_missing_seed_resources(result)
 
     def record_dispatch_success(self, result: ScheduleResult) -> None:
         self.results.append(result)
         self.advance_batch(normalize_text_id(result.batch_id), result.end_time)
-        self._record_internal_usage(result, seed_mode=False)
+        self._record_internal_usage(result, seed_mode=False, occupancies=project_internal_occupancies(result))
         self.last_op_type_by_machine.complete(result.op_id)
 
     def record_dispatch_failure(
@@ -191,34 +192,32 @@ class ScheduleRunState:
             )
         return warnings
 
-    def _record_internal_usage(self, result: ScheduleResult, *, seed_mode: bool, segments: Any = None) -> None:
-        if result.source != INTERNAL:
-            return
-        if not isinstance(result.start_time, datetime) or not isinstance(result.end_time, datetime):
-            return
-        # A multi-report seed occupies each segment's actual resources; the result row keeps only the first pair.
-        usages = segments or ((result.start_time, result.end_time, result.machine_id, result.operator_id),)
-        for start, end, machine, operator in usages:
-            machine_id = clean_resource_id(machine)
-            operator_id = clean_resource_id(operator)
+    def _record_internal_usage(
+        self,
+        result: ScheduleResult,
+        *,
+        seed_mode: bool,
+        occupancies: Tuple[ResourceOccupancy, ...],
+    ) -> None:
+        for occ in occupancies:
             accumulate_busy_hours(
                 machine_busy_hours=self.machine_busy_hours,
                 operator_busy_hours=self.operator_busy_hours,
-                machine_id=machine_id,
-                operator_id=operator_id,
-                start_time=start,
-                end_time=end,
+                machine_id=occ.machine_id,
+                operator_id=occ.operator_id,
+                start_time=occ.start_time,
+                end_time=occ.end_time,
             )
             update_machine_last_state(
                 last_end_by_machine=self.last_end_by_machine,
                 last_op_type_by_machine=self.last_op_type_by_machine,
-                machine_id=machine_id,
-                end_time=end,
+                machine_id=occ.machine_id,
+                end_time=occ.end_time,
                 op_type_name=result.op_type_name,
-                seed_mode=bool(seed_mode),
-                start_time=start,
-                op_id=result.op_id,
-                op_type_id=result.op_type_id,
+                seed_mode=seed_mode,
+                start_time=occ.start_time,
+                op_id=occ.op_id,
+                op_type_id=occ.op_type_id,
             )
 
     def _record_missing_seed_resources(self, result: ScheduleResult) -> None:

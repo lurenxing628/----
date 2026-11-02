@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
+from core.algorithm_contracts.resource_occupancy import project_internal_occupancies
 from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.models.batch import Batch
@@ -196,9 +197,12 @@ def case_environment(data, objective, config=None):
 
 
 def _payload(plan, env):
+    seed_results = [ScheduleResult(**row) for row in env.seed_results]
     metrics = compute_metrics(
         plan.results, env.batches, expected_operations=env.algo_ops_to_schedule,
-        seed_results=[ScheduleResult(**row) for row in env.seed_results], failure_details=plan.summary.failure_details,
+        seed_results=seed_results,
+        seed_occupancies_by_op_id={row.op_id: project_internal_occupancies(row) for row in seed_results},
+        failure_details=plan.summary.failure_details,
     )
     return {
         "quality_vectors": {objective: [float(plan.summary.failed_ops)] + list(objective_score(objective, metrics))

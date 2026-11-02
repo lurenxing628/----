@@ -121,7 +121,7 @@ def resource_objects() -> Dict[str, str]:
     return objects
 
 
-def workbench_resource_contract_issues(conn, *, structure: SchemaStructure) -> List[str]:
+def workbench_resource_contract_issues(structure: SchemaStructure) -> List[str]:
     actual = structure.sql
     return [("missing_workbench_resource: " if name not in actual else "bad_workbench_resource: ") + name
             for name, sql in resource_objects().items()

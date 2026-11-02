@@ -4,12 +4,8 @@ from core.services.workbench.execution.ledger import ExecutionLedgerService
 
 
 def load_execution(conn, operation_refs):
-    """Read all ledger inputs under the batch caller's single snapshot."""
-    if not conn.in_transaction:
-        raise RuntimeError("Batch execution inputs require a caller read transaction.")
-    ledger = ExecutionLedgerService(conn)
-    with ledger.read_snapshot():
-        return {"facts": ledger.load_many(operation_refs)}
+    """Read all ledger inputs inside the batch caller's read transaction."""
+    return {"facts": ExecutionLedgerService(conn).load_many(operation_refs)}
 
 
 def project_execution_snapshot(raw):

@@ -123,8 +123,6 @@ def _parse_row(number, values, cell_errors, fields, file_format):
 
 
 def read_material_file(content: bytes, file_format: str):
-    if type(content) is not bytes or file_format not in ("csv", "xlsx"):
-        raise _file_error("必须提供 CSV/XLSX 的原始文件字节。")
     state = {"sheets": 1}
     source = source_rows(content, file_format, state, error=_file_error, messages=_READ_MESSAGES)
     try:
@@ -173,15 +171,12 @@ def _check_export_text(value, field, number, file_format):
 
 
 def check_export_capacity(row_count, file_format):
-    if file_format not in ("csv", "xlsx"):
-        raise _file_error("物料导出仅支持 CSV 和 XLSX。", field="format")
     if file_format == "xlsx" and row_count + 1 > XLSX_MAX_ROWS:
         raise _file_error("行数超过 XLSX 单张工作表 1048576 行的上限（含表头），系统没有截断；请改导 CSV。", row_count + 1)
 
 
 def write_material_file(rows, file_format, *, template=False):
-    """Consume rows exactly once; only returned file bytes require full materialization."""
-    check_export_capacity(0, file_format)
+    """Consume rows once; caller checks XLSX export capacity before encoding."""
     descriptor = table_descriptor()
     filename = descriptor["file_stem"] + ("导入模板" if template else "清单")
     if file_format == "csv":
@@ -248,7 +243,6 @@ def _write_xlsx(rows, filename, template, descriptor):
             ws.column_dimensions[get_column_letter(index)].width = width
         ws.append(_xlsx_headers(ws, template, descriptor))
         for count, row in enumerate(rows, 1):
-            check_export_capacity(count, "xlsx")
             ws.append(_xlsx_row(ws, row, count + 1))
         ws.auto_filter.ref = "A1:H" + str(count + 1)
         add_enum_dropdowns(ws, descriptor, count, write_only=True)

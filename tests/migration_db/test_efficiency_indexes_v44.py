@@ -129,7 +129,7 @@ def test_declared_efficiency_indexes_contract_and_archive_projection(indexed_db)
     conn.commit()
 
     assert conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()[0] == CURRENT_SCHEMA_VERSION
-    assert contract_issues(conn, structure=SchemaStructure(conn)) == current_schema_contract_issues(
+    assert contract_issues(SchemaStructure(conn)) == current_schema_contract_issues(
         conn, schema_version=CURRENT_SCHEMA_VERSION, schema_sql=load_schema_sql()) == []
     indexes = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='index'")}
     assert set(ADDED) <= indexes

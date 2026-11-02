@@ -1,20 +1,19 @@
 """The admitted graph-key value shared by normalization and ready-set consumers."""
-from typing import FrozenSet, Optional, Tuple
+from typing import Dict, FrozenSet, Tuple
 
 
 class ValidatedGraphPriorityKeys(dict):
-    """Decode-owned normalized keys; admission already checked every number.
+    """Normalized keys admitted once against an exact operation-id set, with their static orders.
 
-    ``schedulable_ids`` is the exact operation-id set admission checked these keys
-    against: handing the same object back for an equal set needs no second admission.
-    ``preorder`` is the optimizer's memo of the keys' weak order, None until the
-    holder first computes it. ``key_width`` is the common key length admission
-    measured, 0 when the lengths differ or there are no keys. Keys, the id set and
-    the width never change after admission.
+    ``schedulable_ids`` is the id set admission checked: handing the same object back for that set
+    needs no second admission. Admission fixes one common key width, so ``order`` (ids sorted by
+    key, then op_id) and ``preorder`` (that order grouped into equal-key classes) preserve every SGS
+    comparison. Keys, the id set and both orders never change after admission.
     """
 
-    def __init__(self, schedulable_ids: FrozenSet[int]) -> None:
-        super().__init__()
+    def __init__(self, keys: Dict[int, Tuple[float, ...]], *, schedulable_ids: FrozenSet[int],
+                 order: Tuple[int, ...], preorder: Tuple[Tuple[int, ...], ...]) -> None:
+        super().__init__(keys)
         self.schedulable_ids = schedulable_ids
-        self.preorder: Optional[Tuple[Tuple[int, ...], ...]] = None
-        self.key_width = 0
+        self.order = order
+        self.preorder = preorder

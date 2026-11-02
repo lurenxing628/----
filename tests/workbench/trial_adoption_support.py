@@ -6,6 +6,7 @@ from collections import Counter
 from flask import Blueprint, g
 
 from core.services.workbench.trial.adoption import WorkbenchTrialAdoptionService
+from tests.workbench.run_jobs_support import data_context
 from tests.workbench.trial_support import change, connect, create
 from tests.workbench.trial_support import service as trial_service
 from tests.workbench.trial_support import trial_case as trial_case  # noqa: F401
@@ -19,7 +20,8 @@ BASE = "/api/workbench/v1/trial/scenarios/"
 
 def service(conn, enabled=True):
     return WorkbenchTrialAdoptionService(conn, integration_enabled=enabled,
-        context_factory=issue_write_context, context_validator=validate_write_context)
+        context_factory=issue_write_context, context_validator=validate_write_context,
+        data_context=data_context(conn))
 
 
 def saved_scenario(case, value=None, *, changed=True, suffix="0001"):

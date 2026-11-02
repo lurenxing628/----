@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List
 
 from core.infrastructure.schema_structure import SchemaStructure
 from core.infrastructure.sqlite_udf import NON_INPUT_RECEIPT_ACTIONS, NON_INPUT_RECEIPT_PREFIXES
@@ -23,16 +23,10 @@ def _quote(name: str) -> str:
 
 
 class WorkbenchPreflightFactsRepository(BaseRepository):
-    def __init__(self, conn, logger=None, *, present_tables=None, structure: Optional[SchemaStructure] = None):
+    def __init__(self, conn, logger=None, *, structure: SchemaStructure):
         super().__init__(conn, logger)
-        self.structure = structure if structure is not None else SchemaStructure(conn)
-        self._present: Optional[Set[str]] = set(present_tables) if present_tables is not None else None
+        self.structure = structure
         self.converters = {}
-
-    def _present_tables(self) -> Set[str]:
-        if self._present is None:
-            self._present = {name for name, (kind, _table, _sql) in self.structure.objects.items() if kind == "table"}
-        return self._present
 
     def preflight_tables(self, capture) -> Dict[str, List[Dict[str, Any]]]:
         """按 PREFLIGHT_TABLES 顺序整表读取（rowid 序），返回 {表名: [行 dict]}。"""
@@ -55,7 +49,7 @@ class WorkbenchPreflightFactsRepository(BaseRepository):
 
     def capture_table(self, name):
         """Capture actual columns and original storage values once in rowid order."""
-        if name not in self._present_tables():
+        if not self.structure.has_table(name):
             raise ValueError("unknown table: " + repr(name))
         info = self.structure.table_info(name)
         columns, projection = raw_projection(name, info)

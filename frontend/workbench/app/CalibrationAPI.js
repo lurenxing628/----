@@ -7,6 +7,8 @@
   const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   const count = value => Number.isInteger(value) && value >= 0;
   const number = value => value === null || typeof value === 'number' && Number.isFinite(value);
+  // 定额与绝对偏差：空或有限非负数；负值是数据损坏，直接拒绝。
+  const nonnegative = value => value === null || typeof value === 'number' && Number.isFinite(value) && value >= 0;
   function failure(message, code = null) { const error = new Error(message); error.committed = false; error.code = code; error.fields = []; return error; }
   function input(value = {}) {
     if (!object(value) || Object.keys(value).some(key => !(key in defaults) && key !== 'snapshot_ref')) throw failure('筛选条件不受支持，未切换到其他范围。');
@@ -38,16 +40,28 @@
     if (!ref(value) || !wanted.snapshot_ref) throw failure('所选记录或数据版本缺失。');
     return _validate(await window.APSWorkbenchTransport.read(base + '/' + value, encode(wanted), { signal }), wanted, value);
   }
-  function validRow(row, meta) {
-    return object(row) && ref(row.suggestion_ref) && row.suggestion_ref === row.template_operation_ref && row.operation_ref === row.suggestion_ref
-      && ref(row.part_ref) && ['part_no', 'part_name', 'operation_label', 'template_snapshot', 'method_version', 'generated_at'].every(key => typeof row[key] === 'string')
-      && Number.isInteger(row.sequence) && Number.isInteger(row.template_revision) && row.template_revision > 0
-      && ['old_unit_hours', 'suggested_unit_hours', 'deviation_percent', 'absolute_deviation_percent'].every(key => number(row[key]))
+  // 建议行里被模板采用绑定的事实：列表、明细、采用预检与本机采用记录都按这一条规则校验，
+  // 校验过的行由 CalibrationAdoptionAPI.binding 直接取字段。后端每行都给全这些键（calibration/method.py build_suggestion）。
+  const bindingFields = ['template_operation_ref', 'template_revision', 'template_snapshot', 'part_ref', 'part_no', 'part_name', 'sequence', 'operation_label', 'source',
+    'old_unit_hours', 'suggested_unit_hours', 'sample_count', 'eligible_sample_count', 'candidate_count', 'excluded_count', 'sample_refs', 'sample_revisions', 'exclusion_reasons', 'method_version'];
+  const filled = value => typeof value === 'string' && value.length > 0;
+  function validBinding(row) {
+    return object(row) && bindingFields.every(key => Object.prototype.hasOwnProperty.call(row, key)) && ref(row.template_operation_ref) && ref(row.part_ref)
+      && Number.isInteger(row.template_revision) && row.template_revision > 0 && filled(row.template_snapshot) && filled(row.method_version)
+      && ['part_no', 'part_name', 'operation_label'].every(key => typeof row[key] === 'string') && Number.isInteger(row.sequence)
+      && nonnegative(row.old_unit_hours) && nonnegative(row.suggested_unit_hours)
       && ['sample_count', 'eligible_sample_count', 'candidate_count', 'excluded_count'].every(key => count(row[key]))
       && row.sample_count <= 20 && row.sample_count <= row.eligible_sample_count && row.eligible_sample_count <= row.candidate_count
       && row.excluded_count === row.candidate_count - row.sample_count && Array.isArray(row.sample_refs) && row.sample_refs.length === row.sample_count
-      && row.sample_refs.every(ref) && new Set(row.sample_refs).size === row.sample_count && Array.isArray(row.sample_revisions) && row.sample_revisions.length === row.sample_count
-      && Array.isArray(row.exclusion_reasons) && Array.isArray(row.blocked_reasons) && object(row.capabilities)
+      && row.sample_refs.every(ref) && new Set(row.sample_refs).size === row.sample_count && Array.isArray(row.sample_revisions)
+      && row.sample_revisions.length === row.sample_count && row.sample_revisions.every((revision, index) => object(revision) && revision.sample_ref === row.sample_refs[index]
+        && filled(revision.sample_revision) && revision.template_revision === row.template_revision && Array.isArray(revision.report_revision_refs) && revision.report_revision_refs.every(ref))
+      && Array.isArray(row.exclusion_reasons);
+  }
+  function validRow(row, meta) {
+    return validBinding(row) && ref(row.suggestion_ref) && row.suggestion_ref === row.template_operation_ref && row.operation_ref === row.suggestion_ref
+      && typeof row.generated_at === 'string' && number(row.deviation_percent) && nonnegative(row.absolute_deviation_percent)
+      && Array.isArray(row.blocked_reasons) && object(row.capabilities)
       && typeof row.over_20_percent === 'boolean' && ['relative', 'old_zero', 'old_unknown', 'suggestion_unavailable', 'not_representable'].includes(row.deviation_basis)
       && ['insufficient_data', 'suggested'].includes(row.status) && (row.status === 'insufficient_data') === (row.suggested_unit_hours === null)
       && (row.sample_count >= 5 || row.suggested_unit_hours === null) && row.snapshot_ref === meta.snapshot_ref && row.as_of === meta.as_of;
@@ -129,7 +143,7 @@
     const { scope, column, ...query } = request;
     return window.APSWorkbenchTransport.read(base + (selection ? '/facet-selection/' : '/facets/') + column, { ...query, scope: JSON.stringify(scope) }, { signal });
   }
-  window.CalibrationAPI = { readView, detail, download, input, initial, sorts, exportReason, failure, facetScope,
+  window.CalibrationAPI = { readView, detail, download, input, initial, sorts, exportReason, failure, facetScope, bindingFields, validBinding,
     facets: (kind, request, signal) => facet(kind, request, signal, false),
     facetSelection: (kind, request, signal) => facet(kind, request, signal, true) };
 })();

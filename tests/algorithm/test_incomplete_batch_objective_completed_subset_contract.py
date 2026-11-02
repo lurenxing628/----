@@ -16,12 +16,15 @@ from unittest.mock import patch
 
 import pytest
 
+from core.algorithm_contracts.resource_occupancy import project_internal_occupancies
+from core.algorithm_contracts.schedule_point_evidence import PointSeedResult, SchedulePointEvidence
 from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithm_contracts.types import ScheduleResult
 from core.algorithms import evaluation_completion
 from core.algorithms.evaluation import compute_metrics, objective_score, prepare_evaluation_context
 from core.algorithms.evaluation_completion import UNKNOWN_OBJECTIVE_VALUE
 from core.algorithms.greedy.scheduler import GreedyScheduler
+from core.algorithms.greedy.seed import with_seed_resource_segments
 from core.models.objective import objective_metric_keys
 from tests._support.algo_operations import make_algo_op, make_batch
 from tests._support.optimizer_graph_ready_benchmark import ContinuousCalendar as _ContinuousCalendar
@@ -55,7 +58,7 @@ def _explained(*, b2_hours):
     """B1 fails with evidence; B2 completes ``b2_hours`` after the start; B3 completes on time."""
     results = [_result(2, "B2", hours=b2_hours), _result(3, "B3", hours=1)]
     return compute_metrics(results, _batches(B1="critical", B2="normal", B3="urgent"), expected_operations=OPERATIONS,
-                           seed_results=[], failure_details=[_failure(1, "B1")])
+                           seed_results=[], seed_occupancies_by_op_id={}, failure_details=[_failure(1, "B1")])
 
 
 @pytest.mark.parametrize("objective", OBJECTIVES)
@@ -86,7 +89,7 @@ def test_equal_failed_ops_candidates_order_by_their_completed_batches_instead_of
 def test_explained_incompleteness_never_outranks_a_complete_candidate_behind_failed_ops():
     complete = compute_metrics([_result(1, "B1", hours=1), _result(2, "B2", hours=90), _result(3, "B3", hours=1)],
                                _batches(B1="critical", B2="normal", B3="urgent"), expected_operations=OPERATIONS,
-                               failure_details=[])
+                               seed_occupancies_by_op_id={}, failure_details=[])
     assert complete.completion.objective_defined
     assert complete.completion.objective_score_policy == "original"
     assert complete.to_dict()["completion"]["objective_scope"] == "all_batches"
@@ -99,17 +102,19 @@ def test_explained_incompleteness_never_outranks_a_complete_candidate_behind_fai
 def test_missing_operations_without_evidence_stay_unknown(objective):
     unknown = (UNKNOWN_OBJECTIVE_VALUE,) * len(objective_metric_keys(objective))
     no_evidence = compute_metrics([_result(2, "B2", hours=1), _result(3, "B3", hours=1)], _batches(B1="normal", B2="normal", B3="normal"),
-                                  expected_operations=OPERATIONS, seed_results=[], failure_details=[])
+                                  expected_operations=OPERATIONS, seed_results=[], seed_occupancies_by_op_id={}, failure_details=[])
     assert objective_score(objective, no_evidence) == unknown
     assert no_evidence.to_dict()["completion"]["objective_score_policy"] == "unknown_all_components"
     assert no_evidence.to_dict()["completion"]["unknown_objective_value"] == sys.float_info.max
     partly = compute_metrics([_result(3, "B3", hours=1)], _batches(B1="normal", B2="normal", B3="normal"),
-                             expected_operations=OPERATIONS, seed_results=[], failure_details=[_failure(1, "B1")])
+                             expected_operations=OPERATIONS, seed_results=[], seed_occupancies_by_op_id={},
+                             failure_details=[_failure(1, "B1")])
     assert objective_score(objective, partly) == unknown
     assert partly.to_dict()["completion"]["objective_scope"] == "unknown"
     unexpected = compute_metrics([_result(2, "B2", hours=1), _result(3, "B3", hours=1), _result(9, "B9", hours=1)],
                                  _batches(B1="normal", B2="normal", B3="normal"),
-                                 expected_operations=OPERATIONS, seed_results=[], failure_details=[_failure(1, "B1")])
+                                 expected_operations=OPERATIONS, seed_results=[], seed_occupancies_by_op_id={},
+                                 failure_details=[_failure(1, "B1")])
     assert objective_score(objective, unexpected) == unknown
 
 
@@ -129,7 +134,7 @@ def test_real_scheduler_window_failure_is_explained_and_scores_behind_failed_ops
     results, summary = decoded.results, decoded.summary
     assert summary.failed_ops == 1
     metrics = compute_metrics(results, batches, expected_operations=operations, seed_results=[],
-                              failure_details=summary.failure_details)
+                              seed_occupancies_by_op_id={}, failure_details=summary.failure_details)
     assert metrics.completion.explained
     assert metrics.completion.incomplete_work_weight == 2.0
     score = (float(summary.failed_ops),) + objective_score("min_tardiness", metrics)
@@ -153,12 +158,14 @@ def test_prepared_evaluation_keeps_completion_dynamic_and_prepares_static_facts_
     operations = [_op(1, "B1"), _op(2, "B1"), _op(3, "B2")]
     batches = _batches(B1="critical", B2="normal", B3="urgent")
     seed = _result(4, "B3", hours=0)
+    seed_occupancies = {seed.op_id: project_internal_occupancies(seed)}
     complete = [_result(1, "B1", hours=0), _result(2, "B1", hours=1), _result(3, "B2", hours=26), seed]
     partial = [complete[0], complete[2], seed]
     failures = [{"op_id": 2, "batch_id": "B1"}]
     scenarios = [(complete, []), (partial, []), (partial, failures),
                  (partial + [_result(9, "B9", hours=1)], failures)]
     expected_metrics = [compute_metrics(results, batches, expected_operations=operations, seed_results=[seed],
+                                       seed_occupancies_by_op_id=seed_occupancies,
                                        failure_details=details).to_dict() for results, details in scenarios]
     with patch.object(evaluation_completion, "_prepare_expected_keys", wraps=evaluation_completion._prepare_expected_keys) as expected_keys, \
             patch.object(evaluation_completion, "normalize_priority", wraps=evaluation_completion.normalize_priority) as priorities, \
@@ -166,7 +173,9 @@ def test_prepared_evaluation_keeps_completion_dynamic_and_prepares_static_facts_
             patch.object(evaluation_completion, "due_exclusive", wraps=evaluation_completion.due_exclusive) as due_limits, \
             patch.object(evaluation_completion, "_failure_batches", wraps=evaluation_completion._failure_batches) as failure_batches:
         prepared = prepare_evaluation_context(batches=batches, expected_operations=operations, seed_results=[seed])
-        metrics = [compute_metrics(results, batches, expected_operations=operations, failure_details=details, prepared=prepared)
+        metrics = [compute_metrics(results, batches, expected_operations=operations,
+                                   seed_occupancies_by_op_id=seed_occupancies,
+                                   failure_details=details, prepared=prepared)
                    for results, details in scenarios]
         assert [item.to_dict() for item in metrics] == expected_metrics
         assert (expected_keys.call_count, priorities.call_count, due_states.call_count, due_limits.call_count) == (1, 3, 3, 3)
@@ -186,3 +195,100 @@ def test_public_projection_carries_the_completed_subset_scope_without_samples():
     assert projected["objective_scope"] == "completed_batches_only"
     assert projected["incomplete_work_weight"] == 3.0
     assert "B1" not in json.dumps(projected)
+
+
+def test_production_decode_point_events_preserve_makespan_without_inflating_resource_occupancy():
+    late_point_dt = START + timedelta(hours=9)
+    operations = [
+        make_algo_op(
+            id=1, op_code="OP1", batch_id="B1", seq=1, source="internal",
+            setup_hours=1.0, unit_hours=0.0, machine_id="M1", operator_id="O1",
+            op_type_id="A", op_type_name="TypeA",
+        ),
+        make_algo_op(
+            id=2, op_code="OP2", batch_id="B2", seq=1, source="internal",
+            setup_hours=0.0, unit_hours=0.0, machine_id="M2", operator_id="O2",
+            op_type_id="B", op_type_name="TypeB",
+        ),
+    ]
+    late_seed_row = ScheduleResult(
+        op_id=3, op_code="OP3", batch_id="B3", seq=1,
+        machine_id="M3", operator_id="O3",
+        start_time=late_point_dt, end_time=late_point_dt,
+        source="internal", op_type_id="C", op_type_name="TypeC",
+    )
+    late_point_seed = PointSeedResult(
+        late_seed_row,
+        SchedulePointEvidence(
+            op_id=3, machine_id="M3", operator_id="O3", at=late_point_dt,
+            setup_hours=0.0, unit_hours=0.0, quantity=1,
+        ),
+    )
+    batches = _batches(B1="normal", B2="normal", B3="normal")
+    scheduler = GreedyScheduler(
+        calendar_service=_ContinuousCalendar(),
+        config_service=config_snapshot(dispatch_mode="sgs", algo_mode="greedy", time_budget_seconds=1),
+    )
+    decoded = production_decode(
+        scheduler, operations=operations, batches=batches, seed_results=[late_point_seed],
+        strategy=SortStrategy.PRIORITY_FIRST, start_dt=START, dispatch_mode="sgs",
+    )
+    assert decoded.summary.failed_ops == 0
+    metrics = decoded.metrics
+    assert metrics.completion.objective_defined is True
+    assert metrics.completion.expected_operation_count == 3
+    assert metrics.machine_used_count == 1
+    assert metrics.operator_used_count == 1
+    assert metrics.machine_busy_hours_total == 1.0
+    assert metrics.operator_busy_hours_total == 1.0
+    assert metrics.internal_horizon_hours == 1.0
+    assert metrics.makespan_internal_hours == 1.0
+    assert metrics.machine_util_avg == 1.0
+    assert metrics.operator_util_avg == 1.0
+    assert metrics.machine_load_cv == 0.0
+    assert metrics.operator_load_cv == 0.0
+    assert metrics.makespan_hours == 9.0
+
+
+def test_production_decode_multi_segment_seed_attributes_actual_resources_and_changeovers():
+    seed_base = ScheduleResult(
+        op_id=1, op_code="OP1", batch_id="B1", seq=1,
+        machine_id="M1", operator_id="O1",
+        start_time=START, end_time=START + timedelta(hours=3),
+        source="internal", op_type_id="A", op_type_name="TypeA",
+    )
+    seed = with_seed_resource_segments(
+        seed_base,
+        [
+            (START, START + timedelta(hours=1), "M1", "O1"),
+            (START + timedelta(hours=1), START + timedelta(hours=3), "M2", "O2"),
+        ],
+    )
+    op2 = make_algo_op(
+        id=2, op_code="OP2", batch_id="B2", seq=1, source="internal",
+        setup_hours=1.0, unit_hours=0.0, machine_id="M2", operator_id="O2",
+        op_type_id="B", op_type_name="TypeB",
+    )
+    batches = _batches(B1="normal", B2="normal")
+    scheduler = GreedyScheduler(
+        calendar_service=_ContinuousCalendar(),
+        config_service=config_snapshot(dispatch_mode="sgs", algo_mode="greedy", time_budget_seconds=1),
+    )
+    decoded = production_decode(
+        scheduler, operations=[op2], batches=batches, seed_results=[seed],
+        strategy=SortStrategy.PRIORITY_FIRST, start_dt=START, dispatch_mode="sgs",
+        objective_name="min_changeover",
+    )
+    assert decoded.summary.failed_ops == 0
+    rows_by_op = {row.op_id: row for row in decoded.results}
+    assert (rows_by_op[2].machine_id, rows_by_op[2].operator_id) == ("M2", "O2")
+    assert (rows_by_op[2].start_time, rows_by_op[2].end_time) == (START, START + timedelta(hours=1))
+    metrics = decoded.metrics
+    assert metrics.completion.objective_defined is True
+    assert metrics.changeover_count == 1
+    assert metrics.machine_used_count == 2
+    assert metrics.operator_used_count == 2
+    assert metrics.machine_busy_hours_total == 4.0
+    assert metrics.operator_busy_hours_total == 4.0
+    assert metrics.machine_load_cv == 0.5
+    assert objective_score("min_changeover", metrics)[0] == 1.0

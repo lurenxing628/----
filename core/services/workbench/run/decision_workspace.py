@@ -1,29 +1,25 @@
 """Read the admission's original official timeline for comparison drill-down."""
 
-from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.workbench_run_candidate import reject
-from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_tasks import operation_labels, task_span
 from core.services.workbench.facts.delivery_projection import delivery_summary
 from core.services.workbench.facts.gantt_graph import candidate_gantt_graph, unavailable_graph
 from core.shared.strict_json import clone_json
 
 from .candidate_metrics import scoped_rows
-from .decision_source import DecisionSource
+from .decision_session import decision_read
 
 
-def read_reference_workspace(conn, run_ref, *, selected_candidate_ref=None, comparison_mode="admission_official",
-                             reference_candidate_ref=None, range_start=None, range_end=None, resource_view="selected_batches", batch_ref=None):
+def read_reference_workspace(conn, run_ref, *, bind_snapshot, selected_candidate_ref=None,
+                             comparison_mode="admission_official", batch_ref=None, **query):
     if selected_candidate_ref is None or comparison_mode != "admission_official":
         reject("invalid_input", "受理时正式时间轴需要指定所选候选和正式基准模式。", 422)
-    store = CandidateStore(conn)
-    with store.snapshot(), read_evidence_scope(conn):
-        source = DecisionSource(store, run_ref, selected_candidate_ref=selected_candidate_ref, comparison_mode=comparison_mode,
-                                reference_candidate_ref=reference_candidate_ref, range_start=range_start, range_end=range_end, resource_view=resource_view)
+    with decision_read(conn, run_ref, selected_candidate_ref=selected_candidate_ref, comparison_mode=comparison_mode,
+                       **query) as source:
         if source.baseline["state"] != "available":
             reject("entity_not_found", "这次排产受理时没有正式计划，所选候选仍可查看。", 404)
-        data = _reference_workspace(source, batch_ref)
-        return data, source.state()
+        snapshot = bind_snapshot({"kind": "run-decision-reference", **source.scope, "batch_ref": batch_ref}, source.state())
+        return _reference_workspace(source, batch_ref), snapshot
 
 
 def _reference_workspace(source, batch_ref):
@@ -70,13 +66,30 @@ def _reference_workspace(source, batch_ref):
     deliveries = [row for row in deliveries if batch_ref is None or row["batch_ref"] == batch_ref]
     summary = delivery_summary(deliveries)
     timed = [row for row in all_tasks if row["start"] is not None and row["end"] is not None]
-    if len(arranged) == len(all_tasks) and len(timed) == len(all_tasks) and all(row["interval_comparable"] for row in timed):
-        raw = [{"operation_ref": row["operation_ref"], "payload": {
-            "machine_id": (row["machine"] or {}).get("ref"), "operator_id": (row["operator"] or {}).get("ref")}} for row in all_tasks]
-        graph = candidate_gantt_graph(all_tasks, source.facts, raw, task_intervals=source.task_intervals("reference"))
-        graph["scope"] = "admission_official"
-    else:
+    if len(arranged) != len(all_tasks) or len(timed) != len(all_tasks) or not all(row["interval_comparable"] for row in timed):
         graph = unavailable_graph("admission_official", "正式归档包含多段安排或时间缺项，时间条保留各段事实。")
+    elif any(
+        row["start"] != row["end"] and row[kind] is not None and row[kind]["ref"] is None
+        for row in all_tasks
+        for kind in ("machine", "operator")
+    ):
+        graph = unavailable_graph("admission_official", "正式归档缺少原采用或受理时的永久资源身份，时间条保留各段事实。")
+    else:
+        resource_keys = {
+            row["row_ref"]: (
+                None if row["machine"] is None else row["machine"]["ref"],
+                None if row["operator"] is None else row["operator"]["ref"],
+            )
+            for row in all_tasks
+        }
+        graph = candidate_gantt_graph(
+            all_tasks,
+            source.facts,
+            resource_keys,
+            scope="admission_official",
+            unavailable_reason="正式归档未保存完整的工艺前后关系，暂时无法显示关联线和关键链。",
+            task_intervals=source.task_intervals("reference"),
+        )
     capabilities = {"view": True, "adopt": False, "edit_draft": False, "report_actual": False, "export": False}
     gaps = [gap for row in tasks for gap in row["data_gaps"]]
     candidate = {"candidate_ref": source.selected_ref, "run_ref": source.run["run_ref"], "label": source.baseline["label"],

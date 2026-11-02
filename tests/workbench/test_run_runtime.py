@@ -4,8 +4,8 @@ import json
 import threading
 from unittest.mock import Mock
 
+from core.services.workbench.run import jobs as run_jobs
 from core.services.workbench.run import worker as run_worker
-from core.services.workbench.run.jobs import WorkbenchRunService
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.run_jobs_support import job_case as _job_case  # noqa: F401
 from tests.workbench.run_runtime_support import BASE, intent, paused_compute, wait_runtime_idle
@@ -102,18 +102,13 @@ def test_schedule_lock_wait_skips_connections_and_reads_until_release_or_stop(ow
 
     lock = ControlledLock()
     connect = Mock(wraps=run_runtime.get_connection)
-    read = Mock(wraps=WorkbenchRunService.get_head)
+    read = Mock(wraps=run_jobs.read_run_head)
     execute = Mock(wraps=WorkbenchRunWorker.execute)
     verify = Mock(wraps=runtime._verify)
     monkeypatch.setattr(run_runtime, "RUN_SCHEDULE_LOCK", lock)
     monkeypatch.setattr(run_worker, "RUN_SCHEDULE_LOCK", lock)
     monkeypatch.setattr(run_runtime, "get_connection", connect)
-    monkeypatch.setattr(WorkbenchRunService, "get_head", lambda service, run_ref: read(service, run_ref))
-    monkeypatch.setattr(
-        WorkbenchRunService,
-        "get",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("runtime._execute should use get_head, not get")),
-    )
+    monkeypatch.setattr(run_jobs, "read_run_head", read)
     monkeypatch.setattr(WorkbenchRunWorker, "execute", lambda worker, run_ref, **kwargs: execute(worker, run_ref, **kwargs))
     monkeypatch.setattr(runtime, "_verify", verify)
     errors = []

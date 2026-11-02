@@ -26,7 +26,7 @@ def test_route_file_shares_one_current_supplier_catalog(stage_conn, monkeypatch,
             for code in ("DEFAULT-01", "DEFAULT-02")]
     content = encode_process_file("route", rows, "csv").content
     service = WorkbenchProcessFileService(conn)
-    preview, _ = service.preview_import("route", content, file_format="csv")
+    preview, _ = service.preview_import("route", content, file_format="csv", mode="upsert", target_ref=None)
     assert all(not row["errors"] for row in preview.as_dict()["rows"]), preview.as_dict()["rows"]
     reads, original = [], file_route.default_suppliers
 
@@ -36,7 +36,7 @@ def test_route_file_shares_one_current_supplier_catalog(stage_conn, monkeypatch,
 
     monkeypatch.setattr(file_route, "default_suppliers", catalog)
     with TransactionManager(conn).transaction(begin_immediate=True):
-        outcome = service.confirm_import(preview, content, discard_group_refs=[], confirm_zero_unit_hours=False)
+        outcome = service.confirm_import(preview, discard_group_refs=[], confirm_zero_unit_hours=False)
     assert outcome.result == "committed" and len(reads) == 1
     groups = conn.execute("SELECT part_no,start_seq,end_seq,total_days FROM ExternalGroups WHERE part_no LIKE 'DEFAULT-%' ORDER BY part_no").fetchall()
     assert [tuple(row) for row in groups] == [("DEFAULT-01", 10, 20, 4.5), ("DEFAULT-02", 10, 20, 4.5)]

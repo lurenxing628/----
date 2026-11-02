@@ -33,6 +33,14 @@ const reading = query === null ? window.DashboardContract.list({})
 reading.then(value => process.stdout.write(JSON.stringify(value.data)))
   .catch(error => { console.error(error); process.exitCode = 1; });
 """
+PLAN_ACCEPT = r"""
+const fs = require('node:fs'), vm = require('node:vm');
+const contexts = JSON.parse(fs.readFileSync(0, 'utf8')), window = {}, context = vm.createContext({window});
+for (const name of ['resource-contract.js', 'PlanNavigation.js']) {
+  vm.runInContext(fs.readFileSync('frontend/workbench/app/' + name, 'utf8'), context);
+}
+contexts.forEach(value => window.APSPlanNavigation.accept(value));
+"""
 
 
 def frontend_result(response, query=None):
@@ -82,6 +90,37 @@ def test_legacy_internal_keeps_analysis_downtime_and_execution_readable(dashboar
     with pytest.raises(WorkbenchCommandRejected) as rejected:
         case.report()
     assert rejected.value.code == "constraint_conflict"
+
+
+def test_risk_navigation_uses_destination_protocols(dashboard_case, monkeypatch):
+    from core.models.workbench_plan_scope import PlanReadScope
+    from core.services.workbench.plan.queries import WorkbenchPlanQueryService
+
+    # The real HTTP list is read through the real DashboardContract; each destination keeps its own focus keys.
+    data = frontend_data(api(dashboard_case, monkeypatch).get(ROOT))
+    items, plan_ref = {row["category"]: row for row in data["items"]}, data["plan"]["plan_ref"]
+    delivery, downtime, material = items["delivery"], items["downtime"], items["material"]
+    assert delivery["navigation"] == [{"view": "gantt", "context": {"plan_ref": plan_ref, "selected_batch_ref": delivery["source"]["batch_ref"]},
+                                       "enabled": True, "reason": None}]
+    assert downtime["navigation"] == [{"view": "gantt", "context": {"plan_ref": plan_ref, "selected_task_ref": downtime["source"]["task_ref"]},
+                                       "enabled": True, "reason": None}]
+    assert material["navigation"] == [{"view": "batches", "context": {"batch_ref": material["source"]["batch_ref"]}, "enabled": True, "reason": None}]
+    expected_actual_context = {key: items["actual"]["source"][key] for key in ("plan_ref", "task_ref", "operation_ref")}
+    assert items["actual"]["navigation"] == [
+        {"view": "fieldgantt", "context": expected_actual_context, "enabled": True, "reason": None},
+        {"view": "field", "context": expected_actual_context, "enabled": True, "reason": None},
+    ]
+    # The formal plan gantt context has one receiver: every produced context is accepted by the real APSPlanNavigation.accept.
+    contexts = [n["context"] for row in data["items"] for n in row["navigation"] if n["view"] == "gantt"]
+    accepted = subprocess.run([node_runtime(), "-e", PLAN_ACCEPT], input=json.dumps(contexts), text=True, encoding="utf-8",
+                              capture_output=True, cwd=str(Path(__file__).resolve().parents[2]), timeout=30)
+    assert accepted.returncode == 0, accepted.stdout + accepted.stderr
+    # The focus identities are the ones the formal plan workspace itself reads for the same plan.
+    reader = WorkbenchPlanQueryService(dashboard_case.conn)
+    with reader.read_snapshot():
+        plan, _ = reader.workspace(PlanReadScope(plan_ref))
+    assert delivery["source"]["batch_ref"] in {row["batch_ref"] for row in plan["projections"]["delivery_risks"]["items"]}
+    assert downtime["source"]["task_ref"] in {row["task_ref"] for row in plan["tasks"]}
 
 
 @pytest.mark.parametrize("stored_source", [" EXTERNAL ", "\u2003ExTeRnAl\u00a0"])

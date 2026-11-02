@@ -12,7 +12,6 @@ from core.models.workbench_calendar_file import (
     IMPORT_ROW_LIMIT,
     READONLY,
     REQUIRED,
-    calendar_kind,
     public_columns,
 )
 from core.models.workbench_table_descriptor import extra_sheet_notice
@@ -132,9 +131,6 @@ def _parse(number, values, errors, fields, fmt, readonly):
 
 
 def read_calendar_file(kind, content, fmt):
-    calendar_kind(kind)
-    if type(content) is not bytes or fmt not in ("csv", "xlsx"):
-        raise file_error("只能导入 CSV 或 XLSX 文件，没有导入。请重新选择文件。")
     state = {"sheets": 1}
     source = source_rows(content, fmt, state, error=file_error)
     try:

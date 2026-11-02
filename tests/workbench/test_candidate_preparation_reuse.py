@@ -32,7 +32,7 @@ def test_trial_candidate_base_validates_completeness_once_without_metrics_or_bus
 
         monkeypatch.setattr(candidate_projection, name, tracked)
 
-    rows, extra, _all_ops, _op_refs, issues, _facts = _candidate(case.conn, candidate_ref)
+    rows, extra, _all_ops, issues = _candidate(case.conn, candidate_ref)
 
     assert len(rows) == 1
     assert issues == []

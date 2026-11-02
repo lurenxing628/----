@@ -17,7 +17,6 @@ from core.services.workbench.plan.projection import project_plan
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from core.services.workbench.plan.workspace_dto import resource_directory
 
-from .actual_gantt_chain import plan_chain
 from .actual_gantt_scope import matches_execution_resource
 from .ledger import ExecutionLedgerService
 
@@ -25,15 +24,13 @@ MAX_ACTUAL_RESPONSE_BYTES = 32 * 1024 * 1024
 MAX_ACTUAL_REPORTS = 50000
 
 
-def bind_axis_time(data, as_of, snapshot_ref):
+def bind_axis_time(data, as_of):
     """The visible clock is derived from the pinned as_of, not the browser clock."""
     clock_dt = datetime.fromisoformat(as_of)
     clock = clock_dt.replace(minute=0, second=0, microsecond=0)
     start = clock.isoformat(timespec="seconds")
     end = (clock + timedelta(hours=1)).isoformat(timespec="seconds")
     data["axis_span"] = {"start": min(data["axis_span"]["start"], start), "end": max(data["axis_span"]["end"], end)}
-    if "critical_chain" in data:
-        data["critical_chain"]["snapshot_ref"] = snapshot_ref
     for item in data["items"]:
         item["deviation"] = execution_deviation(item["task"]["end"], item["execution"], clock_dt)
     data["execution_summary"] = _execution_summary(data)
@@ -162,7 +159,7 @@ class ActualGanttService:
             context.resolve(scope.plan_ref)
             return scope.scope(), self._snapshot_state(context, scope)
 
-    def _planned(self, scope, context, *, include_calendar=True, include_resources=True):
+    def _planned(self, scope, context, *, include_calendar):
         plan_scope = PlanReadScope(scope.plan_ref, scope.range_start, scope.range_end)
         _, entry, span = context.selected(scope.plan_ref)
         if scope.range_start is None and scope.plan_finish_date_from is not None:
@@ -187,14 +184,15 @@ class ActualGanttService:
         tasks, task_facts = context.projected_tasks(scope.plan_ref, rows, resources=resources)
         calendar = None
         if include_calendar:
-            selected = selected_context(self.conn, plan_scope, rows, span)
+            selected = selected_context(
+                plan_scope, rows, span, intervals=context.datetime_intervals(entry)
+            )
             calendar, _ = project_plan_calendar(self.conn, scope=plan_scope, resources=resources, selected=selected)
         return {"plan": project_plan(entry, scope.plan_ref), "plan_span": span, "tasks": tasks,
-                "resources": (resource_directory(rows, resources, tasks=tasks, archived=task_facts["resource_directory"])
-                              if include_resources else []),
+                "resources": resource_directory(rows, resources, tasks=tasks, archived=task_facts["resource_directory"]),
                 "projections": {"calendar": calendar}}
 
-    def _execution(self, planned, scope, *, include_history=True, include_resources=True):
+    def _execution(self, planned, scope, *, include_history):
         clock, availability = self._ledger_state(scope)
         if clock is None:
             return None, [{"task": task, "execution": None} for task in planned["tasks"]], planned["resources"], availability
@@ -203,7 +201,6 @@ class ActualGanttService:
                 scope.plan_ref,
                 planned["tasks"],
                 include_history=include_history,
-                include_resources=include_resources,
             )
         except WorkbenchCommandRejected as exc:
             if exc.code == "query_too_large":
@@ -211,37 +208,12 @@ class ActualGanttService:
                     str(exc) + " 请缩小计划完工日期范围或减少所选批次后重试。", exc.status) from exc
             raise
         items = _items(planned["tasks"], projection)
-        resources = _merge_resources(planned["resources"], projection["resources"]) if include_resources else []
+        resources = _merge_resources(planned["resources"], projection["resources"])
         return projection, items, resources, availability
 
-    def workspace(self, scope, *, chain_target=None, include_chain=True):
-        full_workspace = include_chain and chain_target is None
+    def workspace(self, scope, *, full_workspace):
         with self.plans._context_scope() as context:
-            planned = self._planned(
-                scope, context, include_calendar=full_workspace, include_resources=chain_target is None
-            )
-            if chain_target is not None:
-                if scope.resource_ref is None:
-                    task_refs = {task["task_ref"] for task in planned["tasks"]}
-                else:
-                    _, items, _, _ = self._execution(
-                        planned, scope, include_history=False, include_resources=False
-                    )
-                    task_refs = {
-                        item["task"]["task_ref"]
-                        for item in items
-                        if matches_execution_resource(
-                            item["task"], item["execution"], scope.resource_type, scope.resource_ref
-                        )
-                    }
-                state = self._snapshot_state(context, scope)
-                return {
-                    "plan": planned["plan"],
-                    "scope": scope.scope(),
-                    "critical_chain": plan_chain(
-                        scope.plan_ref, task_refs, target_task_ref=chain_target, context=context
-                    ),
-                }, state
+            planned = self._planned(scope, context, include_calendar=full_workspace)
             projection, items, resources, availability = self._execution(
                 planned, scope, include_history=full_workspace
             )
@@ -262,7 +234,4 @@ class ActualGanttService:
                                   "reports": "all_effective_reports_of_selected_operations", "local_filters": "search_late_selected",
                                   "export": "full_snapshot_cohort_or_explicit_local_view", "time_basis": "factory_local"}}
             state = self._snapshot_state(context, scope)
-            if include_chain:
-                data["critical_chain"] = plan_chain(scope.plan_ref,
-                    {item["task"]["task_ref"] for item in items}, target_task_ref=chain_target, context=context)
             return data, state

@@ -11,7 +11,6 @@ from core.models.operation_execution_scope import EXECUTION_STATUS_COMPLETED
 from core.services.scheduler.execution.execution_fact_provider import ExecutionFact
 from core.services.scheduler.execution.execution_ledger_guard import (
     ensure_ledger_execution_schedulable,
-    fact_resource_segments,
 )
 
 from .schedule_execution_resource_facts import collect_resource_execution_facts
@@ -110,7 +109,7 @@ def _build_execution_seed_result(
             )
         result["_point_evidence"] = witness
     if op.source != SourceType.EXTERNAL.value:
-        segments = fact_resource_segments(fact)
+        segments = fact.execution_resource_segments
         if segments:
             result["_resource_segments"] = segments
     return result
@@ -125,9 +124,7 @@ def _build_execution_seed_results(
 ) -> List[Dict[str, Any]]:
     execution_seed_results: List[Dict[str, Any]] = []
     for op_id in sorted(completed_op_ids):
-        op = op_by_id.get(int(op_id))
-        row = plan_rows.get(op_id)
-        if op is None or row is None:
+        if op_id not in plan_rows:
             raise _execution_conflict(
                 "现场已经有完工记录，但上一版正式排程里找不到对应工序，本次没有写入新排程。请刷新后重新排。",
                 reason="missing_previous_schedule_row",
@@ -135,8 +132,8 @@ def _build_execution_seed_results(
             )
         execution_seed_results.append(
             _build_execution_seed_result(
-                fact=facts[int(op_id)],
-                op=op,
+                fact=facts[op_id],
+                op=op_by_id[op_id],
             )
         )
     return execution_seed_results
@@ -144,8 +141,6 @@ def _build_execution_seed_results(
 
 def build_execution_guardrails_from_projections(conn, operations, *, prev_version, execution_projections, facts):
     """Consume an explicit AJ snapshot without reloading or reaggregating reports."""
-    if execution_projections is None:
-        raise ValueError("必须显式传入 AJ 执行投影；无事实时传空列表。")
     if prev_version not in facts.resource_execution:
         facts.resource_execution[prev_version] = collect_resource_execution_facts(
             conn, prev_version=prev_version, execution_projections=execution_projections, capture=facts.capture,

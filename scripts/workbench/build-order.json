@@ -62,6 +62,7 @@
     "PointContract.js",
     "GanttGraph.js",
     "PlanContract.js",
+    "PlanNavigation.js",
     "PlanAPI.js",
     "resource-session.js",
     "ResourceControls.jsx",

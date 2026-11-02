@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import groupby
 from types import MappingProxyType
-from typing import TYPE_CHECKING, AbstractSet, Any, Dict, FrozenSet, List, Mapping, Optional, Set, Tuple, cast
+from typing import TYPE_CHECKING, AbstractSet, Any, Dict, FrozenSet, List, Mapping, Optional, Set, Tuple
 
 from core.algorithm_runtime.graph_cycle import kahn_unreachable_op_ids
 from core.errors import ValidationError
-from core.shared.strict_parse import finite_float, is_number, parse_required_int
+from core.shared.strict_parse import finite_float, is_number
 
 from .sgs_priority_keys import ValidatedGraphPriorityKeys
 from .sgs_scoring import _collect_sgs_candidates
@@ -14,85 +15,34 @@ from .sgs_scoring import _collect_sgs_candidates
 if TYPE_CHECKING:
     from core.algorithm_contracts.types import OpForScheduleAlgo
 
-TOPOLOGY_FIELD = "_prepared_graph_ready_topology"
-
 
 @dataclass(frozen=True)
 class PreparedGraphReadyTopology:
-    """Decode-independent facts; progress and priority belong to each decode."""
+    """Decode-independent graph facts compiled once per preparation; progress and keys belong to each decode.
+
+    ``schedulable_ids`` excludes seeded operations; ``fixed_ids`` holds the frozen and seeded ones.
+    """
 
     schedulable_ids: FrozenSet[int]
     fixed_ids: FrozenSet[int]
     predecessors: Mapping[int, FrozenSet[int]]
     successors: Mapping[int, FrozenSet[int]]
     sort_keys: Mapping[int, Tuple[int, int, int]]
+    initial_remaining_counts: Mapping[int, int]
+    initial_ready: FrozenSet[int]
 
 
-
-def prepare_graph_ready_topology(context, operations: List[OpForScheduleAlgo]) -> PreparedGraphReadyTopology:
-    raw = dict(context)
-    raw.pop(TOPOLOGY_FIELD, None)
-    raw["score_enabled"] = False
-    grouped: Dict[str, List[OpForScheduleAlgo]] = {}
-    for op in operations:
-        grouped.setdefault(op.batch_id, []).append(op)
-    state = _prepare_graph_ready_state(raw, ops_by_batch=grouped)
-    assert state is not None
-    return PreparedGraphReadyTopology(
-        frozenset(state["op_by_id"]), state["input_fixed_op_ids"],
-        MappingProxyType({key: frozenset(value) for key, value in state["predecessor_op_ids_by_op_id"].items()}),
-        MappingProxyType({key: frozenset(value) for key, value in state["successor_op_ids_by_op_id"].items()}),
-        MappingProxyType(dict(state["sort_key_by_op_id"])),
-    )
-
-
-def _is_graph_like(value: Any) -> bool:
-    return hasattr(value, "nodes") and hasattr(value, "edges")
-
-
-def _graph_ready_op_id_set(value: Any, *, field: str) -> set:
-    if value is None:
-        raise ValidationError(f"图 ready 队列上下文缺少 {field} 集合。", field="graph_ready_context")
-    if isinstance(value, (str, bytes)):
-        raise ValidationError(f"图 ready 队列上下文 {field} 必须是 op_id 集合。", field="graph_ready_context")
-    if _is_graph_like(value):
-        raise ValidationError(f"图 ready 队列上下文 {field} 只能传普通 op_id 集合，不能传图对象。", field="graph_ready_context")
-    try:
-        return {parse_required_int(item, field=field, min_value=1) for item in value}
-    except TypeError as exc:
-        raise ValidationError(f"图 ready 队列上下文 {field} 必须是 op_id 集合。", field="graph_ready_context") from exc
-
-
-def _prepare_graph_ready_state(
-    graph_ready_context: Optional[Any],
-    *,
-    ops_by_batch: Dict[str, List[OpForScheduleAlgo]],
-    skip_initial_frontier: bool = False,
-) -> Optional[Dict[str, Any]]:
-    if graph_ready_context is None:
-        return None
-    if not isinstance(graph_ready_context, dict) or not graph_ready_context.get("enabled"):
+def prepare_graph_ready_topology(context: Any, operations: List[OpForScheduleAlgo]) -> PreparedGraphReadyTopology:
+    """Validate the graph input once against the unseeded operations it schedules."""
+    if not isinstance(context, dict) or not context.get("enabled"):
         raise ValidationError("图 ready 队列上下文无效，不能启用图排产候选。", field="graph_ready_context")
-
-    op_by_id: Dict[int, Tuple[str, OpForScheduleAlgo]] = {}
-    for batch_id, operations in ops_by_batch.items():
-        for op in operations:
-            op_id = op.id
-            if op_id in op_by_id:
-                raise ValidationError(f"图 ready 队列上下文发现重复 op_id：{op_id}", field="graph_ready_context")
-            op_by_id[op_id] = (batch_id, op)
-
-    topology: Any = graph_ready_context.get(TOPOLOGY_FIELD)
-    prepared: Optional[PreparedGraphReadyTopology] = (
-        cast(PreparedGraphReadyTopology, topology)
-        if type(topology) is PreparedGraphReadyTopology else None
-    )
-    if prepared is not None:
-        schedulable_ids, fixed_op_ids = set(prepared.schedulable_ids), set(prepared.fixed_ids)
-    else:
-        schedulable_ids = _graph_ready_op_id_set(graph_ready_context.get("schedulable_op_ids"), field="schedulable_op_ids")
-        fixed_op_ids = _graph_ready_op_id_set(graph_ready_context.get("fixed_op_ids"), field="fixed_op_ids")
-        _validate_fixed_op_sources(graph_ready_context.get("fixed_op_sources_by_op_id"), fixed_op_ids=fixed_op_ids)
+    op_ids: Set[int] = set()
+    for op in operations:
+        if op.id in op_ids:
+            raise ValidationError(f"图 ready 队列上下文发现重复 op_id：{op.id}", field="graph_ready_context")
+        op_ids.add(op.id)
+    schedulable_ids = _op_id_set(context.get("schedulable_op_ids"), field="schedulable_op_ids")
+    fixed_op_ids = _op_id_set(context.get("fixed_op_ids"), field="fixed_op_ids")
     overlap = sorted(schedulable_ids.intersection(fixed_op_ids))
     if overlap:
         sample = overlap[:20]
@@ -105,59 +55,79 @@ def _prepare_graph_ready_state(
                 "overlap_sample": sample,
             },
         )
-    if schedulable_ids != set(op_by_id):
+    if schedulable_ids != op_ids:
         raise ValidationError("图 ready 队列上下文和本次待排工序不一致。", field="graph_ready_context")
-    if prepared is not None:
-        predecessor_map, successor_map = prepared.predecessors, prepared.successors
-    else:
-        predecessor_map, successor_map = _validate_graph_ready_links(
-            op_ids=set(op_by_id).union(fixed_op_ids),
-            predecessor_map=graph_ready_context.get("predecessor_op_ids_by_op_id"),
-            successor_map=graph_ready_context.get("successor_op_ids_by_op_id"),
-        )
-        _detect_graph_ready_cycle(schedulable_ids=set(op_by_id), predecessor_map=predecessor_map, successor_map=successor_map)
-    score_enabled = graph_score_enabled(graph_ready_context.get("score_enabled", False))
-    graph_priority_key_by_op_id: Dict[int, Tuple[float, ...]] = {}
-    if score_enabled:
-        graph_priority_key_by_op_id = (graph_ready_context["graph_priority_key_by_op_id"] if prepared is not None
-            else graph_priority_key_map(graph_ready_context.get("graph_priority_key_by_op_id"),
-                                         schedulable_ids=set(op_by_id)))
-    sort_key_by_op_id = prepared.sort_keys if prepared is not None else _graph_sort_key_map(
-        graph_ready_context.get("sort_key_by_op_id"),
-        schedulable_ids=set(op_by_id),
+    predecessor_map, successor_map = _validate_graph_ready_links(
+        op_ids=schedulable_ids.union(fixed_op_ids),
+        predecessor_map=context.get("predecessor_op_ids_by_op_id"),
+        successor_map=context.get("successor_op_ids_by_op_id"),
     )
+    initial_remaining_counts = {
+        op_id: sum(1 for predecessor_id in predecessor_map[op_id] if predecessor_id in schedulable_ids)
+        for op_id in sorted(schedulable_ids)
+    }
+    initial_ready = frozenset(
+        op_id for op_id, count in initial_remaining_counts.items() if count == 0
+    )
+    if kahn_unreachable_op_ids(
+        schedulable_ids=schedulable_ids,
+        successor_map=successor_map,
+        initial_remaining_counts=initial_remaining_counts,
+    ):
+        raise ValidationError("图 ready 队列上下文包含环形前后置关系。", field="graph_ready_context")
+    sort_keys = _graph_sort_key_map(context.get("sort_key_by_op_id"), schedulable_ids=schedulable_ids)
+    return PreparedGraphReadyTopology(
+        schedulable_ids, fixed_op_ids,
+        MappingProxyType(predecessor_map),
+        MappingProxyType(successor_map),
+        MappingProxyType(sort_keys),
+        MappingProxyType(initial_remaining_counts),
+        initial_ready,
+    )
+
+
+def _op_id_set(value: Any, *, field: str) -> FrozenSet[int]:
+    if not isinstance(value, (set, frozenset, list, tuple)) or not all(type(item) is int and item > 0 for item in value):
+        raise ValidationError(f"图 ready 队列上下文 {field} 必须是正整数 op_id 集合。", field="graph_ready_context")
+    return frozenset(value)
+
+
+def _prepare_graph_ready_state(
+    topology: PreparedGraphReadyTopology,
+    context: Dict[str, Any],
+    *,
+    ops_by_batch: Dict[str, List[OpForScheduleAlgo]],
+    skip_initial_frontier: bool,
+) -> Dict[str, Any]:
+    """Independent progress for one decode over the compiled topology; the request supplies its keys."""
+    op_by_id: Dict[int, Tuple[str, OpForScheduleAlgo]] = {
+        op.id: (batch_id, op) for batch_id, operations in ops_by_batch.items() for op in operations
+    }
+    fixed_op_ids = set(topology.fixed_ids)
     if skip_initial_frontier:
         remaining_predecessor_count_by_op_id: Dict[int, int] = {}
         ready_op_ids: Set[int] = set()
     else:
-        remaining_predecessor_count_by_op_id, ready_op_ids = _initialize_graph_ready_frontier(
-            schedulable_ids=set(op_by_id),
-            completed_or_fixed_op_ids=fixed_op_ids,
-            predecessor_op_ids_by_op_id=predecessor_map,
-        )
+        remaining_predecessor_count_by_op_id = dict(topology.initial_remaining_counts)
+        ready_op_ids = set(topology.initial_ready)
+    score_enabled = context["score_enabled"]
     return {
         "op_by_id": op_by_id,
         "completed_or_fixed_op_ids": fixed_op_ids,
         # completed_or_fixed_op_ids 会随本趟排产成功不断并入新完成工序；
-        # 这里冻结一份"输入即固定"（冻结窗/执行报工 seed）的快照，供失败阻塞
+        # input_fixed_op_ids 是"输入即固定"（冻结窗/执行报工 seed）的快照，供失败阻塞
         # 传播区分"撞到已报工的固定后继（现场乱序报工，按批降级）"和
         # "撞到本趟已完成工序（内部不变量破坏，fail-loud）"（审计 A02）。
-        "input_fixed_op_ids": frozenset(fixed_op_ids),
+        "input_fixed_op_ids": topology.fixed_ids,
         "blocked_op_ids": set(),
-        "predecessor_op_ids_by_op_id": predecessor_map,
-        "successor_op_ids_by_op_id": successor_map,
-        "sort_key_by_op_id": sort_key_by_op_id,
+        "predecessor_op_ids_by_op_id": topology.predecessors,
+        "successor_op_ids_by_op_id": topology.successors,
+        "sort_key_by_op_id": topology.sort_keys,
         "remaining_predecessor_count_by_op_id": remaining_predecessor_count_by_op_id,
         "ready_op_ids": ready_op_ids,
         "score_enabled": score_enabled,
-        "graph_priority_key_by_op_id": graph_priority_key_by_op_id,
+        "graph_priority_key_by_op_id": context["graph_priority_key_by_op_id"] if score_enabled else {},
     }
-
-
-def graph_score_enabled(value: Any) -> bool:
-    if not isinstance(value, bool):
-        raise ValidationError("图评分开关 score_enabled 必须是 bool。", field="graph_ready_context")
-    return value
 
 
 def _graph_priority_key_number(value: Any) -> float:
@@ -170,46 +140,50 @@ def _graph_priority_key_number(value: Any) -> float:
 
 
 def graph_priority_key_map(value: Any, *, schedulable_ids: AbstractSet[int]) -> ValidatedGraphPriorityKeys:
-    """Admit keys once per exact operation set; already admitted keys for an equal set come back as is."""
-    if type(value) is ValidatedGraphPriorityKeys and value.schedulable_ids == schedulable_ids:
+    """Admit keys once per exact operation set, producing their static order and weak order.
+
+    Every producer passes the preparation's own ``topology.schedulable_ids`` instance, so keys
+    already admitted against that instance come back as is. SGS compares ``(penalty, *graph key,
+    *dispatch key)``; one common width keeps the weak order exact, while mixed widths would let a
+    shorter key's prefix swallow dispatch-key positions, so admission rejects them.
+    """
+    if type(value) is ValidatedGraphPriorityKeys and (
+            value.schedulable_ids is schedulable_ids or value.schedulable_ids == schedulable_ids):
         return value
     if not isinstance(value, dict):
         raise ValidationError("图评分上下文缺少 graph_priority_key_by_op_id 映射。", field="graph_ready_context")
     _validate_exact_key_set(value, schedulable_ids=schedulable_ids, label="图评分 key")
-    normalized = ValidatedGraphPriorityKeys(frozenset(schedulable_ids))
+    normalized: Dict[int, Tuple[float, ...]] = {}
+    width: Optional[int] = None
     for op_id in sorted(schedulable_ids):
         raw_key = value[op_id]
-        if raw_key is None or isinstance(raw_key, (str, bytes)) or _is_graph_like(raw_key):
+        if not isinstance(raw_key, (tuple, list)):
             raise ValidationError("图评分 key 必须是数字 tuple。", field="graph_ready_context")
-        try:
-            key = tuple(_graph_priority_key_number(item) for item in raw_key)
-        except TypeError as exc:
-            raise ValidationError("图评分 key 必须是数字 tuple。", field="graph_ready_context") from exc
+        key = tuple(_graph_priority_key_number(item) for item in raw_key)
         if not key:
             raise ValidationError("图评分 key 不能为空。", field="graph_ready_context")
+        if width is None:
+            width = len(key)
+        elif len(key) != width:
+            raise ValidationError("图评分 key 长度必须一致。", field="graph_ready_context")
         normalized[op_id] = key
-    widths = {len(key) for key in normalized.values()}
-    normalized.key_width = widths.pop() if len(widths) == 1 else 0
-    return normalized
+    order = tuple(sorted(normalized, key=lambda op_id: (normalized[op_id], op_id)))
+    preorder = tuple(tuple(group) for _key, group in groupby(order, key=normalized.__getitem__))
+    return ValidatedGraphPriorityKeys(normalized, schedulable_ids=frozenset(schedulable_ids),
+                                      order=order, preorder=preorder)
 
 
-def _graph_sort_key_map(value: Any, *, schedulable_ids: set) -> Dict[int, Tuple[int, int, int]]:
+def _graph_sort_key_map(value: Any, *, schedulable_ids: FrozenSet[int]) -> Dict[int, Tuple[int, int, int]]:
     if not isinstance(value, dict):
         raise ValidationError("图 ready 队列上下文 sort_key_by_op_id 必须是映射。", field="graph_ready_context")
     _validate_exact_key_set(value, schedulable_ids=schedulable_ids, label="图 ready 队列上下文 sort_key_by_op_id")
     normalized: Dict[int, Tuple[int, int, int]] = {}
     for op_id in sorted(schedulable_ids):
         raw_key = value[op_id]
-        if not isinstance(raw_key, tuple) or len(raw_key) != 3:
-            raise ValidationError(f"图 ready 队列工序 {op_id} 的排序 key 必须是三元组。", field="graph_ready_context")
-        try:
-            normalized[op_id] = (
-                parse_required_int(raw_key[0], field=f"sort_key_by_op_id[{op_id}]"),
-                parse_required_int(raw_key[1], field=f"sort_key_by_op_id[{op_id}]"),
-                parse_required_int(raw_key[2], field=f"sort_key_by_op_id[{op_id}]"),
-            )
-        except ValidationError as exc:
-            raise ValidationError(f"图 ready 队列工序 {op_id} 的排序 key 必须只包含整数。", field="graph_ready_context") from exc
+        if type(raw_key) is not tuple or len(raw_key) != 3 or not all(type(part) is int for part in raw_key):
+            raise ValidationError(f"图 ready 队列工序 {op_id} 的排序 key 必须是三个整数组成的 tuple。",
+                                  field="graph_ready_context")
+        normalized[op_id] = raw_key
     return normalized
 
 
@@ -222,37 +196,16 @@ def _validate_exact_key_set(value: Dict[Any, Any], *, schedulable_ids: AbstractS
         raise ValidationError(f"{label} 的 key 必须和待排工序完全一致。", field="graph_ready_context")
 
 
-def _validate_fixed_op_sources(value: Any, *, fixed_op_ids: set) -> None:
-    if value is None:
-        return
-    if not isinstance(value, dict):
-        raise ValidationError("图 ready 队列上下文 fixed_op_sources_by_op_id 必须是映射。", field="graph_ready_context")
-    source_ids = {
-        parse_required_int(raw_op_id, field="fixed_op_sources_by_op_id", min_value=1)
-        for raw_op_id in value
-    }
-    if source_ids != set(fixed_op_ids):
-        raise ValidationError("图 ready 队列上下文 fixed_op_sources_by_op_id 和 fixed_op_ids 不一致。", field="graph_ready_context")
-
-
-def _normalize_link_map(value: Any, *, field: str) -> Dict[int, set]:
+def _normalize_link_map(value: Any, *, field: str) -> Dict[int, FrozenSet[int]]:
     if not isinstance(value, dict):
         raise ValidationError(f"图 ready 队列上下文缺少 {field} 映射。", field="graph_ready_context")
-    normalized: Dict[int, set] = {}
-    for raw_op_id, raw_linked_ids in value.items():
-        op_id = parse_required_int(raw_op_id, field=field)
-        if raw_linked_ids is None or isinstance(raw_linked_ids, (str, bytes)):
-            raise ValidationError(f"图 ready 队列上下文 {field} 映射不是集合。", field="graph_ready_context")
-        if _is_graph_like(raw_linked_ids):
-            raise ValidationError(f"图 ready 队列上下文 {field} 映射不能传图对象。", field="graph_ready_context")
-        try:
-            normalized[op_id] = {parse_required_int(item, field=field) for item in raw_linked_ids}
-        except TypeError as exc:
-            raise ValidationError(f"图 ready 队列上下文 {field} 映射不是集合。", field="graph_ready_context") from exc
-    return normalized
+    # Unknown or non-integer keys fail the scope check that follows.
+    return {op_id: _op_id_set(linked_ids, field=field) for op_id, linked_ids in value.items()}
 
 
-def _validate_graph_ready_links(*, op_ids: set, predecessor_map: Any, successor_map: Any) -> Tuple[Dict[int, set], Dict[int, set]]:
+def _validate_graph_ready_links(
+    *, op_ids: AbstractSet[int], predecessor_map: Any, successor_map: Any,
+) -> Tuple[Dict[int, FrozenSet[int]], Dict[int, FrozenSet[int]]]:
     predecessors = _normalize_link_map(predecessor_map, field="predecessor_op_ids_by_op_id")
     successors = _normalize_link_map(successor_map, field="successor_op_ids_by_op_id")
     _validate_link_scope(
@@ -266,40 +219,12 @@ def _validate_graph_ready_links(*, op_ids: set, predecessor_map: Any, successor_
         link_label="后继工序",
     )
     for op_id in op_ids:
-        predecessors.setdefault(op_id, set())
-        successors.setdefault(op_id, set())
-    for op_id, predecessor_ids in predecessors.items():
-        for predecessor_id in predecessor_ids:
-            if op_id not in successors[predecessor_id]:
-                raise ValidationError(
-                    f"图 ready 队列上下文不一致：工序 {op_id} 记录了前置 {predecessor_id}，但后继映射没有对应关系。",
-                    field="graph_ready_context",
-                )
-    for op_id, successor_ids in successors.items():
-        for successor_id in successor_ids:
-            if op_id not in predecessors[successor_id]:
-                raise ValidationError(
-                    f"图 ready 队列上下文不一致：工序 {op_id} 记录了后继 {successor_id}，但前置映射没有对应关系。",
-                    field="graph_ready_context",
-                )
+        predecessors.setdefault(op_id, frozenset())
+        successors.setdefault(op_id, frozenset())
     return predecessors, successors
 
 
-def _detect_graph_ready_cycle(*, schedulable_ids: set, predecessor_map: Dict[int, set], successor_map: Dict[int, set]) -> None:
-    # 标准 Kahn 拓扑检测：借助上游 _validate_graph_ready_links 已校验双向一致的
-    # successor_map 做 O(V+E) 后继释放，替代旧实现每弹出一个节点全表扫描 remaining
-    # 的 O(V²) 写法（审计 D13；实测 V=2000 单次 55ms、V=5000 单次 345ms）。
-    # 算法本体收敛到 core/algorithm_runtime/graph_cycle.py 的共享实现
-    # （审计 A09：optimizer 侧第二份拷贝曾漏修，双拷贝已发生一次语义漂移）。
-    if kahn_unreachable_op_ids(
-        schedulable_ids=schedulable_ids,
-        predecessor_map=predecessor_map,
-        successor_map=successor_map,
-    ):
-        raise ValidationError("图 ready 队列上下文包含环形前后置关系。", field="graph_ready_context")
-
-
-def _validate_link_scope(*, link_map: Dict[int, set], known_op_ids: set, link_label: str) -> None:
+def _validate_link_scope(*, link_map: Mapping[int, AbstractSet[int]], known_op_ids: AbstractSet[int], link_label: str) -> None:
     for op_id, linked_ids in link_map.items():
         if op_id not in known_op_ids:
             raise ValidationError(f"图 ready 队列上下文不完整：工序 {op_id} 不在待排或已固定集合里。", field="graph_ready_context")
@@ -309,24 +234,6 @@ def _validate_link_scope(*, link_map: Dict[int, set], known_op_ids: set, link_la
                     f"图 ready 队列上下文不完整：工序 {op_id} 的{link_label} {linked_id} 既不是待排也不是固定/已完成。",
                     field="graph_ready_context",
                 )
-
-
-def _initialize_graph_ready_frontier(
-    *,
-    schedulable_ids: set,
-    completed_or_fixed_op_ids: set,
-    predecessor_op_ids_by_op_id: Mapping[int, AbstractSet[int]],
-) -> Tuple[Dict[int, int], set]:
-    remaining_predecessor_count_by_op_id: Dict[int, int] = {}
-    ready_op_ids = set()
-
-    for op_id in sorted(schedulable_ids):
-        remaining_count = sum(1 for predecessor_id in predecessor_op_ids_by_op_id[op_id] if predecessor_id not in completed_or_fixed_op_ids)
-        remaining_predecessor_count_by_op_id[op_id] = remaining_count
-        if remaining_count == 0 and op_id not in completed_or_fixed_op_ids:
-            ready_op_ids.add(op_id)
-
-    return remaining_predecessor_count_by_op_id, ready_op_ids
 
 
 def _collect_candidates(

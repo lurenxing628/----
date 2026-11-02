@@ -197,11 +197,11 @@ async function contract(h, assert) {
   assert.strictEqual(latestHostState[7], null, 'An earlier failed host query must not overwrite a later successful refresh');
   assert.strictEqual(latestHostState[8], false);
 
-  // Trust the server's explicit non-commit result (Q2-A: committed:false with 400/404/409/422/503), including admission failures
-  // reported as HTTP 503. Only fetch is stubbed: the real SystemMaintenanceAPI and transport decide. A committed:false 500 no longer counts.
+  // Trust the server's explicit non-commit result (committed:false on any valid 4xx/5xx failure envelope, including 500 and 503);
+  // committed:'unknown' and malformed failure envelopes (such as missing committed) are never definite rejections.
   const answerWith = (committed, status = 503) => { w.fetch = async () => new Response(JSON.stringify({ ok: false, committed,
     error: { code: 'maintenance_active', message: '当前维护窗口忙，恢复没有执行。', fields: [], retryable: status >= 500 && committed !== 'unknown', request_ref: '1'.repeat(32) } }), { status, headers: { 'Content-Type': 'application/json' } }); };
-  for (const [committed, status, definite] of [[false, 503, true], [false, 409, true], [false, 500, false], ['unknown', 503, false], [undefined, 503, false]]) {
+  for (const [committed, status, definite] of [[false, 503, true], [false, 409, true], [false, 500, true], ['unknown', 503, false], [undefined, 503, false]]) {
     answerWith(committed, status);
     await assert.rejects(M.command(restoreIntent, 'write-context', {}), error => w.APSWorkbenchTransport.rejected(error) === definite,
       'committed ' + committed + ' with HTTP ' + status + (definite ? ' is' : ' is not') + ' a definite rejection');
@@ -220,7 +220,7 @@ async function contract(h, assert) {
   const deniedState = Object.fromEntries(h.updates().filter(update => update.name === 'Workspace').map(update => [update.index, update.value]));
   assert.strictEqual(deniedState[3].kind, 'rejected');
   assert.strictEqual(deniedState[1], null);
-  assert.strictEqual(w.SystemMaintenanceAPI.pending().read(), null, 'Explicit rejection clears the persisted pending intent before any page reload');
+  assert.strictEqual(w.SystemMaintenanceAPI.pending.read(), null, 'Explicit rejection clears the persisted pending intent before any page reload');
   w.SystemMaintenanceControls.Outcome = originalOutcome;
   const deniedTree = maintenanceTree(deniedState);
   assert(!restoreScreen(deniedTree) && visible(deniedTree).includes('系统拒绝了这次提交，没有开始恢复。'), 'The rejection remains readable after unlocking');
@@ -230,15 +230,15 @@ async function contract(h, assert) {
   answerWith('unknown');
   h.render(w.SystemMaintenanceWorkspace, { ...workspaceProps, tab: 'overview' }, { Workspace: { 6: readyHost, 8: false } });
   await rejectedCommand.execute('restore', 'write-context', {});
-  assert.strictEqual(w.SystemMaintenanceAPI.pending().read().request_key, restoreIntent.request_key, 'An unknown submission result must retain its original pending intent');
+  assert.strictEqual(w.SystemMaintenanceAPI.pending.read().request_key, restoreIntent.request_key, 'An unknown submission result must retain its original pending intent');
   w.SystemMaintenanceControls.Outcome = originalOutcome;
   assert(restoreScreen(maintenanceTree({})), 'Reload must continue protecting an unknown restore result');
   savedMaintenance.clear();
   const otherIntent = { ...restoreIntent, request_key: 'system-' + '4'.repeat(48) };
-  w.SystemMaintenanceAPI.pending().finish(restoreIntent); // Another tab already confirmed this operation.
+  w.SystemMaintenanceAPI.pending.finish(restoreIntent); // Another tab already confirmed this operation.
   savedMaintenance.set(w.SystemMaintenanceAPI.PENDING_KEY, JSON.stringify(otherIntent));
-  assert.throws(() => w.SystemMaintenanceAPI.pending().finish(restoreIntent), /上次操作记录已变化/);
-  assert.strictEqual(w.SystemMaintenanceAPI.pending().read().request_key, otherIntent.request_key, 'A different pending operation must be retained');
+  assert.throws(() => w.SystemMaintenanceAPI.pending.finish(restoreIntent), /上次操作记录已变化/);
+  assert.strictEqual(w.SystemMaintenanceAPI.pending.read().request_key, otherIntent.request_key, 'A different pending operation must be retained');
   w.localStorage = originalStorage; w.crypto = originalCrypto; w.navigator = originalNavigator;
   Object.assign(M, maintenanceOriginal); w.fetch = () => { throw new Error('Unexpected network request'); };
 
@@ -298,7 +298,7 @@ async function contract(h, assert) {
   // catalogs retain their independent sources (analysis_projection.py / catalogs.py / external.py).
   const planIssue = { code: 'identity_missing', message: '批次编号缺失，无法评估交付风险。请到批次管理核对。' };
   const materialIssue = { code: 'identity_missing', message: '来源关联资料缺失，暂时无法评估，请联系维护人员核对。' };
-  const candidateIssue = { code: 'run_schema_unavailable', message: '排产记录结构不完整，请联系维护人员。' };
+  const candidateIssue = { code: 'run_result_inconsistent', message: '排产记录、提交结果和候选方案的条数对不上，这里不返回结果。请刷新重试；仍不行请联系维护人员。' };
   const summary = (state = 'no_data', issues = []) => ({ state, risk_count: state === 'unavailable' ? null : 0,
     known_risk_count: 0, unknown_count: 0, closed_count: 0, handling_count: 0, issues, evaluation_gaps: [] });
   function dashboardFixture() {
@@ -358,7 +358,7 @@ async function contract(h, assert) {
     return h.render(w.WorkbenchDashboardWorkspace, { initialContext: { scope: { category }, tab: 'analysis', ...(detail ? { item_ref: detail.data.item.item_ref } : {}) } }, states);
   }
   const unavailable = dashboardFixture();
-  // Run schema failures remain separate even when the formal-plan source fails.
+  // Saved-run consistency failures remain separate even when the formal-plan source fails.
   unavailable.data.categories.candidate = summary('unavailable', [candidateIssue]);
   unavailable.data.candidate_catalog = { state: 'unavailable', runs: [], page: null, run_count: null, issues: [candidateIssue] };
   const unavailableTree = dashboardTree(await dashboardResult(unavailable, 'all'), 'all');

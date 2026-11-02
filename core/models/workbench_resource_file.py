@@ -1,8 +1,7 @@
 """Versioned file columns. Read-only columns are reference data, never written."""
 
 
-from core.errors import ValidationError
-from core.models.workbench_resource_action import action_kind, resource_scope
+from core.models.workbench_resource_action import action_kind
 from core.models.workbench_table_descriptor import (
     DEFAULT_IMPORT_BYTE_LIMIT,
     UPSERT_ONLY,
@@ -216,17 +215,11 @@ def public_columns(kind):
     return [{"key": key, "label": column_label(kind, key)} for key in file_columns(kind)]
 
 
-def import_request(kind, content, file_format, mode, scope):
-    if type(content) is not bytes or type(file_format) is not str or file_format not in ("csv", "xlsx"):
-        raise ValidationError("必须提供CSV/XLSX原始文件字节。", field="file")
-    if type(mode) is not str or mode != "upsert":
-        raise ValidationError("只支持按编号增量导入，不支持替换。", field="mode")
-    scope = resource_scope(kind, scope)
-    if scope["query"] or scope["status"] is not None or scope.get("column_filters"):
-        raise ValidationError("导入按文件编号操作，不接受搜索或状态筛选。", field="scope")
-    if kind == "op_type" and scope["category"] not in ("internal", "external"):
-        raise ValidationError("工种导入必须明确自制或外协归属。", field="category")
-    return {"format": file_format, "mode": mode, "scope": scope}
+def import_request(kind, file_format, mode, *, category):
+    request = {"format": file_format, "mode": mode}
+    if kind == "op_type":
+        request["category"] = category
+    return request
 
 
 #: 预检响应里的那段提示，和说明表的通用规则同一份来源。四类资源各有自己的列，规则也各是一份。

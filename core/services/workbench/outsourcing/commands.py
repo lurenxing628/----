@@ -13,7 +13,7 @@ from .service import WorkbenchOutsourcingService
 
 
 class WorkbenchOutsourcingCommandService:
-    def __init__(self, conn, *, clock=None, actor_provider=None, context_factory=None):
+    def __init__(self, conn, *, clock=None, actor_provider=None, context_factory):
         self.reader = WorkbenchOutsourcingService(conn, clock=clock)
         self.commands = WorkbenchCommandService(conn)
         self.actor_provider = actor_provider or getpass.getuser
@@ -46,12 +46,10 @@ class WorkbenchOutsourcingCommandService:
         normalized = normalize_input(payload, parsed_times=parsed_times)
         with self.reader.read_snapshot():
             prepared = self._prepare(normalized, parsed_times=parsed_times)
-            result = {"outsourcing_ref": prepared["ref"], "target": prepared["source"]["public"],
-                      "before": prepared["before"], "after": prepared["after"], "input": normalized,
-                      "can_confirm": True, "execution": execution_boundary(prepared["target"]), "write_context": None}
-            if self.context_factory:
-                result["write_context"] = self.context_factory(prepared["subject"], ["confirm"], prepared["snapshot"])
-            return result
+            return {"outsourcing_ref": prepared["ref"], "target": prepared["source"]["public"],
+                    "before": prepared["before"], "after": prepared["after"], "input": normalized,
+                    "can_confirm": True, "execution": execution_boundary(prepared["target"]),
+                    "write_context": self.context_factory(prepared["subject"], ["confirm"], prepared["snapshot"])}
 
     def execute(self, payload, *, request_key, validate_context):
         parsed_times = {}

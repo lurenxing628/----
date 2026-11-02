@@ -10,6 +10,7 @@ from core.services.workbench.facts.archived_calendar import ArchivedCalendar
 from core.services.workbench.facts.decision_metrics import RESOURCE_METRICS, metric_value
 from core.services.workbench.facts.official_scope_coverage import official_scope_coverage
 from core.services.workbench.facts.resource_calendar import normalize_resource_calendar
+from core.services.workbench.facts.resource_pressure import DEFAULT_PRESSURE_THRESHOLD
 from core.services.workbench.facts.resource_projection import (
     RESOURCE_METRIC_VERSION,
     ResourceTaskIndex,
@@ -80,12 +81,6 @@ class ResourceWindowMetrics:
         self.tasks = {}
         self.indexes, self._window_rows, self._summaries, self._groups = {}, {}, {}, {}
         self._calendars = {}
-        self.pressure_threshold = 0.9
-
-    def configure(self, threshold):
-        if self.pressure_threshold != threshold:
-            self.pressure_threshold = threshold
-            self.indexes, self._window_rows, self._summaries = {}, {}, {}
 
     def index(self, key):
         key = self.inputs.computation_key(key)
@@ -93,7 +88,7 @@ class ResourceWindowMetrics:
             if key not in self.tasks:
                 self.tasks[key] = self.inputs.side_tasks(key)
             self.indexes[key] = ResourceTaskIndex(self.tasks[key], self.start, self.end, work_available=self.inputs.available[key],
-                                                 pressure_threshold=self.pressure_threshold, task_intervals=self.inputs.task_intervals(key),
+                                                 task_intervals=self.inputs.task_intervals(key),
                                                  retain_statistics_values=False)
         return self.indexes[key]
 
@@ -103,22 +98,22 @@ class ResourceWindowMetrics:
             reject("entity_not_found", "该资源不在当前共同归档资源集合，请重新选择。", 404)
         return item
 
-    def _ensure_windows(self, keys, resources):
+    def _ensure_windows(self, keys, resources, threshold):
         keys = list(dict.fromkeys(self.inputs.computation_key(key) for key in keys))
-        pending = [resource for resource in resources if any((key, resource["ref"]) not in self._window_rows for key in keys)]
+        pending = [resource for resource in resources if any((key, resource["ref"], threshold) not in self._window_rows for key in keys)]
         if not pending:
             return
         self._prepare_calendars(pending)
         for resource in pending:
             ref, calendar = resource["ref"], self._calendars[resource["ref"]]
             for key in keys:
-                if (key, ref) not in self._window_rows:
-                    self._window_rows[key, ref] = self.index(key).window(resource, calendar)
+                if (key, ref, threshold) not in self._window_rows:
+                    self._window_rows[key, ref, threshold] = self.index(key).window(resource, calendar, threshold=threshold)
 
-    def window_row(self, key, ref):
-        """One resource's window on one side; computed on first use through the shared window path."""
-        self._ensure_windows([key], [self._resource_by_ref[ref]])
-        return self._window_rows[self.inputs.computation_key(key), ref]
+    def window_row(self, key, ref, threshold=DEFAULT_PRESSURE_THRESHOLD):
+        """One resource's window on one side at one attention line; computed on first use through the shared window path."""
+        self._ensure_windows([key], [self._resource_by_ref[ref]], threshold)
+        return self._window_rows[self.inputs.computation_key(key), ref, threshold]
 
     def _prepare_calendars(self, resources):
         pending = [resource for resource in resources if resource["ref"] not in self._calendars]
@@ -130,18 +125,18 @@ class ResourceWindowMetrics:
         return self._calendars[resource["ref"]]
 
     def prepare_keys(self, keys):
-        self._ensure_windows(keys, self.resources)
+        self._ensure_windows(keys, self.resources, DEFAULT_PRESSURE_THRESHOLD)
 
-    def summary(self, key, kind):
+    def summary(self, key, kind, threshold=DEFAULT_PRESSURE_THRESHOLD):
         key = self.inputs.computation_key(key)
-        if (key, kind) not in self._summaries:
+        if (key, kind, threshold) not in self._summaries:
             resources = [resource for resource in self.resources if resource["kind"] == kind]
-            self._ensure_windows([key], resources)
+            self._ensure_windows([key], resources, threshold)
             index = self.index(key)
-            self._summaries[key, kind] = resource_summary(
-                [self._window_rows[key, resource["ref"]] for resource in resources], kind=kind,
+            self._summaries[key, kind, threshold] = resource_summary(
+                [self._window_rows[key, resource["ref"], threshold] for resource in resources], kind=kind,
                 identity_issues=[item for item in index.identity_issues if item["kind"] == kind], work_available=index.work_available)
-        return self._summaries[key, kind]
+        return self._summaries[key, kind, threshold]
 
     def metrics(self, key):
         key = self.inputs.computation_key(key)
@@ -155,7 +150,8 @@ class ResourceWindowMetrics:
                 missing_work = summary["unknown_workload_count"] > 0 or not self.index(key).work_available
                 empty = (total == 0 and not missing_work or field == "balance_cv" and summary["balance_state"] == "not_applicable"
                          or field == "utilization_ratio" and summary["available_hours"] == 0 and not missing_work)
-                known_refs = [row["ref"] for row in resources if _metric_known(self._window_rows[key, row["ref"]], field)]
+                known_refs = [row["ref"] for row in resources
+                              if _metric_known(self._window_rows[key, row["ref"], DEFAULT_PRESSURE_THRESHOLD], field)]
                 unknown = total - len(known_refs)
                 state = "not_applicable" if empty else "complete" if value is not None else "partial" if known_refs else "unavailable"
                 if field == "balance_cv":
@@ -166,7 +162,7 @@ class ResourceWindowMetrics:
                           if value is None and not empty else {"code": "zero_available_capacity", "message": "共同资源窗口内没有正容量，占用率不适用。"}
                           if field == "utilization_ratio" and empty else None)
                 if field == "zero_capacity_task_count" and value is None and any(
-                    self._window_rows[key, row["ref"]]["zero_capacity_reason"] is not None for row in resources):
+                    self._window_rows[key, row["ref"], DEFAULT_PRESSURE_THRESHOLD]["zero_capacity_reason"] is not None for row in resources):
                     reason = {"code": "actual_work_fragments_not_recorded", "message": "零容量时段的安排跨度未提供实际工作片段，工作证据未知。"}
                 item = metric_value(value, total=total, unknown=unknown, subtotal=summary.get("known_" + field), state=state,
                                     scope="fixed_resource_window", reason=reason, metric_version=RESOURCE_METRIC_VERSION)
@@ -186,13 +182,12 @@ class DecisionResources(ResourceWindowMetrics):
         super().__init__(decision_window_input(source))
         self.source = source
 
-    def pair(self, resource):
-        before, after = (self.window_row(key, resource["ref"]) for key in ("reference", self.source.selected_ref))
+    def pair(self, resource, threshold):
+        before, after = (self.window_row(key, resource["ref"], threshold) for key in ("reference", self.source.selected_ref))
         return {"before": dict(before), "after": dict(after), "deltas": resource_deltas(before, after)}
 
     def coverage(self, key, *, details=False):
         source = self.source
-        official_tasks = self.source.official["tasks"] if details else []
         members = source.official_members
         official = set(members["operation_refs"])
         arranged = official if key == "reference" and source.comparison_mode == "admission_official" else (
@@ -210,7 +205,7 @@ class DecisionResources(ResourceWindowMetrics):
             missing = set(values["missing_official_operations"])
             result["missing_formal_arrangements"] = [{key: row[key] for key in (
                 "operation_ref", "row_ref", "batch_ref", "batch_label", "process_label", "start", "end")}
-                for row in official_tasks if row["operation_ref"] in missing]
+                for row in source.official_tasks if row["operation_ref"] in missing] if missing else []
         return result
 
     def overview_coverage(self, key):
@@ -264,38 +259,39 @@ class DecisionResources(ResourceWindowMetrics):
         value.update(resource_view=source.resource_view, resource_kind=resource["kind"], resource_ref=resource["ref"], comparison_tab="resources")
         return value
 
-    def rows(self, kind):
+    def rows(self, kind, threshold):
         resources = [resource for resource in self.resources if resource["kind"] == kind]
-        self._ensure_windows([self.source.selected_ref, "reference"], resources)
+        self._ensure_windows([self.source.selected_ref, "reference"], resources, threshold)
         result = []
         for resource in resources:
             ref = resource["ref"]
-            row = {"resource_ref": ref, "resource_kind": kind, "label": resource["label"], **self.pair(resource)}
+            row = {"resource_ref": ref, "resource_kind": kind, "label": resource["label"], **self.pair(resource, threshold)}
             result.append(row)
         return result
 
-    def period_facts(self, resource, *, grain="day", start=None, end=None):
+    def period_facts(self, resource, *, threshold, grain="day", start=None, end=None):
         return self.index(self.source.selected_ref).period_facts(resource, self.resource_calendar(resource),
-            grain=grain, start=start or self.start, end=end or self.end)
+            threshold=threshold, grain=grain, start=start or self.start, end=end or self.end)
 
-    def filter_summary(self, resource, *, grain, start, end, daily_peak):
+    def filter_summary(self, resource, *, threshold, grain, start, end, daily_peak):
         if grain == "day" and start == self.start and end == self.end:
-            summary = self.index(self.source.selected_ref).day_filter_summary(resource, self.resource_calendar(resource))
+            summary = self.index(self.source.selected_ref).day_filter_summary(
+                resource, self.resource_calendar(resource), threshold=threshold)
             if summary is not None:
                 return summary
-        return _period_summary(self.period_facts(resource, grain=grain, start=start, end=end), daily_peak)
+        return _period_summary(self.period_facts(resource, threshold=threshold, grain=grain, start=start, end=end), daily_peak)
 
-    def periods(self, resource, *, grain="day", start=None, end=None, details=False, group_keys=None):
+    def periods(self, resource, *, threshold, grain="day", start=None, end=None, details=False, group_keys=None):
         low, high = start or self.start, end or self.end
         calendar = self.resource_calendar(resource)
-        before = self.index("reference").periods(resource, calendar, grain=grain, start=low, end=high,
+        before = self.index("reference").periods(resource, calendar, threshold=threshold, grain=grain, start=low, end=high,
                                                 details=details, group_keys=group_keys)
         if self.source.computation_key("reference") == self.source.computation_key(self.source.selected_ref):
             # Detailed sides receive separate drill locations written in place below,
             # so each side owns its task/conflict dicts; plain cells are read-only.
             after = deepcopy(before) if details else before
         else:
-            after = self.index(self.source.selected_ref).periods(resource, calendar, grain=grain, start=low, end=high,
+            after = self.index(self.source.selected_ref).periods(resource, calendar, threshold=threshold, grain=grain, start=low, end=high,
                                                               details=details, group_keys=group_keys)
         result = []
         for previous, selected in zip(before, after):

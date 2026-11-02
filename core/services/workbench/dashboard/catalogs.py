@@ -9,7 +9,7 @@ def candidate_catalog(conn):
     try:
         data, _ = WorkbenchRunHistoryQueryService(conn).catalog(RunHistoryScope(size=20))
     except WorkbenchCommandRejected as exc:
-        if exc.code not in ("run_schema_unavailable", "run_result_inconsistent"):
+        if exc.code != "run_result_inconsistent":
             raise
         return {"state": "unavailable", "runs": [], "page": None, "run_count": None,
                 "issues": [{"code": exc.code, "message": str(exc)}]}

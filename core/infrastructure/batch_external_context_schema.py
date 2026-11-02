@@ -49,7 +49,7 @@ def objects():
     }
 
 
-def contract_issues(conn, *, structure: SchemaStructure):
+def contract_issues(structure: SchemaStructure):
     actual = structure.sql
     issues = [("missing_batch_external_context:" if name not in actual else "invalid_batch_external_context:") + name
               for name, sql in objects().items()

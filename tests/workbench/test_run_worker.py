@@ -1,6 +1,6 @@
 """Claim retries reuse verified admission while checking each fresh snapshot."""
 
-from core.services.workbench.run.jobs import WorkbenchRunService
+from core.services.workbench.run.jobs import read_run_head
 from core.services.workbench.run.worker_claim import (
     capture_claim_retry_state,
     claim_run,
@@ -15,7 +15,7 @@ def test_claim_retry_reads_one_admission_receipt_per_snapshot(job_case):
     statements = []
     case.conn.set_trace_callback(statements.append)
     try:
-        head = WorkbenchRunService(case.conn).get_head(run_ref)
+        head = read_run_head(case.conn, run_ref)
         original = capture_claim_retry_state(case.conn, run_ref)
         require_retryable_claim(case.conn, original)
         row, existing = claim_run(case.conn, run_ref, lambda: "2026-09-10T12:00:00", original)

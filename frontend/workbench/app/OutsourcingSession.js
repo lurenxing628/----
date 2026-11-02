@@ -1,25 +1,25 @@
 (function () {
   'use strict';
   const C = window.OutsourcingContract, T = window.APSWorkbenchTransport, KEY = 'aps_outsourcing_pending_v1', EVENT = KEY + '_changed';
+  // 磁盘记录的唯一校验点：回厂事实与目标先按契约核过，提交内容再对照它们；写入的记录由已校验的预检构造，写前不再重验。
   function originalInput(v) {
     const p = v.input, creating = Object.prototype.hasOwnProperty.call(p, 'target');
     const allowed = ['declared_operator', 'reason', creating ? 'target' : 'outsourcing_ref', ...C.fields];
     return Object.keys(p).every(k => allowed.includes(k)) && ['declared_operator', 'reason'].every(k => C.text(p[k]) && p[k] === p[k].trim() && !p[k].includes('\0'))
       && p.declared_operator.length <= 200 && p.reason.length <= 2000 && C.fields.every(k => creating || Object.prototype.hasOwnProperty.call(p, k) ? p[k] === v.after[k] : true)
-      && (creating ? C.equal(p.target, C.target(v.target)) : C.ref(p.outsourcing_ref));
+      && (creating ? C.equal(p.target, C.targetValues(v.target)) : C.ref(p.outsourcing_ref));
   }
-  function valid(v, checkReceipt = true) {
+  function valid(v) {
     try { return v && v.version === 1 && /^outsourcing-[a-f0-9]{48}$/.test(v.request_key) && ['pending', 'confirmed', 'rejected'].includes(v.phase)
-      && C.object(v.input) && !!C.facts(v.after) && !!C.target(v.target, true) && originalInput(v) && !Object.prototype.hasOwnProperty.call(v, 'write_token')
-      && (v.phase !== 'confirmed' || (checkReceipt ? !!C.receipt(v.receipt, v) : C.object(v.receipt))); } catch (_) { return false; }
+      && C.object(v.input) && !!C.facts(v.after) && !!C.publicTarget(v.target) && originalInput(v) && !Object.prototype.hasOwnProperty.call(v, 'write_token')
+      && (v.phase !== 'confirmed' || !!C.receipt(v.receipt, v)); } catch (_) { return false; }
   }
   const { read, flush, save } = T.pendingStore({
-    key: KEY, event: EVENT, validate: valid, validateWrite: v => valid(v, false),
+    key: KEY, event: EVENT, validate: valid,
     readError: '上次操作记录读不出来，不能开始新的登记。请重新打开页面。',
     corruptError: '上次操作记录已损坏，不能开始新的登记。请不要再操作，联系维护人员。',
     invalidError: '上次操作记录不完整，不能重新提交。请不要再操作，联系维护人员。',
     conflictError: '上次操作已在另一个页面变化，这里没有覆盖它。请刷新后重试。',
-    invalidWriteError: '外协读到的数据不完整，请刷新后重试。',
     writeError: '上次操作记录保存不了，不能开始登记。请重新打开页面。'
   });
   function useCommand() {

@@ -1,7 +1,7 @@
 """A feasible operation in the lowest graph-key group dominates all later groups.
 
 The actual key is (nonnegative feasibility penalty, graph key, dynamic dispatch key).
-With fixed-width graph keys, score the entire lowest ready group first. Any penalty-zero
+Admission fixes one graph-key width, so score the entire lowest ready group first. Any penalty-zero
 member dominates every later group. IG/repair's explicit ranks are one such case. All selected operations
 still go through the normal scorer and formal placement. A blocked first rank falls
 back to scoring every other ready operation. Unknown/callback inputs keep full scoring.
@@ -16,8 +16,6 @@ fixed-resource proof (decode tail reuse) whether every operation names its machi
 """
 
 from core.algorithm_contracts.value_domains import EXTERNAL
-
-from .sgs_priority_keys import ValidatedGraphPriorityKeys
 
 
 class GraphPriorityPruning:
@@ -43,10 +41,7 @@ class GraphPriorityPruning:
         self.supported = self._prepare(graph_state)
 
     def _prepare(self, graph):
-        if graph is None or not graph.get("score_enabled"):
-            return False
-        keys = graph["graph_priority_key_by_op_id"]
-        if type(keys) is not ValidatedGraphPriorityKeys or not keys.key_width:
+        if graph is None or not graph["score_enabled"]:
             return False
         if not self._preparation.all_batch_due_dates_valid():
             return False

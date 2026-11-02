@@ -1,15 +1,44 @@
-"""File rollback and lost-response recovery use the committed receipt."""
+"""The upload route alone admits format and mode; file rollback and lost-response recovery use the committed receipt."""
 
 import pytest
 
 from core.services.workbench.commands import WorkbenchCommandService
+from core.services.workbench.process.file_codec import encode_process_file
 from core.services.workbench.process.file_route import ProcessRouteFileOperations
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_process_hours_repo import WorkbenchProcessHoursRepository
 from tests.workbench.process_file_api_support import file_api_fixture, node_contract, uncertain_failure
-from tests.workbench.process_stage_api_support import rejected, success
+from tests.workbench.process_stage_api_support import BASE, rejected, success
 
 _fixture = file_api_fixture
+
+
+@pytest.mark.parametrize("kind", ["route", "hours"])
+def test_upload_rejects_unknown_format_without_writes(file_api, kind):
+    before = file_api.snapshot()
+    body = rejected(file_api.upload(kind, encode_process_file(kind, [], "csv").content, fmt="txt"), "invalid_input", 422)
+    assert [field["path"] for field in body["error"]["fields"]] == ["format"]
+    assert file_api.snapshot() == before
+
+
+@pytest.mark.parametrize("kind", ["route", "hours"])
+def test_upload_rejects_non_upsert_mode_without_writes(file_api, kind):
+    before = file_api.snapshot()
+    body = rejected(file_api.upload(kind, encode_process_file(kind, [], "csv").content, mode="replace"), "invalid_input", 400)
+    assert body["error"]["fields"] == []
+    assert file_api.snapshot() == before
+
+
+@pytest.mark.parametrize("kind", ["route", "hours"])
+@pytest.mark.parametrize("fmt,status", [("txt", 422), ("XLSX", 422), ("csv", 200), ("xlsx", 200)])
+def test_template_admits_format_at_route(file_api, kind, fmt, status):
+    response = file_api.client.get(BASE + "/process-files/" + kind + "/template", query_string={"format": fmt})
+    if status == 200:
+        assert response.status_code == 200 and response.headers["Content-Disposition"].startswith("attachment")
+        assert response.headers["Content-Disposition"].endswith("." + fmt)
+    else:
+        body = rejected(response, "invalid_input", status)
+        assert [field["path"] for field in body["error"]["fields"]] == ["format"]
 
 
 @pytest.mark.parametrize("kind,failure", [("route", "second-row"), ("hours", "receipt")])
@@ -166,8 +195,97 @@ def test_detail_export_reuses_target_snapshot_across_unrelated_template_changes(
     assert len(rows) == row_count and all(row["values"]["business_code"] == PART for row in rows)
 
 
+def test_explicit_list_export_downloads_preflighted_refs_and_rechecks_the_snapshot(file_api, monkeypatch):
+    from core.services.workbench.process import queries as process_queries
+    from core.services.workbench.process.file_codec import decode_process_file
+    from tests.workbench.process_stage_api_support import PART
+    from web.routes.workbench import process_file_exports
+
+    body, _ = file_api.export_body(selection="explicit", refs=[file_api.ref()])
+    preview = success(file_api.file_post("route", "export-preview", body))
+    with monkeypatch.context() as patch:
+        for owner, name in ((process_file_exports, "_export_selection"), (process_queries, "_check_part_ref")):
+            patch.setattr(owner, name, lambda *args: pytest.fail("下载不该再准入预检已存的范围"))
+        download = file_api.download("route", preview["data"]["export_ref"])
+    assert download.status_code == 200, download.get_json()
+    rows, _ = decode_process_file("route", download.data, "csv")
+    assert [row["values"]["business_code"] for row in rows] == [PART]
+    preview = success(file_api.file_post("route", "export-preview", body))
+    file_api.execute("UPDATE Parts SET remark='导出预检后已改' WHERE part_no=?", (PART,))
+    rejected(file_api.download("route", preview["data"]["export_ref"]), "snapshot_stale")
+
+
 def test_detail_export_rejects_nontext_target_before_capture(file_api):
     target = file_api.ref()
     body, _ = file_api.export_body(target=target, selection="explicit", refs=[target])
     body["target_ref"] = {"ref": target}
     rejected(file_api.file_post("route", "export-preview", body), "invalid_input", 400)
+    bad_refs_body, _ = file_api.export_body(selection="explicit", refs=["not-a-part-ref"])
+    bad_refs = rejected(file_api.file_post("route", "export-preview", bad_refs_body), "invalid_input", 422)
+    assert bad_refs["error"]["message"] == "请选择有效的零件记录，选择列表不能为空或重复。"
+    bad_target = rejected(file_api.upload("route", b"bad,header\r\n1,2\r\n", target="not-a-part-ref"), "entity_not_found", 404)
+    assert bad_target["error"]["message"] == "零件记录不存在，请返回列表重新选择。"
+
+
+def test_route_file_create_reuses_workflow_identities_and_outer_command_transaction(file_api, monkeypatch):
+    from core.infrastructure.transaction import TransactionManager
+    from core.services.workbench.process.queries import WorkbenchProcessQueryService
+
+    preview = file_api.preview_rows(
+        "route",
+        [
+            {"business_code": "FILE-NEW-ROUTE", "label": "带路线新件", "route_raw": "10车削", "remark": ""},
+            {"business_code": "FILE-NEW-EMPTY", "label": "无路线新件", "route_raw": "", "remark": ""},
+        ],
+    )
+    assert preview["data"]["can_confirm"]
+    statements = []
+    original_execute = WorkbenchCommandService.execute
+
+    def trace_execute(self, **kwargs):
+        self.conn.set_trace_callback(statements.append)
+        try:
+            return original_execute(self, **kwargs)
+        finally:
+            self.conn.set_trace_callback(None)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(WorkbenchCommandService, "execute", trace_execute)
+        receipt = success(file_api.file_post("route", "confirm", file_api.file_body(preview)))
+
+    assert any(sql == "BEGIN IMMEDIATE" for sql in statements)
+    assert any(sql == "COMMIT" for sql in statements)
+    assert not any("SAVEPOINT" in sql for sql in statements)
+    assert not any("FROM WorkbenchEntityRefs WHERE kind = 'part' AND entity_key =" in sql for sql in statements)
+
+    route_ref = file_api.ref(code="FILE-NEW-ROUTE")
+    empty_ref = file_api.ref(code="FILE-NEW-EMPTY")
+    rows_by_code = {row["business_code"]: row for row in receipt["data"]["rows"]}
+    assert rows_by_code["FILE-NEW-ROUTE"]["entity_ref"] == route_ref
+    assert rows_by_code["FILE-NEW-EMPTY"]["entity_ref"] == empty_ref
+    assert receipt["data"]["affected_refs"] == sorted([route_ref, empty_ref])
+
+    route_detail = file_api.detail("FILE-NEW-ROUTE")["data"]["workflow"]
+    empty_detail = file_api.detail("FILE-NEW-EMPTY")["data"]["workflow"]
+    assert route_detail["origin"] == "managed" and route_detail["route"]["state"] == "confirmed"
+    assert empty_detail["origin"] == "managed" and empty_detail["route"]["state"] == "missing"
+
+    with file_api.database() as conn:
+        reader = WorkbenchProcessQueryService(conn)
+        assert not conn.in_transaction
+        with reader.read_snapshot():
+            assert conn.in_transaction
+        assert not conn.in_transaction
+
+        nested_sql = []
+        with TransactionManager(conn).transaction(begin_immediate=True):
+            assert conn.in_transaction
+            conn.set_trace_callback(nested_sql.append)
+            try:
+                with reader.read_snapshot():
+                    assert conn.in_transaction
+            finally:
+                conn.set_trace_callback(None)
+            assert conn.in_transaction
+        assert not conn.in_transaction
+        assert not any("SAVEPOINT" in sql for sql in nested_sql)

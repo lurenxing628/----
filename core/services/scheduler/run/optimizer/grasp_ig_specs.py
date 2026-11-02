@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Sequence
 
 GRASP_ORIGIN = "grasp"
 IG_ORIGIN = "ig"
 
 
-def _grasp_order(base_order: List[str], *, rnd: Any, rcl_size: int) -> List[str]:
+def _grasp_order(base_order: Sequence[str], *, rnd: Any, rcl_size: int) -> List[str]:
     remaining = list(base_order)
     out: List[str] = []
     while remaining:
@@ -16,9 +16,7 @@ def _grasp_order(base_order: List[str], *, rnd: Any, rcl_size: int) -> List[str]
     return out
 
 
-def _ig_order(parent_order: List[str], *, rnd: Any, destruction_size: int) -> List[str]:
-    if len(parent_order) < 2:
-        return list(parent_order)
+def _ig_order(parent_order: Sequence[str], *, rnd: Any, destruction_size: int) -> List[str]:
     order = list(parent_order)
     remove_count = min(destruction_size, len(order) - 1)
     positions = sorted(rnd.sample(range(len(order)), remove_count), reverse=True)
@@ -33,8 +31,8 @@ def _ig_order(parent_order: List[str], *, rnd: Any, destruction_size: int) -> Li
 
 def build_grasp_ig_candidate_specs(
     *,
-    base_order: List[str],
-    parent_order: List[str],
+    base_order: Sequence[str],
+    parent_order: Sequence[str],
     version: int,
     candidate_construction: Dict[str, Any],
     dispatch_rule_cfg: str,

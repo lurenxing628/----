@@ -8,7 +8,6 @@ from core.models.workbench_command import WorkbenchCommandRejected, validate_req
 from core.services.scheduler.schedule_lock import RUN_SCHEDULE_LOCK
 from core.services.workbench import messages
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.facts.run_data_context import RunDataContext
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 
 _ADOPTION_LOCK = threading.Lock()
@@ -19,20 +18,19 @@ class AdoptionCommandHost:
     _blocked_error: Type[WorkbenchCommandRejected]
     _disabled_code: str
     _outer_message: str
-    _authorization_message: str
     _point_message: str
     _stale_message: str
     _busy_message: str
     _conflict_message: str
 
-    def __init__(self, conn, *, integration_enabled=False, context_factory=None, context_validator=None,
-                 point_rendering_enabled=False, data_context=None):
+    def __init__(self, conn, *, integration_enabled=False, context_factory, context_validator,
+                 point_rendering_enabled=False, data_context):
         self.conn = conn
         self.integration_enabled = integration_enabled is True
         self.context_factory = context_factory
         self.context_validator = context_validator
         self.point_rendering_enabled = point_rendering_enabled is True
-        self.data_context = data_context if data_context is not None else RunDataContext(conn)
+        self.data_context = data_context
         self.commands = WorkbenchCommandService(conn)
 
     def _point_surface(self, evidence):
@@ -46,32 +44,30 @@ class AdoptionCommandHost:
     def _enabled(self):
         if not self.integration_enabled:
             raise self._blocked_error(self._disabled_code, messages.UNAVAILABLE)
-        factory, validator = self.context_factory, self.context_validator
-        if not callable(factory) or not callable(validator):
-            raise RuntimeError(self._authorization_message)
-        return factory, validator
 
     def _prepare_preview(self, context_ref, validate):
-        context_factory, _ = self._enabled()
+        self._enabled()
         evidence = validate(self.conn, context_ref)
         self._point_surface(evidence)
-        return evidence, context_factory, self.data_context.ref()
+        data_context_ref = (evidence.snapshot["data_context_ref"]
+                            if "data_context_ref" in evidence.snapshot else self.data_context.ref())
+        return evidence, data_context_ref
 
-    def _preview_result(self, context_ref, evidence, context_factory, data_context_ref):
+    def _preview_result(self, context_ref, evidence, data_context_ref):
         return {"baseline": {"plan_ref": evidence.baseline["plan_ref"], "version": evidence.baseline["version"]},
                 "task_count": len(evidence.payload.schedule_rows), "scope_complete": True,
                 "validation": {"status": "valid", "can_adopt": True, "issues": []},
-                "write_context": context_factory(context_ref, [self._action], evidence.snapshot),
+                "write_context": self.context_factory(context_ref, [self._action], evidence.snapshot),
                 "data_context_ref": data_context_ref}
 
     def _execute_adoption(self, context_ref, write_token, request_key, intent, *, validate, persist):
         def guard():
-            _, context_validator = self._enabled()
+            self._enabled()
             if type(write_token) is not str or not write_token:
                 raise WorkbenchCommandRejected("stale_write", self._stale_message)
             evidence = validate(self.conn, context_ref)
             self._point_surface(evidence)
-            context_validator(write_token, context_ref, self._action, evidence.snapshot)
+            self.context_validator(write_token, context_ref, self._action, evidence.snapshot)
             return evidence
 
         def mutate(evidence):

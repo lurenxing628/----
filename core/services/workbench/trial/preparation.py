@@ -1,6 +1,5 @@
 """Trial projections read the same saved requirement and changeover facts."""
 
-from core.services.workbench.facts.candidate_store import cached_generation_facts
 from core.services.workbench.facts.changeovers import changeover_projection
 from core.services.workbench.facts.operation_effort_evidence import archived_standard_effort, saved_operation_efforts
 from core.services.workbench.facts.preparation_projection import (
@@ -11,7 +10,6 @@ from core.services.workbench.facts.preparation_projection import (
     public_preparation_metrics,
     public_preparation_roles,
 )
-from core.services.workbench.facts.trial_origin import operation_contexts
 from core.services.workbench.facts.zero_duration import point_event_dto
 
 from .arrangements import same_arrangement
@@ -56,12 +54,11 @@ def after_preparation_rows(admission, current_ledger, *, current_evidence, conte
             for ref, context in contexts.items()]
 
 
-def preparation_projection(rows, admission, current_ledger, *, current_evidence, contexts=None, before_efforts=None):
+def preparation_projection(admission, current_ledger, *, current_evidence, contexts, before_efforts=None):
     """The immutable source and the explicit current ledger remain distinct."""
     source = admission["source"]
     before = saved_operation_efforts(source.get("operation_effort")) if before_efforts is None else before_efforts
     after = saved_operation_efforts(current_ledger)
-    contexts = operation_contexts(rows, admission) if contexts is None else contexts
     pairs, summary_rows = {}, {"before": [], "after": []}
     origin = source.get("identity")
     for ref, context in contexts.items():
@@ -83,15 +80,12 @@ def preparation_projection(rows, admission, current_ledger, *, current_evidence,
         "coverage": {name: summary["coverage"] for name, summary in summaries.items()}}
 
 
-def trial_changeovers(rows, admission, *, start=None, end=None, next_operation_refs=None, facts=None, after_only=False, trial_intervals):
-    source = admission["source"]
+def trial_changeovers(rows, origin, *, start=None, end=None, next_operation_refs=None, after_only=False, trial_intervals):
+    source = origin.admission["source"]
     types = source.get("operation_types") or {}
     slot_types = source["trial_operation_types"]
-    if "capture" in source:
-        facts = facts if facts is not None else cached_generation_facts(source["capture"])
-        machine_rows = facts.tables["Machines"].values()
-    else:
-        machine_rows = admission["facts"]["tables"]["Machines"]
+    machine_rows = (origin.facts.tables["Machines"].values() if origin.facts is not None
+                    else origin.admission["facts"]["tables"]["Machines"])
     machines = {item["machine_id"]: item.get("name") for item in machine_rows}
     projected = {}
     sides = ("current",) if after_only else ("original", "current")

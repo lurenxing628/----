@@ -19,7 +19,7 @@ from core.services.workbench.run.decision_resource_export import coverage_operat
 from core.services.workbench.run.decision_source import DecisionSource
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.run_candidate_adoption_support import INTENT, service
-from tests.workbench.run_candidate_support import BASE, api, compute, install_representatives
+from tests.workbench.run_candidate_support import BASE, api, compute, compute_two_objectives, install_representatives
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
 from tests.workbench.test_run_decision_api import decision
 from tests.workbench.test_run_decision_impact_api import operation_ref
@@ -549,9 +549,9 @@ def test_resource_paging_heatmap_snapshot_and_full_filtered_exports(candidate_ca
         day_facts_calls.append(resource["ref"])
         return original_facts(index, resource, calendar, **kwargs)
 
-    def record_statistics(value, low, high, calendar_days, grain, group, *, whole=False):
+    def record_statistics(value, low, high, calendar_days, grain, group, threshold, *, whole=False):
         day_statistics_calls.append((value.resource["ref"], low, high))
-        return original_statistics(value, low, high, calendar_days, grain, group, whole=whole)
+        return original_statistics(value, low, high, calendar_days, grain, group, threshold, whole=whole)
 
     def record_single(metrics, low, high, **kwargs):
         single_windows.append((id(metrics), low, high))
@@ -692,9 +692,9 @@ def test_resource_paging_heatmap_snapshot_and_full_filtered_exports(candidate_ca
         assert len(list(book["资源影响"].iter_rows(values_only=True))) - 1 == 25
     finally:
         book.close()
-    actual, _scope, _state = read_decision_export(case.conn, run_ref, "resources", **query)
+    actual, _snapshot = read_decision_export(case.conn, run_ref, "resources", bind_snapshot=lambda scope, state: state, **query)
     assert len(actual["export_resources"][0]["items"]) == 25
-    assert all({"before", "after", "filter_summary", "drill"}.issubset(row)
+    assert all({"before", "after", "filter_summary"}.issubset(row) and "drill" not in row
                for row in actual["export_resources"][0]["items"])
     boundary = deepcopy(actual)
     coverage = boundary["export_resources"][0]["coverage"]
@@ -712,7 +712,7 @@ def test_resource_paging_heatmap_snapshot_and_full_filtered_exports(candidate_ca
         engine = source.resources
         resource = engine.resource(case.ref("machine", "M1"), "machine")
         calendar = engine.resource_calendar(resource)
-        detailed = engine.periods(resource, grain="hour", start=DAY + "T08:00:00", end=DAY + "T09:00:00", details=True)[0]
+        detailed = engine.periods(resource, threshold=0.9, grain="hour", start=DAY + "T08:00:00", end=DAY + "T09:00:00", details=True)[0]
         assert detailed["before"]["tasks"] is not detailed["after"]["tasks"]
         assert detailed["before"]["tasks"][0]["drill"] is not detailed["after"]["tasks"][0]["drill"]
         assert detailed["before"]["tasks"][0]["drill"]["candidate_ref"] == refs[0]
@@ -720,12 +720,14 @@ def test_resource_paging_heatmap_snapshot_and_full_filtered_exports(candidate_ca
         detailed["after"]["tasks"][0]["drill"]["test_location"] = "selected"
         assert "test_location" not in detailed["before"]["tasks"][0]["drill"]
         original_index = engine.index(refs[0])
-        engine.configure(0.9)
-        assert engine.index(refs[0]) is original_index and engine.resource_calendar(resource) is calendar
-        assert detailed["after"]["high_pressure"] is False
-        engine.configure(0.7)
-        assert engine.index(refs[0]) is not original_index and engine.resource_calendar(resource) is calendar
-        refreshed = engine.periods(resource, grain="hour", start=DAY + "T08:00:00", end=DAY + "T09:00:00")[0]
+        assert detailed["after"]["high_pressure"] is False and detailed["after"]["pressure_threshold"] == 0.9
+        measured = []
+        with monkeypatch.context() as scoped:
+            scoped.setattr(resource_projection._ResourceMeasurement, "__init__",
+                           lambda *args, _init=resource_projection._ResourceMeasurement.__init__, **kwargs:
+                           measured.append(args[1]["ref"]) or _init(*args, **kwargs))
+            refreshed = engine.periods(resource, threshold=0.7, grain="hour", start=DAY + "T08:00:00", end=DAY + "T09:00:00")[0]
+        assert measured == [] and engine.index(refs[0]) is original_index and engine.resource_calendar(resource) is calendar
         assert refreshed["after"]["occupied_hours"] == detailed["after"]["occupied_hours"] == 0.75
         assert refreshed["after"]["pressure_threshold"] == 0.7 and refreshed["after"]["high_pressure"] is True
     download = write_run_decision_export(boundary, first["meta"], "xlsx", "resources")
@@ -758,9 +760,9 @@ def test_resource_paging_heatmap_snapshot_and_full_filtered_exports(candidate_ca
     calls = []
     original_window = ResourceTaskIndex.window
 
-    def record_window(index, resource, calendar):
+    def record_window(index, resource, calendar, **kwargs):
         calls.append(resource["ref"])
-        return original_window(index, resource, calendar)
+        return original_window(index, resource, calendar, **kwargs)
 
     with monkeypatch.context() as scoped:
         scoped.setattr(ResourceTaskIndex, "window", record_window)
@@ -797,7 +799,7 @@ def test_resource_paging_heatmap_snapshot_and_full_filtered_exports(candidate_ca
             assert all(row[header].data_type == "n" and type(row[header].value) is int and row[header].value == 0 for row in day_cells)
     finally:
         book.close()
-    actual_days, _scope, _state = read_decision_export(case.conn, run_ref, "resource-days", **day_query)
+    actual_days, _snapshot = read_decision_export(case.conn, run_ref, "resource-days", bind_snapshot=lambda scope, state: state, **day_query)
     conflict_boundary = deepcopy(actual_days)
     day_document = conflict_boundary["export_resource_days"]
     chosen_day = day_document["items"][0]
@@ -853,6 +855,7 @@ def test_resource_paging_heatmap_snapshot_and_full_filtered_exports(candidate_ca
 
 def test_resource_workspace_shares_source_restores_view_and_keeps_resource_failures(candidate_case, monkeypatch):
     from core.services.workbench.run import decision_resource_workspace as workspace
+    from core.services.workbench.run import decision_session as source_module
     from tests.workbench.test_run_decision_api import decision_summary
     from web.routes.workbench.read_context import bind_read_snapshot
 
@@ -864,7 +867,7 @@ def test_resource_workspace_shares_source_restores_view_and_keeps_resource_failu
     path = BASE + "/runs/" + run_ref + "/decision/resource-workspace"
     query = {**WINDOW, "selected_candidate_ref": refs[-1], "reference_candidate_ref": refs[0]}
     constructed, summary_sources, resource_sources = [], [], []
-    original_source, original_summary, original_resource = workspace.DecisionSource, workspace.decision_summary, workspace.resource_details
+    original_source, original_summary, original_resource = source_module.DecisionSource, workspace.decision_summary, workspace.resource_details
 
     def source_once(*args, **kwargs):
         source = original_source(*args, **kwargs)
@@ -880,7 +883,7 @@ def test_resource_workspace_shares_source_restores_view_and_keeps_resource_failu
         return original_resource(source, *args, **kwargs)
 
     with monkeypatch.context() as scoped:
-        scoped.setattr(workspace, "DecisionSource", source_once)
+        scoped.setattr(source_module, "DecisionSource", source_once)
         scoped.setattr(workspace, "decision_summary", summary_from)
         scoped.setattr(workspace, "resource_details", resources_from)
         combined = client.get(path, query_string=query)
@@ -995,3 +998,41 @@ def test_resource_workspace_shares_source_restores_view_and_keeps_resource_failu
     err_payload = broken["data"]["resource_result"]["error"]
     assert err_payload["code"] == "candidate_binding_invalid"
     assert isinstance(err_payload.get("request_ref"), str) and len(err_payload["request_ref"]) == 32
+
+
+def test_attention_line_reuses_one_request_resource_index_and_measurements(candidate_case, monkeypatch):
+    from collections import Counter
+
+    case = candidate_case
+    run_ref, refs = compute_two_objectives(case)
+    client, _statements = api(case)
+    path = BASE + "/runs/" + run_ref + "/decision/resource-workspace"
+    window = {"range_start": "2026-09-08T00:00:00", "range_end": "2026-09-15T00:00:00"}
+    basis = client.get(path, query_string=window).get_json()["data"]["selection_basis"]["selected_candidate_ref"]
+    selected = next(ref for ref in refs if ref != basis)
+    query = {**window, "selected_candidate_ref": selected, "reference_candidate_ref": refs[0]}
+
+    def counted(read):
+        built = []
+        with monkeypatch.context() as scoped:
+            for owner, name in ((ResourceTaskIndex, "index"), (resource_projection._ResourceMeasurement, "measurement")):
+                scoped.setattr(owner, "__init__", lambda *args, _init=owner.__init__, _name=name, **kwargs:
+                               built.append(_name) or _init(*args, **kwargs))
+            value = read()
+        return value, Counter(built)
+
+    default, default_built = counted(lambda: client.get(path, query_string=query).get_json())
+    lowered, lowered_built = counted(lambda: client.get(path, query_string={**query, "pressure_threshold": 0.8}).get_json())
+    assert default_built["index"] > 0 and lowered_built == default_built
+    assert summary_part(lowered["data"]) == summary_part(default["data"])
+    assert lowered["data"]["resource_result"]["data"]["filters"]["pressure_threshold"] == 0.8
+    assert lowered["data"]["resource_result"]["data"] == resource_document(
+        client, run_ref, **query, pressure_threshold=0.8, heatmap_size=7)["data"]
+    export = {**query, "filter_section": "resources", "resource_kind": "machine"}
+    default_export, default_export_built = counted(lambda: read_decision_export(
+        case.conn, run_ref, "all", bind_snapshot=lambda scope, state: state, **export))
+    lowered_export, lowered_export_built = counted(lambda: read_decision_export(
+        case.conn, run_ref, "all", bind_snapshot=lambda scope, state: state, **export, pressure_threshold=0.8))
+    assert default_export_built["index"] > 0 and lowered_export_built == default_export_built
+    assert lowered_export[0]["export_resources"][0]["filters"]["pressure_threshold"] == 0.8
+    assert lowered_export[0]["candidates"] == default_export[0]["candidates"]

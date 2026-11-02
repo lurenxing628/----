@@ -29,18 +29,25 @@ from .policy import (
 )
 from .projection import category, delivery, safe_material
 
+# 每类风险的目的页与一组定位键（目的页键名, 来源键名）：正式计划甘特用自己的焦点字段 selected_*，
+# 现场执行（实际甘特与现场记录）和批次页保留各自的协议；当前未评估的来源不带定位，直接打开目的页概览。
+_TARGETS = {
+    "delivery": (("gantt",), (("plan_ref", "plan_ref"), ("selected_batch_ref", "batch_ref"))),
+    "downtime": (("gantt",), (("plan_ref", "plan_ref"), ("selected_task_ref", "task_ref"))),
+    "actual": (("fieldgantt", "field"), (("plan_ref", "plan_ref"), ("task_ref", "task_ref"), ("operation_ref", "operation_ref"))),
+    "material": (("batches",), (("batch_ref", "batch_ref"),)),
+}
+
 
 def navigation(item, *, current=True):
-    source, kind = item["source"], item["category"]
-    context = {key: source[key] for key in ("plan_ref", "batch_ref", "task_ref", "operation_ref") if source.get(key)}
-    if kind == "actual":
-        return [{"view": "fieldgantt", "context": context, "enabled": current,
-                 "query_target": "/api/workbench/v1/execution/tasks/" + source["task_ref"],
-                 "command_target": "/api/workbench/v1/execution/tasks/" + source["task_ref"] + "/reports",
-                 "command_context": "read_execution_write_context", "reason": None if current else "这条安排已经不是当前正式计划里的了，请先核对原记录。"}]
-    view = "batches" if kind == "material" else "gantt"
-    return [{"view": view, "context": context, "enabled": current,
-             "reason": None if current else "这条来源这次没有参与评估；系统保留原记录，不会换成编号相同的另一条。"}]
+    views, keys = _TARGETS[item["category"]]
+    if not current:
+        return [{"view": views[0], "context": {}, "enabled": False,
+                 "reason": "这条安排已经不是当前正式计划里的了，请先核对原记录。" if views[0] == "fieldgantt" else
+                           "这条来源这次没有参与评估；系统保留原记录，不会换成编号相同的另一条。"}]
+    source = item["source"]
+    return [{"view": view, "context": {target: source[key] for target, key in keys},
+             "enabled": True, "reason": None} for view in views]
 
 
 def _handling_view(stored, now):

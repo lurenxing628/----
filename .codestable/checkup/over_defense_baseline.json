@@ -14,11 +14,6 @@
   "note": "反过度防御棘轮基线（内部反射字面量/参数进门覆盖/零引用与只被测试引用的函数/往外部对象写私有属性/前端 typeof command.reset）：条目只减不增，刷新走 --refresh。",
   "entries": [
     {
-      "path": "core/algorithms/greedy/dispatch/sgs_graph.py",
-      "kind": "internal_reflect_literal",
-      "count": 2
-    },
-    {
       "path": "core/plugins/manager.py",
       "kind": "internal_reflect_literal",
       "count": 5

@@ -8,18 +8,22 @@ from types import MappingProxyType
 from werkzeug.exceptions import HTTPException
 
 from core.errors import AppError, ValidationError
+from core.models.workbench_action_values import UPSERT_IMPORT_MODES
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_resource_action import public_action_row, resource_page_scope
+from core.models.workbench_resource_action import public_action_row, resource_scope_request, wire_resource_scope
 from core.models.workbench_resource_file import INSTRUCTIONS, TEMPLATE_VERSION, public_columns
+from core.models.workbench_table_descriptor import FILE_FORMATS
 from web.public_token_registry import issue_public_token_with_expiry, resolve_public_token
 
 from .api_responses import api_endpoint
 from .material_actions_context import json_body, opaque_ref
-from .request_json import read_upload_file
-from .write_context import preview_write_context, validate_preview_confirmation
+from .request_json import read_upload_file, read_upload_form
+from .write_context import preview_write_context, retain_action_preview
 
 PREVIEW_SCOPE = "workbench-resource-preview-v1"
 EXPORT_SCOPE = "workbench-resource-export-v1"
+EXPIRED_MESSAGE = "预检结果已过期，数据没有改动，范围也没有自动更换。请重新预检。"
+IMPORT_MISMATCH_MESSAGE = "预检结果和这次操作对不上，数据没有改动。请点「重新预检」。"
 
 
 @dataclass(frozen=True)
@@ -41,30 +45,34 @@ def read_endpoint(function):
 
 
 def scope_input(kind, body):
-    _, query = resource_page_scope(kind, body["scope"], size=body.get("page_size", 20))
-    return query, query.scope(), opaque_ref(body["snapshot_ref"])
+    """The viewed list's validated request, its read-binding scope and snapshot token."""
+    request = resource_scope_request(kind, body["scope"], size=body.get("page_size", 20))
+    return request, request.scope(), opaque_ref(body["snapshot_ref"])
 
 
-def retain_context(namespace, document, content=None, *, key=None):
-    from .read_context import fact_value
+def export_identity(arguments):
+    """The JSON view of export arguments: the request's wire scope plus any explicit refs."""
+    return {**{key: value for key, value in arguments.items() if key != "request"},
+            "scope": wire_resource_scope(arguments["request"])}
 
-    identity = fact_value(document) if key is None else key
-    retained = MappingProxyType(document) if isinstance(document, dict) else document
-    token, expiry = issue_public_token_with_expiry(namespace, RetainedContext(retained, content),
-                                                  key=identity, ttl_seconds=900)
+
+def retain_context(namespace, document, content, *, key):
+    """Retain an export or field-report document, read-only, with its read binding or parsed source."""
+    token, expiry = issue_public_token_with_expiry(namespace, RetainedContext(MappingProxyType(document), content),
+                                                  key=key, ttl_seconds=900)
     return token, datetime.fromtimestamp(expiry).isoformat(timespec="seconds")
 
 
-def resolve_context(namespace, ref, code):
+def resolve_context(namespace, ref, code, *, expired_message=EXPIRED_MESSAGE):
     try:
         value = resolve_public_token(namespace, ref, message="预检结果已过期，数据没有改动。请重新预检。", field="preview_ref")
     except ValidationError as exc:
-        raise WorkbenchCommandRejected(code, "预检结果已过期，数据没有改动，范围也没有自动更换。请重新预检。") from exc
+        raise WorkbenchCommandRejected(code, expired_message) from exc
     return value.document, value.content
 
 
-def issue_preview(kind, preview, content=None):
-    ref, expires_at = retain_context(PREVIEW_SCOPE, preview.document, content)
+def issue_preview(kind, preview):
+    ref, expires_at = retain_action_preview(PREVIEW_SCOPE, preview)
     body = preview.as_dict()
     action = body["operation"]
     context = preview_write_context(ref, expires_at, [action])
@@ -74,18 +82,20 @@ def issue_preview(kind, preview, content=None):
         context["blocked_reasons"] = [{"action": action, "code": "constraint_conflict", "message": "这一批里有不能提交的行，数据没有改动。请修好标红的行后重新预检。"}]
     result = {"preview_ref": ref, "expires_at": expires_at, "operation": action, "commit_policy": "atomic",
               "summary": body["summary"], "rows": [public_action_row(row) for row in body["rows"]],
-              "can_confirm": not rejected, "write_context": context, "columns": public_columns(kind), "scope": body["request"]["scope"]}
+              "can_confirm": not rejected, "write_context": context, "columns": public_columns(kind)}
     if action.endswith(".import"):
         result.update({key: body["request"][key] for key in ("actual_source_ref", "format", "mode")})
         result.update(template_version=TEMPLATE_VERSION, instructions=INSTRUCTIONS[kind])
         if kind == "op_type":
-            result["category"] = body["request"]["scope"]["category"]
+            result["category"] = body["request"]["category"]
+    else:
+        result["scope"] = body["request"]["scope"]
     return result
 
 
-def issue_file_preview(preview, content, *, columns, instructions, template_version):
+def issue_file_preview(preview, *, columns, instructions, template_version):
     """导入预检的公开响应。关联资料与日历文件家族共用；资源家族的 issue_preview 还要兼顾批量删除，不并进来。"""
-    ref, expires_at = retain_context(PREVIEW_SCOPE, preview.document, content)
+    ref, expires_at = retain_action_preview(PREVIEW_SCOPE, preview)
     body = preview.as_dict()
     action = body["operation"]
     context = preview_write_context(ref, expires_at, [action])
@@ -104,26 +114,36 @@ def issue_file_preview(preview, content, *, columns, instructions, template_vers
 
 def upload_body():
     """导入预检的 multipart 请求：恰好一个文件，外加格式与导入方式，多一项少一项都拒绝。"""
-    from flask import request
-
-    if (request.args or request.mimetype != "multipart/form-data" or set(request.files) != {"file"}
-            or len(request.files.getlist("file")) != 1 or set(request.form) != {"format", "mode"}
-            or any(len(request.form.getlist(key)) != 1 for key in request.form)):
-        raise WorkbenchCommandRejected("invalid_input", "请上传一个文件并选好格式和导入方式；数据没有改动。选好后点「开始预检」。", 400)
-    fmt, mode = request.form["format"], request.form["mode"]
-    if fmt not in ("csv", "xlsx") or mode not in ("upsert",):
+    shape = "请上传一个文件并选好格式和导入方式；数据没有改动。选好后点「开始预检」。"
+    form = read_upload_form({"format", "mode"}, transport=shape, shape=shape)
+    fmt, mode = form["format"], form["mode"]
+    if fmt not in FILE_FORMATS or mode not in UPSERT_IMPORT_MODES:
         raise WorkbenchCommandRejected("invalid_input", "只支持 CSV 或 XLSX 按编号增量导入；数据没有改动。请换用正确的文件后点「开始预检」。", 400)
     content = read_upload_file("文件超过本机允许的大小，一行都没有导入。请缩小文件后重新选择，再点「开始预检」。")
     return content, fmt, mode
 
 
-def download_args(required):
+def admit_export_selection(body, *, explicit_value="selected", message):
+    selection = body["selection"]
+    if selection not in ("all", "filtered", explicit_value) or ("refs" in body) != (selection == explicit_value):
+        raise WorkbenchCommandRejected("invalid_input", message, 400)
+    return selection
+
+
+def download_query(required):
+    """A download's query string: exactly the required keys, each given once."""
     from flask import request
 
     if set(request.args) != required or any(len(request.args.getlist(key)) != 1 for key in request.args):
         raise WorkbenchCommandRejected("invalid_input", "下载条件不完整或有多余项，没有开始下载。请刷新页面后重新点「导出」。", 400)
+
+
+def download_args(required):
+    from flask import request
+
+    download_query(required)
     fmt = request.args["format"]
-    if fmt not in ("csv", "xlsx"):
+    if fmt not in FILE_FORMATS:
         raise WorkbenchCommandRejected("invalid_input", "下载只支持 CSV 或 XLSX 格式，没有开始下载。请重新选择格式后点「导出」。", 400)
     return fmt
 
@@ -140,7 +160,7 @@ def file_response(download):
     return response
 
 
-def confirm_body():
+def confirm_body(mismatch_message="只能确认刚才预检过的那一批，数据没有改动。请点「重新预检」。"):
     """确认导入的 JSON 请求体：只能确认刚预检过的那一批。"""
     from flask import g
 
@@ -151,26 +171,6 @@ def confirm_body():
     g.workbench_request_key = body["request_key"]
     opaque_ref(body["write_token"])
     if type(body["input"]) is not dict or set(body["input"]) != {"preview_ref"}:
-        raise WorkbenchCommandRejected("invalid_input", "只能确认刚才预检过的那一批，数据没有改动。请点「重新预检」。", 400)
+        raise WorkbenchCommandRejected("invalid_input", mismatch_message, 400)
     opaque_ref(body["input"]["preview_ref"])
     return body
-
-
-def resolve_import_preview(ref, action, write_token):
-    """按预检编号取回服务端留存的预检文档，并核对写令牌绑定的正是这一次操作。"""
-    return _resolve_retained_preview(ref, action, write_token, "预检结果和这次操作对不上，数据没有改动。请点「重新预检」。")
-
-
-def resolve_preview(ref, action, write_token):
-    return _resolve_retained_preview(ref, action, write_token, "预检结果和这次操作或这条记录对不上，数据没有改动。请点「重新预检」。")
-
-
-def _resolve_retained_preview(ref, action, write_token, message):
-    from core.models.workbench_resource_action import ResourceActionPreview
-
-    document, content = resolve_context(PREVIEW_SCOPE, ref, "stale_write")
-    preview = ResourceActionPreview(document)
-    if preview.as_dict()["operation"] != action:
-        raise WorkbenchCommandRejected("stale_write", message)
-    validate_preview_confirmation(write_token, ref)
-    return preview, content

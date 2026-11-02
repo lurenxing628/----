@@ -18,7 +18,7 @@
   const timeKey = v => v.slice(0, 19) + '.' + (v.split('.')[1] || '').padEnd(6, '0');
   const gap = v => shape(v, ['field', 'code', 'message']) && [v.field, v.code, v.message].every(text);
   const queryKeys = ['page', 'size', 'state', 'accepted_from', 'accepted_to', 'sort', 'order', 'snapshot_ref'];
-  function scope(query) {
+  function scope(query = {}) {
     check(shape(query, [], queryKeys), '查询条件里有不认识的项，没有自动忽略。请从侧栏重新打开排产记录。');
     const q = { page: 1, size: 20, state: 'all', sort: 'accepted_at', order: 'desc', ...query };
     check(count(q.page) && q.page >= 1 && q.page <= 1000000 && count(q.size) && q.size >= 1 && q.size <= 50
@@ -28,23 +28,8 @@
       && q.accepted_from <= q.accepted_to, '提交日期要成对填写，起日不能晚于止日。');
     Object.keys(q).forEach(k => { if (q[k] === undefined) delete q[k]; }); return q;
   }
-  function planContext(value) {
-    check(value === undefined || object(value), '返回正式计划的来源信息无效，请从侧栏重新打开。');
-    const result = {};
-    for (const key of ['plan_ref', 'batch_ref']) if (value && own(value, key)) { check(ref(value[key]), '返回正式计划的编号无效，请从侧栏重新打开。'); result[key] = value[key]; }
-    for (const key of ['range_start', 'range_end']) if (value && own(value, key)) { check(time(value[key])); result[key] = value[key]; }
-    return result;
-  }
-  function context(value = {}) {
-    check(shape(value, [], queryKeys.concat(['source', 'return_plan_context'])) && (value.source === undefined || value.source === 'production'), '排产记录来源或返回范围无效，请从侧栏重新打开。');
-    const q = {}; queryKeys.forEach(k => { if (own(value, k)) q[k] = value[k]; });
-    return { query: scope(q), returnPlan: planContext(value.return_plan_context) };
-  }
-  function returnContext(query, returnPlan) {
-    const result = scope(query); delete result.snapshot_ref;
-    if (Object.keys(returnPlan).length) result.return_plan_context = returnPlan;
-    return result;
-  }
+  // 入参是已校验的查询状态（scope() 的产物或由它派生）；返回链接只去掉快照钉，不改动调用方的状态对象。
+  function returnContext({ snapshot_ref, ...query }) { return query; }
   // 不重排时段：没带这一项表示按交付设置推算；null 是“不设”，存的值读不出来时也是 null，并附一条资料缺项。
   const minute = v => text(v) && date(v.slice(0, 10)) && /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d$/.test(v);
   const holdWindow = v => v === undefined || v === null || shape(v, ['start', 'end']) && minute(v.start) && minute(v.end) && v.start < v.end;
@@ -90,9 +75,9 @@
     const x = left === null ? '' : timeKey(left), y = right === null ? '' : timeKey(right);
     return direction * (x < y ? -1 : x > y ? 1 : a.run_ref < b.run_ref ? -1 : a.run_ref > b.run_ref ? 1 : 0);
   }
-  function validateCatalog(v, query) {
+  // q 是已校验的查询状态（同上），这里只核对返回与它一致。
+  function validateCatalog(v, q) {
     // 翻页和页面记忆都要用本次快照，不能为空。
-    const q = scope(query);
     check(token(v.meta.snapshot_ref));
     if (q.snapshot_ref && q.snapshot_ref !== v.meta.snapshot_ref) {
       const error = new Error(window.WorkbenchTerms.outcomes.stale); error.code = 'snapshot_stale'; throw error;
@@ -113,8 +98,8 @@
     check(new Set(d.runs.map(r => r.run_ref)).size === d.runs.length); return d;
   }
   async function catalog(query, signal) {
-    const q = scope(query), value = await T.read('/api/workbench/v1/scheduling/runs', q, { signal, timeout: 60000 });
-    validateCatalog(value, q); return value;
+    const value = await T.read('/api/workbench/v1/scheduling/runs', query, { signal, timeout: 60000 });
+    validateCatalog(value, query); return value;
   }
-  window.RunHistoryAPI = { catalog, validateCatalog, check, scope, context, returnContext, ref, date, time, states };
+  window.RunHistoryAPI = { catalog, check, scope, returnContext, ref, date, time, states };
 })();

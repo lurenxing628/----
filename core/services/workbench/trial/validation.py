@@ -23,7 +23,7 @@ from .protection import TrialProtection, frozen_issue, frozen_note, keeps_frozen
 
 
 class TrialValidator:
-    def __init__(self, conn, admission, rows, live):
+    def __init__(self, conn, admission, rows, live, *, resolved_anchors=None):
         self.conn, self.admission, self.rows, self.live = conn, admission, rows, live
         self.tables = live["facts"]["tables"]
         self.checks = live["preflight_facts"].checks()
@@ -34,10 +34,9 @@ class TrialValidator:
         self.qualification_cache = {}
         self._protected_state = None
         self._hold_key = None
-        # 建草稿时已在同一份现场资料上算过报工固定安排；读取已有草稿时这里现算。
-        prepared_anchors = live.get("execution_anchors")
-        self.anchors, self.anchor_error = (prepared_anchors if prepared_anchors is not None
-                                           else resolve_execution_anchors(conn, rows, live))
+        self.anchors, self.anchor_error = (
+            resolved_anchors if resolved_anchors is not None else resolve_execution_anchors(conn, rows, live)
+        )
         self.downtime = {}
         for row in self.tables["MachineDowntimes"]:
             self.downtime.setdefault(row["machine_id"], []).append(row)
@@ -112,8 +111,7 @@ class TrialValidator:
 
     def _evaluate(self, admission_issues):
         self._protect()
-        self.trial_intervals = build_trial_intervals(self.rows)
-        self.live["trial_intervals"] = self.trial_intervals
+        self.trial_intervals = build_trial_intervals(self.rows, reported=self.live["execution_reported"])
         issues = [dict(item) for item in self.admission["base_issues"]] + admission_issues
         if self.calendar_issue:
             issues.append(self.calendar_issue)

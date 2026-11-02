@@ -1,105 +1,34 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from heapq import heappop, heappush
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithm_contracts.ordering import clean_resource_id
-from core.services.common.plan_task_identity import public_task_id as _public_task_id
-from core.shared.local_datetime import format_local_datetime as _fmt_dt
-from core.shared.local_datetime import parse_local_datetime
-
-from .task_labels import public_task_label as _public_task_label
-
-
-def _public_node_label(nodes: Dict[str, Dict[str, Any]], node_id: str) -> str:
-    # Callers pass control-edge endpoints, which are node keys; labels come from public_task_label (never empty).
-    return nodes[node_id]["label"]
-
-
-def _minutes_between(a: datetime, b: datetime) -> int:
-    return (b - a) // timedelta(minutes=1)
-
-
-def _empty_result(*, dropped_count: int = 0) -> Dict[str, Any]:
-    return {
-        "ids": [],
-        "edges": [],
-        "makespan_end": None,
-        "edge_type_stats": {"process": 0, "machine": 0, "operator": 0, "unknown": 0},
-        "edge_count": 0,
-        "dropped_count": dropped_count,
-        "critical_chain_partial": dropped_count > 0,
-        "available": True,
-        "reason": "",
-        "reason_code": "",
-    }
-
-
-def _unavailable_result(reason: str) -> Dict[str, Any]:
-    result = _empty_result()
-    result["available"] = False
-    result["reason"] = reason
-    result["reason_code"] = result["reason"]
-    return result
 
 
 def _build_nodes(
-    rows: List[Dict[str, Any]], *, include_points: bool = False
-) -> Tuple[Dict[str, Dict[str, Any]], int]:
+    tasks: List[Dict[str, Any]], task_intervals: Dict[str, Tuple[datetime, datetime]]
+) -> Dict[str, Dict[str, Any]]:
     nodes: Dict[str, Dict[str, Any]] = {}
-    dropped = 0
-    for r in rows:
-        st = parse_local_datetime(r.get("start_time"))
-        et = parse_local_datetime(r.get("end_time"))
-        if not st or not et or st > et or (st == et and not include_points):
-            dropped += 1
-            continue
-        op_code = clean_resource_id(r.get("op_code"))
-        task_id = op_code or _public_task_id(r)
-
-        nodes[task_id] = {
-            "id": task_id,
-            "sort_id": str(r.get("operation_ref") or task_id),
-            "start": st,
-            "end": et,
-            "batch_id": clean_resource_id(r.get("batch_id")),
-            "piece_id": clean_resource_id(r.get("piece_id")),
-            # 工序号只在按批次分组的 rows 路径使用，上游 plan.projection._sequence 已校验为正整数；
-            # 依赖路径（gantt_graph）的行不带 seq。
-            "seq": r.get("seq"),
-            "machine_id": clean_resource_id(r.get("machine_id")),
-            "operator_id": clean_resource_id(r.get("operator_id")),
-            "label": _public_task_label(r),
+    for task in tasks:
+        ref = task["task_ref"]
+        start, end = task_intervals[ref]
+        nodes[ref] = {
+            "id": ref,
+            "sort_id": task["operation_ref"],
+            "start": start,
+            "end": end,
+            "machine_id": clean_resource_id(task["machine_ref"]),
+            "operator_id": clean_resource_id(task["operator_ref"]),
         }
-    return nodes, dropped
-
-
-def _build_process_prev(nodes: Dict[str, Dict[str, Any]]) -> Dict[str, List[str]]:
-    proc_groups: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
-    for n in nodes.values():
-        bid = n["batch_id"]
-        if not bid:
-            continue
-        key = (bid, n["piece_id"])
-        proc_groups.setdefault(key, []).append(n)
-
-    proc_prev: Dict[str, List[str]] = {}
-    for _, items in proc_groups.items():
-        items.sort(key=lambda x: (x["seq"], x["start"], x["id"]))
-        prev: Optional[Dict[str, Any]] = None
-        for n in items:
-            if prev:
-                proc_prev[n["id"]] = [prev["id"]]
-            prev = n
-
-    return proc_prev
+    return nodes
 
 
 def _build_prev_by_resource(nodes: Dict[str, Dict[str, Any]], *, resource_key: str) -> Dict[str, str]:
     groups: Dict[str, List[Dict[str, Any]]] = {}
     for n in nodes.values():
-        if n.get("start") == n.get("end"):
+        if n["start"] == n["end"]:
             continue
         rid = n[resource_key]
         if not rid:
@@ -108,7 +37,7 @@ def _build_prev_by_resource(nodes: Dict[str, Dict[str, Any]], *, resource_key: s
 
     prev_map: Dict[str, str] = {}
     for _, items in groups.items():
-        items.sort(key=lambda x: (x["start"], x["end"], int(x.get("order") or 0), x["id"]))
+        items.sort(key=lambda x: (x["start"], x["end"], x["order"], x["id"]))
         prev: Optional[Dict[str, Any]] = None
         for n in items:
             if prev:
@@ -138,16 +67,16 @@ def _choose_control_prev(
     ctrl_prev: Dict[str, Tuple[str, str]] = {}
     for tid, n in nodes.items():
         cands: List[Tuple[datetime, int, str, str]] = []
-        for pid in proc_prev.get(tid, []):
+        for pid in proc_prev[tid]:
             pn = nodes[pid]
             if _eligible_process_edge(pn, n):
-                cands.append((pn["end"], int(pn.get("order") or 0), pid, "process"))
+                cands.append((pn["end"], pn["order"], pid, "process"))
         for edge_type, prev_map in (("machine", mach_prev), ("operator", op_prev)):
             pid = prev_map.get(tid)
             if pid:
                 pn = nodes[pid]
                 if _eligible_resource_edge(pn, n):
-                    cands.append((pn["end"], int(pn.get("order") or 0), pid, edge_type))
+                    cands.append((pn["end"], pn["order"], pid, edge_type))
         if cands:
             cands.sort(key=lambda candidate: candidate[:3])
             _, _, from_id, edge_type = cands[-1]
@@ -156,173 +85,54 @@ def _choose_control_prev(
 
 
 def _sink_id(nodes: Dict[str, Dict[str, Any]]) -> str:
-    sink = max(nodes.values(), key=lambda x: (x["end"], int(x.get("order") or 0), x["id"]))
+    sink = max(nodes.values(), key=lambda x: (x["end"], x["order"], x["id"]))
     return sink["id"]
 
 
 def _backtrace_chain(
-    sink_id: str,
-    *,
-    ctrl_prev: Dict[str, Tuple[str, str]],
-    nodes: Dict[str, Dict[str, Any]],
+    sink_id: str, *, ctrl_prev: Dict[str, Tuple[str, str]]
 ) -> Tuple[List[str], List[Dict[str, Any]]]:
     chain_rev: List[str] = []
     edges_rev: List[Dict[str, Any]] = []
 
     cur = sink_id
-    seen: set = set()
-    while cur and cur not in seen:
-        seen.add(cur)
+    while True:
         chain_rev.append(cur)
         control = ctrl_prev.get(cur)
-        if control:
-            pred, edge_type = control
-            edges_rev.append(
-                {
-                    "from": pred,
-                    "to": cur,
-                    "from_label": _public_node_label(nodes, pred),
-                    "to_label": _public_node_label(nodes, cur),
-                    "edge_type": edge_type,
-                    "reason": "工艺前驱" if edge_type == "process" else ("资源前驱（设备）" if edge_type == "machine" else "资源前驱（人员）"),
-                    "gap_minutes": _minutes_between(nodes[pred]["end"], nodes[cur]["start"]),
-                }
-            )
-            cur = pred
-        else:
-            cur = ""
+        if control is None:
+            break
+        pred, edge_type = control
+        edges_rev.append({"from": pred, "to": cur, "edge_type": edge_type})
+        cur = pred
 
     return list(reversed(chain_rev)), list(reversed(edges_rev))
 
 
-def _edge_type_stats(edges: List[Dict[str, Any]]) -> Dict[str, int]:
-    stats: Dict[str, int] = {"process": 0, "machine": 0, "operator": 0, "unknown": 0}
-    for e in edges:
-        stats[e["edge_type"]] += 1
-    return stats
-
-
-def _explicit_sink(rows: List[Dict[str, Any]], nodes: Dict[str, Dict[str, Any]], target_id: str) -> Tuple[str, str]:
-    if type(target_id) is not str or not target_id.strip():
-        return "", "target_invalid"
-    identities = [clean_resource_id(row.get("op_code")) or _public_task_id(row) for row in rows]
-    if len(set(identities)) != len(identities):
-        return "", "target_identity_conflict"
-    if target_id not in identities:
-        return "", "target_not_found"
-    if target_id not in nodes:
-        return "", "target_time_unavailable"
-    return target_id, ""
-
-
-def compute_critical_chain_from_rows(rows: List[Dict[str, Any]], *, target_id: Optional[str] = None) -> Dict[str, Any]:
-    """An explicit sink changes only backtracing, never the full input control graph."""
-    nodes, dropped = _build_nodes(rows)
-    if target_id is not None:
-        sink_id, reason = _explicit_sink(rows, nodes, target_id)
-        if reason:
-            return _unavailable_result(reason)
-    elif not nodes:
-        return _empty_result(dropped_count=dropped)
-    else:
-        sink_id = _sink_id(nodes)
-
-    proc_prev = _build_process_prev(nodes)
-    return _chain_result(nodes, proc_prev, dropped_count=dropped, sink_id=sink_id)
-
-
-def _chain_result(nodes, proc_prev, *, dropped_count, sink_id):
+def _chain_result(nodes, proc_prev):
     mach_prev = _build_prev_by_resource(nodes, resource_key="machine_id")
     op_prev = _build_prev_by_resource(nodes, resource_key="operator_id")
 
     ctrl_prev = _choose_control_prev(nodes, proc_prev=proc_prev, mach_prev=mach_prev, op_prev=op_prev)
-    chain, edges = _backtrace_chain(sink_id, ctrl_prev=ctrl_prev, nodes=nodes)
-    makespan_end = _fmt_dt(nodes[sink_id]["end"])
-
-    return {
-        "ids": chain,
-        "edges": edges,
-        "makespan_end": makespan_end,
-        "edge_type_stats": _edge_type_stats(edges),
-        "edge_count": len(edges),
-        "dropped_count": dropped_count,
-        "critical_chain_partial": dropped_count > 0,
-    }
+    chain, edges = _backtrace_chain(_sink_id(nodes), ctrl_prev=ctrl_prev)
+    return {"ids": chain, "edges": edges}
 
 
-def _effective_predecessors(
-    key: str,
-    nodes: Dict[str, Dict[str, Any]],
-    predecessor_ids: Dict[str, List[str]],
-    memo: Dict[str, List[str]],
-) -> List[str]:
-    visiting = {key}
-    stack: List[Tuple[str, int]] = [(key, 0)]
-    while stack:
-        current, index = stack[-1]
-        parents = predecessor_ids.get(current, [])
-        while index < len(parents):
-            parent = parents[index]
-            index += 1
-            if parent in nodes or parent not in predecessor_ids or parent in memo:
-                continue
-            if parent in visiting:
-                raise ValueError("工艺前后关系形成循环，无法计算关键链。")
-            stack[-1] = (current, index)
-            visiting.add(parent)
-            stack.append((parent, 0))
-            break
-        else:
-            stack.pop()
-            visiting.remove(current)
-            resolved: List[str] = []
-            seen: set = set()
-            for parent in parents:
-                if parent in nodes:
-                    if parent not in seen:
-                        seen.add(parent)
-                        resolved.append(parent)
-                elif parent in predecessor_ids:
-                    for anc in memo[parent]:
-                        if anc not in seen:
-                            seen.add(anc)
-                            resolved.append(anc)
-            memo[current] = resolved
-    return memo[key]
-
-
-def compute_critical_chain_from_dependencies(
-    rows,
-    predecessor_ids,
-    *,
-    target_id: Optional[str] = None,
-    include_points: bool = True,
-):
+def compute_critical_chain_from_dependencies(tasks, previous, *, task_intervals):
     """Use captured process edges, including joins and point operations.
 
+    ``previous`` maps every task_ref to its acyclic in-graph process
+    predecessors and ``task_intervals`` to its admitted datetime interval.
     Process order breaks equal-time ties and keeps downstream point stages in
     the chain; permanent operation identities keep adoption from changing it.
     """
-    nodes, dropped = _build_nodes(rows, include_points=include_points)
-    if target_id is not None:
-        sink_id, reason = _explicit_sink(rows, nodes, target_id)
-        if reason:
-            return _unavailable_result(reason)
-    elif not nodes:
-        return _empty_result(dropped_count=dropped)
-    else:
-        sink_id = None
-    previous: Dict[str, List[str]] = {}
+    nodes = _build_nodes(tasks, task_intervals)
+    if not nodes:
+        return {"ids": [], "edges": []}
     counts: Dict[str, int] = {}
     following: Dict[str, List[str]] = {key: [] for key in nodes}
     ready = []
-    memo: Dict[str, List[str]] = {}
     for key, node in nodes.items():
-        if include_points or dropped == 0:
-            parents = [parent for parent in predecessor_ids.get(key, []) if parent in nodes]
-        else:
-            parents = _effective_predecessors(key, nodes, predecessor_ids, memo)
-        previous[key] = parents
+        parents = previous[key]
         count = len(parents)
         counts[key] = count
         if count == 0:
@@ -339,11 +149,4 @@ def compute_critical_chain_from_dependencies(
             counts[child] -= 1
             if counts[child] == 0:
                 heappush(ready, (nodes[child]["start"], nodes[child]["end"], nodes[child]["sort_id"], child))
-    if order != len(nodes):
-        raise ValueError("工艺前后关系形成循环，无法计算关键链。")
-    return _chain_result(
-        nodes,
-        previous,
-        dropped_count=dropped,
-        sink_id=sink_id if sink_id is not None else _sink_id(nodes),
-    )
+    return _chain_result(nodes, previous)

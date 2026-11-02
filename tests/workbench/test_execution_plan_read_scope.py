@@ -72,28 +72,26 @@ def test_unrelated_plan_projection_cannot_block_execution_cohort(ledger_case, mo
     assert detail['data']['task'] == row
     assert actual['data']['calendar']['time_scope']['range_start'] == scope['range_start']
     assert actual['data']['calendar']['time_scope']['range_end'] == scope['range_end']
-    assert actual['data']['critical_chain']['state'] == 'unavailable'
-    assert actual['data']['critical_chain']['reason_code'] == 'process_order_unavailable'
+    assert actual['data']['gantt_graph'] == {'state': 'unavailable', 'reason': '工序顺序数据不完整。', 'scope': 'full_plan',
+                                             'nodes': [], 'critical_task_refs': [], 'critical_edges': []}
     assert all_rows(case.conn) == before
 
 
-def test_scoped_actual_chain_retains_outside_predecessors_and_snapshot(ledger_case, monkeypatch):
+def test_scoped_actual_graph_keeps_full_plan_chain_and_hover_skips_report_reads(ledger_case):
     case = ledger_case
     plan_ref, refs = _three_tasks(case, record_source=True)
     client = app_for(case).test_client()
     scope = dict(plan_ref=plan_ref, range_start='2026-09-09T12:00:00', range_end='2026-09-09T14:00:00')
     actual = read(client, ACTUAL, **scope)
-    chain = actual['data']['critical_chain']
+    graph = actual['data']['gantt_graph']
     assert actual['data']['task_count'] == 1 and actual['data']['items_complete'] is True
-    assert chain['state'] == 'available' and chain['scope'] == 'full_plan'
-    assert chain['plan_task_count'] == 3 and chain['task_refs'] == refs
-    assert [node['in_scope'] for node in chain['nodes']] == [False, False, True]
-    # The shipped frontend contract judges each chain node's in_scope against the response items it already validated.
+    assert graph['state'] == 'available' and graph['scope'] == 'full_plan'
+    assert len(graph['nodes']) == 3 and graph['critical_task_refs'] == refs
+    assert 'critical_chain' not in actual['data']
+    # The shipped frontend contract accepts the scoped response whose graph keeps the full-plan chain.
     assert run_current_js(r"""
-const C = h.runtime.ActualGanttContract, flipped = h.clone(sourceData.payload);
+const C = h.runtime.ActualGanttContract;
 assert.strictEqual(C.workspace(sourceData.payload, sourceData.query), sourceData.payload);
-flipped.data.critical_chain.nodes[0].in_scope = true;
-assert.throws(() => C.workspace(flipped, sourceData.query), /关键链节点与当前计划或范围不一致/);
 const payload = h.clone(sourceData.payload), item = payload.data.items[0], taskRef = item.task.task_ref;
 let reportNoReads = 0;
 const reports = Array.from({ length: 1000 }, (_, index) => {
@@ -150,24 +148,11 @@ try {
 }
 return true;
 """, {'payload': actual, 'query': scope})['result'] is True
-    token = actual['meta']['snapshot_ref']
-    with monkeypatch.context() as patch:
-        from core.services.workbench.execution.ledger import ExecutionLedgerService
-
-        patch.setattr(ExecutionLedgerService, 'workspace_projection',
-                      lambda *args, **kwargs: pytest.fail('Related chain without resource filter projected ledger'))
-        related = read(client, ACTUAL + '/chain', **scope, snapshot_ref=token, target_task_ref=refs[-1])
-    assert related['data']['critical_chain']['task_refs'] == refs
-    case.conn.execute("UPDATE Schedule SET end_time='2026-09-09T09:30:00' WHERE version=2 AND op_id=?", (case.op_id,))
-    case.conn.commit()
-    for path, extra in ((ACTUAL + '/chain', dict(target_task_ref=refs[-1])),
-                        (ACTUAL + '/export', dict(format='csv'))):
-        response = client.get(path, query_string=dict(scope, snapshot_ref=token, **extra))
-        assert response.status_code == 409 and response.get_json()['error']['code'] == 'snapshot_stale'
 
 
 def test_field_scoped_page_write_and_files_keep_same_snapshot(ledger_case, monkeypatch, record_property):
     from core.services.workbench.execution.field_workspace import FieldWorkspaceService
+    from core.services.workbench.execution.ledger import ExecutionLedgerService
 
     case = ledger_case
     plan_ref, refs = _three_tasks(case)
@@ -195,6 +180,8 @@ def test_field_scoped_page_write_and_files_keep_same_snapshot(ledger_case, monke
     first = api.read(**scope, size=1, snapshot_ref=token)
     assert second['meta']['snapshot_ref'] == token and second['meta']['as_of'] == first['meta']['as_of']
     assert second['data']['tasks'][0]['task_ref'] == refs[1]
+    omitted = api.read(range_start=scope['range_start'], range_end=scope['range_end'], size=1, snapshot_ref=token)
+    assert omitted['meta']['snapshot_ref'] == token and omitted['data']['scope'] == first['data']['scope']
     located = api.read(**scope, size=1, task_ref=refs[1], operation_ref=second['data']['tasks'][0]['operation_ref'])
     assert located['data']['page']['number'] == 2 and located['data']['tasks'][0]['task_ref'] == refs[1]
     mismatch = api.client.get(FIELD + '/tasks', query_string=dict(scope, size=1, task_ref=refs[1],
@@ -202,14 +189,25 @@ def test_field_scoped_page_write_and_files_keep_same_snapshot(ledger_case, monke
     assert mismatch.status_code == 409 and mismatch.get_json()['error']['code'] == 'constraint_conflict'
     response = api.client.get(FIELD + '/files/template', query_string=dict(scope, snapshot_ref=token))
     assert response.status_code == 200
-    book = load_workbook(BytesIO(response.data)); assert book.worksheets[0].max_row == 4; book.close()
+    template_bytes = response.data
+    book = load_workbook(BytesIO(template_bytes)); assert book.worksheets[0].max_row == 4; book.close()
     changed = api.client.get(FIELD + '/tasks', query_string=dict(scope, range_end='2026-09-09T12:00:00', snapshot_ref=token))
     assert changed.status_code == 409 and changed.get_json()['error']['code'] == 'snapshot_stale'
     api.create(case.values(2), first['data']['tasks'][0])
-    for path, extra in ((FIELD + '/tasks', dict(page=2, size=1)),
-                        (FIELD + '/files/template', {}), (FIELD + '/files/export', {})):
-        response = api.client.get(path, query_string=dict(scope, snapshot_ref=token, **extra))
-        assert response.status_code == 409 and response.get_json()['error']['code'] == 'snapshot_stale'
+    with monkeypatch.context() as patch:
+        patch.setattr(queries.WorkbenchPlanQueryService, 'execution_workspace',
+                      lambda *a, **kw: pytest.fail('should not load plan tasks on stale snapshot'))
+        patch.setattr(ExecutionLedgerService, 'load_many',
+                      lambda *a, **kw: pytest.fail('should not load ledger on stale snapshot'))
+        patch.setattr(ExecutionLedgerService, 'project_operation',
+                      lambda *a, **kw: pytest.fail('should not project operation on stale snapshot'))
+        for path, extra in ((FIELD + '/tasks', dict(page=2, size=1)),
+                            (FIELD + '/tasks/' + refs[0], {}),
+                            (FIELD + '/files/template', {}), (FIELD + '/files/export', {})):
+            response = api.client.get(path, query_string=dict(scope, snapshot_ref=token, **extra))
+            assert response.status_code == 409 and response.get_json()['error']['code'] == 'snapshot_stale'
+        stale_preview = api.upload(template_bytes, direct)
+        assert stale_preview.status_code == 409 and stale_preview.get_json()['error']['code'] == 'snapshot_stale'
 
 
 def test_field_files_reuse_one_ledger_for_cohort_and_import_preparation(ledger_case, monkeypatch):
@@ -327,11 +325,9 @@ def test_actual_large_plan_applies_finish_batch_and_overlap_before_ledger(ledger
     monkeypatch.setattr(PlanReadContext, "_enrich_rows", enrich)
     original = actual_gantt.ExecutionLedgerService.workspace_projection
 
-    def project(ledger, ref, tasks, *, include_history=True, include_resources=True):
+    def project(ledger, ref, tasks, *, include_history=True):
         projected.append(len(tasks))
-        return original(
-            ledger, ref, tasks, include_history=include_history, include_resources=include_resources
-        )
+        return original(ledger, ref, tasks, include_history=include_history)
 
     monkeypatch.setattr(actual_gantt.ExecutionLedgerService, 'workspace_projection', project)
     monkeypatch.setattr(queries.WorkbenchPlanQueryService, 'execution_workspace',
@@ -353,15 +349,15 @@ def test_actual_large_plan_applies_finish_batch_and_overlap_before_ledger(ledger
         data = response.get_json()['data']
         assert data['task_count'] == len(data['items']) == projected[-1] == expected
         assert data['availability']['state'] == 'available' and data['items_complete'] is True
-        assert data['critical_chain']['state'] == 'available'
-        assert data['critical_chain']['plan_task_count'] == len(data['critical_chain']['nodes']) == 20000
-        assert data['critical_chain']['visible_node_count'] == expected
+        assert data['gantt_graph']['state'] == 'available' and len(data['gantt_graph']['nodes']) == 20000
+        assert 'critical_chain' not in data
         source_reads = [' '.join(sql.upper().replace('"', '').split()) for sql in statements]
         assert sum(' FROM SCHEDULE R WHERE R.VERSION = 2 ' in sql for sql in source_reads) == 1
         if scope.get("plan_finish_date_from"):
             enriched.clear()
             with monkeypatch.context() as patch:
-                patch.setattr(actual_gantt, "plan_chain", lambda *args, **kwargs: pytest.fail("Export rebuilt the full chain"))
+                patch.setattr(actual_gantt, "project_process_order",
+                              lambda *args, **kwargs: pytest.fail("Export rebuilt the full process graph"))
                 exported = client.get(ACTUAL + "/export", query_string=dict(plan_ref=plan_ref, format="csv",
                     snapshot_ref=response.get_json()["meta"]["snapshot_ref"], **scope))
             assert exported.status_code == 200, exported.get_json()
@@ -391,7 +387,7 @@ def test_actual_resource_filter_keeps_planned_and_reported_owners(ledger_case):
         assert {item['task']['task_ref'] for item in data['items']} == set(expected)
 
 
-def test_actual_export_skips_chain_and_keeps_workspace_snapshot_and_deviations(ledger_case, monkeypatch):
+def test_actual_export_skips_graph_and_keeps_workspace_snapshot_and_deviations(ledger_case, monkeypatch):
     from core.services.workbench.execution import actual_gantt
     from core.services.workbench.execution.actual_gantt_scope import ActualGanttScope
 
@@ -400,20 +396,21 @@ def test_actual_export_skips_chain_and_keeps_workspace_snapshot_and_deviations(l
     service = actual_gantt.ActualGanttService(case.conn)
     scope = ActualGanttScope.parse({"plan_ref": plan_ref})
     with service.read_snapshot():
-        full, full_state = service.workspace(scope)
+        full, full_state = service.workspace(scope, full_workspace=True)
     with service.read_snapshot():
-        exported, export_state = service.workspace(scope, include_chain=False)
-    assert "critical_chain" in full and "critical_chain" not in exported
+        exported, export_state = service.workspace(scope, full_workspace=False)
+    assert full["gantt_graph"] is not None
+    assert exported["gantt_graph"] is None and exported["calendar"] is None
     assert full_state == export_state
-    actual_gantt.bind_axis_time(exported, "2026-09-10T12:00:00", "snapshot")
+    actual_gantt.bind_axis_time(exported, "2026-09-10T12:00:00")
     assert all("deviation" in item for item in exported["items"])
     client = app_for(case).test_client()
     listed = read(client, ACTUAL, plan_ref=plan_ref)
 
-    def unused_chain(*args, **kwargs):
-        pytest.fail("CSV export rebuilt the unconsumed critical chain")
+    def unused_graph(*args, **kwargs):
+        pytest.fail("CSV export rebuilt the full process graph")
 
-    monkeypatch.setattr(actual_gantt, "plan_chain", unused_chain)
+    monkeypatch.setattr(actual_gantt, "project_process_order", unused_graph)
     response = client.get(ACTUAL + "/export", query_string={"plan_ref": plan_ref, "format": "csv",
         "snapshot_ref": listed["meta"]["snapshot_ref"]})
     assert response.status_code == 200, response.get_json()
@@ -453,22 +450,3 @@ def test_actual_gantt_rejects_stale_snapshot_before_projection(ledger_case, monk
     for path, extra in ((ACTUAL, {}), (ACTUAL + "/export", {"format": "csv"})):
         response = client.get(path, query_string={"plan_ref": plan_ref, "snapshot_ref": token, **extra})
         assert response.status_code == 409 and response.get_json()["error"]["code"] == "snapshot_stale"
-
-
-def test_critical_chain_skips_long_point_event_chain_without_recursion_error():
-    from core.services.scheduler.gantt.critical_chain import compute_critical_chain_from_dependencies
-
-    rows = [{"op_code": "op-0", "operation_ref": "ref-0", "start_time": "2026-10-12 08:00", "end_time": "2026-10-12 09:00"}]
-    predecessor_ids = {"op-0": []}
-    for index in range(1, 1201):
-        code = f"op-{index}"
-        rows.append({"op_code": code, "operation_ref": f"ref-{index}", "start_time": "2026-10-12 09:00", "end_time": "2026-10-12 09:00"})
-        predecessor_ids[code] = [f"op-{index - 1}"]
-    rows.append({"op_code": "op-1201", "operation_ref": "ref-1201", "start_time": "2026-10-12 09:00", "end_time": "2026-10-12 10:00"})
-    predecessor_ids["op-1201"] = ["op-1200"]
-
-    result = compute_critical_chain_from_dependencies(rows, predecessor_ids, include_points=False)
-    assert result["ids"] == ["op-0", "op-1201"]
-    assert result["dropped_count"] == 1200
-    assert result["critical_chain_partial"] is True
-    assert len(result["edges"]) == 1 and result["edges"][0]["from"] == "op-0" and result["edges"][0]["to"] == "op-1201"

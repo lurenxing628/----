@@ -30,11 +30,12 @@
       range: data.scope.plan_finish_date_from && data.scope.plan_finish_date_to ? '计划完工 ' + data.scope.plan_finish_date_from + ' 至 ' + data.scope.plan_finish_date_to : undefined
     } : null);
     const selectedTask = data && data.tasks.find(task => task.task_ref === opened);
-    window.WorkbenchPageContext.useSnapshot(data ? {
+    const pageContext = data ? {
       plan_ref: data.scope.plan_ref, scope: data.scope,
       table: { page: data.page.number, size: data.page.size }, task_ref: opened,
       operation_ref: selectedTask ? selectedTask.operation_ref : undefined, return_to: initialContext.return_to
-    } : null, !!data && !read.loading && !read.error && !command.locked && command.phase !== 'done' && (!opened || !!selectedTask));
+    } : null;
+    window.WorkbenchPageContext.useSnapshot(pageContext, !!data && !read.loading && !read.error && !command.locked && command.phase !== 'done' && (!opened || !!selectedTask));
     const blocked = command.locked || !!editor || files || !!nextDraft || command.phase === 'done';
     const rowBlocked = command.locked || files || !!nextDraft || command.phase === 'done';
     function openTask(ref) {
@@ -103,7 +104,7 @@
       {data && <window.WorkbenchListControls.Pager page={data.page} sizes={[10, 20, 50, 100]} unit="道工序" label="现场" sizeLabel="现场每页数量" disabled={blocked} busy={read.loading}
         onPage={page => { setNotice(''); setScope({ ...effectiveScope, size: scope.size, page, snapshot_ref: snapshot }); setOpened(null); }}
         onSize={size => { setNotice(''); setScope({ ...effectiveScope, size, page: 1, snapshot_ref: snapshot }); setOpened(null); }} />}
-      {selectedTask && <window.FieldDetail key={selectedTask.task_ref} adapter={api} taskRef={selectedTask.task_ref} scope={effectiveScope} snapshot={snapshot} revision={revision} command={command} editor={editor}
+      {selectedTask && <window.FieldDetail key={selectedTask.task_ref} adapter={api} taskRef={selectedTask.task_ref} scope={effectiveScope} returnContext={pageContext} snapshot={snapshot} revision={revision} command={command} editor={editor}
         retained={drafts.current.get(selectedTask.task_ref)?.retained} onDraft={retainDraft} nextDraft={nextDraft} onContinueReady={continueReady} onRefresh={refresh}
         onEdit={value => { if (command.reset()) setEditor(value); }} onCloseEditor={closeEditor} onDone={done} onNavigate={onNavigate} />}
       {files && <window.FieldFiles adapter={api} scope={effectiveScope} snapshot={snapshot} command={command} onClose={() => { if (command.phase === 'done') done(); else if (command.reset()) setFiles(false); }} onDone={done} />}

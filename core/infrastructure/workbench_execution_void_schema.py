@@ -42,7 +42,7 @@ def execution_void_objects():
     return objects
 
 
-def execution_void_contract_issues(conn, *, structure: SchemaStructure):
+def execution_void_contract_issues(structure: SchemaStructure):
     actual = structure.sql
     return [("missing_execution_void:" if name not in actual else "invalid_execution_void:") + name
             for name, sql in execution_void_objects().items()

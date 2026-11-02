@@ -16,8 +16,6 @@ from .states import ResourceChange
 
 class WorkbenchResourceService:
     def __init__(self, conn, kind, logger=None):
-        if kind not in ("op_type", "machine", "operator"):
-            raise ValueError("Unsupported resource entity")
         self.conn, self.kind = conn, kind
         self.repo = WorkbenchResourceStateRepository(conn, logger=logger)
         self.identities = WorkbenchIdentityRepository(conn, logger=logger)

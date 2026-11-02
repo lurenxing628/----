@@ -41,16 +41,24 @@ def enable_restore(api):
 
 
 def test_backup_list_remains_readable_without_maintenance_directory(tmp_path):
-    api = SystemTestAPI(tmp_path)
-    backup = api.backup()
-    api.app.config["WORKBENCH_SYSTEM_JOURNAL_DIR"] = ""
+    from flask import Flask
 
-    data = api.read("/backups")["data"]
-    assert [row["filename"] for row in data["rows"] if row["record_kind"] == "backup_file"] == [Path(backup).name]
-    capabilities = data["capabilities"]
-    assert not capabilities["create"] and not capabilities["delete"] and not capabilities["restore"]
-    assert "还没有配置维护目录" in capabilities["blocked_reason"]
-    assert capabilities["restore_reason"] == capabilities["blocked_reason"]
+    from web.bootstrap.workbench_system_restore_recovery import (
+        RECOVERY,
+        prepare_system_restore_startup,
+    )
+
+    app = Flask("startup-recovery-test")
+    database = tmp_path / "test.db"
+    app.config.update(DATABASE_PATH=str(database), WORKBENCH_SYSTEM_JOURNAL_DIR="")
+    assert prepare_system_restore_startup(app) is True
+    assert app.extensions[RECOVERY] is True
+    assert not database.exists()
+    client = app.test_client()
+    assert client.get("/api/workbench/v1/system/backups").status_code == 503
+    result = client.get("/api/workbench/v1/system/results/system-test-request-0001")
+    assert result.status_code == 503
+    assert result.get_json()["error"]["code"] == "maintenance_unavailable"
 
 
 def test_static_files_observe_stop_state_without_rereading_database_locks(system_api, monkeypatch):
@@ -124,6 +132,8 @@ def test_utc_operation_logs_use_one_local_time_for_lists_details_filters_and_exp
 
 
 def test_evicted_log_windows_release_their_registered_read_text(tmp_path, monkeypatch):
+    from flask import g
+
     from web.routes.workbench import system_log_snapshots as snapshots
 
     api = SystemTestAPI(tmp_path)
@@ -145,7 +155,8 @@ def test_evicted_log_windows_release_their_registered_read_text(tmp_path, monkey
         assert sum(len(text.encode("utf-8")) for text in texts) <= snapshots._MAX_BYTES
         return list(windows)
 
-    with api.app.app_context():
+    with closing(api.connect()) as conn, api.app.app_context():
+        g.db = conn
         first, second, third = [retain(char * 1000) for char in "abc"]
         assert retained() == [first, second, third]
         # The window count evicts the first window; the byte budget then evicts the second one.
@@ -157,6 +168,8 @@ def test_evicted_log_windows_release_their_registered_read_text(tmp_path, monkey
 
 
 def test_log_windows_with_the_same_text_hold_the_registered_text(tmp_path, monkeypatch):
+    from flask import g
+
     from web.routes.workbench import read_context
     from web.routes.workbench import system_log_snapshots as snapshots
 
@@ -164,7 +177,8 @@ def test_log_windows_with_the_same_text_hold_the_registered_text(tmp_path, monke
     # The same query repeated in a later second gets a new token in the same content group.
     seconds = iter(range(60))
     monkeypatch.setattr(read_context, "current_snapshot_time", lambda: datetime(2026, 10, 31, 8, 0, next(seconds)))
-    with api.app.app_context():
+    with closing(api.connect()) as conn, api.app.app_context():
+        g.db = conn
         first, second = [snapshots.retain_log_snapshot({"kind": "system.logs"}, [{"body": "same"}], ["aps.log"])["snapshot_ref"]
                          for _ in range(2)]
         windows = api.app.extensions["workbench_system_log_snapshots_v1"]
@@ -273,11 +287,14 @@ def test_verified_restore_uses_protection_external_result_and_new_connection(sys
         context = RunDataContext(conn, str(system_api.journal_dir))
         assert context.ref() != before_context
         assert context.resolve_missing(before_context, records=context.capture()) == "context_replaced"
+    from flask import g
+
     from core.models.workbench_system import query_input
     from web.routes.workbench.system_log_snapshots import resolve_log_snapshot
     scope = {"kind": "system.logs", **{key: value for key, value in query_input({}, "logs").items()
                                       if key not in ("page", "page_size")}}
-    with system_api.app.app_context(), pytest.raises(WorkbenchCommandRejected) as error:
+    with closing(system_api.connect()) as conn, system_api.app.app_context(), pytest.raises(WorkbenchCommandRejected) as error:
+        g.db = conn
         resolve_log_snapshot(scope, log_snapshot["meta"]["snapshot_ref"])
     assert error.value.code == "snapshot_stale"
     replay = system_api.file_action("restore", row)

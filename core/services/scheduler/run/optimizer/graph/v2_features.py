@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import logging
 from datetime import date, datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from core.algorithm_contracts.date_parsers import due_exclusive, parse_date
 from core.algorithm_contracts.priority_constants import PRIORITY_WEIGHT, normalize_priority
 from core.algorithm_contracts.types import OpForScheduleAlgo
 from core.algorithm_contracts.value_domains import EXTERNAL, MERGED
-from core.algorithm_runtime.piece_input import operation_batch
 from core.errors import ValidationError
 from core.services.scheduler.run.optimizer.graph_ready_feature_basis import (
     BASELINE_ORDERING_FIELD,
@@ -26,12 +25,15 @@ from .v2_capacity import (
 )
 from .workload import batch_ordering_workload_signals, build_work_buckets, operation_workload_signals
 
+if TYPE_CHECKING:
+    from core.algorithms.greedy.schedule_preparation import NativeSchedulePreparation
+
 _NO_DUE_DEADLINE_HOURS = 1_000_000_000.0
 _NO_DUE_CRITICAL_RATIO = 1_000_000_000.0
 _NO_DUE_SACRIFICE_PENALTY = 2.0
 
 # 真零工时自制工序（total==0：setup=unit=0，或 quantity=0 且 setup=0）在系统口径下合法
-# （见 _operation_hours 内注释），但 duration 类特征有两条恒>0 的承重合同：
+# （见 _operation_hours 注释），但 duration 类特征有两条恒>0 的承重合同：
 # 1) _critical_ratio/_saveability 依赖 remaining_hours>0 做除零安全（见 _critical_ratio 注释）；
 # 2) 下游公式层 optimizer_graph_ready_candidates._required_positive_metric 要求
 #    remaining_due_burden_hours 恒>0（既有合同测试锁死）。
@@ -59,7 +61,7 @@ def enrich_graph_ready_v2_metrics(
     graph_ready_context: Dict[str, Any],
     deadline: float,
     clock: Callable[[], float],
-    native_preparation: Optional[Any] = None,
+    native_preparation: NativeSchedulePreparation,
 ) -> Optional[Dict[int, Dict[str, Any]]]:
     if clock() >= deadline:
         return None
@@ -68,7 +70,7 @@ def enrich_graph_ready_v2_metrics(
                   graph_ready_context=graph_ready_context)
     inputs["prepared"] = _prepare_common_features(
         metrics_by_op_id, operations=operations, batches=batches, start_dt=start_dt,
-        seed_results=seed_results, downtime_map=downtime_map, native_preparation=native_preparation)
+        downtime_map=downtime_map, native_preparation=native_preparation)
     out = _enrich_feature_basis(
         feature_basis=SUCCESSOR_WORKLOAD_BASIS, deadline=deadline, clock=clock, **inputs
     )
@@ -84,16 +86,14 @@ def enrich_graph_ready_v2_metrics(
     return out
 
 
-def _prepare_common_features(metrics, *, operations, batches, start_dt, seed_results, downtime_map,
-                             native_preparation=None):
+def _prepare_common_features(metrics, *, operations, batches, start_dt, downtime_map,
+                             native_preparation: NativeSchedulePreparation):
     op_by_id = {op.id: op for op in operations}
-    if set(metrics).difference(op_by_id):
-        raise ValidationError("GraphReady v2 特征缺少对应工序。", field="graph_ready_v2_features")
-    durations = _duration_by_op_id_with_zero_total_trace(
-        op_by_id, batches=batches, native_preparation=native_preparation,
-    )
-    durations = {op_id: durations[op_id] for op_id in metrics}
     batch_by_op_id = {op_id: _batch_for_operation(op_by_id[op_id], batches=batches) for op_id in metrics}
+    durations = _duration_by_op_id_with_zero_total_trace(
+        {op_id: op_by_id[op_id] for op_id in metrics},
+        total_hours_by_op_id=native_preparation.total_hours_by_op_id,
+    )
     due_exclusive_by_batch: Dict[int, Optional[datetime]] = {}
     due_hours_by_batch: Dict[int, float] = {}
     priority_weight_by_batch: Dict[int, float] = {}
@@ -124,7 +124,7 @@ def _prepare_common_features(metrics, *, operations, batches, start_dt, seed_res
             }
         )
         base_row_by_op_id[op_id] = base_row
-    resource_seeds = seed_results_by_resource_id(seed_results)
+    resource_seeds = seed_results_by_resource_id(native_preparation.seed_applications)
     return {
         "operations": op_by_id,
         "metrics": metrics,
@@ -135,7 +135,7 @@ def _prepare_common_features(metrics, *, operations, batches, start_dt, seed_res
             for op_id, batch in batch_by_op_id.items()
         },
         "bottleneck_score_by_op_id": {
-            op_id: _required_non_negative(metric, field="bottleneck_machine_score") for op_id, metric in metrics.items()
+            op_id: float(metric["bottleneck_machine_score"]) for op_id, metric in metrics.items()
         },
         "due_exclusive_by_op_id": {
             op_id: due_exclusive_by_batch[id(batch)]
@@ -272,22 +272,18 @@ def _workload_signals(
 def _duration_by_op_id_with_zero_total_trace(
     op_by_id: Dict[int, Any],
     *,
-    batches: Dict[str, Any],
-    native_preparation: Optional[Any] = None,
+    total_hours_by_op_id: Dict[int, float],
 ) -> Dict[int, float]:
     duration_by_op_id: Dict[int, float] = {}
     zero_total_op_ids: List[int] = []
     for op_id, op in op_by_id.items():
-        total = non_negative_float(
-            _operation_hours(op, batches=batches, native_preparation=native_preparation),
-            field="operation.total_hours",
-        )
+        total = _operation_hours(op, total_hours_by_op_id=total_hours_by_op_id)
         if total <= 0.0:
             # 真零工时工序：按文档化 epsilon 计入并留痕，取舍与除零安全论证见
             # _ZERO_TOTAL_DURATION_EPSILON_HOURS 常量注释。
             zero_total_op_ids.append(int(op_id))
             total = _ZERO_TOTAL_DURATION_EPSILON_HOURS
-        duration_by_op_id[op_id] = float(total)
+        duration_by_op_id[op_id] = total
     if zero_total_op_ids:
         _LOGGER.warning(
             "GraphReady v2 特征遇到 %d 个总工时为 0 的自制工序，按最小 epsilon=%.0e 小时计入 duration 特征"
@@ -299,27 +295,14 @@ def _duration_by_op_id_with_zero_total_trace(
     return duration_by_op_id
 
 
-def _operation_hours(op: Any, *, batches: Dict[str, Any], native_preparation: Optional[Any] = None) -> float:
-    raw_batch = _batch_for_operation(op, batches=batches)
+def _operation_hours(op: OpForScheduleAlgo, *, total_hours_by_op_id: Dict[int, float]) -> float:
     if op.source == EXTERNAL:
-        return float(_external_operation_hours(op))
-    if native_preparation is not None and op.id in native_preparation.total_hours_by_op_id:
-        return float(native_preparation.total_hours_by_op_id[op.id])
-    batch = (
-        native_preparation.operation_batch(op, raw_batch)
-        if native_preparation is not None
-        else operation_batch(op, raw_batch)
-    )
-    # 单一真相源：total=setup+unit*quantity 与 core/algorithm_runtime/internal_slot.validate_internal_hours
-    # 同口径——quantity==0 合法（总量=setup）、总工时 0 合法，不复辟 quantity>0 / total>0 硬闸
-    # （系统口径见 schedule_input_runtime_support._ensure_internal_runtime_hours 护栏注释与回归测试
-    # test_ensure_internal_runtime_hours_allows_zero_quantity）。缺失/非数字/非有限/负数已由 validate_internal_hours
-    # 按坏输入报错（对 None 同样报错，不补 0）；这里逐字段检查只为给出带字段名的
-    # graph_ready_v2_features 错误。total==0 的处理见 _duration_by_op_id_with_zero_total_trace。
-    quantity = non_negative_float(batch.quantity, field="batch.quantity")
-    setup = non_negative_float(op.setup_hours, field="operation.setup_hours")
-    unit = non_negative_float(op.unit_hours, field="operation.unit_hours")
-    return float(setup + unit * quantity)
+        return _external_operation_hours(op)
+    # 单一真相源：自制工序总工时由本次排产的原生准备（prepare_native_schedule_inputs）按
+    # internal_slot.require_internal_hours 为每道未落位自制工序算好一次（分件工序按件数量），
+    # 已保证有限且非负——quantity==0 合法（总量=setup）、总工时 0 合法，坏工时在那里按字段报错。
+    # total==0 的处理见 _duration_by_op_id_with_zero_total_trace。
+    return total_hours_by_op_id[op.id]
 
 
 def _external_operation_hours(op: OpForScheduleAlgo) -> float:
@@ -418,12 +401,6 @@ def _positive_float(value: Any, *, field: str) -> float:
     if number <= 0.0:
         raise ValidationError(f"{field} 必须大于 0。", field="graph_ready_v2_features")
     return number
-
-
-def _required_non_negative(metric: Dict[str, Any], *, field: str) -> float:
-    if field not in metric:
-        raise ValidationError(f"GraphReady v2 特征缺少 {field}。", field="graph_ready_v2_features")
-    return non_negative_float(metric.get(field), field=field)
 
 
 __all__ = ["enrich_graph_ready_v2_metrics"]

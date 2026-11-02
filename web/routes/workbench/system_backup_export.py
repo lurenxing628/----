@@ -43,9 +43,9 @@ def _selected_bytes(selected, rows):
 def system_backup_export(backup_ref):
     if not request.args.get("snapshot_ref"):
         raise WorkbenchCommandRejected("snapshot_stale", messages.STALE)
-    event_journal = journal() if current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR") else None
-    records = event_journal.collection() if event_journal is not None else None
-    database = event_journal.scope_from_records(records) if event_journal is not None else None
+    event_journal = journal()
+    records = event_journal.collection()
+    database = event_journal.scope_from_records(records)
     selected = resolve_context("backup", backup_ref, database=database)
     rows, _sources, _query, _snapshot = collection("backups", event_journal=event_journal, journal_records=records)
     data, name = _selected_bytes(selected, rows)

@@ -7,6 +7,7 @@ from core.services.workbench.facts.candidate_projection import (
     baseline_capture,
     candidate_summary,
 )
+from core.services.workbench.facts.candidate_read_source import candidate_snapshot_identity
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_tasks import (
     interval_span,
@@ -25,14 +26,14 @@ class WorkbenchRunCandidateQueryService:
     def __init__(self, conn):
         self.store = CandidateStore(conn)
 
-    def catalog(self, scope):
-        """Return the public DTO and source identity, independent of page number."""
+    def catalog(self, scope, *, bind_snapshot):
+        """Return the public DTO and its snapshot; the source identity is independent of page number."""
         with self.store.snapshot():
             from .decision_source import DecisionSource
             source = DecisionSource(self.store, scope.run_ref)
             run, rows = source.run, source.rows
+            snapshot = bind_snapshot(scope.scope(), {"read_contract_version": 1, "run_ref": run["run_ref"], "run_state": run["state"]})
             summaries = [(row["sequence"], source.saved_candidate_catalog(row["candidate_ref"])) for row in rows]
-            state = {"read_contract_version": 1, "run_ref": run["run_ref"], "run_state": run["state"]}
             filtered = [(seq, item) for seq, item in summaries if scope.status in ("all", item["status"])]
 
             def sort(item):
@@ -48,27 +49,30 @@ class WorkbenchRunCandidateQueryService:
                              "has_more": offset + scope.size < len(filtered)},
                     "candidate_count": len(rows), "catalog_complete": run["state"] not in ("queued", "running"),
                     "capabilities": read_capabilities(), "blocked_reasons": blocked_reasons()}
-            return data, state
+            return data, snapshot
 
-    def identity(self, candidate_ref):
+    def identity(self, candidate_ref, *, bind_snapshot):
         with self.store.snapshot():
             data = self.store.candidate_identity(candidate_ref)
-            return data, {"read_contract_version": 1, **data}
+            return data, bind_snapshot({"kind": "run-candidate-identity", "candidate_ref": candidate_ref},
+                                       {"read_contract_version": 1, **data})
 
-    def workspace(self, scope, *, include_effort_and_delivery: bool = True, include_gantt_graph: bool = True):
+    def workspace(self, scope, *, bind_snapshot, include_effort_and_delivery: bool = True, include_gantt_graph: bool = True):
         """No UI paging: every persisted task in the exact requested scope is returned."""
         with self.store.snapshot():
             from .decision_source import DecisionSource
             source = DecisionSource(self.store, self.store.candidate_run(scope.candidate_ref), selected_candidate_ref=scope.candidate_ref)
-            return self._workspace(
+            snapshot = bind_snapshot(scope.scope(), candidate_snapshot_identity(source.run["run_ref"], scope.candidate_ref))
+            data = self._workspace(
                 source.candidate_source(scope.candidate_ref),
                 scope,
                 include_effort_and_delivery=include_effort_and_delivery,
                 include_gantt_graph=include_gantt_graph,
             )
+            return data, snapshot
 
-    def export_workspace(self, scope):
-        return self.workspace(scope, include_effort_and_delivery=False, include_gantt_graph=False)
+    def export_workspace(self, scope, *, bind_snapshot):
+        return self.workspace(scope, bind_snapshot=bind_snapshot, include_effort_and_delivery=False, include_gantt_graph=False)
 
     @staticmethod
     def _workspace(source, scope, *, include_effort_and_delivery: bool = True, include_gantt_graph: bool = True):
@@ -112,7 +116,7 @@ class WorkbenchRunCandidateQueryService:
                 "batch_ref": scope.batch_ref, "capabilities": read_capabilities(),
                 "blocked_reasons": blocked_reasons(),
                 "data_gaps": [], "delivery_risks": delivery}
-        return data, source.snapshot_identity
+        return data
 
 
 def _generation(run, capture, candidate, *, business_fields):

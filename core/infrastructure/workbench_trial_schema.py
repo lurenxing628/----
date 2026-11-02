@@ -74,7 +74,7 @@ def workbench_trial_objects():
     return objects
 
 
-def workbench_trial_contract_issues(conn, *, structure: SchemaStructure):
+def workbench_trial_contract_issues(structure: SchemaStructure):
     actual = structure.sql
     return [("missing_trial_schema:" if name not in actual else "invalid_trial_schema:") + name
             for name, sql in workbench_trial_objects().items()

@@ -8,7 +8,6 @@ from core.models.workbench_relation_file import (
     READONLY,
     REQUIRED,
     public_columns,
-    relation_kind,
 )
 from core.models.workbench_table_descriptor import extra_sheet_notice
 from core.services.workbench.facts.file_source import source_rows
@@ -67,9 +66,6 @@ def _parse(number, values, errors, fields, fmt, readonly):
 
 
 def read_relation_file(kind, content, fmt):
-    relation_kind(kind)
-    if type(content) is not bytes or fmt not in ("csv", "xlsx"):
-        raise file_error("只能导入 CSV 或 XLSX 文件，没有导入。请重新选择文件。")
     state = {"sheets": 1}
     source = source_rows(content, fmt, state, error=file_error)
     try:

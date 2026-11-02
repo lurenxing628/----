@@ -300,7 +300,7 @@
       'objectives', 'selected_objective', 'progress', 'scopes', 'actions', 'stages', 'candidate', 'candidates', 'source_event', 'items', 'page', 'filters'];
     check(A.shape(data, fields) && data.process_version === 'unified-optimization-process-v1' && data.run_ref === runRef && data.capture_ref === runRef
       && object(data.scope) && data.scope.run_ref === runRef && data.scope.comparison_mode === q.comparison_mode
-      && (q.selected_candidate_ref ? data.scope.selected_candidate_ref === q.selected_candidate_ref : data.scope.selected_candidate_ref === null || ref(data.scope.selected_candidate_ref))
+      && (q.selected_candidate_ref === undefined || data.scope.selected_candidate_ref === q.selected_candidate_ref)
       && time(data.scope.range_start) && time(data.scope.range_end) && timeKey(data.scope.range_start) < timeKey(data.scope.range_end)
       && object(data.scope.reference) && object(data.baseline) && data.baseline.kind === data.scope.reference.kind
       && data.baseline.state === data.scope.reference_state && G.runOptions(data.scope.run_options), '共同优化过程的运行或保存选项不一致，请点“刷新优化过程”。');
@@ -317,7 +317,7 @@
         && field.index === index && field.direction === 'lower' && ['key', 'label', 'unit'].every(key => typeof field[key] === 'string'));
     check(Array.isArray(data.objectives) && G.sameArray(data.objectives.map(value => value.name), names) && data.objectives.every(descriptor)
       && descriptor(data.selected_objective) && names.includes(data.selected_objective.name)
-      && data.selected_objective.name === (q.objective || data.scope.run_options.primary_objective)
+      && (q.objective === undefined || data.selected_objective.name === q.objective)
       && JSON.stringify(data.selected_objective) === JSON.stringify(data.objectives.find(value => value.name === data.selected_objective.name)),
     '过程的优化方向或评分字段已变化，请点“刷新优化过程”。');
     const selectedObjective = data.selected_objective.name, summary = data.summary;
@@ -353,10 +353,10 @@
       && new Set(data.candidates.map(value => value.candidate_ref)).size === data.candidates.length && member(data.candidate),
     '过程来源候选的保存身份不完整，请点“刷新优化过程”。');
     const catalog = new Map(data.candidates.map(value => [value.candidate_ref, value]));
-    const anchor = q.process_candidate_ref || data.scope.selected_candidate_ref || data.candidates[0].candidate_ref;
-    check(data.candidate.candidate_ref === anchor && catalog.has(anchor)
+    const anchor = data.candidate.candidate_ref;
+    check((q.process_candidate_ref === undefined || anchor === q.process_candidate_ref) && catalog.has(anchor)
       && JSON.stringify(data.candidate) === JSON.stringify(catalog.get(anchor))
-      && (data.scope.selected_candidate_ref === null || catalog.has(data.scope.selected_candidate_ref)), '过程来源定位已变化，请点“刷新优化过程”。');
+      && catalog.has(data.scope.selected_candidate_ref), '过程来源定位已变化，请点“刷新优化过程”。');
     check(data.source_event === null || object(data.source_event) && positive(data.source_event.event_id)
       && data.source_event.event_id === data.candidate.search_evidence_ref.source_event_id && amount(data.source_event.elapsed_ms)
       && typeof data.source_event.phase === 'string' && typeof data.source_event.verified === 'boolean'

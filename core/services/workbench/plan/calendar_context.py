@@ -1,23 +1,41 @@
 """Shared selected-plan admission and public resource identities."""
 
-from collections import namedtuple
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
+from typing import Any, Dict, List, Tuple
 
-from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.capacity.plan_calendar_intervals import instant
 
-SelectedPlanContext = namedtuple("SelectedPlanContext", "rows start end time_scope")
+
+@dataclass(frozen=True)
+class SelectedPlanContext:
+    rows: List[Dict[str, Any]]
+    start: datetime
+    end: datetime
+    time_scope: Dict[str, Any]
+    intervals: Dict[Any, Tuple[datetime, datetime]]
+
+    @property
+    def calendar_days(self) -> Tuple[date, date, int]:
+        first = self.start.date()
+        if first > date.min:
+            first -= timedelta(days=1)
+        last = (
+            self.end.date()
+            if self.start == self.end
+            else (self.end - timedelta(microseconds=1)).date()
+        )
+        for row in self.rows:
+            if row.get("_point_work"):
+                at = self.intervals[row["schedule_id"]][0]
+                last = max(last, at.date())
+        return first, last, (last - first).days + 1
 
 
-def require_snapshot(conn):
-    if not conn.in_transaction:
-        raise RuntimeError("Plan projections require a caller-owned read transaction.")
-
-
-def selected_context(conn, scope, rows, plan_span):
-    require_snapshot(conn)
+def selected_context(scope, rows, plan_span, *, intervals):
     time_scope = scope.time_scope(plan_span)
     start, end = instant(time_scope["range_start"]), instant(time_scope["range_end"])
-    return SelectedPlanContext(rows, start, end, time_scope)
+    return SelectedPlanContext(rows, start, end, time_scope, intervals)
 
 
 def resource_ids(rows, kind):
@@ -26,7 +44,5 @@ def resource_ids(rows, kind):
 
 
 def public_resource(kind, key, identities, raw):
-    identity = identities.get(kind, {}).get(key)
-    if identity is None:
-        raise WorkbenchCommandRejected("identity_missing", "安排关联的设备或人员编号缺失，请到资料总览核对。")
+    identity = identities[kind][key]
     return {"kind": kind, "resource_ref": identity.ref, "label": raw["name"] if raw is not None else None}

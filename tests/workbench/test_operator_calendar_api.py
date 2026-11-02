@@ -1,4 +1,4 @@
-"""个人工作日历月视图签发能力，单日保存后清除实际记录。"""
+"""个人工作日历月视图签发能力，单日保存后清除实际记录；选人导出只在预检准入一次。"""
 
 import sqlite3
 from contextlib import closing
@@ -234,3 +234,51 @@ def test_month_and_range_preview_avoid_resource_dependency_queries_and_prebind_s
     )
     stale = client.get(BASE + ref + "/calendar/month", query_string={"year": 2026, "month": 10, "snapshot_ref": snapshot_ref})
     assert stale.status_code == 409 and stale.get_json()["error"]["code"] == "snapshot_stale"
+
+
+def test_selected_operator_calendar_export_admits_refs_once_and_resolves_them_per_download(client, monkeypatch):
+    from core.services.workbench.resource.queries import WorkbenchResourceQueryService
+    from web.routes.workbench import calendar_files
+
+    files = "/api/workbench/v1/calendar-files/operator_calendar/"
+    with database(client) as conn:
+        conn.executemany("INSERT INTO OperatorCalendar(operator_id,date,day_type,shift_start,shift_end,shift_hours,efficiency) "
+                         "VALUES (?,?,'workday','09:00','17:00',8,1)", [("OP001", DAY), ("OP002", DAY)])
+        conn.commit()
+    selected = [ref_of(client, "OP001")]
+
+    def export_ref():
+        response = client.post(files + "export-preview", json={"range": {"start_date": DAY, "end_date": DAY},
+                                                              "scope": {"operator_refs": selected}})
+        assert response.status_code == 200, response.get_data(as_text=True)
+        data = response.get_json()["data"]
+        assert data["range"]["selected_refs"] == selected
+        return data["export_ref"]
+
+    def download(ref):
+        return client.get(files + "export", query_string={"export_ref": ref, "format": "csv"})
+
+    ref, resolved, resolve_refs = export_ref(), [], WorkbenchResourceQueryService.resolve_refs
+    with monkeypatch.context() as patch:
+        for name in ("check_range", "resource_refs"):
+            patch.setattr(calendar_files, name, lambda *args, **kwargs: pytest.fail("下载不该再准入预检已存的范围"))
+        patch.setattr(WorkbenchResourceQueryService, "resolve_refs",
+                      lambda self, refs: resolved.append(refs) or resolve_refs(self, refs))
+        exported = download(ref)
+    assert exported.status_code == 200, exported.get_data(as_text=True)
+    text = exported.data.decode("utf-8-sig")
+    assert "OP001" in text and "OP002" not in text
+    assert resolved == [selected]
+    ref = export_ref()
+    with database(client) as conn:
+        conn.execute("UPDATE Operators SET name='改名' WHERE operator_id='OP002'")
+        conn.commit()
+    stale = download(ref)
+    assert stale.status_code == 409 and stale.get_json()["error"]["code"] == "snapshot_stale"
+    ref = export_ref()
+    with database(client) as conn:
+        conn.execute("DELETE FROM Operators WHERE operator_id='OP001'")
+        conn.commit()
+    # 先解析选中人员、后绑快照：选中的人已删除时报 404，而不是 409。
+    missing = download(ref)
+    assert missing.status_code == 404 and missing.get_json()["error"]["code"] == "entity_not_found"

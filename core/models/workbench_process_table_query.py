@@ -4,10 +4,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Union
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_process_query import (
-    PROCESS_TABLE_COLUMNS,
-    normalize_process_page_base,
-)
+from core.models.workbench_process_query import PROCESS_STAGES, PROCESS_TABLE_COLUMNS
 from core.models.workbench_resource_table_query import normalize_table_column_filters
 
 MAX_PROCESS_SORT_KEYS = len(PROCESS_TABLE_COLUMNS)
@@ -45,6 +42,8 @@ def normalize_process_sort(value, direction="asc"):
 
 @dataclass(frozen=True)
 class ProcessTablePageRequest:
+    """The one process list request: sort is a column with direction, or a list of up to four keys."""
+
     query: str = ""
     stage: Optional[str] = None
     number: int = 1
@@ -55,7 +54,14 @@ class ProcessTablePageRequest:
     _ordering: List[Dict[str, str]] = field(init=False, repr=False, compare=False)
 
     def __post_init__(self):
-        normalize_process_page_base(self.query, self.stage, self.number, self.size)
+        if not isinstance(self.query, str) or len(self.query) > 200:
+            raise WorkbenchCommandRejected("invalid_input", "搜索内容必须是200字以内的文字。", 400)
+        if self.stage not in (None, *PROCESS_STAGES):
+            raise WorkbenchCommandRejected("invalid_input", "工艺阶段筛选不正确。", 400)
+        if type(self.number) is not int or not 1 <= self.number <= 1_000_000:
+            raise WorkbenchCommandRejected("invalid_input", "页码必须是1至1000000之间的整数。", 400)
+        if type(self.size) is not int or not 1 <= self.size <= 200:
+            raise WorkbenchCommandRejected("invalid_input", "每页条数必须是1至200之间的整数。", 400)
         ordering = normalize_process_sort(self.sort, self.direction)
         object.__setattr__(self, "_ordering", ordering)
         if type(self.sort) is list:
@@ -82,11 +88,16 @@ def process_table_request(value):
     return ProcessTablePageRequest(**fields)
 
 
-def process_table_scope(value):
-    """Normalize an action/export scope, explicitly excluding page and page size."""
+def process_scope_request(value, *, size=20):
+    """An action/export scope (no page number) as the viewed list's request; size is that list's page size."""
     if type(value) is not dict or set(value) - _SCOPE_FIELDS:
         raise WorkbenchCommandRejected("invalid_input", "工艺动作范围只接受搜索、阶段、排序和列筛选，不接受分页。", 400)
-    return {key: item for key, item in process_table_request(value).scope().items() if key not in ("kind", "size")}
+    return ProcessTablePageRequest(**value, size=size)
+
+
+def wire_process_scope(request):
+    """A validated request's scope as its wire dictionary, without kind or page size."""
+    return {key: item for key, item in request.scope().items() if key not in ("kind", "size")}
 
 
 def validate_process_facet_request(column, search, number, size):

@@ -5,7 +5,7 @@ import re
 from flask import current_app, g, request
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_resource_query import ResourcePageRequest
+from core.models.workbench_resource_query import ResourcePageRequest, resource_kind
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.facts.source_revisions import RESOURCE_SOURCE_KEYS, read_source_revisions
 from core.services.workbench.resource.queries import WorkbenchResourceQueryService
@@ -46,7 +46,7 @@ def _with_context(kind, record):
 
 @api_endpoint
 def resource_list(kind):
-    reader = WorkbenchResourceQueryService(g.db, kind, current_app.logger)
+    reader = WorkbenchResourceQueryService(g.db, resource_kind(kind), current_app.logger)
     query = _query(kind)
     with reader.read_snapshot() as state:
         snapshot = bind_read_snapshot(query.scope(), state, request.args.get("snapshot_ref"))
@@ -61,7 +61,7 @@ def resource_list(kind):
 def resource_detail(kind, ref):
     if set(request.args) - {"snapshot_ref"} or len(request.args.getlist("snapshot_ref")) > 1:
         raise WorkbenchCommandRejected("invalid_input", "详情的查询条件不对，详情没有打开。请刷新页面后重新点开这一行。", 400)
-    reader = WorkbenchResourceQueryService(g.db, kind, current_app.logger)
+    reader = WorkbenchResourceQueryService(g.db, resource_kind(kind), current_app.logger)
     with reader.read_snapshot() as state:
         snapshot = bind_read_snapshot({"kind": kind, "entity_ref": ref}, state, request.args.get("snapshot_ref"))
         entity = _with_context(kind, reader.detail(ref))
@@ -71,7 +71,7 @@ def resource_detail(kind, ref):
 @api_endpoint
 def resource_command(kind, action, ref=None):
     body = command_body("资料")
-    reader = WorkbenchResourceQueryService(g.db, kind, current_app.logger)
+    reader = WorkbenchResourceQueryService(g.db, resource_kind(kind), current_app.logger)
     normalized = reader.domain.normalize_input(action, body["input"])
     subject = kind + ":create" if ref is None else ref
     command = kind + "." + action

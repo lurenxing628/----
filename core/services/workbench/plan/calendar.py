@@ -14,8 +14,6 @@ Dense evaluation is capped at 3660 dates / 40000 resource-date cells / 50000 raw
 facts; sparse enormous spans return explicit unavailable, never a shortened range.
 """
 
-from datetime import date, timedelta
-
 from core.services.capacity.plan_calendar_engine import SnapshotCalendarEngine
 from core.services.capacity.plan_calendar_io import CalendarFacts, ProjectionLimit
 from core.services.capacity.plan_calendar_limits import MAX_CALENDAR_DATES, MAX_POLICY_CELLS
@@ -27,12 +25,6 @@ from core.services.capacity.plan_calendar_windows import (
 )
 
 from .calendar_context import public_resource, resource_ids
-
-
-def range_days(start, end):
-    first = start.date() - timedelta(days=1) if start.date() > date.min else date.min
-    last = end.date() if start == end else (end - timedelta(microseconds=1)).date()
-    return first, last, (last - first).days + 1
 
 
 def _resource_projections(engine, facts, ids, bounds, global_calendar, resources):
@@ -57,12 +49,8 @@ def _unavailable_result(scope, time_scope, code):
 
 def project_plan_calendar(conn, *, scope, resources, selected, include_windows: bool = True):
     """selected/resources must already belong to the plan, selected in this transaction."""
-    rows, start, end, time_scope = selected
-    first, last, dates = range_days(start, end)
-    point_days = [row["_point_work"] for row in rows if row.get("_point_work")]
-    if point_days:
-        last = max(last, end.date())
-        dates = (last - first).days + 1
+    rows, start, end, time_scope = selected.rows, selected.start, selected.end, selected.time_scope
+    first, last, dates = selected.calendar_days
     ids = {kind: resource_ids(rows, kind) for kind in ("machine", "operator")}
     if dates > MAX_CALENDAR_DATES:
         return _unavailable_result(scope, time_scope, "calendar_range_limit")

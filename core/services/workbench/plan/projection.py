@@ -131,10 +131,9 @@ def _source_quantities(basis, arranged, source):
             result[item["op_id"]] = _captured_quantities(op, facts.tables["Batches"][op["batch_id"]],
                                                        facts.execution.get(refs[item["op_id"]]), "run_admission")
         return result
-    _, _, saved = source.source
     return {row["original"]["operation"]["id"]: _captured_quantities(
         row["original"]["operation"], row["original"]["batch"], row["original"]["execution"], "trial_creation")
-        for row in saved}
+        for row in source.source.rows}
 
 
 def project_light_tasks(plan_ref, rows, task_refs, operation_refs, resources, origins, *, context):

@@ -31,12 +31,9 @@ def trial_piece_predecessors(rows, all_ops, operation_refs):
 def trial_piece_issues(rows, live, settings):
     if not any(row["original"]["operation"]["piece_id"] is not None for row in rows):
         return []
-    tables = live["facts"]["tables"]
-    operations = {op["id"]: op for op in tables["BatchOperations"]}
-    refs = {int(row["source_key"]): row["ref"] for row in tables["WorkbenchPlanSourceRefs"]
-            if row["active"] == 1 and row["kind"] == "operation"}
+    operations = live["capture"].index("BatchOperations", "id")
     try:
-        expected = trial_piece_predecessors(rows, operations, refs)
+        expected = trial_piece_predecessors(rows, operations, live["preflight_facts"].operation_refs)
     except PieceAdoptionBlocked as exc:
         return [issue(exc.code, str(exc))]
     if not _complete_or_deferred_scope(rows, expected, live, operations, settings):
@@ -60,7 +57,7 @@ def _complete_or_deferred_scope(rows, expected, live, operations, settings):
         return False
     facts: PreflightFacts = live["preflight_facts"]
     checks: PreflightChecks = facts.checks()
-    batches = {row["batch_id"]: row for row in live["facts"]["tables"]["Batches"]}
+    batches = live["capture"].index("Batches", "batch_id")
     deferred = []
     for op_id in missing:
         op = operations[op_id]

@@ -4,12 +4,17 @@ import heapq
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable, Dict, FrozenSet, Iterator, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, FrozenSet, Iterator, List, Optional, Tuple
 
 from core.algorithm_contracts.changeover_events import type_transition
 from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
 from core.algorithm_contracts.value_domains import INTERNAL
+from core.algorithms.greedy.dispatch.sgs_graph import graph_priority_key_map
 from core.errors import ValidationError
+
+if TYPE_CHECKING:
+    from core.algorithms.greedy.dispatch.sgs_graph import PreparedGraphReadyTopology
+    from core.algorithms.greedy.dispatch.sgs_priority_keys import ValidatedGraphPriorityKeys
 
 
 @dataclass(frozen=True)
@@ -68,17 +73,16 @@ class RepairParentPreparation:
 
 def prepare_repair_scope(
     operations: List[Any],
-    graph_context: Dict[str, Any],
+    topology: PreparedGraphReadyTopology,
     *,
     resource_pairs_for: Callable[[Any], Tuple[Tuple[str, str], ...]],
 ) -> PreparedRepairScope:
+    """``operations`` are exactly the topology's schedulable operations; its id set is shared, not rebuilt."""
     by_id = _operations_by_id(operations)
-    mutable = frozenset(by_id)
+    mutable = topology.schedulable_ids
     mutable_batches = frozenset(op.batch_id for op in operations)
-    predecessor_map = graph_context["predecessor_op_ids_by_op_id"]
-    successor_map = graph_context["successor_op_ids_by_op_id"]
-    predecessors = {op_id: set(predecessor_map[op_id]) & mutable for op_id in mutable}
-    successors = {op_id: set(successor_map[op_id]) & mutable for op_id in mutable}
+    predecessors = {op_id: set(topology.predecessors[op_id]) & mutable for op_id in mutable}
+    successors = {op_id: set(topology.successors[op_id]) & mutable for op_id in mutable}
     changeable_operations = tuple(op for op in operations if _can_change_resources(op))
     changeable_op_ids = frozenset(op.id for op in changeable_operations)
     return PreparedRepairScope(
@@ -125,7 +129,7 @@ def prepare_repair_parent(
         operation_ranks={op_id: index for index, op_id in enumerate(order)}, resource_timelines=timelines,
         batch_end_times=batch_ends, changeovers_by_batch=changeovers,
         latest_end_time=max((row.end_time for row in rows.values()), default=None),
-        inherited_resources=inherited, decoded_batch_order=tuple(candidate["decoded_batch_order"]),
+        inherited_resources=inherited, decoded_batch_order=candidate["decoded_batch_order"],
         scope=scope,
     )
 
@@ -180,15 +184,16 @@ def _batch_changeovers(timelines: Dict[Tuple[str, str], List[Any]], batches: Fro
 
 def repair_decision_inputs(
     decision: RepairDecision, prepared_parent: RepairParentPreparation,
-) -> Tuple[Dict[int, Tuple[float, ...]], Dict[int, Tuple[str, str]]]:
-    """The decision's priority keys and resource overrides, read from its prepared parent's facts."""
+) -> Tuple[ValidatedGraphPriorityKeys, Dict[int, Tuple[str, str]]]:
+    """The decision's admitted priority keys and resource overrides, read from its prepared parent's facts."""
     overrides = {op_id: (machine, operator) for op_id, machine, operator in decision.resource_overrides}
     ranks = {batch: float(index) for index, batch in enumerate(decision.batch_order)}
     by_id = prepared_parent.operations_by_id
     if decision.operation_order:
-        return {op_id: (float(rank), ranks[by_id[op_id].batch_id])
-                for rank, op_id in enumerate(decision.operation_order)}, overrides
-    return {op_id: (ranks[op.batch_id],) for op_id, op in by_id.items()}, overrides
+        keys = {op_id: (float(rank), ranks[by_id[op_id].batch_id]) for rank, op_id in enumerate(decision.operation_order)}
+    else:
+        keys = {op_id: (ranks[op.batch_id],) for op_id, op in by_id.items()}
+    return graph_priority_key_map(keys, schedulable_ids=prepared_parent.mutable_operation_ids), overrides
 
 
 # Resource moves offered per decoded parent.
@@ -201,7 +206,6 @@ def iter_resource_decisions(
 ) -> Iterator[RepairDecision]:
     """Yield bounded one-operation moves from a prepared decoded parent, preserving its accepted overrides."""
     current = prepared_parent.current_resources
-    batch_order_tuple, op_order_tuple = tuple(batch_order), tuple(operation_order)
     inherited = {op_id: (machine, operator) for op_id, machine, operator in prepared_parent.inherited_resources}
     scope = prepared_parent.scope
     generated = 0
@@ -216,7 +220,7 @@ def iter_resource_decisions(
             overrides = dict(inherited)
             overrides[op.id] = pair
             rows = tuple((op_id, values[0], values[1]) for op_id, values in sorted(overrides.items()))
-            yield RepairDecision(batch_order_tuple, op_order_tuple, rows)
+            yield RepairDecision(batch_order, operation_order, rows)
             generated += 1
             if generated >= _MAX_RESOURCE_DECISIONS:
                 return

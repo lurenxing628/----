@@ -7,6 +7,13 @@ from datetime import datetime, timedelta
 from unittest import mock
 
 from core.algorithm_contracts.types import ScheduleResult
+from core.algorithm_runtime.downtime import occupy_resource
+from core.algorithm_runtime.owned_timeline import OwnedSegments, OwnedTimeline
+from core.algorithm_runtime.slot_overlap_reuse import (
+    SlotOverlapReuse,
+    overlap_reuse_for,
+    sgs_overlap_reuse,
+)
 from core.algorithms.greedy.dispatch import sgs_scoring as sgs_scoring_module
 from core.algorithms.greedy.dispatch.sgs_scoring import with_graph_priority_key
 from core.algorithms.greedy.scheduler import GreedyScheduler
@@ -159,3 +166,100 @@ def test_sgs_native_order_keeps_seq_id_ties_and_missing_batch_with_raw_downtime(
     assert (summary.total_ops, summary.scheduled_ops, summary.failed_ops) == (5, 4, 1)
     assert summary.failure_details == [{"op_id": 5, "op_code": "OP5", "batch_id": "MISSING",
                                         "seq": 1, "code": "missing_batch"}]
+
+
+def test_zero_hour_operation_is_a_point_event_that_busy_time_neither_shifts_nor_records():
+    from tests._support.schedule_decode import production_decode_in_session
+
+    start = datetime(2026, 1, 1, 8)
+    busy = ScheduleResult(op_id=101, op_code="SEED", batch_id="SEED", seq=1, machine_id="M1", operator_id="O1",
+                          start_time=start, end_time=start + timedelta(hours=2), source="internal",
+                          op_type_name="cut")
+    point_op = make_algo_op(id=1, op_code="POINT", batch_id="B_P", machine_id="M1", operator_id="O1",
+                            setup_hours=0.0, unit_hours=0.0, op_type_id="OT2", op_type_name="mark")
+    timed_op = make_algo_op(id=2, op_code="TIMED", batch_id="B_T", machine_id="M1", operator_id="O1",
+                            setup_hours=1.0, unit_hours=0.0, op_type_id="OT1", op_type_name="cut")
+    batches = {"B_P": _batch("B_P"), "B_T": _batch("B_T")}
+    scheduler = GreedyScheduler(calendar_service=_Calendar(), config_service=config_snapshot(auto_assign_enabled="no"))
+    session, decoded = production_decode_in_session(
+        scheduler, operations=[point_op, timed_op], batches=batches, seed_results=[busy], start_dt=start,
+        dispatch_mode="sgs", dispatch_rule="slack", batch_order_override=["B_P", "B_T"],
+        machine_downtimes={"M1": [(start, start + timedelta(hours=3))]}, resource_pool={},
+    )
+    rows = {row.op_id: row for row in decoded.results}
+
+    # The point lands at its release inside busy and downtime blocks; the timed work still clears both.
+    assert rows[1].start_time == rows[1].end_time == start
+    assert (rows[2].start_time, rows[2].end_time) == (start + timedelta(hours=3), start + timedelta(hours=4))
+    assert decoded.summary.failed_ops == 0
+    preparation = session.native_preparation
+    assert preparation.resource_claim_for(point_op) is None
+    assert preparation.resource_claim_for(timed_op) is not None
+
+
+def test_slot_overlap_reuse_certifies_short_owned_timeline_and_tracks_mutation_and_owner_identity():
+    start = datetime(2026, 1, 1, 8)
+    timeline = OwnedTimeline()
+    occupy_resource(timeline, "M1", start, start + timedelta(hours=1))
+    occupy_resource(timeline, "M1", start + timedelta(hours=2), start + timedelta(hours=3))
+
+    with sgs_overlap_reuse(timeline):
+        reuse = overlap_reuse_for(timeline)
+        assert isinstance(reuse, SlotOverlapReuse)
+        with mock.patch.object(
+            OwnedSegments,
+            "__iter__",
+            autospec=True,
+            side_effect=OwnedSegments.__iter__,
+        ) as iter_spy:
+            first_index = reuse.index("machine", "M1", timeline["M1"])
+            assert iter_spy.call_count == 1
+            assert first_index.shift_end(start, start + timedelta(hours=1)) == start + timedelta(hours=1)
+
+            second_index = reuse.index("machine", "M1", timeline["M1"])
+            assert second_index is first_index
+            assert iter_spy.call_count == 1
+
+        occupy_resource(timeline, "M1", start + timedelta(hours=4), start + timedelta(hours=5))
+        updated_index = reuse.index("machine", "M1", timeline["M1"])
+        assert updated_index is not first_index
+        assert updated_index.shift_end(start + timedelta(hours=4), start + timedelta(hours=5)) == start + timedelta(hours=5)
+        assert first_index.shift_end(start + timedelta(hours=4), start + timedelta(hours=5)) is None
+        assert len(first_index) == 2
+
+        other_timeline = OwnedTimeline()
+        occupy_resource(other_timeline, "M1", start, start + timedelta(hours=1))
+        occupy_resource(other_timeline, "M1", start + timedelta(hours=2), start + timedelta(hours=3))
+        occupy_resource(other_timeline, "M1", start + timedelta(hours=6), start + timedelta(hours=7))
+        other_index = reuse.index("machine", "M1", other_timeline["M1"])
+        assert other_index is not updated_index
+        assert other_index.shift_end(start + timedelta(hours=4), start + timedelta(hours=5)) is None
+        assert other_index.shift_end(start + timedelta(hours=6), start + timedelta(hours=7)) == start + timedelta(hours=7)
+
+    assert overlap_reuse_for(timeline) is None
+
+
+def test_slot_overlap_reuse_compares_borrowed_list_edits_and_leaves_plain_dict_untouched():
+    start = datetime(2026, 1, 1, 8)
+    borrowed_segments = [
+        (start, start + timedelta(hours=1)),
+        (start + timedelta(hours=2), start + timedelta(hours=3)),
+    ]
+    plain_timeline = {"M1": borrowed_segments}
+
+    with sgs_overlap_reuse(plain_timeline):
+        assert overlap_reuse_for(plain_timeline) is None
+        assert type(plain_timeline) is dict
+        assert plain_timeline["M1"] is borrowed_segments
+
+    reuse = SlotOverlapReuse()
+    initial_index = reuse.index("machine", "M1", borrowed_segments)
+    assert initial_index.shift_end(start + timedelta(hours=2), start + timedelta(hours=3)) == start + timedelta(hours=3)
+    assert initial_index.shift_end(start + timedelta(hours=4), start + timedelta(hours=5)) is None
+
+    borrowed_segments[1] = (start + timedelta(hours=4), start + timedelta(hours=5))
+    edited_index = reuse.index("machine", "M1", borrowed_segments)
+    assert edited_index is not initial_index
+    assert edited_index.shift_end(start + timedelta(hours=2), start + timedelta(hours=3)) is None
+    assert edited_index.shift_end(start + timedelta(hours=4), start + timedelta(hours=5)) == start + timedelta(hours=5)
+    assert initial_index.shift_end(start + timedelta(hours=2), start + timedelta(hours=3)) == start + timedelta(hours=3)

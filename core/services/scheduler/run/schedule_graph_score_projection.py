@@ -4,11 +4,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
 
-from .schedule_graph_dispatch_context import (
-    GRAPH_CYCLE_DISABLED_REASON,
-    schedule_input_op_id_sets,
-)
-from .schedule_input_contracts import ScheduleRunInput
+from .schedule_graph_dispatch_context import GRAPH_CYCLE_DISABLED_REASON
 
 GRAPH_SCORE_WEIGHTS_ZERO_REASON = "score_weights_zero"
 _GRAPH_SCORE_SAMPLE_LIMIT = 10
@@ -76,8 +72,7 @@ def build_graph_score_projection(
     nodes: List[Any],
     node_metrics: Dict[str, Dict[str, Any]],
     topological_order: List[str],
-    schedule_input: ScheduleRunInput,
-    op_id_sets: Optional[Tuple[Set[int], Set[int], Set[int]]] = None,
+    op_id_sets: Tuple[Set[int], Set[int]],
 ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
     disabled_projection = graph_score_disabled_projection(
         mode=mode,
@@ -95,7 +90,6 @@ def build_graph_score_projection(
         nodes=nodes,
         node_metrics=node_metrics,
         topological_order=topological_order,
-        schedule_input=schedule_input,
         op_id_sets=op_id_sets,
     )
 
@@ -143,12 +137,11 @@ def build_available_graph_score_projection(
     nodes: List[Any],
     node_metrics: Dict[str, Dict[str, Any]],
     topological_order: List[str],
-    schedule_input: ScheduleRunInput,
-    op_id_sets: Optional[Tuple[Set[int], Set[int], Set[int]]] = None,
+    op_id_sets: Tuple[Set[int], Set[int]],
 ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
     from core.services.scheduler.graph.scoring import graph_score_components
 
-    schedulable_op_ids, fixed_op_ids, _ = op_id_sets or schedule_input_op_id_sets(schedule_input)
+    schedulable_op_ids, fixed_op_ids = op_id_sets
     allowed_op_ids = schedulable_op_ids | fixed_op_ids
     metrics_by_op_id = node_metrics_by_op_id(
         nodes=nodes,

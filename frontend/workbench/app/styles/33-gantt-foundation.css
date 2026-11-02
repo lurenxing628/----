@@ -180,6 +180,7 @@ body.aps-workbench .gantt-route-predecessor{height:auto;min-height:0;padding:1px
 .fg-live .fg-muted { color:var(--ui-info-muted); font-size:var(--font-size-1); }.fg-live .fg-range { padding:10px; border-block:1px solid var(--ui-border); background:var(--ui-card-bg); }
 .fg-live .fg-range label { display:flex; align-items:center; gap:var(--space-2); min-width:0; white-space:nowrap; }.fg-live .fg-range input { width:136px; min-width:0; }
 .fg-live .fg-range select { max-width:200px; }.fg-live .fg-range .fg-batches { width:150px; }
+.fg-live .fg-batch-list .chipline { max-height:160px; overflow:auto; }.fg-live .fg-batch-list .fg-batch-id { white-space:pre; }
 .fg-live .fg-workspace { overflow:hidden; border:1px solid var(--ui-border); border-radius:0; box-shadow:none; background:var(--ui-card-bg); }
 .fg-live .fg-toolbar { margin:0; padding:var(--space-2) 10px; background:var(--ui-card-bg); }.fg-live .fg-toolbar-main { display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-2) var(--space-3); }
 .fg-live .fg-toolbar-chart { background:var(--ui-card-bg); gap:var(--space-2) var(--space-3); }.fg-live .fg-toolbar-chart-actions { gap:var(--space-2) var(--space-2); }

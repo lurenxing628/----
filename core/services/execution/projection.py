@@ -12,6 +12,20 @@ from .quality import classify_quality, gap, operation_target
 from .totals import quantity_consistency, report_totals
 
 
+def is_point_work(source, setup_hours, unit_hours, target_quantity):
+    values = (setup_hours, unit_hours, target_quantity)
+    return (
+        source == "internal"
+        and type(target_quantity) is int
+        and all(
+            type(value) in (int, float) and 0 <= value <= 9007199254740991
+            for value in values
+        )
+        and setup_hours == 0
+        and (unit_hours == 0 or target_quantity == 0)
+    )
+
+
 def projection_resource_refs(projection: ExecutionProjection) -> Set[str]:
     return {ref for report in projection.reports
             for ref in (report.actual_machine_ref, report.actual_operator_ref) if ref}
@@ -19,6 +33,19 @@ def projection_resource_refs(projection: ExecutionProjection) -> Set[str]:
 
 def _projection_cache(projection: ExecutionProjection) -> dict:
     return projection.__dict__["_cache"]
+
+
+def _parsed_times(projection: ExecutionProjection) -> dict:
+    cache = _projection_cache(projection)
+    by_text = cache.get("parsed_times")
+    if by_text is None:
+        by_text = {}
+        for report in projection.reports:
+            for value in (report.actual_start, report.actual_end):
+                if value is not None and value not in by_text:
+                    by_text[value] = datetime.fromisoformat(value)
+        cache["parsed_times"] = by_text
+    return by_text
 
 
 def actual_period(projection: ExecutionProjection):
@@ -40,20 +67,39 @@ def actual_period(projection: ExecutionProjection):
     return cached
 
 
+def report_segments(projection: ExecutionProjection):
+    """Each report with its parsed actual start and end, ordered chronologically without merging."""
+    cache = _projection_cache(projection)
+    cached = cache.get("report_segments")
+    if cached is None:
+        by_text = _parsed_times(projection)
+        cached = tuple(sorted(
+            (
+                (
+                    None if report.actual_start is None else by_text[report.actual_start],
+                    None if report.actual_end is None else by_text[report.actual_end],
+                    report,
+                )
+                for report in projection.reports
+            ),
+            key=lambda segment: (segment[0] or datetime.min, segment[1] or datetime.min),
+        ))
+        cache["report_segments"] = cached
+        if "actual_period" not in cache:
+            cache["actual_period"] = (
+                None if projection.first_actual_start is None else by_text[projection.first_actual_start],
+                None if projection.confirmed_finish is None else by_text[projection.confirmed_finish],
+            )
+    return cached
+
+
 def actual_period_basis(projection: ExecutionProjection):
     """Deduplicate and join adjacent periods; keep overlaps and unknowns visible."""
     cache = _projection_cache(projection)
     cached = cache.get("actual_period_basis")
     if cached is not None:
         return cached
-    by_text = cache.get("parsed_times")
-    if by_text is None:
-        by_text = {}
-        for report in projection.reports:
-            for value in (report.actual_start, report.actual_end):
-                if value is not None and value not in by_text:
-                    by_text[value] = datetime.fromisoformat(value)
-        cache["parsed_times"] = by_text
+    by_text = _parsed_times(projection)
     periods = {
         (
             None if report.actual_start is None else by_text[report.actual_start],
@@ -165,8 +211,7 @@ def _execution_state(reports, totals, complete_reports):
 def _completion(reports, complete_reports):
     if not complete_reports:
         return None, None
-    times = [report.actual_end for report in reports if report.actual_end]
-    return max(times) if times else None, "complete_reports"
+    return max(report.actual_end for report in reports), "complete_reports"
 
 
 def project_execution(operation, reports, *, current_task, comparison_task, plan_identity):

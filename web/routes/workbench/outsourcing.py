@@ -105,7 +105,7 @@ def outsourcing_confirm():
     body = _body(True)
     validate_request_key(body["request_key"])
     g.workbench_request_key = body["request_key"]
-    service = WorkbenchOutsourcingCommandService(g.db)
+    service = WorkbenchOutsourcingCommandService(g.db, context_factory=issue_write_context)
     result = service.execute(body["input"], request_key=body["request_key"],
         validate_context=lambda subject, action, snapshot: validate_write_context(body["write_token"], subject, action, snapshot))
     return json_response(result)

@@ -135,10 +135,8 @@ class SharedDecodeSession:
         self._operations_by_id = {op.id: op for op in operations}
         self._op_variant_cache: Dict[Tuple[int, str, str], Any] = {}
         self._last_resources_ops: Optional[Tuple[Tuple[Tuple[int, str, str], ...], List[Any]]] = None
-        self._operation_ids = {op.id for op in operations}
         self._records: Dict[DecodeRequest, _RequestRecord] = {}
         self._by_id: Dict[int, _RequestRecord] = {}
-        self._due_by_batch: Optional[Dict[str, Optional[date]]] = None
         self.actual_decoder_calls = 0
         self.new_decisions = 0
         self.reused_decisions = 0
@@ -146,28 +144,9 @@ class SharedDecodeSession:
         self.failed_decoder_calls = 0
         self._execution_counts: Dict[str, int] = {}
 
-    def due_by_batch(self, batches: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Optional[date]]]:
-        target_batches = self.batches if batches is None else batches
-        if target_batches is None:
-            return None
-        if target_batches is self.batches or target_batches is self._normalized_batches:
-            if self._due_by_batch is None:
-                from .neighborhood_move_support import prepare_batch_due_dates
-
-                self._due_by_batch = prepare_batch_due_dates(
-                    target_batches,
-                    native_preparation=self.native_preparation,
-                )
-            return self._due_by_batch
-        from .neighborhood_move_support import prepare_batch_due_dates
-
-        return prepare_batch_due_dates(target_batches)
-
     def _request(self, kwargs: Dict[str, Any]) -> Tuple[DecodeRequest, Any, Dict[str, int], Any, Any, Any]:
         from core.algorithms.greedy.dispatch.sgs_graph import graph_priority_key_map
         from core.algorithms.greedy.scheduler import build_batch_order
-
-        from .graph.predecode import graph_priority_preorder
 
         pair_rank = kwargs["resource_pair_rank"] or None
         pool = self.native_preparation.resource_pool
@@ -199,16 +178,13 @@ class SharedDecodeSession:
         graph_enabled = bool(kwargs["graph_enabled"])
         score_enabled, preorder, context = False, (), None
         if graph_enabled:
-            if self._graph_context is None:
-                raise ValueError("SharedDecodeSession has no graph input.")
+            topology = self.native_preparation.graph_topology()
             score_enabled = kwargs["graph_score_enabled"]
             if type(score_enabled) is not bool:
                 raise ValidationError("图评分开关 score_enabled 必须是 bool。", field="graph_ready_context")
             keys = kwargs["graph_priority_key_by_op_id"]
             if score_enabled:
-                keys = graph_priority_key_map(keys, schedulable_ids=self._operation_ids)
-                if keys.preorder is None:
-                    keys.preorder = graph_priority_preorder(keys)
+                keys = graph_priority_key_map(keys, schedulable_ids=topology.schedulable_ids)
                 preorder = keys.preorder
             context = dict(self._graph_context, score_enabled=score_enabled, graph_priority_key_by_op_id=keys)
         resource_changes = kwargs["operation_resources"]
@@ -351,6 +327,7 @@ class SharedDecodeSession:
                                                                operations, pool, context)
             metrics = compute_metrics(res, self.batches, expected_operations=self.operations,
                                       seed_results=self.seed_results,
+                                      seed_occupancies_by_op_id=self.native_preparation.seed_occupancies_by_op_id,
                                       failure_details=summ.failure_details,
                                       prepared=self.evaluation_context)
             algo_stats = merge_algo_stats(optimizer_algo_stats, self.scheduler.last_algo_stats)

@@ -41,10 +41,10 @@ def _evaluate_candidate(
         decode_session=decode_session, objective_name=objective_name,
         optimizer_algo_stats=optimizer_algo_stats,
         strategy=strategy,
-        strategy_params=dict(params),
+        strategy_params=params,
         start_dt=start_dt,
         end_date=end_date,
-        batch_order_override=list(order),
+        batch_order_override=order,
         dispatch_mode=dispatch_mode,
         dispatch_rule=dispatch_rule,
         readiness_gate_enabled=bool(readiness_gate_enabled),
@@ -56,10 +56,10 @@ def _evaluate_candidate(
         "results": decoded.results,
         "summary": decoded.summary,
         "strategy": decoded.used_strategy,
-        "params": dict(decoded.used_params),
+        "params": decoded.used_params,
         "dispatch_mode": dispatch_mode,
         "dispatch_rule": dispatch_rule,
-        "order": list(order),
+        "order": order,
         "decoded_batch_order": decoded.decoded_batch_order,
         "metrics": decoded.metrics,
         "score": (float(decoded.summary.failed_ops),) + objective_score(objective_name, decoded.metrics),
@@ -105,7 +105,7 @@ def _candidate_specs_for_run(
     best: Optional[Dict[str, Any]],
     base_strategy: SortStrategy,
     base_params: Dict[str, Any],
-    build_order: Callable[[SortStrategy, Dict[str, Any]], List[str]],
+    build_order: Callable[[SortStrategy, Dict[str, Any]], Tuple[str, ...]],
     version: int,
     candidate_construction: Dict[str, Any],
     dispatch_rule_cfg: str,
@@ -116,14 +116,13 @@ def _candidate_specs_for_run(
     if not bool(batch_order_enabled):
         return None
 
-    base_order = list(build_order(base_strategy, base_params))
+    base_order = build_order(base_strategy, base_params)
     if len(base_order) < 2:
         return None
 
-    parent_order = list((best or {}).get("order") or base_order)
     specs = build_grasp_ig_candidate_specs(
         base_order=base_order,
-        parent_order=parent_order,
+        parent_order=(best or {}).get("order") or base_order,
         version=int(version),
         candidate_construction=candidate_construction,
         dispatch_rule_cfg=dispatch_rule_cfg,
@@ -213,7 +212,7 @@ class GraspIGStage(SearchStage):
     def __init__(
         self, *, version: int, candidate_construction: Dict[str, Any],
         start_dt: datetime, end_date: Optional[date], base_strategy: SortStrategy, base_params: Dict[str, Any],
-        build_order: Callable[[SortStrategy, Dict[str, Any]], List[str]], dispatch_rule_cfg: str,
+        build_order: Callable[[SortStrategy, Dict[str, Any]], Tuple[str, ...]], dispatch_rule_cfg: str,
         resource_pool: Optional[Dict[str, Any]], objective_name: str,
         deadline: float, optimizer_algo_stats: Optional[Dict[str, Any]],
         readiness_gate_enabled: bool,
@@ -227,7 +226,6 @@ class GraspIGStage(SearchStage):
         self.clock = clock
         self.deadline = deadline
         self.index = 0
-        self.finished = False
         self._stop_reason: Optional[str] = None
         self.run_spec = partial(
             _run_candidate_spec, base_strategy=base_strategy,
@@ -247,7 +245,7 @@ class GraspIGStage(SearchStage):
             self._stop_reason = "candidate_specs_unavailable"
 
     def available(self) -> bool:
-        if self.finished or self._stop_reason is not None or self.index >= len(self.specs):
+        if self._stop_reason is not None or self.index >= len(self.specs):
             return False
         if self.clock() >= self.deadline:
             self._stop_reason = "time_budget"
@@ -259,8 +257,6 @@ class GraspIGStage(SearchStage):
             return self._stop_reason
         if self.index >= len(self.specs):
             return "specs_exhausted"
-        if self.finished:
-            return "finished"
         return None if self.available() else self._stop_reason
 
     def run_task(self) -> None:
@@ -271,9 +267,6 @@ class GraspIGStage(SearchStage):
         self.state.best, skip_reason = self.run_spec(spec=spec, best=self.state.best)
         if skip_reason in ("estimated_decode_cost", "time_budget"):
             self._stop_reason = skip_reason
-
-    def finish(self) -> None:
-        self.finished = True
 
 
 __all__ = [

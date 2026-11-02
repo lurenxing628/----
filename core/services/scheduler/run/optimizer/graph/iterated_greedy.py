@@ -68,11 +68,9 @@ class _IteratedGreedySearch:
                  evaluate: Callable[..., Dict[str, Any]], metrics_by_op_id: Dict[int, Dict[str, Any]], start_dt: Any,
                  seed: int, deadline: float, clock: Callable[[], float], report_state: OptimizationSearchReportState,
                  report: Dict[str, Any],
-                 decode_session: SharedDecodeSession,
-                 graph_context: Dict[str, Any]) -> None:
+                 decode_session: SharedDecodeSession) -> None:
         self.limits = limits
         self.parent = parent
-        self.graph_context = graph_context
         self.profile = ig_decode_profile(profile)
         self.pool = pool
         self.evaluate = evaluate
@@ -297,15 +295,15 @@ class _IteratedGreedySearch:
     def _decode(self, order: Tuple[int, ...], *, resume: Optional[DecodeCheckpoint] = None,
                 checkpoints: Optional[Any] = None, redecode_reason: Optional[str] = None,
                 capture_of: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        decision = RepairDecision(self.parent.batch_order, tuple(order), self.parent.inherited)
-        batch_order = list(decision.batch_order)
+        decision = RepairDecision(self.parent.batch_order, order, self.parent.inherited)
         decode_kwargs: Dict[str, Any] = {"decode_session": self.decode_session, "redecode_reason": redecode_reason}
         if resume is not None:
             decode_kwargs["decode_resume"] = resume
         if checkpoints is not None:
             decode_kwargs["decode_checkpoints"] = checkpoints
         try:
-            candidate = self.evaluate(profile=self.profile, order=batch_order, repair=(decision, self.parent.prepared),
+            candidate = self.evaluate(profile=self.profile, order=decision.batch_order,
+                                      repair=(decision, self.parent.prepared),
                                       before_decode=self._before_decode, **decode_kwargs)
         except ValidationError as exc:
             if checkpoints is None or not is_capture_failure(exc, resumed=resume is not None):

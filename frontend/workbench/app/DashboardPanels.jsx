@@ -105,7 +105,6 @@
     <p>{item.risk.message}</p><Facts handling={item.handling} /><Evidence source={item.source} /><div className="dy-tools">
       <Button reasonDisplay="inline" icon={item.handling.status === 'closed' ? 'refresh-cw' : 'square-pen'} onClick={onHandle}>{item.handling.status === 'closed' ? '重新打开处置' : '登记处置'}</Button>
       <Button reasonDisplay="inline" icon="history" onClick={onHistory}>查看处置历史</Button>{item.navigation.map((n, i) => <Button reasonDisplay="inline" key={i} icon="arrow-right" onClick={() => navigate(n, item)}>{navigationLabels[n.view]}</Button>)}
-      {item.category === 'actual' && item.navigation.some(n => n.enabled && n.command_context === 'read_execution_write_context') && <Button reasonDisplay="inline" icon="arrow-right" onClick={() => navigate({ ...item.navigation[0], view: 'field' })}>{navigationLabels.field}</Button>}
     </div></section></window.WorkbenchDetailPanel>; }
   function NavigationConfirmation({ entry, error, onClose, onConfirm }) {
     const { Modal, ErrorBox } = window.ResourceControls, { item, navigation, label } = entry;

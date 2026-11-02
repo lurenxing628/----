@@ -226,7 +226,7 @@ def test_material_ready_after_formal_adoption_compares_delivery_without_equating
     case.conn.commit()
     accepted = case.accept(settings=case.settings(material_strategy="stage"), key="decision-ready-run-000001")
     result = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
-    data, _ = read_run_decision(case.conn, result["run_ref"], comparison_mode="admission_official")
+    data, _ = read_run_decision(case.conn, result["run_ref"], bind_snapshot=lambda scope, state: state, comparison_mode="admission_official")
     assert data["baseline"]["coverage"]["schedulable"]["state"] == "complete"
     assert data["baseline"]["coverage"]["delivery"]["deferred_batch_count"] == 1
     for row in data["candidates"]:

@@ -8,11 +8,10 @@ from flask import current_app
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench import messages
-from core.services.workbench.facts.run_data_context import restored_context_ref
 from core.shared.strict_json import canonical_json
 
+from .data_context import request_data_context
 from .read_context import bind_read_snapshot, drop_read_snapshot, resolve_read_snapshot
-from .system_context import database_scope, journal
 
 _EXTENSION = "workbench_system_log_snapshots_v1"
 _TTL_SECONDS = 900
@@ -45,12 +44,9 @@ def _windows():
 
 
 def _bound_scope(scope):
-    event_journal = journal() if current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR") else None
-    if event_journal is not None:
-        records = event_journal.records()
-        generation = restored_context_ref(event_journal.scope_from_records(records), records)
-    else:
-        generation = restored_context_ref(database_scope(), [])
+    context = request_data_context()
+    records = context.journal.records()
+    generation = context.ref(records=records)
     return {**scope, "data_context_ref": generation}
 
 

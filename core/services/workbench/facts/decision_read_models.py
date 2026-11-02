@@ -148,10 +148,7 @@ def read_model_json(row, column: str) -> Union[Dict[str, Any], List[Any]]:
 
 
 def decode_model(row, fields) -> Dict[str, Any]:
-    if row is None or row.get("projection_version") != PROJECTION_VERSION:
-        corrupt()
-    return {field: None if field == "process" and row.get("process_json") is None else
-            read_model_json(row, field + "_json") for field in fields}
+    return {field: read_model_json(row, field + "_json") for field in fields}
 
 
 def _head_candidates(head, admission, header):

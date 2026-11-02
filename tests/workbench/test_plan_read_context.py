@@ -37,8 +37,9 @@ def test_read_context_owns_capture_and_next_request_observes_change(plan_api, mo
         return detail(repo, arrangements, captured_machines=captured_machines)
 
     def selection(*args, **kwargs):
-        selected_calls.append(args[1].plan_ref)
-        return selected(*args, **kwargs)
+        result = selected(*args, **kwargs)
+        selected_calls.append((args[0].plan_ref, result))
+        return result
 
     monkeypatch.setattr(WorkbenchPlanCatalogRepository, "list_plan_storage_rows", storage_rows)
     monkeypatch.setattr(WorkbenchPlanCatalogRepository, "enrich_arrangements", detail_rows)
@@ -62,7 +63,15 @@ def test_read_context_owns_capture_and_next_request_observes_change(plan_api, mo
         conn.set_trace_callback(None)
         assert conn.total_changes == changes
         assert captures["raw", 3] == captures["detail", 3] == 1
-        assert selected_calls == [ref]
+        assert [item[0] for item in selected_calls] == [ref]
+        captured_ctx = selected_calls[0][1]
+        assert isinstance(captured_ctx, calendar_context.SelectedPlanContext)
+        assert captured_ctx.intervals == context.datetime_intervals(entry)
+        assert captured_ctx.calendar_days == (
+            captured_ctx.start.date() - timedelta(days=1),
+            (captured_ctx.end - timedelta(microseconds=1)).date(),
+            3,
+        )
         assert sum("FROM WorkbenchPlanIdentityClock WHERE singleton = 1" in sql for sql in statements) == 1
         assert not any("SELECT schema_version FROM pragma_schema_version" in sql for sql in statements)
         assert sum("SELECT * FROM WorkbenchPlanSourceRefs WHERE ref = '" + ref + "' AND active = 1" in sql
@@ -258,3 +267,88 @@ def test_plan_endpoints_project_only_requested_slices_and_share_snapshot_state(p
         conn.execute("UPDATE Machines SET remark='Stale machine fact' WHERE machine_id='PRIVATE-M1'")
     assert_error(plan_api.get("/" + ref + "/tasks", snapshot_ref=token, page=2, size=5000), "snapshot_stale", status=409)
     assert storage_calls == []
+
+
+def test_selected_plan_context_calendar_days_and_midnight_point_exclusion(plan_api, monkeypatch):
+    from datetime import date
+
+    from core.services.capacity.plan_calendar_io import CalendarFacts
+    from core.services.workbench.plan.calendar import project_plan_calendar
+
+    d0 = date(2025, 12, 31)
+    d1 = date(2026, 1, 1)
+    d2 = date(2026, 1, 2)
+    t_start = datetime(2026, 1, 1, 0, 0)
+    t_early = datetime(2026, 1, 1, 10, 0)
+    t_end_mid = datetime(2026, 1, 2, 0, 0)
+    t_end_day = datetime(2026, 1, 2, 8, 0)
+    t_us = datetime(2026, 1, 1, 23, 59, 59, 999999)
+
+    early_point = {"schedule_id": 1, "op_id": 1, "source": "internal", "machine_id": "M1", "operator_id": "O1", "_point_work": {"quantity": 1}}
+    terminal_point = {"schedule_id": 2, "op_id": 2, "source": "internal", "machine_id": "M1", "operator_id": "O1", "_point_work": {"quantity": 1}}
+    positive_row = {"schedule_id": 3, "op_id": 3, "source": "internal", "machine_id": "M1", "operator_id": "O1"}
+    intervals = {
+        1: (t_early, t_early),
+        2: (t_end_mid, t_end_mid),
+        3: (t_start, t_end_mid),
+        4: (t_end_day, t_end_day),
+        5: (t_us, t_us),
+        6: (datetime.min, datetime.min),
+    }
+
+    def ctx(rows, start, end):
+        return calendar_context.SelectedPlanContext(
+            rows=rows,
+            start=start,
+            end=end,
+            time_scope={"range_start": start.isoformat(), "range_end": end.isoformat()},
+            intervals=intervals,
+        )
+
+    # Explicit half-open midnight end with earlier point event does not expand to end.date().
+    assert ctx([early_point], t_start, t_end_mid).calendar_days == (d0, d1, 2)
+    # Full plan with midnight terminal point event includes terminal date.
+    assert ctx([early_point, terminal_point], t_start, t_end_mid).calendar_days == (d0, d2, 3)
+    # Full plan ending at midnight from positive-duration task + only earlier point event does not expand.
+    assert ctx([early_point, positive_row], t_start, t_end_mid).calendar_days == (d0, d1, 2)
+    # Non-midnight end keeps end.date() without extra day.
+    assert ctx([early_point], t_start, t_end_day).calendar_days == (d0, d2, 3)
+    # All-point plan at same midnight or non-midnight timestamp.
+    assert ctx([terminal_point], t_end_mid, t_end_mid).calendar_days == (d1, d2, 2)
+    assert ctx([{"schedule_id": 4, "_point_work": {"quantity": 1}}], t_end_day, t_end_day).calendar_days == (d1, d2, 2)
+    # Empty filtered subset and 1us window with point event.
+    assert ctx([], t_start, t_end_mid).calendar_days == (d0, d1, 2)
+    assert ctx([{"schedule_id": 5, "_point_work": {"quantity": 1}}], t_us, t_end_mid).calendar_days == (d0, d1, 2)
+    # date.min lower bound does not underflow.
+    assert ctx([{"schedule_id": 6, "_point_work": {"quantity": 1}}], datetime.min, datetime.min).calendar_days == (date.min, date.min, 1)
+
+    # 3659-day explicit half-open range ending at midnight with an earlier point stays at 3660 dates (not unavailable).
+    calendar_calls = []
+    original_calendar = CalendarFacts.calendar
+
+    def tracked_calendar(self, first_iso, last_iso, operators):
+        calendar_calls.append((first_iso, last_iso))
+        return original_calendar(self, first_iso, last_iso, operators)
+
+    monkeypatch.setattr(CalendarFacts, "calendar", tracked_calendar)
+    ref = plan_api.ref()
+    limit_start = datetime(2016, 1, 1, 0, 0)
+    limit_end = limit_start + timedelta(days=3659)
+    scope = PlanReadScope(ref, limit_start.isoformat(), limit_end.isoformat())
+    with plan_api.db() as conn:
+        conn.execute("BEGIN")
+        context = PlanReadContext(conn)
+        with context.read_scope():
+            _, entry, _ = context.selected(ref)
+            base_row = dict(context.detail_rows(entry)[0], _point_work={"quantity": 1})
+            resources = context.resource_identities([base_row])
+            selected = calendar_context.selected_context(
+                scope,
+                [base_row],
+                {"start": limit_start.isoformat(), "end": limit_end.isoformat()},
+                intervals={base_row["schedule_id"]: (limit_start + timedelta(hours=8), limit_start + timedelta(hours=8))},
+            )
+            dto, _ = project_plan_calendar(conn, scope=scope, resources=resources, selected=selected, include_windows=False)
+        conn.rollback()
+    assert dto["state"] == "available"
+    assert calendar_calls == [("2015-12-31", "2026-01-06")]

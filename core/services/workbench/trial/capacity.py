@@ -11,29 +11,45 @@ from core.services.workbench.facts.resource_projection import (
 from core.services.workbench.facts.zero_duration import point_event_dto
 
 
-def capacity_tasks(rows, field, *, intervals_by_row):
-    result = []
+def _resource(ref):
+    return {"ref": ref, "label": None} if ref is not None else None
+
+
+def capacity_tasks(rows, field, *, intervals_by_row, occupancy_by_row):
+    """One side's capacity tasks and their intervals.
+
+    A row whose occupancy is its actual report segments yields one task per segment, each with its own
+    internal ``row_ref``; every other row stays one task under its own row reference.
+    """
+    tasks, intervals = [], {}
     for row in rows:
         original = row["original"]
         current = row["current"] if field == "current" else original["arrangement"]
-        task = {"row_ref": row["row_ref"], "task_ref": row["task_ref"], "operation_ref": row["operation_ref"],
-                "source": original["operation"]["source"], "start": current["start"], "end": current["end"],
-                **{kind: {"ref": current[kind + "_ref"], "label": None} if current[kind + "_ref"] is not None else None
-                   for kind in ("machine", "operator")}}
-        if task["start"] == task["end"]:
-            span = intervals_by_row.get(row["row_ref"])
-            if span is not None and span[0] == span[1]:
-                task.update(point_event_dto(span[0], span[1]))
-        result.append(task)
-    return result
+        span = intervals_by_row[row["row_ref"]]
+        common = {"task_ref": row["task_ref"], "operation_ref": row["operation_ref"], "source": original["operation"]["source"]}
+        segments = occupancy_by_row[row["row_ref"]] if span is not None and span[0] < span[1] else None
+        if segments is not None and segments != ((*span, current["machine_ref"], current["operator_ref"]),):
+            for index, (start, end, machine_ref, operator_ref) in enumerate(segments, 1):
+                row_ref = row["row_ref"] + "#" + str(index)
+                tasks.append({"row_ref": row_ref, **common, "start": start.isoformat(), "end": end.isoformat(),
+                              "machine": _resource(machine_ref), "operator": _resource(operator_ref)})
+                intervals[row_ref] = start, end
+            continue
+        task = {"row_ref": row["row_ref"], **common, "start": current["start"], "end": current["end"],
+                **{kind: _resource(current[kind + "_ref"]) for kind in ("machine", "operator")}}
+        if task["start"] == task["end"] and span is not None and span[0] == span[1]:
+            task.update(point_event_dto(span[0], span[1]))
+        tasks.append(task)
+        intervals[row["row_ref"]] = span
+    return tasks, intervals
 
 
 def trial_capacity(rows, archive, *, source_ref, trial_intervals):
-    current_intervals = trial_intervals["current_by_row"]
-    original_intervals = trial_intervals["original_by_row"]
-    tasks = capacity_tasks(rows, "current", intervals_by_row=current_intervals)
-    original = capacity_tasks(rows, "original", intervals_by_row=original_intervals)
-    start, end = min(row["start"] for row in tasks), max(row["end"] for row in tasks)
+    tasks, current_intervals = capacity_tasks(rows, "current", intervals_by_row=trial_intervals["current_by_row"],
+                                              occupancy_by_row=trial_intervals["current_occupancy_by_row"])
+    original, original_intervals = capacity_tasks(rows, "original", intervals_by_row=trial_intervals["original_by_row"],
+                                                  occupancy_by_row=trial_intervals["original_occupancy_by_row"])
+    start, end = min(row["current"]["start"] for row in rows), max(row["current"]["end"] for row in rows)
     scope = {"start": start, "end": end, "basis": "selected_trial_only", "source": "archived_resource_calendar",
              "metric_version": RESOURCE_METRIC_VERSION, "time_basis": "factory_local"}
     factory = ArchivedCalendar(archive, source_ref=source_ref)

@@ -2,14 +2,11 @@
 
 from typing import Union
 
-from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.workbench_run_candidate import reference, reject
-from core.services.scheduler.run.optimizer.shared_process import UNIFIED_PROCESS_VERSION
-from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.unified_process import PROCESS_CANDIDATE_FIELDS, project_unified_process
 
 from .decision_queries import parse_page
-from .decision_source import DecisionSource
+from .decision_session import decision_read, decision_snapshot_scope
 
 
 def normalize_process_filters(*, process_candidate_ref=None, objective=None, record_kind="attempts", sort=None, order="asc"):
@@ -21,10 +18,8 @@ def normalize_process_filters(*, process_candidate_ref=None, objective=None, rec
         reject("invalid_input", "过程排序条件无效，请重新选择。", 422)
     if process_candidate_ref is not None:
         reference(process_candidate_ref)
-    filters = {"section": "process", "process_candidate_ref": process_candidate_ref, "record_kind": record_kind, "sort": sort, "order": order}
-    if objective is not None:
-        filters["objective"] = objective
-    return filters
+    return {"section": "process", "process_candidate_ref": process_candidate_ref, "objective": objective,
+            "record_kind": record_kind, "sort": sort, "order": order}
 
 
 def _shared_projection(source, anchor, objective):
@@ -45,44 +40,53 @@ def _shared_ordered(rows, filters):
     return known + unknown
 
 
-def process_details(source, filters, *, page: Union[int, str] = 1, size: Union[int, str] = 20, all_rows=False):
-    anchor = filters["process_candidate_ref"] or source.selected_ref or (source.rows[0]["candidate_ref"] if source.rows else None)
+def resolve_process_filters(source, filters):
+    """只根据候选头和本次运行的 run_options 确定 anchor 与目标方向，不读取存档；快照绑定在读取与投影之前。"""
+    explicit = filters["process_candidate_ref"]
+    source._candidate_reference(explicit)
+    anchor = explicit or source.selected_ref
     if anchor is None:
         reject("entity_not_found", "这次排产还没有保存候选计算记录。", 404)
-    source._candidate_reference(anchor)
-    filters = {**filters, "process_candidate_ref": anchor}
+    options = source.scope["run_options"]
+    objective = options["primary_objective"] if filters["objective"] is None else filters["objective"]
+    if objective not in options["target_objectives"]:
+        reject("invalid_input", "请选择本次排产的优化方向。", 422)
+    return {**filters, "process_candidate_ref": anchor, "objective": objective}
+
+
+def process_details(source, filters, *, page: Union[int, str] = 1, size: Union[int, str] = 20, all_rows=False):
+    """One page of the resolved view's records projected from the saved process."""
     page, size = parse_page(page), parse_page(size, size=True)
     offset = (page - 1) * size
-    saved = _shared_projection(source, anchor, filters.get("objective"))
-    filters["objective"] = saved["selected_objective"]["name"]
+    saved = _shared_projection(source, filters["process_candidate_ref"], filters["objective"])
     rows = _shared_ordered(saved["actions"] if filters["record_kind"] == "attempts" else saved["progress"]["points"], filters)
     return {"run_ref": source.run["run_ref"], "capture_ref": source.run["run_ref"], "scope": source.scope, "baseline": source.baseline,
             **saved, "items": rows if all_rows else rows[offset:offset + size],
             "page": {"number": page, "size": size, "total": len(rows), "has_more": offset + size < len(rows)}, "filters": filters}
 
 
-def process_export_records(source, filters=None, *, include_all_objectives=False, selected=None):
-    """The same selector supplies all retained rows, independent of screen page."""
+def process_export_records(source, filters, *, include_all_objectives):
+    """The same selector supplies all retained rows, independent of screen page.
+
+    filters are the exported process view's resolved filters.
+    """
+    selected = process_details(source, filters, all_rows=True)
     process = source.saved_process
-    if selected is None:
-        selected = process_details(source, filters or normalize_process_filters(), all_rows=True)
-    current = selected["filters"]
     selected = {**selected,
-        "actions": selected["items"] if current["record_kind"] == "attempts" else _shared_ordered(
-            selected["actions"], {**current, "record_kind": "attempts", "sort": "rank"}),
+        "actions": selected["items"] if filters["record_kind"] == "attempts" else _shared_ordered(
+            selected["actions"], {**filters, "record_kind": "attempts", "sort": "rank"}),
         "progress": {**selected["progress"],
-            "points": selected["items"] if current["record_kind"] == "progress" else _shared_ordered(
-                selected["progress"]["points"], {**current, "record_kind": "progress", "sort": "elapsed_ms"})}}
-    return [{"process_version": UNIFIED_PROCESS_VERSION, "process": process,
-             "export_objectives": process["target_objectives"] if include_all_objectives or filters is None else [selected["selected_objective"]["name"]],
-             "projected": selected}]
+            "points": selected["items"] if filters["record_kind"] == "progress" else _shared_ordered(
+                selected["progress"]["points"], {**filters, "record_kind": "progress", "sort": "elapsed_ms"})}}
+    return {"process": process,
+            "export_objectives": process["target_objectives"] if include_all_objectives else [filters["objective"]],
+            "projected": selected}
 
 
-def read_process_details(conn, run_ref, *, process_candidate_ref=None, objective=None, record_kind="attempts", sort=None, order="asc",
-                         page: Union[int, str] = 1, size: Union[int, str] = 20, **query):
+def read_process_details(conn, run_ref, *, bind_snapshot, process_candidate_ref=None, objective=None, record_kind="attempts",
+                         sort=None, order="asc", page: Union[int, str] = 1, size: Union[int, str] = 20, **query):
     filters = normalize_process_filters(process_candidate_ref=process_candidate_ref, objective=objective, record_kind=record_kind, sort=sort, order=order)
-    store = CandidateStore(conn)
-    with store.snapshot(), read_evidence_scope(conn):
-        source = DecisionSource(store, run_ref, **query)
-        data = process_details(source, filters, page=page, size=size)
-        return data, source.state()
+    with decision_read(conn, run_ref, **query) as source:
+        filters = resolve_process_filters(source, filters)
+        snapshot = bind_snapshot(decision_snapshot_scope(source, filters=filters), source.state())
+        return process_details(source, filters, page=page, size=size), snapshot

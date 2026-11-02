@@ -66,7 +66,7 @@ def workbench_run_objects():
     return objects
 
 
-def workbench_run_contract_issues(conn, *, structure: SchemaStructure):
+def workbench_run_contract_issues(structure: SchemaStructure):
     """SELECT only, including when the ledger is absent or only partly present."""
     actual = structure.sql
     return [("missing_run_schema:" if name not in actual else "invalid_run_schema:") + name

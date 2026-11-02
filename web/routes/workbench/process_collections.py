@@ -3,7 +3,8 @@
 from flask import current_app, g
 
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
-from core.models.workbench_process_actions import normalize_process_part_create, process_part_scope
+from core.models.workbench_process_actions import normalize_process_part_create
+from core.models.workbench_process_table_query import process_scope_request
 from core.services.workbench import messages
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.process.part_actions import WorkbenchProcessPartActionService
@@ -23,10 +24,9 @@ DELETE_COLUMNS = (("business_code", "图号"), ("label", "零件名称"), ("rout
 
 
 def collection_scope(scope, size=20):
-    normalized = process_part_scope(scope)
-    if type(size) is not int or not 1 <= size <= 200:
-        raise WorkbenchCommandRejected("invalid_input", "每页条数必须是1至200之间的整数。", 400)
-    return normalized, {"kind": "part", "size": size, **normalized}
+    """The viewed list's validated request and its read-binding scope."""
+    request = process_scope_request(scope, size=size)
+    return request, request.scope()
 
 
 @api_endpoint
@@ -58,11 +58,11 @@ def process_bulk_preview():
         raise WorkbenchCommandRejected("invalid_input", "提交的内容不完整或有多余项，零件没有删除。请刷新页面后重新点「检查删除范围」。", 400)
     if type(body["snapshot_ref"]) is not str or not body["snapshot_ref"]:
         raise WorkbenchCommandRejected("snapshot_stale", messages.STALE)
-    scope, query_scope = collection_scope(body["scope"], body.get("page_size", 20))
+    page_request, query_scope = collection_scope(body["scope"], body.get("page_size", 20))
     reader = WorkbenchProcessQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as state:
         snapshot = bind_read_snapshot(query_scope, state, body["snapshot_ref"])
-        preview = WorkbenchProcessPartActionService(g.db, current_app.logger).preview_delete_normalized(body["refs"], scope=scope)
+        preview = WorkbenchProcessPartActionService(g.db, current_app.logger).preview_delete(body["refs"], scope=page_request)
         result = action_preview(preview, "process_bulk.confirm", extra={
             "columns": [{"key": key, "label": label} for key, label in DELETE_COLUMNS]})
     return query_success(result, snapshot)
@@ -72,15 +72,10 @@ def process_bulk_preview():
 def process_bulk_confirm():
     body = confirmed_body({"preview_ref"})
     ref = body["input"]["preview_ref"]
-
-    def apply(checked):
-        preview, _ = checked
-        original = preview.as_dict()["request"]
-        return WorkbenchProcessPartActionService(g.db, current_app.logger).confirm_delete(preview, original["refs"], scope=original["scope"])
-
     result = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action="process_bulk.confirm", context_ref=ref, normalized_input=body["input"],
-        guard=lambda: checked_preview(ref, "part.bulk_delete", body["write_token"]), mutate=apply)
+        guard=lambda: checked_preview(ref, "part.bulk_delete", body["write_token"]),
+        mutate=lambda preview: WorkbenchProcessPartActionService(g.db, current_app.logger).confirm_delete(preview))
     return json_response(result)
 
 

@@ -11,10 +11,14 @@ from dataclasses import dataclass
 from io import BytesIO, StringIO
 from typing import Any
 from xml.etree import ElementTree
+from zipfile import ZipFile
 
 from core.errors import ValidationError
 from core.services.common.excel_cell_values import cell_value, is_formula_or_error
 from core.services.workbench.facts.process_file_xml import check_sheet_order
+
+XLSX_EXPANDED_BYTE_LIMIT = 64 * 1024 * 1024
+_WORKBOOK_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"
 
 
 @dataclass(frozen=True)
@@ -63,19 +67,42 @@ def _csv_rows(content, error, messages):
         raise error(messages.csv_format, reader.line_num if reader is not None else 1) from exc
 
 
+def _check_xlsx_package(content, error):
+    with ZipFile(BytesIO(content)) as archive:
+        entries = archive.infolist()
+        if len({item.filename for item in entries}) != len(entries):
+            raise error("这个 XLSX 内部有重复内容，认不出原始数据。请用 Excel 另存一份后重新上传。")
+        if sum(item.file_size for item in entries) > XLSX_EXPANDED_BYTE_LIMIT:
+            raise error("XLSX 展开后超过 64 MB 上限。请拆分文件后重新上传。")
+        if any(item.flag_bits & 1 for item in entries):
+            raise error("加了密码的 XLSX 读不了。请去掉密码后重新上传。")
+        if archive.testzip() is not None:
+            raise error("这个 XLSX 的完整性检查没通过，文件可能已损坏。请用 Excel 另存一份后重新上传。")
+        types = ElementTree.fromstring(archive.read("[Content_Types].xml"))
+        workbooks = [
+            item.attrib.get("ContentType", "")
+            for item in types
+            if "spreadsheetml" in item.attrib.get("ContentType", "")
+            and "main+xml" in item.attrib.get("ContentType", "")
+            or "macroEnabled.main+xml" in item.attrib.get("ContentType", "")
+        ]
+        if workbooks != [_WORKBOOK_TYPE]:
+            raise error("这个文件不是标准 XLSX 工作簿，只改扩展名或带宏的模板都不行。请用 Excel 另存为 xlsx 后重新上传。")
+        for item in types:
+            if item.attrib.get("ContentType", "").endswith("spreadsheetml.worksheet+xml"):
+                with archive.open(item.attrib["PartName"].lstrip("/")) as stream:
+                    check_sheet_order(stream, error=error)
+
+
 def _xlsx_rows(content, state, error, messages):
     import openpyxl
 
     wb: Any = None
     try:
+        _check_xlsx_package(content, error)
         wb = openpyxl.load_workbook(BytesIO(content), read_only=True, data_only=False, keep_links=False)
         if not wb.worksheets:
             raise error(messages.xlsx_empty)
-        types = ElementTree.fromstring(wb._archive.read("[Content_Types].xml"))
-        for item in types:
-            if item.attrib.get("ContentType", "").endswith("spreadsheetml.worksheet+xml"):
-                with wb._archive.open(item.attrib["PartName"].lstrip("/")) as stream:
-                    check_sheet_order(stream, error=error)
         # Templates include an instruction sheet; import only their data sheet.
         state["sheets"] = len(wb.worksheets)
         ws = wb.worksheets[0]

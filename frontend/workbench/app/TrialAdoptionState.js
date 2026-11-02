@@ -1,27 +1,26 @@
 (function () {
   'use strict';
   const A = window.TrialAdoptionAPI, T = window.APSWorkbenchTransport, KEY = 'aps_workbench_trial_adoption_pending_v1', EVENT = KEY + '_changed';
-  function valid(v, checkReceipt = true) {
+  // 磁盘记录的唯一校验点；写入的记录由已校验的预检与表单构造，写前不再重验。
+  function valid(v) {
     try {
       return A.shape(v, ['schema_version', 'scenario_ref', 'request_key', 'input', 'preview', 'phase'], v.phase === 'committed' ? ['receipt'] : [])
         && v.schema_version === 1 && A.key(v.request_key)
         && A.shape(v.preview, ['scenario_ref', 'draft_ref', 'baseline', 'task_count', 'scope_complete', 'data_context_ref'])
         && A.overview(v.preview) && v.scenario_ref === v.preview.scenario_ref
         && A.equal(A.input(v.input), v.input) && ['pending', 'rejected', 'committed'].includes(v.phase)
-        && (v.phase !== 'committed' || (checkReceipt ? !!A.receipt(v.receipt, v) : Boolean(v.receipt && typeof v.receipt === 'object')));
+        && (v.phase !== 'committed' || !!A.receipt(v.receipt, v));
     } catch (_) { return false; }
   }
   const { read, flush, save } = T.pendingStore({
-    key: KEY, event: EVENT, validate: valid, validateWrite: v => valid(v, false),
+    key: KEY, event: EVENT, validate: valid,
     readError: '读不到上次采用操作的记录，不能开始新的采用。请重新打开页面。',
     corruptError: '上次采用操作的记录已损坏。请不要再操作，联系维护人员。',
     invalidError: '上次采用操作的记录不完整。请不要再操作，联系维护人员。',
     conflictError: '上次采用操作的记录已变化，没有覆盖其他页面的记录。',
-    invalidWriteError: '读到的采用数据不完整或对不上，这次没有确认采用。请刷新重试。',
     writeError: '存不下这次采用操作的记录，这次没有提交。请点「查询结果」确认上次操作。'
   });
-  // preview 是 A.preview 校验过的可采用预检，values 是 A.input 规整过的填写内容，previous 只会是 null 或被拒绝的上次记录；
-  // 写入时 save 再按存储格式整体校验一次。
+  // preview 是 A.preview 校验过的可采用预检，values 是 A.input 规整过的填写内容，previous 只会是 null 或被拒绝的上次记录。
   function begin(preview, values, previous) {
     const scope = A.overviewFields(preview);
     A.check(!previous || A.sameScope(previous.preview, scope) && A.equal(previous.input, values),
@@ -47,8 +46,10 @@
     const [revision, refresh] = React.useReducer(v => v + 1, 0);
     const mounted = React.useRef(false), lock = React.useRef(false), request = React.useRef(null), active = React.useRef(saved), current = React.useRef(null);
     const callback = React.useRef(onAdopted), notified = React.useRef(null); callback.current = onAdopted; active.current = saved;
-    let original = null, sourceError = '';
-    try { original = A.source(scenarioRef, data); } catch (e) { sourceError = e.message; }
+    // 所选试调方案只在读取结果变化时核对一次；渲染、提交前后比较和锁内核对都复用这一个范围对象。
+    const { original, sourceError } = React.useMemo(() => {
+      try { return { original: A.source(scenarioRef, data), sourceError: '' }; } catch (e) { return { original: null, sourceError: e.message }; }
+    }, [scenarioRef, data]);
     current.current = { original, disabled, preview, consent, draft, storageError }; const identity = JSON.stringify(original);
     React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; if (request.current) request.current.abort(); }; }, []);
     React.useEffect(() => { current.current = { ...current.current, preview: null, consent: false }; setPreview(null); setConsent(false); if (request.current) request.current.abort(); }, [identity, disabled]);
@@ -154,10 +155,10 @@
         // 采用记录、提交和结果写回在跨页互斥里串行，持锁跨过采用命令。
         const { acquired } = await T.exclusive(KEY, {}, async () => {
           const latest = current.current;
-          if (!mounted.current || latest.disabled || latest.storageError || !latest.original || latest.preview !== preview || !latest.consent
+          if (!mounted.current || latest.disabled || latest.storageError || latest.preview !== preview || !latest.consent
             || !A.equal(active.current, initialActive) || active.current && active.current.phase !== 'rejected'
             || !A.equal(original, latest.original)
-            || !A.equal(A.input({ confirm: true, reason: latest.draft.reason, declared_operator: latest.draft.declared_operator }), values)) return;
+            || latest.draft.reason !== draft.reason || latest.draft.declared_operator !== draft.declared_operator) return;
           let intent;
           try { intent = begin(preview, values, active.current); } catch (e) { setStorageError(e.message); return; }
           active.current = intent; current.current = { ...current.current, preview: null, consent: false }; setSaved(intent); setDraft(intent.input); setPreview(null); setConsent(false);

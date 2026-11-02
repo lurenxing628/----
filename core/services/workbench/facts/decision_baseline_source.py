@@ -42,7 +42,7 @@ def candidate_evidence(source, audit):
 
 
 def trial_evidence(source, audit):
-    saved, head, rows = source
+    saved, head, rows = source.saved, source.head, source.rows
     _require_identity((saved["scenario_ref"], head["draft_ref"]),
                       (audit["scenario_ref"], audit["draft_ref"]))
     _require_identity((saved["baseline"]["plan_ref"], saved["baseline"]["version"]),
@@ -66,7 +66,7 @@ def _deferred_evidence(source, evidence):
     if evidence["basis"] == "candidate_adoption":
         ids, issues = material_deferred_ids(source.disposition.values(), source.capture["input"]), []
     else:
-        original = source[1]["admission"]["source"]
+        original = source.head["admission"]["source"]
         if "capture" in original:
             # 以候选为基础的试调来源保存了候选运行的 capture 与全部工序处置。
             ids, issues = material_deferred_ids(original["dispositions"].values(), original["capture"]["input"]), []
@@ -107,8 +107,8 @@ def _operation_metadata(source, evidence):
         standards = {ref: _operation_standard(operation, source.facts.execution.get(ref))
                      for ref, operation in operations.items()}
         return source.receipt.get("operation_effort"), types, standards
-    saved, head, rows = source
-    original = head["admission"]["source"]
+    saved, rows = source.saved, source.rows
+    original = source.head["admission"]["source"]
     prepared = evidence["trial_source"]
     refs = prepared.resources.entity_refs
     names = {key: row.get("name") for key, row in prepared.resources.tables["OpTypes"].items()}
@@ -142,7 +142,7 @@ def _trial_points(source):
     return {row["original"]["operation"]["id"]: {
                 "witness": trial_point_evidence(row["original"], row["current"]),
                 **{key: row["original"][key] for key in ("operation", "batch", "execution")}}
-            for row in source[2] if row["current"]["start"] == row["current"]["end"]}
+            for row in source.rows if row["current"]["start"] == row["current"]["end"]}
 
 
 def _point_loader(source, load):

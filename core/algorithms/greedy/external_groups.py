@@ -74,10 +74,7 @@ def _seed_blocks_by_group(
         key = seed_key if seed_key is not None else operation_key
         if key is None:
             continue
-        start, end = result.start_time, result.end_time
-        if start is None or end is None:
-            continue
-        blocks_by_group.setdefault(key, []).append((start, end))
+        blocks_by_group.setdefault(key, []).append((result.start_time, result.end_time))
     return blocks_by_group
 
 
@@ -139,6 +136,8 @@ def _external_result(op: OpForScheduleAlgo, start: datetime, end: datetime) -> S
         op_code=op.op_code,
         batch_id=op.batch_id,
         seq=op.seq,
+        machine_id=None,
+        operator_id=None,
         start_time=start,
         end_time=end,
         source=EXTERNAL,

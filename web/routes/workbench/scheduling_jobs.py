@@ -13,9 +13,9 @@ from core.models.workbench_command import (
     validate_request_key,
 )
 from core.models.workbench_run_job import valid_data_context_ref
-from core.services.workbench.facts.run_data_context import RunDataContext
 from web.api_responses import failure, json_response, query_success
 
+from .data_context import request_data_context
 from .preflight import evaluate_preflight_input_prepared
 from .write_context import issue_write_context, validate_write_context
 
@@ -27,7 +27,7 @@ def _service():
     enabled = current_app.config.get("WORKBENCH_RUN_JOBS_ENABLED") is True and callable(dispatcher)
     return WorkbenchRunService(g.db, integration_enabled=enabled, input_resolver=evaluate_preflight_input_prepared,
                                context_factory=issue_write_context, context_validator=validate_write_context,
-                               data_context=RunDataContext(g.db, current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR")))
+                               data_context=request_data_context())
 
 
 def _boundary(function):

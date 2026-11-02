@@ -69,6 +69,9 @@ def test_update_delete_and_replay_are_real_for_each_kind(app_client, kind):
     deleted = _command(app_client, kind, ref, "delete", {}, key="resource-delete-000001")
     assert deleted.status_code == 200 and deleted.get_json()["result"] == "committed"
     assert app_client.get(BASE + kind + "/" + ref).status_code == 404
+    malformed = app_client.get(BASE + kind + "/" + "z" * 48)
+    assert malformed.status_code == 404 and malformed.get_json()["error"]["code"] == "entity_not_found"
+    assert "已失效" in malformed.get_json()["error"]["message"]
 
 
 def test_plain_resource_pages_share_batch_states_and_read_dependencies_once(resource_conn, monkeypatch):
@@ -187,8 +190,8 @@ def test_resource_import_captures_one_batch_and_applies_without_current_row_rere
     conn.commit()
     content = file_bytes([(code, 'prepared-first'), (other, 'prepared-second')], headers=('编号', '名称'))
     service = WorkbenchResourceFileService(conn, kind)
-    scope = {'category': 'internal'} if kind == 'op_type' else {}
-    preview = service.preview_import(content, file_format='csv', scope=scope)
+    category = 'internal' if kind == 'op_type' else None
+    preview = service.preview_import(content, file_format='csv', mode='upsert', category=category)
     assert preview.as_dict()['summary']['rejected'] == 0, preview.as_dict()
     fact_reads, reference_reads = [], []
     original_facts = WorkbenchResourceMetricsRepository.facts
@@ -204,7 +207,7 @@ def test_resource_import_captures_one_batch_and_applies_without_current_row_rere
 
     monkeypatch.setattr(WorkbenchResourceMetricsRepository, 'facts', captured)
     monkeypatch.setattr(WorkbenchResourceFileRepository, 'references_many', references)
-    result = confirm(conn, kind, preview, content)
+    result = confirm(conn, kind, preview)
     assert result['result'] == 'committed'
     assert reference_reads == [(kind, tuple(sorted([code, other])))]
     assert all(amount == 1 for amount in Counter(fact_reads).values())
@@ -237,11 +240,11 @@ def test_resource_bulk_delete_prepares_one_current_set_and_keeps_rejected_select
     conn.commit()
     service = WorkbenchResourceBulkService(conn, 'machine')
     with service.reader.read_snapshot():
-        rejected = service.preview_delete(['f' * 48], scope={}).as_dict()
+        rejected = service.preview_delete(['f' * 48], scope=ResourcePageRequest(kind='machine')).as_dict()
     assert rejected['summary']['rejected'] == 1 and rejected['rows'][0]['entity_ref'] == 'f' * 48
     refs = [ref(conn, 'machine', code) for code in ('DELETE-ONE', 'DELETE-TWO')]
     with service.reader.read_snapshot():
-        preview = service.preview_delete(refs, scope={})
+        preview = service.preview_delete(refs, scope=ResourcePageRequest(kind='machine'))
     assert preview.as_dict()['summary']['rejected'] == 0
 
     result = confirm(conn, 'machine', preview)
@@ -350,7 +353,7 @@ def test_active_production_report_revision_blocks_resource_deletion_until_voided
     )
     try:
         with reader.read_snapshot():
-            preview = bulk_service.preview_delete([target.ref], scope={}).as_dict()
+            preview = bulk_service.preview_delete([target.ref], scope=ResourcePageRequest(kind=kind)).as_dict()
     finally:
         conn.set_trace_callback(None)
     assert len(report_sql_queries) == 1
@@ -371,7 +374,7 @@ def test_active_production_report_revision_blocks_resource_deletion_until_voided
         )
 
     with reader.read_snapshot():
-        preview_after_void = bulk_service.preview_delete([target.ref], scope={}).as_dict()
+        preview_after_void = bulk_service.preview_delete([target.ref], scope=ResourcePageRequest(kind=kind)).as_dict()
     assert preview_after_void["summary"]["rejected"] == 0
     deleted = run_resource(conn, kind, "delete", {}, code=code)
     assert deleted["result"] == "committed"
@@ -400,3 +403,11 @@ def test_unexpected_table_read_failure_logs_the_request_ref_shown_to_the_user(ap
     assert record.getMessage() == "工作台请求失败 code=storage_failure request_ref=" + error["request_ref"]
     assert isinstance(record.exc_info[1], WorkbenchCommandRejected)
     assert isinstance(record.exc_info[1].__cause__, RuntimeError)
+
+
+@pytest.mark.parametrize("method,path", [("GET", "bogus"), ("GET", "bogus/" + "a" * 48), ("POST", "bogus/create"),
+                                         ("POST", "bogus/" + "a" * 48 + "/update")])
+def test_unknown_resource_kind_is_rejected_by_the_entity_routes(app_client, method, path):
+    body = {"request_key": "resource-unknown-kind-0001", "write_token": "token", "input": {}} if method == "POST" else None
+    response = app_client.open(BASE + path, method=method, json=body)
+    assert (response.status_code, response.get_json()["error"]["code"]) == (404, "entity_not_found"), response.get_json()

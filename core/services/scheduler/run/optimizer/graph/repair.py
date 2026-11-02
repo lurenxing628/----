@@ -47,7 +47,6 @@ class EliteRepairPool:
     def __init__(self, *, limits: EliteRepairLimits, objective_name: str, operations: List[Any],
                  start_dt: Any, seed: int,
                  best: Optional[Dict[str, Any]], report_state: OptimizationSearchReportState,
-                 graph_context: Dict[str, Any],
                  clock: Callable[[], float], deadline: float,
                  decode_session: SharedDecodeSession,
                  decision_features: Any) -> None:
@@ -59,10 +58,11 @@ class EliteRepairPool:
         self.seed = seed
         self.clock = clock
         self.deadline = deadline
+        preparation = decode_session.native_preparation
         self.scope: PreparedRepairScope = prepare_repair_scope(
             operations,
-            graph_context,
-            resource_pairs_for=decode_session.native_preparation.qualified_resource_pairs,
+            preparation.graph_topology(),
+            resource_pairs_for=preparation.qualified_resource_pairs,
         )
         self.elites: List[Dict[str, Any]] = []
         self.active_parents: List[Dict[str, Any]] = []
@@ -82,7 +82,7 @@ class EliteRepairPool:
 
     @staticmethod
     def _parent_key(candidate: Dict[str, Any]) -> _ParentKey:
-        return cast(int, candidate["archive_ref"].entry_id), tuple(candidate["decoded_batch_order"])
+        return cast(int, candidate["archive_ref"].entry_id), candidate["decoded_batch_order"]
 
     def fingerprint(self, candidate: Dict[str, Any], parent: Any = None, *, identity: Any = None) -> Any:
         if identity is None:
@@ -322,7 +322,7 @@ def _repair_one_elite(pool: EliteRepairPool, *, elite: Dict[str, Any], state: An
         profile = replace(variant_profile, slug="v2_repair_" + kind, candidate_origin=GRAPH_READY_V2_REPAIRED_ORIGIN,
                           candidate_policy="elite_repair")
         try:
-            candidate = evaluate(profile=profile, order=list(decision.batch_order),
+            candidate = evaluate(profile=profile, order=decision.batch_order,
                                  repair=(decision, elite["prepared_parent"]))
         except SharedSearchSkip as exc:
             if exc.reason in ("estimated_decode_cost", "time_budget"):

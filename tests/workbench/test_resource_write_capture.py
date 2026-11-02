@@ -5,6 +5,7 @@ import pytest
 from core.errors import BusinessError
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_resource_query import ResourcePageRequest
 from core.services.workbench.resource.operator_machine_permissions import WorkbenchOperatorMachinePermissions
 from core.services.workbench.resource.queries import WorkbenchResourceQueryService
 from data.repositories.base_repo import BaseRepository
@@ -223,7 +224,8 @@ def test_selected_relation_export_preview_and_bulk_create_avoid_unbounded_identi
     conn.set_trace_callback(trace.append)
     try:
         with reader.read_snapshot():
-            arguments, count = relation_files.preview_export("selected", scope={}, selected_refs=[operator.ref])
+            arguments, count = relation_files.preview_export(
+                "selected", request=ResourcePageRequest(kind="operator"), selected_refs=[operator.ref])
     finally:
         conn.set_trace_callback(None)
     selects = [sql for sql in trace if sql.lstrip().upper().startswith("SELECT")]
@@ -233,11 +235,11 @@ def test_selected_relation_export_preview_and_bulk_create_avoid_unbounded_identi
     rows = [(f"OT-BULK-{i:02d}", f"Bulk {i}") for i in range(5)]
     content = file_bytes(rows, headers=("编号", "名称"))
     file_service = WorkbenchResourceFileService(conn, "op_type")
-    preview = file_service.preview_import(content, file_format="csv", scope={"category": "internal"})
+    preview = file_service.preview_import(content, file_format="csv", mode="upsert", category="internal")
     trace.clear()
     conn.set_trace_callback(trace.append)
     try:
-        outcome = confirm(conn, "op_type", preview, content)
+        outcome = confirm(conn, "op_type", preview)
     finally:
         conn.set_trace_callback(None)
     assert outcome["result"] == "committed"

@@ -15,7 +15,8 @@ def occupy_resource(
     start: datetime,
     end: datetime,
 ) -> None:
-    if not resource_id:
+    # A zero-length interval is a point event: it occupies no resource time and never enters a timeline.
+    if not resource_id or end <= start:
         return
     segments = timeline.setdefault(resource_id, [])
     bisect.insort(segments, (start, end))
@@ -69,6 +70,8 @@ class SegmentOverlapIndex:
 
     def shift_end(self, start: datetime, end: datetime) -> Optional[datetime]:
         """等价于 find_overlap_shift_end(同一段集, start, end)。"""
+        if end <= start:
+            return None
         if self._starts is None:
             if not self._scanned_once:
                 self._scanned_once = True
@@ -128,7 +131,7 @@ class SegmentOverlapIndex:
         return end <= start or not self._starts or start >= self._starts[-1]
 
     def _append_covered_segment(self, start: datetime, end: datetime) -> None:
-        if self._covered_starts is None or self._covered_ends is None:
+        if self._covered_starts is None:
             return
         if self._covered_ends and start <= self._covered_ends[-1]:
             if end > self._covered_ends[-1]:
@@ -189,9 +192,12 @@ def find_overlap_shift_end(
     """
     若 [start, end) 与 segments 中任意区间重叠，返回“需要推迟到的最晚结束时刻”（max end）。
 
+    空区间（end <= start）是点事件，不占资源，也不被任何忙段推移，恒返回 None。
     segments 需按起点升序（提前 break 依赖有序）。一次性查询用本函数即可；
     对同一段集反复查询的避让循环应改用 SegmentOverlapIndex，避免每次从头线性重扫。
     """
+    if end <= start:
+        return None
     shift: Optional[datetime] = None
     for s, e in segments:
         if e <= s:

@@ -69,7 +69,7 @@
         {record.correction_history.map((item, index) => <div key={index}><strong>{C.reportActions[item.action] || C.reportActions.correct}</strong> {C.date(item.recorded_at)} · {item.reason}
           {item.before && item.after && <dl>{C.fields.filter(key => item.before[key] !== item.after[key]).map(key => <React.Fragment key={key}><dt>{({ completed_quantity: '数量', effective_processing_hours: '有效工时', actual_start: '实际开工', actual_end: '本次完工', actual_machine_ref: '实际设备', actual_operator_ref: '实际人员', remark: '备注' })[key]}</dt><dd>{key.endsWith('_ref') ? '资源已更正' : C.display(item.before[key]) + ' → ' + C.display(item.after[key])}</dd></React.Fragment>)}</dl>}</div>)}</div>;
   }
-  function FieldDetail({ adapter, taskRef, scope, snapshot, revision, command, editor, retained, onDraft, onEdit, onCloseEditor, onDone, onNavigate, nextDraft, onContinueReady, onRefresh }) {
+  function FieldDetail({ adapter, taskRef, scope, returnContext, snapshot, revision, command, editor, retained, onDraft, onEdit, onCloseEditor, onDone, onNavigate, nextDraft, onContinueReady, onRefresh }) {
     const [historyRef, setHistoryRef] = React.useState(null);
     const [timeline, setTimeline] = React.useState(false);
     const detail = React.useRef(null);
@@ -98,7 +98,7 @@
         <Button icon="chart-gantt" disabled={command.locked || !!editor} onClick={() => {
           const common = { ...scope }; delete common.state;
           onNavigate('fieldgantt', { plan_ref: task.plan_ref, task_ref: taskRef, operation_ref: task.operation_ref, scope: common,
-            return_to: { view: 'field', context: { plan_ref: task.plan_ref, task_ref: taskRef, scope } } });
+            return_to: { view: 'field', context: returnContext } });
         }}>现场实际甘特</Button></div>
       {timeline && <Timeline task={task} />}
       <Issues issues={p.data_gaps} />

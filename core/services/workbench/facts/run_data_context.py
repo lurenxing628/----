@@ -16,9 +16,9 @@ def restored_context_ref(database_scope, records):
 
 
 class RunDataContext:
-    def __init__(self, conn, journal_dir=None):
+    def __init__(self, conn, journal_dir):
         self.database_path = os.path.realpath(main_database_path(conn))
-        self.journal = SystemMaintenanceJournal(journal_dir or self.database_path + ".system-journal", self.database_path)
+        self.journal = SystemMaintenanceJournal(journal_dir, self.database_path)
 
     def capture(self):
         """Capture validated maintenance facts for one operation."""

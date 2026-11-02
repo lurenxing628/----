@@ -114,10 +114,7 @@ def maintenance_records(conn, backup_dir, journal, *, journal_records):
     """Caller owns the database read snapshot. Journal validation failures propagate."""
     files, issues = backup_records(backup_dir)
     rows = [{**row, "record_kind": "backup_file"} for row in files]
-    if journal is None:
-        issues.append({"code": "restore_event_source_unconfigured", "message": "还没有配置维护目录，读不到恢复操作记录；下面只显示备份文件的基本信息。"})
-    else:
-        rows.extend(_restore_records(journal, journal_records))
+    rows.extend(_restore_records(journal, journal_records))
     audits, present, truncated = _cleanup_audits(conn)
     latest, latest_issues = _latest_cleanup(conn, present)
     rows.extend(audits)

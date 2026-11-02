@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models.calendar_period_columns import export_period_columns, parse_period_columns
-from core.models.workbench_action_values import FileDownload
+from core.models.workbench_action_values import AtomicActionPreview
 from core.models.workbench_calendar import operator_clock
 from core.models.workbench_calendar_file import (
     CLOCK_FIELDS,
@@ -23,8 +23,6 @@ from core.models.workbench_calendar_file import (
     NUMERIC,
     REQUIRED,
     UI_FIELDS,
-    CalendarFilePreview,
-    calendar_kind,
     file_columns,
     import_request,
     row_identity,
@@ -35,7 +33,6 @@ from core.models.workbench_command import (
 )
 from core.models.workbench_resource_action import (
     action_row,
-    check_resource_preview,
     reject_action_row,
 )
 from core.models.workbench_resource_file_source import PreparedImportSource
@@ -43,7 +40,7 @@ from core.models.workbench_resource_file_source import PreparedImportSource
 from ..calendar_reading import engine_read_row
 from ..calendars import WorkbenchCalendarService
 from .file_codec import read_calendar_file, read_clock, read_date, read_number
-from .file_writer import check_capacity, number_text, percent_text, write_calendar_file
+from .file_writer import number_text, percent_text
 
 _LIMITS = {"shift_hours": (0.0, 24.0, False), "efficiency": (0.0, 200.0, True)}
 DAY_TYPE_TEXT = {"workday": "工作日", "holiday": "假期"}
@@ -78,35 +75,33 @@ def check_range(start_date: str, end_date: str) -> None:
 
 
 class WorkbenchCalendarFileService:
-    def __init__(self, conn, kind, logger=None, *, clock=None):
-        self.conn, self.kind = conn, calendar_kind(kind)
+    def __init__(self, conn, kind, logger=None):
+        self.conn, self.kind = conn, kind
         self.logger = logger
-        self.calendar = (WorkbenchCalendarService(conn, logger, clock=clock) if clock is not None
-                         else WorkbenchCalendarService(conn, logger))
+        self.calendar = WorkbenchCalendarService(conn, logger)
         self.tx = TransactionManager(conn)
 
     # ---------- 导入 ----------
 
     def _prepare_source(self, content, *, file_format, mode):
-        request = import_request(self.kind, content, file_format, mode)
+        request = import_request(self.kind, file_format, mode)
         source, notices = read_calendar_file(self.kind, content, file_format)
-        prepared = PreparedImportSource.build(self.kind + ".import", request, source, notices, content=content)
-        request["actual_source_ref"] = prepared.source_ref
-        return prepared, request
+        return PreparedImportSource.build(request, source, notices)
 
-    def preview_import(self, content, *, file_format, mode="upsert"):
-        prepared, request = self._prepare_source(content, file_format=file_format, mode=mode)
+    def preview_import(self, content, *, file_format, mode):
+        prepared = self._prepare_source(content, file_format=file_format, mode=mode)
         with self.tx.transaction():
-            return self._preview_import(prepared, request)
+            return self._preview_import(prepared)[0]
 
-    def _preview_import(self, prepared: PreparedImportSource, request: Dict[str, Any]):
+    def _preview_import(self, prepared: PreparedImportSource):
+        request = prepared.request()
         source, notices = prepared.parsed()
         with self.calendar._calendar.normalization_operation():
             rows = self._build_rows(source)
             calendars = {row["row"]: row.pop("calendar") for row in rows if "calendar" in row}
-            return CalendarFilePreview.build(
-                self.kind + ".import", request, rows, notices, source=prepared, calendars=calendars
-            )
+            return AtomicActionPreview.build(
+                self.kind + ".import", request, rows, notices, source=prepared
+            ), calendars
 
     def _build_rows(self, source) -> List[Dict[str, Any]]:
         rows = [self._parse_row(item) for item in source]
@@ -191,7 +186,7 @@ class WorkbenchCalendarFileService:
                 field="date")
         return self.calendar.range_states(days[0], days[-1])
 
-    def _classify(self, row, states, *, projection=None) -> None:
+    def _classify(self, row, states, *, projection) -> None:
         if row_blocked(row):
             return
         day = row["values"]["date"]
@@ -248,8 +243,8 @@ class WorkbenchCalendarFileService:
             row["notes"].append(zero_hours)
             row["requires_confirmation"] = True
 
-    def _public(self, row: Optional[Dict[str, Any]], effective: Optional[Dict[str, Any]] = None,
-                *, projection=None) -> Optional[Dict[str, Any]]:
+    def _public(self, row: Optional[Dict[str, Any]], effective: Optional[Dict[str, Any]],
+                *, projection) -> Optional[Dict[str, Any]]:
         """把领域行翻成文件列口径，导出、预检对比、回导用的是同一份翻译。
 
         班次开始、工时、效率空着的旧行按日历引擎的解释写出（工时按时段或起止推算否则 8 小时、效率 1），与日历页显示一致；
@@ -264,18 +259,12 @@ class WorkbenchCalendarFileService:
                 "remark": row["remark"], "shift_start": row["shift_start"], "shift_end": row["shift_end"],
                 **export_period_columns(row)}
 
-    def confirm_import(self, preview, content, *, file_format, mode="upsert"):
+    def confirm_import(self, preview):
         if not self.conn.in_transaction:
             raise RuntimeError("日历文件导入确认必须在外层工作台写事务中执行。")
-        try:
-            prepared = PreparedImportSource.confirmation(preview, content)
-            request = prepared.request_for(self.kind + ".import", file_format, mode)
-            current = self._preview_import(prepared, request)
-        except ValidationError as exc:
-            raise WorkbenchCommandRejected(
-                "stale_write", "文件或日历已经变了，没有导入。请点「重新预检」后再确认。") from exc
-        body = check_resource_preview(preview, current)
-        changes = [(row["expected"], current.calendars[row["row"]], row["input"]) for row in body["rows"]
+        current, calendars = self._preview_import(preview.source)
+        body = preview.check_current(current)
+        changes = [(row["expected"], calendars[row["row"]], row["input"]) for row in body["rows"]
                    if row["result"] != "unchanged"]
         self.calendar.write_days(changes, include_refs=False)
         results = [{"row": row["row"], "business_code": row["business_code"],
@@ -286,9 +275,6 @@ class WorkbenchCalendarFileService:
                                        {"rows": results, "summary": body["summary"]})
 
     # ---------- 导出 ----------
-
-    def validate_export_scope(self, *, start_date: str, end_date: str) -> None:
-        check_range(start_date, end_date)
 
     def _rows_from_states(self, states: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
         projection = self.calendar.projection(states) if states else None
@@ -303,19 +289,10 @@ class WorkbenchCalendarFileService:
         if not self.conn.in_transaction:
             raise RuntimeError("日历范围读取必须在快照事务中执行。")
         states = self.calendar.range_states(start_date, end_date)
-        count = sum(state["row"] is not None for state in states.values())
-        return ({"start_date": start_date, "end_date": end_date}, count)
+        return sum(state["row"] is not None for state in states.values())
 
     def export_rows(self, *, start_date: str, end_date: str) -> List[Dict[str, Any]]:
         if not self.conn.in_transaction:
             raise RuntimeError("日历范围读取必须在快照事务中执行。")
         states = self.calendar.range_states(start_date, end_date)
         return self._rows_from_states(states)
-
-    def export(self, file_format, *, rows) -> FileDownload:
-        check_capacity(len(rows), file_format)
-        return write_calendar_file(self.kind, rows, file_format)
-
-    @staticmethod
-    def template(kind, file_format="xlsx") -> FileDownload:
-        return write_calendar_file(calendar_kind(kind), [], file_format, template=True)

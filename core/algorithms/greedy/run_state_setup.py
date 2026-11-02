@@ -30,17 +30,13 @@ def prepare_run_state(
             ready_starts=prepared_inputs.parsed_ready_starts(),
         )
     if prepared_inputs.seed_applications:
-        for result, machine_id, operator_id, segments in prepared_inputs.seed_applications:
-            if segments:
-                for start, end, segment_machine, segment_operator in segments:
-                    occupy_resource(state.machine_timeline, segment_machine, start, end)
-                    occupy_resource(state.operator_timeline, segment_operator, start, end)
-            else:
-                if machine_id:
-                    occupy_resource(state.machine_timeline, machine_id, result.start_time, result.end_time)
-                if operator_id:
-                    occupy_resource(state.operator_timeline, operator_id, result.start_time, result.end_time)
-            state.record_seed_result(result, segments=segments)
+        for app in prepared_inputs.seed_applications:
+            for occ in app.occupancies:
+                if occ.machine_id:
+                    occupy_resource(state.machine_timeline, occ.machine_id, occ.start_time, occ.end_time)
+                if occ.operator_id:
+                    occupy_resource(state.operator_timeline, occ.operator_id, occ.start_time, occ.end_time)
+            state.record_seed_result(app.result, occupancies=app.occupancies)
         state.external_group_cache.update(prepared_inputs.seed_external_group_cache)
         warnings.extend(state.seed_resource_warnings())
         increment_counter(algo_stats, "seed_missing_machine_id_count", state.missing_seed_machine_count)

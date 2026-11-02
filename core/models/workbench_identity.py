@@ -10,3 +10,7 @@ class WorkbenchEntityIdentity:
     entity_key: str
     revision: int
     active: bool
+
+
+def is_entity_ref(value) -> bool:
+    return type(value) is str and len(value) == 48 and all(c in "0123456789abcdef" for c in value)

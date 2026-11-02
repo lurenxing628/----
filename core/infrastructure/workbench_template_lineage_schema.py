@@ -103,7 +103,7 @@ def template_lineage_objects():
     return objects
 
 
-def template_lineage_contract_issues(conn, *, structure: SchemaStructure):
+def template_lineage_contract_issues(structure: SchemaStructure):
     actual = structure.sql
     return [("missing_template_lineage:" if name not in actual else "invalid_template_lineage:") + name
             for name, sql in template_lineage_objects().items()

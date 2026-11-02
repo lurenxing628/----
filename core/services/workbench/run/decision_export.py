@@ -6,11 +6,9 @@ import json
 import re
 from tempfile import SpooledTemporaryFile
 
-from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.workbench_action_values import FileDownload
 from core.models.workbench_run_candidate import reject
 from core.services.common.excel_instruction_sheet import close_write_only_sheets
-from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.decision_metrics import metric_definitions
 from core.services.workbench.facts.table_cells import number_text
 
@@ -25,7 +23,7 @@ from .decision_preparation_export import (
     runtime_operation_values,
 )
 from .decision_preparation_queries import normalize_preparation_filters, preparation_details
-from .decision_process import normalize_process_filters, process_details, process_export_records
+from .decision_process import normalize_process_filters, process_export_records, resolve_process_filters
 from .decision_process_export import process_csv, process_export_tables
 from .decision_queries import decision_details, normalize_filters
 from .decision_recommendation_export import (
@@ -43,8 +41,8 @@ from .decision_resource_export import (
     resource_day_rows,
     resource_rows,
 )
-from .decision_resources import normalize_resource_filters, resource_details
-from .decision_source import DecisionSource
+from .decision_resources import normalize_resource_filters, resource_details, resource_view
+from .decision_session import decision_read, decision_snapshot_scope
 
 HEADERS = ("排产编号", "归档编号", "查看基准编号", "查看基准名称", "所选方案编号", "推荐方案编号",
            "范围起点（含）", "范围终点（不含）", "候选编号", "候选名称", "搜索状态", "应排范围状态",
@@ -178,7 +176,7 @@ def operation_rows(data):
             _resource(after, "supplier", "ref"), _resource(after, "supplier", "label"), boolean_text(row["supplier_changed"])]
 
 
-def read_decision_export(conn, run_ref, section, *, filter_section=None, fmt="xlsx", **query):
+def read_decision_export(conn, run_ref, section, *, bind_snapshot, filter_section=None, fmt="xlsx", **query):
     selected = query.get("selected_candidate_ref")
     details = ("batches", "operations", "resources", "resource-days", "preparation", "changeovers", "process")
     detail_section = filter_section or (section if section in details else None)
@@ -195,28 +193,20 @@ def read_decision_export(conn, run_ref, section, *, filter_section=None, fmt="xl
         reject("invalid_input", "请指定明细筛选页签后导出筛选结果。", 422)
     if detail_section is not None and detail_section != "process" and selected is None:
         reject("invalid_input", "明细导出需要指定所选候选方案。", 422)
-    store = CandidateStore(conn)
-    with store.snapshot(), read_evidence_scope(conn):
-        source = DecisionSource(store, run_ref, **query)
+    with decision_read(conn, run_ref, **query) as source:
         active_filters = _export_filters(detail_section, filters) if detail_section is not None else None
-        selected_process = None
         if detail_section == "process":
-            selected_process = process_details(source, active_filters, all_rows=True)
-            active_filters = selected_process["filters"]
-        snapshot_scope = {"kind": "run-decision", **source.scope}
-        if active_filters is not None:
-            snapshot_scope["filters"] = active_filters
+            active_filters = resolve_process_filters(source, active_filters)
+        snapshot = bind_snapshot(decision_snapshot_scope(source) if active_filters is None
+                                 else decision_snapshot_scope(source, filters=active_filters), source.state())
+        process_filters = (active_filters if detail_section == "process"
+                           else resolve_process_filters(source, normalize_process_filters())) if section in ("process", "all") else None
         data = decision_overview(source) if section in ("overview", "all") else (
             decision_summary(source) if section == "recommendation" else _export_context(source))
         if section in ("recommendation", "all"):
             data["export_recommendation"] = recommendation_export_records(source, data)
-        if section in ("process", "all"):
-            data["export_process"] = process_export_records(
-                source,
-                active_filters if detail_section == "process" else None,
-                include_all_objectives=section == "all",
-                selected=selected_process,
-            )
+        if process_filters is not None:
+            data["export_process"] = process_export_records(source, process_filters, include_all_objectives=section == "all")
         for name in ("batches", "operations"):
             if section not in (name, "all"):
                 continue
@@ -225,15 +215,16 @@ def read_decision_export(conn, run_ref, section, *, filter_section=None, fmt="xl
             data["export_" + name] = decision_details(source, name, current_filters, all_rows=True)
         if section in ("resources", "all"):
             if active_filters is not None and detail_section in ("resources", "resource-days"):
-                current_filters = active_filters if detail_section == "resources" else normalize_resource_filters(
-                    "resources", **{key: active_filters[key] for key in ("resource_kind", "resource_ref", "grain", "pressure_threshold", "display_start", "display_end")})
-                resource_documents = [resource_details(source, current_filters, all_rows=True)]
+                current_filters = active_filters if detail_section == "resources" else {
+                    **active_filters, "section": "resources", "bucket_start": None, "bucket_end": None,
+                    "pressure_filter": "all", "sort": "after_peak_utilization", "order": "desc"}
+                resource_documents = [_all_resource_rows(source, current_filters)]
             else:
-                resource_documents = [resource_details(source, normalize_resource_filters("resources", resource_kind=kind), all_rows=True)
+                resource_documents = [_all_resource_rows(source, normalize_resource_filters("resources", resource_kind=kind))
                                       for kind in ("machine", "operator")]
             data["export_resources"] = resource_documents
         if section == "resource-days" or section == "all" and detail_section == "resource-days":
-            data["export_resource_days"] = resource_details(source, active_filters, all_rows=True)
+            data["export_resource_days"] = _all_resource_rows(source, active_filters)
         if fmt == "xlsx" and section in ("resources", "resource-days", "all"):
             resource_document = data["export_resources"][0] if "export_resources" in data else data["export_resource_days"]
             data["export_coverage_operations"] = list(coverage_operation_rows(source, resource_document["coverage"]))
@@ -245,7 +236,11 @@ def read_decision_export(conn, run_ref, section, *, filter_section=None, fmt="xl
             data["export_" + name] = preparation_details(source, current_filters, all_rows=True)
         data["export_filter_section"] = detail_section
         data["export_filters"] = active_filters
-        return data, snapshot_scope, source.state()
+        return data, snapshot
+
+
+def _all_resource_rows(source, filters):
+    return resource_details(source, *resource_view(source, filters, all_rows=True), all_rows=True)
 
 
 def _export_filters(section, filters):

@@ -19,6 +19,7 @@ from core.services.workbench.run.decision_process import (
     normalize_process_filters,
     process_details,
     process_export_records,
+    resolve_process_filters,
 )
 from core.services.workbench.run.decision_process_export import process_csv, process_export_tables
 from tests._support.shared_schedule_archive import _archive, _candidate, _failure, _observe_decoded, _result
@@ -101,7 +102,7 @@ def test_shared_process_projection_and_export_keep_actual_objectives_and_one_run
                    "search_evidence_ref": {"run_ref": run_ref, "source_event_id": 3}}
                   for ref, label, goals in ((first_ref, "交期优先", targets[:2]), (viewer_ref, "切换更少", targets[2:]))]
     original = deepcopy(process)
-    projected = project_unified_process(process, candidate=candidates[1], candidates=candidates)
+    projected = project_unified_process(process, objective="min_overdue", candidate=candidates[1], candidates=candidates)
     assert projected["summary"] == {"elapsed_ms": 100, "first_complete_elapsed_ms": 35,
                                     "first_improvement_elapsed_ms": 35, "last_improvement_elapsed_ms": 35}
     assert projected["selected_objective"]["name"] == "min_overdue"
@@ -123,55 +124,53 @@ def test_shared_process_projection_and_export_keep_actual_objectives_and_one_run
     assert tardiness["actions"] == [] and tardiness["budget"]["objectives"]["min_tardiness"]["objective_status"] == "not_searched_budget"
     for direction in (projected, tardiness, changeover):
         assert direction["summary"]["first_improvement_elapsed_ms"] == direction["summary"]["last_improvement_elapsed_ms"] == 35
-    with pytest.raises(WorkbenchCommandRejected) as caught:
-        project_unified_process(process, objective="min_weighted_tardiness", candidate=candidates[1], candidates=candidates)
-    assert caught.value.code == "invalid_input" and caught.value.status == 422
 
     source = SimpleNamespace(run={"run_ref": run_ref}, rows=[{"candidate_ref": row["candidate_ref"]} for row in candidates],
         saved_process=process, selected_ref=first_ref, scope={"selected_candidate_ref": first_ref,
-        "reference": {"candidate_ref": viewer_ref}}, baseline={"candidate_ref": viewer_ref})
-    source._candidate_reference = lambda ref: next(row for row in candidates if row["candidate_ref"] == ref)
+        "reference": {"candidate_ref": viewer_ref}, "run_options": {"primary_objective": "min_overdue", "target_objectives": targets}},
+        baseline={"candidate_ref": viewer_ref})
+    source._candidate_reference = lambda ref: None if ref is None else next(row for row in candidates if row["candidate_ref"] == ref)
     source.saved_candidate_catalog = lambda ref, fields=None: {key: value for key, value in next(
         row for row in candidates if row["candidate_ref"] == ref).items() if fields is None or key in fields}
     initial_scope = deepcopy(source.scope)
-    details = process_details(source, normalize_process_filters(process_candidate_ref=viewer_ref), size=20, page=2)
+    details = process_details(source, resolve_process_filters(source, normalize_process_filters(process_candidate_ref=viewer_ref)), size=20, page=2)
     assert details["candidate"]["candidate_ref"] == viewer_ref and details["source_event"] == events[2]
     assert details["selected_objective"]["name"] == details["filters"]["objective"] == "min_overdue"
     assert details["items"] == [] and details["page"] == {"number": 2, "size": 20, "total": 2, "has_more": False}
     assert details["actions"] == actions[:2] and all("rank" not in action and "primary_value" not in action for action in details["actions"])
-    progress = process_details(source, normalize_process_filters(objective="min_tardiness", record_kind="progress",
-        sort="primary_value", order="desc"), size=20)
+    progress = process_details(source, resolve_process_filters(source, normalize_process_filters(
+        objective="min_tardiness", record_kind="progress", sort="primary_value", order="desc")), size=20)
     assert progress["selected_objective"]["unit"] == "小时" and progress["items"][0]["primary_value"] == 5.5
     assert progress["actions"] == [] and progress["page"]["total"] == 3
     assert source.scope == initial_scope and progress["scope"] == details["scope"]
-    for read in (lambda: process_details(source, normalize_process_filters(objective="min_weighted_tardiness")),
+    for read in (lambda: resolve_process_filters(source, normalize_process_filters(objective="min_weighted_tardiness")),
                  lambda: normalize_process_filters(record_kind="attempts", sort="primary_value")):
         with pytest.raises(WorkbenchCommandRejected) as caught:
             read()
         assert caught.value.code == "invalid_input" and caught.value.status == 422
-    exports = process_export_records(source)
-    assert len(exports) == 1 and exports[0]["process"] is process and exports[0]["export_objectives"] == targets
-    reversed_exports = process_export_records(source, normalize_process_filters(record_kind="progress", order="desc"))
-    assert [row["elapsed_ms"] for row in reversed_exports[0]["projected"]["progress"]["points"]] == [100, 35, 20]
-    assert [row["action_id"] for row in reversed_exports[0]["projected"]["actions"]] == [2, 1]
-    filtered_filters = normalize_process_filters(process_candidate_ref=viewer_ref, objective="min_tardiness",
-        record_kind="progress", sort="elapsed_ms", order="desc")
-    filtered_exports = process_export_records(source, filtered_filters)
-    assert len(filtered_exports) == 1 and filtered_exports[0]["export_objectives"] == ["min_tardiness"]
+    exports = process_export_records(source, resolve_process_filters(source, normalize_process_filters()), include_all_objectives=True)
+    assert exports["process"] is process and exports["export_objectives"] == targets
+    reversed_exports = process_export_records(source, resolve_process_filters(source, normalize_process_filters(record_kind="progress", order="desc")),
+                                              include_all_objectives=False)
+    assert [row["elapsed_ms"] for row in reversed_exports["projected"]["progress"]["points"]] == [100, 35, 20]
+    assert [row["action_id"] for row in reversed_exports["projected"]["actions"]] == [2, 1]
+    filtered_filters = resolve_process_filters(source, normalize_process_filters(process_candidate_ref=viewer_ref, objective="min_tardiness",
+        record_kind="progress", sort="elapsed_ms", order="desc"))
+    filtered_exports = process_export_records(source, filtered_filters, include_all_objectives=False)
+    assert filtered_exports["export_objectives"] == ["min_tardiness"]
     all_filtered_exports = process_export_records(source, filtered_filters, include_all_objectives=True)
-    assert len(all_filtered_exports) == 1 and all_filtered_exports[0]["export_objectives"] == targets
-    assert all_filtered_exports[0]["projected"] == filtered_exports[0]["projected"]
-    assert all_filtered_exports[0]["projected"]["candidate"]["candidate_ref"] == viewer_ref
-    assert all_filtered_exports[0]["projected"]["selected_objective"]["name"] == "min_tardiness"
-    assert all_filtered_exports[0]["projected"]["scope"] == initial_scope
+    assert all_filtered_exports["export_objectives"] == targets
+    assert all_filtered_exports["projected"] == filtered_exports["projected"]
+    assert all_filtered_exports["projected"]["candidate"]["candidate_ref"] == viewer_ref
+    assert all_filtered_exports["projected"]["selected_objective"]["name"] == "min_tardiness"
+    assert all_filtered_exports["projected"]["scope"] == initial_scope
 
     data = {"run": {"run_ref": run_ref}, "capture_ref": run_ref,
         "scope": {"selected_candidate_ref": first_ref, "comparison_mode": "candidates", "range_start": None, "range_end": None,
                   "resource_view": "selected_batches"}, "baseline": {"kind": "candidate", "candidate_ref": viewer_ref},
         "selection_basis": {"selection_policy_version": "business_objectives_v1"},
         "recommendation": {"candidate_ref": first_ref, "recommendation_version": "decision-recommendation-v1"},
-        "export_process": [{"process_version": UNIFIED_PROCESS_VERSION, "process": process,
-                            "export_objectives": targets, "projected": projected}]}
+        "export_process": {"process": process, "export_objectives": targets, "projected": projected}}
     snapshot = {"snapshot_ref": "s" * 32, "as_of": "2026-10-15T01:30:00"}
     tables = process_export_tables(data, snapshot)
     rows = lambda title: [dict(zip(tables[title][0], row)) for row in tables[title][1]]
@@ -209,7 +208,7 @@ def test_shared_process_projection_and_export_keep_actual_objectives_and_one_run
             assert all(item[key] == value for key, value in row.items())
     last_changeover = next(row for row in flat if row["record_kind"] == "progress_point" and row["优化方向"] == "min_changeover" and row["累计共同耗时（毫秒）"] == 100)
     assert last_changeover["业务主值"] == 4 and last_changeover["评分分量1单位"] == "次" and last_changeover["评分分量1指标key"] == "changeover_count"
-    data["export_process"][0]["export_objectives"] = ["min_tardiness"]
+    data["export_process"]["export_objectives"] = ["min_tardiness"]
     filtered = process_export_tables(data, snapshot)
     assert len(filtered["目标预算"][1]) == 1 and len(filtered["共同计算"][1]) == 1 and len(filtered["范围成员"][1]) == len(members)
     assert process == original

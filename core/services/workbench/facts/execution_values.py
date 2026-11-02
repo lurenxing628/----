@@ -50,7 +50,7 @@ def execution_deviation(planned_end, projection, as_of):
     finish = _minutes_between(planned, confirmed) if complete else None
     elapsed = _minutes_between(planned, clock) if due and not complete else None
     forecast_delta = _minutes_between(planned, forecast) if remaining else None
-    missing = planned is None or clock is None or (complete and confirmed is None) or (remaining is not None and forecast is None)
+    missing = planned is None or clock is None or (remaining is not None and forecast is None)
     result.update(state="partial" if missing else "available", due=due, complete=complete,
                   finish_deviation_minutes=finish, elapsed_since_planned_minutes=elapsed,
                   forecast_deviation_minutes=forecast_delta, unclosed=due and not complete,

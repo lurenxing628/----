@@ -10,6 +10,7 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_trial_codec import dump, load
 from core.services.workbench.facts.trial_policy import load_scenario_record
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
+from tests.workbench.run_jobs_support import data_context
 from tests.workbench.trial_support import (
     CommitFailureConnection,
     api,
@@ -30,6 +31,7 @@ def test_complete_create_change_save_and_reopen(trial_case, kind, monkeypatch):
     case = trial_case
     intent = official(case) if kind == "official" else candidate(case)
     before = snapshot(case.conn)
+    from core.services.workbench.facts import trial_origin
     from core.services.workbench.trial import projection, validation
     from core.services.workbench.trial import service as trial_service
     from data.repositories.workbench_preflight_facts_repo import WorkbenchPreflightFactsRepository
@@ -51,7 +53,7 @@ def test_complete_create_change_save_and_reopen(trial_case, kind, monkeypatch):
         table_reads[name] += 1
         return original_table(repo, name)
     monkeypatch.setattr(WorkbenchPreflightFactsRepository, "capture_table", table_read)
-    original_rows, original_facts = projection.scenario_rows, projection.cached_generation_facts
+    original_rows, original_facts = projection.scenario_rows, trial_origin.cached_generation_facts
     def projected(*args, **kwargs):
         calls["scenario_rows"] += 1
         return original_rows(*args, **kwargs)
@@ -60,7 +62,7 @@ def test_complete_create_change_save_and_reopen(trial_case, kind, monkeypatch):
         return original_facts(*args, **kwargs)
     monkeypatch.setattr(projection, "scenario_rows", projected)
     monkeypatch.setattr(trial_service, "scenario_rows", projected)
-    monkeypatch.setattr(projection, "cached_generation_facts", generation_facts)
+    monkeypatch.setattr(trial_origin, "cached_generation_facts", generation_facts)
     case.conn.set_trace_callback(statements.append)
     draft = create(case, intent)
     case.conn.set_trace_callback(None)
@@ -301,7 +303,8 @@ def test_trial_preview_and_live_validation_skip_full_archive_and_reuse_validated
 
     with monkeypatch.context() as patch:
         patch.setattr(adoption_validation, "_span_end", checked_span)
-        adoption_validation.validate_trial_adoption(case.conn, saved["scenario_ref"])
+        adoption_validation.validate_trial_adoption(case.conn, saved["scenario_ref"],
+                                                    data_context=data_context(case.conn))
     assert span_calls and all(count > 0 for count in span_calls)
 
     # Advance a live table revision (e.g. part name change) so matches_archive is False (not None).

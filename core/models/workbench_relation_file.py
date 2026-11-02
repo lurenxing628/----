@@ -2,7 +2,6 @@
 
 from typing import Any, Dict, Optional, Tuple
 
-from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_table_descriptor import (
     DEFAULT_IMPORT_BYTE_LIMIT,
@@ -106,15 +105,6 @@ def row_identity(values: Dict[str, Any]) -> Optional[str]:
     if type(operator) is not str or type(machine) is not str:
         return None
     return operator + " / " + machine
-
-
-def import_request(kind: str, content: bytes, file_format: str, mode: str) -> Dict[str, Any]:
-    relation_kind(kind)
-    if type(content) is not bytes or type(file_format) is not str or file_format not in ("csv", "xlsx"):
-        raise ValidationError("必须提供CSV/XLSX原始文件字节。", field="file")
-    if type(mode) is not str or mode != "upsert":
-        raise ValidationError("只支持按编号增量导入，不支持替换。", field="mode")
-    return {"format": file_format, "mode": mode, "scope": {}}
 
 
 def table_descriptor(kind: str) -> Dict[str, Any]:

@@ -1,4 +1,4 @@
-"""Original source identities and old report replay use retained content."""
+"""Retained source facts own decoded rows and their source number; old report replay reuses saved numbers."""
 
 from copy import deepcopy
 
@@ -11,34 +11,23 @@ from core.models.workbench_resource_file_source import PreparedImportSource
 from core.services.workbench.execution.field_report_files import FieldReportFileService, report_index
 
 
-def test_prepared_import_retains_original_bytes_and_confirmed_document():
-    content = b"original-file\x00\xff"
+def test_prepared_import_retains_parsed_facts():
     request = {"format": "csv", "mode": "upsert", "scope": {}}
     decoded = [{"value": True}]
     notices = [{"details": ["extra sheet"]}]
-    source = PreparedImportSource.build("material.import", request, decoded, notices, content=content)
-    assert source._rows is decoded and source._notices is notices
-    checked = source.request_for("material.import", "csv", "upsert", {})
+    source = PreparedImportSource.build(request, decoded, notices)
+    rows, kept = source.parsed()
+    assert rows is decoded and kept is notices
+    checked = source.request()
     preview = AtomicActionPreview.build("material.import", checked, [{"result": "new"}], source=source)
-    assert source.content == content
-    assert checked["actual_source_ref"] == source.source_ref
     assert "file_sha256" not in checked
-    assert PreparedImportSource.confirmation(preview, content) is source
-    assert PreparedImportSource.confirmation(preview, source) is source
-    with pytest.raises(WorkbenchCommandRejected) as failure:
-        PreparedImportSource.confirmation(preview, content + b"changed")
-    assert failure.value.code == "stale_write"
-    assert source.parsed() == (decoded, notices)
-    intent = preview.intent()
-    assert intent["preview_document"] == preview.document
-    assert content.decode("latin-1") not in intent["preview_document"]
-    assert "preview_hash" not in intent
+    assert preview.source is source
 
 
 def _report_row():
     return {"row": 2, "values": {"actual_start": "2026-10-01T08:00:00", "actual_end": "2026-10-01T09:00:00",
             "completed_quantity": 1, "effective_processing_hours": 1.0, "remark": "original",
-            "machine_label": "", "operator_label": "", "report_no": ""}}
+            "machine_label": "", "operator_label": "", "report_no": ""}, "errors": []}
 
 
 def test_field_source_number_is_stable_and_reuses_one_saved_old_report():
@@ -46,7 +35,10 @@ def test_field_source_number_is_stable_and_reuses_one_saved_old_report():
     task = {"task_ref": "a" * 48, "execution": {"reports": []}}
     row = _report_row()
     resources = {"codes": {}, "labels": {}}
-    source = PreparedFieldReportSource.build(b"original", [row])
+    source = PreparedFieldReportSource.build([row])
+    proposal, retry = source.parsed()[0], source.parsed()[0]
+    proposal["errors"].append({"row": 2, "message": "proposal-only"})
+    assert proposal is not retry and retry["errors"] == [] and source.parsed()[0]["errors"] == []
     reports = report_index(task["execution"]["reports"])
     first = service._row_item(row, task["task_ref"], reports, resources, source.source_ref)
     assert first == service._row_item(source.parsed()[0], task["task_ref"], reports, resources, source.source_ref)
@@ -54,7 +46,7 @@ def test_field_source_number_is_stable_and_reuses_one_saved_old_report():
     old = deepcopy(first["payload"])
     old["report_no"] = "BG-X-" + "b" * 32 + "-2"
     task["execution"]["reports"] = [old]
-    next_source = PreparedFieldReportSource.build(b"original", [row])
+    next_source = PreparedFieldReportSource.build([row])
     reports = report_index(task["execution"]["reports"])
     recovered = service._row_item(row, task["task_ref"], reports, resources, next_source.source_ref)
     assert recovered["payload"]["report_no"] == old["report_no"]

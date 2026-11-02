@@ -13,8 +13,7 @@ def _source(header):
 
 
 def _navigation(ref, current):
-    return [{"view": "outsourcing", "context": {"outsourcing_ref": ref}, "enabled": current,
-             "query_target": "/api/workbench/v1/outsourcing/receipts/" + ref,
+    return [{"view": "outsourcing", "context": {"outsourcing_ref": ref} if current else {}, "enabled": current,
              "reason": None if current else "外协来源暂时无法核对，请刷新重试。"}]
 
 

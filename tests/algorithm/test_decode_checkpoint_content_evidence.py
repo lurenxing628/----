@@ -342,12 +342,6 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
                  for child, parents in context["predecessor_op_ids_by_op_id"].items() for parent in parents]
         node_metrics = ScheduleGraphAnalysisService().analyze_precedence(nodes, edges).node_metrics
         context["node_metrics_by_op_id"] = {int(key): value for key, value in node_metrics.items()}
-        metrics = enrich_graph_ready_v2_metrics(context["node_metrics_by_op_id"], operations=operations,
-                                                batches=batches, start_dt=case["start_dt"], calendar_service=calendar,
-                                                graph_ready_context=context, downtime_map={}, seed_results=[],
-                                                deadline=float("inf"), clock=lambda: 0.0)
-        assert metrics is not None
-        features = PreparedDecisionFeatures(metrics, build_v2_common_rank_cache(metrics))
         scheduler = GreedyScheduler(calendar_service=calendar, config_service=config_snapshot(auto_assign_enabled="no"))
         started = clock()
         archive = SharedScheduleArchive("min_overdue", target_objectives_for("min_overdue"),
@@ -373,6 +367,15 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
                                       clock=clock, started_at=started, deadline=started + 10,
                                       event_sink=owner.record_event)
         owner.decode_session = session
+        metrics = enrich_graph_ready_v2_metrics(context["node_metrics_by_op_id"], operations=operations,
+                                                batches=batches, start_dt=case["start_dt"], calendar_service=calendar,
+                                                graph_ready_context=context, downtime_map={}, seed_results=[],
+                                                deadline=float("inf"), clock=lambda: 0.0,
+                                                native_preparation=session.native_preparation)
+        assert metrics is not None
+        topology = session.native_preparation.graph_topology()
+        features = PreparedDecisionFeatures(metrics, build_v2_common_rank_cache(metrics),
+                                            schedulable_ids=topology.schedulable_ids)
         report = OptimizationSearchReportState(
             objective_name="min_overdue",
             started_at=started, candidate_clock=clock,
@@ -398,7 +401,7 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
                           repair=(decision, prepare_repair_parent(
                               {"results": plain.results, "decoded_batch_order": plain.decoded_batch_order},
                               scope=prepare_repair_scope(
-                                  operations, context,
+                                  operations, topology,
                                   resource_pairs_for=session.native_preparation.qualified_resource_pairs))))
         report.mark_candidate_evaluated(source, origin="baseline")
         owner.sync(view)
@@ -407,12 +410,12 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
                                         prepared=prepare_repair_parent(
                                             source,
                                             scope=prepare_repair_scope(
-                                                operations, context,
+                                                operations, topology,
                                                 resource_pairs_for=session.native_preparation.qualified_resource_pairs)))
         limits = IteratedGreedyLimits(due_date_seed=False, checkpoint_count=3, max_decodes=20)
         pool = EliteRepairPool(limits=EliteRepairLimits(), objective_name="min_overdue",
                                 operations=operations, start_dt=case["start_dt"], seed=0,
-                                best=source, report_state=report, graph_context=context,
+                                best=source, report_state=report,
                                 clock=clock, deadline=started + 10, decode_session=session,
                                 decision_features=features)
         search = ig_module._IteratedGreedySearch(
@@ -420,7 +423,7 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
             metrics_by_op_id=metrics, start_dt=case["start_dt"], seed=0, deadline=started + 10,
             clock=clock, report_state=report,
             report=new_iterated_greedy_report(objective_name="min_overdue"),
-            graph_context=context, decode_session=session)
+            decode_session=session)
         search.best = source
         return search, owner, session, scheduler
 

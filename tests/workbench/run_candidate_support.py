@@ -15,6 +15,7 @@ from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION, current_
 from core.infrastructure.schema_declaration import load_schema_sql
 from core.infrastructure.sqlite_udf import register_schedule_time_sql_functions
 from core.models.schedule_config_runtime_fields import default_snapshot_values
+from core.services.workbench.facts.system_journal import system_journal_directory
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.run_jobs_support import JobCase
 from web.routes.workbench.run_candidates import register_run_candidate_routes
@@ -56,6 +57,7 @@ def candidate_case(tmp_path):
     case.config(algo_mode="greedy", time_budget_seconds=60,
                 ortools_enabled="no", freeze_window_enabled="no")
     case.app = Flask("bl-candidate-tests")
+    case.app.config["WORKBENCH_SYSTEM_JOURNAL_DIR"] = system_journal_directory(str(path))
     with case.app.app_context():
         yield case
     conn.close()

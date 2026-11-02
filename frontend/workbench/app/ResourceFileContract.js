@@ -65,8 +65,13 @@
       preview(raw, mode, expected, request) {
         const result = shared.preview(raw, mode, expected);
         columns(result.data);
-        if (kind === 'op_type' && (!C.object(result.data.scope) || result.data.scope.category !== category(kind, request)))
-          throw C.failure('预检工种类别与当前自制或外协范围不一致，本批没有提交。');
+        if (kind === 'op_type') {
+          const invalid = mode === 'import'
+            ? result.data.category !== category(kind, request) || C.own(result.data, 'scope')
+            : !C.object(result.data.scope) || result.data.scope.category !== category(kind, request);
+          if (invalid)
+            throw C.failure('预检工种类别与当前自制或外协范围不一致，本批没有提交。');
+        }
         return result;
       },
       exportPreview(raw, selection, request) {

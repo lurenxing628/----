@@ -4,7 +4,7 @@ All judgement over WorkbenchExecutionRepository facts (missing schema, unknown r
 row caps, ref syntax) lives here; the repository only reads what is stored.
 """
 
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import replace
 from datetime import datetime
 from sqlite3 import Connection
@@ -170,10 +170,13 @@ class ExecutionLedgerReader:
 
     @contextmanager
     def read_snapshot(self):
+        """One cached ledger view per read transaction; a caller's open transaction is joined, never nested."""
         if self._snapshot_clock is not None:
             yield
             return
-        with TransactionManager(self.conn).transaction():
+        with ExitStack() as owned:
+            if not self.conn.in_transaction:
+                owned.enter_context(TransactionManager(self.conn).transaction())
             self._snapshot_clock = self.revision_clock()
             self._snapshot_plan, self._snapshot_plan_read = None, False
             self._snapshot_operations, self._snapshot_task_maps, self._snapshot_resources = {}, {}, {}

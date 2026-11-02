@@ -60,9 +60,6 @@ class _WarmStartStage(SearchStage):
         self.done = True
         self.run()
 
-    def finish(self) -> None:
-        self.done = True
-
     def unavailable_reason(self) -> Optional[str]:
         return "finished" if self.done else "remaining_time_less_than_one_second"
 
@@ -165,7 +162,7 @@ def optimize_shared_schedule(
         event_sink=session.record_event, evaluation_context=evaluation_context)
     native_preparation = session.decode_session.native_preparation
 
-    def build_order(strategy: SortStrategy, params: Dict[str, Any]) -> List[str]:
+    def build_order(strategy: SortStrategy, params: Dict[str, Any]) -> Tuple[str, ...]:
         return native_preparation.batch_order(start_dt=start_dt, strategy=strategy, params=params)
 
     profile = build_candidate_profile(
@@ -230,6 +227,7 @@ def optimize_shared_schedule(
                 **{key: common[key] for key in ("scheduler", "algo_ops_to_schedule", "batches", "start_dt",
                                                "downtime_map", "seed_sr_list", "resource_pool", "deadline", "clock")},
                 graph_ready_context=cast(Dict[str, Any], graph_ready_context),
+                schedulable_ids=native_preparation.graph_topology().schedulable_ids,
                 native_preparation=native_preparation)
         finally:
             shared_budget.charge_preparation(targets[0], "graph_features", runtime.clock() - feature_started_at)
@@ -254,7 +252,7 @@ def optimize_shared_schedule(
             view.stages.append(_WarmStartStage(run=warmstart, clock=runtime.clock, deadline=deadline))
         if not piece:
             view.local_stage = LocalSearchStage(
-                **decode_common, batches=batches, best=view.state.best, version=version,
+                **decode_common, best=view.state.best, version=version,
                 objective_name=view.objective,
                 rng_factory=runtime.rng_factory, search_report_state=view.report,
                 neighborhoods=_business_neighborhoods(view.objective),
@@ -275,7 +273,6 @@ def optimize_shared_schedule(
                 **decode_common, algo_ops_to_schedule=algo_ops_to_schedule, best=view.state.best,
                 version=version, base_strategy=config.strategy_enum, base_params=config.strategy_params,
                 build_order=build_order, dispatch_rule_cfg=config.dispatch_rule, objective_name=view.objective,
-                graph_ready_context=cast(Dict[str, Any], graph_ready_context),
                 search_report_state=view.report, prepared_features=features)
             view.stages.extend(view.graph_bundle.stages)
         shared_budget.charge_preparation(view.objective, "prepare_view", runtime.clock() - view_started_at)

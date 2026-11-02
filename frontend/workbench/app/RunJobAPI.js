@@ -38,7 +38,7 @@
   function content(v) { check(issues(v.warnings)); return v.data; }
   function previewResult(v, inputRef) {
     const d = content(v);
-    check(shape(d, ['input_ref', 'normalized_input', 'write_context', 'calendar_check', 'warnings', 'data_context_ref', 'run_options']) && contextRef(d.data_context_ref) && token(inputRef) && d.input_ref === inputRef
+    check(shape(d, ['input_ref', 'normalized_input', 'write_context', 'calendar_check', 'warnings', 'data_context_ref', 'run_options']) && contextRef(d.data_context_ref) && d.input_ref === inputRef
       && d.calendar_check === 'not_evaluated' && issues(d.warnings));
     input(d.normalized_input);
     const c = d.write_context;
@@ -107,7 +107,6 @@
   const OUTCOMES = window.WorkbenchTerms.outcomes;
   const messages = {
     input_already_used: '这份检查结果已经开始过排产，请重新检查后再开始下一次。',
-    run_schema_unavailable: '排产记录还没准备好，暂时不能开始排产。请联系维护人员升级数据库。',
     run_worker_not_connected: '排产计算程序没有启动，暂时不能开始排产。请联系维护人员。',
     execution_ledger_unavailable: '报工记录还没准备好，请联系维护人员升级数据库。',
     snapshot_stale: '资料已更新或排产检查已过期，请重新做排产检查。刚才的选择已保留。',
@@ -119,13 +118,10 @@
     storage_failure: OUTCOMES.pending('排产'), scheduling_busy: '已有排产正在计算，请稍后再点「查询结果」。',
     candidate_artifact_invalid: '候选方案记录不完整，请联系维护人员。',
     candidate_capacity_exceeded: '候选方案数量超过读取上限。',
-    zero_duration_candidate_unsupported: '本次有零工时工序，候选计算还不支持。请核对工时资料。',
     candidate_computation_failed: '本次候选计算失败。请联系维护人员，再重新做排产检查。',
     run_interrupted: '这次排产已中断，没有自动重跑。',
     request_lifecycle_stopping: '程序正在停止或维护，这次排产没有开始。重新启动后请重新做排产检查。'
   };
-  // Internal version numbers belong in the collapsed reference block, never in the sentence users read.
-  const messageDetails = { run_schema_unavailable: { '需要的数据库版本': 'v26' } };
   function message(error) { return messages[error && error.code] || OUTCOMES.unknown('排产'); }
   // 已结束的排产失败是确定结果：不认识的失败原因照后端原话显示，不能说成“可能已经生效”。
   function failure(error) {
@@ -135,11 +131,10 @@
     return error && messages[error.code] && !['storage_failure', 'entity_not_found', 'run_result_inconsistent'].includes(error.code)
       ? messages[error.code] : '排产条件没有读出来，请重新检查。';
   }
-  function details(error) { return messageDetails[error && error.code] || null; }
   function validIntent(v) { return shape(v, ['schema_version', 'input_ref', 'request_key', 'run_ref', 'data_context_ref']) && v.schema_version === 2 && contextRef(v.data_context_ref)
     && token(v.input_ref) && key(v.request_key) && (v.run_ref === null || ref(v.run_ref)); }
   const store = T.pendingStore({
-    key: PENDING_KEY, validate: validIntent, validateWrite: null,
+    key: PENDING_KEY, validate: validIntent,
     readError: '读不到上次排产的操作记录，请重新打开页面，不要重做。',
     corruptError: '本机存的排产操作记录已损坏，已拦下新排产。请不要再操作，联系维护人员。',
     invalidError: '本机存的排产操作记录不完整，已拦下新排产。请不要再操作，联系维护人员。',
@@ -150,15 +145,14 @@
   const recentStore = T.pendingStore({
     key: RECENT_KEY,
     validate: value => shape(value, ['intent', 'resolution']) && validIntent(value.intent) && ['found', 'context_replaced'].includes(value.resolution),
-    validateWrite: null,
     corruptError: '最近排产记录读不到，请到排产记录页查看。',
     invalidError: '最近排产记录不完整，请到排产记录页查看。'
   });
   const { read, flush, save } = store;
+  // intent 都来自本存储读到并校验过的记录或 begin 刚写入的记录，转换只检查业务状态，不再重验记录格式。
   const runPending = { read, flush, recent: recentStore.read,
+    // inputRef 与 dataContext 都取自 previewResult 核过的排产核对结果。
     begin(inputRef, dataContext) {
-      check(token(inputRef), '排产检查已失效，请重新做排产检查。');
-      check(contextRef(dataContext));
       try {
         return save({ schema_version: 2, input_ref: inputRef, request_key: T.requestKey('run'), run_ref: null, data_context_ref: dataContext }, null);
       } catch (error) {
@@ -166,8 +160,9 @@
         throw error;
       }
     },
+    // runRef 来自已校验的受理回执或排产记录。
     attach(intent, runRef) {
-      check(validIntent(intent) && ref(runRef) && (!intent.run_ref || intent.run_ref === runRef), '上次操作记录已变化，没有覆盖其他排产记录。');
+      check(!intent.run_ref || intent.run_ref === runRef, '上次操作记录已变化，没有覆盖其他排产记录。');
       try {
         return save({ ...intent, run_ref: runRef }, intent);
       } catch (error) {
@@ -176,31 +171,26 @@
       }
     },
     finish(intent, resolution) {
-      check(['found', 'context_replaced'].includes(resolution) && validIntent(intent));
       save(null, intent, () => recentStore.write({ intent, resolution }));
     },
     reject(intent) {
-      check(validIntent(intent));
       save(null, intent);
     }
   };
-  // 排产操作记录只存在本页的 window.localStorage，全页共用这一份。
-  const pending = () => runPending;
   // 排产检查核对、受理回执和读取都按 30 秒等待；受理失败的结果编号指向排产请求查询。
   async function preview(inputRef, signal) {
     check(token(inputRef));
     return previewResult(await T.preview(BASE + '/runs/preview', { input_ref: inputRef }, { signal, timeout: 30000 }), inputRef);
   }
+  // intent 是 begin 刚写入的记录，writeToken 已由 previewResult 核过。
   async function accept(intent, writeToken) {
-    check(validIntent(intent) && intent.run_ref === null && token(writeToken));
     return accepted(await T.command(BASE + '/runs', { input_ref: intent.input_ref, write_token: writeToken, request_key: intent.request_key },
       { timeout: 30000, expect: BASE + '/requests/' + intent.request_key }));
   }
   async function get(runRef, signal) { check(ref(runRef)); return run(content(await T.read(BASE + '/runs/' + runRef, {}, { signal, timeout: 30000 })), runRef); }
   async function lookup(intent, signal) {
-    check(validIntent(intent));
     return lookupResult(await T.read(BASE + '/requests/' + intent.request_key, { data_context_ref: intent.data_context_ref }, { signal, timeout: 30000 }), intent.run_ref);
   }
-  window.RunJobAPI = { preview, accept, get, lookup, pending, PENDING_KEY, RECENT_KEY, token, ref, validIntent, terminal, run, accepted, message, failure, previewMessage, details,
+  window.RunJobAPI = { preview, accept, get, lookup, pending: runPending, PENDING_KEY, RECENT_KEY, token, ref, terminal, run, accepted, message, failure, previewMessage,
     pollDelay: attempt => Math.min(30000, 2000 * Math.pow(2, Math.min(4, Math.max(0, attempt)))) };
 })();

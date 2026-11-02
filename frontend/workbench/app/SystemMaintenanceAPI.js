@@ -109,7 +109,7 @@
   // 维护操作记录只存在本页的 window.localStorage；本页对它的查询结论也只有这一份。
   let session = emptySession();
   const store = T.pendingStore({
-    key: PENDING_KEY, validate: validIntent, validateWrite: null,
+    key: PENDING_KEY, validate: validIntent,
     corruptError: '上次操作记录损坏，请联系维护人员核对。',
     invalidError: '本机存的上次操作记录不完整，已停止新的操作。请不要再操作，联系维护人员。',
     conflictError: CONFLICT_MESSAGE,
@@ -127,8 +127,8 @@
       }
       return disk;
     },
+    // action 是维护页面按钮传入的已登记动作。
     begin(action, selection = null) {
-      check(Object.prototype.hasOwnProperty.call(actions, action), '未知维护动作。');
       const current = session;
       check(!(current.intent && current.storageError), '还有一次操作没有确认结果，不能重新发起。请先点「查询结果」。');
       let created;
@@ -163,8 +163,8 @@
       };
       return session;
     },
+    // intent 都来自本存储读到并校验过的记录或 begin 刚写入的记录。
     finish(intent, dismiss = false) {
-      check(validIntent(intent), CONFLICT_MESSAGE);
       try {
         store.save(null, intent);
       } catch (error) {
@@ -183,7 +183,6 @@
       }
     }
   };
-  const pending = () => maintenancePending;
   function inspectPending() {
     try {
       const intent = maintenancePending.read(), current = session;
@@ -255,14 +254,13 @@
     }
     return value;
   }
+  // intent 是 begin 刚写入的记录，token 来自已校验的写入上下文。
   async function command(intent, token, input) {
-    check(validIntent(intent) && nonempty(token));
     const payload = await T.command(BASE + (intent.action === 'config' ? '/config/save' : '/backups/' + intent.action),
       { request_key: intent.request_key, write_token: token, input }, { timeout: TIMEOUT, expect: BASE + '/results/' + intent.request_key });
     return intent.action === 'config' ? receipt(payload) : result(payload, intent);
   }
   async function lookup(intent) {
-    check(validIntent(intent));
     return result(await T.lookup(BASE + '/results/' + intent.request_key, { timeout: TIMEOUT }), intent);
   }
   async function lookupReference(reference, kind, signal) {
@@ -288,5 +286,5 @@
     return { filename: file.filename, bytes: file.blob.size };
   }
   window.SystemMaintenanceAPI = { host, read, command, lookup, lookupReference, download, downloadBackup,
-    pending, inspectPending, PENDING_KEY, fields, actions, collection, blocked, normalize, recordContext, pageContext };
+    pending: maintenancePending, inspectPending, PENDING_KEY, fields, actions, collection, blocked, normalize, recordContext, pageContext };
 })();

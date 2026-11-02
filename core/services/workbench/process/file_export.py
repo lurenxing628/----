@@ -2,9 +2,7 @@
 
 from core.models.process_route_text import serialize_route_rows
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_process_file import check_format, file_columns, file_error
-from core.models.workbench_process_table_query import process_table_request, process_table_scope
-from core.models.workbench_resource_action import resource_refs
+from core.models.workbench_process_file import file_columns, file_error
 from core.services.workbench.facts.file_writer import XLSX_MAX_ROWS
 
 from .file_values import export_value
@@ -13,7 +11,6 @@ from .file_values import export_value
 def count_process_export_rows(kind, parts, facts, file_format):
     """Preflight the same cell encoding as download, without building a workbook."""
     columns = file_columns(kind)
-    check_format(file_format)
     count = 0
     for count, row in enumerate(process_export_rows(kind, parts, facts), 1):
         if file_format == "xlsx" and count + 1 > XLSX_MAX_ROWS:
@@ -32,29 +29,22 @@ def _requires_workflow_table(query):
     )
 
 
-def select_export_parts(reader, request, *, scope):
-    selection = request["selection"]
-    if ("refs" in request) != (selection == "explicit"):
-        raise WorkbenchCommandRejected("invalid_input", "只有导出选中项时才能带选中的零件，没有开始下载。请先勾选零件，或改成导出当前筛选。", 400)
-    refs, target_ref = request.get("refs"), request.get("target_ref")
-    if selection not in ("all", "filtered", "explicit") or selection == "explicit" and refs is None:
-        raise WorkbenchCommandRejected("invalid_input", "请选择全部、全部筛选结果，或者勾选具体记录；只有勾选方式才认记录编号。", 400)
-    if target_ref is not None and (selection != "explicit" or refs != [target_ref] or request["scope"]):
-        raise WorkbenchCommandRejected("invalid_input", "详情只能导出当前零件，不能切换为其他范围。", 400)
-    normalized = scope
+def select_export_parts(reader, refs, request):
+    """The export's current parts: explicit refs in their order, else request's matching rows; both were admitted at preflight."""
     parts = {row["ref"]: row for row in reader.raw_facts()["parts"]}
-    if selection == "explicit":
-        selected = resource_refs(refs, allow_empty=True)
-        for ref in selected:
-            reader.resolve(ref)
+    if refs is None:
+        table = reader.table() if _requires_workflow_table(request) else reader.raw_table()
+        refs = [row["ref"] for row in table.matching_rows(request)]
+    elif reader.repo.part_ref is None:
+        for ref in refs:
+            if ref not in parts:
+                raise WorkbenchCommandRejected("entity_not_found", "这个零件已经不在了。请刷新列表后重新选择。", 404)
+    else:
+        for ref in refs:
+            reader.identity_of(ref)
             if ref not in parts:
                 raise WorkbenchCommandRejected("storage_failure", "零件编号和实际资料对不上。请刷新列表后重新选择。", 500)
-    else:
-        normalized = process_table_scope({}) if selection == "all" else normalized
-        query = process_table_request(normalized)
-        table = reader.table() if _requires_workflow_table(query) else reader.raw_table()
-        selected = [row["ref"] for row in table.matching_rows(query)]
-    return [parts[ref] for ref in selected], {} if target_ref is not None else normalized
+    return [parts[ref] for ref in refs]
 
 
 def _seq_key(row):
@@ -63,7 +53,6 @@ def _seq_key(row):
 
 
 def process_export_rows(kind, parts, facts):
-    file_columns(kind)
     grouped = {}
     for row in facts["operations"]:
         if row["status"] == "active":

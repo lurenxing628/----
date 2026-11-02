@@ -35,7 +35,7 @@ def test_formal_versions_current_analysis_dashboard_and_decision_share_whole_bat
     case.conn.commit()
     case.config(sort_strategy="due_date_first")
     _, original = run(case, "original")
-    initial, _ = read_candidate_analysis(case.conn, original)
+    initial, _ = read_candidate_analysis(case.conn, original, bind_snapshot=lambda scope, state: state)
     assert all(row["change_kinds"] == ["unknown"] for row in initial["batches"])
     adopter = service(case.conn)
     preview = adopter.preview(original)
@@ -59,7 +59,7 @@ def test_formal_versions_current_analysis_dashboard_and_decision_share_whole_bat
     assert predecessor["event_side"] == "reference"
     assert predecessor["previous_operation_ref"] == second_ref and predecessor["next_operation_ref"] == first_ref
     selected_dashboard, _ = read_candidate_comparison(case.conn, RunCandidateReadScope(
-        selected_ref, "2026-09-09T00:00:00", "2026-09-26T00:00:00"))
+        selected_ref, "2026-09-09T00:00:00", "2026-09-26T00:00:00"), bind_snapshot=lambda scope, state: state)
     entry = next(row for row in selected_dashboard["tradeoffs"]["all_differences"] if row["metric_key"] == "type_changeover_count")
     assert entry["reference_value"] == 1 and entry["selected_value"] == 0
     assert entry["value"] == -1 and entry["state"] == "comparable" and entry["direction"] == "better"
@@ -71,12 +71,12 @@ def test_formal_versions_current_analysis_dashboard_and_decision_share_whole_bat
     run_ref, candidate = run(case, "comparison")
     source = read_candidate_source(CandidateStore(case.conn), candidate)
     captured = deepcopy(source.capture)
-    baseline_view, _ = WorkbenchRunCandidateBaselineQueryService(case.conn).baseline(RunCandidateBaselineScope(candidate))
+    baseline_view, _ = WorkbenchRunCandidateBaselineQueryService(case.conn).baseline(RunCandidateBaselineScope(candidate), bind_snapshot=lambda scope, state: state)
     assert baseline_view["baseline"]["captured_task_count"] == 2
     assert all(row["baseline_segments"] for row in baseline_view["comparisons"])
-    analysis, _ = read_candidate_analysis(case.conn, candidate)
+    analysis, _ = read_candidate_analysis(case.conn, candidate, bind_snapshot=lambda scope, state: state)
     dashboard, _ = read_candidate_comparison(case.conn, RunCandidateReadScope(
-        candidate, "2026-09-09T00:00:00", "2026-09-26T00:00:00"))
+        candidate, "2026-09-09T00:00:00", "2026-09-26T00:00:00"), bind_snapshot=lambda scope, state: state)
     store = CandidateStore(case.conn)
     with store.snapshot(), read_evidence_scope(case.conn):
         decision = DecisionSource(store, run_ref, comparison_mode="admission_official", selected_candidate_ref=candidate)

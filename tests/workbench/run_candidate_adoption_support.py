@@ -5,6 +5,7 @@ from flask import Blueprint, g
 from core.services.workbench.run.candidate_adoption import WorkbenchRunCandidateAdoptionService
 from tests.workbench.run_candidate_support import candidate_case as candidate_case  # noqa: F401
 from tests.workbench.run_candidate_support import compute, connect
+from tests.workbench.run_jobs_support import data_context
 from tests.workbench.trial_adoption_support import assert_dashboard_task_appends
 from web.routes.workbench.materials import command_receipt
 from web.routes.workbench.run_candidate_adoption import register_run_candidate_adoption_routes
@@ -17,7 +18,8 @@ BASE = "/api/workbench/v1/scheduling/candidates/"
 
 def service(conn, enabled=True):
     return WorkbenchRunCandidateAdoptionService(conn, integration_enabled=enabled,
-        context_factory=issue_write_context, context_validator=validate_write_context)
+        context_factory=issue_write_context, context_validator=validate_write_context,
+        data_context=data_context(conn))
 
 
 def candidate(case, settings=None):

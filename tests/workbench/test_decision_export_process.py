@@ -23,8 +23,8 @@ def materialized_exports(tmp_path_factory):
     """Use the existing small four-source archive; only materialized values leave it."""
     with four_source_case(tmp_path_factory.mktemp("decision-export-process")) as case:
         refs = case.history_refs
-        run, _scope, _state = read_decision_export(case.conn, refs["run_ref"], "overview",
-            selected_candidate_ref=refs["candidate_ref"])
+        run, _snapshot = read_decision_export(case.conn, refs["run_ref"], "overview",
+            bind_snapshot=lambda scope, state: state, selected_candidate_ref=refs["candidate_ref"])
         history, _scope, _state = read_history_all(case.conn, {
             "timeline": "official", "selected_entry_ref": "adoption:" + refs["trial_receipt_ref"],
             "reference_run_ref": refs["run_ref"],

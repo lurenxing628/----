@@ -25,10 +25,9 @@ def official_point_work(conn, version, *, evidence=None, context=None):
             reader = CandidatePointReader(source["candidate"], source["generation_facts"])
             return {row["payload"]["op_id"]: reader.work(row["operation_ref"], row["payload"])
                     for row in source["tasks"] if row["payload"]["start_time"] == row["payload"]["end_time"]}
-        _, _, rows = evidence["trial_source"].source
         return {row["original"]["operation"]["id"]: {"witness": trial_point_evidence(row["original"], row["current"]),
                  **{key: row["original"][key] for key in ("operation", "batch", "execution")}}
-                for row in rows if row["current"]["start"] == row["current"]["end"]}
+                for row in evidence["trial_source"].source.rows if row["current"]["start"] == row["current"]["end"]}
     except (AdoptionBaselineUnavailable, PointEventError) as exc:
         raise WorkbenchCommandRejected("point_evidence_unproven", "零工时工序缺少可核对的原始采用记录，这里不当成正常零工时工序读。请刷新后重试。") from exc
 

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from types import MappingProxyType
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.algorithm_contracts.ordering import (
@@ -230,12 +231,7 @@ def prepare_native_schedule_inputs(
     operations: List[OpForScheduleAlgo], batches: Dict[str, Batch], seed_results: List[ScheduleResult],
     resource_pool: Any, graph_ready_context: Any,
 ) -> NativeSchedulePreparation:
-    from .dispatch.sgs_graph import (
-        TOPOLOGY_FIELD,
-        graph_priority_key_map,
-        graph_score_enabled,
-        prepare_graph_ready_topology,
-    )
+    from .dispatch.sgs_graph import prepare_graph_ready_topology
 
     calendar = scheduler.calendar
     stats: Dict[str, Any] = make_algo_stats()
@@ -247,6 +243,11 @@ def prepare_native_schedule_inputs(
         if dropped:
             warnings.append(f"检测到 seed_results 与 operations 重叠：已过滤 {dropped} 道工序避免重复排产。")
             increment_counter(stats, "seed_overlap_filtered_count", dropped)
+    from core.algorithm_contracts.resource_occupancy import (
+        PreparedSeedApplication,
+        ResourceOccupancy,
+        project_internal_occupancies,
+    )
     from core.algorithm_contracts.schedule_point_evidence import point_seed_valid
     from core.algorithm_contracts.value_domains import INTERNAL
     from core.algorithm_runtime.internal_slot import require_internal_hours
@@ -254,30 +255,33 @@ def prepare_native_schedule_inputs(
     from .external_groups import rebuild_external_group_cache_from_seeds
     from .seed import seed_external_group_keys, seed_resource_segments, seed_result_for_output
 
-    seed_applications, external_seed_cache = [], {}
+    seed_applications: List[PreparedSeedApplication] = []
+    seed_occupancies_by_op_id: Dict[int, Tuple[ResourceOccupancy, ...]] = {}
+    external_seed_cache = {}
     for seed in normalized_seeds:
         occupies = seed.source == INTERNAL and not point_seed_valid(seed)
-        seed_applications.append((seed_result_for_output(seed), clean_resource_id(seed.machine_id) if occupies else "",
-                                  clean_resource_id(seed.operator_id) if occupies else "",
-                                  seed_resource_segments(seed) if occupies else None))
+        occupancies = (
+            project_internal_occupancies(seed, actual_segments=seed_resource_segments(seed) or ())
+            if occupies
+            else ()
+        )
+        output_result = seed_result_for_output(seed)
+        seed_applications.append(PreparedSeedApplication(output_result, occupancies))
+        seed_occupancies_by_op_id[output_result.op_id] = occupancies
     rebuild_external_group_cache_from_seeds(
         seed_results=normalized_seeds, operations=operations, external_group_cache=external_seed_cache,
         warnings=warnings, algo_stats=stats, seed_group_keys=seed_external_group_keys(normalized_seeds),
     )
-    context, topology = graph_ready_context, None
-    if context is not None:
-        topology = prepare_graph_ready_topology(context, unseeded)
-        score_enabled = graph_score_enabled(context.get("score_enabled", False))
-        keys = (graph_priority_key_map(context.get("graph_priority_key_by_op_id"), schedulable_ids=set(topology.schedulable_ids))
-                if score_enabled else {})
-        context = dict(context, score_enabled=score_enabled, graph_priority_key_by_op_id=keys,
-                       **{TOPOLOGY_FIELD: topology})
+    # Each decode request brings its own score switch and keys; only the static graph facts are compiled here.
+    topology = None if graph_ready_context is None else prepare_graph_ready_topology(graph_ready_context, unseeded)
     records = list(operations) + list(normalized_batches.values())
     preparation = NativeSchedulePreparation(
         normalized_machine_downtimes=_normalize_machine_downtimes(machine_downtimes), calendar=calendar,
-        operations=operations, records_by_token={id(value): value for value in records}, batches=normalized_batches, seed_results=normalized_seeds, seed_applications=tuple(seed_applications),
+        operations=operations, records_by_token={id(value): value for value in records}, batches=normalized_batches,
+        seed_results=normalized_seeds, seed_applications=tuple(seed_applications),
+        seed_occupancies_by_op_id=MappingProxyType(seed_occupancies_by_op_id),
         seed_external_group_cache=external_seed_cache, seed_op_ids=seed_op_ids,
-        unseeded_operations=unseeded, resource_pool=resource_pool, graph_ready_context=context,
+        unseeded_operations=unseeded, resource_pool=resource_pool, graph_ready_context=graph_ready_context,
         warnings=tuple(warnings), algo_stats=stats, topology=topology,
     )
     grouped_unseeded: Dict[str, List[OpForScheduleAlgo]] = {}
@@ -306,16 +310,17 @@ def build_batch_order(
     batch_order_override: List[str],
     preparation: NativeSchedulePreparation,
 ) -> Dict[str, int]:
-    override_order = list(batch_order_override)
-    if override_order and len(override_order) == len(batches):
-        return {batch_id: index for index, batch_id in enumerate(override_order)}
+    if batch_order_override and len(batch_order_override) == len(batches):
+        return {batch_id: index for index, batch_id in enumerate(batch_order_override)}
     sorted_batch_ids = preparation.batch_order(
         start_dt=params.base_time,
         strategy=params.strategy,
         params=params.used_params,
     )
-    if not override_order:
+    if not batch_order_override:
         return {batch_id: index for index, batch_id in enumerate(sorted_batch_ids)}
+    # A partial override leads; its own copy is the working list the remaining sorted batches extend.
+    override_order = list(batch_order_override)
     seen = set(override_order)
     override_order.extend([batch_id for batch_id in sorted_batch_ids if batch_id not in seen])
     return {batch_id: index for index, batch_id in enumerate(override_order)}

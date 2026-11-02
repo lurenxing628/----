@@ -297,7 +297,7 @@ def test_hours_import_group_total_days_requires_all_group_members_source_confirm
         {"business_code": PART, "sequence": 21},
     ], "csv").content
     with api.database() as conn:
-        preview, _ = WorkbenchProcessFileService(conn).preview_import("hours", content, file_format="csv")
+        preview, _ = WorkbenchProcessFileService(conn).preview_import("hours", content, file_format="csv", mode="upsert", target_ref=None)
     body = preview.as_dict()
     assert body["summary"]["update"] == 0 and body["summary"]["rejected"] == 2
     assert all(row["result"] == "rejected" for row in body["rows"])
@@ -307,7 +307,7 @@ def test_hours_import_group_total_days_requires_all_group_members_source_confirm
         {"business_code": PART, "sequence": 21},
     ], "csv").content
     with api.database() as conn:
-        unchanged_preview, _ = WorkbenchProcessFileService(conn).preview_import("hours", unchanged_content, file_format="csv")
+        unchanged_preview, _ = WorkbenchProcessFileService(conn).preview_import("hours", unchanged_content, file_format="csv", mode="upsert", target_ref=None)
     unchanged_body = unchanged_preview.as_dict()
     assert unchanged_body["summary"]["unchanged"] == 2 and unchanged_body["summary"]["rejected"] == 0
     assert all(row["result"] == "unchanged" and not row["errors"] for row in unchanged_body["rows"])
@@ -317,7 +317,7 @@ def test_hours_import_group_total_days_requires_all_group_members_source_confirm
             {"business_code": PART, "sequence": 21, "external_days": days},
         ], "csv").content
         with api.database() as conn:
-            member_preview, _ = WorkbenchProcessFileService(conn).preview_import("hours", member_content, file_format="csv")
+            member_preview, _ = WorkbenchProcessFileService(conn).preview_import("hours", member_content, file_format="csv", mode="upsert", target_ref=None)
         member_row = member_preview.as_dict()["rows"][0]
         assert member_row["result"] == result
         assert [error["field"] for error in member_row["errors"]] == ([] if result == "unchanged" else ["external_days"])

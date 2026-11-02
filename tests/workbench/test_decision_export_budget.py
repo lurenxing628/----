@@ -31,10 +31,8 @@ def test_export_encodes_after_releasing_the_shared_plan_read_slot(monkeypatch, k
     def read(*_args, **_kwargs):
         assert active
         steps.append("read")
-        bind_snapshot = _kwargs.get("bind_snapshot")
-        if bind_snapshot is not None:
-            return {"saved": "rows"}, bind_snapshot({"saved": "scope"}, {"saved": "state"}), {"saved": "state"}
-        return {"saved": "rows"}, {"saved": "scope"}, {"saved": "state"}
+        snapshot = _kwargs["bind_snapshot"]({"saved": "scope"}, {"saved": "state"})
+        return ({"saved": "rows"}, snapshot) if kind == "run" else ({"saved": "rows"}, snapshot, {"saved": "state"})
 
     def bind(scope, state, token):
         assert active and scope == {"saved": "scope"} and state == {"saved": "state"} and token == "current"
@@ -57,7 +55,7 @@ def test_export_encodes_after_releasing_the_shared_plan_read_slot(monkeypatch, k
     monkeypatch.setattr(reader_owner, reader_name, read)
     monkeypatch.setattr(writer_owner, writer_name, write)
     monkeypatch.setattr(routes, "write_decision_xlsx", write_xlsx)
-    monkeypatch.setattr(routes, "bind_read_snapshot", bind)
+    monkeypatch.setattr(importlib.import_module("web.routes.workbench.read_context"), "bind_read_snapshot", bind)
     app = Flask(__name__)
 
     @app.before_request

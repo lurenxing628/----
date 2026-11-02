@@ -35,7 +35,7 @@ def workbench_outsourcing_source_objects():
     return objects
 
 
-def workbench_outsourcing_source_contract_issues(conn, *, structure: SchemaStructure):
+def workbench_outsourcing_source_contract_issues(structure: SchemaStructure):
     actual = structure.sql
     return [("missing_outsourcing_source_schema:" if name not in actual else "invalid_outsourcing_source_schema:") + name
             for name, sql in workbench_outsourcing_source_objects().items()

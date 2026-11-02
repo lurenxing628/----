@@ -153,7 +153,7 @@ class WorkbenchRunRuntime:
                 self._queue.put(run_ref)
 
     def _execute(self, run_ref):
-        from core.services.workbench.run.jobs import WorkbenchRunService
+        from core.services.workbench.run.jobs import read_run_head
         from core.services.workbench.run.worker import WorkbenchRunWorker
 
         claim_failures, original = 0, None
@@ -172,7 +172,7 @@ class WorkbenchRunRuntime:
             with closing(get_connection(self.db_path)) as conn:
                 if claim_failures:
                     require_retryable_claim(conn, original)
-                row = WorkbenchRunService(conn).get_head(run_ref)
+                row = read_run_head(conn, run_ref)
                 if row["state"] != "queued" or row["stage"] != "queued":
                     if row["state"] not in TERMINAL_STATES:
                         self._disable("awaiting_reconciliation: " + run_ref)
@@ -209,7 +209,7 @@ class WorkbenchRunRuntime:
                 continue
 
     def _run_one(self, run_ref):
-        from core.services.workbench.run.jobs import WorkbenchRunService
+        from core.services.workbench.run.jobs import read_run_head
 
         try:
             self._execute(run_ref)
@@ -222,12 +222,12 @@ class WorkbenchRunRuntime:
                 # that the worker has already durably recorded.
                 self._verify()
                 with closing(get_connection(self.db_path)) as conn:
-                    state = WorkbenchRunService(conn).get_head(run_ref)
+                    state = read_run_head(conn, run_ref)
                 if state["state"] in TERMINAL_STATES:
                     return
                 self._recover(run_ref)
                 with closing(get_connection(self.db_path)) as conn:
-                    state = WorkbenchRunService(conn).get_head(run_ref)
+                    state = read_run_head(conn, run_ref)
                 if state["state"] not in TERMINAL_STATES:
                     self._disable("awaiting_reconciliation: " + run_ref)
                     self._stop.set()

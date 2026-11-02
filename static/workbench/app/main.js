@@ -3384,7 +3384,6 @@ function SMExport({
   // 工作台唯一的传输通道：地址守卫、取消与超时、信封校验、统一错误对象、命令确定/不确定判定、下载与存盘、request_key。
   // 统一错误对象：{ message, code, fields, conflicts, committed, status, requestRef, requestKey, resultTarget }。
   const PREFIX = '/api/workbench/v1/';
-  const REJECTED_STATUS = [400, 404, 409, 413, 422, 503];
   // 工作台下载只有这四种文件；领域写 types: [T.types.csv] 这种形式。
   const types = Object.freeze({
     csv: 'text/csv',
@@ -3485,9 +3484,10 @@ function SMExport({
     return object(e) && Object.keys(payload).every(key => ['ok', 'committed', 'error', 'status'].includes(key)) && [false, true, 'unknown'].includes(payload.committed) && (payload.status === undefined || Number.isInteger(payload.status) && payload.status >= 400 && payload.status <= 599) && Object.keys(e).every(key => ERROR_KEYS.includes(key)) && text(e.code) && e.code.length > 0 && text(e.message) && typeof e.retryable === 'boolean' && text(e.request_ref) && /^[0-9a-f]{32}$/.test(e.request_ref) && Array.isArray(e.fields) && e.fields.every(row => object(row) && Object.keys(row).length === 2 && text(row.path) && text(row.message)) && (e.conflicts === undefined || Array.isArray(e.conflicts)) && (e.row_number === undefined || Number.isSafeInteger(e.row_number)) && (e.request_key === undefined || text(e.request_key)) && (e.result_target === undefined || text(e.result_target));
   }
   // 失败信封唯一的解析点：web/api_responses.py 的 failure_payload、pages.py 的统一兜底与 run_decision.py 的内嵌资源失败。
-  function failure(payload, status) {
-    if (!failed(payload) || !Number.isInteger(status) || status < 400 || status > 599 || payload.status !== undefined && payload.status !== status) return fault(modes.read.failed(), {
+  function failure(payload, status, mode = modes.read) {
+    if (!failed(payload) || !Number.isInteger(status) || status < 400 || status > 599 || payload.status !== undefined && payload.status !== status) return fault(mode.failed(), {
       code: 'invalid_response',
+      committed: mode.committed,
       status
     });
     const e = payload.error;
@@ -3633,7 +3633,7 @@ function SMExport({
     }, modes.write, async response => {
       const payload = await parse(response, modes.write);
       if (failed(payload)) {
-        const error = failure(payload, response.status);
+        const error = failure(payload, response.status, modes.write);
         if ((error.requestKey !== null || error.resultTarget !== null) && (error.requestKey !== body.request_key || error.resultTarget !== expect)) throw fault('返回的结果编号和上次提交对不上，这里没有读取其他结果。请点「查询结果」。', {
           code: 'invalid_response',
           committed: 'unknown',
@@ -3787,9 +3787,9 @@ function SMExport({
     window.crypto.getRandomValues(bytes);
     return prefix + '-' + Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
   }
-  // 唯一的“确定没有生效”判定：服务端在这些状态码里明确 committed:false，或请求在本地校验阶段就失败、从未发出（status 为 null）。
-  // 查回执失败一律是 committed:'unknown'，不会落进这里。
-  const rejected = error => error.committed === false && (REJECTED_STATUS.includes(error.status) && error.code !== 'request_key_conflict' || error.status === null);
+  // 唯一的“确定没有生效”判定：已通过信封校验的明确 committed:false（排除 request_key_conflict），或请求在本地校验阶段就失败、从未发出。
+  // 写响应不合法与查回执失败一律是 committed:'unknown'，不会落进这里。
+  const rejected = error => error.committed === false && error.code !== 'request_key_conflict';
   const uncertain = error => error.committed === 'unknown';
   function canonical(value) {
     return JSON.stringify(value, (_, item) => object(item) ? Object.keys(item).sort().reduce((out, key) => {
@@ -3821,25 +3821,24 @@ function SMExport({
       value: undefined
     });
   }
-  // 本页内每个存储对象、每个键的状态：known 是本页最近读到或写入的值；pending 是结算类转换没写进磁盘的记录，
-  // disk 是写失败时磁盘上留着的旧值，value 是应有的新值，beforeWrite 是 getItem 失败时还没执行的附属写入。只在本页内存里，不跨页共享。
+  // 本页内每个存储对象、每个键的状态：known 是本页最近读到或写入的值；pending 是已登记、还没写进磁盘的结算，
+  // disk 是登记时磁盘上的旧值，value 是权威的新值，beforeWrite 是还欠着的附属写入。只在本页内存里，不跨页共享。
   // read 只报告未刷盘记录，写回只由 flush 与 save 做。
   const pageSlots = new WeakMap();
   // 待确认意图的本机存储：统一读、校验、CAS 写、清除与同页事件通知，错误文案由各领域指定；跨页串行由调用方用 exclusive 保证。
+  // 每个存储必须提供 validate：磁盘读取边界唯一的领域校验，非空记录（原始串模式校验原始串，其余校验解析后的值）都要通过；
+  // 写入的值由领域从已校验的网络结果或本存储读到的记录构造，写前不再重验。
   function pendingStore({
     key,
     storage = () => window.localStorage,
     event,
     raw = false,
     validate,
-    validateWrite = validate,
     encode = value => value,
-    same = equal,
     readError,
     corruptError = readError,
     invalidError = corruptError,
     conflictError,
-    invalidWriteError = invalidError,
     writeError,
     removeError = writeError
   }) {
@@ -3848,7 +3847,7 @@ function SMExport({
       known: undefined,
       pending: null
     };
-    const matches = (left, right) => left === null || right === null ? left === right : raw ? same(left, right) : same(encode(left), encode(right));
+    const matches = (left, right) => left === null || right === null ? left === right : raw ? equal(left, right) : equal(encode(left), encode(right));
     const notify = value => {
       if (event) window.dispatchEvent(new CustomEvent(event, {
         detail: value
@@ -3885,7 +3884,7 @@ function SMExport({
           raise(corruptError, error);
         }
       }
-      if (validate && !validate(value)) raise(invalidError);
+      if (!validate(value)) raise(invalidError);
       return value;
     }
     // 每次转换只调一次 getItem。未刷盘记录只在磁盘仍是它记下的旧值时有效，否则别处已经写过，丢弃它。
@@ -3913,13 +3912,35 @@ function SMExport({
         current: slot.known
       };
     }
-    // 未刷盘记录在 getItem 失败时还欠着 beforeWrite：写本键前先补做，补做成功立即清掉，本键再写失败时重试不会重复执行。
+    // 已登记结算还欠着的附属写入：写本键前补做，成功立即清掉，之后本键写失败再重试也不会重复执行。
+    // 补做失败时登记原样保留，按这条结算的写入失败报出并带上它的权威值。
     function replay(slot) {
       const pending = slot.pending;
-      if (pending && pending.beforeWrite) {
+      if (!pending || !pending.beforeWrite) return;
+      try {
         pending.beforeWrite();
-        pending.beforeWrite = null;
+      } catch (error) {
+        raise(pending.value === null ? removeError : writeError, error, {
+          saved: pending.value
+        });
       }
+      pending.beforeWrite = null;
+    }
+    // 把已登记的结算写进磁盘：先补附属写入，再写本键；任一步失败都保留登记并带出 saved，由 flush 或下一次 save 再写。
+    function writeBack(target, slot) {
+      replay(slot);
+      const {
+        value
+      } = slot.pending;
+      try {
+        put(target, value);
+      } catch (error) {
+        raise(value === null ? removeError : writeError, error, {
+          saved: value
+        });
+      }
+      slot.pending = null;
+      return value;
     }
     // 只读不写，锁外也能调。本页还有仍有效的未刷盘记录时，照写失败报出并带 saved，由持锁的 flush 或下一次 save 写回。
     function read() {
@@ -3939,22 +3960,11 @@ function SMExport({
         slot,
         current
       } = effectiveRead();
-      if (slot.pending) {
-        replay(slot);
-        try {
-          put(target, current);
-        } catch (error) {
-          raise(current === null ? removeError : writeError, error, {
-            saved: current
-          });
-        }
-        slot.pending = null;
-      }
+      if (slot.pending) writeBack(target, slot);
       return current;
     }
     // 不读直接写：只给不做 CAS 的附属记录用（如最近排产结论）。
     function write(value) {
-      if (value !== null && validateWrite && !validateWrite(value)) raise(invalidWriteError);
       try {
         put(storage(), value);
       } catch (error) {
@@ -3963,32 +3973,13 @@ function SMExport({
       notify(value);
       return value;
     }
-    // save 的写盘：结算类转换（settledDisk 有值）写不进去时记成未刷盘记录、在错误上带出 saved，磁盘仍是旧值时由 flush 或下一次 save 写回。
-    function commit(target, slot, value, settledDisk) {
-      try {
-        put(target, value);
-      } catch (error) {
-        if (settledDisk === undefined) raise(value === null ? removeError : writeError, error);
-        slot.pending = {
-          disk: settledDisk,
-          value
-        };
-        slot.known = value;
-        notify(value);
-        raise(value === null ? removeError : writeError, error, {
-          saved: value
-        });
-      }
-      slot.pending = null;
-      slot.known = value;
-      notify(value);
-      return value;
-    }
     // CAS 转换：当前值仍是 previous 才写入 value。当前已是 value 时无操作（重复的结束、清除、关联都幂等）；但本页还有未刷盘记录时，
-    // 只有这条记录的发起方（previous 是记录的旧值或目标值）能接着写回，过时调用方不能接管。beforeWrite 只写别的键，在本键写入前执行；
-    // getItem 失败时它还没执行，随未刷盘记录留下，由 flush 或下一次 save 写本键前补做。
-    function save(value, previous, beforeWrite) {
-      if (value !== null && validateWrite && !validateWrite(value)) raise(invalidWriteError);
+    // 只有这条记录的发起方（previous 是记录的旧值或目标值）能接着写回，过时调用方不能接管。
+    // CAS 通过后先补完旧结算欠着的附属写入，补不上就保留旧登记直接报错，不替换它、也不发布新值。
+    // 结算类转换随后先登记整次结算（权威值与 beforeWrite）并通知，再做附属写与本键写入；写不进去时登记留在本页，错误带出 saved。
+    // 新建待确认记录这类非结算转换不预先登记，写成功后才通知。beforeWrite 只写别的键，只随结算登记；
+    // getItem 失败时它还没执行，随登记留下，由 flush 或下一次 save 写本键前补做。
+    function save(value, previous, beforeWrite = null) {
       const settling = previous !== null && (value === null || value.phase !== 'pending');
       const {
         target,
@@ -4012,16 +4003,30 @@ function SMExport({
       });
       if (matches(current, value)) {
         if (!slot.pending) return value;
-        if (matches(previous, slot.pending.disk) || matches(previous, value)) {
-          replay(slot);
-          return commit(target, slot, value, slot.pending.disk);
-        }
+        if (matches(previous, slot.pending.disk) || matches(previous, value)) return writeBack(target, slot);
         conflict();
       }
       if (!matches(current, previous)) conflict();
       replay(slot);
-      if (beforeWrite) beforeWrite();
-      return commit(target, slot, value, settling ? disk : undefined);
+      if (settling) {
+        slot.pending = {
+          disk: slot.pending ? slot.pending.disk : disk,
+          value,
+          beforeWrite
+        };
+        slot.known = value;
+        notify(value);
+        return writeBack(target, slot);
+      }
+      try {
+        put(target, value);
+      } catch (error) {
+        raise(value === null ? removeError : writeError, error);
+      }
+      slot.pending = null;
+      slot.known = value;
+      notify(value);
+      return value;
     }
     return {
       read,
@@ -4543,9 +4548,10 @@ function SMExport({
   function terminal(payload) {
     return payload.ok === true && ['committed', 'unchanged', 'partial'].includes(payload.result) && typeof payload.receipt_ref === 'string' && !!payload.receipt_ref && typeof payload.replayed === 'boolean' && object(payload.data) && Array.isArray(payload.warnings);
   }
-  function validIntent(value, recovery = false) {
+  // 本机记录的唯一校验点（只在读取磁盘时调用）。预检编号同时是确认凭据，pendingRecord 不把它写进磁盘，所以这类记录允许不带 ref。
+  function validIntent(value) {
     if (!object(value) || typeof value.request_key !== 'string' || !/^resource-[0-9a-f]{48}$/.test(value.request_key)) return false;
-    const previewRef = pattern => recovery && value.ref === undefined || typeof value.ref === 'string' && pattern.test(value.ref);
+    const previewRef = pattern => value.ref === undefined || typeof value.ref === 'string' && pattern.test(value.ref);
     if (value.kind === 'operator' && (value.action === 'machine_permissions' || calendarActions.has(value.action))) return value.category === undefined && typeof value.ref === 'string' && /^[0-9a-f]{48}$/.test(value.ref);
     if (value.kind === 'machine' && ['downtime_create', 'downtime_update', 'downtime_cancel'].includes(value.action)) return value.category === undefined && typeof value.ref === 'string' && /^[0-9a-f]{48}$/.test(value.ref);
     if (value.kind === 'calendar') return ['upsert', 'delete'].includes(value.action) && typeof value.ref === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.ref) || value.action === 'confirm' && previewRef(/^[0-9a-f]{32}$/) || value.action === 'defaults' && value.ref === 'calendar-defaults';
@@ -4590,12 +4596,10 @@ function SMExport({
     const pending = T.pendingStore({
       key: pendingKey,
       storage: () => sessionStorage,
-      validate: intent => validIntent(intent, true) && matchesNamespace(namespace, intent),
-      validateWrite: intent => validIntent(intent) && matchesNamespace(namespace, intent),
+      validate: intent => validIntent(intent) && matchesNamespace(namespace, intent),
       encode: pendingRecord,
       readError: () => unconfirmed('读不到上次操作记录，请重新打开页面；暂时不能继续保存。'),
       conflictError: () => failure('上次操作记录已变化，请刷新页面后核对结果。'),
-      invalidWriteError: () => failure('操作编号无法保存，本次没有提交。'),
       writeError: () => failure('本次没有提交：操作编号没能保存，请重新打开页面。'),
       removeError: () => failure('结果已确认，但上次操作记录没清掉；重新打开页面后可以再点「查询结果」。')
     });
@@ -5728,6 +5732,27 @@ function SMExport({
     baseline,
     completeBaseline,
     baselinePage
+  };
+})();
+
+;
+(function () {
+  'use strict';
+
+  // 正式计划导航上下文的唯一接收边界：实际甘特、值班台、计划页自己的快照和深链打开正式计划都经这里。
+  // 不认识的键整条拒绝，不静默丢弃其他页面的协议。范围只由 PlanContract.workspaceScope 在读取时校验，
+  // return_decision_* 由使用处的 DecisionHistoryAPI 校验，返回页面是否登记由 WorkbenchNavigation.navigate 校验。
+  const C = window.APSResourceContract;
+  const keys = ['plan_ref', 'range_start', 'range_end', 'query', 'selected_task_ref', 'selected_task_side', 'selected_batch_ref', 'projection_tab', 'projection_page', 'resource_kind', 'return_to', 'return_decision_context', 'return_decision_history_context'];
+  const ref = value => typeof value === 'string' && /^[0-9a-f]{48}$/.test(value);
+  function accept(context) {
+    const task = C.own(context, 'selected_task_ref'),
+      back = context.return_to;
+    if (!Reflect.ownKeys(context).every(key => keys.includes(key)) || C.own(context, 'query') && typeof context.query !== 'string' || task && !ref(context.selected_task_ref) || C.own(context, 'selected_batch_ref') && (task || !ref(context.selected_batch_ref)) || C.own(context, 'selected_task_side') && (!task || !['current', 'before'].includes(context.selected_task_side)) || C.own(context, 'return_to') && !(C.object(back) && Reflect.ownKeys(back).length === 2 && C.own(back, 'view') && C.own(back, 'context'))) throw C.failure('打开计划的定位信息无效，没有改选其他计划或工序。请从来源页面重新打开。');
+    return context;
+  }
+  window.APSPlanNavigation = {
+    accept
   };
 })();
 
@@ -11758,11 +11783,7 @@ function SMExport({
     onClose,
     onCommitted
   }) {
-    const commandAdapter = React.useMemo(() => ({
-      ...adapter,
-      readPending: () => null
-    }), [adapter]);
-    const command = S.useCommand(commandAdapter),
+    const command = S.useCommand(adapter),
       [selection, setSelection] = React.useState(null);
     const [draft, setDraft] = React.useState(blank),
       [original, setOriginal] = React.useState(blank),
@@ -15105,7 +15126,10 @@ function SMExport({
       preview(raw, mode, expected, request) {
         const result = shared.preview(raw, mode, expected);
         columns(result.data);
-        if (kind === 'op_type' && (!C.object(result.data.scope) || result.data.scope.category !== category(kind, request))) throw C.failure('预检工种类别与当前自制或外协范围不一致，本批没有提交。');
+        if (kind === 'op_type') {
+          const invalid = mode === 'import' ? result.data.category !== category(kind, request) || C.own(result.data, 'scope') : !C.object(result.data.scope) || result.data.scope.category !== category(kind, request);
+          if (invalid) throw C.failure('预检工种类别与当前自制或外协范围不一致，本批没有提交。');
+        }
         return result;
       },
       exportPreview(raw, selection, request) {
@@ -15547,7 +15571,6 @@ function SMExport({
     setSelection,
     refs,
     disabled,
-    label,
     kind,
     scopeLabel
   }) {
@@ -15903,7 +15926,6 @@ function SMExport({
       },
       refs: original.refs,
       disabled: controlsDisabled,
-      label: label,
       scopeLabel: M.scopeLabel || label,
       kind: M.kind
     }), /*#__PURE__*/React.createElement(Format, {
@@ -25507,6 +25529,8 @@ function SMExport({
   const states = window.WorkbenchTerms.execution_states;
   const reportActions = window.WorkbenchTerms.report_actions;
   const fields = ['completed_quantity', 'actual_start', 'actual_end', 'effective_processing_hours', 'actual_machine_ref', 'actual_operator_ref', 'remark'];
+  // 现场记录一次最多按 5000 个批次筛选（后端 core/services/workbench/execution/field_workspace_scope.py 的 _batches）。
+  const batchLimit = 5000;
   const ref = value => typeof value === 'string' && /^[0-9a-f]{48}$/.test(value);
   const nullable = value => value === null || Number.isFinite(value) && value >= 0;
   const time = value => value === null || typeof value === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d$/.test(value);
@@ -25612,6 +25636,7 @@ function SMExport({
     states,
     reportActions,
     fields,
+    batchLimit,
     ref,
     task,
     report,
@@ -26623,14 +26648,58 @@ function SMExport({
   const operationLabel = node => (node.sequence === null ? '' : node.sequence + ' ') + (node.process_label || '工序名称未记录');
   function RouteGroup({
     group,
-    selectedPiece,
-    collapsible,
-    children
+    target,
+    previous,
+    loadedRefs,
+    onSelect,
+    disabled,
+    collapsible
   }) {
+    const [open, setOpen] = React.useState(() => group.pieceId === null || group.pieceId === target.piece_id);
     const label = group.pieceId === null ? '共同工序' : '分件 ' + group.pieceId;
+    const children = (!collapsible || open) && /*#__PURE__*/React.createElement("ul", {
+      className: "gantt-route-list"
+    }, group.nodes.map(node => {
+      const outside = !loadedRefs.has(node.task_ref),
+        parents = previous.get(node.task_ref);
+      const related = target.piece_id === null || node.piece_id === null || node.piece_id === target.piece_id;
+      const start = F.dateTime(node.start),
+        end = F.dateTime(node.end),
+        sameDay = start.slice(0, 10) === end.slice(0, 10);
+      return /*#__PURE__*/React.createElement("li", {
+        key: node.task_ref,
+        className: "gantt-route-node",
+        "data-gantt-route-node": node.task_ref,
+        "data-selected": node.task_ref === target.task_ref || undefined,
+        "data-related": related || undefined,
+        "data-outside": outside || undefined
+      }, /*#__PURE__*/React.createElement(Button, {
+        className: "btn gantt-route-select",
+        disabled: disabled,
+        "aria-current": node.task_ref === target.task_ref ? 'step' : undefined,
+        "aria-label": '定位工序 ' + pieceLabel(node) + ' · ' + operationLabel(node),
+        onClick: () => onSelect(node.task_ref),
+        title: F.dateTime(node.start, {
+          seconds: true,
+          fractions: true
+        }) + ' 至 ' + F.dateTime(node.end, {
+          seconds: true,
+          fractions: true
+        })
+      }, /*#__PURE__*/React.createElement("strong", null, operationLabel(node)), /*#__PURE__*/React.createElement("small", null, start.slice(5), " \u2192 ", end.slice(sameDay ? 11 : 5), outside && ' · 范围外')), !!parents.length && /*#__PURE__*/React.createElement("div", {
+        className: "gantt-route-dependencies"
+      }, /*#__PURE__*/React.createElement("span", null, "\u524D\u5E8F"), parents.map(parent => /*#__PURE__*/React.createElement(Button, {
+        key: parent.task_ref,
+        className: "linkbtn gantt-route-predecessor",
+        disabled: disabled,
+        onClick: () => onSelect(parent.task_ref),
+        "aria-label": '定位前序 ' + pieceLabel(parent) + ' · ' + operationLabel(parent)
+      }, pieceLabel(parent), " \xB7 ", operationLabel(parent)))));
+    }));
     return collapsible ? /*#__PURE__*/React.createElement("details", {
       className: "gantt-route-group",
-      open: group.pieceId === null || group.pieceId === selectedPiece
+      open: open,
+      onToggle: event => setOpen(event.currentTarget.open)
     }, /*#__PURE__*/React.createElement("summary", {
       className: "gantt-route-group-heading"
     }, label, /*#__PURE__*/React.createElement("small", null, " \xB7 ", group.nodes.length, " \u9053")), children) : /*#__PURE__*/React.createElement("div", {
@@ -26659,49 +26728,15 @@ function SMExport({
     }, "\u6B64\u5DE5\u5E8F\u672A\u5B89\u6392\uFF0C\u6682\u65E0\u7518\u7279\u8282\u70B9\u3002") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
       className: "gantt-route-summary"
     }, route.target.batch_id, " \xB7 ", route.count, " \u9053\u5DF2\u5B89\u6392", pieceCount > 0 && ' · ' + pieceCount + ' 个分件', "\u3002\u70B9\u51FB\u5DE5\u5E8F\u5B9A\u4F4D\uFF1B\u524D\u5E8F\u6309\u5B9E\u9645\u5173\u7CFB\u663E\u793A\u3002"), route.groups.map(group => /*#__PURE__*/React.createElement(RouteGroup, {
+      key: JSON.stringify([route.target.batch_id, route.target.piece_id, group.pieceId]),
       group: group,
-      selectedPiece: route.target.piece_id,
-      collapsible: collapsible,
-      key: (route.target.piece_id || 'common') + ':' + (group.pieceId === null ? 'common' : 'piece:' + group.pieceId)
-    }, /*#__PURE__*/React.createElement("ul", {
-      className: "gantt-route-list"
-    }, group.nodes.map(node => {
-      const outside = !loadedRefs.has(node.task_ref),
-        previous = route.previous.get(node.task_ref);
-      const related = route.target.piece_id === null || node.piece_id === null || node.piece_id === route.target.piece_id;
-      const start = F.dateTime(node.start),
-        end = F.dateTime(node.end),
-        sameDay = start.slice(0, 10) === end.slice(0, 10);
-      return /*#__PURE__*/React.createElement("li", {
-        key: node.task_ref,
-        className: "gantt-route-node",
-        "data-gantt-route-node": node.task_ref,
-        "data-selected": node.task_ref === targetRef || undefined,
-        "data-related": related || undefined,
-        "data-outside": outside || undefined
-      }, /*#__PURE__*/React.createElement(Button, {
-        className: "btn gantt-route-select",
-        disabled: disabled,
-        "aria-current": node.task_ref === targetRef ? 'step' : undefined,
-        "aria-label": '定位工序 ' + pieceLabel(node) + ' · ' + operationLabel(node),
-        onClick: () => onSelect(node.task_ref),
-        title: F.dateTime(node.start, {
-          seconds: true,
-          fractions: true
-        }) + ' 至 ' + F.dateTime(node.end, {
-          seconds: true,
-          fractions: true
-        })
-      }, /*#__PURE__*/React.createElement("strong", null, operationLabel(node)), /*#__PURE__*/React.createElement("small", null, start.slice(5), " \u2192 ", end.slice(sameDay ? 11 : 5), outside && ' · 范围外')), !!previous.length && /*#__PURE__*/React.createElement("div", {
-        className: "gantt-route-dependencies"
-      }, /*#__PURE__*/React.createElement("span", null, "\u524D\u5E8F"), previous.map(parent => /*#__PURE__*/React.createElement(Button, {
-        key: parent.task_ref,
-        className: "linkbtn gantt-route-predecessor",
-        disabled: disabled,
-        onClick: () => onSelect(parent.task_ref),
-        "aria-label": '定位前序 ' + pieceLabel(parent) + ' · ' + operationLabel(parent)
-      }, pieceLabel(parent), " \xB7 ", operationLabel(parent)))));
-    })))), missing > 0 && /*#__PURE__*/React.createElement("p", {
+      target: route.target,
+      previous: route.previous,
+      loadedRefs: loadedRefs,
+      onSelect: onSelect,
+      disabled: disabled,
+      collapsible: collapsible
+    })), missing > 0 && /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
     }, "\u6240\u9009\u5DE5\u5E8F\u6709 ", missing, " \u9053\u524D\u5E8F\u672A\u5728\u672C\u8BA1\u5212\u5B89\u6392\u3002")));
   }
@@ -28583,6 +28618,8 @@ function SMExport({
   // The three plan-centre tabs share the heading and task detail; the body differs: analysis = projection tables,
   // gantt = the gantt board, delay = projection tables plus resource overlap. Selecting a batch or a related task on a
   // tab without the gantt only selects it for the task detail; the gantt locates it when that tab is shown.
+  // The initial focus comes from the navigation context (APSPlanNavigation): a task focus is selected_task_ref/side; a batch
+  // focus is selected_batch_ref, resolved exactly through delivery_risks to that batch's first scheduled task.
   function WorkspaceSession({
     view,
     initialContext,
@@ -28596,7 +28633,7 @@ function SMExport({
     } : null);
     const [scope, setScope] = React.useState(() => {
       const result = {};
-      for (const key of ['range_start', 'range_end', 'snapshot_ref']) if (initialContext[key] !== undefined) result[key] = initialContext[key];
+      for (const key of ['range_start', 'range_end']) if (initialContext[key] !== undefined) result[key] = initialContext[key];
       return result;
     });
     const [range, setRange] = React.useState({
@@ -28606,36 +28643,54 @@ function SMExport({
     const [rangeOpen, setRangeOpen] = React.useState(false),
       [rangeError, setRangeError] = React.useState(null),
       [paused, setPaused] = React.useState(false);
-    const [query, setQuery] = React.useState(typeof initialContext.query === 'string' ? initialContext.query : ''),
+    const [query, setQuery] = React.useState(initialContext.query === undefined ? '' : initialContext.query),
       [selected, setSelected] = React.useState(null);
     const [projectionTab, setProjectionTab] = React.useState(initialContext.projection_tab || 'risk');
     const [projectionPage, setProjectionPage] = React.useState(initialContext.projection_page || 0);
     const [relatedRef, setRelatedRef] = React.useState(null);
-    const [detailsOpen, setDetailsOpen] = React.useState(!!initialContext.selected_task_ref);
+    const [detailsOpen, setDetailsOpen] = React.useState(initialContext.selected_task_ref !== undefined || initialContext.selected_batch_ref !== undefined);
     const detailsToggle = React.useRef(null);
-    const initialTask = React.useRef(typeof initialContext.selected_task_ref === 'string' ? {
+    const initialFocus = React.useRef(initialContext.selected_task_ref !== undefined ? {
       ref: initialContext.selected_task_ref,
       side: initialContext.selected_task_side === 'before' ? 'before' : 'current'
+    } : initialContext.selected_batch_ref !== undefined ? {
+      batch: initialContext.selected_batch_ref
     } : null);
     // APSPlanAPI.workspace 自己校验读取范围（PlanContract.workspaceScope）。
     const read = S.useQuery(signal => window.APSPlanAPI.workspace(selection.plan_ref, scope, signal), [selection && selection.plan_ref, scope], !!selection && !paused);
     const result = read.result,
       data = result && result.data;
+    function batchTask(batchId) {
+      return data.tasks.find(row => row.batch_id === batchId);
+    }
     const taskFacts = React.useMemo(() => data ? M.prepareTasks(data) : null, [data]);
     const baseGraph = React.useMemo(() => data ? window.GanttGraph.create(data.gantt_graph) : null, [data]);
     const baseOccupancy = React.useMemo(() => data ? M.prepareOccupancy(data, null, null, taskFacts && taskFacts.labels) : null, [data, taskFacts]);
     const chosen = selected && selected.result === result ? selected : null;
-    const pendingBefore = Boolean(initialTask.current && initialTask.current.side === 'before' && data && data.projections.baseline.state === 'available' && data.projections.baseline.items_complete === false && data.projections.baseline.item_count > 0);
+    const pendingBefore = Boolean(initialFocus.current && initialFocus.current.side === 'before' && data && data.projections.baseline.state === 'available' && data.projections.baseline.items_complete === false && data.projections.baseline.item_count > 0);
     React.useEffect(() => {
       if (!data || read.loading || read.error) return;
       const target = relatedRef ? {
         ref: relatedRef,
         side: 'current'
-      } : initialTask.current;
+      } : initialFocus.current;
       if (!relatedRef && pendingBefore) return;
-      // The saved task belongs to this session's first successful read only.
-      initialTask.current = null;
+      // The saved focus belongs to this session's first successful read only.
+      initialFocus.current = null;
       if (!target) return;
+      if (target.batch) {
+        const risk = data.projections.delivery_risks.items.find(row => row.batch_ref === target.batch);
+        const task = risk && batchTask(risk.batch_id);
+        if (task) setSelected({
+          task,
+          before: false,
+          result,
+          ...(view === 'gantt' ? {
+            locate: true
+          } : {})
+        });else setRangeError(C.failure(risk ? '该批次在这份计划里没有已排工序，没有改选其他工序。' : '这份计划里找不到该批次，没有改选其他工序。'));
+        return;
+      }
       const before = target.side === 'before';
       const original = before && data.projections.baseline.items.find(row => row.before && row.before.task_ref === target.ref);
       const task = before ? original && original.before : taskFacts.taskIndex.get(target.ref)?.task;
@@ -28658,17 +28713,17 @@ function SMExport({
       projection_tab: projectionTab,
       projection_page: projectionPage
     };
-    for (const key of ['range_start', 'range_end', 'snapshot_ref', 'selected_task_ref', 'selected_task_side']) delete remembered[key];
+    for (const key of ['range_start', 'range_end', 'selected_task_ref', 'selected_task_side', 'selected_batch_ref']) delete remembered[key];
     Object.assign(remembered, scope, chosen ? {
       selected_task_ref: chosen.task.task_ref,
       selected_task_side: chosen.before ? 'before' : 'current'
     } : pendingBefore ? {
-      selected_task_ref: initialTask.current.ref,
+      selected_task_ref: initialFocus.current.ref,
       selected_task_side: 'before'
     } : {});
     window.WorkbenchPageContext.useSnapshot(remembered, !!data && !read.loading && !read.error && !paused);
     function choose(plan) {
-      initialTask.current = null;
+      initialFocus.current = null;
       setSelection(plan);
       setScope({});
       setRange({
@@ -28686,12 +28741,7 @@ function SMExport({
       read.reload();
     }
     function refresh() {
-      initialTask.current = null;
-      const next = {
-        ...scope
-      };
-      delete next.snapshot_ref;
-      setScope(next);
+      initialFocus.current = null;
       setRangeError(null);
       setPaused(false);
       setSelected(null);
@@ -28700,7 +28750,7 @@ function SMExport({
       read.reload();
     }
     function selectTask(task, before = false, locate = false) {
-      initialTask.current = null;
+      initialFocus.current = null;
       setSelected(task ? {
         task,
         before,
@@ -28740,7 +28790,7 @@ function SMExport({
     }
     function changeScope(next) {
       const changed = scope.range_start !== next.range_start || scope.range_end !== next.range_end;
-      initialTask.current = null;
+      initialFocus.current = null;
       setScope(next);
       setRange({
         start: next.range_start || '',
@@ -28754,7 +28804,7 @@ function SMExport({
       read.reload();
     }
     function selectRelated(ref) {
-      initialTask.current = null;
+      initialFocus.current = null;
       const fact = taskFacts.taskIndex.get(ref),
         task = fact && fact.task;
       setQuery('');
@@ -28815,8 +28865,8 @@ function SMExport({
     const baselineLoading = baselineState.result === result ? baselineState.loading : false;
     const baselineError = baselineState.result === result ? baselineState.error : null;
     const baselineNeeded = baselineState.result === result ? baselineState.needed : false;
-    const restoringBefore = Boolean(initialTask.current && initialTask.current.side === 'before' && (baselineLoading || baselineError));
-    const shouldLoadBaseline = Boolean(data && !read.loading && !read.error && !paused && data.projections.baseline.state === 'available' && data.projections.baseline.items_complete === false && data.projections.baseline.item_count > 0 && !Array.isArray(activeBaselineItems) && !baselineError && (baselineNeeded || chosen && (view !== 'gantt' || detailsOpen) || initialTask.current && initialTask.current.side === 'before'));
+    const restoringBefore = Boolean(initialFocus.current && initialFocus.current.side === 'before' && (baselineLoading || baselineError));
+    const shouldLoadBaseline = Boolean(data && !read.loading && !read.error && !paused && data.projections.baseline.state === 'available' && data.projections.baseline.items_complete === false && data.projections.baseline.item_count > 0 && !Array.isArray(activeBaselineItems) && !baselineError && (baselineNeeded || chosen && (view !== 'gantt' || detailsOpen) || initialFocus.current && initialFocus.current.side === 'before'));
     const requestBaseline = React.useCallback(() => {
       setBaselineState(current => current.needed && current.result === result && !current.error ? current : {
         result,
@@ -28850,9 +28900,9 @@ function SMExport({
           error: null,
           needed: true
         });
-        if (initialTask.current && initialTask.current.side === 'before') {
-          const target = initialTask.current;
-          initialTask.current = null;
+        if (initialFocus.current && initialFocus.current.side === 'before') {
+          const target = initialFocus.current;
+          initialFocus.current = null;
           const original = items.find(row => row.before && row.before.task_ref === target.ref);
           if (original && original.before) setSelected({
             task: original.before,
@@ -29174,7 +29224,7 @@ function SMExport({
       query: query,
       onQuery: setQuery,
       initialMode: initialContext.resource_kind,
-      initialBaseline: !!initialTask.current && initialTask.current.side === 'before',
+      initialBaseline: !!initialFocus.current && initialFocus.current.side === 'before',
       onRequestBaseline: requestBaseline,
       baselineLoading: baselineLoading,
       baselineError: baselineError,
@@ -29200,7 +29250,7 @@ function SMExport({
       onResource: openResource,
       onBatch: batch => {
         setQuery(batch);
-        const task = data.tasks.find(row => row.batch_id === batch);
+        const task = batchTask(batch);
         if (task) selectTask(task, false, true);
       },
       capacityLoading: capacityLoading,
@@ -29232,7 +29282,7 @@ function SMExport({
   }
   function PlanWorkspace(props) {
     const context = props.initialContext;
-    const navigation = [context.plan_ref, context.range_start, context.range_end, context.snapshot_ref];
+    const navigation = [context.plan_ref, context.range_start, context.range_end];
     return /*#__PURE__*/React.createElement(WorkspaceSession, {
       key: JSON.stringify(navigation),
       ...props
@@ -30405,6 +30455,7 @@ function SMExport({
     adapter,
     taskRef,
     scope,
+    returnContext,
     snapshot,
     revision,
     command,
@@ -30498,11 +30549,7 @@ function SMExport({
           scope: common,
           return_to: {
             view: 'field',
-            context: {
-              plan_ref: task.plan_ref,
-              task_ref: taskRef,
-              scope
-            }
+            context: returnContext
           }
         });
       }
@@ -30935,7 +30982,7 @@ function SMExport({
       range: data.scope.plan_finish_date_from && data.scope.plan_finish_date_to ? '计划完工 ' + data.scope.plan_finish_date_from + ' 至 ' + data.scope.plan_finish_date_to : undefined
     } : null);
     const selectedTask = data && data.tasks.find(task => task.task_ref === opened);
-    window.WorkbenchPageContext.useSnapshot(data ? {
+    const pageContext = data ? {
       plan_ref: data.scope.plan_ref,
       scope: data.scope,
       table: {
@@ -30945,7 +30992,8 @@ function SMExport({
       task_ref: opened,
       operation_ref: selectedTask ? selectedTask.operation_ref : undefined,
       return_to: initialContext.return_to
-    } : null, !!data && !read.loading && !read.error && !command.locked && command.phase !== 'done' && (!opened || !!selectedTask));
+    } : null;
+    window.WorkbenchPageContext.useSnapshot(pageContext, !!data && !read.loading && !read.error && !command.locked && command.phase !== 'done' && (!opened || !!selectedTask));
     const blocked = command.locked || !!editor || files || !!nextDraft || command.phase === 'done';
     const rowBlocked = command.locked || files || !!nextDraft || command.phase === 'done';
     function openTask(ref) {
@@ -31132,6 +31180,7 @@ function SMExport({
       adapter: api,
       taskRef: selectedTask.task_ref,
       scope: effectiveScope,
+      returnContext: pageContext,
       snapshot: snapshot,
       revision: revision,
       command: command,
@@ -31795,13 +31844,6 @@ function SMExport({
       at = Date.parse(base + 'Z');
     return Number.isFinite(at) && new Date(at).toISOString().slice(0, 19) === base;
   }
-  function gapMinutes(start, end) {
-    const seconds = (Date.parse(end.slice(0, 19) + 'Z') - Date.parse(start.slice(0, 19) + 'Z')) / 1000;
-    const minutes = Math.floor(seconds / 60);
-    // 第 21 位起是 6 位微秒；没有小数秒时截出空串，Number('') 就是 0。
-    const remainder = (seconds - minutes * 60) * 1000000 + Number(end.slice(20)) - Number(start.slice(20));
-    return minutes - (remainder < 0 ? 1 : 0);
-  }
   const nullableTime = value => value === null || local(value);
   const nullableRef = value => value === null || ref(value);
   const quantity = value => value === null || Number.isSafeInteger(value) && value >= 0;
@@ -31856,7 +31898,7 @@ function SMExport({
     const d = result.data,
       meta = result.meta;
     if (meta.snapshot_ref === null || query.snapshot_ref && query.snapshot_ref !== meta.snapshot_ref) fail('读到的现场实际甘特数据不完整，或者数据已更新。请刷新后重试。');
-    if (!d.plan || d.plan.plan_ref !== query.plan_ref || !d.plan.capabilities.view || !span(d.plan_span) || !interval(d.axis_span) || !d.scope || d.scope.kind !== 'actual_gantt' || d.scope.source !== 'production' || !object(d.availability) || !['available', 'unavailable'].includes(d.availability.state) || !Array.isArray(d.items) || d.items.length !== d.task_count || d.task_count > 10000 || d.items_complete !== true || !executionSummary(d.execution_summary) || !Array.isArray(d.resources) || !d.resources.every(r => object(r) && ref(r.ref) && ['machine', 'operator', 'supplier'].includes(r.kind) && typeof r.business_code === 'string' && (r.label === null || typeof r.label === 'string')) || !object(d.critical_chain) || !Array.isArray(d.critical_chain.task_refs) || !Array.isArray(d.critical_chain.edges)) fail('读到的现场实际甘特范围不完整，请刷新重试。');
+    if (!d.plan || d.plan.plan_ref !== query.plan_ref || !d.plan.capabilities.view || !span(d.plan_span) || !interval(d.axis_span) || !d.scope || d.scope.kind !== 'actual_gantt' || d.scope.source !== 'production' || !object(d.availability) || !['available', 'unavailable'].includes(d.availability.state) || !Array.isArray(d.items) || d.items.length !== d.task_count || d.task_count > 10000 || d.items_complete !== true || !executionSummary(d.execution_summary) || !Array.isArray(d.resources) || !d.resources.every(r => object(r) && ref(r.ref) && ['machine', 'operator', 'supplier'].includes(r.kind) && typeof r.business_code === 'string' && (r.label === null || typeof r.label === 'string'))) fail('读到的现场实际甘特范围不完整，请刷新重试。');
     if (!scopeMatches(d.scope, query)) fail('返回的范围与上次查询不同，没有自动扩大范围。');
     const resourceRefs = new Set(d.resources.map(row => row.ref)),
       taskRefs = new Set();
@@ -31886,26 +31928,7 @@ function SMExport({
       processLabel: value => typeof value === 'string' && !!value.trim()
     })) fail('现场甘特的工序关联与所选计划不一致，请刷新重试。');
     if (d.availability.state === 'available' ? d.report_count !== count || count > 50000 : d.report_count !== null || !d.availability.reason) fail('报工数量或不可用原因不完整。');
-    validateChain(d.critical_chain, d, query, meta, taskRefs);
     return result;
-  }
-  function validateChain(chain, d, query, meta, taskRefs) {
-    if (chain.state !== 'unavailable') {
-      if (chain.state !== 'available' || chain.snapshot_ref !== meta.snapshot_ref || chain.plan_ref !== query.plan_ref || chain.source !== 'core.services.scheduler.gantt.critical_chain.compute_critical_chain_from_rows' || chain.semantics !== 'selected_plan_control_predecessor_chain' || chain.scope !== 'full_plan' || chain.gap_unit !== 'minute' || !['global', 'related'].includes(chain.mode) || (chain.mode === 'global' ? chain.target_task_ref !== null : !ref(chain.target_task_ref)) || chain.time_basis !== 'factory_local' || chain.gap_rounding !== 'floor' || !local(chain.makespan_end) || !Number.isInteger(chain.omitted_point_count) || chain.omitted_point_count < 0 || chain.partial !== chain.omitted_point_count > 0 || !Array.isArray(chain.nodes) || !chain.nodes.length || chain.task_refs.length !== chain.nodes.length || new Set(chain.task_refs).size !== chain.task_refs.length || chain.edges.length !== chain.nodes.length - 1) fail('关键链和本次读到的数据版本对不上，没有显示。');
-      const nodes = new Map();
-      chain.nodes.forEach((node, index) => {
-        if (!object(node) || !ref(node.task_ref) || !ref(node.operation_ref) || node.task_ref !== chain.task_refs[index] || !local(node.start) || !local(node.end) || node.start >= node.end || node.in_scope !== taskRefs.has(node.task_ref) || typeof node.batch_id !== 'string' || typeof node.process_label !== 'string' || !C.positiveInt64(node.sequence)) fail('关键链节点与当前计划或范围不一致。');
-        nodes.set(node.task_ref, node);
-      });
-      chain.edges.forEach((edge, index) => {
-        if (!object(edge) || edge.from_task_ref !== chain.task_refs[index] || edge.to_task_ref !== chain.task_refs[index + 1] || !['process', 'machine', 'operator'].includes(edge.edge_type) || typeof edge.reason !== 'string' || !edge.reason || !Number.isInteger(edge.gap_minutes)) fail('关键链连线或分钟数无效。');
-        const from = nodes.get(edge.from_task_ref),
-          to = nodes.get(edge.to_task_ref);
-        if (edge.gap_minutes !== gapMinutes(from.end, to.start)) fail('关键链连线间隔与计划记录不一致。');
-      });
-      if (chain.visible_node_count !== chain.nodes.filter(node => node.in_scope).length || !Number.isInteger(chain.plan_task_count) || chain.plan_task_count < d.task_count || chain.plan_task_count < chain.nodes.length || chain.makespan_end !== chain.nodes[chain.nodes.length - 1].end || chain.mode === 'related' && chain.target_task_ref !== chain.task_refs[chain.task_refs.length - 1]) fail('关键链完整性计数不一致。');
-    } else if (typeof chain.reason !== 'string' || !chain.reason) fail('关键链不可用时必须保留明确原因。');
-    return chain;
   }
   function transport(value) {
     const result = {
@@ -32147,6 +32170,7 @@ function SMExport({
       className: "fg-muted"
     }, "\u5F53\u524D\u663E\u793A ", shownCount, " / ", graph.critical_task_refs.length, " \u9053\u5173\u952E\u5DE5\u5E8F \xB7 \u4E0E\u56FE\u4E2D\u7684\u91D1\u8272\u6807\u8BB0\u4E00\u81F4"));
   }
+  // 批次范围全程是完整批次号的列表：逐个添加、逐个移除，批次号原样保留（可含逗号、全角逗号和首尾空格），不拆分也不去空白。
   function Range({
     scope,
     resources,
@@ -32154,28 +32178,38 @@ function SMExport({
     busy
   }) {
     const [draft, setDraft] = React.useState(scope),
-      [batches, setBatches] = React.useState((scope.batch_ids || []).join(','));
+      [batches, setBatches] = React.useState(scope.batch_ids || []),
+      [entry, setEntry] = React.useState('');
+    const [listOpen, setListOpen] = React.useState(false);
     React.useEffect(() => {
       setDraft(scope);
-      setBatches((scope.batch_ids || []).join(','));
+      setBatches(scope.batch_ids || []);
+      setEntry('');
     }, [scope]);
     const patch = value => setDraft(previous => ({
       ...previous,
       ...value
     }));
     const selectable = resources ? resources.filter(r => r.kind !== 'supplier') : null;
+    // 正在输入的批次号作为一个完整编号并入；全是空白不算批次号，列表里已有的不重复加入。
+    const withEntry = () => entry.trim() && !batches.includes(entry) ? batches.concat(entry) : batches;
+    function add() {
+      setBatches(withEntry());
+      setEntry('');
+    }
     return /*#__PURE__*/React.createElement("form", {
       className: "fg-range",
       onSubmit: event => {
         event.preventDefault();
         const next = {
-          ...draft
-        };
+            ...draft
+          },
+          ids = withEntry();
         Object.keys(next).forEach(key => {
           if (next[key] === '' || next[key] === null) delete next[key];
         });
         if (!next.resource_ref) delete next.resource_type;
-        if (batches.trim()) next.batch_ids = batches.split(/[,，]+/).map(v => v.trim()).filter(Boolean);else delete next.batch_ids;
+        if (ids.length) next.batch_ids = ids;else delete next.batch_ids;
         delete next.snapshot_ref;
         onApply(next);
       }
@@ -32217,11 +32251,46 @@ function SMExport({
       value: r.ref
     }, M.views[r.kind], " \xB7 ", r.label || r.business_code))))), /*#__PURE__*/React.createElement("label", null, "\u6279\u6B21", /*#__PURE__*/React.createElement("input", {
       className: "fg-batches",
-      "aria-label": "\u6279\u6B21\u8303\u56F4",
-      placeholder: "\u591A\u4E2A\u6279\u6B21\u7528\u9017\u53F7\u5206\u9694",
-      value: batches,
-      onChange: e => setBatches(e.target.value)
+      "aria-label": "\u6279\u6B21\u53F7",
+      placeholder: "\u8F93\u5165\u5B8C\u6574\u6279\u6B21\u53F7",
+      value: entry,
+      onChange: e => setEntry(e.target.value),
+      onKeyDown: e => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          add();
+        }
+      }
     })), /*#__PURE__*/React.createElement(Button, {
+      icon: "plus",
+      disabled: !entry.trim(),
+      onClick: add
+    }, "\u6DFB\u52A0\u6279\u6B21"), batches.length > 0 && /*#__PURE__*/React.createElement("details", {
+      className: "fg-batch-list",
+      open: listOpen,
+      onToggle: e => setListOpen(e.currentTarget.open)
+    }, /*#__PURE__*/React.createElement("summary", null, "\u5DF2\u9009 ", batches.length, " \u4E2A\u6279\u6B21"), listOpen && /*#__PURE__*/React.createElement("span", {
+      className: "chipline",
+      role: "list",
+      "aria-label": "\u6279\u6B21\u8303\u56F4"
+    }, batches.map(id => /*#__PURE__*/React.createElement("span", {
+      className: "chip",
+      role: "listitem",
+      key: id
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "fg-batch-id"
+    }, id), /*#__PURE__*/React.createElement(Button, {
+      className: "mini",
+      icon: "x",
+      "aria-label": '移除批次 ' + id,
+      onClick: () => setBatches(batches.filter(value => value !== id))
+    })))), /*#__PURE__*/React.createElement(Button, {
+      icon: "x",
+      onClick: () => {
+        setBatches([]);
+        setEntry('');
+      }
+    }, "\u6E05\u7A7A\u6279\u6B21")), /*#__PURE__*/React.createElement(Button, {
       type: "submit",
       icon: "search",
       busy: busy
@@ -32710,14 +32779,6 @@ function SMExport({
     Range,
     Chain
   } = window.ActualGanttControls;
-  // Remembered view positions per navigation context; capped so a long session does not keep growing this map.
-  const sessions = new Map(),
-    SESSION_LIMIT = 20;
-  function remember(key, value) {
-    sessions.delete(key);
-    sessions.set(key, value);
-    while (sessions.size > SESSION_LIMIT) sessions.delete(sessions.keys().next().value);
-  }
   function savedView(value) {
     if (value === undefined) return null;
     const object = item => item !== null && typeof item === 'object' && !Array.isArray(item);
@@ -32739,7 +32800,6 @@ function SMExport({
     let issue = Object.keys(input).some(key => !allowed.includes(key)) ? '查询条件无效，请清除筛选后重试。' : null;
     if (input.baseline_ref && input.baseline_ref !== (context.plan_ref || input.plan_ref)) issue = '现场实际甘特以所选计划为对比基准，没有换成另一个计划版本。';
     if (input.query !== undefined && (typeof input.query !== 'string' || input.query.length > 200)) issue = '来源搜索条件无效。';
-    if (context.return_to && !['gantt', 'field', 'analysis', 'reports', 'review', 'dashboard'].includes(context.return_to.view)) issue = '返回页面未登记。';
     if (context.report_ref !== undefined && !C.ref(context.report_ref)) issue = '来源报工编号无效，请从现场记录重新打开。';
     if (context.report_ref !== undefined && !C.ref(taskRef)) issue = '报工关联的任务资料缺失，请刷新后重选。';
     for (const key of ['plan_ref', 'source', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'batch_ids']) if (input[key] !== undefined && input[key] !== null && input[key] !== '') scope[key] = input[key];
@@ -32763,15 +32823,13 @@ function SMExport({
     onNavigate,
     initialContext
   }) {
-    const seed = React.useMemo(() => initial(initialContext), []),
-      key = JSON.stringify(initialContext),
-      saved = sessions.get(key);
-    const [scope, setScope] = React.useState(saved ? saved.scope : seed.scope),
+    const seed = React.useMemo(() => initial(initialContext), []);
+    const [scope, setScope] = React.useState(seed.scope),
       [refresh, setRefresh] = React.useState(0);
     const [result, setResult] = React.useState(null),
       [loading, setLoading] = React.useState(false),
       [error, setError] = React.useState(null);
-    const [view, setView] = React.useState(saved ? saved.view : seed.persisted ? seed.persisted.view : {
+    const [view, setView] = React.useState(seed.persisted ? seed.persisted.view : {
       mode: seed.scope.resource_type || 'machine',
       query: seed.query,
       selected: seed.selected,
@@ -32782,7 +32840,7 @@ function SMExport({
       details: false,
       chain: false
     });
-    const [zoom, setZoom] = React.useState(saved ? saved.zoom : seed.persisted ? seed.persisted.zoom : 1),
+    const [zoom, setZoom] = React.useState(seed.persisted ? seed.persisted.zoom : 1),
       [position, setPosition] = React.useState({
         left: 0,
         top: 0,
@@ -32793,19 +32851,20 @@ function SMExport({
       [exporting, setExporting] = React.useState(false),
       [exportBusy, setExportBusy] = React.useState(false);
     const [chainTarget, setChainTarget] = React.useState(null);
-    const [locateNotice, setLocateNotice] = React.useState('');
+    const [locateNotice, setLocateNotice] = React.useState(''),
+      [navigationNotice, setNavigationNotice] = React.useState(null);
     const [exportError, setExportError] = React.useState(null),
       [exportNotice, setExportNotice] = React.useState(''),
-      [restore, setRestore] = React.useState(saved ? saved.position : seed.persisted ? seed.persisted.position : null);
+      [restore, setRestore] = React.useState(seed.persisted ? seed.persisted.position : null);
     const [chainOpen, setChainOpen] = React.useState(false);
     const board = React.useRef(null),
       detailsPanel = React.useRef(null),
       frame = React.useRef(null),
-      pending = React.useRef(!saved && !seed.persisted && seed.report && seed.selected ? {
+      pending = React.useRef(!seed.persisted && seed.report && seed.selected ? {
         task: seed.selected
       } : null),
       downloadController = React.useRef(null);
-    const defaultWindowApplied = React.useRef(!!saved || !!seed.persisted);
+    const defaultWindowApplied = React.useRef(!!seed.persisted);
     const measuredWidth = React.useRef(null),
       zoomRef = React.useRef(zoom),
       restoreRef = React.useRef(restore);
@@ -32899,17 +32958,27 @@ function SMExport({
     const stats = React.useMemo(() => data ? M.metrics(data) : null, [data]);
     const taskIndex = prepared && prepared.taskIndex;
     const snapshotPosition = model ? W.capture(position, viewport, model, zoom) : null;
-    window.WorkbenchPageContext.useSnapshot(data ? {
-      plan_ref: data.plan.plan_ref,
-      scope: data.scope,
-      task_ref: view.selected,
-      actual_view: {
-        view,
-        zoom,
-        position: snapshotPosition
-      },
-      return_to: initialContext.return_to
-    } : null, !!data && !loading && !error && !seed.issue && !restore);
+    function pageContext() {
+      return {
+        plan_ref: scope.plan_ref,
+        task_ref: view.selected,
+        scope: {
+          ...scope,
+          query: view.query
+        },
+        ...(snapshotPosition ? {
+          actual_view: {
+            view,
+            zoom,
+            position: snapshotPosition
+          }
+        } : {}),
+        ...(initialContext.return_to ? {
+          return_to: initialContext.return_to
+        } : {})
+      };
+    }
+    window.WorkbenchPageContext.useSnapshot(data ? pageContext() : null, !!data && !loading && !error && !seed.issue && !restore);
     const measure = () => {
       const node = board.current;
       if (!node) return;
@@ -32980,14 +33049,6 @@ function SMExport({
       measure();
     }, [width, model, restore, position.width]);
     React.useEffect(() => {
-      if (snapshotPosition && !restore) remember(key, {
-        scope,
-        view,
-        zoom,
-        position: snapshotPosition
-      });
-    }, [key, scope, view, zoom, position, model, restore]);
-    React.useEffect(() => {
       setHover(null);
       setChainTarget(null);
     }, [view, position.top, position.left]);
@@ -33048,6 +33109,7 @@ function SMExport({
         defaultWindowApplied.current = false;
         pending.current = null;
         setRestore(null);
+        setNavigationNotice(null);
         setResult(null);
         setLoading(true);
         setScope(next);
@@ -33164,48 +33226,62 @@ function SMExport({
         }
       }
     }
-    function navigate(viewName) {
-      const returnContext = {
-        plan_ref: scope.plan_ref,
-        task_ref: view.selected,
-        scope: {
-          ...scope,
-          query: view.query
-        }
+    function returnTarget() {
+      return {
+        view: 'fieldgantt',
+        context: pageContext()
       };
+    }
+    function openField() {
+      // 现场实际甘特可按 10000 个批次读取，现场记录只接受 FieldContract.batchLimit 个；超出时原样保留批次范围，请用户先缩小。
+      const limit = window.FieldContract.batchLimit;
+      if (scope.batch_ids && scope.batch_ids.length > limit) {
+        setNavigationNotice({
+          message: '现场记录最多按 ' + limit + ' 个批次查看，当前范围有 ' + scope.batch_ids.length + ' 个批次。请先缩小批次范围，再打开现场记录。'
+        });
+        return;
+      }
       const destinationScope = {
         ...scope,
         query: view.query
       };
       // Actual uses [] for all batches; Field represents that scope by omission.
-      if (viewName === 'field' && destinationScope.batch_ids !== undefined && destinationScope.batch_ids.length === 0) delete destinationScope.batch_ids;
-      const task = selected && selected.task;
-      let locator;
-      if (viewName === 'field') {
-        const query = view.query.trim().toLowerCase();
-        const targetTask = selected && M.fieldSearchText(selected, model.labels).includes(query) ? task : null;
-        locator = targetTask ? {
-          task_ref: targetTask.task_ref,
-          operation_ref: targetTask.operation_ref
-        } : {};
-      } else locator = {
-        task_ref: view.selected,
-        operation_ref: task ? task.operation_ref : undefined
-      };
-      if (snapshotPosition) remember(JSON.stringify(returnContext), {
-        scope,
-        view,
-        zoom,
-        position: snapshotPosition
-      });
-      onNavigate(viewName, {
+      if (destinationScope.batch_ids !== undefined && destinationScope.batch_ids.length === 0) delete destinationScope.batch_ids;
+      const query = view.query.trim().toLowerCase();
+      const task = selected && M.fieldSearchText(selected, model.labels).includes(query) ? selected.task : null;
+      onNavigate('field', {
         plan_ref: scope.plan_ref,
-        ...locator,
+        ...(task ? {
+          task_ref: task.task_ref,
+          operation_ref: task.operation_ref
+        } : {}),
         scope: destinationScope,
-        return_to: {
-          view: 'fieldgantt',
-          context: returnContext
-        }
+        return_to: returnTarget()
+      });
+    }
+    // 正式计划甘特只按计划时段读取：完工日期、资源和非空批次条件带不过去，先列出来，用户确认后才按时段（无时段时按完整计划）打开。
+    // 有选中工序时只带定位、不带搜索词（计划页定位即清空搜索）；空 batch_ids 表示全部批次，不算受限。
+    function openPlan(confirmed) {
+      const limits = [...(scope.plan_finish_date_from ? ['计划完工日期 ' + scope.plan_finish_date_from + ' 至 ' + scope.plan_finish_date_to] : []), ...(scope.resource_ref ? ['指定' + M.views[scope.resource_type]] : []), ...(scope.batch_ids && scope.batch_ids.length ? ['指定的 ' + scope.batch_ids.length + ' 个批次'] : [])];
+      if (limits.length && !confirmed) {
+        setNavigationNotice({
+          plan: true,
+          message: '计划甘特只按计划时段读取，带不过去这些条件：' + limits.join('、') + '。确认后按' + (scope.range_start ? '当前时段' : '完整计划') + '打开' + (view.selected ? '，并定位所选工序' : '') + '。'
+        });
+        return;
+      }
+      onNavigate('gantt', {
+        plan_ref: scope.plan_ref,
+        ...(scope.range_start ? {
+          range_start: scope.range_start,
+          range_end: scope.range_end
+        } : {}),
+        ...(view.selected ? {
+          selected_task_ref: view.selected
+        } : view.query ? {
+          query: view.query
+        } : {}),
+        return_to: returnTarget()
       });
     }
     return /*#__PURE__*/React.createElement("div", {
@@ -33226,19 +33302,27 @@ function SMExport({
       onClick: reload
     }), /*#__PURE__*/React.createElement(Button, {
       icon: "chart-gantt",
-      onClick: () => navigate('gantt')
+      onClick: () => openPlan(false)
     }, "\u8BA1\u5212\u7518\u7279"), /*#__PURE__*/React.createElement(Button, {
       icon: "arrow-right",
-      onClick: () => navigate('field')
+      onClick: openField
     }, "\u73B0\u573A\u8BB0\u5F55"), initialContext.return_to && /*#__PURE__*/React.createElement(Button, {
       icon: "chevron-left",
-      onClick: () => {
-        const target = initialContext.return_to;
-        if (['gantt', 'field', 'analysis', 'reports', 'review', 'dashboard'].includes(target.view)) onNavigate(target.view, target.context);
-      }
+      onClick: () => onNavigate(initialContext.return_to.view, initialContext.return_to.context)
     }, "\u8FD4\u56DE"))), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error
-    }), scope.plan_ref && /*#__PURE__*/React.createElement(Range, {
+    }), navigationNotice && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+      className: "fg-note",
+      role: "status"
+    }, navigationNotice.message), navigationNotice.plan && /*#__PURE__*/React.createElement("span", {
+      className: "wb-actions"
+    }, /*#__PURE__*/React.createElement(Button, {
+      icon: "chart-gantt",
+      onClick: () => openPlan(true)
+    }, "\u786E\u8BA4\u6253\u5F00\u8BA1\u5212\u7518\u7279"), /*#__PURE__*/React.createElement(Button, {
+      icon: "x",
+      onClick: () => setNavigationNotice(null)
+    }, "\u53D6\u6D88"))), scope.plan_ref && /*#__PURE__*/React.createElement(Range, {
       scope: scope,
       resources: data ? data.resources : null,
       onApply: apply,
@@ -33425,7 +33509,7 @@ function SMExport({
       onClick: () => locate()
     }, "\u5B9A\u4F4D\u672C\u6B21\u62A5\u5DE5"), selected.execution.remaining_plan && /*#__PURE__*/React.createElement("p", null, "\u5269\u4F59\u5B89\u6392\uFF1A", M.time(selected.execution.remaining_plan.start), " \u81F3 ", M.time(selected.execution.remaining_plan.end)), gapReportButtons, report && /*#__PURE__*/React.createElement("p", null, "\u767B\u8BB0\uFF1A", M.time(report.recorded_at), " \xB7 \u5386\u53F2\u7248\u672C ", report.correction_history.length, " \u6761")), /*#__PURE__*/React.createElement(Button, {
       icon: "arrow-right",
-      onClick: () => navigate('field')
+      onClick: openField
     }, "\u5230\u73B0\u573A\u8BB0\u5F55\u6838\u5BF9\u6216\u8865\u9F50"))), /*#__PURE__*/React.createElement("details", {
       className: "wb-gantt-detail-section",
       open: true
@@ -34955,7 +35039,7 @@ function SMExport({
   }
   function previewResult(v, inputRef) {
     const d = content(v);
-    check(shape(d, ['input_ref', 'normalized_input', 'write_context', 'calendar_check', 'warnings', 'data_context_ref', 'run_options']) && contextRef(d.data_context_ref) && token(inputRef) && d.input_ref === inputRef && d.calendar_check === 'not_evaluated' && issues(d.warnings));
+    check(shape(d, ['input_ref', 'normalized_input', 'write_context', 'calendar_check', 'warnings', 'data_context_ref', 'run_options']) && contextRef(d.data_context_ref) && d.input_ref === inputRef && d.calendar_check === 'not_evaluated' && issues(d.warnings));
     input(d.normalized_input);
     const c = d.write_context;
     check(d.run_options === null ? object(c) && c.capabilities && c.capabilities['scheduling.run'] === false && Array.isArray(c.blocked_reasons) && c.blocked_reasons.some(row => row.code === 'config_error') : window.RunGenerationContract.runOptions(d.run_options) && d.run_options.time_budget_seconds === d.normalized_input.time_budget_seconds);
@@ -34993,7 +35077,6 @@ function SMExport({
   const OUTCOMES = window.WorkbenchTerms.outcomes;
   const messages = {
     input_already_used: '这份检查结果已经开始过排产，请重新检查后再开始下一次。',
-    run_schema_unavailable: '排产记录还没准备好，暂时不能开始排产。请联系维护人员升级数据库。',
     run_worker_not_connected: '排产计算程序没有启动，暂时不能开始排产。请联系维护人员。',
     execution_ledger_unavailable: '报工记录还没准备好，请联系维护人员升级数据库。',
     snapshot_stale: '资料已更新或排产检查已过期，请重新做排产检查。刚才的选择已保留。',
@@ -35007,16 +35090,9 @@ function SMExport({
     scheduling_busy: '已有排产正在计算，请稍后再点「查询结果」。',
     candidate_artifact_invalid: '候选方案记录不完整，请联系维护人员。',
     candidate_capacity_exceeded: '候选方案数量超过读取上限。',
-    zero_duration_candidate_unsupported: '本次有零工时工序，候选计算还不支持。请核对工时资料。',
     candidate_computation_failed: '本次候选计算失败。请联系维护人员，再重新做排产检查。',
     run_interrupted: '这次排产已中断，没有自动重跑。',
     request_lifecycle_stopping: '程序正在停止或维护，这次排产没有开始。重新启动后请重新做排产检查。'
-  };
-  // Internal version numbers belong in the collapsed reference block, never in the sentence users read.
-  const messageDetails = {
-    run_schema_unavailable: {
-      '需要的数据库版本': 'v26'
-    }
   };
   function message(error) {
     return messages[error && error.code] || OUTCOMES.unknown('排产');
@@ -35028,16 +35104,12 @@ function SMExport({
   function previewMessage(error) {
     return error && messages[error.code] && !['storage_failure', 'entity_not_found', 'run_result_inconsistent'].includes(error.code) ? messages[error.code] : '排产条件没有读出来，请重新检查。';
   }
-  function details(error) {
-    return messageDetails[error && error.code] || null;
-  }
   function validIntent(v) {
     return shape(v, ['schema_version', 'input_ref', 'request_key', 'run_ref', 'data_context_ref']) && v.schema_version === 2 && contextRef(v.data_context_ref) && token(v.input_ref) && key(v.request_key) && (v.run_ref === null || ref(v.run_ref));
   }
   const store = T.pendingStore({
     key: PENDING_KEY,
     validate: validIntent,
-    validateWrite: null,
     readError: '读不到上次排产的操作记录，请重新打开页面，不要重做。',
     corruptError: '本机存的排产操作记录已损坏，已拦下新排产。请不要再操作，联系维护人员。',
     invalidError: '本机存的排产操作记录不完整，已拦下新排产。请不要再操作，联系维护人员。',
@@ -35048,7 +35120,6 @@ function SMExport({
   const recentStore = T.pendingStore({
     key: RECENT_KEY,
     validate: value => shape(value, ['intent', 'resolution']) && validIntent(value.intent) && ['found', 'context_replaced'].includes(value.resolution),
-    validateWrite: null,
     corruptError: '最近排产记录读不到，请到排产记录页查看。',
     invalidError: '最近排产记录不完整，请到排产记录页查看。'
   });
@@ -35057,13 +35128,13 @@ function SMExport({
     flush,
     save
   } = store;
+  // intent 都来自本存储读到并校验过的记录或 begin 刚写入的记录，转换只检查业务状态，不再重验记录格式。
   const runPending = {
     read,
     flush,
     recent: recentStore.read,
+    // inputRef 与 dataContext 都取自 previewResult 核过的排产核对结果。
     begin(inputRef, dataContext) {
-      check(token(inputRef), '排产检查已失效，请重新做排产检查。');
-      check(contextRef(dataContext));
       try {
         return save({
           schema_version: 2,
@@ -35077,8 +35148,9 @@ function SMExport({
         throw error;
       }
     },
+    // runRef 来自已校验的受理回执或排产记录。
     attach(intent, runRef) {
-      check(validIntent(intent) && ref(runRef) && (!intent.run_ref || intent.run_ref === runRef), '上次操作记录已变化，没有覆盖其他排产记录。');
+      check(!intent.run_ref || intent.run_ref === runRef, '上次操作记录已变化，没有覆盖其他排产记录。');
       try {
         return save({
           ...intent,
@@ -35090,19 +35162,15 @@ function SMExport({
       }
     },
     finish(intent, resolution) {
-      check(['found', 'context_replaced'].includes(resolution) && validIntent(intent));
       save(null, intent, () => recentStore.write({
         intent,
         resolution
       }));
     },
     reject(intent) {
-      check(validIntent(intent));
       save(null, intent);
     }
   };
-  // 排产操作记录只存在本页的 window.localStorage，全页共用这一份。
-  const pending = () => runPending;
   // 排产检查核对、受理回执和读取都按 30 秒等待；受理失败的结果编号指向排产请求查询。
   async function preview(inputRef, signal) {
     check(token(inputRef));
@@ -35113,8 +35181,8 @@ function SMExport({
       timeout: 30000
     }), inputRef);
   }
+  // intent 是 begin 刚写入的记录，writeToken 已由 previewResult 核过。
   async function accept(intent, writeToken) {
-    check(validIntent(intent) && intent.run_ref === null && token(writeToken));
     return accepted(await T.command(BASE + '/runs', {
       input_ref: intent.input_ref,
       write_token: writeToken,
@@ -35132,7 +35200,6 @@ function SMExport({
     })), runRef);
   }
   async function lookup(intent, signal) {
-    check(validIntent(intent));
     return lookupResult(await T.read(BASE + '/requests/' + intent.request_key, {
       data_context_ref: intent.data_context_ref
     }, {
@@ -35145,19 +35212,17 @@ function SMExport({
     accept,
     get,
     lookup,
-    pending,
+    pending: runPending,
     PENDING_KEY,
     RECENT_KEY,
     token,
     ref,
-    validIntent,
     terminal,
     run,
     accepted,
     message,
     failure,
     previewMessage,
-    details,
     pollDelay: attempt => Math.min(30000, 2000 * Math.pow(2, Math.min(4, Math.max(0, attempt))))
   };
 })();
@@ -35256,9 +35321,7 @@ function SMExport({
       role: "status"
     }, Array.from(groups.values()).slice(0, 20).map((row, index) => /*#__PURE__*/React.createElement("div", {
       key: index
-    }, ['run_worker_not_connected', 'run_schema_unavailable', 'execution_ledger_unavailable'].includes(row.code) ? A.message(row) : row.message, row.count > 1 ? '（' + row.count + ' 项）' : '', /*#__PURE__*/React.createElement(window.WorkbenchReference, {
-      entries: A.details(row)
-    }))), groups.size > 20 && /*#__PURE__*/React.createElement("div", null, "\u53E6\u6709 ", groups.size - 20, " \u7C7B\u539F\u56E0\uFF0C\u8BF7\u8FD4\u56DE\u6392\u4EA7\u68C0\u67E5\u6838\u5BF9\u3002"));
+    }, ['run_worker_not_connected', 'execution_ledger_unavailable'].includes(row.code) ? A.message(row) : row.message, row.count > 1 ? '（' + row.count + ' 项）' : '')), groups.size > 20 && /*#__PURE__*/React.createElement("div", null, "\u53E6\u6709 ", groups.size - 20, " \u7C7B\u539F\u56E0\uFF0C\u8BF7\u8FD4\u56DE\u6392\u4EA7\u68C0\u67E5\u6838\u5BF9\u3002"));
   }
   function BatchNames({
     rows
@@ -35541,7 +35604,7 @@ function SMExport({
     U = window.RunJobControls,
     T = window.APSWorkbenchTransport;
   // 本机记录还原成界面状态：本页还没写进磁盘的记录（读取错误带 saved）照样还原，错误交给 storageError。
-  function savedRecord(load = A.pending().read) {
+  function savedRecord(load = A.pending.read) {
     let pending,
       error = '';
     try {
@@ -35551,7 +35614,7 @@ function SMExport({
       pending = e.saved;
       error = e.message;
     }
-    const recent = pending ? null : A.pending().recent();
+    const recent = pending ? null : A.pending.recent();
     return {
       intent: pending || recent && recent.intent,
       pending: !!pending,
@@ -35589,17 +35652,13 @@ function SMExport({
       [timeBudget, setTimeBudget] = React.useState(null),
       [submitting, setSubmitting] = React.useState(false);
     const [error, setError] = React.useState(''),
-      [errorDetails, setErrorDetails] = React.useState(null),
       [notice, setNotice] = React.useState(''),
       [busy, setBusy] = React.useState(false);
-    // 错误正文只说人话；版本号之类的技术细节走 A.details 进折叠编号区。
     const fail = (e, text) => {
-      setError(text || A.message(e));
-      setErrorDetails(A.details(e));
+      setError(text || A.failure(e));
     };
     const clearError = () => {
       setError('');
-      setErrorDetails(null);
     };
     const [unavailable, setUnavailable] = React.useState('');
     const [verified, setVerified] = React.useState(false);
@@ -35697,7 +35756,7 @@ function SMExport({
         return T.exclusive(A.PENDING_KEY, {
           wait: true
         }, () => {
-          const store = A.pending(),
+          const store = A.pending,
             saved = store.flush();
           if (!saved) return {
             intent: activeIntent.current,
@@ -35847,7 +35906,7 @@ function SMExport({
     function previewFailure(error, owner, controller) {
       if (!ownsPreview(owner, controller)) return;
       fail(error, A.previewMessage(error));
-      if (['run_schema_unavailable', 'run_worker_not_connected'].includes(error.code)) setUnavailable(A.message(error));
+      if (error.code === 'run_worker_not_connected') setUnavailable(A.message(error));
     }
     function finishPreview(owner, controller) {
       if (previewRequest.current !== controller) return;
@@ -35914,7 +35973,7 @@ function SMExport({
             return;
           }
           try {
-            original = A.pending().begin(preview.input_ref, preview.data_context_ref);
+            original = A.pending.begin(preview.input_ref, preview.data_context_ref);
           } catch (e) {
             storageFailed = true;
             if (alive.current) setStorageError(e.message);
@@ -35939,7 +35998,7 @@ function SMExport({
               setNotice(receipt.dispatch_pending ? '排产已接收，交给计算程序时没有确认。正在查询结果，没有重新提交。' : '');
             }
             try {
-              const saved = A.pending().attach(original, receipt.run_ref);
+              const saved = A.pending.attach(original, receipt.run_ref);
               if (owned) {
                 activeIntent.current = saved;
                 setIntent(saved);
@@ -35957,7 +36016,7 @@ function SMExport({
                 fail(e);
               }
               try {
-                A.pending().reject(original);
+                A.pending.reject(original);
               } catch (storageErr) {
                 if (alive.current) setStorageError(storageErr.message);
               }
@@ -35986,7 +36045,7 @@ function SMExport({
       try {
         const saved = (await T.exclusive(A.PENDING_KEY, {
           wait: true
-        }, () => savedRecord(A.pending().flush))).value;
+        }, () => savedRecord(A.pending.flush))).value;
         setIntent(saved.intent);
         setPendingActive(saved.pending);
         setResolution(saved.resolution || 'unresolved');
@@ -36045,9 +36104,7 @@ function SMExport({
     }, "\u5237\u65B0\u4E0A\u6B21\u64CD\u4F5C\u8BB0\u5F55"))), error && /*#__PURE__*/React.createElement("div", {
       className: "rj-notice",
       role: "alert"
-    }, error, errorDetails && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
-      entries: errorDetails
-    })), notice && /*#__PURE__*/React.createElement("div", {
+    }, error), notice && /*#__PURE__*/React.createElement("div", {
       className: "rj-notice",
       role: "status"
     }, notice), preview && !confirming && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(U.Scope, {
@@ -36057,7 +36114,6 @@ function SMExport({
       rows: preview.write_context.blocked_reasons
     })), intent && /*#__PURE__*/React.createElement(U.Record, {
       run: run,
-      intent: intent,
       title: pendingActive ? '本次排产' : '上次排产',
       paused: paused,
       retryPaused: retryPaused,
@@ -36126,7 +36182,7 @@ function SMExport({
   function summary(v) {
     return shape(v, ['candidate_ref', 'run_ref', 'baseline', 'task_count', 'scope_complete']) && ref(v.candidate_ref) && ref(v.run_ref) && shape(v.baseline, ['plan_ref', 'version']) && (v.baseline.plan_ref === null ? v.baseline.version === null : ref(v.baseline.plan_ref) && count(v.baseline.version) && v.baseline.version > 0) && count(v.task_count) && v.task_count > 0 && v.scope_complete === true;
   }
-  // 采用范围的投影只取字段、不校验：预检结果在 previewResult 里核过，写入的记录再由 save 整体校验。
+  // 采用范围的投影只取字段、不校验：预检结果在 previewResult 里核过。
   const overviewFields = v => ({
     candidate_ref: v.candidate_ref,
     run_ref: v.run_ref,
@@ -36147,10 +36203,8 @@ function SMExport({
     return d;
   }
   function input(v) {
-    check(shape(v, ['confirm', 'reason', 'declared_operator']) && v.confirm === true, '请勾选确认后再正式采用。');
-    for (const [name, limit] of [['reason', 1000], ['declared_operator', 100]]) {
-      check(text(v[name]) && v[name].trim().length > 0 && Array.from(v[name]).length <= limit && !v[name].includes('\x00'), '请填写采用原因和经办人。');
-    }
+    check(shape(v, ['confirm', 'reason', 'declared_operator']) && v.confirm === true, '请勾选确认正式采用。');
+    for (const [name, limit] of [['reason', 1000], ['declared_operator', 100]]) check(text(v[name]) && v[name].trim() && Array.from(v[name].trim()).length <= limit && !v[name].includes('\0'), '请填写采用原因（1 至 1000 字）和经办人（1 至 100 字）。');
     return {
       confirm: true,
       reason: v.reason.trim(),
@@ -36172,7 +36226,7 @@ function SMExport({
         resolution: 'context_replaced',
         message: v.message
       };
-      replacedProofs.set(info, JSON.stringify(intent));
+      replacedProofs.set(info, T.canonical(intent));
       return info;
     }
     return receipt(v, intent);
@@ -36180,7 +36234,7 @@ function SMExport({
   function validIntent(v) {
     if (!shape(v, ['schema_version', 'candidate_ref', 'request_key', 'input', 'preview', 'phase', 'data_context_ref']) || v.schema_version !== 2 || !ref(v.candidate_ref) || !contextRef(v.data_context_ref) || !key(v.request_key) || !summary(v.preview) || v.preview.candidate_ref !== v.candidate_ref || !['pending', 'rejected'].includes(v.phase)) return false;
     try {
-      return JSON.stringify(input(v.input)) === JSON.stringify(v.input);
+      return T.equal(input(v.input), v.input);
     } catch (_) {
       return false;
     }
@@ -36193,16 +36247,14 @@ function SMExport({
     key: PENDING_KEY,
     event: EVENT,
     validate: validIntent,
-    same: (a, b) => JSON.stringify(a) === JSON.stringify(b),
     readError: '读不到上次采用的操作记录，不要重新采用。',
     corruptError: '本机存的采用操作记录已损坏，已拦下新采用。请不要再操作，联系维护人员。',
     invalidError: '本机存的采用操作记录不完整，已拦下新采用。请不要再操作，联系维护人员。',
     conflictError: '上次采用记录已变化，没有覆盖其他操作。',
-    invalidWriteError: '读到的采用数据不完整，请刷新重试。',
     writeError: '存不下采用的操作记录，没有开始新的采用。请重新打开页面。'
   });
-  // intent/previous 只来自本存储已校验的记录：save 写入前整体校验，previous 还要与磁盘上已校验的当前值相等才写得进去。
-  // value 是 previewResult 核过的可采用预检，values 是 input() 规整过的填写内容；各转换只检查业务状态。
+  // intent/previous 只来自本存储读到并校验过的记录，previous 还要与磁盘上的当前值相等才写得进去。
+  // value 是 previewResult 核过的可采用预检，values 是 input() 规整过的填写内容；各转换只检查业务状态，写前不再重验。
   const adoptionPending = {
     read,
     flush,
@@ -36230,15 +36282,13 @@ function SMExport({
       return save(null, intent);
     },
     dismissReplaced(intent, info) {
-      check(intent.phase === 'pending' && replacedProofs.get(info) === JSON.stringify(intent), '结果还没确认，不能丢弃上次操作。');
+      check(intent.phase === 'pending' && replacedProofs.get(info) === T.canonical(intent), '结果还没确认，不能丢弃上次操作。');
       return save(null, intent);
     },
     finish(intent) {
       return save(null, intent);
     }
   };
-  // 采用操作记录只存在本页的 window.localStorage，全页共用这一份。
-  const pending = () => adoptionPending;
   const candidatePath = candidateRef => BASE + 'scheduling/candidates/' + candidateRef;
   async function preview(candidateRef, signal) {
     check(ref(candidateRef));
@@ -36274,9 +36324,8 @@ function SMExport({
     lookup,
     receipt,
     input,
-    pending,
+    pending: adoptionPending,
     ref,
-    validIntent,
     contextRef,
     PENDING_KEY,
     EVENT
@@ -36494,7 +36543,7 @@ function SMExport({
     const [initial] = React.useState(() => {
       try {
         return {
-          intent: A.pending().read(),
+          intent: A.pending.read(),
           error: ''
         };
       } catch (e) {
@@ -36537,10 +36586,10 @@ function SMExport({
         if (previewRequest.current) previewRequest.current.abort();
       };
     }, []);
-    function readStorage(event, load = A.pending().read) {
+    function readStorage(event, load = A.pending.read) {
       try {
         const saved = event && event.type === A.EVENT ? event.detail : load();
-        if (saved !== active.current && JSON.stringify(saved) !== JSON.stringify(active.current)) {
+        if (saved !== active.current && !T.equal(saved, active.current)) {
           const switched = !active.current || !saved || saved.request_key !== active.current.request_key;
           const nextDraft = saved ? saved.input : empty();
           active.current = saved;
@@ -36568,7 +36617,7 @@ function SMExport({
         }
         if (alive.current) setStorageError('');
       } catch (e) {
-        const changed = e.saved !== undefined && JSON.stringify(e.saved) !== JSON.stringify(active.current);
+        const changed = e.saved !== undefined && !T.equal(e.saved, active.current);
         const nextDraft = changed ? e.saved ? e.saved.input : empty() : current.current.draft;
         if (changed) active.current = e.saved;
         current.current = {
@@ -36685,10 +36734,10 @@ function SMExport({
           acquired
         } = await T.exclusive(A.PENDING_KEY, {}, async () => {
           const latest = current.current;
-          if (!alive.current || latest.storageError || latest.preview !== preview || !latest.consent || (active.current ? active.current.candidate_ref : latest.candidateRef) !== preview.candidate_ref || latest.draft.reason !== draft.reason || latest.draft.declared_operator !== draft.declared_operator || JSON.stringify(active.current) !== JSON.stringify(initialActive) || active.current && active.current.phase === 'pending') return;
+          if (!alive.current || latest.storageError || latest.preview !== preview || !latest.consent || (active.current ? active.current.candidate_ref : latest.candidateRef) !== preview.candidate_ref || latest.draft.reason !== draft.reason || latest.draft.declared_operator !== draft.declared_operator || !T.equal(active.current, initialActive) || active.current && active.current.phase === 'pending') return;
           let original;
           try {
-            original = A.pending().begin(preview, values, active.current);
+            original = A.pending.begin(preview, values, active.current);
           } catch (e) {
             setStorageError(e.message);
             return;
@@ -36706,7 +36755,7 @@ function SMExport({
           try {
             acceptResult(await A.adopt(original, preview.write_context.write_token), original);
           } catch (e) {
-            if (JSON.stringify(active.current) !== JSON.stringify(original)) {
+            if (!T.equal(active.current, original)) {
               if (alive.current) readStorage();
               return;
             }
@@ -36717,18 +36766,18 @@ function SMExport({
                 phase: 'rejected'
               };
               try {
-                A.pending().reject(original, e);
+                A.pending.reject(original, e);
                 active.current = rejected;
               } catch (storageErr) {
                 if (!alive.current) return;
-                if (JSON.stringify(active.current) !== JSON.stringify(rejected)) {
+                if (!T.equal(active.current, rejected)) {
                   readStorage();
                   setStorageError(storageErr.message);
                   return;
                 }
                 setStorageError(storageErr.message);
               }
-              if (alive.current && JSON.stringify(active.current) === JSON.stringify(rejected)) setError(e.message + ' 填写内容已保留，请重新预检并确认。');
+              if (alive.current && T.equal(active.current, rejected)) setError(e.message + ' 填写内容已保留，请重新预检并确认。');
             } else if (alive.current) setError(window.WorkbenchTerms.outcomes.pending('采用'));
           }
         });
@@ -36748,7 +36797,7 @@ function SMExport({
       try {
         await T.exclusive(A.PENDING_KEY, {
           wait: true
-        }, () => readStorage(undefined, A.pending().flush));
+        }, () => readStorage(undefined, A.pending.flush));
       } catch (e) {
         setStorageError(e.message);
       }
@@ -36770,7 +36819,7 @@ function SMExport({
       try {
         await T.exclusive(A.PENDING_KEY, {
           wait: true
-        }, () => A.pending().finish(intent));
+        }, () => A.pending.finish(intent));
         setResult(null);
         setOpen(false);
         setNotice(window.WorkbenchTerms.outcomes.done('采用'));
@@ -36782,7 +36831,7 @@ function SMExport({
       try {
         await T.exclusive(A.PENDING_KEY, {
           wait: true
-        }, () => A.pending().cancelRejected(intent));
+        }, () => A.pending.cancelRejected(intent));
         setOpen(false);
         setNotice('已结束本次未采用，原正式计划未改变。');
       } catch (e) {
@@ -36793,7 +36842,7 @@ function SMExport({
       try {
         await T.exclusive(A.PENDING_KEY, {
           wait: true
-        }, () => A.pending().dismissReplaced(intent, replacedInfo));
+        }, () => A.pending.dismissReplaced(intent, replacedInfo));
         setReplacedInfo(null);
         setOpen(false);
         setNotice('已结束本机的旧来源待确认记录，原数据库中的采用结果未作更改。');
@@ -36959,7 +37008,6 @@ function SMExport({
     check(new Set(d.candidates.map(c => c.candidate_ref)).size === d.candidates.length);
     return d;
   }
-  const validateCatalog = (v, runRef, query) => _validateCatalog(v, runRef, catalogScope(query));
   function workspaceScope(candidateRef, query) {
     check(ref(candidateRef), '请选择有效的候选方案。');
     check(shape(query, [], ['range_start', 'range_end', 'batch_ref', 'sort', 'order', 'snapshot_ref']));
@@ -37062,7 +37110,6 @@ function SMExport({
     }));
     return d;
   }
-  const validateWorkspace = (v, candidateRef, query) => _validateWorkspace(v, candidateRef, workspaceScope(candidateRef, query));
   // 文件名非空与后缀由传输层按 Content-Type 断言；这里只核对本领域业务头与当前读取范围。
   function download(value, result) {
     const d = result.data;
@@ -37134,9 +37181,7 @@ function SMExport({
     shape,
     summary,
     validateIdentity,
-    validateCatalog,
     catalogScope,
-    validateWorkspace,
     workspaceScope,
     download,
     metricKeys,
@@ -38524,12 +38569,12 @@ function SMExport({
     const integers = value => object(value) && Object.values(value).every(count);
     const descriptors = ['name', 'label', 'primary_metric_key', 'primary_metric_label', 'unit', 'score_fields'];
     const fields = ['run_ref', 'capture_ref', 'scope', 'baseline', 'process_version', 'summary', 'counts', 'budget', 'stop_reason', 'bridges', 'objectives', 'selected_objective', 'progress', 'scopes', 'actions', 'stages', 'candidate', 'candidates', 'source_event', 'items', 'page', 'filters'];
-    check(A.shape(data, fields) && data.process_version === 'unified-optimization-process-v1' && data.run_ref === runRef && data.capture_ref === runRef && object(data.scope) && data.scope.run_ref === runRef && data.scope.comparison_mode === q.comparison_mode && (q.selected_candidate_ref ? data.scope.selected_candidate_ref === q.selected_candidate_ref : data.scope.selected_candidate_ref === null || ref(data.scope.selected_candidate_ref)) && time(data.scope.range_start) && time(data.scope.range_end) && timeKey(data.scope.range_start) < timeKey(data.scope.range_end) && object(data.scope.reference) && object(data.baseline) && data.baseline.kind === data.scope.reference.kind && data.baseline.state === data.scope.reference_state && G.runOptions(data.scope.run_options), '共同优化过程的运行或保存选项不一致，请点“刷新优化过程”。');
+    check(A.shape(data, fields) && data.process_version === 'unified-optimization-process-v1' && data.run_ref === runRef && data.capture_ref === runRef && object(data.scope) && data.scope.run_ref === runRef && data.scope.comparison_mode === q.comparison_mode && (q.selected_candidate_ref === undefined || data.scope.selected_candidate_ref === q.selected_candidate_ref) && time(data.scope.range_start) && time(data.scope.range_end) && timeKey(data.scope.range_start) < timeKey(data.scope.range_end) && object(data.scope.reference) && object(data.baseline) && data.baseline.kind === data.scope.reference.kind && data.baseline.state === data.scope.reference_state && G.runOptions(data.scope.run_options), '共同优化过程的运行或保存选项不一致，请点“刷新优化过程”。');
     bindScope(payload, data, q);
     if (q.comparison_mode === 'candidates') check(data.scope.reference.kind === 'candidate' && data.baseline.candidate_ref === data.scope.reference.candidate_ref && (data.scope.reference_state === 'available' ? ref(data.scope.reference.candidate_ref) : data.scope.reference_state === 'selection_required' && data.scope.reference.candidate_ref === null) && (!q.reference_candidate_ref || data.scope.reference.candidate_ref === q.reference_candidate_ref), '过程的查看基准已变化，请点“刷新优化过程”。');
     const names = data.scope.run_options.target_objectives;
     const descriptor = value => A.shape(value, descriptors) && G.objective(value.name) && ['label', 'primary_metric_key', 'primary_metric_label', 'unit'].every(key => typeof value[key] === 'string') && Array.isArray(value.score_fields) && G.sameArray(value.score_fields.map(field => field.key), G.fieldOrders[value.name]) && value.score_fields.every((field, index) => A.shape(field, ['index', 'key', 'label', 'unit', 'direction']) && field.index === index && field.direction === 'lower' && ['key', 'label', 'unit'].every(key => typeof field[key] === 'string'));
-    check(Array.isArray(data.objectives) && G.sameArray(data.objectives.map(value => value.name), names) && data.objectives.every(descriptor) && descriptor(data.selected_objective) && names.includes(data.selected_objective.name) && data.selected_objective.name === (q.objective || data.scope.run_options.primary_objective) && JSON.stringify(data.selected_objective) === JSON.stringify(data.objectives.find(value => value.name === data.selected_objective.name)), '过程的优化方向或评分字段已变化，请点“刷新优化过程”。');
+    check(Array.isArray(data.objectives) && G.sameArray(data.objectives.map(value => value.name), names) && data.objectives.every(descriptor) && descriptor(data.selected_objective) && names.includes(data.selected_objective.name) && (q.objective === undefined || data.selected_objective.name === q.objective) && JSON.stringify(data.selected_objective) === JSON.stringify(data.objectives.find(value => value.name === data.selected_objective.name)), '过程的优化方向或评分字段已变化，请点“刷新优化过程”。');
     const selectedObjective = data.selected_objective.name,
       summary = data.summary;
     check(A.shape(summary, ['elapsed_ms', 'first_complete_elapsed_ms', 'first_improvement_elapsed_ms', 'last_improvement_elapsed_ms']) && amount(summary.elapsed_ms) && ['first_complete_elapsed_ms', 'first_improvement_elapsed_ms', 'last_improvement_elapsed_ms'].every(key => optionalAmount(summary[key]) && (summary[key] === null || summary[key] <= summary.elapsed_ms)) && (summary.first_improvement_elapsed_ms === null ? summary.last_improvement_elapsed_ms === null : summary.last_improvement_elapsed_ms !== null && summary.first_improvement_elapsed_ms <= summary.last_improvement_elapsed_ms) && nullableText(data.stop_reason), '共同优化的真实用时或改善时刻不完整，请点“刷新优化过程”。');
@@ -38545,8 +38590,8 @@ function SMExport({
     const member = value => A.shape(value, memberFields) && ref(value.candidate_ref) && nullableText(value.label) && ['completed', 'partial'].includes(value.status) && G.objectives(value.representative_objectives) && value.representative_objectives.every(name => names.includes(name)) && G.origin(value.origin) && amount(value.first_found_elapsed_ms) && G.evidence(value.search_evidence_ref, runRef);
     check(Array.isArray(data.candidates) && data.candidates.length >= 1 && data.candidates.length <= 3 && data.candidates.every(member) && new Set(data.candidates.map(value => value.candidate_ref)).size === data.candidates.length && member(data.candidate), '过程来源候选的保存身份不完整，请点“刷新优化过程”。');
     const catalog = new Map(data.candidates.map(value => [value.candidate_ref, value]));
-    const anchor = q.process_candidate_ref || data.scope.selected_candidate_ref || data.candidates[0].candidate_ref;
-    check(data.candidate.candidate_ref === anchor && catalog.has(anchor) && JSON.stringify(data.candidate) === JSON.stringify(catalog.get(anchor)) && (data.scope.selected_candidate_ref === null || catalog.has(data.scope.selected_candidate_ref)), '过程来源定位已变化，请点“刷新优化过程”。');
+    const anchor = data.candidate.candidate_ref;
+    check((q.process_candidate_ref === undefined || anchor === q.process_candidate_ref) && catalog.has(anchor) && JSON.stringify(data.candidate) === JSON.stringify(catalog.get(anchor)) && catalog.has(data.scope.selected_candidate_ref), '过程来源定位已变化，请点“刷新优化过程”。');
     check(data.source_event === null || object(data.source_event) && positive(data.source_event.event_id) && data.source_event.event_id === data.candidate.search_evidence_ref.source_event_id && amount(data.source_event.elapsed_ms) && typeof data.source_event.phase === 'string' && typeof data.source_event.verified === 'boolean' && (data.source_event.scope_ref === undefined || Object.prototype.hasOwnProperty.call(data.scopes, data.source_event.scope_ref)), '候选的真实来源事件不一致，请点“刷新优化过程”。');
     const pointFields = ['elapsed_ms', 'entry_id', 'source_event_id', 'search_objective', 'origin', 'score', 'field_order', 'scope_ref', 'segment', 'flags', 'phase', 'verified', 'primary_value'];
     const mandatoryFlags = ['first_valid', 'first_expected_complete', 'final'],
@@ -40205,11 +40250,7 @@ function SMExport({
       icon: "chevron-left",
       className: "btn link",
       onClick: () => onNavigate(runHistoryReturn.view, runHistoryReturn.context)
-    }, "\u8FD4\u56DE\u6392\u4EA7\u8BB0\u5F55"), initialContext.return_plan_context && /*#__PURE__*/React.createElement(C.Button, {
-      icon: "chevron-left",
-      className: "btn link",
-      onClick: () => onNavigate('analysis', initialContext.return_plan_context)
-    }, "\u8FD4\u56DE\u6B63\u5F0F\u8BA1\u5212"), initialContext.return_recommendation_context && /*#__PURE__*/React.createElement(C.Button, {
+    }, "\u8FD4\u56DE\u6392\u4EA7\u8BB0\u5F55"), initialContext.return_recommendation_context && /*#__PURE__*/React.createElement(C.Button, {
       icon: "chevron-left",
       className: "btn link",
       onClick: () => onNavigate('analysis', initialContext.return_recommendation_context)
@@ -41653,8 +41694,7 @@ function SMExport({
     };
     const q = window.RunDecisionAPI.processScope(runRef, {
         ...stored,
-        ...shared,
-        process_candidate_ref: stored.process_candidate_ref || scope.selected_candidate_ref || undefined
+        ...shared
       }),
       key = JSON.stringify(q);
     const [paused, setPaused] = React.useState(false);
@@ -41662,7 +41702,7 @@ function SMExport({
       setPaused(false);
     }, [runRef, key, result.meta.snapshot_ref]);
     const read = window.APSResourceSession.useQuery(signal => window.RunDecisionAPI.process(runRef, q, signal), [runRef, key, result.meta.snapshot_ref], enabled && !paused);
-    const detail = read.result && (!q.process_candidate_ref || read.result.data.candidate.candidate_ref === q.process_candidate_ref) ? read.result : null,
+    const detail = read.result,
       data = detail && detail.data;
     function update(change, paging = false) {
       const next = {
@@ -42818,8 +42858,7 @@ function SMExport({
     })))));
   }
   function Calculation({
-    data,
-    definitions
+    data
   }) {
     const fields = ['summed_load_hours', 'demand_ratio', 'balance_cv'];
     return /*#__PURE__*/React.createElement("details", {
@@ -43848,8 +43887,7 @@ function SMExport({
     }, "\u5F53\u524D\u7B5B\u9009\u6CA1\u6709\u8D44\u6E90\u8BB0\u5F55\u3002")), /*#__PURE__*/React.createElement(Coverage, {
       data: data
     }), /*#__PURE__*/React.createElement(Calculation, {
-      data: data,
-      definitions: overview.metric_definitions
+      data: data
     }), /*#__PURE__*/React.createElement(Rankings, {
       data: data,
       onFocus: focus,
@@ -46334,12 +46372,6 @@ function SMExport({
       busy: read.loading
     };
   }
-  function returnContext(value) {
-    const result = {};
-    for (const key of ['run_ref', 'candidate_ref', 'plan_ref', 'batch_ref']) if (value && A.ref(value[key])) result[key] = value[key];
-    for (const key of ['range_start', 'range_end']) if (value && A.time(value[key])) result[key] = value[key];
-    return result;
-  }
   // One 导出 button opens the format dialog, the same walk as the plan, trial and actual-gantt exports.
   function Export({
     result,
@@ -46649,11 +46681,7 @@ function SMExport({
       icon: "chevron-left",
       className: "btn link",
       onClick: () => onNavigate(runHistoryReturn.view, runHistoryReturn.context)
-    }, "\u8FD4\u56DE\u6392\u4EA7\u8BB0\u5F55"), initialContext.return_plan_context && A.ref(initialContext.return_plan_context.plan_ref) && /*#__PURE__*/React.createElement(C.Button, {
-      icon: "chevron-left",
-      className: "btn link",
-      onClick: () => onNavigate('analysis', returnContext(initialContext.return_plan_context))
-    }, "\u8FD4\u56DE\u6B63\u5F0F\u8BA1\u5212")), /*#__PURE__*/React.createElement("div", {
+    }, "\u8FD4\u56DE\u6392\u4EA7\u8BB0\u5F55")), /*#__PURE__*/React.createElement("div", {
       className: "rc-actions"
     }, !isReference && renderAdoption(candidateRef, {
       candidateDisplay: shown && shown.candidate.candidate_ref === candidateRef ? {
@@ -46971,7 +46999,7 @@ function SMExport({
   const timeKey = v => v.slice(0, 19) + '.' + (v.split('.')[1] || '').padEnd(6, '0');
   const gap = v => shape(v, ['field', 'code', 'message']) && [v.field, v.code, v.message].every(text);
   const queryKeys = ['page', 'size', 'state', 'accepted_from', 'accepted_to', 'sort', 'order', 'snapshot_ref'];
-  function scope(query) {
+  function scope(query = {}) {
     check(shape(query, [], queryKeys), '查询条件里有不认识的项，没有自动忽略。请从侧栏重新打开排产记录。');
     const q = {
       page: 1,
@@ -46988,35 +47016,12 @@ function SMExport({
     });
     return q;
   }
-  function planContext(value) {
-    check(value === undefined || object(value), '返回正式计划的来源信息无效，请从侧栏重新打开。');
-    const result = {};
-    for (const key of ['plan_ref', 'batch_ref']) if (value && own(value, key)) {
-      check(ref(value[key]), '返回正式计划的编号无效，请从侧栏重新打开。');
-      result[key] = value[key];
-    }
-    for (const key of ['range_start', 'range_end']) if (value && own(value, key)) {
-      check(time(value[key]));
-      result[key] = value[key];
-    }
-    return result;
-  }
-  function context(value = {}) {
-    check(shape(value, [], queryKeys.concat(['source', 'return_plan_context'])) && (value.source === undefined || value.source === 'production'), '排产记录来源或返回范围无效，请从侧栏重新打开。');
-    const q = {};
-    queryKeys.forEach(k => {
-      if (own(value, k)) q[k] = value[k];
-    });
-    return {
-      query: scope(q),
-      returnPlan: planContext(value.return_plan_context)
-    };
-  }
-  function returnContext(query, returnPlan) {
-    const result = scope(query);
-    delete result.snapshot_ref;
-    if (Object.keys(returnPlan).length) result.return_plan_context = returnPlan;
-    return result;
+  // 入参是已校验的查询状态（scope() 的产物或由它派生）；返回链接只去掉快照钉，不改动调用方的状态对象。
+  function returnContext({
+    snapshot_ref,
+    ...query
+  }) {
+    return query;
   }
   // 不重排时段：没带这一项表示按交付设置推算；null 是“不设”，存的值读不出来时也是 null，并附一条资料缺项。
   const minute = v => text(v) && date(v.slice(0, 10)) && /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d$/.test(v);
@@ -47051,9 +47056,9 @@ function SMExport({
       y = right === null ? '' : timeKey(right);
     return direction * (x < y ? -1 : x > y ? 1 : a.run_ref < b.run_ref ? -1 : a.run_ref > b.run_ref ? 1 : 0);
   }
-  function validateCatalog(v, query) {
+  // q 是已校验的查询状态（同上），这里只核对返回与它一致。
+  function validateCatalog(v, q) {
     // 翻页和页面记忆都要用本次快照，不能为空。
-    const q = scope(query);
     check(token(v.meta.snapshot_ref));
     if (q.snapshot_ref && q.snapshot_ref !== v.meta.snapshot_ref) {
       const error = new Error(window.WorkbenchTerms.outcomes.stale);
@@ -47070,20 +47075,17 @@ function SMExport({
     return d;
   }
   async function catalog(query, signal) {
-    const q = scope(query),
-      value = await T.read('/api/workbench/v1/scheduling/runs', q, {
-        signal,
-        timeout: 60000
-      });
-    validateCatalog(value, q);
+    const value = await T.read('/api/workbench/v1/scheduling/runs', query, {
+      signal,
+      timeout: 60000
+    });
+    validateCatalog(value, query);
     return value;
   }
   window.RunHistoryAPI = {
     catalog,
-    validateCatalog,
     check,
     scope,
-    context,
     returnContext,
     ref,
     date,
@@ -49450,12 +49452,12 @@ function SMExport({
     }, label)));
   }
   function Session({
-    start,
+    initialQuery,
     onNavigate,
     navigation,
     pageContext
   }) {
-    const [query, setQuery] = React.useState(start.query),
+    const [query, setQuery] = React.useState(initialQuery),
       [revision, refresh] = React.useReducer(v => v + 1, 0);
     const read = useRead(query, revision),
       result = read.result,
@@ -49465,7 +49467,7 @@ function SMExport({
       source: 'run_history',
       history_topic: 'run_catalog',
       history_query: {
-        ...A.returnContext(query, start.returnPlan),
+        ...A.returnContext(query),
         ...(result ? {
           snapshot_ref: result.meta.snapshot_ref
         } : {})
@@ -49497,12 +49499,10 @@ function SMExport({
       apply(A.scope(q));
     }
     function open(run) {
-      const context = {
+      onNavigate('analysis', {
         run_ref: run.run_ref,
-        return_history_context: A.returnContext(query, start.returnPlan)
-      };
-      if (Object.keys(start.returnPlan).length) context.return_plan_context = start.returnPlan;
-      onNavigate('analysis', context);
+        return_history_context: A.returnContext(query)
+      });
     }
     return /*#__PURE__*/React.createElement("div", {
       className: "plana run-history-workspace",
@@ -49517,7 +49517,7 @@ function SMExport({
     }, /*#__PURE__*/React.createElement(C.Button, {
       icon: "chevron-left",
       "aria-label": "\u8FD4\u56DE\u6B63\u5F0F\u8BA1\u5212",
-      onClick: () => onNavigate('analysis', start.returnPlan)
+      onClick: () => onNavigate('analysis', {})
     }, "\u8FD4\u56DE\u6B63\u5F0F\u8BA1\u5212"), /*#__PURE__*/React.createElement(C.Button, {
       icon: "refresh-cw",
       "aria-label": "\u5237\u65B0\u6392\u4EA7\u8BB0\u5F55",
@@ -49597,9 +49597,9 @@ function SMExport({
         })
       })
     });
-    let start;
+    let query;
     try {
-      start = A.context(initialContext);
+      query = A.scope(initialContext);
     } catch (error) {
       return /*#__PURE__*/React.createElement("div", {
         className: "plana run-history-workspace",
@@ -49611,8 +49611,8 @@ function SMExport({
       }));
     }
     return /*#__PURE__*/React.createElement(Session, {
-      key: JSON.stringify(start),
-      start: start,
+      key: JSON.stringify(query),
+      initialQuery: query,
       pageContext: pageContext,
       onNavigate: onNavigate,
       navigation: navigation
@@ -49630,19 +49630,12 @@ function SMExport({
   function runHistoryDestination(context) {
     const origin = context.return_decision_context || context;
     const saved = context.return_history_context || origin.return_history_context || context.history_query || origin.history_query || {};
-    const returnPlan = context.return_plan_context || origin.return_plan_context || saved.return_plan_context;
-    const restored = window.RunHistoryAPI.context({
-      ...saved,
-      ...(returnPlan ? {
-        return_plan_context: returnPlan
-      } : {})
-    });
     return {
       view: 'analysis',
       context: {
         source: 'run_history',
         history_topic: 'run_catalog',
-        history_query: window.RunHistoryAPI.returnContext(restored.query, restored.returnPlan)
+        history_query: window.RunHistoryAPI.returnContext(window.RunHistoryAPI.scope(saved))
       }
     };
   }
@@ -49839,7 +49832,6 @@ function SMExport({
     context,
     onNavigate
   }) {
-    if (!context.return_decision_history_context && !(context.return_decision_context && context.return_decision_context.return_decision_history_context)) return null;
     return window.DecisionHistoryAPI.returnState(context) ? /*#__PURE__*/React.createElement(U.Button, {
       icon: "chevron-left",
       onClick: () => onNavigate('analysis', window.DecisionHistoryAPI.historyContext(context))
@@ -49884,6 +49876,15 @@ function SMExport({
     const context = initialContext,
       candidate = Object.prototype.hasOwnProperty.call(context, 'run_ref') || Object.prototype.hasOwnProperty.call(context, 'candidate_ref');
     const history = !candidate && context.source === 'run_history';
+    let formal = null,
+      formalError = null;
+    if (!candidate && !history) {
+      try {
+        formal = window.APSPlanNavigation.accept(context);
+      } catch (error) {
+        formalError = error;
+      }
+    }
     const runHistoryReturn = runHistoryDestination(context);
     function renderTrial(value) {
       return trialAction(onNavigate, {
@@ -49891,7 +49892,10 @@ function SMExport({
         historyOrigin: window.DecisionHistoryAPI.returnState(context)
       });
     }
-    const navigation = /*#__PURE__*/React.createElement(Navigation, null, !history && /*#__PURE__*/React.createElement(HistoryReturn, {
+    const navigation = /*#__PURE__*/React.createElement(Navigation, null, formal && formal.return_to && /*#__PURE__*/React.createElement(U.Button, {
+      icon: "chevron-left",
+      onClick: () => onNavigate(formal.return_to.view, formal.return_to.context)
+    }, "\u8FD4\u56DE"), !history && /*#__PURE__*/React.createElement(HistoryReturn, {
       context: context,
       onNavigate: onNavigate
     }), /*#__PURE__*/React.createElement(U.Button, {
@@ -49920,9 +49924,13 @@ function SMExport({
       pageContext: context,
       onNavigate: onNavigate,
       navigation: navigation
-    }) : /*#__PURE__*/React.createElement(window.PlanWorkspace, {
+    }) : formalError ? /*#__PURE__*/React.createElement("section", {
+      className: "plana plan-workspace"
+    }, navigation, /*#__PURE__*/React.createElement("p", {
+      role: "alert"
+    }, formalError.message)) : /*#__PURE__*/React.createElement(window.PlanWorkspace, {
       view: view,
-      initialContext: initialContext,
+      initialContext: formal,
       onNavigate: onNavigate,
       renderTrial: renderTrial,
       navigation: navigation
@@ -50182,51 +50190,27 @@ function SMExport({
     ROOT = '/api/workbench/v1',
     BASE = ROOT + '/trial';
   const PENDING_KEY = 'aps_workbench_trial_pending_v1';
-  const CONFLICT_MESSAGE = '上次操作记录已变化，没有清除其他操作记录。';
   const validKey = v => typeof v === 'string' && /^trial-[a-f0-9]{48}$/.test(v);
+  // 待确认试调提交的 key。服务端结论已定、本机删不掉时，共享存储登记这次清除：read() 带 saved: null 报出，持锁 flush() 写回。
   const store = T.pendingStore({
     key: PENDING_KEY,
     raw: true,
     validate: validKey,
     readError: '读不到上次操作记录，暂时不能提交。请重新打开页面。',
     invalidError: '上次操作记录已损坏，没有删除也没有覆盖。请重新打开页面。',
-    conflictError: CONFLICT_MESSAGE,
+    conflictError: '上次操作记录已变化，没有清除其他操作记录。',
     writeError: '存不下上次操作记录，这次没有提交。请重新打开页面。',
     removeError: '上次提交的结果已确认，但上次操作记录没清掉。请点「刷新」后重新查询。'
   });
-  function pending() {
-    const key = store.read();
-    if (api.settled && api.settled.key !== key) api.settled = null;
-    return key;
-  }
   function reserve() {
-    C.check(!api.settled, window.WorkbenchTerms.outcomes.pending('试调提交'));
     try {
-      const key = store.save(T.requestKey('trial'), null);
-      api.settled = null;
-      return key;
+      return store.save(T.requestKey('trial'), null);
     } catch (error) {
-      if (error && error.conflict === true) throw new Error(window.WorkbenchTerms.outcomes.pending('试调提交'));
+      if (error.conflict === true) throw new Error(window.WorkbenchTerms.outcomes.pending('试调提交'));
       throw error;
     }
   }
-  function clear(key, note) {
-    try {
-      store.save(null, key);
-    } catch (error) {
-      if (error && error.conflict === true) {
-        if (api.settled && api.settled.key === key) api.settled = null;
-      } else {
-        api.settled = {
-          key,
-          note
-        };
-      }
-      throw error;
-    }
-    if (api.settled && api.settled.key === key) api.settled = null;
-    return true;
-  }
+  const clear = key => store.save(null, key);
   async function read(path, q, signal, validate) {
     const value = await T.read(ROOT + path, q, {
       signal,
@@ -50248,8 +50232,8 @@ function SMExport({
     C.validation(d.validation);
     return v;
   }
+  // key 是 reserve 刚写入的记录，token 已由预检核过。
   async function command(intent, token, key) {
-    C.check(validKey(key) && typeof token === 'string');
     const suffix = intent.action === 'create' ? '/drafts' : '/drafts/' + intent.draft_ref + '/' + intent.action;
     return C.receipt(await T.command(BASE + suffix, {
       request_key: key,
@@ -50260,26 +50244,25 @@ function SMExport({
       expect: BASE + '/commands/' + key
     }), intent);
   }
+  // key 是本存储读到并校验过的记录。
   async function lookup(key) {
-    C.check(validKey(key));
     const v = await read('/trial/commands/' + key),
       d = v.data;
     C.check(['committed', 'not_observed'].includes(d.state) && d.can_retry_automatically === false);
     if (d.state === 'committed') C.receipt(d.receipt);else C.check(d.receipt === null);
     return d;
   }
-  const api = {
+  window.TrialAPI = {
     read,
     preview,
     command,
     lookup,
-    pending,
+    pending: store.read,
+    flush: store.flush,
     reserve,
     clear,
-    settled: null,
     PENDING_KEY
   };
-  window.TrialAPI = api;
 })();
 
 ;
@@ -50312,18 +50295,18 @@ function SMExport({
         ...data
       }));
     };
-    // The server outcome is final; only the local key may remain. TrialAPI.settled holds that key until a later clear succeeds.
+    // 服务端结论已定后只剩清除本机 key；删不掉时由共享存储登记这次清除，界面保留 key、错误和说明，不扣下已确认的回执。
     // 本机 key 的转换都在跨页互斥里执行，调用方负责持锁。
     function release(key, done, note) {
       try {
-        A.clear(key, note);
+        A.clear(key);
         patch({
           key: null,
           ...done
         });
       } catch (error) {
         if (error.conflict === true) {
-          if (live.current && (!A.settled || A.settled.key === key)) set(s => s.key && s.key !== key ? s : {
+          if (live.current) set(s => s.key && s.key !== key ? s : {
             ...s,
             key: null,
             error,
@@ -50340,40 +50323,41 @@ function SMExport({
       return true;
     }
     // Ignore write contexts embedded in old immutable receipts; the parent reads the object afresh.
-    // A failed local clear keeps the key and its error, but never withholds the confirmed receipt.
     function confirmed(receipt, key) {
       if (release(key, {
         error: null,
         note: ''
       }, '') && live.current) callback.current(receipt);
     }
-    // Restore and lookup share this: a settled key retries its local cleanup instead of asking the server again.
-    async function retry(key) {
-      if (!A.settled || A.settled.key !== key) return false;
-      await T.exclusive(A.PENDING_KEY, {
-        wait: true
-      }, () => {
-        if (A.settled && A.settled.key === key) release(key, {
-          error: null,
-          note: ''
-        }, A.settled.note);
-      });
-      return true;
+    // 读本机 key。本页登记过、还没写进磁盘的清除（读取错误带 saved）在跨页锁里写回，不再向服务端查询；flushed 表示这次只做了本机写回。
+    async function local() {
+      try {
+        return {
+          key: A.pending(),
+          flushed: false
+        };
+      } catch (error) {
+        if (error.saved === undefined) throw error;
+        return {
+          key: (await T.exclusive(A.PENDING_KEY, {
+            wait: true
+          }, () => A.flush())).value,
+          flushed: true
+        };
+      }
     }
     async function restore() {
       try {
-        const key = A.pending();
-        if (!(await retry(key))) patch({
+        const {
+          key
+        } = await local();
+        patch({
           key,
           error: null,
           note: ''
         });
       } catch (error) {
-        if (A.settled) patch({
-          key: A.settled.key,
-          error,
-          note: A.settled.note
-        });else patch({
+        patch({
           error
         });
       }
@@ -50423,7 +50407,7 @@ function SMExport({
             if (key && T.rejected(error)) release(key, {
               error,
               note: '这次没有写入。填写内容已保留，请点「刷新」后重新确认。'
-            }, '这次没有写入，但本机操作记录还没清掉。请点「查询结果」重试清理。');else if (!A.settled || !key || A.settled.key === key) patch({
+            }, '这次没有写入，但本机操作记录还没清掉。请点「查询结果」重试清理。');else patch({
               error,
               ...(key ? {
                 key,
@@ -50457,12 +50441,13 @@ function SMExport({
         error: null
       });
       try {
-        // 已结算的 key 直接进锁重试清理；先读本机记录只会报它还没清掉。
-        const key = A.settled ? A.settled.key : A.pending();
-        if (await retry(key)) return;
-        if (!key) {
+        const {
+          key,
+          flushed
+        } = await local();
+        if (flushed || !key) {
           patch({
-            key: null,
+            key,
             note: ''
           });
           return;
@@ -50475,11 +50460,7 @@ function SMExport({
           note: window.WorkbenchTerms.outcomes.pending('提交')
         });
       } catch (error) {
-        if (A.settled) patch({
-          key: A.settled.key,
-          error,
-          note: A.settled.note
-        });else patch({
+        patch({
           error
         });
       } finally {
@@ -53526,9 +53507,10 @@ function SMExport({
     T = window.APSWorkbenchTransport,
     KEY = 'aps_workbench_trial_adoption_pending_v1',
     EVENT = KEY + '_changed';
-  function valid(v, checkReceipt = true) {
+  // 磁盘记录的唯一校验点；写入的记录由已校验的预检与表单构造，写前不再重验。
+  function valid(v) {
     try {
-      return A.shape(v, ['schema_version', 'scenario_ref', 'request_key', 'input', 'preview', 'phase'], v.phase === 'committed' ? ['receipt'] : []) && v.schema_version === 1 && A.key(v.request_key) && A.shape(v.preview, ['scenario_ref', 'draft_ref', 'baseline', 'task_count', 'scope_complete', 'data_context_ref']) && A.overview(v.preview) && v.scenario_ref === v.preview.scenario_ref && A.equal(A.input(v.input), v.input) && ['pending', 'rejected', 'committed'].includes(v.phase) && (v.phase !== 'committed' || (checkReceipt ? !!A.receipt(v.receipt, v) : Boolean(v.receipt && typeof v.receipt === 'object')));
+      return A.shape(v, ['schema_version', 'scenario_ref', 'request_key', 'input', 'preview', 'phase'], v.phase === 'committed' ? ['receipt'] : []) && v.schema_version === 1 && A.key(v.request_key) && A.shape(v.preview, ['scenario_ref', 'draft_ref', 'baseline', 'task_count', 'scope_complete', 'data_context_ref']) && A.overview(v.preview) && v.scenario_ref === v.preview.scenario_ref && A.equal(A.input(v.input), v.input) && ['pending', 'rejected', 'committed'].includes(v.phase) && (v.phase !== 'committed' || !!A.receipt(v.receipt, v));
     } catch (_) {
       return false;
     }
@@ -53541,16 +53523,13 @@ function SMExport({
     key: KEY,
     event: EVENT,
     validate: valid,
-    validateWrite: v => valid(v, false),
     readError: '读不到上次采用操作的记录，不能开始新的采用。请重新打开页面。',
     corruptError: '上次采用操作的记录已损坏。请不要再操作，联系维护人员。',
     invalidError: '上次采用操作的记录不完整。请不要再操作，联系维护人员。',
     conflictError: '上次采用操作的记录已变化，没有覆盖其他页面的记录。',
-    invalidWriteError: '读到的采用数据不完整或对不上，这次没有确认采用。请刷新重试。',
     writeError: '存不下这次采用操作的记录，这次没有提交。请点「查询结果」确认上次操作。'
   });
-  // preview 是 A.preview 校验过的可采用预检，values 是 A.input 规整过的填写内容，previous 只会是 null 或被拒绝的上次记录；
-  // 写入时 save 再按存储格式整体校验一次。
+  // preview 是 A.preview 校验过的可采用预检，values 是 A.input 规整过的填写内容，previous 只会是 null 或被拒绝的上次记录。
   function begin(preview, values, previous) {
     const scope = A.overviewFields(preview);
     A.check(!previous || A.sameScope(previous.preview, scope) && A.equal(previous.input, values), '上次提交的试调方案、原因和经办人已绑定，改了内容不能沿用同一个操作编号。');
@@ -53618,13 +53597,23 @@ function SMExport({
       notified = React.useRef(null);
     callback.current = onAdopted;
     active.current = saved;
-    let original = null,
-      sourceError = '';
-    try {
-      original = A.source(scenarioRef, data);
-    } catch (e) {
-      sourceError = e.message;
-    }
+    // 所选试调方案只在读取结果变化时核对一次；渲染、提交前后比较和锁内核对都复用这一个范围对象。
+    const {
+      original,
+      sourceError
+    } = React.useMemo(() => {
+      try {
+        return {
+          original: A.source(scenarioRef, data),
+          sourceError: ''
+        };
+      } catch (e) {
+        return {
+          original: null,
+          sourceError: e.message
+        };
+      }
+    }, [scenarioRef, data]);
     current.current = {
       original,
       disabled,
@@ -53852,11 +53841,7 @@ function SMExport({
           acquired
         } = await T.exclusive(KEY, {}, async () => {
           const latest = current.current;
-          if (!mounted.current || latest.disabled || latest.storageError || !latest.original || latest.preview !== preview || !latest.consent || !A.equal(active.current, initialActive) || active.current && active.current.phase !== 'rejected' || !A.equal(original, latest.original) || !A.equal(A.input({
-            confirm: true,
-            reason: latest.draft.reason,
-            declared_operator: latest.draft.declared_operator
-          }), values)) return;
+          if (!mounted.current || latest.disabled || latest.storageError || latest.preview !== preview || !latest.consent || !A.equal(active.current, initialActive) || active.current && active.current.phase !== 'rejected' || !A.equal(original, latest.original) || latest.draft.reason !== draft.reason || latest.draft.declared_operator !== draft.declared_operator) return;
           let intent;
           try {
             intent = begin(preview, values, active.current);
@@ -55852,24 +55837,27 @@ function SMExport({
       version: Number.isSafeInteger(captionPlan.version) ? window.WorkbenchTerms.plan_version(captionPlan.version) : undefined,
       range: data.scope.plan_finish_date_from && data.scope.plan_finish_date_to ? '计划完工 ' + data.scope.plan_finish_date_from + ' 至 ' + data.scope.plan_finish_date_to : undefined
     } : null);
-    window.WorkbenchPageContext.useSnapshot(data ? {
-      scope: window.ReportAPI.scope(data.scope),
-      topic: data.topic,
-      table: {
+    function pageContext(currentScroll = scroll) {
+      return {
+        scope: window.ReportAPI.scope(data.scope),
         topic: data.topic,
-        page: data.page.number,
-        size: data.page.size,
-        sort: data.page.sort[0].field,
-        direction: data.page.sort[0].direction
-      },
-      selected,
-      chartsOpen,
-      catalogOpen: catalog,
-      scroll,
-      resourceView,
-      detailView,
-      returnTo: initialContext.returnTo
-    } : null, !!data && !request.busy && !request.error);
+        table: {
+          topic: data.topic,
+          page: data.page.number,
+          size: data.page.size,
+          sort: data.page.sort[0].field,
+          direction: data.page.sort[0].direction
+        },
+        selected,
+        chartsOpen,
+        catalogOpen: catalog,
+        scroll: currentScroll,
+        resourceView,
+        detailView,
+        returnTo: initialContext.returnTo
+      };
+    }
+    window.WorkbenchPageContext.useSnapshot(data ? pageContext() : null, !!data && !request.busy && !request.error);
     React.useEffect(() => {
       let frame = 0;
       const remember = event => {
@@ -55991,23 +55979,12 @@ function SMExport({
       const node = root.current,
         table = node && (node.querySelector('.rw-primary-table') || node.querySelector('.rw-table-scroll')),
         main = node && node.closest('.main-content');
-      return {
-        scope: window.ReportAPI.scope(data.scope),
-        topic: data.topic,
-        table: window.ReportAPI.table(state, data.topic),
-        selected,
-        chartsOpen,
-        resourceView,
-        detailView,
-        catalogOpen: catalog,
-        returnTo: initialContext.returnTo,
-        scroll: {
-          tableLeft: table ? table.scrollLeft : 0,
-          tableTop: table ? table.scrollTop : 0,
-          mainTop: main ? main.scrollTop : 0,
-          windowTop: window.pageYOffset
-        }
-      };
+      return pageContext({
+        tableLeft: table ? table.scrollLeft : 0,
+        tableTop: table ? table.scrollTop : 0,
+        mainTop: main ? main.scrollTop : 0,
+        windowTop: window.pageYOffset
+      });
     }
     const go = (target, resume = false) => {
       if (!resume && initialContext.returnTo && initialContext.returnTo.view === target) return onNav(target, initialContext.returnTo.context);
@@ -56311,6 +56288,8 @@ function SMExport({
   const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   const count = value => Number.isInteger(value) && value >= 0;
   const number = value => value === null || typeof value === 'number' && Number.isFinite(value);
+  // 定额与绝对偏差：空或有限非负数；负值是数据损坏，直接拒绝。
+  const nonnegative = value => value === null || typeof value === 'number' && Number.isFinite(value) && value >= 0;
   function failure(message, code = null) {
     const error = new Error(message);
     error.committed = false;
@@ -56353,8 +56332,15 @@ function SMExport({
       signal
     }), wanted, value);
   }
+  // 建议行里被模板采用绑定的事实：列表、明细、采用预检与本机采用记录都按这一条规则校验，
+  // 校验过的行由 CalibrationAdoptionAPI.binding 直接取字段。后端每行都给全这些键（calibration/method.py build_suggestion）。
+  const bindingFields = ['template_operation_ref', 'template_revision', 'template_snapshot', 'part_ref', 'part_no', 'part_name', 'sequence', 'operation_label', 'source', 'old_unit_hours', 'suggested_unit_hours', 'sample_count', 'eligible_sample_count', 'candidate_count', 'excluded_count', 'sample_refs', 'sample_revisions', 'exclusion_reasons', 'method_version'];
+  const filled = value => typeof value === 'string' && value.length > 0;
+  function validBinding(row) {
+    return object(row) && bindingFields.every(key => Object.prototype.hasOwnProperty.call(row, key)) && ref(row.template_operation_ref) && ref(row.part_ref) && Number.isInteger(row.template_revision) && row.template_revision > 0 && filled(row.template_snapshot) && filled(row.method_version) && ['part_no', 'part_name', 'operation_label'].every(key => typeof row[key] === 'string') && Number.isInteger(row.sequence) && nonnegative(row.old_unit_hours) && nonnegative(row.suggested_unit_hours) && ['sample_count', 'eligible_sample_count', 'candidate_count', 'excluded_count'].every(key => count(row[key])) && row.sample_count <= 20 && row.sample_count <= row.eligible_sample_count && row.eligible_sample_count <= row.candidate_count && row.excluded_count === row.candidate_count - row.sample_count && Array.isArray(row.sample_refs) && row.sample_refs.length === row.sample_count && row.sample_refs.every(ref) && new Set(row.sample_refs).size === row.sample_count && Array.isArray(row.sample_revisions) && row.sample_revisions.length === row.sample_count && row.sample_revisions.every((revision, index) => object(revision) && revision.sample_ref === row.sample_refs[index] && filled(revision.sample_revision) && revision.template_revision === row.template_revision && Array.isArray(revision.report_revision_refs) && revision.report_revision_refs.every(ref)) && Array.isArray(row.exclusion_reasons);
+  }
   function validRow(row, meta) {
-    return object(row) && ref(row.suggestion_ref) && row.suggestion_ref === row.template_operation_ref && row.operation_ref === row.suggestion_ref && ref(row.part_ref) && ['part_no', 'part_name', 'operation_label', 'template_snapshot', 'method_version', 'generated_at'].every(key => typeof row[key] === 'string') && Number.isInteger(row.sequence) && Number.isInteger(row.template_revision) && row.template_revision > 0 && ['old_unit_hours', 'suggested_unit_hours', 'deviation_percent', 'absolute_deviation_percent'].every(key => number(row[key])) && ['sample_count', 'eligible_sample_count', 'candidate_count', 'excluded_count'].every(key => count(row[key])) && row.sample_count <= 20 && row.sample_count <= row.eligible_sample_count && row.eligible_sample_count <= row.candidate_count && row.excluded_count === row.candidate_count - row.sample_count && Array.isArray(row.sample_refs) && row.sample_refs.length === row.sample_count && row.sample_refs.every(ref) && new Set(row.sample_refs).size === row.sample_count && Array.isArray(row.sample_revisions) && row.sample_revisions.length === row.sample_count && Array.isArray(row.exclusion_reasons) && Array.isArray(row.blocked_reasons) && object(row.capabilities) && typeof row.over_20_percent === 'boolean' && ['relative', 'old_zero', 'old_unknown', 'suggestion_unavailable', 'not_representable'].includes(row.deviation_basis) && ['insufficient_data', 'suggested'].includes(row.status) && row.status === 'insufficient_data' === (row.suggested_unit_hours === null) && (row.sample_count >= 5 || row.suggested_unit_hours === null) && row.snapshot_ref === meta.snapshot_ref && row.as_of === meta.as_of;
+    return validBinding(row) && ref(row.suggestion_ref) && row.suggestion_ref === row.template_operation_ref && row.operation_ref === row.suggestion_ref && typeof row.generated_at === 'string' && number(row.deviation_percent) && nonnegative(row.absolute_deviation_percent) && Array.isArray(row.blocked_reasons) && object(row.capabilities) && typeof row.over_20_percent === 'boolean' && ['relative', 'old_zero', 'old_unknown', 'suggestion_unavailable', 'not_representable'].includes(row.deviation_basis) && ['insufficient_data', 'suggested'].includes(row.status) && row.status === 'insufficient_data' === (row.suggested_unit_hours === null) && (row.sample_count >= 5 || row.suggested_unit_hours === null) && row.snapshot_ref === meta.snapshot_ref && row.as_of === meta.as_of;
   }
   function validSamples(data) {
     const row = data.suggestion,
@@ -56449,6 +56435,8 @@ function SMExport({
     exportReason,
     failure,
     facetScope,
+    bindingFields,
+    validBinding,
     facets: (kind, request, signal) => facet(kind, request, signal, false),
     facetSelection: (kind, request, signal) => facet(kind, request, signal, true)
   };
@@ -56724,6 +56712,7 @@ function SMExport({
   'use strict';
 
   const T = window.APSWorkbenchTransport,
+    C = window.CalibrationAPI,
     BASE = '/api/workbench/v1/calibration/',
     ACTION = 'calibration.adopt';
   const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -56735,66 +56724,67 @@ function SMExport({
   function check(value, message = '读到的采用结果不完整或来源不一致，没有确认采用。') {
     if (!value) throw new Error(message);
   }
-  function input(value, confirmed = false) {
-    check(object(value) && Object.keys(value).length === (confirmed ? 3 : 2) && (!confirmed || value.confirm === true) && typeof value.reason === 'string' && value.reason.trim() && Array.from(value.reason).length <= 2000 && !value.reason.includes('\0'), '请填写 1 到 2000 字的采用原因。');
-    check(typeof value.declared_operator === 'string' && value.declared_operator.trim() && Array.from(value.declared_operator).length <= 100 && !value.declared_operator.includes('\0'), '请填写 1 到 100 字的经办人。');
+  // 采用表单的唯一校验点：只认原因和经办人两项，校验后去掉首尾空白。
+  function input(draft) {
+    check(object(draft) && Object.keys(draft).length === 2 && typeof draft.reason === 'string' && draft.reason.trim() && Array.from(draft.reason).length <= 2000 && !draft.reason.includes('\0'), '请填写 1 到 2000 字的采用原因。');
+    check(typeof draft.declared_operator === 'string' && draft.declared_operator.trim() && Array.from(draft.declared_operator).length <= 100 && !draft.declared_operator.includes('\0'), '请填写 1 到 100 字的经办人。');
     return {
-      reason: value.reason.trim(),
-      declared_operator: value.declared_operator.trim(),
-      ...(confirmed ? {
-        confirm: true
-      } : {})
+      reason: draft.reason.trim(),
+      declared_operator: draft.declared_operator.trim()
     };
   }
-  const bindingFields = ['template_operation_ref', 'template_revision', 'template_snapshot', 'part_ref', 'part_no', 'part_name', 'sequence', 'operation_label', 'source', 'old_unit_hours', 'suggested_unit_hours', 'sample_count', 'eligible_sample_count', 'candidate_count', 'excluded_count', 'sample_refs', 'sample_revisions', 'exclusion_reasons', 'method_version'];
-  function binding(row) {
-    check(object(row) && bindingFields.every(k => Object.prototype.hasOwnProperty.call(row, k)) && ref(row.template_operation_ref) && ref(row.part_ref) && Number.isInteger(row.template_revision) && row.template_revision > 0 && text(row.template_snapshot) && text(row.method_version) && [row.old_unit_hours, row.suggested_unit_hours].every(v => v === null || number(v)) && ['sample_count', 'eligible_sample_count', 'candidate_count', 'excluded_count'].every(k => Number.isInteger(row[k]) && row[k] >= 0) && row.sample_count <= 20 && row.sample_count <= row.eligible_sample_count && row.eligible_sample_count <= row.candidate_count && row.excluded_count === row.candidate_count - row.sample_count && Array.isArray(row.sample_refs) && row.sample_refs.length === row.sample_count && row.sample_refs.every(ref) && new Set(row.sample_refs).size === row.sample_count && Array.isArray(row.sample_revisions) && row.sample_revisions.length === row.sample_count && row.sample_revisions.every((r, i) => object(r) && r.sample_ref === row.sample_refs[i] && text(r.sample_revision) && r.template_revision === row.template_revision && Array.isArray(r.report_revision_refs) && r.report_revision_refs.every(ref)) && Array.isArray(row.exclusion_reasons));
-    return Object.fromEntries(bindingFields.map(k => [k, row[k]]));
-  }
+  // 确认采用的负载由已校验的填写内容加上用户确认构成。
+  const confirmation = filled => ({
+    ...filled,
+    confirm: true
+  });
+  // 采用绑定的纯投影：行已在明细读取、采用预检或本机记录读取边界按 CalibrationAPI.validBinding 校验过。
+  const binding = row => Object.fromEntries(C.bindingFields.map(k => [k, row[k]]));
   const issues = value => Array.isArray(value) && value.every(v => object(v) && text(v.code) && text(v.message));
-  function previewResult(value, original, intent) {
+  // filled 是 input() 规整过的填写内容，original 是所选模板行的采用绑定。
+  function previewResult(value, original, filled) {
     const d = value && value.data,
       m = value && value.meta,
       c = d && d.write_context,
       v = d && d.validation;
-    check(!value.warnings.length && object(d) && d.template_operation_ref === original.template_operation_ref && d.generated_at === m.as_of && d.effect_scope === 'future_template_use_only' && equal(d.input, input(intent)) && object(v) && typeof v.can_adopt === 'boolean' && issues(v.issues) && object(c) && object(c.capabilities) && issues(c.blocked_reasons));
-    check(equal(binding(d.suggestion), binding(original)), '模板、原定额或完工记录已变化，请点「刷新所选模板」后重新预检。');
+    check(!value.warnings.length && object(d) && d.template_operation_ref === original.template_operation_ref && d.generated_at === m.as_of && d.effect_scope === 'future_template_use_only' && equal(d.input, filled) && object(v) && typeof v.can_adopt === 'boolean' && issues(v.issues) && object(c) && object(c.capabilities) && issues(c.blocked_reasons) && C.validBinding(d.suggestion));
+    check(equal(binding(d.suggestion), original), '模板、原定额或完工记录已变化，请点「刷新所选模板」后重新预检。');
     const row = d.suggestion;
     check(row.suggestion_ref === row.template_operation_ref && row.operation_ref === row.template_operation_ref && Array.isArray(d.samples) && d.samples.length === row.sample_count && d.samples.every((sample, i) => object(sample) && sample.sample_ref === row.sample_refs[i] && sample.execution_operation_ref === sample.sample_ref && sample.template_operation_ref === row.template_operation_ref && sample.template_revision === row.template_revision && ref(sample.lineage_evidence_ref) && sample.selected === true && sample.eligible === true && sample.sample_revision === row.sample_revisions[i].sample_revision && equal(sample.report_revision_refs, row.sample_revisions[i].report_revision_refs) && number(sample.effective_processing_hours) && number(sample.completed_quantity) && sample.completed_quantity > 0 && number(sample.unit_hours) && sample.unknown_record_count === 0 && Array.isArray(sample.exclusion_reasons) && !sample.exclusion_reasons.length && Array.isArray(sample.reports)));
-    if (v.can_adopt) check(v.issues.length === 0 && c.blocked_reasons.length === 0 && c.capabilities[ACTION] === true && text(c.write_token) && text(c.expires_at) && c.expires_at > d.generated_at && row.sample_count >= 5 && number(row.suggested_unit_hours));else check(v.issues.length > 0 && c.capabilities[ACTION] === false && c.write_token === null && c.expires_at === null && equal(v.issues, c.blocked_reasons));
+    if (v.can_adopt) check(v.issues.length === 0 && c.blocked_reasons.length === 0 && c.capabilities[ACTION] === true && text(c.write_token) && text(c.expires_at) && c.expires_at > d.generated_at && row.sample_count >= 5 && row.suggested_unit_hours !== null);else check(v.issues.length > 0 && c.capabilities[ACTION] === false && c.write_token === null && c.expires_at === null && equal(v.issues, c.blocked_reasons));
     if (d.latest_adoption !== null) check(object(d.latest_adoption) && d.latest_adoption.template_operation_ref === original.template_operation_ref && ref(d.latest_adoption.adoption_ref) && number(d.latest_adoption.new_unit_hours) && text(d.latest_adoption.adopted_at));
     return d;
   }
+  // intent 是本存储读到或刚登记的采用记录，baseline 与 input 都已校验过。
   function receipt(value, intent) {
     const d = value && value.data,
-      s = intent && intent.baseline;
-    check(object(intent) && key(intent.request_key) && s && value && value.ok === true && value.result === 'committed' && typeof value.receipt_ref === 'string' && /^[a-f0-9]{32}$/.test(value.receipt_ref) && typeof value.replayed === 'boolean' && Array.isArray(value.warnings) && !value.warnings.length && object(d) && ref(d.adoption_ref) && d.template_operation_ref === s.template_operation_ref && d.request_key === intent.request_key && d.reason === intent.input.reason && d.declared_operator === intent.input.declared_operator && d.confirmed === true && text(d.application_operator) && text(d.adopted_at) && text(d.generated_at) && d.old_unit_hours === s.old_unit_hours && d.new_unit_hours === s.suggested_unit_hours && d.template_revision_before === s.template_revision && d.template_revision_after === s.template_revision + Number(s.old_unit_hours !== s.suggested_unit_hours) && d.method_version === s.method_version && d.sample_count === s.sample_count && equal(d.sample_refs, s.sample_refs) && equal(d.sample_revisions, s.sample_revisions) && d.effect_scope === 'future_template_use_only');
+      s = intent.baseline;
+    check(value && value.ok === true && value.result === 'committed' && typeof value.receipt_ref === 'string' && /^[a-f0-9]{32}$/.test(value.receipt_ref) && typeof value.replayed === 'boolean' && Array.isArray(value.warnings) && !value.warnings.length && object(d) && ref(d.adoption_ref) && d.template_operation_ref === s.template_operation_ref && d.request_key === intent.request_key && d.reason === intent.input.reason && d.declared_operator === intent.input.declared_operator && d.confirmed === true && text(d.application_operator) && text(d.adopted_at) && text(d.generated_at) && d.old_unit_hours === s.old_unit_hours && d.new_unit_hours === s.suggested_unit_hours && d.template_revision_before === s.template_revision && d.template_revision_after === s.template_revision + Number(s.old_unit_hours !== s.suggested_unit_hours) && d.method_version === s.method_version && d.sample_count === s.sample_count && equal(d.sample_refs, s.sample_refs) && equal(d.sample_revisions, s.sample_revisions) && d.effect_scope === 'future_template_use_only');
     return value;
   }
   // 预检、采用和回执查询都按 30 秒等待；回执还没记下时 lookup 返回 null。
-  async function preview(row, values, signal) {
-    const original = binding(row),
-      intent = input(values);
+  // row 是明细读取已校验的建议行，filled 是 input() 规整过的填写内容。
+  async function preview(row, filled, signal) {
+    const original = binding(row);
     return previewResult(await T.preview(BASE + original.template_operation_ref + '/adopt-preview', {
-      input: intent
+      input: filled
     }, {
       signal,
       timeout: 30000
-    }), original, intent);
+    }), original, filled);
   }
-  async function adopt(intent, token) {
-    check(text(token));
+  // intent 是本存储登记的采用记录（input 已带确认），writeToken 已由 previewResult 核过。
+  async function adopt(intent, writeToken) {
     return receipt(await T.command(BASE + intent.baseline.template_operation_ref + '/adopt', {
-      write_token: token,
+      write_token: writeToken,
       request_key: intent.request_key,
-      input: input(intent.input, true)
+      input: intent.input
     }, {
       timeout: 30000,
       expect: '/api/workbench/v1/commands/' + intent.request_key
     }), intent);
   }
   async function lookup(intent, signal) {
-    check(key(intent.request_key) && ref(intent.baseline.template_operation_ref));
     const value = await T.lookup(BASE + intent.baseline.template_operation_ref + '/adopt/receipts/' + intent.request_key, {
       signal,
       timeout: 30000
@@ -56808,6 +56798,7 @@ function SMExport({
     receipt,
     binding,
     input,
+    confirmation,
     check,
     key,
     equal
@@ -56819,12 +56810,17 @@ function SMExport({
   'use strict';
 
   const A = window.CalibrationAdoptionAPI,
+    C = window.CalibrationAPI,
     T = window.APSWorkbenchTransport,
     KEY = 'aps_calibration_adoption_pending_v1',
     EVENT = KEY + '_changed';
-  function valid(value, checkReceipt = true) {
+  // 磁盘记录的唯一校验点：绑定按建议行规则、填写内容按采用表单规则、已采用的回执按回执规则各核一次。
+  function valid(value) {
     try {
-      return value && value.version === 1 && A.key(value.request_key) && ['pending', 'rejected', 'committed'].includes(value.phase) && A.equal(A.input(value.input, true), value.input) && A.equal(A.binding(value.baseline), value.baseline) && (value.phase !== 'committed' || (checkReceipt ? !!A.receipt(value.receipt, value) : Boolean(value.receipt && typeof value.receipt === 'object')));
+      return value && value.version === 1 && A.key(value.request_key) && ['pending', 'rejected', 'committed'].includes(value.phase) && A.equal(A.confirmation(A.input({
+        reason: value.input.reason,
+        declared_operator: value.input.declared_operator
+      })), value.input) && C.validBinding(value.baseline) && A.equal(A.binding(value.baseline), value.baseline) && (value.phase !== 'committed' || !!A.receipt(value.receipt, value));
     } catch (_) {
       return false;
     }
@@ -56837,14 +56833,13 @@ function SMExport({
     key: KEY,
     event: EVENT,
     validate: valid,
-    validateWrite: v => valid(v, false),
     readError: '无法读取上次采用操作的记录，暂时不能开始新的采用。',
     corruptError: '上次采用的操作记录已损坏。请不要再操作，联系维护人员；不能换个编号重新提交。',
     invalidError: '上次采用的操作记录不完整。请不要再操作，联系维护人员；不能换个编号重新提交。',
     conflictError: '上次操作已变化，没有覆盖其他页面的采用记录。',
-    invalidWriteError: '读到的采用结果不完整或来源不一致，没有确认采用。',
     writeError: '无法保存这次采用操作的记录，没有开始新的采用。'
   });
+  // preview 是 A.preview 校验过的可采用预检，previous 只会是 null 或本存储读到的被拒记录。
   function begin(preview, previous) {
     A.check(!previous || previous.phase === 'rejected' && previous.baseline.template_operation_ref === preview.suggestion.template_operation_ref, '上次操作的结果还没确认，不能开始新的采用。');
     return save({
@@ -56852,10 +56847,7 @@ function SMExport({
       request_key: T.requestKey('calibration'),
       phase: 'pending',
       baseline: A.binding(preview.suggestion),
-      input: A.input({
-        ...preview.input,
-        confirm: true
-      }, true)
+      input: A.confirmation(preview.input)
     }, previous);
   }
   function storageMessage(e, current = e && e.saved) {
@@ -57084,7 +57076,7 @@ function SMExport({
       request.current = controller;
       try {
         const value = await A.preview(detail.suggestion, values, controller.signal);
-        if (mounted.current && !controller.signal.aborted && !source.current.stale && A.equal(detail, source.current.detail)) setPreview(value);
+        if (mounted.current && !controller.signal.aborted && !source.current.stale && A.equal(detail, source.current.detail) && A.equal(draft, source.current.draft)) setPreview(value);
       } catch (e) {
         if (mounted.current && !controller.signal.aborted) setError(e.message);
       } finally {
@@ -57093,7 +57085,7 @@ function SMExport({
       }
     }
     async function submit() {
-      if (lock.current || stale || storageError || !preview || !preview.validation.can_adopt || !consent || !detail || saved && saved.phase !== 'rejected' || !A.equal(A.binding(detail.suggestion), A.binding(preview.suggestion)) || !A.equal(A.input(draft), preview.input)) return;
+      if (lock.current || stale || storageError || !preview || !preview.validation.can_adopt || !consent || !detail || saved && saved.phase !== 'rejected' || !A.equal(A.binding(detail.suggestion), A.binding(preview.suggestion))) return;
       const initialActive = active.current;
       lock.current = true;
       setBusy(true);
@@ -57105,7 +57097,7 @@ function SMExport({
           acquired
         } = await T.exclusive(KEY, {}, async () => {
           const latest = source.current;
-          if (!mounted.current || latest.stale || latest.storageError || !latest.detail || latest.preview !== preview || !latest.consent || !A.equal(active.current, initialActive) || active.current && (active.current.phase !== 'rejected' || active.current.baseline.template_operation_ref !== latest.detail.suggestion.template_operation_ref) || !A.equal(A.binding(latest.detail.suggestion), A.binding(preview.suggestion)) || !A.equal(A.input(latest.draft), preview.input)) return;
+          if (!mounted.current || latest.stale || latest.storageError || !latest.detail || latest.preview !== preview || !latest.consent || !A.equal(active.current, initialActive) || active.current && (active.current.phase !== 'rejected' || active.current.baseline.template_operation_ref !== latest.detail.suggestion.template_operation_ref) || !A.equal(A.binding(latest.detail.suggestion), A.binding(preview.suggestion))) return;
           let original;
           try {
             original = begin(preview, active.current);
@@ -59549,7 +59541,6 @@ function SMExport({
   const store = T.pendingStore({
     key: PENDING_KEY,
     validate: validIntent,
-    validateWrite: null,
     corruptError: '上次操作记录损坏，请联系维护人员核对。',
     invalidError: '本机存的上次操作记录不完整，已停止新的操作。请不要再操作，联系维护人员。',
     conflictError: CONFLICT_MESSAGE,
@@ -59575,8 +59566,8 @@ function SMExport({
       }
       return disk;
     },
+    // action 是维护页面按钮传入的已登记动作。
     begin(action, selection = null) {
-      check(Object.prototype.hasOwnProperty.call(actions, action), '未知维护动作。');
       const current = session;
       check(!(current.intent && current.storageError), '还有一次操作没有确认结果，不能重新发起。请先点「查询结果」。');
       let created;
@@ -59626,8 +59617,8 @@ function SMExport({
       };
       return session;
     },
+    // intent 都来自本存储读到并校验过的记录或 begin 刚写入的记录。
     finish(intent, dismiss = false) {
-      check(validIntent(intent), CONFLICT_MESSAGE);
       try {
         store.save(null, intent);
       } catch (error) {
@@ -59652,7 +59643,6 @@ function SMExport({
       }
     }
   };
-  const pending = () => maintenancePending;
   function inspectPending() {
     try {
       const intent = maintenancePending.read(),
@@ -59750,8 +59740,8 @@ function SMExport({
     }
     return value;
   }
+  // intent 是 begin 刚写入的记录，token 来自已校验的写入上下文。
   async function command(intent, token, input) {
-    check(validIntent(intent) && nonempty(token));
     const payload = await T.command(BASE + (intent.action === 'config' ? '/config/save' : '/backups/' + intent.action), {
       request_key: intent.request_key,
       write_token: token,
@@ -59763,7 +59753,6 @@ function SMExport({
     return intent.action === 'config' ? receipt(payload) : result(payload, intent);
   }
   async function lookup(intent) {
-    check(validIntent(intent));
     return result(await T.lookup(BASE + '/results/' + intent.request_key, {
       timeout: TIMEOUT
     }), intent);
@@ -59817,7 +59806,7 @@ function SMExport({
     lookupReference,
     download,
     downloadBackup,
-    pending,
+    pending: maintenancePending,
     inspectPending,
     PENDING_KEY,
     fields,
@@ -60988,7 +60977,7 @@ function SMExport({
     changed.current = onChanged;
     function settle(value, targetIntent, problem = null) {
       if (!current.current || current.current.request_key !== targetIntent.request_key) return false;
-      if (!A.pending().settle(targetIntent, value, problem)) return false;
+      if (!A.pending.settle(targetIntent, value, problem)) return false;
       found.current = value;
       if (mounted.current) {
         setResult(value);
@@ -61032,7 +61021,7 @@ function SMExport({
         await T.exclusive(A.PENDING_KEY, {
           wait: true
         }, () => {
-          if (!problem) settle(value, original);else if (current.current && current.current.request_key === original.request_key && A.pending().settle(original, found.current, problem) && mounted.current) setError(problem);
+          if (!problem) settle(value, original);else if (current.current && current.current.request_key === original.request_key && A.pending.settle(original, found.current, problem) && mounted.current) setError(problem);
         });
       } catch (error) {
         if (mounted.current) setError(error);
@@ -61090,7 +61079,7 @@ function SMExport({
           acquired
         } = await T.exclusive(A.PENDING_KEY, {}, async () => {
           try {
-            original = A.pending().begin(action, selected);
+            original = A.pending.begin(action, selected);
           } catch (problem) {
             setStorageError(problem);
             return;
@@ -61114,14 +61103,14 @@ function SMExport({
                 }, original, problem)) {
                   if (mounted.current) setError(problem);
                   try {
-                    A.pending().finish(original);
+                    A.pending.finish(original);
                     current.current = null;
                     if (mounted.current) setIntent(null);
                   } catch (storageProblem) {
                     if (mounted.current) setStorageError(storageProblem);
                   }
                 }
-              } else if (A.pending().settle(original, null, problem) && mounted.current) {
+              } else if (A.pending.settle(original, null, problem) && mounted.current) {
                 setError(problem);
               }
             }
@@ -61149,7 +61138,7 @@ function SMExport({
       try {
         await T.exclusive(A.PENDING_KEY, {
           wait: true
-        }, () => A.pending().finish(original, true));
+        }, () => A.pending.finish(original, true));
       } catch (problem) {
         setStorageError(problem);
         return;
@@ -61661,30 +61650,38 @@ function SystemLiveOverview({
     check(time(s), '请按 2026-09-13 08:30 这样填写日期和时间。');
     return s;
   }
+  // 回厂事实与外协目标：校验只在读取、预检、回执、本机记录和表单这些边界各做一次；已校验的值用 factValues / targetValues 直接取字段。
+  const factValues = v => Object.fromEntries(fields.map(k => [k, v[k]]));
   function facts(v, now) {
     check(object(v) && fields.every(k => Object.prototype.hasOwnProperty.call(v, k)) && time(v.sent) && time(v.planned) && (v.returned === null || time(v.returned)) && Object.prototype.hasOwnProperty.call(states, v.confirmedState));
     check(v.planned >= v.sent && (v.returned === null || v.returned >= v.sent), '计划回厂和实际回厂不能早于实际发出。');
     check(v.confirmedState === 'returned' === (v.returned !== null), '已回厂状态和实际回厂时间要一起填。还没回厂就点「清除实际回厂」。');
     if (now) check(v.sent <= now && (v.returned === null || v.returned <= now), '实际发出和实际回厂不能填未来时间，以系统的工厂时间为准。');
-    return Object.fromEntries(fields.map(k => [k, v[k]]));
+    return factValues(v);
   }
-  function target(t, publicData = false) {
+  // 登记用的目标只认类型、批次、供应商和排好序的工序编号。
+  const targetValues = t => ({
+    kind: t.kind,
+    batch_ref: t.batch_ref,
+    supplier_ref: t.supplier_ref,
+    operation_refs: t.operation_refs.slice().sort()
+  });
+  function target(t) {
     check(object(t) && ['single', 'merged'].includes(t.kind) && ref(t.batch_ref) && ref(t.supplier_ref) && Array.isArray(t.operation_refs) && t.operation_refs.length >= 1 && t.operation_refs.length <= 200 && t.operation_refs.every(ref) && new Set(t.operation_refs).size === t.operation_refs.length && t.kind === 'single' === (t.operation_refs.length === 1), '单工序要选 1 道，合并发出至少选 2 道，而且不能重复。');
-    const operation_refs = t.operation_refs.slice().sort();
-    if (publicData) {
-      check(t.grouping_basis === 'explicit_receipt_membership' && object(t.batch) && t.batch.ref === t.batch_ref && object(t.supplier) && t.supplier.ref === t.supplier_ref && Array.isArray(t.operations) && t.operations.length === t.operation_refs.length && equal(t.operations.map(o => o.operation_ref).sort(), operation_refs));
-      if (t.part !== undefined) {
-        check(object(t.part) && ref(t.part.ref));
-        entityLabel(t.part, t.part.ref);
-      }
-      if (t.source_resolution !== undefined) resolution(t.source_resolution);
-    }
-    return {
-      kind: t.kind,
-      batch_ref: t.batch_ref,
-      supplier_ref: t.supplier_ref,
+    return targetValues(t);
+  }
+  // 后端回显的目标还带名称与成员，按登记规则核过后再核这些公开字段。
+  function publicTarget(t) {
+    const {
       operation_refs
-    };
+    } = target(t);
+    check(t.grouping_basis === 'explicit_receipt_membership' && object(t.batch) && t.batch.ref === t.batch_ref && object(t.supplier) && t.supplier.ref === t.supplier_ref && Array.isArray(t.operations) && t.operations.length === t.operation_refs.length && equal(t.operations.map(o => o.operation_ref).sort(), operation_refs));
+    if (t.part !== undefined) {
+      check(object(t.part) && ref(t.part.ref));
+      entityLabel(t.part, t.part.ref);
+    }
+    if (t.source_resolution !== undefined) resolution(t.source_resolution);
+    return t;
   }
   function boundary(e, t) {
     check(object(e) && e.automatically_reported === false && equal(e.operation_refs.slice().sort(), t.operation_refs.slice().sort()) && e.service === 'WorkbenchProductionReportService' && text(e.reason), '回厂登记数据无效，请刷新重试。');
@@ -61698,7 +61695,7 @@ function SystemLiveOverview({
   function row(v) {
     check(object(v) && ref(v.outsourcing_ref) && ref(v.latest_fact_ref) && count(v.history_count) && v.history_count >= 1 && typeof v.can_preview === 'boolean' && ['current', 'identity_drift', 'source_unavailable'].includes(v.source_state) && Array.isArray(v.issues) && v.tracking_basis === 'manual_receipt_facts' && time(v.confirmed_at) && text(v.declared_operator) && text(v.local_operator) && text(v.reason));
     facts(v);
-    target(v.target, true);
+    publicTarget(v.target);
     boundary(v.execution, v.target);
     check(v.awaiting_return === (v.returned === null) && typeof v.overdue === 'boolean');
     return v;
@@ -61762,7 +61759,7 @@ function SystemLiveOverview({
         });
         check(d.history.page.total === d.item.history_count && (q.page !== 1 || d.history.items[0].fact_ref === d.item.latest_fact_ref));
         check(new Set(d.history.items.map(h => h.fact_ref)).size === d.history.items.length);
-        if (q.page === 1) check(equal(d.history.items[0].after, facts(d.item)));
+        if (q.page === 1) check(equal(d.history.items[0].after, factValues(d.item)));
         d.history.items.forEach((h, i, rows) => {
           if (i + 1 < rows.length) check(h.previous_fact_ref === rows[i + 1].fact_ref && equal(h.before, rows[i + 1].after));
         });
@@ -61772,12 +61769,12 @@ function SystemLiveOverview({
   }
   function previewResult(v, input) {
     const d = v.data;
-    target(d.target, true);
+    publicTarget(d.target);
     facts(d.after, v.meta.as_of);
     boundary(d.execution, d.target);
     // 新登记的 input 只有 target、没有 outsourcing_ref，后端回显 null。
     check(equal(d.input, input) && d.outsourcing_ref === (input.outsourcing_ref ?? null) && d.can_confirm === true && object(d.write_context) && text(d.write_context.write_token) && d.write_context.capabilities.confirm === true);
-    if (input.target) check(d.before === null && equal(target(d.target), input.target));else facts(d.before);
+    if (input.target) check(d.before === null && equal(targetValues(d.target), input.target));else facts(d.before);
     check(equal(d.after, {
       ...d.before,
       ...Object.fromEntries(fields.filter(k => Object.prototype.hasOwnProperty.call(input, k)).map(k => [k, input[k]]))
@@ -61841,6 +61838,8 @@ function SystemLiveOverview({
     stamp,
     facts,
     target,
+    publicTarget,
+    targetValues,
     receipt,
     read,
     preview,
@@ -61857,15 +61856,16 @@ function SystemLiveOverview({
     T = window.APSWorkbenchTransport,
     KEY = 'aps_outsourcing_pending_v1',
     EVENT = KEY + '_changed';
+  // 磁盘记录的唯一校验点：回厂事实与目标先按契约核过，提交内容再对照它们；写入的记录由已校验的预检构造，写前不再重验。
   function originalInput(v) {
     const p = v.input,
       creating = Object.prototype.hasOwnProperty.call(p, 'target');
     const allowed = ['declared_operator', 'reason', creating ? 'target' : 'outsourcing_ref', ...C.fields];
-    return Object.keys(p).every(k => allowed.includes(k)) && ['declared_operator', 'reason'].every(k => C.text(p[k]) && p[k] === p[k].trim() && !p[k].includes('\0')) && p.declared_operator.length <= 200 && p.reason.length <= 2000 && C.fields.every(k => creating || Object.prototype.hasOwnProperty.call(p, k) ? p[k] === v.after[k] : true) && (creating ? C.equal(p.target, C.target(v.target)) : C.ref(p.outsourcing_ref));
+    return Object.keys(p).every(k => allowed.includes(k)) && ['declared_operator', 'reason'].every(k => C.text(p[k]) && p[k] === p[k].trim() && !p[k].includes('\0')) && p.declared_operator.length <= 200 && p.reason.length <= 2000 && C.fields.every(k => creating || Object.prototype.hasOwnProperty.call(p, k) ? p[k] === v.after[k] : true) && (creating ? C.equal(p.target, C.targetValues(v.target)) : C.ref(p.outsourcing_ref));
   }
-  function valid(v, checkReceipt = true) {
+  function valid(v) {
     try {
-      return v && v.version === 1 && /^outsourcing-[a-f0-9]{48}$/.test(v.request_key) && ['pending', 'confirmed', 'rejected'].includes(v.phase) && C.object(v.input) && !!C.facts(v.after) && !!C.target(v.target, true) && originalInput(v) && !Object.prototype.hasOwnProperty.call(v, 'write_token') && (v.phase !== 'confirmed' || (checkReceipt ? !!C.receipt(v.receipt, v) : C.object(v.receipt)));
+      return v && v.version === 1 && /^outsourcing-[a-f0-9]{48}$/.test(v.request_key) && ['pending', 'confirmed', 'rejected'].includes(v.phase) && C.object(v.input) && !!C.facts(v.after) && !!C.publicTarget(v.target) && originalInput(v) && !Object.prototype.hasOwnProperty.call(v, 'write_token') && (v.phase !== 'confirmed' || !!C.receipt(v.receipt, v));
     } catch (_) {
       return false;
     }
@@ -61878,12 +61878,10 @@ function SystemLiveOverview({
     key: KEY,
     event: EVENT,
     validate: valid,
-    validateWrite: v => valid(v, false),
     readError: '上次操作记录读不出来，不能开始新的登记。请重新打开页面。',
     corruptError: '上次操作记录已损坏，不能开始新的登记。请不要再操作，联系维护人员。',
     invalidError: '上次操作记录不完整，不能重新提交。请不要再操作，联系维护人员。',
     conflictError: '上次操作已在另一个页面变化，这里没有覆盖它。请刷新后重试。',
-    invalidWriteError: '外协读到的数据不完整，请刷新后重试。',
     writeError: '上次操作记录保存不了，不能开始登记。请重新打开页面。'
   });
   function useCommand() {
@@ -62994,6 +62992,13 @@ function SystemLiveOverview({
     evidence_reference_text: '凭据说明',
     evidence_ref: '已核验附件编号'
   };
+  // 正式计划甘特的上下文只由目的页 APSPlanNavigation.accept 接收校验（plan_ref 由 workspaceScope 核），值班台原样转发，不在这里镜像。
+  // 批次页的 batch_ref 值班台自己要读（openTarget 映射成 entity_ref）；现场实际甘特与现场记录的定位键在这里核。
+  const navigationKeys = {
+    fieldgantt: ['plan_ref', 'task_ref', 'operation_ref'],
+    field: ['plan_ref', 'task_ref', 'operation_ref'],
+    batches: ['batch_ref']
+  };
   const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
   const ref = v => typeof v === 'string' && /^[a-f0-9]{48}$/.test(v);
   const text = v => typeof v === 'string' && v.length > 0;
@@ -63018,14 +63023,12 @@ function SystemLiveOverview({
     q.query = q.query.trim();
     return q;
   }
+  // 处置状态的唯一校验点（读取条目、历史和本机记录时各核一次）；baseHandling 只从校验过的处置里取基础字段。
   function handling(h) {
     check(object(h) && Object.prototype.hasOwnProperty.call(statuses, h.status) && fields.every(k => h[k] === null || typeof h[k] === 'string'));
     return h;
   }
-  function baseHandling(h) {
-    handling(h);
-    return Object.fromEntries(['status', ...fields].map(k => [k, h[k]]));
-  }
+  const baseHandling = h => Object.fromEntries(['status', ...fields].map(k => [k, h[k]]));
   function item(row) {
     check(object(row) && ref(row.item_ref) && Object.keys(categories).slice(1).includes(row.category) && text(row.subject) && object(row.source) && ['current', 'not_currently_evaluated'].includes(row.source_state) && object(row.risk) && [true, false, null].includes(row.risk.active) && text(row.risk.message) && text(row.risk.code) && Array.isArray(row.navigation));
     handling(row.handling);
@@ -63035,8 +63038,11 @@ function SystemLiveOverview({
       check(row.source.kind === 'outsourcing_receipt' && ref(row.source.outsourcing_ref) && ['single', 'merged'].includes(row.source.target_kind) && row.source.time_basis === 'factory_local' && row.source.tracking_basis === 'manual_receipt_facts' && row.navigation.length === 1);
       if (row.source.receipt !== undefined) check(object(row.source.receipt) && row.source.receipt.outsourcing_ref === row.source.outsourcing_ref);
       const n = row.navigation[0];
-      check(object(n) && n.view === 'outsourcing' && object(n.context) && Object.keys(n.context).length === 1 && n.context.outsourcing_ref === row.source.outsourcing_ref && n.query_target === '/api/workbench/v1/outsourcing/receipts/' + row.source.outsourcing_ref && n.enabled === (row.source_state === 'current'), '这条外协登记的跳转目标不对，页面没有跳转。请刷新后重试。');
-    } else row.navigation.forEach(n => check(object(n) && ['gantt', 'fieldgantt', 'batches', 'analysis'].includes(n.view) && object(n.context) && typeof n.enabled === 'boolean' && Object.keys(n.context).every(k => ['plan_ref', 'batch_ref', 'task_ref', 'operation_ref'].includes(k) && ref(n.context[k]))));
+      check(object(n) && n.view === 'outsourcing' && object(n.context) && n.enabled === (row.source_state === 'current') && (n.enabled ? Object.keys(n.context).length === 1 && n.context.outsourcing_ref === row.source.outsourcing_ref : Object.keys(n.context).length === 0 && text(n.reason)), '这条外协登记的跳转目标不对，页面没有跳转。请刷新后重试。');
+    } else row.navigation.forEach(n => {
+      check(object(n) && object(n.context) && typeof n.enabled === 'boolean');
+      if (n.view !== 'gantt') check(Object.prototype.hasOwnProperty.call(navigationKeys, n.view) && Object.keys(n.context).every(k => navigationKeys[n.view].includes(k) && ref(n.context[k])));
+    });
     return row;
   }
   // 信封已由 transport 校验；值班台翻页和详情都钉在这次读取的数据版本上，所以数据版本不能为空。
@@ -63212,6 +63218,7 @@ function SystemLiveOverview({
     equal,
     check,
     scope,
+    handling,
     baseHandling,
     catalog,
     expected,
@@ -65026,9 +65033,10 @@ function SystemLiveOverview({
     T = window.APSWorkbenchTransport,
     KEY = 'aps_dashboard_pending_v1',
     EVENT = KEY + '_changed';
-  function valid(v, checkReceipt = true) {
+  // 磁盘记录的唯一校验点；写入的记录由已校验的条目与表单构造，写前不再重验。
+  function valid(v) {
     try {
-      return v && v.version === 1 && /^dashboard-[a-f0-9]{48}$/.test(v.request_key) && C.ref(v.item_ref) && ['transition', 'reopen'].includes(v.action) && ['pending', 'confirmed', 'rejected'].includes(v.phase) && C.object(v.input) && C.object(v.source) && C.object(v.risk) && !!C.baseHandling(v.before) && !!C.baseHandling(C.expected(v)) && (v.phase !== 'confirmed' || (checkReceipt ? !!C.receipt(v.receipt, v) : C.object(v.receipt)));
+      return v && v.version === 1 && /^dashboard-[a-f0-9]{48}$/.test(v.request_key) && C.ref(v.item_ref) && C.text(v.subject) && ['transition', 'reopen'].includes(v.action) && ['pending', 'confirmed', 'rejected'].includes(v.phase) && C.object(v.input) && C.object(v.source) && C.object(v.risk) && !!C.handling(v.before) && !!C.handling(C.expected(v)) && (v.phase !== 'confirmed' || !!C.receipt(v.receipt, v));
     } catch (_) {
       return false;
     }
@@ -65041,12 +65049,10 @@ function SystemLiveOverview({
     key: KEY,
     event: EVENT,
     validate: valid,
-    validateWrite: v => valid(v, false),
     readError: '上次操作记录读不出来，不能开始新的处置。请重新打开页面。',
     corruptError: '上次操作记录已损坏，不能开始新的处置。请不要再操作，联系维护人员。',
     invalidError: '上次操作记录不完整，不能重新提交。请不要再操作，联系维护人员。',
     conflictError: '上次操作已在另一个页面变化，这里没有覆盖它。请刷新后重试。',
-    invalidWriteError: '值班台读到的数据不完整，请刷新后重试。',
     writeError: '上次操作记录保存不了，不能开始处置。请重新打开页面。'
   });
   function useCommand() {
@@ -65963,14 +65969,7 @@ function SystemLiveOverview({
       key: i,
       icon: "arrow-right",
       onClick: () => navigate(n, item)
-    }, navigationLabels[n.view])), item.category === 'actual' && item.navigation.some(n => n.enabled && n.command_context === 'read_execution_write_context') && /*#__PURE__*/React.createElement(Button, {
-      reasonDisplay: "inline",
-      icon: "arrow-right",
-      onClick: () => navigate({
-        ...item.navigation[0],
-        view: 'field'
-      })
-    }, navigationLabels.field))));
+    }, navigationLabels[n.view])))));
   }
   function NavigationConfirmation({
     entry,
@@ -66642,10 +66641,9 @@ function SystemLiveOverview({
         } : {})
       };
     }
-    function openTarget(n, current, overview = false) {
-      P.navigationTarget(n);
+    function openTarget(n, current) {
       const context = {
-        ...(overview ? {} : n.context),
+        ...n.context,
         return_to: {
           view: 'dashboard',
           context: current
@@ -66678,7 +66676,7 @@ function SystemLiveOverview({
     }
     function confirmNavigation() {
       try {
-        openTarget(navigationConfirmation.navigation, navigationConfirmation.current, true);
+        openTarget(navigationConfirmation.navigation, navigationConfirmation.current);
         setNavigationConfirmation(null);
       } catch (error) {
         setNavError(error);

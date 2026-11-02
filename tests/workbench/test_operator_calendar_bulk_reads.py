@@ -37,8 +37,8 @@ def test_operator_calendar_bulk_reads_cross_chunks_and_preserve_histories(schema
     with TransactionManager(conn).transaction():
         conn.set_trace_callback(trace.append)
         try:
-            codes = service.validate_export_scope(start_date=DAY, end_date=DAY)
-            _, count = service.preview_export(start_date=DAY, end_date=DAY, codes=codes)
+            codes = service.export_codes(None)
+            count = service.preview_export(start_date=DAY, end_date=DAY, codes=codes)
         finally:
             conn.set_trace_callback(None)
     assert count == 400 and len(trace) == 5
@@ -46,7 +46,7 @@ def test_operator_calendar_bulk_reads_cross_chunks_and_preserve_histories(schema
     with TransactionManager(conn).transaction():
         conn.set_trace_callback(trace.append)
         try:
-            codes = service.validate_export_scope(start_date=DAY, end_date=DAY)
+            codes = service.export_codes(None)
             exported = service.export_rows(DAY, DAY, codes=codes)
         finally:
             conn.set_trace_callback(None)
@@ -62,13 +62,13 @@ def test_operator_calendar_confirmation_reloads_current_operator_rows(schema_con
     content = file_bytes([("OP", DAY, "工作日", "09:00", "17:00", "100")],
                          headers=("工号", "日期", "类型", "班次开始", "班次结束", "效率（%）"))
     service = WorkbenchOperatorCalendarFileService(conn)
-    preview = service.preview_import(content, file_format="csv")
+    preview = service.preview_import(content, file_format="csv", mode="upsert")
     assert all(not row["errors"] for row in preview.as_dict()["rows"])
     conn.execute("UPDATE Operators SET name='新姓名' WHERE operator_id='OP'")
     conn.commit()
     with pytest.raises(WorkbenchCommandRejected) as rejected:
         with TransactionManager(conn).transaction(begin_immediate=True):
-            service.confirm_import(preview, content, file_format="csv")
+            service.confirm_import(preview)
     assert rejected.value.code == "stale_write"
     assert conn.execute("SELECT COUNT(*) FROM OperatorCalendar").fetchone()[0] == 0
 
@@ -87,7 +87,7 @@ def test_operator_calendar_rest_day_rejects_allow_flags_and_periods(schema_conn)
             "效率（%）", "允许普通件", "允许急件", "工作时段数",
         ),
     )
-    preview = WorkbenchOperatorCalendarFileService(conn).preview_import(content, file_format="csv").as_dict()
+    preview = WorkbenchOperatorCalendarFileService(conn).preview_import(content, file_format="csv", mode="upsert").as_dict()
     assert preview["summary"]["rejected"] == 2
     assert [row["result"] for row in preview["rows"]] == ["rejected", "rejected"]
     assert preview["rows"][0]["errors"] == [

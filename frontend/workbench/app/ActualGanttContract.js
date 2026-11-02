@@ -10,14 +10,6 @@
     const base = value.slice(0, 19), at = Date.parse(base + 'Z');
     return Number.isFinite(at) && new Date(at).toISOString().slice(0, 19) === base;
   }
-  function gapMinutes(start, end) {
-    const seconds = (Date.parse(end.slice(0, 19) + 'Z') - Date.parse(start.slice(0, 19) + 'Z')) / 1000;
-    const minutes = Math.floor(seconds / 60);
-    // 第 21 位起是 6 位微秒；没有小数秒时截出空串，Number('') 就是 0。
-    const remainder = (seconds - minutes * 60) * 1000000
-      + Number(end.slice(20)) - Number(start.slice(20));
-    return minutes - (remainder < 0 ? 1 : 0);
-  }
   const nullableTime = value => value === null || local(value);
   const nullableRef = value => value === null || ref(value);
   const quantity = value => value === null || Number.isSafeInteger(value) && value >= 0;
@@ -89,8 +81,7 @@
     if (!d.plan || d.plan.plan_ref !== query.plan_ref || !d.plan.capabilities.view || !span(d.plan_span) || !interval(d.axis_span)
       || !d.scope || d.scope.kind !== 'actual_gantt' || d.scope.source !== 'production' || !object(d.availability) || !['available', 'unavailable'].includes(d.availability.state)
       || !Array.isArray(d.items) || d.items.length !== d.task_count || d.task_count > 10000 || d.items_complete !== true || !executionSummary(d.execution_summary) || !Array.isArray(d.resources)
-      || !d.resources.every(r => object(r) && ref(r.ref) && ['machine', 'operator', 'supplier'].includes(r.kind) && typeof r.business_code === 'string' && (r.label === null || typeof r.label === 'string'))
-      || !object(d.critical_chain) || !Array.isArray(d.critical_chain.task_refs) || !Array.isArray(d.critical_chain.edges)) fail('读到的现场实际甘特范围不完整，请刷新重试。');
+      || !d.resources.every(r => object(r) && ref(r.ref) && ['machine', 'operator', 'supplier'].includes(r.kind) && typeof r.business_code === 'string' && (r.label === null || typeof r.label === 'string'))) fail('读到的现场实际甘特范围不完整，请刷新重试。');
     if (!scopeMatches(d.scope, query)) fail('返回的范围与上次查询不同，没有自动扩大范围。');
     const resourceRefs = new Set(d.resources.map(row => row.ref)), taskRefs = new Set(); let count = 0;
     d.items.forEach(item => {
@@ -107,40 +98,7 @@
     if (!window.GanttGraph.validate(d.gantt_graph, { scope: 'full_plan', tasks: d.items.map(item => item.task), taskRef: 'task_ref', time: local,
       sequence: C.positiveInt64, processLabel: value => typeof value === 'string' && !!value.trim() })) fail('现场甘特的工序关联与所选计划不一致，请刷新重试。');
     if (d.availability.state === 'available' ? d.report_count !== count || count > 50000 : d.report_count !== null || !d.availability.reason) fail('报工数量或不可用原因不完整。');
-    validateChain(d.critical_chain, d, query, meta, taskRefs);
     return result;
-  }
-  function validateChain(chain, d, query, meta, taskRefs) {
-    if (chain.state !== 'unavailable') {
-      if (chain.state !== 'available' || chain.snapshot_ref !== meta.snapshot_ref || chain.plan_ref !== query.plan_ref
-        || chain.source !== 'core.services.scheduler.gantt.critical_chain.compute_critical_chain_from_rows'
-        || chain.semantics !== 'selected_plan_control_predecessor_chain' || chain.scope !== 'full_plan' || chain.gap_unit !== 'minute'
-        || !['global', 'related'].includes(chain.mode) || (chain.mode === 'global' ? chain.target_task_ref !== null : !ref(chain.target_task_ref))
-        || chain.time_basis !== 'factory_local' || chain.gap_rounding !== 'floor' || !local(chain.makespan_end)
-        || !Number.isInteger(chain.omitted_point_count) || chain.omitted_point_count < 0 || chain.partial !== (chain.omitted_point_count > 0)
-        || !Array.isArray(chain.nodes) || !chain.nodes.length || chain.task_refs.length !== chain.nodes.length
-        || new Set(chain.task_refs).size !== chain.task_refs.length || chain.edges.length !== chain.nodes.length - 1)
-        fail('关键链和本次读到的数据版本对不上，没有显示。');
-      const nodes = new Map();
-      chain.nodes.forEach((node, index) => {
-        if (!object(node) || !ref(node.task_ref) || !ref(node.operation_ref) || node.task_ref !== chain.task_refs[index]
-          || !local(node.start) || !local(node.end) || node.start >= node.end || node.in_scope !== taskRefs.has(node.task_ref)
-          || typeof node.batch_id !== 'string' || typeof node.process_label !== 'string' || !C.positiveInt64(node.sequence)) fail('关键链节点与当前计划或范围不一致。');
-        nodes.set(node.task_ref, node);
-      });
-      chain.edges.forEach((edge, index) => {
-        if (!object(edge) || edge.from_task_ref !== chain.task_refs[index] || edge.to_task_ref !== chain.task_refs[index + 1]
-          || !['process', 'machine', 'operator'].includes(edge.edge_type) || typeof edge.reason !== 'string' || !edge.reason
-          || !Number.isInteger(edge.gap_minutes)) fail('关键链连线或分钟数无效。');
-        const from = nodes.get(edge.from_task_ref), to = nodes.get(edge.to_task_ref);
-        if (edge.gap_minutes !== gapMinutes(from.end, to.start)) fail('关键链连线间隔与计划记录不一致。');
-      });
-      if (chain.visible_node_count !== chain.nodes.filter(node => node.in_scope).length || !Number.isInteger(chain.plan_task_count)
-        || chain.plan_task_count < d.task_count || chain.plan_task_count < chain.nodes.length || chain.makespan_end !== chain.nodes[chain.nodes.length - 1].end
-        || chain.mode === 'related' && chain.target_task_ref !== chain.task_refs[chain.task_refs.length - 1])
-        fail('关键链完整性计数不一致。');
-    } else if (typeof chain.reason !== 'string' || !chain.reason) fail('关键链不可用时必须保留明确原因。');
-    return chain;
   }
   function transport(value) { const result = { ...value }; if (result.batch_ids) result.batch_ids = JSON.stringify(result.batch_ids); return result; }
   window.ActualGanttContract = { scope, workspace, transport, local, ref };

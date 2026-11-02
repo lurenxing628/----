@@ -16,13 +16,17 @@ from core.models.workbench_calendar_file import (
     public_columns,
 )
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_resource_action import resource_refs
+from core.models.workbench_table_descriptor import FILE_FORMATS
 from core.services.workbench.commands import WorkbenchCommandService
+from core.services.workbench.facts.file_writer import check_capacity
 from core.services.workbench.facts.source_revisions import (
     CALENDAR_SOURCE_KEYS,
     OPERATOR_CALENDAR_SOURCE_KEYS,
     read_source_revisions,
 )
-from core.services.workbench.resource.calendar_files.files import WorkbenchCalendarFileService
+from core.services.workbench.resource.calendar_files.file_writer import write_calendar_file
+from core.services.workbench.resource.calendar_files.files import WorkbenchCalendarFileService, check_range
 from core.services.workbench.resource.calendar_files.operator_files import (
     KIND as OPERATOR_KIND,
 )
@@ -34,7 +38,10 @@ from web.api_responses import json_response, query_success
 from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot, resolve_read_snapshot
 from .resource_action_context import (
+    EXPIRED_MESSAGE,
     EXPORT_SCOPE,
+    IMPORT_MISMATCH_MESSAGE,
+    PREVIEW_SCOPE,
     confirm_body,
     download_args,
     file_response,
@@ -43,10 +50,10 @@ from .resource_action_context import (
     opaque_ref,
     read_endpoint,
     resolve_context,
-    resolve_import_preview,
     retain_context,
     upload_body,
 )
+from .write_context import resolve_action_preview
 
 BASE = "/api/workbench/v1/calendar-files"
 
@@ -64,7 +71,7 @@ def _operator_refs(kind, body):
         return {}
     if kind != OPERATOR_KIND or type(scope) is not dict or set(scope) != {"operator_refs"}:
         raise WorkbenchCommandRejected("invalid_input", "导出范围里有不支持的项，没有开始下载。请刷新页面后重新点「导出」。", 400)
-    return {"selected_refs": scope["operator_refs"]}
+    return {"selected_refs": resource_refs(scope["operator_refs"], allow_empty=True)}
 
 
 def _range_input(body):
@@ -72,6 +79,7 @@ def _range_input(body):
     if type(value) is not dict or set(value) != {"start_date", "end_date"} \
             or any(type(value[key]) is not str for key in value):
         raise WorkbenchCommandRejected("invalid_input", "请选好开始和结束日期，没有开始下载。选好后重新点「导出」。", 400)
+    check_range(value["start_date"], value["end_date"])
     return value["start_date"], value["end_date"]
 
 
@@ -81,18 +89,12 @@ def calendar_import_preview(kind):
     content, fmt, mode = upload_body()
     service = _service(kind)
     preview = service.preview_import(content, file_format=fmt, mode=mode)
-    data = issue_file_preview(preview, preview.source, columns=public_columns(kind),
+    data = issue_file_preview(preview, columns=public_columns(kind),
                               instructions=INSTRUCTIONS[kind], template_version=TEMPLATE_VERSION)
     source_keys = OPERATOR_CALENDAR_SOURCE_KEYS if kind == OPERATOR_KIND else CALENDAR_SOURCE_KEYS
     snapshot = bind_read_snapshot({"kind": kind, "operation": kind + ".import",
                                    "preview_ref": data["preview_ref"]}, read_source_revisions(g.db, source_keys))
     return query_success(data, snapshot, preview.as_dict()["notices"])
-
-
-def _apply(kind, checked):
-    preview, content = checked
-    original = preview.as_dict()["request"]
-    return _service(kind).confirm_import(preview, content, file_format=original["format"], mode=original["mode"])
 
 
 @api_endpoint
@@ -102,8 +104,9 @@ def calendar_import_confirm(kind):
     ref, operation = body["input"]["preview_ref"], kind + ".import"
     outcome = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action=operation, context_ref=ref, normalized_input={"preview_ref": ref},
-        guard=lambda: resolve_import_preview(ref, operation, body["write_token"]),
-        mutate=lambda checked: _apply(kind, checked))
+        guard=lambda: resolve_action_preview(PREVIEW_SCOPE, ref, operation, body["write_token"],
+                                             expired_message=EXPIRED_MESSAGE, mismatch_message=IMPORT_MISMATCH_MESSAGE),
+        mutate=lambda preview: _service(kind).confirm_import(preview))
     return json_response(outcome)
 
 
@@ -117,26 +120,24 @@ def calendar_export_preview(kind):
     calendar_kind(kind)
     body = json_body({"range"}, {"snapshot_ref", "scope"})
     start_date, end_date = _range_input(body)
-    extra = _operator_refs(kind, body)
-    provided = opaque_ref(body["snapshot_ref"]) if body.get("snapshot_ref") else None
+    arguments = {"start_date": start_date, "end_date": end_date, **_operator_refs(kind, body)}
+    provided = opaque_ref(body["snapshot_ref"]) if "snapshot_ref" in body else None
     service = _service(kind)
-    query_scope = {"kind": kind, "start_date": start_date, "end_date": end_date, **extra}
+    query_scope = {"kind": kind, **arguments}
     read_binding = resolve_read_snapshot(provided) if provided is not None else None
     with TransactionManager(g.db).transaction():
         if isinstance(service, WorkbenchOperatorCalendarFileService):
-            codes = service.validate_export_scope(start_date=start_date, end_date=end_date, **extra)
+            codes = service.export_codes(arguments.get("selected_refs"))
             snapshot = _bind_export_snapshot(kind, query_scope, provided, read_binding)
-            arguments, count = service.preview_export(start_date=start_date, end_date=end_date, **extra, codes=codes)
+            count = service.preview_export(start_date=start_date, end_date=end_date, codes=codes)
         else:
-            service.validate_export_scope(start_date=start_date, end_date=end_date)
             snapshot = _bind_export_snapshot(kind, query_scope, provided, read_binding)
-            arguments, count = service.preview_export(start_date=start_date, end_date=end_date)
-        document = {"kind": kind, "query_scope": query_scope,
-                    "snapshot_ref": snapshot["snapshot_ref"], "arguments": arguments}
+            count = service.preview_export(start_date=start_date, end_date=end_date)
+        document = {"query_scope": query_scope, "snapshot_ref": snapshot["snapshot_ref"], "row_count": count}
         ref, expires_at = retain_context(EXPORT_SCOPE, document, read_binding,
                                          key=(kind, document["snapshot_ref"], content_text(arguments)))
     return query_success({"export_ref": ref, "expires_at": expires_at, "range": arguments,
-                          "row_count": count, "formats": ["csv", "xlsx"]}, snapshot)
+                          "row_count": count, "formats": FILE_FORMATS}, snapshot)
 
 
 @read_endpoint
@@ -145,19 +146,21 @@ def calendar_export(kind):
     fmt = download_args({"export_ref", "format"})
     ref = opaque_ref(request.args["export_ref"])
     binding, read_binding = resolve_context(EXPORT_SCOPE, ref, "snapshot_stale")
-    if binding["kind"] != kind:
+    scope = binding["query_scope"]
+    if scope["kind"] != kind:
         raise WorkbenchCommandRejected("snapshot_stale", "这次导出的编号属于另一类记录，没有开始下载。请刷新页面后重新点「导出」。")
     service = _service(kind)
     with TransactionManager(g.db).transaction():
         if isinstance(service, WorkbenchOperatorCalendarFileService):
-            codes = service.validate_export_scope(**binding["arguments"])
-            snapshot = _bind_export_snapshot(kind, binding["query_scope"], binding["snapshot_ref"], read_binding)
-            rows = service.export_rows(binding["arguments"]["start_date"], binding["arguments"]["end_date"], codes=codes)
+            codes = service.export_codes(scope.get("selected_refs"))
+            snapshot = _bind_export_snapshot(kind, scope, binding["snapshot_ref"], read_binding)
+            check_capacity(binding["row_count"], fmt)
+            rows = service.export_rows(scope["start_date"], scope["end_date"], codes=codes)
         else:
-            service.validate_export_scope(**binding["arguments"])
-            snapshot = _bind_export_snapshot(kind, binding["query_scope"], binding["snapshot_ref"], read_binding)
-            rows = service.export_rows(**binding["arguments"])
-    download = service.export(fmt, rows=rows)
+            snapshot = _bind_export_snapshot(kind, scope, binding["snapshot_ref"], read_binding)
+            check_capacity(binding["row_count"], fmt)
+            rows = service.export_rows(start_date=scope["start_date"], end_date=scope["end_date"])
+    download = write_calendar_file(kind, rows, fmt)
     response = file_response(download)
     response.headers["X-Workbench-Snapshot-Ref"] = snapshot["snapshot_ref"]
     response.headers["X-Workbench-As-Of"] = snapshot["as_of"]
@@ -167,7 +170,7 @@ def calendar_export(kind):
 @read_endpoint
 def calendar_template(kind):
     calendar_kind(kind)
-    return file_response(WorkbenchCalendarFileService.template(kind, download_args({"format"})))
+    return file_response(write_calendar_file(kind, [], download_args({"format"}), template=True))
 
 
 def register_calendar_file_routes(bp):

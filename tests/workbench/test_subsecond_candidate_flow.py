@@ -37,7 +37,7 @@ def test_fractional_chain_all_candidates_adopt_reopen_and_delivery(candidate_cas
     for ref in refs:
         preview = svc.preview(ref)
         assert preview["validation"]["can_adopt"], preview
-        workspace, _ = WorkbenchRunCandidateQueryService(case.conn).workspace(RunCandidateReadScope(ref))
+        workspace, _ = WorkbenchRunCandidateQueryService(case.conn).workspace(RunCandidateReadScope(ref), bind_snapshot=lambda scope, state: state)
         tasks = sorted(workspace["tasks"], key=lambda row: row["sequence"])
         assert len(tasks) == 3
         assert tasks[1]["start"] == tasks[1]["end"] == tasks[0]["end"]
@@ -46,7 +46,7 @@ def test_fractional_chain_all_candidates_adopt_reopen_and_delivery(candidate_cas
         delivery, = workspace["delivery_risks"]["items"]
         assert delivery["risk"] == "on_time" and delivery["invalid_task_count"] == 0
         assert delivery["planned_finish"] == max(row["end"] for row in tasks)
-        analysis, _ = read_candidate_analysis(case.conn, ref)
+        analysis, _ = read_candidate_analysis(case.conn, ref, bind_snapshot=lambda scope, state: state)
         assert analysis["metrics"]["overdue_count"]["value"] == 0
         assert analysis["metrics"]["total_tardiness_hours"]["value"] == 0
         assert analysis["baseline"]["available"] is False

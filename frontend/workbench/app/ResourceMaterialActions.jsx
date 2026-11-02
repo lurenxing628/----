@@ -9,7 +9,7 @@
     return <div className="rm-format"><span className="seclabel">文件格式</span><div className="seg" role="group" aria-label="文件格式">
       {['xlsx', 'csv'].map(format => <button key={format} type="button" disabled={disabled} className={value === format ? 'on' : ''} aria-pressed={value === format} onClick={() => onChange(format)}>{format === 'xlsx' ? 'Excel (.xlsx)' : 'CSV (.csv)'}</button>)}</div></div>;
   }
-  function ExportOptions({ selection, setSelection, refs, disabled, label, kind, scopeLabel }) {
+  function ExportOptions({ selection, setSelection, refs, disabled, kind, scopeLabel }) {
     return <fieldset style={{ border: 0, margin: 0, padding: 0 }} disabled={disabled}><legend className="seclabel">导出范围</legend>
       {[['filtered', '当前筛选结果', '当前搜索与状态筛选下的全部记录，不限当前页'], ['all', '全部' + scopeLabel, '忽略搜索与状态筛选，导出全部' + scopeLabel + (kind === 'op_type' ? '，保留当前工种类别' : '')], ['selected', '已选' + scopeLabel, refs.length + ' 条，含非当前页和当前筛选外的勾选记录']].map(([key, title, detail]) =>
         <label key={key} className={'iorow' + (selection === key ? ' on' : '')}><input type="radio" name={kind + '-export-scope'} value={key} checked={selection === key} onChange={() => setSelection(key)} />
@@ -142,7 +142,7 @@
             <div><div className="tmpl-t">{file && file.name}</div><div className="tmpl-s">{format.toUpperCase()} · 按编号增量更新 · {data.rows.length} 行</div></div><Button icon="file-input" disabled={controlsDisabled} onClick={invalidate}>更换文件</Button></div>}
           {!recovery && !done && !command.locked && isExport && <div className="iopane on">
             {M.ExportScope ? <M.ExportScope value={selection} onChange={value => { invalidate(); setSelection(value); }} disabled={controlsDisabled} refs={original.refs} error={error} />
-              : <ExportOptions selection={selection} setSelection={value => { invalidate(); setSelection(value); }} refs={original.refs} disabled={controlsDisabled} label={label} scopeLabel={M.scopeLabel || label} kind={M.kind} />}
+              : <ExportOptions selection={selection} setSelection={value => { invalidate(); setSelection(value); }} refs={original.refs} disabled={controlsDisabled} scopeLabel={M.scopeLabel || label} kind={M.kind} />}
             <Format value={format} onChange={chooseFormat} disabled={controlsDisabled} /></div>}
           {!done && effectiveMode === 'bulk' && (!recovery || command.intent) && (recovery || command.intent && !job ? <p>正在查询上次批量删除的结果，当前列表里新勾选的还没提交。</p> :
             <p>本次勾选了 <b>{original.refs.length}</b> 条{label}，含非当前页和当前筛选外的勾选项。</p>)}

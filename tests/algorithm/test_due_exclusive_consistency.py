@@ -40,9 +40,11 @@ def test_due_exclusive_consistency() -> None:
     )
 
     operations = [make_algo_op(id=1, batch_id="B001")]
-    metrics = compute_metrics([result], {"B001": batch}, expected_operations=operations, failure_details=[])
+    metrics = compute_metrics([result], {"B001": batch}, expected_operations=operations,
+                              seed_occupancies_by_op_id={}, failure_details=[])
     prepared = prepare_evaluation_context(batches={"B001": batch}, expected_operations=operations, seed_results=())
-    assert compute_metrics([result], {"B001": batch}, expected_operations=operations, failure_details=[],
+    assert compute_metrics([result], {"B001": batch}, expected_operations=operations,
+                           seed_occupancies_by_op_id={}, failure_details=[],
                            prepared=prepared).to_dict() == metrics.to_dict()
     assert metrics.overdue_count == 1, f"evaluation overdue_count 应为 1，实际={metrics.overdue_count}"
     assert abs(metrics.total_tardiness_hours - 0.0) < 1e-9, f"边界拖期应为 0，实际={metrics.total_tardiness_hours}"
@@ -134,9 +136,11 @@ def test_due_exclusive_max_due_sentinel_end_to_end_not_overdue() -> None:
     )
 
     operations = [make_algo_op(id=1, batch_id="B900")]
-    metrics = compute_metrics([result], {"B900": batch}, expected_operations=operations, failure_details=[])
+    metrics = compute_metrics([result], {"B900": batch}, expected_operations=operations,
+                              seed_occupancies_by_op_id={}, failure_details=[])
     prepared = prepare_evaluation_context(batches={"B900": batch}, expected_operations=operations, seed_results=())
-    assert compute_metrics([result], {"B900": batch}, expected_operations=operations, failure_details=[],
+    assert compute_metrics([result], {"B900": batch}, expected_operations=operations,
+                           seed_occupancies_by_op_id={}, failure_details=[],
                            prepared=prepared).to_dict() == metrics.to_dict()
     assert metrics.overdue_count == 0, f"9999-12-31 哨兵交期不应判逾期，实际 overdue_count={metrics.overdue_count}"
     assert abs(metrics.total_tardiness_hours - 0.0) < 1e-9, f"9999-12-31 哨兵交期拖期应为 0，实际={metrics.total_tardiness_hours}"
@@ -154,9 +158,9 @@ def test_due_exclusive_max_due_sentinel_end_to_end_not_overdue() -> None:
 
     from unittest.mock import patch
 
+    from core.algorithms import evaluation_completion
     from core.models.schedule_config_runtime_fields import default_snapshot_values
     from core.models.schedule_config_runtime_snapshot import snapshot_from_values
-    from core.services.scheduler.run.optimizer import neighborhood_move_support
     from core.services.scheduler.run.optimizer.search_budget import SearchBudget
     from core.services.scheduler.run.schedule_graph_report import ScheduleGraphDispatchPreparation
     from core.services.scheduler.run.schedule_shared_optimizer import optimize_shared_schedule
@@ -184,15 +188,12 @@ def test_due_exclusive_max_due_sentinel_end_to_end_not_overdue() -> None:
             auto_assign_enabled="no",
         )
     )
+    # The run's evaluation context parses each batch due date once; local-search moves reuse that mapping.
     with patch.object(
-        neighborhood_move_support,
-        "prepare_batch_due_dates",
-        wraps=neighborhood_move_support.prepare_batch_due_dates,
-    ) as prepare_due_spy, patch.object(
-        neighborhood_move_support,
-        "batch_due_date",
-        wraps=neighborhood_move_support.batch_due_date,
-    ) as batch_due_spy:
+        evaluation_completion,
+        "_parse_due_date_state",
+        wraps=evaluation_completion._parse_due_date_state,
+    ) as due_spy:
         shared = optimize_shared_schedule(
             calendar_service=ContinuousCalendar(),
             cfg=improve_cfg,
@@ -211,8 +212,7 @@ def test_due_exclusive_max_due_sentinel_end_to_end_not_overdue() -> None:
             ),
         )
     assert len(shared.target_objectives) == 3
-    assert prepare_due_spy.call_count == 1
-    assert batch_due_spy.call_count == 0
+    assert due_spy.call_count == len(graph_batches)
     assert shared.process_facts["feature_preparation_calls"] == 1
     primary = shared.target_objectives[0]
     best_candidate = shared.archive.materialize(shared.archive.best_by_objective[primary])
@@ -235,19 +235,23 @@ def test_prepared_due_sources_keep_order_and_standalone_uses_current_inputs() ->
     result = ScheduleResult(op_id=1, op_code="OP1", batch_id="B1", seq=1, machine_id="M1", operator_id="O1",
                             start_time=datetime(2026, 1, 1, 8), end_time=datetime(2026, 1, 3, 1), source="internal")
     prepared = prepare_evaluation_context(batches=batches, expected_operations=[operation], seed_results=())
-    metrics = compute_metrics([result], batches, expected_operations=[operation], failure_details=[], prepared=prepared)
+    metrics = compute_metrics([result], batches, expected_operations=[operation],
+                              seed_occupancies_by_op_id={}, failure_details=[], prepared=prepared)
     assert (metrics.overdue_count, metrics.total_tardiness_hours, metrics.weighted_tardiness_hours) == (1, 25.0, 75.0)
     assert metrics.unscheduled_batch_ids_sample == ["B3(bad-due)", "B2"]
     assert metrics.invalid_due_batch_ids_sample == ["B3"]
     absent = collect_batch_completion([], failure_details=[{"op_id": 1, "batch_id": "B1"}], prepared=prepared)
     assert absent.incomplete_work_weight == 6.0  # critical 3 + urgent 2 + normal 1.
-    empty = compute_metrics([], batches, expected_operations=[operation], failure_details=[], prepared=prepared)
+    empty = compute_metrics([], batches, expected_operations=[operation],
+                            seed_occupancies_by_op_id={}, failure_details=[], prepared=prepared)
     assert empty.unscheduled_batch_ids_sample == ["B1(2026-01-01)", "B3(bad-due)", "B2"]
 
     batches["B1"].priority = "normal"
     batches["B1"].due_date = "2026-01-02"
-    standalone = compute_metrics([result], batches, expected_operations=[operation], failure_details=[])
+    standalone = compute_metrics([result], batches, expected_operations=[operation],
+                                 seed_occupancies_by_op_id={}, failure_details=[])
     assert (standalone.overdue_count, standalone.total_tardiness_hours, standalone.weighted_tardiness_hours) == (1, 1.0, 1.0)
     operation.id = 2
-    current = compute_metrics([result], batches, expected_operations=[operation], failure_details=[])
+    current = compute_metrics([result], batches, expected_operations=[operation],
+                              seed_occupancies_by_op_id={}, failure_details=[])
     assert current.completion.missing_operation_count == current.completion.unexpected_result_count == 1

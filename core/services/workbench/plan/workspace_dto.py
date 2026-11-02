@@ -1,7 +1,7 @@
 """Compose public projections and keep their snapshot evidence off the wire."""
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.facts.gantt_graph import project_scoped_gantt_graph, public_gantt_graph
+from core.services.workbench.facts.gantt_graph import project_scoped_gantt_graph
 
 from .baseline import build_plan_baseline
 from .calendar import project_plan_calendar
@@ -43,43 +43,13 @@ def resource_directory(rows, resources, *, tasks, baseline=None, compared_tasks=
     return [directory[key] for key in sorted(directory)]
 
 
-def summarize_gantt_graph(gantt_graph: dict, *, include_nodes: bool = False, scoped_batch_ids=None) -> dict:
-    if gantt_graph["state"] != "available":
-        return {
-            **public_gantt_graph(gantt_graph),
-            "node_count": 0,
-            "nodes_complete": False,
-        }
-    if scoped_batch_ids is not None:
-        scoped = project_scoped_gantt_graph(gantt_graph, scoped_batch_ids, include_nodes=include_nodes)
-        if include_nodes:
-            return {
-                **scoped,
-                "node_count": len(scoped["nodes"]),
-                "nodes_complete": True,
-            }
-        return scoped
-    count = (
-        gantt_graph["node_count"]
-        if "node_count" in gantt_graph and not include_nodes
-        else len(gantt_graph["nodes"])
-    )
+def summarize_gantt_graph(gantt_graph: dict, *, include_nodes: bool, scoped_batch_ids) -> dict:
+    projected = project_scoped_gantt_graph(gantt_graph, scoped_batch_ids, include_nodes=include_nodes)
+    if projected["state"] != "available":
+        return {**projected, "node_count": 0, "nodes_complete": False}
     if include_nodes:
-        return {
-            **public_gantt_graph(gantt_graph),
-            "node_count": count,
-            "nodes_complete": True,
-        }
-    return {
-        "state": "available",
-        "reason": None,
-        "scope": gantt_graph["scope"],
-        "nodes": [],
-        "node_count": count,
-        "nodes_complete": count == 0,
-        "critical_task_refs": [],
-        "critical_edges": [],
-    }
+        return {**projected, "node_count": len(projected["nodes"]), "nodes_complete": True}
+    return projected
 
 
 def workspace_projections(
@@ -101,7 +71,7 @@ def workspace_projections(
     )
     occupancy = project_plan_occupancy(
         scope=scope, resources=resources, calendar_facts=calendar_facts, selected=selected,
-        include_segments=False, intervals=context.datetime_intervals(entry),
+        include_segments=False,
     )
     delivery, _ = read_plan_delivery(conn, scope=scope, logger=logger, context=context)
     state = delivery["summary"]["state"]
@@ -109,7 +79,7 @@ def workspace_projections(
     process_order, gantt_graph = project_process_order(
         conn, plan_ref=scope.plan_ref, context=context, include_nodes=(scope.range_start is not None),
     )
-    scoped_batches = {row["batch_id"] for row in selected[0]} if scope.range_start is not None else None
+    scoped_batches = {row["batch_id"] for row in selected.rows} if scope.range_start is not None else None
     gantt_graph = summarize_gantt_graph(gantt_graph, include_nodes=False, scoped_batch_ids=scoped_batches)
     provenance = baseline_facts.get("provenance") or {
         "state": "unavailable", "reason": baseline.get("reason") or "此计划未记录可核对的生成来源。",

@@ -1,6 +1,7 @@
 """Real calendar, qualification, execution ledger and editable business conflicts."""
 
 from datetime import datetime
+from types import SimpleNamespace
 from typing import Optional
 
 import pytest
@@ -11,7 +12,9 @@ from core.services.personnel.operator_qualification import OperatorQualification
 from core.services.scheduler.template_lineage import TemplateLineageWriter
 from core.services.workbench.batch.facts import BatchFacts
 from core.services.workbench.run.preflight import PreflightService
-from core.services.workbench.trial.constraints import _actual_reservations, build_trial_intervals
+from core.services.workbench.trial import constraints, facts
+from core.services.workbench.trial.constraints import build_trial_intervals, resource_issues
+from core.services.workbench.trial.occupancy import reported_archive
 from tests.workbench.run_compute_support import compute_run, prepare_run_input
 from tests.workbench.trial_adoption_support import INTENT
 from tests.workbench.trial_adoption_support import service as adoption_service
@@ -196,30 +199,347 @@ def _report(start, end, hours, machine: Optional[str] = "MR1", operator: Optiona
             "actual_machine_ref": machine, "actual_operator_ref": operator}
 
 
-def _reservation_codes(*, unit_hours, reports=(), finish="2026-09-09T10:00:00",
-                       window=("2026-09-09T09:00:00", "2026-09-09T12:00:00"), data_gaps=()):
-    execution = {"execution_state": "complete", "reports": list(reports),
-                 "first_actual_start": "2026-09-09T10:00:00", "confirmed_finish": finish, "target_quantity": 3,
-                 "data_gaps": list(data_gaps)}
+def _execution(state, reports=(), first=None, finish=None):
+    return {"execution_state": state, "reports": list(reports), "first_actual_start": first, "confirmed_finish": finish,
+            "target_quantity": 3}
+
+
+def _trial_row(name, op_id, window, execution):
+    current = {"start": window[0], "end": window[1], "machine_ref": "MR1", "operator_ref": "OR1",
+               "machine_id": "M1", "operator_id": "O1"}
+    return {"row_ref": "row-" + name, "source_row_ref": "src-" + name, "operation_ref": "op-" + name,
+            "task_ref": "task-" + name,
+            "original": {"operation": {"source": "internal", "id": op_id}, "arrangement": current, "execution": execution},
+            "current": current}
+
+
+def _live_issues(rows, others=(), schedule=(), *, execution_operations=None, origin=None):
+    """一次现场资源核验：每道工序都有工序行和在用来源编号，正式安排都在 M1/O1，报工资源经现场永久编号换回业务编号。"""
+    operations = [(row["operation_ref"], row["original"]["operation"]["id"], 1, row["original"]["execution"])
+                  for row in rows]
+    operations.extend(others)
     live = {"facts": {"tables": {
-                "BatchOperations": [{"id": 7, "source": "internal", "setup_hours": 0, "unit_hours": unit_hours}],
-                "WorkbenchPlanSourceRefs": [{"ref": "op-actual", "source_key": "7", "kind": "operation"}]}},
-            "execution": {"op-actual": execution}}
-    current = {"start": window[0], "end": window[1], "machine_ref": "MR1", "operator_ref": "OR1"}
-    row = {"row_ref": "row-trial", "operation_ref": "op-trial", "task_ref": "task-trial",
-           "original": {"operation": {"source": "internal"}, "arrangement": current},
-           "current": current}
-    return sorted(item["code"] for item in _actual_reservations([row], live, build_trial_intervals([row])["current_by_op"]))
+                "BatchOperations": [{"id": op_id, "source": "internal", "setup_hours": 0, "unit_hours": unit_hours}
+                                    for _, op_id, unit_hours, _ in operations],
+                "WorkbenchPlanSourceRefs": [{"ref": ref, "source_key": str(op_id), "kind": "operation", "active": 1}
+                                            for ref, op_id, _, _ in operations],
+                "Schedule": [{"id": index, "version": 1, "op_id": op_id, "start_time": start, "end_time": end,
+                              "machine_id": "M1", "operator_id": "O1"} for index, (op_id, start, end) in enumerate(schedule)]}},
+            "execution": {ref: execution for ref, _, _, execution in operations},
+            "execution_reported": {ref: reported_archive(execution) for ref, _, _, execution in operations},
+            "execution_operations": execution_operations or {
+                ref: {"operation_ref": ref, "identity_active": 1, "id": op_id,
+                      "source": "internal", "setup_hours": 0, "unit_hours": unit_hours}
+                for ref, op_id, unit_hours, _ in operations
+            },
+            "origin": origin or SimpleNamespace(
+                unarranged={},
+                facts=None,
+                admission={"facts": {"tables": {"BatchOperations": [], "WorkbenchPlanSourceRefs": []}}},
+            ),
+            "preflight_facts": SimpleNamespace(refs={("machine", "M1"): "MR1", ("operator", "O1"): "OR1"},
+                                               operation_refs={op_id: ref for ref, op_id, _, _ in operations})}
+    return resource_issues(
+        rows, live, conn=None, trial_intervals=build_trial_intervals(rows, reported=live["execution_reported"])
+    )
+
+
+def _resource_codes(*, unit_hours, reports, finish="2026-09-09T10:00:00"):
+    done = _execution("complete", reports, "2026-09-09T10:00:00", finish)
+    row = _trial_row("trial", 8, ("2026-09-09T09:00:00", "2026-09-09T12:00:00"), _execution("unreported"))
+    return sorted(item["code"] for item in _live_issues(
+        [row], [("op-actual", 7, unit_hours, done)], [(7, "2026-09-09T10:00:00", finish)]))
 
 
 def test_completed_point_work_zero_duration_reports_hold_no_resources():
     point = "2026-09-09T10:00:00"
-    assert _reservation_codes(unit_hours=0, reports=[
+    assert _resource_codes(unit_hours=0, reports=[
         _report(point, point, 0), _report(point, point, 0, machine=None, operator=None)]) == []
     mixed = [_report(point, point, 0, machine=None, operator=None),
              _report(point, "2026-09-09T11:00:00", 1)]
-    assert _reservation_codes(unit_hours=0, reports=mixed, finish="2026-09-09T11:00:00") == [
-        "execution_resource_overlap", "execution_resource_overlap"]
+    assert _resource_codes(unit_hours=0, reports=mixed, finish="2026-09-09T11:00:00") == [
+        "execution_resource_overlap", "machine_overlap", "operator_overlap"]
     # 正工时工序的零时长报工不是合法点报工，占用区间无法证明。
-    assert _reservation_codes(unit_hours=1, reports=[_report(point, point, 0)]) == [
-        "execution_resource_interval_unknown", "execution_resource_interval_unknown"]
+    assert _resource_codes(unit_hours=1, reports=[_report(point, point, 0)]) == ["execution_resource_interval_unknown"]
+
+
+def test_moved_completed_row_real_production_only_reports_execution_overlap():
+    done = _execution("complete", [_report("2026-09-09T08:00:00", "2026-09-09T09:00:00", 1)],
+                      "2026-09-09T08:00:00", "2026-09-09T09:00:00")
+
+    def issues(window):
+        moved = _trial_row("x", 1, ("2026-09-09T13:00:00", "2026-09-09T14:00:00"), done)
+        rows = [moved, _trial_row("y", 2, window, _execution("unreported"))]
+        found = _live_issues(rows, schedule=[(1, "2026-09-09T08:00:00", "2026-09-09T09:00:00"),
+                                             (2, "2026-09-09T10:00:00", "2026-09-09T11:00:00")])
+        return {(item["code"], item["task_ref"]) for item in found}
+
+    # X 的保存安排挪离了现场种子：它 8–9 点的真实分段只算真实生产重叠，不算设备人员安排重叠。
+    assert issues(("2026-09-09T08:30:00", "2026-09-09T09:30:00")) == {("execution_resource_overlap", "task-y")}
+    assert issues(("2026-09-09T10:00:00", "2026-09-09T11:00:00")) == set()
+
+
+def test_too_many_issues_counts_distinct_issues(monkeypatch):
+    # 释放未知与时间无关，每行只计一次：同资源上一道未完工工序的多条报工不再把去重前的条数撑过上限。
+    monkeypatch.setattr(constraints, "_MAX_ISSUES", 10)
+    started = _execution("partial", [_report("2026-09-08T08:00:00", "2026-09-08T09:00:00", 1)] * 3, "2026-09-08T08:00:00")
+    rows = [_trial_row(str(hour), hour, (f"2026-09-09T{hour:02d}:00:00", f"2026-09-09T{hour:02d}:30:00"),
+                       _execution("unreported")) for hour in range(8, 13)]
+    found = _live_issues(rows, [("op-started", 7, 1, started)], [(7, "2026-09-08T08:00:00", "2026-09-08T09:00:00")])
+    assert [item["code"] for item in found] == ["execution_resource_release_unknown"] * 5
+    assert {item["task_ref"] for item in found} == {row["task_ref"] for row in rows}
+    # 真冲突仍拒绝：3 行在同一设备人员上互相重叠，去重后 6 条超过上限 3。
+    monkeypatch.setattr(constraints, "_MAX_ISSUES", 3)
+    with pytest.raises(WorkbenchCommandRejected) as error:
+        _live_issues([_trial_row(str(index), index, ("2026-09-09T08:00:00", "2026-09-09T11:00:00"),
+                                 _execution("unreported")) for index in range(1, 4)])
+    assert (error.value.code, error.value.status) == ("validation_too_large", 413)
+
+
+def test_completed_outside_work_occupies_its_actual_reports_not_its_old_reservation(trial_case):
+    case = trial_case
+    case.batch("B2")
+    outside = case.operation("B2", unit_hours=1 / 3)
+    case.plan(1, [outside], start="2026-09-09T08:00:00", end="2026-09-09T11:00:00")
+    m2, o2 = case.ref("machine", "M2"), case.ref("operator", "O2")
+    case.command("create", case.task(1, outside), case.values(3, actual_start="2026-09-09T08:00:00",
+        actual_end="2026-09-09T09:00:00", effective_processing_hours=1, actual_machine_ref=m2, actual_operator_ref=o2))
+    case.plan(2, [case.op_id], start="2026-09-09T09:00:00", end="2026-09-09T12:00:00")
+    draft = create(case, {"base": {"plan_ref": case.plan_ref(2)}})
+    # 旧计划在 M1/O1 预留到 11 点，实际 8–9 点已在 M2/O2 完工：M1/O1 9 点后已经空出来。
+    assert not codes(draft) & {"machine_overlap", "operator_overlap", "execution_resource_overlap"}, draft["validation"]
+    moved = change(case, draft, start="2026-09-09T08:00:00")["data"]
+    assert {"machine_overlap", "operator_overlap", "execution_resource_overlap"} <= codes(moved)
+
+
+def test_live_validation_parses_each_stage_execution_once(trial_case, monkeypatch):
+    case = trial_case
+    case.batch("B2")
+    outside = case.operation("B2", unit_hours=1 / 3)
+    case.plan(1, [outside], start="2026-09-09T12:00:00", end="2026-09-09T13:00:00")
+    m1, o1 = case.ref("machine", "M1"), case.ref("operator", "O1")
+    m2, o2 = case.ref("machine", "M2"), case.ref("operator", "O2")
+    case.command("create", case.task(1, outside), case.values(3, actual_start="2026-09-09T12:00:00",
+        actual_end="2026-09-09T13:00:00", effective_processing_hours=1, actual_machine_ref=m2, actual_operator_ref=o2))
+    case.plan(2, [case.op_id], start="2026-09-09T08:00:00", end="2026-09-09T11:00:00")
+    # 后段先登记、前段后登记：DTO 报告按登记顺序，typed report_segments 按实际时间顺序，按 report_ref 对齐不串位。
+    later = case.command("create", case.task(2, case.op_id), case.values(2, actual_start="2026-09-09T09:00:00",
+        actual_end="2026-09-09T11:00:00", effective_processing_hours=2,
+        actual_machine_ref=m2, actual_operator_ref=o2))["data"]["rows"][0]
+    earlier = case.command("create", case.task(2, case.op_id), case.values(1, actual_start="2026-09-09T08:00:00",
+        actual_end="2026-09-09T09:00:00", effective_processing_hours=1))["data"]["rows"][-1]
+    refs = {op_id: case.conn.execute("SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND source_key=? AND active=1",
+                                     (str(op_id),)).fetchone()[0] for op_id in (case.op_id, outside)}
+    projected = []
+    archived = []
+
+    def observe_projection(projection, snapshot, _build=facts.reported_projection):
+        built = _build(projection, snapshot)
+        projected.append((projection, built))
+        return built
+
+    monkeypatch.setattr(facts, "reported_projection", observe_projection)
+    monkeypatch.setattr(
+        constraints,
+        "reported_archive",
+        lambda execution, _parse=constraints.reported_archive: archived.append(execution) or _parse(execution),
+    )
+
+    def projections_for(op_id):
+        return [(projection, built) for projection, built in projected if projection.operation_ref == refs[op_id]]
+
+    draft = create(case, {"base": {"plan_ref": case.plan_ref(2)}})
+    # 正式计划建草稿核验两次（preview、create）：现场侧直接从 typed ExecutionProjection 构造并复用 _cache，
+    # 原始侧与现场共享同一 snapshot 对象，全程 0 次触发 reported_archive 重解析 DTO。
+    assert archived == []
+    assert len({id(projection) for projection, _ in projected}) == len(projected)
+    assert len(projections_for(case.op_id)) == 2 and len(projections_for(outside)) == 2
+    _, built_op = projections_for(case.op_id)[-1]
+    assert [(report["report_ref"], span) for report, span in built_op.spans] == [
+        (later["report_ref"], (datetime(2026, 9, 9, 9), datetime(2026, 9, 9, 11))),
+        (earlier["report_ref"], (datetime(2026, 9, 9, 8), datetime(2026, 9, 9, 9))),
+    ]
+    assert built_op.segments == (
+        (datetime(2026, 9, 9, 8), datetime(2026, 9, 9, 9), m1, o1),
+        (datetime(2026, 9, 9, 9), datetime(2026, 9, 9, 11), m2, o2),
+    )
+
+    del projected[:], archived[:]
+    reread = service(case.conn).get(draft["draft_ref"])
+    assert not codes(reread) & {"machine_overlap", "operator_overlap", "execution_resource_overlap"}, reread["validation"]
+    # 读取已保存草稿时：现场侧每道工序通过 reported_projection 复用 typed 缓存 1 次，
+    # 仅已保存草稿行的原始归档快照独立走 reported_archive 解析 1 次。
+    assert len(projections_for(case.op_id)) == 1 and len(projections_for(outside)) == 1
+    assert {"parsed_times", "report_segments", "actual_period"} <= set(
+        projections_for(case.op_id)[0][0].__dict__["_cache"]
+    )
+    assert [execution["operation_ref"] for execution in archived] == [refs[case.op_id]]
+
+    del projected[:], archived[:]
+    case.command("correct", later["report_ref"], {
+        "original_revision_ref": later["revision_ref"],
+        "actual_end": "2026-09-09T10:30:00",
+        "effective_processing_hours": 1.5,
+        "reason": "更正后段完工时间",
+    })
+    after_correct = service(case.conn).get(draft["draft_ref"])
+    assert len(archived) == 1 and archived[0]["confirmed_finish"] == "2026-09-09T11:00:00"
+    assert projections_for(case.op_id)[0][1].seed == (datetime(2026, 9, 9, 8), datetime(2026, 9, 9, 10, 30))
+    assert after_correct["tasks"][0]["execution_at_creation"]["confirmed_finish"] == "2026-09-09T11:00:00"
+    assert after_correct["tasks"][0]["execution"]["confirmed_finish"] == "2026-09-09T10:30:00"
+    assert "scenario_execution_anchor_outdated" in codes(after_correct)
+
+
+def test_retired_reported_work_blocks_its_resources_whatever_the_time(trial_case):
+    case = trial_case
+    case.batch("B2")
+    retired = case.operation("B2", unit_hours=1 / 3)
+    case.plan(1, [retired], start="2026-09-09T08:00:00", end="2026-09-09T09:00:00")
+    m2, o2 = case.ref("machine", "M2"), case.ref("operator", "O2")
+    case.command("create", case.task(1, retired), case.values(3, actual_start="2026-09-09T08:00:00",
+        actual_end="2026-09-09T09:00:00", effective_processing_hours=1, actual_machine_ref=m2, actual_operator_ref=o2))
+    case.conn.execute("DELETE FROM BatchOperations WHERE id=?", (retired,))
+    case.conn.commit()
+    assert case.conn.execute("SELECT COUNT(*) FROM Schedule WHERE op_id=?", (retired,)).fetchone()[0] == 0
+    case.plan(2, [case.op_id], start="2026-09-09T09:00:00", end="2026-09-09T12:00:00")
+    draft = create(case, {"base": {"plan_ref": case.plan_ref(2)}})
+    assert "execution_resource_release_unknown" not in codes(draft)
+    # 删掉的工序没有正式安排行，留下的报工仍占着 M2/O2 且释放时间未知：挪上去不论几点都阻断。
+    moved = change(case, draft, start="2026-09-09T13:00:00", machine="M2", operator="O2")["data"]
+    assert "execution_resource_release_unknown" in codes(moved)
+    away = change(case, moved, machine="M3", operator="O3", key="trial-change-00000002")["data"]
+    assert "execution_resource_release_unknown" not in codes(away)
+    case.conn.execute("DELETE FROM Machines WHERE machine_id='M2'")
+    case.conn.commit()
+    reread = service(case.conn).get(away["draft_ref"])
+    assert "execution_resource_unknown" in codes(reread)
+    assert reread["validation"]["can_adopt"] is False
+
+
+def test_retired_external_and_retired_resource_occupancy_contracts():
+    row = _trial_row("trial", 8, ("2026-09-09T09:00:00", "2026-09-09T12:00:00"), _execution("unreported"))
+    ext_report = _execution("partial", [_report("2026-09-09T08:00:00", "2026-09-09T09:00:00", 1, machine=None, operator=None)],
+                            "2026-09-09T08:00:00")
+    retired_ops = {
+        "op-trial": {"operation_ref": "op-trial", "identity_active": 1, "id": 8,
+                     "source": "internal", "setup_hours": 0, "unit_hours": 1},
+        "op-retired": {"operation_ref": "op-retired", "identity_active": 0, "id": None,
+                       "source": None, "setup_hours": None, "unit_hours": None},
+    }
+    origin = SimpleNamespace(
+        unarranged={"op-retired": {"operation": {"id": 7, "source": "external"}}},
+        facts=None,
+        admission={"facts": {"tables": {"BatchOperations": [], "WorkbenchPlanSourceRefs": []}}},
+    )
+    assert _live_issues([row], [("op-retired", 7, 0, ext_report)],
+                        execution_operations=retired_ops, origin=origin) == []
+    assert [item["code"] for item in _live_issues([row], [("op-retired", 7, 0, ext_report)],
+                                                  execution_operations=retired_ops)] == [
+        "execution_operation_source_unknown"
+    ]
+    for reported, expected in (
+        (
+            _execution(
+                "complete",
+                [_report("2026-09-09T08:00:00", "2026-09-09T09:00:00", 1, machine="MR-GONE", operator="OR1")],
+                "2026-09-09T08:00:00",
+                "2026-09-09T09:00:00",
+            ),
+            ["execution_resource_unknown"],
+        ),
+        (
+            _execution(
+                "partial",
+                [_report("2026-09-09T08:00:00", "2026-09-09T09:00:00", 1, machine="MR-GONE", operator="OR-GONE")],
+                "2026-09-09T08:00:00",
+            ),
+            ["execution_resource_unknown"],
+        ),
+        (
+            _execution(
+                "started",
+                [_report("2026-09-09T08:00:00", None, None, machine="MR1", operator="OR-GONE")],
+                "2026-09-09T08:00:00",
+            ),
+            ["execution_resource_unknown", "execution_resource_release_unknown"],
+        ),
+    ):
+        assert [item["code"] for item in _live_issues([row], [("op-actual", 7, 1, reported)])] == expected
+
+
+def test_operation_deleted_after_draft_reports_identity_changed(trial_case):
+    case = trial_case
+    case.batch("B2")
+    deleted = case.operation("B2", unit_hours=1 / 3)
+    case.plan(1, [case.op_id, deleted], start="2026-09-09T08:00:00", end="2026-09-09T11:00:00")
+    draft = create(case, {"base": {"plan_ref": case.plan_ref(1)}})
+    assert "operation_identity_changed" not in codes(draft)
+    task, = [task for task in draft["tasks"] if task["batch_ref"] == case.ref("batch", "B2")]
+    case.conn.execute("DELETE FROM BatchOperations WHERE id=?", (deleted,))
+    case.conn.commit()
+    # 建草稿后这道工序被删除，它的永久编号已停用：只有它报“已删除或被替换”。
+    reread = service(case.conn).get(draft["draft_ref"])
+    assert [item["task_ref"] for item in reread["validation"]["issues"]
+            if item["code"] == "operation_identity_changed"] == [task["task_ref"]]
+
+
+def test_outside_completed_predecessor_bounds_start_by_its_confirmed_finish(trial_case):
+    case = trial_case
+    second = case.operation(seq=2, unit_hours=1)
+    case.plan(1, [case.op_id], start="2026-09-09T08:00:00", end="2026-09-09T11:00:00")
+    case.command("create", case.task(1, case.op_id), case.values(3, actual_start="2026-09-09T08:00:00",
+                                                                  actual_end="2026-09-09T10:00:00"))
+    # 前一道不在草稿里、现场已确认 10 点完工：9 点开工早于它完工，10 点开工不冲突。
+    case.plan(2, [second], start="2026-09-09T09:00:00", end="2026-09-09T12:00:00")
+    assert "precedence_violation" in codes(create(case, {"base": {"plan_ref": case.plan_ref(2)}}))
+    case.plan(3, [second], start="2026-09-09T10:00:00", end="2026-09-09T13:00:00")
+    late = create(case, {"base": {"plan_ref": case.plan_ref(3)}}, key="trial-create-00000002")
+    assert not codes(late) & {"precedence_violation", "predecessor_missing"}, late["validation"]
+
+
+def test_outside_unconfirmed_predecessor_is_missing(trial_case):
+    case = trial_case
+    second = case.operation(seq=2, unit_hours=1)
+    case.plan(1, [second], start="2026-09-09T09:00:00", end="2026-09-09T12:00:00")
+    # 前一道不在草稿里、现场也没有它整道完工的记录：定不了后一道的开工时间。
+    assert "predecessor_missing" in codes(create(case, {"base": {"plan_ref": case.plan_ref(1)}}))
+
+
+def test_report_without_end_is_unfinished_and_blocks_release(trial_case):
+    case = trial_case
+    case.batch("B2")
+    outside = case.operation("B2", unit_hours=1 / 3)
+    case.plan(1, [outside], start="2026-09-09T08:00:00", end="2026-09-09T09:00:00")
+    case.command("create", case.task(1, outside), case.values(3, actual_start="2026-09-09T08:00:00", actual_end=None,
+                                                              effective_processing_hours=1))
+    case.plan(2, [case.op_id], start="2026-09-09T09:00:00", end="2026-09-09T12:00:00")
+    draft = create(case, {"base": {"plan_ref": case.plan_ref(2)}})
+    # 数量已满但缺终点不算整道完工：M1/O1 的释放时间未知，不能借整道首尾推测。
+    assert "execution_resource_release_unknown" in codes(draft)
+    assert "execution_resource_release_unknown" not in codes(change(case, draft)["data"])
+
+
+def test_completed_multi_resource_seed_occupies_each_report_segment(trial_case):
+    case = trial_case
+    case.batch("B2")
+    outside = case.operation("B2", unit_hours=1 / 3)
+    case.plan(1, [outside], start="2026-09-09T09:30:00", end="2026-09-09T10:30:00")
+    case.plan(2, [case.op_id], start="2026-09-09T08:00:00", end="2026-09-09T11:00:00")
+    m2, o2 = case.ref("machine", "M2"), case.ref("operator", "O2")
+    case.command("create", case.task(2, case.op_id), case.values(1, actual_start="2026-09-09T08:00:00",
+        actual_end="2026-09-09T09:00:00", effective_processing_hours=1))
+    case.command("create", case.task(2, case.op_id), case.values(2, actual_start="2026-09-09T09:00:00",
+        actual_end="2026-09-09T11:00:00", effective_processing_hours=2, actual_machine_ref=m2, actual_operator_ref=o2))
+    draft = create(case, {"base": {"plan_ref": case.plan_ref(2)}})
+    task, = draft["tasks"]
+    assert task["execution_anchor"]["basis"] == "completed_actuals"
+    assert (task["machine_ref"], task["start"], task["end"]) == (case.ref("machine", "M1"), "2026-09-09T08:00:00",
+                                                                 "2026-09-09T11:00:00")
+    # 任务头保留首段资源与首尾时间；实际只在 8–9 点占 M1/O1，9–11 点占 M2/O2。
+    assert not codes(draft) & {"machine_overlap", "operator_overlap", "execution_resource_overlap"}, draft["validation"]
+    hours = {row["resource_ref"]: row["arranged_hours"] for row in draft["capacity"]["resources"]}
+    assert hours[case.ref("machine", "M1")] == hours[case.ref("operator", "O1")] == 1
+    assert hours[m2] == hours[o2] == 2
+    case.conn.execute("UPDATE Schedule SET machine_id='M2',operator_id='O2' WHERE op_id=?", (outside,))
+    case.conn.commit()
+    assert {"machine_overlap", "operator_overlap"} <= codes(service(case.conn).get(draft["draft_ref"]))
