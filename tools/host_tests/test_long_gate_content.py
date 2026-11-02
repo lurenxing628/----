@@ -17,7 +17,12 @@ from tools.long_gate_collect import COLLECT_NODEIDS_REL, build_collect_nodeids_p
 from tools.long_gate_manifest import build_manifest_from_quality_gate_plan
 from tools.long_gate_schema import canonical_content, content_equal, read_file_content
 from tools.long_gate_summary import build_long_gate_summary, build_summary_entry, write_long_gate_summary
-from tools.quality_gate_shared import build_quality_gate_command_plan, normalize_quality_gate_command
+from tools.quality_gate_shared import (
+    FORMAL_FULL_TEST_PYTEST_ARGS,
+    QualityGateError,
+    build_quality_gate_command_plan,
+    normalize_quality_gate_command,
+)
 from tools.verify_required_regressions_from_full_test_debt import (
     RequiredRegressionProofError,
     verify_required_regressions_from_payload,
@@ -184,6 +189,33 @@ class LongGateContentTests(unittest.TestCase):
         (self.root / saved["stderr_log_path"]).write_bytes(b"other error!\n")
         self.assertIn("logs", cache.evaluate_failure_reuse(entry, current, repo_root=str(self.root))["decision"]["reason"])
 
+    def test_missing_unreadable_or_mistyped_cache_reruns_with_original_reason(self):
+        failure_entry = {**self.entry, "output_result_files": []}
+        cache.write_success(self.entry, self.current(), self.result, ["result.bin"], repo_root=str(self.root))
+        cache.write_failure(failure_entry, self.current(failure_entry), {**self.result, "returncode": 2}, repo_root=str(self.root))
+        for kind, entry, evaluate in (
+            ("success", self.entry, cache.evaluate_reuse),
+            ("failure", failure_entry, cache.evaluate_failure_reuse),
+        ):
+            path, saved = self.saved(kind)
+            current = self.current(entry)
+            for field, value in (("returncode", True), ("schema_version", "2"), ("duration_s", "0.25")):
+                path.write_text(json.dumps({**saved, field: value}))
+                decision = evaluate(entry, current, repo_root=str(self.root))["decision"]
+                self.assertEqual(
+                    (decision["decision"], decision["reason"]),
+                    ("run", "cache unreadable/corrupt: numeric field has invalid type"),
+                )
+            path.write_text("[]")
+            self.assertEqual(
+                evaluate(entry, current, repo_root=str(self.root))["decision"]["reason"],
+                "cache unreadable/corrupt: top-level value is not an object",
+            )
+            path.unlink()
+            self.assertEqual(
+                evaluate(entry, current, repo_root=str(self.root))["decision"]["reason"], f"no previous {kind} cache"
+            )
+
     def test_summary_references_owned_content_and_preserves_actual_results(self):
         current = self.current()
         cached = "evidence/QualityGate/long_gate/results/host_content.v2.success.json"
@@ -327,28 +359,60 @@ class LongGateContentTests(unittest.TestCase):
         }
         (self.root / COLLECT_NODEIDS_REL).write_text(json.dumps(tampered))
         self.assertFalse(fingerprint._collect_nodeids_component(str(self.root))["validated"])
+        classification_keys = (
+            "required_or_quality_gate_self_failure",
+            "main_style_isolation_candidate",
+            "candidate_test_debt",
+        )
         full_payload = {
+            "schema_version": 2,
+            "baseline_kind": "after_main_style_isolation",
+            "importable": False,
+            "importable_blockers": [],
             "exitstatus": 0,
-            "collection_error_count": 0,
-            "classifications": {
-                "required_or_quality_gate_self_failure": [],
-                "main_style_isolation_candidate": [],
-                "candidate_test_debt": [],
-            },
+            "pytest_args": list(FORMAL_FULL_TEST_PYTEST_ARGS),
+            "collection_errors": [],
+            "os_name": os.name,
+            "classifications": {key: [] for key in classification_keys},
             "collected_nodeids": payload["nodeids"],
-            "reports": [{"nodeid": nodeid, "when": "call", "outcome": "passed"} for nodeid in payload["nodeids"]],
+            "reports": [
+                {
+                    "nodeid": nodeid,
+                    "when": "call",
+                    "outcome": "passed",
+                    "xfail_marker_present": False,
+                    "xfail_marker_reason": "",
+                    "xfail_marker_strict": False,
+                    "xfail_marker_run": False,
+                    "wasxfail_reason": "",
+                    "strict_xpass": False,
+                }
+                for nodeid in payload["nodeids"]
+            ],
+            "summary": {
+                "collected_count": len(payload["nodeids"]),
+                "failed_nodeid_count": 0,
+                "collection_error_count": 0,
+                "outcome_counts": {"call:passed": len(payload["nodeids"])},
+                "classification_counts": {key: 0 for key in classification_keys},
+            },
         }
-        verified = verify_required_regressions_from_payload(full_payload, required_tests=["tests/example.py"])
-        self.assertEqual(verified["required_target_paths"], ["tests/example.py"])
+        required_tests = ["tests/example.py"]
+        verified = verify_required_regressions_from_payload(full_payload, required_tests=required_tests)
+        self.assertEqual(verified["required_target_paths"], required_tests)
         self.assertEqual(verified["required_nodeids"], payload["nodeids"])
         self.assertEqual(verified["required_reports"][payload["nodeids"][0]], [full_payload["reports"][0]])
         self.assertNotIn("required_target_hash", verified)
         bad = copy.deepcopy(full_payload)
         bad["reports"][0]["xfail_marker_present"] = True
         with self.assertRaises(RequiredRegressionProofError):
-            verify_required_regressions_from_payload(bad, required_tests=["tests/example.py"])
+            verify_required_regressions_from_payload(bad, required_tests=required_tests)
         with self.assertRaises(RequiredRegressionProofError):
             verify_required_regressions_from_payload(full_payload, required_tests=["tests/missing.py"])
+        setup_only = copy.deepcopy(full_payload)
+        setup_only["reports"][0]["when"] = "setup"
+        with self.assertRaisesRegex(QualityGateError, "终态报告"):
+            verify_required_regressions_from_payload(setup_only, required_tests=required_tests)
 
     def test_node_resolution_and_fingerprint_skip_broken_path_node_and_bind_working_fallback(self):
         from tests._support.node_runtime_support import resolve_node_binary
@@ -386,6 +450,90 @@ class LongGateContentTests(unittest.TestCase):
         self.assertNotEqual(os.path.realpath(fallback_test_node), os.path.realpath(str(bad_node)))
         self.assertEqual(os.path.realpath(fallback_test_node), fallback_fp["node_executable_realpath"])
         self.assertTrue(fallback_fp["node_version"].startswith("v"))
+
+    def test_content_equal_preserves_type_signed_zero_and_nan_validation(self):
+        self.assertFalse(content_equal(True, 1))
+        self.assertFalse(content_equal(False, 0))
+        self.assertFalse(content_equal(1, 1.0))
+        self.assertFalse(content_equal(0, 0.0))
+        self.assertFalse(content_equal({"nested": [1, False, 0.0]}, {"nested": [1.0, False, 0.0]}))
+        self.assertFalse(content_equal(0.0, -0.0))
+        self.assertFalse(content_equal({"z": 0.0}, {"z": -0.0}))
+        self.assertTrue(content_equal(-0.0, -0.0))
+        self.assertTrue(content_equal([1, "a", (True, None)], (1, "a", [True, None])))
+        self.assertTrue(content_equal({"b": 2, "a": 1}, {"a": 1, "b": 2}))
+        self.assertTrue(content_equal({1: "x"}, {"1": "x"}))
+        self.assertTrue(content_equal({1: "x", 2: "y"}, {"1": "x", "2": "y"}))
+        self.assertFalse(content_equal({2: "x", 10: "y"}, {"2": "x", "10": "y"}))
+        self.assertNotEqual(canonical_content({2: "x", 10: "y"}), canonical_content({"2": "x", "10": "y"}))
+        self.assertTrue(content_equal({None: 1}, {"null": 1}))
+        self.assertTrue(content_equal({False: 2, True: 3}, {"false": 2, "true": 3}))
+        with self.assertRaises(TypeError):
+            content_equal({None: 1, False: 2}, {"null": 1, "false": 2})
+
+        for bad_left, bad_right in (
+            ([1, float("nan")], [2, 3]),
+            ([1, 2], [2, float("inf")]),
+            ({"a": 1, "b": float("-inf")}, {"a": 2, "b": 0.0}),
+            ({float("nan"): 1}, {"x": 1}),
+        ):
+            with self.assertRaises(ValueError):
+                content_equal(bad_left, bad_right)
+
+        with self.assertRaises(TypeError):
+            content_equal({"a": {1, 2}}, {"a": [1, 2]})
+
+    def test_diff_fingerprint_components_covers_missing_keys_files_metadata_and_order(self):
+        base = self.current()
+        self.assertEqual(
+            fingerprint.diff_fingerprint_components(base, copy.deepcopy(base)),
+            {"changed": False, "components": []},
+        )
+        self.assertEqual(
+            fingerprint.diff_fingerprints(base, copy.deepcopy(base)),
+            {"changed": False, "reasons": [], "components": []},
+        )
+
+        # Missing key vs explicit None at component level and top level
+        with_none_comp = copy.deepcopy(base)
+        with_none_comp["components"]["extra_comp"] = None
+        comp_diff = fingerprint.diff_fingerprints(base, with_none_comp)
+        self.assertTrue(comp_diff["changed"])
+        self.assertTrue(any(row["component"] == "extra_comp" for row in comp_diff["components"]))
+
+        with_none_top = copy.deepcopy(base)
+        with_none_top["extra"] = None
+        top_diff = fingerprint.diff_fingerprints(base, with_none_top)
+        self.assertTrue(top_diff["changed"])
+        self.assertTrue(any(row["component"] == "extra" for row in top_diff["components"]))
+
+        # Files metadata change (git_source_status / paths) without file row change
+        meta_changed = copy.deepcopy(base)
+        meta_changed["components"]["files"]["git_source_status"] = "unavailable"
+        meta_diff = fingerprint.diff_fingerprints(base, meta_changed)
+        self.assertTrue(meta_diff["changed"])
+        self.assertTrue(
+            any(
+                row["component"] == "files" and row.get("field") == "git_source_status"
+                for row in meta_diff["components"]
+            )
+        )
+
+        # Files list order change with identical file set
+        two_files_fp_a = copy.deepcopy(base)
+        file_a = {"path": "a.py", "exists": True, "kind": "file", "source": "git", "content_base64": "YQ=="}
+        file_b = {"path": "b.py", "exists": True, "kind": "file", "source": "git", "content_base64": "Yg=="}
+        two_files_fp_a["components"]["files"]["files"] = [file_a, file_b]
+        two_files_fp_b = copy.deepcopy(two_files_fp_a)
+        two_files_fp_b["components"]["files"]["files"] = [file_b, file_a]
+        order_diff = fingerprint.diff_fingerprints(two_files_fp_a, two_files_fp_b)
+        self.assertTrue(order_diff["changed"])
+        self.assertTrue(
+            any(
+                row["component"] == "files" and row["reason"] == "file list order or structure changed"
+                for row in order_diff["components"]
+            )
+        )
 
 
 if __name__ == "__main__":

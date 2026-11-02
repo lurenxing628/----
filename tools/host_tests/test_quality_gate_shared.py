@@ -2,11 +2,16 @@
 
 import base64
 import json
+import os
+import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
+from tools import benchmark_full_test_debt_shards as shard_tool
 from tools import quality_gate_shared as shared
+from tools import report_full_test_debt_durations as report_tool
 from tools.long_gate_schema import canonical_content
 
 
@@ -142,3 +147,79 @@ def test_replay_checks_run_index_path_and_preserves_execution_failures(tmp_path)
         tmp_path, [command], receipt_entries=[raw_entry], run_id="run-content",
         reusable_results={1: {"returncode": 0, "stdout": "real output\n", "stderr": ""}},
     )
+
+
+FRESH_NODEID = "tests/new/test_fresh.py::test_fresh"
+RETIRED_NODEID = "tests/old/test_retired.py::test_retired"
+
+
+def _write_debt_payload(path, nodeid, duration):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "collected_nodeids": [nodeid],
+        "reports": [{"nodeid": nodeid, "when": "call", "outcome": "passed", "duration": duration}],
+        "summary": {"collected_count": 1},
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+@pytest.fixture
+def analysis_repo(tmp_path, monkeypatch):
+    """以 tmp_path 作仓库根：v4 current 是新数据，旧根 current 是迁移前的历史数据；cwd 是空目录。"""
+    current = _write_debt_payload(tmp_path / shared.QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL, FRESH_NODEID, 1.0)
+    legacy = _write_debt_payload(
+        tmp_path / shared.QUALITY_GATE_LEGACY_ROOT_REL / "current_full_test_debt.json", RETIRED_NODEID, 9.0
+    )
+    (tmp_path / "cwd").mkdir()
+    monkeypatch.setattr(report_tool, "REPO_ROOT", str(tmp_path))
+    monkeypatch.setattr(shard_tool, "REPO_ROOT", tmp_path)
+    monkeypatch.chdir(tmp_path / "cwd")
+    return current, legacy
+
+
+def test_duration_report_defaults_to_shared_current_and_keeps_explicit_history(analysis_repo, capsys):
+    current, legacy = analysis_repo
+    assert report_tool.main([]) == 0
+    output = capsys.readouterr().out
+    assert FRESH_NODEID in output and "tests/old/" not in output
+
+    assert report_tool.main([str(legacy)]) == 0
+    assert RETIRED_NODEID in capsys.readouterr().out
+
+    current.unlink()
+    with pytest.raises(FileNotFoundError):
+        report_tool.main([])
+
+
+def test_shard_estimate_defaults_to_shared_current_and_keeps_explicit_history(analysis_repo, capsys):
+    current, legacy = analysis_repo
+    assert shard_tool.main(["--counts", "2"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["total_count"] == 1
+    assert result["distributions"][0]["estimated_report_s"] == 1.0
+    assert result["source_payload"] == shared.QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL
+
+    assert shard_tool.main(["--counts", "2", "--payload", str(legacy)]) == 0
+    assert json.loads(capsys.readouterr().out)["distributions"][0]["estimated_report_s"] == 9.0
+
+    current.unlink()
+    with pytest.raises(FileNotFoundError):
+        shard_tool.main(["--counts", "2"])
+
+
+def test_direct_script_entries_bootstrap_outside_repo_root(analysis_repo, tmp_path):
+    current, _legacy = analysis_repo
+    tools_dir = Path(report_tool.__file__).resolve().parent
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    commands = {
+        FRESH_NODEID: [sys.executable, str(tools_dir / "report_full_test_debt_durations.py"), str(current)],
+        '"estimated_report_s": 1.0': [
+            sys.executable, str(tools_dir / "benchmark_full_test_debt_shards.py"),
+            "--payload", str(current), "--counts", "2",
+        ],
+    }
+    for expected, command in commands.items():
+        completed = subprocess.run(command, cwd=str(tmp_path), env=env, capture_output=True, text=True, check=False)
+        assert completed.returncode == 0, completed.stderr
+        assert expected in completed.stdout

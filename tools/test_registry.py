@@ -121,20 +121,18 @@ def iter_required_regression_common_scope_policy(
 
 
 def validate_required_regression_group_coverage(
-    required_tests: Sequence[str],
+    required_paths: Sequence[str],
     groups: Optional[Sequence[Mapping[str, Any]]] = None,
 ) -> Dict[str, Any]:
-    required_paths = iter_required_tests(required_tests)
     required_set = set(required_paths)
     group_rows = iter_required_regression_groups(groups)
     flat_targets: List[str] = []
     target_to_groups: Dict[str, List[str]] = {}
     for group in group_rows:
-        group_id = str(group.get("group_id") or "")
-        for target in list(group.get("target_paths") or []):
-            normalized = _normalize_registry_path(str(target))
-            flat_targets.append(normalized)
-            target_to_groups.setdefault(normalized, []).append(group_id)
+        group_id = group["group_id"]
+        for target in group["target_paths"]:
+            flat_targets.append(target)
+            target_to_groups.setdefault(target, []).append(group_id)
 
     duplicates = []
     for target, owning_groups in sorted(target_to_groups.items()):

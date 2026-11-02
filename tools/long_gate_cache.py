@@ -210,18 +210,19 @@ def _validate_required_fields(payload: Mapping[str, Any]) -> Optional[str]:
     return None
 
 
-def _coerce_plain_int_field(payload: Mapping[str, Any], field: str) -> Tuple[Optional[int], Optional[str]]:
+_INVALID_NUMERIC_FIELD_REASON = "cache unreadable/corrupt: numeric field has invalid type"
+
+
+def _plain_int_field(payload: Mapping[str, Any], field: str) -> Optional[int]:
     value = payload.get(field)
     if not isinstance(value, int) or isinstance(value, bool):
-        return None, "cache unreadable/corrupt: numeric field has invalid type"
-    return int(value), None
+        return None
+    return value
 
 
-def _coerce_plain_float_field(payload: Mapping[str, Any], field: str) -> Tuple[Optional[float], Optional[str]]:
+def _has_plain_number_field(payload: Mapping[str, Any], field: str) -> bool:
     value = payload.get(field)
-    if not isinstance(value, (int, float)) or isinstance(value, bool):
-        return None, "cache unreadable/corrupt: numeric field has invalid type"
-    return float(value), None
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
 def _validate_fingerprint_shape(fingerprint: Mapping[str, Any]) -> Optional[str]:
@@ -562,27 +563,28 @@ def evaluate_reuse(
             legacy_decision
             or _decision(entry_id, "run", "no previous success cache", current_fingerprint=current_content)
         )
-    if load_error:
+    if previous is None:
         return _reuse_evaluation(_decision(entry_id, "run", load_error, current_fingerprint=current_content))
-    assert previous is not None
 
     required_error = _validate_required_fields(previous)
     if required_error:
         return _reuse_evaluation(_decision(entry_id, "run", required_error, current_fingerprint=current_content))
     numeric_values: Dict[str, int] = {}
     for field in ("schema_version", "cache_schema_version", "fingerprint_schema_version", "returncode"):
-        value, error = _coerce_plain_int_field(previous, field)
-        if error:
-            return _reuse_evaluation(_decision(entry_id, "run", error, current_fingerprint=current_content))
-        assert value is not None
+        value = _plain_int_field(previous, field)
+        if value is None:
+            return _reuse_evaluation(
+                _decision(entry_id, "run", _INVALID_NUMERIC_FIELD_REASON, current_fingerprint=current_content)
+            )
         numeric_values[field] = value
     schema_version = numeric_values["schema_version"]
     cache_schema_version = numeric_values["cache_schema_version"]
     fingerprint_schema_version = numeric_values["fingerprint_schema_version"]
     returncode = numeric_values["returncode"]
-    _duration_s, duration_error = _coerce_plain_float_field(previous, "duration_s")
-    if duration_error:
-        return _reuse_evaluation(_decision(entry_id, "run", duration_error, current_fingerprint=current_content))
+    if not _has_plain_number_field(previous, "duration_s"):
+        return _reuse_evaluation(
+            _decision(entry_id, "run", _INVALID_NUMERIC_FIELD_REASON, current_fingerprint=current_content)
+        )
     if schema_version != LONG_GATE_CACHE_SCHEMA_VERSION or cache_schema_version != LONG_GATE_CACHE_SCHEMA_VERSION:
         return _reuse_evaluation(
             _decision(entry_id, "run", "cache schema changed", current_fingerprint=current_content)
@@ -664,10 +666,7 @@ def evaluate_reuse(
         return _reuse_evaluation(
             _decision(entry_id, "run", "previous result was partially written", current_fingerprint=current_content)
         )
-    previous_fingerprint_obj = previous.get("fingerprint")
-    previous_fingerprint = cast(
-        Mapping[str, Any], previous_fingerprint_obj if isinstance(previous_fingerprint_obj, dict) else {}
-    )
+    previous_fingerprint = cast(Mapping[str, Any], previous["fingerprint"])
     untrusted_path_reason = _fingerprint_untrusted_path_reason(
         current_fingerprint
     ) or _fingerprint_untrusted_path_reason(previous_fingerprint)
@@ -707,7 +706,7 @@ def evaluate_reuse(
                 "run",
                 "input fingerprint changed",
                 invalidated_by=["fingerprint schema changed"],
-                fingerprint_diff=list(diff.get("components") or []),
+                fingerprint_diff=diff["components"],
                 previous_completed_at=str(previous.get("completed_at") or ""),
                 previous_result_path=result_rel,
                 current_fingerprint=current_content,
@@ -721,16 +720,15 @@ def evaluate_reuse(
         return _reuse_evaluation(
             _decision(entry_id, "run", "command identity changed", current_fingerprint=current_content)
         )
-    if not content_equal(previous_fingerprint, current_content):
-        diff = diff_fingerprints(previous_fingerprint, current_fingerprint)
-        reasons = list(diff.get("reasons") or ["input fingerprint changed"])
+    diff = diff_fingerprints(previous_fingerprint, current_content)
+    if diff["changed"]:
         return _reuse_evaluation(
             _decision(
                 entry_id,
                 "run",
                 "input fingerprint changed",
-                invalidated_by=reasons,
-                fingerprint_diff=list(diff.get("components") or []),
+                invalidated_by=diff["reasons"],
+                fingerprint_diff=diff["components"],
                 previous_completed_at=str(previous.get("completed_at") or ""),
                 previous_result_path=result_rel,
                 current_fingerprint=current_content,
@@ -794,9 +792,8 @@ def evaluate_failure_reuse(
             legacy_decision
             or _decision(entry_id, "run", "no previous failure cache", current_fingerprint=current_content)
         )
-    if load_error:
+    if previous is None:
         return _failure_reuse_evaluation(_decision(entry_id, "run", load_error, current_fingerprint=current_content))
-    assert previous is not None
 
     required_error = _validate_required_fields(previous)
     if required_error:
@@ -805,15 +802,15 @@ def evaluate_failure_reuse(
         )
     numeric_values: Dict[str, int] = {}
     for field in ("schema_version", "cache_schema_version", "fingerprint_schema_version", "returncode"):
-        value, error = _coerce_plain_int_field(previous, field)
-        if error:
-            return _failure_reuse_evaluation(_decision(entry_id, "run", error, current_fingerprint=current_content))
-        assert value is not None
+        value = _plain_int_field(previous, field)
+        if value is None:
+            return _failure_reuse_evaluation(
+                _decision(entry_id, "run", _INVALID_NUMERIC_FIELD_REASON, current_fingerprint=current_content)
+            )
         numeric_values[field] = value
-    _duration_s, duration_error = _coerce_plain_float_field(previous, "duration_s")
-    if duration_error:
+    if not _has_plain_number_field(previous, "duration_s"):
         return _failure_reuse_evaluation(
-            _decision(entry_id, "run", duration_error, current_fingerprint=current_content)
+            _decision(entry_id, "run", _INVALID_NUMERIC_FIELD_REASON, current_fingerprint=current_content)
         )
     if (
         numeric_values["schema_version"] != LONG_GATE_CACHE_SCHEMA_VERSION
@@ -901,10 +898,7 @@ def evaluate_failure_reuse(
         return _failure_reuse_evaluation(
             _decision(entry_id, "run", "previous failure was partially written", current_fingerprint=current_content)
         )
-    previous_fingerprint_obj = previous.get("fingerprint")
-    previous_fingerprint = cast(
-        Mapping[str, Any], previous_fingerprint_obj if isinstance(previous_fingerprint_obj, dict) else {}
-    )
+    previous_fingerprint = cast(Mapping[str, Any], previous["fingerprint"])
     untrusted_path_reason = _fingerprint_untrusted_path_reason(
         current_fingerprint
     ) or _fingerprint_untrusted_path_reason(previous_fingerprint)
@@ -939,16 +933,15 @@ def evaluate_failure_reuse(
         return _failure_reuse_evaluation(
             _decision(entry_id, "run", "previous failure returncode was zero", current_fingerprint=current_content)
         )
-    if not content_equal(previous_fingerprint, current_content):
-        diff = diff_fingerprints(previous_fingerprint, current_fingerprint)
-        reasons = list(diff.get("reasons") or ["input fingerprint changed"])
+    diff = diff_fingerprints(previous_fingerprint, current_content)
+    if diff["changed"]:
         return _failure_reuse_evaluation(
             _decision(
                 entry_id,
                 "run",
                 "input fingerprint changed",
-                invalidated_by=reasons,
-                fingerprint_diff=list(diff.get("components") or []),
+                invalidated_by=diff["reasons"],
+                fingerprint_diff=diff["components"],
                 previous_completed_at=str(previous.get("completed_at") or ""),
                 previous_result_path=result_rel,
                 current_fingerprint=current_content,
@@ -1055,8 +1048,6 @@ def _assert_cache_fingerprint(fingerprint: Mapping[str, Any], cache_kind: str) -
     error = _validate_fingerprint_shape(fingerprint)
     if error:
         raise ValueError(f"long gate {cache_kind} cache requires valid fingerprint: {error}")
-    if fingerprint.get("schema_version") != LONG_GATE_FINGERPRINT_SCHEMA_VERSION:
-        raise ValueError(f"long gate {cache_kind} cache requires current fingerprint schema_version")
     keys = _non_reusable_environment_keys(fingerprint)
     if keys:
         raise ValueError(f"long gate {cache_kind} cache is unavailable for environment keys: " + ", ".join(keys))

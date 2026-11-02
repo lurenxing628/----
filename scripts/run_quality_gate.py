@@ -55,12 +55,11 @@ from tools.long_gate_summary import (  # noqa: E402
     extract_copyable_failure,
     write_long_gate_summary,
 )
-from tools.quality_gate_support import (  # noqa: E402
+from tools.quality_gate_shared import (  # noqa: E402
     LEDGER_PATH,
     QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL,
     QUALITY_GATE_DEBT_LEDGER_SYNC_REL,
     QUALITY_GATE_FAILED_FULL_TEST_DEBT_REL,
-    QUALITY_GATE_FULL_TEST_DEBT_NODE_CACHE_REL,
     QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL,
     QUALITY_GATE_LOGS_DIR_REL,
     QUALITY_GATE_MANIFEST_REL,

@@ -16,15 +16,7 @@ from typing import Any, Dict, Generator, Iterable, List, Mapping, Optional, Sequ
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-BASELINE_BEGIN = "<!-- APS-FULL-PYTEST-BASELINE:BEGIN -->"
-BASELINE_END = "<!-- APS-FULL-PYTEST-BASELINE:END -->"
 SCHEMA_VERSION = 2
-XFAIL_SIGNAL_REPORT_KEYS = (
-    "strict_xpass",
-    "xfail_marker_present",
-    "xfail_marker_reason",
-    "wasxfail_reason",
-)
 
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
@@ -118,20 +110,8 @@ def _resolve_repo_root(raw_repo_root: str) -> Path:
     return repo_root
 
 
-def _resolve_write_baseline(raw_path: Optional[str], *, repo_root: Path) -> Optional[Path]:
-    if not raw_path:
-        return None
-    path = Path(str(raw_path))
-    if not path.is_absolute():
-        path = repo_root / path
-    resolved = path.resolve()
-    if not _path_within_root(resolved, repo_root):
-        raise RuntimeError(f"--write-baseline 必须写在 Git 仓库内：path={resolved}；repo_root={repo_root}")
-    return resolved
-
-
-def _resolve_payload_path(raw_path: Optional[str], *, repo_root: Path) -> Path:
-    path = Path(str(raw_path or CURRENT_PAYLOAD_REL))
+def _resolve_payload_path(raw_path: str, *, repo_root: Path) -> Path:
+    path = Path(raw_path)
     if not path.is_absolute():
         path = repo_root / path
     resolved = path.resolve()
@@ -140,35 +120,12 @@ def _resolve_payload_path(raw_path: Optional[str], *, repo_root: Path) -> Path:
     return resolved
 
 
-def _status_path(line: str) -> str:
-    text = str(line or "")[3:].strip()
-    if " -> " in text:
-        text = text.rsplit(" -> ", 1)[1].strip()
-    if text.startswith('"') and text.endswith('"'):
-        text = text[1:-1]
-    return text.replace("\\", "/")
-
-
 def _relative_to_cwd(path: Path, cwd: Path) -> str:
     resolved = path.resolve()
     try:
         return resolved.relative_to(cwd.resolve()).as_posix()
     except ValueError:
         return path.as_posix()
-
-
-def _unexpected_status_lines(lines: Sequence[str], *, allowed_paths: Sequence[str]) -> List[str]:
-    allowed = {path.replace("\\", "/") for path in allowed_paths}
-    return [line for line in lines if _status_path(line) not in allowed]
-
-
-def _remove_existing_file(path: Optional[Path]) -> None:
-    if path is None:
-        return
-    try:
-        path.unlink()
-    except FileNotFoundError:
-        return
 
 
 def _longrepr_text(report: Any) -> str:
@@ -345,7 +302,6 @@ def _summarize(
 def _build_payload(
     *,
     baseline_kind: str,
-    importable: bool,
     pytest_args: Sequence[str],
     exitstatus: int,
     collector: FullTestDebtCollector,
@@ -356,15 +312,14 @@ def _build_payload(
     collector_argv: Sequence[str],
     git_status_short_before: Optional[Sequence[str]],
     worktree_clean_before: Optional[bool],
-    importable_blockers: Optional[Sequence[str]] = None,
 ) -> Dict[str, Any]:
     classifications = _classify_failures(collector.reports, required_paths, baseline_kind)
     summary = _summarize(collector.collected_nodeids, collector.reports, collector.collection_errors, classifications)
     return {
         "schema_version": SCHEMA_VERSION,
         "baseline_kind": baseline_kind,
-        "importable": importable is True,
-        "importable_blockers": list(importable_blockers or []),
+        "importable": False,
+        "importable_blockers": [],
         "generated_at": generated_at,
         "head_sha": head_sha,
         "collector_argv": list(collector_argv),
@@ -384,50 +339,12 @@ def _build_payload(
     }
 
 
-def _render_baseline_markdown(payload: Dict[str, Any]) -> str:
-    summary = dict(payload.get("summary") or {})
-    counts = dict(summary.get("classification_counts") or {})
-    baseline_kind = str(payload.get("baseline_kind") or "")
-    importable = bool(payload.get("importable"))
-    candidate_count = int(counts.get("candidate_test_debt") or 0)
-    title = "Full pytest P0 raw baseline"
-    description = "本文件记录 main-style 子进程隔离前的 full pytest 现场，只用于排查和对比。"
-    if baseline_kind == "after_main_style_isolation" and importable and candidate_count > 0:
-        title = "Full pytest P0 debt baseline"
-        description = "本文件记录 main-style 子进程隔离后的正式 full pytest 债务基线，可作为任务 5 导入测试债务台账的正式输入。"
-    elif baseline_kind == "after_main_style_isolation" and candidate_count == 0:
-        title = "Full pytest P0 current debt proof baseline"
-        description = "本文件记录当前 full pytest 债务证明；当前没有未登记 full pytest 失败，不作为任务 5 的导入种子。"
-    elif baseline_kind == "after_main_style_isolation":
-        title = "Full pytest P0 after isolation baseline"
-        description = "本文件记录 main-style 子进程隔离后的 full pytest 对比现场，只用于任务 3 承接，不允许导入债务台账。"
-    lines = [
-        f"# {title}",
-        "",
-        description,
-        "",
-        f"- baseline_kind: `{payload.get('baseline_kind')}`",
-        f"- importable: `{str(payload.get('importable')).lower()}`",
-        f"- exitstatus: `{payload.get('exitstatus')}`",
-        f"- collected_count: `{summary.get('collected_count')}`",
-        f"- failed_nodeid_count: `{summary.get('failed_nodeid_count')}`",
-        "",
-        BASELINE_BEGIN,
-        "```json",
-        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
-        "```",
-        BASELINE_END,
-        "",
-    ]
-    return "\n".join(lines)
-
-
 def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     raw_args = list(argv if argv is not None else sys.argv[1:])
     if "--" not in raw_args:
         raise SystemExit(
             "用法：collect_full_test_debt.py [--baseline-kind raw_before_isolation|after_main_style_isolation] "
-            "[--write-baseline PATH] -- <pytest args>"
+            "-- <pytest args>"
         )
     separator = raw_args.index("--")
     own_args = raw_args[:separator]
@@ -438,8 +355,6 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
         default="raw_before_isolation",
         choices=["raw_before_isolation", "after_main_style_isolation"],
     )
-    parser.add_argument("--write-baseline")
-    parser.add_argument("--importable-debt-baseline", action="store_true")
     parser.add_argument("--current-payload-path", default=CURRENT_PAYLOAD_REL)
     parser.add_argument("--no-current-payload", action="store_true")
     parser.add_argument("--repo-root", default=str(Path.cwd()))
@@ -453,27 +368,13 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     except RuntimeError as exc:
         parser.error(str(exc))
     try:
-        baseline_path = _resolve_write_baseline(parsed.write_baseline, repo_root=parsed.repo_root)
-    except RuntimeError as exc:
-        parser.error(str(exc))
-    if baseline_path is not None:
-        parsed.write_baseline = str(baseline_path)
-    try:
-        parsed.current_payload_path = str(_resolve_payload_path(parsed.current_payload_path, repo_root=parsed.repo_root))
+        parsed.current_payload_path = str(
+            _resolve_payload_path(parsed.current_payload_path or CURRENT_PAYLOAD_REL, repo_root=parsed.repo_root)
+        )
     except RuntimeError as exc:
         parser.error(str(exc))
     if not pytest_args:
         parser.error("必须在 -- 后提供 pytest 参数")
-    if parsed.importable_debt_baseline and parsed.baseline_kind != "after_main_style_isolation":
-        _remove_existing_file(baseline_path)
-        parser.error("--importable-debt-baseline 只能和 --baseline-kind after_main_style_isolation 一起使用")
-    if parsed.importable_debt_baseline and not parsed.write_baseline:
-        parser.error("--importable-debt-baseline 必须同时提供 --write-baseline")
-    if parsed.importable_debt_baseline and parsed.no_current_payload:
-        parser.error("--importable-debt-baseline 不能和 --no-current-payload 同时使用")
-    if parsed.importable_debt_baseline and pytest_args != FORMAL_FULL_TEST_PYTEST_ARGS:
-        _remove_existing_file(baseline_path)
-        parser.error("--importable-debt-baseline 必须使用正式 full pytest 参数：" + " ".join(FORMAL_FULL_TEST_PYTEST_ARGS))
     if parsed.sharded and pytest_args != FORMAL_FULL_TEST_PYTEST_ARGS:
         parser.error("--sharded 目前只支持正式 full pytest 参数：" + " ".join(FORMAL_FULL_TEST_PYTEST_ARGS))
     if int(parsed.shard_count) < 1:
@@ -793,55 +694,6 @@ def _run_sharded_pytest(args: argparse.Namespace, *, cwd: Path) -> Tuple[FullTes
     return collector, int(collector.exitstatus)
 
 
-def _importable_baseline_blockers(payload: Dict[str, Any]) -> List[str]:
-    summary = dict(payload.get("summary") or {})
-    counts = dict(summary.get("classification_counts") or {})
-    blockers: List[str] = []
-    if int(payload.get("exitstatus") or 0) not in {0, 1}:
-        blockers.append("pytest_exitstatus")
-    if int(counts.get("required_or_quality_gate_self_failure") or 0) != 0:
-        blockers.append("required_or_quality_gate_self_failure")
-    if int(counts.get("main_style_isolation_candidate") or 0) != 0:
-        blockers.append("main_style_isolation_candidate")
-    if int(summary.get("collection_error_count") or 0) != 0:
-        blockers.append("collection_error_count")
-    if _teardown_failed_nodeids(list(payload.get("reports") or [])):
-        blockers.append("teardown_failure")
-    blockers.extend(["xfail_signal"] * bool(_xfail_signal_nodeids(payload)))
-    return blockers
-
-
-def _report_has_xfail_signal(report: Dict[str, Any]) -> bool:
-    return any(bool(report[key]) for key in XFAIL_SIGNAL_REPORT_KEYS)
-
-
-def _xfail_signal_nodeids(payload: Dict[str, Any]) -> List[str]:
-    return sorted({
-        str(report["nodeid"])
-        for report in filter(_report_has_xfail_signal, payload["reports"])
-    })
-
-
-def _write_baseline_atomically(path: Path, payload: Dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path: Optional[Path] = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            "w",
-            encoding="utf-8",
-            dir=str(path.parent),
-            prefix=f".{path.name}.",
-            suffix=".tmp",
-            delete=False,
-        ) as handle:
-            tmp_path = Path(handle.name)
-            handle.write(_render_baseline_markdown(payload))
-        tmp_path.replace(path)
-    finally:
-        if tmp_path is not None and tmp_path.exists():
-            tmp_path.unlink()
-
-
 def _write_json_atomically(path: Path, payload: Dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path: Optional[Path] = None
@@ -918,29 +770,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.worker_payload:
         return _run_worker_mode(args)
     current_payload_path = Path(str(args.current_payload_path))
-    baseline_path = Path(str(args.write_baseline)) if args.write_baseline else None
-    target_status_path = _relative_to_cwd(baseline_path, cwd) if baseline_path is not None else ""
     current_status_path = _relative_to_cwd(current_payload_path, cwd)
     git_status_short_before: Optional[List[str]] = None
     worktree_clean_before: Optional[bool] = None
-    should_record_worktree = bool(args.importable_debt_baseline or str(args.baseline_kind) == "after_main_style_isolation")
+    should_record_worktree = str(args.baseline_kind) == "after_main_style_isolation"
     if should_record_worktree:
         try:
             git_status_short_before = _git_status_short(cwd)
         except RuntimeError as exc:
-            _remove_existing_file(baseline_path)
             print(f"dirty_before_baseline: {exc}", file=sys.stderr, flush=True)
             return 2
         worktree_clean_before = not git_status_short_before
-        if args.importable_debt_baseline and git_status_short_before:
-            _remove_existing_file(baseline_path)
-            print(
-                "dirty_before_baseline: 正式测试债务基线生成前工作区必须干净："
-                + ", ".join(git_status_short_before),
-                file=sys.stderr,
-                flush=True,
-            )
-            return 2
 
     def write_current_payload(payload_to_write: Dict[str, Any]) -> None:
         if bool(args.no_current_payload):
@@ -972,7 +812,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     _progress(f"pytest 执行完成：exitstatus={exitstatus}；开始分类失败与构建 payload")
     payload = _build_payload(
         baseline_kind=str(args.baseline_kind),
-        importable=bool(args.importable_debt_baseline),
         pytest_args=list(args.pytest_args),
         exitstatus=exitstatus,
         collector=collector,
@@ -986,68 +825,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     if _payload_has_failure_preview(payload):
         print(_render_failure_preview(payload), file=sys.stderr, flush=True)
-    if args.importable_debt_baseline:
-        blockers = _importable_baseline_blockers(payload)
-        candidate_count = int(
-            dict(dict(payload.get("summary") or {}).get("classification_counts") or {}).get("candidate_test_debt") or 0
-        )
-        current_proof_without_seed = not blockers and candidate_count == 0
-        if current_proof_without_seed:
-            payload["importable"] = False
-            payload["importable_blockers"] = ["candidate_test_debt_empty"]
-            write_current_payload(payload)
-        try:
-            after_pytest_status = _git_status_short(cwd)
-        except RuntimeError:
-            after_pytest_status = ["git_status_after_pytest_failed"]
-        allowed_after_pytest_paths = [current_status_path] if current_proof_without_seed else []
-        unexpected_after_pytest = _unexpected_status_lines(
-            after_pytest_status,
-            allowed_paths=allowed_after_pytest_paths,
-        )
-        if unexpected_after_pytest:
-            blockers.append("worktree_drift_after_pytest")
-            payload["git_status_short_after_pytest"] = after_pytest_status
-        if blockers:
-            payload["importable"] = False
-            payload["importable_blockers"] = blockers
-            write_current_payload(payload)
-            _remove_existing_file(baseline_path)
-            print("正式测试债务基线不能导入，存在禁入分类或收集错误：" + ", ".join(blockers), file=sys.stderr, flush=True)
-            sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
-            sys.stdout.write("\n")
-            sys.stdout.flush()
-            return 2
-    if args.write_baseline:
-        _progress(f"正在写入 baseline：{args.write_baseline}")
-        _write_baseline_atomically(Path(str(args.write_baseline)), payload)
-        _progress(f"已写入 baseline：{args.write_baseline}")
-        if args.importable_debt_baseline:
-            after_write_status = _git_status_short(cwd)
-            payload["git_status_short_after_write"] = after_write_status
-            unexpected_after_write = _unexpected_status_lines(
-                after_write_status,
-                allowed_paths=[target_status_path, current_status_path],
-            )
-            if unexpected_after_write:
-                payload["importable"] = False
-                payload["importable_blockers"] = ["worktree_drift_after_write"]
-                write_current_payload(payload)
-                _remove_existing_file(baseline_path)
-                print("正式测试债务基线写入后出现非 baseline 文件改动：" + ", ".join(unexpected_after_write), file=sys.stderr, flush=True)
-                sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
-                sys.stdout.write("\n")
-                sys.stdout.flush()
-                return 2
-            _progress(f"正在重写 importable baseline：{args.write_baseline}")
-            _write_baseline_atomically(Path(str(args.write_baseline)), payload)
-            _progress(f"已重写 importable baseline：{args.write_baseline}")
     write_current_payload(payload)
     sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
     sys.stdout.write("\n")
     sys.stdout.flush()
-    if args.importable_debt_baseline:
-        return 0
     return int(exitstatus)
 
 

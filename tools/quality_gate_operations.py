@@ -1,30 +1,24 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, cast
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 from .architecture_scan_cache import aggregate_architecture_scan, scan_files_with_cache
 from .quality_gate_entries import (
     build_complexity_entry,
-    build_default_note,
     build_oversize_entry,
     build_silent_entry,
-    find_existing_by_id,
     remove_entries_by_predicate,
 )
 from .quality_gate_ledger import (
     collect_main_entry_ids,
-    entry_sort_key,
+    complexity_entry_key,
     finalize_ledger_update,
-    load_ledger,
-    load_sp02_facts_snapshot,
+    oversize_entry_key,
     silent_entry_content_equal,
     silent_entry_has_content,
     silent_entry_key,
-    validate_ledger,
 )
-from .quality_gate_scan import (
-    validate_startup_samples as _direct_validate_startup_samples,
-)
+from .quality_gate_scan import validate_startup_samples
 from .quality_gate_shared import (
     COMPLEXITY_THRESHOLD,
     FILE_SIZE_LIMIT,
@@ -33,7 +27,6 @@ from .quality_gate_shared import (
     collect_quality_rule_files,
     collect_startup_scope_files,
     is_startup_scope_path,
-    slugify,
 )
 
 SILENT_REFRESH_SYMBOL_ALIASES = {
@@ -49,196 +42,103 @@ ALLOWED_SILENT_REALIGN_KIND_TRANSITIONS = {
 }
 
 
-def refresh_migrate_inline_facts(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    if ledger is None:
-        ledger = load_ledger(required=False)
-    snapshot = load_sp02_facts_snapshot()
-    legacy_inline = cast(Dict[str, Any], snapshot.get("legacy_inline_facts") or {})
-    oversize_paths = cast(List[str], legacy_inline.get("oversize_allowlist") or [])
-    complexity_keys = cast(List[str], legacy_inline.get("complexity_allowlist") or [])
-    silent_counter = cast(Dict[str, int], legacy_inline.get("silent_fallback_counter") or {})
-
-    oversize_existing = cast(List[Dict[str, Any]], ledger.get("oversize_allowlist") or [])
-    complexity_existing = cast(List[Dict[str, Any]], ledger.get("complexity_allowlist") or [])
-    silent_existing = cast(Dict[str, Any], ledger.get("silent_fallback") or {}).get("entries") or []
-
-    line_counts = _cached_file_line_counts(sorted(set(str(item) for item in oversize_paths)))
-    new_oversize_entries = []
-    for path in sorted(set([str(item) for item in oversize_paths])):
-        current_value = line_counts[path]
-        existing = find_existing_by_id(oversize_existing, f"oversize:{slugify(path)}")
-        if existing is not None:
-            _reject_fixed_oversize_entry_if_current(existing, current_value)
-        new_oversize_entries.append(build_oversize_entry(path, current_value, existing=existing))
-
-    complexity_scan = _cached_complexity_scan_map(
-        sorted({str(item).split(":", 1)[0] for item in complexity_keys}),
-        include_all=True,
-    )
-    new_complexity_entries = []
-    for key in sorted(set([str(item) for item in complexity_keys])):
-        if key not in complexity_scan:
-            raise QualityGateError(f"复杂度白名单迁移失败，当前已无法定位：{key}")
-        item = complexity_scan[key]
-        if int(item["current_value"]) <= COMPLEXITY_THRESHOLD:
-            continue
-        existing = find_existing_by_id(
-            complexity_existing,
-            "complexity:{}-{}".format(slugify(item["path"]), slugify(item["symbol"])),
-        )
-        if existing is not None:
-            _reject_fixed_complexity_entry_if_current(existing, int(item["current_value"]))
-        new_complexity_entries.append(
-            build_complexity_entry(item["path"], item["symbol"], int(item["current_value"]), existing=existing)
-        )
-
-    silent_scan_paths = sorted({str(key).split(":", 1)[0] for key in silent_counter})
-    silent_scan_entries = _cached_silent_scan_entries(silent_scan_paths)
-    _reject_fixed_silent_entries_still_in_scan(silent_existing, silent_scan_entries)
-    new_silent_entries = []
-    for key, expected_count in sorted(silent_counter.items()):
-        path, symbol = key.split(":", 1)
-        matched = [
-            entry
-            for entry in silent_scan_entries
-            if str(entry.get("path")) == path
-            and str(entry.get("symbol")) == symbol
-            and bool(entry.get("legacy_swallow_hit"))
-        ]
-        if len(matched) != int(expected_count):
-            raise QualityGateError(
-                f"静默回退迁移数量不一致：{key} 期望 {expected_count}，实测 {len(matched)}"
-            )
-        for matched_entry in matched:
-            existing = _find_existing_silent_entry(silent_existing, matched_entry)
-            new_silent_entries.append(
-                build_silent_entry(matched_entry, source="migrated_from_architecture_fitness_counter", existing=existing)
-            )
-
-    ledger["oversize_allowlist"] = new_oversize_entries + [
-        dict(entry)
-        for entry in oversize_existing
-        if str(entry.get("path")) not in set(oversize_paths)
-    ]
-    ledger["complexity_allowlist"] = new_complexity_entries + [
-        dict(entry)
-        for entry in complexity_existing
-        if "{}:{}".format(entry.get("path"), entry.get("symbol")) not in set(complexity_keys)
-    ]
-    ledger["silent_fallback"] = {
-        "scope": list(STARTUP_SCOPE_PATTERNS),
-        "entries": new_silent_entries + [
-            dict(entry)
-            for entry in silent_existing
-            if str(entry.get("source") or "") != "migrated_from_architecture_fitness_counter"
-        ],
-    }
-    return finalize_ledger_update(ledger)
-
-
-def refresh_scan_startup_baseline(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    if ledger is None:
-        ledger = load_ledger(required=False)
+def refresh_scan_startup_baseline(ledger: Dict[str, Any]) -> Dict[str, Any]:
     startup_files = collect_startup_scope_files()
-    oversize_existing = cast(List[Dict[str, Any]], ledger.get("oversize_allowlist") or [])
-    complexity_existing = cast(List[Dict[str, Any]], ledger.get("complexity_allowlist") or [])
-    silent_existing = cast(Dict[str, Any], ledger.get("silent_fallback") or {}).get("entries") or []
+    oversize_existing = ledger["oversize_allowlist"]
+    complexity_existing = ledger["complexity_allowlist"]
+    silent_existing = ledger["silent_fallback"]["entries"]
 
     startup_path_set = set(startup_files)
-    startup_silent_scan_entries = _cached_silent_scan_entries(startup_files)
-    _validate_startup_samples_from_entries(startup_silent_scan_entries)
+    # 启动链三类事实共用一次扫描快照。
+    startup_scan = _cached_architecture_aggregate(startup_files, ("silent", "complexity"))
+    startup_silent_scan_entries = startup_scan["silent_fallback_entries"]
+    validate_startup_samples(startup_silent_scan_entries)
 
     startup_oversize = []
-    for item in _cached_oversize_entries(startup_files):
-        existing = find_existing_by_id(oversize_existing, "oversize:{}".format(slugify(item["path"])))
+    for item in startup_scan["oversize_entries"]:
+        existing = _find_existing_entry(oversize_existing, oversize_entry_key, item["path"], "超长文件")
         if existing is not None:
-            _reject_fixed_oversize_entry_if_current(existing, int(item["current_value"]))
-        entry = build_oversize_entry(str(item["path"]), int(item["current_value"]), existing=existing)
-        entry.setdefault("notes", "启动链基线冻结，后续治理批次再处理")
+            _reject_fixed_entry(existing, "超长文件")
+        entry = build_oversize_entry(item["path"], item["current_value"], existing=existing)
         startup_oversize.append(entry)
 
     startup_complexity = []
-    for item in _cached_complexity_entries(startup_files):
-        existing = find_existing_by_id(
-            complexity_existing,
-            "complexity:{}-{}".format(slugify(item["path"]), slugify(item["symbol"])),
-        )
+    for key, item in startup_scan["complexity_map"].items():
+        existing = _find_existing_entry(complexity_existing, complexity_entry_key, key, "复杂度")
         if existing is not None:
-            _reject_fixed_complexity_entry_if_current(existing, int(item["current_value"]))
-        entry = build_complexity_entry(str(item["path"]), str(item["symbol"]), int(item["current_value"]), existing=existing)
-        entry.setdefault("notes", "启动链基线冻结，后续治理批次再处理")
+            _reject_fixed_entry(existing, "复杂度")
+        entry = build_complexity_entry(item["path"], item["symbol"], item["current_value"], existing=existing)
         startup_complexity.append(entry)
 
     _reject_fixed_silent_entries_still_in_scan(silent_existing, startup_silent_scan_entries)
     startup_silent = []
     for item in startup_silent_scan_entries:
-        existing = _find_existing_silent_entry(silent_existing, item)
+        existing = _find_existing_entry(silent_existing, silent_entry_key, silent_entry_key(item), "静默回退")
         entry = build_silent_entry(item, source="baseline_scan", existing=existing)
         startup_silent.append(entry)
 
-    ledger["oversize_allowlist"] = remove_entries_by_predicate(oversize_existing, lambda entry: str(entry.get("path")) in startup_path_set) + startup_oversize
-    ledger["complexity_allowlist"] = remove_entries_by_predicate(complexity_existing, lambda entry: str(entry.get("path")) in startup_path_set) + startup_complexity
-    ledger["silent_fallback"] = {
-        "scope": list(STARTUP_SCOPE_PATTERNS),
-        "entries": remove_entries_by_predicate(silent_existing, lambda entry: is_startup_scope_path(str(entry.get("path")))) + startup_silent,
-    }
-    main_ids = collect_main_entry_ids(ledger)
-    for risk in cast(List[Dict[str, Any]], ledger.get("accepted_risks") or []):
-        for entry_id in list(risk.get("entry_ids") or []):
-            if str(entry_id) not in main_ids:
-                raise QualityGateError("accepted_risks 引用的条目已退出扫描，请先显式复核风险：{} {}".format(risk.get("id"), entry_id))
-    return finalize_ledger_update(ledger)
-
-
-def _find_existing_silent_entry(entries: Sequence[Dict[str, Any]], current: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    matches = [entry for entry in entries if silent_entry_key(entry) == silent_entry_key(current)]
-    if len(matches) > 1:
-        raise QualityGateError(f"静默回退业务位置存在多条旧登记，请先复核：{silent_entry_key(current)}")
-    return dict(matches[0]) if matches else None
-
-
-def _require_silent_content(entry: Dict[str, Any]) -> None:
-    if not silent_entry_has_content(entry):
-        raise QualityGateError(
-            "静默回退条目缺少 handler_signature / handler_context 原文：{}；请显式复核并重取内容基线，保留旧 id 与 accepted_risks 引用".format(entry.get("id"))
+    next_ledger = {
+        **ledger,
+        "oversize_allowlist": remove_entries_by_predicate(
+            oversize_existing, lambda entry: entry["path"] in startup_path_set
         )
+        + startup_oversize,
+        "complexity_allowlist": remove_entries_by_predicate(
+            complexity_existing, lambda entry: entry["path"] in startup_path_set
+        )
+        + startup_complexity,
+        "silent_fallback": {
+            "scope": list(STARTUP_SCOPE_PATTERNS),
+            "entries": remove_entries_by_predicate(
+                silent_existing, lambda entry: is_startup_scope_path(entry["path"])
+            )
+            + startup_silent,
+        },
+    }
+    main_ids = collect_main_entry_ids(next_ledger)
+    for risk in next_ledger["accepted_risks"]:
+        for entry_id in risk["entry_ids"]:
+            if entry_id not in main_ids:
+                raise QualityGateError(
+                    f"accepted_risks 引用的条目已退出扫描，请先显式复核风险：{risk['id']} {entry_id}"
+                )
+    return finalize_ledger_update(next_ledger, current=ledger)
+
+
+def _find_existing_entry(
+    entries: Sequence[Dict[str, Any]],
+    entry_key: Callable[[Dict[str, Any]], Any],
+    key: Any,
+    label: str,
+) -> Optional[Dict[str, Any]]:
+    """按业务身份键查找旧登记（保留永久 ID 与人工字段）；同一身份多条旧登记时 fail-loud。"""
+    matches = [entry for entry in entries if entry_key(entry) == key]
+    if len(matches) > 1:
+        raise QualityGateError(f"{label}业务位置存在多条旧登记，请先复核：{key}")
+    return matches[0] if matches else None
 
 
 def _silent_scan_index(entries: Sequence[Dict[str, Any]]) -> Dict[Tuple[str, str, int], Dict[str, Any]]:
-    index = {}
-    for entry in entries:
-        index[silent_entry_key(entry)] = dict(entry)
-    return index
+    return {silent_entry_key(entry): entry for entry in entries}
 
 
 def _is_allowed_silent_realign(
     old_entry: Dict[str, Any], new_entry: Dict[str, Any], *, allow_ordinal_shift: bool = False,
 ) -> Tuple[bool, str]:
-    old_kind = str(old_entry.get("fallback_kind") or "")
-    new_kind = str(new_entry.get("fallback_kind") or "")
+    old_kind = old_entry["fallback_kind"]
+    new_kind = new_entry["fallback_kind"]
     if _silent_refresh_group_key(old_entry) != _silent_refresh_group_key(new_entry):
         return False, "path/symbol alias group changed"
 
     if not silent_entry_has_content(old_entry):
         return False, "old handler_signature / handler_context missing; explicit content baseline review required"
-    if not silent_entry_has_content(new_entry):
-        return False, "new handler_signature / handler_context missing"
-    if not allow_ordinal_shift and int(old_entry.get("except_ordinal") or 0) != int(new_entry.get("except_ordinal") or 0):
+    if not allow_ordinal_shift and old_entry["except_ordinal"] != new_entry["except_ordinal"]:
         return False, "except ordinal changed"
     if not silent_entry_content_equal(old_entry, new_entry):
         return False, "handler_signature / handler_context changed"
 
     if old_kind == new_kind:
         return True, f"same path/symbol alias and except ordinal; kind {old_kind}->{new_kind}; handler content matched"
-    # 旧 architecture_fitness 计数器曾把非启动链清理动作记成 silent_swallow。
-    # 这里仅允许这批历史非启动链条目回到 cleanup_best_effort，不用于启动链或 accepted risk 换绑放宽。
-    if (
-        str(old_entry.get("source") or "") == "migrated_from_architecture_fitness_counter"
-        and not is_startup_scope_path(str(old_entry.get("path") or ""))
-        and old_kind == "silent_swallow"
-        and new_kind == "cleanup_best_effort"
-    ):
-        return True, "legacy architecture silent entry reclassified as cleanup_best_effort; handler content matched"
     if (old_kind, new_kind) not in ALLOWED_SILENT_REALIGN_KIND_TRANSITIONS:
         return False, f"fallback kind transition {old_kind}->{new_kind} is not allowed"
     return True, f"same path/symbol alias and except ordinal; kind {old_kind}->{new_kind}; handler content matched"
@@ -253,22 +153,22 @@ def _resolve_silent_refresh_entry(
     if matched is not None:
         allowed, reason = _is_allowed_silent_realign(entry, matched)
         if not allowed:
-            raise QualityGateError("静默回退条目自动对齐被拒绝：{} {}".format(entry.get("id"), reason))
+            raise QualityGateError(f"静默回退条目自动对齐被拒绝：{entry['id']} {reason}")
         return matched
 
     same_handler_candidates = [
-        dict(candidate)
+        candidate
         for candidate in silent_scan.values()
         if _silent_refresh_group_key(candidate) == _silent_refresh_group_key(entry)
-        and int(candidate.get("except_ordinal") or 0) == key[2]
+        and candidate["except_ordinal"] == key[2]
     ]
     if len(same_handler_candidates) == 1:
         allowed, reason = _is_allowed_silent_realign(entry, same_handler_candidates[0])
         if not allowed:
-            raise QualityGateError("静默回退条目自动对齐被拒绝：{} {}".format(entry.get("id"), reason))
+            raise QualityGateError(f"静默回退条目自动对齐被拒绝：{entry['id']} {reason}")
         return same_handler_candidates[0]
 
-    raise QualityGateError("静默回退条目已无法通过当前扫描对齐：{}".format(entry.get("id")))
+    raise QualityGateError(f"静默回退条目已无法通过当前扫描对齐：{entry['id']}")
 
 
 def _silent_deletion_alignment(
@@ -287,11 +187,11 @@ def _silent_deletion_alignment(
     retired: Set[str] = set()
     position = 0
     for old_item in old_ordered:
-        old_id = str(old_item.get("id") or "")
+        old_id = old_item["id"]
         if position < len(new_ordered) and _is_allowed_silent_realign(
             old_item, new_ordered[position], allow_ordinal_shift=True,
         )[0]:
-            aligned[old_id] = dict(new_ordered[position])
+            aligned[old_id] = new_ordered[position]
             position += 1
         else:
             retired.add(old_id)
@@ -308,17 +208,17 @@ def _silent_group_alignment(
     new_groups: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
     for entry in silent_entries:
         key = _silent_refresh_group_key(entry)
-        old_groups.setdefault(key, []).append(dict(entry))
+        old_groups.setdefault(key, []).append(entry)
     for entry in scan_entries:
         key = _silent_refresh_group_key(entry)
-        new_groups.setdefault(key, []).append(dict(entry))
+        new_groups.setdefault(key, []).append(entry)
 
     aligned: Dict[str, Dict[str, Any]] = {}
     retired: Set[str] = set()
     for key, old_items in old_groups.items():
         new_items = new_groups.get(key) or []
-        old_ordered = sorted(old_items, key=lambda item: (int(item.get("except_ordinal") or 0), int(item.get("line_start") or 0)))
-        new_ordered = sorted(new_items, key=lambda item: (int(item.get("except_ordinal") or 0), int(item.get("line_start") or 0)))
+        old_ordered = sorted(old_items, key=lambda item: (item["except_ordinal"], item.get("line_start", 0)))
+        new_ordered = sorted(new_items, key=lambda item: (item["except_ordinal"], item["line_start"]))
         if 0 < len(new_items) < len(old_items):
             deletion = _silent_deletion_alignment(old_ordered, new_ordered)
             if deletion is not None:
@@ -328,16 +228,16 @@ def _silent_group_alignment(
         if len(old_items) != len(new_items):
             continue
         for old_item, new_item in zip(old_ordered, new_ordered):
-            old_id = str(old_item.get("id") or "")
+            old_id = old_item["id"]
             allowed, _reason = _is_allowed_silent_realign(old_item, new_item)
-            if old_id and allowed:
-                aligned[old_id] = dict(new_item)
+            if allowed:
+                aligned[old_id] = new_item
     return aligned, retired
 
 
 def _silent_refresh_group_key(entry: Dict[str, Any]) -> Tuple[str, str]:
-    path = str(entry.get("path") or "")
-    symbol = str(entry.get("symbol") or "")
+    path: str = entry["path"]
+    symbol: str = entry["symbol"]
     group_alias = SILENT_REFRESH_GROUP_ALIASES.get((path, symbol))
     if group_alias is not None:
         return group_alias
@@ -354,104 +254,85 @@ def _reject_fixed_silent_entries_still_in_scan(
     scan_entries: Sequence[Dict[str, Any]],
 ) -> None:
     for entry in silent_entries:
-        if str(entry.get("status") or "open") != "fixed":
+        if entry["status"] != "fixed":
             continue
         if _silent_scan_has_group(entry, scan_entries):
             raise QualityGateError(
-                "silent_fallback 条目仍被当前扫描命中，不能标记为 fixed：{}".format(entry.get("id"))
+                f"silent_fallback 条目仍被当前扫描命中，不能标记为 fixed：{entry['id']}"
             )
 
 
-def _reject_fixed_oversize_entry_if_current(entry: Dict[str, Any], current_value: int) -> None:
-    if str(entry.get("status") or "open") == "fixed" and int(current_value) > FILE_SIZE_LIMIT:
-        raise QualityGateError("超长文件条目仍超过限制，不能标记为 fixed：{}".format(entry.get("id")))
-
-
-def _reject_fixed_complexity_entry_if_current(entry: Dict[str, Any], current_value: int) -> None:
-    if str(entry.get("status") or "open") == "fixed" and int(current_value) > COMPLEXITY_THRESHOLD:
-        raise QualityGateError("复杂度条目仍超过限制，不能标记为 fixed：{}".format(entry.get("id")))
+def _reject_fixed_entry(entry: Dict[str, Any], label: str) -> None:
+    """前置条件：调用方已确认该条目当前仍超限。"""
+    if entry["status"] == "fixed":
+        raise QualityGateError(f"{label}条目仍超过限制，不能标记为 fixed：{entry['id']}")
 
 
 def _reject_fixed_tracked_entries_still_current(ledger: Dict[str, Any]) -> None:
     fixed_oversize_entries = [
-        entry
-        for entry in cast(List[Dict[str, Any]], ledger.get("oversize_allowlist") or [])
-        if str(entry.get("status") or "open") == "fixed"
+        entry for entry in ledger["oversize_allowlist"] if entry["status"] == "fixed"
     ]
-    line_counts = _cached_file_line_counts([str(entry.get("path")) for entry in fixed_oversize_entries])
+    line_counts = _cached_file_line_counts([entry["path"] for entry in fixed_oversize_entries])
     for entry in fixed_oversize_entries:
-        if str(entry.get("status") or "open") != "fixed":
-            continue
-        current_value = line_counts[str(entry.get("path"))]
-        _reject_fixed_oversize_entry_if_current(entry, current_value)
-    complexity_entries = cast(List[Dict[str, Any]], ledger.get("complexity_allowlist") or [])
+        if line_counts[entry["path"]] > FILE_SIZE_LIMIT:
+            _reject_fixed_entry(entry, "超长文件")
+    complexity_entries = ledger["complexity_allowlist"]
     if complexity_entries:
-        complexity_scan = _cached_complexity_scan_map(sorted({str(entry.get("path")) for entry in complexity_entries}))
+        complexity_scan = _cached_complexity_scan_map(sorted({entry["path"] for entry in complexity_entries}))
         for entry in complexity_entries:
-            if str(entry.get("status") or "open") != "fixed":
-                continue
-            key = "{}:{}".format(entry.get("path"), entry.get("symbol"))
-            item = complexity_scan.get(key)
-            if item is not None:
-                _reject_fixed_complexity_entry_if_current(entry, int(item.get("current_value") or 0))
-    silent_entries = cast(Dict[str, Any], ledger.get("silent_fallback") or {}).get("entries") or []
+            if complexity_entry_key(entry) in complexity_scan:
+                _reject_fixed_entry(entry, "复杂度")
+    silent_entries = ledger["silent_fallback"]["entries"]
     fixed_silent_paths = sorted(
-        {str(entry.get("path")) for entry in silent_entries if str(entry.get("status") or "open") == "fixed"}
+        {entry["path"] for entry in silent_entries if entry["status"] == "fixed"}
     )
     if fixed_silent_paths:
         _reject_fixed_silent_entries_still_in_scan(
-            cast(List[Dict[str, Any]], silent_entries),
+            silent_entries,
             _cached_silent_scan_entries(fixed_silent_paths),
         )
 
 
-def refresh_auto_fields(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    if ledger is None:
-        ledger = load_ledger(required=True)
-    oversize_entries = cast(List[Dict[str, Any]], ledger.get("oversize_allowlist") or [])
-    complexity_entries = cast(List[Dict[str, Any]], ledger.get("complexity_allowlist") or [])
-    silent_entries = cast(Dict[str, Any], ledger.get("silent_fallback") or {}).get("entries") or []
-    for entry in silent_entries:
-        _require_silent_content(entry)
+def refresh_auto_fields(ledger: Dict[str, Any]) -> Dict[str, Any]:
+    oversize_entries = ledger["oversize_allowlist"]
+    complexity_entries = ledger["complexity_allowlist"]
+    silent_entries = ledger["silent_fallback"]["entries"]
     accepted_entry_ids = {
-        str(entry_id)
-        for risk in cast(List[Dict[str, Any]], ledger.get("accepted_risks") or [])
-        for entry_id in list(risk.get("entry_ids") or [])
+        entry_id
+        for risk in ledger["accepted_risks"]
+        for entry_id in risk["entry_ids"]
     }
 
-    line_counts = _cached_file_line_counts([str(entry.get("path")) for entry in oversize_entries])
+    line_counts = _cached_file_line_counts([entry["path"] for entry in oversize_entries])
     refreshed_oversize = []
     for entry in oversize_entries:
-        path = str(entry.get("path"))
+        path = entry["path"]
         current_value = line_counts[path]
-        _reject_fixed_oversize_entry_if_current(entry, current_value)
         if current_value <= FILE_SIZE_LIMIT:
-            if str(entry.get("id")) in accepted_entry_ids:
-                raise QualityGateError(f"超长文件条目已达成退出条件但仍被 accepted_risks 引用：{entry.get('id')}")
+            if entry["id"] in accepted_entry_ids:
+                raise QualityGateError(f"超长文件条目已达成退出条件但仍被 accepted_risks 引用：{entry['id']}")
             continue
+        _reject_fixed_entry(entry, "超长文件")
         refreshed_oversize.append(build_oversize_entry(path, current_value, existing=entry))
 
-    complexity_paths = sorted({str(entry.get("path")) for entry in complexity_entries})
-    complexity_scan_all = _cached_complexity_scan_map(complexity_paths, include_all=True)
-    complexity_scan = {key: item for key, item in complexity_scan_all.items()
-                       if int(item.get("current_value") or 0) > COMPLEXITY_THRESHOLD}
+    complexity_paths = sorted({entry["path"] for entry in complexity_entries})
+    complexity_scan = _cached_complexity_scan_map(complexity_paths, include_all=True)
     refreshed_complexity = []
     for entry in complexity_entries:
-        key = "{}:{}".format(entry.get("path"), entry.get("symbol"))
+        key = complexity_entry_key(entry)
         if key not in complexity_scan:
-            resolved_item = complexity_scan_all.get(key)
-            if resolved_item is not None and int(resolved_item.get("current_value") or 0) <= COMPLEXITY_THRESHOLD:
-                if str(entry.get("id")) in accepted_entry_ids:
-                    raise QualityGateError(f"复杂度条目已达成退出条件但仍被 accepted_risks 引用：{entry.get('id')}")
-                continue
             raise QualityGateError(f"复杂度条目已无法通过当前扫描对齐：{key}")
         item = complexity_scan[key]
-        _reject_fixed_complexity_entry_if_current(entry, int(item["current_value"]))
+        if item["current_value"] <= COMPLEXITY_THRESHOLD:
+            if entry["id"] in accepted_entry_ids:
+                raise QualityGateError(f"复杂度条目已达成退出条件但仍被 accepted_risks 引用：{entry['id']}")
+            continue
+        _reject_fixed_entry(entry, "复杂度")
         refreshed_complexity.append(
-            build_complexity_entry(str(item["path"]), str(item["symbol"]), int(item["current_value"]), existing=entry)
+            build_complexity_entry(item["path"], item["symbol"], item["current_value"], existing=entry)
         )
 
-    silent_paths = sorted({str(entry.get("path")) for entry in silent_entries})
+    silent_paths = sorted({entry["path"] for entry in silent_entries})
     silent_scan_entries = _cached_silent_scan_entries(silent_paths)
     silent_scan = _silent_scan_index(silent_scan_entries)
     silent_group_alignment, retired_silent_ids = _silent_group_alignment(silent_entries, silent_scan_entries)
@@ -459,65 +340,76 @@ def refresh_auto_fields(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, An
     refreshed_silent = []
     removed_silent_ids: Set[str] = set()
     for entry in silent_entries:
-        if str(entry.get("status") or "open") == "fixed" and not is_startup_scope_path(str(entry.get("path") or "")):
-            removed_silent_ids.add(str(entry.get("id") or ""))
+        entry_id = entry["id"]
+        if entry["status"] == "fixed" and not is_startup_scope_path(entry["path"]):
+            removed_silent_ids.add(entry_id)
             continue
-        if str(entry.get("id") or "") in retired_silent_ids:
-            removed_silent_ids.add(str(entry.get("id") or ""))
+        if entry_id in retired_silent_ids:
+            removed_silent_ids.add(entry_id)
             continue
-        matched_entry = silent_group_alignment.get(str(entry.get("id") or ""))
+        matched_entry = silent_group_alignment.get(entry_id)
         if matched_entry is None:
             try:
                 matched_entry = _resolve_silent_refresh_entry(entry, silent_scan)
             except QualityGateError:
                 if _silent_scan_has_group(entry, silent_scan_entries):
                     raise
-                removed_silent_ids.add(str(entry.get("id") or ""))
+                removed_silent_ids.add(entry_id)
                 continue
-        refreshed_entry = build_silent_entry(matched_entry, source=str(entry.get("source") or "baseline_scan"), existing=entry)
+        refreshed_entry = build_silent_entry(matched_entry, source=entry["source"], existing=entry)
         refreshed_silent.append(refreshed_entry)
 
     removed_accepted_ids = removed_silent_ids & accepted_entry_ids
     if removed_accepted_ids:
-        raise QualityGateError(f"静默回退条目已达成退出条件但仍被 accepted_risks 引用，请先显式复核风险：{sorted(removed_accepted_ids)}")
+        raise QualityGateError(
+            f"静默回退条目已达成退出条件但仍被 accepted_risks 引用，请先显式复核风险：{sorted(removed_accepted_ids)}"
+        )
 
-    ledger["oversize_allowlist"] = refreshed_oversize
-    ledger["complexity_allowlist"] = refreshed_complexity
-    ledger["silent_fallback"] = {"scope": list(STARTUP_SCOPE_PATTERNS), "entries": refreshed_silent}
-    return finalize_ledger_update(ledger)
+    next_ledger = {
+        **ledger,
+        "oversize_allowlist": refreshed_oversize,
+        "complexity_allowlist": refreshed_complexity,
+        "silent_fallback": {"scope": list(STARTUP_SCOPE_PATTERNS), "entries": refreshed_silent},
+    }
+    return finalize_ledger_update(next_ledger, current=ledger)
 
 
 def set_entry_fields(ledger: Dict[str, Any], entry_id: str, updates: Dict[str, Optional[str]]) -> Dict[str, Any]:
+    non_null_updates = {key: value for key, value in updates.items() if value is not None}
     applied = False
-    for section_name in ["oversize_allowlist", "complexity_allowlist"]:
-        for entry in cast(List[Dict[str, Any]], ledger.get(section_name) or []):
-            if str(entry.get("id")) != entry_id:
-                continue
-            for field_name, value in updates.items():
-                if value is None:
-                    continue
-                entry[field_name] = value
+    next_sections: Dict[str, List[Dict[str, Any]]] = {}
+    for section_name in ("oversize_allowlist", "complexity_allowlist"):
+        updated_section = []
+        for entry in ledger[section_name]:
+            if entry["id"] == entry_id:
+                updated_section.append({**entry, **non_null_updates})
+                applied = True
+            else:
+                updated_section.append(entry)
+        next_sections[section_name] = updated_section
+    updated_silent = []
+    for entry in ledger["silent_fallback"]["entries"]:
+        if entry["id"] == entry_id:
+            updated_silent.append({**entry, **non_null_updates})
             applied = True
-    silent_entries = cast(Dict[str, Any], ledger.get("silent_fallback") or {}).get("entries") or []
-    for entry in silent_entries:
-        if str(entry.get("id")) != entry_id:
-            continue
-        for field_name, value in updates.items():
-            if value is None:
-                continue
-            entry[field_name] = value
-        applied = True
+        else:
+            updated_silent.append(entry)
     if not applied:
         raise QualityGateError(f"未找到主条目：{entry_id}")
+    next_ledger = {
+        **ledger,
+        **next_sections,
+        "silent_fallback": {**ledger["silent_fallback"], "entries": updated_silent},
+    }
     if updates.get("status") == "fixed":
-        _reject_fixed_tracked_entries_still_current(ledger)
-    return finalize_ledger_update(ledger)
+        _reject_fixed_tracked_entries_still_current(next_ledger)
+    return finalize_ledger_update(next_ledger, current=ledger)
 
 
 def upsert_risk(
     ledger: Dict[str, Any],
     risk_id: str,
-    entry_ids: Sequence[str],
+    entry_ids: List[str],
     owner: str,
     reason: str,
     review_after: str,
@@ -528,9 +420,9 @@ def upsert_risk(
     for entry_id in entry_ids:
         if entry_id not in main_ids:
             raise QualityGateError(f"accepted_risks 引用了不存在的主条目：{entry_id}")
-    risk = {
+    risk: Dict[str, Any] = {
         "id": risk_id,
-        "entry_ids": list(entry_ids),
+        "entry_ids": entry_ids,
         "owner": owner,
         "reason": reason,
         "review_after": review_after,
@@ -540,72 +432,80 @@ def upsert_risk(
         risk["notes"] = notes
     accepted_risks = []
     replaced = False
-    for current in cast(List[Dict[str, Any]], ledger.get("accepted_risks") or []):
-        if str(current.get("id")) == risk_id:
+    for current in ledger["accepted_risks"]:
+        if current["id"] == risk_id:
             accepted_risks.append(risk)
             replaced = True
         else:
-            accepted_risks.append(dict(current))
+            accepted_risks.append(current)
     if not replaced:
         accepted_risks.append(risk)
-    ledger["accepted_risks"] = accepted_risks
-    return finalize_ledger_update(ledger)
+    next_ledger = {**ledger, "accepted_risks": accepted_risks}
+    return finalize_ledger_update(next_ledger, current=ledger)
 
 
 def delete_risk(ledger: Dict[str, Any], risk_id: str) -> Dict[str, Any]:
-    accepted_risks = cast(List[Dict[str, Any]], ledger.get("accepted_risks") or [])
-    new_risks = [dict(risk) for risk in accepted_risks if str(risk.get("id")) != risk_id]
+    accepted_risks = ledger["accepted_risks"]
+    new_risks = [risk for risk in accepted_risks if risk["id"] != risk_id]
     if len(new_risks) == len(accepted_risks):
         raise QualityGateError(f"未找到 accepted_risks 条目：{risk_id}")
-    ledger["accepted_risks"] = new_risks
-    return finalize_ledger_update(ledger)
+    next_ledger = {**ledger, "accepted_risks": new_risks}
+    return finalize_ledger_update(next_ledger, current=ledger)
 
 
 def validate_ledger_against_current_scan(ledger: Dict[str, Any]) -> Dict[str, Any]:
-    validate_ledger(ledger)
-    for entry in cast(Dict[str, Any], ledger.get("silent_fallback") or {}).get("entries") or []:
-        _require_silent_content(entry)
-    sample_summary = architecture_validate_startup_samples()
+    """把已准入台账与当前扫描逐条对账。
 
-    oversize_paths = [str(entry.get("path")) for entry in cast(List[Dict[str, Any]], ledger.get("oversize_allowlist") or [])]
-    complexity_paths = [str(entry.get("path")) for entry in cast(List[Dict[str, Any]], ledger.get("complexity_allowlist") or [])]
-    silent_paths = [str(entry.get("path")) for entry in cast(Dict[str, Any], ledger.get("silent_fallback") or {}).get("entries") or []]
+    ledger 必须来自 load_ledger（已经过 validate_ledger 准入）；唯一生产调用者是
+    scripts/sync_debt_ledger.py 的 check 子命令。
+    """
+    silent_entries = ledger["silent_fallback"]["entries"]
+    silent_paths = {entry["path"] for entry in silent_entries}
+    # 启动样本校验与台账静默回退核对共用这一次扫描，各自只取自己负责的文件。
+    shared_silent_scan = _cached_silent_scan_entries(collect_startup_scope_files() + sorted(silent_paths))
+    startup_scan_entries = [entry for entry in shared_silent_scan if is_startup_scope_path(entry["path"])]
+    sample_summary = validate_startup_samples(startup_scan_entries)
 
-    if oversize_paths:
-        line_counts = _cached_file_line_counts(oversize_paths)
-        for entry in cast(List[Dict[str, Any]], ledger.get("oversize_allowlist") or []):
-            current_value = line_counts[str(entry.get("path"))]
-            _reject_fixed_oversize_entry_if_current(entry, current_value)
-            if current_value != int(entry.get("current_value") or 0):
-                raise QualityGateError("oversize 条目 current_value 与当前扫描不一致：{}".format(entry.get("id")))
-    if complexity_paths:
-        complexity_scan = _cached_complexity_scan_map(complexity_paths)
-        for entry in cast(List[Dict[str, Any]], ledger.get("complexity_allowlist") or []):
-            key = "{}:{}".format(entry.get("path"), entry.get("symbol"))
+    oversize_entries = ledger["oversize_allowlist"]
+    if oversize_entries:
+        line_counts = _cached_file_line_counts([entry["path"] for entry in oversize_entries])
+        for entry in oversize_entries:
+            current_value = line_counts[entry["path"]]
+            if current_value > FILE_SIZE_LIMIT:
+                _reject_fixed_entry(entry, "超长文件")
+            if current_value != entry["current_value"]:
+                raise QualityGateError(f"oversize 条目 current_value 与当前扫描不一致：{entry['id']}")
+    complexity_entries = ledger["complexity_allowlist"]
+    if complexity_entries:
+        complexity_scan = _cached_complexity_scan_map([entry["path"] for entry in complexity_entries])
+        for entry in complexity_entries:
+            key = complexity_entry_key(entry)
             if key not in complexity_scan:
-                raise QualityGateError("复杂度条目无法通过当前扫描定位：{}".format(entry.get("id")))
-            _reject_fixed_complexity_entry_if_current(entry, int(complexity_scan[key]["current_value"]))
-            if int(complexity_scan[key]["current_value"]) != int(entry.get("current_value") or 0):
-                raise QualityGateError("复杂度条目 current_value 与当前扫描不一致：{}".format(entry.get("id")))
-    if silent_paths:
-        silent_scan_entries = _cached_silent_scan_entries(silent_paths)
-        _reject_fixed_silent_entries_still_in_scan(
-            cast(List[Dict[str, Any]], cast(Dict[str, Any], ledger.get("silent_fallback") or {}).get("entries") or []),
-            silent_scan_entries,
-        )
-        silent_scan = _silent_scan_index(silent_scan_entries)
-        for entry in cast(Dict[str, Any], ledger.get("silent_fallback") or {}).get("entries") or []:
-            key = silent_entry_key(entry)
-            if key not in silent_scan:
-                raise QualityGateError("静默回退条目无法通过当前扫描定位：{}".format(entry.get("id")))
-            current_entry = silent_scan[key]
-            if not silent_entry_content_equal(entry, current_entry):
-                raise QualityGateError("静默回退条目 handler_signature / handler_context 与当前扫描不一致：{}".format(entry.get("id")))
-            for field_name in ("line_start", "line_end"):
-                if int(current_entry.get(field_name) or 0) != int(entry.get(field_name) or 0):
-                    raise QualityGateError(
-                        "静默回退条目 {} 与当前扫描不一致：{}".format(field_name, entry.get("id"))
-                    )
+                raise QualityGateError(f"复杂度条目无法通过当前扫描定位：{entry['id']}")
+            current_value = complexity_scan[key]["current_value"]
+            _reject_fixed_entry(entry, "复杂度")
+            if current_value != entry["current_value"]:
+                raise QualityGateError(f"复杂度条目 current_value 与当前扫描不一致：{entry['id']}")
+    _reject_fixed_silent_entries_still_in_scan(silent_entries, shared_silent_scan)
+    active_silent_entries = [entry for entry in silent_entries if entry["status"] != "fixed"]
+    active_by_key = {silent_entry_key(entry): entry for entry in active_silent_entries}
+    for scan_entry in startup_scan_entries:
+        if silent_entry_key(scan_entry) not in active_by_key:
+            raise QualityGateError(f"启动链静默回退未在治理台账登记：{scan_entry['id']}")
+    silent_scan_entries = [entry for entry in shared_silent_scan if entry["path"] in silent_paths]
+    silent_scan = _silent_scan_index(silent_scan_entries)
+    for entry in active_silent_entries:
+        key = silent_entry_key(entry)
+        if key not in silent_scan:
+            raise QualityGateError(f"静默回退条目无法通过当前扫描定位：{entry['id']}")
+        current_entry = silent_scan[key]
+        if not silent_entry_content_equal(entry, current_entry):
+            raise QualityGateError(f"静默回退条目 handler_signature / handler_context 与当前扫描不一致：{entry['id']}")
+        for field_name in ("line_start", "line_end"):
+            if current_entry[field_name] != entry[field_name]:
+                raise QualityGateError(
+                    f"静默回退条目 {field_name} 与当前扫描不一致：{entry['id']}"
+                )
     return {"samples": sample_summary}
 
 
@@ -614,67 +514,22 @@ def _cached_architecture_aggregate(
     fact_kinds: Sequence[str],
     include_all_complexity: bool = False,
 ) -> Dict[str, Any]:
-    scan_paths = _unique_scan_paths(paths)
-    if not scan_paths:
-        return aggregate_architecture_scan([], include_all_complexity=include_all_complexity)
     return aggregate_architecture_scan(
-        scan_files_with_cache(scan_paths, fact_kinds=fact_kinds),
+        scan_files_with_cache(paths, fact_kinds=fact_kinds),
         include_all_complexity=include_all_complexity,
     )
 
 
 def _cached_file_line_counts(paths: Sequence[str]) -> Dict[str, int]:
-    scan_paths = _unique_scan_paths(paths)
-    if not scan_paths:
-        return {}
-    return {
-        str(fact.get("path")): int(fact.get("line_count") or 0)
-        for fact in scan_files_with_cache(scan_paths, fact_kinds=())
-    }
-
-
-def _cached_oversize_entries(paths: Sequence[str]) -> List[Dict[str, Any]]:
-    scan_paths = _unique_scan_paths(paths)
-    if not scan_paths:
-        return []
-    aggregate = _cached_architecture_aggregate(scan_paths, ())
-    return cast(List[Dict[str, Any]], aggregate.get("oversize_entries") or [])
+    return {fact["path"]: fact["line_count"] for fact in scan_files_with_cache(paths, fact_kinds=())}
 
 
 def _cached_complexity_scan_map(paths: Sequence[str], include_all: bool = False) -> Dict[str, Dict[str, Any]]:
-    scan_paths = _unique_scan_paths(paths)
-    if not scan_paths:
-        return {}
-    aggregate = _cached_architecture_aggregate(
-        scan_paths,
-        ("complexity",),
-        include_all_complexity=include_all,
-    )
-    return {str(key): dict(entry) for key, entry in dict(aggregate.get("complexity_map") or {}).items()}
-
-
-def _cached_complexity_entries(paths: Sequence[str]) -> List[Dict[str, Any]]:
-    scan_paths = _unique_scan_paths(paths)
-    if not scan_paths:
-        return []
-    aggregate = _cached_architecture_aggregate(scan_paths, ("complexity",))
-    return cast(List[Dict[str, Any]], aggregate.get("complexity_entries") or [])
+    return _cached_architecture_aggregate(paths, ("complexity",), include_all_complexity=include_all)["complexity_map"]
 
 
 def _cached_silent_scan_entries(paths: Sequence[str]) -> List[Dict[str, Any]]:
-    scan_paths = _unique_scan_paths(paths)
-    if not scan_paths:
-        return []
-    aggregate = _cached_architecture_aggregate(scan_paths, ("silent",))
-    return cast(List[Dict[str, Any]], aggregate.get("silent_fallback_entries") or [])
-
-
-def _validate_startup_samples_from_entries(entries: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
-    return _direct_validate_startup_samples(entries)
-
-
-def _unique_scan_paths(paths: Sequence[str]) -> List[str]:
-    return sorted(set(str(path) for path in paths))
+    return _cached_architecture_aggregate(paths, ("silent",))["silent_fallback_entries"]
 
 
 def architecture_silent_scan_entries() -> List[Dict[str, Any]]:
@@ -686,16 +541,11 @@ def architecture_silent_scan_entries() -> List[Dict[str, Any]]:
     """
     entries = []
     aggregate = _cached_architecture_aggregate(collect_quality_rule_files(), ("silent",))
-    for entry in list(aggregate.get("silent_fallback_entries") or []):
-        if is_startup_scope_path(str(entry.get("path"))):
+    for entry in aggregate["silent_fallback_entries"]:
+        if is_startup_scope_path(entry["path"]):
             entries.append(entry)
             continue
-        if bool(entry.get("legacy_swallow_hit")):
-            normalized = dict(entry)
-            normalized["fallback_kind"] = "silent_swallow"
-            entries.append(normalized)
-    return sorted(entries, key=entry_sort_key)
-
-
-def architecture_validate_startup_samples() -> Dict[str, Any]:
-    return _validate_startup_samples_from_entries(_cached_silent_scan_entries(collect_startup_scope_files()))
+        if entry["legacy_swallow_hit"]:
+            entry["fallback_kind"] = "silent_swallow"
+            entries.append(entry)
+    return entries

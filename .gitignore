@@ -93,7 +93,7 @@ tmp_round*_check/
 .codestable/**/logs/
 .codestable/**/*.log
 
-# LimCode 是旧工作流资产库:保留可复用规则、技能和契约,忽略历史计划 / 审查 / 设计稿。
+# .limcode 保存现行项目技能、架构不变量规则、契约与历史兼容资料：保留受管目录入口，忽略未列入例外的本机历史计划 / 审查 / 设计稿及运行缓存。
 .limcode/*
 !.limcode/README.md
 !.limcode/contracts/

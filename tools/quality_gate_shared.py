@@ -27,71 +27,46 @@ from tools.test_registry import (
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 LEDGER_PATH = os.path.join(REPO_ROOT, "开发文档", "技术债务治理台账.md")
-STAGE_RECORD_PATH = os.path.join(REPO_ROOT, "开发文档", "阶段留痕与验收记录.md")
 QUALITY_GATE_LEGACY_ROOT_REL = os.path.join("evidence", "QualityGate")
 QUALITY_GATE_ROOT_REL = os.path.join(QUALITY_GATE_LEGACY_ROOT_REL, "v4")
 QUALITY_GATE_MANIFEST_REL = os.path.join(QUALITY_GATE_ROOT_REL, "quality_gate_manifest.json")
 QUALITY_GATE_RECEIPTS_DIR_REL = os.path.join(QUALITY_GATE_ROOT_REL, "receipts")
 QUALITY_GATE_LOGS_DIR_REL = os.path.join(QUALITY_GATE_ROOT_REL, "logs")
 QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL = os.path.join(
-    "evidence",
-    "QualityGate",
-    "v4",
+    QUALITY_GATE_ROOT_REL,
     "current_full_test_debt.json",
 )
 # 失败后把 current 明细改名留存到此处供事后排错（单文件覆盖、不堆积、随 .gitignore 隐身）。
 QUALITY_GATE_FAILED_FULL_TEST_DEBT_REL = os.path.join(
-    "evidence",
-    "QualityGate",
-    "v4",
+    QUALITY_GATE_ROOT_REL,
     "current_full_test_debt.failed.json",
 )
 QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL = os.path.join(
-    "evidence",
-    "QualityGate",
-    "v4",
+    QUALITY_GATE_ROOT_REL,
     "full_test_debt_summary.json",
 )
-QUALITY_GATE_FULL_TEST_DEBT_NODE_CACHE_REL = os.path.join(
-    "evidence",
-    "QualityGate",
-    "v4",
-    "full_test_debt_node_cache.json",
-)
 QUALITY_GATE_REQUIRED_REGRESSIONS_REL = os.path.join(
-    "evidence",
-    "QualityGate",
-    "v4",
+    QUALITY_GATE_ROOT_REL,
     "required_regressions.json",
 )
 QUALITY_GATE_DEBT_LEDGER_SYNC_REL = os.path.join(
-    "evidence",
-    "QualityGate",
-    "v4",
+    QUALITY_GATE_ROOT_REL,
     "debt_ledger_sync.json",
 )
 QUALITY_GATE_RUFF_CHECK_FULL_REL = os.path.join(
-    "evidence",
-    "QualityGate",
-    "v4",
+    QUALITY_GATE_ROOT_REL,
     "ruff_check_full.json",
 )
 QUALITY_GATE_PYRIGHT_GATE_FULL_REL = os.path.join(
-    "evidence",
-    "QualityGate",
-    "v4",
+    QUALITY_GATE_ROOT_REL,
     "pyright_gate_full.json",
 )
 QUALITY_GATE_PYRIGHT_TOOLS_FULL_REL = os.path.join(
-    "evidence",
-    "QualityGate",
-    "v4",
+    QUALITY_GATE_ROOT_REL,
     "pyright_tools_full.json",
 )
 QUALITY_GATE_QUICKREF_VS_ROUTES_REL = os.path.join(
-    "evidence",
-    "QualityGate",
-    "v4",
+    QUALITY_GATE_ROOT_REL,
     "quickref_vs_routes.md",
 )
 # The retained suite is the complete suite: no marker-based exclusions or browser lane.
@@ -154,7 +129,6 @@ QUALITY_GATE_TOOL_PATHS = [
     "tools/quality_gate_operations.py",
     "tools/quality_gate_scan.py",
     "tools/quality_gate_shared.py",
-    "tools/quality_gate_support.py",
     "tools/scan_anti_regression_gate.py",
     "tools/scan_aps_three_gap_py38_scope.py",
     "tools/scan_dead_code_islands.py",
@@ -179,6 +153,8 @@ QUALITY_GATE_TOOL_PATHS = [
     "tools/test_registry.py",
     "tools/test_registry_data.py",
     "tests/conftest.py",
+    ".codestable/tools/_yaml_frontmatter.py",
+    ".codestable/tools/search-yaml.py",
     ".codestable/tools/validate-yaml.py",
     "tests/app_runtime/test_frontend_offline_static_assets.py",
 ]
@@ -203,8 +179,6 @@ QUALITY_GATE_SOURCE_FILES = tuple(
 
 LEDGER_BEGIN = "<!-- APS-DEBT-LEDGER:BEGIN -->"
 LEDGER_END = "<!-- APS-DEBT-LEDGER:END -->"
-SP02_FACT_BEGIN = "<!-- SP02-FACT-START -->"
-SP02_FACT_END = "<!-- SP02-FACT-END -->"
 
 LEDGER_SCHEMA_VERSION = 2
 FILE_SIZE_LIMIT = 500
@@ -708,6 +682,14 @@ def is_terminal_pytest_report(when: str, outcome: str) -> bool:
 
 def is_teardown_failure_report(when: str, outcome: str) -> bool:
     return when == "teardown" and outcome == "failed"
+
+
+_XFAIL_SIGNAL_REPORT_KEYS = ("strict_xpass", "xfail_marker_present", "xfail_marker_reason", "wasxfail_reason")
+
+
+def is_xfail_signal_report(report: Mapping[str, Any]) -> bool:
+    """收集器 report 行是否带任一 xfail 信号；report 必须已经准入或由收集器自产。"""
+    return any(report[key] for key in _XFAIL_SIGNAL_REPORT_KEYS)
 
 
 def build_quality_gate_command_plan() -> List[Dict[str, Any]]:

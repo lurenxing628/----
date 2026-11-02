@@ -139,7 +139,9 @@ full-test-debt proof 的意思是：当前没有未登记的 full pytest 失败�
 - `开发文档/`：开发说明、系统速查表、页面与接口清单、设计资料。
 - `AGENTS.md`：AI 协作约定、CodeStable 分流规则和 APS 硬约束。
 - `installer/`：Win7 双包安装器说明与脚本。
-- `.codestable/`、`.limcode/`、`audit/`、`evidence/`、`reports/`：本机 AI 工作流、旧审计、门禁证据和临时报告资料，默认保留在本机但不纳入版本控制。
+- `.codestable/`：现行项目需求、架构、路线图、任务、决定与审计报告事实源（具体见 `AGENTS.md` 与 `.codestable/attention.md`，本地缓存及临时产物的忽略规则见 `.gitignore`）。
+- `.limcode/`：现行项目技能入口（`.limcode/skills/`）、架构不变量规则（`.limcode/rules/`）及历史设计/规划/审查兼容存档（目录分工见 `.limcode/README.md` 与 `AGENTS.md`，保留与忽略范围见 `.gitignore`）。
+- `audit/`、`evidence/`、`reports/`：本机运行与历史证据输出目录，默认忽略模式及保留例外见 `.gitignore`。
 
 ## 文档导航
 

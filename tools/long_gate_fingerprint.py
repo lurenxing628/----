@@ -789,16 +789,118 @@ def fingerprint_entry(
     return payload
 
 
-def _files_by_path(fingerprint: Mapping[str, Any]) -> Dict[str, Mapping[str, Any]]:
-    components = fingerprint.get("components") if isinstance(fingerprint.get("components"), dict) else {}
-    files_component = components.get("files") if isinstance(components, dict) else {}
-    files = files_component.get("files") if isinstance(files_component, dict) else []
-    return {str(row.get("path") or ""): row for row in list(files or []) if isinstance(row, dict)}
+def _append_files_diff(
+    changes: List[Dict[str, Any]],
+    *,
+    before_present: bool,
+    before_files: Any,
+    after_present: bool,
+    after_files: Any,
+) -> None:
+    if not before_present and not after_present:
+        return
+    if before_present != after_present or not isinstance(before_files, dict) or not isinstance(after_files, dict):
+        equal = content_equal(before_files, after_files)
+        if before_present != after_present or not equal:
+            changes.append(
+                {
+                    "component": "files",
+                    "reason": "fingerprint component changed",
+                    "previous": before_files if before_present else None,
+                    "current": after_files if after_present else None,
+                }
+            )
+        return
+
+    before_has_list = "files" in before_files
+    after_has_list = "files" in after_files
+    before_list = before_files.get("files")
+    after_list = after_files.get("files")
+    if before_has_list or after_has_list:
+        if (
+            before_has_list != after_has_list
+            or not isinstance(before_list, (list, tuple))
+            or not isinstance(after_list, (list, tuple))
+        ):
+            equal_list = content_equal(before_list, after_list)
+            if before_has_list != after_has_list or not equal_list:
+                changes.append(
+                    {
+                        "component": "files",
+                        "reason": "file list order or structure changed",
+                        "field": "files",
+                        "previous": before_list,
+                        "current": after_list,
+                    }
+                )
+        else:
+            previous_by_path = {
+                row["path"]: row
+                for row in before_list
+                if isinstance(row, dict) and isinstance(row.get("path"), str) and row["path"]
+            }
+            current_by_path = {
+                row["path"]: row
+                for row in after_list
+                if isinstance(row, dict) and isinstance(row.get("path"), str) and row["path"]
+            }
+            for path in sorted(set(previous_by_path) | set(current_by_path)):
+                old = previous_by_path.get(path)
+                new = current_by_path.get(path)
+                if not content_equal(old, new):
+                    reason = (
+                        "added input file"
+                        if old is None
+                        else "removed input file"
+                        if new is None
+                        else "modified input file"
+                    )
+                    changes.append(
+                        {"component": "files", "reason": reason, "path": path, "previous": old, "current": new}
+                    )
+            if len(before_list) != len(previous_by_path) or len(after_list) != len(current_by_path):
+                if not content_equal(before_list, after_list):
+                    changes.append(
+                        {
+                            "component": "files",
+                            "reason": "file list order or structure changed",
+                            "field": "files",
+                            "previous": before_list,
+                            "current": after_list,
+                        }
+                    )
+            else:
+                before_order = [row["path"] for row in before_list if row["path"] in current_by_path]
+                after_order = [row["path"] for row in after_list if row["path"] in previous_by_path]
+                if before_order != after_order:
+                    changes.append(
+                        {
+                            "component": "files",
+                            "reason": "file list order or structure changed",
+                            "field": "files",
+                            "previous": [row["path"] for row in before_list],
+                            "current": [row["path"] for row in after_list],
+                        }
+                    )
+
+    for meta_key in sorted((set(before_files) | set(after_files)) - {"files"}):
+        equal_meta = content_equal(before_files.get(meta_key), after_files.get(meta_key))
+        if (meta_key in before_files) != (meta_key in after_files) or not equal_meta:
+            changes.append(
+                {
+                    "component": "files",
+                    "reason": f"files.{meta_key} changed",
+                    "field": meta_key,
+                    "previous": before_files.get(meta_key),
+                    "current": after_files.get(meta_key),
+                }
+            )
 
 
 def diff_fingerprint_components(previous: Mapping[str, Any], current: Mapping[str, Any]) -> Dict[str, Any]:
     changes: List[Dict[str, Any]] = []
-    if not content_equal(previous.get("schema_version"), current.get("schema_version")):
+    schema_equal = content_equal(previous.get("schema_version"), current.get("schema_version"))
+    if ("schema_version" in previous) != ("schema_version" in current) or not schema_equal:
         changes.append(
             {
                 "component": "schema_version",
@@ -807,41 +909,80 @@ def diff_fingerprint_components(previous: Mapping[str, Any], current: Mapping[st
                 "current": current.get("schema_version"),
             }
         )
-    before = previous.get("components")
-    if not isinstance(before, dict):
-        before = {}
-    after = current.get("components")
-    if not isinstance(after, dict):
-        after = {}
-    previous_files, current_files = _files_by_path(previous), _files_by_path(current)
-    for path in sorted(set(previous_files) | set(current_files)):
-        old, new = previous_files.get(path), current_files.get(path)
-        if not content_equal(old, new):
-            reason = (
-                "added input file" if old is None else "removed input file" if new is None else "modified input file"
+
+    before_has_components = "components" in previous
+    after_has_components = "components" in current
+    before_raw = previous.get("components")
+    after_raw = current.get("components")
+    if before_has_components or after_has_components:
+        if (
+            before_has_components != after_has_components
+            or not isinstance(before_raw, dict)
+            or not isinstance(after_raw, dict)
+        ):
+            comp_equal = content_equal(before_raw, after_raw)
+            if before_has_components != after_has_components or not comp_equal:
+                changes.append(
+                    {
+                        "component": "components",
+                        "reason": "fingerprint component changed",
+                        "previous": before_raw,
+                        "current": after_raw,
+                    }
+                )
+        else:
+            _append_files_diff(
+                changes,
+                before_present="files" in before_raw,
+                before_files=before_raw.get("files"),
+                after_present="files" in after_raw,
+                after_files=after_raw.get("files"),
             )
-            changes.append({"component": "files", "reason": reason, "path": path, "previous": old, "current": new})
-    for component in sorted((set(before) | set(after)) - {"files"}):
-        if not content_equal(before.get(component), after.get(component)):
+            for component in sorted((set(before_raw) | set(after_raw)) - {"files"}):
+                comp_equal = content_equal(before_raw.get(component), after_raw.get(component))
+                if (component in before_raw) != (component in after_raw) or not comp_equal:
+                    changes.append(
+                        {
+                            "component": component,
+                            "reason": "command identity changed"
+                            if component == "command"
+                            else "fingerprint component changed",
+                            "previous": before_raw.get(component),
+                            "current": after_raw.get(component),
+                        }
+                    )
+
+    if "files" in previous or "files" in current:
+        _append_files_diff(
+            changes,
+            before_present="files" in previous,
+            before_files=previous.get("files"),
+            after_present="files" in current,
+            after_files=current.get("files"),
+        )
+
+    for top_key in sorted((set(previous) | set(current)) - {"schema_version", "components", "files"}):
+        top_equal = content_equal(previous.get(top_key), current.get(top_key))
+        if (top_key in previous) != (top_key in current) or not top_equal:
             changes.append(
                 {
-                    "component": component,
-                    "reason": "command identity changed" if component == "command" else "fingerprint component changed",
-                    "previous": before.get(component),
-                    "current": after.get(component),
+                    "component": top_key,
+                    "reason": "command identity changed"
+                    if top_key in ("command", "commands")
+                    else "fingerprint component changed",
+                    "previous": previous.get(top_key),
+                    "current": current.get(top_key),
                 }
             )
-    if not content_equal(previous, current) and not changes:
-        changes.append({"component": "fingerprint", "reason": "input fingerprint changed"})
     return {"changed": bool(changes), "components": changes}
 
 
 def diff_fingerprints(previous: Mapping[str, Any], current: Mapping[str, Any]) -> Dict[str, Any]:
-    if content_equal(previous, current):
-        return {"changed": False, "reasons": [], "components": []}
     diff = diff_fingerprint_components(previous, current)
+    if not diff["changed"]:
+        return {"changed": False, "reasons": [], "components": []}
     reasons = [
         str(row["reason"]) + (": " + str(row["path"]) if row.get("path") else ": " + str(row["component"]))
         for row in diff["components"]
     ]
-    return {"changed": True, "reasons": reasons or ["input fingerprint changed"], "components": diff["components"]}
+    return {"changed": True, "reasons": reasons, "components": diff["components"]}

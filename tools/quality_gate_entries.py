@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
 from .long_gate_schema import content_equal
@@ -31,17 +30,14 @@ def _default_entry_manual_fields(source: str, fallback_kind: Optional[str] = Non
     }
 
 
-def _merge_manual_fields(existing: Optional[Dict[str, Any]], fresh: Dict[str, Any]) -> Dict[str, Any]:
-    merged = dict(fresh)
+def _merge_manual_fields(existing: Optional[Dict[str, Any]], base: Dict[str, Any]) -> Dict[str, Any]:
     if existing is not None:
         for field_name in ENTRY_MANUAL_FIELDS:
             if field_name in existing and existing.get(field_name) not in (None, ""):
-                merged[field_name] = existing.get(field_name)
-        if existing.get("last_verified_at"):
-            merged["last_verified_at"] = existing.get("last_verified_at")
-        if existing.get("id"):
-            merged["id"] = existing.get("id")
-    return merged
+                base[field_name] = existing.get(field_name)
+        base["last_verified_at"] = existing["last_verified_at"]
+        base["id"] = existing["id"]
+    return base
 
 
 def _maybe_refresh_last_verified(existing: Optional[Dict[str, Any]], merged: Dict[str, Any], auto_fields: Sequence[str]) -> None:
@@ -53,12 +49,10 @@ def _maybe_refresh_last_verified(existing: Optional[Dict[str, Any]], merged: Dic
         if not content_equal(existing.get(field_name), merged.get(field_name)):
             changed = True
             break
-    if not existing.get("last_verified_at"):
-        changed = True
     if changed:
         merged["last_verified_at"] = now_shanghai_iso()
     else:
-        merged["last_verified_at"] = existing.get("last_verified_at")
+        merged["last_verified_at"] = existing["last_verified_at"]
 
 
 def build_oversize_entry(path: str, current_value: int, existing: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -66,7 +60,7 @@ def build_oversize_entry(path: str, current_value: int, existing: Optional[Dict[
         "id": f"oversize:{slugify(path)}",
         "path": path,
         "symbol": None,
-        "current_value": int(current_value),
+        "current_value": current_value,
         "limit": FILE_SIZE_LIMIT,
         "exit_condition": f"文件行数降到 {FILE_SIZE_LIMIT} 行及以下后移出白名单",
     }
@@ -81,7 +75,7 @@ def build_complexity_entry(path: str, symbol: str, current_value: int, existing:
         "id": f"complexity:{slugify(path)}-{slugify(symbol)}",
         "path": path,
         "symbol": symbol,
-        "current_value": int(current_value),
+        "current_value": current_value,
         "threshold": COMPLEXITY_THRESHOLD,
         "exit_condition": f"复杂度回落到 {COMPLEXITY_THRESHOLD} 及以下后移出白名单",
     }
@@ -92,31 +86,30 @@ def build_complexity_entry(path: str, symbol: str, current_value: int, existing:
 
 
 def build_silent_entry(entry: Dict[str, Any], source: str, existing: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    base = {
-        "id": entry.get("id"),
-        "path": entry.get("path"),
-        "symbol": entry.get("symbol"),
-        "except_ordinal": int(entry.get("except_ordinal") or 0),
-        "line_start": int(entry.get("line_start") or 0),
-        "line_end": int(entry.get("line_end") or 0),
-        "fallback_kind": entry.get("fallback_kind"),
+    fallback_kind = entry["fallback_kind"]
+    base: Dict[str, Any] = {
+        "id": entry["id"],
+        "path": entry["path"],
+        "symbol": entry["symbol"],
+        "except_ordinal": entry["except_ordinal"],
+        "line_start": entry["line_start"],
+        "line_end": entry["line_end"],
+        "fallback_kind": fallback_kind,
         "source": source,
         "exit_condition": "去除静默吞异常，或改为可观测降级并从本分类移出",
+        "handler_signature": entry["handler_signature"],
+        "handler_context": entry["handler_context"],
     }
-    for field_name in ("handler_signature", "handler_context", "handler_fingerprint", "handler_context_hash"):
-        if field_name in entry:
-            base[field_name] = copy.deepcopy(entry[field_name])
-        elif existing is not None and field_name in ("handler_fingerprint", "handler_context_hash") and field_name in existing:
-            base[field_name] = existing[field_name]
-    base.update(_default_entry_manual_fields(source=source, fallback_kind=str(entry.get("fallback_kind"))))
+    if existing is not None:
+        for field_name in ("handler_fingerprint", "handler_context_hash"):
+            if field_name in existing:
+                base[field_name] = existing[field_name]
+    base.update(_default_entry_manual_fields(source=source, fallback_kind=fallback_kind))
     merged = _merge_manual_fields(existing, base)
-    if source == "migrated_from_architecture_fitness_counter":
-        merged["fallback_kind"] = "silent_swallow"
-    for field_name in ("realigned_from", "realigned_at", "realignment_reason"):
-        if entry.get(field_name) not in (None, ""):
-            merged[field_name] = entry.get(field_name)
-        elif existing is not None and existing.get(field_name) not in (None, ""):
-            merged[field_name] = existing.get(field_name)
+    if existing is not None:
+        for field_name in ("realigned_from", "realigned_at", "realignment_reason"):
+            if existing.get(field_name) not in (None, ""):
+                merged[field_name] = existing[field_name]
     _maybe_refresh_last_verified(
         existing,
         merged,
@@ -125,15 +118,8 @@ def build_silent_entry(entry: Dict[str, Any], source: str, existing: Optional[Di
     return merged
 
 
-def find_existing_by_id(entries: Sequence[Dict[str, Any]], entry_id: str) -> Optional[Dict[str, Any]]:
-    for entry in entries:
-        if str(entry.get("id")) == entry_id:
-            return dict(entry)
-    return None
-
-
 def remove_entries_by_predicate(entries: Sequence[Dict[str, Any]], predicate: Callable[[Dict[str, Any]], bool]) -> List[Dict[str, Any]]:
-    return [dict(entry) for entry in entries if not predicate(entry)]
+    return [entry for entry in entries if not predicate(entry)]
 
 
 __all__ = [
@@ -141,6 +127,5 @@ __all__ = [
     "build_complexity_entry",
     "build_oversize_entry",
     "build_silent_entry",
-    "find_existing_by_id",
     "remove_entries_by_predicate",
 ]

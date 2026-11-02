@@ -7,7 +7,11 @@ import sys
 from collections import defaultdict
 from typing import Any, DefaultDict, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
-DEFAULT_PAYLOAD_REL = os.path.join("evidence", "QualityGate", "current_full_test_debt.json")
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
+from tools.quality_gate_shared import QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL  # noqa: E402
 
 
 def _load_payload(path: str) -> Dict[str, Any]:
@@ -33,7 +37,7 @@ def _payload_reports(payload: Mapping[str, Any]) -> List[Dict[str, Any]]:
     reports = payload.get("reports")
     if not isinstance(reports, list):
         raise ValueError("full-test-debt payload 缺少 reports 列表")
-    return [dict(report) for report in reports if isinstance(report, dict)]
+    return [report for report in reports if isinstance(report, dict)]
 
 
 def _category_for_path(path: str) -> str:
@@ -118,7 +122,7 @@ def build_duration_report(payload: Mapping[str, Any], *, top_nodeids: int = 50, 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Report slow full-test-debt nodeids and files.")
-    parser.add_argument("payload", nargs="?", default=DEFAULT_PAYLOAD_REL)
+    parser.add_argument("payload", nargs="?", default=os.path.join(REPO_ROOT, QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL))
     parser.add_argument("--top-nodeids", type=int, default=50)
     parser.add_argument("--top-files", type=int, default=30)
     args = parser.parse_args(argv)

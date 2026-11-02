@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import os
 import re
 from typing import Any, Dict, List, Sequence
@@ -48,8 +49,63 @@ def read_file_content(path: str) -> str:
     return base64.b64encode(data).decode("ascii")
 
 
+def _validate_json_value(value: Any) -> None:
+    if value is None or isinstance(value, (str, bool, int)):
+        return
+    if isinstance(value, float):
+        if math.isnan(value) or math.isinf(value):
+            raise ValueError(f"Out of range float values are not JSON compliant: {value!r}")
+        return
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            _validate_json_value(item)
+        return
+    if isinstance(value, dict):
+        if not all(type(key) is str for key in value):
+            canonical_content(value)
+            return
+        for item in value.values():
+            _validate_json_value(item)
+        return
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+
+def _validated_content_equal(left: Any, right: Any) -> bool:
+    if left is right:
+        return True
+    if left is None or right is None:
+        return left is right
+    if isinstance(left, bool) or isinstance(right, bool):
+        return isinstance(left, bool) and isinstance(right, bool) and left is right
+    if isinstance(left, int):
+        return isinstance(right, int) and not isinstance(right, bool) and left == right
+    if isinstance(left, float):
+        if not isinstance(right, float):
+            return False
+        if left == 0.0 and right == 0.0:
+            return math.copysign(1.0, left) == math.copysign(1.0, right)
+        return left == right
+    if isinstance(left, str):
+        return isinstance(right, str) and left == right
+    if isinstance(left, (list, tuple)):
+        if not isinstance(right, (list, tuple)) or len(left) != len(right):
+            return False
+        return all(_validated_content_equal(l_item, r_item) for l_item, r_item in zip(left, right))
+    if isinstance(left, dict):
+        if not isinstance(right, dict):
+            return False
+        if not (all(type(key) is str for key in left) and all(type(key) is str for key in right)):
+            return canonical_content(left) == canonical_content(right)
+        if len(left) != len(right) or left.keys() != right.keys():
+            return False
+        return all(_validated_content_equal(left[key], right[key]) for key in left)
+    return False
+
+
 def content_equal(left: Any, right: Any) -> bool:
-    return canonical_content(left) == canonical_content(right)
+    _validate_json_value(left)
+    _validate_json_value(right)
+    return _validated_content_equal(left, right)
 
 
 def _path_version_row(repo_root: str, rel_path: str) -> Dict[str, Any]:

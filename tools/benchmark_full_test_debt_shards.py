@@ -9,12 +9,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CURRENT_PAYLOAD = REPO_ROOT / "evidence" / "QualityGate" / "current_full_test_debt.json"
 
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from tools.full_test_debt_shards import split_nodeids  # noqa: E402
+from tools.quality_gate_shared import QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL  # noqa: E402
 
 
 def _parse_counts(raw_value: str) -> List[int]:
@@ -113,7 +113,7 @@ def _run_shard_count(shard_count: int, *, allow_dirty_worktree_proof: bool = Fal
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Benchmark or inspect full_test_debt shard counts.")
-    parser.add_argument("--payload", default=str(CURRENT_PAYLOAD), help="current_full_test_debt payload to inspect")
+    parser.add_argument("--payload", default=QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL, help="current_full_test_debt payload to inspect")
     parser.add_argument("--counts", default="", help="comma-separated shard counts")
     parser.add_argument("--shard-counts", default="3,4,5,6", help="comma-separated shard counts")
     parser.add_argument("--mode", choices=("estimate", "run"), default="estimate")

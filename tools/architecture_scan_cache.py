@@ -6,9 +6,9 @@ sha256 的扫描结果磁盘缓存（含 ~250 行缓存校验/合并机器）。
 塌缩为「每次直扫」：
 
 - 公共 API（scan_files_with_cache / aggregate_architecture_scan /
-  scan_single_file_architecture_fact /
   architecture_scan_cache_metadata）按给定路径直扫或聚合；
-- 不再读写磁盘缓存文件；同次适应度检查显式共享扫描快照，跨次调用保持新鲜。
+- 不再读写磁盘缓存文件；每次 scan_files_with_cache 新建一个扫描快照，跨次调用保持新鲜。
+- 入参必须是规范的仓库相对路径（由 repo_rel 产出），本模块不改写路径身份。
 - architecture_scan_cache_metadata 仍被 long_gate_fingerprint 使用，
   保存源码与实际版本或行为原文。
 """
@@ -19,26 +19,16 @@ import importlib
 import importlib.metadata
 import os
 import sys
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, cast
+from typing import Any, Dict, List, Mapping, Optional, Sequence, cast
 
 from .long_gate_schema import version_rows_for_paths
 from .quality_gate_ledger import entry_sort_key
-from .quality_gate_scan import (
-    ScanContext,
-    _assign_silent_entry_ids,
-    complexity_scan_map,
-    scan_silent_fallback_fact_entries,
-)
+from .quality_gate_scan import ScanContext, complexity_scan_map, scan_silent_fallback_entries
 from .quality_gate_shared import (
     COMPLEXITY_THRESHOLD,
     FILE_SIZE_LIMIT,
     REPO_ROOT,
 )
-
-# 旧磁盘缓存产物路径：仅用于 clean-worktree 排除与 git hook 拦截（防止旧产物入库），不再读写。
-ARCHITECTURE_SCAN_CACHE_REL = "evidence/QualityGate/architecture_scan_cache.json"
-ARCHITECTURE_SCAN_CACHE_SCHEMA_VERSION = 1
-ARCHITECTURE_SCAN_FACT_SCHEMA_VERSION = 1
 
 ARCHITECTURE_SCAN_SCANNER_VERSION_PATHS = (
     "tools/quality_gate_scan.py",
@@ -47,18 +37,6 @@ ARCHITECTURE_SCAN_SCANNER_VERSION_PATHS = (
     "tools/quality_gate_shared.py",
     "tools/quality_gate_ledger.py",
 )
-_FACT_KIND_FIELDS = {
-    "silent": "silent_fallback_handlers_without_global_id",
-    "complexity": "complexity_blocks_all",
-}
-_ALL_FACT_KINDS = tuple(_FACT_KIND_FIELDS)
-
-
-def _normalize_path(path: str) -> str:
-    normalized = str(path or "").replace("\\", "/")
-    if normalized.startswith("./"):
-        normalized = normalized[2:]
-    return normalized
 
 
 def _radon_behavior_marker() -> Dict[str, Any]:
@@ -99,66 +77,25 @@ def _radon_behavior_marker() -> Dict[str, Any]:
 def architecture_scan_cache_metadata(repo_root: Optional[str] = None) -> Dict[str, Any]:
     root = os.path.abspath(repo_root or REPO_ROOT)
     return {
-        "schema_version": ARCHITECTURE_SCAN_CACHE_SCHEMA_VERSION,
         "scanner_version_content": version_rows_for_paths(root, ARCHITECTURE_SCAN_SCANNER_VERSION_PATHS),
-        "scanner_schema_version": ARCHITECTURE_SCAN_FACT_SCHEMA_VERSION,
         "python_version": sys.version.splitlines()[0].strip(),
         "radon_version_or_behavior": _radon_behavior_marker(),
     }
 
 
-def _normalize_fact_kinds(fact_kinds: Optional[Sequence[str]]) -> Tuple[str, ...]:
-    if fact_kinds is None:
-        return _ALL_FACT_KINDS
-    normalized = []
-    for item in list(fact_kinds or []):
-        kind = str(item or "")
-        if kind not in _FACT_KIND_FIELDS:
-            raise ValueError(f"unknown architecture scan fact kind: {kind}")
-        if kind not in normalized:
-            normalized.append(kind)
-    return tuple(normalized)
-
-
-def scan_single_file_architecture_fact(
-    rel_path: str,
-    context: Optional[ScanContext] = None,
-    fact_kinds: Optional[Sequence[str]] = None,
-) -> Dict[str, Any]:
-    scan_context = context or ScanContext()
-    normalized = _normalize_path(rel_path)
-    kinds = _normalize_fact_kinds(fact_kinds)
-    source_lines = scan_context.source_lines(normalized)
-    complexity_blocks = []
-    if "complexity" in kinds:
-        complexity_blocks = [
-            dict(item)
-            for _key, item in sorted(complexity_scan_map([normalized], include_all=True, context=scan_context).items())
-        ]
-    return {
-        "schema_version": ARCHITECTURE_SCAN_FACT_SCHEMA_VERSION,
-        "path": normalized,
-        "fact_kinds": list(kinds),
-        "line_count": len(source_lines),
-        "silent_fallback_handlers_without_global_id": [
-            dict(entry) for entry in scan_silent_fallback_fact_entries([normalized], context=scan_context)
-        ] if "silent" in kinds else [],
-        "complexity_blocks_all": complexity_blocks,
-    }
-
-
-def scan_files_with_cache(
-    paths: Sequence[str],
-    context: Optional[ScanContext] = None,
-    fact_kinds: Optional[Sequence[str]] = None,
-) -> List[Dict[str, Any]]:
-    """对给定路径直扫并返回 facts。"""
-    scan_context = context or ScanContext()
-    requested_kinds = _normalize_fact_kinds(fact_kinds)
-    normalized_paths = sorted(set(_normalize_path(str(path)) for path in list(paths or [])))
+def scan_files_with_cache(paths: Sequence[str], fact_kinds: Sequence[str]) -> List[Dict[str, Any]]:
+    """对给定路径直扫并返回 facts；同一路径可能被调用方重复传入，这里只扫一次。"""
+    context = ScanContext()
+    scan_silent = "silent" in fact_kinds
+    scan_complexity = "complexity" in fact_kinds
     return [
-        scan_single_file_architecture_fact(rel_path, context=scan_context, fact_kinds=requested_kinds)
-        for rel_path in normalized_paths
+        {
+            "path": rel_path,
+            "line_count": len(context.source_lines(rel_path)),
+            "silent_fallback_entries": scan_silent_fallback_entries(rel_path, context=context) if scan_silent else [],
+            "complexity_by_key": complexity_scan_map(rel_path, context=context) if scan_complexity else {},
+        }
+        for rel_path in sorted(set(paths))
     ]
 
 
@@ -167,51 +104,35 @@ def aggregate_architecture_scan(
     *,
     include_all_complexity: bool = False,
 ) -> Dict[str, Any]:
-    include_all = include_all_complexity
     silent_entries: List[Dict[str, Any]] = []
     oversize_entries: List[Dict[str, Any]] = []
     complexity_map: Dict[str, Dict[str, Any]] = {}
 
-    for raw_fact in sorted(list(file_facts or []), key=lambda fact: str(fact.get("path") or "")):
-        fact = dict(raw_fact)
-        path = _normalize_path(str(fact.get("path") or ""))
-        for entry in list(fact.get("silent_fallback_handlers_without_global_id") or []):
-            if isinstance(entry, dict):
-                copied = dict(entry)
-                copied.pop("id", None)
-                silent_entries.append(copied)
+    for fact in file_facts:
+        path = fact["path"]
+        silent_entries.extend(fact["silent_fallback_entries"])
 
-        line_count = int(fact.get("line_count") or 0)
+        line_count = fact["line_count"]
         if line_count > FILE_SIZE_LIMIT:
-            oversize_entries.append({"path": path, "current_value": line_count, "limit": FILE_SIZE_LIMIT})
+            oversize_entries.append({"path": path, "current_value": line_count})
 
-        for raw_block in list(fact.get("complexity_blocks_all") or []):
-            if not isinstance(raw_block, dict):
-                continue
-            block = dict(raw_block)
-            current_value = int(block.get("current_value") or 0)
-            if not include_all and current_value <= COMPLEXITY_THRESHOLD:
-                continue
-            key = "{}:{}".format(block.get("path"), block.get("symbol"))
-            complexity_map[key] = block
+        # 默认只保留超阈值块；include_all 供需要区分“已退出”与“找不到”的调用方。
+        complexity_map.update(
+            (key, block)
+            for key, block in fact["complexity_by_key"].items()
+            if include_all_complexity or block["current_value"] > COMPLEXITY_THRESHOLD
+        )
 
-    _assign_silent_entry_ids(silent_entries)
     silent_entries = sorted(silent_entries, key=entry_sort_key)
-    oversize_entries = sorted(oversize_entries, key=entry_sort_key)
     return {
         "silent_fallback_entries": silent_entries,
         "oversize_entries": oversize_entries,
         "complexity_map": complexity_map,
-        "complexity_entries": [dict(item) for _key, item in sorted(complexity_map.items())],
     }
 
 
 __all__ = [
-    "ARCHITECTURE_SCAN_CACHE_REL",
-    "ARCHITECTURE_SCAN_CACHE_SCHEMA_VERSION",
-    "ARCHITECTURE_SCAN_FACT_SCHEMA_VERSION",
     "aggregate_architecture_scan",
     "architecture_scan_cache_metadata",
     "scan_files_with_cache",
-    "scan_single_file_architecture_fact",
 ]

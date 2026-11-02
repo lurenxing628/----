@@ -440,17 +440,17 @@ def _scopes_for_entry(
         group_rows = iter_required_regression_groups()
         input_scopes = list(required_targets)
         input_scopes.append(quality_gate_shared.QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL.replace("\\", "/"))
-        input_scopes.extend(common_scope_policy.get("input_file_scopes") or [])
-        config_scopes = list(common_scope_policy.get("config_file_scopes") or [])
-        tool_scopes = list(common_scope_policy.get("tool_file_scopes") or [])
-        dependency_scopes = list(common_scope_policy.get("dependency_file_scopes") or [])
-        env_keys = list(common_scope_policy.get("env_keys") or [])
+        input_scopes.extend(common_scope_policy["input_file_scopes"])
+        config_scopes = list(common_scope_policy["config_file_scopes"])
+        tool_scopes = list(common_scope_policy["tool_file_scopes"])
+        dependency_scopes = list(common_scope_policy["dependency_file_scopes"])
+        env_keys = list(common_scope_policy["env_keys"])
         for group in group_rows:
-            input_scopes.extend(str(path) for path in list(group.get("input_file_scopes") or []))
-            config_scopes.extend(str(path) for path in list(group.get("config_file_scopes") or []))
-            tool_scopes.extend(str(path) for path in list(group.get("tool_file_scopes") or []))
-            dependency_scopes.extend(str(path) for path in list(group.get("dependency_file_scopes") or []))
-            env_keys.extend(str(key) for key in list(group.get("env_keys") or []))
+            input_scopes.extend(group["input_file_scopes"])
+            config_scopes.extend(group["config_file_scopes"])
+            tool_scopes.extend(group["tool_file_scopes"])
+            dependency_scopes.extend(group["dependency_file_scopes"])
+            env_keys.extend(group["env_keys"])
         output_files.append(quality_gate_shared.QUALITY_GATE_REQUIRED_REGRESSIONS_REL.replace("\\", "/"))
     elif entry_type == ENTRY_QUICKREF_VS_ROUTES:
         input_scopes.extend(
@@ -476,7 +476,6 @@ def _scopes_for_entry(
                 ".pre-commit-config.yaml",
                 ".gitignore",
                 "tools/quality_gate_shared.py",
-                "tools/quality_gate_support.py",
                 "tools/long_gate_manifest.py",
                 "tools/long_gate_fingerprint.py",
                 "tools/long_gate_cache.py",
@@ -565,7 +564,6 @@ def _scopes_for_entry(
                 "tools/quality_gate_scan.py",
                 "tools/quality_gate_entries.py",
                 "tools/quality_gate_shared.py",
-                "tools/quality_gate_support.py",
                 "tools/architecture_scan_cache.py",
                 "tools/test_debt_registry.py",
                 "tools/test_registry.py",
@@ -678,7 +676,6 @@ def _scopes_for_entry(
                 "tools/full_test_debt_shards.py",
                 "tools/test_debt_registry.py",
                 "tools/quality_gate_shared.py",
-                "tools/quality_gate_support.py",
                 ".codestable/tools/**/*.py",
                 "scripts/run_quality_gate.py",
             ]

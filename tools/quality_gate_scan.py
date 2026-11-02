@@ -12,24 +12,22 @@ from functools import lru_cache
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple, cast
 
 from .quality_gate_ledger import (
-    entry_sort_key,
+    complexity_entry_key,
     load_ledger,
     silent_entry_content_equal,
-    silent_entry_has_content,
     silent_entry_key,
 )
 from .quality_gate_shared import (
     _CLEANUP_KEYWORDS,
     _LOG_METHODS,
     _OBSERVABLE_TARGET_KEYWORDS,
-    COMPLEXITY_THRESHOLD,
-    FALLBACK_KIND_VALUES,
-    FILE_SIZE_LIMIT,
     STARTUP_SAMPLE_EXPECTATIONS,
     QualityGateError,
     collect_globbed_files,
-    collect_startup_scope_files,
+    is_startup_scope_path,
     read_text_file,
+    repo_abs,
+    repo_rel,
     slugify,
 )
 
@@ -46,10 +44,6 @@ def _ast_tree_for_source(rel_path: str, source: str) -> ast.AST:
     return tree
 
 
-def _normalized_scan_path(path: str) -> str:
-    return str(path).replace("\\", "/")
-
-
 @dataclass
 class ScanFile:
     rel_path: str
@@ -59,23 +53,16 @@ class ScanFile:
 
 
 class ScanContext:
-    """One immutable source snapshot for a single scan pass."""
+    """One immutable source snapshot for a single scan pass.
 
-    def __init__(
-        self,
-        *,
-        read_text: Optional[Callable[[str], str]] = None,
-        collect_globbed: Optional[Callable[[Sequence[str]], List[str]]] = None,
-    ) -> None:
+    路径必须是规范的仓库相对路径（由 repo_rel 产出），本快照不改写路径身份。
+    """
+
+    def __init__(self, *, read_text: Optional[Callable[[str], str]] = None) -> None:
         self._read_text = read_text if read_text is not None else read_text_file
-        self._collect_globbed = collect_globbed if collect_globbed is not None else collect_globbed_files
         self.files_by_path: Dict[str, ScanFile] = {}
 
-    def normalize_path(self, path: str) -> str:
-        return _normalized_scan_path(path)
-
-    def file(self, path: str) -> ScanFile:
-        rel_path = self.normalize_path(path)
+    def file(self, rel_path: str) -> ScanFile:
         cached = self.files_by_path.get(rel_path)
         if cached is None:
             cached = ScanFile(rel_path=rel_path, source=self._read_text(rel_path))
@@ -97,24 +84,15 @@ class ScanContext:
             scan_file.tree = _ast_tree_for_source(scan_file.rel_path, scan_file.source)
         return scan_file.tree
 
-    def collect_globbed_files(self, patterns: Sequence[str]) -> List[str]:
-        return sorted(set(_normalized_scan_path(path) for path in self._collect_globbed(patterns)))
-
-
-def _ast_tree_for_file(rel_path: str, *, context: Optional[ScanContext] = None) -> ast.AST:
-    if context is not None:
-        return context.ast_tree(rel_path)
-    return _ast_tree_for_source(rel_path, read_text_file(rel_path))
-
 
 def _find_enclosing_symbol(node: ast.AST) -> str:
     current = node
     while hasattr(current, "_ast_parent"):
         current = current._ast_parent  # type: ignore[attr-defined]
         if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            return str(current.name)
+            return current.name
         if isinstance(current, ast.ClassDef):
-            return str(current.name)
+            return current.name
     return "<module>"
 
 
@@ -378,107 +356,81 @@ def classify_silent_fallback(try_node: ast.Try, handler: ast.ExceptHandler) -> T
     return fallback_kind, signature
 
 
-def scan_silent_fallback_fact_entries(paths: Sequence[str], context: Optional[ScanContext] = None) -> List[Dict[str, Any]]:
-    """返回静默回退单文件扫描事实，不分配最终台账 id。"""
+def scan_silent_fallback_entries(rel_path: str, *, context: ScanContext) -> List[Dict[str, Any]]:
+    """单文件静默回退条目（含台账 id），按 (symbol, except_ordinal) 有序。
 
-    scan_context = context or ScanContext()
+    except_ordinal 在跳过非遗留 silent_swallow 之前递增，台账永久 id 依赖这一编号。
+    """
+    handlers = []
+    for node in ast.walk(context.ast_tree(rel_path)):
+        if not isinstance(node, ast.Try):
+            continue
+        for handler in node.handlers:
+            if not _is_exception_handler(handler):
+                continue
+            symbol = _find_enclosing_symbol(handler)
+            handlers.append((symbol, handler.lineno, node, cast(ast.ExceptHandler, handler)))
+    handlers.sort(key=lambda item: (item[0], item[1]))
+    ordinal_map = defaultdict(int)
     entries = []
-    for rel_path in sorted(set([_normalized_scan_path(str(path)) for path in paths])):
-        tree = _ast_tree_for_file(rel_path, context=scan_context)
-        handlers = []
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Try):
-                continue
-            for handler in node.handlers:
-                if not _is_exception_handler(handler):
-                    continue
-                symbol = _find_enclosing_symbol(handler)
-                handlers.append((symbol, int(getattr(handler, "lineno", 0) or 0), node, cast(ast.ExceptHandler, handler)))
-        handlers.sort(key=lambda item: (str(item[0]), int(item[1])))
-        ordinal_map = defaultdict(int)
-        for symbol, _line, try_node, handler in handlers:
-            ordinal_map[symbol] += 1
-            fallback_kind, signature = classify_silent_fallback(try_node, handler)
-            legacy_swallow_hit = _is_legacy_silent_swallow(handler.body)
-            if fallback_kind == "silent_swallow" and not legacy_swallow_hit:
-                continue
-            entry = {
-                "path": rel_path,
-                "symbol": symbol,
-                "handler_signature": signature,
-                "handler_context": ast.dump(handler, include_attributes=False),
-                "except_ordinal": int(ordinal_map[symbol]),
-                "line_start": int(getattr(handler, "lineno", 0) or 0),
-                "line_end": int(getattr(handler, "end_lineno", getattr(handler, "lineno", 0) or 0) or 0),
-                "legacy_swallow_hit": legacy_swallow_hit,
-                "fallback_kind": fallback_kind,
-                "signature": signature,
-            }
-            entries.append(entry)
-    return sorted(entries, key=entry_sort_key)
+    for symbol, _line, try_node, handler in handlers:
+        ordinal_map[symbol] += 1
+        fallback_kind, signature = classify_silent_fallback(try_node, handler)
+        legacy_swallow_hit = _is_legacy_silent_swallow(handler.body)
+        if fallback_kind == "silent_swallow" and not legacy_swallow_hit:
+            continue
+        entries.append({
+            "path": rel_path,
+            "symbol": symbol,
+            "handler_signature": signature,
+            "handler_context": ast.dump(handler, include_attributes=False),
+            "except_ordinal": ordinal_map[symbol],
+            "line_start": handler.lineno,
+            "line_end": handler.end_lineno,
+            "legacy_swallow_hit": legacy_swallow_hit,
+            "fallback_kind": fallback_kind,
+            "id": f"fallback:{rel_path}:{symbol}:except:{ordinal_map[symbol]}",
+        })
+    return entries
 
 
-def scan_silent_fallback_entries(paths: Sequence[str], context: Optional[ScanContext] = None) -> List[Dict[str, Any]]:
-    entries = scan_silent_fallback_fact_entries(paths, context=context)
-    _assign_silent_entry_ids(entries)
-    return sorted(entries, key=entry_sort_key)
-
-
-def _assign_silent_entry_ids(entries: List[Dict[str, Any]]) -> None:
-    for entry in entries:
-        entry["id"] = "fallback:{}:{}:except:{}".format(
-            entry.get("path"),
-            entry.get("symbol") or "<module>",
-            int(entry.get("except_ordinal") or 0),
-        )
-
-
-def validate_startup_samples(entries: Optional[Sequence[Dict[str, Any]]] = None) -> Dict[str, Any]:
-    if entries is None:
-        entries = scan_silent_fallback_entries(collect_startup_scope_files())
-    entry_list = list(entries)
+def validate_startup_samples(entries: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     errors = []
     matched_kinds = set()
     for sample in STARTUP_SAMPLE_EXPECTATIONS:
         matches = [
             entry
-            for entry in entry_list
-            if str(entry.get("path")) == sample.path
-            and str(entry.get("symbol")) == sample.symbol
-            and int(entry.get("line_start") or 0) <= sample.line_end
-            and int(entry.get("line_end") or 0) >= sample.line_start
+            for entry in entries
+            if entry["path"] == sample.path
+            and entry["symbol"] == sample.symbol
+            and entry["line_start"] <= sample.line_end
+            and entry["line_end"] >= sample.line_start
         ]
         if not matches:
             errors.append(f"未命中样本：{sample.path}:{sample.symbol}@{sample.line_start}-{sample.line_end}")
             continue
-        sample_line_start = int(sample.line_start)
-        sample_line_end = int(sample.line_end)
 
         def _sample_rank(
             entry: Dict[str, Any],
-            target_line_start: int = sample_line_start,
-            target_line_end: int = sample_line_end,
+            target_line_start: int = sample.line_start,
+            target_line_end: int = sample.line_end,
         ) -> Tuple[int, int, int]:
-            line_start = int(entry.get("line_start") or 0)
-            line_end = int(entry.get("line_end") or 0)
+            line_start = entry["line_start"]
+            line_end = entry["line_end"]
             overlap_start = max(line_start, target_line_start)
             overlap_end = min(line_end, target_line_end)
             overlap = overlap_end - overlap_start + 1 if overlap_end >= overlap_start else 0
             distance = abs(line_start - target_line_start) + abs(line_end - target_line_end)
-            return (distance, -overlap, int(entry.get("except_ordinal") or 0))
+            return (distance, -overlap, entry["except_ordinal"])
 
         matches.sort(key=_sample_rank)
         match = matches[0]
-        if str(match.get("fallback_kind")) != sample.fallback_kind:
+        if match["fallback_kind"] != sample.fallback_kind:
             errors.append(
-                "样本分类不匹配：{}:{} 期望 {}，实际 {}".format(sample.path, sample.symbol, sample.fallback_kind, match.get("fallback_kind"))
+                "样本分类不匹配：{}:{} 期望 {}，实际 {}".format(sample.path, sample.symbol, sample.fallback_kind, match["fallback_kind"])
             )
-        matched_kinds.add(str(match.get("fallback_kind")))
-    present_kinds = {
-        str(entry.get("fallback_kind"))
-        for entry in entry_list
-        if str(entry.get("fallback_kind")) in FALLBACK_KIND_VALUES
-    }
+        matched_kinds.add(match["fallback_kind"])
+    present_kinds = {entry["fallback_kind"] for entry in entries}
     missing_kinds = sorted(present_kinds - matched_kinds)
     if missing_kinds:
         errors.append("四类分类样本覆盖不完整：{}".format(", ".join(missing_kinds)))
@@ -490,11 +442,8 @@ def validate_startup_samples(entries: Optional[Sequence[Dict[str, Any]]] = None)
     }
 
 
-def complexity_scan_map(
-    paths: Sequence[str],
-    include_all: bool = False,
-    context: Optional[ScanContext] = None,
-) -> Dict[str, Dict[str, Any]]:
+def complexity_scan_map(rel_path: str, *, context: ScanContext) -> Dict[str, Dict[str, Any]]:
+    """单文件全部复杂度块，按 complexity_entry_key 建键；阈值过滤只在 aggregate 做一次。"""
     if importlib.util.find_spec("radon") is None:
         raise QualityGateError("缺少 radon，无法执行复杂度扫描")
     try:
@@ -504,45 +453,23 @@ def complexity_scan_map(
     cc_visit = getattr(radon_complexity, "cc_visit", None)
     if not callable(cc_visit):
         raise QualityGateError("radon.complexity.cc_visit 不可用")
-    results = {}
-    scan_context = context or ScanContext()
-    for rel_path in sorted(set([_normalized_scan_path(str(path)) for path in paths])):
-        source = scan_context.read_text(rel_path)
-        try:
-            blocks = cast(Iterable[Any], cc_visit(source))
-        except SyntaxError as exc:
-            raise QualityGateError(f"复杂度扫描无法解析 {rel_path}：{exc}") from exc
-        except Exception as exc:
-            raise QualityGateError(f"复杂度扫描失败 {rel_path}：{exc}") from exc
-        for block in blocks:
-            complexity = int(getattr(block, "complexity", 0) or 0)
-            if not include_all and complexity <= COMPLEXITY_THRESHOLD:
-                continue
-            name = str(getattr(block, "name", "") or "")
-            key = f"{rel_path}:{name}"
-            results[key] = {
-                "path": rel_path,
-                "symbol": name,
-                "current_value": complexity,
-                "threshold": COMPLEXITY_THRESHOLD,
-                "line": int(getattr(block, "lineno", 0) or 0),
-                "rank": str(getattr(block, "letter", "?")),
-            }
+    source = context.read_text(rel_path)
+    try:
+        blocks = cast(Iterable[Any], cc_visit(source))
+    except SyntaxError as exc:
+        raise QualityGateError(f"复杂度扫描无法解析 {rel_path}：{exc}") from exc
+    except Exception as exc:
+        raise QualityGateError(f"复杂度扫描失败 {rel_path}：{exc}") from exc
+    results: Dict[str, Dict[str, Any]] = {}
+    for block in blocks:
+        record = {"path": rel_path, "symbol": block.fullname, "current_value": block.complexity}
+        # 同一命名空间同名的多次定义（property getter/setter、@overload、条件重定义）是同一个符号绑定，
+        # 按最大复杂度计；不同类的同名方法由 radon 限定名区分。
+        key = complexity_entry_key(record)
+        existing = results.get(key)
+        if existing is None or block.complexity > existing["current_value"]:
+            results[key] = record
     return results
-
-
-def scan_complexity_entries(paths: Sequence[str], context: Optional[ScanContext] = None) -> List[Dict[str, Any]]:
-    return [results for _, results in sorted(complexity_scan_map(paths, context=context).items())]
-
-
-def scan_oversize_entries(paths: Sequence[str], context: Optional[ScanContext] = None) -> List[Dict[str, Any]]:
-    scan_context = context or ScanContext()
-    entries = []
-    for rel_path in sorted(set([_normalized_scan_path(str(path)) for path in paths])):
-        line_count = len(scan_context.source_lines(rel_path))
-        if line_count > FILE_SIZE_LIMIT:
-            entries.append({"path": rel_path, "current_value": line_count, "limit": FILE_SIZE_LIMIT})
-    return entries
 
 
 def _strict_silent_fallback_scan_entries() -> List[Dict[str, Any]]:
@@ -571,14 +498,14 @@ def _strict_silent_fallback_summary(
     by_kind: Dict[str, int] = {}
     by_status: Dict[str, int] = {}
     for entry in entries:
-        kind = str(entry.get("fallback_kind") or "unknown")
+        kind = entry["fallback_kind"]
         by_kind[kind] = by_kind.get(kind, 0) + 1
     for entry in ledger_entries:
-        status = str(entry.get("status") or "open")
+        status = entry["status"]
         by_status[status] = by_status.get(status, 0) + 1
     return {
-        "scan_entry_count": len(list(entries)),
-        "ledger_entry_count": len(list(ledger_entries)),
+        "scan_entry_count": len(entries),
+        "ledger_entry_count": len(ledger_entries),
         "by_fallback_kind": dict(sorted(by_kind.items())),
         "ledger_by_status": dict(sorted(by_status.items())),
     }
@@ -600,14 +527,12 @@ def run_strict_silent_fallback_gate(*, emit_json: bool = False, quiet: bool = Tr
     ledger = load_ledger(required=True)
 
     scan_entries = _strict_silent_fallback_scan_entries()
-    validate_startup_samples()
-    ledger_entries = list(cast(Dict[str, Any], ledger.get("silent_fallback") or {}).get("entries") or [])
+    # The strict scan already holds every startup-scope entry unchanged; validate samples on them.
+    validate_startup_samples([entry for entry in scan_entries if is_startup_scope_path(entry["path"])])
+    ledger_entries = ledger["silent_fallback"]["entries"]
 
     scan_by_key = {silent_entry_key(entry): entry for entry in scan_entries}
-    active_ledger_entries = [entry for entry in ledger_entries if str(entry.get("status") or "open") != "fixed"]
-    for entry in active_ledger_entries:
-        if not silent_entry_has_content(entry):
-            raise QualityGateError("静默回退条目缺少 handler_signature / handler_context 原文，请显式复核并重取内容基线：{}".format(entry.get("id")))
+    active_ledger_entries = [entry for entry in ledger_entries if entry["status"] != "fixed"]
     ledger_by_key = {silent_entry_key(entry): entry for entry in active_ledger_entries}
     missing_in_ledger = sorted(set(scan_by_key) - set(ledger_by_key))
     missing_in_scan = sorted(set(ledger_by_key) - set(scan_by_key))
@@ -619,7 +544,7 @@ def run_strict_silent_fallback_gate(*, emit_json: bool = False, quiet: bool = Tr
         )
     for key, current in scan_by_key.items():
         if not silent_entry_content_equal(current, ledger_by_key[key]):
-            raise QualityGateError("strict silent-fallback gate handler content drift: {}".format(ledger_by_key[key].get("id")))
+            raise QualityGateError("strict silent-fallback gate handler content drift: {}".format(ledger_by_key[key]["id"]))
 
     if emit_json:
         print(json.dumps(_strict_silent_fallback_summary(scan_entries, ledger_entries), ensure_ascii=False, indent=2, sort_keys=True))
@@ -669,19 +594,22 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 
 def _run_inventory_summary(paths: Optional[Sequence[str]], *, emit_json: bool) -> int:
-    scan_paths = sorted(set(paths or _production_inventory_paths()))
-    entries = scan_silent_fallback_entries(scan_paths)
+    # 局部导入避开 architecture_scan_cache → quality_gate_scan 的模块级循环导入。
+    from .architecture_scan_cache import scan_files_with_cache
+
+    # --paths 是唯一的外部路径入口，在这里规范成仓库相对路径一次。
+    scan_paths = [repo_rel(repo_abs(path)) for path in paths] if paths else _production_inventory_paths()
+    facts = scan_files_with_cache(scan_paths, fact_kinds=("silent",))
+    entries = [entry for fact in facts for entry in fact["silent_fallback_entries"]]
     by_kind: Dict[str, int] = {}
     for entry in entries:
-        kind = str(entry.get("fallback_kind") or "unknown")
+        kind = entry["fallback_kind"]
         by_kind[kind] = by_kind.get(kind, 0) + 1
     strict_count = sum(
-        1
-        for entry in entries
-        if str(entry.get("fallback_kind") or "") in {"silent_swallow", "silent_default_fallback"}
+        1 for entry in entries if entry["fallback_kind"] in {"silent_swallow", "silent_default_fallback"}
     )
     payload = {
-        "scanned_file_count": len(scan_paths),
+        "scanned_file_count": len(facts),
         "entry_count": len(entries),
         "strict_candidate_count": strict_count,
         "by_fallback_kind": dict(sorted(by_kind.items())),
@@ -717,9 +645,6 @@ __all__ = [
     "ScanContext",
     "ScanFile",
     "classify_silent_fallback",
-    "scan_complexity_entries",
-    "scan_oversize_entries",
-    "scan_silent_fallback_fact_entries",
     "scan_silent_fallback_entries",
     "validate_startup_samples",
     "complexity_scan_map",

@@ -71,10 +71,10 @@ pre-push 从 Git 原始输入识别待推送提交，在对应的临时 worktree
 ### 统一完整门禁入口
 
 ```powershell
-.venv\Scripts\python scripts/run_quality_gate.py
+.venv\Scripts\python scripts/run_quality_gate.py --allow-dirty-worktree
 ```
 
-这只是普通完整门禁入口，不强制检查工作区是否干净，不能当最终 clean proof。
+这是本地脏工作区诊断跑的普通完整门禁入口，不声明 clean worktree proof，不能当最终 clean proof（未显式传入 `--allow-dirty-worktree` 时默认要求干净工作区）。
 
 最终收口或托管环境使用：
 
@@ -116,15 +116,15 @@ Python 3.8 兼容扫描把语法错误、立即求值的不兼容注解和运行
 
 ```powershell
 .venv\Scripts\python scripts/sync_debt_ledger.py check
-.venv\Scripts\python scripts/sync_debt_ledger.py refresh --mode migrate-inline-facts
 .venv\Scripts\python scripts/sync_debt_ledger.py refresh --mode scan-startup-baseline
 .venv\Scripts\python scripts/sync_debt_ledger.py refresh --mode refresh-auto-fields
 .venv\Scripts\python scripts/sync_debt_ledger.py mark-test-debt-fixed --debt-id <debt-id>
+.venv\Scripts\python scripts/sync_debt_ledger.py retire-test-debt --debt-id <debt-id> --reason <reason>
 ```
 
 说明：
 
-- 治理数据唯一事实源：`./技术债务治理台账.md` 的受控 `json` 结构块，当前包含超长文件、高复杂度、静默回退、测试债务和接受风险。
+- 治理数据唯一事实源：`./技术债务治理台账.md` 的受控 `json` 结构块，当前包含超长文件、高复杂度、静默回退、测试债务和接受风险；历史一次性迁移入口 `refresh --mode migrate-inline-facts` 与 `import-test-debt-baseline` 已退役。
 - `scripts/run_quality_gate.py` 只读不写台账。
 - `scripts/sync_debt_ledger.py` 是唯一台账写入口；人工治理字段必须通过 `set-entry-fields` 更新，接受风险必须通过 `upsert-risk` / `delete-risk` 维护。
 - `set-entry-fields --status` 当前只接受 `open`、`in_progress`、`blocked`、`fixed`。

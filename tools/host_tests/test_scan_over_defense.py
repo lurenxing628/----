@@ -317,7 +317,6 @@ def test_full_test_debt_verifies_shard_nodeids_and_terminal_reports(tmp_path):
     assert late_collector.exitstatus == 3
     late_payload = collector_mod._build_payload(
         baseline_kind="after_main_style_isolation",
-        importable=True,
         pytest_args=list(FORMAL_FULL_TEST_PYTEST_ARGS),
         exitstatus=late_exitstatus,
         collector=late_collector,
@@ -329,7 +328,8 @@ def test_full_test_debt_verifies_shard_nodeids_and_terminal_reports(tmp_path):
         git_status_short_before=[],
         worktree_clean_before=True,
     )
-    assert "pytest_exitstatus" in collector_mod._importable_baseline_blockers(late_payload)
+    with pytest.raises(QualityGateError, match="exitstatus 必须为 0：3"):
+        registry.validate_full_test_proof(late_payload)
 
     n1 = _p("tests", "test_a.py::test_1")
     n2 = _p("tests", "test_a.py::test_2")
@@ -364,7 +364,7 @@ def test_full_test_debt_verifies_shard_nodeids_and_terminal_reports(tmp_path):
     )
     assert [item["nodeid"] for item in missing_term] == [n_inc]
 
-    # 3) test_debt_registry.validate_current_candidate_payload 核验全集终态与 teardown 失败
+    # 3) test_debt_registry.validate_full_test_proof 核验全集终态与 teardown 失败
     def _make_report(nodeid: str, when: str, outcome: str):
         return {
             "nodeid": nodeid,
@@ -408,7 +408,15 @@ def test_full_test_debt_verifies_shard_nodeids_and_terminal_reports(tmp_path):
             },
         },
     }
-    registry.validate_current_candidate_payload(base_payload, expected_nodeids=[])
+    registry.validate_full_test_proof(base_payload)
+
+    # 分类先于 reports 交叉校验准入：坏结构统一报 QualityGateError，不再炸出 AttributeError 或被 str() 改写
+    with pytest.raises(QualityGateError, match="classifications 必须是对象"):
+        registry.validate_full_test_proof({**base_payload, "classifications": [n1]})
+    with pytest.raises(QualityGateError, match="candidate_test_debt 必须只包含非空字符串"):
+        registry.validate_full_test_proof(
+            {**base_payload, "classifications": {**base_payload["classifications"], "candidate_test_debt": [123]}},
+        )
 
     # 缺少终态报告（只有 setup:passed）必须拒绝
     incomplete_payload = {
@@ -419,7 +427,7 @@ def test_full_test_debt_verifies_shard_nodeids_and_terminal_reports(tmp_path):
         ],
     }
     with pytest.raises(QualityGateError, match="终态报告"):
-        registry.validate_current_candidate_payload(incomplete_payload, expected_nodeids=[])
+        registry.validate_full_test_proof(incomplete_payload)
 
     # teardown 失败必须拒绝（注册表核验与 collect_full_test_debt 生成阶段双重阻断）
     teardown_fail_payload = {
@@ -446,8 +454,51 @@ def test_full_test_debt_verifies_shard_nodeids_and_terminal_reports(tmp_path):
             },
         },
     }
-    assert "teardown_failure" in collector_mod._importable_baseline_blockers(teardown_fail_payload)
+    assert collector_mod._teardown_failed_nodeids(teardown_fail_payload["reports"]) == [n1]
     with pytest.raises(QualityGateError, match="teardown 失败"):
-        registry.validate_current_candidate_payload(teardown_fail_payload, expected_nodeids=[n1])
-    with pytest.raises(QualityGateError, match="teardown 失败"):
-        registry.validate_importable_baseline({**teardown_fail_payload, "importable": True})
+        registry.validate_full_test_proof(teardown_fail_payload)
+
+    # check/verify 共用的 full pytest 证明：普通用例失败按“证明不成立”报，不再借用导入口径的“承接”文案
+    ordinary_failure_payload = {
+        **base_payload,
+        "exitstatus": 1,
+        "reports": [_make_report(n1, "call", "passed"), _make_report(n2, "call", "failed")],
+        "classifications": {**base_payload["classifications"], "candidate_test_debt": [n2]},
+        "summary": {
+            **base_payload["summary"],
+            "failed_nodeid_count": 1,
+            "outcome_counts": {"call:passed": 1, "call:failed": 1},
+            "classification_counts": {**base_payload["summary"]["classification_counts"], "candidate_test_debt": 1},
+        },
+    }
+    with pytest.raises(QualityGateError, match="full pytest 证明不成立") as proof_error:
+        registry.validate_full_test_proof(ordinary_failure_payload)
+    assert "承接" not in str(proof_error.value)
+
+    # 干净工作区证明：收集器在脏工作区写出的形态被拒，干净形态放行
+    registry.validate_clean_worktree_proof({"worktree_clean_before": True, "git_status_short_before": []})
+    with pytest.raises(QualityGateError, match="worktree_clean_before 必须为 true"):
+        registry.validate_clean_worktree_proof({"worktree_clean_before": False, "git_status_short_before": [" M x.py"]})
+
+    # xfail 信号统一由 quality_gate_shared.is_xfail_signal_report 判定；verify 的拒绝见 test_long_gate_content
+    from tools import check_full_test_debt as check_mod
+    from tools.quality_gate_ledger import default_ledger, validate_ledger
+
+    xfail_fields = {"xfail_marker_present": True, "xfail_marker_reason": "r", "xfail_marker_strict": False, "xfail_marker_run": True}
+    xfailed_n1 = [
+        {**_make_report(n1, "setup", "passed"), **xfail_fields},
+        {**_make_report(n1, "call", "skipped"), **xfail_fields, "wasxfail_reason": "r"},
+        {**_make_report(n1, "teardown", "passed"), **xfail_fields},
+    ]
+    passing_with_xfail = {**base_payload, "reports": [*xfailed_n1, _make_report(n2, "setup", "skipped")]}
+    ledger = default_ledger()
+    with pytest.raises(QualityGateError, match="未登记 xfail 出现在 proof 报告"):
+        check_mod.build_full_test_debt_summary(passing_with_xfail, ledger=ledger, require_clean_worktree_proof=False)
+    ledger["test_debt"]["entries"].append({
+        "debt_id": "test-debt:sample-fixed", "nodeid": n1, "mode": "fixed", "reason": "样例", "domain": "sample",
+        "style": "sample", "root": {"module": "tests.test_a", "function": "test_1"}, "owner": "sample",
+        "exit_condition": "样例", "last_verified_at": "2026-11-01T00:00:00+08:00", "debt_family": "sample",
+    })
+    validate_ledger(ledger)
+    with pytest.raises(QualityGateError, match="fixed 测试债务仍被 xfail 标记"):
+        check_mod.build_full_test_debt_summary(passing_with_xfail, ledger=ledger, require_clean_worktree_proof=False)

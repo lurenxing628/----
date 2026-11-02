@@ -25,7 +25,6 @@
     "tools/quality_gate_operations.py",
     "tools/quality_gate_scan.py",
     "tools/quality_gate_shared.py",
-    "tools/quality_gate_support.py",
     "tools/scan_anti_regression_gate.py",
     "tools/scan_aps_three_gap_py38_scope.py",
     "tools/scan_dead_code_islands.py",
@@ -50,6 +49,8 @@
     "tools/test_registry.py",
     "tools/test_registry_data.py",
     "tests/conftest.py",
+    ".codestable/tools/_yaml_frontmatter.py",
+    ".codestable/tools/search-yaml.py",
     ".codestable/tools/validate-yaml.py",
     "tests/app_runtime/test_frontend_offline_static_assets.py"
   ],
@@ -76,7 +77,8 @@
       "root": ".",
       "extraPaths": [
         ".",
-        ".codestable/checkup/scripts"
+        ".codestable/checkup/scripts",
+        ".codestable/tools"
       ]
     }
   ]
