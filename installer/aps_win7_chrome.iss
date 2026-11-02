@@ -89,8 +89,7 @@ begin
 	    'if ($null -eq $items) { if (-not (Get-Command Get-WmiObject -ErrorAction SilentlyContinue)) { exit 1 }; try { $items=@(Get-WmiObject Win32_Process -Filter ""Name=''''chrome.exe''''"" -ErrorAction Stop) } catch { exit 1 } }; ' +
 	    '$targets=@(); ' +
 	    'foreach ($item in @($items)) { $cmd=[string]$item.CommandLine; if (Test-ApsChromeCommandLine $cmd) { $targets += [int]$item.ProcessId } }; ' +
-	    '$failedStopIds=@(); ' +
-	    'foreach ($procId in @($targets)) { try { Stop-Process -Id $procId -Force -ErrorAction Stop } catch { $failedStopIds += [int]$procId } }; ' +
+	    'foreach ($procId in @($targets)) { try { Stop-Process -Id $procId -Force -ErrorAction Stop } catch { } }; ' +
 	    'Start-Sleep -Milliseconds 800; ' +
 	    '$remainingItems=$null; ' +
     'if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) { try { $remainingItems=@(Get-CimInstance Win32_Process -Filter ""Name=''''chrome.exe''''"" -ErrorAction Stop) } catch { $remainingItems=$null } }; ' +

@@ -4,8 +4,12 @@ rem Requirements:
 rem - Python 3.8.x
 rem - PyInstaller 4.10
 
-setlocal EnableExtensions EnableDelayedExpansion
+setlocal EnableExtensions DisableDelayedExpansion
 pushd "%~dp0" >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] Failed to switch to repository root: "%~dp0"
+    exit /b 1
+)
 
 rem Keep UTF-8 console for non-ASCII app name/path
 chcp 65001 >nul 2>&1

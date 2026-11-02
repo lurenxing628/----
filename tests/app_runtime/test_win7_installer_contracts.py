@@ -1,3 +1,5 @@
+"""锁定 Win7 打包与安装契约：停机助手安装时只用随包程序、卸载时只信任 Program Files 下的安装目录，构建预检负责 networkx 离线轮子校验，ISCC 统一由 resolve_iscc.ps1 解析，validate_dist_exe 隔离环境并保护用户数据。"""
+
 from __future__ import annotations
 
 import json
