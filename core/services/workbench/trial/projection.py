@@ -8,11 +8,13 @@ from core.models.workbench_trial import ACTIONS
 from core.services.workbench.facts.delivery_projection import (
     delivery_batch_delta,
     delivery_summary,
+    parse_stored_due_date,
     project_delivery_batch,
 )
 from core.services.workbench.facts.operation_effort_evidence import saved_operation_efforts
-from core.services.workbench.facts.preflight_checks import stored_date
+from core.services.workbench.facts.trial_origin import invalid_trial_snapshot
 from core.services.workbench.facts.zero_duration import point_event_dto
+from core.shared.stored_dates import stored_date
 from core.shared.strict_json import clone_json
 
 from .arrangements import same_arrangement
@@ -68,6 +70,9 @@ def _task_projection(row, draft_ref, by_operation, protected_rows, by_task, live
         "edit_context": {"can_change": editable, "blocked_reasons": [value for value in (blocked, duration_reason) if value]},
         "issues": by_task[row["task_ref"]]}
     _display_fields(task)
+    # 原值先由 _display_fields 记下读不出的存储类型（如 BLOB）；交期再与候选、基线、正式参考同一解析，
+    # 明确交期、9999-12-31 未指定、缺失和无效分别表达，不从空值猜。
+    task["due_date"], _deadline, task["due_state"], task["due_issue"] = parse_stored_due_date(batch["due_date"])
     anchor = original.get("execution_anchor")
     if anchor is not None:
         task["execution_anchor"] = {key: anchor["arrangement"][key] for key in ("machine_ref", "operator_ref", "start", "end")}
@@ -254,7 +259,7 @@ def draft_projection(head, rows, checked, live, context_factory, protection, *, 
             task["edit_context"]["can_change"] = False
             task["edit_context"]["blocked_reasons"].extend(context["blocked_reasons"])
     unplanned = unplanned_operations(contexts)
-    before_efforts = saved_operation_efforts(admission["source"].get("operation_effort"))
+    before_efforts = saved_operation_efforts(admission["source"]["operation_effort"], on_corrupt=invalid_trial_snapshot)
     ledger = operation_effort_ledger(rows, admission, before_efforts=before_efforts)
     pairs, preparation = preparation_projection(admission, ledger,
         current_evidence=current_evidence, contexts=contexts, before_efforts=before_efforts)

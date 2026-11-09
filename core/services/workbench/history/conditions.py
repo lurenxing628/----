@@ -21,7 +21,7 @@ from .conditions_source import ConditionSource
 
 _MISSING = object()
 _CATEGORIES = (("scope", "排产范围"), ("batch", "批次交期与数量"), ("requirements", "工序标准需求"), ("materials_outsource", "物料与外协"), ("calendar_downtime", "有效日历与停机"), ("resource_qualifications", "资源与人员资格"), ("execution_baseline", "报工与正式原安排"), ("freeze", "不重排窗口与成员"))
-_CONFIG_KEYS = ("sort_strategy", "priority_weight", "due_weight", "ready_weight", "prefer_primary_skill", "dispatch_mode", "dispatch_rule", "ortools_enabled", "ortools_time_limit_seconds", "algo_mode", "time_budget_seconds", "objective", "graph_analysis_mode", "graph_block_on_cycle", "graph_critical_weight", "graph_impact_weight", "graph_downstream_weight", "graph_candidate_weight_count", "graph_selection_policy", "graph_overdue_tolerance_count", "graph_tardiness_tolerance_ratio")
+_CONFIG_KEYS = ("sort_strategy", "priority_weight", "due_weight", "ready_weight", "dispatch_mode", "dispatch_rule", "ortools_enabled", "ortools_time_limit_seconds", "algo_mode", "time_budget_seconds", "objective", "graph_analysis_mode", "graph_block_on_cycle", "graph_critical_weight", "graph_impact_weight", "graph_downstream_weight")
 def _reason(code="not_recorded", message="原保存资料缺少这一项，条件未知。"):
     return {"code": code, "message": message}
 def _side(source, value, *, present=True, nullable=False, reason=None):
@@ -85,7 +85,8 @@ def _analyze_comparison(before: _Projection, after: _Projection, categories):
             a_family = a_families.get(left[3])
             a_known = a_family[0] if a_family is not None else False
             a_val, a_present = None, False
-        state = "unknown" if not (b_known and a_known) else ("equal" if b_present == a_present and b_val == a_val else "different")
+        equal = b_present == a_present and (type(b_val) is bool) == (type(a_val) is bool) and b_val == a_val
+        state = "unknown" if not (b_known and a_known) else ("equal" if equal else "different")
         summary[state] += 1
         cat = key[0]
         if cat in category_counts:
@@ -380,6 +381,23 @@ def _calendar(projection: _Projection, resources, known, window):
                 wired_row = {"start": wire(row["start"]), "end": wire(row["end"])}
                 key = entity + ":downtime:" + wired_row["start"] + ":" + wired_row["end"]
                 projection.fields(category, key, label, wired_row, ("start", "end"), "tables.MachineDowntimes", "windows:" + entity)
+def _report_sort_value(report, field):
+    """A missing key, null, booleans and numbers stay distinct; int and float compare exactly as numbers."""
+    if field not in report:
+        return (0, 0, "")
+    value = report[field]
+    if value is None:
+        return (1, 0, "")
+    value_type = type(value)
+    if value_type is bool:
+        return (2, value, "")
+    if value_type is int or value_type is float:
+        return (3, value, "")
+    if value_type is str:
+        return (5, 0, value)
+    return (6, 0, f"{value_type.__qualname__}:{value!r}")
+
+
 def _execution(projection: _Projection, operations, resources):
     source, category = projection.source, "execution_baseline"
     execution = source.execution
@@ -405,8 +423,11 @@ def _execution(projection: _Projection, operations, resources):
             continue
         projection.fields(category, ref, label, row, ("target_quantity", "target_basis", "known_completed_quantity", "remaining_quantity", "quantity_complete", "records_complete", "first_actual_start", "confirmed_finish", "execution_state"), path, "execution", origin="execution", nullable=("first_actual_start", "confirmed_finish"))
         # Actual report identity and journal times are bookkeeping. Their physical content is retained.
-        physical = sorted(enumerate(row.get("reports") or []), key=lambda item: repr(tuple(item[1].get(field) for field in ("actual_start", "actual_end", "actual_machine_ref", "actual_operator_ref", "completed_quantity"))))
         fields = ("actual_start", "actual_end", "actual_machine_ref", "actual_operator_ref", "completed_quantity", "effective_processing_hours")
+        physical = sorted(
+            enumerate(row.get("reports") or []),
+            key=lambda item: tuple(_report_sort_value(item[1], field) for field in fields),
+        )
         for ordinal, (index, report) in enumerate(physical):
             entity = ref + ":reports:" + str(ordinal)
             projection.fields(category, entity, label, report, fields, path + ".reports[" + str(index) + "]", "execution", origin="execution", nullable=("actual_end", "actual_machine_ref", "actual_operator_ref", "effective_processing_hours"))
@@ -421,11 +442,7 @@ def _execution(projection: _Projection, operations, resources):
             if type(version) is int and row.get("version", 0) <= version:
                 latest[row["op_id"]] = max(row["version"], latest.get(row["op_id"], 0))
         if latest:
-            op_refs = dict(source.facts.operation_refs) if source.facts is not None else {
-                int(row["source_key"]): row["ref"]
-                for row in source.table("WorkbenchPlanSourceRefs") or []
-                if row.get("kind") == "operation" and row.get("active") == 1
-            }
+            op_refs = dict(source.refs_by_op_id)
             op_refs.update({row.get("id"): ref for ref, row in source.operations.items()})
             arranged = defaultdict(list)
             relevant_refs = set(operations) | set(relevant)
@@ -550,7 +567,7 @@ def _experiments(source, packet):
             projection.add("algorithm", "run_options", "本次保存的优化策略和预算", key, value, path, "algorithm", present=key in inputs or key in selection or key in artifact)
     algo = ((artifact.get("summary") or {}).get("algo") or {})
     for prefix, values, path in (("chosen", artifact, "candidate.artifact"), ("actual_summary", algo, "candidate.artifact.summary.algo"), ("effective_config", algo.get("config_snapshot") or {}, "candidate.artifact.summary.algo.config_snapshot")):
-        fields = _CONFIG_KEYS if prefix == "effective_config" else ("algo_mode", "mode", "objective", "objective_name", "time_budget_seconds", "sort_strategy", "dispatch_mode", "dispatch_rule", "adopted_dispatch_rule", "graph_critical_weight", "graph_impact_weight", "graph_downstream_weight", "algorithm_version")
+        fields = _CONFIG_KEYS if prefix == "effective_config" else ("algo_mode", "mode", "objective", "objective_name", "time_budget_seconds", "sort_strategy", "dispatch_mode", "graph_critical_weight", "graph_impact_weight", "graph_downstream_weight", "algorithm_version")
         for key in fields:
             if key in values:
                 projection.add("algorithm", prefix, "实际所选方案参数", key, values[key], path + "." + key, "algorithm")

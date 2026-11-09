@@ -8,10 +8,10 @@ from core.errors import AppError, ValidationError
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked
 from core.models.workbench_preflight import issue, normalize_preflight_input
 from core.services.workbench.facts.piece_scope import build_piece_adoption_scope
-from core.services.workbench.facts.preflight_checks import stored_date
 from core.services.workbench.facts.preflight_dependencies import link_predecessors
 from core.services.workbench.facts.run_input_rows import OPERATION_STATES, mutable_classification
 from core.services.workbench.facts.stored_algo_inputs import stored_batch_operation
+from core.shared.stored_dates import stored_date
 
 from .input_config import hold_window, run_options
 from .input_external import external_resource_issues, preflight_external_cycles

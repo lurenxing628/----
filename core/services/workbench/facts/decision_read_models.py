@@ -196,8 +196,7 @@ def public_run_head(head, admission, header):
         "task_count_basis": "persisted_rows_across_candidates", "counts_final": state in TERMINAL_STATES,
         "scope_summary": admission["scope_summary"], "recovery_required": pending,
         "recovery_reason": {"code": "awaiting_reconciliation", "message": "运行状态待核对，本次读取未恢复或重跑。"} if pending else None,
-        "error": failure_reason(head, header), "completion_semantics": "execution_state_only",
-        "constraint_verification": "not_checked_by_history", "task_content_verification": "candidate_workspace_required"}
+        "error": failure_reason(head, header)}
     return result
 
 

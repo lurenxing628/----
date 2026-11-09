@@ -27,13 +27,13 @@ def _op_code(index):
 
 def _calendar_fields(kind="work", *, urgent_only=False, efficiency=100):
     if kind == "rest":
-        return {"type": "rest", "hours": 0, "eff": efficiency,
+        return {"type": "rest", "eff": efficiency,
                 "allowNormal": "no", "allowUrgent": "no", "periods": [],
-                "shiftStart": "00:00", "shiftEnd": "00:00", "note": "复杂样例休息日"}
-    return {"type": "work", "hours": 16, "eff": efficiency,
+                "note": "复杂样例休息日"}
+    return {"type": "work", "eff": efficiency,
             "allowNormal": "no" if urgent_only else "yes", "allowUrgent": "yes",
             "periods": _periods(_DAY_PERIODS + _NIGHT_PERIODS),
-            "shiftStart": "08:00", "shiftEnd": "04:30", "note": "复杂样例两班制"}
+            "note": "复杂样例两班制"}
 
 
 def _shift_profile(code, label, periods, anchor):
@@ -41,7 +41,6 @@ def _shift_profile(code, label, periods, anchor):
     for offset in range(7):
         rest = (anchor.weekday() + offset) % 7 >= 5
         pattern.append({"day_offset": offset, "is_rest": rest,
-                        "shift_start": periods[0][0], "shift_end": periods[-1][1],
                         "periods": [] if rest else _periods(periods)})
     return {"business_code": code, "label": label,
             "fields": {"status": "active", "remark": "复杂样例周一至周五轮班",
@@ -190,12 +189,11 @@ def _calendars(start, end):
         personal.append({"operator_code": f"CS-PERSON-{index + 1:02d}",
                          "date": leave_day.isoformat(),
                          "fields": {"type": "rest", "eff": 100, "allowNormal": "no", "allowUrgent": "no",
-                                    "periods": [], "shiftStart": "08:00", "note": "复杂样例人员请假"}})
+                                    "periods": [], "note": "复杂样例人员请假"}})
     for index in (0, 3, 8, 11):
         periods = _DAY_PERIODS if index < 8 else _NIGHT_PERIODS
         personal.append({"operator_code": f"CS-PERSON-{index + 1:02d}", "date": overtime_day.isoformat(),
                          "fields": {"type": "work", "eff": 90, "allowNormal": "no", "allowUrgent": "yes",
-                                    "shiftStart": periods[0][0], "shiftEnd": periods[-1][1],
                                     "periods": _periods(periods), "note": "复杂样例周六急件加班"}})
     return days, personal
 

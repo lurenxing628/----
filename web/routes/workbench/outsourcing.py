@@ -17,7 +17,7 @@ from core.services.workbench.outsourcing.service import WorkbenchOutsourcingServ
 from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint, read_endpoint
-from .read_context import bind_read_snapshot, page_integer, read_snapshot_time
+from .read_context import bind_read_snapshot, page_integer, read_snapshot_time, unbound_snapshot
 from .write_context import issue_write_context, validate_write_context
 
 
@@ -96,7 +96,7 @@ def outsourcing_preview():
     body = _body(False)
     service = WorkbenchOutsourcingCommandService(g.db, context_factory=issue_write_context)
     result = service.preview(body["input"])
-    return query_success(result, {"as_of": service.reader.now().isoformat(timespec="seconds"), "snapshot_ref": None},
+    return query_success(result, unbound_snapshot(service.reader.now()),
                          byte_limit=MAX_BYTES)
 
 

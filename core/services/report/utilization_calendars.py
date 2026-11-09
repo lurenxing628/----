@@ -52,7 +52,7 @@ def _read_calendar_facts(reader, ids, first, last, start, end):
 
 
 def _project_resources(ids, facts, first, last, start, end):
-    """Per-resource calendars: machines share the global projection, operators get their own."""
+    """Per-resource calendars: build the global projection on demand when a machine or unoverridden operator needs it."""
     engine = SnapshotCalendarEngine(facts)
     return {
         (kind, key): item

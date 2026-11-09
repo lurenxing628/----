@@ -18,11 +18,10 @@ _RELATIONS_CACHE: "OrderedDict[tuple, dict]" = OrderedDict()
 _GANTT_GRAPH_CACHE: "OrderedDict[tuple, dict]" = OrderedDict()
 
 
-def _unavailable(code):
-    message = ("此计划未记录工序顺序。" if code == "process_order_not_recorded" else
-               "工序顺序数据不完整。")
+def _unavailable():
+    message = "工序顺序数据不完整。"
     return {"state": "unavailable", "basis": None,
-            "issues": [{"code": code, "message": message}]}, unavailable_graph("full_plan", message)
+            "issues": [{"code": "process_order_unavailable", "message": message}]}, unavailable_graph("full_plan", message)
 
 
 def _frozen_operations(conn, arranged, *, context, evidence):
@@ -131,8 +130,6 @@ def _cached_candidate_relations(operations, batches, refs):
 def _process_order(conn, *, plan_ref, context, include_nodes):
     try:
         evidence = context.adopted_source(plan_ref)
-        if evidence is None:
-            return _unavailable("process_order_not_recorded")
         basis, arranged, selected = (
             evidence[key] for key in ("basis", "arranged", "selected")
         )
@@ -196,11 +193,11 @@ def _process_order(conn, *, plan_ref, context, include_nodes):
                 _GANTT_GRAPH_CACHE.popitem(last=False)
         return data, graph
     except (AdoptionBaselineUnavailable, WorkbenchPlanReferenceError, PieceAdoptionBlocked):
-        return _unavailable("process_order_unavailable")
+        return _unavailable()
     except WorkbenchCommandRejected as exc:
         if exc.status == 413:
             raise
-        return _unavailable("process_order_unavailable")
+        return _unavailable()
 
 
 def _graph_tasks(rows, task_refs, operations, refs, *, times):

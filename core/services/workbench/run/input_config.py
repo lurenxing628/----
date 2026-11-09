@@ -22,7 +22,6 @@ def candidate_config(settings, *, snapshot):
         snapshot, time_budget_seconds=settings.get("time_budget_seconds", snapshot.time_budget_seconds),
         enforce_ready_default="yes" if settings["ready_check"] else "no",
         auto_assign_enabled="yes" if settings["missing_resource_policy"] == "auto_assign" else "no",
-        auto_assign_persist="no",
         freeze_window_enabled="no",
         freeze_window_days=0,
     )

@@ -5,20 +5,10 @@ from dataclasses import replace
 from core.algorithm_runtime.internal_slot import estimate_internal_slot
 from core.algorithm_runtime.operation_effort import external_operation_effort, internal_operation_effort
 from core.models.workbench_trial import reject
-from core.services.workbench.facts.archived_calendar import ArchivedCalendar
-from core.services.workbench.facts.preflight_checks import number
 from core.services.workbench.facts.stored_algo_inputs import stored_batch, stored_operation
 from core.services.workbench.facts.zero_duration import PointEventError, estimate_point_event
 from core.services.workbench.facts.zero_duration_evidence import trial_point_evidence
-
-
-def calendar_engine(tables):
-    """Reuse the same snapshot policy rules for live edit estimation and capacity.
-
-    ``None`` means the captured calendar tables are structurally damaged; damaged
-    calendar content stays inside the engine until a policy reads that day.
-    """
-    return ArchivedCalendar({"tables": tables}, metadata_basis="current_transaction_snapshot").engine
+from core.shared.strict_parse import is_stored_number
 
 
 def original_duration(original, *, effort=None):
@@ -46,13 +36,13 @@ def new_slot_effort(original):
     if op["source"] == "external":
         result = external_operation_effort(stored_operation(op, original.get("external_group")), stored_batch(batch),
                                            remaining_quantity=remaining)
-        if not number(result.external_cycle_days, positive=True):
+        if not is_stored_number(result.external_cycle_days, positive=True):
             reject("external_duration_unknown", "原外协周期缺失或无效，不能推测完工时间。", 422)
         return replace(result, execution_target_quantity=execution.get("target_quantity") if execution else None,
                        execution_quantity_basis=execution.get("target_basis", "unknown") if execution else "unknown")
     if op["source"] != "internal":
         reject("duration_source_unknown", "这道工序的来源缺项，标准需求未知。", 422)
-    if not number(op["setup_hours"]) or not number(op["unit_hours"]):
+    if not is_stored_number(op["setup_hours"]) or not is_stored_number(op["unit_hours"]):
         reject("hours_missing", "原准备工时或单件工时缺失。", 422)
     _original_target(op, batch, execution)
     result = internal_operation_effort(stored_operation(op), stored_batch(batch), remaining_quantity=remaining)
@@ -63,7 +53,7 @@ def _original_target(op, batch, execution):
     quantity = execution.get("target_quantity") if execution else None
     basis = "piece" if op["piece_id"] is not None else "batch"
     target = 1 if op["piece_id"] is not None else batch["quantity"]
-    if not number(quantity, integer=True) or quantity != target or execution.get("target_basis") != basis:
+    if not is_stored_number(quantity, integer=True) or quantity != target or execution.get("target_basis") != basis:
         reject("piece_quantity_unknown" if op["piece_id"] is not None else "quantity_unknown",
                "原分件或批次目标量缺失。", 422)
     return quantity

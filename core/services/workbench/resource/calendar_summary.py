@@ -58,14 +58,14 @@ def _effective(policy, owned):
     if not math.isfinite(hours):
         raise ValueError("日历有效工时超出可核实范围。")
     start, end = policy.work_window()
-    return {"day_type": policy.day_type, "hours": policy.shift_hours, "efficiency": policy.efficiency,
+    return {"day_type": policy.day_type, "hours": policy.hours, "efficiency": policy.efficiency,
             "effective_hours": hours if working else 0.0,
             "normal_effective_hours": hours if normal else 0.0, "urgent_effective_hours": hours if urgent else 0.0,
             "allow_normal": normal, "allow_urgent": urgent, "is_working": working, "is_rest": not working,
             "window_start": start.isoformat(timespec="seconds"), "window_end": end.isoformat(timespec="seconds"),
             "windows": [{"start": left.isoformat(), "end": right.isoformat()} for left, right in policy.work_windows()],
             "crosses_midnight": end.date() > start.date(),
-            "rest_reason": None if working else "zero_hours" if policy.shift_hours == 0 else "priorities_disabled"}
+            "rest_reason": None if working else "zero_hours" if policy.hours == 0 else "priorities_disabled"}
 
 
 def _day_summary(service, day, row, today):
@@ -79,12 +79,6 @@ def _day_summary(service, day, row, today):
         result["effective"] = _effective(policy, owned_hours(service._engine, day, policy=policy))
     except (ValidationError, ValueError, TypeError, OverflowError) as exc:
         result.update(status="unavailable", issues=[{"code": "calendar_day_unavailable", "message": str(exc)}])
-    if row is not None:
-        inherited = [key for key in ("day_type", "shift_start", "shift_hours", "efficiency", "allow_normal", "allow_urgent")
-                     if row[key] is None or isinstance(row[key], str) and not row[key].strip()]
-        if inherited:
-            result["issues"].append({"code": "calendar_fields_defaulted", "fields": inherited,
-                                     "message": "已设置的日期里有几项是空的，按班表默认值解释；系统没有替你补写。"})
     return result
 
 

@@ -3,8 +3,7 @@
 from collections import defaultdict
 
 from core.models.workbench_preflight import issue
-
-from .preflight_checks import number
+from core.shared.strict_parse import is_stored_number
 
 
 def material_deferred_ids(rows, settings):
@@ -64,7 +63,7 @@ def link_predecessors(rows, *, piece_scope=None):
     for row in rows:
         chains[row["piece_id"] or ""].append(row)
     for chain in chains.values():
-        invalid = any(not number(row["sequence"], integer=True, positive=True) for row in chain)
+        invalid = any(not is_stored_number(row["sequence"], integer=True, positive=True) for row in chain)
         duplicate = len({row["sequence"] for row in chain}) != len(chain)
         if invalid or duplicate:
             for row in chain:

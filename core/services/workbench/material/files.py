@@ -72,10 +72,11 @@ class WorkbenchMaterialFileService:
     def _prepare_import(self, prepared):
         request = prepared.request()
         source, notices = prepared.parsed()
-        codes = {code for row in source for code in (row["values"].get("business_code"),)
-                 if type(code) is str}
-        captured = self.repo.capture(codes=codes | {code.strip() for code in codes})
-        rows = [self._import_row(item, captured) for item in source]
+        rows = [self._coded_row(item) for item in source]
+        captured = self.repo.capture(codes={row["business_code"] for row in rows if row["business_code"] is not None})
+        for row, item in zip(rows, source):
+            if row["business_code"] is not None:
+                self._import_row(row, item["values"], captured)
         duplicates = {}
         for row in rows:
             if row["business_code"] is not None:
@@ -87,17 +88,25 @@ class WorkbenchMaterialFileService:
                     reject_row(row, "同一编号在文件中重复，涉及行：" + numbers, code="duplicate_entry")
         return MaterialPreview.build("material.import", request, rows, notices, source=prepared), rows
 
-    def _import_row(self, source, captured):
+    @staticmethod
+    def _coded_row(source):
+        """逐行用 resource_text 校验编号非空与非法字符并保留原值；预取和后续逐行比对都用这一份结果。"""
         row = preview_row(source["row"])
-        values = source["values"]
         row["errors"] = list(source["errors"])
-        row["reference_fields"] = ["created_at"] if "created_at" in values else []
+        row["reference_fields"] = ["created_at"] if "created_at" in source["values"] else []
         try:
-            code = resource_text(values.get("business_code"), "business_code")
-            row["business_code"] = code
-            if values["business_code"] != code and values["business_code"] in captured["materials"]:
-                raise ValidationError("物料编号不能有首尾空格，请修正。", field="business_code")
+            resource_text(source["values"].get("business_code"), "business_code")
+            row["business_code"] = source["values"]["business_code"]
+        except ValidationError as exc:
+            reject_row(row, exc.message)
+        return row
+
+    def _import_row(self, row, values, captured):
+        code = row["business_code"]
+        try:
             raw = captured["materials"].get(code)
+            if raw is None and code != code.strip():
+                raise ValidationError("物料编号不能有首尾空格，请修正后重新导入。", field="business_code")
             row["action"] = "create" if raw is None else "update"
             if raw is None:
                 row["expected"] = {"identity": None, "material": None, "requirements": [],
@@ -109,14 +118,11 @@ class WorkbenchMaterialFileService:
                 if identity is None:
                     raise WorkbenchCommandRejected("storage_failure", "这条物料缺少系统编号，请联系维护人员核对资料。", 500)
                 row["expected"] = full_material_snapshot(captured, identity)
-                if code != raw["material_id"] or raw["material_id"] != raw["material_id"].strip():
-                    raise ValidationError("原来的物料编号首尾有空格，不能安全更新。请先核对原记录。", field="business_code")
             if not row["errors"]:
                 row["input"] = self._normalize_values(row["action"], code, values, raw)
                 self._classify(row, raw)
         except ValidationError as exc:
             reject_row(row, exc.message, field=exc.field or "input")
-        return row
 
     @staticmethod
     def _normalize_values(action, code, values, raw):

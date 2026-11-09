@@ -7,6 +7,7 @@ from urllib.parse import urlencode
 
 from core.shared.strict_json import canonical_json
 from web.api_responses import query_payload
+from web.routes.workbench.read_context import unbound_snapshot
 
 from .sample_constraint_checks import require
 from .sample_http import BASE, SampleAPIError
@@ -117,7 +118,7 @@ def _assembled(plan_ref, expected, documents, rejected, low, high):
             "resources": resources, "scope": {"kind": "sample_assembled_plan_workspace", "plan_ref": plan_ref},
             "plan_span": span, "projections": {"kind": "segmented_http", "source": "assembly.segments[].data.projections"}}
     # 拼装件没有整体快照：snapshot_ref 为空，as_of 记拼装完成的工厂本地时间；各分段原快照留在 assembly.reads。
-    document = query_payload(data, {"as_of": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"), "snapshot_ref": None})
+    document = query_payload(data, unbound_snapshot())
     document["assembly"] = {"kind": "segmented_http", "segments": documents, "reads": reads, "rejected_scopes": rejected,
                            "requested_span": {"range_start": low.isoformat(), "range_end": high.isoformat()},
                            "unique_task_count": len(tasks), "segment_count": len(documents),

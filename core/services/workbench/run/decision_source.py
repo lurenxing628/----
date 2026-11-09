@@ -340,11 +340,6 @@ class DecisionSource:
         return batch_impact_summary(self)
 
     @cached_property
-    def operation_impacts(self):
-        from .decision_impact import operation_impacts
-        return operation_impacts(self)
-
-    @cached_property
     def official_details(self):
         if not self.rows:
             # 只有产出候选结果的运行才保存工序处置；没有处置，就无法按原始来源重读排产时的正式计划。
@@ -360,8 +355,6 @@ class DecisionSource:
         """The admitted official model, re-read from its original sources when a dependency changed since admission."""
         model: Dict[str, Any] = self._active_decision["official"] if self.run["state"] in ("queued", "running") else decode_model(
             self.repo.decision_read_model(self.run["run_ref"], ("official",)), ("official",))["official"]
-        if model.get("projection_state") == "disposition_not_recorded":
-            invalid_baseline()
         if not self.repo.dependencies_match(model["dependencies"]):
             value: Dict[str, Any] = dict(self.official_details)
             value["operation_refs"] = sorted({row["operation_ref"] for row in value["tasks"]})
@@ -451,7 +444,7 @@ class DecisionSource:
 
     @cached_property
     def operation_efforts(self):
-        return saved_operation_efforts(self.receipt.get("operation_effort"), identities=self.facts.operations)
+        return saved_operation_efforts(self.receipt["operation_effort"], identities=self.facts.operations)
 
     @cached_property
     def preparation(self):

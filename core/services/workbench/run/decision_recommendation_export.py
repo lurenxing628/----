@@ -87,8 +87,7 @@ def recommendation_export_records(source, data):
                     "候选名称": label, "来源可用": scope["source_available"]}
         for row in source.completion.delivery(key):
             ref = row["batch_ref"]
-            category = ("complete" if ref in scope["complete_batch_refs"] else "deferred" if ref in scope["deferred_batch_refs"] else
-                        "incomplete" if ref in scope["ordinary_incomplete_batch_refs"] else "unknown")
+            category = row["completion_state"] if scope["source_available"] else "unknown"
             completion.append({"record_kind": "completion_set", **identity, "批次永久编号": ref, "批次编号": row["batch_id"],
                 "安排分类": category, "双方工序都已排齐": ref in common and category == "complete", "批次工序安排状态": row["completion_state"],
                 "交付状态": row["risk"], "交期状态": row["due_state"], "交期": row["due_date"], "预计完工": row["planned_finish"],

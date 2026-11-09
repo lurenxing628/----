@@ -49,8 +49,9 @@ class WorkbenchResourceFileService:
         request = prepared.request()
         category = request["category"] if self.kind == "op_type" else None
         source, notices = prepared.parsed()
-        codes = sorted({item["values"]["business_code"].strip() for item in source
-                        if isinstance(item["values"].get("business_code"), str)})
+        codes = sorted({code for item in source
+                        for code in (item["values"].get("business_code"),)
+                        if isinstance(code, str) and code.strip()})
         preparation = self._capture_import(source, codes)
         existing = [code for code in codes if preparation.find_identity(self.kind, code) is not None]
         references = preparation.capture_references(self.repo, self.kind, existing)
@@ -66,8 +67,6 @@ class WorkbenchResourceFileService:
         return preview, [change for _row, change in planned]
 
     def _capture_import(self, source, codes):
-        original = {item["values"]["business_code"] for item in source
-                    if type(item["values"].get("business_code")) is str}
         selected = {}
         for field, (_target, kind, _category) in RELATIONS[self.kind].items():
             for item in source:
@@ -76,7 +75,7 @@ class WorkbenchResourceFileService:
                                                         if type(code) is str)
         names = ({"op_type": {item["values"]["label"].strip() for item in source
                               if type(item["values"].get("label")) is str}} if self.kind == "op_type" else None)
-        return self.reader.preparation(codes={self.kind: set(codes) | original}, selected_codes=selected,
+        return self.reader.preparation(codes={self.kind: set(codes)}, selected_codes=selected,
             names=names, machine_authorizations=(self.kind == "machine"))
 
     @staticmethod
@@ -110,15 +109,16 @@ class WorkbenchResourceFileService:
         change = None
         row["reference_fields"] = [key for key in READONLY[self.kind] if key in values]
         try:
-            code = cast(str, resource_text(values.get("business_code"), "business_code"))
+            resource_text(values.get("business_code"), "business_code")
+            code = cast(str, values["business_code"])
             row["business_code"] = code
-            if values["business_code"] != code and preparation.raw(self.kind, values["business_code"]) is not None:
-                raise ValidationError("编号不能有首尾空格，请修正后重新导入。", field="business_code")
             identity = preparation.find_identity(self.kind, code)
             if identity is None:
                 raw = preparation.raw(self.kind, code)
                 if raw is not None:
                     raise WorkbenchCommandRejected("storage_failure", "这条资源在资料里查不到编号，这一行没有导入，资料也没有被改动。请到资料总览核对后重试。", 500)
+                if code != code.strip():
+                    raise ValidationError("编号不能有首尾空格，请修正后重新导入。", field="business_code")
                 row["action"] = "create"
                 row["expected"] = {"state": None, "history": histories[code]}
             else:

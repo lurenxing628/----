@@ -173,11 +173,10 @@ def _create_new_runtime_lock(lock_path: str, payload: Dict[str, Any]) -> bool:
 def _raise_if_runtime_lock_active(
     existing: Dict[str, Any],
     owner_s: str,
-    exe_path_s: str,
     *,
     db_label: str = "",
 ) -> None:
-    if not is_runtime_lock_active(existing, expected_exe_path=exe_path_s, local_probe_only=True):
+    if not is_runtime_lock_active(existing, local_probe_only=True):
         return
     existing_owner = str(existing.get("owner") or "").strip()
     if db_label:
@@ -220,7 +219,6 @@ def _acquire_lock_file(
     lock_path: str,
     payload: Dict[str, Any],
     owner_s: str,
-    exe_path_s: str,
     *,
     state_dir: str,
     db_label: str = "",
@@ -230,7 +228,7 @@ def _acquire_lock_file(
         if existing_result.status != LOCK_STATUS_MISSING:
             if not existing_result.ok:
                 _raise_uncertain_runtime_lock(existing_result)
-            _raise_if_runtime_lock_active(cast(Dict[str, Any], existing_result.payload), owner_s, exe_path_s, db_label=db_label)
+            _raise_if_runtime_lock_active(cast(Dict[str, Any], existing_result.payload), owner_s, db_label=db_label)
             try:
                 remove_fixed_file(lock_path)
             except OSError as exc:
@@ -249,7 +247,6 @@ def _acquire_db_scope_lock(db_path: str, database: str, *, owner_s: str, exe_pat
         lock_path,
         payload,
         owner_s,
-        exe_path_s,
         state_dir=lock_dir,
         db_label=database,
     )
@@ -304,7 +301,7 @@ def acquire_runtime_lock(
     # DB 身份只在入口归一一次，壳锁与 db-scope 锁的 payload、提示文案都用这一份。
     database = normalize_runtime_db_path(db_path_s)
     payload = _runtime_lock_payload(owner_s, exe_path_s, database)
-    acquired = _acquire_lock_file(lock_path, payload, owner_s, exe_path_s, state_dir=state_dir)
+    acquired = _acquire_lock_file(lock_path, payload, owner_s, state_dir=state_dir)
     acquired["state_dir"] = state_dir
     acquired["path"] = lock_path
     # B03 锁命名空间与被保护资源绑定（方案乙）：壳锁位置不动（bat/stop 读取端合同不破），

@@ -79,7 +79,7 @@ def _plan_context(context):
     if "run_ref" in context or "candidate_ref" in context:
         _object(context, ("run_ref", "candidate_ref", "reference_candidate_ref", "comparison_mode",
                           "range_start", "range_end", "batch_ref", "operation_ref", "selected_row_ref", "candidate_tab",
-                          "comparison_tab", "metric_view", "reference_view", "plan_ref",
+                          "comparison_tab", "reference_view", "plan_ref",
                           "resource_view", "resource_kind", "resource_ref", "selected_batch_ref"))
         for key in ("run_ref", "candidate_ref", "reference_candidate_ref", "batch_ref", "operation_ref", "selected_row_ref", "plan_ref", "resource_ref", "selected_batch_ref"):
             if key in context:
@@ -96,8 +96,6 @@ def _plan_context(context):
             _invalid("资源安排视角无效，请从方案对比重新选择。")
         if "resource_kind" in context and context["resource_kind"] not in ("machine", "operator"):
             _invalid("资源类别无效，请从方案对比重新选择。")
-        if "metric_view" in context and context["metric_view"] not in ("common", "all"):
-            _invalid("方案指标视图无效，请从本次排产重新选择。")
         if "reference_view" in context and (type(context["reference_view"]) is not bool or
                                           context.get("reference_view") and context.get("comparison_mode") != "admission_official"):
             _invalid("受理时正式基准定位无效，请从方案对比重新打开。")

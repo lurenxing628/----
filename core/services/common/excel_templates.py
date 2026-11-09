@@ -4,9 +4,9 @@
 的模板改由工作台按表描述现生成），以及给旧资料转换子系统写 XLSX（build_xlsx_bytes +
 get_template_definition，2026-09-21 随 core/services/process/unit_excel 一起退役）。
 
-剩下的只有 sanitize_export_cell，它有四个生产用户：排产实际导出、校准导出、报表导出、
-报表 xlsx 导出。做两件事——把会被 Excel 当公式起头的字符转义掉，把控制字符剔掉
-（openpyxl 写进去会让文件打不开）。
+剩下的只有 sanitize_export_cell 与 ensure_xlsx_cell_length，它们有三个生产用户：
+工时校准导出、工作台报表导出、报表 xlsx 导出。做两件事——把会被 Excel 当公式起头的字符转义掉、
+把控制字符剔掉（openpyxl 写进去会让文件打不开），并在超过 XLSX 单元格字数上限时报错拒绝。
 """
 
 from __future__ import annotations

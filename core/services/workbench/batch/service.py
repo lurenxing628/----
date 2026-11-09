@@ -1,18 +1,36 @@
 """Prepare batch changes from one capture, then apply them in the command transaction."""
 
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 from core.errors import BusinessError, ErrorCode, ValidationError
 from core.models.batch import Batch
-from core.models.workbench_batch import public_ref
+from core.models.workbench_batch import normalize_batch_fields, public_ref, text
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
-from core.services.common.datetime_normalize import normalize_date
-from core.services.common.normalize import normalize_text, validate_enum
-from core.shared.strict_parse import parse_required_int
 from data.repositories.batch_repo import BatchRepository
 
 from .facts import BatchFacts, index_relations, require_deletable, require_unreferenced
+
+# 齐套状态不在这里：复制、拆分写入的齐套状态都是本次算出的内部值，不读原批次。
+_STORED_LABELS = {"fields.quantity": "数量", "fields.due_date": "交期", "fields.priority": "优先级",
+                  "fields.ready_date": "齐套日期", "fields.remark": "备注", "part_name": "零件名称"}
+
+
+@contextmanager
+def stored_batch_values(ref, source, verb):
+    """复制、拆分沿用原批次在库里的值；准入不过时点名是哪个原批次的哪一项，不当成这次填错。"""
+    try:
+        yield
+    except ValidationError as exc:
+        # normalize_batch_fields 和 text 报错时都带字段路径。
+        field = cast(str, exc.field)
+        code, label = source["batch_id"], _STORED_LABELS[field]
+        remedy = ("零件名称在批次里改不了，请联系维护人员核对这个批次的资料。" if field == "part_name"
+                  else f"请先打开这个批次，把{label}核对改好后再{verb}。")
+        raise WorkbenchCommandRejected(
+            "constraint_conflict", f"原批次“{code}”在系统里存的{label}不对，这次没有{verb}。{remedy}",
+            conflicts=[{"entity_ref": ref, "business_code": code, "field": field}]) from exc
 
 
 @dataclass
@@ -104,17 +122,20 @@ class BatchChangePreparation:
         return BatchChange("create", batch.batch_id, None, {}, batch)
 
     def copy(self, source, code, *, quantity=None, ready_status="no", ready_date=None):
-        """Copies keep the existing legacy date/text normalization, using the captured part."""
-        quantity = parse_required_int(source["quantity"] if quantity is None else quantity, field="数量")
-        if quantity <= 0:
-            raise ValidationError("“数量”必须大于 0", field="数量")
-        part_name = normalize_text(source["part_name"]) or self.parts[source["part_no"]]["part_name"]
-        priority = normalize_text(source["priority"]) or "normal"
-        validate_enum(priority, ("normal", "urgent", "critical"), "优先级")
-        return self.create(Batch(batch_id=code, part_no=source["part_no"], part_name=part_name,
-            quantity=quantity, due_date=normalize_date(source["due_date"]),
-            priority=priority, ready_status=ready_status, ready_date=ready_date,
-            remark=normalize_text(source["remark"])))
+        """Copies admit the stored source fields like user input; callers wrap this in stored_batch_values.
+
+        零件号不再核对：Batches.part_no 外键指向 Parts，parts 是同一快照的整表。
+        """
+        fields = normalize_batch_fields({
+            "quantity": source["quantity"] if quantity is None else quantity,
+            "due_date": source["due_date"],
+            "priority": source["priority"],
+            "ready_status": ready_status,
+            "ready_date": ready_date,
+            "remark": source["remark"],
+        })
+        return self.create(Batch(batch_id=code, part_no=source["part_no"],
+                                 part_name=text(source["part_name"], "part_name"), **fields))
 
 
 class WorkbenchBatchService:

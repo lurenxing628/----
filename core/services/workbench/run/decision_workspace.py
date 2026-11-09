@@ -1,7 +1,7 @@
 """Read the admission's original official timeline for comparison drill-down."""
 
 from core.models.workbench_run_candidate import reject
-from core.services.workbench.facts.candidate_tasks import operation_labels, task_span
+from core.services.workbench.facts.candidate_tasks import operation_labels, operation_sequence_order, task_span
 from core.services.workbench.facts.delivery_projection import delivery_summary
 from core.services.workbench.facts.gantt_graph import candidate_gantt_graph, unavailable_graph
 from core.shared.strict_json import clone_json
@@ -49,7 +49,7 @@ def _reference_workspace(source, batch_ref):
     )
     tasks.sort(key=lambda row: (row["start"] is None, row["start"], row["operation_ref"], row["row_ref"]))
     unplanned = [row for row in unplanned if row["batch_ref"] in batches]
-    unplanned.sort(key=lambda row: (row["sequence"] is None, row["sequence"], row["operation_ref"]))
+    unplanned.sort(key=operation_sequence_order)
     tasks = [dict(row, operation_effort=source.preparation.compact("reference", row["operation_ref"])) for row in tasks]
     unplanned = [dict(row, operation_effort=source.preparation.compact("reference", row["operation_ref"])) for row in unplanned]
     if full_view:

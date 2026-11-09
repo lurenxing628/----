@@ -23,27 +23,29 @@ def _observation(ref, captured, gap):
     if gap:
         risk = {"active": None, "code": gap["code"], "message": gap["message"]}
         facts = {"header": header, "latest": captured["latest"], "gap": gap}
-        current, awaiting = False, False
+        current = False
     else:
-        receipt, snapshot = captured["receipt"], captured["snapshot"]
-        current, awaiting = receipt["source_state"] == "current", receipt["awaiting_return"]
+        receipt = captured["receipt"]
+        current = True
         active = receipt["overdue"] or receipt["confirmedState"] == "awaiting_confirmation"
-        risk = {"active": active if current else None,
+        risk = {"active": active,
                 "code": "outsourcing_overdue" if receipt["overdue"] else "outsourcing_awaiting_confirmation" if active else "outsourcing_tracked",
                 "message": "外协超过真实登记的计划回厂时点。" if receipt["overdue"] else "外协仍待人工确认。" if active else "当前登记未发现超时或待确认风险。"}
         source["receipt"] = receipt
         # Source identities and rows already express this receipt's dependencies;
         # the global plan clock must not expire it when another source changes.
-        loaded = snapshot["source"]
-        scoped = {**snapshot, "source": {**loaded, "facts": {key: value for key, value in loaded["facts"].items()
-                                                          if key != "source_clock"}}}
+        scoped = {
+            "header": header,
+            "latest_fact_ref": captured["latest"]["fact_ref"],
+            "source": captured["admitted_source"].to_scoped_source(),
+            "issues": receipt["issues"],
+        }
         facts = {"receipt": receipt, "snapshot": scoped, "latest": captured["latest"]}
     label = subject(header["origin"]["batch"]["business_code"], "外协原登记")
     operations = " / ".join(subject(row["business_code"], "外协工序") for row in header["origin"]["operations"])
-    item = {"category": "external", "anchor_ref": ref, "subject": label + " · " + operations,
+    return {"category": "external", "anchor_ref": ref, "subject": label + " · " + operations,
             "source": source, "risk": risk, "_facts": facts, "navigation": _navigation(ref, current),
             "source_state": "current" if current else "not_currently_evaluated"}
-    return item, current and awaiting
 
 
 class DashboardExternalHandling:
@@ -58,9 +60,12 @@ class DashboardExternalHandling:
         observations = []
         for ref in refs:
             mapped = mappings[ref]
-            item, awaiting = _observation(ref, receipts[ref], gaps.get(ref))
             saved = stored.get(mapped["item_ref"])
+            gap_row = gaps.get(ref)
+            entry = receipts[ref]
+            awaiting = not gap_row and entry["receipt"]["source_state"] == "current" and entry["receipt"]["awaiting_return"]
             if awaiting or saved:
+                item = _observation(ref, entry, gap_row)
                 observations.append((dict(item, item_ref=mapped["item_ref"]), saved, mapped))
         summary.update(handling_supported=True, handling_count=len(stored),
                        closed_count=sum(row["handling"]["status"] == "closed" for row in stored.values()))

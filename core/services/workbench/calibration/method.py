@@ -2,7 +2,9 @@
 
 from collections import Counter
 from decimal import Decimal
+from fractions import Fraction
 from statistics import median
+from typing import Any, Dict, Mapping, NamedTuple, Optional
 
 from core.models.content import content_text
 from core.models.workbench_calibration import (
@@ -17,7 +19,13 @@ from core.models.workbench_calibration import (
 
 from .samples import ensure_sample_revision, number, quantize
 
-_RAW_SUGGESTION = "_raw_suggested_unit_hours"
+_MAX_FLOAT_FRACTION = Fraction(Decimal("1.7976931348623157e308"))
+
+
+class SampleSummary(NamedTuple):
+    public: Dict[str, Any]
+    suggested: Optional[Decimal]
+    raw_suggested: Optional[Fraction]
 
 
 def _select_recent(samples):
@@ -38,25 +46,37 @@ def _exclusion_counts(samples):
     return [{"code": code, "message": messages[code], "count": count} for code, count in sorted(counts.items())]
 
 
-def summarize_samples(samples):
+def summarize_samples(samples, exact_unit_hours: Mapping[str, Fraction]) -> SampleSummary:
     selected, eligible_count = _select_recent(samples)
     for row in selected:
         ensure_sample_revision(row)
-    values = [Decimal(str(row["effective_processing_hours"])) / Decimal(row["completed_quantity"]) for row in selected]
+    values = [exact_unit_hours[row["sample_ref"]] for row in selected]
     raw_suggested = median(values) if len(values) >= MIN_SAMPLES else None
     suggested = quantize(raw_suggested)
-    return {"sample_count": len(selected), "eligible_sample_count": eligible_count, "candidate_count": len(samples),
-            "excluded_count": len(samples) - len(selected), "sample_refs": [row["sample_ref"] for row in selected],
-            "sample_revisions": [{"sample_ref": row["sample_ref"], "sample_revision": row["sample_revision"],
-                                  "template_revision": row["template_revision"], "report_revision_refs": row["report_revision_refs"]}
-                                 for row in selected],
-            "suggested_unit_hours": float(suggested) if suggested is not None else None,
-            "exclusion_reasons": _exclusion_counts(samples), _RAW_SUGGESTION: raw_suggested}
+    public = {
+        "sample_count": len(selected),
+        "eligible_sample_count": eligible_count,
+        "candidate_count": len(samples),
+        "excluded_count": len(samples) - len(selected),
+        "sample_refs": [row["sample_ref"] for row in selected],
+        "sample_revisions": [
+            {
+                "sample_ref": row["sample_ref"],
+                "sample_revision": row["sample_revision"],
+                "template_revision": row["template_revision"],
+                "report_revision_refs": row["report_revision_refs"],
+            }
+            for row in selected
+        ],
+        "suggested_unit_hours": float(suggested) if suggested is not None else None,
+        "exclusion_reasons": _exclusion_counts(samples),
+    }
+    return SampleSummary(public=public, suggested=suggested, raw_suggested=raw_suggested)
 
 
-def _deviation(old, raw_suggested):
+def _deviation(old: Optional[Fraction], raw_suggested: Optional[Fraction]):
     deviation = (raw_suggested - old) / old * 100 if old and raw_suggested is not None else None
-    finite_deviation = deviation is not None and abs(deviation) <= Decimal("1.7976931348623157e308")
+    finite_deviation = deviation is not None and abs(deviation) <= _MAX_FLOAT_FRACTION
     basis = "old_unknown" if old is None else "old_zero" if not old else "suggestion_unavailable" if raw_suggested is None else "relative"
     if deviation is not None and not finite_deviation:
         basis = "not_representable"
@@ -65,10 +85,11 @@ def _deviation(old, raw_suggested):
             "deviation_basis": basis, "over_20_percent": bool(deviation is not None and abs(deviation) > 20)}
 
 
-def build_suggestion(template, summary, *, generated_at):
-    public_summary = {key: value for key, value in summary.items() if key != _RAW_SUGGESTION}
-    old, suggested = number(template.old_unit_hours), number(public_summary["suggested_unit_hours"])
-    raw_suggested = summary[_RAW_SUGGESTION]
+def build_suggestion(template, summary: SampleSummary, *, generated_at):
+    public_summary = summary.public
+    old = number(template.old_unit_hours)
+    suggested = summary.suggested
+    raw_suggested = summary.raw_suggested
     reasons = write_blockers()
     if suggested is None:
         reasons.append(issue("insufficient_samples", "这个模板版本下可用的完工记录不足 5 条，暂时不给建议值。"))

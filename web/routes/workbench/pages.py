@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
 
 from flask import Blueprint, current_app, g, get_flashed_messages, redirect, render_template, request, url_for
 
@@ -13,6 +12,7 @@ from web.api_responses import json_response, query_success
 from .assets import WorkbenchAssetsUnavailable, read_asset_manifest
 from .navigation_boot import WorkbenchNavigationInvalid, read_navigation
 from .navigation_metadata import VIEW_ALIASES, VIEW_TITLES, navigation_groups
+from .read_context import unbound_snapshot
 
 bp = Blueprint("workbench", __name__)
 
@@ -123,4 +123,4 @@ def system_overview():
             "fields": [], "retryable": True, "request_ref": request_ref,
         }}, status=500)
     # 概况是一次性的本机检查，没有可回绑的读取快照。
-    return query_success(data, {"as_of": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"), "snapshot_ref": None})
+    return query_success(data, unbound_snapshot())

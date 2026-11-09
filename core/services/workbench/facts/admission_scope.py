@@ -19,12 +19,11 @@ def project_admitted_scope(settings, facts, *, summary):
         part = parts.get(part_no, {})
         selected.append({"batch_ref": ref, "batch_id": batch_id, "part_no": part_no,
                          "part_label": text(part.get("part_name"), prefix + "part_label", gaps)})
-    operations = facts.tables["BatchOperations"].values() if "BatchOperations" in facts.archive["tables"] else None
     complete_scope = summary["batch_count"] is not None and all(item["batch_id"] is not None for item in selected)
     operation_count = None
-    if complete_scope and operations is not None:
+    if complete_scope:
         selected_ids = {item["batch_id"] for item in selected}
-        operation_count = sum(item.get("batch_id") in selected_ids for item in operations)
+        operation_count = sum(item["batch_id"] in selected_ids for item in facts.tables["BatchOperations"].values())
     else:
         gaps.append(gap("operation_count"))
     config = index_rows(facts.table("ScheduleConfig"), "config_key")

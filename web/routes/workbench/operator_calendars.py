@@ -106,8 +106,6 @@ def _guarded_day(ref, action, write_token, day):
     validate_write_context(write_token, ref, ACTIONS[action], _month_binding(resource_state, month))
     state = next(item for item in month["days"] if item["date"] == day)
     checked_state = {key: state[key] for key in ("date", "explicit", "calendar_ref", "revision", "row", "identity", "history")}
-    if "reading" in state:
-        checked_state["reading"] = state["reading"]
     return service, checked_state
 
 

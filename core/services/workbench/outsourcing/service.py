@@ -18,7 +18,7 @@ from core.services.workbench.facts.source_revisions import (
 from data.repositories.workbench_outsourcing_repo import WorkbenchOutsourcingRepository
 
 from .projection import fact, receipt
-from .source import WorkbenchOutsourcingSourceService
+from .source import AdmittedReceiptSource, WorkbenchOutsourcingSourceService
 
 
 class CapturedReceiptFacts(TypedDict):
@@ -84,18 +84,18 @@ class WorkbenchOutsourcingService:
             rows["header"] = self.header_from_row(rows["header"])
         return cast(Dict[str, CapturedReceiptFacts], captured)
 
-    def entry_from_facts(self, header, latest, now, *, sources, include_snapshot: bool = True):
+    def entry_from_facts(self, header, latest, now, *, sources, projection: str = "full"):
         """Resolve a receipt from header/latest already admitted in the caller's snapshot."""
+        if projection not in ("full", "identity", "deferred_scoped"):
+            raise ValueError(f"Unsupported receipt entry projection: {projection!r}")
         source, issues, state = None, [], "current"
         try:
-            source = sources.load(
-                header["target"],
-                include_snapshot_facts=include_snapshot,
-                include_public=include_snapshot,
-            )
-            if source["identity"] != header["identity"]:
+            loaded = sources.load(header["target"], projection=projection)
+            source_identity = loaded.identity if isinstance(loaded, AdmittedReceiptSource) else loaded["identity"]
+            if source_identity != header["identity"]:
                 state = "identity_drift"
                 issues = [{"code": "identity_drift", "message": "原登记的工序或所属批次已变化，请重新核对。"}]
+            source = loaded
         except WorkbenchCommandRejected as exc:
             if exc.code not in ("identity_missing", "identity_drift", "entity_not_found", "constraint_conflict"):
                 raise
@@ -103,10 +103,11 @@ class WorkbenchOutsourcingService:
             issues = [{"code": exc.code, "message": str(exc)}]
         result = receipt(header, latest, now, source_state=state, issues=issues)
         result["can_preview"] = state == "current"
-        if not include_snapshot:
+        if projection == "identity":
             return result, None
-        snapshot = {"header": header, "latest_fact_ref": latest["fact_ref"], "source": source, "issues": issues}
-        return result, snapshot
+        if projection == "deferred_scoped":
+            return result, (source if state == "current" else None)
+        return result, {"header": header, "latest_fact_ref": latest["fact_ref"], "source": source, "issues": issues}
 
     def detail(self, ref, *, as_of=None):
         reference(ref)
@@ -148,7 +149,7 @@ class WorkbenchOutsourcingService:
             resolved_items = [(self.header_from_row(raw_headers[ref]), latest) for ref, latest in page_items]
             sources = self.sources.capture([header["target"] for header, _ in resolved_items])
             rows = [
-                self.entry_from_facts(header, latest, now, sources=sources, include_snapshot=False)[0]
+                self.entry_from_facts(header, latest, now, sources=sources, projection="identity")[0]
                 for header, latest in resolved_items
             ]
             clock = sources.repo.plan_identity_revision()

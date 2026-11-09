@@ -1,6 +1,5 @@
 """Explicit registration only. The host must connect and enable its worker dispatcher."""
 
-from datetime import datetime
 from functools import wraps
 from uuid import uuid4
 
@@ -17,6 +16,7 @@ from web.api_responses import failure, json_response, query_success
 
 from .data_context import request_data_context
 from .preflight import evaluate_preflight_input_prepared
+from .read_context import unbound_snapshot
 from .write_context import issue_write_context, validate_write_context
 
 
@@ -69,7 +69,7 @@ def _input(keys):
 
 def _query(data):
     # Run and request lookups read live state; no read snapshot backs them.
-    return query_success(data, {"snapshot_ref": None, "as_of": datetime.now().isoformat(timespec="seconds")})
+    return query_success(data, unbound_snapshot())
 
 
 @_boundary

@@ -3,8 +3,9 @@
 from typing import Union
 
 from core.models.workbench_run_candidate import reference, reject
-from core.services.workbench.facts.candidate_tasks import operation_labels
+from core.services.workbench.facts.candidate_tasks import operation_labels, operation_sequence_value
 from core.services.workbench.facts.decision_metrics import METRIC_VERSION
+from core.shared.strict_parse import JS_SAFE_INT_MAX, parse_bounded_positive_int
 
 from .decision_impact import (
     BATCH_CHANGES,
@@ -40,12 +41,9 @@ def normalize_filters(section, *, batch_ref=None, resource_ref=None, change_kind
 
 
 def parse_page(value, *, size=False):
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        reject("invalid_input", "分页页码和每页数量需要填写正整数。", 422)
-    if type(value) is bool or str(parsed) != str(value) or parsed < 1 or size and parsed not in (20, 50):
-        reject("invalid_input", "页码需要为正整数，每页请选择20或50条。", 422)
+    parsed = parse_bounded_positive_int(value, max_value=JS_SAFE_INT_MAX)
+    if parsed is None or (size and parsed not in (20, 50)):
+        reject("invalid_input", "页码需要为正整数，每页请选择20或50条。" if size else "分页页码和每页数量需要填写正整数。", 422)
     return parsed
 
 
@@ -70,10 +68,10 @@ def _operation_sort_value(source, ref, delta, sort, batch_labels):
     if sort == "change_kind":
         return ",".join(delta["change_kinds"])
     if sort in ("start_delta_hours", "end_delta_hours"):
-        return delta.get(sort)
+        return delta[sort]
     if sort == "batch_id":
         return batch_labels.get(source.operation_batch_ref(ref))
-    return operation_labels(source.facts, ref)[0].get(sort)
+    return operation_sequence_value(operation_labels(source.facts, ref)[0]["sequence"])
 
 
 def decision_details(source, section, filters, *, page: Union[int, str] = 1, size: Union[int, str] = 20, all_rows=False):
@@ -150,8 +148,6 @@ def _sort_value(row, sort):
         return rank, -(row["after"]["delay_hours"] or 0)
     if sort == "after_delay_hours":
         return row["after"]["delay_hours"]
-    if sort == "change_kind":
-        return ",".join(row["change_kinds"])
     if sort in ("worsened", "improved"):
         changes = set(row["change_kinds"])
         if changes == {"unknown"}:
@@ -161,7 +157,7 @@ def _sort_value(row, sort):
                 if worsening else (3 if "completion_improved" in changes else 2 if "relieved_overdue" in changes else 1 if "earlier" in changes else 0))
         sign = 1 if worsening else -1
         return rank, sign * (row["delay_delta_hours"] or 0), sign * (row["finish_delta_hours"] or 0)
-    return row.get(sort)
+    return row[sort]
 
 
 def _ordered(rows, filters):

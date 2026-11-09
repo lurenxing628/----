@@ -11,7 +11,9 @@ from core.models.workbench_trial_scenario_archive import (
     scenario_metadata_bytes,
     scenario_snapshot,
 )
+from core.services.workbench.facts.production_capture import validate_production_archive
 
+TRIAL_FACTS_INVALID = "试调草稿保存的现场资料已损坏，不能继续核对或采用，正式计划没有改变。请从当前正式计划重新发起试调。"
 _CURRENT_FIELDS = {"machine_ref", "operator_ref", "machine_id", "operator_id", "start", "end"}
 _CACHE_LOCK = threading.RLock()
 _SAVED_DRAFT_CACHE = {}
@@ -87,6 +89,13 @@ def load_draft_with_key(repo, draft_ref, *, header=None):
     admission_raw = head.pop("admission_json")
     validation_raw = head.pop("validation_json")
     head["admission"] = load_object(admission_raw)
+    # The saved facts archive is admitted here, before any origin or capture reads it.
+    if "facts" not in head["admission"]:
+        reject("trial_snapshot_invalid", TRIAL_FACTS_INVALID)
+    try:
+        validate_production_archive(head["admission"]["facts"], named=True)
+    except ValueError:
+        reject("trial_snapshot_invalid", TRIAL_FACTS_INVALID)
     head["validation"] = load_object(validation_raw)
     rows = []
     for item in raw_rows:

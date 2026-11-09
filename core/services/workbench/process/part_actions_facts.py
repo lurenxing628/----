@@ -2,7 +2,6 @@
 
 import math
 from collections import defaultdict
-from datetime import date, datetime
 
 from core.models.workbench_command import WorkbenchCommandRejected
 
@@ -51,8 +50,6 @@ def plain_part_action_facts(value):
         return {key: plain_part_action_facts(item) for key, item in value.items()}
     if isinstance(value, list):
         return [plain_part_action_facts(item) for item in value]
-    if isinstance(value, (date, datetime)):
-        return {"storage_type": type(value).__name__, "iso": value.isoformat()}
     if isinstance(value, bytes):
         return {"storage_type": "blob", "hex": value.hex()}
     if isinstance(value, float) and not math.isfinite(value):

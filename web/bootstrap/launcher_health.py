@@ -29,12 +29,17 @@ def probe_runtime_health_result(base_url: str, timeout_s: float, *, log_failures
         if log_failures:
             launcher_log_warning(None, "运行时健康探测失败：url=%s error=%s", url, exc)
         return HealthProbeResult(False, url, "request_failed", error=str(exc))
-    try:
-        contract_version = int(payload.get("contract_version") or 0)
-    except (AttributeError, TypeError, ValueError) as exc:
+    if not isinstance(payload, dict):
+        error = f"expected object, got {type(payload).__name__}"
         if log_failures:
-            launcher_log_warning(None, "运行时健康响应版本非法：url=%s error=%s", url, exc)
-        return HealthProbeResult(False, url, "invalid_contract_version", status=status, payload=payload, error=str(exc))
+            launcher_log_warning(None, "运行时健康响应版本非法：url=%s error=%s", url, error)
+        return HealthProbeResult(False, url, "invalid_contract_version", status=status, payload=None, error=error)
+    contract_version = payload.get("contract_version")
+    if type(contract_version) is not int:
+        error = f"expected int, got {type(contract_version).__name__}"
+        if log_failures:
+            launcher_log_warning(None, "运行时健康响应版本非法：url=%s error=%s", url, error)
+        return HealthProbeResult(False, url, "invalid_contract_version", status=status, payload=payload, error=error)
     ok = payload.get("app") == "aps" and payload.get("status") == "ok" and contract_version == 1
     reason = "" if ok else "unexpected_health_payload"
     if not ok and log_failures:

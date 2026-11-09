@@ -1,36 +1,7 @@
 """Durable acceptance facts; self-owned run bookkeeping is not a production change."""
 
-from collections.abc import Mapping
-
-from core.models.content import same
 from core.models.workbench_run_job import durable_value
 from core.services.workbench.execution.ledger import ExecutionLedgerService
-from core.services.workbench.facts.production_capture import NON_INPUT_TABLES, ProductionFactsCapture, non_input_row
-from core.services.workbench.facts.schema_compat import archived_columns, project_facts
-
-
-def _production_facts(value, receipt_columns):
-    """Exclude non-input contents only; retain every schema and business fact."""
-    tables = {name: [row for row in rows if not non_input_row(name,
-                  [row.get(column) for column in archived_columns(value, name)] if isinstance(row, Mapping) else row, receipt_columns)]
-              for name, rows in value["tables"].items() if name not in NON_INPUT_TABLES}
-    return {**value, "tables": tables}
-
-
-def production_facts_match(conn, expected_archive, *, capture=None):
-    """Compare live inputs after the caller has verified the immutable archive once."""
-    if not isinstance(expected_archive, Mapping):
-        raise TypeError("expected_archive must be a Mapping")
-    if capture is None:
-        capture = ProductionFactsCapture(conn)
-    matched = capture.matches_archive(expected_archive)
-    if matched is not None:
-        return matched
-    if "tables" not in expected_archive or not isinstance(expected_archive["tables"], Mapping):
-        return False
-    current = capture.archive()
-    captured = _production_facts(expected_archive, archived_columns(expected_archive, "WorkbenchCommandReceipts"))
-    return same(project_facts(current), project_facts(captured))
 
 
 def run_execution_projections(conn, settings, *, capture, existing=(), service=None):

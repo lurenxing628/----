@@ -5,7 +5,8 @@ historical birth records; readable labels are nullable projections of verified,
 snapshot-local instances. The repository only reads; every rejection is here.
 """
 
-from typing import cast
+from dataclasses import dataclass
+from typing import Any, Dict, List, Literal, Union, cast, overload
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_outsourcing import MAX_ROWS, label, raw_facts, reject
@@ -50,6 +51,100 @@ def source_resolution(operations):
     if len(refs) > 1:
         reject("所选工序已分别登记，不能合成另一条登记。", "constraint_conflict", 409)
     return {"basis": basis, "confirmation_ref": next(iter(refs)) if refs else None}
+
+
+def _public_source(target, batch, part, supplier, operations, resolution, *, include_operations: bool) -> Dict[str, Any]:
+    public: Dict[str, Any] = {
+        **target,
+        "grouping_basis": "explicit_receipt_membership",
+        "source_resolution": resolution,
+        "part": {
+            "ref": part["identity"]["ref"],
+            "business_code": _target_text(part["row"]["part_no"]),
+            "label": _target_text(part["row"]["part_name"]),
+        },
+        "batch": {
+            "ref": target["batch_ref"],
+            "business_code": label(batch["row"]["batch_id"]),
+            "label": label(batch["row"]["part_name"]),
+        },
+        "supplier": {
+            "ref": target["supplier_ref"],
+            "business_code": label(supplier["row"]["supplier_id"]),
+            "label": label(supplier["row"]["name"]),
+        },
+    }
+    if include_operations:
+        public["operations"] = [
+            {
+                "operation_ref": op["identity"]["ref"],
+                "business_code": label(op["row"]["op_code"]),
+                "sequence": label(op["row"]["seq"]),
+                "piece": label(op["row"]["piece_id"]),
+                "label": label(op["row"]["op_type_name"]),
+            }
+            for op in operations
+        ]
+    return public
+
+
+def _source_identity(target, part, operations) -> Dict[str, Any]:
+    return cast(
+        Dict[str, Any],
+        raw_facts(
+            {
+                "batch_ref": target["batch_ref"],
+                "part_ref": part["identity"]["ref"],
+                "supplier_ref": target["supplier_ref"],
+                "members": [
+                    {"operation_ref": op["identity"]["ref"], **{key: op["row"][key] for key in MEMBER_KEYS}}
+                    for op in operations
+                ],
+            }
+        ),
+    )
+
+
+def _source_confirmations(operations) -> List[str]:
+    return [
+        op["identity"]["ref"]
+        for op in operations
+        if op["binding"]["source_resolution"]["basis"] == "current_relation"
+    ]
+
+
+@dataclass(frozen=True)
+class AdmittedReceiptSource:
+    target: Dict[str, Any]
+    batch: Dict[str, Any]
+    part: Dict[str, Any]
+    supplier: Dict[str, Any]
+    operations: List[Dict[str, Any]]
+    resolution: Dict[str, Any]
+    identity: Dict[str, Any]
+
+    def to_scoped_source(self) -> Dict[str, Any]:
+        return {
+            "public": _public_source(
+                self.target,
+                self.batch,
+                self.part,
+                self.supplier,
+                self.operations,
+                self.resolution,
+                include_operations=True,
+            ),
+            "identity": self.identity,
+            "source_confirmations": _source_confirmations(self.operations),
+            "facts": raw_facts(
+                {
+                    "batch": self.batch,
+                    "part": self.part,
+                    "supplier": self.supplier,
+                    "operations": self.operations,
+                }
+            ),
+        }
 
 
 class WorkbenchOutsourcingSourceService:
@@ -110,16 +205,45 @@ class WorkbenchOutsourcingSourceService:
         if any(row["id"] not in selected for row in between):
             reject("合并发出必须选择同一次外协的连续工序，不能跨过自制工序或漏选中间工序。请按实际发出阶段分别登记。", "constraint_conflict", 409)
 
+    @overload
     def load(
         self,
         target,
         *,
-        new_registration=False,
-        include_snapshot_facts=True,
-        include_identity=True,
-        include_public=True,
-        include_public_operations=True,
-    ):
+        new_registration: bool = ...,
+        projection: Literal["deferred_scoped"],
+    ) -> AdmittedReceiptSource:
+        ...
+
+    @overload
+    def load(
+        self,
+        target,
+        *,
+        new_registration: bool = ...,
+        projection: Literal["full", "target_row", "identity"] = ...,
+    ) -> Dict[str, Any]:
+        ...
+
+    @overload
+    def load(
+        self,
+        target,
+        *,
+        new_registration: bool = ...,
+        projection: str,
+    ) -> Union[Dict[str, Any], AdmittedReceiptSource]:
+        ...
+
+    def load(
+        self,
+        target,
+        *,
+        new_registration: bool = False,
+        projection: str = "full",
+    ) -> Union[Dict[str, Any], AdmittedReceiptSource]:
+        if projection not in ("full", "target_row", "identity", "deferred_scoped"):
+            raise ValueError(f"Unknown outsourcing source projection: {projection!r}")
         facts = self._captured()
         batch = self.entity(target["batch_ref"], "batch")
         supplier = self.entity(target["supplier_ref"], "supplier")
@@ -136,59 +260,33 @@ class WorkbenchOutsourcingSourceService:
         if new_registration:
             self.require_contiguous(operations)
         resolution = source_resolution(operations)
-        result = {}
-        if include_public:
-            public = {
-                **target,
-                "grouping_basis": "explicit_receipt_membership",
-                "source_resolution": resolution,
-                "part": {
-                    "ref": part["identity"]["ref"],
-                    "business_code": _target_text(part["row"]["part_no"]),
-                    "label": _target_text(part["row"]["part_name"]),
-                },
-                "batch": {
-                    "ref": target["batch_ref"],
-                    "business_code": label(batch["row"]["batch_id"]),
-                    "label": label(batch["row"]["part_name"]),
-                },
-                "supplier": {
-                    "ref": target["supplier_ref"],
-                    "business_code": label(supplier["row"]["supplier_id"]),
-                    "label": label(supplier["row"]["name"]),
-                },
+        if projection == "target_row":
+            return {
+                "public": _public_source(
+                    target, batch, part, supplier, operations, resolution, include_operations=False
+                )
             }
-            if include_public_operations:
-                public["operations"] = [
-                    {
-                        "operation_ref": op["identity"]["ref"],
-                        "business_code": label(op["row"]["op_code"]),
-                        "sequence": label(op["row"]["seq"]),
-                        "piece": label(op["row"]["piece_id"]),
-                        "label": label(op["row"]["op_type_name"]),
-                    }
-                    for op in operations
-                ]
-            result["public"] = public
-        if include_identity or include_snapshot_facts:
-            identity = {
-                "batch_ref": target["batch_ref"],
-                "part_ref": part["identity"]["ref"],
-                "supplier_ref": target["supplier_ref"],
-                "members": [
-                    {"operation_ref": op["identity"]["ref"], **{key: op["row"][key] for key in MEMBER_KEYS}}
-                    for op in operations
-                ],
-            }
-            result["identity"] = raw_facts(identity)
-        if include_snapshot_facts:
-            result["source_confirmations"] = [
-                op["identity"]["ref"]
-                for op in operations
-                if op["binding"]["source_resolution"]["basis"] == "current_relation"
-            ]
-            clock = self.repo.plan_identity_revision()
-            result["facts"] = raw_facts(
+        identity = _source_identity(target, part, operations)
+        if projection == "identity":
+            return {"identity": identity}
+        if projection == "deferred_scoped":
+            return AdmittedReceiptSource(
+                target=target,
+                batch=batch,
+                part=part,
+                supplier=supplier,
+                operations=operations,
+                resolution=resolution,
+                identity=identity,
+            )
+        clock = self.repo.plan_identity_revision()
+        return {
+            "public": _public_source(
+                target, batch, part, supplier, operations, resolution, include_operations=True
+            ),
+            "identity": identity,
+            "source_confirmations": _source_confirmations(operations),
+            "facts": raw_facts(
                 {
                     "batch": batch,
                     "part": part,
@@ -196,8 +294,8 @@ class WorkbenchOutsourcingSourceService:
                     "operations": operations,
                     "source_clock": clock,
                 }
-            )
-        return result
+            ),
+        }
 
     @staticmethod
     def _target_entity_labels(row, kind, source):
@@ -240,12 +338,7 @@ class WorkbenchOutsourcingSourceService:
             else:
                 # Known per-row identity gaps stay visible; storage failures propagate.
                 try:
-                    source = self.load(
-                        self.target_from_row(row),
-                        include_snapshot_facts=False,
-                        include_identity=False,
-                        include_public_operations=False,
-                    )
+                    source = self.load(self.target_from_row(row), projection="target_row")
                     item["can_register"] = row["outsourcing_ref"] is None
                     item["batch"] = self._target_entity_labels(row, "batch", source)
                     item["supplier"] = self._target_entity_labels(row, "supplier", source)

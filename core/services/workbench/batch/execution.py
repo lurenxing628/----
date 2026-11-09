@@ -1,5 +1,6 @@
 """Batch adapter for the unique ledger; no execution quantity arithmetic here."""
 
+from core.services.execution.projection import project_execution
 from core.services.workbench.execution.ledger import ExecutionLedgerService
 
 
@@ -26,8 +27,13 @@ def protects_execution(projection):
                 or projection.data_quality == "invalid")
 
 
-def operation_execution_fields(row, ref, facts, *, include_details):
-    execution = facts["projections"][ref]
+def copied_execution(row, quantity, plan_identity):
+    """复制出的新工序：身份有效（这行会真实插入）、还没有报工、也没排进计划，目标数量按新批次。"""
+    operation = {**row, "operation_ref": None, "identity_active": 1, "batch_quantity": quantity}
+    return project_execution(operation, [], current_task=None, comparison_task=None, plan_identity=plan_identity)
+
+
+def operation_execution_fields(row, execution, *, include_details):
     gaps = list(execution.data_gaps)
     state = execution.execution_state
     quality = execution.data_quality

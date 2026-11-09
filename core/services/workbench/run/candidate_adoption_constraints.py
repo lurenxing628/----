@@ -11,13 +11,13 @@ from core.services.scheduler.run.schedule_input_seed_metadata import (
     merged_actual_group_intervals,
     merged_external_group_identity,
 )
-from core.services.workbench.facts.preflight_checks import stored_date
 from core.services.workbench.facts.zero_duration import (
     estimate_point_event,
     internal_duration_hours,
 )
+from core.shared.stored_dates import stored_date
 
-from .input_runtime import runtime_resource_facts
+from .input_runtime import runtime_resource_inputs
 
 
 def _block(code, message):
@@ -51,7 +51,7 @@ def adoption_downtimes(prepared, payload=None):
             return {}
     # Locked seeds may precede the requested run window. Prove every planned
     # arrangement against downtime at its own time and assigned machine.
-    return runtime_resource_facts(prepared.preflight_facts).downtimes
+    return runtime_resource_inputs(prepared.preflight_facts).downtimes
 
 
 def calendar_duration_conflict(calendar, row, op: OpForScheduleAlgo, batch: Batch, machine_downtimes, *, quantity):

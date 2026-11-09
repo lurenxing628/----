@@ -4,19 +4,12 @@ from __future__ import annotations
 
 from datetime import date
 
+from core.algorithm_contracts.date_parsers import due_exclusive
 from core.models.enums import DeliveryCompletionState, DeliveryRisk, DueState
-from core.services.common.overdue_calculations import due_exclusive
 from core.services.workbench.facts.zero_duration_evidence import overlaps
 from core.shared.local_datetime import parse_local_datetime as parse_dt
-
-
-def task_intervals(rows):
-    result = {}
-    for row in rows:
-        start, end = parse_dt(row["start_time"]), parse_dt(row["end_time"])
-        valid = start is not None and end is not None and (start < end or (start == end and row.get("_point_work")))
-        result[row["schedule_id"]] = (start, end) if valid else None
-    return result
+from core.shared.stored_dates import stored_day
+from core.shared.strict_parse import is_stored_number
 
 
 def selected_batch_keys(rows, intervals, scope):
@@ -31,14 +24,15 @@ def selected_batch_keys(rows, intervals, scope):
     return sorted(keys)
 
 
-def _due_fields(raw):
-    parsed = parse_dt(raw)
-    if parsed is None:
-        missing = raw is None or isinstance(raw, str) and not raw.strip()
+def parse_stored_due_date(raw):
+    """A stored due date's raw text, under the same strict rule as scheduling admission."""
+    day = stored_day(raw)
+    if day is None:
+        missing = raw is None or raw == ""
         return None, None, DueState.INVALID.value, "due_date_missing" if missing else "due_date_invalid"
-    if parsed.date() == date.max:
-        return parsed.date().isoformat(), None, DueState.UNSPECIFIED.value, None
-    return parsed.date().isoformat(), due_exclusive(parsed), DueState.SPECIFIED.value, None
+    if day == date.max:
+        return raw, None, DueState.UNSPECIFIED.value, None
+    return raw, due_exclusive(day), DueState.SPECIFIED.value, None
 
 
 def _text(value):
@@ -47,7 +41,7 @@ def _text(value):
 
 def project_delivery_batch(batch, batch_ref, rows, operations, intervals, incomplete, uncertain, *, deferred_operation_ids=()):
     schedule, finish, reasons = _schedule_completion(rows, operations, intervals, incomplete, uncertain, deferred_operation_ids)
-    due_date, deadline, due_state, due_issue = _due_fields(batch["due_date"])
+    due_date, deadline, due_state, due_issue = parse_stored_due_date(batch["due_date"])
     if due_issue:
         reasons.append(due_issue)
     part_no, part_label = _text(batch["part_no"]), _text(batch["part_name"])
@@ -60,7 +54,7 @@ def project_delivery_batch(batch, batch_ref, rows, operations, intervals, incomp
     quantity = batch.get("quantity")
     return {"batch_ref": batch_ref, "batch_id": batch["batch_id"], "part_no": part_no, "part_label": part_label,
             "priority": _text(batch.get("priority")),
-            "quantity": quantity if type(quantity) is int and quantity >= 0 else None,
+            "quantity": quantity if is_stored_number(quantity, integer=True) else None,
             **schedule, **_finish_fields(schedule["schedule_complete"], finish),
             **_delivery_risk(schedule["schedule_complete"], finish, deadline, due_state),
             "due_date": due_date, "due_state": due_state, "due_issue": due_issue,

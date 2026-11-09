@@ -11,6 +11,7 @@ from typing import Any, Dict, NoReturn, Tuple
 from core.errors import AppError
 from core.infrastructure.safe_files import stat_regular_file
 from core.infrastructure.schema_probe import user_table_count
+from core.models.workbench_system import CONFIG_FIELDS
 from core.services.system.maintenance.telemetry import (
     classify_maintenance_result,
     extract_maintenance_result_values,
@@ -26,12 +27,6 @@ from core.shared.strict_json import load_strict_json
 from data.repositories.operation_log_repo import OperationLogRepository
 from data.repositories.system_job_state_repo import SystemJobStateRepository
 
-_CONFIG_FIELDS = (
-    "auto_backup_enabled", "auto_backup_interval_minutes",
-    "auto_backup_cleanup_enabled", "auto_backup_keep_days",
-    "auto_backup_cleanup_interval_minutes", "auto_log_cleanup_enabled",
-    "auto_log_cleanup_keep_days", "auto_log_cleanup_interval_minutes",
-)
 _JOBS = ("auto_backup", "auto_backup_cleanup", "auto_log_cleanup")
 _FILE_LIMIT = 20
 _DETAIL_LIMIT = 16384
@@ -154,12 +149,12 @@ def _config(conn, backup_keep_days_default: int) -> Dict[str, Any]:
     except _READ_ERRORS as exc:
         result.update(status="error", error=_error(exc))
         return result
-    stored_values = {key: raw[key] for key in _CONFIG_FIELDS if key in raw}
+    stored_values = {key: raw[key] for key in CONFIG_FIELDS if key in raw}
     result.update(
         status="available" if stored_values else "empty",
-        values={key: getattr(snapshot, key) for key in _CONFIG_FIELDS},
+        values={key: getattr(snapshot, key) for key in CONFIG_FIELDS},
         stored_values=stored_values, stored_count=len(stored_values),
-        defaulted_fields=[key for key in _CONFIG_FIELDS if key not in raw],
+        defaulted_fields=[key for key in CONFIG_FIELDS if key not in raw],
     )
     return result
 

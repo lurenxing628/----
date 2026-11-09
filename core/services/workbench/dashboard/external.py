@@ -45,8 +45,10 @@ def _receipts(reader, now, result, facts, sources):
             issues = [source_issue("outsourcing_fact_invalid", "外协登记的时间或状态无效，请核对物流登记。")]
             result["evaluation_gaps"].append(gap(ref, "外协原登记", issues))
             continue
-        item, snapshot = reader.entry_from_facts(header, latest, now, sources=sources)
-        captured[ref].update(receipt=item, snapshot=snapshot)
+        item, admitted_source = reader.entry_from_facts(
+            header, latest, now, sources=sources, projection="deferred_scoped"
+        )
+        captured[ref].update(receipt=item, admitted_source=admitted_source)
         if item["source_state"] != "current":
             title = subject(item["target"]["batch"]["business_code"], "外协原登记")
             result["evaluation_gaps"].append(gap(ref, title, item["issues"]))

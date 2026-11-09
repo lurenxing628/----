@@ -1,6 +1,5 @@
 """System-only opaque contexts and response boundary. No shared namespace edits."""
 
-from datetime import datetime
 from functools import wraps
 from types import MappingProxyType
 from uuid import uuid4
@@ -19,6 +18,8 @@ from core.services.workbench import messages
 from core.services.workbench.facts.system_journal import SystemMaintenanceJournal
 from web.api_responses import failure, failure_payload, json_response, query_success
 from web.public_token_registry import issue_public_token, resolve_public_token
+
+from .read_context import fact_value, unbound_snapshot
 
 BASE = "/api/workbench/v1/system"
 SCOPE = "workbench-system-maintenance-v1"
@@ -53,8 +54,6 @@ def database_scope():
 
 
 def issue_context(kind, value, *, database=None):
-    from .read_context import fact_value
-
     db_scope = database_scope() if database is None else database
     return issue_public_token(SCOPE, MappingProxyType({"database": db_scope, "kind": kind, "value": value}),
                               key=(db_scope, kind), group=fact_value(value), ttl_seconds=900)
@@ -89,4 +88,4 @@ def journal():
 
 
 def query_payload(data):
-    return query_success(data, {"as_of": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"), "snapshot_ref": None})
+    return query_success(data, unbound_snapshot())

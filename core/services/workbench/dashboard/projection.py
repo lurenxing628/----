@@ -6,7 +6,9 @@ from core.models.enums import DueState
 from core.models.workbench_batch import STATUSES
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_dashboard import MAX_ROWS, bounded
-from core.services.workbench.facts.preflight_checks import PreflightChecks, number, stored_date
+from core.services.workbench.facts.preflight_checks import PreflightChecks
+from core.shared.stored_dates import stored_date
+from core.shared.strict_parse import is_stored_number
 
 from .facts import source_issue
 from .material_views import current_material_views
@@ -82,8 +84,8 @@ class _MaterialChecks(PreflightChecks):
 
 
 def _material_requirement(row, value, material_refs):
-    required = row["required_qty"] if number(row["required_qty"], positive=True) else None
-    available = row["available_qty"] if number(row["available_qty"]) else None
+    required = row["required_qty"] if is_stored_number(row["required_qty"], positive=True) else None
+    available = row["available_qty"] if is_stored_number(row["available_qty"]) else None
     status = row["ready_status"] if row["ready_status"] in ("yes", "no", "partial") else None
     labels = {key: value[key] if value and type(value[key]) is str else None for key in ("name", "unit")}
     return {"material_ref": material_refs[row["material_id"]]["ref"] if value else None,
@@ -103,7 +105,7 @@ def _material_batch(batch, checks, refs, by_material, material_refs, source_fact
     source = {"kind": "batch_readiness", "batch_ref": ref, "batch_id": batch["batch_id"],
               "stored_status": batch["status"] if type(batch["status"]) is str else None, "ready_status": status,
               "ready_date": stored_date(batch["ready_date"]), "due_date": stored_date(batch["due_date"]),
-              "quantity": batch["quantity"] if number(batch["quantity"], integer=True) else None,
+              "quantity": batch["quantity"] if is_stored_number(batch["quantity"], integer=True) else None,
               "requirements": [row for row, _ in projected], "readiness_issues": reasons, "basis": "batch_material_requirements_not_stock"}
     code, message = {None: ("readiness_unknown", "齐套数据读不完整，算不出缺多少，也不能当作齐套。"),
                      True: ("not_ready", "批次或已登记物料需求尚未确认齐套。"),

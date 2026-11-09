@@ -1,7 +1,7 @@
 """Risk classification consumes the execution ledger, never another report store."""
 
 from core.services.workbench.facts.execution_values import minutes
-from core.services.workbench.facts.preflight_checks import number
+from core.shared.strict_parse import is_stored_number
 
 from .projection import category, observation
 
@@ -10,7 +10,7 @@ def _reported_hours(projection):
     reports = projection["reports"]
     complete = (projection["completion_basis"] == "complete_reports" and projection["records_complete"]
                 and projection["data_quality"] == "complete" and reports
-                and all(number(row["effective_processing_hours"]) for row in reports))
+                and all(is_stored_number(row["effective_processing_hours"]) for row in reports))
     return sum(row["effective_processing_hours"] for row in reports) if complete else None
 
 
@@ -21,15 +21,15 @@ def _hours(projection, operation):
         # 外协按外协周期交付，没有单件工时定额，不做超耗评估；晚完工、待反馈照常判断。
         return {"effective_processing_hours": total, "quota_processing_hours": None, "overrun": None,
                 "basis": "not_currently_evaluated", "setup_or_elapsed_hours_included": False}
-    quota = operation["unit_hours"] * target if number(operation["unit_hours"], positive=True) and number(target, positive=True) else None
+    quota = operation["unit_hours"] * target if is_stored_number(operation["unit_hours"]) and is_stored_number(target, positive=True) else None
     return {"effective_processing_hours": total, "quota_processing_hours": quota,
             "overrun": total > quota * 1.2 if total is not None and quota is not None else None,
             "basis": "complete_report_processing_hours_vs_operation_unit_hours_times_target",
             "setup_or_elapsed_hours_included": False}
 
 
-def _risk_codes(task, projection, hours, now_iso):
-    late = minutes(task["end"], projection["confirmed_finish"])
+def _risk_codes(task, planned_end, projection, hours, now_iso):
+    late = minutes(planned_end, projection["confirmed_finish"])
     missing = task["start"] <= now_iso and projection["first_actual_start"] is None and projection["execution_state"] != "complete"
     codes = []
     if missing:
@@ -66,7 +66,7 @@ def _operation(facts, task, raw_task, now_iso):
     ref = task["operation_ref"]
     p, operation = facts.execution[ref], facts.execution_facts["operations"][ref]
     hours = _hours(p, operation)
-    codes, missing, late = _risk_codes(task, p, hours, now_iso)
+    codes, missing, late = _risk_codes(task, facts.task_intervals[raw_task["schedule_id"]][1], p, hours, now_iso)
     uncertain = _uncertain(p, operation, hours)
     active = True if codes else None if uncertain else False
     source = _source(task, p, hours, codes, late)

@@ -3,9 +3,11 @@
 from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Set, Tuple
 
 from core.algorithm_contracts.types import ScheduleResult
+from core.errors import ValidationError
+from core.models.calendar_periods import decode_periods
 from core.services.scheduler.resource_pool_builder import (
     CapturedResourceFacts,
     build_resource_pool,
@@ -17,8 +19,9 @@ from core.services.scheduler.run.schedule_input_runtime_support import (
     _load_runtime_resource_inputs,
     prepare_runtime_seeds,
 )
-from core.services.workbench.facts.preflight_checks import number, stored_date
 from core.services.workbench.facts.run_input_rows import fail
+from core.shared.stored_dates import stored_date, stored_local_iso_datetime
+from core.shared.strict_parse import is_stored_number
 
 from .input_points import read_point_freeze_rows
 
@@ -28,6 +31,12 @@ class HeldArrangements:
     frozen_op_ids: Set[int]
     seed_results: List[Dict[str, Any]]
     meta: Dict[str, Any]
+
+
+@dataclass(frozen=True)
+class RuntimeResourceInputs:
+    resources: CapturedResourceFacts
+    downtimes: Dict[str, List[Tuple[datetime, datetime]]]
 
 
 def stored_point_validator(facts, version):
@@ -48,10 +57,8 @@ def stored_point_validator(facts, version):
 
 
 def _occupies_machine(seed):
-    # 外协和零工时安排不占设备时段，采用复核也不按停机检查。
-    machine_id = seed["machine_id"]
-    return (seed["source"] == "internal" and machine_id is not None and bool(str(machine_id).strip())
-            and seed["start_time"] < seed["end_time"])
+    # 外协和零工时安排不占设备时段，采用复核也不按停机检查。设备号来自排程外键或已准入的实际报工，非空即真实设备。
+    return seed["source"] == "internal" and seed["machine_id"] is not None and seed["start_time"] < seed["end_time"]
 
 
 def _overlaps(seed, intervals):
@@ -65,7 +72,7 @@ def held_machine_downtimes(seeds, *, facts):
         return {}
     return load_machine_downtimes(algo_ops=[ScheduleResult(**seed) for seed in internal],
                                   start_dt=min(seed["start_time"] for seed in internal),
-                                  downtimes=runtime_resource_facts(facts).downtimes)
+                                  downtimes=runtime_resource_inputs(facts).downtimes)
 
 
 def downtime_overlap(seed, downtimes):
@@ -75,7 +82,7 @@ def downtime_overlap(seed, downtimes):
     """
     if not _occupies_machine(seed):
         return None
-    overlaps = _overlaps(seed, downtimes.get(str(seed["machine_id"]), ()))
+    overlaps = _overlaps(seed, downtimes.get(seed["machine_id"], ()))
     return overlaps[0] if overlaps else None
 
 
@@ -111,68 +118,58 @@ def held_arrangements(*, facts, prev_version, start_dt, reschedulable_operations
     return HeldArrangements(frozen, seeds, freeze_meta)
 
 
-def _blank(value):
-    # 旧库升级加列时没有回填：空着的班次开始、工时、效率由日历引擎按默认值解释
-    # （08:00 开始、工时按时段或起止推算否则 8 小时、效率 1），日历页同样这样显示，排产不另拒。
-    return value is None or isinstance(value, str) and not value.strip()
-
-
-def _validate_calendar_shifts(row, table):
-    for field in ("shift_start", "shift_end"):
-        value = row[field]
-        if _blank(value):
-            continue
-        try:
-            parsed = datetime.strptime(value, "%H:%M")
-        except (TypeError, ValueError):
-            fail("invalid_calendar_shift", "工作日历里有班次时间读不出来或者填得不对，这次排产没有开始。请到工作日历按 08:30 这样改好。", table=table, field=field)
-        if parsed.strftime("%H:%M") != value:
-            fail("invalid_calendar_shift", "工作日历里的班次时间格式不对，这次排产没有开始。请按 08:30 这样填。", table=table, field=field)
-
-
-def _validate_calendar_row(row, table):
+def _validate_calendar_row(row, table, decoded_periods):
+    """存储行在进入排产前准入一次：工作时段是唯一的时间事实，起止与工时都由它现算，不另存、不另查。"""
     if stored_date(row["date"]) is None:
         fail("invalid_calendar_date", "工作日历里有日期填得不对，这次排产没有开始。请按 2026-09-13 这样改好。", table=table)
-    for field in ("shift_hours", "efficiency"):
-        if not _blank(row[field]) and not number(row[field], positive=field == "efficiency"):
-            fail("invalid_calendar_number", "工作日历里有班次工时或效率读不出来，这次排产没有开始。请到工作日历补上。", table=table, field=field)
+    if not is_stored_number(row["efficiency"], positive=True):
+        fail("invalid_calendar_number", "工作日历里有效率读不出来，这次排产没有开始。请到工作日历补上。", table=table, field="efficiency")
     if row["day_type"] not in ("workday", "weekend", "holiday"):
         fail("invalid_calendar_state", "工作日历里有日期类型认不出来，这次排产没有开始。请到工作日历重新选工作日、周末或假期。", table=table)
     if row["allow_normal"] not in ("yes", "no") or row["allow_urgent"] not in ("yes", "no"):
         fail("invalid_calendar_state", "工作日历里普通件或急件的许可认不出来，这次排产没有开始。请到工作日历重新设置。", table=table)
-    _validate_calendar_shifts(row, table)
+    raw_periods = row["periods_json"]
+    if type(raw_periods) is not str or raw_periods not in decoded_periods:
+        try:
+            decoded = decode_periods(raw_periods)
+        except ValidationError:
+            fail("invalid_calendar_shift", "工作日历里的工作时段读不出来或者填得不对，这次排产没有开始。请到工作日历重新设置。",
+                 table=table, field="periods_json")
+        decoded_periods[raw_periods] = decoded
 
 
 def _validate_downtime_row(row):
     if row["status"] not in ("active", "cancelled"):
         fail("invalid_downtime_state", "停机记录的状态认不出来，这次排产没有开始。请到工作日历核对停机记录。")
     if row["status"] == "active":
-        try:
-            start, end = (datetime.fromisoformat(row[field]) for field in ("start_time", "end_time"))
-        except (TypeError, ValueError):
+        start = stored_local_iso_datetime(row["start_time"], allow_space=True, allow_minutes_only=True)
+        end = stored_local_iso_datetime(row["end_time"], allow_space=True, allow_minutes_only=True)
+        if start is None or end is None:
             fail("invalid_downtime_interval", "有生效的停机记录时间填得不对，这次排产没有开始。请到工作日历按 2026-09-13 08:30 这样改好。")
-        if start.tzinfo is not None or end.tzinfo is not None or end <= start:
+        if end <= start:
             fail("invalid_downtime_interval", "有生效的停机记录结束时间不比开始时间晚，这次排产没有开始。请到工作日历改好起止时间。")
         return start, end
 
 
-def runtime_resource_facts(facts):
+def runtime_resource_inputs(facts) -> RuntimeResourceInputs:
     """Prepare each stored runtime row once under its production capture owner."""
     capture = facts.capture
     if capture.runtime_resources is None:
         for table in ("WorkCalendar", "OperatorCalendar"):
             for row in capture.table(table):
-                _validate_calendar_row(row, table)
-        downtimes = {}
+                _validate_calendar_row(row, table, capture.decoded_periods)
+        downtimes: Dict[str, List[Tuple[datetime, datetime]]] = {}
         for row in capture.table("MachineDowntimes"):
             interval = _validate_downtime_row(row)
-            machine_id = row["machine_id"]
-            # 按库里原值分组：带首尾空格的旧设备号与去空格后的同名设备是两台设备。
-            if interval is not None and machine_id is not None and str(machine_id).strip():
-                downtimes.setdefault(str(machine_id), []).append(interval)
+            # 停机的设备号是 NOT NULL 外键，按库里原值分组。
+            if interval is not None:
+                downtimes.setdefault(row["machine_id"], []).append(interval)
         for intervals in downtimes.values():
             intervals.sort(key=lambda interval: interval[0])
-        capture.runtime_resources = CapturedResourceFacts(facts.tables, downtimes)
+        capture.runtime_resources = RuntimeResourceInputs(
+            resources=capture.resource_facts(),
+            downtimes=downtimes,
+        )
     return capture.runtime_resources
 
 
@@ -182,7 +179,8 @@ def build_runtime(conn, *, facts, cfg, prev_version, start_dt, batches, operatio
     from .input_piece import validate_piece_seed_precedence
 
     seed_validator = partial(validate_piece_seed_precedence, scope=piece_scope) if piece_scope is not None else None
-    resources = runtime_resource_facts(facts)
+    runtime = runtime_resource_inputs(facts)
+    resources = runtime.resources
     if held is None:
         held = held_arrangements(
             facts=facts, prev_version=prev_version, start_dt=start_dt,
@@ -200,10 +198,10 @@ def build_runtime(conn, *, facts, cfg, prev_version, start_dt, batches, operatio
         return frozen, seeds, held.meta, [], {}, {}, {}, None, 0
     downtime_meta, pool_meta, downtime, pool = _load_runtime_resource_inputs(
         cfg=cfg, algo_ops=algo_ops, resource_pool_ops=to_schedule, start_dt_norm=start_dt,
-        load_machine_downtimes_fn=partial(load_machine_downtimes, downtimes=resources.downtimes),
+        load_machine_downtimes_fn=partial(load_machine_downtimes, downtimes=runtime.downtimes),
         build_resource_pool_fn=partial(build_resource_pool, resource_facts=resources),
         extend_downtime_map_for_resource_pool_fn=partial(extend_downtime_map_for_resource_pool,
-                                                       downtimes=resources.downtimes),
+                                                         downtimes=runtime.downtimes),
     )
     seed_version = max(int(prev_version) + 1, 1)
     return frozen, seeds, held.meta, to_schedule, downtime_meta, pool_meta, downtime, pool, seed_version

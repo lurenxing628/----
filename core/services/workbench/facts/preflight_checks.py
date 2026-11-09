@@ -1,7 +1,7 @@
 """Field/resource checks preserve NULL; exclusion never masks required fields."""
 
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date
 
 from core.models.resource_capabilities import machine_type_index, supplier_capability_rows, supports_source
 from core.models.workbench_command import WorkbenchCommandRejected
@@ -13,24 +13,7 @@ from core.services.scheduler.contracts.external_context import (
     member_index,
     merged_supplier_problem,
 )
-from core.shared.strict_parse import is_exact_finite_number
-
-
-def number(value, *, integer=False, positive=False):
-    return (type(value) is int if integer else is_exact_finite_number(value)) and (
-        0 < value <= 9007199254740991 if positive else 0 <= value <= 9007199254740991)
-
-
-def stored_date(value):
-    if isinstance(value, date) and not isinstance(value, datetime):
-        return value.isoformat()
-    if isinstance(value, str):
-        try:
-            if date.fromisoformat(value).isoformat() == value:
-                return value
-        except ValueError:
-            pass
-    return None
+from core.shared.strict_parse import is_stored_number
 
 
 class PreflightChecks:
@@ -59,9 +42,9 @@ class PreflightChecks:
 
     def fields(self, batch, op):
         gaps = []
-        if not number(batch["quantity"], integer=True):
+        if not is_stored_number(batch["quantity"], integer=True):
             gaps.append(issue("quantity_unknown", "批次数量未填写或无效，请到批次管理补填。"))
-        if not number(op["seq"], integer=True, positive=True):
+        if not is_stored_number(op["seq"], integer=True, positive=True):
             gaps.append(issue("sequence_invalid", "工序顺序号不合法，排不出前后关系。请到批次管理核对工序号。"))
         work_type = self.catalogs["op_type"].get(op["op_type_id"])
         if work_type is None:
@@ -70,7 +53,7 @@ class PreflightChecks:
             gaps.append(issue("source_category_mismatch", "该工种不支持本序所选的自制或外协归属，请先核对工艺。"))
         if op["source"] == "internal":
             for key, label in (("setup_hours", "换型工时"), ("unit_hours", "单件工时")):
-                if not number(op[key]):
+                if not is_stored_number(op[key]):
                     gaps.append(issue("hours_missing", label + "未填写或无效；填 0 和不填不是一回事。请到基础资料补填。"))
         elif op["source"] == "external":
             gaps.extend(self._external_fields(batch, op))
@@ -96,7 +79,7 @@ class PreflightChecks:
             if problem:
                 gaps.append(issue("external_context_invalid", problem))
         days = context["total_days"] if context and context["merge_mode"] == "merged" else op["ext_days"]
-        if not number(days, positive=True):
+        if not is_stored_number(days, positive=True):
             gaps.append(issue("external_days_missing", "外协周期没填或无效，缺设备人员时的规则也补不上。请到基础资料补填周期。"))
         return gaps
 

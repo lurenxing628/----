@@ -7,11 +7,10 @@ from core.models.workbench_preflight import preflight_window
 
 from .admission_scope import project_admitted_scope
 from .candidate_delivery import project_delivery_detail
-from .candidate_projection import candidate_summary, completed_dispositions, dispositions
+from .candidate_projection import candidate_summary, completed_dispositions
 from .candidate_tasks import project_validated_tasks
 from .candidate_values import text
 from .completion_scope import project_completion_summary
-from .decision_baseline import read_decision_baseline_members
 from .decision_candidate import project_candidate_summary
 from .decision_delivery import project_decision_delivery
 from .decision_metrics import admission_deferred_refs, admission_operation_refs, project_official_core_metrics
@@ -33,16 +32,15 @@ from .preflight_dependencies import material_deferred_ids
 from .preparation_projection import ALLOCATIONS
 from .resource_intervals import resource_cohort
 from .run_history_projection import failure_reason, scope_summary
-from .schema_compat import archived_columns
 
 CALENDAR_TABLES = (
     "SchemaVersion", "WorkbenchEntityRefs", "Machines", "Operators", "MachineDowntimes", "WorkCalendar",
     "OperatorCalendar", "WorkbenchOperatorProfiles", "WorkbenchShiftProfiles", "WorkbenchShiftPatternDays",
-    "WorkbenchShiftDayPeriods", "WorkbenchCalendarDefaults",
+    "WorkbenchCalendarDefaults",
 )
 _ARTIFACT_FIELDS = (
     "candidate_key", "sequence", "status", "label", "kind", "objective", "objective_name", "score", "health",
-    "algo_mode", "used_strategy", "dispatch_mode", "dispatch_rule",
+    "algo_mode", "used_strategy", "dispatch_mode",
     "generation_policy_version", "target_objectives", "representative_objectives", "evaluations", "origin", "first_found_elapsed_ms",
     "search_evidence_ref", "elapsed_seconds", "time_budget_seconds", "graph_critical_weight", "graph_impact_weight",
     "graph_downstream_weight", "sort_strategy",
@@ -119,7 +117,7 @@ def _calendar(facts):
     names = {name for name in CALENDAR_TABLES if name in source["tables"]}
     return {"version": "production-facts-v2",
             "schema": [row for row in source["schema"] if row[2] in names],
-            "columns": {name: archived_columns(source, name) for name in CALENDAR_TABLES if name in names},
+            "columns": {name: source["columns"][name] for name in CALENDAR_TABLES if name in names},
             "tables": {name: source["tables"][name] for name in CALENDAR_TABLES if name in names}}
 
 
@@ -238,43 +236,37 @@ def _missing_candidate_reference(run, facts, refs, deferred, batch_refs):
     preparation = project_decision_preparation(facts, refs, {}, [], run_ref=run["run_ref"],
         available=False, deferred_refs=deferred, requirements_available=False)
     delivery = project_decision_delivery(facts, [], batch_refs, available=False,
-        deferred_ids={facts.operations[ref] for ref in deferred}, candidate=None)
+        deferred_ids={facts.operations[ref] for ref in deferred}, candidate=None, intervals={})
     return {"preparation": preparation["summary"], "delivery": delivery,
             "completion": project_completion_summary(delivery, [], available=False)}
 
 
 def build_admission_decision_read_model(run, capture, official, *, facts, receipt, dependencies):
-    """Project the actual admission baseline once; callers own source resolution.
-
-    ``official`` and the receipt's dispositions are None only when the v41
-    migration backfills a run that saved no candidate results.
-    """
+    """Project the actual admission baseline once; callers own source resolution."""
     refs = admission_operation_refs(facts, capture["input"])
-    disposition = dispositions(receipt, expected_refs=refs)
-    deferred = admission_deferred_refs(facts, capture["input"], refs, disposition) if disposition is not None else set()
+    disposition = completed_dispositions(receipt, expected_refs=refs)
+    deferred = admission_deferred_refs(facts, capture["input"], refs, disposition)
     refs, batch_refs = sorted(refs), sorted(capture["input"]["batch_refs"])
     members = _Members()
     for ref in refs:
         members.position(ref, "operation")
     for ref in batch_refs:
         members.position(ref, "batch")
-    saved_official = ({**read_decision_baseline_members(capture, facts), "projection_state": "disposition_not_recorded"}
-                      if official is None else
-                      _official_projection(run, facts, disposition, official, refs, batch_refs, dependencies))
+    saved_official = _official_projection(run, facts, disposition, official, refs, batch_refs, dependencies)
     range_start, range_end = preflight_window(capture["input"])
     context = {"input": capture["input"], "run_options": dict(capture["run_options"]),
         "range_start": range_start, "range_end": range_end,
         "admission_operation_refs": refs, "expected_operation_refs": sorted(set(refs) - deferred),
         "deferred_operation_refs": sorted(deferred), "official_members": {
             "identity": dict(saved_official["identity"]), "operation_refs": saved_official["operation_refs"]},
-        "resources": _resources(facts, ()) if official is None else saved_official["resources"],
+        "resources": saved_official["resources"],
         # Guard facts own actual deferrals; the public pending run has no result receipt.
         "missing_candidate_reference": _missing_candidate_reference(run, facts, refs, deferred, batch_refs)}
     encoded_official, encoded_context = members.encode(saved_official), members.encode(context)
     encoded_context["operation_batch_indices"] = _operation_batches(facts, members)
     # The worker computes from exactly this archived classification and never reclassifies.
     return {"context": encoded_context, "memberships": members.value, "calendar": _calendar(facts), "official": encoded_official,
-            "dispositions": None if disposition is None else list(disposition.values())}
+            "dispositions": list(disposition.values())}
 
 
 def prepare_admission_read_models(run, capture, official, *, facts, receipt, dependencies):

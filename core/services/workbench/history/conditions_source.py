@@ -31,6 +31,7 @@ class ConditionSource:
         self.facts = self.original_facts = self.origin = self.trial_contexts = None
         self.operations, self.batches, self.entity_refs = {}, {}, {}
         self.original_entity_refs = {}
+        self.refs_by_op_id = {}
         self._input_paths = {}
         self._operation_paths, self._batch_paths, self._origins = {}, {}, {}
         self._source_cache = {}
@@ -65,6 +66,7 @@ class ConditionSource:
         self.artifact = candidate["artifact"] if candidate is not None else None
         self.raw_tasks = packet["raw_tasks"]
         self.entity_refs = self.original_entity_refs = facts.entity_refs
+        self.refs_by_op_id = facts.operation_refs
         self.facts = facts
         self.calendar = ArchivedCalendar(self.archive, source_ref=self.ref, facts=facts)
         self._work_indexes(facts.tables["BatchOperations"], facts.tables["Batches"], facts.operations,
@@ -112,6 +114,7 @@ class ConditionSource:
         self.origin = origin
         self.original_facts = facts
         self.original_entity_refs = entity_refs
+        self.refs_by_op_id = origin.admission_refs_by_op_id
         self._origins["original"] = prefix
         op_paths = _table_paths(op_rows, "id", prefix + ".tables.BatchOperations")
         batch_paths = _table_paths(batch_rows, "batch_id", prefix + ".tables.Batches")

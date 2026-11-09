@@ -54,14 +54,15 @@ def resolve_process_filters(source, filters):
     return {**filters, "process_candidate_ref": anchor, "objective": objective}
 
 
-def process_details(source, filters, *, page: Union[int, str] = 1, size: Union[int, str] = 20, all_rows=False):
+def process_details(source, filters, *, page: Union[int, str] = 1, size: Union[int, str] = 20):
     """One page of the resolved view's records projected from the saved process."""
     page, size = parse_page(page), parse_page(size, size=True)
     offset = (page - 1) * size
     saved = _shared_projection(source, filters["process_candidate_ref"], filters["objective"])
     rows = _shared_ordered(saved["actions"] if filters["record_kind"] == "attempts" else saved["progress"]["points"], filters)
+    screen = {key: value for key, value in saved.items() if key != "actions"}
     return {"run_ref": source.run["run_ref"], "capture_ref": source.run["run_ref"], "scope": source.scope, "baseline": source.baseline,
-            **saved, "items": rows if all_rows else rows[offset:offset + size],
+            **screen, "items": rows[offset:offset + size],
             "page": {"number": page, "size": size, "total": len(rows), "has_more": offset + size < len(rows)}, "filters": filters}
 
 
@@ -70,14 +71,13 @@ def process_export_records(source, filters, *, include_all_objectives):
 
     filters are the exported process view's resolved filters.
     """
-    selected = process_details(source, filters, all_rows=True)
+    saved = _shared_projection(source, filters["process_candidate_ref"], filters["objective"])
     process = source.saved_process
-    selected = {**selected,
-        "actions": selected["items"] if filters["record_kind"] == "attempts" else _shared_ordered(
-            selected["actions"], {**filters, "record_kind": "attempts", "sort": "rank"}),
-        "progress": {**selected["progress"],
-            "points": selected["items"] if filters["record_kind"] == "progress" else _shared_ordered(
-                selected["progress"]["points"], {**filters, "record_kind": "progress", "sort": "elapsed_ms"})}}
+    actions_filters = filters if filters["record_kind"] == "attempts" else {**filters, "record_kind": "attempts", "sort": "rank"}
+    progress_filters = filters if filters["record_kind"] == "progress" else {**filters, "record_kind": "progress", "sort": "elapsed_ms"}
+    selected = {**saved,
+        "actions": _shared_ordered(saved["actions"], actions_filters),
+        "progress": {**saved["progress"], "points": _shared_ordered(saved["progress"]["points"], progress_filters)}}
     return {"process": process,
             "export_objectives": process["target_objectives"] if include_all_objectives else [filters["objective"]],
             "projected": selected}

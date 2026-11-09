@@ -1,7 +1,10 @@
 """Read saved runtime decomposition separately from archived work standards."""
 
+from typing import Callable, NoReturn
+
 from core.algorithm_contracts.operation_effort import RUNTIME_REQUIREMENT_BASIS
 from core.models.enums import OperationQuantityBasis, OperationRequirementRole, OperationSetupState, SourceType
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_candidate import MAX_TASKS, reference
 from core.shared.strict_parse import is_exact_non_negative_number
 
@@ -11,35 +14,45 @@ _HOURS = ("setup_standard_hours", "processing_standard_hours", "required_standar
 _QUANTITIES = ("target_quantity", "remaining_quantity", "execution_target_quantity")
 
 
-def saved_operation_efforts(record, *, identities=None):
+def saved_operation_efforts(record, *, identities=None, on_corrupt: Callable[[], NoReturn] = corrupt):
     """A missing historical ledger stays missing; malformed identities reject it."""
     if record is None:
         return {}
     if type(record) is not dict or record.get("effort_basis") != RUNTIME_REQUIREMENT_BASIS or type(record.get("items")) is not list:
-        corrupt()
-    bounded_size(len(record["items"]), MAX_TASKS)
+        on_corrupt()
+    try:
+        bounded_size(len(record["items"]), MAX_TASKS)
+    except WorkbenchCommandRejected:
+        if on_corrupt is corrupt:
+            raise
+        on_corrupt()
     result = {}
     roles = {item.value for item in OperationRequirementRole}
     states = {item.value for item in OperationSetupState}
     bases = {item.value for item in OperationQuantityBasis}
     for item in record["items"]:
         if type(item) is not dict:
-            corrupt()
-        ref = reference(item.get("operation_ref"), stored=True)
+            on_corrupt()
+        try:
+            ref = reference(item.get("operation_ref"), stored=True)
+        except WorkbenchCommandRejected:
+            if on_corrupt is corrupt:
+                raise
+            on_corrupt()
         op_id = item.get("op_id")
         if (ref in result or type(op_id) is not int or op_id < 1 or item.get("source") not in (SourceType.INTERNAL.value, SourceType.EXTERNAL.value)
                 or item.get("effort_basis") != RUNTIME_REQUIREMENT_BASIS or item.get("requirement_role") not in roles
                 or item.get("setup_state") not in states or item.get("quantity_basis") not in bases
                 or item.get("execution_quantity_basis", OperationQuantityBasis.UNKNOWN.value) not in bases
                 or identities is not None and identities.get(ref) != op_id):
-            corrupt()
+            on_corrupt()
         for field in _HOURS + _QUANTITIES:
             value = item.get(field)
             if value is not None and not is_exact_non_negative_number(value):
-                corrupt()
+                on_corrupt()
         gaps = item.get("data_gaps")
         if type(gaps) is not list or any(type(gap) is not dict for gap in gaps):
-            corrupt()
+            on_corrupt()
         result[ref] = item
     return result
 

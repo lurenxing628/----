@@ -2,20 +2,18 @@
 
 from decimal import Decimal
 
-from core.models.workbench_batch import number, object_fields
+from core.models.workbench_batch import normalize_batch_fields, number, object_fields
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_preflight import local_date
 from core.services.material.stage_availability import MaterialAvailability, covers_quantity, quantity
 from core.services.scheduler.template_lineage import TemplateLineageWriter
-from core.services.workbench.facts.preflight_checks import stored_date
 from data.repositories.batch_material_repo import BatchMaterialRepository
 from data.repositories.batch_material_stage_repo import BatchMaterialStageRepository
-from data.repositories.batch_repo import BatchRepository
 
 from .bulk import WorkbenchBatchBulkService
 from .facts import BatchFacts, index_relations, require_unreferenced
 from .materials import WorkbenchBatchMaterialService
-from .service import WorkbenchBatchService
+from .service import WorkbenchBatchService, stored_batch_values
 
 
 def normalize_split(payload):
@@ -56,6 +54,7 @@ class WorkbenchQuantitySplitService:
     def __init__(self, conn, logger=None, reader=None):
         self.conn = conn
         self.reader = reader if reader is not None else BatchFacts(conn, logger)
+        self.domain = WorkbenchBatchService(conn, logger, facts=self.reader)
 
     def plan_normalized(self, ref, payload):
         return self._plan_normalized(ref, payload)[0]
@@ -71,43 +70,58 @@ class WorkbenchQuantitySplitService:
         count = payload["quantity"] if payload["quantity"] is not None else maximum
         if not 0 < count < original or count > maximum:
             raise WorkbenchCommandRejected("constraint_conflict", f"当前可开工 {maximum} 件，原批 {original} 件；拆分数量须大于 0、小于原批且不超过可开工数量。")
-        code = WorkbenchBatchBulkService._copy_code(batch["batch_id"], {row["batch_id"] for row in facts["Batches"]}, {})
-        materials = []
+        preparation = self.domain.preparation(facts)
+        code = WorkbenchBatchBulkService._copy_code(batch["batch_id"], preparation.used_codes, {})
+        materials, source_rows, child_rows = [], [], []
         names = {row["material_id"]: row["name"] for row in facts["Materials"]}
         for row in availability.requirements[batch["batch_id"]]:
             needed = quantity(row["required_qty"], positive=True) * Decimal(count) / Decimal(original)
             initial, remainder, child_arrivals, source_arrivals = allocate(row, availability.arrivals[row["id"]], needed, payload["as_of_date"])
+            operation_id = availability.stages.get(row["id"])
+            source_required = float(quantity(row["required_qty"]) - needed)
+            child_required = float(needed)
             materials.append({"requirement_id": row["id"], "material_id": row["material_id"], "label": names[row["material_id"]],
-                "operation_id": availability.stages.get(row["id"]), "source_required": float(quantity(row["required_qty"]) - needed),
-                "child_required": float(needed), "child_available": initial, "source_available": remainder,
+                "operation_id": operation_id, "source_required": source_required,
+                "child_required": child_required, "child_available": initial, "source_available": remainder,
                 "child_arrivals": child_arrivals, "source_arrivals": source_arrivals})
-        return {"entity_ref": ref, "operation": "batch.split_confirm", "source_code": batch["batch_id"], "child_code": code,
-                "original_quantity": original, "quantity": count, "remaining_quantity": original - count,
-                "maximum_quantity": maximum, "as_of_date": payload["as_of_date"], "materials": materials,
-                "commit_policy": "atomic", "warnings": []}, batch, facts, relations["operations"]
+            source_rows.append({"material_id": row["material_id"], "operation_id": operation_id,
+                "required_qty": source_required, "available_qty": remainder, "arrivals": source_arrivals})
+            child_rows.append({"material_id": row["material_id"], "operation_id": operation_id,
+                "required_qty": child_required, "available_qty": initial, "arrivals": child_arrivals})
+        source_ready = WorkbenchBatchMaterialService._ready(source_rows, facts["material_day"])
+        child_ready = WorkbenchBatchMaterialService._ready(child_rows, facts["material_day"])
+        with stored_batch_values(ref, batch, "拆分"):
+            ready_day = normalize_batch_fields({"ready_date": batch["ready_date"]})["ready_date"]
+            change = preparation.copy(
+                batch,
+                code,
+                quantity=count,
+                ready_status=child_ready,
+                ready_date=max(filter(None, (ready_day, payload["as_of_date"]))),
+            )
+        writer = TemplateLineageWriter(self.conn)
+        prepared_instances = writer.prepare_instances(relations["operations"], facts=facts)
+        return (
+            {"entity_ref": ref, "operation": "batch.split_confirm", "source_code": batch["batch_id"], "child_code": code,
+             "original_quantity": original, "quantity": count, "remaining_quantity": original - count,
+             "maximum_quantity": maximum, "as_of_date": payload["as_of_date"], "materials": materials,
+             "commit_policy": "atomic", "warnings": []},
+            batch,
+            relations["operations"],
+            change,
+            source_rows,
+            child_rows,
+            source_ready,
+            writer,
+            prepared_instances,
+        )
 
     def apply_normalized(self, ref, payload):
         if not self.conn.in_transaction:
             raise RuntimeError("Quantity split requires the workbench command transaction.")
-        plan, batch, facts, source_operations = self._plan_normalized(ref, payload)
-        code = plan["child_code"]
-        source_rows, child_rows = [], []
-        for row in plan["materials"]:
-            for target, prefix in ((source_rows, "source"), (child_rows, "child")):
-                target.append({"material_id": row["material_id"], "operation_id": row["operation_id"],
-                    "required_qty": row[prefix + "_required"], "available_qty": row[prefix + "_available"],
-                    "arrivals": row[prefix + "_arrivals"]})
-        source_ready = WorkbenchBatchMaterialService._ready(source_rows, facts["material_day"])
-        child_ready = WorkbenchBatchMaterialService._ready(child_rows, facts["material_day"])
-        ready_day = stored_date(batch["ready_date"])
-        if batch["ready_date"] is not None and ready_day is None:
-            raise WorkbenchCommandRejected("constraint_conflict", "原批次齐套日期无效，请先核对后再拆分。")
-        writer = TemplateLineageWriter(self.conn)
-        prepared = writer.prepare_instances(source_operations, facts=facts)
-        domain = WorkbenchBatchService(self.conn, facts=self.reader)
-        change = domain.preparation(facts).copy(batch, code, quantity=plan["quantity"],
-            ready_status=child_ready, ready_date=max(filter(None, (ready_day, plan["as_of_date"]))))
-        batch_outcome = domain.apply_prepared(change)
+        plan, batch, source_operations, change, source_rows, child_rows, source_ready, writer, prepared = self._plan_normalized(ref, payload)
+        code = change.business_code
+        batch_outcome = self.domain.apply_prepared(change)
         mapping = {op["id"]: writer.copy_prepared_instance(code, ready)
                    for op, ready in zip(source_operations, prepared)}
         repo, stages = BatchMaterialRepository(self.conn), BatchMaterialStageRepository(self.conn)
@@ -124,7 +138,7 @@ class WorkbenchQuantitySplitService:
                             ready_status=source_rows[index]["ready_status"])
             stages.replace_arrivals(row["requirement_id"], row["source_arrivals"])
             stages.review(row["requirement_id"], plan["remaining_quantity"])
-        BatchRepository(self.conn).update(batch["batch_id"], {"quantity": plan["remaining_quantity"], "ready_status": source_ready})
+        self.domain.repo.update(batch["batch_id"], {"quantity": plan["remaining_quantity"], "ready_status": source_ready})
         stages.record_split(batch["batch_id"], code, plan["original_quantity"], plan["quantity"], plan["as_of_date"])
         return WorkbenchCommandOutcome("committed", {"entity_ref": ref, "child_ref": batch_outcome.data["entity_ref"], "business_code": code,
             "quantity": plan["quantity"], "remaining_quantity": plan["remaining_quantity"], "commit_policy": "atomic"})

@@ -4,6 +4,8 @@ import os
 from dataclasses import dataclass
 from typing import List, Optional
 
+from core.shared.strict_parse import WIN32_DWORD_MAX, parse_bounded_positive_int
+
 from .launcher_observability import launcher_log_warning
 from .launcher_processes import kill_runtime_pid, run_powershell_text
 
@@ -90,10 +92,9 @@ def _parse_chrome_pid_output(output: str) -> List[int]:
             continue
         if value.startswith("ProcessId="):
             value = value.split("=", 1)[1].strip()
-        if value.isascii() and value.isdigit():
-            pid_i = int(value)
-            if pid_i > 0 and pid_i not in pids:
-                pids.append(pid_i)
+        pid_i = parse_bounded_positive_int(value, max_value=WIN32_DWORD_MAX, allow_str=True)
+        if pid_i is not None and pid_i not in pids:
+            pids.append(pid_i)
     return pids
 
 

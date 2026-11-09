@@ -35,6 +35,6 @@ def read_candidate_analysis(conn, candidate_ref, *, bind_snapshot):
                 "delivery_deltas": delivery_deltas(old_metrics, metrics), "operations": operations,
                 "basis": {"scope": "full_candidate_and_full_admission_baseline", "batch_scope": "admission_selected_batches",
                           "operation_identity": "permanent_operation_reference", "comparison": "candidate_minus_admission_official",
-                          "current_entities_consulted": False, "recommendation": None},
+                          "recommendation": None},
                 "capabilities": {"view": True, "adopt": False, "edit_draft": False, "report_actual": False}}
         return data, snapshot

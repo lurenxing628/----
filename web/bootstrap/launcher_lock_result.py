@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.infrastructure.safe_files import read_fixed_text
+from core.shared.strict_parse import WIN32_DWORD_MAX, parse_bounded_positive_int
 
 from .launcher_observability import launcher_log_warning
 from .launcher_paths import resolve_runtime_state_dir_for_read, runtime_lock_path
@@ -106,27 +107,18 @@ def read_runtime_lock_result_from_path(path: str, *, state_dir: str = "") -> Run
             state_dir=state_dir_s,
             reason="missing_pid",
         )
+    pid = parse_bounded_positive_int(data["pid"], max_value=WIN32_DWORD_MAX, allow_str=True)
+    if pid is None:
+        return RuntimeLockReadResult(
+            status=LOCK_STATUS_INVALID,
+            payload=None,
+            path=lock_path,
+            state_dir=state_dir_s,
+            reason="invalid_pid",
+            error=f"expected int in 1..{WIN32_DWORD_MAX}",
+        )
     payload = data
-    try:
-        payload["pid"] = int(data["pid"])
-    except ValueError as exc:
-        return RuntimeLockReadResult(
-            status=LOCK_STATUS_INVALID,
-            payload=None,
-            path=lock_path,
-            state_dir=state_dir_s,
-            reason="invalid_pid",
-            error=str(exc),
-        )
-    if payload["pid"] <= 0:
-        return RuntimeLockReadResult(
-            status=LOCK_STATUS_INVALID,
-            payload=None,
-            path=lock_path,
-            state_dir=state_dir_s,
-            reason="invalid_pid",
-            error="must_be_positive",
-        )
+    payload["pid"] = pid
     payload["state_dir"] = state_dir_s
     payload["path"] = lock_path
     return RuntimeLockReadResult(

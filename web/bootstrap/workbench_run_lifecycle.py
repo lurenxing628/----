@@ -26,7 +26,7 @@ def install_run_lifecycle(deps, app, lock_state):
     if app.extensions.get(RECOVERY) or (
         "workbench_startup_maintenance_records" not in app.extensions and prepare_system_restore_startup(app)
     ):
-        return _install_recovery_lifecycle(deps, app, lock_state)
+        return _install_recovery_lifecycle(app, lock_state)
     runtime = deps.install_run_runtime(app, runtime_lock=lock_state["payload"])
     lock_state["runtime"] = runtime
     if not runtime.ready:
@@ -39,16 +39,13 @@ def install_run_lifecycle(deps, app, lock_state):
         app.logger.exception("Restore host installation failed; closing normal runtime")
         stop_run_runtime(runtime)
         configure_system_restore_recovery(app)
-        return _install_recovery_lifecycle(deps, app, lock_state)
-    # Registered after factory's exit backup, hence called before it by atexit.
-    deps.atexit_register(stop_run_runtime, runtime)
+        return _install_recovery_lifecycle(app, lock_state)
     return runtime
 
 
-def _install_recovery_lifecycle(deps, app, lock_state):
+def _install_recovery_lifecycle(app, lock_state):
     host = WorkbenchSystemRestoreRecoveryHost(app, lock_state["payload"])
     lock_state["runtime"] = host
-    deps.atexit_register(stop_run_runtime, host)
     return host
 
 

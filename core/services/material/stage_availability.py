@@ -3,11 +3,11 @@
 import sys
 from bisect import bisect_right
 from collections import defaultdict
-from datetime import date
 from decimal import ROUND_FLOOR, Decimal
 
 from core.models.batch_external_context import context_group_key
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.shared.stored_dates import stored_day
 from core.shared.strict_parse import is_exact_non_negative_number
 
 
@@ -32,15 +32,9 @@ def covers_quantity(available, required):
 
 
 def arrival_day(value):
-    if not isinstance(value, str):
+    if stored_day(value) is None:
         raise WorkbenchCommandRejected("material_unknown", "到料日期无效，请先核对物料需求。")
-    try:
-        parsed = date.fromisoformat(value)
-        if parsed.isoformat() == value:
-            return value
-    except ValueError:
-        pass
-    raise WorkbenchCommandRejected("material_unknown", "到料日期无效，请先核对物料需求。")
+    return value
 
 
 class MaterialAvailability:

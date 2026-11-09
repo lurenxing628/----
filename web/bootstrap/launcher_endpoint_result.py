@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Tuple
 
 from core.infrastructure.safe_files import read_fixed_text
+from core.shared.strict_parse import PORT_MAX, parse_bounded_positive_int
 
 from .launcher_observability import launcher_log_warning
 from .launcher_paths import state_contract_paths
@@ -84,13 +85,25 @@ def _read_port_file(path: str) -> Tuple[int, str, str]:
     if not value:
         launcher_log_warning(None, "运行时端口文件为空：path=%s", path, state_dir=os.path.dirname(path))
         return 0, ENDPOINT_STATUS_EMPTY, "port_empty"
-    if not value.isdecimal():
-        launcher_log_warning(None, "运行时端口文件内容非法：path=%s value=%r", path, value, state_dir=os.path.dirname(path))
-        return 0, ENDPOINT_STATUS_INVALID, "port_not_integer"
-    port = int(value)
-    if port <= 0:
-        launcher_log_warning(None, "运行时端口文件内容不是正端口：path=%s value=%r", path, value, state_dir=os.path.dirname(path))
-        return 0, ENDPOINT_STATUS_INVALID, "port_not_positive"
+    port = parse_bounded_positive_int(value, max_value=PORT_MAX)
+    if port is None:
+        if not (value.isascii() and value.isdigit()):
+            reason = "port_not_integer"
+        elif not value.lstrip("0"):
+            reason = "port_not_positive"
+        elif value[0] == "0":
+            reason = "port_not_integer"
+        else:
+            reason = "port_out_of_range"
+        launcher_log_warning(
+            None,
+            "运行时端口文件内容非法：path=%s value=%r reason=%s",
+            path,
+            value[:32],
+            reason,
+            state_dir=os.path.dirname(path),
+        )
+        return 0, ENDPOINT_STATUS_INVALID, reason
     return port, ENDPOINT_STATUS_VALID, ""
 
 

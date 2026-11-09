@@ -6,7 +6,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Any, Optional, cast
+from typing import Any, Optional
 
 from flask import Flask, current_app, g, request
 from werkzeug.serving import ThreadedWSGIServer
@@ -35,7 +35,6 @@ from .launcher_shutdown import (
 )
 from .paths import runtime_base_dir
 from .plugins import bootstrap_plugins
-from .runtime_server import create_runtime_server
 from .schedule_config import bootstrap_schedule_config
 from .security import apply_session_cookie_hardening, ensure_secret_key, register_security_headers
 from .startup_config import resolve_config_class
@@ -48,7 +47,8 @@ from .workbench_request_lifecycle import (
 from .workbench_request_lifecycle_wsgi import call_on_workbench_request_close
 from .workbench_system_restore_recovery import prepare_system_restore_startup
 
-# atexit 退出备份去重：避免 create_app_core() 在测试/脚本中被多次调用导致重复注册
+# atexit 退出备份服务于不经 entrypoint 停机的宿主（模块导入 app.py、脚本直接 create_app）；
+# entrypoint 在停机 finally 里经 run_exit_backup_now 接管。去重避免 create_app_core() 多次调用重复注册。
 _EXIT_BACKUP_MANAGER = None
 _EXIT_BACKUP_REGISTERED = False
 _RUNTIME_SERVER: Any = None
@@ -105,8 +105,18 @@ def should_own_runtime_resources(
 
 
 def _run_exit_backup() -> bool:
-    # 只由 _register_exit_backup 在赋值 _EXIT_BACKUP_MANAGER 之后注册到 atexit。
+    # 系统恢复宿主在 create_app_core 提前返回，未构造管理器，无备份可做。
+    if _EXIT_BACKUP_MANAGER is None:
+        return False
     return run_exit_backup(_EXIT_BACKUP_MANAGER, lambda target: read_exit_backup_enabled(target, get_connection))
+
+
+def run_exit_backup_now() -> None:
+    """自行停机的宿主（entrypoint finally）在排空后、释锁前调用：注销 atexit 回调并立即备份一次。"""
+    global _EXIT_BACKUP_REGISTERED
+    atexit.unregister(_run_exit_backup)
+    _EXIT_BACKUP_REGISTERED = False
+    _run_exit_backup()
 
 
 def _maintenance_gate_response():
@@ -128,10 +138,8 @@ def _default_anchor_file() -> str:
     return str(Path(__file__).resolve().parents[2] / "app.py")
 
 
-def serve_runtime_app(app: Flask, host: str, port: int, *, server: Optional[ThreadedWSGIServer] = None) -> None:
+def serve_runtime_app(*, server: ThreadedWSGIServer) -> None:
     global _RUNTIME_SERVER, _RUNTIME_SERVER_SHUTDOWN_REQUESTED
-    if server is None:
-        server = cast(ThreadedWSGIServer, create_runtime_server(app, host, port))
     with _RUNTIME_SERVER_LOCK:
         _RUNTIME_SERVER = server
         _RUNTIME_SERVER_SHUTDOWN_REQUESTED = False
@@ -192,8 +200,6 @@ def _register_exit_backup(app: Flask) -> None:
     if not _EXIT_BACKUP_REGISTERED and should_own_runtime_resources(bool(app.config.get("DEBUG", False))):
         atexit.register(_run_exit_backup)
         _EXIT_BACKUP_REGISTERED = True
-    elif not _EXIT_BACKUP_REGISTERED:
-        app.logger.info("开发重载父进程跳过注册退出自动备份。")
 
 
 def create_app_core(

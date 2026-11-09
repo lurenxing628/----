@@ -17,11 +17,12 @@ from core.services.capacity.plan_calendar_limits import MAX_CALENDAR_DATES
 from core.services.capacity.plan_calendar_windows import (
     apply_resource,
     policy_projection,
+    resource_record_unavailable,
     unavailable,
 )
+from core.shared.stored_dates import stored_local_iso_datetime
 
 from .candidate_facts import archived_table
-from .candidate_values import corrupt
 from .resource_calendar import natural_days
 
 _MEASURES = ("available_hours", "effective_hours", "normal_available_hours", "normal_effective_hours",
@@ -46,10 +47,7 @@ class _SavedCalendarEngine(SnapshotCalendarEngine):
                      **profiles.get(row["shift_profile_id"], {"profile_id": None, "status": None,
                                                             "anchor_date": None, "cycle_days": None})}
                     for row in self.members.values() if row.get("shift_profile_id") is not None]
-        periods = {(row["profile_id"], row["day_offset"]): row["periods_json"]
-                   for row in tables["WorkbenchShiftDayPeriods"] or []}
-        patterns = [dict(row, periods_json=periods.get((row["profile_id"], row["day_offset"])))
-                    for row in tables["WorkbenchShiftPatternDays"] or []]
+        patterns = tables["WorkbenchShiftPatternDays"] or ()
         super().__init__({"global": tables["WorkCalendar"] or [], "personal": tables["OperatorCalendar"] or [],
                           "profiles": selected, "patterns": patterns,
                           "defaults": tables["WorkbenchCalendarDefaults"] or []})
@@ -68,7 +66,7 @@ class _SavedCalendarEngine(SnapshotCalendarEngine):
                 self._missing("WorkbenchOperatorProfiles", date_str, op_id)
             member = self.members.get(op_id)
             if member is not None and member.get("shift_profile_id") is not None:
-                for name in ("WorkbenchShiftProfiles", "WorkbenchShiftPatternDays", "WorkbenchShiftDayPeriods"):
+                for name in ("WorkbenchShiftProfiles", "WorkbenchShiftPatternDays"):
                     if self.tables[name] is None:
                         self._missing(name, date_str, op_id)
         if self.tables["WorkCalendar"] is None:
@@ -101,25 +99,42 @@ class DowntimeIndex:
 
     def __init__(self, rows):
         intervals, self.errors = [], []
+        self.invalid_interval = False
+        self.unknown_status = False
         for row in rows:
-            if row.get("status") == "cancelled":
+            status = row.get("status")
+            if status == "cancelled":
                 continue
+            if status != "active":
+                self.unknown_status = True
             try:
                 start, end = instant(row["start_time"]), instant(row["end_time"])
             except (ValueError, KeyError):
+                if status == "active":
+                    self.invalid_interval = True
                 self.errors.append((row, None, None))
                 continue
             if start >= end:
+                if status == "active":
+                    self.invalid_interval = True
                 self.errors.append((row, None, None))
-            elif row.get("status") != "active":
+            elif status != "active":
                 self.errors.append((row, start, end))
             else:
+                if (
+                    stored_local_iso_datetime(row["start_time"], allow_space=True, allow_minutes_only=True) is None
+                    or stored_local_iso_datetime(row["end_time"], allow_space=True, allow_minutes_only=True) is None
+                ):
+                    self.invalid_interval = True
                 intervals.append((start, end))
         # apply_resource exposes only the union of valid downtime windows; no
         # record identity or other row metadata is part of this projection.
         self.intervals = union(intervals)
         self.starts = [start for start, _end in self.intervals]
         self.ends = [end for _start, end in self.intervals]
+
+    def overlaps(self, low, high):
+        return bisect_right(self.ends, low) < bisect_left(self.starts, high)
 
     def between(self, low, high):
         for row, start, end in self.errors:
@@ -184,7 +199,7 @@ class ArchivedCalendar:
         self._downtime_indexes = {}
         tables = {name: self.table(name) for name in (
             "WorkCalendar", "OperatorCalendar", "WorkbenchOperatorProfiles", "WorkbenchShiftProfiles",
-            "WorkbenchShiftPatternDays", "WorkbenchShiftDayPeriods", "WorkbenchCalendarDefaults")}
+            "WorkbenchShiftPatternDays", "WorkbenchCalendarDefaults")}
         # 坏日期等日历内容错误由引擎留到读取那天再报；这里只剩保存表结构损坏（缺列 KeyError、取值类型不对 TypeError）
         # 让整份引擎不可用，下游逐日投影为 calendar_invalid、试调核对报 calendar_unproven。
         try:
@@ -203,11 +218,6 @@ class ArchivedCalendar:
             rows = self.archive["tables"].get(name)
             if rows is None or type(rows) is list and all(type(row) is dict for row in rows):
                 self._tables[name] = rows
-            elif "columns" in self.archive:
-                columns = self.archive["columns"].get(name)
-                if type(columns) is not list or any(type(row) is not list or len(row) != len(columns) for row in rows):
-                    corrupt()
-                self._tables[name] = [dict(zip(columns, row)) for row in rows]
             else:
                 self._tables[name] = archived_table(self.archive, name)
         return self._tables[name]
@@ -228,11 +238,7 @@ class ArchivedCalendar:
                             for day in (first.isoformat(), low.date().isoformat()) for who in (op_id, None))):
                 profile_id = member.get("shift_profile_id") if member is not None else None
                 if profile_id is None:
-                    base = self._policy_day(low, high, engine=engine)
-                    if base["state"] == "available":
-                        # Windows/provenance are the same saved policy; resource
-                        # availability only changes a new outer projection.
-                        return base
+                    return self._policy_day(low, high, engine=engine)
                 else:
                     shift_key = (low, high, profile_id)
                     if shift_key in self._shift_days:
@@ -248,7 +254,7 @@ class ArchivedCalendar:
                     break
         if operator_id is None:
             self._global_days[key] = base
-        elif shift_key is not None and base["state"] == "available":
+        elif shift_key is not None:
             self._shift_days[shift_key] = base
         return base
 
@@ -267,10 +273,20 @@ class ArchivedCalendar:
             result = unavailable(basis, "calendar_unavailable")
             result["issues"][0]["missing_fact"] = "MachineDowntimes"
         else:
-            base = self._policy_day(low, high, saved_id if kind == "operator" else None, engine=self.engine)
-            result = apply_resource(base, self.records[kind].get(saved_id), kind,
-                                    self.downtime_index(saved_id).between(low, high) if kind == "machine" else [],
-                                    low, high)
+            raw_record = self.records[kind].get(saved_id)
+            rejected = resource_record_unavailable(raw_record, kind, basis)
+            if rejected is not None:
+                result = rejected
+            else:
+                base = self._policy_day(low, high, saved_id if kind == "operator" else None, engine=self.engine)
+                result = apply_resource(
+                    base,
+                    raw_record,
+                    kind,
+                    self.downtime_index(saved_id).between(low, high) if kind == "machine" else [],
+                    low,
+                    high,
+                )
         return {**result, "date": low.date().isoformat(), "start": low, "end": high,
                 "source": self.source}
 

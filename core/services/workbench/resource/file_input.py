@@ -98,10 +98,12 @@ class ResourceFileInput:
         return (refs, evidence) if multiple else (refs[0], evidence[0])
 
     def _selected_code(self, code, kind, field):
-        if type(code) is not str or not code or code != code.strip():
+        if type(code) is not str or not code.strip():
             raise ValidationError(_column(self.kind, field) + "要填准确的编号，不能填空格或名称，这一行没有导入。请改填编号。", field=field)
         identity = self.preparation.find_identity(kind, code)
         if identity is None:
+            if code != code.strip():
+                raise ValidationError(_column(self.kind, field) + "要填准确的编号，不能填空格或名称，这一行没有导入。请改填编号。", field=field)
             raise ValidationError(_column(self.kind, field) + "里的编号 " + code + " 在资料里找不到，这一行没有导入。请先在资料总览新增它，或者改填已有编号。", field=field)
         return identity, self.preparation.facts.raw_record(kind, identity.entity_key)
 

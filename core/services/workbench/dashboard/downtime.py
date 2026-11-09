@@ -4,7 +4,7 @@ from bisect import bisect_left, bisect_right
 from collections import defaultdict
 
 from core.models.workbench_dashboard import MAX_FACT_ROWS, bounded
-from core.services.capacity.plan_calendar_intervals import IntervalIndex, instant, union
+from core.services.capacity.plan_calendar_intervals import IntervalIndex, instant, union_sorted
 
 from .projection import category, observation
 
@@ -16,11 +16,37 @@ def _instant(value):
         return None
 
 
+def _build_interval_tree(ordered_items):
+    if not ordered_items:
+        return None
+    center = ordered_items[len(ordered_items) // 2][0]
+    left_items, right_items, by_start = [], [], []
+    for item in ordered_items:
+        if item[1] <= center:
+            left_items.append(item)
+        elif item[0] > center:
+            right_items.append(item)
+        else:
+            by_start.append(item)
+    span_starts = [item[0] for item in by_start]
+    by_end = sorted(by_start, key=lambda item: (item[1], item[2]))
+    span_ends = [item[1] for item in by_end]
+    return (
+        center,
+        span_starts,
+        by_start,
+        span_ends,
+        by_end,
+        _build_interval_tree(left_items),
+        _build_interval_tree(right_items),
+    )
+
+
 def downtime_index(raw, refs):
     """Parse each non-cancelled downtime's two endpoints once, independently; an unreadable endpoint is None.
 
     ``parsed`` keeps every non-cancelled row in rowid order, invalid ones included, for analysis records;
-    windows, invalid machines and interval indexes are derived from it.
+    invalid machines and interval indexes are derived from it.
     """
     identities = {row["source_id"]: row for row in refs if row["active"] == 1}
     by_machine, all_rows, identity_rows, invalid, parsed = defaultdict(list), defaultdict(list), defaultdict(list), set(), []
@@ -37,24 +63,55 @@ def downtime_index(raw, refs):
             invalid.add(row["machine_id"])
         else:
             by_machine[row["machine_id"]].append((low, high, row))
-    indexes = {key: IntervalIndex.from_normalized(union([(low, high) for low, high, _ in values]))
-               for key, values in by_machine.items()}
+    indexes = {}
+    search = {}
+    for key, values in by_machine.items():
+        ordered = sorted((low, high, idx, row) for idx, (low, high, row) in enumerate(values))
+        indexes[key] = IntervalIndex.from_normalized(union_sorted((low, high) for low, high, _, _ in ordered))
+        starts = [low for low, _, _, _ in ordered]
+        sorted_ends = sorted(high for _, high, _, _ in ordered)
+        search[key] = (starts, sorted_ends, _build_interval_tree(ordered))
     machine_identities = defaultdict(list, {
         key: [identity for row in values for identity in identity_rows[row["id"]]]
         for key, values in all_rows.items()})
-    return {"identities": identities, "parsed": parsed, "windows": by_machine, "invalid": invalid, "indexes": indexes,
-            "all_rows": all_rows, "machine_identities": machine_identities}
+    return {"identities": identities, "parsed": parsed, "invalid": invalid, "indexes": indexes,
+            "search": search, "all_rows": all_rows, "machine_identities": machine_identities}
 
 
-def _overlaps(windows, identities, low, high):
-    details = []
-    for start, end, row in windows:
-        if start < high and end > low:
-            details.append({"downtime_ref": identities[row["id"]]["ref"], "start": start.isoformat(),
-                            "end": end.isoformat(), "overlap_start": max(start, low).isoformat(),
-                            "overlap_end": min(end, high).isoformat(),
-                            "reason": row["reason_detail"] if type(row["reason_detail"]) is str else None})
-    return details
+def _overlaps(search_entry, identities, low, high):
+    _, _, tree = search_entry
+    matched = []
+    stack = [tree]
+    while stack:
+        center, span_starts, by_start, span_ends, by_end, left, right = stack.pop()
+        if high <= center:
+            cut = bisect_left(span_starts, high)
+            matched.extend(by_start[:cut])
+            if left is not None:
+                stack.append(left)
+        elif low > center:
+            cut = bisect_right(span_ends, low)
+            matched.extend(by_end[cut:])
+            if right is not None:
+                stack.append(right)
+        else:
+            matched.extend(by_start)
+            if left is not None:
+                stack.append(left)
+            if right is not None:
+                stack.append(right)
+    matched.sort(key=lambda item: item[2])
+    return [
+        {
+            "downtime_ref": identities[row["id"]]["ref"],
+            "start": start.isoformat(),
+            "end": end.isoformat(),
+            "overlap_start": max(start, low).isoformat(),
+            "overlap_end": min(end, high).isoformat(),
+            "reason": row["reason_detail"] if type(row["reason_detail"]) is str else None,
+        }
+        for start, end, _, row in matched
+    ]
 
 
 def _task(task, raw_task, resource_rows, index, *, interval):
@@ -63,8 +120,7 @@ def _task(task, raw_task, resource_rows, index, *, interval):
     resource = resource_rows.get(key)
     bad = key in index["invalid"] or resource is None or raw_task["source"] != "internal"
     amount = index["indexes"][key].hours_between(low, high) if key in index["indexes"] else 0.0
-    windows, identities = index["windows"][key], index["identities"]
-    details = _overlaps(windows, identities, low, high) if amount else []
+    details = _overlaps(index["search"][key], index["identities"], low, high) if amount else []
     source = {"kind": "registered_downtime_overlap", "plan_ref": task["plan_ref"], "task_ref": task["task_ref"],
               "operation_ref": task["operation_ref"], "machine_ref": task["machine_ref"],
               "planned_start": task["start"], "planned_end": task["end"], "downtimes": details,
@@ -84,13 +140,6 @@ def downtime_overlap_count(facts):
     if "downtime" in facts._observations:
         return sum(1 for item in facts._observations["downtime"][0] if item["source"]["known_overlap_hours"])
     index = facts.downtime_index()
-    bounds = {
-        key: (
-            sorted(start for start, _, _ in windows),
-            sorted(end for _, end, _ in windows),
-        )
-        for key, windows in index["windows"].items()
-    }
     overlaps, intersections = 0, 0
     for raw_task in facts.task_rows:
         if raw_task["source"] == "external":
@@ -101,8 +150,8 @@ def downtime_overlap_count(facts):
         low, high = facts.task_intervals[raw_task["schedule_id"]]
         if index["indexes"][key].hours_between(low, high):
             overlaps += 1
-            starts, ends = bounds[key]
-            intersections += bisect_left(starts, high) - bisect_right(ends, low)
+            starts, sorted_ends, _ = index["search"][key]
+            intersections += bisect_left(starts, high) - bisect_right(sorted_ends, low)
             bounded(range(intersections), MAX_FACT_ROWS)
     return overlaps
 

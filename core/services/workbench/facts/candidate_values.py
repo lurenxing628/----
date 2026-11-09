@@ -26,12 +26,24 @@ def gap(field, code="not_recorded"):
     return {"field": field, "code": code, "message": texts[code]}
 
 
+def is_blob_metadata(value) -> bool:
+    if type(value) is bytes:
+        return True
+    return type(value) is dict and (
+        (set(value) == {"$sqlite_blob"} and type(value["$sqlite_blob"]) is str)
+        or (set(value) == {"sqlite_blob_base64"} and type(value["sqlite_blob_base64"]) is str)
+    )
+
+
 def text(value, field, gaps):
     if type(value) is str and value and "\x00" not in value:
         return value
-    code = "not_recorded" if value is None or value == "" else "invalid_stored_value"
-    if isinstance(value, dict) and "sqlite_blob_base64" in value:
+    if value is None or value == "":
+        code = "not_recorded"
+    elif is_blob_metadata(value):
         code = "blob_metadata"
+    else:
+        code = "invalid_stored_value"
     gaps.append(gap(field, code))
     return None
 

@@ -17,10 +17,10 @@ from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.services.scheduler.run.schedule_input_seed_metadata import MERGED_EXECUTION_GROUP_SOURCE
 from core.services.workbench.facts.piece_scope import block
-from core.services.workbench.facts.preflight_checks import stored_date
 from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.facts.zero_duration import PointEventError
+from core.shared.stored_dates import stored_date
 
 from .candidate_adoption_constraints import (
     _resource_overlaps,

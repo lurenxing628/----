@@ -79,8 +79,7 @@ def _deferred_evidence(source, evidence):
     return sorted(recorded), []
 
 
-def _operation_type(operation, refs, names, trace):
-    key = (trace or {}).get("op_type_id", operation.get("op_type_id"))
+def _operation_type(key, refs, names):
     label = names.get(key)
     return {"ref": refs.get(("op_type", key)),
             "label": label if type(label) is str and label.strip() else None}
@@ -96,27 +95,31 @@ def _type_names_by_ref(refs, names):
             for key, label in names.items() if ("op_type", key) in refs}
 
 
-def _operation_metadata(source, evidence):
-    if evidence["basis"] == "candidate_adoption":
-        traces = {row["op_id"]: row for row in source.candidate["artifact"].get("results", [])}
-        names = {row["op_type_id"]: row.get("name") for row in source.facts.table("OpTypes") or []}
-        operations = {ref: source.facts.tables["BatchOperations"][op_id]
-                      for ref, op_id in source.facts.operations.items() if op_id in source.facts.tables["BatchOperations"]}
-        types = {ref: _operation_type(operation, source.facts.entity_refs, names, traces.get(operation["id"]))
-                 for ref, operation in operations.items()}
-        standards = {ref: _operation_standard(operation, source.facts.execution.get(ref))
-                     for ref, operation in operations.items()}
-        return source.receipt.get("operation_effort"), types, standards
+def _candidate_operation_metadata(source):
+    traces = {row["op_id"]: row for row in source.candidate["artifact"]["results"]}
+    names = {row["op_type_id"]: row["name"] for row in source.facts.table("OpTypes")}
+    batch_operations = source.facts.tables["BatchOperations"]
+    types, standards = {}, {}
+    for row in source.raw_tasks:
+        ref, op_id = row["operation_ref"], row["payload"]["op_id"]
+        types[ref] = _operation_type(traces[op_id]["op_type_id"], source.facts.entity_refs, names)
+        operation = batch_operations.get(op_id)
+        if operation is not None:
+            standards[ref] = _operation_standard(operation, source.facts.execution.get(ref))
+    return source.receipt["operation_effort"], types, standards
+
+
+def _trial_operation_metadata(prepared):
+    source = prepared.source
     saved, rows = source.saved, source.rows
     original = source.head["admission"]["source"]
-    prepared = evidence["trial_source"]
     refs = prepared.resources.entity_refs
     names = {key: row.get("name") for key, row in prepared.resources.tables["OpTypes"].items()}
     names_by_ref = _type_names_by_ref(refs, names)
     slot_refs = prepared.assigned_resources.entity_refs
     slot_names = {key: row.get("name") for key, row in prepared.assigned_resources.tables["OpTypes"].items()}
     slot_names_by_ref = _type_names_by_ref(slot_refs, slot_names)
-    recorded, slot_types = original.get("operation_types") or {}, original["trial_operation_types"]
+    recorded, slot_types = original["operation_types"], original["trial_operation_types"]
     ledger = {item["operation_ref"]: item for item in (saved["operation_effort"] or {}).get("items", [])}
     types = {}
     for row in rows:
@@ -128,7 +131,7 @@ def _operation_metadata(source, evidence):
     standards = {row["operation_ref"]: _operation_standard(row["original"]["operation"], row["original"].get("execution"))
                  for row in rows}
     # A trial owns its saved current ledger. Its base ledger describes an earlier
-    # arrangement; old saved trials retain an explicit missing decomposition.
+    # arrangement; a trial whose source carried no decomposition retains None.
     return saved["operation_effort"], types, standards
 
 
@@ -154,12 +157,11 @@ def _point_loader(source, load):
     return points
 
 
-def decision_baseline_source_resolver(conn, *, candidate_provider=None):
-    return verified_read(conn, ("decision_baseline_resolver", candidate_provider),
-        lambda: _decision_baseline_source_resolver(conn, candidate_provider=candidate_provider))
+def decision_baseline_source_resolver(conn):
+    return verified_read(conn, "decision_baseline_resolver", lambda: _decision_baseline_source_resolver(conn))
 
 
-def _decision_baseline_source_resolver(conn, *, candidate_provider):
+def _decision_baseline_source_resolver(conn):
     """Create one request's resolver over permanent candidate/scenario identities.
 
     The caller compares ``evidence.arranged`` with its captured Schedule rows.
@@ -184,24 +186,21 @@ def _decision_baseline_source_resolver(conn, *, candidate_provider):
             if audit["source"] == "workbench_candidate_adoption":
                 key = ("candidate", audit["candidate_ref"])
                 if key not in sources:
-                    prepared = candidate_provider(audit["candidate_ref"]) if candidate_provider is not None else None
-                    sources[key] = (
-                        prepared
-                        if prepared is not None
-                        else read_candidate_source(candidates, audit["candidate_ref"])
-                    )
-                source = sources[key]
+                    candidate_source = read_candidate_source(candidates, audit["candidate_ref"])
+                    sources[key] = (candidate_source, _candidate_operation_metadata(candidate_source))
+                source, metadata = sources[key]
                 evidence, points = candidate_evidence(source, audit), _candidate_points
             else:
                 key = ("trial", audit["scenario_ref"])
                 if key not in sources:
-                    sources[key] = trial_adoption_facts(conn, audit["scenario_ref"])
-                prepared = sources[key]
+                    trial_prepared = trial_adoption_facts(conn, audit["scenario_ref"])
+                    sources[key] = (trial_prepared, _trial_operation_metadata(trial_prepared))
+                prepared, metadata = sources[key]
                 source = prepared.source
                 evidence, points = trial_evidence(source, audit), _trial_points
                 evidence["trial_source"] = prepared
             deferred, deferred_issues = _deferred_evidence(source, evidence)
-            effort, types, standards = _operation_metadata(source, evidence)
+            effort, types, standards = metadata
             return {"evidence": evidence, "origins": read_adoption_operation_facts(conn, evidence),
                     "point_work": _point_loader(source, points), "deferred_operation_ids": deferred,
                     "deferred_issues": deferred_issues, "operation_effort": effort, "operation_types": types,

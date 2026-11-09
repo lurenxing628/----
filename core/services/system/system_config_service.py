@@ -26,12 +26,6 @@ class SystemConfigService:
     - 默认值以“保守”为原则：自动任务默认关闭。
     """
 
-    # 合理范围（避免过度占用性能）
-    MIN_INTERVAL_MINUTES = 1
-    MAX_INTERVAL_MINUTES = 1440
-    MIN_KEEP_DAYS = 1
-    MAX_KEEP_DAYS = 365
-
     def __init__(self, conn, logger=None):
         self.repo = SystemConfigRepository(conn, logger=logger)
 

@@ -3,6 +3,7 @@
 from typing import Union
 
 from core.models.workbench_run_candidate import reference, reject
+from core.services.workbench.facts.candidate_tasks import operation_sequence_value
 from core.services.workbench.facts.decision_metrics import METRIC_VERSION
 from core.services.workbench.facts.preparation_projection import preparation_delta
 
@@ -62,6 +63,8 @@ def _preparation_sort_value(projection, ref, before_row, after_row, sort):
             {"value": before_row["setup_standard_hours"], "total_count": 1, "covered_operation_refs": [ref]},
         )["value"]
     labels = projection.label_for(ref)
+    if sort == "sequence":
+        return operation_sequence_value(labels["sequence"])
     return labels["batch_label"] if sort == "batch_id" else labels[sort]
 
 

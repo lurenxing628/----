@@ -77,9 +77,11 @@ def _catalog(kind, export=False):
     token = request.args.get("snapshot_ref")
     if export and not token:
         raise WorkbenchCommandRejected("snapshot_required", messages.STALE, 400)
+    format_name = request.args.get("format", "xlsx") if export else None
+    if export and format_name not in ("csv", "xlsx"):
+        raise WorkbenchCommandRejected("invalid_input", "只能导出 CSV 或 XLSX，没有开始下载。请重新选择格式。", 400)
     as_of, binding = read_snapshot_time(token)
     reader = WorkbenchReportFacts(g.db, current_app.logger)
-    format_name = request.args.get("format", "xlsx") if export else None
     bound = {}
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():

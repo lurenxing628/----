@@ -8,6 +8,7 @@ shared here, wording stays with the route.
 from typing import AbstractSet, Optional, Tuple
 
 from flask import current_app, request
+from werkzeug.wsgi import get_input_stream
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.shared.strict_json import Reject, load_strict_json
@@ -61,7 +62,7 @@ def read_json_body(*, transport: str, malformed: str, incomplete: str, duplicate
         maximum, too_large = limit
         if request.content_length is not None and request.content_length > maximum:
             rejecter(too_large, "capacity_exceeded", 413)()
-        raw = request.stream.read(maximum + 1)
+        raw = get_input_stream(request.environ, max_content_length=maximum + 1).read(maximum + 1)
         if len(raw) > maximum:
             rejecter(too_large, "capacity_exceeded", 413)()
     return load_strict_json(raw, on_malformed=rejecter(malformed),

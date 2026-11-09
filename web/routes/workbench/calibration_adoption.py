@@ -9,6 +9,7 @@ from core.services.workbench.calibration.adoption import WorkbenchCalibrationAdo
 from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint, read_endpoint
+from .read_context import unbound_snapshot
 from .write_context import issue_write_context, validate_write_context
 
 
@@ -30,7 +31,7 @@ def calibration_adoption_preview(suggestion_ref):
     value = _body(("input",))
     data = _service().preview(suggestion_ref, value["input"])
     # 采用预览靠写入凭据防并发，没有可回绑的读取快照。
-    return query_success(data, {"as_of": data["generated_at"], "snapshot_ref": None}, byte_limit=MAX_RESPONSE_BYTES,
+    return query_success(data, unbound_snapshot(data["generated_at"]), byte_limit=MAX_RESPONSE_BYTES,
         too_large_message="这次要读的采用明细超过 8 MB，还没有采用。请缩小范围后重试。")
 
 

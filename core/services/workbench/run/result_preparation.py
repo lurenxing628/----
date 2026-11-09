@@ -68,7 +68,6 @@ def _prepare_result_artifacts(computation, identities, *, run_ref, batch_refs):
         for key, scope in process["scopes"].items()}}
     comparison_summary = (result["summary"].get("algo") or {}).get("candidate_comparison")
     if comparison_summary is not None:
-        comparison_summary.pop("unified_process", None)
         comparison_summary["selection"] = result["selection"]
         for summary in comparison_summary.get("candidates", []):
             summary["evaluations"] = {target: {**evaluation, "scoring_scope":
@@ -121,6 +120,7 @@ def prepare_run_result(computation, identities, *, run, capture, admission, fact
     from data.repositories.workbench_run_repo import encode_decision_read_models, encode_result
     from data.repositories.workbench_run_result_repo import encode_candidate_rows
 
-    captured_facts = {"revisions": dict(facts.archive["revisions"]), "schema": facts.archive["schema"]}
+    # 父进程写库前只用来源版本和表结构复核现场；整份存档留在计算这一侧，不经进程管道往返。
+    recorded = {"revisions": facts.archive["revisions"], "schema": facts.archive["schema"]}
     return PreparedRunResult(encode_candidate_rows(candidates), encode_result(result), encode_decision_read_models(models),
-                             models["run_model"]["header"], captured_facts=captured_facts)
+                             models["run_model"]["header"], recorded_source=recorded)

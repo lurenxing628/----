@@ -14,8 +14,7 @@ from core.models.workbench_piece_adoption import (
     PieceAdoptionScope,
     PieceOperationWork,
 )
-
-from .preflight_checks import number
+from core.shared.strict_parse import is_stored_number
 
 
 def block(code, message, *, batch_id=None) -> NoReturn:
@@ -30,8 +29,8 @@ def build_piece_adoption_scope(operations, quantities):
     by_batch = defaultdict(list)
     ids = set()
     for op in operations:
-        if (not number(op.id, integer=True, positive=True) or op.id in ids
-                or not number(op.seq, integer=True, positive=True) or op.batch_id not in quantities):
+        if (not is_stored_number(op.id, integer=True, positive=True) or op.id in ids
+                or not is_stored_number(op.seq, integer=True, positive=True) or op.batch_id not in quantities):
             block("piece_identity_invalid", "工序编号或工序顺序号无效、重复，本次没有采用。请到批次管理核对本批工序。", batch_id=op.batch_id)
         if op.piece_id is not None and (
             type(op.piece_id) is not str or not op.piece_id or op.piece_id.strip() != op.piece_id
@@ -44,7 +43,7 @@ def build_piece_adoption_scope(operations, quantities):
     work = []
     for batch_id, ops in sorted(by_batch.items()):
         quantity = quantities[batch_id]
-        if not number(quantity, integer=True):
+        if not is_stored_number(quantity, integer=True):
             block("piece_quantity_unknown", "批次数量必须是明确的非负整数，本次没有采用。请到批次管理补填数量。", batch_id=batch_id)
         work.extend(_batch_stages(batch_id, ops, quantity))
     return PieceAdoptionScope(tuple(sorted(work, key=lambda item: item.op_id)))

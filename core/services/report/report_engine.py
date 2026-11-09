@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any, BinaryIO, Callable, ClassVar, Dict
 
 from core.models.report_export import ReportExport, ReportExportDecision
 from core.services.capacity.resource_utilization_metrics import METRIC_VERSION
 from core.services.common.plan_query import SchedulePlanQueryService, SchedulePlanResolution
 from core.shared.degradation import DegradationCollector
+from core.shared.stored_dates import stored_day
 from data.repositories import MachineDowntimeRepository
 
 from .date_range_limits import ensure_report_date_range_within_limit
@@ -67,7 +68,11 @@ class ReportEngine:
         )
 
     def _parse_limited_report_date_range(self, start_date: str, end_date: str):
-        sd, ed = date.fromisoformat(start_date), date.fromisoformat(end_date)
+        if type(start_date) is not str or type(end_date) is not str:
+            raise TypeError("Report date range arguments must be str")
+        sd, ed = stored_day(start_date), stored_day(end_date)
+        if sd is None or ed is None:
+            raise ValueError("Invalid isoformat date string")
         ensure_report_date_range_within_limit(sd, ed, field="date_range")
         return sd, ed
 

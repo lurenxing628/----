@@ -1,6 +1,5 @@
 """Bytes-only first-sheet XLSX, explicit formulas rejection and typed output text."""
 
-import zipfile
 from io import BytesIO
 
 from core.errors import ValidationError
@@ -13,8 +12,8 @@ from core.models.workbench_batch_file import (
     table_descriptor,
 )
 from core.models.workbench_table_descriptor import cell_notes, extra_sheet_notice
-from core.services.common.excel_cell_values import cell_value, is_formula_or_error
 from core.services.common.excel_instruction_sheet import add_enum_dropdowns, append_instruction_sheet
+from core.services.workbench.facts.file_source import FileReadMessages, source_rows
 from core.services.workbench.facts.file_writer import ILLEGAL
 
 # 这里原本拿旧模板清单（excel_template_defaults）交叉校验一遍表头。那份清单 2026-09-21
@@ -22,66 +21,58 @@ from core.services.workbench.facts.file_writer import ILLEGAL
 # （core/models/workbench_batch_file.py 的 table_descriptor），用户下载到的模板由表描述现生成，
 # 再比一次旧清单只是在校验一份没人再用的数据。
 
+_READ_MESSAGES = FileReadMessages(
+    csv_encoding="",
+    csv_format="",
+    xlsx_empty="Excel没有数据工作表。",
+    xlsx_read="XLSX文件读取失败，请核对文件格式。",
+    xlsx_cell="不能导入公式或错误单元格，请提供实际值。",
+)
+
+
+def _file_error(message, row=1, field="file"):
+    return ValidationError(message, field=field, details={"row": row})
+
 
 def read_batch_file(content):
-    import openpyxl
-
     if not isinstance(content, bytes) or not content or len(content) > MAX_BYTES:
         raise ValidationError("请选择不超过10MB的有效批次XLSX文件。", field="file")
-    workbook = None
+    state = {"sheets": 1}
+    source = source_rows(content, "xlsx", state, error=_file_error, messages=_READ_MESSAGES)
     try:
-        with zipfile.ZipFile(BytesIO(content)) as archive:
-            if sum(item.file_size for item in archive.infolist()) > 64 * 1024 * 1024:
-                raise ValidationError("Excel展开后超过64MB，请拆分文件。", field="file")
-        workbook = openpyxl.load_workbook(BytesIO(content), read_only=True, data_only=False, keep_links=False)
-        rows, reference_columns = _read_first_sheet(workbook)
+        header = next(source, None)
+        headers = header[1] if header is not None else []
+        while headers and headers[-1] is None:
+            headers.pop()
+        reference_columns = [col for col in headers if col in READONLY_HEADERS]
+        if (header is not None and header[2]) or len(headers) != len(set(headers)) or "批次号" not in headers or set(headers) - set(HEADERS + READONLY_HEADERS):
+            raise ValidationError("表头必须包含批次号，其余请使用模板中的列名，不能有重复列或未知列。", field="headers")
+        rows = []
+        for line, values, cell_errors in source:
+            if not cell_errors and all(v is None for v in values):
+                continue
+            if len(rows) == MAX_ROWS:
+                raise ValidationError("一次最多导入 5000 行；这次一行都没有写入。", field="file")
+            rows.append(_read_data_row(line, values, cell_errors, headers))
         # 多表提示与其余 11 张表同一句话，见 core/models/workbench_table_descriptor.py。
-        warnings = extra_sheet_notice(len(workbook.worksheets))
+        warnings = extra_sheet_notice(state["sheets"])
         if "状态" in reference_columns:
             warnings.append({"code": "reference_column_ignored", "message": "文件中的“状态”仅供参考，不导入；已有批次保留当前状态，新批次从待排开始。"})
         if READONLY_HEADERS[1] in reference_columns:
             warnings.append({"code": "reference_column_ignored", "message": "文件中的“当前有效齐套（只读）”仅供参考，不导入；“维护齐套标记”保留原维护值，不会被有效齐套覆盖。"})
         return rows, warnings
-    except ValidationError:
-        raise
-    except Exception as exc:
-        raise ValidationError("XLSX文件读取失败，请核对文件格式。", field="file") from exc
     finally:
-        if workbook is not None:
-            workbook.close()
+        source.close()
 
 
-def _read_first_sheet(workbook):
-    if not workbook.worksheets:
-        raise ValidationError("Excel没有数据工作表。", field="file")
-    sheet = workbook.worksheets[0]
-    sheet.reset_dimensions()
-    iterator = sheet.iter_rows()
-    headers = [cell.value for cell in next(iterator, ())]
-    while headers and headers[-1] is None:
-        headers.pop()
-    reference_columns = [header for header in headers if header in READONLY_HEADERS]
-    if len(headers) != len(set(headers)) or "批次号" not in headers or set(headers) - set(HEADERS + READONLY_HEADERS):
-        raise ValidationError("表头必须包含批次号，其余请使用模板中的列名，不能有重复列或未知列。", field="headers")
-    rows = []
-    for line, cells in enumerate(iterator, 2):
-        if not any(cell.value is not None for cell in cells):
-            continue
-        if len(rows) == MAX_ROWS:
-            raise ValidationError("一次最多导入 5000 行；这次一行都没有写入。", field="file")
-        rows.append(_read_data_row(line, cells, headers))
-    return rows, reference_columns
-
-
-def _read_data_row(line, cells, headers):
+def _read_data_row(line, values, cell_errors, headers):
     errors = []
-    if any(is_formula_or_error(cell) for index, cell in enumerate(cells)
-           if index < len(headers) and headers[index] in HEADERS):
+    if any(index < len(headers) and headers[index] in HEADERS for index in cell_errors):
         errors.append("不能导入公式或错误单元格，请提供实际值。")
-    if any(cell.value is not None for cell in cells[len(headers):]):
+    if any(v is not None for v in values[len(headers):]) or any(index >= len(headers) for index in cell_errors):
         errors.append("数据行里有表头之外的多余列。")
-    values = {key: cell_value(cells[index]) if index < len(cells) else None for index, key in enumerate(headers) if key in HEADERS}
-    return {"row": line, "values": values, "errors": errors}
+    parsed = {key: values[index] if index < len(values) else None for index, key in enumerate(headers) if key in HEADERS}
+    return {"row": line, "values": parsed, "errors": errors}
 
 
 def write_batch_file(rows):

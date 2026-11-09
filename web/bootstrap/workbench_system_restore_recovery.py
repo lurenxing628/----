@@ -68,7 +68,7 @@ class WorkbenchSystemRestoreRecoveryHost:
 
     def shutdown(self, wait=True):
         # No worker or DB exists here. The owning server joins its HTTP handlers
-        # before entrypoint/atexit may release the launcher's original locks.
+        # before the entrypoint finally releases the launcher's original locks.
         return True
 
 

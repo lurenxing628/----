@@ -1,8 +1,8 @@
 """Saved trial requirement lineage; geometry never manufactures runtime work."""
 
 from core.algorithm_contracts.operation_effort import RUNTIME_REQUIREMENT_BASIS
-from core.services.workbench.facts.candidate_values import corrupt
 from core.services.workbench.facts.operation_effort_evidence import saved_operation_efforts
+from core.services.workbench.facts.trial_origin import invalid_trial_snapshot
 
 from .arrangements import same_arrangement
 
@@ -30,10 +30,11 @@ def _retained(value, row, admission):
 
 def operation_effort_ledger(rows, admission, *, before_efforts):
     """Collect source records or actual committed slot records, once per operation."""
-    source = admission["source"].get("operation_effort")
+    source = admission["source"]["operation_effort"]
     current_items = [row["current"]["operation_effort"] for row in rows if "operation_effort" in row["current"]]
     current = saved_operation_efforts({"effort_basis": RUNTIME_REQUIREMENT_BASIS, "items": current_items},
-                                      identities={row["operation_ref"]: row["original"]["operation"]["id"] for row in rows})
+                                      identities={row["operation_ref"]: row["original"]["operation"]["id"] for row in rows},
+                                      on_corrupt=invalid_trial_snapshot)
     arranged = {row["operation_ref"] for row in rows}
     items = [item for ref, item in before_efforts.items() if ref not in arranged]
     for row in rows:
@@ -44,19 +45,31 @@ def operation_effort_ledger(rows, admission, *, before_efforts):
             value = _retained(original_value, row, admission) if original_value is not None else None
         if value is not None:
             if value["op_id"] != row["original"]["operation"]["id"]:
-                corrupt()
+                invalid_trial_snapshot()
             items.append(value)
     if source is None and not items:
         return None
     return {"effort_basis": RUNTIME_REQUIREMENT_BASIS, "items": items}
 
 
-def operation_types(rows, refs, work_types, traces=()):
-    trace_types = {row["op_id"]: row["op_type_id"] for row in traces if "op_type_id" in row}
-    result = {}
-    for row in rows:
-        op = row["original"]["operation"]
-        key = trace_types.get(op["id"], op["op_type_id"])
-        result[row["operation_ref"]] = {"ref": refs.get(("op_type", key)),
-                                         "label": work_types.get(key, {}).get("name")}
-    return result
+def slot_operation_types(rows, refs, work_types):
+    return {
+        row["operation_ref"]: {
+            "ref": refs.get(("op_type", key)),
+            "label": work_types.get(key, {}).get("name"),
+        }
+        for row in rows
+        for key in (row["original"]["operation"]["op_type_id"],)
+    }
+
+
+def recorded_operation_types(rows, refs, work_types, results):
+    trace_types = {row["op_id"]: row["op_type_id"] for row in results}
+    return {
+        row["operation_ref"]: {
+            "ref": refs.get(("op_type", key)),
+            "label": work_types.get(key, {}).get("name"),
+        }
+        for row in rows
+        for key in (trace_types[row["original"]["operation"]["id"]],)
+    }

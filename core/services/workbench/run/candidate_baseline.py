@@ -12,7 +12,7 @@ from core.services.workbench.facts.candidate_baseline import AdmissionBaseline, 
 from core.services.workbench.facts.candidate_projection import baseline_capture, candidate_summary
 from core.services.workbench.facts.candidate_read_source import read_candidate_source
 from core.services.workbench.facts.candidate_store import CandidateStore
-from core.services.workbench.facts.candidate_tasks import operation_labels
+from core.services.workbench.facts.candidate_tasks import operation_labels, operation_sequence_order
 from core.services.workbench.facts.zero_duration_evidence import overlaps
 from core.services.workbench.plan.adoption_baseline import read_adoption_source
 from core.shared.strict_json import clone_json
@@ -181,8 +181,7 @@ class WorkbenchRunCandidateBaselineQueryService:
 
         def key(row):
             if scope.sort == "sequence":
-                value = row["sequence"]
-                return value is None, int(value) if value is not None else 0, row["operation_ref"]
+                return operation_sequence_order(row)
             intervals = [row["candidate"]] if row["candidate"] else row["baseline_segments"]
             values = [item[scope.sort] for item in intervals if item[scope.sort] is not None]
             return not values, min(values) if values else "", row["operation_ref"]
@@ -201,7 +200,7 @@ class WorkbenchRunCandidateBaselineQueryService:
         return {"candidate": candidate, "generation": {
                     "run_ref": run["run_ref"], "accepted_at": run["accepted_at"], "finished_at": run["finished_at"],
                     "metadata_basis": "captured_at_run_admission", "execution_basis": "captured_at_run_admission",
-                    "current_entities_consulted": False, "formal_version_allocated": False, "input": clone_json(admission.settings)},
+                    "input": clone_json(admission.settings)},
                 "baseline": {**baseline_capture(admission.baseline, run["accepted_at"]), "available": captured,
                              "comparison_available": available, "reason": reason},
                 "comparisons": rows, "operation_count": len(rows), "full_operation_count": count, "rows_complete": True,

@@ -3,7 +3,7 @@
 from typing import Any, Dict
 
 _STATE_FIELDS = ("date", "explicit", "calendar_ref", "revision", "row", "identity", "history", "effective", "default_periods")
-_STORED_FIELDS = ("day_type", "shift_start", "shift_end", "shift_hours", "efficiency", "allow_normal", "allow_urgent", "remark")
+_STORED_FIELDS = ("day_type", "efficiency", "allow_normal", "allow_urgent", "remark")
 
 
 def calendar_snapshot(day: Dict[str, Any]) -> Dict[str, Any]:

@@ -8,7 +8,7 @@ from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint, read_endpoint
 from .data_context import request_data_context
-from .read_context import bind_read_snapshot
+from .read_context import unbound_snapshot
 from .write_context import issue_write_context, validate_write_context
 
 
@@ -30,14 +30,11 @@ def _body(required):
     return value
 
 
-def _query(data, scope):
-    return query_success(data, bind_read_snapshot(scope, data, None))
-
-
 @read_endpoint
 def trial_adopt_preview(scenario_ref):
     _body(())
-    return _query(_service().preview(scenario_ref), {"scenario_ref": scenario_ref, "action": "adopt-preview"})
+    data = _service().preview(scenario_ref)
+    return query_success(data, unbound_snapshot())
 
 
 @api_endpoint
@@ -54,8 +51,7 @@ def trial_adoption_receipt(scenario_ref, request_key):
     if set(request.args) != {"data_context_ref"} or any(len(values) != 1 for _, values in request.args.lists()):
         reject("invalid_input", "查询采用结果的条件不完整、有多余项或重复项，请重新查询。", 400)
     result = _service().resolve_command(scenario_ref, request_key, data_context_ref=request.args["data_context_ref"])
-    return _query(result,
-                  {"scenario_ref": scenario_ref, "request_key": request_key})
+    return query_success(result, unbound_snapshot())
 
 
 def register_trial_adoption_routes(bp):

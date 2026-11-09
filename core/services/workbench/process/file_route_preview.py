@@ -76,11 +76,12 @@ class RouteFilePreview:
                    route_summary=None)
         try:
             values = source["values"]
-            code = resource_text(values.get("business_code"), "business_code")
-            row["business_code"] = code
-            if values["business_code"] != code and values["business_code"] in self.parts:
-                raise ValidationError("原图号前后有空格。请到基础资料改正图号。", field="business_code")
+            raw_code = values.get("business_code")
+            resource_text(raw_code, "business_code")
+            row["business_code"] = raw_code
             part = self._resolve(row)
+            if part is None and raw_code != raw_code.strip():
+                raise ValidationError("图号不能有首尾空格，请修正后重新导入。", field="business_code")
             if not row["errors"]:
                 self._propose(row, values, part)
         except ValidationError as exc:
@@ -126,8 +127,7 @@ class RouteFilePreview:
     @staticmethod
     def _proposed_fields(row, values, part):
         before = row["before"]
-        # The codec omits empty cells. Also keep that contract for direct decoded callers.
-        supplied = {key: value for key, value in values.items() if key != "business_code" and value != ""}
+        supplied = {key: value for key, value in values.items() if key != "business_code"}
         if part is None:
             payload = {"business_code": row["business_code"], **supplied}
             after = normalize_process_part_create(payload)

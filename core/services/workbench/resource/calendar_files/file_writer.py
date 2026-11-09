@@ -71,7 +71,7 @@ def _csv(kind, rows, filename):
         writer.writerow([item["label"] for item in public_columns(kind)])
         for count, row in enumerate(rows, 1):
             values = [_value(row[field], field, count + 1, "csv") for field in columns]
-            writer.writerow(["" if field in PERIOD_COLUMNS and value == "" else "'" + value
+            writer.writerow(["" if (field in PERIOD_COLUMNS or field in ("shift_start", "shift_end")) and value == "" else "'" + value
                              for field, value in zip(columns, values)])
         text.flush()
         buffer.seek(0)

@@ -6,7 +6,7 @@ Factory integration (register before ANY DB-opening before_request hook):
     close_workbench_request_connection(conn)  # mount failure AND _close_db
     make_server(..., request_handler=WorkbenchRequestHandler)  # disconnect cleanup
 
-Shutdown order in entrypoint finally AND atexit backup/lock-release guards:
+Shutdown order in the entrypoint finally (the only launcher shutdown path):
     require the registered gate.shutdown(wait=True) is True
     require existing run runtime.shutdown(wait=True) is True
     only then backup or release the original launcher locks

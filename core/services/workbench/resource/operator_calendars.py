@@ -16,37 +16,21 @@ from core.errors import ValidationError
 from core.infrastructure.transaction import in_transaction_context
 from core.infrastructure.workbench_metadata_schema import entity_key
 from core.models.calendar import OperatorCalendar
-from core.models.calendar_periods import decode_periods
-from core.models.workbench_calendar import calendar_date, calendar_domain_fields
+from core.models.workbench_calendar import (
+    calendar_date,
+    calendar_domain_fields,
+    form_field_error,
+    require_periods_when_rest_turns_work,
+)
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_operator_calendar import normalize_operator_calendar_input
+from core.services.scheduler.calendar.admin import CalendarNormalizationContext
 from core.services.scheduler.calendar.service import CalendarService
 from data.repositories.workbench_calendar_query_repo import WorkbenchCalendarQueryRepository
 
-from .calendar_reading import effective_calendar_day, engine_read_row, is_working_row
+from .calendar_reading import CalendarProjection, effective_calendar_day, is_working_row
 
-_PUBLIC_FIELDS = ("day_type", "shift_start", "shift_end", "shift_hours", "efficiency",
-                  "allow_normal", "allow_urgent", "remark")
-
-
-def _patch_day_hours(payload, fields, before):
-    row = before["row"]
-    payload.update(calendar_domain_fields(fields))
-    if row is not None and row.get("periods_json") not in (None, "[]") and "periods" in fields and fields["periods"] is None:
-        if "shiftEnd" not in fields:
-            payload["shift_end"] = None
-            payload.pop("shift_hours", None)
-    if ("shiftEnd" in fields and fields["shiftEnd"] is None) or (
-        "shiftStart" in fields and payload.get("shift_end") is None
-    ):
-        payload.pop("shift_hours", None)
-    if fields.get("type") == "work" and row is not None and row["day_type"] == "holiday":
-        payload.pop("shift_hours", None)
-    if payload.get("day_type") == "holiday":
-        payload["shift_start"] = payload["shift_end"] = None
-        payload["shift_hours"] = 0
-        if payload.get("periods_json") is not None or "periods" in payload:
-            payload["periods"] = []
+_PUBLIC_FIELDS = ("day_type", "efficiency", "allow_normal", "allow_urgent", "remark")
 
 
 def _date_key(value: Any) -> str:
@@ -113,6 +97,13 @@ class WorkbenchOperatorCalendarService:
                 "calendar_ref": identity["ref"] if identity else None,
                 "revision": identity["revision"] if identity else None, **state}
 
+    def _listed_state(self, day: str, states: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+        """月历和范围预览列出的一天：单独设置过的行经引擎缓存解码一次时段，月合计和 public_day 共用这一份。"""
+        state = self._state(day, states)
+        row = state["row"]
+        state["periods"] = None if row is None else self._calendar._engine.decoded_periods_for_json(row["periods_json"])
+        return state
+
     def month(self, year: int, month: int) -> Dict[str, Any]:
         """一个月的个人日历。没有单独设置的日期只回 explicit=False，不替排产猜它当天怎么上班。"""
         if type(year) is not int or type(month) is not int or not 1 <= year <= 9999 or not 1 <= month <= 12:
@@ -127,23 +118,17 @@ class WorkbenchOperatorCalendarService:
         days = []
         for offset in range(count):
             day = first + timedelta(days=offset)
-            state = self._state(day.isoformat(), states)
+            state = self._listed_state(day.isoformat(), states)
             days.append({**state, "day": day.day, "weekday": day.weekday(),
                          "is_weekend": day.weekday() >= 5, "is_today": day == now.date()})
         cells = [None] * first.weekday() + days
         cells += [None] * (-len(cells) % 7)
-        readings = []
-        for day in days:
-            if day["explicit"]:
-                reading = engine_read_row(day["row"])
-                day["reading"] = reading
-                readings.append(reading)
         return {"operator_code": self.operator_code, "year": year, "month": month,
                 "as_of": now.isoformat(timespec="seconds"), "time_basis": "factory_local",
                 "days": days, "cells": cells, "default_periods": default_periods,
                 "previous_month": self._adjacent(year, month, -1), "next_month": self._adjacent(year, month, 1),
                 "stats": {"configured": sum(day["explicit"] for day in days),
-                          "work_days": sum(is_working_row(reading) for reading in readings)}}
+                          "work_days": sum(is_working_row(day["row"], day["periods"]) for day in days if day["explicit"])}}
 
     @staticmethod
     def _adjacent(year: int, month: int, delta: int) -> Optional[Dict[str, int]]:
@@ -158,49 +143,48 @@ class WorkbenchOperatorCalendarService:
         """这个人某一天的完整状态。states 必须来自同一次 range_states。"""
         return self._state(day, states)
 
-    def proposed_row(self, fields: Dict[str, Any], before: Dict[str, Any]) -> OperatorCalendar:
+    def proposed_row(
+        self,
+        fields: Dict[str, Any],
+        before: Dict[str, Any],
+        *,
+        context: CalendarNormalizationContext,
+        projection: CalendarProjection,
+    ) -> OperatorCalendar:
         """按领域规则算出这一天保存后的行；与人员详情面板走同一条一致性校验，不合规直接抛拒绝。
 
-        fields 用的是界面字段名（type/shiftStart/shiftEnd/eff/allowNormal/allowUrgent/note），
+        fields 用的是界面字段名（type/periods/eff/allowNormal/allowUrgent/note），
         不经过界面的输入模型，取值合法性由调用方自己校验。
         """
-        return self._proposed(fields, before)
+        return self._proposed(fields, before, context=context, projection=projection)
 
     # ---------- 写 ----------
 
-    def _proposed(self, fields: Dict[str, Any], before: Dict[str, Any]) -> OperatorCalendar:
+    def _proposed(
+        self,
+        fields: Dict[str, Any],
+        before: Dict[str, Any],
+        *,
+        context: CalendarNormalizationContext,
+        projection: CalendarProjection,
+    ) -> OperatorCalendar:
         """以这一天的原行为基底再打补丁，没给的项保持原样。
 
-        旧行可能只保存开始和工时；非时间修改须保留这段工时。
-        明确填写起止或多时段时由领域层重算；改休息日时清空班次和工时。
+        新增上班的一天必须填工作时段（没有个人行的日子按班次或全局日历走，不替它套默认时段）；
+        原来是假期的一天改成上班同样必须填。显式空数组表示明确零工时。
         """
+        row = before["row"]
         payload: Dict[str, Any] = {"operator_id": self.operator_code, "date": before["date"]}
-        if before["row"] is not None:
-            # 旧行空着的班次开始、工时、效率先按排产引擎的解释补上：三项全空时保存规则会把它当成新建的一天、
-            # 套上默认工作时间，没改的班次就被悄悄换掉了。
-            reading = before.get("reading") or engine_read_row(before["row"])
-            payload.update({key: reading[key] for key in
-                            ("day_type", "shift_start", "shift_end", "shift_hours", "efficiency",
-                             "allow_normal", "allow_urgent", "remark", "periods_json")})
-            if "periods" not in fields and fields.get("type") != "rest":
-                if payload.get("periods_json") == "[]":
-                    # 休息日或空时段日：从假期改成上班，或显式填了班次起止，才按单班保存。
-                    if before["row"]["day_type"] == "holiday" or ({"shiftStart", "shiftEnd"} & fields.keys()):
-                        payload["periods_json"] = None
-                        payload.pop("shift_hours", None)
-                else:
-                    fields = {
-                        key: value for key, value in fields.items()
-                        if not (
-                            (key == "shiftStart" and value == reading.get("shift_start"))
-                            or (key == "shiftEnd" and value == reading.get("shift_end"))
-                        )
-                    }
-                if payload.get("periods_json") not in (None, "[]") and ({"shiftStart", "shiftEnd"} & fields.keys()):
-                    raise ValidationError("这一天已按多时段设置，请修改逐段起止时间。", field="fields.periods")
-        _patch_day_hours(payload, fields, before)
-        model = self._calendar._admin._build_operator_calendar_from_payload(payload)
-        effective_calendar_day(before["date"], model)
+        if row is not None:
+            payload.update({key: row[key] for key in
+                            ("day_type", "efficiency", "allow_normal", "allow_urgent", "remark", "periods_json")})
+        patch = calendar_domain_fields(fields)
+        if row is None and patch["day_type"] == "workday" and "periods" not in patch:
+            raise ValidationError("上班的日子必须填写工作时段。", field="periods")
+        require_periods_when_rest_turns_work(before["date"], row, patch)
+        payload.update(patch)
+        model = self._calendar._admin._build_operator_calendar_from_payload(payload, context=context)
+        effective_calendar_day(before["date"], model, projection=projection)
         return model
 
     def _require_write_transaction(self) -> None:
@@ -217,8 +201,14 @@ class WorkbenchOperatorCalendarService:
         return self._apply_day(action, payload, checked)
 
     def _apply_day(self, action, payload, before):
-        with self._calendar.normalization_operation():
-            after = self._proposed(payload["fields"], before) if action == "upsert" else None
+        context = self._calendar.normalization_context()
+        try:
+            after = (self._proposed(payload["fields"], before, context=context,
+                                    projection=CalendarProjection({}, engine=self._calendar._engine))
+                     if action == "upsert" else None)
+        except ValidationError as exc:
+            # 表单入口：领域规则报的中立字段名在这里映射成界面路径。
+            raise form_field_error(exc) from exc
         return self._write(before, after)
 
     def _write(self, before, after) -> WorkbenchCommandOutcome:
@@ -260,7 +250,7 @@ class WorkbenchOperatorCalendarService:
         if not self.conn.in_transaction:
             raise RuntimeError("个人日历读取必须在快照事务中执行。")
         states = self.range_states(request["start_date"], request["end_date"])
-        days = [self._state(day, states) for day, state in states.items() if state["row"] is not None]
+        days = [self._listed_state(day, states) for day, state in states.items() if state["row"] is not None]
         return {"request": request, "days": days, "count": len(days)}
 
     def _clear_checked_range(self, current):
@@ -271,13 +261,9 @@ class WorkbenchOperatorCalendarService:
 
     @staticmethod
     def public_day(state: Dict[str, Any]) -> Dict[str, Any]:
-        """对外投影：只暴露这一天的业务字段与是否单独设置，不暴露内部修订号以外的元数据。
-
-        旧行空着的班次开始、工时、效率按排产引擎的解释显示，与排产对这一天的理解一致。
-        """
-        row = (state.get("reading") or engine_read_row(state["row"])) if state["row"] is not None else None
+        """对外投影：只暴露这一天的业务字段与是否单独设置，不暴露内部修订号以外的元数据。"""
+        row = state["row"]
         return {"date": state["date"], "explicit": state["explicit"],
-                "calendar_ref": state["calendar_ref"],
-                "periods": decode_periods(row.get("periods_json")) if row is not None else None,
+                "calendar_ref": state["calendar_ref"], "periods": state["periods"],
                 **({key: row[key] for key in _PUBLIC_FIELDS} if row is not None
                    else {key: None for key in _PUBLIC_FIELDS})}

@@ -11,7 +11,6 @@ from core.models.workbench_run_compute import CandidateRunInputError
 from core.models.workbench_trial_adoption import TrialAdoptionBlocked, TrialAdoptionEvidence
 from core.services.scheduler.execution.execution_ledger_adapter import ledger_read_snapshot
 from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
-from core.services.workbench.facts.production_capture import ProductionFactsCapture
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario, schedule_rows
 from core.services.workbench.run.candidate_adoption_storage import _require_official_baseline
@@ -20,7 +19,7 @@ from core.services.workbench.run.compute_validation import validate_candidate
 from core.services.workbench.run.jobs_facts import run_execution_projections
 
 from .adoption_input import prepare_trial_adoption_input
-from .facts import live_context
+from .facts import live_context, saved_capture
 from .materials import run_window
 from .validation import TrialValidator
 
@@ -41,15 +40,14 @@ def validate_trial_adoption(conn, scenario_ref, *, data_context):
             scenario = load_saved_scenario(conn, scenario_ref)
             saved, head, rows = scenario.saved, scenario.head, scenario.rows
             admission = head["admission"]
-            capture = ProductionFactsCapture(conn)
+            capture = saved_capture(conn, admission)
             live = live_context(conn, scenario.origin, capture, execution_service=execution_service,
                                 data_context=data_context)
             _current_baseline(admission, live)
             _original_work(rows, live)
             checked, settings, held, trial_intervals = _scenario_validation(conn, saved, admission, rows, live)
-            issues = [row for row in checked["issues"] if row["code"] != "scenario_adoption_not_connected"]
-            if issues:
-                raise TrialAdoptionBlocked("scenario_constraint_unproven", "试调方案没有通过当前的完整核对，正式计划没有改变。", issues)
+            if checked["issues"]:
+                raise TrialAdoptionBlocked("scenario_constraint_unproven", "试调方案没有通过当前的完整核对，正式计划没有改变。", checked["issues"])
             projections = run_execution_projections(conn, settings, capture=capture,
                 existing=live["preflight_facts"].execution_projections.values(), service=execution_service)
             _require_official_baseline(live["baseline"], projections)
@@ -69,16 +67,19 @@ def validate_trial_adoption(conn, scenario_ref, *, data_context):
             snapshot = {"proof": proof, "revisions": live["revisions"], "data_context_ref": live["data_context_ref"]}
             return TrialAdoptionEvidence(scenario_ref, head["draft_ref"], live["baseline"], snapshot, prepared, payload,
                                          run_window(admission), proof=proof)
-    except TrialAdoptionBlocked:
-        raise
     except CandidateAdoptionBlocked as exc:
         if exc.code == "official_scope_not_covered":
             raise TrialAdoptionBlocked(exc.code,
                 "试调方案没有覆盖当前正式计划的全部工序。请将相关批次一起排产后再试调。") from exc
         raise TrialAdoptionBlocked(
             exc.code, "试调方案没有通过采用前的核对，正式计划没有改变。请回到试调列表重新预检。") from exc
-    except WorkbenchCommandRejected:
+    except TrialAdoptionBlocked:
         raise
+    except WorkbenchCommandRejected as exc:
+        if exc.code != "trial_snapshot_invalid":
+            raise
+        # 草稿或方案保存的资料读不出来：采用预览照样给出阻断说明，正式计划没有改变。
+        raise TrialAdoptionBlocked(exc.code, str(exc)) from exc
     except CandidateRunInputError as exc:
         raise TrialAdoptionBlocked(*_INPUT_PROBLEMS.get(exc.reason, _INPUT_UNPROVEN)) from exc
     except (PieceAdoptionBlocked, ValidationError, AppError) as exc:

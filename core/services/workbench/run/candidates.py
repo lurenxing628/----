@@ -131,6 +131,5 @@ def _generation(run, capture, candidate, *, business_fields):
     values["time_budget_seconds"] = settings["time_budget_seconds"]
     return {"run_ref": run["run_ref"], "accepted_at": run["accepted_at"], "finished_at": run["finished_at"],
             "metadata_basis": "captured_at_run_admission", "execution_basis": "captured_at_run_admission",
-            "current_entities_consulted": False, "formal_version_allocated": False,
             "input": values, "data_gaps": gaps, "algorithm": algorithm_facts(candidate["artifact"], business_fields=business_fields),
             "baseline": baseline_capture(capture["baseline"], run["accepted_at"])}

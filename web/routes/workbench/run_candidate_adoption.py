@@ -7,7 +7,7 @@ from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint, read_endpoint
 from .data_context import request_data_context
-from .read_context import bind_read_snapshot
+from .read_context import unbound_snapshot
 from .write_context import issue_write_context, validate_write_context
 
 
@@ -32,8 +32,7 @@ def _body(fields):
 def run_candidate_adopt_preview(candidate_ref):
     _body(())
     data = _service().preview(candidate_ref)
-    snapshot = bind_read_snapshot({"candidate_ref": candidate_ref, "action": "adopt-preview"}, data, None)
-    return query_success(data, snapshot)
+    return query_success(data, unbound_snapshot())
 
 
 @api_endpoint

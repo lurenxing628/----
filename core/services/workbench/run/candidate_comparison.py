@@ -85,7 +85,7 @@ def comparison_metadata(source, rows, scope=None):
     run = source.run
     generation = {"run_ref": run["run_ref"], "accepted_at": run["accepted_at"], "finished_at": run["finished_at"],
                   "metadata_basis": "captured_at_run_admission", "execution_basis": "captured_at_run_admission",
-                  "current_entities_consulted": False, "formal_version_allocated": False, "input": source.input}
+                  "input": source.input}
     baseline = {"baseline_ref": source.baseline["plan_ref"], "version": source.baseline["version"],
                 "kind": "admission_official", "captured_at": run["accepted_at"],
                 "captured_task_count": len(source.analysis_tasks("reference")), "available": captured,
@@ -153,7 +153,7 @@ def _projection(source, scope):
             "resource_scope_complete": not bool(missing_resources), "resource_scope_unknown_rows": missing_resources,
             "basis": {"comparison": "candidate_minus_admission_official", "batch_scope": "admission_selected_batches",
                       "delivery": "complete_captured_batch_operations", "resources": "same_range_daily_peak_available_occupancy",
-                      "changeovers": "same_range_scheduled_operation_type_changes", "current_entities_consulted": False},
+                      "changeovers": "same_range_scheduled_operation_type_changes"},
             "capabilities": {"view": True, "adopt": False, "edit_draft": False, "report_actual": False}}
     result["tradeoffs"] = candidate_tradeoffs(result, before_delivery, after_delivery, before_tasks, after_tasks,
         subject_operation_refs={row["operation_ref"] for row in before + after},

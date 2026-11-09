@@ -13,7 +13,6 @@ from core.services.scheduler.contracts.external_context import (
     merged_supplier_problem,
 )
 from core.services.workbench.facts.candidate_archive import require_candidate_scope
-from core.services.workbench.facts.candidate_facts import archived_table
 from core.services.workbench.facts.candidate_projection import (
     candidate_completeness,
     candidate_label,
@@ -24,15 +23,15 @@ from core.services.workbench.facts.candidate_tasks import validate_saved_tasks
 from core.services.workbench.facts.decision_baseline import same_saved_arrangements
 from core.services.workbench.facts.decision_baseline_source import decision_baseline_source_resolver
 from core.services.workbench.facts.material_deferral_evidence import archived_deferred_operation_evidence
-from core.services.workbench.facts.preflight_checks import stored_date
 from core.services.workbench.facts.trial_origin import TrialOrigin
 from core.services.workbench.facts.zero_duration_evidence import point_basis
 from core.services.workbench.plan.projection import project_plan
 from core.services.workbench.plan.read_context import PlanReadContext
 from core.services.workbench.run.piece_adoption_trial import trial_piece_predecessors
+from core.shared.stored_dates import stored_date
 from data.repositories.workbench_trial_repo import new_ref
 
-from .effort import operation_types
+from .effort import recorded_operation_types, slot_operation_types
 from .execution_anchors import attach_execution_anchors, resolve_execution_anchors
 from .facts import LiveTables, ProductionFactsCapture, entity_maps, live_context
 from .materials import plan_material_policy
@@ -123,8 +122,8 @@ def _plan_capture(conn, ref, capture):
         parsed = context.parsed_summary(locator.version)
         deferred, deferred_issues = archived_deferred_operation_evidence(parsed)
         runtime = _formal_effort_source(conn, ref, locator.version, delivery_record, list(raw.values()))
-        slot_types = operation_types(result, refs, capture.index("OpTypes", "op_type_id"))
-        types = runtime.get("operation_types")
+        slot_types = slot_operation_types(result, refs, capture.index("OpTypes", "op_type_id"))
+        types = runtime["operation_types"]
         if types is None:
             types = {row["operation_ref"]: {"ref": None, "label": None} for row in result}
         return result, {"identity": project_plan(entry, ref), **runtime,
@@ -138,7 +137,7 @@ def _formal_effort_source(conn, ref, version, record, rows):
     source = decision_baseline_source_resolver(conn)(plan_ref=ref, version=version, history=history)
     evidence = source.get("evidence")
     if evidence is not None and not same_saved_arrangements(rows, evidence["arranged"]):
-        return {"operation_effort": None, "operation_effort_issues": [
+        return {"operation_effort": None, "operation_types": None, "operation_effort_issues": [
             {"code": "adoption_plan_drift", "message": "正式安排与原采用来源不同，准备需求分解未知。"}]}
     return {"operation_effort": source.get("operation_effort"), "operation_types": source.get("operation_types"),
             "operation_effort_issues": [source["issue"]] if source.get("issue") else []}
@@ -197,9 +196,9 @@ def _candidate(conn, ref):
         extra = {"identity": {"candidate_ref": ref, "run_ref": run_ref, "kind": "candidate",
                                "display_name": display_name, "completeness": completeness},
                  "capture": capture, "dispositions": scope, "operation_effort": receipt["operation_effort"],
-                 "trial_operation_types": operation_types(result, facts.entity_refs, work_types),
-                 "operation_types": operation_types(result, facts.entity_refs, work_types,
-                      candidate["artifact"].get("results", []))}
+                 "trial_operation_types": slot_operation_types(result, facts.entity_refs, work_types),
+                 "operation_types": recorded_operation_types(result, facts.entity_refs, work_types,
+                      candidate["artifact"]["results"])}
         return result, extra, facts.tables["BatchOperations"], issues
 
 
@@ -226,19 +225,20 @@ def prepare_base(conn, intent, *, execution_service, data_context):
     return admission, rows, live, resolved_anchors
 
 
-def _original_external_facts(original_tables, live):
-    contexts = (archived_table(original_tables, "BatchExternalContexts") if original_tables is not None
-                else live["facts"]["tables"].get("BatchExternalContexts"))
-    by_operation = {item["operation_id"]: item for item in contexts or []}
-    operations = (archived_table(original_tables, "BatchOperations") if original_tables is not None
-                  else live["facts"]["tables"]["BatchOperations"])
-    return by_operation, member_index(by_operation, operations or [])
+def _original_external_facts(source_facts, live):
+    """A candidate base keeps its saved work relations; an official base reads this transaction's."""
+    if source_facts is None:
+        tables = live["facts"]["tables"]
+        contexts, operations = tables["BatchExternalContexts"], tables["BatchOperations"]
+    else:
+        contexts, operations = source_facts.table("BatchExternalContexts"), source_facts.table("BatchOperations")
+    by_operation = {item["operation_id"]: item for item in contexts}
+    return by_operation, member_index(by_operation, operations)
 
 
 def _attach_original_context(rows, origin, live):
     original_execution = origin.source_execution
-    original_tables = origin.facts.archive if origin.facts is not None else None
-    by_operation, members = _original_external_facts(original_tables, live)
+    by_operation, members = _original_external_facts(origin.facts, live)
     for row in rows:
         original = row["original"]
         original.setdefault("execution", original_execution[row["operation_ref"]])

@@ -61,7 +61,7 @@ class DecisionPreparation:
             source = self.source
             formal = key == "reference" and source.comparison_mode == "admission_official"
             available = self.available(key)
-            requirements_available = available if formal else (source.receipt or {}).get("operation_effort") is not None or available
+            requirements_available = available if formal else source.receipt["operation_effort"] is not None or available
             projection = project_decision_preparation(source.facts, source.scope["operation_refs"],
                 {} if formal else source.operation_efforts, self.source.analysis_tasks(key), run_ref=source.run["run_ref"], available=available,
                 deferred_refs=self.reference_deferred if key == "reference" else source.deferred_refs,

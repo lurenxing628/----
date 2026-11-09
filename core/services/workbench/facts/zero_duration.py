@@ -5,8 +5,7 @@ from datetime import datetime
 from core.algorithm_contracts.schedule_point_evidence import SchedulePointEvidence
 from core.algorithm_runtime.internal_slot import estimate_point_slot
 from core.models.workbench_preflight import public_ref
-
-from .preflight_checks import number
+from core.shared.strict_parse import is_stored_number
 
 
 class PointEventError(ValueError):
@@ -19,7 +18,7 @@ def point_work_quantity(operation, batch, execution, operation_ref):
     """Use the original single-piece target, never the enclosing batch quantity."""
     _point_work_identity(operation, batch, execution, operation_ref)
     piece, quantity = operation.get("piece_id"), batch.get("quantity")
-    if not number(quantity, integer=True):
+    if not is_stored_number(quantity, integer=True):
         raise PointEventError("quantity_unknown", "零工时工序没有读到原批次数量，不能核对。请先补好批次数量。")
     if piece is not None:
         if not _canonical_identity(piece) or quantity == 0:
@@ -33,7 +32,7 @@ def point_work_quantity(operation, batch, execution, operation_ref):
 
 
 def _point_work_identity(operation, batch, execution, operation_ref):
-    if (not number(operation.get("id"), integer=True, positive=True)
+    if (not is_stored_number(operation.get("id"), integer=True, positive=True)
             or operation.get("source") != "internal"
             or not _canonical_identity(operation.get("batch_id"))
             or operation["batch_id"] != batch.get("batch_id")
@@ -48,12 +47,12 @@ def _canonical_identity(value):
 
 def internal_duration_hours(setup_hours, unit_hours, quantity):
     """Validate operands before multiplication: missing/negative times are not zero."""
-    if not number(setup_hours) or not number(unit_hours):
+    if not is_stored_number(setup_hours) or not is_stored_number(unit_hours):
         raise PointEventError("hours_missing", "换型工时和单件工时必须填好，而且不能是负数。")
-    if not number(quantity, integer=True):
+    if not is_stored_number(quantity, integer=True):
         raise PointEventError("quantity_unknown", "目标数量必须填 0 或正整数。")
     total = setup_hours + unit_hours * quantity
-    if not number(total):
+    if not is_stored_number(total):
         raise PointEventError("invalid_duration", "算出来的总工时超出可支持的范围，不能继续。")
     return total
 
@@ -91,8 +90,6 @@ def candidate_point_validator(schedule_input):
     """Build one index for all rows in this exact prepared input."""
     operations = {op.id: op for op in schedule_input.operations}
     dispositions = {item["op_id"]: item for item in schedule_input.dispositions}
-    if len(operations) != len(schedule_input.operations) or len(dispositions) != len(schedule_input.dispositions):
-        raise PointEventError("point_identity_unproven", "零工时工序的输入里有重复工序，不能核对。")
 
     def validate(row):
         return _candidate_point_evidence(schedule_input, row, operations, dispositions)

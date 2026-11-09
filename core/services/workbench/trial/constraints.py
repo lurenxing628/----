@@ -192,13 +192,10 @@ def _archived_operations(rows, live):
         for op_id, ref in origin.facts.operation_refs.items():
             if op_id in ops:
                 archived.setdefault(ref, ops[op_id])
-    tables = origin.admission["facts"]["tables"]
-    ops = {row["id"]: row for row in tables["BatchOperations"]}
-    for item in tables["WorkbenchPlanSourceRefs"]:
-        if item["kind"] == "operation" and item["active"] == 1:
-            op = ops.get(int(item["source_key"]))
-            if op is not None:
-                archived.setdefault(item["ref"], op)
+    ops = origin.admission_operations
+    for op_id, ref in origin.admission_refs_by_op_id.items():
+        if op_id in ops:
+            archived.setdefault(ref, ops[op_id])
     return archived
 
 

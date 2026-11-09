@@ -61,10 +61,11 @@ def piece_graph_preparer(prepared):
         score_requested = graph_score_requested(weights)
         nodes, edges, order, metrics, payload = _piece_graph_data(prepared, score_requested=score_requested)
         op_id_sets = schedule_input_op_id_sets(candidate_input)
+        schedulable_op_ids, _fixed_op_ids = op_id_sets
         score, score_public, score_diagnostics = build_graph_score_projection(
             mode="on", is_dag=True, score_requested=score_requested,
             score_weights=weights, nodes=nodes, node_metrics=metrics,
-            topological_order=order, op_id_sets=op_id_sets)
+            topological_order=order, schedulable_op_ids=schedulable_op_ids)
         context: Any = build_graph_ready_context(
             nodes=nodes, edges=edges, enabled=True, score_context=score, op_id_sets=op_id_sets
         )

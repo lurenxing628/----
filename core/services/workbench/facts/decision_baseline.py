@@ -15,7 +15,7 @@ from core.services.workbench.facts.adoption_baseline_values import REASONS, Adop
 from core.services.workbench.facts.material_deferral_evidence import archived_deferred_payload_evidence
 from core.shared.strict_json import canonical_json
 
-from .candidate_baseline import AdmissionBaseline, ArchivedAdmissionPlan, baseline_interval, invalid_baseline
+from .candidate_baseline import AdmissionBaseline, baseline_interval, invalid_baseline
 from .candidate_facts import index_rows
 from .candidate_tasks import operation_labels
 from .candidate_values import bounded_size, gap
@@ -224,18 +224,6 @@ def _official_plan_rows(admission):
     rows = _last_official_rows(admission.schedule, version)
     sources = _official_sources(admission, {row["version"] for row in rows} | {version})
     return _bindings(admission, rows, sources), sources
-
-
-def read_decision_baseline_members(capture, facts):
-    """Read verified permanent official members without rebuilding execution DTOs."""
-    admission = ArchivedAdmissionPlan(capture, facts)
-    identity = _official_identity(admission)
-    rows, sources = _official_plan_rows(admission)
-    for version, source in sources.items():
-        source, _ = _adoption_identity(source)
-        if version == admission.baseline["version"]:
-            identity.update({key: source[key] for key in ("source_candidate_ref", "source_run_ref")})
-    return {"identity": identity, "operation_refs": sorted({row["operation_ref"] for row in rows})}
 
 
 def read_decision_baseline(capture, facts, disposition, *, source_resolver):

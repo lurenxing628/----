@@ -18,10 +18,10 @@ from core.models.operation_execution_scope import parse_operation_event_time
 from core.models.workbench_preflight import issue, local_date
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.services.scheduler.run.schedule_payload_contract import arrangement_row
-from core.services.workbench.facts.preflight_checks import number
 from core.services.workbench.facts.stored_algo_inputs import stored_batch, stored_batch_operation, stored_operation
 from core.services.workbench.facts.table_cells import number_text
 from core.services.workbench.facts.zero_duration import PointEventError, estimate_point_event
+from core.shared.strict_parse import is_stored_number
 
 from .candidate_adoption_constraints import arrangement_problem, calendar_duration_conflict, external_holds_resources
 from .input_config import window_label
@@ -80,7 +80,7 @@ class _Context:
         """与排产输入同口径：合并外协组按整组周期，其余按本道外协周期；读不出有效天数返回 None（由资料检查另行拦下）。"""
         context = self.external_contexts.get(op["id"]) or {}
         days = context.get("total_days") if context.get("merge_mode") == "merged" else op["ext_days"]
-        return days if number(days, positive=True) else None
+        return days if is_stored_number(days, positive=True) else None
 
 
 def _resource_problem(context: _Context, held: _Held, batch, raw):

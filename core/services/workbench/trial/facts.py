@@ -2,12 +2,9 @@
 
 from typing import Any, Dict, NamedTuple, Tuple
 
-from core.models.content import same
 from core.models.workbench_execution import ExecutionProjection
 from core.models.workbench_trial import MAX_TRIAL_TASKS, reject
-from core.services.scheduler.resource_pool_builder import CapturedResourceFacts
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
-from core.services.workbench.facts.schema_compat import project_facts
 from core.services.workbench.facts.source_revisions import TRIAL_SOURCE_KEYS, read_source_revisions
 from core.services.workbench.run.jobs_facts import run_baseline
 from core.services.workbench.run.preflight_facts import PreflightFacts
@@ -30,9 +27,6 @@ class LiveTables:
     def __init__(self, capture):
         self._capture = capture
 
-    def __contains__(self, name):
-        return name in self._capture.table_names
-
     def __getitem__(self, name):
         if name not in self._capture.table_names:
             raise KeyError(name)
@@ -43,11 +37,11 @@ class LiveTables:
 
 
 def facts_unchanged(admission, live):
-    """Compare saved production content; preserve original historical metadata."""
-    matched = live["capture"].matches_archive(admission["facts"])
-    if matched is not None:
-        return matched
-    return same(project_facts(admission["facts"]), project_facts(live["capture"].archive(named=True)))
+    """Whether production still has the draft admission's source revisions under the same schema.
+
+    ``live["capture"]`` is ``saved_capture`` of this admission, which already admitted its archive.
+    """
+    return live["capture"].matches_admitted(admission["facts"])
 
 
 def execution_facts(tables, selected_refs, *, operation_refs, service) -> TrialExecutionFacts:
@@ -69,14 +63,23 @@ def execution_facts(tables, selected_refs, *, operation_refs, service) -> TrialE
     return TrialExecutionFacts(tuple(values), snapshots, reported, loaded["operations"])
 
 
-def live_context(conn, origin, capture=None, *, execution_service, data_context):
+def saved_capture(conn, admission):
+    """This transaction's capture, seeded from a saved admission's facts while they still match production.
+
+    Only a stored draft or scenario has a saved archive; a base being prepared reads its live capture directly.
+    ``load_draft`` already admitted the archive when it decoded it.
+    """
+    capture = ProductionFactsCapture(conn)
+    capture.seed_from_admitted_archive(admission["facts"])
+    return capture
+
+
+def live_context(conn, origin, capture, *, execution_service, data_context):
     """Live production plus the execution of the trial's whole operation scope.
 
-    origin is the trial source's members, prepared once: the whole scope is origin.operation_refs and
-    origin.admission supplies the saved facts that scope was taken from. A capture is made when not given.
+    origin is the trial source's members, prepared once: the whole scope is origin.operation_refs.
+    capture is this transaction's production capture: a new base's own, or ``saved_capture`` of a stored admission.
     """
-    capture = capture if capture is not None else ProductionFactsCapture(conn)
-    capture.seed_from_named_archive(origin.admission["facts"])
     facts = {"tables": LiveTables(capture)}
     capture.execution_service = execution_service
     preflight = PreflightFacts(conn, capture=capture)
@@ -90,7 +93,7 @@ def live_context(conn, origin, capture=None, *, execution_service, data_context)
             "execution_operations": exec_facts.operations,
             "revisions": read_source_revisions(conn, LIVE_TRIAL_SOURCE_KEYS),
             "data_context_ref": data_context.ref(),
-            "resource_facts": CapturedResourceFacts(preflight.tables, {}),
+            "resource_facts": capture.resource_facts(),
             "baseline": run_baseline(capture=capture), "preflight_facts": preflight, "origin": origin}
 
 

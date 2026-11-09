@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.algorithm_contracts.date_parsers import due_exclusive
+from core.algorithm_contracts.date_parsers import due_exclusive, parse_date
 from core.shared.local_datetime import parse_local_datetime
 
 
@@ -49,10 +49,12 @@ def compute_overdue_bucket_groups(
 
     for row in rows:
         due_s = row["due_date"]
+        if due_s is None:
+            continue
         finish_s = row["finish_time"]
         invalid_time_count = row.get("invalid_time_count", 0)
-        due_d = parse_local_datetime(due_s)
-        if not due_d:
+        due_d = parse_date(due_s)
+        if due_d is None:
             invalid_time.append(
                 _overdue_item(
                     row,

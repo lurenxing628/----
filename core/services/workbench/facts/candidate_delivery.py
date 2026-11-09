@@ -1,13 +1,19 @@
 """Batch delivery from validated candidate rows and immutable admission facts."""
 
+from __future__ import annotations
+
 from collections import defaultdict
+from typing import TYPE_CHECKING
 
 from .candidate_values import corrupt
 from .delivery_projection import delivery_summary, project_delivery_batch
 from .preflight_dependencies import material_deferred_ids
 
+if TYPE_CHECKING:
+    from .candidate_facts import GenerationFacts
 
-def prepare_candidate_delivery_groups(tasks, facts):
+
+def prepare_candidate_delivery_groups(tasks, facts: GenerationFacts):
     """Capture schedule rows, complete batch task groups and unresolved source facts."""
     rows, by_batch, uncertain = [], defaultdict(list), set()
     for task in tasks:
@@ -18,15 +24,11 @@ def prepare_candidate_delivery_groups(tasks, facts):
             continue
         batch = operation["batch_id"]
         by_batch[batch].append(task)
-        row = {"schedule_id": task["row_ref"], "op_id": op_id, "batch_id": batch,
-               "start_time": task["start"], "end_time": task["end"]}
-        if task.get("event_kind") == "point" and task.get("occupies_resources") is False:
-            row["_point_work"] = True
-        rows.append(row)
+        rows.append({"schedule_id": task["row_ref"], "op_id": op_id, "batch_id": batch})
     return rows, by_batch, uncertain
 
 
-def _selected_keys(settings, facts, by_batch, visible, unplanned, scope, uncertain):
+def _selected_keys(settings, facts: GenerationFacts, by_batch, visible, unplanned, scope, uncertain):
     refs = facts.batch_ids_by_ref
     batch_ref = scope.batch_ref if scope is not None else None
     range_start = scope.range_start if scope is not None else None
@@ -72,7 +74,7 @@ def _last_operations(item, tasks):
             if task["end"] == finish]
 
 
-def _items(keys, facts, rows, tasks, intervals, incomplete, uncertain, deferred, *, precomputed):
+def _items(keys, facts: GenerationFacts, rows, tasks, intervals, incomplete, uncertain, deferred, *, precomputed):
     operations, schedules = facts.operations_by_batch, defaultdict(list)
     for row in rows:
         schedules[row["batch_id"]].append(row)
@@ -93,7 +95,7 @@ def _items(keys, facts, rows, tasks, intervals, incomplete, uncertain, deferred,
     return result, missing
 
 
-def _project_items(candidate, facts, tasks, settings, deferred_ids, *, intervals, scope=None, visible=(), unplanned=None,
+def _project_items(candidate, facts: GenerationFacts, tasks, settings, deferred_ids, *, intervals, scope=None, visible=(), unplanned=None,
                    precomputed=None):
     rows, by_batch, uncertain = prepare_candidate_delivery_groups(tasks, facts)
     keys = _selected_keys(settings, facts, by_batch, visible, unplanned, scope, uncertain)
@@ -103,7 +105,7 @@ def _project_items(candidate, facts, tasks, settings, deferred_ids, *, intervals
     return items, missing, uncertain, len(keys)
 
 
-def project_delivery_detail(candidate, facts, tasks, settings, *, intervals,
+def project_delivery_detail(candidate, facts: GenerationFacts, tasks, settings, *, intervals,
                             deferred_ids, precomputed_delivery=None):
     """Keep all whole-candidate batch rows and every tied last operation for saved detail."""
     precomputed = (
@@ -115,7 +117,7 @@ def project_delivery_detail(candidate, facts, tasks, settings, *, intervals,
                           intervals=intervals, precomputed=precomputed)[0]
 
 
-def candidate_delivery_risks(candidate, facts, tasks, disposition, scope, settings, visible, unplanned, *, intervals):
+def candidate_delivery_risks(candidate, facts: GenerationFacts, tasks, disposition, scope, settings, visible, unplanned, *, intervals):
     """Select by display scope, but calculate every selected batch in full."""
     items, missing, uncertain, batch_count = _project_items(candidate, facts, tasks, settings,
         material_deferred_ids(disposition.values(), settings), intervals=intervals, scope=scope, visible=visible, unplanned=unplanned)
@@ -131,5 +133,5 @@ def candidate_delivery_risks(candidate, facts, tasks, disposition, scope, settin
             "basis": {"kind": "planned_delivery", "metadata_basis": "captured_at_run_admission",
                       "operation_scope": "captured_batch_operations", "completion_scope": "full_candidate",
                       "time_basis": "factory_local", "due_boundary": "next_day_exclusive",
-                      "current_entities_consulted": False, "actual_completion": "not_evaluated",
-                      "actual_delivery": "not_evaluated", "root_causes": "not_evaluated"}}
+                      "actual_completion": "not_evaluated", "actual_delivery": "not_evaluated",
+                      "root_causes": "not_evaluated"}}

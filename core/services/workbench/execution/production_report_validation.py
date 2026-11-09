@@ -6,6 +6,7 @@ from core.models.workbench_execution_input import reject
 from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.services.execution.projection import actual_period, actual_period_basis
 from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
+from data.repositories.operator_machine_repo import OperatorMachineRepository
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_report_validation_repo import WorkbenchReportValidationRepository
 
@@ -22,7 +23,8 @@ class ReportResourceValidator:
     def __init__(self, conn):
         self.identities = WorkbenchIdentityRepository(conn)
         self.repo = WorkbenchReportValidationRepository(conn)
-        self.qualification_service = OperatorQualificationService(conn)
+        self.authorizations = OperatorMachineRepository(conn)
+        self.qualification_service = OperatorQualificationService(conn, authorizations=self)
         self.entities = {}
         self.checked = set()
         self.machine_types = {}
@@ -30,6 +32,8 @@ class ReportResourceValidator:
         self._skill_profiles = {}
         self._skill_rows = {}
         self._skills_loaded = set()
+        self._authorized_pairs = set()
+        self._authorizations_loaded = set()
 
     def preload(self, refs):
         for row in self.repo.entity_rows_with_machine_type(refs):
@@ -37,23 +41,34 @@ class ReportResourceValidator:
             if row["kind"] == "machine":
                 self.machine_types[row["entity_key"]] = set(machine_types({"op_type_id": row["machine_type"], "op_type_ids": row["op_type_ids"]}))
 
-    def _ensure_skill_facts(self, operator_id):
-        if operator_id in self._skills_loaded:
-            return
-        operators = sorted(
+    def _pending_operators(self, loaded, operator_id):
+        return sorted(
             {
                 entity.entity_key
                 for entity in self.entities.values()
-                if entity.kind == "operator" and entity.active and entity.entity_key not in self._skills_loaded
+                if entity.kind == "operator" and entity.active and entity.entity_key not in loaded
             }
             | {operator_id}
         )
+
+    def _ensure_skill_facts(self, operator_id):
+        if operator_id in self._skills_loaded:
+            return
+        operators = self._pending_operators(self._skills_loaded, operator_id)
         profiles, skills = self.qualification_service.repo.read_skill_facts(operators)
         for row in profiles:
             self._skill_profiles.setdefault(row["operator_id"], []).append(row)
         for row in skills:
             self._skill_rows.setdefault(row["operator_id"], []).append(row)
         self._skills_loaded.update(operators)
+
+    def exists(self, operator_id, machine_id):
+        if operator_id not in self._authorizations_loaded:
+            operators = self._pending_operators(self._authorizations_loaded, operator_id)
+            for row in self.authorizations.list_simple_rows_for_operators(operators):
+                self._authorized_pairs.add((row["operator_id"], row["machine_id"]))
+            self._authorizations_loaded.update(operators)
+        return (operator_id, machine_id) in self._authorized_pairs
 
     def resolve(self, ref, kind):
         if ref is None:

@@ -19,11 +19,11 @@ def scoped_rows(rows, batch_refs, start, end, *, task_intervals):
     for row in rows:
         if row["batch_ref"] not in batch_refs:
             continue
-        if row["start"] is None or row["end"] is None:
+        span = task_intervals[row["row_ref"]]
+        if span is None:
             result.append(row)
             continue
-        span = task_intervals.get(row.get("row_ref"))
-        first, last = span if span is not None else (local_time(row["start"]), local_time(row["end"]))
+        first, last = span
         if first == last:
             if low <= first < high:
                 result.append(row)

@@ -117,10 +117,7 @@ def _candidate_source(conn, audit):
 def _candidate_tables(facts):
     tables = {}
     for name in _TABLES:
-        rows = facts.table(name)
-        if rows is None:
-            fail("adoption_evidence_missing", "run.facts." + name)
-        tables[name] = _decode_rows(rows)
+        tables[name] = _decode_rows(facts.table(name))
     return tables
 
 
@@ -156,12 +153,9 @@ def _trial_source(conn, audit):
     archive = admission["facts"]
     tables = {}
     for name in _TABLES:
-        if name not in archive["tables"] or name not in archive["columns"]:
+        if name not in archive["tables"]:
             fail("adoption_evidence_missing", "trial.facts." + name)
-        values, columns = archive["tables"][name], archive["columns"][name]
-        require(type(values) is list and type(columns) is list, "trial.table_shape")
-        require(all(type(row) is dict and set(row) == set(columns) for row in values), "trial.table_columns")
-        tables[name] = values
+        tables[name] = archive["tables"][name]
     _scenario_row_bindings(conn, saved)
     arranged = [{"op_id": row["original"]["operation"]["id"], **row["current"],
                  "start_time": row["current"]["start"], "end_time": row["current"]["end"]} for row in rows]
@@ -233,7 +227,7 @@ def read_adoption_operation_facts(conn, evidence):
     """Read actual adopted assignments and supplier identity from their frozen sources."""
     audit = evidence["audit"]
     source_ref = audit["candidate_ref"] if evidence["basis"] == "candidate_adoption" else audit["scenario_ref"]
-    key = ("adoption_operation_facts", evidence["basis"], audit["version"], source_ref)
+    key = ("adoption_operation_facts", evidence["basis"], source_ref)
     return verified_read(conn, key, lambda: _adoption_operation_facts(evidence))
 
 

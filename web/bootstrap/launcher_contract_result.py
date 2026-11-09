@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
 from core.infrastructure.safe_files import read_fixed_json
+from core.shared.strict_parse import PORT_MAX, WIN32_DWORD_MAX, parse_bounded_positive_int
 
 from .launcher_observability import launcher_log_warning
 from .launcher_paths import RUNTIME_CONTRACT_VERSION, resolve_runtime_state_dir_for_read
@@ -93,22 +94,14 @@ def _normalize_runtime_contract_payload(payload: Any) -> Tuple[Optional[Dict[str
     if not isinstance(payload, dict):
         return None, "contract_not_object", ""
     normalized = payload
-    try:
-        normalized["contract_version"] = int(normalized.get("contract_version") or 0)
-    except (TypeError, ValueError) as exc:
-        return None, "invalid_contract_version", str(exc)
-    if normalized["contract_version"] != RUNTIME_CONTRACT_VERSION:
-        return None, "contract_version_mismatch", "expected={} actual={}".format(
-            RUNTIME_CONTRACT_VERSION,
-            normalized["contract_version"],
-        )
-    for key in ("pid", "port"):
-        try:
-            normalized[key] = int(normalized.get(key) or 0)
-        except (TypeError, ValueError) as exc:
-            return None, f"invalid_{key}", str(exc)
-        if normalized[key] <= 0:
-            return None, f"invalid_{key}", "must_be_positive"
+    raw_version = normalized.get("contract_version")
+    if type(raw_version) is not int:
+        return None, "invalid_contract_version", f"expected int, got {type(raw_version).__name__}"
+    if raw_version != RUNTIME_CONTRACT_VERSION:
+        return None, "contract_version_mismatch", f"expected={RUNTIME_CONTRACT_VERSION} actual={raw_version}"
+    for key, limit in (("pid", WIN32_DWORD_MAX), ("port", PORT_MAX)):
+        if parse_bounded_positive_int(normalized.get(key), max_value=limit, allow_str=False) is None:
+            return None, f"invalid_{key}", f"expected int in 1..{limit}"
     for key in ("host", "instance_id", "shutdown_token", "exe_path", "runtime_dir", "chrome_profile_dir"):
         value = str(normalized.get(key) or "").strip()
         if not value:

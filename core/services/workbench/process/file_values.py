@@ -77,6 +77,8 @@ def decode_value(value, field, number, file_format):
     if type(value) is str:
         if file_format == "csv" and value.startswith("'"):
             value = value[1:]
+            if value == "":
+                return ""
         if value == r"\N":
             return None
         if value.startswith("\\\\"):

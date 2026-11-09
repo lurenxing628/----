@@ -103,7 +103,7 @@ MATERIAL_SOURCE_KEYS: Tuple[str, ...] = (
     "workbench_entity_refs",
 )
 
-# 资源领域（含班表时段 workbench_shift_day_periods、停机、执行台账等）
+# 资源领域（含班表时段、停机、执行台账等）
 RESOURCE_SOURCE_KEYS: Tuple[str, ...] = (
     "op_types",
     "machines",
@@ -121,7 +121,6 @@ RESOURCE_SOURCE_KEYS: Tuple[str, ...] = (
     "workbench_machine_group_members",
     "workbench_shift_profiles",
     "workbench_shift_pattern_days",
-    "workbench_shift_day_periods",
     "workbench_op_type_policies",
     "workbench_entity_refs",
     "work_calendar",
@@ -153,7 +152,6 @@ OPERATOR_CALENDAR_SOURCE_KEYS: Tuple[str, ...] = (
     "workbench_operator_profiles",
     "workbench_shift_profiles",
     "workbench_shift_pattern_days",
-    "workbench_shift_day_periods",
     "work_calendar",
     "workbench_calendar_defaults",
     "workbench_entity_refs",
@@ -182,7 +180,6 @@ MASTER_OVERVIEW_SOURCE_KEYS: Tuple[str, ...] = (
     "workbench_machine_group_members",
     "workbench_shift_profiles",
     "workbench_shift_pattern_days",
-    "workbench_shift_day_periods",
     "workbench_calendar_defaults",
     "workbench_op_type_policies",
     "workbench_entity_refs",
@@ -239,7 +236,6 @@ PREFLIGHT_SOURCE_KEYS: Tuple[str, ...] = (
     "workbench_machine_group_members",
     "workbench_shift_profiles",
     "workbench_shift_pattern_days",
-    "workbench_shift_day_periods",
     "workbench_calendar_defaults",
     "workbench_op_type_policies",
     "workbench_entity_refs",

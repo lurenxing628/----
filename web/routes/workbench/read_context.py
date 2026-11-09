@@ -33,6 +33,18 @@ def current_snapshot_time() -> datetime:
     return datetime.now().replace(microsecond=0)
 
 
+def _as_of_text(as_of) -> str:
+    """One factory-local second clock text for bound and unbound read metadata."""
+    if as_of is None:
+        as_of = current_snapshot_time()
+    return as_of if isinstance(as_of, str) else as_of.isoformat(timespec="seconds")
+
+
+def unbound_snapshot(as_of=None):
+    """Read metadata for documents with no rebindable snapshot (previews, receipts, assembled pages)."""
+    return {"snapshot_ref": None, "as_of": _as_of_text(as_of)}
+
+
 def resolve_read_snapshot(token):
     try:
         return resolve_public_token(_SCOPE, token, message=messages.STALE, field="snapshot_ref")
@@ -70,10 +82,7 @@ def bind_read_snapshot(scope, fingerprint, token=None, *, as_of=None, binding=No
         if payload.fingerprint != facts:
             raise WorkbenchCommandRejected("snapshot_stale", stale_message)
         return {"snapshot_ref": token, "as_of": payload.as_of}
-    if as_of is None:
-        as_of = current_snapshot_time()
-    if not isinstance(as_of, str):
-        as_of = as_of.isoformat(timespec="seconds")
+    as_of = _as_of_text(as_of)
     issuer = PublicTokenIssuer(_SCOPE, group=facts, ttl_seconds=900)
     reference, _ = issuer.issue_bound_with_expiry(
         lambda canonical: ReadBinding(scope_value, canonical, as_of), key=(scope_value, as_of))

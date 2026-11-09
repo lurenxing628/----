@@ -211,9 +211,8 @@ def iter_operation_comparisons(operation_refs, reference_available, *, selected_
         yield ref, {"before": before, "after": after, "before_state": previous, "after_state": current, **delta}
 
 
-def operation_impacts(source, operation_refs=None):
-    refs = source.scope["operation_refs"] if operation_refs is None else list(operation_refs)
-    if not refs:
+def operation_impacts(source, operation_refs):
+    if not operation_refs:
         return []
     old, new = source.analysis_groups("reference"), source.analysis_groups(source.selected_ref)
     comparisons = source.operation_comparisons
@@ -222,7 +221,7 @@ def operation_impacts(source, operation_refs=None):
     window_bounds = (local_time(source.scope["range_start"]), local_time(source.scope["range_end"]))
     selected_intervals = source.task_intervals(source.selected_ref) if available else {}
     reference_intervals = source.task_intervals("reference")
-    for ref in refs:
+    for ref in operation_refs:
         labels, operation = operation_labels(source.facts, ref)
         delta = dict(
             comparisons[ref],

@@ -80,10 +80,11 @@ def _parse_row(kind, number, values, cell_errors, fields, file_format):
         elif value is not None and value != "":
             try:
                 parsed = decode_value(value, field, number, file_format)
-                row["values"][field] = parsed
-                message = numeric_diagnostic(field, parsed)
-                if message:
-                    _issue(row, field, message)
+                if parsed != "":
+                    row["values"][field] = parsed
+                    message = numeric_diagnostic(field, parsed)
+                    if message:
+                        _issue(row, field, message)
             except ValidationError as exc:
                 _issue(row, field, exc.message)
     for field in REQUIRED[kind]:

@@ -3,7 +3,7 @@
 和全局日历文件一样不做删除：要取消某几天的特殊安排，用人员详情里的按日期范围清除。
 
 取值校验在这里做，领域一致性交给 `WorkbenchOperatorCalendarService`，与人员详情的面板走同一条链路，
-所以界面存不了的组合文件也存不了。工时不是可填列：它由班次起止算出来，导出时作为只读列带出。
+所以界面存不了的组合文件也存不了。工时不是可填列：它由工作时段算出来，导出时作为只读列带出。
 """
 
 from datetime import date
@@ -13,6 +13,7 @@ from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models.calendar import OperatorCalendar
 from core.models.calendar_period_columns import export_period_columns, parse_period_columns
+from core.models.calendar_periods import apply_rest_day_rules, period_hours
 from core.models.workbench_action_values import AtomicActionPreview
 from core.models.workbench_calendar import operator_clock
 from core.models.workbench_calendar_file import (
@@ -34,7 +35,6 @@ from core.models.workbench_command import (
     WorkbenchCommandOutcome,
     WorkbenchCommandRejected,
 )
-from core.models.workbench_operator_calendar import apply_rest_day_rules
 from core.models.workbench_resource_action import (
     action_row,
     reject_action_row,
@@ -46,11 +46,12 @@ from core.services.scheduler.calendar.service import CalendarService
 from data.repositories.workbench_calendar_query_repo import WorkbenchCalendarQueryRepository
 from data.repositories.workbench_resource_file_repo import WorkbenchResourceFileRepository
 
-from ..operator_calendars import WorkbenchOperatorCalendarService, engine_read_row
+from ..calendar_reading import CalendarProjection
+from ..operator_calendars import WorkbenchOperatorCalendarService
 from ..queries import WorkbenchResourceQueryService
 from .file_codec import read_calendar_file, read_clock, read_date, read_number
 from .file_writer import number_text, percent_text
-from .files import DAY_TYPE_TEXT, YES_NO_TEXT, row_blocked, zero_hour_workday_note
+from .files import DAY_TYPE_TEXT, YES_NO_TEXT, file_error_field, row_blocked, zero_hour_workday_note
 
 KIND = "operator_calendar"
 
@@ -89,21 +90,22 @@ class WorkbenchOperatorCalendarFileService:
     def _preview_import(self, prepared: PreparedImportSource):
         request = prepared.request()
         source, notices = prepared.parsed()
-        with self._domain_calendar.normalization_operation():
-            rows = self._build_rows(source)
-            calendars = {row["row"]: row.pop("calendar") for row in rows if "calendar" in row}
-            return AtomicActionPreview.build(
-                self.kind + ".import", request, rows, notices, source=prepared
-            ), calendars
+        context = self._domain_calendar.normalization_context()
+        rows = self._build_rows(source, context=context)
+        calendars = {row["row"]: row.pop("calendar") for row in rows if "calendar" in row}
+        return AtomicActionPreview.build(
+            self.kind + ".import", request, rows, notices, source=prepared
+        ), calendars
 
-    def _build_rows(self, source) -> List[Dict[str, Any]]:
+    def _build_rows(self, source, *, context) -> List[Dict[str, Any]]:
         rows = [self._parse_row(item) for item in source]
         self._reject_duplicate_pairs(rows)
         self._resolve_operators(rows)
         states = self._load_states(rows)
+        projection = CalendarProjection({}, engine=self._domain_calendar._engine)
         for row in rows:
             if not row_blocked(row):
-                self._classify(row, states)
+                self._classify(row, states, context=context, projection=projection)
         return rows
 
     def _parse_row(self, source) -> Dict[str, Any]:
@@ -226,28 +228,20 @@ class WorkbenchOperatorCalendarFileService:
         histories = repo.operator_identity_rows_many(codes, start_date, end_date)
         return {code: WorkbenchOperatorCalendarService.states_from_rows(rows[code], histories[code]) for code in codes}
 
-    def _classify(self, row, states) -> None:
+    def _classify(self, row, states, *, context, projection: CalendarProjection) -> None:
         code, day = row["values"]["operator_code"], row["values"]["date"]
         calendar = self._calendar(code)
         before = calendar.day_state(day, states[code])
         fields = self._fields_for(row, before)
         if fields is None:
             return
-        try:
-            filled = engine_read_row(before["row"], fill_shift_end=True) if before["row"] is not None else None
-        except ValidationError as exc:
-            reject_action_row(row, exc.message, field=self._field_of(exc.field))
-            return
-        before_for_propose = (
-            before if filled is None else {**before, "reading": {**filled, "shift_end": before["row"].get("shift_end")}}
-        )
-        after = self._after_row(row, calendar, fields, before_for_propose)
+        after = self._after_row(row, calendar, fields, before, context=context, projection=projection)
         if after is None:
             return
         row["expected"] = {**row["expected"], "state": before}
         row["calendar"] = after
         row["input"] = after.to_dict()
-        self._describe(row, before, row["input"], before_reading=filled)
+        self._describe(row, before, row["input"])
 
     def _fields_for(self, row, before) -> Optional[Dict[str, Any]]:
         """把这一行的取值翻成人员详情用的字段名；人员详情存不了的组合在这里就挡住，返回 None。"""
@@ -255,39 +249,36 @@ class WorkbenchOperatorCalendarFileService:
                   if key in UI_FIELDS[self.kind]}
         try:
             fields.update(parse_period_columns(row["values"]))
-        except ValidationError as exc:
-            reject_action_row(row, exc.message, field=exc.field or "period_count")
-            return None
-        fields.setdefault("type", "rest" if (before["row"] or {}).get("day_type") == "holiday" else "work")
-        if fields["type"] == "rest":
-            try:
+            fields.setdefault("type", "rest" if (before["row"] or {}).get("day_type") == "holiday" else "work")
+            if fields["type"] == "rest":
                 apply_rest_day_rules(fields)
-            except ValidationError as exc:
-                reject_action_row(row, exc.message, field=self._field_of(exc.field))
-                return None
-        # 人员详情存不了"上班却没挑班次开始"的一天（见 workbench_operator_calendar._fields），文件也不能存。
-        # 领域层对缺失的开始时刻会补 08:00，所以判据只能放在填进来的值上：原来就上班才有已确认的窗口可留空继承，
-        # 新建的一天和从假期改回上班的一天都必须自己填，不能让 08:00 悄悄替用户做主。
-        if fields["type"] == "work" and fields.get("shiftStart") is None and "periods" not in fields \
-                and (before["row"] or {}).get("day_type") != "workday":
-            reject_action_row(row, "这一天原来不上班，改成上班必须填班次开始时刻，这一行没有导入。"
-                                   "要让这一天休息请把类型填成「假期」。", field="shift_start")
+        except ValidationError as exc:
+            reject_action_row(row, exc.message, field=file_error_field(exc.field, row["values"]))
             return None
         return fields
 
-    def _after_row(self, row, calendar, fields, before) -> Optional[OperatorCalendar]:
+    def _after_row(
+        self,
+        row,
+        calendar,
+        fields,
+        before,
+        *,
+        context,
+        projection: CalendarProjection,
+    ) -> Optional[OperatorCalendar]:
         """交给人员详情那条链算出保存后的行；它不认的组合按原因标红这一行。"""
         try:
-            return calendar.proposed_row(fields, before)
+            return calendar.proposed_row(fields, before, context=context, projection=projection)
         except WorkbenchCommandRejected as exc:
             reject_action_row(row, str(exc), code=exc.code, field="date")
         except ValidationError as exc:
-            reject_action_row(row, exc.message, field=self._field_of(exc.field))
+            reject_action_row(row, exc.message, field=file_error_field(exc.field, row["values"]))
         return None
 
-    def _describe(self, row, before, after, *, before_reading) -> None:
+    def _describe(self, row, before, after) -> None:
         label = row["values"]["operator_label"]
-        row["before"] = self._public(before["row"], label, reading=before_reading)
+        row["before"] = self._public(before["row"], label)
         row["after"] = self._public(after, label)
         row["action"] = "create" if before["row"] is None else "update"
         if before["row"] is None:
@@ -301,43 +292,33 @@ class WorkbenchOperatorCalendarFileService:
         row["reference_count"] = 1 if before["row"] is not None else 0
         self._add_notes(row, after)
 
-    @staticmethod
-    def _add_notes(row, after) -> None:
+    def _periods(self, row: Dict[str, Any]):
+        return self._domain_calendar._engine.decoded_periods_for_json(row["periods_json"])
+
+    def _add_notes(self, row, after) -> None:
         # 不写入的行不提醒、也不要求确认，与全局日历文件和关系文件同一口径。
         if row["result"] == "unchanged":
             return
         # 要写入的每一行都要说明它会盖过班次轮换，不然用户看不出导进去的代价。
         row["notes"].append("这一天这个人整天按这里的安排排产，不再套用他的班次轮换，也不看全局工作日历。")
         # 工作时段数填 0 又把类型填成工作日，会存成 0 工时的工作日；与全局日历文件同样在预检里说清楚。
-        zero_hours = zero_hour_workday_note(after, "这个人", "要上班请填班次起止或工作时段；要休息请把类型填成「假期」。")
+        zero_hours = zero_hour_workday_note(after, self._periods(after), "这个人",
+                                            "要上班请填班次起止或工作时段；要休息请把类型填成「假期」。")
         if zero_hours is not None:
             row["notes"].append(zero_hours)
         row["requires_confirmation"] = True
 
-    @staticmethod
-    def _field_of(field: Optional[str]) -> str:
-        mapping: Dict[Optional[str], str] = {"fields.shiftStart": "shift_start", "fields.shiftEnd": "shift_end", "fields.eff": "efficiency",
-                   "fields.allowNormal": "allow_normal", "fields.allowUrgent": "allow_urgent",
-                   "fields.periods": "period_count",
-                   "班次开始": "shift_start", "班次结束": "shift_end", "效率": "efficiency", "可用工时": "shift_start"}
-        return mapping.get(field, "date")
-
-    def _public(self, row: Optional[Dict[str, Any]], label: Optional[str],
-                *, reading: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
-        """把领域行翻成文件列口径，导出、预检对比、回导用的是同一份翻译。
-
-        旧行空着的班次开始、工时、效率按排产引擎的解释写出（与全局日历文件同一口径）；原样回导时这几格与引擎解释相同，不算改动。
-        """
+    def _public(self, row: Optional[Dict[str, Any]], label: Optional[str]) -> Optional[Dict[str, Any]]:
+        """把领域行翻成文件列口径，导出、预检对比、回导用的是同一份翻译。"""
         if row is None:
             return None
-        row = engine_read_row(row, fill_shift_end=True) if reading is None else reading
+        periods = self._periods(row)
         return {"operator_code": row["operator_id"], "date": row["date"],
                 "day_type": DAY_TYPE_TEXT[row["day_type"]],
-                "shift_start": row["shift_start"], "shift_end": row["shift_end"],
                 "efficiency": percent_text(row["efficiency"]),
                 "allow_normal": YES_NO_TEXT[row["allow_normal"]], "allow_urgent": YES_NO_TEXT[row["allow_urgent"]],
-                "remark": row["remark"], "operator_label": label, "shift_hours": number_text(row["shift_hours"]),
-                **export_period_columns(row)}
+                "remark": row["remark"], "operator_label": label, "shift_hours": number_text(period_hours(periods)),
+                **export_period_columns(periods)}
 
     def confirm_import(self, preview):
         if not self.conn.in_transaction:

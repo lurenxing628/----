@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta
 from core.models.scheduler_history_parser import ResultSummaryParseResult
 from core.models.workbench_preflight import stored_hold_window_valid
 from core.models.workbench_trial import issue, reject
-from core.services.workbench.facts.preflight_checks import stored_date
+from core.shared.stored_dates import stored_date
 
 
 def plan_material_policy(parsed: ResultSummaryParseResult):

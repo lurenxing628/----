@@ -96,7 +96,9 @@ def validate_manifest(run, rows, receipt):
         item = index.get(row["candidate_ref"])
         if item is None or item.get("task_count") != row["task_count"] or item.get("status") != row["status"] or row["status"] != "completed":
             corrupt()
-    if run["state"] in ("complete", "partial") and (not rows or receipt.get("result_persisted") is not True):
+    if run["state"] in ("complete", "partial") and (
+        not rows or receipt.get("result_persisted") is not True or "operation_effort" not in receipt
+    ):
         corrupt()
 
 
@@ -112,7 +114,13 @@ def _scheduled_values(payload, row):
 
 
 def _check_scheduled_rows(scheduled, values):
-    if type(scheduled) is not list or any(type(item) is not dict or type(item.get("op_id")) is not int for item in scheduled):
+    if type(scheduled) is not list or any(
+        type(item) is not dict
+        or type(item.get("op_id")) is not int
+        or "op_type_id" not in item
+        or (item["op_type_id"] is not None and type(item["op_type_id"]) is not str)
+        for item in scheduled
+    ):
         corrupt()
     if len(scheduled) != len(values) or {item["op_id"] for item in scheduled} != set(values):
         corrupt()

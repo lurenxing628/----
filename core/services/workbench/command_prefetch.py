@@ -17,10 +17,7 @@ def write_stamp(conn):
     """
     if not conn.in_transaction:
         raise RuntimeError("Write stamps must be taken inside the transaction that read the facts")
-    version = data_version(conn)
-    if version is None:
-        raise RuntimeError("SQLite data_version unavailable")
-    return conn.total_changes, version
+    return conn.total_changes, data_version(conn)
 
 
 class FactsChanged(WorkbenchCommandRejected):

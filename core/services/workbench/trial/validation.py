@@ -9,12 +9,14 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.models.workbench_trial import issue, reject, validation
 from core.services.personnel.operator_qualification import OperatorQualificationError
+from core.services.workbench.facts.archived_calendar import ArchivedCalendar
 from core.services.workbench.facts.stored_algo_inputs import stored_operation
 from core.services.workbench.run.input_runtime import HeldArrangements
 from core.services.workbench.run.piece_adoption_trial import trial_piece_issues
+from core.shared.stored_dates import stored_day
 
 from .arrangements import same_arrangement
-from .calendar import calendar_engine, estimate, new_slot_effort
+from .calendar import estimate, new_slot_effort
 from .constraints import build_trial_intervals, relation_issues, resource_issues
 from .execution_anchors import resolve_execution_anchors
 from .facts import facts_unchanged
@@ -27,7 +29,8 @@ class TrialValidator:
         self.conn, self.admission, self.rows, self.live = conn, admission, rows, live
         self.tables = live["facts"]["tables"]
         self.checks = live["preflight_facts"].checks()
-        self.engine = calendar_engine(self.tables)
+        self.calendar = ArchivedCalendar({"tables": self.tables}, metadata_basis="current_transaction_snapshot")
+        self.engine = self.calendar.engine
         self.calendar_issue = None if self.engine is not None else issue(
             "calendar_unproven", "日历数据无效，请核对工作日历。")
         self.qualification = live["resource_facts"]
@@ -37,38 +40,17 @@ class TrialValidator:
         self.anchors, self.anchor_error = (
             resolved_anchors if resolved_anchors is not None else resolve_execution_anchors(conn, rows, live)
         )
-        self.downtime = {}
-        for row in self.tables["MachineDowntimes"]:
-            self.downtime.setdefault(row["machine_id"], []).append(row)
         self.batch_ready_dates = {}
-        self._parsed_downtime = {}
         self.trial_intervals: dict = {}
 
     def _batch_ready_dt(self, batch):
         batch_id = batch["batch_id"]
         if batch_id not in self.batch_ready_dates:
-            self.batch_ready_dates[batch_id] = datetime.fromisoformat(batch["ready_date"])
+            day = stored_day(batch["ready_date"])
+            if day is None:
+                raise ValueError("Invalid batch ready_date")
+            self.batch_ready_dates[batch_id] = datetime(day.year, day.month, day.day)
         return self.batch_ready_dates[batch_id]
-
-    def _machine_downtime_entries(self, machine_id):
-        if machine_id not in self._parsed_downtime:
-            entries = []
-            for downtime in self.downtime.get(machine_id, []):
-                status = downtime["status"]
-                if status == "cancelled":
-                    continue
-                if status != "active":
-                    entries.append((status, None, None))
-                else:
-                    entries.append(
-                        (
-                            status,
-                            datetime.fromisoformat(downtime["start_time"]),
-                            datetime.fromisoformat(downtime["end_time"]),
-                        )
-                    )
-            self._parsed_downtime[machine_id] = entries
-        return self._parsed_downtime[machine_id]
 
     def _protect(self):
         # 采用输入的起止日随试调行变化（不重排时段按它裁剪）：行改过就按当前各行重新找。
@@ -197,11 +179,13 @@ class TrialValidator:
         issues, ref = [], row["task_ref"]
         if start == end:
             return issues
-        for status, dt_start, dt_end in self._machine_downtime_entries(row["current"]["machine_id"]):
-            if status != "active":
-                issues.append(issue("downtime_state_unknown", "设备停机状态不明确。", ref))
-            elif dt_start < end and dt_end > start:
-                issues.append(issue("machine_downtime", "目标安排与实际设备停机重叠。", ref))
+        index = self.calendar.downtime_index(row["current"]["machine_id"])
+        if index.invalid_interval:
+            raise ValueError("Invalid machine downtime interval")
+        if index.unknown_status:
+            issues.append(issue("downtime_state_unknown", "设备停机状态不明确。", ref))
+        if index.overlaps(start, end):
+            issues.append(issue("machine_downtime", "目标安排与实际设备停机重叠。", ref))
         return issues
 
     def _qualification(self, op, ref):

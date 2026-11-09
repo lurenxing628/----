@@ -24,13 +24,13 @@ from data.repositories.workbench_run_repo import WorkbenchRunRepository
 from data.repositories.workbench_run_result_repo import WorkbenchRunResultRepository
 
 from .compute import compute_candidate_run
-from .jobs_facts import production_facts_match
 from .result_preparation import prepare_run_result
 from .worker_claim import claim_run
 from .worker_snapshot import computation_database
 
 # 计算子进程只把清洗后的提示带回 AppError，原异常类型和原文放在 internal_details 的这个键里，只进诊断。
 CHILD_EXCEPTION = "child_exception"
+_FACTS_CHANGED = "排产之后现场数据有变化，这次的候选方案没有保存。请重新做一次排产检查。"
 
 
 def failure_diagnostic(exc):
@@ -55,15 +55,11 @@ class WorkbenchRunWorker:
     def _now(self):
         return self.clock().isoformat(timespec="microseconds")
 
-    def _check_facts(self, row, conn=None, *, capture=None, captured_facts=None):
-        if captured_facts is None:
-            captured_facts = stored_json(row["facts_json"])
-        if not production_facts_match(
-            self.conn if conn is None else conn,
-            captured_facts,
-            capture=capture,
-        ):
-            raise WorkbenchCommandRejected("snapshot_stale", "排产之后现场数据有变化，这次的候选方案没有保存。请重新做一次排产检查。")
+    def _check_facts(self, row, capture):
+        """Admit the run's saved archive at its first entry; it must still match this computation snapshot."""
+        captured_facts = stored_json(row["facts_json"])
+        if not capture.matches_archive(captured_facts):
+            raise WorkbenchCommandRejected("snapshot_stale", _FACTS_CHANGED)
         return captured_facts
 
     def execute(self, run_ref, *, retry_original=None):
@@ -98,7 +94,7 @@ class WorkbenchRunWorker:
         """Consume the caller's isolated database without copying it again."""
         with candidate_read_snapshot(snapshot):
             current_capture = ProductionFactsCapture(snapshot)
-            captured_facts = self._check_facts(row, snapshot, capture=current_capture)
+            captured_facts = self._check_facts(row, current_capture)
             # 与 CandidateStore.capture 读同一组排产原件，同一个严格读取器。
             raw_execution = stored_json(row["execution_json"], list)
             normalized_input = stored_json(row["normalized_input_json"])
@@ -116,7 +112,9 @@ class WorkbenchRunWorker:
         candidates, result = prepared.candidates, prepared.result
         try:
             with TransactionManager(self.conn).transaction(begin_immediate=True):
-                self._check_facts(row, captured_facts=prepared.captured_facts)
+                # 计算时已准入并比对过整份存档；写库前只按它的来源版本和表结构复核现场有没有变。
+                if not ProductionFactsCapture(self.conn).matches_recorded(prepared.recorded_source):
+                    raise WorkbenchCommandRejected("snapshot_stale", _FACTS_CHANGED)
                 current = self.repo.claim_head(row["run_ref"])
                 if current is None or current["state"] != "running" or current["executor_ref"] != PROCESS_EXECUTOR_REF:
                     raise RuntimeError("Run ownership changed before result persistence")

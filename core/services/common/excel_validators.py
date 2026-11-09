@@ -54,13 +54,7 @@ def get_batch_row_validate_and_normalize(
     """使用已有零件缓存构建“批次信息”Excel 原地归一化校验器。"""
 
     def _validate_and_normalize(row: dict) -> Optional[str]:
-        batch_id = normalize_text(row.get("批次号"))
-
-        if batch_id is None:
-            return "“批次号”不能为空"
-        pn = normalize_text(row.get("图号"))
-        if pn is None:
-            return "“图号”不能为空"
+        pn = row["图号"]
         if pn not in parts_cache:
             return f"图号“{pn}”不存在，请先在工艺管理中维护零件。"
 

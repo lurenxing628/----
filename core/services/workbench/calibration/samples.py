@@ -1,8 +1,9 @@
 """D05 eligibility over the one execution projection, including exclusion evidence."""
 
 from datetime import datetime
-from decimal import ROUND_HALF_UP, Decimal, localcontext
-from typing import Optional, overload
+from decimal import Decimal, localcontext
+from fractions import Fraction
+from typing import Any, Dict, Optional, Tuple, overload
 
 from core.models.content import content_text
 from core.models.workbench_calibration import issue
@@ -10,20 +11,20 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.shared.strict_parse import is_exact_non_negative_number
 
 # 除法结果（单件工时、建议定额、偏差百分比）统一整形到 3 位小数，四舍五入；
-# 求和不整形，因为报工里填的小时数在 Decimal 里相加本来就是精确的。
-QUANTUM = Decimal("0.001")
+# 求和与比率在无限精度 Fraction 域精确计算，避免默认 28 位 Decimal 上下文截断。
+_FLOAT_INF_THRESHOLD = (1 << 1024) - (1 << 970)
 
 
-def number(value):
+def number(value) -> Optional[Fraction]:
     if value is None:
         return None
     if not is_exact_non_negative_number(value):
         raise WorkbenchCommandRejected("storage_failure", "报工数量或工时无效，请核对报工记录。", 500)
-    return Decimal(str(value))
+    return Fraction(Decimal(str(value)))
 
 
 @overload
-def quantize(value: Decimal) -> Decimal:
+def quantize(value: Fraction) -> Decimal:
     ...
 
 
@@ -32,16 +33,18 @@ def quantize(value: None) -> None:
     ...
 
 
-def quantize(value: Optional[Decimal]) -> Optional[Decimal]:
-    """把 Decimal 除法结果按 3 位小数四舍五入（ROUND_HALF_UP），None 原样返回。
-
-    精度放宽到 400 位，保证 float 能表示的任何量级都能整形，不会因为默认 28 位精度抛错。
-    """
+def quantize(value: Optional[Fraction]) -> Optional[Decimal]:
+    """把精确有理数结果按 3 位小数四舍五入（ROUND_HALF_UP），None 原样返回。"""
     if value is None:
         return None
+    scaled = abs(value) * 1000
+    q_int, rem = divmod(scaled.numerator, scaled.denominator)
+    if rem * 2 >= scaled.denominator:
+        q_int += 1
+    signed = q_int if value >= 0 else -q_int
     with localcontext() as context:
-        context.prec = 400
-        return value.quantize(QUANTUM, rounding=ROUND_HALF_UP)
+        context.prec = max(400, len(str(q_int)))
+        return Decimal(signed).scaleb(-3)
 
 
 def _lineage_reasons(lineage, template):
@@ -80,10 +83,10 @@ def _execution_reasons(candidate, as_of):
     return reasons
 
 
-def _known_sum(values):
+def _known_sum(values) -> Optional[Fraction]:
     if not values:
         return None
-    total = Decimal(0)
+    total = Fraction(0)
     known = True
     for value in values:
         parsed = number(value)
@@ -107,10 +110,12 @@ def _processing_values(projection):
         reasons.append(issue("quantity_unknown", "至少有一次报工的数量暂无数据。"))
     elif reported_quantity is not None and reported_quantity != quantity:
         reasons.append(issue("processing_basis_unconfirmed", "逐次报工数量与累计完工数量不一致。"))
-    ratio = quantize(total / quantity) if total is not None and quantity else None
+    exact_ratio = total / quantity if total is not None and quantity else None
+    ratio = quantize(exact_ratio)
+    effective_hours = (float(total) if total < _FLOAT_INF_THRESHOLD else float("inf")) if total is not None else None
     return {"completed_quantity": projection.known_completed_quantity, "unknown_record_count": projection.unknown_record_count,
-            "effective_processing_hours": float(total) if total is not None else None,
-            "unit_hours": float(ratio) if ratio is not None else None}, reasons
+            "effective_processing_hours": effective_hours,
+            "unit_hours": float(ratio) if ratio is not None else None}, reasons, exact_ratio
 
 
 def ensure_sample_revision(sample):
@@ -162,8 +167,10 @@ def _sample_origin(candidate, *, lineage_origin, lineage_events):
             "reports": projection.reports, "data_gaps": projection.data_gaps}
 
 
-def review_sample(candidate, *, template, as_of, lineage_origin, lineage_events):
-    values, reasons = _processing_values(candidate.execution)
+def review_sample(candidate, *, template, as_of, lineage_origin, lineage_events) -> Tuple[Dict[str, Any], Optional[Fraction]]:
+    values, reasons, exact_ratio = _processing_values(candidate.execution)
     reasons += _lineage_reasons(candidate.lineage, template) + _execution_reasons(candidate, as_of)
-    return {**_sample_origin(candidate, lineage_origin=lineage_origin, lineage_events=lineage_events),
-            **values, "eligible": not reasons, "selected": False, "exclusion_reasons": reasons}
+    eligible = not reasons
+    sample = {**_sample_origin(candidate, lineage_origin=lineage_origin, lineage_events=lineage_events),
+              **values, "eligible": eligible, "selected": False, "exclusion_reasons": reasons}
+    return sample, (exact_ratio if eligible else None)

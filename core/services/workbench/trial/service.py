@@ -32,7 +32,7 @@ from core.shared.strict_json import clone_json
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository, new_ref
 
 from .base import prepare_base
-from .facts import live_context
+from .facts import live_context, saved_capture
 from .preparation import apply_changeovers, apply_preparation, preparation_projection, trial_changeovers
 from .projection import (
     draft_projection,
@@ -112,7 +112,7 @@ class WorkbenchTrialService:
 
     def _loaded(self, ref, *, execution_service, header=None):
         head, rows = load_draft(self.repo, reference(ref), header=header)
-        live = live_context(self.conn, TrialOrigin(head["admission"], rows),
+        live = live_context(self.conn, TrialOrigin(head["admission"], rows), saved_capture(self.conn, head["admission"]),
                             execution_service=execution_service, data_context=self.data_context)
         return head, rows, live
 

@@ -10,6 +10,7 @@ from core.services.workbench.facts.preparation_projection import (
     public_preparation_metrics,
     public_preparation_roles,
 )
+from core.services.workbench.facts.trial_origin import invalid_trial_snapshot
 from core.services.workbench.facts.zero_duration import point_event_dto
 
 from .arrangements import same_arrangement
@@ -33,9 +34,7 @@ def _side_effort(name, ref, context, records, evidence, admission, *, standard=N
     current_execution = admission["execution"][ref]
     runtime = records.get(ref)
     if runtime is not None and runtime["op_id"] != op["id"]:
-        from core.services.workbench.facts.candidate_values import corrupt
-
-        corrupt()
+        invalid_trial_snapshot()
     value = project_operation_effort(runtime, standard,
         allocation_state=_allocation(runtime, arranged=context["arranged"], deferred=context["deferred"], source=op["source"]),
         source=op["source"], execution=current_execution, evidence_source=evidence)
@@ -48,7 +47,7 @@ def _side_effort(name, ref, context, records, evidence, admission, *, standard=N
 
 
 def after_preparation_rows(admission, current_ledger, *, current_evidence, contexts):
-    after = saved_operation_efforts(current_ledger)
+    after = saved_operation_efforts(current_ledger, on_corrupt=invalid_trial_snapshot)
     return [dict(_side_effort("after", ref, context, after, current_evidence, admission),
                  operation_ref=ref, arranged=context["arranged"])
             for ref, context in contexts.items()]
@@ -57,8 +56,9 @@ def after_preparation_rows(admission, current_ledger, *, current_evidence, conte
 def preparation_projection(admission, current_ledger, *, current_evidence, contexts, before_efforts=None):
     """The immutable source and the explicit current ledger remain distinct."""
     source = admission["source"]
-    before = saved_operation_efforts(source.get("operation_effort")) if before_efforts is None else before_efforts
-    after = saved_operation_efforts(current_ledger)
+    before = (saved_operation_efforts(source["operation_effort"], on_corrupt=invalid_trial_snapshot)
+              if before_efforts is None else before_efforts)
+    after = saved_operation_efforts(current_ledger, on_corrupt=invalid_trial_snapshot)
     pairs, summary_rows = {}, {"before": [], "after": []}
     origin = source.get("identity")
     for ref, context in contexts.items():
@@ -82,7 +82,7 @@ def preparation_projection(admission, current_ledger, *, current_evidence, conte
 
 def trial_changeovers(rows, origin, *, start=None, end=None, next_operation_refs=None, after_only=False, trial_intervals):
     source = origin.admission["source"]
-    types = source.get("operation_types") or {}
+    types = source["operation_types"]
     slot_types = source["trial_operation_types"]
     machine_rows = (origin.facts.tables["Machines"].values() if origin.facts is not None
                     else origin.admission["facts"]["tables"]["Machines"])

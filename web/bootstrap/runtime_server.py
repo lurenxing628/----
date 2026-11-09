@@ -1,4 +1,4 @@
-"""Hold the Windows listener before publishing the runtime endpoint."""
+"""Hold the runtime listener before publishing the runtime endpoint."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import socket
 from socketserver import TCPServer
 from typing import cast
 
-from werkzeug.serving import ThreadedWSGIServer, make_server
+from werkzeug.serving import ThreadedWSGIServer
 
 from core.infrastructure.logging import safe_log
 
@@ -20,12 +20,9 @@ class RuntimeBindError(RuntimeError):
     """Keep Werkzeug from exiting before the launcher can record bind errors."""
 
 
-class _WindowsRuntimeServer(ThreadedWSGIServer):
-    allow_reuse_address = False
-
+class _RuntimeServer(ThreadedWSGIServer):
     def server_bind(self):
         try:
-            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
             # HTTPServer resolves getfqdn here. The runtime publishes the bound
             # address itself and does not need a reverse DNS lookup at startup.
             TCPServer.server_bind(self)
@@ -41,13 +38,21 @@ class _WindowsRuntimeServer(ThreadedWSGIServer):
             raise RuntimeBindError(str(exc)) from exc
 
 
+class _WindowsRuntimeServer(_RuntimeServer):
+    allow_reuse_address = False
+
+    def server_bind(self):
+        try:
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        except OSError as exc:
+            raise RuntimeBindError(str(exc)) from exc
+        super().server_bind()
+
+
 def create_runtime_server(app, host, port):
     transport = RuntimeHostStopTransport(app)
-    if os.name == "nt":
-        server = _WindowsRuntimeServer(host, int(port), transport, handler=WorkbenchRequestHandler)
-    else:
-        server = cast(ThreadedWSGIServer, make_server(host, int(port), transport, threaded=True,
-                                                      request_handler=WorkbenchRequestHandler))
+    server_cls = _WindowsRuntimeServer if os.name == "nt" else _RuntimeServer
+    server = server_cls(host, int(port), transport, handler=WorkbenchRequestHandler)
     transport.server = server
     server.daemon_threads = False
     return server

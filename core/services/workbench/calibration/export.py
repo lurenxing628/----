@@ -74,8 +74,6 @@ def _xlsx(values, headers, output, metadata_rows):
 
 
 def export_calibration(data, rows, snapshot, format_name):
-    if format_name not in ("csv", "xlsx"):
-        raise WorkbenchCommandRejected("invalid_input", "只支持 CSV 或 XLSX 格式。", 400)
     if not rows:
         raise WorkbenchCommandRejected("empty_export", "当前筛选范围没有可导出的建议行。", 422)
     scope = canonical_json(data["scope"])

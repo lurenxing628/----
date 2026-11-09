@@ -21,6 +21,7 @@ from core.models.workbench_table_descriptor import INSTRUCTION_SHEET
 from core.services.common.excel_cell_values import cell_value, is_formula_or_error, is_percent_format
 from core.services.common.excel_instruction_sheet import append_instruction_sheet
 from core.services.workbench.facts.table_cells import number_text
+from core.shared.stored_dates import stored_local_iso_datetime
 from core.shared.strict_parse import ILLEGAL_XML_CHARS_RE, decimal_integral_span, scaled_decimal
 
 from .field_report_files_xml import check_package
@@ -50,10 +51,9 @@ def _timestamp(value, epoch):
         reject('实际时间不能只有日期，请填写时分。')
     if type(value) is not str or not re.fullmatch(r'\d{4}-\d\d-\d\d[ T]\d\d:\d\d(?::\d\d)?', value.strip()):
         reject('实际时间请按 2026-09-13 08:30 这样填，需要时可以带秒，例如 08:30:15。')
-    try:
-        parsed = datetime.fromisoformat(value.strip())
-    except ValueError as exc:
-        raise WorkbenchCommandRejected('invalid_input', '实际时间不是有效的日期时间。', 422) from exc
+    parsed = stored_local_iso_datetime(value.strip(), allow_space=True, allow_minutes_only=True)
+    if parsed is None:
+        raise WorkbenchCommandRejected('invalid_input', '实际时间不是有效的日期时间。', 422)
     return parsed.isoformat(timespec='seconds')
 
 

@@ -15,7 +15,7 @@ from core.services.scheduler.run.schedule_payload_contract import ValidatedSched
 
 from .candidate_facts import index_rows
 from .candidate_tasks import task_resource
-from .candidate_values import bounded_size, gap
+from .candidate_values import bounded_size, gap, is_blob_metadata
 from .run_input_codec import prepare_execution_projections
 from .zero_duration import point_event_dto
 
@@ -29,19 +29,13 @@ class ArchivedAdmissionPlan:
 
     def __init__(self, capture, facts):
         self.facts = facts
-        self.sources = self._required("WorkbenchPlanSourceRefs")
-        self.tasks = index_rows(self._required("WorkbenchTaskRefs"), "ref")
-        self.history = self._required("ScheduleHistory")
-        self.schedule = self._required("Schedule")
+        self.sources = facts.table("WorkbenchPlanSourceRefs")
+        self.tasks = index_rows(facts.table("WorkbenchTaskRefs"), "ref")
+        self.history = facts.table("ScheduleHistory")
+        self.schedule = facts.table("Schedule")
         self.baseline = capture["baseline"]
         self._check_baseline()
         self._bindings()
-
-    def _required(self, name):
-        rows = self.facts.table(name)
-        if rows is None:
-            invalid_baseline()
-        return rows
 
     def _check_baseline(self):
         baseline = self.baseline
@@ -152,7 +146,7 @@ class AdmissionBaseline(ArchivedAdmissionPlan):
         expected = self._execution_scope()
         raw = capture["execution"]
         try:
-            projections = prepare_execution_projections(raw, max_operations=None)
+            projections = prepare_execution_projections(raw)
         except (CandidateRunInputError, TypeError, ValueError):
             invalid_baseline()
         if {row["operation_ref"] for row in projections} != expected:
@@ -245,7 +239,7 @@ def baseline_interval(row, gaps):
             # Schedule historically stores both SQLite's space and ISO's T separator; local_time rejects non-text.
             values.append(local_time(value.replace(" ", "T", 1) if type(value) is str else value))
         except ValueError:
-            gaps.append(gap(field, "blob_metadata" if type(value) is dict and "sqlite_blob_base64" in value else "invalid_stored_value"))
+            gaps.append(gap(field, "blob_metadata" if is_blob_metadata(value) else "invalid_stored_value"))
             values.append(None)
     if values[0] is not None and values[1] is not None and values[0] > values[1]:
         gaps.append(gap("interval", "invalid_stored_value"))

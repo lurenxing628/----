@@ -23,19 +23,3 @@ def normalize_date(value: Any) -> Optional[str]:
     except ValueError as exc:
         raise ValidationError("日期写法不对，请填写类似 2026-05-20 的日期。", field="日期") from exc
 
-
-def normalize_hhmm(value: Any, *, field: str) -> Optional[str]:
-    """
-    时间标准化为 HH:MM（支持 HH:MM / HH:MM:SS）。
-    """
-    if value is None or (isinstance(value, str) and value.strip() == ""):
-        return None
-    s = str(value).strip().replace("：", ":")
-    for fmt in ("%H:%M:%S", "%H:%M"):
-        try:
-            t = datetime.strptime(s, fmt).time()
-            return t.strftime("%H:%M")
-        except ValueError:
-            continue
-    raise ValidationError(f"“{field}”格式不合法（期望：HH:MM）", field=field)
-

@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import math
 from decimal import Decimal
-from typing import Any, Optional, Tuple
-
-from core.errors import ValidationError
+from typing import Any, Optional
 
 
 def normalize_text(value: Any) -> Optional[str]:
@@ -27,12 +25,3 @@ def normalize_text(value: Any) -> Optional[str]:
         return None
     v = str(value).strip()
     return v if v != "" else None
-
-
-def validate_enum(value: Optional[str], allowed: Tuple[str, ...], field: str) -> Optional[str]:
-    if value is None:
-        return None
-    if value not in allowed:
-        allow_text = "普通 / 急件 / 特急" if field == "优先级" else " / ".join(allowed)
-        raise ValidationError(f"“{field}”不正确，请选择：{allow_text}。", field=field)
-    return value

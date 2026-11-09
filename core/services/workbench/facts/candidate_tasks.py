@@ -97,15 +97,13 @@ def validate_saved_tasks(rows, candidate, facts, *, prepared_tasks):
 
 
 def project_validated_tasks(rows, candidate, facts, intervals, *, prepared_tasks=None):
-    traces = {row["op_id"]: row for row in candidate["artifact"].get("results", [])}
+    traces = {row["op_id"]: row for row in candidate["artifact"]["results"]}
     result = []
     for row in rows:
         start, end = intervals[row["row_ref"]]
         task = _task_dto(row, facts, start, end,
             prepared=prepared_tasks[row["row_ref"]] if prepared_tasks is not None else None)
-        trace = traces.get(row["payload"]["op_id"], {})
-        if "op_type_id" in trace:
-            task.update(facts.operation_type_labels(trace["op_type_id"]))
+        task.update(facts.operation_type_labels(traces[row["payload"]["op_id"]]["op_type_id"]))
         result.append(task)
     return result
 
@@ -175,23 +173,27 @@ def scope_workspace_tasks(source, scope):
 
     def order(row):
         if scope.sort == "sequence":
-            return _sequence_order(row)
+            return operation_sequence_order(row)
         return row[scope.sort], row["operation_ref"]
 
     tasks = sorted(tasks, key=order, reverse=scope.order == "desc")
-    unplanned = sorted(unplanned, key=_sequence_order, reverse=scope.order == "desc")
+    unplanned = sorted(unplanned, key=operation_sequence_order, reverse=scope.order == "desc")
     return tasks, unplanned
 
 
-def _sequence_order(row):
+def operation_sequence_value(value):
+    return None if value is None else int(value)
+
+
+def operation_sequence_order(row):
     """Arranged and unplanned operations share one order: unknown sequences after known ones in
     ascending order (and reversed, so first, in descending order).
 
     A saved sequence is None when its stored value is missing or damaged, and a string when the
     integer is too large for JSON numbers (candidate_values.number), so it is compared as int.
     """
-    sequence = row["sequence"]
-    return sequence is None, 0 if sequence is None else int(sequence), row["operation_ref"]
+    sequence = operation_sequence_value(row["sequence"])
+    return sequence is None, 0 if sequence is None else sequence, row["operation_ref"]
 
 
 def interval_span(intervals):

@@ -8,7 +8,7 @@ from .preparation_projection import project_operation_effort
 
 
 def candidate_operation_effort_projection(source):
-    runtime = saved_operation_efforts(source.receipt.get("operation_effort"), identities=source.facts.operations)
+    runtime = saved_operation_efforts(source.receipt["operation_effort"], identities=source.facts.operations)
     arranged = {row["operation_ref"]: row["payload"] for row in source.raw_tasks}
     refs = set(arranged) | set(source.disposition)
     deferred = material_deferred_ids(source.disposition.values(), source.capture["input"])

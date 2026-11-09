@@ -5,6 +5,7 @@ from datetime import datetime
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.shared.strict_json import load_strict_json
+from core.shared.strict_parse import parse_bounded_positive_int
 
 STATES = ('unreported', 'started', 'partial', 'complete')
 FILTERS = ('plan_ref', 'query', 'state', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'range_start', 'range_end', 'batch_ids')
@@ -84,10 +85,10 @@ def normalize_scope(value):
 def page_input(value):
     result = []
     for key, default, upper in [('page', 1, 100000), ('size', 20, 100)]:
-        raw = value.get(key, default)
-        if type(raw) not in (str, int) or not re.fullmatch('[1-9][0-9]*', str(raw)) or int(raw) > upper:
+        parsed = parse_bounded_positive_int(value.get(key, default), max_value=upper)
+        if parsed is None:
             invalid('页码或每页数量无效。')
-        result.append(int(raw))
+        result.append(parsed)
     return tuple(result)
 
 

@@ -84,8 +84,6 @@ def _append_xlsx_metadata(sheet, data, snapshot):
 
 
 def export_table(engine, data, rows, snapshot, format_name):
-    if format_name not in ("csv", "xlsx"):
-        raise WorkbenchCommandRejected("invalid_input", "只能导出 CSV 或 XLSX，没有开始下载。请重新选择格式。", 400)
     if not rows:
         raise WorkbenchCommandRejected("empty_export", "当前筛选范围里没有可导出的结果，没有开始下载。请放宽筛选条件后重试。", 422)
     decision = ensure_export_size(engine, len(rows))

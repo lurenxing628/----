@@ -130,7 +130,7 @@ def _prepare(conn, settings, facts, raw_batches, batches, operations, projection
     return CandidateRunInput(
         normalized_batch_ids=[row["batch_id"] for row in raw_batches], start_dt_norm=start,
         end_date_norm=local_date(settings["end_date"]),
-        t0=time.time(), cal_svc=calendar, cfg=cfg, readiness_gate_enabled=settings["ready_check"],
+        t0=time.monotonic(), cal_svc=calendar, cfg=cfg, readiness_gate_enabled=settings["ready_check"],
         batches=batches, operations=operations, missing_internal_resource_op_ids=missing_ids,
         algo_ops=algo_ops, prev_version=prev_version,
         frozen_op_ids=frozen, seed_results=seeds, execution_facts=execution_facts,

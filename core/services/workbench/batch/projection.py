@@ -1,10 +1,9 @@
 """Public batch facts, never guessed scheduling or execution state."""
 
-from datetime import date, datetime
-
 from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.models.workbench_batch import FIELDS, MAX_INTEGER, PRIORITIES, READY, STATUSES
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_template_lineage import operation_code
 from core.services.material.stage_availability import MaterialAvailability
 from core.services.scheduler.contracts.external_context import (
     context_group_key,
@@ -14,9 +13,10 @@ from core.services.scheduler.contracts.external_context import (
     merged_supplier_problem,
 )
 from core.services.workbench.process.projection import public_sequence
-from core.shared.strict_parse import is_exact_finite_number
+from core.shared.stored_dates import stored_date
+from core.shared.strict_parse import is_exact_finite_number, is_stored_number
 
-from .execution import batch_progress, operation_execution_fields
+from .execution import batch_progress, copied_execution, operation_execution_fields
 from .facts import index_relations
 from .resource_choices import BatchResourceFacts
 
@@ -26,9 +26,7 @@ def issue(message, code="data_gap"):
 
 
 def numeric(value, issues, label, *, integer=False, positive=False):
-    valid = type(value) is int if integer else is_exact_finite_number(value)
-    valid = valid and 0 <= value <= MAX_INTEGER and (not positive or value > 0)
-    if not valid:
+    if not is_stored_number(value, positive=positive, integer=integer):
         issues.append(issue(label + ("未填写。" if value is None else "原值不合法，请核对。")))
         return None
     return value
@@ -37,16 +35,16 @@ def numeric(value, issues, label, *, integer=False, positive=False):
 def date_text(value, issues, label):
     if value is None:
         return None
-    if isinstance(value, date) and not isinstance(value, datetime):
-        return value.isoformat()
-    if isinstance(value, str):
-        try:
-            if date.fromisoformat(value).isoformat() == value:
-                return value
-        except ValueError:
-            pass
+    normalized = stored_date(value)
+    if normalized is not None:
+        return normalized
     issues.append(issue(label + "原值不合法，请核对。"))
     return str(value)
+
+
+def _sequence_order(op):
+    # 存量工序号可能混入非整数，先排整数，坏值排在后面照常展示，不让排序本身报错。
+    return (0, op["seq"], op["id"]) if type(op["seq"]) is int else (1, repr(op["seq"]), op["id"])
 
 
 def _active_refs(facts):
@@ -76,14 +74,15 @@ def batch_choices(facts, links):
 
 
 class BatchProjection:
-    def __init__(self, facts):
+    def __init__(self, facts, relations=None):
+        """relations 是同一份 facts 已建好的 index_relations 结果；调用方已有就传进来，不再建第二遍。"""
         self.facts = facts
         self.resources = BatchResourceFacts(facts)
         self.refs = _active_refs(facts)
         self.catalogs = self.resources.catalogs
         self.material_day = facts["material_day"]
         self.material_availability = MaterialAvailability(facts)
-        self.relations = index_relations(facts)
+        self.relations = index_relations(facts) if relations is None else relations
         self.parts = {row["part_no"]: row for row in facts["Parts"]}
         self.external_contexts = {row["operation_id"]: row for row in facts["BatchExternalContexts"]}
         self.external_members = member_index(self.external_contexts, facts["BatchOperations"])
@@ -146,7 +145,11 @@ class BatchProjection:
                 numbers[key] = None
         return issues
 
-    def _operation_values(self, batch, row, *, include_details):
+    def _ledger(self, row):
+        ref = self.facts["operation_refs"][row["id"]]
+        return ref, self.facts["execution"]["projections"][ref]
+
+    def _operation_values(self, batch, row, projection, *, include_details):
         group = context = None
         if row["source"] == "external":
             context = self.external_contexts.get(row["id"])
@@ -165,17 +168,25 @@ class BatchProjection:
             if problem:
                 issues.append(issue(problem, "external_context_invalid"))
                 numbers["ext_days"] = None
-        ref = self.facts["operation_refs"][row["id"]]
-        execution = operation_execution_fields(row, ref, self.facts["execution"], include_details=include_details)
+        execution = operation_execution_fields(row, projection, include_details=include_details)
         issues.extend(execution["data_gaps"])
-        return group, numbers, execution, issues, context, ref
+        return group, numbers, execution, issues
 
     def operation_summary(self, batch, row):
-        _, _, execution, issues, _, _ = self._operation_values(batch, row, include_details=False)
+        _, _, execution, issues = self._operation_values(batch, row, self._ledger(row)[1], include_details=False)
         return {"completed": execution["completed"], "execution_state": execution["execution_state"], "issues": issues}
 
     def operation(self, batch, row, protected):
-        group, numbers, execution, issues, context, ref = self._operation_values(batch, row, include_details=True)
+        return self._operation(batch, row, protected, *self._ledger(row))
+
+    def copied_operation(self, created, row):
+        """复制出的工序：保留原工序的 id/batch_id 去核对随之复制的外协周期和合并组；执行情况是新批次里一道还没报工的新工序。"""
+        copied = {**row, "op_code": operation_code(created["batch_id"], row["seq"], row["piece_id"]), "status": "pending"}
+        execution = copied_execution(copied, created["quantity"], self._ledger(row)[1].plan_identity)
+        return self._operation(created, copied, False, None, execution)
+
+    def _operation(self, batch, row, protected, ref, projection):
+        group, numbers, execution, issues = self._operation_values(batch, row, projection, include_details=True)
         resources = {kind: self.resource(kind, row[kind + "_id"]) for kind in ("machine", "operator", "supplier", "op_type")}
         return {"ref": ref, "operation_ref": ref, "business_code": row["op_code"], "sequence": public_sequence(row["seq"]),
                 "piece_id": row["piece_id"], "label": row["op_type_name"], "source": row["source"], **execution,
@@ -185,22 +196,43 @@ class BatchProjection:
                 "editable": not protected and row["status"] == "pending" and row["source"] in OPERATION_SOURCES}
 
     def entity(self, row):
-        return self._entity(row, include_operations=True)
+        return self._entity(row, include_operations=True, ref=self.ref("batch", row["batch_id"]))
 
     def summary(self, row):
-        return self._entity(row, include_operations=False)
+        return self._entity(row, include_operations=False, ref=self.ref("batch", row["batch_id"]))
 
-    def _entity(self, row, *, include_operations):
-        facts = self.relations[row["batch_id"]]
+    def updated_entity(self, row, before):
+        """只改批次自身字段（优先级、交期、备注）的预览：工序投影只看零件号和工序行，直接沿用 before 的工序。"""
+        return self._entity(row, include_operations=True, ref=before["ref"], operations=before["operations"])
+
+    def copied_entity(self, source, created):
+        """复制预览：新批次按提交后详情的同一套投影算出，原批次的关联和执行记录都不带过去。
+
+        新批次的关联和齐套结果在这里单独算好显式传给 _entity，不写进本投影或共享的物料齐套索引。
+        """
+        source_facts = self.relations[source["batch_id"]]
+        operations = [self.copied_operation(created, op) for op in sorted(source_facts["operations"], key=_sequence_order)]
+        materials = source_facts["materials"]
+        relations = {"operations": (), "materials": materials, "reports": (), "outsourcing_receipts": (),
+                     "quantity_splits": (), "plan_reference_count": 0, "protected": False}
+        # 复制出的需求行与提交后同口径：沿用需求量，到料量从 0 开始，未核对。
+        copied = MaterialAvailability({"BatchMaterials": [
+            {"id": index, "batch_id": created["batch_id"], "material_id": row["material_id"],
+             "required_qty": row["required_qty"], "available_qty": 0, "ready_status": "no"}
+            for index, row in enumerate(materials)]})
+        return self._entity(created, include_operations=True, ref=None, operations=operations, relations=relations,
+                            readiness=copied.readiness_state(created, self.material_day))
+
+    def _entity(self, row, *, include_operations, ref, operations=None, relations=None, readiness=None):
+        facts = self.relations[row["batch_id"]] if relations is None else relations
         issues = []
         part = self.parts.get(row["part_no"])
         if part is None:
             raise WorkbenchCommandRejected("storage_failure", "这个批次对应的零件已经不在了。请刷新重试；仍不行请联系维护人员。", 500)
-        if include_operations:
-            # 存量工序号可能混入非整数，先排整数，坏值排在后面照常展示，不让排序本身报错。
-            ops = [self.operation(row, op, facts["protected"])
-                   for op in sorted(facts["operations"], key=lambda op: (0, op["seq"], op["id"])
-                                    if type(op["seq"]) is int else (1, repr(op["seq"]), op["id"]))]
+        if operations is not None:
+            ops = operations
+        elif include_operations:
+            ops = [self.operation(row, op, facts["protected"]) for op in sorted(facts["operations"], key=_sequence_order)]
         else:
             # 摘要只取件数和完工统计，不需要工序顺序。
             ops = [self.operation_summary(row, op) for op in facts["operations"]]
@@ -211,12 +243,13 @@ class BatchProjection:
         for key, allowed in (("priority", PRIORITIES), ("ready_status", READY), ("status", STATUSES)):
             if row[key] not in allowed:
                 issues.append(issue("原优先级、齐套或状态标记不明确。"))
-        display_ready, material_issues = self.material_availability.readiness_state(row, self.material_day)
+        display_ready, material_issues = (self.material_availability.readiness_state(row, self.material_day)
+                                          if readiness is None else readiness)
         issues.extend(material_issues)
         done, all_complete, status = batch_progress(ops, row["status"])
         if row["status"] == "completed" and (not ops or done != len(ops)):
             issues.append(issue("批次标着完成，但工序状态对不上，不能认定整批已完成。", "completion_inconsistent"))
-        entity = {"ref": self.ref("batch", row["batch_id"]), "business_code": row["batch_id"], "label": part["part_name"],
+        entity = {"ref": ref, "business_code": row["batch_id"], "label": part["part_name"],
                 "status": status, "stored_status": row["status"],
                 "fields": fields, "display_ready_status": display_ready, "relationships": {"part_ref": self.ref("part", row["part_no"]),
                     "part_no": row["part_no"], "part_name": part["part_name"], "operation_count": len(ops), "completed_count": done,
