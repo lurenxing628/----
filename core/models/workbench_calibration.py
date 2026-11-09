@@ -91,7 +91,7 @@ class CalibrationTemplate:
 
 @dataclass(frozen=True)
 class CalibrationLineage:
-    """Internal verified origin contract. Current storage supplies no such fact."""
+    """Verified template origin bound to an execution operation from stored lineage evidence."""
 
     template_operation_ref: str
     template_revision: int

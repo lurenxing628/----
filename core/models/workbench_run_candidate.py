@@ -2,10 +2,10 @@
 
 import re
 from dataclasses import dataclass
-from datetime import datetime
 from typing import NoReturn, Optional
 
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.shared.stored_dates import stored_local_iso_datetime
 
 MAX_FACT_BYTES = 64 * 1024 * 1024
 MAX_ARTIFACT_BYTES = 32 * 1024 * 1024
@@ -14,7 +14,6 @@ MAX_RESPONSE_BYTES = 32 * 1024 * 1024
 MAX_CANDIDATES = 256
 MAX_TASKS = 20000
 _REF_RE = re.compile(r"[0-9a-f]{48}")
-_LOCAL_TIME_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?")
 
 
 def reject(code, message, status=409) -> NoReturn:
@@ -29,9 +28,10 @@ def reference(value, *, stored=False):
 
 
 def local_time(value):
-    if type(value) is not str or _LOCAL_TIME_RE.fullmatch(value) is None:
+    parsed = stored_local_iso_datetime(value)
+    if parsed is None:
         raise ValueError("Expected factory-local ISO datetime")
-    return datetime.fromisoformat(value)
+    return parsed
 
 
 @dataclass(frozen=True)

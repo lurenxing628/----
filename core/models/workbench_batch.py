@@ -60,6 +60,22 @@ def text(value, field, *, nullable=False, limit=2000):
     return value.strip() or None
 
 
+def normalize_batch_fields(fields):
+    normalized = {}
+    for key, value in fields.items():
+        path = "fields." + key
+        if key == "quantity":
+            value = number(value, path, integer=True, positive=True)
+        elif key in ("due_date", "ready_date"):
+            value = date_value(value, path)
+        elif key == "remark":
+            value = text(value, path, nullable=True)
+        elif value not in (PRIORITIES if key == "priority" else READY) or not isinstance(value, str):
+            raise ValidationError("请选择有效选项。", field=path)
+        normalized[key] = value
+    return normalized
+
+
 def normalize_batch_input(action, payload):
     if action == "delete":
         object_fields(payload, ())
@@ -71,18 +87,7 @@ def normalize_batch_input(action, payload):
     fields = object_fields(payload["fields"], FIELDS, FIELDS if action == "create" else ())
     if not fields:
         raise ValidationError("至少填写一项要修改的内容。", field="fields")
-    normalized_fields = {}
-    for key, value in fields.items():
-        path = "fields." + key
-        if key == "quantity":
-            value = number(value, path, integer=True, positive=True)
-        elif key in ("due_date", "ready_date"):
-            value = date_value(value, path)
-        elif key == "remark":
-            value = text(value, path, nullable=True)
-        elif value not in (PRIORITIES if key == "priority" else READY) or not isinstance(value, str):
-            raise ValidationError("请选择有效选项。", field=path)
-        normalized_fields[key] = value
+    normalized_fields = normalize_batch_fields(fields)
     if action == "create":
         return {"fields": normalized_fields,
                 "business_code": text(payload["business_code"], "business_code", limit=200),

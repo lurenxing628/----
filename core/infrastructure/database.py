@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import datetime
 import logging
 import os
 import sqlite3
@@ -8,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from core.infrastructure.sqlite_udf import register_schedule_time_sql_functions
+from core.shared.stored_dates import stored_day
 
 from .database_bootstrap import (
     build_schema_exec_script as _build_schema_exec_script,
@@ -46,16 +46,18 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def _convert_stored_date(value: bytes):
-    """DATE 列沿用 sqlite3 默认写法转成日期；转不了的原样返回文本。
+    """DATE 列只把规范的 `YYYY-MM-DD` 转成日期；其余写法原样返回文本或原始字节。
 
     默认转换器遇到 `2026/10/01`、`2026-02-30` 这类旧值会在取数时直接抛 ValueError，
-    读取端写好的"日期无效"提示就到不了用户面前，只剩一个 500。
+    读取端写好的"日期无效"提示就到不了用户面前，只剩一个 500。`2026-9-9` 这类不补零写法
+    和非法 UTF-8 字节也原样保留：排产准入和交付读取按同一口径把它判为日期无效，不会一边排上、一边报无效。
     """
-    text = value.decode("utf-8")
     try:
-        return datetime.date(*map(int, value.split(b"-")))
-    except (TypeError, ValueError):
-        return text
+        text = value.decode("utf-8")
+    except UnicodeDecodeError:
+        return value
+    day = stored_day(text)
+    return text if day is None else day
 
 
 sqlite3.register_converter("DATE", _convert_stored_date)

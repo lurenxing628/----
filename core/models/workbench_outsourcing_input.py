@@ -7,6 +7,7 @@ from typing import Dict, Optional
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_outsourcing import FACT_FIELDS, MAX_MEMBERS, STATES, reference, reject
+from core.shared.stored_dates import stored_local_iso_datetime
 
 
 def text(value, field, limit=2000):
@@ -20,10 +21,9 @@ def factory_time(value: object, *, parsed_times: Optional[Dict[str, datetime]] =
         return parsed_times[value]
     if type(value) is not str or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}", value) is None:
         raise WorkbenchCommandRejected("invalid_input", "登记时间格式不对，请按 2026-09-13 08:30:00 这样填写。", 422)
-    try:
-        parsed = datetime.fromisoformat(value)
-    except ValueError as exc:
-        raise WorkbenchCommandRejected("invalid_input", "登记时间不是有效日期。", 422) from exc
+    parsed = stored_local_iso_datetime(value)
+    if parsed is None:
+        raise WorkbenchCommandRejected("invalid_input", "登记时间不是有效日期。", 422)
     if parsed_times is not None:
         parsed_times[value] = parsed
     return parsed
@@ -95,8 +95,6 @@ class PreparedReceiptValues:
 
 
 def prepare_values(before, payload, now, *, parsed_times: Optional[Dict[str, datetime]] = None):
-    if not isinstance(now, datetime) or now.tzinfo is not None:
-        raise ValueError("Outsourcing clock must return factory-local naive datetime")
     values = dict(before or {})
     values.update({key: payload[key] for key in FACT_FIELDS if key in payload})
     if set(values) != set(FACT_FIELDS):

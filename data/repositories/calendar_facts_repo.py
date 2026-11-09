@@ -45,9 +45,8 @@ class CalendarFactsRepository(BaseRepository):
                            operator_ids, (), limit)
 
     def shift_patterns(self, profile_ids: Sequence[str], *, limit: int) -> List[Dict[str, Any]]:
-        return self._keyed("SELECT d.*,p.periods_json FROM WorkbenchShiftPatternDays d LEFT JOIN WorkbenchShiftDayPeriods p "
-                           "ON p.profile_id=d.profile_id AND p.day_offset=d.day_offset WHERE d.profile_id IN ({marks}) "
-                           "ORDER BY d.profile_id,d.day_offset", profile_ids, (), limit)
+        return self._keyed("SELECT * FROM WorkbenchShiftPatternDays WHERE profile_id IN ({marks}) "
+                           "ORDER BY profile_id,day_offset", profile_ids, (), limit)
 
     def machines(self, machine_ids: Sequence[str], *, limit: int) -> List[Dict[str, Any]]:
         return self._keyed("SELECT machine_id,name,status,op_type_id FROM Machines "

@@ -9,7 +9,7 @@ from datetime import date, timedelta
 from typing import Any, Dict, List, Optional
 
 from core.errors import ValidationError
-from core.models.calendar_periods import normalize_periods
+from core.models.calendar_periods import apply_rest_day_rules, normalize_periods
 from core.models.workbench_resource_input import resource_object
 
 # Reuse CalendarEngine.MAX_CALENDAR_DAYS' domain magnitude, counting inclusive dates.
@@ -17,10 +17,9 @@ from core.models.workbench_resource_input import resource_object
 MAX_CALENDAR_RANGE_DAYS = 36500
 CALENDAR_PREVIEW_TTL_SECONDS = 900
 TIME = re.compile(r"([01][0-9]|2[0-3]):[0-5][0-9]\Z")
-_FIELDS = frozenset(("type", "hours", "eff", "allowNormal", "allowUrgent", "note", "shiftStart", "shiftEnd", "periods"))
-_DOMAIN_FIELDS = {"periods": "periods", "hours": "shift_hours", "eff": "efficiency", "allowNormal": "allow_normal",
-                  "allowUrgent": "allow_urgent", "note": "remark", "type": "day_type",
-                  "shiftStart": "shift_start", "shiftEnd": "shift_end"}
+_FIELDS = frozenset(("type", "periods", "eff", "allowNormal", "allowUrgent", "note"))
+_DOMAIN_FIELDS = {"periods": "periods", "eff": "efficiency", "allowNormal": "allow_normal",
+                  "allowUrgent": "allow_urgent", "note": "remark", "type": "day_type"}
 _INPUTS = {
     "upsert": frozenset(("date", "fields")),
     "delete": frozenset(("date",)),
@@ -46,63 +45,70 @@ def operator_clock(value: Any, field: str) -> str:
     return value
 
 
-def calendar_note(raw: Any, path: str) -> Optional[str]:
+def _note(raw: Any) -> Optional[str]:
     if raw is None:
         return None
     if type(raw) is not str:
-        raise ValidationError("备注必须是文字或 null。", field=path)
+        raise ValidationError("备注必须是文字或 null。", field="note")
     return raw.strip() or None
 
 
-def calendar_choice(key: str, raw: Any, path: str) -> str:
+def _choice(key: str, raw: Any) -> str:
     choices = ("work", "rest") if key == "type" else ("yes", "no")
     if type(raw) is not str or raw not in choices:
-        raise ValidationError("请选择有效的日历选项。", field=path)
+        raise ValidationError("请选择有效的日历选项。", field=key)
     return raw
 
 
-def _number(value: Any, field: str, maximum: float, *, positive: bool = False) -> float:
+def _eff(value: Any) -> float:
     if type(value) not in (int, float):
-        raise ValidationError("这一项必须填数字。", field=field)
+        raise ValidationError("效率必须填数字。", field="eff")
     try:
         number = float(value)
     except OverflowError as exc:
-        raise ValidationError("数字超出范围。", field=field) from exc
-    if not math.isfinite(number) or number < 0 or number > maximum or (positive and number == 0):
-        raise ValidationError("数字超出范围；工时为 0 至 24，效率须大于 0 且不超过 200%。", field=field)
-    return number if number else 0.0
+        raise ValidationError("效率须大于 0 且不超过 200%。", field="eff") from exc
+    if not math.isfinite(number) or number <= 0 or number > 200:
+        raise ValidationError("效率须大于 0 且不超过 200%。", field="eff")
+    return number
 
 
 def _field_value(key: str, raw: Any) -> Any:
-    path = "fields." + key
     if key == "periods":
         return normalize_periods(raw)
-    if key in ("hours", "eff"):
-        return _number(raw, path, 24 if key == "hours" else 200, positive=key == "eff")
-    if key in ("shiftStart", "shiftEnd"):
-        return None if raw is None and key == "shiftEnd" else operator_clock(raw, path)
+    if key == "eff":
+        return _eff(raw)
     if key == "note":
-        return calendar_note(raw, path)
-    return calendar_choice(key, raw, path)
+        return _note(raw)
+    return _choice(key, raw)
 
 
-def _fields(value: Any) -> Dict[str, Any]:
-    fields = resource_object(value, _FIELDS, "fields")
-    result = {key: _field_value(key, raw) for key, raw in fields.items()}
-    if result.get("type") == "rest":
-        rest = {"hours": 0.0, "allowNormal": "no", "allowUrgent": "no"}
-        if any(key in result and result[key] != expected for key, expected in rest.items()):
-            raise ValidationError("休息日必须为零工时，且普通件和急件均不可排产。", field="fields")
-        if result.get("periods"):
-            raise ValidationError("休息日不能填写工作时段。", field="fields.periods")
-        result.update(rest)
+def form_field_error(exc: ValidationError) -> ValidationError:
+    """日历领域规则只报中立字段名；表单入口把表单里有的字段映射到界面路径 ``fields.*``，只在这一处做。
+
+    不是表单字段的（例如跨出 9999-12-31 报的 ``date``）原样保留，不造一条界面上没有的路径。
+    """
+    return ValidationError(exc.message, field=f"fields.{exc.field}" if exc.field in _FIELDS else exc.field)
+
+
+def calendar_fields(value: Any) -> Dict[str, Any]:
+    """全局与个人日历表单共用的字段规范化（单日、范围同一份）。
+
+    下层规则只报中立字段名，表单路径 ``fields.*`` 只在这里加一次。休息日规则见 ``apply_rest_day_rules``。
+    """
+    raw = resource_object(value, _FIELDS, "fields")
+    try:
+        result = {key: _field_value(key, val) for key, val in raw.items()}
+        if result.get("type") == "rest":
+            apply_rest_day_rules(result)
+    except ValidationError as exc:
+        raise form_field_error(exc) from exc
     return result
 
 
 def normalize_calendar_input(action: str, payload: Any) -> Dict[str, Any]:
     """Pure, idempotent input normalization; no DB, clock, token or default-row reads.
 
-    upsert: {date, fields:{type:work|rest, hours:0..24, eff:(0..200] percent,
+    upsert: {date, fields:{type:work|rest, periods:[...], eff:(0..200] percent,
     allowNormal:yes|no, allowUrgent:yes|no, note:str|null}}. Omission is no change.
     delete: {date}. preview: {start_date,end_date,scope:all|weekday|weekend,
     operation:upsert|delete,fields:{...}}. confirm: {preview_ref} only.
@@ -121,7 +127,7 @@ def normalize_calendar_input(action: str, payload: Any) -> Dict[str, Any]:
     if action in ("upsert", "delete"):
         result: Dict[str, Any] = {"date": calendar_date(payload.get("date"))}
         if action == "upsert":
-            result["fields"] = _fields(payload.get("fields", {}))
+            result["fields"] = calendar_fields(payload.get("fields", {}))
         return result
     return _range_input(payload)
 
@@ -137,7 +143,7 @@ def _range_input(payload: Dict[str, Any]) -> Dict[str, Any]:
         raise ValidationError("请选择每天、仅工作日或仅周末。", field="scope")
     if type(operation) is not str or operation not in ("upsert", "delete"):
         raise ValidationError("范围操作只能保存或清除日历。", field="operation")
-    fields = _fields(payload.get("fields", {}))
+    fields = calendar_fields(payload.get("fields", {}))
     if operation == "delete" and fields:
         raise ValidationError("选择清除设置时不能再填其他项。", field="fields")
     return {"start_date": start, "end_date": end, "scope": scope, "operation": operation, "fields": fields}
@@ -151,6 +157,15 @@ def calendar_domain_fields(fields: Dict[str, Any]) -> Dict[str, Any]:
     if "eff" in fields:
         patch["efficiency"] = fields["eff"] / 100.0
     return patch
+
+
+def require_periods_when_rest_turns_work(day: str, row: Optional[Dict[str, Any]], patch: Dict[str, Any]) -> None:
+    """原来存成假期的一天改成工作日时，必须同时给出工作时段；不替用户沿用假期的空时段存成 0 工时工作日。
+
+    显式提交空数组 [] 仍表示"明确零工时工作日"；已是工作日的行省略时段表示不改；没存过的日期另由各入口决定。
+    """
+    if row is not None and row["day_type"] == "holiday" and patch.get("day_type") == "workday" and "periods" not in patch:
+        raise ValidationError(day + " 原来是假期或休息日，改成工作日时请填写工作时段。", field="periods")
 
 
 def calendar_range_dates(normalized: Dict[str, Any]) -> List[str]:

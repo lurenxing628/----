@@ -182,27 +182,23 @@ _CORE_OBJECTS: Dict[str, str] = {
     version         INTEGER PRIMARY KEY AUTOINCREMENT
 )""",
     'WorkCalendar': """CREATE TABLE WorkCalendar (
-    date            DATE PRIMARY KEY,
-    day_type        TEXT DEFAULT 'workday',
-    shift_start     TEXT,                       -- 班次开始（HH:MM，可选；默认 08:00）
-    shift_end       TEXT,                       -- 班次结束（HH:MM，可选；用于推导 shift_hours）
-    shift_hours     REAL DEFAULT 8,
-    efficiency      REAL DEFAULT 1.0,
-    allow_normal    TEXT DEFAULT 'yes',
-    allow_urgent    TEXT DEFAULT 'yes',
-    remark          TEXT
-, periods_json TEXT)""",
+    date            DATE NOT NULL PRIMARY KEY,
+    day_type        TEXT NOT NULL,              -- workday / holiday
+    efficiency      REAL NOT NULL,
+    allow_normal    TEXT NOT NULL,
+    allow_urgent    TEXT NOT NULL,
+    remark          TEXT,
+    periods_json    TEXT NOT NULL               -- 工作时段数组；[] 表示零工时，起止与工时都由它现算
+)""",
     'OperatorCalendar': """CREATE TABLE OperatorCalendar (
     operator_id     TEXT NOT NULL,
     date            DATE NOT NULL,
-    day_type        TEXT DEFAULT 'workday',
-    shift_start     TEXT,                       -- 班次开始（HH:MM，可选；默认 08:00）
-    shift_end       TEXT,                       -- 班次结束（HH:MM，可选；用于推导 shift_hours）
-    shift_hours     REAL DEFAULT 8,
-    efficiency      REAL DEFAULT 1.0,
-    allow_normal    TEXT DEFAULT 'yes',
-    allow_urgent    TEXT DEFAULT 'yes',
-    remark          TEXT, periods_json TEXT,
+    day_type        TEXT NOT NULL,              -- workday / holiday
+    efficiency      REAL NOT NULL,
+    allow_normal    TEXT NOT NULL,
+    allow_urgent    TEXT NOT NULL,
+    remark          TEXT,
+    periods_json    TEXT NOT NULL,              -- 工作时段数组；[] 表示零工时，起止与工时都由它现算
     PRIMARY KEY (operator_id, date),
     FOREIGN KEY (operator_id) REFERENCES Operators(operator_id) ON DELETE CASCADE
 )""",

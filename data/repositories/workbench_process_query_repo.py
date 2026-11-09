@@ -34,14 +34,18 @@ class WorkbenchProcessQueryRepository(BaseRepository):
     def operations(self):
         scoped = self.part_ref is not None
         identity_fields = ", r.alternate_key AS ref_alternate_key" if scoped else ""
-        where = """WHERE o.part_no IN (SELECT part_no FROM target_part)
-            OR o.ext_group_id IN (SELECT group_id FROM related_groups) """ if scoped else ""
+        scoped_join = (
+            "JOIN (SELECT id FROM PartOperations WHERE part_no IN (SELECT part_no FROM target_part) "
+            "UNION SELECT id FROM PartOperations WHERE ext_group_id IN (SELECT group_id FROM related_groups)) "
+            "scoped_ops ON scoped_ops.id=o.id "
+            if scoped else ""
+        )
         return self.fetchall((_PART_SCOPE if scoped else "") + "SELECT o.*, r.ref, r.revision" + identity_fields + """,
             ot.op_type_id AS op_type_exists, ot.name AS op_type_label, ot.category AS op_type_category,
             tr.ref AS op_type_ref, s.supplier_id AS supplier_exists, s.name AS supplier_label,
             sr.ref AS supplier_ref, eg.group_id AS group_exists, eg.part_no AS group_part_no,
             gr.ref AS external_group_ref
-            FROM PartOperations o LEFT JOIN WorkbenchEntityRefs r
+            FROM PartOperations o """ + scoped_join + """LEFT JOIN WorkbenchEntityRefs r
               ON r.kind='template_operation' AND r.entity_key=CAST(o.id AS TEXT) AND r.active=1
             LEFT JOIN OpTypes ot ON ot.op_type_id=o.op_type_id
             LEFT JOIN WorkbenchEntityRefs tr ON tr.kind='op_type' AND tr.entity_key=ot.op_type_id AND tr.active=1
@@ -49,7 +53,7 @@ class WorkbenchProcessQueryRepository(BaseRepository):
             LEFT JOIN WorkbenchEntityRefs sr ON sr.kind='supplier' AND sr.entity_key=s.supplier_id AND sr.active=1
             LEFT JOIN ExternalGroups eg ON eg.group_id=o.ext_group_id
             LEFT JOIN WorkbenchEntityRefs gr ON gr.kind='template_external_group' AND gr.entity_key=eg.group_id AND gr.active=1
-            """ + where + "ORDER BY o.part_no,o.seq,o.id", (self.part_ref,) if scoped else ())
+            ORDER BY o.part_no,o.seq,o.id""", (self.part_ref,) if scoped else ())
 
     def groups(self):
         scoped = self.part_ref is not None

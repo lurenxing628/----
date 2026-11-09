@@ -1,16 +1,13 @@
-"""归档/备份库的只读连接与“在隔离内存库里解析已知 DDL”两类特殊 SQLite 访问。"""
+"""归档/备份库的只读连接与备份复制。"""
 
 from __future__ import annotations
 
 import sqlite3
 from contextlib import closing, contextmanager
-from functools import lru_cache
 from pathlib import Path
-from typing import Iterator, Tuple
+from typing import Iterator
 
 from core.infrastructure.sqlite_udf import register_schedule_time_sql_functions
-
-from .schema_probe import table_columns
 
 
 @contextmanager
@@ -27,21 +24,3 @@ def backup_to_file(source: sqlite3.Connection, path: str) -> None:
     """Materialize a consistent caller-owned database copy and release its handles."""
     with closing(sqlite3.connect(path)) as destination:
         source.backup(destination)
-
-
-@lru_cache(maxsize=128)
-def _ddl_columns(create_table_sql: str, name: str) -> Tuple[str, ...]:
-    conn = sqlite3.connect(":memory:")
-    try:
-        conn.execute(create_table_sql)
-        return tuple(table_columns(conn, name))
-    except (sqlite3.Error, sqlite3.Warning) as exc:
-        raise ValueError(f"cannot parse archived DDL for {name}: {exc}") from exc
-    finally:
-        conn.close()
-
-
-def ddl_columns(create_table_sql: str, name: str) -> Tuple[str, ...]:
-    if type(create_table_sql) is not str:
-        raise ValueError("DDL must be text")
-    return _ddl_columns(create_table_sql, name)

@@ -70,26 +70,32 @@ def _alternate_key_sql(kind: str, prefix: str) -> str:
 
 
 def identity_triggers(kind: str, table: str, columns: Tuple[str, ...], alternate_column: str = "", *,
-                      alternate_columns: Tuple[str, ...] = (), split_conflicts: bool = False) -> Dict[str, str]:
+                      alternate_columns: Tuple[str, ...] = ()) -> Dict[str, str]:
     if alternate_column and alternate_columns:
         raise ValueError("身份备用键不能同时指定单列和复合列。")
     new, old = entity_key_sql(columns, "NEW"), entity_key_sql(columns, "OLD")
     alternate = (entity_key_sql(alternate_columns, "NEW") if alternate_columns else
                  f'CAST(NEW."{alternate_column}" AS TEXT)' if alternate_column else _alternate_key_sql(kind, "NEW"))
-    conflict = f"entity_key = {new}"
+    predicates = [f"entity_key = {new}"]
     if alternate_column or alternate_columns or kind in _ALTERNATE_KEYS:
-        conflict += f" OR alternate_key = {alternate}"
+        predicates.append(f"alternate_key = {alternate}")
+    where = f"kind = '{kind}' AND active = 1"
+
+    def retire(extra: str) -> str:
+        # Separate indexed lookups avoid scanning the whole kind for each OR match.
+        return "\n".join(
+            "            UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1\n"
+            f"                WHERE {where}{extra} AND {predicate};" for predicate in predicates)
+
     stem = "wb_ref_" + kind
-    result = {
+    return {
         stem + "_insert": f"""CREATE TRIGGER IF NOT EXISTS {stem}_insert AFTER INSERT ON "{table}" BEGIN
-            UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
-                WHERE kind = '{kind}' AND active = 1 AND ({conflict});
+{retire('')}
             INSERT INTO WorkbenchEntityRefs(ref, kind, entity_key, alternate_key)
                 VALUES(lower(hex(randomblob(24))), '{kind}', {new}, {alternate});
         END""",
         stem + "_update": f"""CREATE TRIGGER IF NOT EXISTS {stem}_update AFTER UPDATE ON "{table}" BEGIN
-            UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
-                WHERE kind = '{kind}' AND active = 1 AND entity_key != {old} AND ({conflict});
+{retire(' AND entity_key != ' + old)}
             UPDATE WorkbenchEntityRefs SET entity_key = {new}, alternate_key = {alternate}, revision = revision + 1
                 WHERE kind = '{kind}' AND entity_key = {old} AND active = 1;
         END""",
@@ -98,25 +104,6 @@ def identity_triggers(kind: str, table: str, columns: Tuple[str, ...], alternate
                 WHERE kind = '{kind}' AND entity_key = {old} AND active = 1;
         END""",
     }
-    if split_conflicts and (alternate_column or alternate_columns or kind in _ALTERNATE_KEYS):
-        # Separate indexed lookups avoid scanning the whole kind for each OR match.
-        predicates = [f"entity_key = {new}", f"alternate_key = {alternate}"]
-        where = f"kind = '{kind}' AND active = 1"
-        def retire(extra):
-            return "\n".join(
-                "            UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1\n"
-                f"                WHERE {where}{extra} AND {predicate};" for predicate in predicates)
-        result[stem + "_insert"] = f"""CREATE TRIGGER IF NOT EXISTS {stem}_insert AFTER INSERT ON "{table}" BEGIN
-{retire('')}
-            INSERT INTO WorkbenchEntityRefs(ref, kind, entity_key, alternate_key)
-                VALUES(lower(hex(randomblob(24))), '{kind}', {new}, {alternate});
-        END"""
-        result[stem + "_update"] = f"""CREATE TRIGGER IF NOT EXISTS {stem}_update AFTER UPDATE ON "{table}" BEGIN
-{retire(' AND entity_key != ' + old)}
-            UPDATE WorkbenchEntityRefs SET entity_key = {new}, alternate_key = {alternate}, revision = revision + 1
-                WHERE kind = '{kind}' AND entity_key = {old} AND active = 1;
-        END"""
-    return result
 
 
 def metadata_objects() -> Dict[str, str]:
@@ -196,20 +183,9 @@ def _table_body_span(text: str) -> Tuple[int, int]:
     return -1, -1
 
 
-def canonical_ddl_parts(sql: str) -> List[str]:
-    """CREATE TABLE 的列与约束定义（规范化文本），按语句里的物理顺序；不是 CREATE TABLE 时为空列表。"""
-    text = _normalized_sql(sql)
-    start, end = _table_body_span(text)
-    return _split_top_level(text[start:end]) if start >= 0 else []
-
-
 @lru_cache(maxsize=2048)
 def canonical_sql(sql: str) -> str:
-    """DDL 文本规范化：去 SQL 注释与 IF NOT EXISTS、压空白与标点周围空白；CREATE TABLE 的列/约束按文本排序。
-
-    列的物理顺序不是契约：ALTER TABLE ADD COLUMN 只能追加，迁移链与 schema.sql 新库的列序天然不同，按列名访问不受影响。
-    按列位解码存档行的调用方要用 canonical_ddl_parts 取存档自己的列序，不能拿本模块 DDL 的列序去套。
-    """
+    """DDL 文本规范化：去 SQL 注释与 IF NOT EXISTS、压空白与标点周围空白；CREATE TABLE 的列/约束按文本排序。"""
     text = _normalized_sql(sql)
     start, end = _table_body_span(text)
     if start >= 0:

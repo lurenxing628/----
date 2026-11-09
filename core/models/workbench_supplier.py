@@ -1,4 +1,4 @@
-"""Pure input and state projection for private supplier commands."""
+"""Supplier input normalization and public state projection."""
 
 from __future__ import annotations
 
@@ -10,9 +10,7 @@ from core.errors import ValidationError
 from core.models.workbench_resource_input import resource_object, resource_text
 from core.models.workbench_resource_status import reasoned_resource_state
 
-#: 解析器认的状态代号。描述符那份在 workbench_resource_file.ENUMS，两份是有意分开的：
-#: 下拉给什么、解析器认什么如果悄悄分叉，用户照着下拉选就会被拒，
-#: tests/workbench/test_table_descriptors.py 比对两者来抓这件事。
+#: 供应商命令与导入归一化接受的状态代号，与 workbench_resource_file.ENUM_CODES["supplier"]["status"] 保持一致。
 STATUS_VALUES = ("active", "pending_review", "inactive")
 
 _TOP_LEVEL = {
@@ -77,5 +75,5 @@ def normalize_supplier_input(action: str, payload: Any) -> Dict[str, Any]:
 
 
 def supplier_state(status, profile) -> Dict[str, Any]:
-    """Stored status plus registered inactive reason; any other combination is damaged storage."""
+    """Project stored supplier status and optional profile reason into public status and inactive_reason."""
     return reasoned_resource_state("supplier", status, profile)

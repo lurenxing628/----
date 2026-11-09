@@ -78,12 +78,13 @@ def _row_input(rows):
         if route_sequence(seq) is None:
             diagnostics.append(route_diagnostic("invalid_sequence", f"第 {index} 行的工序号必须是正整数，而且不能过大。"))
             continue
-        raw_rows.append((seq, name.strip()))
         sequences.append(seq)
         if not name.strip():
+            raw_rows.append((seq, ""))
             diagnostics.append(route_diagnostic("missing_operation_name", f"工序{seq}缺少工种名称。", sequence=seq))
             continue
-        operations.append((seq, name.strip()))
+        raw_rows.append((seq, name))
+        operations.append((seq, name))
     raw = serialize_route_rows(raw_rows)
     check_route_text(raw)
     append_duplicate_diagnostics(sequences, diagnostics)

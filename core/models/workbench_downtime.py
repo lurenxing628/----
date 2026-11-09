@@ -1,9 +1,9 @@
 """Explicit single-machine downtime input; no business-code based mutation."""
 
 import re
-from datetime import datetime
 
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.shared.stored_dates import stored_local_iso_datetime
 
 REASONS = {"maintenance": "计划维护", "breakdown": "故障停机", "power": "停电/能耗", "tooling": "换刀/工装", "other": "其他"}
 
@@ -11,10 +11,10 @@ REASONS = {"maintenance": "计划维护", "breakdown": "故障停机", "power": 
 def _time(value):
     if type(value) is not str or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}(:[0-9]{2})?", value) is None:
         raise WorkbenchCommandRejected("invalid_input", "停机起止须填写年月日和时分。", 422)
-    try:
-        return datetime.fromisoformat(value).isoformat(sep=" ", timespec="seconds")
-    except ValueError as exc:
-        raise WorkbenchCommandRejected("invalid_input", "停机日期或时刻不存在，请核对。", 422) from exc
+    parsed = stored_local_iso_datetime(value, allow_space=True, allow_minutes_only=True)
+    if parsed is None:
+        raise WorkbenchCommandRejected("invalid_input", "停机日期或时刻不存在，请核对。", 422)
+    return parsed.isoformat(sep=" ", timespec="seconds")
 
 
 def normalize_downtime(action, value):

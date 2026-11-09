@@ -31,9 +31,7 @@ class Machine:
             name=str(row["name"]),
             op_type_id=str(op_type_id) if op_type_id is not None and op_type_id != "" else None,
             category=str(category) if category is not None and category != "" else None,
-            status=(
-                str(row["status"] or MachineStatus.ACTIVE.value).strip().lower() or MachineStatus.ACTIVE.value
-            ),
+            status=row["status"],
             remark=row["remark"],
             team_id=str(team_id) if team_id is not None and team_id != "" else None,
             created_at=row["created_at"],

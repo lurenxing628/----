@@ -45,7 +45,8 @@ class PreparedRunResult:
     result: Dict[str, Any]
     read_models: Dict[str, Any]
     status_header: Dict[str, Any]
-    captured_facts: Dict[str, Any]
+    # Only the source revisions and schema recorded at capture, for the persist-time recheck; not the archive.
+    recorded_source: Dict[str, Any]
 
 
 class CandidateRunInputError(ValueError):

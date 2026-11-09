@@ -1,6 +1,7 @@
 """Complete selected-template facts, captured together before a batch change."""
 
 from .base_repo import BaseRepository
+from .sqlite_rows import raw_table_select_sql
 
 
 class WorkbenchProcessPartFactsRepository(BaseRepository):
@@ -20,7 +21,7 @@ class WorkbenchProcessPartFactsRepository(BaseRepository):
                     "foreign_group_members": [], "template_identities": [], "workflow": [], "confirmations": []}
             for field, table, order in (("operations", "PartOperations", "id"), ("groups", "ExternalGroups", "group_id"),
                                          ("batches", "Batches", "batch_id")):
-                for row in self.fetchall("SELECT * FROM " + table + " WHERE part_no IN (" + code_marks + ") ORDER BY " + order, codes):
+                for row in self.fetchall(raw_table_select_sql(table) + " WHERE part_no IN (" + code_marks + ") ORDER BY " + order, codes):
                     if row["part_no"] in snapshots:
                         snapshots[row["part_no"]][field].append(row)
             for row in self.fetchall("SELECT g.part_no AS _owner,o.* FROM PartOperations o JOIN ExternalGroups g "

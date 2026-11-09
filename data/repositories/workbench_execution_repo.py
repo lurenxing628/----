@@ -8,6 +8,7 @@ from typing import NoReturn
 
 from core.shared.strict_json import load_strict_json
 from data.repositories.base_repo import BaseRepository
+from data.repositories.sqlite_rows import sql_order
 
 _TASK_ROWS_SQL = """SELECT t.ref AS task_ref, t.plan_ref, r.operation_ref,
     r.operation_id AS op_id, r.version, r.kind AS identity_kind,
@@ -96,29 +97,31 @@ class WorkbenchExecutionRepository(BaseRepository):
         in heads only. count includes their outer-join rows; count > limit means
         the cap was exceeded and both results are partial.
         """
-        result, heads, count = {}, {}, 0
+        result, heads, rows, count = {}, {}, [], 0
         for chunk in chunks(list(refs)):
             marks = ",".join("?" for _ in chunk)
-            rows = self.fetchall(f"""SELECT p.*, v.revision_ref, v.sequence, v.previous_revision_ref,
+            batch = self.fetchall(f"""SELECT p.*, v.revision_ref, v.sequence, v.previous_revision_ref,
                 v.action, v.values_json, v.reason, v.local_operator, v.declared_operator,
                 v.recorded_at AS revision_at, v.request_key, c.receipt_ref
                 FROM WorkbenchProductionReports p
                 LEFT JOIN WorkbenchProductionReportRevisions v ON v.report_ref=p.report_ref
                 LEFT JOIN WorkbenchCommandReceipts c ON c.request_key=v.request_key
-                WHERE p.operation_ref IN ({marks}) ORDER BY p.report_ref, v.sequence LIMIT ?""",
+                WHERE p.operation_ref IN ({marks}) LIMIT ?""",
                                  chunk + [limit + 1 - count])
-            count += len(rows)
+            count += len(batch)
             if count > limit:
-                break
-            previous_report_ref = None
-            for row in rows:
-                if row["report_ref"] != previous_report_ref:
-                    heads.setdefault(row["operation_ref"], []).append(row["report_ref"])
-                    previous_report_ref = row["report_ref"]
-                if row["revision_ref"] is None:
-                    continue
-                row["values"] = stored_report_values(row.pop("values_json"))
-                result.setdefault(row["operation_ref"], {}).setdefault(row["report_ref"], []).append(row)
+                return result, heads, count
+            rows.extend(batch)
+        rows.sort(key=lambda row: (sql_order(row["report_ref"]), sql_order(row["sequence"])))
+        previous_report_ref = None
+        for row in rows:
+            if row["report_ref"] != previous_report_ref:
+                heads.setdefault(row["operation_ref"], []).append(row["report_ref"])
+                previous_report_ref = row["report_ref"]
+            if row["revision_ref"] is None:
+                continue
+            row["values"] = stored_report_values(row.pop("values_json"))
+            result.setdefault(row["operation_ref"], {}).setdefault(row["report_ref"], []).append(row)
         return result, heads, count
 
     def report_voids(self, refs, limit):
@@ -129,7 +132,7 @@ class WorkbenchExecutionRepository(BaseRepository):
             rows = self.fetchall(f"""SELECT v.*, c.receipt_ref FROM WorkbenchProductionReportVoids v
                 JOIN WorkbenchProductionReports p ON p.report_ref=v.report_ref
                 LEFT JOIN WorkbenchCommandReceipts c ON c.request_key=v.request_key
-                WHERE p.operation_ref IN ({marks}) ORDER BY v.report_ref LIMIT ?""", chunk + [limit + 1 - count])
+                WHERE p.operation_ref IN ({marks}) LIMIT ?""", chunk + [limit + 1 - count])
             count += len(rows)
             if count > limit:
                 break

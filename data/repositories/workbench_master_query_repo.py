@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Set
 
 from .base_repo import BaseRepository
+from .sqlite_rows import raw_table_select_sql
 
 MASTER_OVERVIEW_TABLES = (
     "Parts", "PartOperations", "ExternalGroups", "OpTypes", "Machines", "Operators", "Materials", "Suppliers", "WorkCalendar",
@@ -35,7 +36,7 @@ class WorkbenchMasterQueryRepository(BaseRepository):
         for name in MASTER_OVERVIEW_TABLES:
             if name not in present:
                 continue
-            cursor = self.execute('SELECT * FROM "' + name + '" ORDER BY rowid')
+            cursor = self.execute(raw_table_select_sql(name) + " ORDER BY rowid")
             keys = [column[0] for column in cursor.description]
             tables[name] = [dict(zip(keys, row)) for row in cursor]
         return tables

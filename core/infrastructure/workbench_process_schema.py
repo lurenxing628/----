@@ -12,13 +12,16 @@ PROCESS_ENTITY_TABLES: Dict[str, Tuple[str, Tuple[str, ...]]] = {
     "template_external_group": ("ExternalGroups", ("group_id",)),
 }
 _ALTERNATE_COLUMNS = {"template_operation": ("part_no", "seq")}
+_INDEXES = {
+    "idx_part_operations_ext_group": "CREATE INDEX IF NOT EXISTS idx_part_operations_ext_group ON PartOperations(ext_group_id)",
+}
 
 
 def process_objects() -> Dict[str, str]:
-    objects = {}
+    objects = dict(_INDEXES)
     for kind, (table, columns) in PROCESS_ENTITY_TABLES.items():
         objects.update(identity_triggers(
-            kind, table, columns, alternate_columns=_ALTERNATE_COLUMNS.get(kind, ()), split_conflicts=True,
+            kind, table, columns, alternate_columns=_ALTERNATE_COLUMNS.get(kind, ()),
         ))
     return objects
 

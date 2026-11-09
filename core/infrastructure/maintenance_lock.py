@@ -25,6 +25,7 @@ from core.infrastructure.safe_files import (
     read_fixed_bytes,
     remove_fixed_file,
 )
+from core.shared.stored_dates import stored_local_iso_datetime
 
 
 class _MaintLocal(threading.local):
@@ -121,25 +122,19 @@ def _apply_maintenance_lock_token(state: dict, token: str) -> None:
     elif key == "action":
         state["action"] = value or None
     elif key == "ts":
-        try:
-            state["ts"] = datetime.fromisoformat(value)
-        except Exception:
-            state["ts"] = None
+        state["ts"] = stored_local_iso_datetime(value, allow_space=True, allow_minutes_only=True)
 
 
 def _apply_maintenance_lock_age(state: dict) -> None:
     ts = state["ts"]
     if isinstance(ts, datetime):
-        try:
-            state["age_seconds"] = max(0.0, (datetime.now() - ts).total_seconds())
-            state["age_source"] = "ts"
-            return
-        except Exception:
-            state["age_seconds"] = None
+        state["age_seconds"] = max(0.0, (datetime.now() - ts).total_seconds())
+        state["age_source"] = "ts"
+        return
     # B04(a)：ts 缺失/损坏（含断电半写、内容不可解码）时用锁文件 mtime 兜底计算 age，
     # 否则 age 永远为 None、陈旧锁永不自愈。mtime 也拿不到时维持 fail-closed（按窗口活跃）。
     lock_mtime = os.lstat(state["path"]).st_mtime
-    state["age_seconds"] = max(0.0, time.time() - float(lock_mtime))
+    state["age_seconds"] = max(0.0, time.time() - lock_mtime)
     state["age_source"] = "mtime"
 
 
@@ -159,7 +154,7 @@ def read_maintenance_lock_state(db_path: str) -> Optional[dict]:
 
 
 def _should_auto_heal_lock(state: dict) -> bool:
-    if float(state["age_seconds"]) < float(_MAINT_LOCK_STALE_SECONDS):
+    if state["age_seconds"] < _MAINT_LOCK_STALE_SECONDS:
         return False
     pid = state["pid"]
     if not isinstance(pid, int) or pid <= 0:
@@ -171,8 +166,8 @@ def _should_auto_heal_lock(state: dict) -> bool:
 
 def _log_stale_lock_kept_alive(state: dict, logger) -> None:
     """B04(c)：超龄锁因 pid 判定存活而不自愈时留痕（Windows 无法核对进程身份，PID 可能被复用）。"""
-    age_value = float(state["age_seconds"])
-    if age_value < float(_MAINT_LOCK_STALE_SECONDS):
+    age_value = state["age_seconds"]
+    if age_value < _MAINT_LOCK_STALE_SECONDS:
         return
     fallback_log(
         logger,

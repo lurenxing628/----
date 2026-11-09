@@ -50,7 +50,7 @@ def _dates(value, now):
     completed = value["completed_at"]
     if completed is not None:
         try:
-            if re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}", completed) is None:
+            if re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]", completed) is None:
                 raise ValueError()
             parsed = datetime.fromisoformat(completed)
             if parsed > now:

@@ -1,11 +1,10 @@
 """Strict public scopes for the durable run directory, not formal plan history."""
 
-import re
 from dataclasses import dataclass
-from datetime import date, datetime
 from typing import NoReturn, Optional
 
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.shared.stored_dates import stored_day, stored_local_iso_datetime
 
 STATES = ("queued", "running", "complete", "partial", "failed", "interrupted")
 TERMINAL_STATES = frozenset(STATES[2:])
@@ -23,15 +22,17 @@ def inconsistent() -> NoReturn:
 
 
 def local_date(value):
-    if type(value) is not str or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value) is None:
+    parsed = stored_day(value)
+    if parsed is None:
         raise ValueError("Expected factory-local date")
-    return date.fromisoformat(value)
+    return parsed
 
 
 def local_datetime(value):
-    if type(value) is not str or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,6})?", value) is None:
+    parsed = stored_local_iso_datetime(value)
+    if parsed is None:
         raise ValueError("Expected factory-local datetime")
-    return datetime.fromisoformat(value)
+    return parsed
 
 
 @dataclass(frozen=True)

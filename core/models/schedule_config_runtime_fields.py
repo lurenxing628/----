@@ -5,13 +5,6 @@ from typing import Any, Dict, Optional, Tuple
 
 from core.models.objective import objective_choice_labels
 
-RETIRED_CONFIG_FIELDS: Tuple[str, ...] = (
-    "graph_candidate_weight_count",
-    "graph_selection_policy",
-    "graph_overdue_tolerance_count",
-    "graph_tardiness_tolerance_ratio",
-)
-
 
 # 产品配置字段的共同语义；服务层只为这些字段补页面元数据。
 @dataclass(frozen=True)
@@ -51,12 +44,6 @@ _FIELD_SPECS: Tuple[RuntimeConfigFieldSpec, ...] = (
         choices=_YES_NO_CHOICES,
     ),
     RuntimeConfigFieldSpec(
-        key="prefer_primary_skill",
-        field_type="yes_no",
-        default="no",
-        choices=_YES_NO_CHOICES,
-    ),
-    RuntimeConfigFieldSpec(
         key="dispatch_mode",
         field_type="enum",
         default="batch_order",
@@ -72,12 +59,6 @@ _FIELD_SPECS: Tuple[RuntimeConfigFieldSpec, ...] = (
         key="auto_assign_enabled",
         field_type="yes_no",
         default="no",
-        choices=_YES_NO_CHOICES,
-    ),
-    RuntimeConfigFieldSpec(
-        key="auto_assign_persist",
-        field_type="yes_no",
-        default="yes",
         choices=_YES_NO_CHOICES,
     ),
     RuntimeConfigFieldSpec(
@@ -131,12 +112,6 @@ _FIELD_SPECS: Tuple[RuntimeConfigFieldSpec, ...] = (
         default=10,
         min_value=0,
     ),
-    RuntimeConfigFieldSpec(
-        key="graph_debug_export",
-        field_type="yes_no",
-        default="no",
-        choices=_YES_NO_CHOICES,
-    ),
 )
 _FIELD_SPEC_BY_KEY: Dict[str, RuntimeConfigFieldSpec] = {spec.key: spec for spec in _FIELD_SPECS}
 
@@ -156,7 +131,6 @@ def default_snapshot_values() -> Dict[str, Any]:
 
 
 __all__ = [
-    "RETIRED_CONFIG_FIELDS",
     "RuntimeConfigFieldSpec",
     "default_snapshot_values",
     "get_field_spec",

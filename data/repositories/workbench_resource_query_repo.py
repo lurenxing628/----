@@ -100,9 +100,9 @@ class WorkbenchResourceQueryRepository(BaseRepository):
                 f"ON refs.kind=? AND refs.active=1 AND refs.entity_key=source.{key}"
                 + condition + f" ORDER BY source.{key}", (relation,))
         if kind == "operator":
-            result["shift_pattern"] = self.fetchall("""SELECT d.*,p.periods_json FROM WorkbenchShiftPatternDays d
-                LEFT JOIN WorkbenchShiftDayPeriods p ON p.profile_id=d.profile_id AND p.day_offset=d.day_offset
-                ORDER BY d.profile_id,d.day_offset""")
+            result["shift_pattern"] = self.fetchall(
+                "SELECT * FROM WorkbenchShiftPatternDays ORDER BY profile_id,day_offset"
+            )
         return result
 
     def summary(self):

@@ -16,18 +16,17 @@ _BUSINESS_FIELDS = (
     ("WorkbenchCalendarDefaults", ("singleton", "periods_json"), ("singleton",)),
     (
         "WorkCalendar",
-        ("date", "day_type", "shift_start", "shift_end", "shift_hours", "efficiency", "allow_normal", "allow_urgent", "periods_json"),
+        ("date", "day_type", "efficiency", "allow_normal", "allow_urgent", "periods_json"),
         ("date",),
     ),
     (
         "OperatorCalendar",
-        ("operator_id", "date", "day_type", "shift_start", "shift_end", "shift_hours", "efficiency", "allow_normal", "allow_urgent", "periods_json"),
+        ("operator_id", "date", "day_type", "efficiency", "allow_normal", "allow_urgent", "periods_json"),
         ("operator_id", "date"),
     ),
     ("WorkbenchOperatorProfiles", ("operator_id", "shift_profile_id"), ("operator_id",)),
     ("WorkbenchShiftProfiles", ("profile_id", "anchor_date", "cycle_days", "status"), ("profile_id",)),
-    ("WorkbenchShiftPatternDays", ("profile_id", "day_offset", "is_rest", "shift_start", "shift_end"), ("profile_id", "day_offset")),
-    ("WorkbenchShiftDayPeriods", ("profile_id", "day_offset", "periods_json"), ("profile_id", "day_offset")),
+    ("WorkbenchShiftPatternDays", ("profile_id", "day_offset", "is_rest", "periods_json"), ("profile_id", "day_offset")),
 )
 
 

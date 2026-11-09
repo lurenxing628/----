@@ -17,21 +17,21 @@ MAX_RANGE_DAYS = 1096
 CALENDAR_KINDS = ("work_calendar", "operator_calendar")
 
 WRITABLE: Dict[str, Tuple[str, ...]] = {
-    "work_calendar": ("date", "day_type", "shift_hours", "efficiency", "allow_normal", "allow_urgent", "remark", "shift_start", "shift_end"),
-    # 个人日历以班次起止为准，工时由系统算出来，所以工时是只读列，不在可写列里。
+    "work_calendar": ("date", "day_type", "shift_start", "shift_end", "efficiency", "allow_normal", "allow_urgent", "remark"),
+    # 工作时段（班次起止 + 工作时段数）是唯一的时间事实，工时由系统算出来，所以工时是只读列，不在可写列里。
     "operator_calendar": ("operator_code", "date", "day_type", "shift_start", "shift_end", "efficiency",
                           "allow_normal", "allow_urgent", "remark"),
 }
 READONLY: Dict[str, Tuple[str, ...]] = {
-    "work_calendar": (), "operator_calendar": ("operator_label", "shift_hours"),
+    "work_calendar": ("shift_hours",), "operator_calendar": ("operator_label", "shift_hours"),
 }
 REQUIRED: Dict[str, Tuple[str, ...]] = {
     "work_calendar": ("date",), "operator_calendar": ("operator_code", "date"),
 }
 NUMERIC: Dict[str, Tuple[str, ...]] = {
-    "work_calendar": ("shift_hours", "efficiency"), "operator_calendar": ("efficiency",),
+    "work_calendar": ("efficiency",), "operator_calendar": ("efficiency",),
 }
-NULLABLE: Dict[str, Tuple[str, ...]] = {"work_calendar": ("remark", "shift_end"), "operator_calendar": ("remark", "shift_end")}
+NULLABLE: Dict[str, Tuple[str, ...]] = {"work_calendar": ("remark",), "operator_calendar": ("remark",)}
 DATE_FIELDS: Dict[str, Tuple[str, ...]] = {"work_calendar": ("date",), "operator_calendar": ("date",)}
 CLOCK_FIELDS: Dict[str, Tuple[str, ...]] = {"work_calendar": ("shift_start", "shift_end"), "operator_calendar": ("shift_start", "shift_end")}
 CODE_FIELDS: Dict[str, Tuple[str, ...]] = {"work_calendar": (), "operator_calendar": ("operator_code",)}
@@ -49,12 +49,10 @@ ENUMS = {
 }
 #: 领域层字段名对应的界面字段名；两个日历服务的 proposed_row 收的都是各自的界面字段名。
 UI_FIELDS = {
-    "work_calendar": {"day_type": "type", "shift_hours": "hours", "efficiency": "eff",
-                      "allow_normal": "allowNormal", "allow_urgent": "allowUrgent", "remark": "note",
-                      "shift_start": "shiftStart", "shift_end": "shiftEnd"},
-    "operator_calendar": {"day_type": "type", "shift_start": "shiftStart", "shift_end": "shiftEnd",
-                          "efficiency": "eff", "allow_normal": "allowNormal", "allow_urgent": "allowUrgent",
-                          "remark": "note"},
+    "work_calendar": {"day_type": "type", "efficiency": "eff",
+                      "allow_normal": "allowNormal", "allow_urgent": "allowUrgent", "remark": "note"},
+    "operator_calendar": {"day_type": "type", "efficiency": "eff",
+                          "allow_normal": "allowNormal", "allow_urgent": "allowUrgent", "remark": "note"},
 }
 SHEET_NAMES = {"work_calendar": "工作日历", "operator_calendar": "个人日历"}
 DISPLAY_NAMES = {"work_calendar": "工作日历", "operator_calendar": "个人日历"}
@@ -63,45 +61,45 @@ _VALUE_HINTS = {
     "work_calendar": {
         "date": "YYYY-MM-DD，例如 2026-10-01；也接受 Excel 的日期格子",
         "day_type": "工作日 / 假期；留空保持原样，这一天原来没配置过就按默认规则定",
-        "shift_hours": "0 到 24 的数字；只改工时时按班次开始重新推算结束；同时填起止时须一致",
-        "shift_start": "24 小时制 HH:MM；留空不改；新增且未填时段或工时，采用页面配置的默认工作时间",
-        "shift_end": "24 小时制 HH:MM；不晚于开始表示次日；清除填 \\N，按工时推算",
+        "shift_start": "24 小时制 HH:MM；留空不改；原来是假期的日子改成工作日必须填写；没配置过的日子留空采用页面配置的默认工作时间",
+        "shift_end": "24 小时制 HH:MM；不晚于开始表示次日",
         "efficiency": "大于 0 且不超过 200 的数字，按百分比填；留空保持原样",
         "allow_normal": "是 / 否；留空保持原样",
         "allow_urgent": "是 / 否；留空保持原样",
         "remark": "随便写；要清除请填 \\N（大写）",
+        "shift_hours": "导出时带出的可排工时，由工作时段算出来，导入时不看这一列",
     },
     "operator_calendar": {
         "operator_code": "已存在的人员工号，例如 OP001",
         "date": "YYYY-MM-DD，例如 2026-10-01；也接受 Excel 的日期格子",
         "day_type": "工作日 / 假期；留空保持原样，这一天原来没配置过就按工作日处理",
-        "shift_start": "24 小时制的 HH:MM，例如 09:00；这一天原来就上班可以留空保持原样，其余上班的日子必须填",
-        "shift_end": "24 小时制的 HH:MM；不晚于开始表示次日；旧单时段格式留空按工时推算",
+        "shift_start": "24 小时制的 HH:MM，例如 09:00；已上班的日子可留空保持原样，新增上班或从假期改成上班的日子必须填写",
+        "shift_end": "24 小时制的 HH:MM；不晚于开始表示次日",
         "efficiency": "大于 0 且不超过 200 的数字，按百分比填；留空保持原样",
         "allow_normal": "是 / 否；留空保持原样",
         "allow_urgent": "是 / 否；留空保持原样",
         "remark": "随便写；要清除请填 \\N（大写）",
         "operator_label": "导出时带出的人员姓名，导入时不看这一列",
-        "shift_hours": "导出时带出的可排工时，由班次起止算出来，导入时不看这一列",
+        "shift_hours": "导出时带出的可排工时，由工作时段算出来，导入时不看这一列",
     },
 }
 _ERROR_HINTS = {
     "work_calendar": {
-        "shift_start": "不是 08:00 这样的时刻",
-        "shift_end": "不是 16:00 这样的时刻，或与所填工时不一致",
+        "shift_start": "原来是假期的日子改成工作日却没填工作时段，或者不是 08:00 这样的时刻",
+        "shift_end": "不是 16:00 这样的时刻",
         "date": "留空、不是真实日期、或同一个日期在文件里出现了两次",
         "day_type": "填了工作日和假期以外的词",
-        "shift_hours": "不是数字、小于 0 或大于 24",
         "efficiency": "不是数字、不大于 0 或大于 200",
         "allow_normal": "填了是和否以外的词",
         "allow_urgent": "填了是和否以外的词",
         "remark": "填了 \\N 以外的清除写法",
+        "shift_hours": "这一列不校验",
     },
     "operator_calendar": {
         "operator_code": "留空、有首尾空格、或这个工号在系统里找不到",
         "date": "留空、不是真实日期、或同一个人同一个日期在文件里出现了两次",
         "day_type": "填了工作日和假期以外的词",
-        "shift_start": "这一天原来不上班却没填开始时刻，或者不是 09:00 这样的时刻",
+        "shift_start": "新增上班或从假期改成上班的日子没填工作时段，或者不是 09:00 这样的时刻",
         "shift_end": "不是 17:30 这样的时刻",
         "efficiency": "不是数字、不大于 0 或大于 200",
         "allow_normal": "填了是和否以外的词",
@@ -115,7 +113,9 @@ _GENERAL_RULES = {
     "work_calendar": (
         "一次最多导入 " + str(IMPORT_ROW_LIMIT) + " 行，最早和最晚的日期相差不超过 " + str(MAX_RANGE_DAYS) + " 天。",
         "文件不会把任何一天恢复成默认规则；要恢复请到日历页用范围清除。",
-        "类型填假期又填了工时，表示这一天放假加班：能排产，效率按排产设置里的假期效率算，"
+        "工时不用填，由工作时段算出来；导出时会带出算好的工时供核对。",
+        "原来是假期的日子把类型改成工作日时，必须同时填班次起止或工作时段数，否则这一行不导入；工作时段数填 0 表示明确安排 0 工时的工作日。",
+        "类型填假期又填了班次起止或工作时段，表示这一天放假加班：能排产（填了效率按所填算；留空时已有记录保持原效率，新增假期取排产设置里的假期工作效率），"
         "日历页上这一天会显示成工作日。",
         "这一天原来没配置过、类型又留空时，按这个日期的默认规则定：周末算假期且不可排产。",
     ),
@@ -123,16 +123,17 @@ _GENERAL_RULES = {
         "一次最多导入 " + str(IMPORT_ROW_LIMIT) + " 行，最早和最晚的日期相差不超过 " + str(MAX_RANGE_DAYS) + " 天。",
         "只填这个人有特殊安排的日期，正常上班的日子不用填；按每人每天一行填，一年就会超过行数上限。",
         "某个人某一天填进来以后，这一天就整天按这里的安排排产，不再套用他的班次轮换，也不看全局工作日历。",
-        "工时不用填，由班次起止算出来；导出时会带出算好的工时供核对。",
+        "工时不用填，由工作时段算出来；导出时会带出算好的工时供核对。",
+        "原来是假期的日子把类型改成工作日时，必须同时填班次起止或工作时段数，否则这一行不导入；工作时段数填 0 表示明确安排 0 工时的工作日。",
         "填假期时不用填班次，工时按 0 算，普通件和急件都不可排产。",
         "文件不会取消任何一天的特殊安排；要取消请到人员详情的「编辑个人日历」里按日期范围清除。",
     ),
 }
 _SAMPLE_ROWS: Dict[str, Tuple[Tuple[str, ...], ...]] = {
     "work_calendar": (
-        ("2026-10-01", "假期", "0", "", "否", "否", "国庆", "08:00", ""),
-        ("2026-10-11", "工作日", "8", "100", "是", "是", "调休上班", "08:00", "16:00"),
-        ("2026-12-31", "假期", "4", "80", "是", "否", "放假加班半天", "08:00", "12:00"),
+        ("2026-10-01", "假期", "", "", "", "否", "否", "国庆"),
+        ("2026-10-11", "工作日", "08:00", "16:00", "100", "是", "是", "调休上班"),
+        ("2026-12-31", "假期", "08:00", "12:00", "80", "是", "否", "放假加班半天"),
     ),
     "operator_calendar": (
         ("OP001", "2026-10-11", "工作日", "09:00", "17:30", "100", "是", "是", "调休上班"),

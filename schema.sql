@@ -184,27 +184,23 @@ CREATE TABLE IF NOT EXISTS ScheduleVersionSeq (
     version         INTEGER PRIMARY KEY AUTOINCREMENT
 );
 CREATE TABLE IF NOT EXISTS WorkCalendar (
-    date            DATE PRIMARY KEY,
-    day_type        TEXT DEFAULT 'workday',
-    shift_start     TEXT,                       -- 班次开始（HH:MM，可选；默认 08:00）
-    shift_end       TEXT,                       -- 班次结束（HH:MM，可选；用于推导 shift_hours）
-    shift_hours     REAL DEFAULT 8,
-    efficiency      REAL DEFAULT 1.0,
-    allow_normal    TEXT DEFAULT 'yes',
-    allow_urgent    TEXT DEFAULT 'yes',
-    remark          TEXT
-, periods_json TEXT);
+    date            DATE NOT NULL PRIMARY KEY,
+    day_type        TEXT NOT NULL,              -- workday / holiday
+    efficiency      REAL NOT NULL,
+    allow_normal    TEXT NOT NULL,
+    allow_urgent    TEXT NOT NULL,
+    remark          TEXT,
+    periods_json    TEXT NOT NULL               -- 工作时段数组；[] 表示零工时，起止与工时都由它现算
+);
 CREATE TABLE IF NOT EXISTS OperatorCalendar (
     operator_id     TEXT NOT NULL,
     date            DATE NOT NULL,
-    day_type        TEXT DEFAULT 'workday',
-    shift_start     TEXT,                       -- 班次开始（HH:MM，可选；默认 08:00）
-    shift_end       TEXT,                       -- 班次结束（HH:MM，可选；用于推导 shift_hours）
-    shift_hours     REAL DEFAULT 8,
-    efficiency      REAL DEFAULT 1.0,
-    allow_normal    TEXT DEFAULT 'yes',
-    allow_urgent    TEXT DEFAULT 'yes',
-    remark          TEXT, periods_json TEXT,
+    day_type        TEXT NOT NULL,              -- workday / holiday
+    efficiency      REAL NOT NULL,
+    allow_normal    TEXT NOT NULL,
+    allow_urgent    TEXT NOT NULL,
+    remark          TEXT,
+    periods_json    TEXT NOT NULL,              -- 工作时段数组；[] 表示零工时，起止与工时都由它现算
     PRIMARY KEY (operator_id, date),
     FOREIGN KEY (operator_id) REFERENCES Operators(operator_id) ON DELETE CASCADE
 );
@@ -329,13 +325,13 @@ CREATE INDEX IF NOT EXISTS idx_workbench_refs_alternate ON WorkbenchEntityRefs(k
 CREATE INDEX IF NOT EXISTS idx_workbench_batch_materials_material ON BatchMaterials(material_id);
 CREATE TRIGGER IF NOT EXISTS wb_ref_part_insert AFTER INSERT ON "Parts" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
-                WHERE kind = 'part' AND active = 1 AND (entity_key = CAST(NEW."part_no" AS TEXT));
+                WHERE kind = 'part' AND active = 1 AND entity_key = CAST(NEW."part_no" AS TEXT);
             INSERT INTO WorkbenchEntityRefs(ref, kind, entity_key, alternate_key)
                 VALUES(lower(hex(randomblob(24))), 'part', CAST(NEW."part_no" AS TEXT), NULL);
         END;
 CREATE TRIGGER IF NOT EXISTS wb_ref_part_update AFTER UPDATE ON "Parts" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
-                WHERE kind = 'part' AND active = 1 AND entity_key != CAST(OLD."part_no" AS TEXT) AND (entity_key = CAST(NEW."part_no" AS TEXT));
+                WHERE kind = 'part' AND active = 1 AND entity_key != CAST(OLD."part_no" AS TEXT) AND entity_key = CAST(NEW."part_no" AS TEXT);
             UPDATE WorkbenchEntityRefs SET entity_key = CAST(NEW."part_no" AS TEXT), alternate_key = NULL, revision = revision + 1
                 WHERE kind = 'part' AND entity_key = CAST(OLD."part_no" AS TEXT) AND active = 1;
         END;
@@ -345,13 +341,17 @@ CREATE TRIGGER IF NOT EXISTS wb_ref_part_delete AFTER DELETE ON "Parts" BEGIN
         END;
 CREATE TRIGGER IF NOT EXISTS wb_ref_op_type_insert AFTER INSERT ON "OpTypes" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
-                WHERE kind = 'op_type' AND active = 1 AND (entity_key = CAST(NEW."op_type_id" AS TEXT) OR alternate_key = CAST(NEW."name" AS TEXT));
+                WHERE kind = 'op_type' AND active = 1 AND entity_key = CAST(NEW."op_type_id" AS TEXT);
+            UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
+                WHERE kind = 'op_type' AND active = 1 AND alternate_key = CAST(NEW."name" AS TEXT);
             INSERT INTO WorkbenchEntityRefs(ref, kind, entity_key, alternate_key)
                 VALUES(lower(hex(randomblob(24))), 'op_type', CAST(NEW."op_type_id" AS TEXT), CAST(NEW."name" AS TEXT));
         END;
 CREATE TRIGGER IF NOT EXISTS wb_ref_op_type_update AFTER UPDATE ON "OpTypes" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
-                WHERE kind = 'op_type' AND active = 1 AND entity_key != CAST(OLD."op_type_id" AS TEXT) AND (entity_key = CAST(NEW."op_type_id" AS TEXT) OR alternate_key = CAST(NEW."name" AS TEXT));
+                WHERE kind = 'op_type' AND active = 1 AND entity_key != CAST(OLD."op_type_id" AS TEXT) AND entity_key = CAST(NEW."op_type_id" AS TEXT);
+            UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
+                WHERE kind = 'op_type' AND active = 1 AND entity_key != CAST(OLD."op_type_id" AS TEXT) AND alternate_key = CAST(NEW."name" AS TEXT);
             UPDATE WorkbenchEntityRefs SET entity_key = CAST(NEW."op_type_id" AS TEXT), alternate_key = CAST(NEW."name" AS TEXT), revision = revision + 1
                 WHERE kind = 'op_type' AND entity_key = CAST(OLD."op_type_id" AS TEXT) AND active = 1;
         END;
@@ -361,13 +361,13 @@ CREATE TRIGGER IF NOT EXISTS wb_ref_op_type_delete AFTER DELETE ON "OpTypes" BEG
         END;
 CREATE TRIGGER IF NOT EXISTS wb_ref_machine_insert AFTER INSERT ON "Machines" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
-                WHERE kind = 'machine' AND active = 1 AND (entity_key = CAST(NEW."machine_id" AS TEXT));
+                WHERE kind = 'machine' AND active = 1 AND entity_key = CAST(NEW."machine_id" AS TEXT);
             INSERT INTO WorkbenchEntityRefs(ref, kind, entity_key, alternate_key)
                 VALUES(lower(hex(randomblob(24))), 'machine', CAST(NEW."machine_id" AS TEXT), NULL);
         END;
 CREATE TRIGGER IF NOT EXISTS wb_ref_machine_update AFTER UPDATE ON "Machines" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
-                WHERE kind = 'machine' AND active = 1 AND entity_key != CAST(OLD."machine_id" AS TEXT) AND (entity_key = CAST(NEW."machine_id" AS TEXT));
+                WHERE kind = 'machine' AND active = 1 AND entity_key != CAST(OLD."machine_id" AS TEXT) AND entity_key = CAST(NEW."machine_id" AS TEXT);
             UPDATE WorkbenchEntityRefs SET entity_key = CAST(NEW."machine_id" AS TEXT), alternate_key = NULL, revision = revision + 1
                 WHERE kind = 'machine' AND entity_key = CAST(OLD."machine_id" AS TEXT) AND active = 1;
         END;
@@ -377,13 +377,13 @@ CREATE TRIGGER IF NOT EXISTS wb_ref_machine_delete AFTER DELETE ON "Machines" BE
         END;
 CREATE TRIGGER IF NOT EXISTS wb_ref_operator_insert AFTER INSERT ON "Operators" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
-                WHERE kind = 'operator' AND active = 1 AND (entity_key = CAST(NEW."operator_id" AS TEXT));
+                WHERE kind = 'operator' AND active = 1 AND entity_key = CAST(NEW."operator_id" AS TEXT);
             INSERT INTO WorkbenchEntityRefs(ref, kind, entity_key, alternate_key)
                 VALUES(lower(hex(randomblob(24))), 'operator', CAST(NEW."operator_id" AS TEXT), NULL);
         END;
 CREATE TRIGGER IF NOT EXISTS wb_ref_operator_update AFTER UPDATE ON "Operators" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
-                WHERE kind = 'operator' AND active = 1 AND entity_key != CAST(OLD."operator_id" AS TEXT) AND (entity_key = CAST(NEW."operator_id" AS TEXT));
+                WHERE kind = 'operator' AND active = 1 AND entity_key != CAST(OLD."operator_id" AS TEXT) AND entity_key = CAST(NEW."operator_id" AS TEXT);
             UPDATE WorkbenchEntityRefs SET entity_key = CAST(NEW."operator_id" AS TEXT), alternate_key = NULL, revision = revision + 1
                 WHERE kind = 'operator' AND entity_key = CAST(OLD."operator_id" AS TEXT) AND active = 1;
         END;
@@ -393,13 +393,13 @@ CREATE TRIGGER IF NOT EXISTS wb_ref_operator_delete AFTER DELETE ON "Operators" 
         END;
 CREATE TRIGGER IF NOT EXISTS wb_ref_supplier_insert AFTER INSERT ON "Suppliers" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
-                WHERE kind = 'supplier' AND active = 1 AND (entity_key = CAST(NEW."supplier_id" AS TEXT));
+                WHERE kind = 'supplier' AND active = 1 AND entity_key = CAST(NEW."supplier_id" AS TEXT);
             INSERT INTO WorkbenchEntityRefs(ref, kind, entity_key, alternate_key)
                 VALUES(lower(hex(randomblob(24))), 'supplier', CAST(NEW."supplier_id" AS TEXT), NULL);
         END;
 CREATE TRIGGER IF NOT EXISTS wb_ref_supplier_update AFTER UPDATE ON "Suppliers" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
-                WHERE kind = 'supplier' AND active = 1 AND entity_key != CAST(OLD."supplier_id" AS TEXT) AND (entity_key = CAST(NEW."supplier_id" AS TEXT));
+                WHERE kind = 'supplier' AND active = 1 AND entity_key != CAST(OLD."supplier_id" AS TEXT) AND entity_key = CAST(NEW."supplier_id" AS TEXT);
             UPDATE WorkbenchEntityRefs SET entity_key = CAST(NEW."supplier_id" AS TEXT), alternate_key = NULL, revision = revision + 1
                 WHERE kind = 'supplier' AND entity_key = CAST(OLD."supplier_id" AS TEXT) AND active = 1;
         END;
@@ -409,13 +409,13 @@ CREATE TRIGGER IF NOT EXISTS wb_ref_supplier_delete AFTER DELETE ON "Suppliers" 
         END;
 CREATE TRIGGER IF NOT EXISTS wb_ref_material_insert AFTER INSERT ON "Materials" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
-                WHERE kind = 'material' AND active = 1 AND (entity_key = CAST(NEW."material_id" AS TEXT));
+                WHERE kind = 'material' AND active = 1 AND entity_key = CAST(NEW."material_id" AS TEXT);
             INSERT INTO WorkbenchEntityRefs(ref, kind, entity_key, alternate_key)
                 VALUES(lower(hex(randomblob(24))), 'material', CAST(NEW."material_id" AS TEXT), NULL);
         END;
 CREATE TRIGGER IF NOT EXISTS wb_ref_material_update AFTER UPDATE ON "Materials" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
-                WHERE kind = 'material' AND active = 1 AND entity_key != CAST(OLD."material_id" AS TEXT) AND (entity_key = CAST(NEW."material_id" AS TEXT));
+                WHERE kind = 'material' AND active = 1 AND entity_key != CAST(OLD."material_id" AS TEXT) AND entity_key = CAST(NEW."material_id" AS TEXT);
             UPDATE WorkbenchEntityRefs SET entity_key = CAST(NEW."material_id" AS TEXT), alternate_key = NULL, revision = revision + 1
                 WHERE kind = 'material' AND entity_key = CAST(OLD."material_id" AS TEXT) AND active = 1;
         END;
@@ -425,13 +425,13 @@ CREATE TRIGGER IF NOT EXISTS wb_ref_material_delete AFTER DELETE ON "Materials" 
         END;
 CREATE TRIGGER IF NOT EXISTS wb_ref_calendar_insert AFTER INSERT ON "WorkCalendar" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
-                WHERE kind = 'calendar' AND active = 1 AND (entity_key = CAST(NEW."date" AS TEXT));
+                WHERE kind = 'calendar' AND active = 1 AND entity_key = CAST(NEW."date" AS TEXT);
             INSERT INTO WorkbenchEntityRefs(ref, kind, entity_key, alternate_key)
                 VALUES(lower(hex(randomblob(24))), 'calendar', CAST(NEW."date" AS TEXT), NULL);
         END;
 CREATE TRIGGER IF NOT EXISTS wb_ref_calendar_update AFTER UPDATE ON "WorkCalendar" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
-                WHERE kind = 'calendar' AND active = 1 AND entity_key != CAST(OLD."date" AS TEXT) AND (entity_key = CAST(NEW."date" AS TEXT));
+                WHERE kind = 'calendar' AND active = 1 AND entity_key != CAST(OLD."date" AS TEXT) AND entity_key = CAST(NEW."date" AS TEXT);
             UPDATE WorkbenchEntityRefs SET entity_key = CAST(NEW."date" AS TEXT), alternate_key = NULL, revision = revision + 1
                 WHERE kind = 'calendar' AND entity_key = CAST(OLD."date" AS TEXT) AND active = 1;
         END;
@@ -441,13 +441,13 @@ CREATE TRIGGER IF NOT EXISTS wb_ref_calendar_delete AFTER DELETE ON "WorkCalenda
         END;
 CREATE TRIGGER IF NOT EXISTS wb_ref_operator_calendar_insert AFTER INSERT ON "OperatorCalendar" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
-                WHERE kind = 'operator_calendar' AND active = 1 AND (entity_key = replace(replace(CAST(NEW."operator_id" AS TEXT), '%', '%25'), ':', '%3A') || ':' || replace(replace(CAST(NEW."date" AS TEXT), '%', '%25'), ':', '%3A'));
+                WHERE kind = 'operator_calendar' AND active = 1 AND entity_key = replace(replace(CAST(NEW."operator_id" AS TEXT), '%', '%25'), ':', '%3A') || ':' || replace(replace(CAST(NEW."date" AS TEXT), '%', '%25'), ':', '%3A');
             INSERT INTO WorkbenchEntityRefs(ref, kind, entity_key, alternate_key)
                 VALUES(lower(hex(randomblob(24))), 'operator_calendar', replace(replace(CAST(NEW."operator_id" AS TEXT), '%', '%25'), ':', '%3A') || ':' || replace(replace(CAST(NEW."date" AS TEXT), '%', '%25'), ':', '%3A'), NULL);
         END;
 CREATE TRIGGER IF NOT EXISTS wb_ref_operator_calendar_update AFTER UPDATE ON "OperatorCalendar" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
-                WHERE kind = 'operator_calendar' AND active = 1 AND entity_key != replace(replace(CAST(OLD."operator_id" AS TEXT), '%', '%25'), ':', '%3A') || ':' || replace(replace(CAST(OLD."date" AS TEXT), '%', '%25'), ':', '%3A') AND (entity_key = replace(replace(CAST(NEW."operator_id" AS TEXT), '%', '%25'), ':', '%3A') || ':' || replace(replace(CAST(NEW."date" AS TEXT), '%', '%25'), ':', '%3A'));
+                WHERE kind = 'operator_calendar' AND active = 1 AND entity_key != replace(replace(CAST(OLD."operator_id" AS TEXT), '%', '%25'), ':', '%3A') || ':' || replace(replace(CAST(OLD."date" AS TEXT), '%', '%25'), ':', '%3A') AND entity_key = replace(replace(CAST(NEW."operator_id" AS TEXT), '%', '%25'), ':', '%3A') || ':' || replace(replace(CAST(NEW."date" AS TEXT), '%', '%25'), ':', '%3A');
             UPDATE WorkbenchEntityRefs SET entity_key = replace(replace(CAST(NEW."operator_id" AS TEXT), '%', '%25'), ':', '%3A') || ':' || replace(replace(CAST(NEW."date" AS TEXT), '%', '%25'), ':', '%3A'), alternate_key = NULL, revision = revision + 1
                 WHERE kind = 'operator_calendar' AND entity_key = replace(replace(CAST(OLD."operator_id" AS TEXT), '%', '%25'), ':', '%3A') || ':' || replace(replace(CAST(OLD."date" AS TEXT), '%', '%25'), ':', '%3A') AND active = 1;
         END;
@@ -457,13 +457,13 @@ CREATE TRIGGER IF NOT EXISTS wb_ref_operator_calendar_delete AFTER DELETE ON "Op
         END;
 CREATE TRIGGER IF NOT EXISTS wb_ref_batch_insert AFTER INSERT ON "Batches" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
-                WHERE kind = 'batch' AND active = 1 AND (entity_key = CAST(NEW."batch_id" AS TEXT));
+                WHERE kind = 'batch' AND active = 1 AND entity_key = CAST(NEW."batch_id" AS TEXT);
             INSERT INTO WorkbenchEntityRefs(ref, kind, entity_key, alternate_key)
                 VALUES(lower(hex(randomblob(24))), 'batch', CAST(NEW."batch_id" AS TEXT), NULL);
         END;
 CREATE TRIGGER IF NOT EXISTS wb_ref_batch_update AFTER UPDATE ON "Batches" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
-                WHERE kind = 'batch' AND active = 1 AND entity_key != CAST(OLD."batch_id" AS TEXT) AND (entity_key = CAST(NEW."batch_id" AS TEXT));
+                WHERE kind = 'batch' AND active = 1 AND entity_key != CAST(OLD."batch_id" AS TEXT) AND entity_key = CAST(NEW."batch_id" AS TEXT);
             UPDATE WorkbenchEntityRefs SET entity_key = CAST(NEW."batch_id" AS TEXT), alternate_key = NULL, revision = revision + 1
                 WHERE kind = 'batch' AND entity_key = CAST(OLD."batch_id" AS TEXT) AND active = 1;
         END;
@@ -473,13 +473,17 @@ CREATE TRIGGER IF NOT EXISTS wb_ref_batch_delete AFTER DELETE ON "Batches" BEGIN
         END;
 CREATE TRIGGER IF NOT EXISTS wb_ref_resource_team_insert AFTER INSERT ON "ResourceTeams" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
-                WHERE kind = 'resource_team' AND active = 1 AND (entity_key = CAST(NEW."team_id" AS TEXT) OR alternate_key = CAST(NEW."name" AS TEXT));
+                WHERE kind = 'resource_team' AND active = 1 AND entity_key = CAST(NEW."team_id" AS TEXT);
+            UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
+                WHERE kind = 'resource_team' AND active = 1 AND alternate_key = CAST(NEW."name" AS TEXT);
             INSERT INTO WorkbenchEntityRefs(ref, kind, entity_key, alternate_key)
                 VALUES(lower(hex(randomblob(24))), 'resource_team', CAST(NEW."team_id" AS TEXT), CAST(NEW."name" AS TEXT));
         END;
 CREATE TRIGGER IF NOT EXISTS wb_ref_resource_team_update AFTER UPDATE ON "ResourceTeams" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
-                WHERE kind = 'resource_team' AND active = 1 AND entity_key != CAST(OLD."team_id" AS TEXT) AND (entity_key = CAST(NEW."team_id" AS TEXT) OR alternate_key = CAST(NEW."name" AS TEXT));
+                WHERE kind = 'resource_team' AND active = 1 AND entity_key != CAST(OLD."team_id" AS TEXT) AND entity_key = CAST(NEW."team_id" AS TEXT);
+            UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
+                WHERE kind = 'resource_team' AND active = 1 AND entity_key != CAST(OLD."team_id" AS TEXT) AND alternate_key = CAST(NEW."name" AS TEXT);
             UPDATE WorkbenchEntityRefs SET entity_key = CAST(NEW."team_id" AS TEXT), alternate_key = CAST(NEW."name" AS TEXT), revision = revision + 1
                 WHERE kind = 'resource_team' AND entity_key = CAST(OLD."team_id" AS TEXT) AND active = 1;
         END;
@@ -506,7 +510,7 @@ CREATE TABLE IF NOT EXISTS WorkbenchShiftPatternDays (
         profile_id TEXT NOT NULL REFERENCES WorkbenchShiftProfiles(profile_id) ON DELETE CASCADE,
         day_offset INTEGER NOT NULL CHECK(typeof(day_offset) = 'integer' AND day_offset BETWEEN 0 AND 365),
         is_rest INTEGER NOT NULL CHECK(is_rest IN (0, 1)),
-        shift_start TEXT NOT NULL, shift_end TEXT NOT NULL,
+        periods_json TEXT NOT NULL,
         PRIMARY KEY(profile_id, day_offset)
     );
 CREATE TABLE IF NOT EXISTS WorkbenchOperatorProfiles (
@@ -534,13 +538,17 @@ CREATE INDEX IF NOT EXISTS idx_wb_supplier_op_types_op ON WorkbenchSupplierOpTyp
 CREATE INDEX IF NOT EXISTS idx_wb_operator_skill_op ON OperatorSkill(op_type_id);
 CREATE TRIGGER IF NOT EXISTS wb_ref_machine_group_insert AFTER INSERT ON "WorkbenchMachineGroups" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
-                WHERE kind = 'machine_group' AND active = 1 AND (entity_key = CAST(NEW."group_id" AS TEXT) OR alternate_key = CAST(NEW."name" AS TEXT));
+                WHERE kind = 'machine_group' AND active = 1 AND entity_key = CAST(NEW."group_id" AS TEXT);
+            UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
+                WHERE kind = 'machine_group' AND active = 1 AND alternate_key = CAST(NEW."name" AS TEXT);
             INSERT INTO WorkbenchEntityRefs(ref, kind, entity_key, alternate_key)
                 VALUES(lower(hex(randomblob(24))), 'machine_group', CAST(NEW."group_id" AS TEXT), CAST(NEW."name" AS TEXT));
         END;
 CREATE TRIGGER IF NOT EXISTS wb_ref_machine_group_update AFTER UPDATE ON "WorkbenchMachineGroups" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
-                WHERE kind = 'machine_group' AND active = 1 AND entity_key != CAST(OLD."group_id" AS TEXT) AND (entity_key = CAST(NEW."group_id" AS TEXT) OR alternate_key = CAST(NEW."name" AS TEXT));
+                WHERE kind = 'machine_group' AND active = 1 AND entity_key != CAST(OLD."group_id" AS TEXT) AND entity_key = CAST(NEW."group_id" AS TEXT);
+            UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
+                WHERE kind = 'machine_group' AND active = 1 AND entity_key != CAST(OLD."group_id" AS TEXT) AND alternate_key = CAST(NEW."name" AS TEXT);
             UPDATE WorkbenchEntityRefs SET entity_key = CAST(NEW."group_id" AS TEXT), alternate_key = CAST(NEW."name" AS TEXT), revision = revision + 1
                 WHERE kind = 'machine_group' AND entity_key = CAST(OLD."group_id" AS TEXT) AND active = 1;
         END;
@@ -550,13 +558,17 @@ CREATE TRIGGER IF NOT EXISTS wb_ref_machine_group_delete AFTER DELETE ON "Workbe
         END;
 CREATE TRIGGER IF NOT EXISTS wb_ref_shift_profile_insert AFTER INSERT ON "WorkbenchShiftProfiles" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
-                WHERE kind = 'shift_profile' AND active = 1 AND (entity_key = CAST(NEW."profile_id" AS TEXT) OR alternate_key = CAST(NEW."name" AS TEXT));
+                WHERE kind = 'shift_profile' AND active = 1 AND entity_key = CAST(NEW."profile_id" AS TEXT);
+            UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
+                WHERE kind = 'shift_profile' AND active = 1 AND alternate_key = CAST(NEW."name" AS TEXT);
             INSERT INTO WorkbenchEntityRefs(ref, kind, entity_key, alternate_key)
                 VALUES(lower(hex(randomblob(24))), 'shift_profile', CAST(NEW."profile_id" AS TEXT), CAST(NEW."name" AS TEXT));
         END;
 CREATE TRIGGER IF NOT EXISTS wb_ref_shift_profile_update AFTER UPDATE ON "WorkbenchShiftProfiles" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
-                WHERE kind = 'shift_profile' AND active = 1 AND entity_key != CAST(OLD."profile_id" AS TEXT) AND (entity_key = CAST(NEW."profile_id" AS TEXT) OR alternate_key = CAST(NEW."name" AS TEXT));
+                WHERE kind = 'shift_profile' AND active = 1 AND entity_key != CAST(OLD."profile_id" AS TEXT) AND entity_key = CAST(NEW."profile_id" AS TEXT);
+            UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
+                WHERE kind = 'shift_profile' AND active = 1 AND entity_key != CAST(OLD."profile_id" AS TEXT) AND alternate_key = CAST(NEW."name" AS TEXT);
             UPDATE WorkbenchEntityRefs SET entity_key = CAST(NEW."profile_id" AS TEXT), alternate_key = CAST(NEW."name" AS TEXT), revision = revision + 1
                 WHERE kind = 'shift_profile' AND entity_key = CAST(OLD."profile_id" AS TEXT) AND active = 1;
         END;
@@ -678,6 +690,7 @@ CREATE TRIGGER IF NOT EXISTS wb_resource_operator_status_reason AFTER UPDATE OF 
 CREATE TRIGGER IF NOT EXISTS wb_resource_supplier_status_reason AFTER UPDATE OF status ON Suppliers BEGIN
             UPDATE WorkbenchSupplierProfiles SET inactive_reason = NULL WHERE supplier_id = NEW.supplier_id AND inactive_reason IS NOT NULL;
         END;
+CREATE INDEX IF NOT EXISTS idx_part_operations_ext_group ON PartOperations(ext_group_id);
 CREATE TRIGGER IF NOT EXISTS wb_ref_template_operation_insert AFTER INSERT ON "PartOperations" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
                 WHERE kind = 'template_operation' AND active = 1 AND entity_key = CAST(NEW."id" AS TEXT);
@@ -700,13 +713,13 @@ CREATE TRIGGER IF NOT EXISTS wb_ref_template_operation_delete AFTER DELETE ON "P
         END;
 CREATE TRIGGER IF NOT EXISTS wb_ref_template_external_group_insert AFTER INSERT ON "ExternalGroups" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
-                WHERE kind = 'template_external_group' AND active = 1 AND (entity_key = CAST(NEW."group_id" AS TEXT));
+                WHERE kind = 'template_external_group' AND active = 1 AND entity_key = CAST(NEW."group_id" AS TEXT);
             INSERT INTO WorkbenchEntityRefs(ref, kind, entity_key, alternate_key)
                 VALUES(lower(hex(randomblob(24))), 'template_external_group', CAST(NEW."group_id" AS TEXT), NULL);
         END;
 CREATE TRIGGER IF NOT EXISTS wb_ref_template_external_group_update AFTER UPDATE ON "ExternalGroups" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
-                WHERE kind = 'template_external_group' AND active = 1 AND entity_key != CAST(OLD."group_id" AS TEXT) AND (entity_key = CAST(NEW."group_id" AS TEXT));
+                WHERE kind = 'template_external_group' AND active = 1 AND entity_key != CAST(OLD."group_id" AS TEXT) AND entity_key = CAST(NEW."group_id" AS TEXT);
             UPDATE WorkbenchEntityRefs SET entity_key = CAST(NEW."group_id" AS TEXT), alternate_key = NULL, revision = revision + 1
                 WHERE kind = 'template_external_group' AND entity_key = CAST(OLD."group_id" AS TEXT) AND active = 1;
         END;
@@ -1269,26 +1282,6 @@ CREATE TABLE IF NOT EXISTS WorkbenchCalendarDefaults (
             singleton INTEGER PRIMARY KEY CHECK(singleton=1),
             state_ref TEXT NOT NULL DEFAULT (lower(hex(randomblob(24)))),
             revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0), periods_json TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS WorkbenchShiftDayPeriods (
-            profile_id TEXT NOT NULL, day_offset INTEGER NOT NULL, periods_json TEXT NOT NULL,
-            PRIMARY KEY(profile_id, day_offset),
-            FOREIGN KEY(profile_id, day_offset) REFERENCES WorkbenchShiftPatternDays(profile_id, day_offset)
-                ON DELETE CASCADE);
-CREATE TRIGGER IF NOT EXISTS wb_shift_periods_insert
-            AFTER INSERT ON WorkbenchShiftDayPeriods BEGIN
-                UPDATE WorkbenchEntityRefs SET revision=revision+1
-                    WHERE kind='shift_profile' AND active=1 AND entity_key=NEW.profile_id;
-            END;
-CREATE TRIGGER IF NOT EXISTS wb_shift_periods_update
-            AFTER UPDATE ON WorkbenchShiftDayPeriods BEGIN
-                UPDATE WorkbenchEntityRefs SET revision=revision+1
-                    WHERE kind='shift_profile' AND active=1 AND entity_key=NEW.profile_id;
-            END;
-CREATE TRIGGER IF NOT EXISTS wb_shift_periods_delete
-            AFTER DELETE ON WorkbenchShiftDayPeriods BEGIN
-                UPDATE WorkbenchEntityRefs SET revision=revision+1
-                    WHERE kind='shift_profile' AND active=1 AND entity_key=OLD.profile_id;
-            END;
 CREATE TABLE IF NOT EXISTS MachineOpTypes (
             machine_id TEXT NOT NULL REFERENCES Machines(machine_id) ON DELETE CASCADE,
             op_type_id TEXT NOT NULL REFERENCES OpTypes(op_type_id),
@@ -1379,10 +1372,10 @@ CREATE TRIGGER IF NOT EXISTS wb_src_rev_suppliers_insert AFTER INSERT ON "Suppli
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_suppliers_update AFTER UPDATE ON "Suppliers" WHEN OLD."supplier_id" IS NOT NEW."supplier_id" OR OLD."name" IS NOT NEW."name" OR OLD."default_days" IS NOT NEW."default_days" OR OLD."status" IS NOT NEW."status" OR OLD."remark" IS NOT NEW."remark" OR OLD."created_at" IS NOT NEW."created_at" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'suppliers'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_suppliers_delete AFTER DELETE ON "Suppliers" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'suppliers'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workcalendar_insert AFTER INSERT ON "WorkCalendar" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'work_calendar'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workcalendar_update AFTER UPDATE ON "WorkCalendar" WHEN OLD."date" IS NOT NEW."date" OR OLD."day_type" IS NOT NEW."day_type" OR OLD."shift_start" IS NOT NEW."shift_start" OR OLD."shift_end" IS NOT NEW."shift_end" OR OLD."shift_hours" IS NOT NEW."shift_hours" OR OLD."efficiency" IS NOT NEW."efficiency" OR OLD."allow_normal" IS NOT NEW."allow_normal" OR OLD."allow_urgent" IS NOT NEW."allow_urgent" OR OLD."remark" IS NOT NEW."remark" OR OLD."periods_json" IS NOT NEW."periods_json" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'work_calendar'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workcalendar_update AFTER UPDATE ON "WorkCalendar" WHEN OLD."date" IS NOT NEW."date" OR OLD."day_type" IS NOT NEW."day_type" OR OLD."efficiency" IS NOT NEW."efficiency" OR OLD."allow_normal" IS NOT NEW."allow_normal" OR OLD."allow_urgent" IS NOT NEW."allow_urgent" OR OLD."remark" IS NOT NEW."remark" OR OLD."periods_json" IS NOT NEW."periods_json" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'work_calendar'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workcalendar_delete AFTER DELETE ON "WorkCalendar" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'work_calendar'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_operatorcalendar_insert AFTER INSERT ON "OperatorCalendar" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'operator_calendar'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_operatorcalendar_update AFTER UPDATE ON "OperatorCalendar" WHEN OLD."operator_id" IS NOT NEW."operator_id" OR OLD."date" IS NOT NEW."date" OR OLD."day_type" IS NOT NEW."day_type" OR OLD."shift_start" IS NOT NEW."shift_start" OR OLD."shift_end" IS NOT NEW."shift_end" OR OLD."shift_hours" IS NOT NEW."shift_hours" OR OLD."efficiency" IS NOT NEW."efficiency" OR OLD."allow_normal" IS NOT NEW."allow_normal" OR OLD."allow_urgent" IS NOT NEW."allow_urgent" OR OLD."remark" IS NOT NEW."remark" OR OLD."periods_json" IS NOT NEW."periods_json" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'operator_calendar'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_operatorcalendar_update AFTER UPDATE ON "OperatorCalendar" WHEN OLD."operator_id" IS NOT NEW."operator_id" OR OLD."date" IS NOT NEW."date" OR OLD."day_type" IS NOT NEW."day_type" OR OLD."efficiency" IS NOT NEW."efficiency" OR OLD."allow_normal" IS NOT NEW."allow_normal" OR OLD."allow_urgent" IS NOT NEW."allow_urgent" OR OLD."remark" IS NOT NEW."remark" OR OLD."periods_json" IS NOT NEW."periods_json" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'operator_calendar'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_operatorcalendar_delete AFTER DELETE ON "OperatorCalendar" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'operator_calendar'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_resourceteams_insert AFTER INSERT ON "ResourceTeams" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'resource_teams'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_resourceteams_update AFTER UPDATE ON "ResourceTeams" WHEN OLD."team_id" IS NOT NEW."team_id" OR OLD."name" IS NOT NEW."name" OR OLD."status" IS NOT NEW."status" OR OLD."remark" IS NOT NEW."remark" OR OLD."created_at" IS NOT NEW."created_at" OR OLD."updated_at" IS NOT NEW."updated_at" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'resource_teams'; END;
@@ -1406,11 +1399,8 @@ CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchshiftprofiles_insert AFTER INSE
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchshiftprofiles_update AFTER UPDATE ON "WorkbenchShiftProfiles" WHEN OLD."profile_id" IS NOT NEW."profile_id" OR OLD."name" IS NOT NEW."name" OR OLD."anchor_date" IS NOT NEW."anchor_date" OR OLD."cycle_days" IS NOT NEW."cycle_days" OR OLD."status" IS NOT NEW."status" OR OLD."remark" IS NOT NEW."remark" OR OLD."created_at" IS NOT NEW."created_at" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_shift_profiles'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchshiftprofiles_delete AFTER DELETE ON "WorkbenchShiftProfiles" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_shift_profiles'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchshiftpatterndays_insert AFTER INSERT ON "WorkbenchShiftPatternDays" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_shift_pattern_days'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchshiftpatterndays_update AFTER UPDATE ON "WorkbenchShiftPatternDays" WHEN OLD."profile_id" IS NOT NEW."profile_id" OR OLD."day_offset" IS NOT NEW."day_offset" OR OLD."is_rest" IS NOT NEW."is_rest" OR OLD."shift_start" IS NOT NEW."shift_start" OR OLD."shift_end" IS NOT NEW."shift_end" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_shift_pattern_days'; END;
+CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchshiftpatterndays_update AFTER UPDATE ON "WorkbenchShiftPatternDays" WHEN OLD."profile_id" IS NOT NEW."profile_id" OR OLD."day_offset" IS NOT NEW."day_offset" OR OLD."is_rest" IS NOT NEW."is_rest" OR OLD."periods_json" IS NOT NEW."periods_json" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_shift_pattern_days'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchshiftpatterndays_delete AFTER DELETE ON "WorkbenchShiftPatternDays" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_shift_pattern_days'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchshiftdayperiods_insert AFTER INSERT ON "WorkbenchShiftDayPeriods" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_shift_day_periods'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchshiftdayperiods_update AFTER UPDATE ON "WorkbenchShiftDayPeriods" WHEN OLD."profile_id" IS NOT NEW."profile_id" OR OLD."day_offset" IS NOT NEW."day_offset" OR OLD."periods_json" IS NOT NEW."periods_json" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_shift_day_periods'; END;
-CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchshiftdayperiods_delete AFTER DELETE ON "WorkbenchShiftDayPeriods" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_shift_day_periods'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchcalendardefaults_insert AFTER INSERT ON "WorkbenchCalendarDefaults" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_calendar_defaults'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchcalendardefaults_update AFTER UPDATE ON "WorkbenchCalendarDefaults" WHEN OLD."singleton" IS NOT NEW."singleton" OR OLD."state_ref" IS NOT NEW."state_ref" OR OLD."revision" IS NOT NEW."revision" OR OLD."periods_json" IS NOT NEW."periods_json" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_calendar_defaults'; END;
 CREATE TRIGGER IF NOT EXISTS wb_src_rev_workbenchcalendardefaults_delete AFTER DELETE ON "WorkbenchCalendarDefaults" BEGIN UPDATE WorkbenchSourceRevisions SET revision = revision + 1 WHERE source_key = 'workbench_calendar_defaults'; END;
@@ -1594,4 +1584,4 @@ CREATE INDEX IF NOT EXISTS idx_wb_run_finished_sort ON WorkbenchRunJobs(substr(f
 CREATE INDEX IF NOT EXISTS idx_material_stage_operation ON BatchMaterialStages(operation_id);
 INSERT INTO WorkbenchPlanIdentityClock(singleton, revision) SELECT 1, CASE WHEN NOT EXISTS (SELECT 1 FROM "WorkbenchPlanSourceRefs" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "WorkbenchTaskRefs" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleHistory" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "BatchOperations" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "Schedule" LIMIT 1) THEN 1 ELSE 0 END WHERE NOT EXISTS (SELECT 1 FROM WorkbenchPlanIdentityClock);
 INSERT INTO WorkbenchExecutionLedgerClock(singleton, revision, next_report_no) SELECT 1, CASE WHEN NOT EXISTS (SELECT 1 FROM WorkbenchProductionReports LIMIT 1) AND NOT EXISTS (SELECT 1 FROM WorkbenchProductionReportRevisions LIMIT 1) AND NOT EXISTS (SELECT 1 FROM WorkbenchCommandReceipts WHERE action GLOB 'execution.*' LIMIT 1) THEN 1 ELSE 0 END, 1 WHERE NOT EXISTS (SELECT 1 FROM WorkbenchExecutionLedgerClock);
-INSERT INTO WorkbenchSourceRevisions(source_key, revision) VALUES ('parts', 1), ('part_operations', 1), ('external_groups', 1), ('op_types', 1), ('machines', 1), ('machine_op_types', 1), ('machine_downtimes', 1), ('operators', 1), ('operator_skills', 1), ('operator_machines', 1), ('materials', 1), ('suppliers', 1), ('work_calendar', 1), ('operator_calendar', 1), ('resource_teams', 1), ('workbench_operator_profiles', 1), ('workbench_supplier_op_types', 1), ('workbench_supplier_profiles', 1), ('workbench_machine_groups', 1), ('workbench_machine_group_members', 1), ('workbench_shift_profiles', 1), ('workbench_shift_pattern_days', 1), ('workbench_shift_day_periods', 1), ('workbench_calendar_defaults', 1), ('workbench_op_type_policies', 1), ('workbench_entity_refs', 1), ('batches', 1), ('batch_operations', 1), ('batch_external_contexts', 1), ('batch_materials', 1), ('batch_material_reviews', 1), ('batch_material_stages', 1), ('batch_material_arrivals', 1), ('batch_quantity_splits', 1), ('workbench_process_workflow', 1), ('workbench_process_operation_confirmations', 1), ('workbench_template_lineage', 1), ('schedule_history', 1), ('schedule_version_seq', 1), ('schedule_config', 1), ('workbench_plan_identity', 1), ('execution_ledger', 1), ('outsourcing', 1), ('dashboard_items', 1), ('dashboard_handling', 1), ('calibration_adoptions', 1), ('run_jobs', 1), ('trial_records', 1), ('schedule_rows', 1), ('schedule_references', 1), ('scheduling_preferences', 1), ('system_config', 1), ('trial_adoption_receipts', 1), ('production_input_receipts', 1) ON CONFLICT(source_key) DO NOTHING;
+INSERT INTO WorkbenchSourceRevisions(source_key, revision) VALUES ('parts', 1), ('part_operations', 1), ('external_groups', 1), ('op_types', 1), ('machines', 1), ('machine_op_types', 1), ('machine_downtimes', 1), ('operators', 1), ('operator_skills', 1), ('operator_machines', 1), ('materials', 1), ('suppliers', 1), ('work_calendar', 1), ('operator_calendar', 1), ('resource_teams', 1), ('workbench_operator_profiles', 1), ('workbench_supplier_op_types', 1), ('workbench_supplier_profiles', 1), ('workbench_machine_groups', 1), ('workbench_machine_group_members', 1), ('workbench_shift_profiles', 1), ('workbench_shift_pattern_days', 1), ('workbench_calendar_defaults', 1), ('workbench_op_type_policies', 1), ('workbench_entity_refs', 1), ('batches', 1), ('batch_operations', 1), ('batch_external_contexts', 1), ('batch_materials', 1), ('batch_material_reviews', 1), ('batch_material_stages', 1), ('batch_material_arrivals', 1), ('batch_quantity_splits', 1), ('workbench_process_workflow', 1), ('workbench_process_operation_confirmations', 1), ('workbench_template_lineage', 1), ('schedule_history', 1), ('schedule_version_seq', 1), ('schedule_config', 1), ('workbench_plan_identity', 1), ('execution_ledger', 1), ('outsourcing', 1), ('dashboard_items', 1), ('dashboard_handling', 1), ('calibration_adoptions', 1), ('run_jobs', 1), ('trial_records', 1), ('schedule_rows', 1), ('schedule_references', 1), ('scheduling_preferences', 1), ('system_config', 1), ('trial_adoption_receipts', 1), ('production_input_receipts', 1) ON CONFLICT(source_key) DO NOTHING;

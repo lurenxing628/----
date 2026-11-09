@@ -3,11 +3,18 @@
 import base64
 import json
 import math
+import re
 from datetime import date, datetime
+
+from core.shared.stored_dates import stored_day
 
 _JSON_SCALARS = frozenset((str, int, bool, type(None)))
 _RESERVED_KEYS = frozenset((frozenset(("$sqlite_blob",)), frozenset(("$sqlite_real",)),
                             frozenset(("$sqlite_dict",)), frozenset(("storage_type", "iso"))))
+_CANONICAL_ISO_DATETIME_RE = re.compile(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\.[0-9]{6})?"
+    r"(?:[+-](?:[01][0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9](?:\.[0-9]{6})?)?)?\Z"
+)
 
 
 def packed(value, *, json_input=False):
@@ -54,8 +61,15 @@ def unpacked(value):
                 raise ValueError("Escaped SQLite document is not a dictionary")
             return {key: unpacked(item) for key, item in value["$sqlite_dict"].items()}
         if set(value) == {"storage_type", "iso"} and value["storage_type"] in ("date", "datetime"):
-            cls = datetime if value["storage_type"] == "datetime" else date
-            return cls.fromisoformat(value["iso"])
+            iso = value["iso"]
+            if value["storage_type"] == "date":
+                day = stored_day(iso)
+                if day is None:
+                    raise ValueError("Invalid canonical ISO date")
+                return day
+            if type(iso) is not str or _CANONICAL_ISO_DATETIME_RE.match(iso) is None:
+                raise ValueError("Invalid canonical ISO datetime")
+            return datetime.fromisoformat(iso)
         if set(value) == {"$sqlite_blob"}:
             return base64.b64decode(value["$sqlite_blob"], validate=True)
         if set(value) == {"$sqlite_real"}:

@@ -1,7 +1,19 @@
 """Read SQLite storage classes independently of connection date converters."""
 
 
-from typing import Any, Tuple
+from typing import Any, Dict, Tuple
+
+RAW_TABLE_SELECTS: Dict[str, str] = {
+    "Batches": (
+        'batch_id, part_no, part_name, quantity, +"due_date" AS "due_date", priority, '
+        'ready_status, +"ready_date" AS "ready_date", status, remark, created_at, updated_at'
+    ),
+    "WorkCalendar": '+"date" AS "date", day_type, efficiency, allow_normal, allow_urgent, remark, periods_json',
+}
+
+
+def raw_table_select_sql(table: str) -> str:
+    return 'SELECT ' + RAW_TABLE_SELECTS.get(table, "*") + ' FROM "' + table.replace('"', '""') + '"'
 
 
 def sql_order(value: Any) -> Tuple[int, Any]:

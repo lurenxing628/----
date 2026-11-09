@@ -2,15 +2,16 @@ from __future__ import annotations
 
 import math
 import re
-from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Optional
 
 from core.errors import ValidationError
 
 ILLEGAL_XML_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
-_DATETIME_FORMAT_HINT = "YYYY-MM-DD / YYYY-MM-DD HH:MM / YYYY-MM-DD HH:MM:SS"
 _INT64_MAX = (1 << 63) - 1
+JS_SAFE_INT_MAX = (1 << 53) - 1
+PORT_MAX = 65535
+WIN32_DWORD_MAX = 0xFFFFFFFF
 
 
 def is_blank_input(value: Any) -> bool:
@@ -71,6 +72,34 @@ def is_exact_finite_number(value: Any) -> bool:
 def is_exact_non_negative_number(value: Any, *, positive: bool = False) -> bool:
     """is_exact_finite_number and >= 0; > 0 with positive=True."""
     return is_exact_finite_number(value) and (value > 0 if positive else value >= 0)
+
+
+def is_stored_number(value: Any, *, positive: bool = False, integer: bool = False) -> bool:
+    """A stored count/hours/efficiency that can be used as is: an exact finite number (an exact int with
+    integer=True) in 0..2**53-1, or 1..2**53-1 / (0, 2**53-1] with positive=True.
+
+    Run admission, preflight, dashboards and calendar reads judge stored numbers with this one rule.
+    """
+    if not (type(value) is int if integer else is_exact_finite_number(value)):
+        return False
+    return (0 < value if positive else 0 <= value) and value <= JS_SAFE_INT_MAX
+
+
+def parse_bounded_positive_int(value: Any, *, max_value: int, allow_str: bool = True) -> Optional[int]:
+    """Strict positive integer admission in 1..max_value without unbounded string/int conversion."""
+    if type(value) is int:
+        return value if 1 <= value <= max_value else None
+    if allow_str and type(value) is str:
+        max_digits = len(str(max_value))
+        if (
+            1 <= len(value) <= max_digits
+            and value.isascii()
+            and value[0] in "123456789"
+            and value.isdigit()
+        ):
+            parsed = int(value)
+            return parsed if parsed <= max_value else None
+    return None
 
 
 def scaled_decimal(number: Decimal, scale10: int = 0) -> Decimal:
@@ -246,33 +275,3 @@ def parse_required_int(
         min_value=min_value,
         max_value=max_value,
     )
-
-
-def parse_optional_date(value: Any, *, field: str) -> Optional[date]:
-    if is_blank_input(value):
-        return None
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
-        return value
-    text = str(value).strip().replace("/", "-")
-    try:
-        return datetime.strptime(text, "%Y-%m-%d").date()
-    except (TypeError, ValueError, OverflowError) as exc:
-        raise ValidationError(f"“{field}”格式不合法（期望：YYYY-MM-DD）", field=field) from exc
-
-
-def parse_optional_datetime(value: Any, *, field: str) -> Optional[datetime]:
-    if is_blank_input(value):
-        return None
-    if isinstance(value, datetime):
-        return value
-    if isinstance(value, date):
-        return datetime(value.year, value.month, value.day, 0, 0, 0)
-    text = str(value).strip().replace("/", "-").replace("T", " ").replace("：", ":")
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(text, fmt)
-        except (TypeError, ValueError, OverflowError):
-            continue
-    raise ValidationError(f"“{field}”格式不合法（期望：{_DATETIME_FORMAT_HINT}）", field=field)

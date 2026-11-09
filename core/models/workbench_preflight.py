@@ -16,7 +16,7 @@ OPTIONAL_FIELDS = frozenset(("material_strategy", "hold_window", "time_budget_se
 _HOLD_MESSAGE = "不重排时段要填完整的开始和结束时刻（精确到分），开始要早于结束，并且在排产日期范围内。"
 _REF_RE = re.compile(r"[0-9a-f]{48}")
 _DATE_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
-_MINUTE_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}")
+_MINUTE_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T(?:[01][0-9]|2[0-3]):[0-5][0-9]")
 
 
 def reject(message) -> NoReturn:

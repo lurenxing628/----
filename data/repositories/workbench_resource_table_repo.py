@@ -100,10 +100,6 @@ class WorkbenchResourceTableRepository(BaseRepository):
             for chunk in _chunks(codes):
                 marks = ",".join("?" for _ in chunk)
                 sql = f"SELECT * FROM {table} WHERE {key} IN ({marks}) ORDER BY {key},{order}"
-                if table == "WorkbenchShiftPatternDays":
-                    sql = f"""SELECT d.*,p.periods_json FROM WorkbenchShiftPatternDays d LEFT JOIN WorkbenchShiftDayPeriods p
-                        ON p.profile_id=d.profile_id AND p.day_offset=d.day_offset
-                        WHERE d.profile_id IN ({marks}) ORDER BY d.profile_id,d.day_offset"""
                 for row in self.fetchall(sql, chunk):
                     grouped[row[key]].append(row)
             result[name] = grouped

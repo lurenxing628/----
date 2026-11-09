@@ -7,8 +7,9 @@ from datetime import date
 from typing import Any, Dict, Literal, Optional, overload
 
 from core.errors import ValidationError
-from core.models.calendar_periods import normalize_periods, period_summary, period_windows
+from core.models.calendar_periods import normalize_periods, period_windows, reject_rest_day_periods
 from core.models.resource_capabilities import OP_TYPE_CATEGORIES
+from core.shared.stored_dates import stored_day
 
 _FIELDS = {
     "op_type": {"category", "remark", "default_merge_mode"},
@@ -78,31 +79,26 @@ def _pattern(value):
 
 
 
-def _pattern_day(row):
-    resource_object(row, {"day_offset", "is_rest", "shift_start", "shift_end", "periods"}, "fields.pattern")
-    row = dict(row)
-    row["periods"] = normalize_periods(row.get("periods"))
-    if row["periods"] is not None:
-        if row.get("is_rest") and row["periods"]:
-            raise ValidationError("休息日不能填写工作时段。", field="fields.pattern")
-        if row.get("is_rest") is False and not row["periods"]:
-            raise ValidationError("工作日请至少填写一个工作时段，或明确改为休息日。", field="fields.pattern")
-        row["shift_start"], end, _ = period_summary(row["periods"], row.get("shift_start") or "00:00")
-        row["shift_end"] = end or row["shift_start"]
-    offset = row.get("day_offset")
-    if type(offset) is not int or not 0 <= offset <= 365 or type(row.get("is_rest")) is not bool:
+def _pattern_day(raw):
+    resource_object(raw, {"day_offset", "is_rest", "periods"}, "fields.pattern")
+    offset = raw.get("day_offset")
+    is_rest = raw.get("is_rest")
+    if type(offset) is not int or not 0 <= offset <= 365 or type(is_rest) is not bool:
         raise ValidationError("班次日期序号和休息标记不正确。", field="fields.pattern")
-    for key in ("shift_start", "shift_end"):
-        if type(row.get(key)) is not str or re.fullmatch(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]", row[key]) is None:
-            raise ValidationError("班次开始和结束必须为HH:MM。", field="fields.pattern." + key)
-    return row
+    try:
+        periods = normalize_periods(raw.get("periods"))
+        if is_rest:
+            reject_rest_day_periods(periods)
+    except ValidationError as exc:
+        # 时段与休息日规则报中立字段名，班次档统一落到 fields.pattern.periods。
+        raise ValidationError(exc.message, field="fields.pattern.periods") from exc
+    if not is_rest and not periods:
+        raise ValidationError("工作日请至少填写一个工作时段，或明确改为休息日。", field="fields.pattern.periods")
+    return {"day_offset": offset, "is_rest": is_rest, "periods": periods}
 
 
 def _validate_adjacent_shifts(days):
-    effective = [None if day["is_rest"] else (
-        day["periods"] if day["periods"] is not None
-        else [{"start": day["shift_start"], "end": day["shift_end"], "day_offset": 0}]
-    ) for day in days]
+    effective = [None if day["is_rest"] else day["periods"] for day in days]
     for index, current in enumerate(effective):
         following = effective[(index + 1) % len(effective)]
         if current is None or following is None:
@@ -124,11 +120,8 @@ def _field(kind, name, value):
             raise ValidationError("轮换周期必须是1至366之间的整数。", field=path)
         return value
     if name == "anchor_date":
-        try:
-            if type(value) is not str or date.fromisoformat(value).isoformat() != value:
-                raise ValueError
-        except (TypeError, ValueError):
-            raise ValidationError("班次起始日期必须是有效的YYYY-MM-DD。", field=path) from None
+        if stored_day(value) is None:
+            raise ValidationError("班次起始日期必须是有效的YYYY-MM-DD。", field=path)
         return value
     allowed = _STATUS[kind] if name == "status" else (_CATEGORY if name == "category" else (None,) + _MERGE_MODE)
     if value not in allowed:

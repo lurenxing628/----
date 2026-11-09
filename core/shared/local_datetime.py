@@ -7,7 +7,7 @@ from typing import Any, Optional
 _FORMATS = ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d")
 # 库里绝大多数时间都是这种标准写法；整串吻合时 fromisoformat 与上面的 strptime 结果相同，
 # 却快一个数量级（整份计划读取要解析十几万次）。其余写法、以及 fromisoformat 不收的小数位数仍走 strptime。
-_CANONICAL = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,6})?")
+_CANONICAL = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2} (?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\.[0-9]{1,6})?")
 
 
 def _canonical(text: str) -> Optional[datetime]:

@@ -19,7 +19,7 @@ MAX_PLAN_PAGE_SIZE = 50
 MAX_PLAN_VERSION = (1 << 63) - 1
 _OPERATION_DETAIL_FIELDS = (
     "op_code", "batch_id", "piece_id", "seq", "op_type_name", "source", "op_status", "supplier_id",
-    "part_no", "part_name", "due_date", "priority", "supplier_name",
+    "part_no", "part_name", "priority", "supplier_name",
 )
 
 
@@ -128,7 +128,7 @@ class WorkbenchPlanCatalogRepository(SchedulePlanQueryRepository):
             chunk = operation_ids[start:start + 400]
             rows = self.fetchall("""SELECT bo.id AS op_id, bo.op_code, bo.batch_id, bo.piece_id, bo.seq,
                 bo.op_type_name, bo.source, bo.status AS op_status, bo.supplier_id,
-                b.part_no, b.part_name, CAST(b.due_date AS TEXT) AS due_date, b.priority,
+                b.part_no, b.part_name, b.priority,
                 sup.name AS supplier_name
                 FROM BatchOperations bo LEFT JOIN Batches b ON b.batch_id=bo.batch_id
                 LEFT JOIN Suppliers sup ON sup.supplier_id=bo.supplier_id

@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from .base_repo import BaseRepository
+from .sqlite_rows import raw_table_select_sql
 
 BATCH_FACT_TABLES = ("Batches", "BatchOperations", "Parts", "PartOperations", "ExternalGroups", "BatchMaterials", "BatchMaterialReviews", "BatchMaterialStages", "BatchMaterialArrivals", "BatchQuantitySplits", "Materials",
                      "Machines", "MachineOpTypes", "Operators", "OperatorMachine", "OperatorSkill", "OpTypes", "Suppliers", "WorkbenchSupplierOpTypes",
@@ -26,12 +27,12 @@ class WorkbenchBatchFactsRepository(BaseRepository):
 
     def whole_tables(self) -> Dict[str, List[Dict[str, Any]]]:
         """按 BATCH_FACT_TABLES 顺序整表读取（rowid 序），返回 {表名: [行 dict]}。"""
-        return {table: self.fetchall('SELECT * FROM "' + table + '" ORDER BY rowid') for table in BATCH_FACT_TABLES}
+        return {table: self.fetchall(raw_table_select_sql(table) + " ORDER BY rowid") for table in BATCH_FACT_TABLES}
 
     def entity_tables(self) -> Dict[str, List[Dict[str, Any]]]:
         """Minimal tables required for batch identity, uniqueness and part existence checks."""
         return {
-            table: self.fetchall('SELECT * FROM "' + table + '" ORDER BY rowid')
+            table: self.fetchall(raw_table_select_sql(table) + " ORDER BY rowid")
             for table in ("Batches", "Parts", "WorkbenchEntityRefs")
         }
 
@@ -43,4 +44,4 @@ class WorkbenchBatchFactsRepository(BaseRepository):
         return tables
 
     def batch_row(self, batch_id: str) -> Optional[Dict[str, Any]]:
-        return self.fetchone("SELECT * FROM Batches WHERE batch_id=?", (batch_id,))
+        return self.fetchone(raw_table_select_sql("Batches") + " WHERE batch_id=?", (batch_id,))

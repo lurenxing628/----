@@ -1,59 +1,33 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import lru_cache
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
-from ._helpers import RowLike, parse_float_or_default
-from .calendar_periods import decode_periods, encode_periods
-from .enums import CalendarDayType, YesNo
+from core.errors import ValidationError
+from core.shared.strict_parse import is_stored_number
 
+from ._helpers import RowLike
 
-@lru_cache(maxsize=256)
-def _canonical_periods_json(raw: str) -> str:
-    return encode_periods(decode_periods(raw))
-
-
-def _decode_and_encode_periods(raw):
-    if raw is None:
-        return None
-    if isinstance(raw, str):
-        return _canonical_periods_json(raw)
-    return encode_periods(decode_periods(raw))
-
-
-def _validate_calendar_numbers(*, shift_hours: float, efficiency: float, scope: str) -> Tuple[float, float]:
-    if shift_hours < 0:
-        raise ValueError(f"{scope}.shift_hours 不能为负数：{shift_hours!r}")
-    if efficiency <= 0:
-        raise ValueError(f"{scope}.efficiency 必须大于 0：{efficiency!r}")
-    return float(shift_hours), float(efficiency)
+_SCOPE_LABELS = {"WorkCalendar": "工作日历", "OperatorCalendar": "个人日历"}
 
 
 def _parse_common_calendar_row(row: RowLike, scope: str) -> Dict[str, Any]:
-    shift_hours = parse_float_or_default(row["shift_hours"], 8.0, field="shift_hours")
-    efficiency = parse_float_or_default(row["efficiency"], 1.0, field="efficiency")
-    shift_hours, efficiency = _validate_calendar_numbers(
-        shift_hours=shift_hours,
-        efficiency=efficiency,
-        scope=scope,
-    )
-    shift_start = row["shift_start"]
-    shift_end = row["shift_end"]
+    """Stored row -> model. Every column is required by the DDL; only periods own time, so no clock or hours here."""
+    day = str(row["date"])
+    efficiency = row["efficiency"]
+    if not is_stored_number(efficiency, positive=True):
+        raise ValidationError(
+            f"{_SCOPE_LABELS[scope]}里 {day} 的效率读不出来或不大于 0，请到{_SCOPE_LABELS[scope]}重新设置这一天。",
+            field="efficiency",
+        )
     return {
-        "date": str(row["date"] or ""),
-        "day_type": (
-            str(row["day_type"] or CalendarDayType.WORKDAY.value).strip().lower()
-            or CalendarDayType.WORKDAY.value
-        ),
-        "shift_start": str(shift_start) if shift_start is not None and shift_start != "" else None,
-        "shift_end": str(shift_end) if shift_end is not None and shift_end != "" else None,
-        "shift_hours": shift_hours,
-        "efficiency": efficiency,
-        "allow_normal": (str(row["allow_normal"] or YesNo.YES.value).strip().lower() or YesNo.YES.value),
-        "allow_urgent": (str(row["allow_urgent"] or YesNo.YES.value).strip().lower() or YesNo.YES.value),
+        "date": day,
+        "day_type": row["day_type"],
+        "efficiency": float(efficiency),
+        "allow_normal": row["allow_normal"],
+        "allow_urgent": row["allow_urgent"],
         "remark": row["remark"],
-        "periods_json": _decode_and_encode_periods(row["periods_json"]),
+        "periods_json": row["periods_json"],
     }
 
 
@@ -61,9 +35,6 @@ def _common_calendar_dict(cal: Any) -> Dict[str, Any]:
     return {
         "date": cal.date,
         "day_type": cal.day_type,
-        "shift_start": cal.shift_start,
-        "shift_end": cal.shift_end,
-        "shift_hours": cal.shift_hours,
         "efficiency": cal.efficiency,
         "allow_normal": cal.allow_normal,
         "allow_urgent": cal.allow_urgent,
@@ -74,17 +45,15 @@ def _common_calendar_dict(cal: Any) -> Dict[str, Any]:
 
 @dataclass
 class WorkCalendar:
-    date: str  # YYYY-MM-DD
-    day_type: str = CalendarDayType.WORKDAY.value  # workday/weekend/holiday
-    shift_start: Optional[str] = None  # HH:MM（可选；默认 08:00）
-    shift_end: Optional[str] = None  # HH:MM（可选；用于推导 shift_hours）
-    shift_hours: float = 8.0
-    efficiency: float = 1.0
-    allow_normal: str = YesNo.YES.value  # yes/no
-    allow_urgent: str = YesNo.YES.value  # yes/no
-    remark: Optional[str] = None
+    """一天的全局日历。工作时段（periods_json）是唯一的时间事实，起止与工时都由它现算。"""
 
-    periods_json: Optional[str] = None
+    date: str  # YYYY-MM-DD
+    day_type: str  # 存储为 workday/holiday；未配置的周末在引擎里按 weekend 推导
+    efficiency: float
+    allow_normal: str  # yes/no
+    allow_urgent: str  # yes/no
+    remark: Optional[str]
+    periods_json: str  # 规范化的工作时段数组；"[]" 表示零工时
 
     @classmethod
     def from_row(cls, row: RowLike) -> WorkCalendar:
@@ -106,16 +75,12 @@ class OperatorCalendar:
 
     operator_id: str
     date: str  # YYYY-MM-DD
-    day_type: str = CalendarDayType.WORKDAY.value  # workday/weekend/holiday（存储约束由服务层统一为 workday/holiday）
-    shift_start: Optional[str] = None  # HH:MM（可选；默认 08:00）
-    shift_end: Optional[str] = None  # HH:MM（可选；用于推导 shift_hours）
-    shift_hours: float = 8.0
-    efficiency: float = 1.0
-    allow_normal: str = YesNo.YES.value  # yes/no
-    allow_urgent: str = YesNo.YES.value  # yes/no
-    remark: Optional[str] = None
-
-    periods_json: Optional[str] = None
+    day_type: str  # workday/holiday
+    efficiency: float
+    allow_normal: str  # yes/no
+    allow_urgent: str  # yes/no
+    remark: Optional[str]
+    periods_json: str  # 规范化的工作时段数组；"[]" 表示零工时
 
     @classmethod
     def from_row(cls, row: RowLike) -> OperatorCalendar:

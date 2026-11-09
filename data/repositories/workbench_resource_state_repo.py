@@ -65,15 +65,6 @@ class WorkbenchResourceStateRepository(BaseRepository):
     def set_pattern(self, profile_id, days):
         self.execute("DELETE FROM WorkbenchShiftPatternDays WHERE profile_id=?", (profile_id,))
         self.executemany(
-            "INSERT INTO WorkbenchShiftPatternDays(profile_id,day_offset,is_rest,shift_start,shift_end) VALUES (?,?,?,?,?)",
-            [(profile_id, day["day_offset"], int(day["is_rest"]), day["shift_start"], day["shift_end"]) for day in days],
+            "INSERT INTO WorkbenchShiftPatternDays(profile_id,day_offset,is_rest,periods_json) VALUES (?,?,?,?)",
+            [(profile_id, day["day_offset"], int(day["is_rest"]), encode_periods(day["periods"])) for day in days],
         )
-        period_rows = [
-            (profile_id, day["day_offset"], encode_periods(day["periods"]))
-            for day in days if day["periods"] is not None
-        ]
-        if period_rows:
-            self.executemany(
-                "INSERT INTO WorkbenchShiftDayPeriods(profile_id,day_offset,periods_json) VALUES (?,?,?)",
-                period_rows,
-            )

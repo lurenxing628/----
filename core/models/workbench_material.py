@@ -1,4 +1,4 @@
-"""Pure JSON input contract for private workbench material commands."""
+"""Material input normalization contract."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import Any, Dict
 from core.errors import ValidationError
 from core.models.workbench_resource_input import resource_object, resource_text
 
-#: 解析器认的状态代号；描述符那份在 workbench_material_file.ENUMS，见 supplier 里的说明。
+#: 物料命令与导入归一化接受的状态代号，与 workbench_material_file.STATUS_LABELS 的键及 ENUMS["status"] 保持一致。
 STATUS_VALUES = ("active", "inactive")
 _CLEARABLE = ("spec", "unit", "remark")
 _FIELDS = frozenset(_CLEARABLE + ("stock_qty", "status"))

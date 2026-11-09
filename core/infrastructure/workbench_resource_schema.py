@@ -33,7 +33,7 @@ _TABLES = {
         profile_id TEXT NOT NULL REFERENCES WorkbenchShiftProfiles(profile_id) ON DELETE CASCADE,
         day_offset INTEGER NOT NULL CHECK(typeof(day_offset) = 'integer' AND day_offset BETWEEN 0 AND 365),
         is_rest INTEGER NOT NULL CHECK(is_rest IN (0, 1)),
-        shift_start TEXT NOT NULL, shift_end TEXT NOT NULL,
+        periods_json TEXT NOT NULL,
         PRIMARY KEY(profile_id, day_offset)
     )""",
     "WorkbenchOperatorProfiles": """CREATE TABLE IF NOT EXISTS WorkbenchOperatorProfiles (

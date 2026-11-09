@@ -15,7 +15,6 @@ class ScheduleConfigSnapshot:
     ready_weight: float
     holiday_default_efficiency: float
     enforce_ready_default: str
-    prefer_primary_skill: str
     dispatch_mode: str
     dispatch_rule: str
     auto_assign_enabled: str
@@ -26,12 +25,10 @@ class ScheduleConfigSnapshot:
     objective: str
     freeze_window_enabled: str
     freeze_window_days: int
-    graph_analysis_mode: str = "on"
-    graph_block_on_cycle: str = "no"
-    graph_critical_weight: int = 500
-    graph_impact_weight: int = 10
-    graph_debug_export: str = "no"
-    auto_assign_persist: str = "yes"
+    graph_analysis_mode: str
+    graph_block_on_cycle: str
+    graph_critical_weight: int
+    graph_impact_weight: int
 
     @property
     def graph_downstream_weight(self) -> int:
