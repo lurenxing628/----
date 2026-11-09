@@ -2847,11 +2847,20 @@ function SMExport({
       instant = Date.parse(base + 'Z');
     return Number.isFinite(instant) && new Date(instant).toISOString().slice(0, 19) === base;
   }
+  const isoDate = value => text(value) && /^(?!0000)\d{4}-\d{2}-\d{2}$/.test(value) && time(value + 'T00:00:00');
+  // 交期三元组只有三种合法组合（后端 parse_stored_due_date 唯一产出）：明确日期、9999-12-31 未指定、缺失或无效。
+  // 交付行、候选/基线/正式计划工序与试调工序、试调对比批次都用这一份校验。
+  function dueFields(value) {
+    if (!object(value)) return false;
+    if (value.due_state === 'specified') return isoDate(value.due_date) && value.due_date !== '9999-12-31' && value.due_issue === null;
+    if (value.due_state === 'unspecified') return value.due_date === '9999-12-31' && value.due_issue === null;
+    return value.due_state === 'invalid' && value.due_date === null && ['due_date_missing', 'due_date_invalid'].includes(value.due_issue);
+  }
   const operationCounts = ['operation_count', 'scheduled_operation_count', 'unscheduled_operation_count', 'task_count', 'invalid_task_count', 'deferred_operation_count', 'ordinary_unscheduled_operation_count'];
   const rowFields = ['batch_ref', 'batch_id', 'planned_finish', 'partial_planned_finish', 'due_date', 'due_state', 'due_issue', 'completion_state', 'risk', 'schedule_complete', 'is_overdue', 'delay_hours', 'issues', ...operationCounts];
   // The source owns completion, due boundaries and delay calculations. This boundary validates the saved projection.
   function row(value, countsNullable = false) {
-    return fields(value, rowFields) && ref(value.batch_ref) && text(value.batch_id) && ['overdue', 'on_time', 'unknown', 'not_applicable'].includes(value.risk) && ['specified', 'unspecified', 'invalid'].includes(value.due_state) && (value.due_issue === null || ['due_date_missing', 'due_date_invalid'].includes(value.due_issue)) && ['complete', 'deferred', 'incomplete', 'unknown'].includes(value.completion_state) && typeof value.schedule_complete === 'boolean' && nullable(time)(value.planned_finish) && nullable(time)(value.partial_planned_finish) && (value.due_date === null || typeof value.due_date === 'string') && nullable(number)(value.delay_hours) && nullable(value => typeof value === 'boolean')(value.is_overdue) && operationCounts.every(key => (countsNullable && key !== 'operation_count' ? nullable(count) : count)(value[key])) && Array.isArray(value.issues) && value.issues.every(text);
+    return fields(value, rowFields) && ref(value.batch_ref) && text(value.batch_id) && ['overdue', 'on_time', 'unknown', 'not_applicable'].includes(value.risk) && dueFields(value) && ['complete', 'deferred', 'incomplete', 'unknown'].includes(value.completion_state) && typeof value.schedule_complete === 'boolean' && nullable(time)(value.planned_finish) && nullable(time)(value.partial_planned_finish) && nullable(number)(value.delay_hours) && nullable(value => typeof value === 'boolean')(value.is_overdue) && operationCounts.every(key => (countsNullable && key !== 'operation_count' ? nullable(count) : count)(value[key])) && Array.isArray(value.issues) && value.issues.every(text);
   }
   const summaryCounts = ['batch_count', 'due_eligible_count', 'excluded_due_count', 'invalid_due_count', 'due_evaluation_count', 'known_due_count', 'unknown_due_count', 'unknown_count', 'known_overdue_count'];
   const summaryFields = ['state', 'overdue_count', 'total_tardiness_hours', 'known_tardiness_hours', 'known_batch_refs', ...summaryCounts];
@@ -2861,6 +2870,7 @@ function SMExport({
   window.DeliveryProjectionContract = Object.freeze({
     row,
     summary,
+    dueFields,
     operationCounts
   });
 })();
@@ -5319,10 +5329,7 @@ function SMExport({
     return exact(value, ['start', 'end', ...(inclusive ? ['end_inclusive'] : [])]) && (!inclusive || value.end_inclusive === true) && localTime(value.start) && localTime(value.end) && value.start <= value.end;
   }
   function parameters(scope, allowed) {
-    if (!object(scope) || Object.prototype.toString.call(scope) !== '[object Object]' || Reflect.ownKeys(scope).some(key => !allowed.includes(key) || !Object.prototype.propertyIsEnumerable.call(scope, key))) throw C.failure('查询条件不对，这次没有读取计划。筛选条件没有变，请点「刷新」重试。');
-    for (const key in scope) {
-      if (!own(scope, key)) throw C.failure('查询条件不对，这次没有读取计划。筛选条件没有变，请点「刷新」重试。');
-    }
+    if (!object(scope) || Object.keys(scope).some(key => !allowed.includes(key))) throw C.failure('查询条件不对，这次没有读取计划。筛选条件没有变，请点「刷新」重试。');
     const query = {
       ...scope
     };
@@ -7355,18 +7362,9 @@ function SMExport({
 (function () {
   'use strict';
 
-  const defaults = () => [{
-    start: "08:30",
-    end: "11:50",
-    day_offset: 0
-  }, {
-    start: "13:30",
-    end: "17:30",
-    day_offset: 0
-  }];
   const clock = value => typeof value === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
   const minutes = value => Number(value.slice(0, 2)) * 60 + Number(value.slice(3));
-  const clone = value => value == null ? null : value.map(row => ({
+  const clone = value => value.map(row => ({
     ...row
   }));
   function bounds(row) {
@@ -7390,6 +7388,9 @@ function SMExport({
     }
     return null;
   }
+  // 读边界校验后端给的时段列表（validate 已拒绝非数组）；默认工作时间还必须至少有一段。全局日历与个人日历共用。
+  const valid = value => !validate(value);
+  const validDefault = value => valid(value) && value.length > 0;
   function hours(value) {
     return validate(value) ? null : value.reduce((sum, row) => {
       const [low, high] = bounds(row);
@@ -7407,9 +7408,10 @@ function SMExport({
   // （calendar_files/files.py 的 zero_hour_workday_note）相同，后半句的操作提示针对表单控件。
   const zeroHoursNote = '这一天是工作日，但可排工时是 0，排产时一道工序也排不进来。要上班请填写工作时间；要休息请改选休息。';
   window.APSWorkPeriods = {
-    defaults,
     clone,
     validate,
+    valid,
+    validDefault,
     hours,
     describe,
     bounds,
@@ -7422,79 +7424,84 @@ function SMExport({
 (function () {
   'use strict';
 
+  const C = window.APSResourceContract;
   const {
     validate,
     hours,
     duration
   } = window.APSWorkPeriods;
-  function Fields({
+  const fieldPath = path => path.replace(/^input\./, '');
+  function WorkPeriodFields({
     value,
     onChange,
     disabled,
-    start,
-    end,
-    label = '工作时段'
+    label = '工作时段',
+    path,
+    error
   }) {
     const {
       Button,
       Field
     } = window.ResourceControls;
-    if (value == null) return /*#__PURE__*/React.createElement("div", {
-      className: "field full"
-    }, /*#__PURE__*/React.createElement(Button, {
-      disabled: disabled,
-      onClick: () => onChange([{
-        start: start || '08:00',
-        end: end || '16:00',
-        day_offset: 0
-      }])
-    }, "\u5206\u6BB5\u8BBE\u7F6E\u5DE5\u4F5C\u65F6\u95F4"), /*#__PURE__*/React.createElement("span", {
-      className: "muted"
-    }, " \u53EF\u5206\u522B\u586B\u5199\u4E0A\u5348\u3001\u4E0B\u5348\u6216\u591C\u73ED\uFF0C\u4E2D\u95F4\u4F11\u606F\u4E0D\u8BA1\u5DE5\u65F6\u3002"));
+    const errorId = React.useId() + '-error';
     const change = (index, key, next) => onChange(value.map((row, i) => i === index ? {
       ...row,
       [key]: next
     } : row));
-    const error = validate(value);
+    const target = path === undefined ? null : fieldPath(path);
+    const messages = target === null ? [] : Array.from(new Set(C.fieldErrors(error).filter(row => fieldPath(row.path) === target).map(row => row.message)));
+    const invalid = messages.length > 0,
+      liveError = validate(value);
+    const hint = liveError ? messages.includes(liveError) ? null : liveError : '实际工作 ' + duration(hours(value)) + '；时段之间不排产。';
     return /*#__PURE__*/React.createElement("div", {
-      className: "field full",
+      className: 'field wb-field full' + (invalid ? ' err' : ''),
+      "data-field-path": path,
       role: "group",
       "aria-label": label
-    }, /*#__PURE__*/React.createElement("b", null, label), value.map((row, index) => /*#__PURE__*/React.createElement("div", {
-      className: "fgrid",
-      key: index
-    }, /*#__PURE__*/React.createElement(Field, {
-      label: label + '第 ' + (index + 1) + ' 段开始日期'
-    }, /*#__PURE__*/React.createElement("select", {
-      value: row.day_offset,
-      disabled: disabled || index === 0,
-      onChange: event => change(index, 'day_offset', Number(event.target.value))
-    }, /*#__PURE__*/React.createElement("option", {
-      value: 0
-    }, "\u5F53\u5929"), /*#__PURE__*/React.createElement("option", {
-      value: 1
-    }, "\u6B21\u65E5"))), /*#__PURE__*/React.createElement(Field, {
-      label: label + '第 ' + (index + 1) + ' 段开始'
-    }, /*#__PURE__*/React.createElement("input", {
-      type: "time",
-      value: row.start,
-      disabled: disabled,
-      onChange: event => change(index, 'start', event.target.value)
-    })), /*#__PURE__*/React.createElement(Field, {
-      label: label + '第 ' + (index + 1) + ' 段结束'
-    }, /*#__PURE__*/React.createElement("input", {
-      type: "time",
-      value: row.end,
-      disabled: disabled,
-      onChange: event => change(index, 'end', event.target.value)
-    })), /*#__PURE__*/React.createElement("div", {
-      className: "field"
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "muted"
-    }, row.start && row.end && row.end <= row.start ? '跨到下一天结束' : '当天结束'), /*#__PURE__*/React.createElement(Button, {
-      disabled: disabled,
-      onClick: () => onChange(value.filter((_, i) => i !== index))
-    }, "\u79FB\u9664\u7B2C ", index + 1, " \u6BB5")))), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("b", null, label), value.map((row, index) => {
+      const offsetInvalid = invalid && index === 0 && row.day_offset !== 0;
+      return /*#__PURE__*/React.createElement("div", {
+        className: "fgrid",
+        key: index
+      }, /*#__PURE__*/React.createElement(Field, {
+        label: label + '第 ' + (index + 1) + ' 段开始日期'
+      }, /*#__PURE__*/React.createElement("select", {
+        value: row.day_offset,
+        disabled: disabled || index === 0 && row.day_offset === 0,
+        "aria-invalid": offsetInvalid || undefined,
+        "aria-describedby": offsetInvalid ? errorId : undefined,
+        onChange: event => change(index, 'day_offset', Number(event.target.value))
+      }, /*#__PURE__*/React.createElement("option", {
+        value: 0
+      }, "\u5F53\u5929"), /*#__PURE__*/React.createElement("option", {
+        value: 1
+      }, "\u6B21\u65E5"))), /*#__PURE__*/React.createElement(Field, {
+        label: label + '第 ' + (index + 1) + ' 段开始'
+      }, /*#__PURE__*/React.createElement("input", {
+        type: "time",
+        value: row.start,
+        disabled: disabled,
+        "aria-invalid": invalid || undefined,
+        "aria-describedby": invalid ? errorId : undefined,
+        onChange: event => change(index, 'start', event.target.value)
+      })), /*#__PURE__*/React.createElement(Field, {
+        label: label + '第 ' + (index + 1) + ' 段结束'
+      }, /*#__PURE__*/React.createElement("input", {
+        type: "time",
+        value: row.end,
+        disabled: disabled,
+        "aria-invalid": invalid || undefined,
+        "aria-describedby": invalid ? errorId : undefined,
+        onChange: event => change(index, 'end', event.target.value)
+      })), /*#__PURE__*/React.createElement("div", {
+        className: "field"
+      }, /*#__PURE__*/React.createElement("span", {
+        className: "muted"
+      }, row.start && row.end && row.end <= row.start ? '跨到下一天结束' : '当天结束'), /*#__PURE__*/React.createElement(Button, {
+        disabled: disabled,
+        onClick: () => onChange(value.filter((_, i) => i !== index))
+      }, "\u79FB\u9664\u7B2C ", index + 1, " \u6BB5")));
+    }), /*#__PURE__*/React.createElement("div", {
       className: "wb-actions"
     }, /*#__PURE__*/React.createElement(Button, {
       disabled: disabled || value.length >= 8,
@@ -7503,11 +7510,15 @@ function SMExport({
         end: '',
         day_offset: 0
       }])
-    }, "\u65B0\u589E\u5DE5\u4F5C\u65F6\u6BB5"), /*#__PURE__*/React.createElement("span", {
+    }, "\u65B0\u589E\u5DE5\u4F5C\u65F6\u6BB5"), hint && /*#__PURE__*/React.createElement("span", {
       className: "muted"
-    }, error || '实际工作 ' + duration(hours(value)) + '；时段之间不排产。')));
+    }, hint)), invalid && /*#__PURE__*/React.createElement("span", {
+      id: errorId,
+      role: "alert",
+      className: "wb-field-error"
+    }, messages.join(' ')));
   }
-  window.WorkPeriodFields = Fields;
+  window.WorkPeriodFields = WorkPeriodFields;
 })();
 
 ;
@@ -7516,7 +7527,7 @@ function SMExport({
 
   const C = window.APSResourceContract;
   const path = '/api/workbench/v1/calendar';
-  const keys = ['type', 'hours', 'eff', 'allowNormal', 'allowUrgent', 'note', 'shiftStart', 'shiftEnd', 'periods'];
+  const keys = ['type', 'periods', 'eff', 'allowNormal', 'allowUrgent', 'note'];
   const isDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number(value.slice(0, 4)) >= 1 && Number(value.slice(5, 7)) >= 1 && Number(value.slice(5, 7)) <= 12 && Number(value.slice(8)) >= 1 && Number(value.slice(8)) <= monthDays(Number(value.slice(0, 4)), Number(value.slice(5, 7)));
   function monthDays(year, month) {
     return [31, year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
@@ -7530,19 +7541,19 @@ function SMExport({
     return String(Math.abs(value - tidy) <= Math.abs(value) * Number.EPSILON * 2 ? tidy : value);
   }
   function fields(value) {
-    return C.object(value) && ['work', 'rest'].includes(value.type) && Number.isFinite(value.hours) && Number.isFinite(value.eff) && ['yes', 'no'].includes(value.allowNormal) && ['yes', 'no'].includes(value.allowUrgent) && (value.note === null || typeof value.note === 'string');
+    return C.object(value) && ['work', 'rest'].includes(value.type) && Number.isFinite(value.hours) && Number.isFinite(value.eff) && ['yes', 'no'].includes(value.allowNormal) && ['yes', 'no'].includes(value.allowUrgent) && (value.note === null || typeof value.note === 'string') && window.APSWorkPeriods.valid(value.periods);
   }
   function policy(value) {
-    return C.object(value) && typeof value.explicit === 'boolean' && fields(value.fields) && C.object(value.effective) && typeof value.effective.is_working === 'boolean' && typeof value.effective.window_start === 'string' && typeof value.effective.window_end === 'string' && (value.explicit ? C.object(value.stored) : value.stored === null);
+    return C.object(value) && typeof value.explicit === 'boolean' && fields(value.fields) && C.object(value.effective) && typeof value.effective.is_working === 'boolean' && typeof value.effective.window_start === 'string' && typeof value.effective.window_end === 'string' && window.APSWorkPeriods.valid(value.effective.periods) && (value.explicit ? C.object(value.stored) : value.stored === null);
   }
   function day(value) {
-    return policy(value) && isDate(value.date) && (value.explicit ? typeof value.calendar_ref === 'string' && /^[0-9a-f]{48}$/.test(value.calendar_ref) && C.object(value.entity) && value.entity.ref === value.calendar_ref : value.calendar_ref === null && value.entity === null);
+    return policy(value) && isDate(value.date) && window.APSWorkPeriods.validDefault(value.default_periods) && (value.explicit ? typeof value.calendar_ref === 'string' && /^[0-9a-f]{48}$/.test(value.calendar_ref) && C.object(value.entity) && value.entity.ref === value.calendar_ref : value.calendar_ref === null && value.entity === null);
   }
   // 信封（ok、schema_version、meta、warnings）已由 transport.js 的 envelope() 校验，这里只校验 data。
   function month(result, year, number) {
     const data = result.data;
     const prefix = monthKey(year, number) + '-';
-    if (data.year !== year || data.month !== number || data.time_basis !== 'factory_local' || !Array.isArray(data.days) || data.days.length !== monthDays(year, number) || !Array.isArray(data.cells) || data.cells.length % 7 !== 0 || !data.days.every((row, index) => day(row) && row.date === prefix + String(index + 1).padStart(2, '0') && row.day === index + 1 && Number.isInteger(row.weekday) && row.weekday >= 0 && row.weekday <= 6 && typeof row.is_weekend === 'boolean' && typeof row.is_today === 'boolean') || data.cells.filter(Boolean).map(row => row.date).join() !== data.days.map(row => row.date).join() || data.cells.length !== Math.ceil((data.days[0].weekday + data.days.length) / 7) * 7 || data.cells.slice(0, data.days[0].weekday).some(Boolean) || !C.object(data.stats) || !['work_days', 'configured', 'overrides', 'weekend_rest'].every(key => Number.isSafeInteger(data.stats[key]) && data.stats[key] >= 0)) throw C.failure('读到的月份、日期或统计数据不完整，页面没有改动。请刷新后重试。');
+    if (data.year !== year || data.month !== number || data.time_basis !== 'factory_local' || !window.APSWorkPeriods.validDefault(data.default_periods) || !Array.isArray(data.days) || data.days.length !== monthDays(year, number) || !Array.isArray(data.cells) || data.cells.length % 7 !== 0 || !data.days.every((row, index) => day(row) && row.date === prefix + String(index + 1).padStart(2, '0') && row.day === index + 1 && Number.isInteger(row.weekday) && row.weekday >= 0 && row.weekday <= 6 && typeof row.is_weekend === 'boolean' && typeof row.is_today === 'boolean') || data.cells.filter(Boolean).map(row => row.date).join() !== data.days.map(row => row.date).join() || data.cells.length !== Math.ceil((data.days[0].weekday + data.days.length) / 7) * 7 || data.cells.slice(0, data.days[0].weekday).some(Boolean) || !C.object(data.stats) || !['work_days', 'configured', 'overrides', 'weekend_rest'].every(key => Number.isSafeInteger(data.stats[key]) && data.stats[key] >= 0)) throw C.failure('读到的月份、日期或统计数据不完整，页面没有改动。请刷新后重试。');
     return result;
   }
   function rangeDates(request) {
@@ -7565,92 +7576,74 @@ function SMExport({
   function draft(value) {
     if (Array.isArray(value)) return {
       type: 'work',
-      hours: displayNumber(window.APSWorkPeriods.hours(value)),
       periods: window.APSWorkPeriods.clone(value),
-      defaultPeriods: window.APSWorkPeriods.clone(value),
-      legacyShift: false,
-      shiftStart: '',
-      shiftEnd: '',
+      defaultPeriods: value,
       eff: '100',
       allowNormal: 'yes',
       allowUrgent: 'yes',
       note: ''
     };
-    // legacyShift：原记录是没有逐段时段的旧单班工作日，休息改回工作日时恢复原班次，不填默认时段。
     return {
-      ...value.fields,
-      defaultPeriods: window.APSWorkPeriods.clone(value.default_periods),
-      legacyShift: value.fields.type === 'work' && value.fields.periods == null,
+      type: value.fields.type,
+      allowNormal: value.fields.allowNormal,
+      allowUrgent: value.fields.allowUrgent,
+      defaultPeriods: value.default_periods,
       periods: window.APSWorkPeriods.clone(value.fields.periods),
-      shiftStart: value.stored && value.stored.shift_start || value.effective.window_start.slice(11, 16),
-      shiftEnd: value.stored === null || value.stored.shift_end === null ? '' : value.stored.shift_end,
-      hours: displayNumber(value.fields.hours),
       eff: displayNumber(value.fields.eff),
-      note: value.fields.note === null ? '' : value.fields.note
+      note: value.fields.note ?? ''
     };
   }
-  // 切换「这一天是否排产」。休息改回工作日时：草稿里还留着逐段时段，或原记录是旧单班工作日（periods 为 null），
-  // 就原样恢复原班次起点和工时；原本是休息日、没单独设置或时段被清空时，才填默认工作时间。
   function switchType(value, type) {
-    if (type !== 'work' || value.type !== 'rest' || value.periods?.length || value.periods == null && value.legacyShift) return {
+    if (type !== 'work' || value.type !== 'rest' || value.periods.length) return {
       ...value,
       type
     };
-    const periods = value.defaultPeriods || window.APSWorkPeriods.defaults();
+    const periods = value.defaultPeriods;
     return {
       ...value,
       type,
       periods: window.APSWorkPeriods.clone(periods),
-      hours: displayNumber(window.APSWorkPeriods.hours(periods)),
-      legacyShift: false,
       allowNormal: 'yes',
       allowUrgent: 'yes'
     };
   }
-  function number(value, key) {
+  function effNumber(value) {
     const result = Number(value);
-    if (typeof value !== 'string' || !value.trim() || !Number.isFinite(result) || result < 0 || result > (key === 'hours' ? 24 : 200) || key === 'eff' && result === 0) throw C.failure(key === 'hours' ? '可排工时须为 0 至 24 小时。' : '效率须大于 0 且不超过 200%。', [{
-      path: 'fields.' + key,
+    if (typeof value !== 'string' || !value.trim() || !Number.isFinite(result) || result <= 0 || result > 200) throw C.failure('效率须大于 0 且不超过 200%。', [{
+      path: 'fields.eff',
       message: '请输入有效数字。'
     }]);
     return result;
   }
   function input(value, original) {
-    const note = value.note.trim(),
-      converted = {
-        type: value.type,
-        note: note === '' ? null : note
-      };
-    if (value.type === 'work') Object.assign(converted, {
-      hours: number(value.hours, 'hours'),
-      eff: number(value.eff, 'eff'),
-      allowNormal: value.allowNormal,
-      allowUrgent: value.allowUrgent
-    });
-    if (value.type === 'work' && value.shiftStart) converted.shiftStart = value.shiftStart;
-    if (value.type === 'work' && value.shiftEnd !== undefined) converted.shiftEnd = value.shiftEnd === '' ? null : value.shiftEnd;
-    if (Array.isArray(value.periods)) {
-      const periods = value.type === 'rest' ? [] : value.periods,
-        issue = window.APSWorkPeriods.validate(periods);
-      if (issue) throw C.failure(issue, [{
-        path: 'fields.periods',
-        message: issue
-      }]);
-      converted.periods = window.APSWorkPeriods.clone(periods);
-      delete converted.shiftStart;
-      delete converted.shiftEnd;
-      if (value.type === 'work') converted.hours = window.APSWorkPeriods.hours(periods);
+    const periods = value.type === 'rest' ? [] : value.periods;
+    const issue = window.APSWorkPeriods.validate(periods);
+    if (issue) throw C.failure(issue, [{
+      path: 'fields.periods',
+      message: issue
+    }]);
+    const note = value.note.trim();
+    const converted = {
+      type: value.type,
+      periods: window.APSWorkPeriods.clone(periods),
+      note: note === '' ? null : note
+    };
+    if (value.type === 'work') {
+      Object.assign(converted, {
+        eff: effNumber(value.eff),
+        allowNormal: value.allowNormal,
+        allowUrgent: value.allowUrgent
+      });
     }
     // A default date has no stored row; creating it must not inherit different domain defaults.
     if (!original || !original.explicit) return converted;
     const output = {};
-    const baseDraft = draft(original);
     keys.forEach(key => {
-      // 有逐段时段时工时由时段算出：时段没改就不比较、不提交工时，免得换算末位差异被当成改了工时。
-      if (key === 'hours' && C.own(converted, 'periods') && JSON.stringify(converted.periods) === JSON.stringify(original.fields.periods)) return;
-      const before = ['shiftStart', 'shiftEnd'].includes(key) ? baseDraft[key] === '' ? null : baseDraft[key] : ['hours', 'eff'].includes(key) ? Number(displayNumber(original.fields[key])) : original.fields[key];
+      const before = key === 'eff' ? Number(displayNumber(original.fields.eff)) : original.fields[key];
       if (C.own(converted, key) && JSON.stringify(converted[key]) !== JSON.stringify(before)) output[key] = converted[key];
     });
+    // 休息日改工作日必须明确带上工作时段：哪怕和原来一样（全部移除就是明确 0 工时），后端都不替它沿用。
+    if (value.type === 'work' && original.fields.type === 'rest') output.periods = converted.periods;
     return output;
   }
   // 月历格子里的工时带单位显示，数字格式和单位统一走 WorkbenchFormat，不在这里手拼“小时”。
@@ -7688,69 +7681,55 @@ function SMExport({
 (function () {
   'use strict';
 
-  // Load after resource-contract.js。个人日历只描述"这个人这天几点到几点上班"，工时由后端按班次起止算。
+  // Load after resource-contract.js。个人日历只描述"这个人这天哪几个时段上班"，工时由后端按工作时段算。
   const C = window.APSResourceContract;
   const ACTIONS = ['operator.calendar_upsert', 'operator.calendar_delete', 'operator.calendar_range_clear'];
-  const CLOCK = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
-  const FIELDS = ['day_type', 'shift_start', 'shift_end', 'shift_hours', 'efficiency', 'allow_normal', 'allow_urgent', 'remark'];
+  const FIELDS = ['day_type', 'efficiency', 'allow_normal', 'allow_urgent', 'remark'];
   const isDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && new Date(value + 'T00:00:00Z').toISOString().slice(0, 10) === value;
-  const isClock = value => typeof value === 'string' && CLOCK.test(value);
   function day(value) {
     if (!C.object(value) || !isDate(value.date) || typeof value.explicit !== 'boolean') return false;
     if (!FIELDS.every(key => C.own(value, key))) return false;
     if (!value.explicit) return FIELDS.every(key => value[key] === null) && value.calendar_ref === null;
-    return ['workday', 'holiday'].includes(value.day_type) && isClock(value.shift_start) && (value.shift_end === null || isClock(value.shift_end)) && typeof value.shift_hours === 'number' && Number.isFinite(value.shift_hours) && value.shift_hours >= 0 && typeof value.efficiency === 'number' && Number.isFinite(value.efficiency) && value.efficiency > 0 && ['yes', 'no'].includes(value.allow_normal) && ['yes', 'no'].includes(value.allow_urgent) && (value.remark === null || typeof value.remark === 'string') && typeof value.calendar_ref === 'string' && /^[0-9a-f]{48}$/.test(value.calendar_ref);
+    return ['workday', 'holiday'].includes(value.day_type) && typeof value.efficiency === 'number' && Number.isFinite(value.efficiency) && value.efficiency > 0 && ['yes', 'no'].includes(value.allow_normal) && ['yes', 'no'].includes(value.allow_urgent) && (value.remark === null || typeof value.remark === 'string') && window.APSWorkPeriods.valid(value.periods) && typeof value.calendar_ref === 'string' && /^[0-9a-f]{48}$/.test(value.calendar_ref);
   }
   // 信封（ok、schema_version、meta、warnings）已由 transport.js 的 envelope() 校验，这里只校验 data。
   function month(result, expected) {
     const data = result.data;
     if (data.year !== expected.year || data.month !== expected.month || data.operator_ref !== expected.ref) throw C.failure('读到的个人日历不是当前人员的这个月，请刷新后重试。');
-    if (!Array.isArray(data.days) || !data.days.length || !data.days.every(item => day(item) && Number.isSafeInteger(item.day) && Number.isSafeInteger(item.weekday) && typeof item.is_weekend === 'boolean' && typeof item.is_today === 'boolean')) throw C.failure('个人日历的日期内容不完整，请刷新后重试。');
+    if (!Array.isArray(data.days) || !data.days.length || !data.days.every(item => day(item) && window.APSWorkPeriods.validDefault(item.default_periods) && Number.isSafeInteger(item.day) && Number.isSafeInteger(item.weekday) && typeof item.is_weekend === 'boolean' && typeof item.is_today === 'boolean')) throw C.failure('个人日历的日期内容不完整，请刷新后重试。');
     if (!Array.isArray(data.cells) || data.cells.length % 7 !== 0 || data.cells.filter(cell => cell !== null).length !== data.days.length) throw C.failure('个人日历的月历格子不完整，请刷新后重试。');
     if (!C.object(data.write_context) || !C.object(data.write_context.capabilities) || !ACTIONS.every(action => C.own(data.write_context.capabilities, action))) throw C.failure('个人日历的写入能力没有声明，暂时不能修改。请刷新后重试。');
     return result;
   }
   function draftOf(value) {
-    if (!value || !value.explicit) return {
+    if (!value.explicit) return {
       type: 'work',
-      shiftStart: '08:30',
-      shiftEnd: '17:30',
       eff: '100',
       allowNormal: 'yes',
       allowUrgent: 'yes',
       note: '',
-      periods: window.APSWorkPeriods.clone(value && value.default_periods || window.APSWorkPeriods.defaults())
+      periods: window.APSWorkPeriods.clone(value.default_periods)
     };
     return {
-      periods: value.periods == null ? null : value.periods.map(row => ({
-        ...row
-      })),
+      periods: window.APSWorkPeriods.clone(value.periods),
       type: value.day_type === 'holiday' ? 'rest' : 'work',
-      shiftStart: value.shift_start,
-      shiftEnd: value.shift_end === null ? '' : value.shift_end,
       eff: String(Number((value.efficiency * 100).toPrecision(15))),
       allowNormal: value.allow_normal,
       allowUrgent: value.allow_urgent,
       note: value.remark === null ? '' : value.remark
     };
   }
-  // 只有从休息改回上班才可能补默认时段，已经是上班时再点「上班」什么都不改。草稿里还有逐段时段，
-  // 或这一天原本是没有逐段时段的旧单班上班日，就恢复原班次起止；原本休息、没单独设置或时段被清空才填默认工作时间。
+  // 只有从休息改回上班且当前时段已清空时才补默认工作时间；已经是上班或草稿里还有逐段时段时保持原样。
   function switchType(day, draft, type) {
-    if (type !== 'work' || draft.type !== 'rest' || draft.periods?.length || draft.periods == null && day.explicit && day.day_type === 'workday' && day.periods == null) return {
+    if (type !== 'work' || draft.type !== 'rest' || draft.periods.length) return {
       ...draft,
       type
     };
     return {
       ...draft,
       type,
-      periods: window.APSWorkPeriods.clone(day.default_periods || window.APSWorkPeriods.defaults())
+      periods: window.APSWorkPeriods.clone(day.default_periods)
     };
-  }
-  // 旧行只存了开始和工时、没有结束时刻：开始时刻没动时不提交空结束，后端保留原来的工时；
-  // 原来有结束时刻被清空，或改了开始时刻，才按默认班次时长推算。
-  function keepsOpenEnd(draft, original) {
-    return !!original && original.explicit && original.day_type === 'workday' && original.periods == null && original.shift_end == null && draft.shiftStart === draftOf(original).shiftStart;
   }
   function input(draft, original) {
     const fields = {
@@ -7758,41 +7737,26 @@ function SMExport({
       allowNormal: draft.allowNormal,
       allowUrgent: draft.allowUrgent
     };
-    const efficiency = Number(String(draft.eff).trim());
-    if (!Number.isFinite(efficiency) || efficiency <= 0 || efficiency > 200) throw C.failure('效率须大于 0 且不超过 200%。', [{
-      path: 'fields.eff',
-      message: '请填 0 到 200 之间的数字。'
-    }]);
-    fields.eff = efficiency;
     if (draft.type === 'rest') {
       fields.allowNormal = 'no';
       fields.allowUrgent = 'no';
-    } else if (!Array.isArray(draft.periods)) {
-      if (!isClock(draft.shiftStart)) throw C.failure('请填写班次开始时刻。', [{
-        path: 'fields.shiftStart',
-        message: '格式为 08:00。'
+    } else {
+      const efficiency = Number(draft.eff.trim());
+      if (!Number.isFinite(efficiency) || efficiency <= 0 || efficiency > 200) throw C.failure('效率须大于 0 且不超过 200%。', [{
+        path: 'fields.eff',
+        message: '请填 0 到 200 之间的数字。'
       }]);
-      fields.shiftStart = draft.shiftStart;
-      if (String(draft.shiftEnd).trim()) {
-        if (!isClock(draft.shiftEnd)) throw C.failure('班次结束时刻不正确。', [{
-          path: 'fields.shiftEnd',
-          message: '格式为 16:00，跨零点填第二天的时刻。'
-        }]);
-        fields.shiftEnd = draft.shiftEnd;
-      } else if (!keepsOpenEnd(draft, original)) fields.shiftEnd = null;
+      if (!original.explicit || draft.eff !== draftOf(original).eff) fields.eff = efficiency;
     }
-    if (Array.isArray(draft.periods)) {
-      const periods = draft.type === 'rest' ? [] : draft.periods,
-        issue = window.APSWorkPeriods.validate(periods);
-      if (issue) throw C.failure(issue, [{
-        path: 'fields.periods',
-        message: issue
-      }]);
-      fields.periods = window.APSWorkPeriods.clone(periods);
-    }
-    const note = String(draft.note == null ? '' : draft.note).trim();
+    const periods = draft.type === 'rest' ? [] : draft.periods;
+    const issue = window.APSWorkPeriods.validate(periods);
+    if (issue) throw C.failure(issue, [{
+      path: 'fields.periods',
+      message: issue
+    }]);
+    fields.periods = window.APSWorkPeriods.clone(periods);
+    const note = draft.note.trim();
     fields.note = note === '' ? null : note;
-    if (original && original.explicit && draft.eff === draftOf(original).eff) delete fields.eff;
     return fields;
   }
   function tag(value) {
@@ -7800,18 +7764,13 @@ function SMExport({
       tone: 'none',
       text: '按班次'
     };
-    if (value.shift_hours <= 0 || value.allow_normal === 'no' && value.allow_urgent === 'no') return {
+    if (!value.periods.length || value.allow_normal === 'no' && value.allow_urgent === 'no') return {
       tone: 'rest',
       text: '休息'
     };
-    if (Array.isArray(value.periods)) return {
-      tone: 'cfg',
-      text: window.APSWorkPeriods.describe(value.periods)
-    };
-    // 没填班次结束时只写“几点起”，不用问号占位。
     return {
       tone: 'cfg',
-      text: value.shift_end ? value.shift_start + '–' + value.shift_end : value.shift_start + ' 起'
+      text: window.APSWorkPeriods.describe(value.periods)
     };
   }
   function rangeInput(range) {
@@ -8827,9 +8786,9 @@ function SMExport({
 
   const B = window.APSWorkbenchControlBridge;
   function usePrintLayout() {
-    const [printing, setPrinting] = React.useState(() => typeof window.matchMedia === 'function' && window.matchMedia('print').matches);
+    const [printing, setPrinting] = React.useState(() => window.matchMedia('print').matches);
     React.useLayoutEffect(() => {
-      const media = typeof window.matchMedia === 'function' ? window.matchMedia('print') : null;
+      const media = window.matchMedia('print');
       function commit(value, synchronous) {
         // ReactDOM 由 build.py 锁定为 18.3.1，flushSync 恒在。
         if (synchronous) window.ReactDOM.flushSync(() => setPrinting(value));else setPrinting(value);
@@ -8845,11 +8804,11 @@ function SMExport({
       }
       window.addEventListener('beforeprint', beforePrint);
       window.addEventListener('afterprint', afterPrint);
-      if (media) media.addEventListener('change', mediaChanged);
+      media.addEventListener('change', mediaChanged);
       return () => {
         window.removeEventListener('beforeprint', beforePrint);
         window.removeEventListener('afterprint', afterPrint);
-        if (media) media.removeEventListener('change', mediaChanged);
+        media.removeEventListener('change', mediaChanged);
       };
     }, []);
     return printing;
@@ -10655,37 +10614,10 @@ function SMExport({
       disabled: disabled,
       options: [['work', '上班'], ['rest', '休息']],
       onChange: type => setDraft(O.switchType(day, draft, type))
-    }), !rest && draft.periods == null && /*#__PURE__*/React.createElement("div", {
-      className: "fgrid"
-    }, /*#__PURE__*/React.createElement(Field, {
-      label: "\u73ED\u6B21\u5F00\u59CB",
-      path: "fields.shiftStart",
-      error: error,
-      required: true
-    }, /*#__PURE__*/React.createElement("input", {
-      type: "time",
-      value: draft.shiftStart,
-      disabled: disabled,
-      onChange: event => setDraft({
-        ...draft,
-        shiftStart: event.target.value
-      })
-    })), /*#__PURE__*/React.createElement(Field, {
-      label: "\u73ED\u6B21\u7ED3\u675F",
-      path: "fields.shiftEnd",
-      error: error
-    }, /*#__PURE__*/React.createElement("input", {
-      type: "time",
-      value: draft.shiftEnd,
-      disabled: disabled,
-      onChange: event => setDraft({
-        ...draft,
-        shiftEnd: event.target.value
-      })
-    }))), !rest && /*#__PURE__*/React.createElement(window.WorkPeriodFields, {
+    }), !rest && /*#__PURE__*/React.createElement(window.WorkPeriodFields, {
       value: draft.periods,
-      start: draft.shiftStart,
-      end: draft.shiftEnd,
+      path: "fields.periods",
+      error: error,
       disabled: disabled,
       onChange: periods => setDraft({
         ...draft,
@@ -10693,15 +10625,13 @@ function SMExport({
       })
     }), /*#__PURE__*/React.createElement(Issues, {
       issues: zeroHours ? [window.APSWorkPeriods.zeroHoursNote] : []
-    }), !rest && draft.periods == null && /*#__PURE__*/React.createElement("p", {
-      className: "iohint"
-    }, "\u5DE5\u65F6\u7531\u73ED\u6B21\u8D77\u6B62\u7B97\u51FA\u6765\uFF0C\u4E0D\u7528\u5355\u72EC\u586B\u3002\u7ED3\u675F\u65F6\u523B\u65E9\u4E8E\u5F00\u59CB\u65F6\u523B\u8868\u793A\u8DE8\u96F6\u70B9\u7684\u591C\u73ED\u3002 \u7559\u7A7A\u7ED3\u675F\u65F6\u523B\u65F6\uFF0C\u7531\u7CFB\u7EDF\u6309\u9ED8\u8BA4\u73ED\u6B21\u65F6\u957F\u63A8\u7B97\u3002"), /*#__PURE__*/React.createElement("div", {
+    }), /*#__PURE__*/React.createElement("div", {
       className: "fgrid"
     }, /*#__PURE__*/React.createElement(Field, {
       label: "\u6548\u7387\uFF08%\uFF09",
       path: "fields.eff",
       error: error,
-      required: true
+      required: !rest
     }, /*#__PURE__*/React.createElement("input", {
       type: "number",
       min: "0",
@@ -10709,7 +10639,7 @@ function SMExport({
       step: "any",
       "data-wb-step": "5",
       value: draft.eff,
-      disabled: disabled,
+      disabled: disabled || rest,
       onChange: event => setDraft({
         ...draft,
         eff: event.target.value
@@ -11029,7 +10959,7 @@ function SMExport({
     const clearReason = done ? '' : capability('calendar_delete');
     const rangeReason = done ? '' : !preview ? '请先预检要清除的日期。' : !preview.data.count ? '这段时间没有要清除的日期。' : capability('calendar_range_clear');
     const shownError = error || command.error;
-    const activePaths = !editorData ? [] : mode === 'range' ? ['start_date', 'end_date'] : current && draft && !(clearing && (current.explicit || done)) ? [...(draft.type !== 'rest' && draft.periods == null ? ['fields.shiftStart', 'fields.shiftEnd'] : []), 'fields.eff', 'fields.note'] : [];
+    const activePaths = !editorData ? [] : mode === 'range' ? ['start_date', 'end_date'] : current && draft && !(clearing && (current.explicit || done)) ? draft.type === 'rest' ? ['fields.eff', 'fields.note'] : ['fields.periods', 'fields.eff', 'fields.note'] : [];
     return /*#__PURE__*/React.createElement("div", {
       className: "plana resource-calendar wb-operator-calendar"
     }, /*#__PURE__*/React.createElement(Modal, {
@@ -12459,7 +12389,7 @@ function SMExport({
     const origin = day.explicit ? '单独设置' : '按默认（未单独设置）';
     if (!day.effective) return day.date + ' · ' + origin + ' · 暂无数据：' + day.issues.map(issue => issue.message).join('；');
     const value = day.effective;
-    return day.date + ' · ' + origin + '\n' + window.WorkbenchFormat.compactRange(value.window_start, value.window_end) + (value.crosses_midnight ? '（跨夜，归班次起始日）' : '') + '\n班次 ' + window.WorkbenchFormat.hours(value.hours) + ' × 效率 ' + amount(value.efficiency * 100) + '%；折算标准工时 ' + window.WorkbenchFormat.hours(value.effective_hours) + '\n普通件 ' + (value.allow_normal ? '允许' : '不允许') + ' / 急件及特急件 ' + (value.allow_urgent ? '允许' : '不允许') + (value.rest_reason === 'priorities_disabled' ? '；普通件和急件都不许可，但班次工时不是 0' : '') + (day.issues.length ? '\n' + day.issues.map(issue => issue.message).join('；') : '');
+    return day.date + ' · ' + origin + '\n' + (value.hours > 0 ? window.WorkbenchFormat.compactRange(value.window_start, value.window_end) : '无工作时段') + (value.crosses_midnight ? '（跨夜，归班次起始日）' : '') + '\n班次 ' + window.WorkbenchFormat.hours(value.hours) + ' × 效率 ' + amount(value.efficiency * 100) + '%；折算标准工时 ' + window.WorkbenchFormat.hours(value.effective_hours) + '\n普通件 ' + (value.allow_normal ? '允许' : '不允许') + ' / 急件及特急件 ' + (value.allow_urgent ? '允许' : '不允许') + (value.rest_reason === 'priorities_disabled' ? '；普通件和急件都不许可，但班次工时不是 0' : '') + (day.issues.length ? '\n' + day.issues.map(issue => issue.message).join('；') : '');
   }
   function CalendarSummary({
     value,
@@ -13602,7 +13532,7 @@ function SMExport({
     Field,
     Issues
   } = window.ResourceControls;
-  const fieldPaths = ['fields.hours', 'fields.eff', 'fields.note', 'fields.shiftStart', 'fields.shiftEnd', 'fields.periods'];
+  const fieldPaths = ['fields.eff', 'fields.note', 'fields.periods'];
   function Segment({
     label,
     value,
@@ -13637,8 +13567,8 @@ function SMExport({
     noteEnabled = true
   }) {
     const work = value.type === 'work';
-    // 分段时段全部移除，或可排工时填 0：能保存，但排产按 0 工时排不进任何工序，先在表单里说清楚。
-    const zeroHours = work && (Array.isArray(value.periods) ? !value.periods.length : String(value.hours).trim() !== '' && Number(value.hours) === 0);
+    // 分段时段全部移除：能保存，但排产按 0 工时排不进任何工序，先在表单里说清楚。
+    const zeroHours = work && !value.periods.length;
     const change = (key, next) => onChange(key === 'type' ? window.APSCalendarContract.switchType(value, next) : {
       ...value,
       [key]: next
@@ -13655,67 +13585,14 @@ function SMExport({
       style: work ? undefined : {
         opacity: .55
       }
-    }, value.periods == null && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Field, {
-      label: "\u73ED\u6B21\u5F00\u59CB",
-      path: "fields.shiftStart",
-      error: error
-    }, /*#__PURE__*/React.createElement("input", {
-      type: "time",
-      value: value.shiftStart || '',
-      disabled: disabled || !work,
-      onChange: event => onChange({
-        ...value,
-        shiftStart: event.target.value,
-        shiftEnd: ''
-      })
-    })), /*#__PURE__*/React.createElement(Field, {
-      label: "\u73ED\u6B21\u7ED3\u675F\uFF08\u7A7A\u767D\u6309\u5DE5\u65F6\u63A8\u7B97\uFF09",
-      path: "fields.shiftEnd",
-      error: error
-    }, /*#__PURE__*/React.createElement("input", {
-      type: "time",
-      value: value.shiftEnd || '',
-      disabled: disabled || !work,
-      onChange: event => {
-        const end = event.target.value,
-          start = value.shiftStart;
-        const minute = text => Number(text.slice(0, 2)) * 60 + Number(text.slice(3));
-        onChange({
-          ...value,
-          shiftEnd: end,
-          hours: end && start ? String(((minute(end) - minute(start) + 1439) % 1440 + 1) / 60) : value.hours
-        });
-      }
-    })), /*#__PURE__*/React.createElement(Field, {
-      label: "\u53EF\u6392\u5DE5\u65F6\uFF08\u5C0F\u65F6\uFF09",
-      path: "fields.hours",
-      error: error,
-      required: work
-    }, /*#__PURE__*/React.createElement("input", {
-      id: id + '-hours',
-      name: "hours",
-      className: "cal-hours",
-      type: "number",
-      min: "0",
-      max: "24",
-      step: "any",
-      "data-wb-step": "0.5",
-      value: value.hours,
-      disabled: disabled || !work,
-      onChange: event => onChange({
-        ...value,
-        hours: event.target.value,
-        shiftEnd: ''
-      })
-    }))), /*#__PURE__*/React.createElement(window.WorkPeriodFields, {
+    }, /*#__PURE__*/React.createElement(window.WorkPeriodFields, {
       value: value.periods,
-      start: value.shiftStart,
-      end: value.shiftEnd,
+      path: "fields.periods",
+      error: error,
       disabled: disabled || !work,
       onChange: periods => onChange({
         ...value,
-        periods,
-        hours: String(window.APSWorkPeriods.hours(periods) ?? value.hours)
+        periods
       })
     }), /*#__PURE__*/React.createElement(Field, {
       label: "\u6548\u7387\uFF08%\uFF09",
@@ -13775,12 +13652,12 @@ function SMExport({
       }
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("b", null, value.explicit ? '单独设置' : '默认规则'), " \xB7 ", value.effective.is_working ? '可排产' : '不排产'), /*#__PURE__*/React.createElement("div", null, number(fields.hours), " \u5C0F\u65F6 \xB7 \u6548\u7387 ", number(fields.eff), "% \xB7 \u666E\u901A\u4EF6", fields.allowNormal === 'yes' ? '可排' : '不可排', " \xB7 \u6025\u4EF6", fields.allowUrgent === 'yes' ? '可排' : '不可排'), /*#__PURE__*/React.createElement("div", {
       className: "muted"
-    }, "\u6709\u6548\u65F6\u6BB5\uFF1A", value.effective.periods != null ? window.APSWorkPeriods.describe(value.effective.periods) : window.WorkbenchFormat.dateTime(value.effective.window_start) + " 至 " + window.WorkbenchFormat.dateTime(value.effective.window_end)), stored && /*#__PURE__*/React.createElement("div", {
+    }, "\u6709\u6548\u65F6\u6BB5\uFF1A", window.APSWorkPeriods.describe(value.effective.periods)), stored && /*#__PURE__*/React.createElement("div", {
       className: "muted"
     }, "\u539F\u59CB\u914D\u7F6E\uFF08\u53EA\u8BFB\uFF09\uFF1A", {
       workday: '工作日',
       holiday: '休息日'
-    }[stored.day_type] || String(stored.day_type), "\uFF1B\u8D77\u6B62 ", stored.shift_start == null ? '未设置' : stored.shift_start, " / ", stored.shift_end == null ? '未设置' : stored.shift_end, "\uFF1B \u5DE5\u65F6 ", number(stored.shift_hours), "\uFF1B\u6548\u7387 ", typeof stored.efficiency === 'number' ? number(stored.efficiency * 100) + '%' : String(stored.efficiency), "\uFF1B\u666E\u901A\u4EF6", yesNo(stored.allow_normal), "\uFF1B\u6025\u4EF6", yesNo(stored.allow_urgent)), /*#__PURE__*/React.createElement("div", {
+    }[stored.day_type] || String(stored.day_type), "\uFF1B\u6548\u7387 ", typeof stored.efficiency === 'number' ? number(stored.efficiency * 100) + '%' : String(stored.efficiency), "\uFF1B\u666E\u901A\u4EF6", yesNo(stored.allow_normal), "\uFF1B\u6025\u4EF6", yesNo(stored.allow_urgent)), /*#__PURE__*/React.createElement("div", {
       className: "muted"
     }, "\u5907\u6CE8\uFF1A", fields.note || '未填写'));
   }
@@ -13980,7 +13857,7 @@ function SMExport({
       excludePaths: clearing ? [] : window.CalendarFields.fieldPaths
     }), /*#__PURE__*/React.createElement(Feedback, {
       command: command,
-      excludePaths: clearing ? [] : window.CalendarFields.fieldPaths
+      excludePaths: clearing || error ? [] : window.CalendarFields.fieldPaths
     }), /*#__PURE__*/React.createElement(ErrorBox, {
       error: readError
     }), !done && /*#__PURE__*/React.createElement(Button, {
@@ -14014,7 +13891,8 @@ function SMExport({
   const {
     Button,
     ErrorBox,
-    Modal
+    Modal,
+    focusFirstInvalid
   } = window.ResourceControls;
   function CalendarDefaultsDialog({
     adapter,
@@ -14032,7 +13910,8 @@ function SMExport({
     const [base, setBase] = React.useState(null),
       [periods, setPeriods] = React.useState(null),
       [error, setError] = React.useState(null);
-    const formId = React.useId(),
+    const formRef = React.useRef(null),
+      formId = React.useId(),
       done = command.phase === 'done',
       disabled = command.locked || done || request.loading;
     React.useEffect(() => {
@@ -14041,6 +13920,9 @@ function SMExport({
         setPeriods(P.clone(request.result.data.periods));
       }
     }, [request.result, base]);
+    React.useEffect(() => {
+      if (error || command.error) focusFirstInvalid(formRef.current);
+    }, [error, command.error]);
     const owner = window.WorkbenchGuards.useDirtyGuard({
       owner: 'calendar-defaults-' + formId,
       dirty: !done && !!base && JSON.stringify(periods) !== JSON.stringify(base.data.periods),
@@ -14058,7 +13940,10 @@ function SMExport({
       if (disabled || reason) return;
       const issue = P.validate(periods) || (!periods.length ? '至少填写一个工作时段。' : '');
       if (issue) {
-        setError(C.failure(issue));
+        setError(C.failure(issue, [{
+          path: 'periods',
+          message: issue
+        }]));
         return;
       }
       setError(null);
@@ -14096,20 +13981,27 @@ function SMExport({
       }, "\u4FDD\u5B58\u9ED8\u8BA4\u5DE5\u4F5C\u65F6\u95F4"))
     }, /*#__PURE__*/React.createElement("form", {
       id: formId,
+      ref: formRef,
       className: "modal-b form scroll",
       onSubmit: save,
       noValidate: true
     }, /*#__PURE__*/React.createElement("p", null, "\u4FDD\u5B58\u540E\uFF0C\u6240\u6709\u672A\u5355\u72EC\u8BBE\u7F6E\u7684\u5DE5\u4F5C\u65E5\u4F7F\u7528\u8FD9\u4E9B\u65F6\u6BB5\uFF1B\u5DF2\u6709\u5355\u65E5\u73ED\u8868\u548C\u4E2A\u4EBA\u73ED\u8868\u6309\u5404\u81EA\u8BBE\u7F6E\u6267\u884C\uFF0C\u5468\u672B\u9ED8\u8BA4\u4F11\u606F\u3002"), periods && /*#__PURE__*/React.createElement(window.WorkPeriodFields, {
       value: periods,
+      path: "periods",
+      error: error || command.error,
       onChange: updatePeriods,
       disabled: disabled,
       label: "\u9ED8\u8BA4\u5DE5\u4F5C\u65F6\u6BB5"
     }), request.loading && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, "\u6B63\u5728\u8BFB\u53D6\u9ED8\u8BA4\u5DE5\u4F5C\u65F6\u95F4\u2026"), /*#__PURE__*/React.createElement(ErrorBox, {
-      error: request.error || error
+      error: request.error
+    }), /*#__PURE__*/React.createElement(ErrorBox, {
+      error: error,
+      excludePaths: periods ? ['periods'] : []
     }), /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
-      command: command
+      command: command,
+      excludePaths: error || !periods ? [] : ['periods']
     }), !done && (request.error || command.phase === 'rejected') && /*#__PURE__*/React.createElement(Button, {
       disabled: command.locked,
       icon: "refresh-cw",
@@ -14272,8 +14164,8 @@ function SMExport({
       }))) onClose();
     }
     React.useEffect(() => {
-      if (error) focusFirstInvalid(formRef.current);
-    }, [error]);
+      if (error || command.error) focusFirstInvalid(formRef.current);
+    }, [error, command.error]);
     const reason = command.stale ? '预览变更已过期，没有写入。请点「重新预览变更」。' : !result ? '请先点「预览变更」查看全部命中日期。' : !result.data.counts.selected ? '当前范围没有命中日期。' : C.blocked(result.data.write_context, 'calendar', 'confirm', result.meta.source);
     async function preview(event) {
       event.preventDefault();
@@ -14405,10 +14297,14 @@ function SMExport({
       value: range.operation,
       disabled: disabled,
       options: [["upsert", "设置日历"], ["delete", "清除单独设置，恢复默认"]],
-      onChange: operation => setRange({
-        ...range,
-        operation
-      })
+      onChange: operation => {
+        setRange({
+          ...range,
+          operation
+        });
+        setError(null);
+        command.clearRejection();
+      }
     }), range.operation === 'upsert' ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", {
       style: {
         display: 'flex',
@@ -14427,10 +14323,11 @@ function SMExport({
       onChange: event => setReplaceNote(event.target.checked)
     }), "\u540C\u65F6\u66FF\u6362\u5907\u6CE8\uFF08\u7559\u7A7A\u5373\u6E05\u9664\uFF09"), /*#__PURE__*/React.createElement(Fields, {
       value: value,
-      error: error,
+      error: error || command.error,
       onChange: next => {
         setValue(next);
         setError(null);
+        command.clearRejection();
       },
       disabled: disabled,
       noteEnabled: replaceNote
@@ -14448,7 +14345,8 @@ function SMExport({
     }), /*#__PURE__*/React.createElement(Issues, {
       issues: result ? result.warnings : undefined
     }), /*#__PURE__*/React.createElement(Feedback, {
-      command: command
+      command: command,
+      excludePaths: result || error ? [] : range.operation === 'upsert' ? window.CalendarFields.fieldPaths : []
     }), done && /*#__PURE__*/React.createElement(RefreshResult, {
       state: refreshState,
       onRefresh: onRefresh
@@ -16187,8 +16085,7 @@ function SMExport({
     }, (_, day_offset) => pattern[day_offset] || {
       day_offset,
       is_rest: null,
-      shift_start: '',
-      shift_end: ''
+      periods: []
     });
   }
   function dateValid(value) {
@@ -16196,35 +16093,34 @@ function SMExport({
     const date = new Date(value + 'T00:00:00Z');
     return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
   }
-  const clockValid = value => typeof value === 'string' && /^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/.test(value);
-  const minutes = value => Number(value.slice(0, 2)) * 60 + Number(value.slice(3));
   function patternErrors(pattern) {
     const errors = [];
+    const issues = pattern.map(row => window.APSWorkPeriods.validate(row.periods));
     pattern.forEach((row, index) => {
       const bad = message => errors.push({
         path: 'pattern.' + index,
         message: '第 ' + (index + 1) + ' 天：' + message
       });
       if (row.day_offset !== index || typeof row.is_rest !== 'boolean') bad('请明确选择工作或休息。');
-      if (row.periods == null && (!clockValid(row.shift_start) || !clockValid(row.shift_end))) bad('开始和结束请按 08:30 这样填。');
-      if (Array.isArray(row.periods)) {
-        if (row.is_rest === false && !row.periods.length) bad('工作日请至少填写一个工作时段，或明确改为休息日。');
-        const issue = window.APSWorkPeriods.validate(row.periods);
-        if (issue) bad(issue);
+      if (row.is_rest === true && row.periods.length) bad('休息日不能填写工作时段。');
+      if (row.is_rest === false && !row.periods.length) bad('工作日请至少填写一个工作时段，或明确改为休息日。');
+      const issue = issues[index];
+      if (issue) {
+        bad(issue);
+        return;
       }
-      const next = pattern[(index + 1) % pattern.length];
-      if (row.is_rest === false && next.is_rest === false && clockValid(row.shift_start) && clockValid(row.shift_end) && clockValid(next.shift_start)) {
-        const start = minutes(row.shift_start),
-          end = minutes(row.shift_end);
-        const last = row.periods && row.periods.length ? window.APSWorkPeriods.bounds(row.periods[row.periods.length - 1])[1] : end + (end <= start ? 1440 : 0);
-        if (last > 1440 + minutes(next.shift_start)) bad('跨夜结束与下一轮换日开始重叠。');
+      const nextIndex = (index + 1) % pattern.length;
+      const next = pattern[nextIndex];
+      if (row.is_rest === false && next.is_rest === false && row.periods.length && next.periods.length && !issues[nextIndex]) {
+        const last = window.APSWorkPeriods.bounds(row.periods[row.periods.length - 1])[1];
+        const nextFirst = window.APSWorkPeriods.bounds(next.periods[0])[0];
+        if (last > 1440 + nextFirst) bad('跨夜结束与下一轮换日开始重叠。');
       }
     });
     return errors;
   }
   function samePeriods(a, b) {
     if (a === b) return true;
-    if (a == null || b == null) return a == null && b == null;
     if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
     return a.every((p, i) => {
       const q = b[i];
@@ -16236,7 +16132,7 @@ function SMExport({
     if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
     return a.every((row, i) => {
       const other = b[i];
-      return row === other || Boolean(row && other && row.day_offset === other.day_offset && row.is_rest === other.is_rest && row.shift_start === other.shift_start && row.shift_end === other.shift_end && samePeriods(row.periods, other.periods));
+      return row === other || Boolean(row && other && row.day_offset === other.day_offset && row.is_rest === other.is_rest && samePeriods(row.periods, other.periods));
     });
   }
   function isDirty(kind, current, baseline) {
@@ -16284,6 +16180,7 @@ function SMExport({
       if (!dateValid(value.anchor_date)) bad('anchor_date', '请填写有效的周期起始日期。');
       if (length !== value.pattern.length) bad('pattern', '轮换天数与逐日规则不一致，请先确认调整。');
       errors.push(...patternErrors(value.pattern));
+      // 校验通过的行已是 { day_offset: 序号, is_rest: 布尔, periods: 休息日为空 }，原样提交。
       fields.anchor_date = value.anchor_date;
       fields.cycle_days = length;
       fields.pattern = value.pattern;
@@ -16376,23 +16273,12 @@ function SMExport({
         };
       rows[index] = row;
       row[key] = next;
-      // Rest has no working interval; retain existing times, canonicalize only empty rest markers.
-      if (key === 'periods') {
-        if (next.length) {
-          row.shift_start = next[0].start;
-          row.shift_end = next[next.length - 1].end;
-        }
-      }
       if (key === 'is_rest' && next === true) {
-        if (row.periods && row.periods.length) priorPeriods.current[index] = window.APSWorkPeriods.clone(row.periods);
-        if (row.periods != null) row.periods = [];
-        if (!row.shift_start) row.shift_start = '00:00';
-        if (!row.shift_end) row.shift_end = '00:00';
+        if (row.periods.length) priorPeriods.current[index] = window.APSWorkPeriods.clone(row.periods);
+        row.periods = [];
       }
-      if (key === 'is_rest' && next === false && (Array.isArray(row.periods) && !row.periods.length || row.shift_start === '00:00' && row.shift_end === '00:00' || !row.shift_start && !row.shift_end)) {
+      if (key === 'is_rest' && next === false && !row.periods.length) {
         row.periods = window.APSWorkPeriods.clone(priorPeriods.current[index] || defaultPeriods);
-        row.shift_start = row.periods[0].start;
-        row.shift_end = row.periods[row.periods.length - 1].end;
       }
       onChange('pattern', rows);
     }
@@ -16470,32 +16356,12 @@ function SMExport({
         value: "work"
       }, "\u5DE5\u4F5C"), /*#__PURE__*/React.createElement("option", {
         value: "rest"
-      }, "\u4F11\u606F"))), row.periods == null ? /*#__PURE__*/React.createElement(React.Fragment, null, ['shift_start', 'shift_end'].map((key, position) => /*#__PURE__*/React.createElement("td", {
-        key: key
-      }, /*#__PURE__*/React.createElement("div", {
-        className: "field"
-      }, /*#__PURE__*/React.createElement("input", {
-        type: "time",
-        step: "60",
-        "aria-label": '第 ' + (index + 1) + ' 天' + (position ? '结束' : '开始'),
-        value: row[key],
-        disabled: disabled || trim !== null || row.is_rest === true,
-        onChange: event => rowChange(index, key, event.target.value),
-        "aria-invalid": rowInvalid
-      })))), /*#__PURE__*/React.createElement("td", {
-        className: "muted"
-      }, row.is_rest === true ? '休息' : row.shift_start && row.shift_end ? row.shift_end <= row.shift_start ? '次日结束' : '当日结束' : '未填写', row.is_rest === false && /*#__PURE__*/React.createElement(window.WorkPeriodFields, {
-        value: null,
-        start: row.shift_start,
-        end: row.shift_end,
-        disabled: disabled || trim !== null,
-        onChange: periods => rowChange(index, 'periods', periods)
-      }))) : /*#__PURE__*/React.createElement("td", {
+      }, "\u4F11\u606F"))), /*#__PURE__*/React.createElement("td", {
         colSpan: 3
       }, /*#__PURE__*/React.createElement(window.WorkPeriodFields, {
         label: '第 ' + (index + 1) + ' 天工作时段',
         value: row.periods,
-        disabled: disabled || trim !== null || row.is_rest === true,
+        disabled: disabled || trim !== null || row.is_rest !== false,
         onChange: periods => rowChange(index, 'periods', periods)
       })));
     })))));
@@ -16532,7 +16398,7 @@ function SMExport({
       className: "wb-col-key"
     }, "\u7B2C ", row.day_offset + 1, " \u5929"), /*#__PURE__*/React.createElement("td", null, row.is_rest ? '休息' : '工作'), /*#__PURE__*/React.createElement("td", {
       colSpan: 2
-    }, row.periods != null ? window.APSWorkPeriods.describe(row.periods) : row.shift_start + "–" + row.shift_end))))))), /*#__PURE__*/React.createElement("p", {
+    }, window.APSWorkPeriods.describe(row.periods)))))))), /*#__PURE__*/React.createElement("p", {
       className: "rc-wrap"
     }, "\u5907\u6CE8\uFF1A", entity.fields.remark || '未填写'), /*#__PURE__*/React.createElement(Issues, {
       issues: entity.issues
@@ -18806,7 +18672,7 @@ function SMExport({
       separate: '分别设置'
     })[item] || (item === null ? '未设置' : '原周期算法未明确');
     function field(label, previous, current, format = value) {
-      if (!same(previous, current)) result.push({
+      if (previous !== current) result.push({
         label,
         previous: format(previous),
         current: format(current)
@@ -26355,8 +26221,8 @@ function SMExport({
         attributeFilter: ['data-theme', 'class']
       });
       resize.observe(ref.current);
-      const media = typeof window.matchMedia === 'function' ? window.matchMedia('print') : null;
-      if (media) media.addEventListener('change', schedule);
+      const media = window.matchMedia('print');
+      media.addEventListener('change', schedule);
       window.addEventListener('beforeprint', draw);
       window.addEventListener('afterprint', schedule);
       window.addEventListener('resize', schedule);
@@ -26369,7 +26235,7 @@ function SMExport({
         window.removeEventListener('beforeprint', draw);
         window.removeEventListener('afterprint', schedule);
         window.removeEventListener('resize', schedule);
-        if (media) media.removeEventListener('change', schedule);
+        media.removeEventListener('change', schedule);
       };
     }, []);
     React.useLayoutEffect(() => {
@@ -27250,7 +27116,7 @@ function SMExport({
     })), [visibleRows, rangeStart, rangeEnd, width, model.start, model.end]);
     const measure = () => {
       const el = board.current;
-      if (printState.current || typeof window.matchMedia === 'function' && window.matchMedia('print').matches) return;
+      if (printState.current || window.matchMedia('print').matches) return;
       if (el && restorePosition.current) {
         el.scrollLeft = restorePosition.current.left;
         el.scrollTop = restorePosition.current.top;
@@ -36937,7 +36803,8 @@ function SMExport({
   'use strict';
 
   const P = window.PointContract,
-    T = window.APSWorkbenchTransport;
+    T = window.APSWorkbenchTransport,
+    D = window.DeliveryProjectionContract;
   const BASE = '/api/workbench/v1/scheduling';
   const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
   const text = v => typeof v === 'string',
@@ -37020,7 +36887,7 @@ function SMExport({
     if (q.range_start !== undefined || q.range_end !== undefined) check(time(q.range_start) && time(q.range_end) && timeKey(q.range_start) < timeKey(q.range_end), '读取范围需要成对时间，开始须早于结束。');
     return q;
   }
-  const operationKeys = ['operation_ref', 'batch_ref', 'batch_label', 'part_label', 'sequence', 'process_label', 'piece_id', 'quantity', 'batch_quantity', 'due_date', 'execution_at_generation', 'data_gaps'];
+  const operationKeys = ['operation_ref', 'batch_ref', 'batch_label', 'part_label', 'sequence', 'process_label', 'piece_id', 'quantity', 'batch_quantity', 'due_date', 'due_state', 'due_issue', 'execution_at_generation', 'data_gaps'];
   const executionKeys = ['target_quantity', 'known_completed_quantity', 'remaining_quantity', 'execution_state', 'data_quality', 'target_basis'];
   function quantityContext(v, baseline = false) {
     if (!nullableText(v.piece_id) || v.piece_id !== null && (!v.piece_id.trim() || v.piece_id.includes('\0')) || !nullableNumber(v.quantity) || !nullableNumber(v.batch_quantity) || !gaps(v.data_gaps)) return false;
@@ -37031,7 +36898,7 @@ function SMExport({
     return v.quantity === (proven ? e.target_quantity : null);
   }
   function operation(v, planned) {
-    check(shape(v, operationKeys.concat(['operation_effort', 'process_type_ref', 'process_type_label'], planned ? ['row_ref', 'start', 'end', 'source', 'locked', 'machine', 'operator', 'supplier', ...(P.isPoint(v) ? P.fields : [])] : ['row_ref', 'status', 'reason'])) && ref(v.operation_ref) && (v.batch_ref === null || ref(v.batch_ref)) && ['batch_label', 'part_label', 'process_label', 'process_type_label', 'due_date'].every(k => nullableText(v[k])) && nullableNumber(v.sequence) && quantityContext(v) && (v.process_type_ref === null || ref(v.process_type_ref)) && window.EffortProjectionContract.compact(v.operation_effort));
+    check(shape(v, operationKeys.concat(['operation_effort', 'process_type_ref', 'process_type_label'], planned ? ['row_ref', 'start', 'end', 'source', 'locked', 'machine', 'operator', 'supplier', ...(P.isPoint(v) ? P.fields : [])] : ['row_ref', 'status', 'reason'])) && ref(v.operation_ref) && (v.batch_ref === null || ref(v.batch_ref)) && ['batch_label', 'part_label', 'process_label', 'process_type_label'].every(k => nullableText(v[k])) && D.dueFields(v) && nullableNumber(v.sequence) && quantityContext(v) && (v.process_type_ref === null || ref(v.process_type_ref)) && window.EffortProjectionContract.compact(v.operation_effort));
     if (planned) {
       check(ref(v.row_ref) && time(v.start) && time(v.end) && (P.isPoint(v) || timeKey(v.start) < timeKey(v.end)) && ['internal', 'external'].includes(v.source) && typeof v.locked === 'boolean');
       for (const k of ['machine', 'operator', 'supplier']) check(v[k] === null || shape(v[k], ['ref', 'label']) && (v[k].ref === null || ref(v[k].ref)) && nullableText(v[k].label));
@@ -37042,11 +36909,11 @@ function SMExport({
   }
   function delivery(v, data, query) {
     check(shape(v, ['candidate_ref', 'scope', 'state', 'items', 'items_complete', 'batch_count', 'issues', 'summary', 'basis']) && v.candidate_ref === data.candidate.candidate_ref && shape(v.scope, ['kind', 'candidate_ref', 'range_start', 'range_end', 'batch_ref', 'sort', 'order']) && v.scope.kind === 'run-candidate-workspace' && v.scope.candidate_ref === v.candidate_ref && ['range_start', 'range_end', 'batch_ref'].every(k => v.scope[k] === (query[k] ?? null)) && v.scope.sort === query.sort && v.scope.order === query.order && ['available', 'partial', 'unavailable'].includes(v.state) && typeof v.items_complete === 'boolean' && count(v.batch_count) && Array.isArray(v.items) && v.items.length <= v.batch_count && (!v.items_complete || v.items.length === v.batch_count) && Array.isArray(v.issues) && v.issues.every(r => shape(r, ['code', 'message']) && text(r.code) && text(r.message)));
-    check(shape(v.basis, ['kind', 'metadata_basis', 'operation_scope', 'completion_scope', 'time_basis', 'due_boundary', 'current_entities_consulted', 'actual_completion', 'actual_delivery', 'root_causes']) && v.basis.kind === 'planned_delivery' && v.basis.metadata_basis === 'captured_at_run_admission' && v.basis.operation_scope === 'captured_batch_operations' && v.basis.completion_scope === 'full_candidate' && v.basis.time_basis === 'factory_local' && v.basis.due_boundary === 'next_day_exclusive' && v.basis.current_entities_consulted === false && ['actual_completion', 'actual_delivery', 'root_causes'].every(k => v.basis[k] === 'not_evaluated'));
+    check(shape(v.basis, ['kind', 'metadata_basis', 'operation_scope', 'completion_scope', 'time_basis', 'due_boundary', 'actual_completion', 'actual_delivery', 'root_causes']) && v.basis.kind === 'planned_delivery' && v.basis.metadata_basis === 'captured_at_run_admission' && v.basis.operation_scope === 'captured_batch_operations' && v.basis.completion_scope === 'full_candidate' && v.basis.time_basis === 'factory_local' && v.basis.due_boundary === 'next_day_exclusive' && ['actual_completion', 'actual_delivery', 'root_causes'].every(k => v.basis[k] === 'not_evaluated'));
     const rowKeys = ['batch_ref', 'batch_id', 'part_no', 'part_label', 'schedule_complete', 'operation_count', 'scheduled_operation_count', 'unscheduled_operation_count', 'task_count', 'invalid_task_count', 'planned_finish', 'partial_planned_finish', 'risk', 'is_overdue', 'delay_hours', 'delay_days', 'due_date', 'delivery_deadline_exclusive', 'due_state', 'due_issue', 'completion_state', 'deferred_operation_count', 'ordinary_unscheduled_operation_count', 'completeness', 'issues', 'priority', 'quantity', 'last_operations'];
     const tasks = new Map(data.tasks.map(row => [row.row_ref, row]));
     v.items.forEach(row => {
-      check(shape(row, rowKeys) && ref(row.batch_ref) && text(row.batch_id) && row.batch_id.trim() && ['part_no', 'part_label', 'due_date', 'priority'].every(k => nullableText(row[k])) && nullableNumber(row.quantity) && ['operation_count', 'scheduled_operation_count', 'unscheduled_operation_count', 'task_count', 'invalid_task_count', 'deferred_operation_count', 'ordinary_unscheduled_operation_count'].every(k => count(row[k])) && ['planned_finish', 'partial_planned_finish', 'delivery_deadline_exclusive'].every(k => row[k] === null || time(row[k])) && ['delay_hours', 'delay_days'].every(k => nullableNumber(row[k])) && typeof row.schedule_complete === 'boolean' && ['overdue', 'on_time', 'unknown', 'not_applicable'].includes(row.risk) && ['complete', 'incomplete', 'unknown'].includes(row.completeness) && ['specified', 'unspecified', 'invalid'].includes(row.due_state) && (row.due_issue === null || ['due_date_missing', 'due_date_invalid'].includes(row.due_issue)) && ['complete', 'deferred', 'incomplete', 'unknown'].includes(row.completion_state) && (row.is_overdue === null || typeof row.is_overdue === 'boolean') && Array.isArray(row.issues) && row.issues.every(text) && Array.isArray(row.last_operations) && (row.schedule_complete ? row.planned_finish !== null && row.last_operations.length > 0 : row.planned_finish === null && row.last_operations.length === 0) && (['unknown', 'not_applicable'].includes(row.risk) ? row.is_overdue === null && row.delay_hours === null && row.delay_days === null : row.schedule_complete && row.is_overdue === (row.risk === 'overdue') && row.delay_hours !== null && row.delay_days !== null) && (!query.batch_ref || row.batch_ref === query.batch_ref));
+      check(shape(row, rowKeys) && ref(row.batch_ref) && text(row.batch_id) && row.batch_id.trim() && ['part_no', 'part_label', 'priority'].every(k => nullableText(row[k])) && D.dueFields(row) && nullableNumber(row.quantity) && ['operation_count', 'scheduled_operation_count', 'unscheduled_operation_count', 'task_count', 'invalid_task_count', 'deferred_operation_count', 'ordinary_unscheduled_operation_count'].every(k => count(row[k])) && ['planned_finish', 'partial_planned_finish', 'delivery_deadline_exclusive'].every(k => row[k] === null || time(row[k])) && ['delay_hours', 'delay_days'].every(k => nullableNumber(row[k])) && typeof row.schedule_complete === 'boolean' && ['overdue', 'on_time', 'unknown', 'not_applicable'].includes(row.risk) && ['complete', 'incomplete', 'unknown'].includes(row.completeness) && ['complete', 'deferred', 'incomplete', 'unknown'].includes(row.completion_state) && (row.is_overdue === null || typeof row.is_overdue === 'boolean') && Array.isArray(row.issues) && row.issues.every(text) && Array.isArray(row.last_operations) && (row.schedule_complete ? row.planned_finish !== null && row.last_operations.length > 0 : row.planned_finish === null && row.last_operations.length === 0) && (['unknown', 'not_applicable'].includes(row.risk) ? row.is_overdue === null && row.delay_hours === null && row.delay_days === null : row.schedule_complete && row.is_overdue === (row.risk === 'overdue') && row.delay_hours !== null && row.delay_days !== null) && (!query.batch_ref || row.batch_ref === query.batch_ref));
       row.last_operations.forEach(task => {
         check(shape(task, ['row_ref', 'operation_ref', 'sequence', 'piece_id', 'process_label', 'start', 'end', 'machine', 'operator']) && ref(task.row_ref) && ref(task.operation_ref) && nullableNumber(task.sequence) && nullableText(task.piece_id) && nullableText(task.process_label) && time(task.start) && time(task.end) && timeKey(task.start) <= timeKey(task.end) && row.planned_finish !== null && timeKey(task.end) === timeKey(row.planned_finish));
         const original = tasks.get(task.row_ref);
@@ -37097,7 +36964,7 @@ function SMExport({
     });
     const g = d.generation,
       G = window.RunGenerationContract;
-    check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated', 'input', 'data_gaps', 'baseline', 'algorithm']) && g.run_ref === d.candidate.run_ref && time(g.accepted_at) && (g.finished_at === null || time(g.finished_at)) && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission' && g.current_entities_consulted === false && g.formal_version_allocated === false && gaps(g.data_gaps) && shape(g.input, ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'], ['material_strategy', 'hold_window', 'time_budget_seconds']) && (g.input.time_budget_seconds === undefined || G.budget(g.input.time_budget_seconds)) && (g.input.material_strategy === undefined || ['strict', 'stage'].includes(g.input.material_strategy) || g.input.material_strategy === null && g.data_gaps.some(gap => gap.field === 'input.material_strategy')) && holdWindow(g.input.hold_window) && (g.input.hold_window === null || !g.data_gaps.some(gap => gap.field === 'input.hold_window')) && ['start_date', 'end_date', 'missing_resource_policy', 'completed_policy'].every(k => nullableText(g.input[k])) && (g.input.ready_check === null || typeof g.input.ready_check === 'boolean') && window.RunGenerationContract.algorithm(g.algorithm, g.run_ref) && shape(g.baseline, ['baseline_ref', 'version', 'kind', 'captured_at', 'captured_task_count']) && g.baseline.kind === 'admission_official' && version(g.baseline.version) && time(g.baseline.captured_at) && (g.baseline.version === null ? g.baseline.baseline_ref === null : ref(g.baseline.baseline_ref)) && (g.baseline.captured_task_count === null || count(g.baseline.captured_task_count)));
+    check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'input', 'data_gaps', 'baseline', 'algorithm']) && g.run_ref === d.candidate.run_ref && time(g.accepted_at) && (g.finished_at === null || time(g.finished_at)) && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission' && gaps(g.data_gaps) && shape(g.input, ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'], ['material_strategy', 'hold_window', 'time_budget_seconds']) && (g.input.time_budget_seconds === undefined || G.budget(g.input.time_budget_seconds)) && (g.input.material_strategy === undefined || ['strict', 'stage'].includes(g.input.material_strategy) || g.input.material_strategy === null && g.data_gaps.some(gap => gap.field === 'input.material_strategy')) && holdWindow(g.input.hold_window) && (g.input.hold_window === null || !g.data_gaps.some(gap => gap.field === 'input.hold_window')) && ['start_date', 'end_date', 'missing_resource_policy', 'completed_policy'].every(k => nullableText(g.input[k])) && (g.input.ready_check === null || typeof g.input.ready_check === 'boolean') && window.RunGenerationContract.algorithm(g.algorithm, g.run_ref) && shape(g.baseline, ['baseline_ref', 'version', 'kind', 'captured_at', 'captured_task_count']) && g.baseline.kind === 'admission_official' && version(g.baseline.version) && time(g.baseline.captured_at) && (g.baseline.version === null ? g.baseline.baseline_ref === null : ref(g.baseline.baseline_ref)) && (g.baseline.captured_task_count === null || count(g.baseline.captured_task_count)));
     delivery(d.delivery_risks, d, q);
     check(window.GanttGraph.validate(d.gantt_graph, {
       scope: 'full_candidate',
@@ -37420,7 +37287,7 @@ function SMExport({
       } else unplottableTasks.push(fact.task);
     }
     for (const [id, group] of prepared.groups) {
-      const items = group.items.filter(item => matches(item, needle, operationRefs, focus));
+      const items = group.items.filter(item => shownRefs.has(item.task.row_ref));
       if (!items.length) continue;
       const shown = new Set(items);
       groups.set(id, {
@@ -37917,7 +37784,7 @@ function SMExport({
       savedLockLabel = data.reference ? '基准保存标记' : '方案保存标记';
     const supplierApplicable = task && (task.source === 'external' || task.supplier && (task.supplier.ref || task.supplier.label));
     const sourceKeys = new Set([batchQuantityLabel, '外协商', '来源', savedLockLabel]);
-    const facts = task ? [['零件', task.part_label], ['工序顺序', M.number(task.sequence)], ['分件', task.piece_id === null ? task.data_gaps.some(g => g.field === 'piece_id') ? '分件未记录' : '共同工序' : task.piece_id], ['本工序目标量', M.quantityLabel(task)], [batchQuantityLabel, M.quantityLabel(task, 'batch_quantity')], ['交期', window.WorkbenchTerms.due_date(task.due_date, task.due_state || (task.due_date === '9999-12-31' ? 'unspecified' : task.due_date === null ? 'invalid' : 'specified'), task.due_issue || (task.due_date === null ? 'due_date_missing' : null))], ['开始', task.start && M.timeLabel(task.start)], ['结束', task.end && M.timeLabel(task.end)], ['设备', M.resourceLabel(task, 'machine')], ['人员', M.resourceLabel(task, 'operator')], ...(supplierApplicable ? [['外协商', M.resourceLabel(task, 'supplier')]] : []), ['来源', task.source === 'internal' ? '内部' : task.source === 'external' ? '外协' : null], [savedLockLabel, typeof task.locked === 'boolean' ? task.locked ? '是' : '否' : null], ['安排状态', task.reason ? task.reason.message : data.reference ? '已保存正式归档安排' : '已保存候选安排']] : [];
+    const facts = task ? [['零件', task.part_label], ['工序顺序', M.number(task.sequence)], ['分件', task.piece_id === null ? task.data_gaps.some(g => g.field === 'piece_id') ? '分件未记录' : '共同工序' : task.piece_id], ['本工序目标量', M.quantityLabel(task)], [batchQuantityLabel, M.quantityLabel(task, 'batch_quantity')], ['交期', window.WorkbenchTerms.due_date(task.due_date, task.due_state, task.due_issue)], ['开始', task.start && M.timeLabel(task.start)], ['结束', task.end && M.timeLabel(task.end)], ['设备', M.resourceLabel(task, 'machine')], ['人员', M.resourceLabel(task, 'operator')], ...(supplierApplicable ? [['外协商', M.resourceLabel(task, 'supplier')]] : []), ['来源', task.source === 'internal' ? '内部' : task.source === 'external' ? '外协' : null], [savedLockLabel, typeof task.locked === 'boolean' ? task.locked ? '是' : '否' : null], ['安排状态', task.reason ? task.reason.message : data.reference ? '已保存正式归档安排' : '已保存候选安排']] : [];
     const reference = task && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
         '安排编号': task.row_ref,
@@ -38109,7 +37976,6 @@ function SMExport({
       batch_scope: 'admission_selected_batches',
       operation_identity: 'permanent_operation_reference',
       comparison: 'candidate_minus_admission_official',
-      current_entities_consulted: false,
       recommendation: null
     }) && equal(d.capabilities, {
       view: true,
@@ -38568,7 +38434,7 @@ function SMExport({
     const numbers = value => object(value) && Object.values(value).every(amount);
     const integers = value => object(value) && Object.values(value).every(count);
     const descriptors = ['name', 'label', 'primary_metric_key', 'primary_metric_label', 'unit', 'score_fields'];
-    const fields = ['run_ref', 'capture_ref', 'scope', 'baseline', 'process_version', 'summary', 'counts', 'budget', 'stop_reason', 'bridges', 'objectives', 'selected_objective', 'progress', 'scopes', 'actions', 'stages', 'candidate', 'candidates', 'source_event', 'items', 'page', 'filters'];
+    const fields = ['run_ref', 'capture_ref', 'scope', 'baseline', 'process_version', 'summary', 'counts', 'budget', 'stop_reason', 'bridges', 'objectives', 'selected_objective', 'progress', 'scopes', 'stages', 'candidate', 'candidates', 'source_event', 'items', 'page', 'filters'];
     check(A.shape(data, fields) && data.process_version === 'unified-optimization-process-v1' && data.run_ref === runRef && data.capture_ref === runRef && object(data.scope) && data.scope.run_ref === runRef && data.scope.comparison_mode === q.comparison_mode && (q.selected_candidate_ref === undefined || data.scope.selected_candidate_ref === q.selected_candidate_ref) && time(data.scope.range_start) && time(data.scope.range_end) && timeKey(data.scope.range_start) < timeKey(data.scope.range_end) && object(data.scope.reference) && object(data.baseline) && data.baseline.kind === data.scope.reference.kind && data.baseline.state === data.scope.reference_state && G.runOptions(data.scope.run_options), '共同优化过程的运行或保存选项不一致，请点“刷新优化过程”。');
     bindScope(payload, data, q);
     if (q.comparison_mode === 'candidates') check(data.scope.reference.kind === 'candidate' && data.baseline.candidate_ref === data.scope.reference.candidate_ref && (data.scope.reference_state === 'available' ? ref(data.scope.reference.candidate_ref) : data.scope.reference_state === 'selection_required' && data.scope.reference.candidate_ref === null) && (!q.reference_candidate_ref || data.scope.reference.candidate_ref === q.reference_candidate_ref), '过程的查看基准已变化，请点“刷新优化过程”。');
@@ -38602,9 +38468,9 @@ function SMExport({
     const actionFields = ['action_id', 'search_objective', 'phase', 'initial_construction', 'started_elapsed_ms', 'finished_elapsed_ms', 'elapsed_ms', 'evaluation_count', 'verified_evaluation_count', 'new_decisions', 'reused_decisions', 'skip_reason', 'improved_objectives'];
     const counters = ['evaluation_count', 'verified_evaluation_count', 'new_decisions', 'reused_decisions'];
     const action = value => A.shape(value, actionFields) && positive(value.action_id) && value.search_objective === selectedObjective && typeof value.phase === 'string' && typeof value.initial_construction === 'boolean' && ['started_elapsed_ms', 'finished_elapsed_ms', 'elapsed_ms'].every(key => amount(value[key])) && value.started_elapsed_ms <= value.finished_elapsed_ms && counters.every(key => count(value[key])) && value.verified_evaluation_count <= value.evaluation_count && nullableText(value.skip_reason) && G.objectives(value.improved_objectives) && value.improved_objectives.every(name => names.includes(name));
-    check(Array.isArray(data.actions) && data.actions.every(action) && new Set(data.actions.map(value => value.action_id)).size === data.actions.length && Array.isArray(data.stages) && data.stages.every(value => A.shape(value, ['phase', 'start_elapsed_ms', 'end_elapsed_ms', 'elapsed_ms', 'action_count', ...counters]) && typeof value.phase === 'string' && ['start_elapsed_ms', 'end_elapsed_ms', 'elapsed_ms'].every(key => optionalAmount(value[key])) && count(value.action_count) && counters.every(key => count(value[key]))), '实际搜索动作或阶段统计不完整，请点“刷新优化过程”。');
+    check(Array.isArray(data.stages) && data.stages.every(value => A.shape(value, ['phase', 'start_elapsed_ms', 'end_elapsed_ms', 'elapsed_ms', 'action_count', ...counters]) && typeof value.phase === 'string' && ['start_elapsed_ms', 'end_elapsed_ms', 'elapsed_ms'].every(key => optionalAmount(value[key])) && count(value.action_count) && counters.every(key => count(value[key]))), '实际搜索动作或阶段统计不完整，请点“刷新优化过程”。');
     check(Array.isArray(data.bridges) && data.bridges.every(value => A.shape(value, ['search_objective', 'phase', 'before_entry_id', 'after_entry_id', 'elapsed_ms', 'started_elapsed_ms', 'finished_elapsed_ms', 'same_arrangement', 'decoder_executed', 'reference_kind', 'source_event_id']) && names.includes(value.search_objective) && ['phase', 'reference_kind'].every(key => typeof value[key] === 'string') && ['before_entry_id', 'after_entry_id'].every(key => value[key] === null || positive(value[key])) && ['elapsed_ms', 'started_elapsed_ms', 'finished_elapsed_ms'].every(key => amount(value[key])) && (value.same_arrangement === null || typeof value.same_arrangement === 'boolean') && typeof value.decoder_executed === 'boolean' && positive(value.source_event_id)), '共同优化的实际接续记录不完整，请点“刷新优化过程”。');
-    check(A.shape(data.filters, ['section', 'process_candidate_ref', 'objective', 'record_kind', 'sort', 'order']) && data.filters.section === 'process' && data.filters.process_candidate_ref === anchor && data.filters.objective === selectedObjective && ['record_kind', 'sort', 'order'].every(key => data.filters[key] === q[key]) && A.shape(data.page, ['number', 'size', 'total', 'has_more']) && data.page.number === q.page && data.page.size === q.size && count(data.page.total) && data.page.total === (q.record_kind === 'progress' ? data.progress.points.length : data.actions.length) && data.page.has_more === q.page * q.size < data.page.total && Array.isArray(data.items) && data.items.length === Math.min(q.size, Math.max(0, data.page.total - (q.page - 1) * q.size)) && data.items.every(q.record_kind === 'progress' ? point : action), '过程方向、来源或分页位置已变化，请点“刷新优化过程”。');
+    check(A.shape(data.filters, ['section', 'process_candidate_ref', 'objective', 'record_kind', 'sort', 'order']) && data.filters.section === 'process' && data.filters.process_candidate_ref === anchor && data.filters.objective === selectedObjective && ['record_kind', 'sort', 'order'].every(key => data.filters[key] === q[key]) && A.shape(data.page, ['number', 'size', 'total', 'has_more']) && data.page.number === q.page && data.page.size === q.size && count(data.page.total) && data.page.total === (q.record_kind === 'progress' ? data.progress.points.length : goals[selectedObjective].action_count) && data.page.has_more === q.page * q.size < data.page.total && Array.isArray(data.items) && data.items.length === Math.min(q.size, Math.max(0, data.page.total - (q.page - 1) * q.size)) && data.items.every(q.record_kind === 'progress' ? point : action) && (q.record_kind === 'progress' || new Set(data.items.map(value => value.action_id)).size === data.items.length), '过程方向、来源或分页位置已变化，请点“刷新优化过程”。');
     return data;
   }
   const processDetails = (payload, runRef, query) => _processDetails(payload, runRef, processScope(runRef, query));
@@ -38711,7 +38577,9 @@ function SMExport({
     check(data.batch_ref === (query.batch_ref || null), '正式计划的批次范围已变化，请从方案对比重新打开。');
     for (const key of ['range_start', 'range_end']) if (query[key]) check(data.time_scope && time(data.time_scope[key]) && timeKey(data.time_scope[key]) === timeKey(query[key]), '正式计划的时间范围已变化，请从方案对比重新打开。');
     if (query.resource_view) check(data.scope && data.scope.resource_view === query.resource_view, '正式计划的资源范围已变化，请从方案对比重新打开。');
-    check([...data.tasks, ...data.unplanned_operations].every(row => row.operation_effort === undefined || window.EffortProjectionContract.compact(row.operation_effort)), '正式计划的工序工时资料不完整，请从方案对比重新打开。');
+    const rows = [...data.tasks, ...data.unplanned_operations];
+    check(rows.every(window.DeliveryProjectionContract.dueFields), '正式计划的工序交期资料不完整，请从方案对比重新打开。');
+    check(rows.every(row => row.operation_effort === undefined || window.EffortProjectionContract.compact(row.operation_effort)), '正式计划的工序工时资料不完整，请从方案对比重新打开。');
     bindSnapshot(payload, query);
     return data;
   }
@@ -39873,7 +39741,6 @@ function SMExport({
     const workspaceRef = React.useRef(null),
       rangeReturnFocus = React.useRef(null),
       referenceChoice = React.useRef(null);
-    const metricView = initialContext.metric_view === 'all' ? 'all' : 'common';
     const initialDetails = initialContext.detail_queries === undefined ? {} : initialContext.detail_queries;
     const [tab, updateTab] = React.useState(() => {
       const requested = tabAliases[initialContext.comparison_tab] || initialContext.comparison_tab;
@@ -39971,7 +39838,6 @@ function SMExport({
     const processQuery = leafQuery('process');
     const remembered = data ? comparisonContext(data, {
       ...initialContext,
-      metric_view: metricView,
       comparison_tab: tab,
       selected_batch_ref: selectedBatchRef,
       detail_queries: detailQueries
@@ -40077,7 +39943,6 @@ function SMExport({
         ...context,
         ...historyOrigin,
         comparison_tab: pane,
-        metric_view: metricView,
         selected_batch_ref: context.batch_ref || selectedBatchRef,
         detail_queries: {
           ...freshDetailQueries(detailQueries),
@@ -41391,7 +41256,7 @@ function SMExport({
     graph_ready_uses_graph_candidate_phase: '改用按规则生成和调整排法的阶段'
   };
   const flagLabels = window.RunDecisionProcessChart.flagLabels;
-  const number = value => value === null || value === undefined ? '—' : window.WorkbenchFormat.number(value, {
+  const number = value => value === null ? '—' : window.WorkbenchFormat.number(value, {
     digits: 3,
     trim: true
   });
@@ -41414,18 +41279,17 @@ function SMExport({
   }
   function Score({
     value,
-    objective,
-    fieldOrder
+    objective
   }) {
     return /*#__PURE__*/React.createElement("details", {
       className: "rd-process-facts"
     }, /*#__PURE__*/React.createElement("summary", null, "\u8BA1\u7B97\u8BC4\u5206 \xB7 ", value.length, " \u9879"), /*#__PURE__*/React.createElement("dl", null, value.map((item, index) => {
-      const definition = objective.score_fields.find(field => field.key === fieldOrder[index]);
+      const definition = objective.score_fields[index];
       return /*#__PURE__*/React.createElement("div", {
-        key: index
-      }, /*#__PURE__*/React.createElement("dt", null, definition ? definition.label : '分量 ' + (index + 1)), /*#__PURE__*/React.createElement("dd", {
+        key: definition.key
+      }, /*#__PURE__*/React.createElement("dt", null, definition.label), /*#__PURE__*/React.createElement("dd", {
         title: item === null ? undefined : String(item)
-      }, number(item), item !== null && definition && definition.unit && ' ' + definition.unit));
+      }, number(item), item !== null && definition.unit && ' ' + definition.unit));
     })));
   }
   const countLabels = [['actual_decoder_calls', '真实排法计算次数'], ['new_decisions', '新排法决策'], ['decision_reuses', '复用已核验决策'], ['skipped_requests', '跳过执行次数'], ['failed_decoder_calls', '计算失败次数'], ['request_count', '不同计算请求']];
@@ -41459,9 +41323,9 @@ function SMExport({
     origin,
     data
   }) {
-    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", null, phaseText(origin.phase), " \xB7 ", objectiveLabel(data, origin.search_objective)), /*#__PURE__*/React.createElement("details", {
+    return /*#__PURE__*/React.createElement(React.Fragment, null, origin && /*#__PURE__*/React.createElement("span", null, phaseText(origin.phase), " \xB7 ", objectiveLabel(data, origin.search_objective)), /*#__PURE__*/React.createElement("details", {
       className: "rd-process-facts"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u5B9E\u9645\u751F\u6210\u4E0E\u6D3E\u5DE5"), /*#__PURE__*/React.createElement("dl", null, [['strategy', '生成策略'], ['dispatch_mode', '派工模式'], ['dispatch_rule', '派工规则']].map(([key, label]) => /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("summary", null, "\u5B9E\u9645\u751F\u6210\u4E0E\u6D3E\u5DE5"), origin ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("dl", null, [['strategy', '生成策略'], ['dispatch_mode', '派工模式'], ['dispatch_rule', '派工规则']].map(([key, label]) => /*#__PURE__*/React.createElement("div", {
       key: key
     }, /*#__PURE__*/React.createElement("dt", null, label), /*#__PURE__*/React.createElement("dd", null, savedText(origin[key]))))), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
@@ -41469,7 +41333,9 @@ function SMExport({
         '搜索阶段': origin.phase,
         '搜索方向': origin.search_objective
       }
-    })));
+    })) : /*#__PURE__*/React.createElement("p", {
+      className: "rc-muted"
+    }, "\u6B63\u5728\u7B49\u5F85\u5B9E\u9645\u751F\u6210\u4E0E\u6D3E\u5DE5\u3002")));
   }
   function CandidateTable({
     data,
@@ -41563,8 +41429,7 @@ function SMExport({
       scopeRef: row.scope_ref
     })), /*#__PURE__*/React.createElement("td", null, row.verified ? '已核验' : '未核验', /*#__PURE__*/React.createElement(Score, {
       value: row.score,
-      objective: objective,
-      fieldOrder: row.field_order
+      objective: objective
     }))) : /*#__PURE__*/React.createElement("tr", {
       key: row.action_id,
       "data-process-action": row.action_id
@@ -41585,7 +41450,7 @@ function SMExport({
   }) {
     return /*#__PURE__*/React.createElement("details", {
       className: "rd-process-stages"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u5F53\u524D\u65B9\u5411\u9636\u6BB5 \xB7 ", values.length, " \u9879"), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("summary", null, "\u5F53\u524D\u65B9\u5411\u9636\u6BB5", values ? ' · ' + values.length + ' 项' : ''), values ? /*#__PURE__*/React.createElement("div", {
       className: "rc-table wb-table-frame rd-process-frame",
       "data-sticky-head": true,
       "data-wb-scroll-key": "decision-process-stages"
@@ -41604,21 +41469,26 @@ function SMExport({
       value: stage.end_elapsed_ms
     }))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Elapsed, {
       value: stage.elapsed_ms
-    }), /*#__PURE__*/React.createElement("small", null, number(stage.action_count), " \u4E2A\u52A8\u4F5C")), /*#__PURE__*/React.createElement("td", null, number(stage.evaluation_count), " / ", number(stage.verified_evaluation_count)), /*#__PURE__*/React.createElement("td", null, number(stage.new_decisions), " / ", number(stage.reused_decisions))))))));
+    }), /*#__PURE__*/React.createElement("small", null, number(stage.action_count), " \u4E2A\u52A8\u4F5C")), /*#__PURE__*/React.createElement("td", null, number(stage.evaluation_count), " / ", number(stage.verified_evaluation_count)), /*#__PURE__*/React.createElement("td", null, number(stage.new_decisions), " / ", number(stage.reused_decisions))))))) : /*#__PURE__*/React.createElement("p", {
+      className: "rc-muted"
+    }, "\u6B63\u5728\u7B49\u5F85\u5F53\u524D\u65B9\u5411\u9636\u6BB5\u3002"));
   }
   function Source({
     data
   }) {
-    const source = data.source_event,
-      candidate = data.candidate;
+    const source = data && data.source_event,
+      candidate = data && data.candidate,
+      bridges = data && data.bridges;
     return /*#__PURE__*/React.createElement("details", {
       className: "rd-process-facts"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u5F53\u524D\u5019\u9009\u6765\u6E90\u4E0E\u65B9\u5411\u8BB0\u5F55"), /*#__PURE__*/React.createElement("p", null, candidate.label, " \xB7 \u9996\u6B21\u53D1\u73B0\u4E8E ", /*#__PURE__*/React.createElement(Elapsed, {
+    }, /*#__PURE__*/React.createElement("summary", null, "\u5F53\u524D\u5019\u9009\u6765\u6E90\u4E0E\u65B9\u5411\u8BB0\u5F55"), data ? /*#__PURE__*/React.createElement("p", null, candidate.label, " \xB7 \u9996\u6B21\u53D1\u73B0\u4E8E ", /*#__PURE__*/React.createElement(Elapsed, {
       value: candidate.first_found_elapsed_ms
-    })), /*#__PURE__*/React.createElement(Origin, {
-      origin: candidate.origin,
+    })) : /*#__PURE__*/React.createElement("p", {
+      className: "rc-muted"
+    }, "\u6B63\u5728\u7B49\u5F85\u5019\u9009\u6765\u6E90\u4E0E\u65B9\u5411\u8BB0\u5F55\u3002"), /*#__PURE__*/React.createElement(Origin, {
+      origin: candidate && candidate.origin,
       data: data
-    }), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+    }), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
         '来源候选': candidate.candidate_ref,
         '来源事件': source && source.event_id,
@@ -41631,9 +41501,9 @@ function SMExport({
       return /*#__PURE__*/React.createElement("div", {
         key: descriptor.name
       }, /*#__PURE__*/React.createElement("dt", null, descriptor.label), /*#__PURE__*/React.createElement("dd", null, opportunityLabels[goal.objective_status], " \xB7 ", number(goal.action_count), " \u4E2A\u52A8\u4F5C"));
-    })), data.bridges.length > 0 && /*#__PURE__*/React.createElement("details", {
+    }))), /*#__PURE__*/React.createElement("details", {
       className: "rd-process-facts"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u53C2\u8003\u6392\u6CD5\u63A5\u7EED \xB7 ", data.bridges.length, " \u9879"), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("summary", null, "\u53C2\u8003\u6392\u6CD5\u63A5\u7EED", bridges ? ' · ' + bridges.length + ' 项' : ''), bridges ? bridges.length ? /*#__PURE__*/React.createElement("div", {
       className: "wb-table-frame"
     }, /*#__PURE__*/React.createElement("table", {
       className: "wb-table rd-process-bridge-table",
@@ -41641,7 +41511,7 @@ function SMExport({
     }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ['方向 / 阶段', '实际起止', '接续耗时', '原排法 / 计算事实'].map(label => /*#__PURE__*/React.createElement("th", {
       key: label,
       scope: "col"
-    }, label)))), /*#__PURE__*/React.createElement("tbody", null, data.bridges.map(bridge => /*#__PURE__*/React.createElement("tr", {
+    }, label)))), /*#__PURE__*/React.createElement("tbody", null, bridges.map(bridge => /*#__PURE__*/React.createElement("tr", {
       key: bridge.source_event_id
     }, /*#__PURE__*/React.createElement("td", null, objectiveLabel(data, bridge.search_objective), /*#__PURE__*/React.createElement("small", null, phaseText(bridge.phase))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Elapsed, {
       value: bridge.started_elapsed_ms
@@ -41656,21 +41526,27 @@ function SMExport({
         '接续后排法': bridge.after_entry_id,
         '参考方式': bridge.reference_kind
       }
-    })))))))));
+    }))))))) : /*#__PURE__*/React.createElement("p", {
+      className: "rc-empty"
+    }, "\u672C\u6B21\u4F18\u5316\u6CA1\u6709\u4FDD\u5B58\u53C2\u8003\u6392\u6CD5\u63A5\u7EED\u3002") : /*#__PURE__*/React.createElement("p", {
+      className: "rc-muted"
+    }, "\u6B63\u5728\u7B49\u5F85\u53C2\u8003\u6392\u6CD5\u63A5\u7EED\u3002")));
   }
   function Coverage({
     data
   }) {
-    const sampling = data.progress.sampling;
+    const sampling = data && data.progress.sampling;
     return /*#__PURE__*/React.createElement("div", {
       className: "rd-process-coverage"
-    }, /*#__PURE__*/React.createElement("span", null, "\u5F53\u524D\u65B9\u5411\u4FDD\u7559 ", number(data.progress.points.length), " \u4E2A\u70B9 \xB7 \u539F\u8FDB\u5C55 ", number(sampling.event_total_count), " \u4E2A\u4E8B\u4EF6"), /*#__PURE__*/React.createElement("details", {
+    }, /*#__PURE__*/React.createElement("span", null, data ? '当前方向保留 ' + number(data.progress.points.length) + ' 个点 · 原进展 ' + number(sampling.event_total_count) + ' 个事件' : '正在等待进展记录说明。'), /*#__PURE__*/React.createElement("details", {
       className: "rd-process-facts"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u8FDB\u5C55\u8BB0\u5F55\u8BF4\u660E"), /*#__PURE__*/React.createElement("p", null, "\u6309\u8BA1\u7B97\u8017\u65F6\u5206\u6BB5\u4FDD\u7559\u6700\u597D\u7ED3\u679C\uFF0C\u5E76\u4FDD\u7559\u5173\u952E\u9996\u5C3E\u8BB0\u5F55\uFF1B\u6700\u591A\u4FDD\u7559 ", sampling.point_budget, " \u4E2A\u70B9\u3002"), /*#__PURE__*/React.createElement("p", null, "\u8BC4\u4EF7\u8303\u56F4\u53D8\u5316\u65F6\u5206\u6BB5\u663E\u793A\uFF1B\u8BC4\u5206\u7F3A\u9879\u4FDD\u7559\u672A\u77E5\u503C\u3002"), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+    }, /*#__PURE__*/React.createElement("summary", null, "\u8FDB\u5C55\u8BB0\u5F55\u8BF4\u660E"), sampling ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "\u6309\u8BA1\u7B97\u8017\u65F6\u5206\u6BB5\u4FDD\u7559\u6700\u597D\u7ED3\u679C\uFF0C\u5E76\u4FDD\u7559\u5173\u952E\u9996\u5C3E\u8BB0\u5F55\uFF1B\u6700\u591A\u4FDD\u7559 ", sampling.point_budget, " \u4E2A\u70B9\u3002"), /*#__PURE__*/React.createElement("p", null, "\u8BC4\u4EF7\u8303\u56F4\u53D8\u5316\u65F6\u5206\u6BB5\u663E\u793A\uFF1B\u8BC4\u5206\u7F3A\u9879\u4FDD\u7559\u672A\u77E5\u503C\u3002"), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
         '保存方式': sampling.policy
       }
-    })));
+    })) : /*#__PURE__*/React.createElement("p", {
+      className: "rc-muted"
+    }, "\u6B63\u5728\u7B49\u5F85\u8FDB\u5C55\u8BB0\u5F55\u8BF4\u660E\u3002")));
   }
   function Pane({
     result,
@@ -41697,6 +41573,10 @@ function SMExport({
         ...shared
       }),
       key = JSON.stringify(q);
+    const paneRef = React.useRef(null),
+      recordsRef = React.useRef(null),
+      catalogRef = React.useRef(null),
+      pendingFocus = React.useRef(null);
     const [paused, setPaused] = React.useState(false);
     React.useEffect(() => {
       setPaused(false);
@@ -41704,7 +41584,57 @@ function SMExport({
     const read = window.APSResourceSession.useQuery(signal => window.RunDecisionAPI.process(runRef, q, signal), [runRef, key, result.meta.snapshot_ref], enabled && !paused);
     const detail = read.result,
       data = detail && detail.data;
+    React.useEffect(() => {
+      const root = paneRef.current;
+      if (!root || !read.loading || !pendingFocus.current) return undefined;
+      const doc = root.ownerDocument;
+      const moved = event => {
+        const intent = pendingFocus.current;
+        if (!intent) return;
+        if (event.type === 'focusin' && (event.target === doc.body || event.target === doc.documentElement || event.target === intent.node)) return;
+        if (event.type === 'pointerdown' && intent.node.contains(event.target)) return;
+        pendingFocus.current = null;
+      };
+      doc.addEventListener('focusin', moved);
+      doc.addEventListener('pointerdown', moved);
+      return () => {
+        doc.removeEventListener('focusin', moved);
+        doc.removeEventListener('pointerdown', moved);
+      };
+    }, [read.loading]);
+    React.useEffect(() => {
+      const root = paneRef.current,
+        intent = pendingFocus.current;
+      if (!root || read.loading || !intent) return;
+      pendingFocus.current = null;
+      const doc = root.ownerDocument;
+      if (![null, doc.body, doc.documentElement, intent.node].includes(doc.activeElement)) return;
+      if (intent.inRecords && !recordsRef.current.open) return;
+      if (intent.inCatalog && !catalogRef.current.open) return;
+      const byLabel = label => label ? root.querySelector('[aria-label="' + label + '"]:not(:disabled)') : null;
+      let target = root.contains(intent.node) && !intent.node.disabled ? intent.node : byLabel(intent.label);
+      if (!target && intent.candidateRef) target = root.querySelector('[data-process-candidate="' + intent.candidateRef + '"] button:not(:disabled)');
+      if (!target && intent.paging) target = byLabel('优化过程记录上一页') || byLabel('优化过程记录下一页') || recordsRef.current.querySelector(':scope > summary');
+      if (!target && intent.inCatalog) target = catalogRef.current.querySelector(':scope > summary');
+      if (!target && intent.inRecords) target = recordsRef.current.querySelector(':scope > summary');
+      if (target) target.focus({
+        preventScroll: true
+      });
+    }, [read.loading, data, read.error, paused]);
     function update(change, paging = false) {
+      const root = paneRef.current,
+        active = root && root.ownerDocument.activeElement;
+      if (root && root.contains(active)) {
+        const row = active.closest('[data-process-candidate]');
+        pendingFocus.current = {
+          node: active,
+          label: active.getAttribute('aria-label'),
+          candidateRef: row && row.getAttribute('data-process-candidate'),
+          paging,
+          inRecords: recordsRef.current.contains(active),
+          inCatalog: catalogRef.current.contains(active)
+        };
+      }
       const next = {
         ...q,
         ...change,
@@ -41728,7 +41658,10 @@ function SMExport({
     }
     if (!enabled) return null;
     const sorts = q.record_kind === 'progress' ? [['elapsed_ms', '累计耗时'], ['event_index', '保存事件顺序'], ['primary_value', '主目标值']] : [['rank', '动作顺序'], ['elapsed_ms', '动作耗时']];
+    const selectedObjective = data ? data.selected_objective.name : q.objective || '';
+    const statusText = read.loading ? '正在读取保存的优化过程。' : paused ? '过程读取已取消，点击刷新继续。' : '优化过程暂未完成读取。';
     return /*#__PURE__*/React.createElement("section", {
+      ref: paneRef,
       className: "rd-process",
       "aria-label": "\u5019\u9009\u4F18\u5316\u8FC7\u7A0B",
       "data-process-anchor": data ? data.candidate.candidate_ref : q.process_candidate_ref
@@ -41765,18 +41698,21 @@ function SMExport({
       data: data
     }), /*#__PURE__*/React.createElement(C.Reasons, {
       rows: detail.warnings
-    }), /*#__PURE__*/React.createElement("div", {
+    })), /*#__PURE__*/React.createElement("div", {
       className: "rd-process-objective"
     }, /*#__PURE__*/React.createElement("label", null, "\u4F18\u5316\u65B9\u5411", /*#__PURE__*/React.createElement("select", {
       "aria-label": "\u4F18\u5316\u65B9\u5411",
-      value: data.selected_objective.name,
+      value: selectedObjective,
+      disabled: !data,
       onChange: event => update({
         objective: event.target.value
       })
-    }, data.objectives.map(descriptor => /*#__PURE__*/React.createElement("option", {
+    }, data ? data.objectives.map(descriptor => /*#__PURE__*/React.createElement("option", {
       key: descriptor.name,
       value: descriptor.name
-    }, descriptor.label))))), /*#__PURE__*/React.createElement(window.RunDecisionProcessChart.Chart, {
+    }, descriptor.label)) : /*#__PURE__*/React.createElement("option", {
+      value: selectedObjective
+    }, statusText)))), data && /*#__PURE__*/React.createElement(window.RunDecisionProcessChart.Chart, {
       key: data.selected_objective.name,
       progress: data.progress,
       objective: data.selected_objective,
@@ -41787,7 +41723,8 @@ function SMExport({
     }), /*#__PURE__*/React.createElement(Coverage, {
       data: data
     }), /*#__PURE__*/React.createElement("details", {
-      className: "rd-process-records"
+      className: "rd-process-records",
+      ref: recordsRef
     }, /*#__PURE__*/React.createElement("summary", null, "\u8BA1\u7B97\u660E\u7EC6"), /*#__PURE__*/React.createElement("div", {
       className: "rd-process-record-tools"
     }, /*#__PURE__*/React.createElement("div", {
@@ -41797,10 +41734,12 @@ function SMExport({
     }, [['attempts', '搜索动作'], ['progress', '曲线数据']].map(([value, label]) => /*#__PURE__*/React.createElement(C.Button, {
       key: value,
       "aria-pressed": q.record_kind === value,
+      disabled: read.loading,
       onClick: () => recordKind(value)
     }, label))), /*#__PURE__*/React.createElement("label", null, "\u6392\u5E8F", /*#__PURE__*/React.createElement("select", {
       "aria-label": "\u4F18\u5316\u8FC7\u7A0B\u6392\u5E8F",
       value: q.sort,
+      disabled: read.loading,
       onChange: event => update({
         sort: event.target.value
       })
@@ -41810,6 +41749,7 @@ function SMExport({
     }, label)))), /*#__PURE__*/React.createElement("label", null, "\u987A\u5E8F", /*#__PURE__*/React.createElement("select", {
       "aria-label": "\u4F18\u5316\u8FC7\u7A0B\u987A\u5E8F",
       value: q.order,
+      disabled: read.loading,
       onChange: event => update({
         order: event.target.value
       })
@@ -41817,19 +41757,23 @@ function SMExport({
       value: "asc"
     }, "\u5347\u5E8F"), /*#__PURE__*/React.createElement("option", {
       value: "desc"
-    }, "\u964D\u5E8F")))), data.items.length ? /*#__PURE__*/React.createElement(Records, {
+    }, "\u964D\u5E8F")))), data ? data.items.length ? /*#__PURE__*/React.createElement(Records, {
       data: data
     }) : /*#__PURE__*/React.createElement("p", {
       className: "rc-empty"
-    }, "\u8FD9\u4E2A\u65B9\u5411\u6CA1\u6709\u4FDD\u5B58\u5F53\u524D\u7C7B\u522B\u7684\u8FC7\u7A0B\u8BB0\u5F55\u3002"), /*#__PURE__*/React.createElement("div", {
+    }, "\u8FD9\u4E2A\u65B9\u5411\u6CA1\u6709\u4FDD\u5B58\u5F53\u524D\u7C7B\u522B\u7684\u8FC7\u7A0B\u8BB0\u5F55\u3002") : /*#__PURE__*/React.createElement("p", {
+      className: "rc-muted",
+      role: "status"
+    }, statusText), /*#__PURE__*/React.createElement("div", {
       className: "rc-heading rd-detail-pages"
     }, /*#__PURE__*/React.createElement("span", {
       className: "rc-muted"
-    }, "\u5F53\u524D\u7C7B\u522B ", data.page.total, " \u6761 \xB7 \u672C\u9875 ", data.items.length, " \u6761"), /*#__PURE__*/React.createElement("div", {
+    }, data ? '当前类别 ' + data.page.total + ' 条 · 本页 ' + data.items.length + ' 条' : statusText), /*#__PURE__*/React.createElement("div", {
       className: "rc-tools"
     }, /*#__PURE__*/React.createElement("label", null, "\u6BCF\u9875", /*#__PURE__*/React.createElement("select", {
       "aria-label": "\u4F18\u5316\u8FC7\u7A0B\u6BCF\u9875\u6761\u6570",
       value: q.size,
+      disabled: read.loading,
       onChange: event => update({
         size: Number(event.target.value)
       })
@@ -41839,26 +41783,29 @@ function SMExport({
       value: "50"
     }, "50 \u6761"))), /*#__PURE__*/React.createElement(C.Pager, {
       label: "\u4F18\u5316\u8FC7\u7A0B\u8BB0\u5F55",
-      page: data.page.number,
-      pages: Math.max(1, Math.ceil(data.page.total / data.page.size)),
-      disabled: read.loading,
+      page: data ? data.page.number : q.page,
+      pages: data ? Math.max(1, Math.ceil(data.page.total / data.page.size)) : undefined,
+      disabled: !data,
       onPage: page => update({
         page
       }, true)
     }))), /*#__PURE__*/React.createElement("details", {
-      className: "rd-process-catalog"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u5168\u90E8\u5019\u9009\u7684\u6765\u6E90\u5B9A\u4F4D \xB7 ", data.candidates.length, " \u9879"), /*#__PURE__*/React.createElement(CandidateTable, {
+      className: "rd-process-catalog",
+      ref: catalogRef
+    }, /*#__PURE__*/React.createElement("summary", null, "\u5168\u90E8\u5019\u9009\u7684\u6765\u6E90\u5B9A\u4F4D", data ? ' · ' + data.candidates.length + ' 项' : ''), data ? /*#__PURE__*/React.createElement(CandidateTable, {
       data: data,
       overview: overview,
       anchorRef: data.candidate.candidate_ref,
       onAnchor: candidateRef => update({
         process_candidate_ref: candidateRef
       })
-    })), /*#__PURE__*/React.createElement(Stages, {
-      values: data.stages
+    }) : /*#__PURE__*/React.createElement("p", {
+      className: "rc-muted"
+    }, statusText)), /*#__PURE__*/React.createElement(Stages, {
+      values: data ? data.stages : null
     }), /*#__PURE__*/React.createElement(Source, {
       data: data
-    }))));
+    })));
   }
   window.RunDecisionProcess = {
     Pane,
@@ -44960,7 +44907,7 @@ function SMExport({
     if (baseline) check(typeof v.interval_comparable === 'boolean' && (['internal', 'external'].includes(v.source) || v.source === null && v.data_gaps.some(gap => gap.field === 'source')));else check(time(v.start) && time(v.end) && ['internal', 'external'].includes(v.source) && typeof v.locked === 'boolean');
   }
   function comparison(row, q, seen, segments, candidateRefs) {
-    check(shape(row, ['operation_ref', 'row_ref', 'batch_ref', 'batch_label', 'part_label', 'sequence', 'process_label', 'process_type_ref', 'process_type_label', 'piece_id', 'quantity', 'batch_quantity', 'due_date', 'execution_at_generation', 'data_gaps', 'candidate', 'baseline_segments', 'selected_at_admission', 'candidate_operation_status', 'status', 'comparison_available', 'delta', 'execution_affected', 'improvement_assessment', 'reasons']) && ref(row.operation_ref) && !seen.has(row.operation_ref) && nullable(ref)(row.batch_ref) && (!q.batch_ref || row.batch_ref === q.batch_ref) && typeof row.selected_at_admission === 'boolean' && typeof row.execution_affected === 'boolean' && row.improvement_assessment === null && statuses.includes(row.status) && ['batch_label', 'part_label', 'process_label', 'process_type_label', 'due_date'].every(k => nullable(text)(row[k])) && A.quantityContext(row, true) && nullable(ref)(row.process_type_ref) && Array.isArray(row.reasons) && row.reasons.every(reason) && Array.isArray(row.baseline_segments));
+    check(shape(row, ['operation_ref', 'row_ref', 'batch_ref', 'batch_label', 'part_label', 'sequence', 'process_label', 'process_type_ref', 'process_type_label', 'piece_id', 'quantity', 'batch_quantity', 'due_date', 'due_state', 'due_issue', 'execution_at_generation', 'data_gaps', 'candidate', 'baseline_segments', 'selected_at_admission', 'candidate_operation_status', 'status', 'comparison_available', 'delta', 'execution_affected', 'improvement_assessment', 'reasons']) && ref(row.operation_ref) && !seen.has(row.operation_ref) && nullable(ref)(row.batch_ref) && (!q.batch_ref || row.batch_ref === q.batch_ref) && typeof row.selected_at_admission === 'boolean' && typeof row.execution_affected === 'boolean' && row.improvement_assessment === null && statuses.includes(row.status) && ['batch_label', 'part_label', 'process_label', 'process_type_label'].every(k => nullable(text)(row[k])) && window.DeliveryProjectionContract.dueFields(row) && A.quantityContext(row, true) && nullable(ref)(row.process_type_ref) && Array.isArray(row.reasons) && row.reasons.every(reason) && Array.isArray(row.baseline_segments));
     seen.add(row.operation_ref);
     for (const value of row.baseline_segments) {
       interval(value, true);
@@ -45003,7 +44950,7 @@ function SMExport({
     if (!q.range_start && !q.batch_ref) check(d.operation_count === d.full_operation_count);
     const g = d.generation,
       wg = workspace.generation;
-    check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated', 'input']) && ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated'].every(k => g[k] === wg[k]) && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission' && g.current_entities_consulted === false && g.formal_version_allocated === false && object(g.input) && Object.keys(wg.input).every(k => equal(g.input[k], wg.input[k])));
+    check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'input']) && ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis'].every(k => g[k] === wg[k]) && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission' && object(g.input) && Object.keys(wg.input).every(k => equal(g.input[k], wg.input[k])));
     const b = d.baseline,
       seen = new Set(),
       segments = new Set(),
@@ -47036,7 +46983,7 @@ function SMExport({
     check(window.RunGenerationContract.runOptions(s.run_options));
   }
   function run(v) {
-    check(shape(v, ['run_ref', 'state', 'stage', 'accepted_at', 'started_at', 'finished_at', 'candidate_count', 'task_count', 'task_count_basis', 'counts_final', 'scope_summary', 'recovery_required', 'recovery_reason', 'error', 'completion_semantics', 'constraint_verification', 'task_content_verification']) && ref(v.run_ref) && states.includes(v.state) && time(v.accepted_at) && ['started_at', 'finished_at'].every(k => v[k] === null || time(v[k])) && count(v.candidate_count) && count(v.task_count) && v.task_count_basis === 'persisted_rows_across_candidates' && v.completion_semantics === 'execution_state_only' && v.constraint_verification === 'not_checked_by_history' && v.task_content_verification === 'candidate_workspace_required');
+    check(shape(v, ['run_ref', 'state', 'stage', 'accepted_at', 'started_at', 'finished_at', 'candidate_count', 'task_count', 'task_count_basis', 'counts_final', 'scope_summary', 'recovery_required', 'recovery_reason', 'error']) && ref(v.run_ref) && states.includes(v.state) && time(v.accepted_at) && ['started_at', 'finished_at'].every(k => v[k] === null || time(v[k])) && count(v.candidate_count) && count(v.task_count) && v.task_count_basis === 'persisted_rows_across_candidates');
     const terminal = !['queued', 'running'].includes(v.state),
       succeeded = ['complete', 'partial'].includes(v.state);
     check(v.counts_final === terminal && v.finished_at !== null === terminal && (terminal ? v.stage === 'finished' : [v.state === 'queued' ? 'queued' : 'computing', 'awaiting_reconciliation'].includes(v.stage)) && (v.state !== 'queued' || v.started_at === null) && (v.state !== 'running' || v.started_at !== null) && (v.started_at === null || timeKey(v.started_at) >= timeKey(v.accepted_at)) && (v.finished_at === null || timeKey(v.finished_at) >= timeKey(v.started_at || v.accepted_at)) && (succeeded ? v.candidate_count > 0 : v.candidate_count === 0 && v.task_count === 0) && v.recovery_required === (v.stage === 'awaiting_reconciliation'));
@@ -48121,10 +48068,8 @@ function SMExport({
     priority_weight: '优先级权重',
     due_weight: '交期权重',
     ready_weight: '齐套权重',
-    prefer_primary_skill: '优先主技能',
     dispatch_mode: '工序派工方式',
     dispatch_rule: '工序派工规则',
-    adopted_dispatch_rule: '实际采用派工规则',
     algo_mode: '算法模式',
     ortools_enabled: '启用约束求解',
     ortools_time_limit_seconds: '约束求解时限（秒）',
@@ -48133,10 +48078,6 @@ function SMExport({
     graph_critical_weight: '关键路径权重',
     graph_impact_weight: '影响范围权重',
     graph_downstream_weight: '后续工序权重',
-    graph_candidate_weight_count: '图分析候选数量',
-    graph_selection_policy: '图分析选优策略',
-    graph_overdue_tolerance_count: '超期批次数容差',
-    graph_tardiness_tolerance_ratio: '总拖期比例容差',
     objective_name: '目标名称',
     generation_policy_version: '候选生成策略版本',
     selection_policy_version: '推荐选择策略版本',
@@ -50072,7 +50013,7 @@ function SMExport({
       rows = new Set(),
       historyOwners = new Map();
     d.tasks.forEach(t => {
-      check(fields(t, ['task_ref', 'row_ref', 'operation_ref', 'source_row_ref', 'source_task_ref', 'batch_ref', 'batch_id', 'part_no', 'part_name', 'process_label', 'sequence', 'piece_id', 'source', 'quantity', 'batch_quantity', 'priority', 'due_date', 'original', 'hours', 'execution', 'execution_at_creation', 'predecessor_refs', 'predecessor_operation_refs', 'edit_context', 'issues', 'data_gaps', 'changed']));
+      check(fields(t, ['task_ref', 'row_ref', 'operation_ref', 'source_row_ref', 'source_task_ref', 'batch_ref', 'batch_id', 'part_no', 'part_name', 'process_label', 'sequence', 'piece_id', 'source', 'quantity', 'batch_quantity', 'priority', 'due_date', 'due_state', 'due_issue', 'original', 'hours', 'execution', 'execution_at_creation', 'predecessor_refs', 'predecessor_operation_refs', 'edit_context', 'issues', 'data_gaps', 'changed']));
       check(ref(t.task_ref) && ref(t.row_ref) && ref(t.operation_ref) && ref(t.source_row_ref) && (t.source_task_ref === null || ref(t.source_task_ref)) && !seen.has(t.task_ref) && !rows.has(t.row_ref) && t.draft_ref === d.draft_ref);
       seen.add(t.task_ref);
       rows.add(t.row_ref);
@@ -50083,6 +50024,8 @@ function SMExport({
         check(['completed_actuals', 'merged_external_actuals'].includes(t.execution_anchor.basis) && (t.execution_anchor.basis !== 'merged_external_actuals' || t.source === 'external') && typeof t.execution_anchor.message === 'string' && t.execution_anchor.message.length > 0 && ['machine_ref', 'operator_ref', 'start', 'end'].every(k => t.execution_anchor[k] === t[k]) && t.edit_context.can_change === false, '实际执行固定安排不完整，请刷新试调。');
       }
       if (d.base.candidate_ref && !d.scenario_ref) check(t.source_task_ref === null);
+      // 交期与候选、基线和正式参考同一精确合同：明确日期、9999-12-31 未指定、缺失或无效各有确定组合。
+      check(window.DeliveryProjectionContract.dueFields(t), '试调工序的交期资料不完整，请刷新试调。');
       check(['internal', 'external'].includes(t.source) && object(t.hours) && typeof t.changed === 'boolean' && Array.isArray(t.predecessor_refs) && Array.isArray(t.predecessor_operation_refs) && object(t.edit_context) && typeof t.edit_context.can_change === 'boolean');
       if (d.status !== 'editing') check(t.edit_context.can_change === false);
       issues(t.issues);
@@ -50105,7 +50048,7 @@ function SMExport({
     deliverySummary(d.comparison.before_delivery_summary, batches.length);
     check(batchRefs.size === batches.length);
     batches.forEach(r => {
-      check(ref(r.batch_ref) && [r.baseline_finish, r.finish, r.partial_baseline_finish, r.partial_finish].every(v => v === null || time(v)) && ['on_time', 'overdue', 'unknown', 'not_applicable'].includes(r.risk) && ['specified', 'unspecified', 'invalid'].includes(r.due_state) && (r.due_issue === null || ['due_date_missing', 'due_date_invalid'].includes(r.due_issue)) && ['complete', 'deferred', 'incomplete', 'unknown'].includes(r.completion_state) && [r.late_hours, r.improvement_hours, r.finish_delta_hours, r.delay_delta_hours].every(measure) && typeof r.changed === 'boolean' && typeof r.moved === 'boolean' && Array.isArray(r.change_kinds) && r.change_kinds.every(v => typeof v === 'string'));
+      check(ref(r.batch_ref) && [r.baseline_finish, r.finish, r.partial_baseline_finish, r.partial_finish].every(v => v === null || time(v)) && ['on_time', 'overdue', 'unknown', 'not_applicable'].includes(r.risk) && window.DeliveryProjectionContract.dueFields(r) && ['complete', 'deferred', 'incomplete', 'unknown'].includes(r.completion_state) && [r.late_hours, r.improvement_hours, r.finish_delta_hours, r.delay_delta_hours].every(measure) && typeof r.changed === 'boolean' && typeof r.moved === 'boolean' && Array.isArray(r.change_kinds) && r.change_kinds.every(v => typeof v === 'string'));
       deliveryRow(r.before, r.batch_ref);
       deliveryRow(r.after, r.batch_ref);
     });
@@ -50530,9 +50473,8 @@ function SMExport({
   }
   function csv(data) {
     const c = data.comparison;
-    const issues = data.validation.issues.filter(row => row.code !== 'scenario_adoption_not_connected');
     const constraintStatus = label(data.validation.constraints_status, states);
-    const constraints = '约束检查：' + constraintStatus + '；整体状态：' + constraintStatus + '；问题 ' + issues.length + ' 项';
+    const constraints = '约束检查：' + constraintStatus + '；整体状态：' + constraintStatus + '；问题 ' + data.validation.issues.length + ' 项';
     const common = [data.name || '未命名试调草稿', label(data.status, states), constraints, data.base_identity.display_name || '上次排产的候选方案', c.changeovers];
     const evidence = [data.draft_ref, data.scenario_ref, data.base.plan_ref ? '计划：' + data.base.plan_ref : '排产候选：' + data.base.candidate_ref, data.scenario_ref ? data.saved_at || '未记录' : undefined, note(data)];
     const rows = c.batches.map(batch => common.concat([batch.batch_id, batch.part_name, batch.quantity, label(batch.priority, priorities), batch.due_date, batch.baseline_finish, batch.finish, batch.late_hours, batch.improvement_hours, batch.changed, batch.moved, label(batch.risk, risks), T.due_date(batch.due_date, batch.due_state, batch.due_issue), T.delivery_completion_states[batch.before.completion_state], T.delivery_completion_states[batch.after.completion_state], batch.partial_baseline_finish, batch.partial_finish, batch.before.ordinary_unscheduled_operation_count, batch.before.deferred_operation_count, batch.after.ordinary_unscheduled_operation_count, batch.after.deferred_operation_count], evidence));
@@ -50706,12 +50648,9 @@ function SMExport({
     rows,
     onSelect
   }) {
-    // Older saved snapshots include an adoption capability note as a blocker.
-    // Adoption has its own preview/guard; this note is not a task constraint.
-    const constraints = rows.filter(row => row.code !== 'scenario_adoption_not_connected');
-    if (!constraints.length) return null;
+    if (!rows.length) return null;
     return /*#__PURE__*/React.createElement(Table, {
-      rows: constraints,
+      rows: rows,
       size: 10,
       label: "\u7EA6\u675F\u95EE\u9898",
       columns: [['级别', r => r.severity === 'warning' ? '提示' : '冲突'], ['问题', r => r.message], ['关联', r => r.task_ref && onSelect ? /*#__PURE__*/React.createElement(Button, {
@@ -52136,7 +52075,7 @@ function SMExport({
       normal: '普通',
       urgent: '急件',
       critical: '特急'
-    }[task.priority] || '未知'], ['交期', task.due_date || '未记录'], ['来源', task.source === 'internal' ? '自制' : '外协'], ['当前设备', name(task.machine_ref)], ['当前人员', name(task.operator_ref)], ['预计开工', U.timeLabel(task.start)], ['预计完工', U.timeLabel(task.end)]].map(([label, value]) => /*#__PURE__*/React.createElement(React.Fragment, {
+    }[task.priority] || '未知'], ['交期', window.WorkbenchTerms.due_date(task.due_date, task.due_state, task.due_issue)], ['来源', task.source === 'internal' ? '自制' : '外协'], ['当前设备', name(task.machine_ref)], ['当前人员', name(task.operator_ref)], ['预计开工', U.timeLabel(task.start)], ['预计完工', U.timeLabel(task.end)]].map(([label, value]) => /*#__PURE__*/React.createElement(React.Fragment, {
       key: label
     }, /*#__PURE__*/React.createElement("dt", null, label), /*#__PURE__*/React.createElement("dd", null, value)))), /*#__PURE__*/React.createElement("div", {
       className: "tt-tools"
@@ -63419,7 +63358,7 @@ function SystemLiveOverview({
     A.summary(d.candidate, scope.run_ref);
     C.check(d.candidate.candidate_ref === scope.candidate_ref, '返回的候选与所选方案不一致，请重新选择。');
     const g = d.generation;
-    C.check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated', 'input']) && g.run_ref === d.candidate.run_ref && A.time(g.accepted_at) && (g.finished_at === null || A.time(g.finished_at)) && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission' && g.current_entities_consulted === false && g.formal_version_allocated === false);
+    C.check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'input']) && g.run_ref === d.candidate.run_ref && A.time(g.accepted_at) && (g.finished_at === null || A.time(g.finished_at)) && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission');
     const input = g.input;
     C.check(shape(input, ['batch_refs', 'start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'], ['material_strategy', 'hold_window', 'time_budget_seconds']) && Array.isArray(input.batch_refs) && input.batch_refs.every(C.ref) && new Set(input.batch_refs).size === input.batch_refs.length && ['start_date', 'end_date'].every(key => A.time(input[key] + 'T00:00:00')) && input.start_date <= input.end_date && typeof input.ready_check === 'boolean' && ['auto_assign', 'exclude'].includes(input.missing_resource_policy) && input.completed_policy === 'preserve_actuals' && (input.material_strategy === undefined || ['strict', 'stage'].includes(input.material_strategy)) && (input.time_budget_seconds === undefined || window.RunGenerationContract.budget(input.time_budget_seconds)));
     const hold = input.hold_window;
@@ -63447,8 +63386,7 @@ function SystemLiveOverview({
       batch_scope: 'admission_selected_batches',
       delivery: 'complete_captured_batch_operations',
       resources: 'same_range_daily_peak_available_occupancy',
-      changeovers: 'same_range_scheduled_operation_type_changes',
-      current_entities_consulted: false
+      changeovers: 'same_range_scheduled_operation_type_changes'
     }) && Array.isArray(d.batches) && d.batches.length === expected.length && C.equal(d.batches.map(row => row.batch_ref).sort(), expected) && Array.isArray(d.resources) && typeof d.resource_scope_complete === 'boolean' && count(d.resource_scope_unknown_rows) && d.resource_scope_complete === (d.resource_scope_unknown_rows === 0));
     d.batches.forEach(row => {
       delivery(row.before, d.baseline.available);

@@ -76,7 +76,7 @@
       {task.execution_anchor && <p className="tt-notice">{task.execution_anchor.message}</p>}
       <dl className="tt-facts">{[['分件', task.piece_id || window.WorkbenchTerms.shared_operation], ['原目标量', U.number(task.quantity)], ['批次数量', U.number(task.batch_quantity)],
         ...(window.PointContract.isPoint(task) ? [['安排类型', '零工时工序'], ['本工序占用', '0 小时 · 不占设备人员']] : []),
-        ['优先级', { normal: '普通', urgent: '急件', critical: '特急' }[task.priority] || '未知'], ['交期', task.due_date || '未记录'],
+        ['优先级', { normal: '普通', urgent: '急件', critical: '特急' }[task.priority] || '未知'], ['交期', window.WorkbenchTerms.due_date(task.due_date, task.due_state, task.due_issue)],
         ['来源', task.source === 'internal' ? '自制' : '外协'], ['当前设备', name(task.machine_ref)], ['当前人员', name(task.operator_ref)],
         ['预计开工', U.timeLabel(task.start)], ['预计完工', U.timeLabel(task.end)]].map(([label, value]) =>
           <React.Fragment key={label}><dt>{label}</dt><dd>{value}</dd></React.Fragment>)}</dl>

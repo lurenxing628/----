@@ -119,7 +119,7 @@
     const seen = new Set(), rows = new Set(), historyOwners = new Map();
     d.tasks.forEach(t => {
       check(fields(t, ['task_ref', 'row_ref', 'operation_ref', 'source_row_ref', 'source_task_ref', 'batch_ref', 'batch_id', 'part_no', 'part_name',
-        'process_label', 'sequence', 'piece_id', 'source', 'quantity', 'batch_quantity', 'priority', 'due_date', 'original', 'hours', 'execution',
+        'process_label', 'sequence', 'piece_id', 'source', 'quantity', 'batch_quantity', 'priority', 'due_date', 'due_state', 'due_issue', 'original', 'hours', 'execution',
         'execution_at_creation', 'predecessor_refs', 'predecessor_operation_refs', 'edit_context', 'issues', 'data_gaps', 'changed']));
       check(ref(t.task_ref) && ref(t.row_ref) && ref(t.operation_ref) && ref(t.source_row_ref) && (t.source_task_ref === null || ref(t.source_task_ref))
         && !seen.has(t.task_ref) && !rows.has(t.row_ref) && t.draft_ref === d.draft_ref);
@@ -133,6 +133,8 @@
           && t.edit_context.can_change === false, '实际执行固定安排不完整，请刷新试调。');
       }
       if (d.base.candidate_ref && !d.scenario_ref) check(t.source_task_ref === null);
+      // 交期与候选、基线和正式参考同一精确合同：明确日期、9999-12-31 未指定、缺失或无效各有确定组合。
+      check(window.DeliveryProjectionContract.dueFields(t), '试调工序的交期资料不完整，请刷新试调。');
       check(['internal', 'external'].includes(t.source) && object(t.hours) && typeof t.changed === 'boolean'
         && Array.isArray(t.predecessor_refs) && Array.isArray(t.predecessor_operation_refs)
         && object(t.edit_context) && typeof t.edit_context.can_change === 'boolean');
@@ -157,9 +159,7 @@
     check(batchRefs.size === batches.length);
     batches.forEach(r => {
       check(ref(r.batch_ref) && [r.baseline_finish, r.finish, r.partial_baseline_finish, r.partial_finish].every(v => v === null || time(v))
-        && ['on_time', 'overdue', 'unknown', 'not_applicable'].includes(r.risk)
-        && ['specified', 'unspecified', 'invalid'].includes(r.due_state)
-        && (r.due_issue === null || ['due_date_missing', 'due_date_invalid'].includes(r.due_issue))
+        && ['on_time', 'overdue', 'unknown', 'not_applicable'].includes(r.risk) && window.DeliveryProjectionContract.dueFields(r)
         && ['complete', 'deferred', 'incomplete', 'unknown'].includes(r.completion_state)
         && [r.late_hours, r.improvement_hours, r.finish_delta_hours, r.delay_delta_hours].every(measure)
         && typeof r.changed === 'boolean' && typeof r.moved === 'boolean' && Array.isArray(r.change_kinds)

@@ -1,9 +1,8 @@
 (function () {
   'use strict';
-  const defaults = () => [{ start: "08:30", end: "11:50", day_offset: 0 }, { start: "13:30", end: "17:30", day_offset: 0 }];
   const clock = value => typeof value === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
   const minutes = value => Number(value.slice(0, 2)) * 60 + Number(value.slice(3));
-  const clone = value => value == null ? null : value.map(row => ({ ...row }));
+  const clone = value => value.map(row => ({ ...row }));
   function bounds(row) {
     const start = minutes(row.start), end = minutes(row.end), offset = row.day_offset * 1440;
     return [start + offset, end + offset + (end <= start ? 1440 : 0)];
@@ -22,6 +21,9 @@
     }
     return null;
   }
+  // 读边界校验后端给的时段列表（validate 已拒绝非数组）；默认工作时间还必须至少有一段。全局日历与个人日历共用。
+  const valid = value => !validate(value);
+  const validDefault = value => valid(value) && value.length > 0;
   function hours(value) {
     return validate(value) ? null : value.reduce((sum, row) => { const [low, high] = bounds(row); return sum + high - low; }, 0) / 60;
   }
@@ -33,5 +35,5 @@
   // 工作日却没有可排工时：全局日历和个人日历编辑这一天时按草稿实时显示，不拦保存。事实句与日历文件导入预检
   // （calendar_files/files.py 的 zero_hour_workday_note）相同，后半句的操作提示针对表单控件。
   const zeroHoursNote = '这一天是工作日，但可排工时是 0，排产时一道工序也排不进来。要上班请填写工作时间；要休息请改选休息。';
-  window.APSWorkPeriods = { defaults, clone, validate, hours, describe, bounds, duration, zeroHoursNote };
+  window.APSWorkPeriods = { clone, validate, valid, validDefault, hours, describe, bounds, duration, zeroHoursNote };
 })();

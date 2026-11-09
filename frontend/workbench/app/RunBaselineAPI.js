@@ -39,12 +39,12 @@
     else check(time(v.start) && time(v.end) && ['internal', 'external'].includes(v.source) && typeof v.locked === 'boolean');
   }
   function comparison(row, q, seen, segments, candidateRefs) {
-    check(shape(row, ['operation_ref', 'row_ref', 'batch_ref', 'batch_label', 'part_label', 'sequence', 'process_label', 'process_type_ref', 'process_type_label', 'piece_id', 'quantity', 'batch_quantity', 'due_date',
+    check(shape(row, ['operation_ref', 'row_ref', 'batch_ref', 'batch_label', 'part_label', 'sequence', 'process_label', 'process_type_ref', 'process_type_label', 'piece_id', 'quantity', 'batch_quantity', 'due_date', 'due_state', 'due_issue',
       'execution_at_generation', 'data_gaps', 'candidate', 'baseline_segments', 'selected_at_admission', 'candidate_operation_status', 'status',
       'comparison_available', 'delta', 'execution_affected', 'improvement_assessment', 'reasons']) && ref(row.operation_ref) && !seen.has(row.operation_ref)
       && nullable(ref)(row.batch_ref) && (!q.batch_ref || row.batch_ref === q.batch_ref) && typeof row.selected_at_admission === 'boolean'
       && typeof row.execution_affected === 'boolean' && row.improvement_assessment === null && statuses.includes(row.status)
-      && ['batch_label', 'part_label', 'process_label', 'process_type_label', 'due_date'].every(k => nullable(text)(row[k])) && A.quantityContext(row, true)
+      && ['batch_label', 'part_label', 'process_label', 'process_type_label'].every(k => nullable(text)(row[k])) && window.DeliveryProjectionContract.dueFields(row) && A.quantityContext(row, true)
       && nullable(ref)(row.process_type_ref)
       && Array.isArray(row.reasons) && row.reasons.every(reason) && Array.isArray(row.baseline_segments));
     seen.add(row.operation_ref);
@@ -76,10 +76,10 @@
       unplanned_policy: 'included_without_time_interval', unknown_or_zero_interval_policy: 'included_without_time_interval' }));
     if (!q.range_start && !q.batch_ref) check(d.operation_count === d.full_operation_count);
     const g = d.generation, wg = workspace.generation;
-    check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated', 'input'])
-      && ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated'].every(k => g[k] === wg[k])
+    check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'input'])
+      && ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis'].every(k => g[k] === wg[k])
       && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission'
-      && g.current_entities_consulted === false && g.formal_version_allocated === false && object(g.input)
+      && object(g.input)
       && Object.keys(wg.input).every(k => equal(g.input[k], wg.input[k])));
     const b = d.baseline, seen = new Set(), segments = new Set(), candidateRefs = new Set();
     check(shape(b, ['baseline_ref', 'version', 'captured_at', 'kind', 'available', 'captured_task_count', 'comparison_available', 'reason'])

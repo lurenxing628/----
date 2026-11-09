@@ -46,22 +46,12 @@
       <div className="chead"><h3 style={{ margin: 0 }}>{day.date} · {day.explicit ? '已单独设置' : '未单独设置'}</h3></div>
       <Segment label="这一天" value={draft.type} disabled={disabled} options={[['work', '上班'], ['rest', '休息']]}
         onChange={type => setDraft(O.switchType(day, draft, type))} />
-      {!rest && draft.periods == null && <div className="fgrid">
-        <Field label="班次开始" path="fields.shiftStart" error={error} required>
-          <input type="time" value={draft.shiftStart} disabled={disabled}
-            onChange={event => setDraft({ ...draft, shiftStart: event.target.value })} /></Field>
-        <Field label="班次结束" path="fields.shiftEnd" error={error}>
-          <input type="time" value={draft.shiftEnd} disabled={disabled}
-            onChange={event => setDraft({ ...draft, shiftEnd: event.target.value })} /></Field>
-      </div>}
-      {!rest && <window.WorkPeriodFields value={draft.periods} start={draft.shiftStart} end={draft.shiftEnd} disabled={disabled}
+      {!rest && <window.WorkPeriodFields value={draft.periods} path="fields.periods" error={error} disabled={disabled}
         onChange={periods => setDraft({ ...draft, periods })} />}
       <Issues issues={zeroHours ? [window.APSWorkPeriods.zeroHoursNote] : []} />
-      {!rest && draft.periods == null && <p className="iohint">工时由班次起止算出来，不用单独填。结束时刻早于开始时刻表示跨零点的夜班。
-        留空结束时刻时，由系统按默认班次时长推算。</p>}
       <div className="fgrid">
-        <Field label="效率（%）" path="fields.eff" error={error} required>
-          <input type="number" min="0" max="200" step="any" data-wb-step="5" value={draft.eff} disabled={disabled}
+        <Field label="效率（%）" path="fields.eff" error={error} required={!rest}>
+          <input type="number" min="0" max="200" step="any" data-wb-step="5" value={draft.eff} disabled={disabled || rest}
             onChange={event => setDraft({ ...draft, eff: event.target.value })} /></Field>
         <Field label="备注" path="fields.note" error={error}>
           <input type="text" value={draft.note} disabled={disabled}
@@ -223,7 +213,7 @@
     const shownError = error || command.error;
     const activePaths = !editorData ? [] : mode === 'range' ? ['start_date', 'end_date']
       : current && draft && !(clearing && (current.explicit || done))
-        ? [...(draft.type !== 'rest' && draft.periods == null ? ['fields.shiftStart', 'fields.shiftEnd'] : []), 'fields.eff', 'fields.note'] : [];
+        ? (draft.type === 'rest' ? ['fields.eff', 'fields.note'] : ['fields.periods', 'fields.eff', 'fields.note']) : [];
     return <div className="plana resource-calendar wb-operator-calendar">
       <Modal title={entity.business_code + ' · ' + window.WorkbenchTerms.personal_calendar} icon="calendar-days" onClose={close} guardOwner={owner} locked={command.locked}
         footer={<Button onClick={close} reason={command.locked ? '结果还没确认，暂时不能关闭。' : ''}>{done ? '完成' : '关闭'}</Button>}>

@@ -12,6 +12,15 @@
     const base = value.slice(0, 19), instant = Date.parse(base + 'Z');
     return Number.isFinite(instant) && new Date(instant).toISOString().slice(0, 19) === base;
   }
+  const isoDate = value => text(value) && /^(?!0000)\d{4}-\d{2}-\d{2}$/.test(value) && time(value + 'T00:00:00');
+  // 交期三元组只有三种合法组合（后端 parse_stored_due_date 唯一产出）：明确日期、9999-12-31 未指定、缺失或无效。
+  // 交付行、候选/基线/正式计划工序与试调工序、试调对比批次都用这一份校验。
+  function dueFields(value) {
+    if (!object(value)) return false;
+    if (value.due_state === 'specified') return isoDate(value.due_date) && value.due_date !== '9999-12-31' && value.due_issue === null;
+    if (value.due_state === 'unspecified') return value.due_date === '9999-12-31' && value.due_issue === null;
+    return value.due_state === 'invalid' && value.due_date === null && ['due_date_missing', 'due_date_invalid'].includes(value.due_issue);
+  }
   const operationCounts = ['operation_count', 'scheduled_operation_count', 'unscheduled_operation_count', 'task_count',
     'invalid_task_count', 'deferred_operation_count', 'ordinary_unscheduled_operation_count'];
   const rowFields = ['batch_ref', 'batch_id', 'planned_finish', 'partial_planned_finish', 'due_date', 'due_state', 'due_issue',
@@ -19,12 +28,10 @@
   // The source owns completion, due boundaries and delay calculations. This boundary validates the saved projection.
   function row(value, countsNullable = false) {
     return fields(value, rowFields) && ref(value.batch_ref) && text(value.batch_id)
-      && ['overdue', 'on_time', 'unknown', 'not_applicable'].includes(value.risk)
-      && ['specified', 'unspecified', 'invalid'].includes(value.due_state)
-      && (value.due_issue === null || ['due_date_missing', 'due_date_invalid'].includes(value.due_issue))
+      && ['overdue', 'on_time', 'unknown', 'not_applicable'].includes(value.risk) && dueFields(value)
       && ['complete', 'deferred', 'incomplete', 'unknown'].includes(value.completion_state)
       && typeof value.schedule_complete === 'boolean' && nullable(time)(value.planned_finish) && nullable(time)(value.partial_planned_finish)
-      && (value.due_date === null || typeof value.due_date === 'string') && nullable(number)(value.delay_hours)
+      && nullable(number)(value.delay_hours)
       && nullable(value => typeof value === 'boolean')(value.is_overdue)
       && operationCounts.every(key => (countsNullable && key !== 'operation_count' ? nullable(count) : count)(value[key]))
       && Array.isArray(value.issues) && value.issues.every(text);
@@ -38,5 +45,5 @@
       && ['total_tardiness_hours', 'known_tardiness_hours'].every(key => nullable(number)(value[key]))
       && Array.isArray(value.known_batch_refs) && value.known_batch_refs.every(ref);
   }
-  window.DeliveryProjectionContract = Object.freeze({ row, summary, operationCounts });
+  window.DeliveryProjectionContract = Object.freeze({ row, summary, dueFields, operationCounts });
 })();

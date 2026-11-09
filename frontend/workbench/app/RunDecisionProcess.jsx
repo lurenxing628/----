@@ -5,15 +5,15 @@
   const queryKeys = ['process_candidate_ref', 'objective', 'record_kind', 'sort', 'order', 'page', 'size', 'snapshot_ref'];
   const stopLabels = { time_budget: '时间预算已用完', iteration_limit: '达到迭代上限', search_exhausted: '当前搜索已结束', baseline_scheduled: '保留原算法结果', all_candidates_rejected: '搜索候选全部被拒绝', no_improvement: '本阶段没有进一步改善', completed: '计算完成', reserved_for_later_phases: '为后续阶段保留预算', candidate_time_budget_reached: '候选预算已用完', disabled: '此阶段未启用', stages_exhausted: '可执行尝试已结束', graph_ready_uses_graph_candidate_phase: '改用按规则生成和调整排法的阶段' };
   const flagLabels = window.RunDecisionProcessChart.flagLabels;
-  const number = value => value === null || value === undefined ? '—' : window.WorkbenchFormat.number(value, { digits: 3, trim: true });
+  const number = value => value === null ? '—' : window.WorkbenchFormat.number(value, { digits: 3, trim: true });
   const savedText = value => value === null || value === undefined || value === '' ? '未记录' : String(value);
   const phaseText = window.RunDecisionProcessChart.phaseText;
   function Elapsed({ value }) { return <span title={value === null ? undefined : String(value) + ' ms'}>{value === null ? '—' : value < 1000 ? number(value) + ' 毫秒' : number(value / 1000) + ' 秒'}</span>; }
   function Primary({ value, objective }) { return <span title={value === null ? undefined : String(value)}>{number(value)}{value !== null && objective.unit && ' ' + objective.unit}</span>; }
-  function Score({ value, objective, fieldOrder }) {
+  function Score({ value, objective }) {
     return <details className="rd-process-facts"><summary>计算评分 · {value.length} 项</summary><dl>{value.map((item, index) => {
-      const definition = objective.score_fields.find(field => field.key === fieldOrder[index]);
-      return <div key={index}><dt>{definition ? definition.label : '分量 ' + (index + 1)}</dt><dd title={item === null ? undefined : String(item)}>{number(item)}{item !== null && definition && definition.unit && ' ' + definition.unit}</dd></div>;
+      const definition = objective.score_fields[index];
+      return <div key={definition.key}><dt>{definition.label}</dt><dd title={item === null ? undefined : String(item)}>{number(item)}{item !== null && definition.unit && ' ' + definition.unit}</dd></div>;
     })}</dl></details>;
   }
   const countLabels = [['actual_decoder_calls', '真实排法计算次数'], ['new_decisions', '新排法决策'], ['decision_reuses', '复用已核验决策'],
@@ -25,9 +25,9 @@
     return <><span>{window.RunDecisionProcessChart.sharedScopeText(scope)}</span><window.WorkbenchReference entries={{ '评价范围编号': scopeRef }} /></>;
   }
   function Origin({ origin, data }) {
-    return <><span>{phaseText(origin.phase)} · {objectiveLabel(data, origin.search_objective)}</span>
-      <details className="rd-process-facts"><summary>实际生成与派工</summary><dl>{[['strategy', '生成策略'], ['dispatch_mode', '派工模式'], ['dispatch_rule', '派工规则']].map(([key, label]) => <div key={key}><dt>{label}</dt><dd>{savedText(origin[key])}</dd></div>)}</dl>
-        <window.WorkbenchReference entries={{ '来源类型': origin.origin, '搜索阶段': origin.phase, '搜索方向': origin.search_objective }} /></details></>;
+    return <>{origin && <span>{phaseText(origin.phase)} · {objectiveLabel(data, origin.search_objective)}</span>}
+      <details className="rd-process-facts"><summary>实际生成与派工</summary>{origin ? <><dl>{[['strategy', '生成策略'], ['dispatch_mode', '派工模式'], ['dispatch_rule', '派工规则']].map(([key, label]) => <div key={key}><dt>{label}</dt><dd>{savedText(origin[key])}</dd></div>)}</dl>
+        <window.WorkbenchReference entries={{ '来源类型': origin.origin, '搜索阶段': origin.phase, '搜索方向': origin.search_objective }} /></> : <p className="rc-muted">正在等待实际生成与派工。</p>}</details></>;
   }
   function CandidateTable({ data, overview, anchorRef, onAnchor }) {
     return <div className="rc-table wb-table-frame rd-process-candidate-frame" data-sticky-head data-sticky-key data-sticky-actions data-wb-scroll-key="decision-process-candidates"><table className="wb-table rd-process-source-table" aria-label="本次候选来源定位">
@@ -54,7 +54,7 @@
       <tbody>{data.items.map((row, index) => progress ? <tr key={row.source_event_id + ':' + row.elapsed_ms + ':' + index} data-process-point={row.source_event_id}>
         <td><strong>来源事件 {row.source_event_id}</strong><small>{phaseText(row.phase)}</small>{row.flags.length > 0 && <small>{row.flags.map(flag => flagLabels[flag] || flag).join(' · ')}</small>}</td>
         <td><Elapsed value={row.elapsed_ms} /></td><td><Primary value={row.primary_value} objective={objective} /></td><td><Scope scope={data.scopes[row.scope_ref]} scopeRef={row.scope_ref} /></td>
-        <td>{row.verified ? '已核验' : '未核验'}<Score value={row.score} objective={objective} fieldOrder={row.field_order} /></td>
+        <td>{row.verified ? '已核验' : '未核验'}<Score value={row.score} objective={objective} /></td>
       </tr> : <tr key={row.action_id} data-process-action={row.action_id}>
         <td><strong>动作 {row.action_id}</strong><small>{phaseText(row.phase)}</small>{row.initial_construction && <small>构建起始排法</small>}</td>
         <td><Elapsed value={row.started_elapsed_ms} /><small>至 <Elapsed value={row.finished_elapsed_ms} /></small><small>动作耗时 <Elapsed value={row.elapsed_ms} /></small></td>
@@ -63,28 +63,29 @@
       </tr>)}</tbody></table></div>;
   }
   function Stages({ values }) {
-    return <details className="rd-process-stages"><summary>当前方向阶段 · {values.length} 项</summary><div className="rc-table wb-table-frame rd-process-frame" data-sticky-head data-wb-scroll-key="decision-process-stages"><table className="wb-table rd-process-stage-table" aria-label="共同优化方向的阶段事实">
+    return <details className="rd-process-stages"><summary>当前方向阶段{values ? ' · ' + values.length + ' 项' : ''}</summary>{values ? <div className="rc-table wb-table-frame rd-process-frame" data-sticky-head data-wb-scroll-key="decision-process-stages"><table className="wb-table rd-process-stage-table" aria-label="共同优化方向的阶段事实">
       <thead><tr>{['阶段', '实际开始 / 结束', '耗时 / 动作数', '评估 / 已核验', '新决策 / 复用'].map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead><tbody>{values.map(stage => <tr key={stage.phase} data-process-phase={stage.phase}>
         <td>{phaseText(stage.phase)}</td><td><Elapsed value={stage.start_elapsed_ms} /><small>至 <Elapsed value={stage.end_elapsed_ms} /></small></td><td><Elapsed value={stage.elapsed_ms} /><small>{number(stage.action_count)} 个动作</small></td><td>{number(stage.evaluation_count)} / {number(stage.verified_evaluation_count)}</td><td>{number(stage.new_decisions)} / {number(stage.reused_decisions)}</td>
-      </tr>)}</tbody></table></div></details>;
+      </tr>)}</tbody></table></div> : <p className="rc-muted">正在等待当前方向阶段。</p>}</details>;
   }
   function Source({ data }) {
-    const source = data.source_event, candidate = data.candidate;
-    return <details className="rd-process-facts"><summary>当前候选来源与方向记录</summary><p>{candidate.label} · 首次发现于 <Elapsed value={candidate.first_found_elapsed_ms} /></p><Origin origin={candidate.origin} data={data} />
-      <window.WorkbenchReference entries={{ '来源候选': candidate.candidate_ref, '来源事件': source && source.event_id, '排产记录': data.run_ref }} />
-      {source && <p>来源事件 {source.event_id} · 保存于 <Elapsed value={source.elapsed_ms} /> · {source.verified ? '已核验' : '未核验'}</p>}
-      <h4>各方向实际探索</h4><dl>{data.objectives.map(descriptor => { const goal = data.budget.objectives[descriptor.name]; return <div key={descriptor.name}><dt>{descriptor.label}</dt><dd>{opportunityLabels[goal.objective_status]} · {number(goal.action_count)} 个动作</dd></div>; })}</dl>
-      {data.bridges.length > 0 && <details className="rd-process-facts"><summary>参考排法接续 · {data.bridges.length} 项</summary><div className="wb-table-frame"><table className="wb-table rd-process-bridge-table" aria-label="保存的参考排法接续"><thead><tr>{['方向 / 阶段', '实际起止', '接续耗时', '原排法 / 计算事实'].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead><tbody>{data.bridges.map(bridge => <tr key={bridge.source_event_id}>
+    const source = data && data.source_event, candidate = data && data.candidate, bridges = data && data.bridges;
+    return <details className="rd-process-facts"><summary>当前候选来源与方向记录</summary>{data ? <p>{candidate.label} · 首次发现于 <Elapsed value={candidate.first_found_elapsed_ms} /></p> : <p className="rc-muted">正在等待候选来源与方向记录。</p>}
+      <Origin origin={candidate && candidate.origin} data={data} />
+      {data && <><window.WorkbenchReference entries={{ '来源候选': candidate.candidate_ref, '来源事件': source && source.event_id, '排产记录': data.run_ref }} />
+        {source && <p>来源事件 {source.event_id} · 保存于 <Elapsed value={source.elapsed_ms} /> · {source.verified ? '已核验' : '未核验'}</p>}
+        <h4>各方向实际探索</h4><dl>{data.objectives.map(descriptor => { const goal = data.budget.objectives[descriptor.name]; return <div key={descriptor.name}><dt>{descriptor.label}</dt><dd>{opportunityLabels[goal.objective_status]} · {number(goal.action_count)} 个动作</dd></div>; })}</dl></>}
+      <details className="rd-process-facts"><summary>参考排法接续{bridges ? ' · ' + bridges.length + ' 项' : ''}</summary>{bridges ? bridges.length ? <div className="wb-table-frame"><table className="wb-table rd-process-bridge-table" aria-label="保存的参考排法接续"><thead><tr>{['方向 / 阶段', '实际起止', '接续耗时', '原排法 / 计算事实'].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead><tbody>{bridges.map(bridge => <tr key={bridge.source_event_id}>
         <td>{objectiveLabel(data, bridge.search_objective)}<small>{phaseText(bridge.phase)}</small></td><td><Elapsed value={bridge.started_elapsed_ms} /><small>至 <Elapsed value={bridge.finished_elapsed_ms} /></small></td><td><Elapsed value={bridge.elapsed_ms} /></td>
         <td>{bridge.same_arrangement === null ? '原排法对应关系未记录' : bridge.same_arrangement ? '保留同一排法' : '取得另一排法'}<small>{bridge.decoder_executed ? '实际执行计算' : '未执行计算'}</small><window.WorkbenchReference entries={{ '来源事件': bridge.source_event_id, '接续前排法': bridge.before_entry_id, '接续后排法': bridge.after_entry_id, '参考方式': bridge.reference_kind }} /></td>
-      </tr>)}</tbody></table></div></details>}
+      </tr>)}</tbody></table></div> : <p className="rc-empty">本次优化没有保存参考排法接续。</p> : <p className="rc-muted">正在等待参考排法接续。</p>}</details>
     </details>;
   }
   function Coverage({ data }) {
-    const sampling = data.progress.sampling;
-    return <div className="rd-process-coverage"><span>当前方向保留 {number(data.progress.points.length)} 个点 · 原进展 {number(sampling.event_total_count)} 个事件</span>
-      <details className="rd-process-facts"><summary>进展记录说明</summary><p>按计算耗时分段保留最好结果，并保留关键首尾记录；最多保留 {sampling.point_budget} 个点。</p>
-        <p>评价范围变化时分段显示；评分缺项保留未知值。</p><window.WorkbenchReference entries={{ '保存方式': sampling.policy }} /></details></div>;
+    const sampling = data && data.progress.sampling;
+    return <div className="rd-process-coverage"><span>{data ? '当前方向保留 ' + number(data.progress.points.length) + ' 个点 · 原进展 ' + number(sampling.event_total_count) + ' 个事件' : '正在等待进展记录说明。'}</span>
+      <details className="rd-process-facts"><summary>进展记录说明</summary>{sampling ? <><p>按计算耗时分段保留最好结果，并保留关键首尾记录；最多保留 {sampling.point_budget} 个点。</p>
+        <p>评价范围变化时分段显示；评分缺项保留未知值。</p><window.WorkbenchReference entries={{ '保存方式': sampling.policy }} /></> : <p className="rc-muted">正在等待进展记录说明。</p>}</details></div>;
   }
   function Pane({ result, query, onQuery, enabled }) {
     const overview = result.data, scope = overview.scope, runRef = overview.run.run_ref;
@@ -92,11 +93,58 @@
     const shared = { comparison_mode: scope.comparison_mode, resource_view: scope.resource_view, selected_candidate_ref: scope.selected_candidate_ref, range_start: scope.range_start, range_end: scope.range_end,
       ...(scope.comparison_mode === 'candidates' ? { reference_candidate_ref: scope.reference.candidate_ref } : {}) };
     const q = window.RunDecisionAPI.processScope(runRef, { ...stored, ...shared }), key = JSON.stringify(q);
+    const paneRef = React.useRef(null), recordsRef = React.useRef(null), catalogRef = React.useRef(null), pendingFocus = React.useRef(null);
     const [paused, setPaused] = React.useState(false);
     React.useEffect(() => { setPaused(false); }, [runRef, key, result.meta.snapshot_ref]);
     const read = window.APSResourceSession.useQuery(signal => window.RunDecisionAPI.process(runRef, q, signal), [runRef, key, result.meta.snapshot_ref], enabled && !paused);
     const detail = read.result, data = detail && detail.data;
+    React.useEffect(() => {
+      const root = paneRef.current;
+      if (!root || !read.loading || !pendingFocus.current) return undefined;
+      const doc = root.ownerDocument;
+      const moved = event => {
+        const intent = pendingFocus.current;
+        if (!intent) return;
+        if (event.type === 'focusin' && (event.target === doc.body || event.target === doc.documentElement || event.target === intent.node)) return;
+        if (event.type === 'pointerdown' && intent.node.contains(event.target)) return;
+        pendingFocus.current = null;
+      };
+      doc.addEventListener('focusin', moved);
+      doc.addEventListener('pointerdown', moved);
+      return () => {
+        doc.removeEventListener('focusin', moved);
+        doc.removeEventListener('pointerdown', moved);
+      };
+    }, [read.loading]);
+    React.useEffect(() => {
+      const root = paneRef.current, intent = pendingFocus.current;
+      if (!root || read.loading || !intent) return;
+      pendingFocus.current = null;
+      const doc = root.ownerDocument;
+      if (![null, doc.body, doc.documentElement, intent.node].includes(doc.activeElement)) return;
+      if (intent.inRecords && !recordsRef.current.open) return;
+      if (intent.inCatalog && !catalogRef.current.open) return;
+      const byLabel = label => label ? root.querySelector('[aria-label="' + label + '"]:not(:disabled)') : null;
+      let target = root.contains(intent.node) && !intent.node.disabled ? intent.node : byLabel(intent.label);
+      if (!target && intent.candidateRef) target = root.querySelector('[data-process-candidate="' + intent.candidateRef + '"] button:not(:disabled)');
+      if (!target && intent.paging) target = byLabel('优化过程记录上一页') || byLabel('优化过程记录下一页') || recordsRef.current.querySelector(':scope > summary');
+      if (!target && intent.inCatalog) target = catalogRef.current.querySelector(':scope > summary');
+      if (!target && intent.inRecords) target = recordsRef.current.querySelector(':scope > summary');
+      if (target) target.focus({ preventScroll: true });
+    }, [read.loading, data, read.error, paused]);
     function update(change, paging = false) {
+      const root = paneRef.current, active = root && root.ownerDocument.activeElement;
+      if (root && root.contains(active)) {
+        const row = active.closest('[data-process-candidate]');
+        pendingFocus.current = {
+          node: active,
+          label: active.getAttribute('aria-label'),
+          candidateRef: row && row.getAttribute('data-process-candidate'),
+          paging,
+          inRecords: recordsRef.current.contains(active),
+          inCatalog: catalogRef.current.contains(active)
+        };
+      }
       const next = { ...q, ...change, page: paging ? change.page : 1 }; delete next.snapshot_ref;
       if (data && !next.objective) next.objective = data.selected_objective.name;
       if (paging && detail) next.snapshot_ref = detail.meta.snapshot_ref;
@@ -106,26 +154,26 @@
     function reload() { update({}); read.reload(); }
     if (!enabled) return null;
     const sorts = q.record_kind === 'progress' ? [['elapsed_ms', '累计耗时'], ['event_index', '保存事件顺序'], ['primary_value', '主目标值']] : [['rank', '动作顺序'], ['elapsed_ms', '动作耗时']];
-    return <section className="rd-process" aria-label="候选优化过程" data-process-anchor={data ? data.candidate.candidate_ref : q.process_candidate_ref}>
+    const selectedObjective = data ? data.selected_objective.name : q.objective || '';
+    const statusText = read.loading ? '正在读取保存的优化过程。' : paused ? '过程读取已取消，点击刷新继续。' : '优化过程暂未完成读取。';
+    return <section ref={paneRef} className="rd-process" aria-label="候选优化过程" data-process-anchor={data ? data.candidate.candidate_ref : q.process_candidate_ref}>
       <div className="rd-detail-filters rd-process-actions">
         <div className="rc-tools rd-detail-actions">{data && <D.Export key={detail.meta.snapshot_ref} result={detail} initialSection="process" filterQuery={{ ...q, process_candidate_ref: data.candidate.candidate_ref }} />}<C.Button icon="refresh-cw" aria-label="刷新优化过程" disabled={read.loading} onClick={reload} /></div>
       </div>
       <C.ErrorBox error={read.error} />{read.loading && <div className="rc-tools"><span role="status">正在读取保存的优化过程。</span><C.Button icon="x" onClick={() => setPaused(true)}>取消读取</C.Button></div>}{paused && <p className="rc-muted" role="status">过程读取已取消，点击刷新继续。</p>}
-      {data && <><Summary data={data} />
-        <C.Reasons rows={detail.warnings} />
-        <div className="rd-process-objective"><label>优化方向<select aria-label="优化方向" value={data.selected_objective.name} onChange={event => update({ objective: event.target.value })}>{data.objectives.map(descriptor => <option key={descriptor.name} value={descriptor.name}>{descriptor.label}</option>)}</select></label></div>
-        <window.RunDecisionProcessChart.Chart key={data.selected_objective.name} progress={data.progress} objective={data.selected_objective} elapsedMs={data.summary.elapsed_ms}
-          scopes={data.scopes} sourceEventId={data.source_event ? data.source_event.event_id : null} lastImprovementElapsedMs={data.summary.last_improvement_elapsed_ms} />
-        <Coverage data={data} />
-        <details className="rd-process-records"><summary>计算明细</summary><div className="rd-process-record-tools"><div className="rc-tabs" role="group" aria-label="优化过程记录视图">{[['attempts', '搜索动作'], ['progress', '曲线数据']].map(([value, label]) => <C.Button key={value} aria-pressed={q.record_kind === value} onClick={() => recordKind(value)}>{label}</C.Button>)}</div>
-          <label>排序<select aria-label="优化过程排序" value={q.sort} onChange={event => update({ sort: event.target.value })}>{sorts.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>顺序<select aria-label="优化过程顺序" value={q.order} onChange={event => update({ order: event.target.value })}><option value="asc">升序</option><option value="desc">降序</option></select></label>
-          </div>
-        {data.items.length ? <Records data={data} /> : <p className="rc-empty">这个方向没有保存当前类别的过程记录。</p>}
-        <div className="rc-heading rd-detail-pages"><span className="rc-muted">当前类别 {data.page.total} 条 · 本页 {data.items.length} 条</span><div className="rc-tools"><label>每页<select aria-label="优化过程每页条数" value={q.size} onChange={event => update({ size: Number(event.target.value) })}><option value="20">20 条</option><option value="50">50 条</option></select></label><C.Pager label="优化过程记录" page={data.page.number} pages={Math.max(1, Math.ceil(data.page.total / data.page.size))} disabled={read.loading} onPage={page => update({ page }, true)} /></div></div>
-        <details className="rd-process-catalog"><summary>全部候选的来源定位 · {data.candidates.length} 项</summary><CandidateTable data={data} overview={overview} anchorRef={data.candidate.candidate_ref} onAnchor={candidateRef => update({ process_candidate_ref: candidateRef })} /></details>
-        <Stages values={data.stages} /><Source data={data} />
-        </details>
-      </>}
+      {data && <><Summary data={data} /><C.Reasons rows={detail.warnings} /></>}
+      <div className="rd-process-objective"><label>优化方向<select aria-label="优化方向" value={selectedObjective} disabled={!data} onChange={event => update({ objective: event.target.value })}>{data ? data.objectives.map(descriptor => <option key={descriptor.name} value={descriptor.name}>{descriptor.label}</option>) : <option value={selectedObjective}>{statusText}</option>}</select></label></div>
+      {data && <window.RunDecisionProcessChart.Chart key={data.selected_objective.name} progress={data.progress} objective={data.selected_objective} elapsedMs={data.summary.elapsed_ms}
+        scopes={data.scopes} sourceEventId={data.source_event ? data.source_event.event_id : null} lastImprovementElapsedMs={data.summary.last_improvement_elapsed_ms} />}
+      <Coverage data={data} />
+      <details className="rd-process-records" ref={recordsRef}><summary>计算明细</summary><div className="rd-process-record-tools"><div className="rc-tabs" role="group" aria-label="优化过程记录视图">{[['attempts', '搜索动作'], ['progress', '曲线数据']].map(([value, label]) => <C.Button key={value} aria-pressed={q.record_kind === value} disabled={read.loading} onClick={() => recordKind(value)}>{label}</C.Button>)}</div>
+        <label>排序<select aria-label="优化过程排序" value={q.sort} disabled={read.loading} onChange={event => update({ sort: event.target.value })}>{sorts.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>顺序<select aria-label="优化过程顺序" value={q.order} disabled={read.loading} onChange={event => update({ order: event.target.value })}><option value="asc">升序</option><option value="desc">降序</option></select></label>
+        </div>
+      {data ? data.items.length ? <Records data={data} /> : <p className="rc-empty">这个方向没有保存当前类别的过程记录。</p> : <p className="rc-muted" role="status">{statusText}</p>}
+      <div className="rc-heading rd-detail-pages"><span className="rc-muted">{data ? '当前类别 ' + data.page.total + ' 条 · 本页 ' + data.items.length + ' 条' : statusText}</span><div className="rc-tools"><label>每页<select aria-label="优化过程每页条数" value={q.size} disabled={read.loading} onChange={event => update({ size: Number(event.target.value) })}><option value="20">20 条</option><option value="50">50 条</option></select></label><C.Pager label="优化过程记录" page={data ? data.page.number : q.page} pages={data ? Math.max(1, Math.ceil(data.page.total / data.page.size)) : undefined} disabled={!data} onPage={page => update({ page }, true)} /></div></div>
+      <details className="rd-process-catalog" ref={catalogRef}><summary>全部候选的来源定位{data ? ' · ' + data.candidates.length + ' 项' : ''}</summary>{data ? <CandidateTable data={data} overview={overview} anchorRef={data.candidate.candidate_ref} onAnchor={candidateRef => update({ process_candidate_ref: candidateRef })} /> : <p className="rc-muted">{statusText}</p>}</details>
+      <Stages values={data ? data.stages : null} /><Source data={data} />
+      </details>
     </section>;
   }
   window.RunDecisionProcess = { Pane, CandidateTable, Coverage, Summary, Records, Stages, Source, Scope, Score, Elapsed, Primary };

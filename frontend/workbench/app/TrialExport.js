@@ -32,10 +32,9 @@
   }
   function csv(data) {
     const c = data.comparison;
-    const issues = data.validation.issues.filter(row => row.code !== 'scenario_adoption_not_connected');
     const constraintStatus = label(data.validation.constraints_status, states);
     const constraints = '约束检查：' + constraintStatus + '；整体状态：' + constraintStatus +
-      '；问题 ' + issues.length + ' 项';
+      '；问题 ' + data.validation.issues.length + ' 项';
     const common = [data.name || '未命名试调草稿', label(data.status, states), constraints,
       data.base_identity.display_name || '上次排产的候选方案', c.changeovers];
     const evidence = [data.draft_ref, data.scenario_ref,

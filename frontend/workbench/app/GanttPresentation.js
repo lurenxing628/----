@@ -58,13 +58,13 @@
       request.current = schedule;
       const theme = new MutationObserver(schedule), resize = new ResizeObserver(schedule);
       theme.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] }); resize.observe(ref.current);
-      const media = typeof window.matchMedia === 'function' ? window.matchMedia('print') : null;
-      if (media) media.addEventListener('change', schedule);
+      const media = window.matchMedia('print');
+      media.addEventListener('change', schedule);
       window.addEventListener('beforeprint', draw); window.addEventListener('afterprint', schedule); window.addEventListener('resize', schedule);
       return () => {
         live = false; request.current = null; if (frame !== null) cancelAnimationFrame(frame);
         theme.disconnect(); resize.disconnect(); window.removeEventListener('beforeprint', draw); window.removeEventListener('afterprint', schedule); window.removeEventListener('resize', schedule);
-        if (media) media.removeEventListener('change', schedule);
+        media.removeEventListener('change', schedule);
       };
     }, []);
     React.useLayoutEffect(() => { if (request.current) request.current(); }, [printing, ...deps]);

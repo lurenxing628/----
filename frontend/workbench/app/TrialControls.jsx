@@ -33,11 +33,8 @@
       {rows.length > size && <Pager page={{ number: page, size, total: rows.length }} onPage={set} label={label} />}</>;
   }
   function Issues({ rows, onSelect }) {
-    // Older saved snapshots include an adoption capability note as a blocker.
-    // Adoption has its own preview/guard; this note is not a task constraint.
-    const constraints = rows.filter(row => row.code !== 'scenario_adoption_not_connected');
-    if (!constraints.length) return null;
-    return <Table rows={constraints} size={10} label="约束问题" columns={[
+    if (!rows.length) return null;
+    return <Table rows={rows} size={10} label="约束问题" columns={[
       ['级别', r => r.severity === 'warning' ? '提示' : '冲突'], ['问题', r => r.message],
       ['关联', r => r.task_ref && onSelect ? <Button icon="arrow-right" aria-label="定位问题工序" onClick={() => onSelect(r.task_ref)}>工序</Button> : '整体']]} />;
   }

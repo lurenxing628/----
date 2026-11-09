@@ -2,9 +2,9 @@
   'use strict';
   const B = window.APSWorkbenchControlBridge;
   function usePrintLayout() {
-    const [printing, setPrinting] = React.useState(() => typeof window.matchMedia === 'function' && window.matchMedia('print').matches);
+    const [printing, setPrinting] = React.useState(() => window.matchMedia('print').matches);
     React.useLayoutEffect(() => {
-      const media = typeof window.matchMedia === 'function' ? window.matchMedia('print') : null;
+      const media = window.matchMedia('print');
       function commit(value, synchronous) {
         // ReactDOM 由 build.py 锁定为 18.3.1，flushSync 恒在。
         if (synchronous) window.ReactDOM.flushSync(() => setPrinting(value));
@@ -14,10 +14,10 @@
       function afterPrint() { commit(false, true); }
       function mediaChanged(event) { commit(event.matches, false); }
       window.addEventListener('beforeprint', beforePrint); window.addEventListener('afterprint', afterPrint);
-      if (media) media.addEventListener('change', mediaChanged);
+      media.addEventListener('change', mediaChanged);
       return () => {
         window.removeEventListener('beforeprint', beforePrint); window.removeEventListener('afterprint', afterPrint);
-        if (media) media.removeEventListener('change', mediaChanged);
+        media.removeEventListener('change', mediaChanged);
       };
     }, []);
     return printing;

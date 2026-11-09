@@ -180,7 +180,6 @@
     const [rangeError, setRangeError] = React.useState(null), [historyOpen, setHistoryOpen] = React.useState(false);
     const [sourceOpen, setSourceOpen] = React.useState(false), [fullPaused, setFullPaused] = React.useState(false);
     const workspaceRef = React.useRef(null), rangeReturnFocus = React.useRef(null), referenceChoice = React.useRef(null);
-    const metricView = initialContext.metric_view === 'all' ? 'all' : 'common';
     const initialDetails = initialContext.detail_queries === undefined ? {} : initialContext.detail_queries;
     const [tab, updateTab] = React.useState(() => { const requested = tabAliases[initialContext.comparison_tab] || initialContext.comparison_tab;
       return [...comparisonTabs, ...secondaryTabs, ['changeovers']].some(row => row[0] === requested) ? requested : 'delivery'; });
@@ -217,7 +216,7 @@
     }, [data, read.error, tab]);
     const history = window.APSResourceSession.useQuery(signal => N.adoptions(selected.candidate_ref, runRef, signal), [selected && selected.candidate_ref, runRef, revision, result && result.meta.snapshot_ref], !!selected && historyOpen);
     const processQuery = leafQuery('process');
-    const remembered = data ? comparisonContext(data, { ...initialContext, metric_view: metricView, comparison_tab: tab, selected_batch_ref: selectedBatchRef, detail_queries: detailQueries }) : initialContext;
+    const remembered = data ? comparisonContext(data, { ...initialContext, comparison_tab: tab, selected_batch_ref: selectedBatchRef, detail_queries: detailQueries }) : initialContext;
     window.WorkbenchPageContext.useSnapshot(remembered, !!data);
     window.WorkbenchCaption.useCaption(data && selected ? { reference: runRef, label: '当前比较', name: selected.label, status: '同次候选 · ' + data.candidates.length + ' 项' } : null);
     function resetDetailPages() { setDetailQueries(freshDetailQueries); setFullPaused(false); }
@@ -238,7 +237,7 @@
       const context = target.drill, pane = tabAliases[context.comparison_tab] || context.comparison_tab;
       if (!pane) { drill(context); return; }
       const detail = pane === 'differences' && context.comparison_tab === 'operations' ? { batch_ref: context.batch_ref || context.detail_query && context.detail_query.batch_ref, change_kind: 'changed', delivery_filter: 'all', sort: 'current_priority', order: 'asc', page: 1 } : { ...context.detail_query, page: 1 };
-      onNavigate('analysis', { ...comparisonContext(data), ...context, ...historyOrigin, comparison_tab: pane, metric_view: metricView, selected_batch_ref: context.batch_ref || selectedBatchRef,
+      onNavigate('analysis', { ...comparisonContext(data), ...context, ...historyOrigin, comparison_tab: pane, selected_batch_ref: context.batch_ref || selectedBatchRef,
         detail_queries: { ...freshDetailQueries(detailQueries), [pane]: detail, ...(context.comparison_tab === 'operations' ? { 'difference-chain': { ...context.detail_query, page: 1 } } : {}) },
         return_recommendation_context: remembered });
     }

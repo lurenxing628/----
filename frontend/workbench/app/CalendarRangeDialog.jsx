@@ -34,7 +34,7 @@
     const guardOwner = window.WorkbenchGuards.useDirtyGuard({ owner: 'calendar-range-' + formId,
       dirty: !done && snapshot !== original.current, locked: command.locked, message: '批量日历维护有尚未保存的范围或规则。' });
     async function close() { if (!command.locked && !loading && await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) onClose(); }
-    React.useEffect(() => { if (error) focusFirstInvalid(formRef.current); }, [error]);
+    React.useEffect(() => { if (error || command.error) focusFirstInvalid(formRef.current); }, [error, command.error]);
     const reason = command.stale ? '预览变更已过期，没有写入。请点「重新预览变更」。' : !result ? '请先点「预览变更」查看全部命中日期。' :
       !result.data.counts.selected ? '当前范围没有命中日期。' : C.blocked(result.data.write_context, 'calendar', 'confirm', result.meta.source);
     async function preview(event) {
@@ -69,14 +69,14 @@
           <Segment label="应用到" value={range.scope} disabled={disabled} options={[["all", "范围内每天"], ["weekday", "仅周一至周五"], ["weekend", "仅周六、周日"]]}
             onChange={scope => setRange({ ...range, scope })} />
           <Segment label="维护方式" value={range.operation} disabled={disabled} options={[["upsert", "设置日历"], ["delete", "清除单独设置，恢复默认"]]}
-            onChange={operation => setRange({ ...range, operation })} />
+            onChange={operation => { setRange({ ...range, operation }); setError(null); command.clearRejection(); }} />
           {range.operation === 'upsert' ? <><label style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '12px 0' }}>
             <input type="checkbox" checked={replaceNote} disabled={disabled} style={{ width: 15, height: 15 }} onChange={event => setReplaceNote(event.target.checked)} />
-            同时替换备注（留空即清除）</label><Fields value={value} error={error} onChange={next => { setValue(next); setError(null); }} disabled={disabled} noteEnabled={replaceNote} /></> : <p>清除范围内命中日期的单独设置，恢复默认规则。{window.WorkbenchTerms.personal_calendar}和班次不变。</p>}</>}
+            同时替换备注（留空即清除）</label><Fields value={value} error={error || command.error} onChange={next => { setValue(next); setError(null); command.clearRejection(); }} disabled={disabled} noteEnabled={replaceNote} /></> : <p>清除范围内命中日期的单独设置，恢复默认规则。{window.WorkbenchTerms.personal_calendar}和班次不变。</p>}</>}
         {loading && <p role="status">正在读取全部命中日期并计算变更前后配置…</p>}
         {result && <RangePreview result={result} page={page} setPage={setPage} onBack={back} disabled={disabled} />}
         <ErrorBox error={error} excludePaths={result ? [] : ['start_date', 'end_date'].concat(range.operation === 'upsert' ? window.CalendarFields.fieldPaths : [])} />
-        <Issues issues={result ? result.warnings : undefined} /><Feedback command={command} />
+        <Issues issues={result ? result.warnings : undefined} /><Feedback command={command} excludePaths={result || error ? [] : (range.operation === 'upsert' ? window.CalendarFields.fieldPaths : [])} />
         {done && <RefreshResult state={refreshState} onRefresh={onRefresh} />}
       </form></Modal></div>;
   }

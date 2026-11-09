@@ -58,10 +58,9 @@
     A.summary(d.candidate, scope.run_ref);
     C.check(d.candidate.candidate_ref === scope.candidate_ref, '返回的候选与所选方案不一致，请重新选择。');
     const g = d.generation;
-    C.check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated', 'input'])
+    C.check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'input'])
       && g.run_ref === d.candidate.run_ref && A.time(g.accepted_at) && (g.finished_at === null || A.time(g.finished_at))
-      && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission'
-      && g.current_entities_consulted === false && g.formal_version_allocated === false);
+      && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission');
     const input = g.input;
     C.check(shape(input, ['batch_refs', 'start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'], ['material_strategy', 'hold_window', 'time_budget_seconds'])
       && Array.isArray(input.batch_refs) && input.batch_refs.every(C.ref) && new Set(input.batch_refs).size === input.batch_refs.length
@@ -82,7 +81,7 @@
       && C.equal(d.capabilities, { view: true, adopt: false, edit_draft: false, report_actual: false })
       && C.equal(d.basis, { comparison: 'candidate_minus_admission_official', batch_scope: 'admission_selected_batches',
         delivery: 'complete_captured_batch_operations', resources: 'same_range_daily_peak_available_occupancy',
-        changeovers: 'same_range_scheduled_operation_type_changes', current_entities_consulted: false })
+        changeovers: 'same_range_scheduled_operation_type_changes' })
       && Array.isArray(d.batches) && d.batches.length === expected.length && C.equal(d.batches.map(row => row.batch_ref).sort(), expected)
       && Array.isArray(d.resources) && typeof d.resource_scope_complete === 'boolean' && count(d.resource_scope_unknown_rows)
       && d.resource_scope_complete === (d.resource_scope_unknown_rows === 0));

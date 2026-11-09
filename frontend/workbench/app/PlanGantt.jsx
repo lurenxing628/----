@@ -116,7 +116,7 @@
       : M.visibleItems(row.items, rangeStart, rangeEnd) })), [visibleRows, rangeStart, rangeEnd, width, model.start, model.end]);
     const measure = () => {
       const el = board.current;
-      if (printState.current || typeof window.matchMedia === 'function' && window.matchMedia('print').matches) return;
+      if (printState.current || window.matchMedia('print').matches) return;
       if (el && restorePosition.current) {
         el.scrollLeft = restorePosition.current.left; el.scrollTop = restorePosition.current.top; restorePosition.current = null;
       }

@@ -297,7 +297,7 @@
     const integers = value => object(value) && Object.values(value).every(count);
     const descriptors = ['name', 'label', 'primary_metric_key', 'primary_metric_label', 'unit', 'score_fields'];
     const fields = ['run_ref', 'capture_ref', 'scope', 'baseline', 'process_version', 'summary', 'counts', 'budget', 'stop_reason', 'bridges',
-      'objectives', 'selected_objective', 'progress', 'scopes', 'actions', 'stages', 'candidate', 'candidates', 'source_event', 'items', 'page', 'filters'];
+      'objectives', 'selected_objective', 'progress', 'scopes', 'stages', 'candidate', 'candidates', 'source_event', 'items', 'page', 'filters'];
     check(A.shape(data, fields) && data.process_version === 'unified-optimization-process-v1' && data.run_ref === runRef && data.capture_ref === runRef
       && object(data.scope) && data.scope.run_ref === runRef && data.scope.comparison_mode === q.comparison_mode
       && (q.selected_candidate_ref === undefined || data.scope.selected_candidate_ref === q.selected_candidate_ref)
@@ -385,10 +385,9 @@
       && ['started_elapsed_ms', 'finished_elapsed_ms', 'elapsed_ms'].every(key => amount(value[key])) && value.started_elapsed_ms <= value.finished_elapsed_ms
       && counters.every(key => count(value[key])) && value.verified_evaluation_count <= value.evaluation_count
       && nullableText(value.skip_reason) && G.objectives(value.improved_objectives) && value.improved_objectives.every(name => names.includes(name));
-    check(Array.isArray(data.actions) && data.actions.every(action) && new Set(data.actions.map(value => value.action_id)).size === data.actions.length
-      && Array.isArray(data.stages) && data.stages.every(value => A.shape(value, ['phase', 'start_elapsed_ms', 'end_elapsed_ms', 'elapsed_ms', 'action_count', ...counters])
-        && typeof value.phase === 'string' && ['start_elapsed_ms', 'end_elapsed_ms', 'elapsed_ms'].every(key => optionalAmount(value[key]))
-        && count(value.action_count) && counters.every(key => count(value[key]))), '实际搜索动作或阶段统计不完整，请点“刷新优化过程”。');
+    check(Array.isArray(data.stages) && data.stages.every(value => A.shape(value, ['phase', 'start_elapsed_ms', 'end_elapsed_ms', 'elapsed_ms', 'action_count', ...counters])
+      && typeof value.phase === 'string' && ['start_elapsed_ms', 'end_elapsed_ms', 'elapsed_ms'].every(key => optionalAmount(value[key]))
+      && count(value.action_count) && counters.every(key => count(value[key]))), '实际搜索动作或阶段统计不完整，请点“刷新优化过程”。');
     check(Array.isArray(data.bridges) && data.bridges.every(value => A.shape(value, ['search_objective', 'phase', 'before_entry_id', 'after_entry_id', 'elapsed_ms',
       'started_elapsed_ms', 'finished_elapsed_ms', 'same_arrangement', 'decoder_executed', 'reference_kind', 'source_event_id'])
       && names.includes(value.search_objective) && ['phase', 'reference_kind'].every(key => typeof value[key] === 'string')
@@ -400,10 +399,11 @@
       && data.filters.process_candidate_ref === anchor && data.filters.objective === selectedObjective
       && ['record_kind', 'sort', 'order'].every(key => data.filters[key] === q[key])
       && A.shape(data.page, ['number', 'size', 'total', 'has_more']) && data.page.number === q.page && data.page.size === q.size
-      && count(data.page.total) && data.page.total === (q.record_kind === 'progress' ? data.progress.points.length : data.actions.length)
+      && count(data.page.total) && data.page.total === (q.record_kind === 'progress' ? data.progress.points.length : goals[selectedObjective].action_count)
       && data.page.has_more === (q.page * q.size < data.page.total) && Array.isArray(data.items)
       && data.items.length === Math.min(q.size, Math.max(0, data.page.total - (q.page - 1) * q.size))
-      && data.items.every(q.record_kind === 'progress' ? point : action), '过程方向、来源或分页位置已变化，请点“刷新优化过程”。');
+      && data.items.every(q.record_kind === 'progress' ? point : action)
+      && (q.record_kind === 'progress' || new Set(data.items.map(value => value.action_id)).size === data.items.length), '过程方向、来源或分页位置已变化，请点“刷新优化过程”。');
     return data;
   }
   const processDetails = (payload, runRef, query) => _processDetails(payload, runRef, processScope(runRef, query));
@@ -521,7 +521,9 @@
     for (const key of ['range_start', 'range_end']) if (query[key])
       check(data.time_scope && time(data.time_scope[key]) && timeKey(data.time_scope[key]) === timeKey(query[key]), '正式计划的时间范围已变化，请从方案对比重新打开。');
     if (query.resource_view) check(data.scope && data.scope.resource_view === query.resource_view, '正式计划的资源范围已变化，请从方案对比重新打开。');
-    check([...data.tasks, ...data.unplanned_operations].every(row => row.operation_effort === undefined || window.EffortProjectionContract.compact(row.operation_effort)), '正式计划的工序工时资料不完整，请从方案对比重新打开。');
+    const rows = [...data.tasks, ...data.unplanned_operations];
+    check(rows.every(window.DeliveryProjectionContract.dueFields), '正式计划的工序交期资料不完整，请从方案对比重新打开。');
+    check(rows.every(row => row.operation_effort === undefined || window.EffortProjectionContract.compact(row.operation_effort)), '正式计划的工序工时资料不完整，请从方案对比重新打开。');
     bindSnapshot(payload, query);
     return data;
   }

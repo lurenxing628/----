@@ -80,7 +80,7 @@
     const stage = item => P.stageLabel(item);
     const cycleMode = item => ({ merged: '合并设置', separate: '分别设置' })[item] || (item === null ? '未设置' : '原周期算法未明确');
     function field(label, previous, current, format = value) {
-      if (!same(previous, current)) result.push({ label, previous: format(previous), current: format(current) });
+      if (previous !== current) result.push({ label, previous: format(previous), current: format(current) });
     }
     function relation(label, previousRef, currentRef, previousLabel, currentLabel) {
       if (previousRef === currentRef && previousLabel === currentLabel) return;

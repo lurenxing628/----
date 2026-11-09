@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const P = window.PointContract, T = window.APSWorkbenchTransport;
+  const P = window.PointContract, T = window.APSWorkbenchTransport, D = window.DeliveryProjectionContract;
   const BASE = '/api/workbench/v1/scheduling';
   const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
   const text = v => typeof v === 'string', count = v => Number.isSafeInteger(v) && v >= 0;
@@ -81,7 +81,7 @@
       && timeKey(q.range_start) < timeKey(q.range_end), '读取范围需要成对时间，开始须早于结束。');
     return q;
   }
-  const operationKeys = ['operation_ref', 'batch_ref', 'batch_label', 'part_label', 'sequence', 'process_label', 'piece_id', 'quantity', 'batch_quantity', 'due_date', 'execution_at_generation', 'data_gaps'];
+  const operationKeys = ['operation_ref', 'batch_ref', 'batch_label', 'part_label', 'sequence', 'process_label', 'piece_id', 'quantity', 'batch_quantity', 'due_date', 'due_state', 'due_issue', 'execution_at_generation', 'data_gaps'];
   const executionKeys = ['target_quantity', 'known_completed_quantity', 'remaining_quantity', 'execution_state', 'data_quality', 'target_basis'];
   function quantityContext(v, baseline = false) {
     if (!nullableText(v.piece_id) || v.piece_id !== null && (!v.piece_id.trim() || v.piece_id.includes('\0'))
@@ -97,8 +97,8 @@
   }
   function operation(v, planned) {
     check(shape(v, operationKeys.concat(['operation_effort', 'process_type_ref', 'process_type_label'], planned ? ['row_ref', 'start', 'end', 'source', 'locked', 'machine', 'operator', 'supplier', ...(P.isPoint(v) ? P.fields : [])] : ['row_ref', 'status', 'reason']))
-      && ref(v.operation_ref) && (v.batch_ref === null || ref(v.batch_ref)) && ['batch_label', 'part_label', 'process_label', 'process_type_label', 'due_date'].every(k => nullableText(v[k]))
-      && nullableNumber(v.sequence) && quantityContext(v)
+      && ref(v.operation_ref) && (v.batch_ref === null || ref(v.batch_ref)) && ['batch_label', 'part_label', 'process_label', 'process_type_label'].every(k => nullableText(v[k]))
+      && D.dueFields(v) && nullableNumber(v.sequence) && quantityContext(v)
       && (v.process_type_ref === null || ref(v.process_type_ref))
       && window.EffortProjectionContract.compact(v.operation_effort));
     if (planned) {
@@ -119,10 +119,10 @@
       && (!v.items_complete || v.items.length === v.batch_count) && Array.isArray(v.issues)
       && v.issues.every(r => shape(r, ['code', 'message']) && text(r.code) && text(r.message)));
     check(shape(v.basis, ['kind', 'metadata_basis', 'operation_scope', 'completion_scope', 'time_basis', 'due_boundary',
-      'current_entities_consulted', 'actual_completion', 'actual_delivery', 'root_causes']) && v.basis.kind === 'planned_delivery'
+      'actual_completion', 'actual_delivery', 'root_causes']) && v.basis.kind === 'planned_delivery'
       && v.basis.metadata_basis === 'captured_at_run_admission' && v.basis.operation_scope === 'captured_batch_operations'
       && v.basis.completion_scope === 'full_candidate' && v.basis.time_basis === 'factory_local'
-      && v.basis.due_boundary === 'next_day_exclusive' && v.basis.current_entities_consulted === false
+      && v.basis.due_boundary === 'next_day_exclusive'
       && ['actual_completion', 'actual_delivery', 'root_causes'].every(k => v.basis[k] === 'not_evaluated'));
     const rowKeys = ['batch_ref', 'batch_id', 'part_no', 'part_label', 'schedule_complete', 'operation_count', 'scheduled_operation_count',
       'unscheduled_operation_count', 'task_count', 'invalid_task_count', 'planned_finish', 'partial_planned_finish', 'risk', 'is_overdue',
@@ -131,14 +131,12 @@
     const tasks = new Map(data.tasks.map(row => [row.row_ref, row]));
     v.items.forEach(row => {
       check(shape(row, rowKeys) && ref(row.batch_ref) && text(row.batch_id) && row.batch_id.trim()
-        && ['part_no', 'part_label', 'due_date', 'priority'].every(k => nullableText(row[k])) && nullableNumber(row.quantity)
+        && ['part_no', 'part_label', 'priority'].every(k => nullableText(row[k])) && D.dueFields(row) && nullableNumber(row.quantity)
         && ['operation_count', 'scheduled_operation_count', 'unscheduled_operation_count', 'task_count', 'invalid_task_count',
           'deferred_operation_count', 'ordinary_unscheduled_operation_count'].every(k => count(row[k]))
         && ['planned_finish', 'partial_planned_finish', 'delivery_deadline_exclusive'].every(k => row[k] === null || time(row[k]))
         && ['delay_hours', 'delay_days'].every(k => nullableNumber(row[k])) && typeof row.schedule_complete === 'boolean'
         && ['overdue', 'on_time', 'unknown', 'not_applicable'].includes(row.risk) && ['complete', 'incomplete', 'unknown'].includes(row.completeness)
-        && ['specified', 'unspecified', 'invalid'].includes(row.due_state)
-        && (row.due_issue === null || ['due_date_missing', 'due_date_invalid'].includes(row.due_issue))
         && ['complete', 'deferred', 'incomplete', 'unknown'].includes(row.completion_state)
         && (row.is_overdue === null || typeof row.is_overdue === 'boolean') && Array.isArray(row.issues) && row.issues.every(text)
         && Array.isArray(row.last_operations) && (row.schedule_complete ? row.planned_finish !== null && row.last_operations.length > 0 : row.planned_finish === null && row.last_operations.length === 0)
@@ -201,10 +199,10 @@
     check(Array.isArray(d.unplanned_operations) && d.unplanned_operation_count === d.unplanned_operations.length);
     d.unplanned_operations.forEach(t => { operation(t, false); check(!operationRefs.has(t.operation_ref) && (!q.batch_ref || t.batch_ref === q.batch_ref)); operationRefs.add(t.operation_ref); });
     const g = d.generation, G = window.RunGenerationContract;
-    check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated', 'input', 'data_gaps', 'baseline', 'algorithm'])
+    check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'input', 'data_gaps', 'baseline', 'algorithm'])
       && g.run_ref === d.candidate.run_ref && time(g.accepted_at) && (g.finished_at === null || time(g.finished_at))
       && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission'
-      && g.current_entities_consulted === false && g.formal_version_allocated === false && gaps(g.data_gaps)
+      && gaps(g.data_gaps)
       && shape(g.input, ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'], ['material_strategy', 'hold_window', 'time_budget_seconds'])
       && (g.input.time_budget_seconds === undefined || G.budget(g.input.time_budget_seconds))
       && (g.input.material_strategy === undefined || ['strict', 'stage'].includes(g.input.material_strategy)

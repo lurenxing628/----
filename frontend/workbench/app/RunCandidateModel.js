@@ -136,7 +136,7 @@
       else unplottableTasks.push(fact.task);
     }
     for (const [id, group] of prepared.groups) {
-      const items = group.items.filter(item => matches(item, needle, operationRefs, focus));
+      const items = group.items.filter(item => shownRefs.has(item.task.row_ref));
       if (!items.length) continue;
       const shown = new Set(items);
       groups.set(id, { ...group, items, shown, normal: group.normal.map(lane => lane.filter(item => shown.has(item))) });

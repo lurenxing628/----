@@ -25,12 +25,8 @@
       && localTime(value.start) && localTime(value.end) && value.start <= value.end;
   }
   function parameters(scope, allowed) {
-    if (!object(scope) || Object.prototype.toString.call(scope) !== '[object Object]'
-        || Reflect.ownKeys(scope).some(key => !allowed.includes(key) || !Object.prototype.propertyIsEnumerable.call(scope, key)))
+    if (!object(scope) || Object.keys(scope).some(key => !allowed.includes(key)))
       throw C.failure('查询条件不对，这次没有读取计划。筛选条件没有变，请点「刷新」重试。');
-    for (const key in scope) {
-      if (!own(scope, key)) throw C.failure('查询条件不对，这次没有读取计划。筛选条件没有变，请点「刷新」重试。');
-    }
     const query = { ...scope };
     for (const key of ['cursor', 'snapshot_ref']) {
       if (own(query, key) && !token(query[key])) throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');

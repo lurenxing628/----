@@ -56,7 +56,7 @@
     const origin = day.explicit ? '单独设置' : '按默认（未单独设置）';
     if (!day.effective) return day.date + ' · ' + origin + ' · 暂无数据：' + day.issues.map(issue => issue.message).join('；');
     const value = day.effective;
-    return day.date + ' · ' + origin + '\n' + window.WorkbenchFormat.compactRange(value.window_start, value.window_end) +
+    return day.date + ' · ' + origin + '\n' + (value.hours > 0 ? window.WorkbenchFormat.compactRange(value.window_start, value.window_end) : '无工作时段') +
       (value.crosses_midnight ? '（跨夜，归班次起始日）' : '') + '\n班次 ' + window.WorkbenchFormat.hours(value.hours) + ' × 效率 ' + amount(value.efficiency * 100) +
       '%；折算标准工时 ' + window.WorkbenchFormat.hours(value.effective_hours) + '\n普通件 ' + (value.allow_normal ? '允许' : '不允许') +
       ' / 急件及特急件 ' + (value.allow_urgent ? '允许' : '不允许') +

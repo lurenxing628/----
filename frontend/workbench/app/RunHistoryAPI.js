@@ -50,10 +50,9 @@
   }
   function run(v) {
     check(shape(v, ['run_ref', 'state', 'stage', 'accepted_at', 'started_at', 'finished_at', 'candidate_count', 'task_count', 'task_count_basis', 'counts_final',
-      'scope_summary', 'recovery_required', 'recovery_reason', 'error', 'completion_semantics', 'constraint_verification', 'task_content_verification'])
+      'scope_summary', 'recovery_required', 'recovery_reason', 'error'])
       && ref(v.run_ref) && states.includes(v.state) && time(v.accepted_at) && ['started_at', 'finished_at'].every(k => v[k] === null || time(v[k]))
-      && count(v.candidate_count) && count(v.task_count) && v.task_count_basis === 'persisted_rows_across_candidates'
-      && v.completion_semantics === 'execution_state_only' && v.constraint_verification === 'not_checked_by_history' && v.task_content_verification === 'candidate_workspace_required');
+      && count(v.candidate_count) && count(v.task_count) && v.task_count_basis === 'persisted_rows_across_candidates');
     const terminal = !['queued', 'running'].includes(v.state), succeeded = ['complete', 'partial'].includes(v.state);
     check(v.counts_final === terminal && (v.finished_at !== null) === terminal
       && (terminal ? v.stage === 'finished' : [v.state === 'queued' ? 'queued' : 'computing', 'awaiting_reconciliation'].includes(v.stage))

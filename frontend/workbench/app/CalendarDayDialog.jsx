@@ -56,7 +56,7 @@
         <div style={{ borderBottom: '1px solid var(--ui-border)', paddingBottom: 12, marginBottom: 16 }}><Policy value={base} /></div>
         {clearing ? <p>将清除 <b>{base.date}</b> 的单独设置，改用该日期的默认规则。{window.WorkbenchTerms.personal_calendar}和班次不变。</p> :
           <Fields value={value} error={error || command.error} disabled={disabled} onChange={next => { setValue(next); setError(null); command.clearRejection(); }} />}
-        <ErrorBox error={error} excludePaths={clearing ? [] : window.CalendarFields.fieldPaths} /><Feedback command={command} excludePaths={clearing ? [] : window.CalendarFields.fieldPaths} /><ErrorBox error={readError} />
+        <ErrorBox error={error} excludePaths={clearing ? [] : window.CalendarFields.fieldPaths} /><Feedback command={command} excludePaths={clearing || error ? [] : window.CalendarFields.fieldPaths} /><ErrorBox error={readError} />
         {!done && <Button icon="refresh-cw" busy={reading} disabled={command.locked} onClick={reloadContext}>{window.WorkbenchTerms.refresh_latest}</Button>}
         {review && <div className="match-note is-block">
           <p>最新资料已读取，已填写的内容保持不变。请核对后继续编辑。</p><Policy value={review.day} />

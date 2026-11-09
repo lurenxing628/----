@@ -35,7 +35,7 @@
       && equal(d.batches.map(row => row.batch_ref), d.batch_refs) && shape(d.metrics, keys)
       && shape(d.before_metrics, keys.slice(0, 2)) && shape(d.delivery_deltas, keys.slice(0, 2))
       && equal(d.basis, { scope: 'full_candidate_and_full_admission_baseline', batch_scope: 'admission_selected_batches',
-        operation_identity: 'permanent_operation_reference', comparison: 'candidate_minus_admission_official', current_entities_consulted: false, recommendation: null })
+        operation_identity: 'permanent_operation_reference', comparison: 'candidate_minus_admission_official', recommendation: null })
       && equal(d.capabilities, { view: true, adopt: false, edit_draft: false, report_actual: false }));
     const b = d.baseline;
     check(shape(b, ['baseline_ref', 'version', 'captured_at', 'kind', 'available', 'captured_task_count', 'comparison_available', 'reason'])

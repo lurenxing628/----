@@ -16,38 +16,39 @@
   }
   function resized(pattern, length) {
     return Array.from({ length }, (_, day_offset) => pattern[day_offset] ||
-      { day_offset, is_rest: null, shift_start: '', shift_end: '' });
+      { day_offset, is_rest: null, periods: [] });
   }
   function dateValid(value) {
     if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(value) || value.startsWith('0000')) return false;
     const date = new Date(value + 'T00:00:00Z');
     return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
   }
-  const clockValid = value => typeof value === 'string' && /^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/.test(value);
-  const minutes = value => Number(value.slice(0, 2)) * 60 + Number(value.slice(3));
   function patternErrors(pattern) {
     const errors = [];
+    const issues = pattern.map(row => window.APSWorkPeriods.validate(row.periods));
     pattern.forEach((row, index) => {
       const bad = message => errors.push({ path: 'pattern.' + index, message: '第 ' + (index + 1) + ' 天：' + message });
       if (row.day_offset !== index || typeof row.is_rest !== 'boolean') bad('请明确选择工作或休息。');
-      if (row.periods == null && (!clockValid(row.shift_start) || !clockValid(row.shift_end))) bad('开始和结束请按 08:30 这样填。');
-      if (Array.isArray(row.periods)) {
-        if (row.is_rest === false && !row.periods.length) bad('工作日请至少填写一个工作时段，或明确改为休息日。');
-        const issue = window.APSWorkPeriods.validate(row.periods);
-        if (issue) bad(issue);
+      if (row.is_rest === true && row.periods.length) bad('休息日不能填写工作时段。');
+      if (row.is_rest === false && !row.periods.length) bad('工作日请至少填写一个工作时段，或明确改为休息日。');
+      const issue = issues[index];
+      if (issue) {
+        bad(issue);
+        return;
       }
-      const next = pattern[(index + 1) % pattern.length];
-      if (row.is_rest === false && next.is_rest === false && clockValid(row.shift_start) && clockValid(row.shift_end) && clockValid(next.shift_start)) {
-        const start = minutes(row.shift_start), end = minutes(row.shift_end);
-        const last = row.periods && row.periods.length ? window.APSWorkPeriods.bounds(row.periods[row.periods.length - 1])[1] : end + (end <= start ? 1440 : 0);
-        if (last > 1440 + minutes(next.shift_start)) bad('跨夜结束与下一轮换日开始重叠。');
+      const nextIndex = (index + 1) % pattern.length;
+      const next = pattern[nextIndex];
+      if (row.is_rest === false && next.is_rest === false && row.periods.length
+          && next.periods.length && !issues[nextIndex]) {
+        const last = window.APSWorkPeriods.bounds(row.periods[row.periods.length - 1])[1];
+        const nextFirst = window.APSWorkPeriods.bounds(next.periods[0])[0];
+        if (last > 1440 + nextFirst) bad('跨夜结束与下一轮换日开始重叠。');
       }
     });
     return errors;
   }
   function samePeriods(a, b) {
     if (a === b) return true;
-    if (a == null || b == null) return a == null && b == null;
     if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
     return a.every((p, i) => {
       const q = b[i];
@@ -62,8 +63,6 @@
       return row === other || Boolean(row && other
         && row.day_offset === other.day_offset
         && row.is_rest === other.is_rest
-        && row.shift_start === other.shift_start
-        && row.shift_end === other.shift_end
         && samePeriods(row.periods, other.periods));
     });
   }
@@ -104,6 +103,7 @@
       if (!dateValid(value.anchor_date)) bad('anchor_date', '请填写有效的周期起始日期。');
       if (length !== value.pattern.length) bad('pattern', '轮换天数与逐日规则不一致，请先确认调整。');
       errors.push(...patternErrors(value.pattern));
+      // 校验通过的行已是 { day_offset: 序号, is_rest: 布尔, periods: 休息日为空 }，原样提交。
       fields.anchor_date = value.anchor_date; fields.cycle_days = length; fields.pattern = value.pattern;
     }
     if (errors.length) throw C.failure('请核对标红的项。', errors);

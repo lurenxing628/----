@@ -109,7 +109,7 @@
     const sourceKeys = new Set([batchQuantityLabel, '外协商', '来源', savedLockLabel]);
     const facts = task ? [['零件', task.part_label], ['工序顺序', M.number(task.sequence)],
           ['分件', task.piece_id === null ? task.data_gaps.some(g => g.field === 'piece_id') ? '分件未记录' : '共同工序' : task.piece_id],
-          ['本工序目标量', M.quantityLabel(task)], [batchQuantityLabel, M.quantityLabel(task, 'batch_quantity')], ['交期', window.WorkbenchTerms.due_date(task.due_date, task.due_state || (task.due_date === '9999-12-31' ? 'unspecified' : task.due_date === null ? 'invalid' : 'specified'), task.due_issue || (task.due_date === null ? 'due_date_missing' : null))],
+          ['本工序目标量', M.quantityLabel(task)], [batchQuantityLabel, M.quantityLabel(task, 'batch_quantity')], ['交期', window.WorkbenchTerms.due_date(task.due_date, task.due_state, task.due_issue)],
           ['开始', task.start && M.timeLabel(task.start)], ['结束', task.end && M.timeLabel(task.end)], ['设备', M.resourceLabel(task, 'machine')], ['人员', M.resourceLabel(task, 'operator')],
           ...(supplierApplicable ? [['外协商', M.resourceLabel(task, 'supplier')]] : []), ['来源', task.source === 'internal' ? '内部' : task.source === 'external' ? '外协' : null],
           [savedLockLabel, typeof task.locked === 'boolean' ? task.locked ? '是' : '否' : null], ['安排状态', task.reason ? task.reason.message : data.reference ? '已保存正式归档安排' : '已保存候选安排']] : [];
