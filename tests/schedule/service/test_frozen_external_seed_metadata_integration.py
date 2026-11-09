@@ -5,6 +5,7 @@ from datetime import datetime
 import pytest
 
 from core.algorithm_contracts.types import ScheduleResult
+from core.algorithm_runtime.algo_stats import make_algo_stats
 from core.infrastructure.transaction import TransactionManager
 from core.services.scheduler.run.schedule_input_contracts import ScheduleRunInput
 from core.services.scheduler.run.schedule_orchestrator import ScheduleOrchestrationOutcome
@@ -89,7 +90,7 @@ def test_seed_contract_rejects_missing_or_irregular_source(source):
     if source != "missing":
         seed["source"] = source
     with pytest.raises(ValidationError) as exc_info:
-        coerce_seed_results([seed], optimizer_algo_stats={"fallback_counts": {}})
+        coerce_seed_results([seed], optimizer_algo_stats=make_algo_stats())
     details = exc_info.value.details or {}
     assert details["reason"] == "invalid_seed_results"
     assert details["invalid_seed_samples"][0]["error"] == "第 1 条已有排产记录的工序来源不正确。"
@@ -109,7 +110,7 @@ def test_seed_contract_rejects_missing_or_non_positive_identity(field, label, va
     else:
         seed[field] = value
     with pytest.raises(ValidationError) as exc_info:
-        coerce_seed_results([seed], optimizer_algo_stats={"fallback_counts": {}})
+        coerce_seed_results([seed], optimizer_algo_stats=make_algo_stats())
     details = exc_info.value.details or {}
     assert details["reason"] == "invalid_seed_results"
     assert details["invalid_seed_samples"][0]["error"] == "第 1 条已有排产记录的" + label + "必须是正整数。"
@@ -135,7 +136,7 @@ def test_seed_contract_rejects_missing_irregular_or_unordered_time_window(start_
     seed = {"op_id": 1, "op_code": "OP1", "batch_id": "B1", "seq": 1, "machine_id": "M1", "operator_id": "O1",
             "start_time": start_time, "end_time": end_time, "source": "internal"}
     with pytest.raises(ValidationError) as exc_info:
-        coerce_seed_results([seed], optimizer_algo_stats={"fallback_counts": {}})
+        coerce_seed_results([seed], optimizer_algo_stats=make_algo_stats())
     details = exc_info.value.details or {}
     assert details["reason"] == "invalid_seed_results"
     assert details["invalid_seed_samples"][0]["error"] == error

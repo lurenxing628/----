@@ -10,21 +10,22 @@ from tests.workbench.trial_support import service as trial_service
 from tests.workbench.trial_support import trial_case as trial_case  # noqa: F401
 
 
-def piece_candidate(case, *, parallel=True, common=True, unit=0.25):
-    ids = piece_layout(case, parallel=parallel, common=common, unit=unit)
+def piece_candidate(case):
+    ids = piece_layout(case)
     run_ref, refs = compute(case)
     row = case.conn.execute("SELECT * FROM WorkbenchRunJobs WHERE run_ref=?", (run_ref,)).fetchone()
     assert row["state"] == "complete", dict(row)
     return ids, run_ref, refs
 
 
-def piece_layout(case, *, parallel=True, common=True, unit=0.25):
-    ids = split(case, common=common, unit=unit)
-    if parallel:
-        for index, piece in enumerate(("item-A", "item-B", "item-C"), 1):
-            case.conn.execute("UPDATE BatchOperations SET machine_id=?,operator_id=? WHERE piece_id=?",
-                              ("M" + str(index), "O" + str(index), piece))
-        case.conn.commit()
+def piece_layout(case):
+    ids = split(case)
+    for index, piece in enumerate(("item-A", "item-B", "item-C"), 1):
+        case.conn.execute(
+            "UPDATE BatchOperations SET machine_id=?,operator_id=? WHERE piece_id=?",
+            ("M" + str(index), "O" + str(index), piece),
+        )
+    case.conn.commit()
     return ids
 
 

@@ -475,38 +475,31 @@ def test_whitespace_padded_resource_identities_stay_distinct_from_trimmed_siblin
         machine_id=None,
         operator_id=None,
     )
+    # 库里的资源编号是主键或 NOT NULL 外键，写入口已拒绝空编号；这里只锁带空格的 " M1 " 与裁剪后的同名编号不混。
     resource_facts = CapturedResourceFacts(
         {
             "Machines": [
-                {"machine_id": "   ", "name": "BlankM", "op_type_id": "OT_A", "category": None, "status": "active", "remark": None, "team_id": None, "created_at": None, "updated_at": None},
                 {"machine_id": " M1 ", "name": "PaddedM", "op_type_id": "OT_A", "category": None, "status": "active", "remark": None, "team_id": None, "created_at": None, "updated_at": None},
             ],
-            "MachineOpTypes": [{"machine_id": "   ", "op_type_id": "OT_A"}],
+            "MachineOpTypes": [],
             "Operators": [
-                {"operator_id": "   ", "name": "BlankO", "status": "active", "remark": None, "team_id": None},
                 {"operator_id": "O1", "name": "Op1", "status": "active", "remark": None, "team_id": None},
                 {"operator_id": "O2", "name": "Op2", "status": "active", "remark": None, "team_id": None},
             ],
             "OperatorMachine": [
-                {"operator_id": "   ", "machine_id": "   ", "skill_level": "high", "is_primary": "yes"},
-                {"operator_id": "O1", "machine_id": "   ", "skill_level": "high", "is_primary": "yes"},
-                {"operator_id": "   ", "machine_id": " M1 ", "skill_level": "high", "is_primary": "yes"},
                 {"operator_id": "O1", "machine_id": " M1 ", "skill_level": "high", "is_primary": "yes"},
                 {"operator_id": "O2", "machine_id": " M1 ", "skill_level": "normal", "is_primary": "no"},
             ],
             "WorkbenchOperatorProfiles": [
-                {"operator_id": "   ", "skills_declared": 1},
                 {"operator_id": "O1", "skills_declared": 1},
                 {"operator_id": "O2", "skills_declared": 1},
             ],
             "OpTypes": [{"op_type_id": "OT_A", "name": "A", "category": "internal"}],
             "OperatorSkill": [
-                {"operator_id": "   ", "op_type_id": "OT_A", "skill_level": "high", "is_primary": "yes"},
                 {"operator_id": "O1", "op_type_id": "OT_A", "skill_level": "high", "is_primary": "yes"},
                 {"operator_id": "O2", "op_type_id": "OT_A", "skill_level": "normal", "is_primary": "no"},
             ],
-        },
-        {},
+        }
     )
     pool = build_resource_pool(
         cfg=SimpleNamespace(auto_assign_enabled="yes"),
@@ -522,3 +515,217 @@ def test_whitespace_padded_resource_identities_stay_distinct_from_trimmed_siblin
     assert picked is not None and picked[:2] == ("O2", " M1 ")
     move = resource_alternative_move(["B001"], pool)
     assert move.resource_pair_rank == {("O2", " M1 "): -1}
+
+
+def test_canonical_batch_identities_flow_through_prepare_decode_evaluate_and_due_risk() -> None:
+    from core.algorithm_contracts.ordering import normalize_batch_order_override
+    from core.algorithms.greedy.scheduler import GreedyScheduler
+    from core.algorithms.greedy.seed import seed_external_group_key, with_seed_external_group_metadata
+    from core.services.scheduler.run.optimizer.shared_decode import decode_and_metrics
+    from core.services.scheduler.summary.due_risk_items import (
+        _build_overdue_items,
+        incomplete_batch_ids_from_failure_details,
+        incomplete_batches_payload,
+    )
+    from tests._support.algo_operations import make_algo_op, make_batch
+    from tests._support.optimizer_graph_ready_benchmark import ContinuousCalendar
+    from tests._support.schedule_decode import config_snapshot, production_decode_in_session
+
+    batches = {
+        "B001": make_batch(batch_id="B001", due_date="2026-01-01"),
+        "B002": make_batch(batch_id="B002", due_date="2026-01-05"),
+    }
+
+    assert normalize_batch_order_override(["B002", "B001"], batches) == ["B002", "B001"]
+    with pytest.raises(ValidationError) as override_exc:
+        normalize_batch_order_override([" B001 "], batches)
+    assert override_exc.value.field == "batch_order_override"
+    assert "批次顺序覆盖引用了不存在的批次： B001 " in str(override_exc.value)
+
+    ext_seed_row = make_schedule_result(
+        op_id=10,
+        op_code="B001_10",
+        batch_id="B001",
+        seq=10,
+        machine_id=None,
+        operator_id=None,
+        start_time=_make_dt(0),
+        end_time=_make_dt(24),
+        source="external",
+        op_type_name="EXT",
+    )
+    canonical_ext_seed = with_seed_external_group_metadata(
+        ext_seed_row,
+        {"batch_id": "B001", "ext_group_id": "EXT_G1"},
+    )
+    assert seed_external_group_key(canonical_ext_seed) == ("B001", "EXT_G1")
+
+    op1 = make_algo_op(
+        id=1,
+        op_code="B001_01",
+        batch_id="B001",
+        seq=1,
+        source="internal",
+        machine_id="MC_A",
+        operator_id="OP_A",
+        setup_hours=2.0,
+        unit_hours=0.0,
+    )
+    op2 = make_algo_op(
+        id=2,
+        op_code="B002_01",
+        batch_id="B002",
+        seq=1,
+        source="internal",
+        machine_id="MC_A",
+        operator_id="OP_A",
+        setup_hours=2.0,
+        unit_hours=0.0,
+    )
+    scheduler = GreedyScheduler(ContinuousCalendar(), config_snapshot(auto_assign_enabled="no"))
+    start_dt = datetime(2026, 1, 2, 8, 0, 0)
+    session, evaluation = production_decode_in_session(
+        scheduler,
+        operations=[op1, op2],
+        batches=batches,
+        start_dt=start_dt,
+        batch_order_override=["B002", "B001"],
+    )
+    assert session.native_preparation.batches is batches
+    claim = session.native_preparation.resource_claim_for(op1)
+    assert claim is not None and claim.batch_id == "B001" and claim.group == ("B001", None)
+    assert evaluation.decoded_batch_order == ("B002", "B001")
+    assert set(evaluation.metrics._finish_by_batch) == {"B001", "B002"}
+    assert set(evaluation.metrics._due_by_batch) == {"B001", "B002"}
+    assert evaluation.metrics.overdue_count == 1
+
+    with pytest.raises(ValidationError) as session_override_exc:
+        decode_and_metrics(
+            decode_session=session,
+            objective_name="min_overdue",
+            start_dt=start_dt,
+            batch_order_override=[" B001 "],
+        )
+    assert session_override_exc.value.field == "batch_order_override"
+
+    overdue_items, near_due_items = _build_overdue_items(
+        batches=batches,
+        finish_by_batch=evaluation.metrics._finish_by_batch,
+        incomplete_batch_ids=set(),
+        due_by_batch=evaluation.metrics._due_by_batch,
+    )
+    assert [item["batch_id"] for item in overdue_items] == ["B001"]
+    assert near_due_items == []
+
+    failure_details = [{"batch_id": "B002", "code": "missing_resource", "op_id": 3, "op_code": "B002_02", "seq": 2}]
+    incomplete_ids = incomplete_batch_ids_from_failure_details(
+        failure_details, evaluation.metrics._finish_by_batch
+    )
+    assert incomplete_ids == {"B002"}
+    incomplete_payload = incomplete_batches_payload(
+        failure_details=failure_details,
+        finish_by_batch=evaluation.metrics._finish_by_batch,
+        batches=batches,
+        results=evaluation.results,
+        incomplete_batch_ids=incomplete_ids,
+    )
+    assert incomplete_payload["count"] == 1
+    assert incomplete_payload["items"][0]["batch_id"] == "B002"
+    assert incomplete_payload["items"][0]["scheduled_op_count"] == 1
+
+
+def test_sgs_window_blocked_auto_assign_reuses_scoring_verdict_without_second_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from datetime import date
+
+    from core.algorithm_runtime.auto_assign_contract import AUTO_ASSIGN_REASON_WINDOW_BLOCKED
+    from core.algorithms.greedy import run_context as run_context_module
+    from core.algorithms.greedy.scheduler import GreedyScheduler
+    from tests._support.algo_operations import make_algo_op, make_batch
+    from tests._support.optimizer_graph_ready_benchmark import ContinuousCalendar
+    from tests._support.schedule_decode import config_snapshot, production_decode
+
+    calls: List[tuple] = []
+    original_attempt = run_context_module.auto_assign_internal_resources_attempt
+
+    def record_attempt(**kwargs: Any):
+        calls.append((kwargs["op"].id, bool(kwargs.get("probe_only"))))
+        return original_attempt(**kwargs)
+
+    monkeypatch.setattr(run_context_module, "auto_assign_internal_resources_attempt", record_attempt)
+
+    pool = {
+        "machines_by_op_type": {"OT_FAST": ["M_FAST"], "OT_SLOW": ["M_SLOW1", "M_SLOW2"]},
+        "operators_by_machine": {"M_FAST": ["O_FAST"], "M_SLOW1": ["O_SLOW"], "M_SLOW2": ["O_SLOW"]},
+        "machines_by_operator": {"O_FAST": ["M_FAST"], "O_SLOW": ["M_SLOW1", "M_SLOW2"]},
+        "pair_rank": {},
+    }
+    batches = {
+        "B_OK": make_batch(batch_id="B_OK", due_date="2026-01-05"),
+        "B_BLOCKED": make_batch(batch_id="B_BLOCKED", due_date="2026-01-03"),
+    }
+    operations = [
+        make_algo_op(
+            id=1,
+            op_code="B_OK_01",
+            batch_id="B_OK",
+            seq=1,
+            source="internal",
+            machine_id=None,
+            operator_id=None,
+            op_type_id="OT_FAST",
+            op_type_name="FAST",
+            setup_hours=2.0,
+            unit_hours=0.0,
+        ),
+        make_algo_op(
+            id=2,
+            op_code="B_BLOCKED_01",
+            batch_id="B_BLOCKED",
+            seq=1,
+            source="internal",
+            machine_id=None,
+            operator_id=None,
+            op_type_id="OT_SLOW",
+            op_type_name="SLOW",
+            setup_hours=20.0,
+            unit_hours=0.0,
+        ),
+    ]
+    scheduler = GreedyScheduler(
+        ContinuousCalendar(),
+        config_snapshot(auto_assign_enabled="yes", dispatch_mode="sgs"),
+    )
+    decoded = production_decode(
+        scheduler,
+        operations=operations,
+        batches=batches,
+        start_dt=datetime(2026, 1, 2, 8, 0, 0),
+        end_date=date(2026, 1, 2),
+        dispatch_mode="sgs",
+        dispatch_rule="slack",
+        resource_pool=pool,
+    )
+
+    assert [row.op_id for row in decoded.results] == [1]
+    assert decoded.summary.failed_ops == 1
+    assert decoded.summary.failure_details == [
+        {
+            "batch_id": "B_BLOCKED",
+            "op_id": 2,
+            "op_code": "B_BLOCKED_01",
+            "seq": 1,
+            "code": "auto_assign_window_blocked",
+            "source": "internal",
+            "auto_assign_reason": AUTO_ASSIGN_REASON_WINDOW_BLOCKED,
+        }
+    ]
+    # 每道候选仅在 SGS 评分期探测 1 次；正式放置直接消费评分结论，不再跑 probe_only=False 的二次探测。
+    assert sorted(calls) == [(1, True), (2, True)]
+    assert scheduler.last_algo_stats["fallback_counts"] == {
+        "internal_auto_assign_attempt_count": 2,
+        "internal_auto_assign_success_count": 1,
+        "auto_assign_window_blocked_count": 1,
+        "internal_auto_assign_failed_count": 1,
+    }

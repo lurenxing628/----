@@ -8,6 +8,8 @@ from core.services.workbench.run.preflight_facts import PreflightFacts
 from tests.workbench.preflight_support import checked, payload
 from tests.workbench.preflight_support import pf as pf_fixture  # noqa: F401
 from tests.workbench.run_candidate_support import candidate_case as candidate_fixture  # noqa: F401
+from tests.workbench.run_jobs_support import job_case as job_case_fixture  # noqa: F401
+from tests.workbench.run_jobs_support import service as run_service
 from web.routes.workbench.preflight import evaluate_preflight_input_prepared
 
 
@@ -15,12 +17,11 @@ def test_read_only_zero_hours_and_unavailable_worker(pf, monkeypatch):
     import json
     from collections import Counter
 
-    from core.models.content import same
     from data.repositories.workbench_preflight_facts_repo import WorkbenchPreflightFactsRepository
     from web.public_token_registry import resolve_public_token
     from web.routes.workbench.preflight import INPUT_SCOPE
 
-    pf.conn.execute("UPDATE Batches SET due_date='2026-9-9',ready_date='' WHERE batch_id='PF-0000'")
+    pf.conn.execute("UPDATE Batches SET due_date='2026-09-09',ready_date='' WHERE batch_id='PF-0000'")
     pf.conn.commit()
     from core.infrastructure.database import get_connection
     from core.services.workbench.facts.production_capture import ProductionFactsCapture
@@ -35,16 +36,16 @@ def test_read_only_zero_hours_and_unavailable_worker(pf, monkeypatch):
         raw = next(row for row in capture.table("Batches") if row["batch_id"] == "PF-0000")
         assert business["due_date"] == previous[0] and previous[0].isoformat() == "2026-09-09"
         assert business["ready_date"] is previous[1] is None
-        assert raw["due_date"] == "2026-9-9"
+        assert raw["due_date"] == "2026-09-09"
         saved = next(row for row in capture.archive(named=True)["tables"]["Batches"] if row["batch_id"] == "PF-0000")
-        assert saved["due_date"] == "2026-9-9"
+        assert saved["due_date"] == "2026-09-09"
         assert raw["ready_date"] == saved["ready_date"] == ""
-        from core.services.workbench.facts.schema_compat import project_facts
-
         archive = json.loads(capture.content())
         without_columns = {"version": archive["version"], "schema": archive["schema"], "tables": archive["tables"]}
         assert archive["version"] == "production-facts-v2" and archive["columns"]
-        assert same(project_facts(archive), project_facts(without_columns))
+        assert capture.matches_archive(archive)
+        with pytest.raises(ValueError, match="Corrupt production facts archive"):
+            capture.matches_archive(without_columns)
     finally:
         native.close()
     table_reads = Counter()
@@ -81,6 +82,68 @@ def test_read_only_zero_hours_and_unavailable_worker(pf, monkeypatch):
     reasons = {row["code"] for row in data["run_blocked_reasons"]}
     assert data["run_blocked"] is True and "schedule_not_computed" in reasons
     assert "execution_projection_source" not in data and "execution_ledger_unavailable" not in reasons
+
+
+def test_unpadded_stored_due_date_is_rejected_at_scheduling_admission_like_delivery(job_case):
+    from core.services.workbench.facts.delivery_projection import parse_stored_due_date
+
+    # 存量不补零的交期：排产准入与交付读取同一口径判为日期无效，不会一边排上、一边报交期无效。
+    job_case.conn.execute("UPDATE Batches SET due_date='2026-9-9' WHERE batch_id='B1'")
+    job_case.conn.commit()
+    preview = run_service(job_case.conn).preview(job_case.preflight())
+    assert [row["code"] for row in preview["write_context"]["blocked_reasons"]] == ["invalid_batch_date"]
+    assert parse_stored_due_date("2026-9-9")[2:] == ("invalid", "due_date_invalid")
+
+
+def test_non_text_stored_batch_dates_are_preserved_and_rejected_at_admission(job_case):
+    from core.infrastructure.database import get_connection
+    from core.models.workbench_run_compute import CandidateRunInputError
+    from core.services.workbench.facts.production_capture import ProductionFactsCapture
+    from core.services.workbench.facts.run_input_rows import batch_model
+    from tests.workbench.run_jobs_support import JobCase
+
+    conn = get_connection(str(job_case.path))
+    try:
+        native_case = JobCase(conn)
+        for bad_due in (20261015, b"\xff\xfe"):
+            job_case.conn.execute("UPDATE Batches SET due_date=?, ready_date=NULL WHERE batch_id='B1'", (bad_due,))
+            job_case.conn.commit()
+            conn.execute("BEGIN")
+            try:
+                capture = ProductionFactsCapture(conn)
+                row = next(item for item in capture.business_table("Batches") if item["batch_id"] == "B1")
+                assert row["due_date"] == bad_due
+                assert conn.execute("SELECT due_date FROM Batches WHERE batch_id='B1'").fetchone()[0] is not None
+            finally:
+                conn.rollback()
+            preview = run_service(conn).preview(native_case.preflight())
+            assert preview["write_context"]["capabilities"]["scheduling.run"] is False
+            assert preview["write_context"]["blocked_reasons"] == [
+                {
+                    "code": "invalid_batch_date",
+                    "message": "有批次的交期或齐套日期填得不对，这次排产没有开始。请到批次管理按 2026-09-13 这样改好。",
+                }
+            ]
+
+        job_case.conn.execute(
+            "UPDATE Batches SET due_date='2026-10-15', ready_date=20261005 WHERE batch_id='B1'"
+        )
+        job_case.conn.commit()
+        conn.execute("BEGIN")
+        try:
+            capture = ProductionFactsCapture(conn)
+            row = next(item for item in capture.business_table("Batches") if item["batch_id"] == "B1")
+            assert row["ready_date"] == 20261005
+            with pytest.raises(CandidateRunInputError) as exc_info:
+                batch_model(row)
+            assert exc_info.value.code == "invalid_batch_date"
+        finally:
+            conn.rollback()
+        preview = run_service(conn).preview(native_case.preflight())
+        assert preview["write_context"]["capabilities"]["scheduling.run"] is False
+        assert preview["write_context"]["blocked_reasons"]
+    finally:
+        conn.close()
 
 
 _RECEIPT = ("INSERT INTO WorkbenchCommandReceipts(request_key,receipt_ref,action,context_ref,input_json,outcome_json) "

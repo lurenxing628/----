@@ -79,7 +79,7 @@ def _record_candidate_adoption_source(conn, version, rows, *, candidate_ref, run
         prev_op_ids = {r["op_id"] for r in prev_rows}
     op_rows = list(
         conn.execute(
-            "SELECT bo.id AS op_id, bo.batch_id, s.ref AS op_ref "
+            "SELECT bo.id AS op_id, bo.batch_id, bo.op_type_id, s.ref AS op_ref "
             "FROM BatchOperations bo JOIN WorkbenchPlanSourceRefs s "
             "ON s.kind='operation' AND s.active=1 AND CAST(bo.id AS TEXT)=s.source_key"
         )
@@ -132,12 +132,14 @@ def _record_candidate_adoption_source(conn, version, rows, *, candidate_ref, run
         "result_persisted": True,
         "candidates": [{"candidate_ref": candidate_ref, "task_count": len(rows), "status": "completed"}],
         "dispositions": dispositions,
+        "operation_effort": {"effort_basis": "runtime_requirement_v1", "items": []},
     }
     conn.execute(
         "INSERT INTO WorkbenchRunReceipts(receipt_ref,run_ref,state,result_json,recorded_at) VALUES (?,?,?,?,?)",
         (format(0xE0000000 + version, "048x"), run_ref, "complete", canonical_json(run_result), adopted_at),
     )
     scheduled_op_ids = [row["op_id"] for row in rows]
+    op_type_by_id = {r["op_id"]: r["op_type_id"] for r in op_rows}
     artifact = {
         "status": "completed",
         "sequence": 1,
@@ -158,7 +160,7 @@ def _record_candidate_adoption_source(conn, version, rows, *, candidate_ref, run
             "out_of_scope_op_ids": [],
             "validation_errors": [],
         },
-        "results": [{"op_id": op_id} for op_id in scheduled_op_ids],
+        "results": [{"op_id": op_id, "op_type_id": op_type_by_id[op_id]} for op_id in scheduled_op_ids],
         "metrics": {"completion": {"incomplete_batch_ids": []}},
         "summary": {
             "success": True,
@@ -189,6 +191,7 @@ def _record_candidate_adoption_source(conn, version, rows, *, candidate_ref, run
                     "operator_id": row["operator_id"],
                     "start_time": row["start_time"],
                     "end_time": row["end_time"],
+                    "locked": False,
                 }),
             )
             for ordinal, row in enumerate(rows)
@@ -256,6 +259,7 @@ class LedgerCase:
         self.ledger = ExecutionLedgerService(conn, clock=lambda: NOW)
         self.writer = WorkbenchProductionReportService(conn, clock=lambda: NOW, actor_provider=lambda: "local-os-user")
         self.count = 0
+        self.op_id = 0
 
     def op(self, code="OP1", *, seq=1, piece=None, batch="B1"):
         return self.conn.execute("""INSERT INTO BatchOperations(op_code,batch_id,seq,piece_id,op_type_id,op_type_name,source)
@@ -288,7 +292,9 @@ class LedgerCase:
     def report_projection(self, report_ref):
         """从所属工序的执行投影里取出这条报工；生产只按工序批量读投影，没有按报工单号单读的入口。"""
         with self.ledger.read_snapshot():
-            operation_ref = self.ledger.report_header(report_ref=report_ref)["operation_ref"]
+            header = self.ledger.report_header(report_ref=report_ref)
+            assert header is not None
+            operation_ref = header["operation_ref"]
             projection = self.ledger.project_operations([operation_ref])[0]
         return next(report for report in projection.reports if report.report_ref == report_ref)
 

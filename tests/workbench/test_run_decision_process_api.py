@@ -3,6 +3,7 @@
 import csv
 import io
 import json
+from types import SimpleNamespace
 
 import pytest
 from openpyxl import load_workbook
@@ -10,6 +11,7 @@ from openpyxl import load_workbook
 from core.services.scheduler.run.optimizer.shared_process import UNIFIED_PROCESS_VERSION
 from core.services.workbench.run import decision_process, decision_process_export
 from core.services.workbench.run.decision_process_export import UNIFIED_PROCESS_CSV_HEADERS
+from scripts.verify_decision_workbench import process_export_candidate_documents, process_export_expected
 from tests.workbench.run_candidate_support import BASE, api, compute, retained
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
 from tests.workbench.test_run_decision_api import decision_summary
@@ -94,7 +96,7 @@ def check_scope_exports(rows, scopes, fmt):
             exported_value(row, label, value, fmt)
 
 
-def test_real_shared_process_queries_and_exports_preserve_one_snapshot(candidate_case, monkeypatch):
+def test_real_shared_process_queries_and_exports_preserve_one_snapshot(candidate_case, monkeypatch, tmp_path):
     case = candidate_case
     case.config(algo_mode="improve", dispatch_mode="sgs", dispatch_rule="slack", time_budget_seconds=1, objective="min_overdue")
     run_ref, refs = compute(case)
@@ -152,7 +154,8 @@ def test_real_shared_process_queries_and_exports_preserve_one_snapshot(candidate
             assert current["scope"] == data["scope"]
             assert current["summary"] == {**data["summary"], **{field: raw["targets"][objective][field]
                 for field in ("first_improvement_elapsed_ms", "last_improvement_elapsed_ms")}}
-            assert current["actions"] == [action for action in raw["actions"] if action["search_objective"] == objective]
+            expected_objective_actions = [action for action in raw["actions"] if action["search_objective"] == objective]
+            assert "actions" not in current and current["budget"]["objectives"][objective]["action_count"] == len(expected_objective_actions)
             assert current["progress"]["sampling"] == raw["targets"][objective]["sampling"]
             assert 1 <= len(current["progress"]["points"]) <= 200
             for point, saved in zip(current["progress"]["points"], raw["targets"][objective]["points"]):
@@ -162,9 +165,11 @@ def test_real_shared_process_queries_and_exports_preserve_one_snapshot(candidate
                 assert point["primary_value"] == point["score"][point["field_order"].index(metric)]
             event_order = detail(client, run_ref, "process", **dict(query, objective=objective, record_kind="progress", sort="event_index", size=50))["data"]
             assert [point["source_event_id"] for point in event_order["items"]] == sorted(point["source_event_id"] for point in current["progress"]["points"])[:50]
+        primary_actions = [action for action in raw["actions"] if action["search_objective"] == raw["primary_objective"]]
         actions = detail(client, run_ref, "process", **dict(query, record_kind="attempts", sort="rank", order="desc", size=50))["data"]
-        assert [action["action_id"] for action in actions["items"]] == sorted((action["action_id"] for action in data["actions"]), reverse=True)[:50]
-        assert all("rank" not in action and "primary_value" not in action for action in actions["actions"])
+        assert "actions" not in data and "actions" not in actions and data["items"] == primary_actions[:20]
+        assert [action["action_id"] for action in actions["items"]] == sorted((action["action_id"] for action in primary_actions), reverse=True)[:50]
+        assert all("rank" not in action and "primary_value" not in action for action in actions["items"])
         progress_query = dict(query, process_candidate_ref=refs[0], objective="min_tardiness", record_kind="progress", sort="elapsed_ms", order="desc")
         first = detail(client, run_ref, "process", **progress_query)
         token = first["meta"]["snapshot_ref"]
@@ -205,7 +210,7 @@ def test_real_shared_process_queries_and_exports_preserve_one_snapshot(candidate
         expect_error(client, BASE + "/runs/" + "e" * 48 + "/decision/process", {}, 404, "entity_not_found")
         progress = first["data"]
         expected_points = sorted(sorted(progress["progress"]["points"], key=lambda point: point["source_event_id"]), key=lambda point: point["elapsed_ms"], reverse=True)
-        expected_actions = sorted(progress["actions"], key=lambda action: action["action_id"], reverse=True)
+        expected_actions = sorted((action for action in raw["actions"] if action["search_objective"] == "min_tardiness"), key=lambda action: action["action_id"], reverse=True)
         for fmt in ("csv", "xlsx"):
             rows = process_download(client, run_ref, progress_query, token, fmt=fmt)
             summary = [row for row in rows if row["record_kind"] == "run_process_summary"]
@@ -260,4 +265,23 @@ def test_real_shared_process_queries_and_exports_preserve_one_snapshot(candidate
                 exported_value(row, "最后真实评分改善（毫秒）", target["last_improvement_elapsed_ms"], "xlsx")
         assert sum(row["record_kind"] == "search_action" for row in all_rows) == len(raw["actions"])
         check_scope_exports(all_rows, raw["scopes"], "xlsx")
+        saved_candidates = process_export_candidate_documents(
+            SimpleNamespace(document=lambda url: client.get(url).get_json()),
+            {"run_ref": run_ref},
+            query,
+            overview,
+            tmp_path / "process-verify",
+            include_all_objectives=True,
+        )
+        assert [saved_candidates[0]["objectives"][objective]["actions"] for objective in raw["target_objectives"]] == [
+            [action for action in raw["actions"] if action["search_objective"] == objective]
+            for objective in raw["target_objectives"]
+        ]
+        expected_export = process_export_expected({"data": overview["data"], "meta": first["meta"]}, saved_candidates)
+        assert [row["动作编号"] for row in expected_export["搜索动作"]] == [
+            action["action_id"]
+            for objective in raw["target_objectives"]
+            for action in raw["actions"]
+            if action["search_objective"] == objective
+        ]
         assert decision_summary(client, run_ref, **query)["data"]["selection_basis"] == overview["data"]["selection_basis"]

@@ -16,13 +16,15 @@ from tests.workbench.dashboard_support import dashboard_case as _dashboard_case 
 from tests.workbench.dashboard_support import follow
 
 
-@pytest.mark.parametrize('table', ['WorkbenchCommandReceipts'])
-def test_failure_rolls_back_all_three_writes(external_handling_case, table):
+def test_receipt_write_failure_rolls_back_state_history_and_receipt(external_handling_case):
     case = external_handling_case
     case.register()
     item = case.item("external")
     before, counts = production_storage(case.conn), ledger_counts(case.conn)
-    case.conn.execute("CREATE TRIGGER dt_injected_abort BEFORE INSERT ON " + table + " BEGIN SELECT RAISE(ABORT,'injected'); END")
+    case.conn.execute(
+        "CREATE TRIGGER dt_injected_abort BEFORE INSERT ON WorkbenchCommandReceipts"
+        " BEGIN SELECT RAISE(ABORT,'injected'); END"
+    )
     with pytest.raises(WorkbenchCommandUncertain):
         case.command(item, follow(), key="external-handling-rollback-01")
     assert not case.conn.in_transaction and ledger_counts(case.conn) == counts
@@ -30,8 +32,7 @@ def test_failure_rolls_back_all_three_writes(external_handling_case, table):
     assert production_storage(case.conn) == before
 
 
-@pytest.mark.parametrize('same_key', [False])
-def test_concurrent_writes_have_one_history(external_handling_case, same_key):
+def test_competing_writes_reject_stale_loser_and_replay_winner_receipt(external_handling_case):
     case = external_handling_case
     case.register()
     case.conn.execute("PRAGMA journal_mode=WAL")
@@ -42,7 +43,7 @@ def test_concurrent_writes_have_one_history(external_handling_case, same_key):
         try:
             with case.app.app_context():
                 barrier.wait(timeout=5)
-                return case.command(item, follow(), key="external-handling-race-0" + str(0 if same_key else index), conn=conn)
+                return case.command(item, follow(), key="external-handling-race-0" + str(index), conn=conn)
         except WorkbenchCommandRejected as error:
             return error.code
         finally:
@@ -56,12 +57,8 @@ def test_concurrent_writes_have_one_history(external_handling_case, same_key):
     archived = json.loads(saved["source_facts_json"])
     assert archived["facts"]["receipt"]["outsourcing_ref"] == item["source"]["outsourcing_ref"]
     winner = next(row for row in results if isinstance(row, dict))
-    key = "external-handling-race-0" + ("0" if same_key or results[0] == winner else "1")
+    key = "external-handling-race-0" + ("0" if results[0] == winner else "1")
     replay = case.command(item, follow(), key=key)
     assert replay["replayed"] and replay["receipt_ref"] == winner["receipt_ref"]
     assert len(case.history(item["item_ref"])) == 1
-    if same_key:
-        assert {row["replayed"] for row in results} == {False, True}
-        assert len({row["receipt_ref"] for row in results}) == 1
-    else:
-        assert sum(row == "stale_write" for row in results) == 1
+    assert sum(row == "stale_write" for row in results) == 1

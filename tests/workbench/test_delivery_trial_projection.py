@@ -287,3 +287,81 @@ def test_trial_includes_selected_batch_with_only_material_deferred_operations(tr
     blocked = adopter.preview(saved["scenario_ref"])["validation"]
     assert blocked["can_adopt"] is False
     assert [item["code"] for item in blocked["issues"]] == ["snapshot_stale"]
+
+
+_TRIAL_DUE_PROGRAM = r"""
+const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), assert = require('node:assert/strict');
+const { compile } = require('./scripts/workbench/compile.cjs');
+const app = path.join(process.cwd(), 'frontend/workbench/app'), source = name => fs.readFileSync(path.join(app, name), 'utf8');
+const h = (type, props, ...children) => ({ type, props: props || {}, children: children.flat(Infinity).filter(v => v !== null && v !== undefined && v !== false) });
+const React = { createElement: h, Fragment: 'fragment', useMemo: make => make(), useRef: current => ({ current }), useEffect() {}, useState: v => [v, () => {}] };
+const w = { document: {} }, context = vm.createContext({ window: w, React, AbortController, URLSearchParams, setTimeout, clearTimeout });
+for (const name of ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'PointContract.js', 'DeliveryProjectionContract.js', 'EffortProjectionContract.js',
+  'ResourceProjectionContract.js', 'transport.js', 'RunCandidateAPI.js', 'TrialContract.js']) vm.runInContext(source(name), context, { filename: name });
+Object.assign(w, { TrialControls: { Button: 'button', Issues: 'issues', number: String, timeLabel: String, hours: String },
+  TrialGantt: { resourceNames: () => ref => ref }, RunOperationEffort: { Effort: 'effort' } });
+const babel = path.join(process.cwd(), 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js');
+vm.runInContext(compile({ babel_path: babel, sources: [{ path: 'TrialDetails.jsx', code: source('TrialDetails.jsx') }] }).outputs[0].code, context);
+const text = node => node == null ? '' : typeof node !== 'object' ? String(node) : node.children.map(text).join('');
+const walk = node => !node || typeof node !== 'object' ? [] : [node, ...node.children.flatMap(walk)];
+const shown = {};
+for (const [state, data] of Object.entries(JSON.parse(fs.readFileSync(0, 'utf8')))) {
+  w.TrialContract.workspace(data);
+  const task = data.tasks[0];
+  const tree = w.TrialDetails({ data, selected: task.task_ref, commands: {}, onSelect() {}, onEditing() {}, onRecheck() {},
+    guardOwner: 'trial', editorRevision: 0, inspectFocus: { current: null }, onCollapse() {} });
+  const facts = walk(tree).find(node => node.type === 'dl');
+  const pair = facts.children.find(node => text(node.children[0]) === '交期');
+  shown[state] = text(pair.children[1]);
+  // 精确合同：缺任一交期字段或状态与日期不配套都拒收。
+  for (const broken of [{ due_state: undefined }, { due_issue: undefined },
+    { due_state: 'specified', due_date: '9999-12-31', due_issue: null }, { due_state: 'invalid', due_date: null, due_issue: null }]) {
+    const damaged = structuredClone(data);
+    Object.assign(damaged.tasks[0], broken);
+    for (const key of Object.keys(broken)) if (broken[key] === undefined) delete damaged.tasks[0][key];
+    assert.throws(() => w.TrialContract.workspace(damaged));
+  }
+}
+process.stdout.write(JSON.stringify(shown));
+"""
+
+
+@pytest.mark.parametrize("raw, expected, gap", [
+    ("2026-09-20", ("2026-09-20", "specified", None), None),
+    ("9999-12-31", ("9999-12-31", "unspecified", None), None),
+    (None, (None, "invalid", "due_date_missing"), None),
+    ("bad due", (None, "invalid", "due_date_invalid"), None),
+    (b"\x20", (None, "invalid", "due_date_invalid"), "bytes"),
+])
+def test_trial_task_due_uses_the_shared_stored_due_contract(trial_case, raw, expected, gap):
+    case = trial_case
+    case.conn.execute("UPDATE Batches SET due_date=?", (raw,))
+    draft = create(case)
+    task, = draft["tasks"]
+    assert (task["due_date"], task["due_state"], task["due_issue"]) == expected
+    row, = draft["comparison"]["batches"]
+    assert (row["due_date"], row["due_state"], row["due_issue"]) == expected
+    assert [item["storage_type"] for item in task["data_gaps"] if item["field"] == "due_date"] == ([gap] if gap else [])
+    reread = service(case.conn).get(draft["draft_ref"])
+    assert (reread["tasks"][0]["due_date"], reread["tasks"][0]["due_state"], reread["tasks"][0]["due_issue"]) == expected
+
+
+def test_trial_detail_shows_due_from_exact_contract_without_guessing_from_empty(trial_case):
+    import json
+    import subprocess
+    from pathlib import Path
+
+    from tests._support.node_runtime_support import node_runtime
+
+    case = trial_case
+    base, drafts = official(case), {}
+    for index, raw in enumerate(("2026-09-20", "9999-12-31", None, "bad due")):
+        case.conn.execute("UPDATE Batches SET due_date=?", (raw,))
+        case.conn.commit()
+        drafts[str(raw)] = create(case, base, key=f"trial-due-create-{index:04d}")
+    root = Path(__file__).resolve().parents[2]
+    result = subprocess.run([node_runtime(), "-e", _TRIAL_DUE_PROGRAM], input=json.dumps(drafts), text=True,
+                            capture_output=True, cwd=root, timeout=60)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout) == {"2026-09-20": "2026-09-20", "9999-12-31": "未指定交期",
+                                         "None": "交期缺失", "bad due": "交期无效"}

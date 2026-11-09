@@ -81,14 +81,14 @@ def test_double_connection_stale_and_replay_before_expired_context(outsourcing_c
         other.close()
 
 
-@pytest.mark.parametrize('stage', ['receipt'])
-def test_failure_rolls_back_header_group_facts_and_receipt(outsourcing_case, stage):
+def test_receipt_write_failure_rolls_back_header_group_facts_and_receipt(outsourcing_case):
     case = outsourcing_case
     source = original_rows(case.conn)
     preview = case.preview(case.payload(merged=True))
-    table = {"members": "WorkbenchOutsourcingMembers", "fact": "WorkbenchOutsourcingFacts", "receipt": "WorkbenchCommandReceipts"}[stage]
-    case.conn.execute("CREATE TRIGGER injected_outsourcing_failure BEFORE INSERT ON " + table +
-                      " BEGIN SELECT RAISE(ABORT,'injected failure'); END")
+    case.conn.execute(
+        "CREATE TRIGGER injected_outsourcing_failure BEFORE INSERT ON WorkbenchCommandReceipts"
+        " BEGIN SELECT RAISE(ABORT,'injected failure'); END"
+    )
     case.conn.commit()
     with pytest.raises(WorkbenchCommandUncertain):
         case.confirm(preview, key="outsourcing-fault-rollback-key")

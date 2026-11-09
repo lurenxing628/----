@@ -23,7 +23,7 @@ def test_export_cells_escape_formula_like_strings() -> None:
     """导出到 Excel 的文字里，四个会被当公式起头的字符必须先加单引号。
 
     原来这条挂在 build_xlsx_bytes 上，那个构建器 2026-09-21 随旧模板清单一起退役了；
-    防注入本身没退役——排产实际导出、校准导出、报表导出、报表 xlsx 四处生产代码都
+    防注入本身没退役——工时校准导出、工作台报表导出、报表 xlsx 导出三处生产代码都
     直接用 sanitize_export_cell，所以契约改挂在它身上。
     """
     assert sanitize_export_cell("=cmd|' /C calc'!A0") == "'=cmd|' /C calc'!A0"

@@ -6,9 +6,11 @@ from unittest.mock import patch
 
 import pytest
 
+from core.algorithm_runtime.run_state import ScheduleRunState
 from core.algorithms.greedy import scheduler as scheduler_module
 from core.algorithms.greedy.dispatch.sgs_graph import _prepare_graph_ready_state, graph_priority_key_map
 from core.algorithms.greedy.dispatch.sgs_priority_pruning import GraphPriorityPruning
+from core.algorithms.greedy.dispatch.sgs_score_cache import SgsScoreCache
 from core.errors import ValidationError
 from tests._support.algo_operations import make_algo_op, make_batch
 from tests._support.busy_block_case import BASE, native_calendar
@@ -83,16 +85,47 @@ def _payload(rows, summary):
     return [(r.op_id, r.machine_id, r.operator_id, r.start_time, r.end_time) for r in rows], fields
 
 
-def _decode(calendar, case, *, cache_enabled):
-    attach = scheduler_module.attach_sgs_score_cache if cache_enabled else (lambda *args, **kw: None)
-    with patch.object(scheduler_module, "attach_sgs_score_cache", attach):
+class _FullScoringCache(SgsScoreCache):
+    """Reference decode: every candidate and slot is scored from scratch on the raw calendar, nothing is pruned.
+
+    Without the memoized timing surface ``GraphPriorityPruning.for_cache`` declines, so every ready
+    operation is scored; no key, pair or shared-slot memo is ever consulted.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.timing = None
+
+    def resolve(self, op, batch_id, graph_state, score):
+        self.misses += 1
+        return score()
+
+    def scoring_slot_estimate(self, *, compute, **_inputs):
+        return compute()
+
+    def pair_estimate(self, **_inputs):
+        return None
+
+
+_REUSE_COUNTERS = ("hits", "pair_hits", "pair_revalidated", "calendar_hits", "shared_slot_hits", "graph_candidates_pruned")
+
+
+def _decode(calendar, case, *, cache_type=SgsScoreCache):
+    created = []
+    build_cache = cache_type.for_preparation
+
+    def capture(*args, **kwargs):
+        cache = build_cache(*args, **kwargs)
+        created.append(cache)
+        return cache
+
+    with patch.object(SgsScoreCache, "for_preparation", side_effect=capture):
         scheduler = scheduler_module.GreedyScheduler(
             calendar_service=calendar,
             config_service=config_snapshot(auto_assign_enabled="no"),
         )
-        session, decoded = production_decode_in_session(scheduler, **case)
-    cache = session.native_preparation.run_context.sgs_score_cache
-    return _payload(decoded.results, decoded.summary), (cache.stats() if cache is not None else {})
+        _session, decoded = production_decode_in_session(scheduler, **case)
+    return _payload(decoded.results, decoded.summary), created[-1].stats()
 
 
 def _pruning(case, calendar):
@@ -107,7 +140,9 @@ def _pruning(case, calendar):
         graph_ready_context=case["graph_ready_context"],
     )
     preparation = session.native_preparation
-    cache = preparation.score_cache_factory(None, auto_assign_enabled=False, resource_pool=None)
+    cache = SgsScoreCache.for_preparation(
+        preparation, state=ScheduleRunState(base_time=BASE), auto_assign_enabled=False, resource_pool=None,
+    )
     ops_by_batch: Dict[str, list] = {}
     for op in case["operations"]:
         ops_by_batch.setdefault(op.batch_id, []).append(op)
@@ -123,16 +158,16 @@ def _pruning(case, calendar):
 
 
 @pytest.mark.parametrize("case_builder", [_saturated_case, _mixed_case])
-def test_graph_decode_matches_cache_off_with_memo_and_pruning_on(case_builder):
+def test_graph_decode_with_memo_and_pruning_matches_full_scoring(case_builder):
     outputs = []
-    for enabled in (False, True):
+    for cache_type in (_FullScoringCache, SgsScoreCache):
         with native_calendar() as calendar:
-            outputs.append(_decode(calendar, case_builder(), cache_enabled=enabled))
-    (expected, off), (actual, on) = outputs
+            outputs.append(_decode(calendar, case_builder(), cache_type=cache_type))
+    (expected, reference), (actual, production) = outputs
     assert actual == expected
     assert actual[1]["failed_ops"] == 0 and actual[1]["scheduled_ops"] == 90
-    assert not any(off.values())
-    assert on["calendar_hits"] > 0 and on["graph_candidates_pruned"] > 0
+    assert reference["misses"] > 0 and not any(reference[name] for name in _REUSE_COUNTERS)
+    assert production["calendar_hits"] > 0 and production["graph_candidates_pruned"] > 0
 
 
 def test_priority_pruning_selects_lowest_admitted_key_group_and_rejects_missing_keys_at_admission():
@@ -164,7 +199,7 @@ def test_priority_key_admission_rejects_mixed_widths_and_yields_static_orders():
     case = _saturated_case(batch_count=2, ops_per_batch=1)
     case["graph_ready_context"]["graph_priority_key_by_op_id"] = {1: (0.0,), 2: (1.0, 0.0)}
     with native_calendar() as calendar, pytest.raises(ValidationError) as exc:
-        _decode(calendar, case, cache_enabled=True)
+        _decode(calendar, case)
     assert exc.value.field == "graph_ready_context"
     assert exc.value.message == "图评分 key 长度必须一致。"
 
@@ -174,7 +209,7 @@ def test_priority_key_admission_keeps_nonfinite_input_error(invalid):
     case = _saturated_case(batch_count=2, ops_per_batch=1)
     case["graph_ready_context"]["graph_priority_key_by_op_id"][1] = (invalid, 0.0)
     with native_calendar() as calendar, pytest.raises(ValidationError) as exc:
-        _decode(calendar, case, cache_enabled=True)
+        _decode(calendar, case)
     assert exc.value.field == "graph_ready_context"
     assert exc.value.message == "图评分 key 不能包含 NaN 或 Inf。"
 
@@ -189,12 +224,12 @@ def test_out_of_range_external_duration_keeps_the_complete_path_and_the_calendar
     else:
         first.ext_days = 36501.0
     errors = []
-    for enabled in (False, True):
+    for cache_type in (_FullScoringCache, SgsScoreCache):
         with native_calendar() as calendar:
             pruning, _ = _pruning(case, calendar)
             assert not pruning.supported
             with pytest.raises(ValidationError) as exc:
-                _decode(calendar, case, cache_enabled=enabled)
+                _decode(calendar, case, cache_type=cache_type)
             errors.append((exc.value.field, str(exc.value)))
     assert errors[0] == errors[1]
     assert errors[0][0] == "days"
@@ -210,9 +245,9 @@ def test_blocked_lowest_external_group_still_scores_the_other_ready_operations()
         internal.id: (1.0, 0.0),
     }
     outputs = []
-    for enabled in (False, True):
+    for cache_type in (_FullScoringCache, SgsScoreCache):
         with native_calendar() as calendar:
-            payload, _ = _decode(calendar, case, cache_enabled=enabled)
+            payload, _ = _decode(calendar, case, cache_type=cache_type)
             outputs.append(payload)
     assert outputs[0] == outputs[1]
     assert [row[0] for row in outputs[1][0]] == [internal.id]

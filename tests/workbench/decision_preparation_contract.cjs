@@ -20,7 +20,7 @@ function hooks() {
     useReducer(reducer, initial) { const [value, set] = this.useState(initial); return [value, action => set(old => reducer(old, action))]; } },
     render(fn) { cursor = 0; return fn(); }, flush() { while (effects.length) effects.shift()(); } };
 }
-const sources = ['resource-contract.js', 'resource-session.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'FieldContract.js', 'RunGenerationContract.js', 'EffortProjectionContract.js', 'PointContract.js', 'GanttGraph.js', 'PlanGanttModel.js', 'RunCandidateModel.js', 'RunCandidateAPI.js', 'RunOperationEffort.jsx', 'RecommendationContract.js', 'RunDecisionAPI.js', 'RunDecisionRecommendation.jsx', 'RunDecisionComparison.jsx', 'RunDecisionPreparation.jsx'];
+const sources = ['resource-contract.js', 'resource-session.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'FieldContract.js', 'RunGenerationContract.js', 'EffortProjectionContract.js', 'PointContract.js', 'DeliveryProjectionContract.js', 'GanttGraph.js', 'PlanGanttModel.js', 'RunCandidateModel.js', 'RunCandidateAPI.js', 'RunOperationEffort.jsx', 'RecommendationContract.js', 'RunDecisionAPI.js', 'RunDecisionRecommendation.jsx', 'RunDecisionComparison.jsx', 'RunDecisionPreparation.jsx'];
 const built = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources: sources.map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })) }).outputs;
 // Requests run through the real APIs and APSWorkbenchTransport; only the network answer comes from these routes.
 const routes = {}, network = routeFetch(routes);
@@ -73,11 +73,28 @@ async function identities() {
     const wrong = clone(archive.payload); wrong.data[section][0].process_type_ref = 'current-live-id';
     workspaceAnswer = wrong;
     await assert.rejects(() => window.RunCandidateAPI.workspace(archive.candidate_ref, { batch_ref: archive.batch_ref }));
-    for (const key of ['operation_effort', 'process_type_ref', 'process_type_label']) {
+    for (const key of ['operation_effort', 'process_type_ref', 'process_type_label', 'due_state', 'due_issue']) {
       const missing = clone(archive.payload); delete missing.data[section][0][key];
       workspaceAnswer = missing;
       await assert.rejects(() => window.RunCandidateAPI.workspace(archive.candidate_ref, { batch_ref: archive.batch_ref }));
     }
+    const mismatchedDue = clone(archive.payload); mismatchedDue.data[section][0].due_date = '2026-02-30';
+    workspaceAnswer = mismatchedDue;
+    await assert.rejects(() => window.RunCandidateAPI.workspace(archive.candidate_ref, { batch_ref: archive.batch_ref }));
+  }
+  for (const dueCase of [
+    { due_date: '2026-10-16', due_state: 'specified', due_issue: null, deadline: '2026-10-17T00:00:00' },
+    { due_date: null, due_state: 'invalid', due_issue: 'due_date_missing', deadline: null },
+    { due_date: null, due_state: 'invalid', due_issue: 'due_date_invalid', deadline: null },
+    { due_date: '9999-12-31', due_state: 'unspecified', due_issue: null, deadline: null }
+  ]) {
+    const varied = clone(archive.payload), { deadline, ...dueFields } = dueCase;
+    Object.assign(varied.data.tasks[0], dueFields);
+    Object.assign(varied.data.unplanned_operations[0], dueFields);
+    Object.assign(varied.data.delivery_risks.items[0], dueFields, { delivery_deadline_exclusive: deadline,
+      risk: dueCase.due_state === 'unspecified' ? 'not_applicable' : 'unknown' });
+    workspaceAnswer = varied;
+    assert.deepEqual((await window.RunCandidateAPI.workspace(archive.candidate_ref, { batch_ref: archive.batch_ref })).data, varied.data);
   }
   const compact = value => Object.fromEntries(Object.entries(value).filter(([key]) => !['machine', 'machines', 'arrangements'].includes(key)));
   const operationPayload = fixture(); operationPayload.data.filters = { section: 'operations', sort: 'sequence', order: 'asc', change_kind: 'all', batch_ref: null, resource_ref: null };
@@ -192,6 +209,17 @@ async function identities() {
   assert(inspectorText.includes('准备与加工需求') && fieldText(inspector, labels.target_quantity).startsWith('10') && fieldText(inspector, labels.execution_target_quantity).startsWith('20') && fieldText(inspector, labels.remaining_quantity) === '8', '甘特详情直接读取同一份保存需求');
   const segments = nodes(inspector).filter(node => node.props.className === 'rc-saved-segment'); assert.equal(segments.length, 2, '需求来源接入保留全部分段安排');
   nodes(segments.find(node => node.props.key === second.row_ref)).find(node => node.type === 'button').props.onClick(); assert.equal(target[0], second.row_ref);
+  for (const [patch, expectedDue] of [
+    [{ due_date: '2026-10-16', due_state: 'specified', due_issue: null, data_gaps: [] }, '2026-10-16'],
+    [{ due_date: null, due_state: 'invalid', due_issue: 'due_date_missing', data_gaps: [{ field: 'due_date', code: 'not_recorded', message: '排产时没有记下这一项。' }] }, '交期缺失'],
+    [{ due_date: null, due_state: 'invalid', due_issue: 'due_date_invalid', data_gaps: [{ field: 'due_date', code: 'invalid_stored_value', message: '排产时记下的这一项格式不对。' }] }, '交期无效'],
+    [{ due_date: null, due_state: 'invalid', due_issue: 'due_date_invalid', data_gaps: [{ field: 'due_date', code: 'blob_metadata', message: '排产时这一项的记录格式无法显示，请联系维护人员核对。' }] }, '交期无效'],
+    [{ due_date: '9999-12-31', due_state: 'unspecified', due_issue: null, data_gaps: [] }, '未指定交期']
+  ]) {
+    const dueTask = { ...task, ...patch };
+    const dueTree = initialRuntime.state.render(() => expand(h(window.RunCandidateControls.Detail, { data: { tasks: [dueTask] }, prepared: inspectorPrepared, task: dueTask, onClose: () => {}, onRelated: () => {} })));
+    assert.equal(fieldText(dueTree, '交期'), expectedDue, '工序详情按真实解析状态渲染交期：' + expectedDue);
+  }
   const full = fixture({ comparison_mode: 'admission_official' });
   // Candidates come only from the unified search by business objective, carrying its generation metadata (RunGenerationContract.metadataKeys).
   const generation = { generation_policy_version: 'unified_search_v1', representative_objectives: ['min_overdue'],

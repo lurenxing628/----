@@ -37,10 +37,11 @@ def test_only_the_hold_window_keeps_an_original_arrangement(run_case, hold):
 def test_night_operator_calendar_efficiency_and_downtime_are_real(run_case, quantity, finish):
     case = run_case
     case.conn.execute("UPDATE Batches SET quantity=? WHERE batch_id='B1'", (quantity,))
-    insert_row(case.conn, "WorkCalendar", dict(date="2026-09-09", day_type="workday", shift_start="22:30",
-               shift_end="06:30", shift_hours=8, efficiency=1, allow_normal="yes", allow_urgent="yes"))
+    insert_row(case.conn, "WorkCalendar", dict(date="2026-09-09", day_type="workday", efficiency=1, allow_normal="yes", allow_urgent="yes",
+               periods_json='[{"start":"22:30","end":"06:30","day_offset":0}]'))
     insert_row(case.conn, "OperatorCalendar", dict(operator_id="O1", date="2026-09-09", day_type="workday",
-               shift_start="23:00", shift_end="07:00", shift_hours=8, efficiency=0.5, allow_normal="yes", allow_urgent="yes"))
+               efficiency=0.5, allow_normal="yes", allow_urgent="yes",
+               periods_json='[{"start":"23:00","end":"07:00","day_offset":0}]'))
     insert_row(case.conn, "MachineDowntimes", dict(machine_id="M1", scope_type="machine", scope_value="M1",
                start_time="2026-09-09 22:00:00", end_time="2026-09-10 00:00:00", reason_code="maintenance", status="active"))
     case.conn.commit()
@@ -88,26 +89,28 @@ def test_complex_merged_external_chain_and_shared_resource_competition(run_case)
 def test_compute_consumes_captured_calendar_rows_once_and_next_run_sees_changes(run_case):
     case = run_case
     conn = case.conn
-    conn.execute("INSERT INTO WorkCalendar(date,shift_start,shift_end,shift_hours,efficiency) "
-                 "VALUES ('2026-09-09',NULL,NULL,NULL,NULL)")
+    conn.execute("INSERT INTO WorkCalendar(date,day_type,efficiency,allow_normal,allow_urgent,periods_json) "
+                 "VALUES ('2026-09-09','workday',1,'yes','yes',?)",
+                 ('[{"start":"08:00","end":"16:00","day_offset":0}]',))
     conn.execute("INSERT INTO WorkbenchShiftProfiles(profile_id,name,anchor_date,cycle_days) "
                  "VALUES ('S','Shift','2026-09-09',1)")
-    conn.execute("INSERT INTO WorkbenchShiftPatternDays(profile_id,day_offset,is_rest,shift_start,shift_end) "
-                 "VALUES ('S',0,0,'09:00','17:00')")
-    conn.execute("INSERT INTO WorkbenchShiftDayPeriods(profile_id,day_offset,periods_json) VALUES ('S',0,?)",
+    conn.execute("INSERT INTO WorkbenchShiftPatternDays(profile_id,day_offset,is_rest,periods_json) "
+                 "VALUES ('S',0,0,?)",
                  ('[{"start":"09:00","end":"17:00","day_offset":0}]',))
     conn.execute("INSERT INTO WorkbenchOperatorProfiles(operator_id,shift_profile_id) VALUES ('O1','S')")
     conn.commit()
     tables = ("WorkCalendar", "OperatorCalendar", "WorkbenchCalendarDefaults", "WorkbenchOperatorProfiles",
-              "WorkbenchShiftProfiles", "WorkbenchShiftPatternDays", "WorkbenchShiftDayPeriods")
+              "WorkbenchShiftProfiles", "WorkbenchShiftPatternDays")
 
     def run():
+        from typing import Any
+
         projections = case.projections()
         dispositions = admitted_dispositions(conn, case.settings(), projections)
         statements = []
         conn.set_trace_callback(statements.append)
         try:
-            result = compute_admitted(conn, case.settings(), projections, dispositions)
+            result: Any = compute_admitted(conn, case.settings(), projections, dispositions)
             signature = result.schedule_input.cal_svc.certified_decode_checkpoint_snapshot()
         finally:
             conn.set_trace_callback(None)
@@ -119,9 +122,27 @@ def test_compute_consumes_captured_calendar_rows_once_and_next_run_sees_changes(
 
     original, signature = unchanged(case, run)
     assert original.orchestration.validated_schedule_payload.schedule_rows[0].start_time == datetime(2026, 9, 9, 9)
-    conn.execute("UPDATE WorkbenchShiftDayPeriods SET periods_json=? WHERE profile_id='S'",
+    conn.execute("UPDATE WorkbenchShiftPatternDays SET periods_json=? WHERE profile_id='S'",
                  ('[{"start":"11:00","end":"17:00","day_offset":0}]',))
     conn.commit()
     changed, changed_signature = unchanged(case, run)
     assert changed.orchestration.validated_schedule_payload.schedule_rows[0].start_time == datetime(2026, 9, 9, 11)
     assert changed_signature != signature
+
+
+def test_compute_candidate_run_builds_point_validator_once(run_case, monkeypatch):
+    from unittest.mock import Mock
+
+    from core.services.workbench.run import compute_validation
+
+    case = run_case
+    zero_op = case.operation(seq=2, unit_hours=0)
+    case.conn.commit()
+    validator_calls = Mock(wraps=compute_validation.candidate_point_validator)
+    monkeypatch.setattr(compute_validation, "candidate_point_validator", validator_calls)
+
+    result = unchanged(case, lambda: compute_run(case.conn, case.settings(), case.projections()))
+    assert validator_calls.call_count == 1
+    for payload in result.candidate_payloads.values():
+        rows = {row.op_id: row for row in payload.schedule_rows}
+        assert rows[zero_op].start_time == rows[zero_op].end_time == rows[case.op_id].end_time

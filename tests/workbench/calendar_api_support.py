@@ -8,7 +8,13 @@ import pytest
 
 BASE = "/api/workbench/v1/calendar"
 NIGHT = "2026-09-09"
-WORK = {"type": "work", "hours": 8, "eff": 100, "allowNormal": "yes", "allowUrgent": "yes"}
+WORK = {
+    "type": "work",
+    "periods": [{"start": "08:00", "end": "16:00", "day_offset": 0}],
+    "eff": 100,
+    "allowNormal": "yes",
+    "allowUrgent": "yes",
+}
 
 
 class CalendarApi:
@@ -78,20 +84,28 @@ def seed_calendars(api):
     with api.db() as conn:
         conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('CAL-O','Calendar operator')")
         conn.execute("INSERT INTO WorkbenchShiftProfiles(profile_id,name,anchor_date,cycle_days) VALUES ('CAL-SP','Night','2026-09-01',1)")
-        conn.execute("INSERT INTO WorkbenchShiftPatternDays(profile_id,day_offset,is_rest,shift_start,shift_end) VALUES ('CAL-SP',0,0,'21:15','05:15')")
+        conn.execute(
+            "INSERT INTO WorkbenchShiftPatternDays(profile_id,day_offset,is_rest,periods_json) "
+            "VALUES ('CAL-SP',0,0,'[{\"start\":\"21:15\",\"end\":\"05:15\",\"day_offset\":0}]')"
+        )
         conn.execute("INSERT INTO WorkbenchOperatorProfiles(operator_id,shift_profile_id) VALUES ('CAL-O','CAL-SP')")
     with api.db() as conn:
         calendar = CalendarService(conn)
+        context = calendar.normalization_context()
         calendar._admin.repo.upsert_many([
             calendar._admin._build_work_calendar(
-                date_value=NIGHT, shift_start="22:30", shift_end="06:30", efficiency=0.875,
-                allow_normal="no", allow_urgent="yes", remark="Original night"
+                date_value=NIGHT,
+                periods=[{"start": "22:30", "end": "06:30", "day_offset": 0}],
+                efficiency=0.875, allow_normal="no", allow_urgent="yes", remark="Original night",
+                context=context,
             )
         ])
         calendar._admin.operator_calendar_repo.upsert_many([
             calendar._admin._build_operator_calendar(
-                operator_id="CAL-O", date_value=NIGHT, shift_start="23:15", shift_end="07:45",
-                efficiency=0.625, allow_normal="yes", allow_urgent="no", remark="Personal exception"
+                operator_id="CAL-O", date_value=NIGHT,
+                periods=[{"start": "23:15", "end": "07:45", "day_offset": 0}],
+                efficiency=0.625, allow_normal="yes", allow_urgent="no", remark="Personal exception",
+                context=context,
             )
         ])
 

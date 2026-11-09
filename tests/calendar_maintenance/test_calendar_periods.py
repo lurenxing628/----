@@ -18,7 +18,8 @@ def dt(clock, day=DAY):
 
 
 def _upsert_work_calendar(service: CalendarService, date_value: str, **kwargs):
-    model = service._admin._build_work_calendar(date_value=date_value, **kwargs)
+    context = kwargs.pop("context", None) or service.normalization_context()
+    model = service._admin._build_work_calendar(date_value=date_value, context=context, **kwargs)
     service._admin.repo.upsert_many([model])
     service.conn.commit()
     service._engine.clear_policy_cache()
@@ -58,15 +59,19 @@ def test_calendar_range_builds_once_per_day_and_only_reads_new_receipt_refs(sche
     from core.models.calendar import WorkCalendar
     from core.services.workbench.resource.calendars import WorkbenchCalendarService
 
-    _upsert_work_calendar(CalendarService(schema_conn), "2026-10-12", shift_hours=8)
+    _upsert_work_calendar(
+        CalendarService(schema_conn),
+        "2026-10-12",
+        periods=[{"start": "08:00", "end": "16:00", "day_offset": 0}],
+    )
     domain = WorkbenchCalendarService(schema_conn)
     built, persisted, ref_reads = [], [], []
     build = domain._calendar._admin._build_work_calendar
     save = domain._calendar._admin.repo.upsert_many
     refs = domain._query.created_refs
 
-    def counted_build(**kwargs):
-        model = build(**kwargs)
+    def counted_build(*args, **kwargs):
+        model = build(*args, **kwargs)
         built.append(model)
         return model
 
@@ -108,15 +113,22 @@ def test_calendar_range_preserves_lock_time_facts_ttl_and_minute_conflicts(schem
 
     import pytest
 
+    from core.errors import ValidationError
     from core.infrastructure.transaction import TransactionManager
+    from core.models.calendar_periods import decode_periods
     from core.models.workbench_command import WorkbenchCommandRejected
     from core.services.workbench.resource.calendars import WorkbenchCalendarService
 
     now = [datetime(2026, 10, 12, 9)]
     domain = WorkbenchCalendarService(schema_conn, clock=lambda: now[0])
-    request = {"start_date": DAY, "end_date": DAY, "fields": {"hours": 8}, "scope": "all", "operation": "upsert"}
+    eight_hours = [{"start": "08:00", "end": "16:00", "day_offset": 0}]
+    request = {"start_date": DAY, "end_date": DAY, "fields": {"periods": eight_hours}, "scope": "all", "operation": "upsert"}
     preview = domain.preview(request)
-    _upsert_work_calendar(CalendarService(schema_conn), DAY, shift_hours=7)
+    _upsert_work_calendar(
+        CalendarService(schema_conn),
+        DAY,
+        periods=[{"start": "08:00", "end": "15:00", "day_offset": 0}],
+    )
     with TransactionManager(schema_conn).transaction(begin_immediate=True):
         with pytest.raises(WorkbenchCommandRejected, match="范围里的日历已经变了"):
             domain.confirm({"preview_ref": preview.preview_ref}, preview)
@@ -125,23 +137,29 @@ def test_calendar_range_preserves_lock_time_facts_ttl_and_minute_conflicts(schem
     with TransactionManager(schema_conn).transaction(begin_immediate=True):
         with pytest.raises(WorkbenchCommandRejected, match="已过期"):
             domain.confirm({"preview_ref": preview.preview_ref}, preview)
-    for fields in ({"hours": 1.234}, {"hours": 1e-10}, {"hours": 1e-10, "periods": []},
-                   {"hours": 6, "shiftEnd": "17:00"}, {"hours": 6, "periods": LUNCH}):
-        with pytest.raises(WorkbenchCommandRejected) as error:
+    for fields in (
+        {"periods": None},
+        {"periods": [{"start": "08:00", "end": "12:00", "day_offset": 0},
+                     {"start": "11:00", "end": "15:00", "day_offset": 0}]},
+        {"periods": [{"start": "08:00", "end": "08:00", "day_offset": 0},
+                     {"start": "09:00", "end": "10:00", "day_offset": 1}]},
+    ):
+        with pytest.raises(ValidationError) as error:
             domain.preview({**request, "fields": fields})
-        assert error.value.code == "constraint_conflict"
+        assert error.value.field == "fields.periods"
     saved_day = CalendarService(schema_conn)._admin.repo.get(DAY)
-    assert saved_day is not None and saved_day.shift_hours == 7
+    assert saved_day is not None and decode_periods(saved_day.periods_json) == [{"start": "08:00", "end": "15:00", "day_offset": 0}]
 
 
 def test_zero_and_full_day_hours_keep_their_windows_through_confirmation(schema_conn):
     from core.infrastructure.transaction import TransactionManager
+    from core.models.calendar_periods import decode_periods, period_hours
     from core.services.workbench.resource.calendars import WorkbenchCalendarService
 
     domain = WorkbenchCalendarService(schema_conn)
-    for hours in (24, 0):
+    for hours, periods in ((24, [{"start": "08:00", "end": "08:00", "day_offset": 0}]), (0, [])):
         preview = domain.preview({"start_date": DAY, "end_date": DAY, "scope": "all",
-                                  "operation": "upsert", "fields": {"hours": hours}})
+                                  "operation": "upsert", "fields": {"periods": periods}})
         assert preview.days[0]["after"]["effective"]["hours"] == hours
         with TransactionManager(schema_conn).transaction(begin_immediate=True):
             result = domain.confirm({"preview_ref": preview.preview_ref}, preview)
@@ -149,93 +167,329 @@ def test_zero_and_full_day_hours_keep_their_windows_through_confirmation(schema_
         service = CalendarService(schema_conn)
         row = service._admin.repo.get(DAY)
         assert row is not None
-        assert row.shift_hours == hours and row.shift_end == (row.shift_start if hours else None)
-        assert service._engine._policy_for_date(DAY).shift_hours == hours
+        assert period_hours(decode_periods(row.periods_json)) == hours
+        policy = service._engine._policy_for_date(DAY)
+        assert policy.hours == hours and bool(policy.work_windows()) == bool(hours)
 
 
 @pytest.mark.parametrize("personal", [False, True], ids=["global", "personal"])
-def test_explicit_periods_replace_legacy_nonminute_hours(schema_conn, personal):
+def test_explicit_periods_replace_stored_periods_and_omitted_periods_keep_them(schema_conn, personal):
+    from core.errors import ValidationError
     from core.infrastructure.transaction import TransactionManager
+    from core.models.calendar_period_columns import parse_period_columns
+    from core.models.calendar_periods import decode_periods, period_hours
+    from core.services.workbench.resource.calendar_reading import CalendarProjection
     from core.services.workbench.resource.calendars import WorkbenchCalendarService
     from core.services.workbench.resource.operator_calendars import WorkbenchOperatorCalendarService
 
+    initial_periods = '[{"start":"08:00","end":"09:15","day_offset":0}]'
     if personal:
         schema_conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('O1','Operator')")
-        schema_conn.execute("INSERT INTO OperatorCalendar(operator_id,date,shift_start,shift_hours) VALUES ('O1',?,'08:00',1.234)", (DAY,))
+        schema_conn.execute(
+            "INSERT INTO OperatorCalendar(operator_id,date,day_type,efficiency,allow_normal,allow_urgent,periods_json) "
+            "VALUES ('O1',?,'workday',1,'yes','yes',?)",
+            (DAY, initial_periods),
+        )
         schema_conn.commit()
         op_domain = WorkbenchOperatorCalendarService(schema_conn, "O1")
         before = op_domain.day_state(DAY, op_domain.range_states(DAY, DAY))
-        assert op_domain.proposed_row({"periods": LUNCH}, before).shift_hours == 8
+        proposed = op_domain.proposed_row(
+            {"periods": LUNCH},
+            before,
+            context=op_domain._calendar.normalization_context(),
+            projection=CalendarProjection({}, engine=op_domain._calendar._engine),
+        )
+        assert period_hours(decode_periods(proposed.periods_json)) == 8
         with TransactionManager(schema_conn).transaction(begin_immediate=True):
             normalized = op_domain.normalize("upsert", {"date": DAY, "fields": {"type": "work", "periods": LUNCH}})
             result = op_domain._apply_checked("upsert", normalized, op_domain.day_state(DAY, op_domain.range_states(DAY, DAY)))
     else:
-        schema_conn.execute("INSERT INTO WorkCalendar(date,shift_start,shift_hours) VALUES (?,'08:00',1.234)", (DAY,))
+        schema_conn.execute(
+            "INSERT INTO WorkCalendar(date,day_type,efficiency,allow_normal,allow_urgent,periods_json) "
+            "VALUES (?,'workday',1,'yes','yes',?)",
+            (DAY, initial_periods),
+        )
         schema_conn.commit()
         cal_domain = WorkbenchCalendarService(schema_conn)
         preview = cal_domain.preview({"start_date": DAY, "end_date": DAY, "scope": "all",
                                       "operation": "upsert", "fields": {"periods": LUNCH}})
-        assert preview.days[0]["after"]["row"]["shift_hours"] == 8
+        assert preview.days[0]["after"]["effective"]["hours"] == 8
         with TransactionManager(schema_conn).transaction(begin_immediate=True):
             result = cal_domain.confirm({"preview_ref": preview.preview_ref}, preview)
     assert result.result == "committed"
     service = CalendarService(schema_conn)
     row = service._admin.operator_calendar_repo.get("O1", DAY) if personal else service._admin.repo.get(DAY)
     assert row is not None
-    assert row.shift_hours == 8 and (row.shift_start, row.shift_end) == ("08:00", "17:00")
-    assert service._engine._policy_for_date(DAY, "O1" if personal else None).shift_hours == 8
+    assert decode_periods(row.periods_json) == LUNCH
+    assert service._engine._policy_for_date(DAY, "O1" if personal else None).hours == 8
 
     if personal:
         op_domain = WorkbenchOperatorCalendarService(schema_conn, "O1")
+        with pytest.raises(ValidationError) as exc_info:
+            op_domain.normalize("upsert", {"date": DAY, "fields": {"type": "work", "periods": None}})
+        assert exc_info.value.field == "fields.periods"
         with TransactionManager(schema_conn).transaction(begin_immediate=True):
-            normalized = op_domain.normalize(
-                "upsert", {"date": DAY, "fields": {"type": "work", "periods": None, "shiftStart": "08:00"}}
+            normalized = op_domain.normalize("upsert", {"date": DAY, "fields": {"type": "work", "note": "仅改备注"}})
+            note_only = op_domain._apply_checked(
+                "upsert", normalized, op_domain.day_state(DAY, op_domain.range_states(DAY, DAY))
             )
-            reverted = op_domain._apply_checked("upsert", normalized, op_domain.day_state(DAY, op_domain.range_states(DAY, DAY)))
     else:
         cal_domain = WorkbenchCalendarService(schema_conn)
+        with pytest.raises(ValidationError) as exc_info:
+            cal_domain.preview({"start_date": DAY, "end_date": DAY, "scope": "all",
+                                "operation": "upsert", "fields": {"periods": None}})
+        assert exc_info.value.field == "fields.periods"
         preview = cal_domain.preview({"start_date": DAY, "end_date": DAY, "scope": "all",
-                                      "operation": "upsert", "fields": {"periods": None, "hours": 8, "shiftStart": "08:00"}})
-        assert preview.days[0]["after"]["row"]["shift_end"] == "16:00"
+                                      "operation": "upsert", "fields": {"note": "仅改备注"}})
         with TransactionManager(schema_conn).transaction(begin_immediate=True):
-            reverted = cal_domain.confirm({"preview_ref": preview.preview_ref}, preview)
-    assert reverted.result == "committed"
+            note_only = cal_domain.confirm({"preview_ref": preview.preview_ref}, preview)
+    assert note_only.result == "committed"
     service = CalendarService(schema_conn)
-    single = service._admin.operator_calendar_repo.get("O1", DAY) if personal else service._admin.repo.get(DAY)
-    assert single is not None and single.periods_json is None
-    assert (single.shift_start, single.shift_end, single.shift_hours) == ("08:00", "16:00", 8)
+    updated = service._admin.operator_calendar_repo.get("O1", DAY) if personal else service._admin.repo.get(DAY)
+    assert updated is not None and updated.remark == "仅改备注"
+    assert decode_periods(updated.periods_json) == LUNCH
+
+    with pytest.raises(ValidationError):
+        parse_period_columns({"period_count": "²"})
+
+
+REST_TO_WORK = DAY + " 原来是假期或休息日，改成工作日时请填写工作时段。"
+
+
+def _holiday_row(conn, personal):
+    table_columns = "date,day_type,efficiency,allow_normal,allow_urgent,periods_json"
     if personal:
-        schema_conn.execute(
-            "UPDATE OperatorCalendar SET shift_end=NULL, shift_hours=8 WHERE operator_id='O1' AND date=?",
-            (DAY,),
-        )
+        conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('O1','Operator')")
+        conn.execute(f"INSERT INTO OperatorCalendar(operator_id,{table_columns}) VALUES ('O1',?,'holiday',1,'no','no','[]')", (DAY,))
+    else:
+        conn.execute(f"INSERT INTO WorkCalendar({table_columns}) VALUES (?,'holiday',1,'no','no','[]')", (DAY,))
+    conn.commit()
+
+
+def _apply_upsert(domain, conn, fields, personal):
+    from core.infrastructure.transaction import TransactionManager
+
+    with TransactionManager(conn).transaction(begin_immediate=True):
+        normalized = domain.normalize("upsert", {"date": DAY, "fields": fields})
+        before = domain.day_state(DAY, domain.range_states(DAY, DAY)) if personal else domain.snapshot(DAY)
+        return domain._apply_checked("upsert", normalized, before)
+
+
+@pytest.mark.parametrize("personal", [False, True], ids=["global", "personal"])
+def test_holiday_switched_to_work_without_periods_is_rejected(schema_conn, personal):
+    from core.errors import ValidationError
+    from core.models.calendar_periods import encode_periods
+    from core.services.workbench.resource.calendars import WorkbenchCalendarService
+    from core.services.workbench.resource.operator_calendars import WorkbenchOperatorCalendarService
+
+    _holiday_row(schema_conn, personal)
+    domain = WorkbenchOperatorCalendarService(schema_conn, "O1") if personal else WorkbenchCalendarService(schema_conn)
+    stored = (lambda: CalendarService(schema_conn)._admin.operator_calendar_repo.get("O1", DAY)) if personal else (
+        lambda: CalendarService(schema_conn)._admin.repo.get(DAY))
+
+    with pytest.raises(ValidationError) as rejected:
+        _apply_upsert(domain, schema_conn, {"type": "work"}, personal)
+    assert rejected.value.field == "fields.periods" and rejected.value.message == REST_TO_WORK
+    assert stored().day_type == "holiday"
+
+    # 显式空数组是明确的零工时工作日，不算没填。
+    assert _apply_upsert(domain, schema_conn, {"type": "work", "periods": []}, personal).result == "committed"
+    zero = stored()
+    assert zero.day_type == "workday" and zero.periods_json == "[]"
+
+    # 已是工作日的行省略时段表示不改。
+    assert _apply_upsert(domain, schema_conn, {"type": "work", "note": "只改备注"}, personal).result == "committed"
+    assert stored().periods_json == "[]" and stored().remark == "只改备注"
+
+    # 给了时段就按所填保存。
+    assert _apply_upsert(domain, schema_conn, {"type": "work", "periods": LUNCH}, personal).result == "committed"
+    assert stored().periods_json == encode_periods(LUNCH)
+
+
+@pytest.mark.parametrize("entry", ["global_day", "global_range", "personal_day"])
+def test_form_keeps_non_form_field_of_domain_error_unprefixed(schema_conn, entry):
+    # 跨出 9999-12-31 的班次报的是 date，不是表单里的字段：表单入口不给它造 fields.date 这条路径。
+    from core.errors import ValidationError
+    from core.infrastructure.transaction import TransactionManager
+    from core.services.workbench.resource.calendars import WorkbenchCalendarService
+    from core.services.workbench.resource.operator_calendars import WorkbenchOperatorCalendarService
+
+    last, overnight = "9999-12-31", [{"start": "22:00", "end": "06:00", "day_offset": 0}]
+    fields = {"type": "work", "periods": overnight}
+    if entry == "personal_day":
+        schema_conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('O1','Operator')")
         schema_conn.commit()
-        op_domain = WorkbenchOperatorCalendarService(schema_conn, "O1")
-        request = op_domain.normalize(
-            "upsert", {"date": DAY, "fields": {"type": "work", "shiftStart": "09:00", "shiftEnd": "16:00", "eff": 100}}
-        )
-        proposed = op_domain.proposed_row(request["fields"], op_domain.day_state(DAY, op_domain.range_states(DAY, DAY)))
-        assert (proposed.shift_start, proposed.shift_end, proposed.shift_hours) == ("09:00", "16:00", 7.0)
+    domain = WorkbenchOperatorCalendarService(schema_conn, "O1") if entry == "personal_day" else WorkbenchCalendarService(schema_conn)
+    with pytest.raises(ValidationError) as rejected:
+        if entry == "global_range":
+            domain.preview({"start_date": last, "end_date": last, "scope": "all", "operation": "upsert", "fields": fields})
+        else:
+            with TransactionManager(schema_conn).transaction(begin_immediate=True):
+                normalized = domain.normalize("upsert", {"date": last, "fields": fields})
+                before = (domain.day_state(last, domain.range_states(last, last)) if entry == "personal_day"
+                          else domain.snapshot(last))
+                domain._apply_checked("upsert", normalized, before)
+    assert rejected.value.field == "date" and "9999-12-31" in rejected.value.message
 
-        schema_conn.execute(
-            "UPDATE OperatorCalendar SET shift_start='08:00', shift_end=NULL, shift_hours=6 WHERE operator_id='O1' AND date=?",
-            (DAY,),
-        )
-        schema_conn.commit()
-        clear_end_req = op_domain.normalize(
-            "upsert", {"date": DAY, "fields": {"type": "work", "shiftStart": "09:00", "shiftEnd": None, "eff": 100}}
-        )
-        cleared_proposed = op_domain.proposed_row(
-            clear_end_req["fields"], op_domain.day_state(DAY, op_domain.range_states(DAY, DAY))
-        )
-        assert (cleared_proposed.shift_start, cleared_proposed.shift_end, cleared_proposed.shift_hours) == (
-            "09:00",
-            "17:00",
-            8.0,
-        )
 
-        from core.errors import ValidationError
-        from core.models.calendar_period_columns import parse_period_columns
+def test_global_range_rejects_holiday_turned_work_but_fresh_dates_take_defaults(schema_conn):
+    from core.errors import ValidationError
+    from core.infrastructure.transaction import TransactionManager
+    from core.models.calendar_periods import encode_periods, period_hours
+    from core.services.workbench.resource.calendars import WorkbenchCalendarService
 
-        with pytest.raises(ValidationError):
-            parse_period_columns({"period_count": "²"})
+    _holiday_row(schema_conn, False)
+    domain = WorkbenchCalendarService(schema_conn)
+    work_only = {"scope": "all", "operation": "upsert", "fields": {"type": "work"}}
+    with pytest.raises(ValidationError) as rejected:
+        domain.preview({**work_only, "start_date": DAY, "end_date": "2026-10-06"})
+    assert rejected.value.field == "fields.periods" and rejected.value.message == REST_TO_WORK
+
+    # 从未存过的日期只改类型：取当前默认时段。
+    preview = domain.preview({**work_only, "start_date": "2026-10-06", "end_date": "2026-10-06"})
+    default_periods = domain._calendar._engine.default_periods()
+    assert preview.days[0]["after"]["row"]["periods_json"] == encode_periods(default_periods)
+    assert preview.days[0]["after"]["effective"]["hours"] == period_hours(default_periods)
+    with TransactionManager(schema_conn).transaction(begin_immediate=True):
+        assert domain.confirm({"preview_ref": preview.preview_ref}, preview).result == "committed"
+
+    # 范围里显式给空数组：假期也可明确改成零工时工作日。
+    explicit = domain.preview({"scope": "all", "operation": "upsert", "start_date": DAY, "end_date": DAY,
+                               "fields": {"type": "work", "periods": []}})
+    assert explicit.days[0]["after"]["row"]["day_type"] == "workday"
+    assert explicit.days[0]["after"]["row"]["periods_json"] == "[]" and explicit.days[0]["after"]["effective"]["hours"] == 0.0
+
+
+def test_zero_period_day_window_is_midnight_whatever_path_wrote_it(schema_conn):
+    from core.services.workbench.resource.calendar_reading import CalendarProjection, effective_calendar_day
+
+    service = CalendarService(schema_conn)
+    context = service.normalization_context()
+    for day, day_type in ((DAY, "workday"), ("2026-10-06", "holiday")):
+        _upsert_work_calendar(service, day, day_type=day_type, periods=[], efficiency=1, context=context)
+        expected = day + "T00:00:00"
+        policy = service._engine._policy_for_date(day)
+        assert policy.work_windows() == () and policy.work_window() == (dt("00:00:00", day), dt("00:00:00", day))
+        effective = effective_calendar_day(day, service._admin.repo.get(day),
+                                           projection=CalendarProjection({}, engine=service._engine))
+        assert (effective["window_start"], effective["window_end"], effective["windows"]) == (expected, expected, [])
+
+
+def test_snapshot_engine_reports_bad_stored_efficiency_in_plain_words():
+    from core.errors import ValidationError
+
+    row = {"date": DAY, "day_type": "workday", "efficiency": None, "allow_normal": "yes", "allow_urgent": "yes",
+           "remark": None, "periods_json": "[]"}
+    facts = {"profiles": [], "patterns": [], "global": [row], "personal": [{**row, "operator_id": "O1"}]}
+    with pytest.raises(ValidationError, match="工作日历里 " + DAY + " 的效率读不出来或不大于 0") as public:
+        SnapshotCalendarEngine(facts)._policy_for_date(DAY)
+    assert public.value.field == "efficiency"
+    with pytest.raises(ValidationError, match="个人日历里 " + DAY + " 的效率"):
+        SnapshotCalendarEngine(facts)._policy_for_date(DAY, "O1")
+
+
+def test_projection_family_shares_period_memo_and_isolates_child_date_overrides(monkeypatch):
+    from core.models.calendar_periods import encode_periods
+    from core.services.scheduler.calendar import engine as engine_module
+    from core.services.scheduler.calendar.engine import CalendarEngine
+    from core.services.workbench.resource.calendar_reading import (
+        CalendarProjection,
+        effective_calendar_day,
+        month_stats,
+    )
+
+    decoded_calls = []
+    real_decode = engine_module.decode_periods
+
+    def counted_decode(raw: str):
+        decoded_calls.append(raw)
+        return real_decode(raw)
+
+    monkeypatch.setattr(engine_module, "decode_periods", counted_decode)
+
+    lunch_json = encode_periods(LUNCH)
+    late_periods = [{"start": "10:00", "end": "18:00", "day_offset": 0}]
+    late_json = encode_periods(late_periods)
+    night_tail_periods = [{"start": "20:00", "end": "02:00", "day_offset": 0}]
+    night_tail_json = encode_periods(night_tail_periods)
+
+    base_rows = {
+        DAY: {
+            "date": DAY,
+            "day_type": "workday",
+            "periods_json": lunch_json,
+            "efficiency": 1.0,
+            "allow_normal": "yes",
+            "allow_urgent": "yes",
+            "remark": None,
+        },
+        "2026-10-31": {
+            "date": "2026-10-31",
+            "day_type": "workday",
+            "periods_json": night_tail_json,
+            "efficiency": 1.0,
+            "allow_normal": "yes",
+            "allow_urgent": "yes",
+            "remark": None,
+        },
+        "2026-11-01": {
+            "date": "2026-11-01",
+            "day_type": "workday",
+            "periods_json": "broken-periods-json",
+            "efficiency": 1.0,
+            "allow_normal": "yes",
+            "allow_urgent": "yes",
+            "remark": None,
+        },
+    }
+    parent = CalendarProjection(base_rows, engine=CalendarEngine(None))
+    assert decoded_calls == []
+
+    parent_day = effective_calendar_day(DAY, base_rows[DAY], projection=parent)
+    assert parent_day["efficiency"] == 1.0 and parent_day["allowNormal"] == "yes" and parent_day["day_type"] == "workday"
+    assert decoded_calls == [lunch_json]
+
+    oct_days = [
+        {"date": DAY, "explicit": True, "is_weekend": False, "effective": parent_day},
+        {
+            "date": "2026-10-31",
+            "explicit": True,
+            "is_weekend": True,
+            "effective": effective_calendar_day("2026-10-31", base_rows["2026-10-31"], projection=parent),
+        },
+    ]
+    assert month_stats(oct_days, parent)["effective_hours"] is None
+
+    # 子投影首次解析 late_json 后，同投影族后续子投影与父投影均复用该解析产物。
+    first_child_row = {
+        **base_rows[DAY],
+        "efficiency": 0.5,
+        "allow_normal": "no",
+        "periods_json": late_json,
+    }
+    child_eff = effective_calendar_day(DAY, first_child_row, projection=parent)
+    assert child_eff["efficiency"] == 0.5 and child_eff["allowNormal"] == "no" and child_eff["effective_hours"] == 4.0
+
+    second_child_row = {**first_child_row, "date": "2026-10-06"}
+    second_eff = effective_calendar_day("2026-10-06", second_child_row, projection=parent)
+    assert second_eff["hours"] == 8.0 and decoded_calls.count(late_json) == 1
+    assert decoded_calls.count(lunch_json) == 1
+
+    holiday_child_row = {
+        **base_rows[DAY],
+        "day_type": "holiday",
+        "allow_normal": "no",
+        "allow_urgent": "no",
+        "periods_json": "[]",
+    }
+    holiday_eff = effective_calendar_day(DAY, holiday_child_row, projection=parent)
+    assert holiday_eff["day_type"] == "holiday" and holiday_eff["is_rest"] is True and holiday_eff["hours"] == 0.0
+
+    # 子投影修改同一天的效率、许可、类型及修复次月 1 日，绝不污染父投影的当日策略和未知容量 None。
+    repaired_nov_child = parent.with_rows({**base_rows, "2026-11-01": {**base_rows["2026-11-01"], "periods_json": late_json}})
+    assert month_stats(oct_days, repaired_nov_child)["effective_hours"] == 14.0
+    assert decoded_calls.count(late_json) == 1
+
+    parent_again = effective_calendar_day(DAY, base_rows[DAY], projection=parent)
+    assert parent_again == parent_day
+    assert month_stats(oct_days, parent)["effective_hours"] is None

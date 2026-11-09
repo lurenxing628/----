@@ -204,9 +204,7 @@ function chartAndDetails() {
     ['target_objectives', ['min_overdue', 'min_tardiness', 'min_changeover'], ['min_weighted_tardiness', 'min_overdue', 'min_changeover'], '同时探索方向'],
     ['time_budget_seconds', 10, 30, '总计算预算（秒）']
   ];
-  const oldFields = [['graph_candidate_weight_count', 4, '图分析候选数量'], ['graph_selection_policy', 'health', '图分析选优策略'],
-    ['graph_overdue_tolerance_count', 0, '超期批次数容差'], ['graph_tardiness_tolerance_ratio', 0.1, '总拖期比例容差'],
-    ['objective', 'min_overdue', '优化目标'], ['objectives', ['min_overdue', 'min_tardiness', 'min_changeover'], '优化目标顺序'],
+  const oldFields = [['objective', 'min_overdue', '优化目标'], ['objectives', ['min_overdue', 'min_tardiness', 'min_changeover'], '优化目标顺序'],
     ['time_budget_seconds', 10, '候选计算预算（秒）']];
   const optionRows = strategyFields.map(([field, before, after]) => ({ category: 'algorithm', entity: { key: 'run_options', label: '本次保存的优化策略和预算' }, field, state: 'different',
     before: before === null ? { ...side(null), present: false } : side(before), after: side(after) }));
@@ -224,8 +222,8 @@ function chartAndDetails() {
   assert.equal(text(changedRows[4].children[2]), '10'); assert.equal(text(changedRows[4].children[3]), '30'); assert.equal(text(changedRows[4].children[4]), '有变化');
   const sameTable = nodes(optionDetail).find(node => node.type === 'table' && node.props['aria-label'] === '相同设置');
   const sameRows = nodes(sameTable).filter(node => node.props['data-history-condition-state']);
-  assert.deepEqual(sameRows.map(row => text(row.children[1])), oldFields.map(row => row[2]), '旧图档、目标和候选预算保留原标签');
-  assert.equal(text(sameRows[4].children[3]), 'min_overdue'); assert.equal(text(sameRows[5].children[3]), '3 项');
+  assert.deepEqual(sameRows.map(row => text(row.children[1])), oldFields.map(row => row[2]), '目标和候选预算保留原标签');
+  assert.equal(text(sameRows[0].children[3]), 'min_overdue'); assert.equal(text(sameRows[1].children[3]), '3 项');
 }
 function navigationAndSession() {
   const start = A.context({ query: A.scope({ metric_keys: keys, selected_entry_ref: 'run:' + ref(2), reference_run_ref: ref(1), comparison: 'same_conditions', page: 2, range_start: windowScope.start, range_end: windowScope.end, snapshot_ref: token }), metric_key: keys[1] });

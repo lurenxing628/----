@@ -203,6 +203,7 @@ def test_http_trial_reads_and_catalogs_prebind_snapshot_before_heavy_projections
     def forbid(*args, **kwargs):
         raise AssertionError("Stale snapshot_ref must be rejected before heavy projection or catalog iteration")
 
+    monkeypatch.setattr(trial_service, "saved_capture", forbid)
     monkeypatch.setattr(trial_service, "live_context", forbid)
     monkeypatch.setattr(projection, "trial_capacity", forbid)
     monkeypatch.setattr(trial_catalog, "_bounded_page", forbid)

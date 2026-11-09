@@ -58,6 +58,49 @@ def test_analysis_preserves_actual_values_unknowns_and_evidence_references(dashb
         assert row["source"]["finish_deviation_minutes"] == 20
 
 
+@pytest.mark.parametrize(
+    ("reported_hours", "expected_overrun", "expected_active", "expected_code", "expected_risks"),
+    [
+        (0.0, False, False, "no_deviation", []),
+        (0.5, True, True, "processing_hours_overrun", ["processing_hours_overrun"]),
+    ],
+)
+def test_zero_unit_hours_reports_evaluate_quota_and_reuse_planned_end_interval(
+    dashboard_case, monkeypatch, reported_hours, expected_overrun, expected_active, expected_code, expected_risks
+):
+    from core.services.workbench.facts import execution_values
+
+    case = dashboard_case
+    case.conn.execute("UPDATE BatchOperations SET unit_hours=0 WHERE id=?", (case.op,))
+    case.conn.commit()
+    case.report(quantity=2, effective_processing_hours=reported_hours, actual_end="2026-09-09T10:00:00")
+    reader = WorkbenchDashboardService(case.conn, clock=lambda: NOW)
+    with reader.read_snapshot():
+        sources = reader.load()
+    sources.facts.project()
+    parsed_inputs = []
+    real_parse = execution_values.parse_local_datetime
+    monkeypatch.setattr(
+        execution_values,
+        "parse_local_datetime",
+        lambda value: (parsed_inputs.append(value), real_parse(value))[1],
+    )
+    items, summary = actual(sources.facts)
+    assert parsed_inputs == ["2026-09-09T10:00:00"]
+    assert summary["assessed_count"] == 1 and summary["unknown_count"] == 0
+    item = items[0]
+    assert item["risk"]["active"] is expected_active
+    assert item["risk"]["code"] == expected_code
+    assert item["source"]["risk_codes"] == expected_risks
+    assert item["source"]["hours"] == {
+        "effective_processing_hours": reported_hours,
+        "quota_processing_hours": 0.0,
+        "overrun": expected_overrun,
+        "basis": "complete_report_processing_hours_vs_operation_unit_hours_times_target",
+        "setup_or_elapsed_hours_included": False,
+    }
+
+
 def test_http_analysis_dedup_does_not_reduce_list_or_detail_evidence(dashboard_case, monkeypatch):
     case = dashboard_case
     case.report()

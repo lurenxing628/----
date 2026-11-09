@@ -8,7 +8,7 @@ from core.services.workbench.facts.trial_origin import TrialOrigin
 from core.services.workbench.facts.trial_policy import load_draft, load_scenario
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
 from core.services.workbench.trial.constraints import build_archived_trial_intervals
-from core.services.workbench.trial.effort import operation_types
+from core.services.workbench.trial.effort import recorded_operation_types, slot_operation_types
 from core.services.workbench.trial.preparation import apply_preparation, preparation_projection, trial_changeovers
 from core.services.workbench.trial.projection import unplanned_operations
 from core.services.workbench.trial.service import WorkbenchTrialService
@@ -211,11 +211,17 @@ def test_trial_switches_follow_actual_type_identity_and_saved_complete_arrangeme
     head, rows = load_draft(service(case.conn).repo, draft["draft_ref"])
     facts = GenerationFacts(head["admission"]["source"]["capture"])
     second = rows[1]
-    missing = operation_types(rows, facts.entity_refs, facts.tables["OpTypes"],
-                              [{"op_id": second["original"]["operation"]["id"]}])
-    assert missing[second["operation_ref"]] == {"ref": case.ref("op_type", "T2"), "label": "Drilling"}
-    unknown = operation_types(rows, facts.entity_refs, facts.tables["OpTypes"],
-                              [{"op_id": second["original"]["operation"]["id"], "op_type_id": None}])
+    slot_types = slot_operation_types(rows, facts.entity_refs, facts.tables["OpTypes"])
+    assert slot_types[second["operation_ref"]] == {"ref": case.ref("op_type", "T2"), "label": "Drilling"}
+    unknown = recorded_operation_types(
+        rows,
+        facts.entity_refs,
+        facts.tables["OpTypes"],
+        [
+            {"op_id": rows[0]["original"]["operation"]["id"], "op_type_id": "T1"},
+            {"op_id": second["original"]["operation"]["id"], "op_type_id": None},
+        ],
+    )
     assert unknown[second["operation_ref"]] == {"ref": None, "label": None}
     unknown_source = dict(head["admission"], source=dict(head["admission"]["source"], operation_types=unknown))
     intervals = build_archived_trial_intervals(rows, execution=unknown_source["execution"])

@@ -184,3 +184,36 @@ def test_file_confirmation_retains_source_after_read_expiry_and_rechecks_write_e
         rollback_response = api.client.post(BASE + '/files/confirm', json=api.confirm_body(valid_preview))
         assert rollback_response.status_code == 409 and rollback_response.get_json()['error']['code'] == 'stale_write'
     assert all_rows(api.case.conn) == before
+
+
+def test_field_workspace_pagination_rejects_oversized_non_ascii_and_leading_zero_inputs(field_api):
+    import pytest
+
+    from core.models.workbench_command import WorkbenchCommandRejected
+    from core.services.workbench.execution.field_workspace_scope import page_input
+
+    for bad_query in (
+        {'page': '0'},
+        {'page': '01'},
+        {'page': '１'},
+        {'page': '-1'},
+        {'page': '100001'},
+        {'page': '9' * 6000},
+        {'size': '0'},
+        {'size': '020'},
+        {'size': '２０'},
+        {'size': '101'},
+        {'size': '9' * 6000},
+    ):
+        response = field_api.client.get(BASE + '/tasks', query_string=bad_query)
+        assert response.status_code == 400
+        assert response.get_json()['error']['code'] == 'invalid_input'
+
+    for bad_raw in ({'page': 10 ** 5000}, {'page': True}, {'size': False}, {'size': 1.0}):
+        with pytest.raises(WorkbenchCommandRejected) as exc_info:
+            page_input(bad_raw)
+        assert exc_info.value.status == 400 and exc_info.value.code == 'invalid_input'
+
+    assert page_input({'page': '100000', 'size': '100'}) == (100000, 100)
+    first_wide = field_api.read(page=1, size=100)['data']
+    assert first_wide['page']['number'] == 1 and first_wide['page']['size'] == 100

@@ -484,7 +484,6 @@
         "actual_completion": "not_evaluated",
         "actual_delivery": "not_evaluated",
         "completion_scope": "full_candidate",
-        "current_entities_consulted": false,
         "due_boundary": "next_day_exclusive",
         "kind": "planned_delivery",
         "metadata_basis": "captured_at_run_admission",
@@ -742,11 +741,9 @@
         "kind": "admission_official",
         "version": null
       },
-      "current_entities_consulted": false,
       "data_gaps": [],
       "execution_basis": "captured_at_run_admission",
       "finished_at": "2026-10-15T02:29:46.639621",
-      "formal_version_allocated": false,
       "input": {
         "completed_policy": "preserve_actuals",
         "end_date": "2026-09-25",
@@ -770,6 +767,8 @@
         "batch_ref": "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc",
         "data_gaps": [],
         "due_date": "2026-09-25",
+        "due_issue": null,
+        "due_state": "specified",
         "end": "2026-09-09T08:45:00",
         "execution_at_generation": {
           "data_quality": "incomplete",

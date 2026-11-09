@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import asdict
 
@@ -10,7 +9,7 @@ import pytest
 
 from core.errors import ValidationError
 from core.infrastructure.database import ensure_schema, get_connection
-from core.models.schedule_config_runtime_fields import RETIRED_CONFIG_FIELDS, list_runtime_config_fields
+from core.models.schedule_config_runtime_fields import list_runtime_config_fields
 from core.services.scheduler.calendar.service import CalendarService
 from core.services.scheduler.config.config_field_spec import list_config_fields
 from core.services.scheduler.config.config_snapshot import build_schedule_config_snapshot
@@ -40,49 +39,27 @@ def config_store(tmp_path):
         conn.close()
 
 
-def test_config_snapshot_includes_hidden_fields_and_ignores_retired_fields(config_store) -> None:
+def test_config_snapshot_matches_registered_fields_and_defaults(config_store) -> None:
     conn, repo, _database = config_store
     snap = _stored_snapshot(conn)
-    assert snap.auto_assign_persist == "yes"
-    assert asdict(snap)["auto_assign_persist"] == "yes"
     assert snap.graph_analysis_mode == "on"
     assert snap.graph_block_on_cycle == "no"
     assert snap.graph_critical_weight == 500
     assert snap.graph_impact_weight == 10
     assert snap.time_budget_seconds == 10
+    assert repo.get_value("objective") == "min_overdue"
     runtime_keys = {spec.key for spec in list_runtime_config_fields()}
     page_keys = {spec.key for spec in list_config_fields()}
-    for key in RETIRED_CONFIG_FIELDS:
-        assert not hasattr(snap, key) and key not in asdict(snap)
-        assert key not in runtime_keys and key not in page_keys
-    assert snap.graph_debug_export == "no"
-    assert repo.get_value("objective") == "min_overdue"
-    assert snap.graph_analysis_mode == "on"
-    assert asdict(snap)["graph_critical_weight"] == 500
+    assert runtime_keys == page_keys == set(asdict(snap))
 
 
-def test_legacy_preset_keeps_budget_and_saved_rows_during_reads_and_restart(config_store) -> None:
+def test_bootstrap_preserves_saved_configuration_across_restart(config_store) -> None:
     conn, repo, database = config_store
-    payload = dict(asdict(_stored_snapshot(conn)), time_budget_seconds=47)
-    payload.update({key: "Retired malformed value" for key in RETIRED_CONFIG_FIELDS})
-    original_json = json.dumps(payload)
-    legacy_key = "preset.legacy-explicit-budget"
-    repo.set_batch(
-        [
-            (legacy_key, original_json, None),
-            ("time_budget_seconds", "75", None),
-            *((key, "Retired original value", None) for key in RETIRED_CONFIG_FIELDS),
-        ]
-    )
+    repo.set_batch([("time_budget_seconds", "75", None)])
     conn.commit()
     rows_before = [tuple(row) for row in conn.execute("SELECT * FROM ScheduleConfig ORDER BY config_key")]
     bootstrap_schedule_config(str(database), logger=_LOGGER)
     assert _stored_snapshot(conn).time_budget_seconds == 75
-    adapted = build_schedule_config_snapshot(
-        rows=[{"config_key": key, "config_value": value} for key, value in json.loads(repo.get_value(legacy_key)).items()]
-    )
-    assert adapted.time_budget_seconds == 47 and not set(RETIRED_CONFIG_FIELDS) & set(asdict(adapted))
-    assert repo.get_value(legacy_key) == original_json
     assert [tuple(row) for row in conn.execute("SELECT * FROM ScheduleConfig ORDER BY config_key")] == rows_before
 
 
@@ -106,7 +83,12 @@ def test_calendar_reads_only_its_holiday_efficiency(config_store) -> None:
     conn.set_trace_callback(statements.append)
     try:
         service = CalendarService(conn)
-        calendar = service._admin._build_work_calendar(date_value="2026-10-01", day_type="holiday", shift_hours=8)
+        calendar = service._admin._build_work_calendar(
+            date_value="2026-10-01",
+            day_type="holiday",
+            periods=[{"start": "08:00", "end": "16:00", "day_offset": 0}],
+            context=service.normalization_context(),
+        )
         service._admin.repo.upsert_many([calendar])
         conn.commit()
     finally:
@@ -125,8 +107,14 @@ def test_calendar_rejects_missing_or_invalid_holiday_efficiency(config_store, ra
     else:
         repo.set_batch([("holiday_default_efficiency", raw_value, None)])
     conn.commit()
+    service = CalendarService(conn)
     with pytest.raises(ValidationError) as rejected:
-        CalendarService(conn)._admin._build_work_calendar(date_value="2026-10-01", day_type="holiday", shift_hours=8)
+        service._admin._build_work_calendar(
+            date_value="2026-10-01",
+            day_type="holiday",
+            periods=[{"start": "08:00", "end": "16:00", "day_offset": 0}],
+            context=service.normalization_context(),
+        )
     assert rejected.value.field == "holiday_default_efficiency"
     assert conn.execute("SELECT COUNT(*) FROM WorkCalendar").fetchone()[0] == 0
 

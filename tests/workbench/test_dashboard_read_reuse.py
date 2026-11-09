@@ -2,7 +2,7 @@
 
 import sqlite3
 from collections import Counter
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -382,3 +382,171 @@ def test_stale_snapshot_rejects_before_loading_sources_and_projects_outside_tran
         assert 1 <= len(selects) <= 2, selects
         assert all("WORKBENCHSOURCEREVISIONS" in stmt.upper() for stmt in selects), selects
         assert in_tx == []
+
+
+def test_downtime_binary_search_finds_enclosing_interval_and_preserves_capture_order():
+    from tests.workbench.dashboard_support import NOW
+
+    records = [
+        {"id": 10, "machine_id": "M1", "status": "active", "start_time": "2026-10-17T09:30:00",
+         "end_time": "2026-10-17T10:30:00", "reason_detail": "Captured first"},
+        {"id": 11, "machine_id": "M1", "status": "active", "start_time": "2026-10-17T08:00:00",
+         "end_time": "2026-10-17T18:00:00", "reason_detail": "Long enclosing downtime"},
+        {"id": 12, "machine_id": "M1", "status": "active", "start_time": "2026-10-17T08:10:00",
+         "end_time": "2026-10-17T08:20:00", "reason_detail": "Nested early 1"},
+        {"id": 13, "machine_id": "M1", "status": "active", "start_time": "2026-10-17T08:30:00",
+         "end_time": "2026-10-17T08:40:00", "reason_detail": "Nested early 2"},
+        {"id": 14, "machine_id": "M1", "status": "active", "start_time": "2026-10-17T09:15:00",
+         "end_time": "2026-10-17T09:45:00", "reason_detail": "Left touching"},
+        {"id": 15, "machine_id": "M1", "status": "active", "start_time": "2026-10-17T10:15:00",
+         "end_time": "2026-10-17T10:45:00", "reason_detail": "Right touching"},
+        {"id": 16, "machine_id": "M1", "status": "active", "start_time": "2026-10-17T10:00:00",
+         "end_time": "2026-10-17T10:20:00", "reason_detail": "Partial overlap"},
+    ]
+    identities = [
+        {"source_id": row["id"], "ref": format(row["id"], "048x"), "active": 1}
+        for row in records
+    ]
+    base_task = {"plan_ref": "a" * 48, "operation_ref": "b" * 48, "machine_ref": "c" * 48, "batch_id": "B1", "process_label": "Turning"}
+    facts = facts_module.DashboardFacts(None, NOW)
+    facts.plan_state = "loaded"
+    facts.tasks = [
+        {**base_task, "task_ref": format(1, "048x"), "start": "2026-10-17T15:00:00", "end": "2026-10-17T16:00:00"},
+        {**base_task, "task_ref": format(2, "048x"), "start": "2026-10-17T09:45:00", "end": "2026-10-17T10:15:00"},
+    ]
+    facts.task_rows = [
+        {"schedule_id": 1, "source": "internal", "machine_id": "M1"},
+        {"schedule_id": 2, "source": "internal", "machine_id": "M1"},
+    ]
+    facts.task_intervals = {
+        1: (datetime(2026, 10, 17, 15, 0), datetime(2026, 10, 17, 16, 0)),
+        2: (datetime(2026, 10, 17, 9, 45), datetime(2026, 10, 17, 10, 15)),
+    }
+    facts.raw = {
+        "MachineDowntimes": records,
+        "WorkbenchDashboardDowntimeRefs": identities,
+        "Machines": [{"machine_id": "M1"}],
+    }
+    assert downtime.downtime_overlap_count(facts) == 2
+    rows, state = downtime.downtime(facts)
+    assert state["assessed_count"] == 2
+    tail_hit, multi_hit = rows
+    assert tail_hit["source"]["known_overlap_hours"] == 1.0
+    assert [item["downtime_ref"] for item in tail_hit["source"]["downtimes"]] == [format(11, "048x")]
+    assert tail_hit["source"]["downtimes"][0]["overlap_start"] == "2026-10-17T15:00:00"
+    assert tail_hit["source"]["downtimes"][0]["overlap_end"] == "2026-10-17T16:00:00"
+    # Preserves original raw capture order (10, 11, 16) and union hours (0.5h) while excluding touching windows (14, 15).
+    assert multi_hit["source"]["known_overlap_hours"] == 0.5
+    assert [item["downtime_ref"] for item in multi_hit["source"]["downtimes"]] == [
+        format(10, "048x"),
+        format(11, "048x"),
+        format(16, "048x"),
+    ]
+    assert multi_hit["source"]["downtimes"][2]["overlap_start"] == "2026-10-17T10:00:00"
+    assert multi_hit["source"]["downtimes"][2]["overlap_end"] == "2026-10-17T10:15:00"
+
+    class _CountedSeq:
+        def __init__(self, items, counter):
+            self._items = items
+            self._counter = counter
+
+        def __iter__(self):
+            self._counter[0] += len(self._items)
+            return iter(self._items)
+
+        def __getitem__(self, item):
+            sliced = self._items[item]
+            self._counter[0] += len(sliced)
+            return sliced
+
+    def _wrap_tree(node, counter):
+        if node is None:
+            return None
+        center, span_starts, by_start, span_ends, by_end, left, right = node
+        return (
+            center,
+            span_starts,
+            _CountedSeq(by_start, counter),
+            span_ends,
+            _CountedSeq(by_end, counter),
+            _wrap_tree(left, counter),
+            _wrap_tree(right, counter),
+        )
+
+    first = datetime(2026, 1, 1)
+    bulk_records = [
+        {"id": 1, "machine_id": "M1", "status": "active", "start_time": first.isoformat(),
+         "end_time": (first + timedelta(minutes=10000)).isoformat(), "reason_detail": "Full-span enclosing"}
+    ]
+    for n in range(1, 5000):
+        start = first + timedelta(minutes=2 * n)
+        bulk_records.append({
+            "id": n + 1, "machine_id": "M1", "status": "active",
+            "start_time": start.isoformat(), "end_time": (start + timedelta(minutes=1)).isoformat(),
+            "reason_detail": "Short window",
+        })
+    bulk_identities = [{"source_id": n, "ref": format(n, "048x"), "active": 1} for n in range(1, 5001)]
+    bulk_facts = facts_module.DashboardFacts(None, NOW)
+    bulk_facts.plan_state = "loaded"
+    bulk_facts.tasks = []
+    bulk_facts.task_rows = []
+    bulk_facts.task_intervals = {}
+    for n in range(1, 1001):
+        start = first + timedelta(minutes=2 * n)
+        end = start + timedelta(minutes=1)
+        bulk_facts.tasks.append({
+            **base_task, "task_ref": format(n, "048x"), "start": start.isoformat(), "end": end.isoformat(),
+        })
+        bulk_facts.task_rows.append({"schedule_id": n, "source": "internal", "machine_id": "M1"})
+        bulk_facts.task_intervals[n] = (start, end)
+    bulk_facts.raw = {
+        "MachineDowntimes": bulk_records,
+        "WorkbenchDashboardDowntimeRefs": bulk_identities,
+        "Machines": [{"machine_id": "M1"}],
+    }
+    assert downtime.downtime_overlap_count(bulk_facts) == 1000
+    index = bulk_facts.downtime_index()
+    starts, sorted_ends, tree = index["search"]["M1"]
+    candidate_hits = [0]
+    index["search"]["M1"] = (starts, sorted_ends, _wrap_tree(tree, candidate_hits))
+    bulk_rows, bulk_state = downtime.downtime(bulk_facts)
+    assert bulk_state["assessed_count"] == 1000
+    assert candidate_hits[0] == 2000
+    assert sum(len(row["source"]["downtimes"]) for row in bulk_rows) == 2000
+    assert [item["downtime_ref"] for item in bulk_rows[0]["source"]["downtimes"]] == [
+        format(1, "048x"),
+        format(2, "048x"),
+    ]
+
+
+def test_report_catalog_and_calibration_exports_reject_invalid_format_before_snapshot_or_slot(monkeypatch):
+    from flask import Blueprint, Flask
+
+    from web.routes.workbench import calibration as calibration_routes
+    from web.routes.workbench import reports_catalog
+    from web.routes.workbench.calibration import register_calibration_routes
+    from web.routes.workbench.read_budget import CALIBRATION_READ_SLOTS, PLAN_READ_SLOTS
+    from web.routes.workbench.reports import register_report_routes
+
+    monkeypatch.setattr(reports_catalog, "read_snapshot_time", lambda *_: pytest.fail("Resolved report snapshot before format check"))
+    monkeypatch.setattr(calibration_routes, "resolve_read_snapshot", lambda *_: pytest.fail("Resolved calibration snapshot before format check"))
+    monkeypatch.setattr(PLAN_READ_SLOTS, "slot", lambda *_: pytest.fail("Acquired PLAN_READ_SLOTS before format check"))
+    monkeypatch.setattr(CALIBRATION_READ_SLOTS, "slot", lambda *_: pytest.fail("Acquired CALIBRATION_READ_SLOTS before format check"))
+
+    app = Flask("export-format-gate")
+    app.config.update(TESTING=True, SECRET_KEY="temporary-export-format-gate")
+    bp = Blueprint("workbench_export_format_gate", __name__)
+    register_report_routes(bp)
+    register_calibration_routes(bp)
+    app.register_blueprint(bp)
+    client = app.test_client()
+
+    report_resp = client.get("/api/workbench/v1/reports/downtime/export", query_string={"snapshot_ref": "unverified", "format": "pdf"})
+    report_body = report_resp.get_json()
+    assert report_resp.status_code == 400 and report_body["error"]["code"] == "invalid_input"
+    assert report_body["error"]["message"] == "只能导出 CSV 或 XLSX，没有开始下载。请重新选择格式。"
+
+    cal_resp = client.get("/api/workbench/v1/calibration/export", query_string={"snapshot_ref": "unverified", "format": "pdf"})
+    cal_body = cal_resp.get_json()
+    assert cal_resp.status_code == 400 and cal_body["error"]["code"] == "invalid_input"
+    assert cal_body["error"]["message"] == "只支持 CSV 或 XLSX 格式。"

@@ -1,4 +1,4 @@
-"""Actual SQL rollback and COMMIT ACK injection; concurrent intent uses one receipt."""
+"""Actual SQL rollback, concurrent receipt replay and adoption command resolution."""
 
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
@@ -12,16 +12,16 @@ from tests.workbench.run_candidate_adoption_support import candidate_case as _ca
 from tests.workbench.run_candidate_support import connect
 
 
-@pytest.mark.parametrize("table", ["WorkbenchCommandReceipts"])
-def test_failure_after_real_writes_rolls_back_every_table(candidate_case, table):
+def test_receipt_insert_failure_rolls_back_candidate_adoption(candidate_case):
     case = candidate_case
     case.operation(seq=2)
     case.conn.commit()
     # Install fault before admission so it is part of the exact facts schema.
-    condition = "NEW.version>0 AND (SELECT COUNT(*) FROM Schedule)>0" if table == "Schedule" else (
-        "NEW.action='scheduling.candidate.adopt'" if table == "WorkbenchCommandReceipts" else "1")
-    case.conn.execute('CREATE TRIGGER bx_inject BEFORE INSERT ON "' + table + '" WHEN ' + condition
-                      + " BEGIN SELECT RAISE(ABORT,'injected storage failure'); END")
+    case.conn.execute(
+        'CREATE TRIGGER bx_inject BEFORE INSERT ON "WorkbenchCommandReceipts"'
+        " WHEN NEW.action='scheduling.candidate.adopt'"
+        " BEGIN SELECT RAISE(ABORT,'injected storage failure'); END"
+    )
     case.conn.commit()
     ref = candidate(case)
     token = preview(case, ref)
@@ -176,7 +176,6 @@ def test_recorded_adoption_replays_before_reading_the_data_context(candidate_cas
 def test_candidate_adoption_resolution_route_is_read_only_and_not_cached(candidate_case):
     case = candidate_case
     ref = candidate(case)
-    checked = service(case.conn).preview(ref)
     before = snapshot(case.conn)
 
     def read_only_connection(path):
@@ -185,6 +184,12 @@ def test_candidate_adoption_resolution_route_is_read_only_and_not_cached(candida
         return conn
 
     client = api(case, connection_factory=read_only_connection)
+    preview_response = client.post(BASE + ref + "/adopt-preview", json={})
+    assert preview_response.status_code == 200, preview_response.get_data(as_text=True)
+    assert preview_response.headers["Cache-Control"] == "no-store"
+    preview_payload = preview_response.get_json()
+    assert preview_payload["meta"]["snapshot_ref"] is None and "." not in preview_payload["meta"]["as_of"]
+    checked = preview_payload["data"]
     response = client.get(BASE + ref + "/adoption-commands/" + KEY,
                           query_string={"run_ref": checked["run_ref"], "data_context_ref": checked["data_context_ref"]})
     assert response.status_code == 200, response.get_data(as_text=True)
@@ -219,3 +224,41 @@ def test_internal_adoption_proof_errors_remain_system_failures(candidate_case, m
     response = api(case).post(BASE + ref + "/adopt-preview", json={})
     assert response.status_code == 500 and response.get_json()["error"]["code"] == "storage_failure"
     assert case.conn.execute("SELECT COUNT(*) FROM Schedule").fetchone()[0] == 0
+
+
+def test_archive_column_order_corruption_is_rejected_at_admission_boundary(candidate_case, monkeypatch):
+    import json
+
+    from core.models.workbench_run_adoption import CandidateAdoptionBlocked
+    from core.services.workbench.facts.candidate_store import CandidateStore
+    from core.services.workbench.run.candidate_adoption_validation import validate_adoption
+    from core.shared.strict_json import canonical_json
+
+    case = candidate_case
+    ref = candidate(case)
+    read = CandidateStore.capture
+
+    def reordered(store, run_ref):
+        # 列与行同步倒序违背存档内嵌 DDL 列序，在读取候选准入源头即拦截并阻断采用。
+        capture = dict(read(store, run_ref))
+        facts = json.loads(capture["facts_text"])
+        facts["columns"]["Parts"] = facts["columns"]["Parts"][::-1]
+        facts["tables"]["Parts"] = [row[::-1] for row in facts["tables"]["Parts"]]
+        capture["facts_text"] = canonical_json(facts)
+        return capture
+
+    monkeypatch.setattr(CandidateStore, "capture", reordered)
+    before = snapshot(case.conn)
+    with pytest.raises(WorkbenchCommandRejected) as read_rejected:
+        store = CandidateStore(case.conn)
+        with store.snapshot():
+            store.generation_facts(store.capture(store.candidate_run(ref)))
+    assert (read_rejected.value.code, read_rejected.value.status) == ("candidate_artifact_invalid", 500)
+    with pytest.raises(CandidateAdoptionBlocked) as blocked:
+        validate_adoption(case.conn, ref)
+    assert blocked.value.code == "candidate_artifact_invalid"
+    assert isinstance(blocked.value.__cause__, ValueError)
+    checked = service(case.conn).preview(ref)
+    assert checked["validation"]["can_adopt"] is False
+    assert [row["code"] for row in checked["validation"]["issues"]] == ["candidate_artifact_invalid"]
+    assert snapshot(case.conn) == before

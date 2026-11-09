@@ -457,6 +457,7 @@ async function main() {
   Object.assign(routeWindow.ResourceControls, { Icon: 'icon', TimelineZoom: 'plan-zoom', timelineZoomKey: () => null });
   Object.assign(routeWindow.WorkbenchControls, { usePrintLayout: () => false });
   Object.assign(routeWindow, {
+    matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
     GanttPresentation: { axis: () => ({ ticks: [] }), taskLines: () => ({ primary: '路线工序', secondary: '' }) },
     GanttPresentationUI: { useExpanded: () => ({ expanded: false, toggle() {} }), Axis: 'axis' },
     GanttGraphLayer: { Controls: 'graph-controls', Lines: 'graph-lines' },
@@ -1070,7 +1071,7 @@ async function main() {
     get width() { return canvasBufferWidth; }, set width(value) { buffers++; canvasBufferWidth = value; },
     get height() { return canvasBufferHeight; }, set height(value) { buffers++; canvasBufferHeight = value; } };
   const paintWindow = { get devicePixelRatio() { return pixelRatio; }, addEventListener(name, fn) { paintEvents.set(name, fn); }, removeEventListener(name) { paintEvents.delete(name); },
-    matchMedia: () => ({ addEventListener() {}, removeEventListener() {} }) };
+    matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }) };
   const paintContext = vm.createContext({ window: paintWindow, React: paintHooks.React, document: { documentElement: {} },
     MutationObserver: class { constructor(fn) { themes++; this.update = fn; } observe() {} disconnect() { disconnects++; } },
     ResizeObserver: class { constructor(fn) { resizes++; this.update = fn; } observe() {} disconnect() { disconnects++; } },
@@ -1689,7 +1690,7 @@ async function main() {
   const canvas = { get clientWidth() { return Math.round(cssWidth); }, get clientHeight() { return Math.round(cssHeight); }, getBoundingClientRect: () => ({ width: cssWidth, height: cssHeight }), getContext: () => overviewCtx };
   const overviewWindow = { addEventListener() {}, removeEventListener() {}, devicePixelRatio: 1, FieldContract: { quantityReasons: {} }, PointContract: { isPoint: task => task.event_kind === 'point' }, PointGanttModel: { paint: (_, x) => pointXs.push(x) },
     GanttPresentation: { palette: () => ({ primary: { edge: primary }, plan: {}, gold: 'gold' }) },
-    matchMedia: () => ({ addEventListener(_, fn) { printChange = fn; }, removeEventListener() {} }) };
+    matchMedia: () => ({ matches: false, addEventListener(_, fn) { printChange = fn; }, removeEventListener() {} }) };
   const overviewContext = vm.createContext({ window: overviewWindow, React: overviewParentHooks.React, document: { documentElement: {} },
     Float64Array: class extends Float64Array { constructor(length) { binBuilds++; super(length); } },
     MutationObserver: class { constructor(fn) { this.draw = fn; overviewThemes.push(this); } observe() {} disconnect() {} },

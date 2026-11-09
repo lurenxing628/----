@@ -90,11 +90,6 @@ def four_source_case(directory):
     generator = trial_case.__wrapped__(directory)
     case = next(generator)
     try:
-        # This history contract retains a real legacy configuration row while
-        # the current scheduler leaves its retired search policy unused.
-        case.conn.execute("INSERT OR IGNORE INTO ScheduleConfig(config_key,config_value) "
-                          "VALUES ('graph_candidate_weight_count','3')")
-        case.conn.commit()
         run_ref, candidates = compute(case)
         selected = json.loads(case.conn.execute(
             "SELECT result_json FROM WorkbenchRunReceipts WHERE run_ref=?", (run_ref,)).fetchone()[0])

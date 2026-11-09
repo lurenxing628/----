@@ -165,7 +165,8 @@ def test_padded_existing_resources_can_update_select_relations_and_delete_by_ref
         "cycle_days": 1, "status": "active", "remark": "sp1-note",
     })
     insert_row(conn, "WorkbenchShiftPatternDays", {
-        "profile_id": "SP1", "day_offset": 0, "is_rest": 0, "shift_start": "08:00", "shift_end": "16:00",
+        "profile_id": "SP1", "day_offset": 0, "is_rest": 0,
+        "periods_json": '[{"start":"08:00","end":"16:00","day_offset":0}]',
     })
     insert_row(conn, "OpTypes", {"op_type_id": "OT_INT", "name": "ot-int-plain", "category": "internal", "remark": "ot-int-note"})
     insert_row(conn, "OpTypes", {"op_type_id": "OT_EXT", "name": "ot-ext-plain", "category": "external", "remark": "ot-ext-note"})
@@ -176,7 +177,8 @@ def test_padded_existing_resources_can_update_select_relations_and_delete_by_ref
         "cycle_days": 1, "status": "active", "remark": "sp1-pad",
     })
     insert_row(conn, "WorkbenchShiftPatternDays", {
-        "profile_id": " SP1 ", "day_offset": 0, "is_rest": 0, "shift_start": "08:00", "shift_end": "16:00",
+        "profile_id": " SP1 ", "day_offset": 0, "is_rest": 0,
+        "periods_json": '[{"start":"08:00","end":"16:00","day_offset":0}]',
     })
     insert_row(conn, "OpTypes", {"op_type_id": " OT1 ", "name": "ot1-padded", "category": "both", "remark": "ot1-pad"})
     insert_row(conn, "OpTypes", {"op_type_id": " OT_INT ", "name": "ot-int-padded", "category": "internal", "remark": "ot-int-pad"})

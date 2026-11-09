@@ -544,7 +544,6 @@
         "is_complete": true
       }
     },
-    "actions": [],
     "stages": [],
     "candidate": {
       "candidate_ref": "000000000000000000000000000000000000000000000385",
@@ -1314,7 +1313,6 @@
         "is_complete": true
       }
     },
-    "actions": [],
     "stages": [],
     "candidate": {
       "candidate_ref": "000000000000000000000000000000000000000000000385",

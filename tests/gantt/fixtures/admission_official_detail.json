@@ -427,6 +427,8 @@
         "batch_ref": "20fd9d930393fd9fa8afa5839016aa7019559f98205b8bb7",
         "data_gaps": [],
         "due_date": "2026-10-17",
+        "due_issue": null,
+        "due_state": "specified",
         "effective_processing_hours": null,
         "elapsed_hours": 2.11,
         "end": "2026-10-15T11:06:00",

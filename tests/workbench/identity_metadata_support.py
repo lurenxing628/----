@@ -14,11 +14,12 @@ SEED_ROWS = {
     "Parts": dict(part_no="P1", part_name="part", route_raw="unparsed:route", route_parsed="no", remark="part-note"),
     "Materials": dict(material_id="MAT1", name="steel", spec="D25", unit="kg", stock_qty=12.375,
                       status="inactive", remark="material-note"),
-    "WorkCalendar": dict(date="2026-09-09", day_type="workday", shift_start="22:30", shift_end="06:30",
-                         shift_hours=8.0, efficiency=0.875, allow_normal="no", allow_urgent="yes", remark="night"),
-    "OperatorCalendar": dict(operator_id="O1", date="2026-09-09", day_type="workday", shift_start="23:15",
-                             shift_end="07:45", shift_hours=8.5, efficiency=0.625, allow_normal="yes",
-                             allow_urgent="no", remark="operator-night"),
+    "WorkCalendar": dict(date="2026-09-09", day_type="workday", efficiency=0.875, allow_normal="no",
+                         allow_urgent="yes", remark="night",
+                         periods_json='[{"start":"22:30","end":"06:30","day_offset":0}]'),
+    "OperatorCalendar": dict(operator_id="O1", date="2026-09-09", day_type="workday", efficiency=0.625,
+                             allow_normal="yes", allow_urgent="no", remark="operator-night",
+                             periods_json='[{"start":"23:15","end":"07:45","day_offset":0}]'),
     "Batches": dict(batch_id="B1", part_no="P1", part_name="historical-name", quantity=17,
                     due_date="2026-10-01", priority="urgent", ready_status="no", ready_date="2026-09-15",
                     status="pending", remark="batch-note"),
@@ -59,8 +60,6 @@ def seed_resources(conn, *, relations=False):
         payload = dict(values)
         columns = {row[1] for row in conn.execute(f'PRAGMA table_info("{table}")')}
         payload.update({name: STAMP for name in ("created_at", "updated_at") if name in columns})
-        if "periods_json" in columns:
-            payload["periods_json"] = None
         assert set(payload) == columns, table
         insert_row(conn, table, payload)
     assert not conn.execute("PRAGMA foreign_key_check").fetchall()

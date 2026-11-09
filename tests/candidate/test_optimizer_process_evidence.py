@@ -9,6 +9,7 @@ import pytest
 
 from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithm_contracts.types import ScheduleSummary
+from core.algorithm_runtime.algo_stats import make_algo_stats
 from core.algorithms.evaluation import ScheduleMetrics, objective_score
 from core.algorithms.evaluation_completion import BatchCompletion
 from core.algorithms.greedy.scheduler import GreedyScheduler
@@ -106,7 +107,7 @@ def test_warmstart_keeps_optional_solver_failure_but_propagates_real_candidate_o
         clock=clock, started_at=started_at, deadline=deadline, event_sink=shared.record_event,
     )
     shared.decode_session = session
-    optimizer_stats = {}
+    optimizer_stats = make_algo_stats()
     best = schedule_optimizer_steps._evaluate_ortools_candidate(
         start_dt=START_DT, end_date=None, dispatch_mode_cfg="batch_order",
         dispatch_rule_cfg="slack", resource_pool=None, objective_name="min_overdue", optimizer_algo_stats=optimizer_stats,
@@ -141,7 +142,7 @@ def test_warmstart_keeps_optional_solver_failure_but_propagates_real_candidate_o
         dispatch_rule_cfg="slack", resource_pool=None, objective_name="min_overdue", optimizer_algo_stats=optimizer_stats,
         readiness_gate_enabled=False, graph_ready_context=None, decode_session=session,
         algo_ops_to_schedule=operations, batches=batches,
-        algo_mode="improve", cfg=cfg, strategy_enum=SortStrategy.FIFO,
+        cfg=cfg, strategy_enum=SortStrategy.FIFO,
         deadline=deadline, best=best, clock=clock,
         search_report_state=optional_report,
     ) is best
@@ -166,7 +167,7 @@ def test_warmstart_keeps_optional_solver_failure_but_propagates_real_candidate_o
             dispatch_rule_cfg="slack", resource_pool=None, objective_name="min_overdue", optimizer_algo_stats=optimizer_stats,
             readiness_gate_enabled=False, graph_ready_context=None, decode_session=session,
             algo_ops_to_schedule=operations, batches=batches,
-            algo_mode="improve", cfg=cfg, strategy_enum=SortStrategy.FIFO,
+            cfg=cfg, strategy_enum=SortStrategy.FIFO,
             deadline=deadline, best=best, clock=clock,
             search_report_state=report,
         )
@@ -206,7 +207,7 @@ def test_warmstart_keeps_optional_solver_failure_but_propagates_real_candidate_o
                 dispatch_rule_cfg="slack", resource_pool=None, objective_name="min_overdue", optimizer_algo_stats=optimizer_stats,
                 readiness_gate_enabled=False, graph_ready_context=None, decode_session=session,
                 algo_ops_to_schedule=operations, batches=batches,
-                algo_mode="improve", cfg=cfg, strategy_enum=SortStrategy.FIFO,
+                cfg=cfg, strategy_enum=SortStrategy.FIFO,
                 deadline=deadline, best=shared_best, clock=clock,
                 search_report_state=shared_report,
             )
@@ -418,7 +419,7 @@ def test_unknown_and_unverified_results_do_not_claim_valid_or_complete_milestone
     baseline = schedule_optimizer_steps._evaluate_ortools_candidate(
         strategy=SortStrategy.PRIORITY_FIRST, params={}, start_dt=START_DT, end_date=None,
         ort_order=list(batches), dispatch_mode_cfg="sgs", dispatch_rule_cfg="slack", resource_pool=None,
-        objective_name="min_tardiness", optimizer_algo_stats={}, readiness_gate_enabled=False,
+        objective_name="min_tardiness", optimizer_algo_stats=make_algo_stats(), readiness_gate_enabled=False,
         graph_ready_context=None, decode_session=session)
     parent = _parent_from_candidate(baseline,
                                     prepared=prepare_repair_parent(
@@ -482,6 +483,19 @@ def test_report_uses_archive_identity_and_evaluation_without_scanning_schedule_r
     different_evaluation = dict(candidate, metrics=replace(candidate["metrics"], total_tardiness_hours=5.0))
     changed = report.mark_candidate_evaluated(different_evaluation, origin="validated_evidence")
     assert changed.output_key != initial.output_key
+    sub_micro_hours = 1.0 / 3_600_000_000.0
+    sub_micro_evaluation = dict(
+        candidate,
+        metrics=replace(
+            candidate["metrics"],
+            total_tardiness_hours=candidate["metrics"].total_tardiness_hours - sub_micro_hours,
+        ),
+        score=(candidate["score"][0], candidate["score"][1] - sub_micro_hours) + candidate["score"][2:],
+    )
+    sub_micro_changed = report.mark_candidate_evaluated(sub_micro_evaluation, origin="sub_micro_evidence")
+    assert sub_micro_changed.output_key != initial.output_key
+    from core.services.scheduler.run.optimizer.candidate_fingerprint import score_strictly_better
+    assert score_strictly_better(sub_micro_evaluation["score"], candidate["score"])
     other_objective = OptimizationSearchReportState(objective_name="min_changeover", started_at=0.0)
     alternative = other_objective.mark_candidate_evaluated(candidate, origin="shared_reference")
     assert alternative.output_key != initial.output_key

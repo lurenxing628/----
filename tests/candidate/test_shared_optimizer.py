@@ -192,7 +192,7 @@ def _comparison_input(*, cfg, calendar, operations, batches, seeds, pool, downti
     frozen_ids = {row["op_id"] for row in seeds}
     return ScheduleRunInput(
         cfg=cfg, cal_svc=calendar, start_dt_norm=START_DT, end_date_norm=None,
-        normalized_batch_ids=list(batches), t0=0.0, readiness_gate_enabled=False,
+        normalized_batch_ids=list(batches), t0=monotonic(), readiness_gate_enabled=False,
         batches=dict(batches),
         operations=batch_operations, missing_internal_resource_op_ids=set(),
         algo_ops=operations, algo_ops_to_schedule=operations,
@@ -652,7 +652,7 @@ def test_piece_graph_reported_join_is_fixed_successor_not_released():
     prepared.algo_ops_to_schedule = [op for op in prepared.algo_ops_to_schedule if op.id != 100]
     prepared.seed_results = [asdict(seed99), asdict(seed100)]
     context = piece_graph_preparer(prepared)(prepared).graph_ready_context
-    assert 100 in context["fixed_op_ids"]
+    assert context is not None and 100 in context["fixed_op_ids"]
     assert all(100 in context["successor_op_ids_by_op_id"][op_id] for op_id in (3, 4))
     decoded = production_decode(
         GreedyScheduler(calendar_service=ContinuousCalendar(), config_service=cfg),
@@ -934,7 +934,7 @@ def test_real_shared_optimizer_preserves_start_archive_resource_bridge_and_piece
             assert plan.search_evidence_ref["source_event_id"] == actual.process_facts["evidence_event_ids_by_entry"][entry_id]
             assert plan.origin["origin"] == entry.evidence_origin["origin"]
             assert plan.dispatch_mode == plan.used_params["dispatch_mode"]
-            assert plan.dispatch_rule == plan.adopted_dispatch_rule == plan.used_params["dispatch_rule"]
+            assert plan.used_params["dispatch_rule"] == plan.origin["dispatch_rule"]
         selection = public.selection.to_dict()
         assert set(selection) == {"generation_policy_version", "selection_policy_version", "primary_objective", "target_objectives",
             "selected_candidate_key", "objective_winners", "objective_winner_reasons", "objective_field_order", "selected_score",
@@ -1161,12 +1161,9 @@ def test_shared_decode_ledger_reuses_effective_requests_and_restores_only_explic
         publication_archive.finish_observation(published, partial_candidate, origin=partial_entry.evidence_origin)
         assert published.entry_id is not None
         publication_entry = publication_archive.entry(published.entry_id)
-        publication_search = schedule_shared_search.SharedSearch(
-            archive=publication_archive, clock=monotonic, started_at=started_at,
-            budget=_shared_budget(publication_archive, started_at))
         partial_public = _business_representative(
             SimpleNamespace(archive=publication_archive, process_facts={
-                "selected_entries_by_objective": {target: publication_search.selected_entry(target) for target in targets},
+                "selected_entries_by_objective": {target: publication_archive.selected_entry(target) for target in targets},
                 "evidence_event_ids_by_entry": {published.entry_id: shared.evidence_event_ids[partial_entry.entry_id]}}),
             publication_entry, sequence=0, primary=targets[0], targets=targets, cfg=scheduler.config,
             preparation=None, total_budget=1.0)
@@ -1364,7 +1361,7 @@ def test_shared_ig_sync_keeps_same_evidence_pointer_and_defers_new_parent():
     assert tied["score"] == better["score"]
     assert schedule_content_key(tied["results"]) != schedule_content_key(better["results"])
     _observe_decoded(session, view.objective, candidate=tied, origin="grasp_ig", verified=True, elapsed_ms=3)
-    assert tied["archive_ref"].entry_id != new_entry and session.selected_entry(view.objective) == new_entry
+    assert tied["archive_ref"].entry_id != new_entry and session.archive.selected_entry(view.objective) == new_entry
     view.state.best = tied
     view.report.mark_candidate_accepted(
         tied, origin="grasp_ig", fingerprint=view.report.mark_candidate_evaluated(tied, origin="grasp_ig"))
@@ -1631,11 +1628,11 @@ def test_graph_features_skipped_when_sgs_decode_unaffordable_and_aborted_on_dead
     calendar_calls = 0
 
     class ExpiringCalendar(ContinuousCalendar):
-        def add_working_hours(self, start_dt, hours, **kwargs):
+        def add_effective_hours(self, start_dt, hours, **kwargs):
             nonlocal calendar_calls
             calendar_calls += 1
             release_timer.value = 310.0
-            return super().add_working_hours(start_dt, hours, **kwargs)
+            return super().add_effective_hours(start_dt, hours, **kwargs)
 
     expiring_scheduler = GreedyScheduler(calendar_service=ExpiringCalendar(), config_service=cfg)
     with patch.object(

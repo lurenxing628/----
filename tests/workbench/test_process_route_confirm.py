@@ -153,3 +153,79 @@ def test_hours_confirm_with_external_and_zero_unit_hours_acknowledgement(stage_c
 
     repeated = run_stage(stage_conn, "hours_confirm", unacknowledged, key="hours-zero-unchanged")
     assert repeated["result"] == "unchanged"
+
+
+def test_text_and_rows_route_inputs_preserve_padded_operation_name_and_bound_choices(schema_conn):
+    schema_conn.executemany(
+        "INSERT INTO OpTypes(op_type_id, name, category) VALUES (?, ?, 'internal')",
+        [("OT-A", "A"), ("OT-B", "B")],
+    )
+    schema_conn.execute(
+        "INSERT INTO Parts(part_no, part_name, route_raw, route_parsed) VALUES ('PROC-001', '轴套', NULL, 'no')"
+    )
+    schema_conn.commit()
+
+    run_stage(
+        schema_conn,
+        "route_confirm",
+        {"route": {"mode": "text", "route_raw": '10: " A "'}, "discard_group_refs": []},
+        key="route-padded-init",
+    )
+    op_b_ref = ref_for(schema_conn, "op_type", "OT-B")
+    run_stage(
+        schema_conn,
+        "source_confirm",
+        {
+            "operations": [
+                {
+                    "ref": op_ref(schema_conn, 10),
+                    "source": "internal",
+                    "op_type_ref": op_b_ref,
+                    "supplier_ref": None,
+                    "confirmed": True,
+                }
+            ],
+            "discard_group_refs": [],
+        },
+        key="source-padded-bind-b",
+    )
+    run_stage(
+        schema_conn,
+        "hours_confirm",
+        {
+            "operations": [{"ref": op_ref(schema_conn, 10), "setup_hours": 1.5, "unit_hours": 0.25}],
+            "groups": [],
+            "confirm_zero_unit_hours": False,
+        },
+        key="hours-padded-fill",
+    )
+
+    identity = identity_for(schema_conn)
+    reader = WorkbenchProcessQueryService(schema_conn, part_ref=identity.ref)
+    text_route = {"mode": "text", "route_raw": '10: " A "'}
+    rows_route = {"mode": "rows", "rows": [{"seq": 10, "op_type_name": " A "}]}
+    for key_suffix, route_body in (("text", text_route), ("rows", rows_route)):
+        with reader.read_snapshot():
+            preview, _, affected = reader.prepare_route(identity, route_body)
+        assert affected == []
+        assert preview["can_confirm_route"] is True
+        assert preview["route_raw"] == '10: " A "'
+        assert preview["normalized_input"] == '10: " A "'
+        assert preview["changes"] == {"added": [], "removed": [], "retained": [10], "same_sequence_changed": []}
+        op_preview, = preview["operations"]
+        assert op_preview["op_type_name"] == " A "
+        assert op_preview["op_type_ref"] == op_b_ref
+        assert op_preview["replace_existing_choices"] is False
+
+        outcome = run_stage(
+            schema_conn,
+            "route_confirm",
+            {"route": route_body, "discard_group_refs": []},
+            key=f"route-padded-reconfirm-{key_suffix}",
+        )
+        assert outcome["result"] == "unchanged"
+        persisted = op_rows(schema_conn)[10]
+        assert persisted["op_type_name"] == " A "
+        assert persisted["op_type_id"] == "OT-B"
+        assert persisted["source"] == "internal"
+        assert (persisted["setup_hours"], persisted["unit_hours"]) == (1.5, 0.25)

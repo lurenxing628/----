@@ -5,7 +5,7 @@ from io import BytesIO, StringIO
 
 import openpyxl
 
-HEADERS = ("日期", "类型", "可排工时（小时）", "效率（%）", "允许普通件", "允许急件", "备注")
+HEADERS = ("日期", "类型", "班次开始", "班次结束", "效率（%）", "允许普通件", "允许急件", "备注")
 
 
 def file_bytes(rows, fmt="csv", headers=HEADERS):

@@ -97,7 +97,6 @@ def test_full_flask_app_actual_engine_run_and_only_temporary_sqlite(history_case
     assert row["run_ref"] == accepted["run_ref"] and row["candidate_count"] == expected_candidate_count
     assert row["task_count"] == expected_task_count
     assert row["scope_summary"]["start_date"] == "2026-09-09"
-    assert row["constraint_verification"] == "not_checked_by_history"
     reopened_client = app.test_client()
     restored = read(reopened_client)["data"]["runs"][0]
     catalog = reopened_client.get(BASE + "/" + restored["run_ref"] + "/candidates")

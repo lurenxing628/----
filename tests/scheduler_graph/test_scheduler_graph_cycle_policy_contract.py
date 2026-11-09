@@ -1,7 +1,8 @@
-"""守护 orchestrate_schedule_run 的工序依赖图循环处置策略：report 模式遇环只报 warning 并继续排产、on+block_on_cycle=yes 在分配版本号前抛 ValidationError(field=schedule_graph_cycle)、on+block_on_cycle=no 关闭图增强回退普通 SGS、networkx 缺失/输入/构建等已知图错误按各自 reason 上报而非误判为循环、未知异常不得在排产前被吞掉。"""
+"""守护 orchestrate_schedule_run 的工序依赖图循环处置策略：report 模式遇环只报 warning 并继续排产、on+block_on_cycle=yes 在分配版本号前抛 ValidationError(field=schedule_graph_cycle)、on+block_on_cycle=no 关闭图增强回退普通 SGS、networkx 缺失/构建等已知图错误按各自 reason 上报而非误判为循环、未知异常不得在排产前被吞掉。"""
 
 from __future__ import annotations
 
+import time
 from dataclasses import replace
 from datetime import datetime, timedelta
 from functools import partial
@@ -42,11 +43,9 @@ def _schedule_input(mode: str, *, block_on_cycle: str) -> ScheduleRunInput:
             ready_weight=0.1,
             holiday_default_efficiency=1.0,
             enforce_ready_default="no",
-            prefer_primary_skill="no",
             dispatch_mode="batch_order",
             dispatch_rule="slack",
             auto_assign_enabled="no",
-            auto_assign_persist="yes",
             ortools_enabled="no",
             ortools_time_limit_seconds=5,
             algo_mode="greedy",
@@ -58,7 +57,6 @@ def _schedule_input(mode: str, *, block_on_cycle: str) -> ScheduleRunInput:
             graph_block_on_cycle=block_on_cycle,
             graph_critical_weight=500,
             graph_impact_weight=10,
-            graph_debug_export="no",
         ),
         cal_svc=SimpleNamespace(),
         readiness_gate_enabled=True,
@@ -89,7 +87,7 @@ def _schedule_input(mode: str, *, block_on_cycle: str) -> ScheduleRunInput:
         downtime_meta={},
         resource_pool_meta={},
         frozen_op_ids=set(),
-        t0=0.0,
+        t0=time.monotonic(),
         optimizer_seed_version=6,
         prev_version=5,
         missing_internal_resource_op_ids=set(),
@@ -296,14 +294,6 @@ def test_on_mode_improve_with_zero_score_weights_skips_graph_feature_prep_and_ke
             ).NetworkXUnavailable("缺少可选依赖 networkx==3.1"),
             "unavailable",
             "networkx_unavailable",
-        ),
-        (
-            lambda: __import__(
-                "core.services.scheduler.graph.input_adapter",
-                fromlist=["GraphInputContractError"],
-            ).GraphInputContractError("source 不合法"),
-            "input_error",
-            "graph_input_contract_error",
         ),
         (
             lambda: __import__(

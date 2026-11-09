@@ -58,7 +58,7 @@ def pytest_sessionfinish(session, exitstatus):
       1) 尽力 unregister 当前 factory 对象（覆盖未 reimport 的常规情形）；
       2) 关闭 logging.raiseExceptions——_run_exit_backup 本身 return False、无实际备份副作用，
          唯一危害就是这条写已关闭流的 logging 错误噪音；仅本进程、session 结束后生效，测试期不受影响。
-    runtime_lock 系列测试用注入的 fake atexit_register、不依赖真 _run_exit_backup，此处为 no-op。
+    走 entrypoint 停机的用例已由 finally 中的 run_exit_backup_now 注销该回调，此处为 no-op。
     """
     try:
         import atexit

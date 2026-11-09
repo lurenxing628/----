@@ -171,7 +171,7 @@ async function main() {
   assert.equal(trialState.KEY, w.TrialAdoptionState.KEY);
   let mayBeInFlight = true;
   const trialStatus = () => ({ state: 'not_observed', receipt: null, may_be_in_flight: mayBeInFlight, can_retry_automatically: false });
-  routes['GET /api/workbench/v1/trial/scenarios/*/adoption-commands/*'] = () => envelope(trialStatus(), { as_of: '2026-10-22T09:00:00' });
+  routes['GET /api/workbench/v1/trial/scenarios/*/adoption-commands/*'] = () => envelope(trialStatus(), { as_of: '2026-10-22T09:00:00', snapshot_ref: null });
   assert.equal(JSON.stringify(await trialAPI.lookup(trialIntent)), JSON.stringify(trialStatus()));
   let lookupCall = fetch.calls.at(-1);
   assert.equal(lookupCall.path, '/api/workbench/v1/trial/scenarios/' + scope.scenario_ref + '/adoption-commands/' + trialIntent.request_key);
@@ -249,7 +249,7 @@ async function main() {
   const trialAdopts = [], trialHost = hooks(), trialData = { ...scope, status: 'saved', tasks_complete: true, tasks: [{}] };
   w.localStorage = storage();
   routes['POST /api/workbench/v1/trial/scenarios/*/adopt-preview'] = () => envelope({ ...trialScope, validation: { status: 'valid', can_adopt: true, issues: [] },
-    write_context: { write_token: 'w'.repeat(32), expires_at: '2026-10-22T10:00:00', capabilities: { 'trial.scenario.adopt': true }, blocked_reasons: [] } }, { as_of: '2026-10-22T09:00:00' });
+    write_context: { write_token: 'w'.repeat(32), expires_at: '2026-10-22T10:00:00', capabilities: { 'trial.scenario.adopt': true }, blocked_reasons: [] } }, { as_of: '2026-10-22T09:00:00', snapshot_ref: null });
   routes['POST /api/workbench/v1/trial/scenarios/*/adopt'] = offline(trialAdopts);
   const renderTrial = () => trialHost.render(() => w.TrialAdoptionState.useSession({ scenarioRef: scope.scenario_ref, data: trialData, disabled: false, onAdopted() {} }));
   renderTrial(); trialHost.flush(); renderTrial().change({ reason: ' ' + values.reason + '  ', declared_operator: values.declared_operator + ' ' });
@@ -311,7 +311,7 @@ async function main() {
     renderLookup(); lookupHost.flush();
     w.localStorage.data.set(w.TrialAdoptionState.KEY, JSON.stringify(otherTrial));
     w.dispatchEvent({ type: 'storage', key: w.TrialAdoptionState.KEY });
-    lookupGate.resolve(envelope({ state: 'not_observed', receipt: null, may_be_in_flight: true, can_retry_automatically: false }, { as_of: '2026-10-22T09:00:00' }));
+    lookupGate.resolve(envelope({ state: 'not_observed', receipt: null, may_be_in_flight: true, can_retry_automatically: false }, { as_of: '2026-10-22T09:00:00', snapshot_ref: null }));
     await tick();
     let current = renderLookup();
     assert.equal(current.saved.request_key, otherTrial.request_key);
@@ -326,7 +326,7 @@ async function main() {
     assert.equal(current.saved.request_key, thirdTrial.request_key);
     assert.equal(current.notice, ''); assert.equal(current.error, '');
     lookupHost.unmount();
-    routes['GET /api/workbench/v1/trial/scenarios/*/adoption-commands/*'] = () => envelope(trialStatus(), { as_of: '2026-10-22T09:00:00' });
+    routes['GET /api/workbench/v1/trial/scenarios/*/adoption-commands/*'] = () => envelope(trialStatus(), { as_of: '2026-10-22T09:00:00', snapshot_ref: null });
   }
 
   // Calibration adoption runs its real preview validator, so the fixture is a complete five-sample suggestion.
@@ -472,7 +472,7 @@ async function main() {
     routes['POST /api/workbench/v1/scheduling/candidates/*/adopt-preview'] = () => envelope({
       ...candidate, validation: { status: 'valid', can_adopt: true, issues: [] },
       write_context: { write_token: 'w'.repeat(32), expires_at: '2026-10-22T10:00:00', capabilities: { 'scheduling.candidate.adopt': true }, blocked_reasons: [] }
-    }, { as_of: '2026-10-22T09:00:00' });
+    }, { as_of: '2026-10-22T09:00:00', snapshot_ref: null });
     routes['POST /api/workbench/v1/scheduling/candidates/*/adopt'] = stale(() => { refuse(backing); });
     {
       const getterHost = hooks(), getterElement = w.RunAdoptionAction({ candidateRef: ref(10), candidateCatalog: [] });
@@ -591,7 +591,7 @@ async function main() {
     routes['POST /api/workbench/v1/scheduling/candidates/*/adopt-preview'] = () => envelope({
       ...candidate, validation: { status: 'valid', can_adopt: true, issues: [] },
       write_context: { write_token: 'w'.repeat(32), expires_at: '2026-10-22T10:00:00', capabilities: { 'scheduling.candidate.adopt': true }, blocked_reasons: [] }
-    }, { as_of: '2026-10-22T09:00:00' });
+    }, { as_of: '2026-10-22T09:00:00', snapshot_ref: null });
     routes['POST /api/workbench/v1/scheduling/candidates/*/adopt'] = () => runGate.promise.then(() => stale()());
     w.localStorage = storage();
     const runUnmountHost = hooks(), runUnmountElement = w.RunAdoptionAction({ candidateRef: ref(10), candidateCatalog: [] });
@@ -614,7 +614,7 @@ async function main() {
     routes['POST /api/workbench/v1/scheduling/candidates/*/adopt-preview'] = call => envelope({
       ...candidateA, candidate_ref: call.path.split('/').at(-2), validation: { status: 'valid', can_adopt: true, issues: [] },
       write_context: { write_token: 'w'.repeat(32), expires_at: '2026-10-22T10:00:00', capabilities: { 'scheduling.candidate.adopt': true }, blocked_reasons: [] }
-    }, { as_of: '2026-10-22T09:00:00' });
+    }, { as_of: '2026-10-22T09:00:00', snapshot_ref: null });
     routes['POST /api/workbench/v1/scheduling/candidates/*/adopt'] = call => {
       crossCandPosts.push(call);
       return {

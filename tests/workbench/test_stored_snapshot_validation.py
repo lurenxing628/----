@@ -1,11 +1,8 @@
 """Stored JSON and DTO snapshots retain their exact rejection boundaries."""
 
-import pytest
-
 from core.models.content import content_text
 from core.models.workbench_execution import ExecutionProjection
 from core.models.workbench_execution_input import MAX_OPERATIONS
-from core.models.workbench_run_compute import CandidateRunInputError
 from core.services.workbench.facts import run_input_codec
 from core.services.workbench.facts.run_input_codec import prepare_execution_projections, restore_execution_projections
 from tests.workbench.execution_ledger_support import ledger_case as ledger_fixture  # noqa: F401
@@ -28,13 +25,20 @@ def test_prepared_execution_retains_all_fields_without_materializing_public_dtos
             _init(self, *args, **kwargs)
 
         monkeypatch.setattr(dto, "__init__", observed)
+    original_reports = original["reports"]
+    original_first_report = original_reports[0]
     prepared = prepare_execution_projections([original])
     assert calls == []
     row = prepared[0]
+    assert row is original
+    assert original["reports"] is original_reports and original["reports"][0] is original_first_report
+    assert type(original["reports"][0]) is dict
     values = dict(row, reports=[dict(report) for report in row["reports"]])
     assert content_text(values) == before
     restored = restore_execution_projections([original])
     assert calls == ["ProductionReport", "ExecutionProjection"]
+    assert original["reports"] is original_reports and original["reports"][0] is original_first_report
+    assert type(original["reports"][0]) is dict
     assert content_text(restored[0].to_dict()) == before
     assert content_text(original) == before
 
@@ -54,16 +58,14 @@ def test_worker_snapshot_restore_prepares_full_archived_scope_once_without_losin
     prepare = run_input_codec.prepare_execution_projections
     preparations = []
 
-    def prepare_once(rows, *, max_operations):
-        preparations.append((len(rows), max_operations))
-        return prepare(rows, max_operations=max_operations)
+    def prepare_once(rows):
+        preparations.append(len(rows))
+        return prepare(rows)
 
     monkeypatch.setattr(run_input_codec, "prepare_execution_projections", prepare_once)
     restored = restore_execution_projections(payload)
-    assert preparations == [(MAX_OPERATIONS + 1, None)]
+    assert preparations == [MAX_OPERATIONS + 1]
     assert len(restored) == MAX_OPERATIONS + 1
     assert [row.operation_ref for row in restored] == [row["operation_ref"] for row in payload]
     assert all(type(row) is ExecutionProjection and row.remaining_quantity == 3 for row in restored)
     assert payload[0] == dict(original, operation_ref="0" * 48)
-    with pytest.raises(CandidateRunInputError, match="工序执行快照条数超出上限或格式不对"):
-        prepare(payload)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from fractions import Fraction
 from typing import Any, Dict, List
 
 from core.algorithm_contracts.types import OpForScheduleAlgo
@@ -47,7 +48,7 @@ class ContinuousCalendar:
         return dt + timedelta(hours=float(hours))
 
     def add_effective_hours(self, dt: datetime, hours: float, priority: Any = None, operator_id: Any = None) -> datetime:
-        return self.add_working_hours(dt, hours)  # constant efficiency 1.0
+        return self.add_working_hours(dt, hours, priority=priority, operator_id=operator_id)  # constant efficiency 1.0
 
     def add_calendar_days(self, dt: datetime, days: float, machine_id: Any = None, operator_id: Any = None) -> datetime:
         return dt + timedelta(days=float(days))
@@ -62,6 +63,16 @@ class ContinuousCalendar:
     ) -> float:
         return (end - start).total_seconds() / 3600.0
 
+    def capacity_fraction_between(
+        self,
+        start: datetime,
+        end: datetime,
+        *,
+        priority: Any = None,
+        operator_id: Any = None,
+    ) -> Fraction:
+        return Fraction((end - start) // timedelta(microseconds=1), 3_600_000_000)
+
     def capacity_hours_between(
         self,
         start: datetime,
@@ -70,7 +81,7 @@ class ContinuousCalendar:
         priority: Any = None,
         operator_id: Any = None,
     ) -> float:
-        return (end - start).total_seconds() / 3600.0
+        return float(self.capacity_fraction_between(start, end, priority=priority, operator_id=operator_id))
 
 
 # A continuous calendar is checkpoint-reusable only while its class and empty instance state are intact.

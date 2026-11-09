@@ -23,11 +23,12 @@ from core.services.workbench.run.candidate_baseline import WorkbenchRunCandidate
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests._support.excel_templates import point_env_at_shared
 from tests.workbench.run_candidate_adoption_support import INTENT, service
-from tests.workbench.run_candidate_support import BASE, compute, read, state
+from tests.workbench.run_candidate_support import BASE, api, compute, read, state
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
 from tests.workbench.trial_adoption_support import saved_scenario
 from tests.workbench.trial_adoption_support import service as trial_adopter
 from tests.workbench.trial_support import trial_case as trial_case  # noqa: F401
+from web.routes.workbench.run_candidate_baseline import register_run_candidate_baseline_routes
 from web.routes.workbench.run_candidates import register_run_candidate_routes
 
 
@@ -267,3 +268,220 @@ def test_run_without_candidate_results_cannot_reread_its_admission_official_plan
     finally:
         conn.set_trace_callback(None)
     assert not any("PROCESS_JSON" in sql.upper() for sql in statements)
+
+
+def test_due_projection_preserves_state_and_issue_across_candidate_baseline_and_reference(candidate_case, monkeypatch):
+    case = candidate_case
+    case.conn.execute("UPDATE Batches SET due_date='2026-10-16' WHERE batch_id='B1'")
+    case.conn.execute("UPDATE BatchOperations SET unit_hours=0.1 WHERE id=?", (case.op_id,))
+    for code, initial_due in (
+        ("B_NULL", None),
+        ("B_UNSPEC", "9999-12-31"),
+        ("B_EMPTY", "2026-10-17"),
+        ("B_SPACE", "2026-10-20"),
+        ("B_TS", "2026-10-21"),
+        ("B_BAD", "2026-10-18"),
+        ("B_BLOB", "2026-10-19"),
+    ):
+        case.batch(code, due_date=initial_due)
+        case.operation(code, unit_hours=0.1)
+    case.conn.commit()
+
+    accepted_v1 = case.accept(
+        key="due-projection-v1-run-001",
+        settings=case.settings("B1", "B_NULL", "B_UNSPEC", "B_EMPTY", "B_SPACE", "B_TS", "B_BAD", "B_BLOB"),
+    )
+    first_run = WorkbenchRunWorker(case.conn).execute(accepted_v1["run_ref"])
+    assert first_run["state"] == "complete", first_run
+    first_cand = first_run["candidates"][0]["candidate_ref"]
+    adopter = service(case.conn)
+    preview = adopter.preview(first_cand)
+    adopted = adopter.adopt(first_cand, preview["write_context"]["write_token"], "due-projection-adopt-001", INTENT)
+    assert adopted["ok"], adopted
+
+    case.conn.execute("UPDATE Batches SET due_date='' WHERE batch_id='B_EMPTY'")
+    case.conn.execute("UPDATE Batches SET due_date='   ' WHERE batch_id='B_SPACE'")
+    case.conn.execute("UPDATE Batches SET due_date='2026-10-21 12:30:00' WHERE batch_id='B_TS'")
+    case.conn.execute("UPDATE Batches SET due_date='2026-02-30' WHERE batch_id='B_BAD'")
+    case.conn.execute("UPDATE Batches SET due_date=? WHERE batch_id='B_BLOB'", (b"bad-due",))
+    for code in ("B1", "B_NULL", "B_UNSPEC"):
+        case.operation(code, seq=2, unit_hours=0.1, status="skipped")
+    case.conn.commit()
+
+    accepted_v2 = case.accept(
+        key="due-projection-v2-run-002",
+        settings=case.settings("B1", "B_NULL", "B_UNSPEC"),
+    )
+    second_run = WorkbenchRunWorker(case.conn).execute(accepted_v2["run_ref"])
+    assert second_run["state"] in ("complete", "partial"), second_run
+    run_ref = second_run["run_ref"]
+    cand_ref = second_run["candidates"][0]["candidate_ref"]
+
+    bp = Blueprint("bl_due_projection_baseline", __name__)
+    register_run_candidate_baseline_routes(bp)
+    case.app.register_blueprint(bp)
+    client, _ = api(case)
+
+    def due_projection(rows):
+        return {
+            (row["batch_label"], row["sequence"]): (
+                row["due_date"],
+                row["due_state"],
+                row["due_issue"],
+                [item["code"] for item in row["data_gaps"] if item["field"] == "due_date"],
+            )
+            for row in rows
+        }
+
+    def delivery_due_projection(items):
+        return {
+            row["batch_id"]: (row["due_date"], row["due_state"], row["due_issue"])
+            for row in items
+        }
+
+    expected_selected = {
+        "B1": ("2026-10-16", "specified", None, []),
+        "B_NULL": (None, "invalid", "due_date_missing", ["not_recorded"]),
+        "B_UNSPEC": ("9999-12-31", "unspecified", None, []),
+    }
+    expected_all = {
+        **expected_selected,
+        "B_EMPTY": (None, "invalid", "due_date_missing", ["not_recorded"]),
+        "B_SPACE": (None, "invalid", "due_date_invalid", ["invalid_stored_value"]),
+        "B_TS": (None, "invalid", "due_date_invalid", ["invalid_stored_value"]),
+        "B_BAD": (None, "invalid", "due_date_invalid", ["invalid_stored_value"]),
+        "B_BLOB": (None, "invalid", "due_date_invalid", ["blob_metadata"]),
+    }
+
+    def get_data(path, **query):
+        response = client.get(BASE + path, query_string=query)
+        assert response.status_code == 200, response.get_data(as_text=True)
+        assert response.headers["Cache-Control"] == "no-store"
+        return response.get_json()["data"]
+
+    workspace = read(client, f"/candidates/{cand_ref}/workspace")["data"]
+    assert due_projection(workspace["tasks"]) == {(code, 1): val for code, val in expected_selected.items()}
+    assert due_projection(workspace["unplanned_operations"]) == {(code, 2): val for code, val in expected_selected.items()}
+    assert delivery_due_projection(workspace["delivery_risks"]["items"]) == {
+        row["batch_label"]: (row["due_date"], row["due_state"], row["due_issue"])
+        for row in workspace["tasks"]
+    }
+
+    baseline = get_data(f"/candidates/{cand_ref}/baseline")
+    expected_comparisons = {
+        **{(code, 1): val for code, val in expected_all.items()},
+        **{(code, 2): val for code, val in expected_selected.items()},
+    }
+    assert due_projection(baseline["comparisons"]) == expected_comparisons
+
+    reference_ws = get_data(
+        f"/runs/{run_ref}/decision/reference-workspace",
+        comparison_mode="admission_official",
+        selected_candidate_ref=cand_ref,
+        resource_view="full_candidate",
+    )
+    assert due_projection(reference_ws["tasks"]) == {(code, 1): val for code, val in expected_all.items()}
+    assert due_projection(reference_ws["unplanned_operations"]) == {(code, 2): val for code, val in expected_selected.items()}
+    assert delivery_due_projection(reference_ws["delivery_risks"]["items"]) == {
+        row["batch_label"]: (row["due_date"], row["due_state"], row["due_issue"])
+        for row in reference_ws["tasks"]
+    }
+
+    from core.services.workbench.facts.candidate_facts import GenerationFacts
+    from core.services.workbench.facts.candidate_tasks import operation_labels
+    from core.services.workbench.facts.production_capture import ProductionFactsCapture
+    from data.repositories.workbench_run_candidate_repo import WorkbenchRunCandidateRepository
+
+    saved_capture = WorkbenchRunCandidateRepository(case.conn).job_capture(run_ref)
+    assert saved_capture is not None
+    execution_rows = json.loads(saved_capture[1])
+    archive = ProductionFactsCapture(case.conn).archive()
+    facts_json = saved_capture[3]
+    memory_facts = GenerationFacts({"facts": archive, "execution": execution_rows})
+    persisted_facts = GenerationFacts({"facts_text": facts_json, "execution": execution_rows})
+    assert isinstance(memory_facts.tables["Batches"]["B_BLOB"]["due_date"], bytes)
+    assert persisted_facts.tables["Batches"]["B_BLOB"]["due_date"] == {"$sqlite_blob": "YmFkLWR1ZQ=="}
+    blob_op_id = next(
+        op_id for op_id, row in memory_facts.tables["BatchOperations"].items() if row["batch_id"] == "B_BLOB"
+    )
+    blob_op_ref = memory_facts.operation_refs[blob_op_id]
+    memory_blob_labels, _ = operation_labels(memory_facts, blob_op_ref)
+    persisted_blob_labels, _ = operation_labels(persisted_facts, blob_op_ref)
+    assert (
+        memory_blob_labels["due_date"],
+        memory_blob_labels["due_state"],
+        memory_blob_labels["due_issue"],
+        memory_blob_labels["data_gaps"],
+    ) == (
+        persisted_blob_labels["due_date"],
+        persisted_blob_labels["due_state"],
+        persisted_blob_labels["due_issue"],
+        persisted_blob_labels["data_gaps"],
+    ) == (
+        None,
+        "invalid",
+        "due_date_invalid",
+        [{"field": "due_date", "code": "blob_metadata", "message": "排产时这一项的记录格式无法显示，请联系维护人员核对。"}],
+    )
+
+    original_capture = WorkbenchRunCandidateRepository.job_capture
+    overrides = {
+        "B1": "",
+        "B_NULL": "2026-02-30",
+        "B_UNSPEC": {"$sqlite_blob": "YmFkLWR1ZQ=="},
+    }
+
+    def archived_damaged_capture(repo_self, target_run_ref):
+        row = original_capture(repo_self, target_run_ref)
+        if row is None or target_run_ref != run_ref:
+            return row
+        facts = json.loads(row[3])
+        cols = facts["columns"]["Batches"]
+        batch_idx, due_idx = cols.index("batch_id"), cols.index("due_date")
+        for batch_row in facts["tables"]["Batches"]:
+            if isinstance(batch_row, list) and batch_row[batch_idx] in overrides:
+                batch_row[due_idx] = overrides[batch_row[batch_idx]]
+            elif isinstance(batch_row, dict) and batch_row["batch_id"] in overrides:
+                batch_row["due_date"] = overrides[batch_row["batch_id"]]
+        patched_text = json.dumps(facts, ensure_ascii=False, separators=(",", ":"))
+        return (*row[:3], patched_text, *row[4:7], len(patched_text.encode("utf-8")))
+
+    monkeypatch.setattr(WorkbenchRunCandidateRepository, "job_capture", archived_damaged_capture)
+    damaged_ws = read(client, f"/candidates/{cand_ref}/workspace")["data"]
+    expected_damaged = {
+        "B1": (None, "invalid", "due_date_missing", ["not_recorded"]),
+        "B_NULL": (None, "invalid", "due_date_invalid", ["invalid_stored_value"]),
+        "B_UNSPEC": (None, "invalid", "due_date_invalid", ["blob_metadata"]),
+    }
+    assert due_projection(damaged_ws["tasks"]) == {(code, 1): val for code, val in expected_damaged.items()}
+    assert due_projection(damaged_ws["unplanned_operations"]) == {(code, 2): val for code, val in expected_damaged.items()}
+    assert delivery_due_projection(damaged_ws["delivery_risks"]["items"]) == {
+        row["batch_label"]: (row["due_date"], row["due_state"], row["due_issue"])
+        for row in damaged_ws["tasks"]
+    }
+    damaged_baseline = get_data(f"/candidates/{cand_ref}/baseline")
+    damaged_ref_ws = get_data(
+        f"/runs/{run_ref}/decision/reference-workspace",
+        comparison_mode="admission_official",
+        selected_candidate_ref=cand_ref,
+        resource_view="full_candidate",
+    )
+    for code, expected_val in expected_damaged.items():
+        assert due_projection(damaged_baseline["comparisons"])[(code, 1)] == expected_val
+        assert due_projection(damaged_baseline["comparisons"])[(code, 2)] == expected_val
+        assert due_projection(damaged_ref_ws["tasks"])[(code, 1)] == expected_val
+        assert due_projection(damaged_ref_ws["unplanned_operations"])[(code, 2)] == expected_val
+
+    overrides.update(B1="   ", B_NULL="2026-10-16 12:30:00")
+    whitespace_ws = read(client, f"/candidates/{cand_ref}/workspace")["data"]
+    expected_whitespace = {
+        "B1": (None, "invalid", "due_date_invalid", ["invalid_stored_value"]),
+        "B_NULL": (None, "invalid", "due_date_invalid", ["invalid_stored_value"]),
+        "B_UNSPEC": (None, "invalid", "due_date_invalid", ["blob_metadata"]),
+    }
+    assert due_projection(whitespace_ws["tasks"]) == {(code, 1): val for code, val in expected_whitespace.items()}
+    assert due_projection(whitespace_ws["unplanned_operations"]) == {(code, 2): val for code, val in expected_whitespace.items()}
+    assert delivery_due_projection(whitespace_ws["delivery_risks"]["items"]) == {
+        row["batch_label"]: (row["due_date"], row["due_state"], row["due_issue"])
+        for row in whitespace_ws["tasks"]
+    }

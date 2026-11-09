@@ -149,6 +149,8 @@
             "supplier_changed": null
           },
           "due_date": "2026-10-16",
+          "due_issue": null,
+          "due_state": "specified",
           "execution_affected": false,
           "execution_at_generation": {
             "completion_basis": null,
@@ -203,6 +205,8 @@
             "supplier_changed": null
           },
           "due_date": "2026-10-16",
+          "due_issue": null,
+          "due_state": "specified",
           "execution_affected": false,
           "execution_at_generation": {
             "completion_basis": null,
@@ -259,10 +263,8 @@
       "full_operation_count": 32,
       "generation": {
         "accepted_at": "2026-10-13T16:29:28",
-        "current_entities_consulted": false,
         "execution_basis": "captured_at_run_admission",
         "finished_at": "2026-10-13T16:29:43",
-        "formal_version_allocated": false,
         "input": {
           "batch_refs": [
             "0985d4b9feff43ddcbcb260fe72d41f47763b9fa19cfd4b7",
@@ -420,11 +422,9 @@
         "kind": "admission_official",
         "version": 1
       },
-      "current_entities_consulted": false,
       "data_gaps": [],
       "execution_basis": "captured_at_run_admission",
       "finished_at": "2026-10-13T16:29:43",
-      "formal_version_allocated": false,
       "input": {
         "completed_policy": "preserve_actuals",
         "end_date": "2026-10-30",
@@ -455,6 +455,8 @@
         "batch_ref": "4c0a10c4918965272b7248fb43c1b1f9d14fa2e3e988ccd1",
         "data_gaps": [],
         "due_date": "2026-10-16",
+        "due_issue": null,
+        "due_state": "specified",
         "end": "2026-10-13T13:45:00",
         "execution_at_generation": {
           "data_quality": "incomplete",

@@ -330,12 +330,12 @@ def test_plan_and_candidate_public_dtos_isolate_in_process_caches_on_mutation(tr
     prep_impacts_first[0]["after"]["standard"]["evidence_source"]["run_ref"] = "POLLUTED"
     assert DecisionPreparation(DecisionSource(CandidateStore(case.conn), run_ref)).impacts(prep_refs) == prep_impacts_expected
 
-    impacts_first = operation_impacts(decision_one)
+    impacts_first = operation_impacts(decision_one, decision_one.scope["operation_refs"])
     impacts_expected = deepcopy(impacts_first)
     impacts_first[0]["constraints"]["reasons"].append({"code": "polluted"})
 
     decision_two = DecisionSource(CandidateStore(case.conn), run_ref)
-    assert operation_impacts(decision_two) == impacts_expected
+    assert operation_impacts(decision_two, decision_two.scope["operation_refs"]) == impacts_expected
 
     first_op_ref = decision_two.scope["operation_refs"][0]
     decision_two.disposition[first_op_ref] = {

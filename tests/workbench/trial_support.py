@@ -57,7 +57,7 @@ def trial_case(tmp_path):
     case.path = path
     case.batch("B1")
     case.op_id = case.operation(setup_hours=0, unit_hours=1)
-    case.config(algo_mode="greedy", graph_candidate_weight_count=3, time_budget_seconds=60,
+    case.config(algo_mode="greedy", time_budget_seconds=60,
                 ortools_enabled="no", freeze_window_enabled="no")
     case.app = Flask("trial-tests")
     case.app.config["WORKBENCH_SYSTEM_JOURNAL_DIR"] = system_journal_directory(str(path))

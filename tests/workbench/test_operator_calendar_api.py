@@ -5,12 +5,19 @@ from contextlib import closing
 
 import pytest
 
+from core.models.calendar_periods import decode_periods
 from tests.workbench.calendar_api_support import assert_read_failure, deny_table_reads
 
 BASE = "/api/workbench/v1/entities/operator/"
 DAY = "2026-10-05"
-WORK = {"type": "work", "shiftStart": "09:00", "shiftEnd": "17:30", "eff": 90,
-        "allowNormal": "yes", "allowUrgent": "no", "note": "早班"}
+WORK = {
+    "type": "work",
+    "periods": [{"start": "09:00", "end": "17:30", "day_offset": 0}],
+    "eff": 90,
+    "allowNormal": "yes",
+    "allowUrgent": "no",
+    "note": "早班",
+}
 
 
 @pytest.fixture(name="client")
@@ -74,11 +81,11 @@ def test_save_one_day_then_clear_it(client):
     assert stale.status_code == 409 and stale.get_json()["error"]["code"] == "snapshot_stale"
     row = stored(client, "OP001", DAY)
     assert row is not None
-    assert row["shift_start"] == "09:00" and row["shift_end"] == "17:30" and row["shift_hours"] == 8.5
+    assert decode_periods(row["periods_json"]) == WORK["periods"]
 
     after = month(client, ref)
     configured = [day for day in after["days"] if day["explicit"]]
-    assert len(configured) == 1 and configured[0]["date"] == DAY and configured[0]["shift_hours"] == 8.5
+    assert len(configured) == 1 and configured[0]["date"] == DAY and configured[0]["periods"] == WORK["periods"]
 
     periods = [{"start": "08:00", "end": "12:00", "day_offset": 0},
                {"start": "13:00", "end": "17:00", "day_offset": 0}]
@@ -88,39 +95,18 @@ def test_save_one_day_then_clear_it(client):
     assert split_saved.status_code == 200 and split_saved.get_json()["result"] == "committed"
     split_row = stored(client, "OP001", DAY)
     assert split_row is not None
-    assert (split_row["shift_start"], split_row["shift_end"], split_row["shift_hours"]) == ("08:00", "17:00", 8.0)
+    assert decode_periods(split_row["periods_json"]) == periods
 
     after_split = month(client, ref)
-    reverted = command(client, ref, "upsert",
-                       {"date": DAY, "fields": {"type": "work", "periods": None, "shiftStart": "08:00", "eff": 100}},
+    rejected = command(client, ref, "upsert",
+                       {"date": DAY, "fields": {"type": "work", "periods": None, "eff": 100}},
                        after_split["write_context"]["write_token"], key="operator-calendar-request-00003")
-    assert reverted.status_code == 200 and reverted.get_json()["result"] == "committed"
-    single_row = stored(client, "OP001", DAY)
-    assert single_row is not None and single_row["periods_json"] is None
-    assert (single_row["shift_start"], single_row["shift_end"], single_row["shift_hours"]) == ("08:00", "16:00", 8.0)
+    assert rejected.status_code == 422 and rejected.get_json()["error"]["code"] == "invalid_input"
 
-    after_reverted = month(client, ref)
-    cleared = command(client, ref, "delete", {"date": DAY}, after_reverted["write_context"]["write_token"],
+    cleared = command(client, ref, "delete", {"date": DAY}, after_split["write_context"]["write_token"],
                       key="operator-calendar-request-00004")
     assert cleared.status_code == 200 and cleared.get_json()["result"] == "committed"
     assert stored(client, "OP001", DAY) is None
-
-
-def test_blank_legacy_columns_read_the_way_scheduling_does(client):
-    """旧行的班次开始、工时、效率被明确写成空：月视图统计、这一天的显示、导出都按排产引擎的解释，不再报错；库里的行不动。"""
-    ref = ref_of(client, "OP001")
-    token = month(client, ref)["write_context"]["write_token"]
-    assert command(client, ref, "upsert", {"date": DAY, "fields": WORK}, token).status_code == 200
-    with database(client) as conn:
-        conn.execute("UPDATE OperatorCalendar SET shift_hours=NULL, efficiency=NULL, shift_start=NULL, shift_end=NULL "
-                     "WHERE operator_id='OP001' AND date=?", (DAY,))
-        conn.commit()
-    data = month(client, ref)
-    shown = next(day for day in data["days"] if day["date"] == DAY)
-    assert data["stats"] == {"configured": 1, "work_days": 1}
-    assert (shown["shift_start"], shown["shift_hours"], shown["efficiency"]) == ("08:00", 8.0, 1.0)
-    raw = stored(client, "OP001", DAY)
-    assert raw is not None and raw["shift_hours"] is None
 
 
 @pytest.mark.parametrize("operator_code", ["OP:1", "OP%1"])
@@ -144,7 +130,7 @@ def test_new_day_receipt_uses_escaped_operator_identity(client, operator_code):
             (entity_key(operator_code, day),)).fetchone()
     assert identity is not None and receipt["data"]["calendar_ref"] == identity["ref"]
     row = stored(client, operator_code, day)
-    assert row is not None and row["shift_hours"] == 8.5
+    assert row is not None and decode_periods(row["periods_json"]) == WORK["periods"]
     shown = next(item for item in month(client, ref)["days"] if item["date"] == day)
     assert shown["calendar_ref"] == identity["ref"] and shown["explicit"]
 
@@ -163,7 +149,7 @@ def test_operator_calendar_with_surrounding_whitespace_does_not_touch_trimmed_si
     normal_token = month(client, normal_ref)["write_context"]["write_token"]
     normal_saved = command(
         client, normal_ref, "upsert",
-        {"date": day, "fields": {**WORK, "shiftStart": "08:00", "shiftEnd": "16:00", "note": "OP1原记录"}},
+        {"date": day, "fields": {**WORK, "periods": [{"start": "08:00", "end": "16:00", "day_offset": 0}], "note": "OP1原记录"}},
         normal_token, key="operator-calendar-trimmed-001",
     )
     assert normal_saved.status_code == 200 and normal_saved.get_json()["result"] == "committed"
@@ -242,8 +228,11 @@ def test_selected_operator_calendar_export_admits_refs_once_and_resolves_them_pe
 
     files = "/api/workbench/v1/calendar-files/operator_calendar/"
     with database(client) as conn:
-        conn.executemany("INSERT INTO OperatorCalendar(operator_id,date,day_type,shift_start,shift_end,shift_hours,efficiency) "
-                         "VALUES (?,?,'workday','09:00','17:00',8,1)", [("OP001", DAY), ("OP002", DAY)])
+        conn.executemany(
+            "INSERT INTO OperatorCalendar(operator_id,date,day_type,efficiency,allow_normal,allow_urgent,periods_json) "
+            "VALUES (?,?,'workday',1,'yes','yes','[{\"start\":\"09:00\",\"end\":\"17:00\",\"day_offset\":0}]')",
+            [("OP001", DAY), ("OP002", DAY)],
+        )
         conn.commit()
     selected = [ref_of(client, "OP001")]
 

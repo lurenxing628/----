@@ -21,12 +21,14 @@ def test_scheduler_reject_nonfinite_and_invalid_status(db_path) -> None:
         cal_svc = CalendarService(conn, logger=None)
         _expect_validation_error(
             lambda: cal_svc._admin._build_work_calendar(
-                date_value="2026-02-01",
+                date_value="2026-01-02",
                 day_type="workday",
-                shift_hours=8,
-                efficiency="inf",
+                periods=[{"start": "08:00", "end": "16:00", "day_offset": 0}],
+                efficiency=float("inf"),
                 allow_normal="yes",
                 allow_urgent="yes",
+                remark=None,
+                context=cal_svc.normalization_context(),
             ),
             "CalendarAdmin._build_work_calendar(efficiency=inf)",
         )

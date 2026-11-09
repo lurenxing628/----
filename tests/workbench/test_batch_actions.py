@@ -456,62 +456,437 @@ def test_quantity_split_with_bound_material_returns_the_created_batch_reference(
     assert (source_requirement['required_quantity'], source_requirement['available_quantity']) == (6, 0)
 
 
-def test_batch_import_preview_rejects_legacy_padded_batch_or_part_without_binding_trimmed_sibling(batch_client):
-    from core.models.workbench_batch_query import batch_scope
-    from core.services.workbench.batch.files import WorkbenchBatchFileService
-    from core.services.workbench.batch.queries import WorkbenchBatchQueryService
+_COPY_BATCH_KEYS = ("business_code", "label", "status", "stored_status", "fields",
+                    "display_ready_status", "relationships", "all_operations_complete", "issues", "protected")
+
+
+def _comparable_operation(operation):
+    """新工序在预览里还没有引用；其余字段连同执行情况都应与提交后的详情一致。"""
+    execution = {key: value for key, value in operation["execution"].items() if key != "operation_ref"}
+    return {**{key: value for key, value in operation.items() if key not in ("ref", "operation_ref")}, "execution": execution}
+
+
+def _assert_copy_preview_matches_commit(after, committed):
+    assert after["ref"] is None and set(after) - {"ref", "write_context", "operations"} == set(_COPY_BATCH_KEYS)
+    assert {key: after[key] for key in _COPY_BATCH_KEYS} == {key: committed[key] for key in _COPY_BATCH_KEYS}
+    assert all(op["ref"] is None and op["execution"]["operation_ref"] is None for op in after["operations"])
+    assert all(op["execution"]["operation_ref"] == op["ref"] for op in committed["operations"])
+    assert [_comparable_operation(op) for op in after["operations"]] == [
+        _comparable_operation(op) for op in committed["operations"]
+    ]
+
+
+def test_copy_preview_after_matches_committed_detail_and_leaves_source_unchanged(batch_client):
+    from datetime import date
+
+    client, conn = batch_client, batch_client.batch_conn
+    conn.execute("UPDATE Materials SET status='active' WHERE material_id='MAT1'")
+    conn.commit()
+    source_ref = ref_for(client)
+    operation_ref = detail(client, source_ref)["data"]["operations"][0]["ref"]
+    mat_resp = post(client, "materials_update", {"removed_keys": [], "rows": [{
+        "row_key": None, "material_ref": ref_for(client, "material", "MAT1"), "operation_ref": operation_ref,
+        "required_quantity": 10, "available_quantity": 4}]}, key="copy-parity-mat-01", ref=source_ref)
+    assert mat_resp.status_code == 200, mat_resp.get_json()
+
+    split_prev = client.post(BASE + "/" + source_ref + "/split-preview", json={
+        "input": {"as_of_date": date.today().isoformat()},
+        "snapshot_ref": detail(client, source_ref)["meta"]["snapshot_ref"],
+    }).get_json()["data"]
+    assert confirm(client, split_prev, path="/" + source_ref + "/split-confirm", key="copy-parity-split-01").status_code == 200
+
+    source_row_key = detail(client, source_ref)["data"]["materials"]["requirements"][0]["row_key"]
+    ready_resp = post(client, "materials_update", {"removed_keys": [], "rows": [{
+        "row_key": source_row_key, "material_ref": ref_for(client, "material", "MAT1"), "operation_ref": operation_ref,
+        "required_quantity": 6, "available_quantity": 6}]}, key="copy-parity-mat-02", ref=source_ref)
+    assert ready_resp.status_code == 200, ready_resp.get_json()
+    assert post(client, "update", {"fields": {"due_date": "2026-10-15", "ready_date": "2026-10-05"}},
+                key="copy-parity-upd-01", ref=source_ref).status_code == 200
+
+    source_before = detail(client, source_ref)["data"]
+    assert source_before["display_ready_status"] == "yes"
+    assert source_before["relationships"]["quantity_split_reference_count"] == 1
+
+    copy_prev = preview(client, "copy", [source_ref])
+    after = copy_prev["rows"][0]["after"]
+    assert after["display_ready_status"] == "no"
+    assert after["relationships"]["quantity_split_reference_count"] == 0
+    assert after["relationships"]["material_requirement_count"] == 1
+
+    confirmed = confirm(client, copy_prev, key="copy-parity-confirm-01")
+    assert confirmed.status_code == 200, confirmed.get_json()
+    created_ref = confirmed.get_json()["data"]["items"][0]["entity_ref"]
+    committed = detail(client, created_ref)["data"]
+    source_after = detail(client, source_ref)["data"]
+
+    assert {k: v for k, v in source_after.items() if k != "write_context"} == {
+        k: v for k, v in source_before.items() if k != "write_context"
+    }
+    _assert_copy_preview_matches_commit(after, committed)
+    assert committed["operations"][0]["execution"]["target_quantity"] == committed["fields"]["quantity"] == 3
+
+
+def test_copy_preview_projects_fresh_execution_for_external_piece_and_completed_operations(batch_client):
     from tests.workbench.identity_metadata_support import insert_row
 
     client, conn = batch_client, batch_client.batch_conn
-    insert_row(conn, "Batches", dict(batch_id=" B1 ", part_no="P1", quantity=5, part_name="spaced-batch",
-                                     priority="normal", ready_status="no", status="pending"))
-    insert_row(conn, "Parts", dict(part_no=" P1 ", part_name="spaced-part"))
+    source_ref = ref_for(client)
+    conn.execute("UPDATE BatchOperations SET source='external', machine_id=NULL, operator_id=NULL, supplier_id='S1', "
+                 "ext_days=2, status='completed' WHERE batch_id='FREE-001'")
+    for piece in ("1", "2"):
+        insert_row(conn, "BatchOperations", dict(op_code="FREE-001_02_" + piece, batch_id="FREE-001", piece_id=piece, seq=2,
+                                                 op_type_id="OT1", op_type_name="inspect", source="internal", machine_id="M1",
+                                                 operator_id="O1", setup_hours=0, unit_hours=1, status="pending"))
     conn.commit()
-    b1_ref = ref_for(client, key="B1")
-    reader = WorkbenchBatchQueryService(conn)
-    with reader.detached_read_snapshot():
-        exported = WorkbenchBatchFileService.export(
-            [row for row in reader.matched(batch_scope({})) if row["business_code"] == " B1 "]
+    source_before = detail(client, source_ref)["data"]
+    external = source_before["operations"][0]
+    assert external["external_group"]["business_code"] == "EG1"
+    assert external["status"] == "completed" and external["data_quality"] == "invalid"
+
+    copy_prev = preview(client, "copy", [source_ref])
+    after = copy_prev["rows"][0]["after"]
+    assert [(op["business_code"], op["status"], op["execution_state"]) for op in after["operations"]] == [
+        ("FREE-002_01", "pending", "unreported"), ("FREE-002_02_1", "pending", "unreported"),
+        ("FREE-002_02_2", "pending", "unreported")]
+    assert [(op["execution"]["target_basis"], op["execution"]["target_quantity"], op["execution"]["remaining_quantity"])
+            for op in after["operations"]] == [("batch", 5, 5), ("piece", 1, 1), ("piece", 1, 1)]
+
+    confirmed = confirm(client, copy_prev, key="copy-multi-op-confirm-01")
+    assert confirmed.status_code == 200, confirmed.get_json()
+    committed = detail(client, confirmed.get_json()["data"]["items"][0]["entity_ref"])["data"]
+    _assert_copy_preview_matches_commit(after, committed)
+    assert {k: v for k, v in detail(client, source_ref)["data"].items() if k != "write_context"} == {
+        k: v for k, v in source_before.items() if k != "write_context"
+    }
+
+
+def test_copy_and_split_previews_reject_invalid_source_batch_fields(batch_client):
+    client, conn = batch_client, batch_client.batch_conn
+    conn.execute("UPDATE Materials SET status='active' WHERE material_id='MAT1'")
+    conn.commit()
+    source_ref = ref_for(client)
+    mat_resp = post(client, "materials_update", {"removed_keys": [], "rows": [{
+        "row_key": None, "material_ref": ref_for(client, "material", "MAT1"),
+        "required_quantity": 10, "available_quantity": 4}]}, key="preview-guard-mat-01", ref=source_ref)
+    assert mat_resp.status_code == 200, mat_resp.get_json()
+
+    baseline = dict(conn.execute(
+        "SELECT due_date, priority, part_name, ready_date FROM Batches WHERE batch_id='FREE-001'"
+    ).fetchone())
+    fix = "请先打开这个批次，把{label}核对改好后再{verb}。"
+    for column, invalid_value, field, label, remedy in (
+        ("due_date", "2026/10/01", "fields.due_date", "交期", fix),
+        ("priority", "high", "fields.priority", "优先级", fix),
+        ("part_name", "", "part_name", "零件名称", "零件名称在批次里改不了，请联系维护人员核对这个批次的资料。"),
+    ):
+        conn.execute(
+            "UPDATE Batches SET due_date=?, priority=?, part_name=?, ready_date=? WHERE batch_id='FREE-001'",
+            (baseline["due_date"], baseline["priority"], baseline["part_name"], baseline["ready_date"]),
         )
-    service = WorkbenchBatchFileService(conn)
-    upload = service.read(exported, "overwrite")
-    preview_doc = service.preview("overwrite", upload)
-    assert preview_doc["can_confirm"] is False
-    row, = preview_doc["rows"]
-    assert row["action"] == "rejected"
-    assert row["entity_ref"] is None and row["entity_ref"] != b1_ref
-    assert any("批次号或图号存在首尾空格，请先核对原记录。" in err for err in row["errors"])
+        conn.execute(f"UPDATE Batches SET {column}=? WHERE batch_id='FREE-001'", (invalid_value,))
+        conn.commit()
+        before = state(client)
+        conflicts = [{"entity_ref": source_ref, "business_code": "FREE-001", "field": field}]
 
-    part_preview = service.preview("overwrite", ([{"row": 2, "values": {"批次号": "NEW-BATCH", "图号": " P1 ", "数量": 3}, "errors": []}], []))
-    assert part_preview["can_confirm"] is False
-    part_row, = part_preview["rows"]
-    assert part_row["action"] == "rejected"
-    assert any("批次号或图号存在首尾空格，请先核对原记录。" in err for err in part_row["errors"])
+        # 同时复制一个资料正常的批次：报错只点名库里有坏值的那一个原批次。
+        bulk_resp = client.post(BASE + "/bulk-preview", json={
+            "scope": {},
+            "snapshot_ref": list_data(client)["meta"]["snapshot_ref"],
+            "input": {"action": "copy", "refs": [ref_for(client, key="B1"), source_ref], "patch": {}},
+        })
+        bulk_err = assert_error(bulk_resp, "constraint_conflict", 409)["error"]
+        assert bulk_err["message"] == ("原批次“FREE-001”在系统里存的" + label + "不对，这次没有复制。"
+                                       + remedy.format(label=label, verb="复制"))
+        assert bulk_err["conflicts"] == conflicts and bulk_err["fields"] == []
+
+        split_resp = client.post(BASE + "/" + source_ref + "/split-preview", json={
+            "input": {"as_of_date": "2026-10-08"},
+            "snapshot_ref": detail(client, source_ref)["meta"]["snapshot_ref"],
+        })
+        split_err = assert_error(split_resp, "constraint_conflict", 409)["error"]
+        assert split_err["message"] == ("原批次“FREE-001”在系统里存的" + label + "不对，这次没有拆分。"
+                                        + remedy.format(label=label, verb="拆分"))
+        assert split_err["conflicts"] == conflicts
+        assert state(client) == before
+
+    conn.execute(
+        "UPDATE Batches SET due_date=?, priority=?, part_name=?, ready_date='2026-10-01 08:00:00' WHERE batch_id='FREE-001'",
+        (baseline["due_date"], baseline["priority"], baseline["part_name"]),
+    )
+    conn.commit()
+    before = state(client)
+    split_resp = client.post(BASE + "/" + source_ref + "/split-preview", json={
+        "input": {"as_of_date": "2026-10-08"},
+        "snapshot_ref": detail(client, source_ref)["meta"]["snapshot_ref"],
+    })
+    split_err = assert_error(split_resp, "constraint_conflict", 409)["error"]
+    assert split_err["message"] == "原批次“FREE-001”在系统里存的齐套日期不对，这次没有拆分。请先打开这个批次，把齐套日期核对改好后再拆分。"
+    assert split_err["conflicts"] == [{"entity_ref": source_ref, "business_code": "FREE-001", "field": "fields.ready_date"}]
+    assert state(client) == before
 
 
-def test_legacy_padded_batch_ref_resolves_for_detail_update_copy_and_delete(batch_client):
+def test_copy_and_split_previews_reject_missing_external_context_and_cross_batch_material_stage(batch_client):
+    client, conn = batch_client, batch_client.batch_conn
+    conn.execute("UPDATE Materials SET status='active' WHERE material_id='MAT1'")
+    conn.commit()
+    source_ref = ref_for(client)
+    source_op_id = conn.execute("SELECT id FROM BatchOperations WHERE batch_id='FREE-001'").fetchone()[0]
+    other_op_id = conn.execute("SELECT id FROM BatchOperations WHERE batch_id='B1'").fetchone()[0]
+    operation_ref = detail(client, source_ref)["data"]["operations"][0]["ref"]
+    mat_resp = post(
+        client,
+        "materials_update",
+        {
+            "removed_keys": [],
+            "rows": [
+                {
+                    "row_key": None,
+                    "material_ref": ref_for(client, "material", "MAT1"),
+                    "operation_ref": operation_ref,
+                    "required_quantity": 10,
+                    "available_quantity": 4,
+                }
+            ],
+        },
+        key="preview-guard-stage-001",
+        ref=source_ref,
+    )
+    assert mat_resp.status_code == 200, mat_resp.get_json()
+
+    conn.execute("UPDATE BatchMaterialStages SET operation_id=? WHERE operation_id=?", (other_op_id, source_op_id))
+    conn.commit()
+    before = state(client)
+    bulk_stage_resp = client.post(
+        BASE + "/bulk-preview",
+        json={
+            "scope": {},
+            "snapshot_ref": list_data(client)["meta"]["snapshot_ref"],
+            "input": {"action": "copy", "refs": [source_ref], "patch": {}},
+        },
+    )
+    assert_error(bulk_stage_resp, "material_stage_invalid", 409)
+    split_stage_resp = client.post(
+        BASE + "/" + source_ref + "/split-preview",
+        json={
+            "input": {"as_of_date": "2026-10-08"},
+            "snapshot_ref": detail(client, source_ref)["meta"]["snapshot_ref"],
+        },
+    )
+    assert_error(split_stage_resp, "material_stage_invalid", 409)
+    assert state(client) == before
+
+    conn.execute("UPDATE BatchMaterialStages SET operation_id=? WHERE operation_id=?", (source_op_id, other_op_id))
+    conn.execute(
+        "UPDATE BatchOperations SET source='external', machine_id=NULL, operator_id=NULL, supplier_id='S1', ext_days=2 "
+        "WHERE id=?",
+        (source_op_id,),
+    )
+    conn.execute("DELETE FROM BatchExternalContexts WHERE operation_id=?", (source_op_id,))
+    conn.commit()
+    before = state(client)
+    bulk_ext_resp = client.post(
+        BASE + "/bulk-preview",
+        json={
+            "scope": {},
+            "snapshot_ref": list_data(client)["meta"]["snapshot_ref"],
+            "input": {"action": "copy", "refs": [source_ref], "patch": {}},
+        },
+    )
+    assert_error(bulk_ext_resp, "external_context_missing", 409)
+    split_ext_resp = client.post(
+        BASE + "/" + source_ref + "/split-preview",
+        json={
+            "input": {"as_of_date": "2026-10-08"},
+            "snapshot_ref": detail(client, source_ref)["meta"]["snapshot_ref"],
+        },
+    )
+    assert_error(split_ext_resp, "external_context_missing", 409)
+    assert state(client) == before
+
+
+def test_production_decltypes_connection_preserves_raw_batch_dates_end_to_end(tmp_path):
+    from datetime import date
+
+    from core.infrastructure.database import ensure_schema, get_connection
+    from tests.workbench.batch_support import create_batch_client
+
+    db_path = str(tmp_path / "production_decltypes_batches.sqlite")
+    ensure_schema(db_path)
+    conn = get_connection(db_path)
+    try:
+        client = create_batch_client(conn)
+        source_ref = ref_for(client)
+        initial = post(
+            client,
+            "update",
+            {"fields": {"due_date": "2026-10-15", "ready_date": "2026-10-05"}},
+            key="prod-decltypes-init-0001",
+            ref=source_ref,
+        )
+        assert initial.status_code == 200 and initial.get_json()["result"] == "committed", initial.get_json()
+        raw_decl = conn.execute("SELECT due_date, ready_date FROM Batches WHERE batch_id='FREE-001'").fetchone()
+        assert (raw_decl["due_date"], raw_decl["ready_date"]) == (date(2026, 10, 15), date(2026, 10, 5))
+
+        unchanged = post(
+            client,
+            "update",
+            {"fields": {"due_date": "2026-10-15", "ready_date": "2026-10-05"}},
+            key="prod-decltypes-noop-0001",
+            ref=source_ref,
+        )
+        assert unchanged.status_code == 200 and unchanged.get_json()["result"] == "unchanged", unchanged.get_json()
+
+        copy_prev = preview(client, "copy", [source_ref])
+        assert copy_prev["rows"][0]["after"]["fields"]["due_date"] == "2026-10-15"
+        copy_resp = confirm(client, copy_prev, key="prod-decltypes-copy-0001")
+        assert copy_resp.status_code == 200, copy_resp.get_json()
+        copied_ref = copy_resp.get_json()["data"]["items"][0]["entity_ref"]
+        assert detail(client, copied_ref)["data"]["fields"]["due_date"] == "2026-10-15"
+
+        conn.execute("UPDATE Materials SET status='active' WHERE material_id='MAT1'")
+        conn.commit()
+        operation_ref = detail(client, source_ref)["data"]["operations"][0]["ref"]
+        mat_resp = post(
+            client,
+            "materials_update",
+            {
+                "removed_keys": [],
+                "rows": [
+                    {
+                        "row_key": None,
+                        "material_ref": ref_for(client, "material", "MAT1"),
+                        "operation_ref": operation_ref,
+                        "required_quantity": 10,
+                        "available_quantity": 4,
+                    }
+                ],
+            },
+            key="prod-decltypes-mat-00001",
+            ref=source_ref,
+        )
+        assert mat_resp.status_code == 200, mat_resp.get_json()
+        split_ctx = detail(client, source_ref)
+        split_prev_resp = client.post(
+            BASE + "/" + source_ref + "/split-preview",
+            json={"input": {"as_of_date": "2026-10-08"}, "snapshot_ref": split_ctx["meta"]["snapshot_ref"]},
+        )
+        assert split_prev_resp.status_code == 200, split_prev_resp.get_json()
+        split_prev = split_prev_resp.get_json()["data"]
+        split_confirm_resp = confirm(
+            client, split_prev, path="/" + source_ref + "/split-confirm", key="prod-decltypes-split-001"
+        )
+        assert split_confirm_resp.status_code == 200, split_confirm_resp.get_json()
+        split_child_ref = split_confirm_resp.get_json()["data"]["child_ref"]
+        split_child = detail(client, split_child_ref)["data"]
+        assert split_child["fields"]["due_date"] == "2026-10-15"
+        assert split_child["fields"]["ready_date"] == "2026-10-08"
+
+        conn.execute("UPDATE Batches SET due_date='bad-date' WHERE batch_id='FREE-001'")
+        conn.commit()
+        listed = list_data(client)
+        listed_item = next(row for row in listed["data"]["entities"] if row["business_code"] == "FREE-001")
+        assert listed_item["fields"]["due_date"] == "bad-date"
+        assert {"code": "data_gap", "message": "交期原值不合法，请核对。"} in listed_item["issues"]
+        det = detail(client, source_ref)["data"]
+        assert det["fields"]["due_date"] == "bad-date"
+        assert {"code": "data_gap", "message": "交期原值不合法，请核对。"} in det["issues"]
+        dirty_copy = client.post(
+            BASE + "/bulk-preview",
+            json={
+                "scope": {},
+                "snapshot_ref": listed["meta"]["snapshot_ref"],
+                "input": {"action": "copy", "refs": [source_ref], "patch": {}},
+            },
+        )
+        dirty_err = assert_error(dirty_copy, "constraint_conflict", 409)["error"]
+        assert dirty_err["conflicts"] == [
+            {"entity_ref": source_ref, "business_code": "FREE-001", "field": "fields.due_date"}
+        ]
+    finally:
+        conn.close()
+
+
+def test_batch_import_preserves_legacy_spaced_codes_in_overwrite_and_replace_and_rejects_spaced_new_codes(batch_client):
+    from core.infrastructure.transaction import TransactionManager
+    from core.services.workbench.batch.file_codec import write_batch_file
+    from core.services.workbench.batch.files import WorkbenchBatchFileService
     from tests.workbench.identity_metadata_support import insert_row
 
-    client, conn = batch_client, batch_client.batch_conn
-    insert_row(conn, "Batches", dict(batch_id=" PAD-B1 ", part_no="P1", quantity=5, part_name="padded-batch",
-                                     priority="normal", ready_status="no", status="pending"))
+    _client, conn = batch_client, batch_client.batch_conn
+    insert_row(conn, "Parts", dict(part_no=" P1 ", part_name="spaced-part"))
+    insert_row(
+        conn,
+        "Batches",
+        dict(
+            batch_id=" B1 ",
+            part_no=" P1 ",
+            part_name="spaced-part",
+            quantity=7,
+            due_date="2026-10-20",
+            priority="normal",
+            status="pending",
+            ready_status="yes",
+            ready_date=None,
+            remark="spaced-batch",
+        ),
+    )
     conn.commit()
-    padded_ref = conn.execute(
-        "SELECT ref FROM WorkbenchEntityRefs WHERE kind='batch' AND entity_key=' PAD-B1 ' AND active=1"
-    ).fetchone()[0]
+    service = WorkbenchBatchFileService(conn)
 
-    loaded = detail(client, padded_ref)
-    assert loaded["data"]["business_code"] == " PAD-B1 "
+    # 1) 不存在的带空格批次号或带空格图号必须被拒绝，不串改无空格兄弟
+    bad_xlsx = write_batch_file(
+        [
+            [" B1 ", " P1 ", 12, "2026-10-20", "普通", "齐套", "", "updated-spaced", "待排", "齐套"],
+            [" B-NEW ", "P1", 5, "2026-10-20", "普通", "齐套", "", "", "待排", "齐套"],
+            ["B-GOOD", " P-NONE ", 5, "2026-10-20", "普通", "齐套", "", "", "待排", "齐套"],
+        ]
+    )
+    bad_preview = service.preview("overwrite", service.read(bad_xlsx, "overwrite"))
+    assert bad_preview["can_confirm"] is False
+    assert bad_preview["rows"][0]["business_code"] == " B1 "
+    assert bad_preview["rows"][0]["action"] == "update"
+    assert bad_preview["rows"][0]["errors"] == []
+    assert bad_preview["rows"][1]["errors"] == ["[1001] 批次号不能有首尾空格，请修正后重新导入。"]
+    assert bad_preview["rows"][2]["errors"] == ["[1001] 图号“ P-NONE ”不存在，请先在工艺管理中维护零件。"]
 
-    p_update = preview(client, refs=[padded_ref], patch={"remark": "padded-updated"})
-    assert confirm(client, p_update, key="padded-batch-update-01").status_code == 200
-    assert detail(client, padded_ref)["data"]["fields"]["remark"] == "padded-updated"
+    # 2) overwrite 模式下更新存量 " B1 "，保持无空格兄弟 "B1" 不动
+    overwrite_xlsx = write_batch_file(
+        [[" B1 ", " P1 ", 12, "2026-10-20", "普通", "齐套", "", "updated-spaced", "待排", "齐套"]]
+    )
+    overwrite_doc = service.preview("overwrite", service.read(overwrite_xlsx, "overwrite"))
+    assert overwrite_doc["can_confirm"] is True, overwrite_doc
+    with TransactionManager(conn).transaction(begin_immediate=True):
+        with service.reader.command_snapshot():
+            outcome = service.apply(overwrite_doc)
+    assert outcome.result == "committed"
+    quantities = dict(
+        conn.execute("SELECT batch_id, quantity FROM Batches WHERE batch_id IN ('B1', ' B1 ')").fetchall()
+    )
+    assert quantities == {"B1": 17, " B1 ": 12}
 
-    p_copy = preview(client, "copy", [padded_ref])
-    assert p_copy["rows"][0]["after"]["business_code"] == "PAD-B2"
-    copied = confirm(client, p_copy, key="padded-batch-copy-01")
-    assert copied.status_code == 200
-
-    p_del = preview(client, "delete", [padded_ref])
-    assert confirm(client, p_del, key="padded-batch-delete-01").status_code == 200
-    assert_error(client.get(BASE + "/" + padded_ref), "entity_not_found")
+    # 3) replace 模式下重导存量 " B1 " 与 "B1"，" B1 " 必须保留原编号而不被 strip
+    for table in ("Schedule", "BatchMaterials", "BatchOperations"):
+        conn.execute(f"DELETE FROM {table}")
+    conn.execute("DELETE FROM Batches WHERE batch_id NOT IN ('B1', ' B1 ')")
+    conn.commit()
+    replace_xlsx = write_batch_file(
+        [
+            ["B1", "P1", 8, "2026-10-20", "普通", "齐套", "", "trimmed-replaced", "待排", "齐套"],
+            [" B1 ", " P1 ", 15, "2026-10-20", "急件", "齐套", "", "spaced-replaced", "待排", "齐套"],
+        ]
+    )
+    replace_doc = service.preview("replace", service.read(replace_xlsx, "replace"))
+    assert replace_doc["can_confirm"] is True, replace_doc
+    assert [row["input"]["business_code"] for row in replace_doc["rows"]] == ["B1", " B1 "]
+    with TransactionManager(conn).transaction(begin_immediate=True):
+        with service.reader.command_snapshot():
+            replace_outcome = service.apply(replace_doc)
+    assert replace_outcome.result == "committed"
+    replaced = {
+        row["batch_id"]: (row["part_no"], row["quantity"], row["remark"])
+        for row in conn.execute("SELECT batch_id, part_no, quantity, remark FROM Batches").fetchall()
+    }
+    assert replaced == {
+        "B1": ("P1", 8, "trimmed-replaced"),
+        " B1 ": (" P1 ", 15, "spaced-replaced"),
+    }

@@ -44,7 +44,7 @@ def test_default_periods_are_readonly_until_confirmed_and_persist_across_service
     assert day["fields"]["hours"] == 7 and day["fields"]["periods"] == PERIODS
     with calendar_api.db() as conn:
         service = CalendarService(conn)
-        assert service._engine._policy_for_date("2026-09-10").shift_hours == 7
+        assert service._engine._policy_for_date("2026-09-10").hours == 7
         assert conn.execute("SELECT COUNT(*) FROM WorkbenchCalendarDefaults").fetchone()[0] == 1
     sep = calendar_api.month(2026, 9)
     assert calendar_api.month(2026, 9, snapshot_ref=sep["meta"]["snapshot_ref"])["data"] == sep["data"]

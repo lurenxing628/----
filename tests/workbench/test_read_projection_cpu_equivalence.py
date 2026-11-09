@@ -170,13 +170,13 @@ def test_admission_decodes_saved_execution_once_without_replaying_disposition_or
     ref = capture["execution"][0]["operation_ref"]
     scope[ref]["execution"]["data_gaps"] = [{"earlier_disposition_copy": True}]
     calls = Counter()
-    decode = candidate_facts.archived_table
+    decode = candidate_facts.archived_rows
 
     def table(archive, name):
         calls[name] += 1
         return decode(archive, name)
 
-    monkeypatch.setattr(candidate_facts, "archived_table", table)
+    monkeypatch.setattr(candidate_facts, "archived_rows", table)
     facts = GenerationFacts(capture)
     first = AdmissionBaseline(capture, facts, scope)
     second = AdmissionBaseline(capture, facts, scope)
@@ -235,9 +235,9 @@ def test_archived_labels_and_arrangements_keep_saved_work_without_formula_replay
     _, saved_intervals, validated_ids = validate_saved_tasks(rows, candidate, original, prepared_tasks={})
     assert validated_ids == scheduled_ids
     assert validated is rows and saved_intervals == intervals
-    delivery = project_decision_delivery(original, repeated, capture["input"]["batch_refs"], candidate=candidate)
-    assert project_decision_delivery(original, repeated, capture["input"]["batch_refs"],
-                                    candidate=candidate, intervals=saved_intervals) == delivery
+    delivery = project_decision_delivery(
+        original, repeated, capture["input"]["batch_refs"], candidate=candidate, intervals=saved_intervals
+    )
     source = DecisionSource(store, run_ref)
     assert not source._projected
     assert source.resource_cohort["resources"] == resource_cohort([repeated], task_intervals=[intervals])

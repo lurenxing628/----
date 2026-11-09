@@ -56,7 +56,8 @@ def test_update_delete_and_replay_are_real_for_each_kind(app_client, kind):
     fields = {"default_days": 3} if kind == "supplier" else {}
     if kind == "shift_profile":
         fields = {"anchor_date": "2026-09-09", "cycle_days": 1,
-                  "pattern": [{"day_offset": 0, "is_rest": False, "shift_start": "08:00", "shift_end": "16:00"}]}
+                  "pattern": [{"day_offset": 0, "is_rest": False,
+                               "periods": [{"start": "08:00", "end": "16:00", "day_offset": 0}]}]}
     ref, create = _create(app_client, kind, "ROW", fields=fields)
     before = _detail(app_client, kind, ref)
     changed = _command(app_client, kind, ref, "update", {"label": "Changed"}, context=before["write_context"], key="resource-update-000001")
@@ -72,6 +73,54 @@ def test_update_delete_and_replay_are_real_for_each_kind(app_client, kind):
     malformed = app_client.get(BASE + kind + "/" + "z" * 48)
     assert malformed.status_code == 404 and malformed.get_json()["error"]["code"] == "entity_not_found"
     assert "已失效" in malformed.get_json()["error"]["message"]
+
+
+_SHIFT_DAY = {"start": "08:00", "end": "16:00", "day_offset": 0}
+_NIGHT = {"start": "22:00", "end": "06:00", "day_offset": 0}
+
+
+@pytest.mark.parametrize(("pattern", "message"), [
+    pytest.param([{"day_offset": 0, "is_rest": False, "periods": None}], "工作时段必须按列表提交。", id="explicit-null"),
+    pytest.param([{"day_offset": 0, "is_rest": False}], "工作时段必须按列表提交。", id="omitted-periods"),
+    pytest.param([{"day_offset": 0, "is_rest": True, "periods": None}], "工作时段必须按列表提交。", id="rest-null"),
+    pytest.param([{"day_offset": 0, "is_rest": False, "periods": []}], "工作日请至少填写一个工作时段，或明确改为休息日。", id="workday-empty"),
+    pytest.param([{"day_offset": 0, "is_rest": True, "periods": [_SHIFT_DAY]}], "休息日不能填写工作时段。", id="rest-with-periods"),
+    pytest.param([{"day_offset": 0, "is_rest": False, "periods": [_SHIFT_DAY], "hours": 8}], "提交内容含有不支持的项", id="legacy-hours"),
+    pytest.param([{"day_offset": 0, "is_rest": False, "periods": [_SHIFT_DAY], "shiftStart": "08:00"}], "提交内容含有不支持的项", id="legacy-shiftStart"),
+    pytest.param([{"day_offset": 0, "is_rest": False, "periods": [_SHIFT_DAY], "shift_start": "08:00"}], "提交内容含有不支持的项", id="legacy-shift_start"),
+    pytest.param([{"day_offset": 0, "is_rest": False, "periods": [_SHIFT_DAY], "shift_end": "16:00"}], "提交内容含有不支持的项", id="legacy-shift_end"),
+    pytest.param([{"day_offset": 0, "is_rest": False, "periods": [_NIGHT]},
+                  {"day_offset": 1, "is_rest": False, "periods": [{"start": "05:00", "end": "13:00", "day_offset": 0}]}],
+                 "相邻轮换日期的班次时间重叠", id="adjacent-overlap"),
+    pytest.param([{"day_offset": 0, "is_rest": False, "periods": [_SHIFT_DAY]},
+                  {"day_offset": 1, "is_rest": False, "periods": [{"start": "22:00", "end": "09:00", "day_offset": 0}]}],
+                 "相邻轮换日期的班次时间重叠", id="cycle-wrap-overlap"),
+])
+def test_shift_profile_write_entries_reject_invalid_pattern_days(app_client, pattern, message):
+    fields = {"anchor_date": "2026-09-09", "cycle_days": len(pattern), "pattern": pattern}
+    token = _list(app_client, "shift_profile")["data"]["create_context"]["write_token"]
+    created = app_client.post(BASE + "shift_profile/create", json={
+        "request_key": "resource-create-shift-invalid-1", "write_token": token,
+        "input": {"business_code": "BAD", "label": "bad", "fields": fields}})
+    assert created.status_code == 422, created.get_data(as_text=True)
+    assert created.get_json()["error"]["code"] == "invalid_input" and message in created.get_json()["error"]["message"]
+    assert _list(app_client, "shift_profile")["data"]["entities"] == []
+
+    # 更新入口走同一条规则，且不留下任何改动。
+    good = [{"day_offset": 0, "is_rest": False, "periods": [_SHIFT_DAY]}]
+    ref, _ = _create(app_client, "shift_profile", "GOOD", fields={"anchor_date": "2026-09-09", "cycle_days": 1, "pattern": good})
+    updated = _command(app_client, "shift_profile", ref, "update", {"fields": fields}, key="resource-update-shift-invalid-1")
+    assert updated.status_code == 422 and message in updated.get_json()["error"]["message"]
+    saved = _detail(app_client, "shift_profile", ref)["fields"]["pattern"]
+    assert saved == [{"day_offset": 0, "is_rest": False, "periods": [_SHIFT_DAY]}]
+
+
+def test_shift_profile_pattern_stores_only_periods_and_adjacent_rest_breaks_overlap(app_client):
+    pattern = [{"day_offset": 0, "is_rest": False, "periods": [_NIGHT]},
+               {"day_offset": 1, "is_rest": True, "periods": []},
+               {"day_offset": 2, "is_rest": False, "periods": [{"start": "05:00", "end": "13:00", "day_offset": 0}]}]
+    ref, _ = _create(app_client, "shift_profile", "ROT", fields={"anchor_date": "2026-09-09", "cycle_days": 3, "pattern": pattern})
+    assert _detail(app_client, "shift_profile", ref)["fields"]["pattern"] == pattern
 
 
 def test_plain_resource_pages_share_batch_states_and_read_dependencies_once(resource_conn, monkeypatch):
@@ -411,3 +460,34 @@ def test_unknown_resource_kind_is_rejected_by_the_entity_routes(app_client, meth
     body = {"request_key": "resource-unknown-kind-0001", "write_token": "token", "input": {}} if method == "POST" else None
     response = app_client.open(BASE + path, method=method, json=body)
     assert (response.status_code, response.get_json()["error"]["code"]) == (404, "entity_not_found"), response.get_json()
+
+
+def test_resource_table_query_honors_explicit_32mib_json_budget_while_default_routes_keep_17mib(app_client):
+    import io
+
+    body_18mib = b'{"size":20' + (b" " * (18 * 1024 * 1024)) + b"}"
+    ok_response = app_client.post(BASE + "machine/query", data=body_18mib, content_type="application/json")
+    assert ok_response.status_code == 200, ok_response.get_data(as_text=True)
+    assert ok_response.get_json()["data"]["page"]["size"] == 20
+
+    body_over_32mib = b'{"size":20' + (b" " * (32 * 1024 * 1024)) + b"}"
+    cl_response = app_client.post(BASE + "machine/query", data=body_over_32mib, content_type="application/json")
+    assert cl_response.status_code == 413
+    assert cl_response.get_json()["error"]["code"] == "capacity_exceeded"
+
+    stream_response = app_client.post(
+        BASE + "machine/query",
+        input_stream=io.BytesIO(body_over_32mib),
+        content_type="application/json",
+        environ_overrides={"CONTENT_LENGTH": "", "wsgi.input_terminated": True},
+    )
+    assert stream_response.status_code == 413
+    assert stream_response.get_json()["error"]["code"] == "capacity_exceeded"
+
+    default_route_response = app_client.post(
+        BASE + "machine/create",
+        data=body_18mib,
+        content_type="application/json",
+    )
+    assert default_route_response.status_code == 413
+    assert default_route_response.get_json()["error"]["code"] == "invalid_input"

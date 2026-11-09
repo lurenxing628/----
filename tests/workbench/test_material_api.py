@@ -218,7 +218,7 @@ def test_material_xlsx_export_import_preserves_cr_and_crlf(app_client, monkeypat
     assert _detail(app_client, ref)["fields"] == expected
 
 
-def test_padded_existing_material_can_update_delete_and_bulk_delete_by_ref(app_client):
+def test_material_update_delete_and_bulk_delete_by_ref_reuse_the_read_snapshot(app_client):
     from core.services.workbench.material.bulk import WorkbenchMaterialBulkService
     from core.services.workbench.material.queries import WorkbenchMaterialQueryService
     from tests.workbench.material_file_support import confirm_delete
@@ -226,12 +226,7 @@ def test_padded_existing_material_can_update_delete_and_bulk_delete_by_ref(app_c
     with _database(app_client) as conn:
         conn.executemany(
             "INSERT INTO Materials(material_id,name,stock_qty) VALUES (?, ?, ?)",
-            [
-                (" MAT1 ", "padded", 7),
-                (" MAT2 ", "padded-bulk", 5),
-                ("MAT1", "plain", 11),
-                ("MAT2", "plain-bulk", 9),
-            ],
+            [("MAT1", "first", 7), ("MAT2", "bulk", 5), ("MAT3", "kept", 11)],
         )
         conn.commit()
         refs = dict(
@@ -240,47 +235,40 @@ def test_padded_existing_material_can_update_delete_and_bulk_delete_by_ref(app_c
             ).fetchall()
         )
 
-    ref_mat1_padded = refs[" MAT1 "]
-    ref_mat1_plain = refs["MAT1"]
-    ref_mat2_padded = refs[" MAT2 "]
-
-    detail = _detail(app_client, ref_mat1_padded)
-    assert detail["business_code"] == " MAT1 " and detail["label"] == "padded"
+    detail = _detail(app_client, refs["MAT1"])
+    assert detail["business_code"] == "MAT1" and detail["label"] == "first"
     updated = _write(
         app_client,
-        ref_mat1_padded,
+        refs["MAT1"],
         "update",
         detail["write_context"],
-        {"label": "padded-updated", "fields": {"stock_qty": 8}},
-        "padded-mat1-update-00001",
+        {"label": "first-updated", "fields": {"stock_qty": 8}},
+        "material-ref-update-00001",
     )
     assert updated.status_code == 200 and updated.get_json()["result"] == "committed"
-    fresh = _detail(app_client, ref_mat1_padded)
-    assert fresh["label"] == "padded-updated" and fresh["fields"]["stock_qty"] == 8
-    plain_detail = _detail(app_client, ref_mat1_plain)
-    assert plain_detail["label"] == "plain" and plain_detail["fields"]["stock_qty"] == 11
+    fresh = _detail(app_client, refs["MAT1"])
+    assert fresh["label"] == "first-updated" and fresh["fields"]["stock_qty"] == 8
 
     deleted = _write(
         app_client,
-        ref_mat1_padded,
+        refs["MAT1"],
         "delete",
         fresh["write_context"],
         {},
-        "padded-mat1-delete-00001",
+        "material-ref-delete-00001",
     )
     assert deleted.status_code == 200 and deleted.get_json()["result"] == "committed"
-    assert app_client.get(BASE + "/" + ref_mat1_padded).status_code == 404
-    assert _detail(app_client, ref_mat1_plain)["fields"]["stock_qty"] == 11
+    assert app_client.get(BASE + "/" + refs["MAT1"]).status_code == 404
 
     with _database(app_client) as conn:
         with pytest.raises(RuntimeError):
-            WorkbenchMaterialBulkService(conn).preview_delete([ref_mat2_padded], scope=MaterialPageRequest())
+            WorkbenchMaterialBulkService(conn).preview_delete([refs["MAT2"]], scope=MaterialPageRequest())
         statements = []
         conn.set_trace_callback(statements.append)
         try:
             # 与批量预检路由相同：预检复用调用方的读快照事务，不再嵌套保存点。
             with WorkbenchMaterialQueryService(conn).read_snapshot():
-                preview = WorkbenchMaterialBulkService(conn).preview_delete([ref_mat2_padded], scope=MaterialPageRequest())
+                preview = WorkbenchMaterialBulkService(conn).preview_delete([refs["MAT2"]], scope=MaterialPageRequest())
         finally:
             conn.set_trace_callback(None)
         assert any(sql.upper().startswith("BEGIN") for sql in statements)
@@ -290,10 +278,10 @@ def test_padded_existing_material_can_update_delete_and_bulk_delete_by_ref(app_c
 
             issued = issue_preview(preview)
             assert issued["can_confirm"] is True and issued["rows"][0]["result"] == "delete"
-        outcome = confirm_delete(conn, preview, key="padded-mat2-bulk-delete-00001")
+        outcome = confirm_delete(conn, preview, key="material-ref-bulk-delete-00001")
         assert outcome["result"] == "committed" and outcome["data"]["deleted_count"] == 1
         remaining = dict(conn.execute("SELECT material_id, stock_qty FROM Materials").fetchall())
-        assert remaining == {"MAT1": 11, "MAT2": 9}
+        assert remaining == {"MAT3": 11}
 
 
 def test_resource_and_material_input_rejects_nul_character_before_diff_filtering(app_client):
@@ -335,3 +323,57 @@ def test_material_upload_admission_rejects_format_and_mode(app_client, extra):
         "format": "csv", "mode": "upsert", **extra}, content_type="multipart/form-data")
     error = response.get_json()["error"]
     assert (response.status_code, error["code"], error["fields"]) == (400, "invalid_input", [])
+
+
+def test_material_import_preserves_legacy_spaced_code_without_touching_sibling_and_rejects_spaced_new_code(app_client):
+    from tests.workbench.material_actions_api_support import confirm, upload
+
+    with _database(app_client) as conn:
+        conn.executemany(
+            "INSERT INTO Materials(material_id,name,stock_qty,status) VALUES (?,?,?,'active')",
+            [("M-PAD", "Trimmed Material", 10.0), (" M-PAD ", "Spaced Material", 20.0)],
+        )
+        conn.commit()
+
+    bad_resp = upload(
+        app_client,
+        file_bytes(
+            [(" M-PAD ", "Spaced Material Updated", 25), (" M-NEW ", "New Spaced Material", 5)],
+            "csv",
+            ("物料编号", "名称", "库存数量"),
+        ),
+        "csv",
+    )
+    assert bad_resp.status_code == 200, bad_resp.get_data(as_text=True)
+    bad_preview = bad_resp.get_json()["data"]
+    assert bad_preview["can_confirm"] is False
+    assert bad_preview["rows"][0]["business_code"] == " M-PAD "
+    assert bad_preview["rows"][0]["action"] == "update"
+    assert bad_preview["rows"][0]["errors"] == []
+    assert bad_preview["rows"][1]["business_code"] == " M-NEW "
+    assert bad_preview["rows"][1]["errors"] == [
+        {"row": 3, "field": "business_code", "code": "invalid_input", "message": "物料编号不能有首尾空格，请修正后重新导入。"}
+    ]
+
+    good_resp = upload(
+        app_client,
+        file_bytes([(" M-PAD ", "Spaced Material Updated", 25)], "csv", ("物料编号", "名称", "库存数量")),
+        "csv",
+    )
+    assert good_resp.status_code == 200, good_resp.get_data(as_text=True)
+    good_preview = good_resp.get_json()["data"]
+    assert good_preview["can_confirm"] is True
+    confirmed = confirm(app_client, good_preview, key="material-spaced-sibling-update")
+    assert confirmed.status_code == 200, confirmed.get_data(as_text=True)
+
+    with _database(app_client) as conn:
+        rows = {
+            row["material_id"]: (row["name"], row["stock_qty"])
+            for row in conn.execute(
+                "SELECT material_id, name, stock_qty FROM Materials WHERE material_id IN ('M-PAD', ' M-PAD ')"
+            ).fetchall()
+        }
+    assert rows == {
+        "M-PAD": ("Trimmed Material", 10.0),
+        " M-PAD ": ("Spaced Material Updated", 25.0),
+    }

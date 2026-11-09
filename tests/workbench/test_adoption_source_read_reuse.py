@@ -73,8 +73,11 @@ def test_candidate_and_trial_adoption_reuse_frozen_inputs_without_optimizer_prep
     case = trial_case
     successor = case.operation(seq=2)
     case.plan(1, [case.op_id], end="2026-09-09T11:00:00")
-    case.conn.execute("INSERT INTO WorkCalendar(date,day_type,shift_start,shift_end,shift_hours,efficiency,"
-                      "allow_normal,allow_urgent) VALUES ('2026-09-09','workday','08:00','16:00',8,1,'yes','yes')")
+    case.conn.execute(
+        "INSERT INTO WorkCalendar(date,day_type,efficiency,"
+        "allow_normal,allow_urgent,periods_json) VALUES ('2026-09-09','workday',1,'yes','yes',"
+        "'[{\"start\":\"08:00\",\"end\":\"16:00\",\"day_offset\":0}]')"
+    )
     case.conn.execute("INSERT INTO MachineDowntimes(machine_id,scope_type,scope_value,start_time,end_time,"
                       "reason_code,status) VALUES ('M1','machine','M1','2026-09-09 16:00:00',"
                       "'2026-09-09 17:00:00','maintenance','active')")
@@ -100,6 +103,14 @@ def test_candidate_and_trial_adoption_reuse_frozen_inputs_without_optimizer_prep
         monkeypatch.setattr(module, name, calls[name])
     qualifications = create_autospec(CapturedResourceFacts.validate_fixed, side_effect=CapturedResourceFacts.validate_fixed)
     monkeypatch.setattr(CapturedResourceFacts, "validate_fixed", qualifications)
+    resource_inits = []
+    original_resource_init = CapturedResourceFacts.__init__
+
+    def count_resource_init(self, tables):
+        resource_inits.append(True)
+        original_resource_init(self, tables)
+
+    monkeypatch.setattr(CapturedResourceFacts, "__init__", count_resource_init)
 
     evidence = validate_adoption(case.conn, ref)
     assert evidence.prepared.frozen_op_ids == {case.op_id}
@@ -109,13 +120,16 @@ def test_candidate_and_trial_adoption_reuse_frozen_inputs_without_optimizer_prep
     assert rows[successor].start_time >= rows[case.op_id].end_time
     for _, name, _ in checks:
         assert calls[name].call_count == 1, name
+    assert len(resource_inits) == 1
     candidate_qualifications = qualifications.call_count
     assert candidate_qualifications > 0
 
+    resource_inits.clear()
     preview = trial_adoption_service(case.conn).preview(saved["scenario_ref"])
     assert preview["validation"]["can_adopt"], preview
     for _, name, _ in checks:
         assert calls[name].call_count == 2, name
+    assert len(resource_inits) == 1
     assert qualifications.call_count > candidate_qualifications
     for _, name, _ in optimizer:
         calls[name].assert_not_called()

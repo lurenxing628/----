@@ -26,6 +26,7 @@ routeData.tasks[0].piece_id=null; routeData.gantt_graph.nodes[0].piece_id=null;
 const sibling={...routeData.gantt_graph.nodes[1],task_ref:h.reference(90),operation_ref:h.reference(91),piece_id:'piece-b',predecessor_operation_refs:[routeData.tasks[0].operation_ref]};
 routeData.gantt_graph.nodes.push(sibling);
 const selected=routeData.tasks[1], candidateTask={...selected,row_ref:selected.task_ref,batch_label:selected.batch_id,
+  due_date:'2026-05-15',due_state:'specified',due_issue:null,
   machine:{label:'Machine 1'},operator:{label:'Operator 1'},data_gaps:[],source:'internal',execution_at_generation:null};
 for (const candidate of [false,true]) {
   let collapsed=0;

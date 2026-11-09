@@ -166,7 +166,7 @@ def test_merged_external_deduplicates_duration_and_external_never_consumes_inter
         ext_op,
         batch=batch,
         start_dt=datetime(2026, 9, 9, 8),
-        due_exclusive=datetime(2026, 9, 20),
+        window_end=datetime(2026, 9, 20),
         calendar_service=None,
         resource_pool=pool_dict,
         prepared=prepared,

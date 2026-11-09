@@ -63,8 +63,9 @@ def test_process_query_json_rejects_duplicate_keys_and_nonfinite_numbers_with_ro
     assert rejected(response, "invalid_input", 400)["error"]["message"] == message
 
 
-@pytest.mark.parametrize("advanced", [True])
-def test_delete_cross_page_explicit_refs_survive_filter_and_match_actual_js_contract(collection_api, monkeypatch, advanced, record_property):
+def test_delete_cross_page_explicit_refs_survive_sorted_filtered_scope_and_match_js_contract(
+    collection_api, monkeypatch, record_property
+):
     from core.services.workbench.process.queries import WorkbenchProcessQueryService
     from data.repositories.workbench_process_part_facts_repo import WorkbenchProcessPartFactsRepository
 
@@ -91,9 +92,12 @@ def test_delete_cross_page_explicit_refs_survive_filter_and_match_actual_js_cont
     assert all(repeated["meta"][key] == value for key, value in third["meta"].items() if key != "request_ref")
     first = api.listing({"query": "TABLE-"}, size=20, snapshot_ref=token)
     refs = [third["data"]["entities"][-1]["ref"], first["data"]["entities"][0]["ref"], api.ref(code="PROC-003")]
-    scope = {"query": "does not match selected refs", "stage": "ready"}
-    if advanced:
-        scope.update(sort=[{"field": "operation_count", "direction": "desc"}], column_filters=conditions("label", []))
+    scope = {
+        "query": "does not match selected refs",
+        "stage": "ready",
+        "sort": [{"field": "operation_count", "direction": "desc"}],
+        "column_filters": conditions("label", []),
+    }
     body = api.bound(refs, scope, size=1)
     before = api.snapshot()
     captured = []
@@ -216,35 +220,14 @@ def test_single_part_detail_prebinds_before_projection_and_tracks_shared_identit
         assert rejected(after_identity_change, "snapshot_stale", 409)
 
 
-def test_legacy_padded_part_ref_can_be_deleted_and_raw_facts_skip_workflow_enrichment(collection_api, monkeypatch):
+def test_raw_facts_skip_workflow_enrichment_and_build_template_sources_once(collection_api, monkeypatch):
     from core.models.workbench_process_table_query import ProcessTablePageRequest
     from core.services.process import workflow_state
     from core.services.workbench.process import queries as process_queries
     from core.services.workbench.process.file_export import select_export_parts
     from core.services.workbench.process.queries import WorkbenchProcessQueryService
-    from tests.workbench.identity_metadata_support import insert_row
 
     api = collection_api
-    with api.database() as conn:
-        insert_row(conn, "Parts", dict(part_no=" PAD-PART-1 ", part_name="padded-part"))
-        conn.commit()
-        padded_ref = conn.execute(
-            "SELECT ref FROM WorkbenchEntityRefs WHERE kind='part' AND entity_key=' PAD-PART-1 ' AND active=1"
-        ).fetchone()[0]
-
-    preview_doc = success(api.send("bulk-preview", api.bound([padded_ref], {})))["data"]
-    assert preview_doc["summary"]["delete"] == 1 and preview_doc["summary"]["rejected"] == 0
-    delete_res = api.send(
-        "bulk-confirm",
-        {
-            "request_key": "delete-padded-part-01",
-            "write_token": preview_doc["write_context"]["write_token"],
-            "input": {"preview_ref": preview_doc["preview_ref"]},
-        },
-    )
-    assert success(delete_res)["result"] == "committed"
-    assert rejected(api.client.get(f"/api/workbench/v1/entities/part/{padded_ref}"), "entity_not_found", 404)
-
     # raw_facts for explicit export and route export must not call workflow_snapshot.
     with api.database() as conn:
         reader = WorkbenchProcessQueryService(conn)
@@ -327,3 +310,47 @@ def test_legacy_padded_part_ref_can_be_deleted_and_raw_facts_skip_workflow_enric
         assert any("SELECT 1 FROM Parts WHERE part_no =" in sql for sql in create_queries)
         assert not any("PartOperations" in sql for sql in create_queries)
         assert not any("ExternalGroups" in sql for sql in create_queries)
+
+
+def test_route_file_import_preserves_legacy_spaced_part_without_touching_sibling_and_rejects_spaced_new_code(collection_api):
+    from core.infrastructure.transaction import TransactionManager
+    from core.services.workbench.process.files import WorkbenchProcessFileService
+
+    api = collection_api
+    with api.database() as conn:
+        conn.execute(
+            "INSERT INTO Parts(part_no,part_name,route_raw,route_parsed,remark) "
+            "VALUES (' PROC-001 ','Spaced Part','','no','spaced-orig')"
+        )
+        conn.commit()
+        service = WorkbenchProcessFileService(conn)
+
+        bad_csv = "图号,名称,备注\r\n' PROC-001 ,'Spaced Renamed,'spaced-updated\r\n' NEW-SPACED ,'New Spaced,'\r\n".encode(
+            "utf-8-sig"
+        )
+        bad_preview, _ = service.preview_import("route", bad_csv, file_format="csv", mode="upsert", target_ref=None)
+        bad_doc = bad_preview.as_dict()
+        assert bad_doc["summary"]["rejected"] == 1
+        assert bad_doc["rows"][0]["business_code"] == " PROC-001 "
+        assert bad_doc["rows"][0]["action"] == "update"
+        assert bad_doc["rows"][0]["errors"] == []
+        assert bad_doc["rows"][1]["business_code"] == " NEW-SPACED "
+        assert bad_doc["rows"][1]["errors"] == [
+            {"row": 3, "field": "business_code", "code": "invalid_input", "message": "图号不能有首尾空格，请修正后重新导入。"}
+        ]
+
+        good_csv = "图号,名称,备注\r\n' PROC-001 ,'Spaced Renamed,'\r\n".encode("utf-8-sig")
+        good_preview, _ = service.preview_import("route", good_csv, file_format="csv", mode="upsert", target_ref=None)
+        good_doc = good_preview.as_dict()
+        assert good_doc["summary"]["rejected"] == 0
+        with TransactionManager(conn).transaction(begin_immediate=True):
+            outcome = service.confirm_import(good_preview, discard_group_refs=[], confirm_zero_unit_hours=False)
+        assert outcome.result == "committed"
+        spaced_row = conn.execute(
+            "SELECT part_name, remark FROM Parts WHERE part_no=' PROC-001 '"
+        ).fetchone()
+        sibling_row = conn.execute(
+            "SELECT part_name, remark FROM Parts WHERE part_no='PROC-001'"
+        ).fetchone()
+        assert (spaced_row["part_name"], spaced_row["remark"]) == ("Spaced Renamed", "spaced-orig")
+        assert sibling_row["part_name"] != "Spaced Renamed"

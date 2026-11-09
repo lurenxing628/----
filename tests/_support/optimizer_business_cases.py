@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sqlite3
+import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from typing import Any, Dict, List
@@ -62,10 +63,11 @@ def batch_operation_from_fixture(operation: Dict[str, Any]) -> BatchOperation:
 
 
 def _calendar(hours):
+    start = "00:00" if hours == 24 else "08:00"
+    end = "00:00" if hours == 24 else "16:00"
     return [
         {"date": (START + timedelta(days=day)).date().isoformat(), "day_type": "workday",
-         "shift_start": "00:00" if hours == 24 else "08:00",
-         "shift_end": "00:00" if hours == 24 else "16:00", "shift_hours": float(hours),
+         "periods": [{"start": start, "end": end, "day_offset": 0}],
          "efficiency": 1.0, "allow_normal": "yes", "allow_urgent": "yes", "remark": "optimizer_business_case"}
         for day in range(60)
     ]
@@ -154,8 +156,9 @@ def case_environment(data, objective, config=None):
         conn.row_factory = sqlite3.Row
         conn.executescript((REPO_ROOT / "schema.sql").read_text(encoding="utf-8"))
         calendar = CalendarService(conn)
+        context = calendar.normalization_context()
         calendar._admin.repo.upsert_many(
-            [calendar._admin._build_work_calendar_from_payload(row) for row in data["calendar"]]
+            [calendar._admin._build_work_calendar_from_payload(row, context=context) for row in data["calendar"]]
         )
         conn.commit()
         values = default_snapshot_values()
@@ -175,7 +178,7 @@ def case_environment(data, objective, config=None):
             start_dt_norm=START, end_date_norm=None, downtime_map=data["downtime"], seed_results=seeds,
             resource_pool=data["resource_pool"], optimizer_seed_version=config["seed"],
             readiness_gate_enabled=data["readiness_gate_enabled"], frozen_op_ids=frozen_ids,
-            normalized_batch_ids=[row["batch_id"] for row in data["batches"]], t0=0.0,
+            normalized_batch_ids=[row["batch_id"] for row in data["batches"]], t0=time.monotonic(),
             operations=batch_operations,
             missing_internal_resource_op_ids=set(),
             prev_version=0, execution_facts={}, execution_completed_op_ids=set(),
@@ -276,7 +279,9 @@ def _oracle_report(case, payload):
     for objective in OBJECTIVES:
         selected[objective] = list(score_schedule(case, rows, objective))
         assert selected[objective] == payload["quality_vectors"][objective]
-        optimum[objective] = list(solve_exact(case, objective))
+        exact = solve_exact(case, objective)
+        assert exact is not None
+        optimum[objective] = list(exact)
         input_order[objective] = list(score_schedule(case, packed, objective))
     return {"selected_vectors": selected, "optimum_vectors": optimum, "input_order_vectors": input_order}
 

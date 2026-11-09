@@ -184,3 +184,96 @@ def test_import_rejects_preview_made_stale_by_a_newer_import_without_a_file_hash
             files.confirm_import(preview, discard_group_refs=[], confirm_zero_unit_hours=False)
     assert rejected.value.code == 'stale_write'
     assert current(case)['unit_hours'] == 6
+
+
+def test_calibration_median_and_deviation_use_exact_decimal_ratios(adoption_case):
+    from datetime import datetime, timedelta
+
+    from tests.workbench.template_lineage_support import calibration
+
+    case = adoption_case
+    # 6 batches of quantity=3 with totals [0, 0, 2.0, 2.003, 9, 9]:
+    # Quantized sample unit_hours are [0.0, 0.0, 0.667, 0.668, 3.0, 3.0] (median -> 0.6675 -> 0.668),
+    # whereas exact ratios [0, 0, 2/3, 2.003/3, 3, 3] have median 4.003/6 = 0.667166... -> 0.667.
+    totals = [0.0, 0.0, 2.0, 2.003, 9.0, 9.0]
+    ids = [create(case, f'EXACT-MEDIAN-{idx:03d}', quantity=3) for idx in range(len(totals))]
+    case.plan(2, ids)
+    for idx, (op_id, total_hours) in enumerate(zip(ids, totals)):
+        end = datetime(2026, 9, 9, 10) + timedelta(minutes=idx)
+        start = end - timedelta(hours=int(total_hours) + 2)
+        case.command(
+            'create',
+            case.task(2, op_id),
+            case.values(
+                3,
+                effective_processing_hours=total_hours,
+                actual_start=start.isoformat(),
+                actual_end=end.isoformat(),
+            ),
+        )
+    facts = calibration(case)
+    row = facts['rows'][0]
+    assert '_raw_suggested_unit_hours' not in row
+    assert row['suggested_unit_hours'] == 0.667
+
+    # Revise template old_unit_hours to 0.5, then complete 5 batches of quantity=2 with split reports
+    # (1.2h + 5e-17h): float effective_processing_hours rounds to 1.2 and unit_hours rounds to 0.6 (exact 20%),
+    # while exact Decimal sum (1.2 + 5e-17) / 2 = 0.600000000000000025 exceeds old_unit_hours by strictly > 20%.
+    with TransactionManager(case.conn).transaction(begin_immediate=True):
+        ProcessTemplateHours(case.conn).revise_current(current(case), {'setup_hours': 0, 'unit_hours': 0.5})
+    split_ids = [create(case, f'EXACT-DEV-{idx:03d}', quantity=2) for idx in range(5)]
+    case.plan(3, split_ids)
+    for idx, op_id in enumerate(split_ids):
+        t0 = datetime(2026, 9, 9, 11) + timedelta(minutes=idx * 5)
+        t1 = t0 + timedelta(hours=2)
+        t2 = t1 + timedelta(minutes=1)
+        task_ref = case.task(3, op_id)
+        case.command(
+            'create',
+            task_ref,
+            case.values(1, effective_processing_hours=1.2, actual_start=t0.isoformat(), actual_end=t1.isoformat()),
+        )
+        case.command(
+            'create',
+            task_ref,
+            case.values(1, effective_processing_hours=5e-17, actual_start=t1.isoformat(), actual_end=t2.isoformat()),
+        )
+    revised_facts = calibration(case)
+    revised_row = revised_facts['rows'][0]
+    samples = revised_facts['samples_by_template'][case.template_ref]
+    selected_samples = [item for item in samples if item['selected']]
+    assert len(selected_samples) == 5
+    assert all(item['effective_processing_hours'] == 1.2 and item['unit_hours'] == 0.6 for item in selected_samples)
+    assert revised_row['suggested_unit_hours'] == 0.6
+    assert revised_row['deviation_percent'] == 20.0
+    assert revised_row['over_20_percent'] is True
+
+    # Also verify split reports beyond the default 28-digit Decimal precision (1.2h + 5e-29h):
+    # exact Fraction sum (1.2 + 5e-29) / 2 relative to old_unit_hours=0.5 still exceeds 20% strictly.
+    with TransactionManager(case.conn).transaction(begin_immediate=True):
+        ProcessTemplateHours(case.conn).revise_current(current(case), {'setup_hours': 1, 'unit_hours': 0.5})
+    deep_ids = [create(case, f'EXACT-FRAC-{idx:03d}', quantity=2) for idx in range(5)]
+    case.plan(4, deep_ids)
+    for idx, op_id in enumerate(deep_ids):
+        t0 = datetime(2026, 9, 9, 12) + timedelta(minutes=idx * 5)
+        t1 = t0 + timedelta(hours=2)
+        t2 = t1 + timedelta(minutes=1)
+        task_ref = case.task(4, op_id)
+        case.command(
+            'create',
+            task_ref,
+            case.values(1, effective_processing_hours=1.2, actual_start=t0.isoformat(), actual_end=t1.isoformat()),
+        )
+        case.command(
+            'create',
+            task_ref,
+            case.values(1, effective_processing_hours=5e-29, actual_start=t1.isoformat(), actual_end=t2.isoformat()),
+        )
+    deep_facts = calibration(case)
+    deep_row = deep_facts['rows'][0]
+    deep_selected = [item for item in deep_facts['samples_by_template'][case.template_ref] if item['selected']]
+    assert len(deep_selected) == 5
+    assert all(item['effective_processing_hours'] == 1.2 and item['unit_hours'] == 0.6 for item in deep_selected)
+    assert deep_row['suggested_unit_hours'] == 0.6
+    assert deep_row['deviation_percent'] == 20.0
+    assert deep_row['over_20_percent'] is True

@@ -76,15 +76,18 @@ def test_adopted_rule_and_origin_match_the_actual_shared_source(shift_pool_outco
     for plan in shift_pool_outcome.candidates:
         assert plan.status == "completed"
         assert plan.dispatch_mode == "sgs"
-        assert plan.adopted_dispatch_rule in RULE_POOL
+        adopted_rule = plan.used_params["dispatch_rule"]
+        assert adopted_rule in RULE_POOL
         source = events[plan.search_evidence_ref["source_event_id"]]
         assert source["event_type"] == "archive_observation" and source["verified"] is True
-        assert plan.adopted_dispatch_rule == source["dispatch_rule"] == plan.origin["dispatch_rule"]
+        assert adopted_rule == source["dispatch_rule"] == plan.origin["dispatch_rule"]
         assert plan.origin["origin"] == source["origin"]
         assert plan.origin["search_objective"] == source["search_objective"]
         public = candidate_public_summary(plan, roles=[])
-        assert public["adopted_dispatch_rule"] == plan.adopted_dispatch_rule
+        assert public["adopted_dispatch_rule"] == adopted_rule
         assert public["origin"] == plan.origin
-    assert any(plan.adopted_dispatch_rule != "slack" for plan in shift_pool_outcome.candidates)
+    assert any(plan.used_params["dispatch_rule"] != "slack" for plan in shift_pool_outcome.candidates)
     summary = candidate_comparison_public_summary(shift_pool_outcome)
-    assert [row["adopted_dispatch_rule"] for row in summary["candidates"]] == [plan.adopted_dispatch_rule for plan in shift_pool_outcome.candidates]
+    assert [row["adopted_dispatch_rule"] for row in summary["candidates"]] == [
+        plan.used_params["dispatch_rule"] for plan in shift_pool_outcome.candidates
+    ]

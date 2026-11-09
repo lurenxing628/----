@@ -3,9 +3,12 @@
 from datetime import datetime
 from types import SimpleNamespace
 
+import pytest
+
+from core.models.workbench_run_compute import CandidateRunInputError
 from core.services.personnel.operator_qualification import OperatorQualificationService
 from core.services.scheduler import resource_pool_builder
-from core.services.workbench.run.input_runtime import downtime_overlap, held_machine_downtimes, runtime_resource_facts
+from core.services.workbench.run.input_runtime import downtime_overlap, held_machine_downtimes, runtime_resource_inputs
 from core.services.workbench.run.preflight import PreflightService
 from core.services.workbench.run.preflight_facts import PreflightFacts
 from tests._support.algo_operations import make_algo_op
@@ -29,18 +32,19 @@ def test_empty_downtime_is_read_once_when_extending_pool(schema_conn):
     facts = PreflightFacts(conn)
     try:
         with facts.snapshot(fingerprint=False):
-            resources = runtime_resource_facts(facts)
-            assert runtime_resource_facts(facts) is resources
+            runtime = runtime_resource_inputs(facts)
+            assert runtime_resource_inputs(facts) is runtime
+            assert runtime.resources is facts.capture.resource_facts()
             downtime = resource_pool_builder.load_machine_downtimes(
                 algo_ops=[make_algo_op(machine_id="M_A")],
-                start_dt=START, downtimes=resources.downtimes,
+                start_dt=START, downtimes=runtime.downtimes,
             )
             assert downtime == {"M_A": []}
             pool = {"operators_by_machine": {"M_A": ["O1"], "M_B": ["O1"]}}
             for _ in range(2):
                 assert resource_pool_builder.extend_downtime_map_for_resource_pool(
                     cfg=SimpleNamespace(auto_assign_enabled="yes"), resource_pool=pool,
-                    downtime_map=downtime, start_dt=START, downtimes=resources.downtimes,
+                    downtime_map=downtime, start_dt=START, downtimes=runtime.downtimes,
                     meta=meta,
                 ) is downtime
     finally:
@@ -48,6 +52,65 @@ def test_empty_downtime_is_read_once_when_extending_pool(schema_conn):
     assert sum(' FROM "MachineDowntimes" ' in statement for statement in sql) == 1
     assert downtime == {"M_A": [], "M_B": [(datetime(2026, 10, 14, 9), datetime(2026, 10, 14, 10))]}
     assert meta == {"downtime_extend_attempted": True}
+
+
+@pytest.mark.parametrize(
+    "bad_periods",
+    [
+        '[{"start":"25:00","end":"16:00","day_offset":0}]',
+        b"[]",
+    ],
+)
+def test_invalid_calendar_periods_reject_runtime_admission_without_polluting_capture(schema_conn, bad_periods):
+    conn = schema_conn
+    conn.execute(
+        "INSERT INTO WorkCalendar(date, day_type, efficiency, "
+        "allow_normal, allow_urgent, periods_json) "
+        "VALUES ('2026-10-14', 'workday', 1, 'yes', 'yes', ?)",
+        (bad_periods,),
+    )
+    conn.commit()
+    facts = PreflightFacts(conn)
+    with facts.snapshot(fingerprint=False):
+        with pytest.raises(CandidateRunInputError) as exc:
+            runtime_resource_inputs(facts)
+        assert exc.value.reason == "invalid_calendar_shift"
+        assert facts.capture.runtime_resources is None
+        assert facts.capture.decoded_periods == {}
+
+
+def test_runtime_admission_and_calendar_engine_share_decoded_periods_once(schema_conn, monkeypatch):
+    from core.models import calendar_periods
+    from core.services.scheduler.calendar import engine as engine_module
+    from core.services.workbench.run import input_runtime
+
+    conn = schema_conn
+    shared_json = calendar_periods.encode_periods([{"start": "08:00", "end": "16:00", "day_offset": 0}])
+    conn.executemany(
+        "INSERT INTO WorkCalendar(date, day_type, efficiency, "
+        "allow_normal, allow_urgent, periods_json) VALUES (?, 'workday', 1, 'yes', 'yes', ?)",
+        [("2026-10-14", shared_json), ("2026-10-15", shared_json)],
+    )
+    conn.commit()
+
+    decoded = []
+    real_decode = calendar_periods.decode_periods
+
+    def counted_decode(raw):
+        decoded.append(raw)
+        return real_decode(raw)
+
+    for module in (calendar_periods, input_runtime, engine_module):
+        monkeypatch.setattr(module, "decode_periods", counted_decode)
+
+    facts = PreflightFacts(conn)
+    with facts.snapshot(fingerprint=False):
+        runtime_resource_inputs(facts)
+        first_policy = facts.calendar().policy_for_datetime(datetime(2026, 10, 14, 9))
+        second_policy = facts.calendar().policy_for_datetime(datetime(2026, 10, 15, 9))
+        assert first_policy.hours == 8.0
+        assert second_policy.hours == 8.0
+    assert decoded.count(shared_json) == 1
 
 
 def test_padded_machine_downtime_stays_on_its_own_machine(schema_conn):
@@ -65,7 +128,7 @@ def test_padded_machine_downtime_stays_on_its_own_machine(schema_conn):
     stop = (datetime(2026, 10, 14, 9), datetime(2026, 10, 14, 10))
     facts = PreflightFacts(conn)
     with facts.snapshot(fingerprint=False):
-        assert runtime_resource_facts(facts).downtimes == {" M1 ": [stop]}
+        assert runtime_resource_inputs(facts).downtimes == {" M1 ": [stop]}
         assert held_machine_downtimes([plain], facts=facts) == {"M1": []}
         downtimes = held_machine_downtimes([padded, plain], facts=facts)
     assert downtimes == {" M1 ": [stop], "M1": []}
@@ -119,7 +182,7 @@ def test_multi_work_type_pool_loads_qualifications_once_and_keeps_selection(sche
     try:
         facts = PreflightFacts(conn)
         with facts.snapshot(fingerprint=False):
-            resources = runtime_resource_facts(facts)
+            resources = runtime_resource_inputs(facts).resources
             resources.validate_fixed(conn, [make_algo_op(op_type_id="OT_B", machine_id="M_A", operator_id="O_SKILLED")])
             for _ in range(2):
                 pool = resource_pool_builder.build_resource_pool(
@@ -152,7 +215,7 @@ def test_resource_pool_recognizes_chinese_primary_synonyms(schema_conn):
     conn.commit()
     facts = PreflightFacts(conn)
     with facts.snapshot(fingerprint=False):
-        resources = runtime_resource_facts(facts)
+        resources = runtime_resource_inputs(facts).resources
         pool = resource_pool_builder.build_resource_pool(
             cfg=SimpleNamespace(auto_assign_enabled="yes"),
             algo_ops=[make_algo_op(id=op_id, op_type_id=code) for op_id, code in enumerate(("OT_A", "OT_B"), 1)],

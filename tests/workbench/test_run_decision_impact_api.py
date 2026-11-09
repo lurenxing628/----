@@ -59,11 +59,11 @@ def test_mixed_due_values_keep_nulls_last_and_permanent_ties_across_pages(candid
             selected_candidate_ref=refs[-1], reference_candidate_ref=refs[-1],
         )
         _ = batch_source.batch_impacts
-        from core.services.workbench.run.decision_impact import filter_options
+        from core.services.workbench.run.decision_impact import filter_options, operation_impacts
         _ = filter_options(batch_source, "batches")
         _ = filter_options(batch_source, "operations")
         assert "facts" not in batch_source.__dict__
-        _ = batch_source.operation_impacts
+        _ = operation_impacts(batch_source, batch_source.scope["operation_refs"][:20])
         assert not batch_source._raw_tasks and not batch_source._projected
     first = detail(client, run_ref, "batches", **query)
     assert first["data"]["candidate"]["candidate_ref"] == refs[-1]

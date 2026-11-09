@@ -138,8 +138,8 @@ def test_startup_captures_journal_once_and_wsgi_only_observes_memory(db_env, tmp
         app = factory.create_app_core(ui_mode="default")
         gate = app.extensions["workbench_request_lifecycle"]
         assert app.extensions["workbench_startup_maintenance_records"] == []
-        runtime = install_run_lifecycle(SimpleNamespace(install_run_runtime=install_workbench_run_runtime,
-            atexit_register=lambda *args: None), app, {"payload": payload})
+        runtime = install_run_lifecycle(SimpleNamespace(install_run_runtime=install_workbench_run_runtime),
+                                        app, {"payload": payload})
         controller = app.extensions["workbench_system_restore_host"]
         assert runtime.ready and len(captures) == 1
         assert "workbench_startup_maintenance_records" not in app.extensions
@@ -199,7 +199,7 @@ def test_lifecycle_enters_recovery_without_recapturing_startup_journal(db_env, t
     SystemMaintenanceJournal(str(directory), db_env).begin("pending-startup-request-001", "create", {})
     app = Flask(__name__)
     app.config.update(DATABASE_PATH=db_env, WORKBENCH_SYSTEM_JOURNAL_DIR=str(directory))
-    original, captures, callbacks = SystemMaintenanceJournal.records, [], []
+    original, captures = SystemMaintenanceJournal.records, []
 
     def records(journal, **kwargs):
         captures.append(journal.directory)
@@ -216,12 +216,11 @@ def test_lifecycle_enters_recovery_without_recapturing_startup_journal(db_env, t
             app = factory.create_app_core(ui_mode="default")
             assert app.extensions[RECOVERY]
         state = {"payload": payload}
-        deps = SimpleNamespace(install_run_runtime=lambda *args, **kwargs: pytest.fail("Recovery started a worker"),
-                               atexit_register=lambda *args: callbacks.append(args))
+        deps = SimpleNamespace(install_run_runtime=lambda *args, **kwargs: pytest.fail("Recovery started a worker"))
         runtime = install_run_lifecycle(deps, app, state)
         assert isinstance(runtime, WorkbenchSystemRestoreRecoveryHost)
         assert app.extensions[RECOVERY] and not runtime.ready
-        assert state["runtime"] is runtime and callbacks == [(stop_run_runtime, runtime)]
+        assert state["runtime"] is runtime
         assert len(captures) == 1
         assert app.test_client().get("/api/workbench/v1/system/restore-host").get_json()["data"]["host"]["restart_required"]
     finally:

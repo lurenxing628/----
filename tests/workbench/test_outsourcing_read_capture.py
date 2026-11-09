@@ -132,11 +132,11 @@ def test_targets_page_slices_before_source_projection_and_binds_revisions(extern
     assert len(target_kwargs) == 20
     assert len(receipt_kwargs) == 1
     assert all(
-        kw == {"include_snapshot_facts": False, "include_identity": False, "include_public_operations": False}
+        kw == {"projection": "target_row"}
         for kw in target_kwargs
     )
     assert all(
-        kw == {"include_snapshot_facts": False, "include_public": False}
+        kw == {"projection": "identity"}
         for kw in receipt_kwargs
     )
     assert set(paged["content"]) == {"revisions", "clock", "query"}
@@ -224,3 +224,91 @@ def test_receipts_list_filters_and_slices_on_lightweight_facts_before_header_dec
         with reader.read_snapshot():
             reader.receipts(status="returned", number=1, size=20)
     assert exc_info.value.code == "outsourcing_unavailable"
+
+
+def test_dashboard_deferred_scoped_projection_skips_unretained_returned_receipts_without_extra_sql(
+    external_handling_case, monkeypatch
+):
+    from core.services.workbench.outsourcing.source import AdmittedReceiptSource
+    from tests.workbench.dashboard_support import follow
+
+    case, conn = external_handling_case, external_handling_case.conn
+    conn.executemany(
+        "INSERT INTO BatchOperations(op_code,batch_id,seq,op_type_id,op_type_name,source,supplier_id,ext_days) "
+        "VALUES (?,'XB1',?,'XT1','Heat treatment','external','XS1',2)",
+        [("XO4", 4), ("XO5", 5)],
+    )
+    conn.commit()
+
+    # Register XO4 first, record a dashboard handling transition on it, then mark it returned:
+    # it stays retained on the dashboard via saved handling state.
+    ref_handled_returned = case.register(index=4)
+    handled_item = next(
+        row for row in case.read()[0]["items"]
+        if row["category"] == "external" and row["source"]["outsourcing_ref"] == ref_handled_returned
+    )
+    case.command(handled_item, follow(), key="deferred-scoped-handled-returned")
+    case.returned(ref_handled_returned)
+
+    # Register two returned receipts without handling (unretained) and one awaiting receipt (retained); XO5 stays unregistered.
+    ref_returned_1 = case.register(index=1)
+    case.returned(ref_returned_1)
+    ref_returned_2 = case.register(index=2)
+    case.returned(ref_returned_2)
+    ref_awaiting = case.register(index=3)
+
+    load_modes = {}
+    load_counts = Counter()
+    scoped_targets = []
+    post_capture_sql = []
+    orig_load = WorkbenchOutsourcingSourceService.load
+    orig_to_scoped = AdmittedReceiptSource.to_scoped_source
+
+    def tracked_load(self, target, **kwargs):
+        key = tuple(target["operation_refs"])
+        load_counts[key] += 1
+        load_modes[key] = kwargs
+        conn.set_trace_callback(post_capture_sql.append)
+        try:
+            return orig_load(self, target, **kwargs)
+        finally:
+            conn.set_trace_callback(None)
+
+    def tracked_to_scoped(self):
+        scoped_targets.append(tuple(self.target["operation_refs"]))
+        conn.set_trace_callback(post_capture_sql.append)
+        try:
+            return orig_to_scoped(self)
+        finally:
+            conn.set_trace_callback(None)
+
+    with pytest.raises(ValueError, match="Unknown outsourcing source projection"):
+        WorkbenchOutsourcingSourceService(conn).load({}, projection="bogus")
+
+    monkeypatch.setattr(WorkbenchOutsourcingSourceService, "load", tracked_load)
+    monkeypatch.setattr(AdmittedReceiptSource, "to_scoped_source", tracked_to_scoped)
+
+    with case.shipments.reader.read_snapshot():
+        summary, receipts = load_external(conn, NOW)
+        observations = DashboardExternalHandling(conn).read(summary, receipts)
+
+    op_ref = case.shipments.operation_ref
+    assert dict(load_counts) == {
+        (op_ref("XO1"),): 1,
+        (op_ref("XO2"),): 1,
+        (op_ref("XO3"),): 1,
+        (op_ref("XO4"),): 1,
+        (op_ref("XO5"),): 1,
+    }
+    for code in ("XO1", "XO2", "XO3", "XO4"):
+        assert load_modes[(op_ref(code),)] == {"projection": "deferred_scoped"}
+    assert load_modes[(op_ref("XO5"),)] == {"projection": "target_row"}
+
+    assert set(scoped_targets) == {(op_ref("XO3"),), (op_ref("XO4"),)}
+    assert len(scoped_targets) == 2
+    assert post_capture_sql == []
+    assert {item["anchor_ref"] for item, _, _ in observations} == {ref_awaiting, ref_handled_returned}
+    for item, _, _ in observations:
+        scoped_source = item["_facts"]["snapshot"]["source"]
+        assert tuple(scoped_source) == ("public", "identity", "source_confirmations", "facts")
+        assert "source_clock" not in scoped_source["facts"]

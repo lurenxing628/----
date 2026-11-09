@@ -15,8 +15,11 @@ def test_operator_calendar_bulk_reads_cross_chunks_and_preserve_histories(schema
     conn = schema_conn
     codes = ["OP" + str(index).zfill(4) for index in range(400)] + ["工:号%"]
     conn.executemany("INSERT INTO Operators(operator_id,name) VALUES (?,?)", [(code, "姓名" + code) for code in codes])
-    conn.executemany("INSERT INTO OperatorCalendar(operator_id,date,day_type,shift_start,shift_end,shift_hours,efficiency) "
-                     "VALUES (?,?,'workday','09:00','17:00',8,1)", [(code, DAY) for code in codes])
+    conn.executemany(
+        "INSERT INTO OperatorCalendar(operator_id,date,day_type,efficiency,allow_normal,allow_urgent,periods_json) "
+        "VALUES (?,?,'workday',1,'yes','yes','[{\"start\":\"09:00\",\"end\":\"17:00\",\"day_offset\":0}]')",
+        [(code, DAY) for code in codes],
+    )
     conn.execute("DELETE FROM OperatorCalendar WHERE operator_id=? AND date=?", (codes[0], DAY))
     conn.commit()
     rows = [{"errors": [], "values": {"operator_code": code, "date": DAY}} for code in codes]

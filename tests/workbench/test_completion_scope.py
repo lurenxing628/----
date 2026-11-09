@@ -1,6 +1,8 @@
 """Complete cohorts and remaining requirements use shared delivery/work facts."""
 
 from copy import deepcopy
+from datetime import datetime
+from typing import Optional
 
 import pytest
 
@@ -11,16 +13,25 @@ from core.services.workbench.facts.completion_scope import (
     completion_groups,
     project_completion_summary,
 )
-from core.services.workbench.facts.delivery_projection import delivery_summary, project_delivery_batch, task_intervals
+from core.services.workbench.facts.delivery_projection import delivery_summary, project_delivery_batch
 from core.services.workbench.facts.preparation_projection import project_operation_effort
 from tests._support.algo_operations import make_algo_op, make_batch
 
 
-def batch_item(ref, *, arranged=(1,), expected=(1,), deferred=(), finish="2026-10-13T12:00:00", due="2026-10-13"):
+def batch_item(
+    ref,
+    *,
+    arranged=(1,),
+    expected=(1,),
+    deferred=(),
+    finish: Optional[str] = "2026-10-13T12:00:00",
+    due: Optional[str] = "2026-10-13",
+):
     batch = {"batch_id": ref, "part_no": "P1", "part_name": "零件", "quantity": 10, "priority": "normal", "due_date": due}
-    rows = [{"schedule_id": key, "op_id": key, "batch_id": ref,
-             "start_time": "2026-10-13T08:00:00", "end_time": finish} for key in arranged]
-    return project_delivery_batch(batch, ref, rows, [{"op_id": key} for key in expected], task_intervals(rows),
+    rows = [{"schedule_id": key, "op_id": key, "batch_id": ref} for key in arranged]
+    span = (datetime(2026, 10, 13, 8, 0), datetime.fromisoformat(finish)) if finish is not None else None
+    intervals = {key: span for key in arranged}
+    return project_delivery_batch(batch, ref, rows, [{"op_id": key} for key in expected], intervals,
                                   False, [], deferred_operation_ids=deferred)
 
 

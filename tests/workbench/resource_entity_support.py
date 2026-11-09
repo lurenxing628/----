@@ -27,7 +27,7 @@ NEW_TABLES = (
 )
 FIXED_FIELDS = {
     "anchor_date": "2026-09-09", "cycle_days": 1,
-    "pattern": [{"day_offset": 0, "is_rest": False, "shift_start": "07:15", "shift_end": "15:45"}],
+    "pattern": [{"day_offset": 0, "is_rest": False, "periods": [{"start": "07:15", "end": "15:45", "day_offset": 0}]}],
 }
 
 

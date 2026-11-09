@@ -4229,23 +4229,6 @@
   },
   "process_by_objective": {
     "min_overdue": {
-      "actions": [
-        {
-          "action_id": 1,
-          "elapsed_ms": 1.9990420000000064,
-          "evaluation_count": 1,
-          "finished_elapsed_ms": 50,
-          "improved_objectives": [],
-          "initial_construction": true,
-          "new_decisions": 1,
-          "phase": "multi_start",
-          "reused_decisions": 0,
-          "search_objective": "min_overdue",
-          "skip_reason": null,
-          "started_elapsed_ms": 48,
-          "verified_evaluation_count": 1
-        }
-      ],
       "baseline": {
         "baseline_ref": null,
         "candidate_ref": "c1aaada283ad6fda885226d47fd780d572f550be14e5db66",
@@ -4953,7 +4936,6 @@
       }
     },
     "min_tardiness": {
-      "actions": [],
       "baseline": {
         "baseline_ref": null,
         "candidate_ref": "c1aaada283ad6fda885226d47fd780d572f550be14e5db66",
@@ -5611,7 +5593,6 @@
       }
     },
     "min_changeover": {
-      "actions": [],
       "baseline": {
         "baseline_ref": null,
         "candidate_ref": "c1aaada283ad6fda885226d47fd780d572f550be14e5db66",

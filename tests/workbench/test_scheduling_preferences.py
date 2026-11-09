@@ -8,10 +8,11 @@ import pytest
 from flask import Blueprint, g
 
 from core.infrastructure.transaction import TransactionManager
+from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
 from core.models.workbench_preflight import SCHEDULING_PREFERENCES_KEY, normalize_preflight_input
-from core.services.workbench.facts.production_capture import ProductionFactsCapture
-from core.services.workbench.run.jobs_facts import production_facts_match
+from core.services.workbench.facts.candidate_facts import GenerationFacts
+from core.services.workbench.facts.production_capture import ProductionFactsCapture, validate_production_archive
 from core.services.workbench.run.preferences import SchedulingPreferencesService
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from data.repositories.system_config_repo import SystemConfigRepository
@@ -135,7 +136,7 @@ def test_preferences_save_does_not_expire_existing_preflight_or_worker_facts(pf)
     captured_facts = ProductionFactsCapture(pf.conn).archive()
     assert save(pf, payload(pf), read(pf)["write_context"]["write_token"]).status_code == 200
     assert _facts_content(pf.conn) == before
-    assert production_facts_match(pf.conn, captured_facts)
+    assert ProductionFactsCapture(pf.conn).matches_archive(captured_facts)
     from core.services.workbench.run.preflight_facts import PreflightFacts
     from web.routes.workbench.preflight import evaluate_preflight_input_prepared
 
@@ -155,7 +156,76 @@ def test_preferences_save_does_not_expire_existing_preflight_or_worker_facts(pf)
     SystemConfigRepository(pf.conn).set("auto_backup_enabled", "yes")
     pf.conn.commit()
     assert _facts_content(pf.conn) != before
-    assert not production_facts_match(pf.conn, captured_facts)
+    assert not ProductionFactsCapture(pf.conn).matches_archive(captured_facts)
+
+    capture = ProductionFactsCapture(pf.conn)
+    assert GenerationFacts({"facts": captured_facts, "execution": []}).archive is captured_facts
+    without = {"Batches", "BatchOperations"}
+    bogus = {**captured_facts, "columns": {**captured_facts["columns"], "WorkCalendar": ["bogus"]}}
+    reordered_parts = {
+        **captured_facts,
+        "columns": {**captured_facts["columns"], "Parts": list(reversed(captured_facts["columns"]["Parts"]))},
+        "tables": {**captured_facts["tables"], "Parts": [list(reversed(row)) for row in captured_facts["tables"]["Parts"]]},
+    }
+    listed_name = [[row[0], [row[1]], row[2], row[3]] if row[:2] == ["table", "Batches"] else row
+                   for row in captured_facts["schema"]]
+    multi_ddl = [
+        [row[0], row[1], row[2], row[3] + "; CREATE TABLE Extra(x INT)"] if row[:2] == ["table", "Batches"] else row
+        for row in captured_facts["schema"]
+    ]
+    bad_sqlite_seq = [
+        [row[0], row[1], row[2], "CREATE TABLE sqlite_sequence(name, seq, extra)"]
+        if row[:2] == ["table", "sqlite_sequence"] else row
+        for row in captured_facts["schema"]
+    ]
+    for broken in (
+        # 表结构仍列着批次与工序，存档却没有它们：是损坏，不是“没有工序”。
+        {**captured_facts, "columns": {k: v for k, v in captured_facts["columns"].items() if k not in without},
+         "tables": {k: v for k, v in captured_facts["tables"].items() if k not in without}},
+        {"schema": captured_facts["schema"], "revisions": captured_facts["revisions"]},
+        {k: v for k, v in captured_facts.items() if k != "columns"},
+        {k: v for k, v in captured_facts.items() if k != "tables"},
+        {**captured_facts, "columns": {k: v for k, v in captured_facts["columns"].items() if k != "WorkCalendar"}},
+        bogus,
+        reordered_parts,
+        {**captured_facts, "columns": {**captured_facts["columns"], "WorkCalendar": ["date", "date"]}},
+        {**captured_facts, "tables": {**captured_facts["tables"], "WorkCalendar": [{}]}},
+        {**captured_facts, "tables": {**captured_facts["tables"], "WorkCalendar": [42]}},
+        {k: v for k, v in captured_facts.items() if k != "revisions"},
+        {**captured_facts, "revisions": {}},
+        {**captured_facts, "revisions": {"production_inputs": 0}},
+        {**captured_facts, "revisions": {"production_inputs": True}},
+        {**captured_facts, "revisions": {"": 1}},
+        # 表结构行里的表名不是文字或多语句/内建表 DDL 篡改：源头准入一律报损坏。
+        {**captured_facts, "schema": listed_name},
+        {**captured_facts, "schema": multi_ddl},
+        *([{**captured_facts, "schema": bad_sqlite_seq}] if bad_sqlite_seq != captured_facts["schema"] else []),
+    ):
+        with pytest.raises(ValueError, match="Corrupt production facts archive"):
+            capture.matches_archive(broken)
+        # 读取保存的候选与现场比对用同一个存档准入，同一份损坏两边都明确报损坏。
+        with pytest.raises(WorkbenchCommandRejected) as exc:
+            GenerationFacts({"facts_text": content_text(broken), "execution": []})
+        assert (exc.value.code, exc.value.status) == ("candidate_artifact_invalid", 500)
+
+
+def test_named_trial_archive_admits_only_named_rows_and_matching_declared_columns(pf):
+    # 试调存档是命名行形态：源头准入一次查全行形态与内嵌 DDL 列序一致性。
+    named = ProductionFactsCapture(pf.conn).archive(named=True)
+    validate_production_archive(named, named=True)
+    positional = ProductionFactsCapture(pf.conn).archive()
+    with pytest.raises(ValueError, match="Corrupt production facts archive"):
+        validate_production_archive(positional, named=True)
+    renamed = [column + "_x" if column == "remark" else column for column in named["columns"]["Machines"]]
+    mismatched = {**named, "columns": {**named["columns"], "Machines": renamed},
+                  "tables": {**named["tables"], "Machines": [
+                      {(key + "_x" if key == "remark" else key): value for key, value in row.items()}
+                      for row in named["tables"]["Machines"]]}}
+    with pytest.raises(ValueError, match="Corrupt production facts archive"):
+        validate_production_archive(mismatched, named=True)
+    seeded = ProductionFactsCapture(pf.conn)
+    seeded.seed_from_admitted_archive(named)
+    assert seeded.matches_admitted(named)
 
 
 def test_receipt_failure_rolls_back_preference_and_audit_in_same_transaction(pf, monkeypatch):
@@ -217,6 +287,8 @@ def test_public_preferences_during_real_worker_keep_admitted_scope_and_business_
 
     def after_real_compute(worker, row, prepared, admission):
         assert row["run_ref"] == ref and 1 <= len(prepared.candidates) <= 3
+        # 写库前复核只带回来源版本和表结构，整份存档不经进程往返。
+        assert set(prepared.recorded_source) == {"schema", "revisions"}
         selection = json.loads(prepared.result["result_json"])["selection"]
         candidate_refs = {candidate["candidate_ref"] for candidate in prepared.candidates}
         assert selection["selected_candidate_ref"] in candidate_refs

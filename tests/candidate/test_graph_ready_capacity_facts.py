@@ -1,12 +1,16 @@
 """Fixed resource blocking is shared while operation calendar windows stay dynamic."""
 
 from datetime import datetime, timedelta
+from fractions import Fraction
+
+import pytest
 
 from core.algorithms.greedy.scheduler import GreedyScheduler
 from core.services.scheduler.run.optimizer.graph import v2_capacity
 from core.services.scheduler.run.optimizer.graph.v2_features import enrich_graph_ready_v2_metrics
 from core.services.scheduler.run.optimizer.graph_ready_feature_basis import BASELINE_ORDERING_FIELD
 from tests._support.algo_operations import make_algo_op, make_batch, make_schedule_result
+from tests._support.busy_block_case import BASE, day_row, native_calendar
 from tests._support.optimizer_graph_ready_benchmark import ContinuousCalendar
 from tests._support.schedule_decode import config_snapshot, production_session
 
@@ -20,9 +24,10 @@ def test_pair_blocking_is_prepared_once_across_feature_bases_and_operation_windo
     calls, merges = [], []
 
     class Calendar:
-        def capacity_hours_between(self, low, high, *, priority, operator_id):
+        def capacity_fraction_between(self, low, high, *, priority, operator_id):
             calls.append((low, high, priority, operator_id))
-            return (high - low).total_seconds() / 3600 * (0.5 if priority == "urgent" else 1)
+            scale = Fraction(1, 2) if priority == "urgent" else Fraction(1)
+            return Fraction((high - low) // timedelta(microseconds=1), 3_600_000_000) * scale
 
     operations = [make_algo_op(id=number, batch_id=batch, seq=1, source="internal", setup_hours=0.0, unit_hours=2.0,
                                machine_id="M1", operator_id="O1", op_type_id="OT1", op_type_name="work")
@@ -74,14 +79,14 @@ def test_pair_blocking_is_prepared_once_across_feature_bases_and_operation_windo
         (operations[1], at(16), at(40), (12, 0, 12)),
         (operations[1], start, at(40), (20, 2, 18)),
     )
-    for op, window_start, due_exclusive, expected in windows:
+    for op, window_start, window_end, expected in windows:
         standalone = v2_capacity.residual_capacity_for_operation(
             op, batch=batches[op.batch_id], start_dt=window_start,
-            due_exclusive=due_exclusive, calendar_service=calendar,
+            window_end=window_end, calendar_service=calendar,
             resource_pool=pool, prepared=prepared_blocking)
         assert tuple(standalone[key] for key in fields) == expected
     changed = v2_capacity.residual_capacity_for_operation(
-        operations[0], batch=batches["B1"], start_dt=start, due_exclusive=at(16), calendar_service=calendar,
+        operations[0], batch=batches["B1"], start_dt=start, window_end=at(16), calendar_service=calendar,
         resource_pool=pool, prepared=v2_capacity.FixedResourceBlockingFacts(
             downtime_map={}, seed_results_by_resource_id=resource_seeds))
     assert changed["residual_capacity_blocked_hours"] == 3 and changed["residual_capacity_hours"] == 13
@@ -177,9 +182,45 @@ def test_multi_segment_seed_result_blocks_each_resource_only_during_its_segment(
             machine_id=machine_id, operator_id=operator_id, op_type_id="OT1", op_type_name="work",
         )
         cap = v2_capacity.residual_capacity_for_operation(
-            op, batch=batch, start_dt=start, due_exclusive=at(8),
+            op, batch=batch, start_dt=start, window_end=at(8),
             calendar_service=ContinuousCalendar(), resource_pool=pool, prepared=prepared,
         )
         assert cap["residual_capacity_window_hours"] == 8.0
         assert cap["residual_capacity_blocked_hours"] == 2.0
         assert cap["residual_capacity_hours"] == 6.0
+
+
+def test_full_downtime_over_fractional_efficiency_days_yields_exact_zero_residual_capacity():
+    rows = [
+        day_row(day, efficiency=0.3, periods_json='[{"start":"08:00","end":"09:00","day_offset":0}]')
+        for day in range(3)
+    ]
+    downtime = {
+        "M1": [(BASE + timedelta(days=day), BASE + timedelta(days=day, hours=1)) for day in range(3)]
+    }
+    pool = {
+        "machines_by_op_type": {"OT1": ["M1"]},
+        "machines_by_operator": {},
+        "operators_by_machine": {"M1": ["O1"]},
+        "operator_skills": {"O1": ["OT1"]},
+    }
+    op = make_algo_op(
+        id=1, batch_id="B1", seq=1, source="internal", setup_hours=0.0, unit_hours=1.0,
+        machine_id="M1", operator_id="O1", op_type_id="OT1", op_type_name="work",
+    )
+    batch = make_batch(batch_id="B1", quantity=1, priority="normal", due_date="2026-09-10", ready_date=None)
+    prepared = v2_capacity.FixedResourceBlockingFacts(
+        downtime_map=downtime,
+        seed_results_by_resource_id={"machine": {}, "operator": {}},
+    )
+    window_end = datetime(2026, 9, 11, 0, 0)
+    with native_calendar(rows=rows) as calendar:
+        cap = v2_capacity.residual_capacity_for_operation(
+            op, batch=batch, start_dt=BASE, window_end=window_end,
+            calendar_service=calendar, resource_pool=pool, prepared=prepared,
+        )
+    expected_hours = float(3 * Fraction(*(0.3).as_integer_ratio()))
+    assert cap["residual_capacity_window_hours"] == expected_hours == pytest.approx(0.9)
+    assert cap["residual_capacity_blocked_hours"] == expected_hours == pytest.approx(0.9)
+    assert cap["residual_capacity_hours"] == 0.0
+    assert cap["residual_capacity_pressure"] == 1.0

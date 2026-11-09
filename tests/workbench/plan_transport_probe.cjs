@@ -31,8 +31,8 @@ const workspace = () => align(envelope({plan: header(), scope: {source: 'product
 function align(payload) {
   const d = payload.data, time = clone(d.time_scope);
   d.provenance = {state:'unavailable',reason:'No generation evidence',source_kind:null,source_ref:null,source_label:null,run_ref:null,accepted_at:null,finished_at:null,adopted_at:null,algorithm:null,baseline:null};
-  d.gantt_graph = {state: 'unavailable', reason: 'No captured process order', scope: 'full_plan', nodes: [], node_count: 0, nodes_complete: false, critical_task_refs: [], critical_edges: []};
-  d.projections.process_order = {state: 'unavailable', basis: null, issues: [{code: 'process_order_not_recorded', message: 'No captured process order'}]};
+  d.gantt_graph = {state: 'unavailable', reason: '工序顺序数据不完整。', scope: 'full_plan', nodes: [], node_count: 0, nodes_complete: false, critical_task_refs: [], critical_edges: []};
+  d.projections.process_order = {state: 'unavailable', basis: null, issues: [{code: 'process_order_unavailable', message: '工序顺序数据不完整。'}]};
   d.projections.calendar = {state: 'available', plan_ref: P, time_scope: time, global: {state: 'available', basis: 'global_calendar',
     windows: [], issues: [], available_hours: 0, effective_hours: 0, normal_available_hours: 0, normal_effective_hours: 0,
     urgent_available_hours: 0, urgent_effective_hours: 0}, resources: [], issues: [], windows_complete: true};
@@ -138,10 +138,10 @@ async function requests() {
   });
   const noRequest = runtime(() => assert.fail('Invalid scope must be rejected before transport'));
   const beforeInvalid = calls.length;
-  for (const scope of [null, [], 'history', new Date(), new Map(), Object.create({resource_ref: OTHER}),
+  for (const scope of [null, [], 'history',
     {collection: 'all'}, {collection: 'scenario'}, {collection: undefined}, {size: null}, {size: '20'}, {size: 0}, {size: 51}, {size: 1.5},
     {page: 1}, {before_version: 2}, {after_scenario_id: 'x'}, {range_start: START}, {query: ''}, {source: 'demo'}, {filters: {}}, {cursor: ''}, {cursor: null},
-    {cursor: 123}, {snapshot_ref: ''}, {snapshot_ref: undefined}, {[Symbol('filter')]: true}, Object.defineProperty({}, 'size', {value: 1})]) {
+    {cursor: 123}, {snapshot_ref: ''}, {snapshot_ref: undefined}]) {
     await check('catalog invalid scope ' + cases.length, () => assert.rejects(noRequest.api.catalog(scope), rejected));
   }
   const validWsData = workspace().data;

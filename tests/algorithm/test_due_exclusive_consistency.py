@@ -43,9 +43,11 @@ def test_due_exclusive_consistency() -> None:
     metrics = compute_metrics([result], {"B001": batch}, expected_operations=operations,
                               seed_occupancies_by_op_id={}, failure_details=[])
     prepared = prepare_evaluation_context(batches={"B001": batch}, expected_operations=operations, seed_results=())
-    assert compute_metrics([result], {"B001": batch}, expected_operations=operations,
-                           seed_occupancies_by_op_id={}, failure_details=[],
-                           prepared=prepared).to_dict() == metrics.to_dict()
+    recomputed = compute_metrics([result], {"B001": batch}, expected_operations=operations,
+                                 seed_occupancies_by_op_id={}, failure_details=[],
+                                 prepared=prepared)
+    assert recomputed == metrics
+    assert recomputed.public_dict() == metrics.public_dict()
     assert metrics.overdue_count == 1, f"evaluation overdue_count 应为 1，实际={metrics.overdue_count}"
     assert abs(metrics.total_tardiness_hours - 0.0) < 1e-9, f"边界拖期应为 0，实际={metrics.total_tardiness_hours}"
 
@@ -96,7 +98,7 @@ def test_due_exclusive_consistency() -> None:
         missing_internal_resource_op_ids=set(),
         downtime_meta={},
         simulate=False,
-        t0=time.time(),
+        t0=time.monotonic(),
     )
     result_summary_obj = build_result_summary(
         ctx=summary_ctx,
@@ -104,12 +106,21 @@ def test_due_exclusive_consistency() -> None:
     overdue_batches = result_summary_obj.get("overdue_batches") or {}
     assert int(overdue_batches.get("count") or 0) == 1, f"schedule_summary overdue_count 应为 1，实际={overdue_batches}"
 
-    scheduled, unscheduled, _invalid_time = compute_overdue_bucket_groups(
-        [{"batch_id": "B001", "due_date": "2026-02-01", "finish_time": "2026-02-02 00:00:00"}],
+    scheduled, unscheduled, invalid_time = compute_overdue_bucket_groups(
+        [
+            {"batch_id": "B001", "due_date": "2026-02-01", "finish_time": "2026-02-02 00:00:00"},
+            {"batch_id": "B_NONE", "due_date": None, "finish_time": "2026-02-02 00:00:00"},
+            {"batch_id": "B_SPACE", "due_date": " 2026-02-01 ", "finish_time": "2026-02-02 00:00:00"},
+            {"batch_id": "B_TS", "due_date": "2026-02-01 08:00:00", "finish_time": "2026-02-02 00:00:00"},
+        ],
         now_dt=finish_dt,
     )
-    assert len(scheduled) == 1, f"report scheduled overdue 应为 1，实际={scheduled}"
+    assert [row["batch_id"] for row in scheduled] == ["B001"], f"report scheduled overdue 应只含 B001，实际={scheduled}"
     assert len(unscheduled) == 0, f"report unscheduled overdue 应为 0，实际={unscheduled}"
+    assert [(row["batch_id"], row["bucket"]) for row in invalid_time] == [
+        ("B_SPACE", "due_date_invalid"),
+        ("B_TS", "due_date_invalid"),
+    ]
 
 
 def test_due_exclusive_max_due_sentinel_end_to_end_not_overdue() -> None:
@@ -139,9 +150,11 @@ def test_due_exclusive_max_due_sentinel_end_to_end_not_overdue() -> None:
     metrics = compute_metrics([result], {"B900": batch}, expected_operations=operations,
                               seed_occupancies_by_op_id={}, failure_details=[])
     prepared = prepare_evaluation_context(batches={"B900": batch}, expected_operations=operations, seed_results=())
-    assert compute_metrics([result], {"B900": batch}, expected_operations=operations,
-                           seed_occupancies_by_op_id={}, failure_details=[],
-                           prepared=prepared).to_dict() == metrics.to_dict()
+    recomputed = compute_metrics([result], {"B900": batch}, expected_operations=operations,
+                                 seed_occupancies_by_op_id={}, failure_details=[],
+                                 prepared=prepared)
+    assert recomputed == metrics
+    assert recomputed.public_dict() == metrics.public_dict()
     assert metrics.overdue_count == 0, f"9999-12-31 哨兵交期不应判逾期，实际 overdue_count={metrics.overdue_count}"
     assert abs(metrics.total_tardiness_hours - 0.0) < 1e-9, f"9999-12-31 哨兵交期拖期应为 0，实际={metrics.total_tardiness_hours}"
 

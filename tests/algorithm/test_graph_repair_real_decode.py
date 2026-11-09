@@ -4,13 +4,15 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import replace
 from datetime import date, datetime, timedelta
+from fractions import Fraction
 from functools import partial
 from itertools import islice
 from types import SimpleNamespace
+from typing import Any, Dict
 
 from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithm_contracts.types import ScheduleResult
-from core.algorithms.evaluation import prepare_evaluation_context
+from core.algorithms.evaluation import compute_metrics, prepare_evaluation_context
 from core.services.scheduler.run.optimizer.candidate_fingerprint import (
     build_candidate_fingerprint,
     schedule_content_key,
@@ -281,6 +283,7 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
         assert elite_pool.prepare_parent(rebuilt_wrapper) is prepared_parent
         # The iterated-greedy start pool builds an elite's parent from the elite's own preparation.
         ig_parent = _parent_from_candidate(stale_parent, prepared=elite["prepared_parent"])
+        assert ig_parent is not None
         assert ig_parent.predecessors is prepared_parent.predecessors
         assert ig_parent.successors is prepared_parent.successors
         # The IG start and its start pool ask for the same candidate again: it is prepared only once.
@@ -386,7 +389,7 @@ def test_repair_positions_and_move_prefixes_preserve_exact_consumption(monkeypat
         # A neighbour the shared session declines to decode (production skip reason) still yields once.
         raise SharedSearchSkip("seen_without_payload")
 
-    visit_kwargs = dict(
+    visit_kwargs: Dict[str, Any] = dict(
         elite=elite, state=SimpleNamespace(best=None), evaluate=skipped_neighbor,
         report_state=visit_report,
         improved_elites=[],
@@ -439,13 +442,15 @@ def test_repair_positions_and_move_prefixes_preserve_exact_consumption(monkeypat
     assert inspected == list(range(32))
 
     # Ordinary moves retain adjacent-row vs known-type-identity counting and the historical 0/1 tardy diagnostic.
+    from core.services.scheduler.run.optimizer.local_search_state import LocalSearchState
+
     results = [ScheduleResult(op_id=index + 1, op_code="R" + str(index + 1), batch_id=batch, seq=index, machine_id="M", operator_id=None, op_type_id=kind,
                               start_time=START_DT + timedelta(hours=index), end_time=START_DT + timedelta(hours=index + 1))
                for index, (batch, kind) in enumerate((("BA", "A"), ("blank", ""), ("BB", "B"), ("BC", "C")))]
     batch_map = {batch_id: make_batch(batch_id=batch_id, due_date=due)
                  for batch_id, due in (("BA", "2025-12-31"), ("BB", "2026-01-01"), ("BC", None))}
-    counts = {"sort_key": 0, "tardy": 0, "finish": 0}
-    for name, key in (("result_time_key", "sort_key"), ("_most_tardy_batch", "tardy"), ("_finish_by_batch", "finish")):
+    counts = {"sort_key": 0, "tardy": 0}
+    for name, key in (("result_time_key", "sort_key"), ("_most_tardy_batch", "tardy")):
         helper = getattr(neighborhood_move_support, name)
 
         def counted(*args, _key=key, _helper=helper, **kwargs):
@@ -453,24 +458,71 @@ def test_repair_positions_and_move_prefixes_preserve_exact_consumption(monkeypat
             return _helper(*args, **kwargs)
 
         monkeypatch.setattr(neighborhood_move_support, name, counted)
-    # Due facts come prepared from the run's evaluation context; the moves never parse or bound a due date again.
-    due_batches = prepare_evaluation_context(batches=batch_map, expected_operations=[], seed_results=[]).due_batches
+    # Due facts and batch finish times come prepared from evaluation; moves never rescan or parse due dates.
+    evaluation_context = prepare_evaluation_context(batches=batch_map, expected_operations=[], seed_results=[])
+    due_batches = evaluation_context.due_batches
     assert [(item.batch_id, item.due_date, item.due_exclusive) for item in due_batches] == [
         ("BA", date(2025, 12, 31), datetime(2026, 1, 1)), ("BB", date(2026, 1, 1), datetime(2026, 1, 2)),
         ("BC", None, None)]
-    result_facts = neighborhood_move_support.LocalSearchResultFacts(results, due_batches=due_batches)
+    eval_metrics = compute_metrics(
+        results, batch_map, expected_operations=[], failure_details=(),
+        seed_occupancies_by_op_id={}, prepared=evaluation_context,
+    )
+    result_facts = neighborhood_move_support.LocalSearchResultFacts(
+        results, due_batches=due_batches, finish_by_batch=eval_metrics._finish_by_batch,
+    )
+    assert result_facts.finish_by_batch is eval_metrics._finish_by_batch
     changed = neighborhood_moves.changeover_block_move(["BA", "BB", "BC"], result_facts)
     assert changed.batch_order == ("BA", "BC", "BB")
     assert counts["sort_key"] == len(results)
     window = neighborhood_moves.time_window_move(["BC", "BB", "BA"], result_facts)
     assert window.batch_order == ("BA", "BC", "BB")
-    assert counts["finish"] == 1
     tardy = neighborhood_moves.tardy_window_move(["BC", "BB", "BA"], result_facts)
     assert tardy.batch_order == window.batch_order
     assert counts["tardy"] == 1
-    assert counts["finish"] == 1
+    assert neighborhood_moves.tardy_window_move(["BC", "BB", "BA"], result_facts) == tardy
+    assert counts["tardy"] == 1
     assert neighborhood_moves.changeover_block_move(["BA", "BB", "BC"], result_facts) == changed
     assert counts["sort_key"] == len(results)
+
+    # LocalSearchState shares facts on identical results and switches whenever the results change.
+    best_candidate = {
+        "results": results, "metrics": eval_metrics, "order": ["BC", "BB", "BA"],
+        "resource_pool": {}, "resource_pair_rank": {},
+    }
+    state = LocalSearchState.from_best(best_candidate, due_batches=due_batches)
+    assert state.current_facts is state.best_facts
+    assert state.current_facts.results is results
+    assert state.current_facts.finish_by_batch is eval_metrics._finish_by_batch
+
+    alt_results = results[:3]
+    alt_metrics = compute_metrics(
+        alt_results, batch_map, expected_operations=[], failure_details=(),
+        seed_occupancies_by_op_id={}, prepared=evaluation_context,
+    )
+    alt_candidate = dict(best_candidate, results=alt_results, metrics=alt_metrics, order=["BA", "BC", "BB"])
+    state.accept_current(alt_candidate)
+    assert state.current_facts is not state.best_facts
+    assert state.current_facts.results is alt_results
+    assert state.current_facts.finish_by_batch is alt_metrics._finish_by_batch
+    assert state.best_facts.results is results
+    assert state.best_facts.finish_by_batch is eval_metrics._finish_by_batch
+
+    kept_current_facts = state.current_facts
+    state.accept_current(dict(alt_candidate))
+    assert state.current_facts is kept_current_facts
+    # A restart reuses archived results with freshly computed metrics; their facts are kept.
+    recomputed_metrics = compute_metrics(
+        alt_results, batch_map, expected_operations=[], failure_details=(),
+        seed_occupancies_by_op_id={}, prepared=evaluation_context,
+    )
+    state.accept_current(dict(alt_candidate, metrics=recomputed_metrics))
+    assert state.current_facts is kept_current_facts
+
+    state.set_best(alt_candidate)
+    assert state.best_facts is state.current_facts
+    state.accept_current(alt_candidate)
+    assert state.current_facts is state.best_facts
 
     # Graph repair changeover signals ignore point events, do not bridge across unknown types,
     # and require the same nonblank machine on critical-block pairs.
@@ -516,7 +568,12 @@ def test_optimizer_changeover_signals_follow_type_identity_and_skip_point_events
                               start_time=begin, end_time=begin + hours * hour)
 
     def changeover_pair(rows):
-        return LocalSearchResultFacts(rows, due_batches=()).changeover_pair()
+        metrics = compute_metrics(
+            rows, {}, expected_operations=[], failure_details=(), seed_occupancies_by_op_id={},
+        )
+        return LocalSearchResultFacts(
+            rows, due_batches=(), finish_by_batch=metrics._finish_by_batch,
+        ).changeover_pair()
 
     # A point event of another type neither switches nor separates two timed rows of the same type.
     same_around_point = [row(1, "TA", "A", 0), row(2, "TB", "B", 1, hours=0), row(3, "TA", "A", 1)]
@@ -530,7 +587,15 @@ def test_optimizer_changeover_signals_follow_type_identity_and_skip_point_events
 
     # An empty-batch seed on the bottleneck machine is a safe no-op.
     unbatched = [row(1, "TA", "A", 0, batch=" "), row(2, "TA", "A", 1, batch=" ")]
-    move = neighborhood_moves.bottleneck_machine_move(["BA", "BB"], LocalSearchResultFacts(unbatched, due_batches=()))
+    unbatched_metrics = compute_metrics(
+        unbatched, {}, expected_operations=[], failure_details=(), seed_occupancies_by_op_id={},
+    )
+    move = neighborhood_moves.bottleneck_machine_move(
+        ["BA", "BB"],
+        LocalSearchResultFacts(
+            unbatched, due_batches=(), finish_by_batch=unbatched_metrics._finish_by_batch,
+        ),
+    )
     assert move.noop and move.batch_order == ("BA", "BB")
 
     # Joint-window switch pressure: point rows stay resource neighbours but never count as switches.
@@ -543,6 +608,7 @@ def test_optimizer_changeover_signals_follow_type_identity_and_skip_point_events
 
     # The insertion screen keeps point rows for successor readiness without occupying or switching.
     screen_metric = {
+        "priority_weight": 1.0,
         "due_deadline_hours": 8.0,
         "due_pressure": 0.5,
         "weighted_due_pressure": 0.5,
@@ -693,3 +759,145 @@ def test_full_validation_keeps_its_own_enumeration_when_its_content_is_archived(
     assert verified.candidate["results"] is not archived
     assert [row.op_id for row in verified.candidate["results"]] == [row.op_id for row in trial["results"]]
     assert not search.pending_outputs
+
+
+def test_zero_duration_features_and_effective_efficiency_preserve_ig_priority_weights(caplog):
+    import logging
+    import math
+    import sys
+
+    from core.algorithms.greedy.scheduler import GreedyScheduler
+    from core.services.scheduler.run.optimizer.graph.iterated_greedy_joint import _index_for, _pressure
+    from core.services.scheduler.run.optimizer.graph.iterated_greedy_screen import InsertionScreen
+    from core.services.scheduler.run.optimizer.graph_ready_feature_basis import BASELINE_ORDERING_FIELD
+    from tests._support.algo_operations import make_algo_op
+    from tests._support.optimizer_graph_ready_benchmark import _default_config
+    from tests._support.schedule_decode import production_decode
+
+    class HalfEfficiencyCalendar(ContinuousCalendar):
+        def add_effective_hours(self, dt: datetime, hours: float, priority: Any = None, operator_id: Any = None) -> datetime:
+            return dt + timedelta(hours=float(hours) * 2.0)
+
+        def capacity_fraction_between(
+            self, start: datetime, end: datetime, *, priority: Any = None, operator_id: Any = None,
+        ) -> Fraction:
+            return super().capacity_fraction_between(
+                start, end, priority=priority, operator_id=operator_id,
+            ) * Fraction(1, 2)
+
+    start = datetime(2026, 1, 2, 0, 0, 0)
+    batches = {
+        "B_OVERDUE": make_batch(batch_id="B_OVERDUE", part_no="P1", due_date="2025-12-31", priority="critical"),
+        "B_EXACT": make_batch(batch_id="B_EXACT", part_no="P2", due_date="2026-01-01", priority="urgent"),
+        "B_ZERO_FUTURE": make_batch(batch_id="B_ZERO_FUTURE", part_no="P3", due_date="2026-01-03", priority="critical"),
+        "B_CHAIN": make_batch(batch_id="B_CHAIN", part_no="P4", due_date="2026-01-02", priority="urgent"),
+        "B_NODUE": make_batch(batch_id="B_NODUE", part_no="P5", due_date=None, priority="normal"),
+    }
+    operations = [
+        make_algo_op(id=1, op_code="OP-1", batch_id="B_OVERDUE", seq=10, machine_id="M-1", operator_id="O-1",
+                     setup_hours=0.0, unit_hours=0.0, op_type_id="OT-1", op_type_name="T1"),
+        make_algo_op(id=2, op_code="OP-2", batch_id="B_EXACT", seq=10, machine_id="M-2", operator_id="O-2",
+                     setup_hours=0.0, unit_hours=0.0, op_type_id="OT-1", op_type_name="T1"),
+        make_algo_op(id=3, op_code="OP-3", batch_id="B_ZERO_FUTURE", seq=10, machine_id="M-3", operator_id="O-3",
+                     setup_hours=0.0, unit_hours=0.0, op_type_id="OT-1", op_type_name="T1"),
+        make_algo_op(id=4, op_code="OP-4", batch_id="B_CHAIN", seq=10, machine_id="M-4", operator_id="O-4",
+                     setup_hours=2.0, unit_hours=0.0, op_type_id="OT-1", op_type_name="T1"),
+        make_algo_op(id=5, op_code="OP-5", batch_id="B_CHAIN", seq=20, machine_id="M-4", operator_id="O-4",
+                     setup_hours=0.0, unit_hours=0.0, op_type_id="OT-1", op_type_name="T1"),
+        make_algo_op(id=6, op_code="OP-6", batch_id="B_NODUE", seq=10, machine_id="M-6", operator_id="O-6",
+                     setup_hours=1.0, unit_hours=0.0, op_type_id="OT-1", op_type_name="T1"),
+    ]
+    op_ids = {op.id for op in operations}
+    node_metrics = {
+        op_id: {
+            "is_on_critical_path": False,
+            "critical_path_rank": None,
+            "impact_count": 1 if op_id == 4 else 0,
+            "generation_index": 1 if op_id == 5 else 0,
+            "downstream_critical_minutes": 0,
+            "bottleneck_machine_score": 1.0,
+        }
+        for op_id in op_ids
+    }
+    predecessors = {op_id: ({4} if op_id == 5 else set()) for op_id in op_ids}
+    successors = {op_id: ({5} if op_id == 4 else set()) for op_id in op_ids}
+    context = {
+        "enabled": True,
+        "schedulable_op_ids": op_ids,
+        "fixed_op_ids": set(),
+        "predecessor_op_ids_by_op_id": predecessors,
+        "successor_op_ids_by_op_id": successors,
+        "sort_key_by_op_id": {op_id: (0, op_id, op_id) for op_id in op_ids},
+        "graph_priority_key_by_op_id": {op_id: (float(op_id),) for op_id in op_ids},
+        "node_metrics_by_op_id": node_metrics,
+    }
+    pool = {
+        "machines_by_op_type": {"OT-1": [f"M-{idx}" for idx in (1, 2, 3, 4, 6)]},
+        "machines_by_operator": {},
+        "operators_by_machine": {f"M-{idx}": [f"O-{idx}"] for idx in (1, 2, 3, 4, 6)},
+        "pair_rank": {},
+    }
+    calendar = HalfEfficiencyCalendar()
+    scheduler = GreedyScheduler(calendar_service=calendar, config_service=_default_config())
+    preparation = production_session(
+        scheduler, operations=operations, batches=batches, resource_pool=pool, graph_ready_context=context,
+    ).native_preparation
+    with caplog.at_level(logging.WARNING):
+        metrics = enrich_graph_ready_v2_metrics(
+            node_metrics, operations=operations, batches=batches, start_dt=start,
+            calendar_service=calendar, downtime_map={}, seed_results=[], resource_pool=pool,
+            graph_ready_context=context, deadline=float("inf"), clock=lambda: 0.0,
+            native_preparation=preparation,
+        )
+    assert metrics is not None
+    assert caplog.records == []
+
+    # True zero-duration fidelity across overdue / exact-due / positive-due / no-due regimes.
+    assert metrics[1]["remaining_due_burden_hours"] == 0.0
+    assert metrics[1]["weighted_processing_hours"] == 0.0
+    assert metrics[1]["saveability"] == 0.0
+    assert metrics[1]["critical_ratio"] == -math.inf
+    assert metrics[2]["remaining_due_burden_hours"] == 0.0
+    assert metrics[2]["saveability"] == 0.0
+    assert metrics[2]["critical_ratio"] == 0.0
+    assert metrics[3]["remaining_due_burden_hours"] == 0.0
+    assert metrics[3]["due_pressure"] == 0.0 and metrics[3]["weighted_due_pressure"] == 0.0
+    assert metrics[3]["saveability"] == 1.0 and metrics[3]["sacrifice_penalty"] == 0.0
+    assert metrics[3]["critical_ratio"] == sys.float_info.max
+    assert metrics[6]["critical_ratio"] == math.inf
+
+    # Workload release advances via add_effective_hours (2h work / 0.5 eff = 4h wall clock -> 20h * 0.5 = 10h left,
+    # whereas batch-workload baseline offsets raw work hours 2h -> 22h * 0.5 = 11h left).
+    assert metrics[5]["due_budget_hours"] == 10.0
+    assert metrics[5][BASELINE_ORDERING_FIELD]["due_budget_hours"] == 11.0
+
+    ranks = build_v2_common_rank_cache(metrics)["critical_ratio_rank01"]
+    assert ranks[1] < ranks[2] < ranks[4] < ranks[3] == ranks[5] < ranks[6] == 1.0
+
+    # Decoded wall-clock span under 0.5 efficiency is 4h on op 4, while op 3 has zero duration and zero pressure.
+    decoded = production_decode(
+        scheduler, operations=operations, batches=batches, start_dt=start,
+        strategy=SortStrategy.PRIORITY_FIRST, strategy_params={}, dispatch_mode="sgs", dispatch_rule="slack",
+        resource_pool=pool, graph_ready_context=dict(context, score_enabled=True),
+    )
+    order = (1, 2, 3, 4, 5, 6)
+    reference = SimpleNamespace(order=order, candidate={"results": decoded.results}, features=None)
+    ig_search = SimpleNamespace(
+        parent=SimpleNamespace(order=order, predecessors=predecessors, successors=successors),
+        metrics=metrics,
+        start_dt=start,
+        report={"objective_name": "min_weighted_tardiness"},
+        _require_budget=lambda: None,
+        _features=lambda ref: ref.features,
+    )
+    screen = InsertionScreen(ig_search, reference)
+    assert screen.weights == {
+        "B_OVERDUE": 3.0,
+        "B_EXACT": 2.0,
+        "B_ZERO_FUTURE": 3.0,
+        "B_CHAIN": 2.0,
+        "B_NODUE": 1.0,
+    }
+    reference.features = {"signals": {op_id: (2.5 if op_id == 3 else 0.0) for op_id in order}}
+    index, features = _index_for(ig_search, reference)
+    assert _pressure(ig_search, index, features, 3) == (-7.5, -0.0, -2.5, -index.positions[3])

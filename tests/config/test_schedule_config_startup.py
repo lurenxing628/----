@@ -5,7 +5,6 @@ import pytest
 from core.errors import ValidationError
 from core.infrastructure.database import get_connection
 from core.models.schedule_config_runtime_fields import get_field_spec
-from core.services.scheduler.config.config_constants import ACTIVE_PRESET_KEY, BUILTIN_PRESET_DEFAULT
 from core.services.scheduler.config.config_field_spec import list_config_fields
 from core.services.scheduler.config.config_snapshot import build_schedule_config_snapshot
 from core.services.workbench.run.worker import WorkbenchRunWorker
@@ -35,8 +34,7 @@ def test_fresh_application_first_real_worker_run_needs_no_config_page(db_env):
         assert conn.execute("SELECT COUNT(*) FROM ScheduleConfig").fetchone()[0] == 0
         app = create_application()
         assert _stored_snapshot(conn).sort_strategy == get_field_spec("sort_strategy").default
-        assert ConfigRepository(conn).get_value(ACTIVE_PRESET_KEY) == BUILTIN_PRESET_DEFAULT
-        assert conn.execute("SELECT COUNT(*) FROM ScheduleConfig").fetchone()[0] == len(list_config_fields()) + 3
+        assert conn.execute("SELECT COUNT(*) FROM ScheduleConfig").fetchone()[0] == len(list_config_fields())
         initialized = config_rows(conn)
         conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T1','Turning')")
         conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M1','Lathe','T1')")
@@ -80,7 +78,7 @@ def test_restart_preserves_existing_missing_or_invalid_configuration(db_env, dam
         conn.close()
 
 
-def test_failed_startup_bootstrap_rolls_back_defaults_and_provenance(db_env, monkeypatch):
+def test_failed_startup_bootstrap_rolls_back_default_configuration(db_env, monkeypatch):
     original_set_batch = ConfigRepository.set_batch
 
     def fail_configuration_write(repo, rows):

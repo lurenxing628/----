@@ -699,8 +699,7 @@ def test_runtime_identity_is_independent_of_shutdown_and_application_secrets(tmp
         assert runtime_identity(app)["instance_id"] == first["instance_id"]
 
 
-@pytest.mark.parametrize("rollback_fails", [True])
-def test_verify_failure_and_rollback_failure_are_distinct(system_api, monkeypatch, rollback_fails):
+def test_verify_and_rollback_failure_locks_maintenance_operations(system_api, monkeypatch):
     system_api.backup()
     enable_restore(system_api)
     def verification(*args, **kwargs):
@@ -708,18 +707,17 @@ def test_verify_failure_and_rollback_failure_are_distinct(system_api, monkeypatc
     monkeypatch.setattr("web.routes.workbench.system_actions.ensure_schema", verification)
     copy = BackupManager._copy_db_file
     def failing_copy(self, source_path, **kwargs):
-        if rollback_fails and "before_restore" in source_path:
+        if "before_restore" in source_path:
             raise OSError("injected rollback failure")
         return copy(self, source_path, **kwargs)
     monkeypatch.setattr(BackupManager, "_copy_db_file", failing_copy)
     result = system_api.file_action("restore").get_json()["data"]["operation"]
-    assert result["code"] == ("verify_failed_rollback_failed" if rollback_fails else "verify_failed_rolled_back")
-    assert result["state"] == ("rollback_failed" if rollback_fails else "rolled_back")
-    if rollback_fails:
-        with pytest.raises(ValueError, match="还没有确认结果"):
-            assert_system_maintenance_ready(str(system_api.database), str(system_api.journal_dir))
-        assert system_api.get("/backups").status_code == 503
-        assert system_api.read("/restore-host")["data"]["host"]["operations_available"] is False
+    assert result["code"] == "verify_failed_rollback_failed"
+    assert result["state"] == "rollback_failed"
+    with pytest.raises(ValueError, match="还没有确认结果"):
+        assert_system_maintenance_ready(str(system_api.database), str(system_api.journal_dir))
+    assert system_api.get("/backups").status_code == 503
+    assert system_api.read("/restore-host")["data"]["host"]["operations_available"] is False
 
 
 def test_drain_timeout_before_restore_records_terminal_unchanged_and_does_not_lock_recovery(system_api, monkeypatch):

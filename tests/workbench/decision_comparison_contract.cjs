@@ -278,6 +278,41 @@ function referenceContracts() {
   for (const level of ['capabilities', 'candidate']) for (const key of ['edit_draft', 'adopt', 'report_actual'])
     rejected(value, result => { (level === 'candidate' ? result.data.candidate.capabilities : result.data.capabilities)[key] = true; }, read, '正式归档写能力须关闭：' + level + '.' + key);
   {
+    const dueCases = [
+      { due_date: '2026-10-16', due_state: 'specified', due_issue: null },
+      { due_date: null, due_state: 'invalid', due_issue: 'due_date_missing' },
+      { due_date: null, due_state: 'invalid', due_issue: 'due_date_invalid' },
+      { due_date: '9999-12-31', due_state: 'unspecified', due_issue: null }
+    ];
+    for (const validDue of dueCases) assert(window.DeliveryProjectionContract.dueFields(validDue), '合法交期三元组通过校验');
+    for (const invalidDue of [
+      null,
+      {},
+      { due_date: '9999-12-31', due_state: 'specified', due_issue: null },
+      { due_date: '2026-02-30', due_state: 'specified', due_issue: null },
+      { due_date: '2026-10-16', due_state: 'specified', due_issue: 'due_date_invalid' },
+      { due_date: '2026-10-16', due_state: 'unspecified', due_issue: null },
+      { due_date: '9999-12-31', due_state: 'unspecified', due_issue: 'due_date_missing' },
+      { due_date: '2026-10-16', due_state: 'invalid', due_issue: 'due_date_invalid' },
+      { due_date: null, due_state: 'invalid', due_issue: null },
+      { due_date: null, due_state: 'specified', due_issue: null }
+    ]) assert(!window.DeliveryProjectionContract.dueFields(invalidDue), '非法交期三元组必须拒绝');
+    const officialDetail = JSON.parse(fs.readFileSync(path.join(__dirname, '../gantt/fixtures/admission_official_detail.json'), 'utf8'));
+    const prepWorkspace = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/decision_preparation_workspace.json'), 'utf8')).payload.data;
+    const baseTask = { ...officialDetail.data.tasks[0], process_type_ref: prepWorkspace.tasks[0].process_type_ref, process_type_label: prepWorkspace.tasks[0].process_type_label, operation_effort: prepWorkspace.tasks[0].operation_effort };
+    const baseUnplanned = prepWorkspace.unplanned_operations[0];
+    const withRows = clone(value);
+    withRows.data.tasks = dueCases.map((item, index) => ({ ...clone(baseTask), plan_ref: planRef, batch_ref: batchRef, operation_ref: (index + 1).toString(16).padStart(48, '0'), row_ref: (index + 11).toString(16).padStart(48, '0'), task_ref: (index + 21).toString(16).padStart(48, '0'), ...item }));
+    withRows.data.unplanned_operations = dueCases.map((item, index) => ({ ...clone(baseUnplanned), batch_ref: batchRef, operation_ref: (index + 31).toString(16).padStart(48, '0'), ...item }));
+    withRows.data.task_count = withRows.data.candidate_task_count = withRows.data.tasks.length;
+    withRows.data.unplanned_operation_count = withRows.data.unplanned_operations.length;
+    assert.strictEqual(read(withRows), withRows.data, '正式参考详情接受四种交期状态的已排与未排工序');
+    for (const section of ['tasks', 'unplanned_operations']) {
+      rejected(withRows, result => { delete result.data[section][0].due_state; }, read, '正式参考详情拒绝缺失 due_state：' + section);
+      rejected(withRows, result => { result.data[section][1].due_issue = null; }, read, '正式参考详情拒绝缺失原因被抹空：' + section);
+    }
+  }
+  {
     const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/decision_candidate_baseline.json'), 'utf8')), { baseline, workspace } = fixture;
     const saved = clone(baseline), readBaseline = result => window.RunBaselineAPI.validate(result, workspace);
     assert.strictEqual(readBaseline(baseline), baseline.data, '真实HTTP200原安排对照接受保存工种字段');
@@ -286,6 +321,20 @@ function referenceContracts() {
     rejected(baseline, result => { result.data.comparisons[0].process_type_label = {}; }, readBaseline, '新增工种名称字段存在时保持字符串或缺项');
     rejected(baseline, result => { delete result.data.comparisons[0].process_type_ref; }, readBaseline, '原安排对照必须包含工种身份字段');
     rejected(baseline, result => { delete result.data.comparisons[0].process_type_label; }, readBaseline, '原安排对照必须包含工种名称字段');
+    rejected(baseline, result => { delete result.data.comparisons[0].due_state; }, readBaseline, '原安排对照必须包含 due_state');
+    rejected(baseline, result => { delete result.data.comparisons[0].due_issue; }, readBaseline, '原安排对照必须包含 due_issue');
+    rejected(baseline, result => { result.data.comparisons[0].due_date = null; result.data.comparisons[0].due_state = 'invalid'; result.data.comparisons[0].due_issue = 'due_date_invalid'; }, readBaseline, '原安排对照与候选工作区交期状态不一致时拒绝');
+    for (const dueCase of [
+      { due_date: '2026-10-16', due_state: 'specified', due_issue: null },
+      { due_date: null, due_state: 'invalid', due_issue: 'due_date_missing' },
+      { due_date: null, due_state: 'invalid', due_issue: 'due_date_invalid' },
+      { due_date: '9999-12-31', due_state: 'unspecified', due_issue: null }
+    ]) {
+      const pairedBaseline = clone(baseline), pairedWorkspace = clone(workspace);
+      pairedBaseline.data.comparisons.forEach(row => Object.assign(row, dueCase));
+      pairedWorkspace.tasks.forEach(row => Object.assign(row, dueCase));
+      assert.strictEqual(window.RunBaselineAPI.validate(pairedBaseline, pairedWorkspace), pairedBaseline.data, '原安排对照接受交期状态：' + dueCase.due_state + '/' + dueCase.due_issue);
+    }
     const unknown = clone(baseline); unknown.data.comparisons.forEach(row => { row.process_type_ref = null; row.process_type_label = null; });
     assert.strictEqual(readBaseline(unknown), unknown.data, '历史工种缺项保持null可读');
     assert.deepEqual(clone(baseline), saved, '原安排校验保持真实DTO原值');
@@ -406,7 +455,7 @@ function recommendationContracts() {
     }
     assert.deepEqual(clone(empty), savedEmpty);
   }
-  const original = { run_ref: runRef, candidate_ref: third, reference_candidate_ref: first, comparison_mode: 'candidates', resource_view: 'selected_batches', range_start, range_end, metric_view: 'all', comparison_tab: 'delivery',
+  const original = { run_ref: runRef, candidate_ref: third, reference_candidate_ref: first, comparison_mode: 'candidates', resource_view: 'selected_batches', range_start, range_end, comparison_tab: 'delivery',
     return_history_context: { query: '第5验收' }, detail_queries: { 'completion-batches': { completion_filter: 'ordinary', open: false, page: 2, size: 50, snapshot_ref: snapshot }, operations: { page: 2, size: 50, batch_ref: batchRef, snapshot_ref: snapshot }, resources: { page: 3, heatmap_page: 2, day_page: 4, resource_kind: 'operator', resource_ref: resourceRef, snapshot_ref: snapshot, day_snapshot_ref: 't'.repeat(32) }, preparation: { page: 2, size: 20, allocation_state: 'unplanned', snapshot_ref: snapshot }, changeovers: { event_side: 'reference', sort: 'machine_label', order: 'desc', snapshot_ref: snapshot } } };
   const links = [], main = expand(h(comparisonWorkspace({ decisionSummary: () => payload }), { ...workspaceDefaults, initialContext: original, onNavigate: (page, context) => links.push({ page, context }) }));
   const originalRemembered = clone(remembered.at(-1)), differences = nodes(main).filter(row => row.props['data-recommendation-difference']);
@@ -737,7 +786,7 @@ async function workspaceContracts() {
   assert.equal(openToggle.props['aria-expanded'], true); openToggle.props.onClick(); await candidate.render();
   assert(!nodes(candidate.tree).some(node => node.type === 'candidate-detail')); assert.strictEqual(nodes(candidate.tree).find(node => node.type === 'candidate-gantt').props.selected, value.data.tasks[2]);
   assert.equal(candidate.calls.length, reads, '明确展开与再收起详情保留所选工序且不重复读取');
-  const returnContext = { run_ref: runRef, candidate_ref: third, comparison_mode: 'admission_official', comparison_tab: 'operations', metric_view: 'all',
+  const returnContext = { run_ref: runRef, candidate_ref: third, comparison_mode: 'admission_official', comparison_tab: 'operations',
     detail_queries: { operations: { batch_ref: batchRef, resource_ref: resourceRef, page: 2, size: 50, snapshot_ref: snapshot } }, range_start, range_end };
   const formal = await candidateWorkspace({ ...base, selected_row_ref: secondSegmentRef, reference_view: true, comparison_mode: 'admission_official', plan_ref: planRef,
     return_decision_context: returnContext }, value);
@@ -1135,6 +1184,9 @@ async function unifiedGenerationContracts() {
   assert.strictEqual(API.processDetails(envelope(processRaw.process_by_objective.min_tardiness), nativeRun, {}), processRaw.process_by_objective.min_tardiness);
   assert.throws(() => API.processDetails(envelope(processRaw.process_by_objective.min_tardiness), nativeRun, { objective: 'min_overdue' }), /优化方向/);
   assert.throws(() => API.processDetails(envelope(processRaw.process_by_objective.min_tardiness), nativeRun, { process_candidate_ref: first }), /过程来源定位/);
+  assert.throws(() => API.processDetails(envelope({ ...clone(processRaw.process_by_objective.min_overdue), actions: [] }), nativeRun, { objective: 'min_overdue' }), /共同优化过程/, '屏幕分页DTO不携带完整actions副本');
+  const wrongTotal = clone(processRaw.process_by_objective.min_overdue); wrongTotal.page.total = 2;
+  assert.throws(() => API.processDetails(envelope(wrongTotal), nativeRun, { objective: 'min_overdue' }), /分页位置/, '动作页总数必须与该方向预算action_count一致');
   const controlledRaw = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/unified_process_controlled.json'), 'utf8'));
   assert.equal(controlledRaw.provenance.actual_http, false); assert.equal(controlledRaw.provenance.solver_calls, 0);
   const improved = controlledRaw.improvement, improvementQuery = { ...improved.filters,
@@ -1254,6 +1306,284 @@ async function unifiedGenerationContracts() {
     assert.equal(text(nodes(countRow).find(node => node.type === 'dd')), String(processRaw.process_by_objective.min_changeover.counts[key]), '统计名称同步保留保存值');
   }
   assert(text(paneTree).includes('本次预算内未探索此方向') && nodes(paneTree).filter(node => node.type === 'circle' && node.props['data-progress-event-index'] !== undefined).length > 0, '真实未探索方向仍有共同初始评价点');
+  {
+    const asyncState = hooks(), pendingReads = [];
+    asyncState.React.createElement = (type, props, ...children) => ({
+      type,
+      key: props && props.key !== undefined ? props.key : null,
+      props: props || {},
+      children: children.flat(Infinity)
+    });
+    const listeners = { focusin: new Set(), pointerdown: new Set() };
+    const doc = {
+      body: { type: 'body', props: {} },
+      documentElement: { type: 'html', props: {} },
+      activeElement: null,
+      addEventListener(type, fn) { listeners[type].add(fn); },
+      removeEventListener(type, fn) { listeners[type].delete(fn); },
+      dispatch(type, target) { for (const fn of [...listeners[type]]) fn({ type, target }); }
+    };
+    doc.body.ownerDocument = doc; doc.documentElement.ownerDocument = doc;
+    const walkDom = el => !el || typeof el !== 'object' ? [] : [el, ...(el.children || []).flatMap(walkDom)];
+    let prevRoot = null;
+    const syncDom = (vnode, parent = null, slotKey = 'root') => {
+      if (vnode === null || vnode === undefined || typeof vnode === 'boolean') return null;
+      if (typeof vnode !== 'object') return vnode;
+      const activeWasInside = !parent && prevRoot ? prevRoot.contains(doc.activeElement) : false;
+      const cache = parent ? parent._slots : (syncDom._rootSlots || (syncDom._rootSlots = new Map()));
+      let el = cache.get(slotKey);
+      if (!el || el.type !== vnode.type) {
+        el = { type: vnode.type, props: {}, children: [], ownerDocument: doc, _slots: new Map(),
+          getAttribute(name) { return this.props[name] === undefined ? null : String(this.props[name]); },
+          contains(target) { return walkDom(this).includes(target); },
+          closest(selector) {
+            if (selector !== '[data-process-candidate]') throw new Error('Unsupported closest selector: ' + selector);
+            for (let cur = this; cur; cur = cur.parent) if (cur.props && cur.props['data-process-candidate']) return cur;
+            return null;
+          },
+          querySelector(selector) {
+            if (selector === ':scope > summary') return this.children.find(child => child && child.type === 'summary') || null;
+            const labelMatch = /^\[aria-label="([^"]+)"\]:not\(:disabled\)$/.exec(selector);
+            if (labelMatch) return walkDom(this).find(node => node.props && node.props['aria-label'] === labelMatch[1] && !node.disabled) || null;
+            const candidateMatch = /^\[data-process-candidate="([^"]+)"\] button:not\(:disabled\)$/.exec(selector);
+            if (candidateMatch) {
+              const row = walkDom(this).find(node => node.props && node.props['data-process-candidate'] === candidateMatch[1]);
+              return row ? walkDom(row).find(node => node.type === 'button' && !node.disabled) || null : null;
+            }
+            throw new Error('Unsupported querySelector: ' + selector);
+          },
+          focus() { if (this.disabled) return; doc.activeElement = this; doc.dispatch('focusin', this); }
+        };
+        if (vnode.type === 'details') el.open = Boolean(vnode.props.open);
+      }
+      el.parent = parent; el.props = vnode.props;
+      const nextDisabled = Boolean(vnode.props.disabled);
+      if (nextDisabled && doc.activeElement === el) doc.activeElement = doc.body;
+      el.disabled = nextDisabled;
+      if (vnode.props.ref && typeof vnode.props.ref === 'object') vnode.props.ref.current = el;
+      const nextSlots = new Map(), nextChildren = [];
+      vnode.children.forEach((child, index) => {
+        if (child === null || child === undefined || typeof child === 'boolean') return;
+        if (typeof child !== 'object') { nextChildren.push(child); return; }
+        const childKey = child.key !== null && child.key !== undefined ? 'key:' + child.key : 'idx:' + index;
+        const mounted = syncDom(child, el, childKey);
+        nextSlots.set(childKey, mounted);
+        nextChildren.push(mounted);
+      });
+      el.children = nextChildren;
+      el._slots = nextSlots;
+      if (!parent) {
+        syncDom._rootSlots = new Map([[slotKey, el]]);
+        if (activeWasInside && !el.contains(doc.activeElement)) doc.activeElement = doc.body;
+        prevRoot = el;
+      }
+      return el;
+    };
+    const Pager = ({ label, page = 1, pages, disabled, onPage }) => asyncState.React.createElement('nav', { className: 'wb-pager', 'aria-label': label + '分页', page, pages, disabled },
+      asyncState.React.createElement('button', { type: 'button', 'aria-label': label + '上一页', disabled: Boolean(disabled || page <= 1), onClick: () => onPage(page - 1) }, '上一页'),
+      asyncState.React.createElement('button', { type: 'button', 'aria-label': label + '下一页', disabled: Boolean(disabled || !pages || page >= pages), onClick: () => onPage(page + 1) }, '下一页'));
+    const asyncWindow = { ...window,
+      RunCandidateControls: { ...window.RunCandidateControls, Pager },
+      RunDecisionAPI: { ...API, process: (_ref, q, signal) => new Promise((resolve, reject) => pendingReads.push({ q: clone(q), signal, resolve, reject })) } };
+    for (const name of ['resource-session.js', 'RunDecisionProcessChart.jsx', 'RunDecisionProcess.jsx'])
+      for (const output of compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
+        sources: [{ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') }] }).outputs)
+        vm.runInNewContext(output.code, { React: asyncState.React, window: asyncWindow, AbortController, DOMException });
+    const makeProcessPage = q => {
+      const objectiveName = q.objective || 'min_overdue';
+      const base = clone(processRaw.process_by_objective[objectiveName]);
+      const pageNumber = q.page || 1, size = q.size || 20, total = 45;
+      const firstCandidate = base.candidates[0];
+      base.candidates = [firstCandidate, { ...firstCandidate, candidate_ref: first, label: '切换更少方案' }];
+      const anchorRef = q.process_candidate_ref || nativeCandidate;
+      base.candidate = base.candidates.find(row => row.candidate_ref === anchorRef);
+      base.source_event = base.candidate.search_evidence_ref.source_event_id ? base.source_event : null;
+      base.budget.objectives[objectiveName].action_count = total;
+      base.bridges = [{ search_objective: 'min_tardiness', phase: 'bridge', before_entry_id: 1, after_entry_id: 2, elapsed_ms: 5, started_elapsed_ms: 10, finished_elapsed_ms: 15, same_arrangement: false, decoder_executed: true, reference_kind: 'incumbent', source_event_id: 1 }];
+      const itemCount = Math.min(size, Math.max(0, total - (pageNumber - 1) * size));
+      const templateAction = base.items[0];
+      base.items = Array.from({ length: itemCount }, (_, idx) => ({ ...templateAction, action_id: (pageNumber - 1) * size + idx + 1 }));
+      base.filters = { section: 'process', process_candidate_ref: anchorRef, objective: objectiveName, record_kind: q.record_kind || 'attempts', sort: q.sort || 'rank', order: q.order || 'asc' };
+      base.page = { number: pageNumber, size, total, has_more: pageNumber * size < total };
+      const res = envelope(base); API.processDetails(res, nativeRun, q); return res;
+    };
+    const asyncProps = { result: envelope(native), query: { objective: 'min_overdue' }, enabled: true, onQuery: value => { asyncProps.query = value; } };
+    let rootDom;
+    const renderOnce = () => { rootDom = syncDom(asyncState.render(() => expand(asyncWindow.RunDecisionProcess.Pane(asyncProps)))); asyncState.flush(); return rootDom; };
+    const settleAsync = async () => { for (let i = 0; i < 3; i++) { renderOnce(); await turns(); } return rootDom; };
+    const findSourceShell = () => walkDom(rootDom).find(node => node.props && node.props.className === 'rd-process-facts' && text(node.querySelector(':scope > summary')) === '当前候选来源与方向记录');
+    await settleAsync();
+    assert.equal(pendingReads.length, 1);
+    pendingReads[0].resolve(makeProcessPage(pendingReads[0].q));
+    await settleAsync();
+    const recordsShell = walkDom(rootDom).find(node => node.props && node.props.className === 'rd-process-records');
+    const toolsShell = walkDom(rootDom).find(node => node.props && node.props.className === 'rd-process-record-tools');
+    const objectiveSelect = walkDom(rootDom).find(node => node.props && node.props['aria-label'] === '优化方向');
+    const pagerShell = walkDom(rootDom).find(node => node.props && node.props.className === 'wb-pager');
+    const catalogShell = walkDom(rootDom).find(node => node.props && node.props.className === 'rd-process-catalog');
+    const stagesShell = walkDom(rootDom).find(node => node.props && node.props.className === 'rd-process-stages');
+    const sourceShell = findSourceShell();
+    const findCoverageShell = () => walkDom(rootDom).find(node => node.props && node.props.className === 'rd-process-facts' && text(node.querySelector(':scope > summary')) === '进展记录说明');
+    const findOriginShell = () => walkDom(sourceShell).find(node => node !== sourceShell && node.props && node.props.className === 'rd-process-facts' && text(node.querySelector(':scope > summary')) === '实际生成与派工');
+    const findBridgesShell = () => walkDom(sourceShell).find(node => node !== sourceShell && node.props && node.props.className === 'rd-process-facts' && text(node.querySelector(':scope > summary')).startsWith('参考排法接续'));
+    const coverageShell = findCoverageShell(), originShell = findOriginShell(), bridgesShell = findBridgesShell();
+    const nextBtn = walkDom(rootDom).find(node => node.props && node.props['aria-label'] === '优化过程记录下一页');
+    const prevBtn = walkDom(rootDom).find(node => node.props && node.props['aria-label'] === '优化过程记录上一页');
+    assert(recordsShell && toolsShell && objectiveSelect && pagerShell && catalogShell && stagesShell && sourceShell && coverageShell && originShell && bridgesShell && nextBtn && prevBtn);
+    assert.equal(recordsShell.open, false); assert.equal(catalogShell.open, false); assert.equal(stagesShell.open, false); assert.equal(sourceShell.open, false);
+    assert.equal(coverageShell.open, false); assert.equal(originShell.open, false); assert.equal(bridgesShell.open, false);
+    recordsShell.open = true; catalogShell.open = true; stagesShell.open = true; sourceShell.open = true;
+    coverageShell.open = true; originShell.open = true; bridgesShell.open = true;
+    assert.equal(walkDom(rootDom).some(node => node.props && node.props['data-process-action'] === 1), true);
+    nextBtn.focus(); assert.strictEqual(doc.activeElement, nextBtn);
+    nextBtn.props.onClick();
+    renderOnce();
+    assert.strictEqual(walkDom(rootDom).find(node => node.props && node.props.className === 'rd-process-records'), recordsShell, '翻页加载期间计算明细外壳保持挂载');
+    assert.strictEqual(walkDom(rootDom).find(node => node.props && node.props.className === 'rd-process-record-tools'), toolsShell, '翻页加载期间记录筛选工具栏保持挂载');
+    assert.strictEqual(walkDom(rootDom).find(node => node.props && node.props['aria-label'] === '优化方向'), objectiveSelect, '翻页加载期间优化方向选择器保持挂载');
+    assert.strictEqual(walkDom(rootDom).find(node => node.props && node.props.className === 'wb-pager'), pagerShell, '翻页加载期间分页器保持挂载');
+    assert.strictEqual(walkDom(rootDom).find(node => node.props && node.props.className === 'rd-process-catalog'), catalogShell, '翻页加载期间候选来源定位外壳保持挂载');
+    assert.strictEqual(walkDom(rootDom).find(node => node.props && node.props.className === 'rd-process-stages'), stagesShell, '翻页加载期间当前方向阶段外壳保持挂载');
+    assert.strictEqual(findSourceShell(), sourceShell, '翻页加载期间当前候选来源与方向记录外壳保持挂载');
+    assert.strictEqual(findCoverageShell(), coverageShell, '翻页加载期间进展记录说明外壳保持挂载');
+    assert.strictEqual(findOriginShell(), originShell, '翻页加载期间实际生成与派工外壳保持挂载');
+    assert.strictEqual(findBridgesShell(), bridgesShell, '翻页加载期间参考排法接续外壳保持挂载');
+    assert.equal(recordsShell.open, true); assert.equal(catalogShell.open, true); assert.equal(stagesShell.open, true); assert.equal(sourceShell.open, true);
+    assert.equal(coverageShell.open, true); assert.equal(originShell.open, true); assert.equal(bridgesShell.open, true);
+    assert(text(stagesShell).includes('正在等待当前方向阶段。'));
+    assert(text(sourceShell).includes('正在等待候选来源与方向记录。'));
+    assert(text(coverageShell).includes('正在等待进展记录说明。'));
+    assert(text(originShell).includes('正在等待实际生成与派工。'));
+    assert(text(bridgesShell).includes('正在等待参考排法接续。'));
+    assert.equal(walkDom(rootDom).some(node => node.props && node.props['data-process-action'] !== undefined), false, '翻页加载期间清空旧页记录行');
+    assert.equal(objectiveSelect.props.disabled, true);
+    assert.equal(text(objectiveSelect).trim(), '正在读取保存的优化过程。');
+    assert(!text(objectiveSelect).includes('切换更少'), '优化方向加载占位不混用候选卡片简称');
+    assert.equal(pagerShell.props.page, 2); assert.equal(pagerShell.props.pages, undefined); assert.equal(pagerShell.props.disabled, true);
+    assert.strictEqual(doc.activeElement, doc.body, '下一页按钮在加载期禁用后焦点落回body');
+    await settleAsync();
+    assert.equal(pendingReads.length, 2);
+    pendingReads[1].resolve(makeProcessPage(pendingReads[1].q));
+    await settleAsync();
+    assert.strictEqual(walkDom(rootDom).find(node => node.props && node.props.className === 'rd-process-records'), recordsShell);
+    assert.strictEqual(walkDom(rootDom).find(node => node.props && node.props.className === 'rd-process-catalog'), catalogShell);
+    assert.strictEqual(walkDom(rootDom).find(node => node.props && node.props.className === 'rd-process-stages'), stagesShell);
+    assert.strictEqual(findSourceShell(), sourceShell);
+    assert.strictEqual(findCoverageShell(), coverageShell);
+    assert.strictEqual(findOriginShell(), originShell);
+    assert.strictEqual(findBridgesShell(), bridgesShell);
+    assert.equal(recordsShell.open, true); assert.equal(catalogShell.open, true); assert.equal(stagesShell.open, true); assert.equal(sourceShell.open, true);
+    assert.equal(coverageShell.open, true); assert.equal(originShell.open, true); assert.equal(bridgesShell.open, true);
+    assert.equal(text(bridgesShell.querySelector(':scope > summary')).replace(/\s+/g, ' '), '参考排法接续 · 1 项');
+    assert.equal(walkDom(bridgesShell).some(node => node.props && node.props.className === 'wb-table rd-process-bridge-table'), true);
+    assert.equal(walkDom(rootDom).some(node => node.props && node.props['data-process-action'] === 21), true);
+    assert.equal(nextBtn.disabled, false);
+    assert.strictEqual(doc.activeElement, nextBtn, '中间页加载完成后焦点自动恢复到下一页按钮');
+    nextBtn.props.onClick();
+    await settleAsync();
+    assert.equal(pendingReads.length, 3);
+    assert.strictEqual(doc.activeElement, doc.body);
+    pendingReads[2].resolve(makeProcessPage(pendingReads[2].q));
+    await settleAsync();
+    assert.equal(walkDom(rootDom).some(node => node.props && node.props['data-process-action'] === 41), true);
+    assert.equal(nextBtn.disabled, true); assert.equal(prevBtn.disabled, false);
+    assert.strictEqual(doc.activeElement, prevBtn, '末页下一页禁用时焦点自动回退到上一页按钮');
+    prevBtn.props.onClick();
+    await settleAsync();
+    assert.equal(pendingReads.length, 4);
+    pendingReads[3].resolve(makeProcessPage(pendingReads[3].q));
+    await settleAsync();
+    assert.equal(walkDom(rootDom).some(node => node.props && node.props['data-process-action'] === 21), true);
+    assert.strictEqual(doc.activeElement, prevBtn, '从末页退回第2页后焦点保持在上一页按钮');
+    prevBtn.props.onClick();
+    await settleAsync();
+    assert.equal(pendingReads.length, 5);
+    pendingReads[4].resolve(makeProcessPage(pendingReads[4].q));
+    await settleAsync();
+    assert.equal(walkDom(rootDom).some(node => node.props && node.props['data-process-action'] === 1), true);
+    assert.equal(prevBtn.disabled, true); assert.equal(nextBtn.disabled, false);
+    assert.strictEqual(doc.activeElement, nextBtn, '首页上一页禁用时焦点自动回退到下一页按钮');
+    nextBtn.props.onClick();
+    await settleAsync();
+    assert.equal(pendingReads.length, 6);
+    const recordsSummary = recordsShell.querySelector(':scope > summary');
+    recordsSummary.focus(); assert.strictEqual(doc.activeElement, recordsSummary, '用户在加载期间主动移焦');
+    doc.activeElement = doc.body;
+    pendingReads[5].resolve(makeProcessPage(pendingReads[5].q));
+    await settleAsync();
+    assert.strictEqual(doc.activeElement, doc.body, '加载期主动移焦已取消pendingFocus，数据返回后不抢回分页按钮');
+    prevBtn.focus(); assert.strictEqual(doc.activeElement, prevBtn);
+    prevBtn.props.onClick();
+    await settleAsync();
+    assert.equal(pendingReads.length, 7);
+    recordsShell.open = false;
+    pendingReads[6].resolve(makeProcessPage(pendingReads[6].q));
+    await settleAsync();
+    assert.strictEqual(doc.activeElement, doc.body, '计算明细折叠时不向内部按钮恢复焦点');
+    recordsShell.open = true;
+    const oldAnchorRow = walkDom(rootDom).find(node => node.props && node.props['data-process-candidate'] === first);
+    const oldAnchorBtn = walkDom(oldAnchorRow).find(node => node.type === 'button');
+    oldAnchorBtn.focus(); assert.strictEqual(doc.activeElement, oldAnchorBtn);
+    oldAnchorBtn.props.onClick();
+    await settleAsync();
+    assert.equal(pendingReads.length, 8);
+    assert.equal(rootDom.contains(oldAnchorBtn), false, '加载期间候选来源表格卸载');
+    assert.strictEqual(doc.activeElement, doc.body);
+    pendingReads[7].resolve(makeProcessPage(pendingReads[7].q));
+    await settleAsync();
+    const newAnchorRow = walkDom(rootDom).find(node => node.props && node.props['data-process-candidate'] === first);
+    const newAnchorBtn = walkDom(newAnchorRow).find(node => node.type === 'button');
+    assert.notStrictEqual(newAnchorBtn, oldAnchorBtn);
+    assert.equal(rootDom.contains(oldAnchorBtn), false);
+    assert.equal(rootDom.contains(newAnchorBtn), true);
+    assert.strictEqual(doc.activeElement, newAnchorBtn, '原定位来源按钮卸载重挂后按data-process-candidate恢复焦点到新按钮');
+    const sortSelect = walkDom(rootDom).find(node => node.props && node.props['aria-label'] === '优化过程排序');
+    sortSelect.focus(); assert.strictEqual(doc.activeElement, sortSelect);
+    sortSelect.props.onChange({ target: { value: 'elapsed_ms' } });
+    await settleAsync();
+    assert.equal(pendingReads.length, 9);
+    assert.strictEqual(doc.activeElement, doc.body);
+    const readError = new Error('读取优化过程失败');
+    pendingReads[8].reject(readError);
+    await settleAsync();
+    assert.strictEqual(walkDom(rootDom).find(node => node.type === 'error-box').props.error, readError, '读取失败展示错误框');
+    assert.equal(text(objectiveSelect).trim(), '优化过程暂未完成读取。');
+    assert.equal(sortSelect.disabled, false);
+    assert.strictEqual(doc.activeElement, sortSelect, '读取失败后自动将焦点恢复到触发筛选的排序下拉框');
+    const orderSelect = walkDom(rootDom).find(node => node.props && node.props['aria-label'] === '优化过程顺序');
+    orderSelect.focus(); assert.strictEqual(doc.activeElement, orderSelect);
+    orderSelect.props.onChange({ target: { value: 'desc' } });
+    await settleAsync();
+    assert.equal(pendingReads.length, 10);
+    assert.strictEqual(doc.activeElement, doc.body);
+    const cancelBtn = walkDom(rootDom).find(node => node.type === 'button' && text(node).trim() === '取消读取');
+    assert(cancelBtn);
+    doc.dispatch('pointerdown', cancelBtn);
+    cancelBtn.focus();
+    assert.strictEqual(doc.activeElement, cancelBtn);
+    cancelBtn.props.onClick();
+    await settleAsync();
+    assert.equal(pendingReads[9].signal.aborted, true, '点击取消读取中止在途请求');
+    assert(text(rootDom).includes('过程读取已取消，点击刷新继续。'));
+    assert.equal(text(objectiveSelect).trim(), '过程读取已取消，点击刷新继续。');
+    assert.equal(orderSelect.disabled, false);
+    assert.strictEqual(doc.activeElement, doc.body, '用户主动点击取消读取会清除pendingFocus，取消后焦点不抢回顺序下拉框');
+    assert.equal(recordsShell.open, true); assert.equal(catalogShell.open, true); assert.equal(stagesShell.open, true); assert.equal(sourceShell.open, true);
+    assert.equal(coverageShell.open, true); assert.equal(originShell.open, true); assert.equal(bridgesShell.open, true);
+    orderSelect.focus();
+    orderSelect.props.onChange({ target: { value: 'asc' } });
+    await settleAsync();
+    assert.equal(pendingReads.length, 11);
+    pendingReads[10].resolve(makeProcessPage(pendingReads[10].q));
+    await settleAsync();
+    assert.strictEqual(doc.activeElement, orderSelect, '从暂停态重新触发筛选加载完成后焦点恢复到顺序下拉框');
+    assert.strictEqual(findCoverageShell(), coverageShell);
+    assert.strictEqual(findOriginShell(), originShell);
+    assert.strictEqual(findBridgesShell(), bridgesShell);
+    assert.equal(coverageShell.open, true); assert.equal(originShell.open, true); assert.equal(bridgesShell.open, true);
+    assert.equal(text(bridgesShell.querySelector(':scope > summary')).replace(/\s+/g, ' '), '参考排法接续 · 1 项');
+    assert.equal(walkDom(bridgesShell).some(node => node.props && node.props.className === 'wb-table rd-process-bridge-table'), true);
+  }
   const exportState = hooks(), exportWindow = { ...window };
   vm.runInNewContext(outputs.find(output => output.path === 'RunDecisionComparison.jsx').code, { React: exportState.React, window: exportWindow, AbortController });
   let exportTree; const renderExport = () => { exportTree = exportState.render(() => expand(exportWindow.RunDecisionComparison.Export({
@@ -1297,7 +1627,7 @@ async function adoptionContextContracts() {
   const preview = candidateRef => ({ ok: true, schema_version: 1, data: { ...summary, candidate_ref: candidateRef, data_context_ref: newContext,
     validation: { status: 'valid', can_adopt: true, issues: [] }, write_context: { write_token: 'w'.repeat(32), expires_at: '2026-10-20T10:00:00',
       capabilities: { 'scheduling.candidate.adopt': true }, blocked_reasons: [] } },
-    warnings: [], meta: { request_ref: '1'.repeat(32), source: 'production', time_basis: 'factory_local', snapshot_ref: snapshot, as_of: '2026-10-20T09:00:00' } });
+    warnings: [], meta: { request_ref: '1'.repeat(32), source: 'production', time_basis: 'factory_local', snapshot_ref: null, as_of: '2026-10-20T09:00:00' } });
   // Lookups and previews go through the real RunAdoptionAPI and APSWorkbenchTransport; only the network answer comes from these routes.
   let lookupAnswer = null, previews = 0;
   routes['GET /api/workbench/v1/scheduling/candidates/*/adoption-commands/*'] = call => { calls.push(call.path.split('/').pop()); return lookupAnswer; };

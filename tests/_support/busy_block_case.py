@@ -18,8 +18,8 @@ def at(hours=0):
 def day_row(day=0, **overrides):
     row = dict(
         date=(BASE + timedelta(days=day)).date().isoformat(), day_type="workday",
-        shift_start="08:00", shift_end="16:00", shift_hours=8.0,
         efficiency=1.0, allow_normal="yes", allow_urgent="yes", remark="busy-block-test",
+        periods_json='[{"start":"08:00","end":"16:00","day_offset":0}]',
     )
     row.update(overrides)
     return row
@@ -36,17 +36,13 @@ def native_calendar(rows=(), operator_rows=(), calendar_type=CalendarService):
         days.update({row["date"]: row for row in rows})
         for row in days.values():
             conn.execute(
-                "INSERT INTO WorkCalendar (date, day_type, shift_start, shift_end, shift_hours, "
-                "efficiency, allow_normal, allow_urgent, remark) VALUES "
-                "(:date, :day_type, :shift_start, :shift_end, :shift_hours, :efficiency, "
-                ":allow_normal, :allow_urgent, :remark)", row,
+                "INSERT INTO WorkCalendar (date, day_type, efficiency, allow_normal, allow_urgent, remark, periods_json) "
+                "VALUES (:date, :day_type, :efficiency, :allow_normal, :allow_urgent, :remark, :periods_json)", row,
             )
         for row in operator_rows:
             conn.execute(
-                "INSERT INTO OperatorCalendar (operator_id, date, day_type, shift_start, shift_end, "
-                "shift_hours, efficiency, allow_normal, allow_urgent, remark) VALUES "
-                "('O1', :date, :day_type, :shift_start, :shift_end, :shift_hours, :efficiency, "
-                ":allow_normal, :allow_urgent, :remark)", row,
+                "INSERT INTO OperatorCalendar (operator_id, date, day_type, efficiency, allow_normal, allow_urgent, remark, periods_json) "
+                "VALUES ('O1', :date, :day_type, :efficiency, :allow_normal, :allow_urgent, :remark, :periods_json)", row,
             )
         conn.commit()
         conn.execute("PRAGMA query_only = ON")

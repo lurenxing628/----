@@ -187,3 +187,18 @@ def test_an_estimate_past_the_horizon_is_measured_in_wall_clock_hours_only():
     assert time_left == (due_exclusive(date(2026, 1, 30)) - late_start).total_seconds() / 3600.0
     assert slack == time_left - 6.0
     assert calendar.days_resolved == set(), "nothing lies before the horizon, so the calendar is never asked"
+
+
+def test_working_hours_prefix_after_far_anchor_preserves_microsecond_windows():
+    near = _WalkRecordingCalendar()
+    far = _WalkRecordingCalendar()
+    far.working_hours_between(datetime(2006, 1, 2, 8, 0), datetime(2006, 1, 2, 9, 0))
+
+    target = datetime(2026, 6, 15, 8, 0, 0)
+    one_us_later = target + timedelta(microseconds=1)
+    one_min_later = target + timedelta(minutes=1)
+
+    assert far.working_hours_between(target, one_us_later) == 1 / 3_600_000_000.0
+    assert far.working_hours_between(one_us_later, target) == -1 / 3_600_000_000.0
+    assert far.working_hours_between(target, one_us_later) == near.working_hours_between(target, one_us_later)
+    assert far.working_hours_between(target, one_min_later) == near.working_hours_between(target, one_min_later)

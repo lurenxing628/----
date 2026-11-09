@@ -10,7 +10,6 @@ finite complete score. Complete candidates are untouched.
 from __future__ import annotations
 
 import json
-import sys
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
@@ -68,14 +67,15 @@ def test_explained_incompleteness_scores_the_completed_batches_only(objective):
     assert score == tuple(float(getattr(metrics, key)) for key in objective_metric_keys(objective))
     assert all(item < UNKNOWN_OBJECTIVE_VALUE for item in score)
     assert (metrics.overdue_count, metrics.total_tardiness_hours) == (1, 10.0)
-    evidence = metrics.to_dict()["completion"]
+    public_metrics = metrics.public_dict()
+    evidence = public_metrics["completion"]
     assert evidence["objective_defined"] is False
     assert evidence["objective_score_policy"] == "completed_batches_only"
     assert evidence["objective_scope"] == "completed_batches_only"
-    assert evidence["unknown_objective_value"] is None
+    assert metrics.completion.components_known is True
     assert evidence["incomplete_work_weight"] == 3.0
-    assert evidence["incomplete_batch_ids_sample"] == ["B1"]
-    json.dumps(metrics.to_dict(), allow_nan=False)
+    assert metrics.completion.incomplete_batch_ids == ("B1",)
+    json.dumps(public_metrics, allow_nan=False)
 
 
 @pytest.mark.parametrize("objective", ("min_overdue", "min_tardiness", "min_weighted_tardiness"))
@@ -92,8 +92,9 @@ def test_explained_incompleteness_never_outranks_a_complete_candidate_behind_fai
                                seed_occupancies_by_op_id={}, failure_details=[])
     assert complete.completion.objective_defined
     assert complete.completion.objective_score_policy == "original"
-    assert complete.to_dict()["completion"]["objective_scope"] == "all_batches"
-    assert complete.to_dict()["completion"]["incomplete_work_weight"] == 0.0
+    complete_completion = complete.public_dict()["completion"]
+    assert complete_completion["objective_scope"] == "all_batches"
+    assert complete_completion["incomplete_work_weight"] == 0.0
     for objective in OBJECTIVES:
         assert (0.0,) + objective_score(objective, complete) < (1.0,) + objective_score(objective, _explained(b2_hours=1))
 
@@ -104,13 +105,13 @@ def test_missing_operations_without_evidence_stay_unknown(objective):
     no_evidence = compute_metrics([_result(2, "B2", hours=1), _result(3, "B3", hours=1)], _batches(B1="normal", B2="normal", B3="normal"),
                                   expected_operations=OPERATIONS, seed_results=[], seed_occupancies_by_op_id={}, failure_details=[])
     assert objective_score(objective, no_evidence) == unknown
-    assert no_evidence.to_dict()["completion"]["objective_score_policy"] == "unknown_all_components"
-    assert no_evidence.to_dict()["completion"]["unknown_objective_value"] == sys.float_info.max
+    assert no_evidence.public_dict()["completion"]["objective_score_policy"] == "unknown_all_components"
+    assert no_evidence.completion.components_known is False
     partly = compute_metrics([_result(3, "B3", hours=1)], _batches(B1="normal", B2="normal", B3="normal"),
                              expected_operations=OPERATIONS, seed_results=[], seed_occupancies_by_op_id={},
                              failure_details=[_failure(1, "B1")])
     assert objective_score(objective, partly) == unknown
-    assert partly.to_dict()["completion"]["objective_scope"] == "unknown"
+    assert partly.public_dict()["completion"]["objective_scope"] == "unknown"
     unexpected = compute_metrics([_result(2, "B2", hours=1), _result(3, "B3", hours=1), _result(9, "B9", hours=1)],
                                  _batches(B1="normal", B2="normal", B3="normal"),
                                  expected_operations=OPERATIONS, seed_results=[], seed_occupancies_by_op_id={},
@@ -164,9 +165,16 @@ def test_prepared_evaluation_keeps_completion_dynamic_and_prepares_static_facts_
     failures = [{"op_id": 2, "batch_id": "B1"}]
     scenarios = [(complete, []), (partial, []), (partial, failures),
                  (partial + [_result(9, "B9", hours=1)], failures)]
-    expected_metrics = [compute_metrics(results, batches, expected_operations=operations, seed_results=[seed],
-                                       seed_occupancies_by_op_id=seed_occupancies,
-                                       failure_details=details).to_dict() for results, details in scenarios]
+    expected_metrics = [
+        (item, item.public_dict())
+        for results, details in scenarios
+        for item in (
+            compute_metrics(
+                results, batches, expected_operations=operations, seed_results=[seed],
+                seed_occupancies_by_op_id=seed_occupancies, failure_details=details,
+            ),
+        )
+    ]
     with patch.object(evaluation_completion, "_prepare_expected_keys", wraps=evaluation_completion._prepare_expected_keys) as expected_keys, \
             patch.object(evaluation_completion, "normalize_priority", wraps=evaluation_completion.normalize_priority) as priorities, \
             patch.object(evaluation_completion, "_parse_due_date_state", wraps=evaluation_completion._parse_due_date_state) as due_states, \
@@ -177,7 +185,7 @@ def test_prepared_evaluation_keeps_completion_dynamic_and_prepares_static_facts_
                                    seed_occupancies_by_op_id=seed_occupancies,
                                    failure_details=details, prepared=prepared)
                    for results, details in scenarios]
-        assert [item.to_dict() for item in metrics] == expected_metrics
+        assert [(item, item.public_dict()) for item in metrics] == expected_metrics
         assert (expected_keys.call_count, priorities.call_count, due_states.call_count, due_limits.call_count) == (1, 3, 3, 3)
         assert failure_batches.call_count == 2
     assert metrics[0].completion.objective_defined

@@ -17,13 +17,13 @@ from tests.workbench.template_lineage_support import ledger_fixture as _ledger_f
 from tests.workbench.template_lineage_support import lineage_case as _lineage_case  # noqa: F401
 
 
-@pytest.mark.parametrize('table', ['WorkbenchCommandReceipts'])
-def test_each_write_failure_rolls_back_quota_audit_and_receipt(ready_adoption_case, table):
+def test_receipt_write_failure_rolls_back_quota_audit_and_receipt(ready_adoption_case):
     case = ready_adoption_case
     write_token = token(case)
-    event = "UPDATE" if table == "PartOperations" else "INSERT"
-    case.conn.execute("CREATE TRIGGER co_test_failure BEFORE " + event + " ON " + table +
-                      " BEGIN SELECT RAISE(ABORT,'CO injected storage failure'); END")
+    case.conn.execute(
+        "CREATE TRIGGER co_test_failure BEFORE INSERT ON WorkbenchCommandReceipts"
+        " BEGIN SELECT RAISE(ABORT,'CO injected storage failure'); END"
+    )
     case.conn.commit()
     before = snapshot(case.conn)
     with pytest.raises(WorkbenchCommandUncertain):
@@ -40,8 +40,7 @@ def test_each_write_failure_rolls_back_quota_audit_and_receipt(ready_adoption_ca
     assert result["result"] == "committed" and not result["replayed"]
 
 
-@pytest.mark.parametrize('same_key', [False])
-def test_two_connections_recheck_the_same_preview_before_adoption(ready_adoption_case, same_key):
+def test_competing_connections_reject_second_adoption_from_same_preview(ready_adoption_case):
     case = ready_adoption_case
     write_token = token(case)
     barrier = Barrier(2)
@@ -52,8 +51,9 @@ def test_two_connections_recheck_the_same_preview_before_adoption(ready_adoption
             with case.app.app_context():
                 barrier.wait(timeout=5)
                 try:
-                    return service(conn).confirm(case.template_ref, write_token,
-                        KEY if same_key or index == 0 else KEY + "-other", INTENT)
+                    return service(conn).confirm(
+                        case.template_ref, write_token, KEY if index == 0 else KEY + "-other", INTENT
+                    )
                 except WorkbenchCommandRejected as error:
                     return {"code": error.code}
         finally:
@@ -62,13 +62,8 @@ def test_two_connections_recheck_the_same_preview_before_adoption(ready_adoption
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(pool.map(worker, (0, 1)))
     successes = [row for row in results if row.get("ok")]
-    if same_key:
-        assert len(successes) == 2
-        assert sorted(row["replayed"] for row in successes) == [False, True]
-        assert successes[0]["receipt_ref"] == successes[1]["receipt_ref"]
-    else:
-        assert len(successes) == 1
-        assert [row for row in results if not row.get("ok")] == [{"code": "stale_write"}]
+    assert len(successes) == 1
+    assert [row for row in results if not row.get("ok")] == [{"code": "stale_write"}]
     assert case.conn.execute("SELECT count(*) FROM WorkbenchCalibrationAdoptions").fetchone()[0] == 1
     assert case.conn.execute("SELECT count(*) FROM WorkbenchCommandReceipts WHERE action='calibration.adopt'").fetchone()[0] == 1
 

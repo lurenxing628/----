@@ -88,10 +88,18 @@ def test_operator_machine_normalizer_lists_with_names_and_linkage_rows() -> None
     ]
 
 
-@pytest.mark.parametrize(("raw", "expected"), [(None, 8.0), ("", 8.0), ("  ", 8.0), (6, 6.0), (" 7.5 ", 7.5), (b"4", 4.0)])
-def test_calendar_row_hours_keep_the_business_default_only_for_missing_values(raw, expected) -> None:
-    from core.models.calendar import WorkCalendar
+@pytest.mark.parametrize(("raw", "expected"), [(1, 1.0), (0.75, 0.75)])
+def test_calendar_row_efficiency_requires_positive_finite_number_with_readable_error(raw, expected) -> None:
+    from core.errors import ValidationError
+    from core.models.calendar import OperatorCalendar, WorkCalendar
 
-    row = {"date": "2026-05-01", "day_type": "workday", "shift_start": None, "shift_end": None, "shift_hours": raw,
-           "efficiency": None, "allow_normal": "yes", "allow_urgent": "yes", "remark": None, "periods_json": None}
-    assert (WorkCalendar.from_row(row).shift_hours, WorkCalendar.from_row(row).efficiency) == (expected, 1.0)
+    row = {"date": "2026-05-01", "day_type": "workday", "efficiency": raw, "allow_normal": "yes", "allow_urgent": "yes",
+           "remark": None, "periods_json": '[{"start":"08:00","end":"16:00","day_offset":0}]'}
+    assert WorkCalendar.from_row(row).efficiency == expected
+    # 与排产准入同一条严格判断：文本、bytes、bool 都不当数字读。
+    for bad in (None, "", "  ", 0, -1, float("nan"), float("inf"), "abc", " 0.75 ", b"2", True):
+        with pytest.raises(ValidationError, match="工作日历里 2026-05-01 的效率读不出来或不大于 0") as error:
+            WorkCalendar.from_row({**row, "efficiency": bad})
+        assert error.value.field == "efficiency"
+    with pytest.raises(ValidationError, match="个人日历里 2026-05-01 的效率"):
+        OperatorCalendar.from_row({**row, "operator_id": "O1", "efficiency": None})

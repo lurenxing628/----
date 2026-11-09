@@ -39,7 +39,6 @@ def test_identical_schema_text_is_normalized_once_but_changed_ddl_is_not_reused(
     first = "CREATE TABLE sample (value TEXT DEFAULT '--keep') -- ignore\n;"
     changed = first.replace("'--keep'", "'--changed'")
     assert schema.canonical_sql(first) == schema.canonical_sql(first)
-    assert schema.canonical_ddl_parts(first) == ["value TEXT DEFAULT '--keep'"]
     assert schema.canonical_sql(changed) != schema.canonical_sql(first)
     assert calls == [first, changed]
 

@@ -63,9 +63,13 @@ def test_unspecified_due_is_excluded_while_invalid_due_keeps_delivery_unknown():
     )
     tasks = [{"row_ref": "row-a", "operation_ref": "op-a", "batch_ref": "batch-a", "start": "2026-09-10T08:00:00", "end": "2026-09-10T10:00:00"},
              {"row_ref": "row-b", "operation_ref": "op-b", "batch_ref": "batch-b", "start": "2026-09-10T08:00:00", "end": "2026-09-10T10:00:00"}]
+    intervals = {
+        "row-a": (datetime(2026, 9, 10, 8), datetime(2026, 9, 10, 10)),
+        "row-b": (datetime(2026, 9, 10, 8), datetime(2026, 9, 10, 10)),
+    }
 
     def evaluate():
-        return delivery_coverage(project_decision_delivery(facts, tasks, ["batch-a", "batch-b"]))
+        return delivery_coverage(project_decision_delivery(facts, tasks, ["batch-a", "batch-b"], intervals=intervals))
 
     coverage, values = evaluate()
     assert coverage["state"] == "complete" and coverage["excluded_due_count"] == 1
@@ -74,7 +78,7 @@ def test_unspecified_due_is_excluded_while_invalid_due_keeps_delivery_unknown():
     _, values = evaluate()
     assert values["total_tardiness_hours"]["state"] == "not_applicable"
     assert values["total_tardiness_hours"]["value"] is None
-    items = project_decision_delivery(facts, tasks, ["batch-a", "batch-b"])
+    items = project_decision_delivery(facts, tasks, ["batch-a", "batch-b"], intervals=intervals)
     common = common_completed_delivery(items, items)["common_delivery"]
     assert common["before"]["excluded_due_count"] == common["after"]["excluded_due_count"] == 2
     assert common["delay_delta_hours"] is common["overdue_delta_count"] is None
@@ -82,7 +86,7 @@ def test_unspecified_due_is_excluded_while_invalid_due_keeps_delivery_unknown():
     coverage, values = evaluate()
     assert coverage["invalid_due_count"] == coverage["unknown_due_count"] == 1
     assert values["total_tardiness_hours"]["value"] is None
-    items = project_decision_delivery(facts, tasks, ["batch-a", "batch-b"])
+    items = project_decision_delivery(facts, tasks, ["batch-a", "batch-b"], intervals=intervals)
     common = common_completed_delivery(items, items)["common_delivery"]
     assert common["before"]["invalid_due_count"] == common["after"]["unknown_due_count"] == 1
     assert common["delay_delta_hours"] is common["overdue_delta_count"] is None
@@ -180,6 +184,7 @@ def test_unproven_official_point_keeps_time_difference_unknown():
                                     resource_view="selected_batches", task_intervals=lambda _key: {"row-a": None})
     engine.start, engine.end = window["range_start"], window["range_end"]
     target = engine.drill("reference", {"ref": "d" * 48, "kind": "machine"}, tasks=[before], start=engine.start, end=engine.end)
+    assert target is not None
     assert target["range_end"] == "2026-09-09T08:00:00.000001"
     assert target["reference_view"] is True and target["plan_ref"] == "c" * 48
 
@@ -204,7 +209,7 @@ def test_formal_workspace_preserves_archived_arrangement_with_unknown_time():
                                      execution={"execution_state": "complete", "target_quantity": 3, "target_basis": "batch", "remaining_quantity": 0})
     source.preparation = SimpleNamespace(compact=lambda _key, _ref: effort)
     saved_delivery = project_decision_delivery(facts, source.before_tasks, source.scope["batch_refs"],
-                                              deferred_ids=source.reference_deferred_ids)
+                                              deferred_ids=source.reference_deferred_ids, intervals={"row-a": None})
     source.completion = SimpleNamespace(delivery={"reference": saved_delivery}.__getitem__)
     data = _reference_workspace(source, None)
     assert [{key: value for key, value in row.items() if key != "operation_effort"} for row in data["tasks"]] == source.before_tasks
@@ -214,6 +219,23 @@ def test_formal_workspace_preserves_archived_arrangement_with_unknown_time():
     assert data["task_span"] is None and data["candidate_span"] is None
     assert data["gantt_graph"]["state"] == "unavailable"
     assert data["delivery_risks"]["items"][0]["completion_state"] == "unknown"
+
+    from core.services.workbench.run.candidate_metrics import scoped_rows
+
+    unproven_point = {
+        "row_ref": "row-point",
+        "batch_ref": "batch-a",
+        "start": "2026-09-08T08:00:00",
+        "end": "2026-09-08T08:00:00",
+        "interval_comparable": False,
+    }
+    assert scoped_rows(
+        [unproven_point],
+        {"batch-a"},
+        "2026-09-09T00:00:00",
+        "2026-09-10T00:00:00",
+        task_intervals={"row-point": None},
+    ) == [unproven_point]
 
 
 def test_material_ready_after_formal_adoption_compares_delivery_without_equating_work(candidate_case):

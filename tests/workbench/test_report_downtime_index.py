@@ -230,10 +230,7 @@ def test_report_preserves_raw_resource_id_without_stripping_non_empty_whitespace
             {
                 "date": "2026-10-17",
                 "day_type": "workday",
-                "shift_start": "08:00",
-                "shift_end": "16:00",
-                "shift_hours": 8.0,
-                "periods_json": None,
+                "periods_json": '[{"start":"08:00","end":"16:00","day_offset":0}]',
                 "efficiency": 1.0,
                 "allow_normal": "yes",
                 "allow_urgent": "yes",
@@ -245,10 +242,7 @@ def test_report_preserves_raw_resource_id_without_stripping_non_empty_whitespace
                 "operator_id": " OP1 ",
                 "date": "2026-10-17",
                 "day_type": "workday",
-                "shift_start": "08:00",
-                "shift_end": "14:00",
-                "shift_hours": 6.0,
-                "periods_json": None,
+                "periods_json": '[{"start":"08:00","end":"14:00","day_offset":0}]',
                 "efficiency": 1.0,
                 "allow_normal": "yes",
                 "allow_urgent": "yes",
@@ -351,3 +345,169 @@ def test_catalog_search_matches_rows_only_reachable_through_zero_values():
         facts, ReportPage(sort="resource_label"), as_of=datetime(2026, 10, 17), include_sources=True
     )
     assert [row["machine_id"] for row in selected] == ["M-IDLE"]
+
+
+def test_global_calendar_is_built_lazily_zero_times_for_overridden_operators_and_once_when_shared(monkeypatch):
+    from core.services.capacity import plan_calendar_windows
+
+    start_dt = datetime(2026, 10, 17, 0, 0)
+    end_dt_excl = datetime(2026, 10, 18, 0, 0)
+    first_day = start_dt.date() - timedelta(days=1)
+    last_day = start_dt.date()
+
+    calls = []
+    real_projection = plan_calendar_windows.policy_projection
+
+    def tracked_projection(engine, first, last, start, end, operator_id=None):
+        calls.append(operator_id)
+        return real_projection(engine, first, last, start, end, operator_id)
+
+    monkeypatch.setattr(plan_calendar_windows, "policy_projection", tracked_projection)
+
+    def personal_row(who, day_str, end_clock="14:00"):
+        return {
+            "operator_id": who,
+            "date": day_str,
+            "day_type": "workday",
+            "periods_json": f'[{{"start":"08:00","end":"{end_clock}","day_offset":0}}]',
+            "efficiency": 1.0,
+            "allow_normal": "yes",
+            "allow_urgent": "yes",
+            "remark": None,
+        }
+
+    broken_global = [
+        {
+            "date": "2026-10-17",
+            "day_type": "workday",
+            "periods_json": "broken-global-periods",
+            "efficiency": 1.0,
+            "allow_normal": "yes",
+            "allow_urgent": "yes",
+            "remark": None,
+        }
+    ]
+    overridden_facts = {
+        "defaults": (),
+        "global": broken_global,
+        "personal": [
+            personal_row("OP1", "2026-10-16"),
+            personal_row("OP1", "2026-10-17"),
+        ],
+        "profiles": [],
+        "patterns": [],
+        "machines": [{"machine_id": "M-BAD-STATUS", "status": "retired"}],
+        "operators": [{"operator_id": "OP1", "status": "active"}],
+        "downtimes": [],
+    }
+    projected = _project_resources(
+        {"machine": ["M-MISSING", "M-BAD-STATUS"], "operator": ["OP1"]},
+        overridden_facts,
+        first_day,
+        last_day,
+        start_dt,
+        end_dt_excl,
+    )
+    assert calls == ["OP1"]
+    assert projected["operator", "OP1"]["state"] == "available"
+    assert projected["operator", "OP1"]["available_hours"] == 6.0
+    assert projected["machine", "M-MISSING"]["issues"][0]["code"] == "resource_missing"
+    assert projected["machine", "M-BAD-STATUS"]["issues"][0]["code"] == "resource_status_unknown"
+
+    calls.clear()
+    valid_global = [
+        {
+            "date": "2026-10-17",
+            "day_type": "workday",
+            "periods_json": '[{"start":"08:00","end":"16:00","day_offset":0}]',
+            "efficiency": 1.0,
+            "allow_normal": "yes",
+            "allow_urgent": "yes",
+            "remark": None,
+        }
+    ]
+    shared_facts = {
+        "defaults": (),
+        "global": valid_global,
+        "personal": [
+            personal_row("OP1", "2026-10-16"),
+            personal_row("OP1", "2026-10-17"),
+        ],
+        "profiles": [],
+        "patterns": [],
+        "machines": [
+            {"machine_id": "M1", "status": "active"},
+            {"machine_id": "M2", "status": "active"},
+        ],
+        "operators": [
+            {"operator_id": "OP1", "status": "active"},
+            {"operator_id": "OP2", "status": "active"},
+            {"operator_id": "OP3", "status": "active"},
+        ],
+        "downtimes": [],
+    }
+    shared = _project_resources(
+        {"machine": ["M1", "M2"], "operator": ["OP1", "OP2", "OP3"]},
+        shared_facts,
+        first_day,
+        last_day,
+        start_dt,
+        end_dt_excl,
+    )
+    assert calls.count(None) == 1
+    assert calls == [None, "OP1"]
+    assert shared["machine", "M1"]["available_hours"] == 8.0
+    assert shared["operator", "OP2"]["available_hours"] == 8.0
+    assert shared["operator", "OP3"]["available_hours"] == 8.0
+
+    # 全局日历损坏时，多个继承全局的人员与设备依然只构建 1 次全局投影，不二次重扫全局。
+    calls.clear()
+    broken_shared = _project_resources(
+        {"machine": ["M1"], "operator": ["OP2", "OP3"]},
+        {**shared_facts, "global": broken_global, "personal": []},
+        first_day,
+        last_day,
+        start_dt,
+        end_dt_excl,
+    )
+    assert calls == [None]
+    assert broken_shared["machine", "M1"]["state"] == "unavailable"
+    assert broken_shared["operator", "OP2"]["state"] == "unavailable"
+    assert broken_shared["operator", "OP2"]["basis"] == "personal_or_operator_shift_calendar"
+
+    # ArchivedCalendar._resource_day 同样在计算 _policy_day 前通过 resource_record_unavailable 短路缺失或非法状态资源。
+    from core.services.workbench.facts.archived_calendar import ArchivedCalendar
+
+    m_missing_ref, o_bad_ref = "a" * 48, "b" * 48
+    saved_archive = {
+        "tables": {
+            "SchemaVersion": [{"id": 1, "version": 45}],
+            "WorkbenchEntityRefs": [
+                {"kind": "machine", "ref": m_missing_ref, "entity_key": "M-GONE", "active": 1},
+                {"kind": "operator", "ref": o_bad_ref, "entity_key": "OP-BAD", "active": 1},
+            ],
+            "Machines": [],
+            "Operators": [{"operator_id": "OP-BAD", "name": "状态非法", "status": "retired"}],
+            "WorkCalendar": broken_global,
+            "OperatorCalendar": [],
+            "MachineDowntimes": [],
+            "WorkbenchOperatorProfiles": [],
+            "WorkbenchShiftProfiles": [],
+            "WorkbenchShiftPatternDays": [],
+            "WorkbenchCalendarDefaults": [],
+        }
+    }
+    calls.clear()
+    archived_results = dict(
+        ArchivedCalendar(saved_archive).iter_resources(
+            [
+                {"kind": "machine", "ref": m_missing_ref, "saved_id": "M-GONE"},
+                {"kind": "operator", "ref": o_bad_ref, "saved_id": "OP-BAD"},
+            ],
+            "2026-10-17T00:00:00",
+            "2026-10-18T00:00:00",
+        )
+    )
+    assert calls == []
+    assert archived_results[m_missing_ref]["issues"][0]["code"] == "resource_missing"
+    assert archived_results[o_bad_ref]["issues"][0]["code"] == "resource_status_unknown"

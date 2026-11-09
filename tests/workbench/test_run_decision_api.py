@@ -302,7 +302,7 @@ def test_explicit_comparison_navigation_preserves_identity_and_complete_window()
         assert read_navigation(view, MultiDict({"nav": json.dumps(navigation)})) == navigation
     formal: Dict[str, Any] = {key: value for key, value in context.items() if key != "reference_candidate_ref"}
     formal.update(comparison_mode="admission_official", reference_view=True, plan_ref="d" * 48,
-                  operation_ref="e" * 48, comparison_tab="differences", metric_view="all")
+                  operation_ref="e" * 48, comparison_tab="differences")
     navigation = {"version": 1, "view": "gantt", "context": formal}
     assert read_navigation("gantt", MultiDict({"nav": json.dumps(navigation)})) == navigation
     resources = dict(formal, comparison_tab="resources", resource_view="full_candidate", resource_kind="operator", resource_ref="f" * 48)
@@ -325,7 +325,8 @@ def test_explicit_comparison_navigation_preserves_identity_and_complete_window()
                     # 页签白名单与前端实际页签一致；已不存在的旧页签按无效导航拒绝。
                     dict(formal, comparison_tab="overview"), dict(formal, comparison_tab="batches"),
                     dict(formal, comparison_tab="operations"),
-                    dict(formal, metric_view="unknown"), dict(formal, operation_ref="invalid"), dict(reading, selected_batch_ref="invalid"),
+                    # 白名单外的键整体拒绝，不按旧字段逐个适配。
+                    dict(formal, unsupported_key="x"), dict(formal, operation_ref="invalid"), dict(reading, selected_batch_ref="invalid"),
                     dict(resources, resource_view="invalid"), dict(resources, resource_kind="invalid"), dict(resources, resource_ref="invalid")):
         with pytest.raises(WorkbenchNavigationInvalid):
             read_navigation("analysis", MultiDict({"nav": json.dumps({"version": 1, "view": "analysis", "context": invalid})}))
@@ -367,3 +368,159 @@ def test_unsaved_recommendation_does_not_invent_missing_saved_selection_evidence
     assert basis["selected_candidate_ref"] is None and basis["evidence_state"] == "unavailable"
     assert basis["explanation"]["headline"] == "本次排产尚未保存推荐方案。"
     assert basis["explanation"]["issues"] == []
+
+
+def test_decision_queries_preparation_pagination_and_recommendation_export_truth(candidate_case, monkeypatch):
+    from core.infrastructure.transaction import TransactionManager
+    from core.models.workbench_batch_material import normalize_material_changes
+    from core.services.workbench.batch.materials import WorkbenchBatchMaterialService
+    from data.repositories.workbench_run_candidate_repo import WorkbenchRunCandidateRepository
+
+    case = candidate_case
+    case.conn.execute("UPDATE Batches SET quantity=1,due_date='2026-09-09' WHERE batch_id='B1'")
+    case.conn.execute("UPDATE BatchOperations SET unit_hours=2 WHERE id=?", (case.op_id,))
+    op_b1_2 = case.operation("B1", seq=2, unit_hours=2)
+
+    case.batch("B2", quantity=1, due_date="2026-09-10")
+    op_b2_1 = case.operation("B2", seq=1, unit_hours=1)
+    op_b2_2 = case.operation("B2", seq=2, unit_hours=1)
+    op_b2_3 = case.operation("B2", seq=3, unit_hours=1)
+    b2_material_rows = []
+    for idx, deferred_op in enumerate((op_b2_1, op_b2_2, op_b2_3), start=1):
+        mat_code = f"MAT_B2_{idx}"
+        case.conn.execute("INSERT INTO Materials(material_id,name,unit) VALUES (?,?,'件')", (mat_code, mat_code))
+        op_ref = case.conn.execute(
+            "SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND source_key=? AND active=1",
+            (str(deferred_op),),
+        ).fetchone()[0]
+        b2_material_rows.append(
+            {
+                "row_key": None,
+                "material_ref": case.ref("material", mat_code),
+                "required_quantity": 2,
+                "available_quantity": 0,
+                "operation_ref": op_ref,
+                "arrivals": [],
+            }
+        )
+    case.conn.commit()
+    with TransactionManager(case.conn).transaction():
+        WorkbenchBatchMaterialService(case.conn).apply_normalized(
+            case.ref("batch", "B2"),
+            normalize_material_changes({"removed_keys": [], "rows": b2_material_rows}),
+        )
+
+    case.batch("B3", quantity=1, due_date="2026-09-10")
+    op_b3_1 = case.operation("B3", seq=1, unit_hours=6)
+
+    case.config(dispatch_mode="batch_order", sort_strategy="due_date_first")
+    run_ref, refs = compute(case, case.settings("B1", "B2", "B3", end_date="2026-09-09", material_strategy="stage"))
+    cand_ref = refs[0]
+
+    seq_overrides = {
+        case.op_id: 10,
+        op_b1_2: 10_000_000_000_000_000,
+        op_b2_1: 1 << 53,
+        op_b2_2: 2,
+        op_b2_3: None,
+        op_b3_1: 5,
+    }
+    original_capture = WorkbenchRunCandidateRepository.job_capture
+
+    def capture_with_large_sequences(repo_self, target_run_ref):
+        row = original_capture(repo_self, target_run_ref)
+        if row is None or target_run_ref != run_ref:
+            return row
+        facts = json.loads(row[3])
+        cols = facts["columns"]["BatchOperations"]
+        id_idx, seq_idx = cols.index("id"), cols.index("seq")
+        for op_row in facts["tables"]["BatchOperations"]:
+            if isinstance(op_row, list) and op_row[id_idx] in seq_overrides:
+                op_row[seq_idx] = seq_overrides[op_row[id_idx]]
+            elif isinstance(op_row, dict) and op_row["id"] in seq_overrides:
+                op_row["seq"] = seq_overrides[op_row["id"]]
+        patched_text = json.dumps(facts, ensure_ascii=False, separators=(",", ":"))
+        return (*row[:3], patched_text, *row[4:7], len(patched_text.encode("utf-8")))
+
+    monkeypatch.setattr(WorkbenchRunCandidateRepository, "job_capture", capture_with_large_sequences)
+    client, _ = api(case)
+
+    expected_asc = [2, 5, 10, str(1 << 53), "10000000000000000", None]
+    expected_desc = ["10000000000000000", str(1 << 53), 10, 5, 2, None]
+    for endpoint in ("operations", "preparation"):
+        asc_resp = client.get(
+            f"{BASE}/runs/{run_ref}/decision/{endpoint}",
+            query_string={"selected_candidate_ref": cand_ref, "sort": "sequence", "order": "asc"},
+        )
+        assert asc_resp.status_code == 200, asc_resp.get_json()
+        assert [row["sequence"] for row in asc_resp.get_json()["data"]["items"]] == expected_asc
+
+        desc_resp = client.get(
+            f"{BASE}/runs/{run_ref}/decision/{endpoint}",
+            query_string={"selected_candidate_ref": cand_ref, "sort": "sequence", "order": "desc"},
+        )
+        assert desc_resp.status_code == 200, desc_resp.get_json()
+        assert [row["sequence"] for row in desc_resp.get_json()["data"]["items"]] == expected_desc
+
+    summary_doc = decision_summary(
+        client, run_ref, selected_candidate_ref=cand_ref, comparison_mode="admission_official"
+    )
+    export_resp = client.get(
+        f"{BASE}/runs/{run_ref}/decision/export",
+        query_string={
+            "selected_candidate_ref": cand_ref,
+            "comparison_mode": "admission_official",
+            "snapshot_ref": summary_doc["meta"]["snapshot_ref"],
+            "section": "recommendation",
+            "format": "csv",
+        },
+    )
+    assert export_resp.status_code == 200, export_resp.get_data(as_text=True)
+    csv_rows = list(csv.DictReader(io.StringIO(export_resp.data.decode("utf-8-sig"))))
+    completion_rows = [row for row in csv_rows if row["record_kind"] == "completion_set"]
+    cand_categories = {
+        row["批次编号"]: row["安排分类"] for row in completion_rows if row["安排来源类型"] == "candidate"
+    }
+    ref_categories = {
+        row["批次编号"]: row["安排分类"] for row in completion_rows if row["安排来源类型"] == "admission_official"
+    }
+    assert cand_categories == {"B1": "complete", "B2": "deferred", "B3": "incomplete"}
+    assert ref_categories == {"B1": "unknown", "B2": "unknown", "B3": "unknown"}
+
+    ops_path = f"{BASE}/runs/{run_ref}/decision/operations"
+    for bad_query in (
+        {"page": "0"},
+        {"page": "01"},
+        {"page": "１"},
+        {"page": "-1"},
+        {"page": str(1 << 53)},
+        {"page": "9" * 6000},
+        {"size": "7"},
+        {"size": "020"},
+        {"size": "２０"},
+        {"size": "9" * 6000},
+    ):
+        bad_resp = client.get(ops_path, query_string={"selected_candidate_ref": cand_ref, **bad_query})
+        assert bad_resp.status_code == 422 and bad_resp.get_json()["error"]["code"] == "invalid_input"
+
+    beyond_resp = client.get(
+        ops_path,
+        query_string={"selected_candidate_ref": cand_ref, "page": str((1 << 53) - 1)},
+    )
+    assert beyond_resp.status_code == 200, beyond_resp.get_json()
+    beyond_data = beyond_resp.get_json()["data"]
+    assert beyond_data["items"] == [] and beyond_data["page"]["has_more"] is False
+
+    res_path = f"{BASE}/runs/{run_ref}/decision/resources"
+    for valid_heatmap_size in (7, 14, 31):
+        ok_res = client.get(
+            res_path,
+            query_string={"selected_candidate_ref": cand_ref, "heatmap_size": str(valid_heatmap_size)},
+        )
+        assert ok_res.status_code == 200, ok_res.get_json()
+    for bad_heatmap in ("07", "７", "15", "9" * 6000):
+        bad_res = client.get(
+            res_path,
+            query_string={"selected_candidate_ref": cand_ref, "heatmap_size": bad_heatmap},
+        )
+        assert bad_res.status_code == 422 and bad_res.get_json()["error"]["code"] == "invalid_input"

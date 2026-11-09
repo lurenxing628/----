@@ -19,7 +19,6 @@ from core.algorithms.greedy.dispatch.sgs_checkpoint_tail import DecodeTailReuse
 from core.algorithms.greedy.scheduler import GreedyScheduler
 from core.errors import ValidationError
 from core.models.objective import target_objectives_for
-from core.services.scheduler.calendar.checkpoint_certificate import calendar_checkpoint_snapshot
 from core.services.scheduler.calendar.service import CalendarService
 from core.services.scheduler.run.optimizer.graph import iterated_greedy as ig_module
 from core.services.scheduler.run.optimizer.graph.iterated_greedy_checkpoints import CheckpointStore
@@ -467,32 +466,35 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
 
 def test_calendar_content_cache_does_not_reuse_rolled_back_transaction(schema_conn):
     conn = schema_conn
-    conn.execute("INSERT INTO WorkCalendar (date,shift_hours,efficiency) VALUES ('2026-09-08',8,1)")
+    conn.execute(
+        "INSERT INTO WorkCalendar (date,day_type,efficiency,allow_normal,allow_urgent,periods_json) "
+        "VALUES ('2026-09-08','workday',1,'yes','yes','[{\"start\":\"08:00\",\"end\":\"16:00\",\"day_offset\":0}]')"
+    )
     conn.commit()
     calendar = CalendarService(conn)
     original_reader = CalendarCheckpointRepository.calendar_signature_rows
     with patch.object(CalendarCheckpointRepository, "calendar_signature_rows", autospec=True,
                       side_effect=original_reader) as reader:
-        original = calendar_checkpoint_snapshot(calendar)
+        original = calendar.certified_decode_checkpoint_snapshot()
         assert original[0] == "calendar-business-v1" and isinstance(original[1], tuple)
-        assert calendar_checkpoint_snapshot(calendar) is original
+        assert calendar.certified_decode_checkpoint_snapshot() is original
         assert reader.call_count == 1
 
         conn.execute("BEGIN")
         conn.execute("UPDATE WorkCalendar SET efficiency=0.5 WHERE date='2026-09-08'")
-        changed = calendar_checkpoint_snapshot(calendar)
+        changed = calendar.certified_decode_checkpoint_snapshot()
         before_rollback = conn.total_changes
-        assert changed != original and "_decode_checkpoint_calendar_cache" not in vars(calendar)
+        assert changed != original
         conn.rollback()
         conn.execute("BEGIN")
         assert conn.total_changes == before_rollback
-        assert calendar_checkpoint_snapshot(calendar) == original
+        assert calendar.certified_decode_checkpoint_snapshot() == original
         assert reader.call_count == 3
         conn.rollback()
 
         conn.execute("PRAGMA query_only=ON")
-        readonly = calendar_checkpoint_snapshot(calendar)
-        assert readonly == original and calendar_checkpoint_snapshot(calendar) is readonly
+        readonly = calendar.certified_decode_checkpoint_snapshot()
+        assert readonly == original and calendar.certified_decode_checkpoint_snapshot() is readonly
         assert reader.call_count == 4
 
 

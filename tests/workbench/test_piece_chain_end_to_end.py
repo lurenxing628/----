@@ -2,8 +2,6 @@
 
 import json
 
-import pytest
-
 from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
@@ -28,10 +26,9 @@ def workspace(conn, ref):
         return svc.workspace(PlanReadScope(ref))[0]
 
 
-@pytest.mark.parametrize("common", [True])
-def test_real_complete_chain_preserves_raw_source_old_scene_and_receipts(trial_case, common):
+def test_common_piece_chain_preserves_raw_source_saved_scene_and_receipts(trial_case):
     case = trial_case
-    ids, run_ref, refs = piece_candidate(case, common=common)
+    ids, run_ref, refs = piece_candidate(case)
     original_artifact = artifact(case, refs[0])
     adopted = adopt_candidate(case, refs[0])
     plan = adopted["data"]["official_plan"]
@@ -47,12 +44,11 @@ def test_real_complete_chain_preserves_raw_source_old_scene_and_receipts(trial_c
         replay = candidate_adoption(reopened).adopt(refs[0], "expired", "ef-candidate-adopt-0001", INTENT)
         assert replay["receipt_ref"] == adopted["receipt_ref"] and replay["replayed"]
         assert snapshot(reopened) == before
-        target = ids[None, 40] if common else ids["item-C", 30]
+        target = ids[None, 40]
         draft, changed, saved = saved_trial(case, {"plan_ref": plan["plan_ref"]}, op_id=target)
         assert draft["task_count"] == changed["task_count"] == saved["task_count"] == len(ids)
-        if common:
-            join = next(row for row in draft["tasks"] if row["sequence"] == 40)
-            assert len(join["predecessor_operation_refs"]) == 3
+        join = next(row for row in draft["tasks"] if row["sequence"] == 40)
+        assert len(join["predecessor_operation_refs"]) == 3
         assert {row["quantity"] for row in draft["tasks"] if row["piece_id"] is not None} == {1}
         assert {row["batch_quantity"] for row in draft["tasks"]} == {3}
         frozen_scene = trial_service(reopened).scenario(saved["scenario_ref"])

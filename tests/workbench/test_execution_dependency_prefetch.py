@@ -51,7 +51,7 @@ def test_prefetch_preserves_merged_cycle_peers_and_shared_branch_dependencies():
     dependencies.cycles[cycle] = ["OP0001", "OP0002"]
     dependencies.sequences.update({"OP0001": 1, "OP0002": 2})
     requested = []
-    dependencies.projections = lambda refs: requested.append(set(refs))
+    dependencies.projections = lambda refs: (requested.append(set(refs)), [])[1]
     dependencies.prepare([operations[1]])
     assert requested == [set(row["operation_ref"] for row in operations)]
     assert dependencies.relatives(operations[1], predecessors=True) == ["OP0000"]
@@ -78,3 +78,47 @@ def test_batch_preparation_computes_execution_change_once_per_operation(ledger_c
     prepared = case.writer.prepare_batch([
         {"action": "create", "ref": case.task(2, op), "payload": case.values(1)} for op in (case.op_id, second)])
     assert len(calls) == len(set(calls)) == len(prepared.projections) == 2
+
+
+def test_batch_preparation_prefetches_operator_machine_authorizations_once(ledger_case, monkeypatch):
+    import pytest
+
+    from core.services.workbench.execution.production_report_prepare import ReportBatchRejected
+    from data.repositories.operator_machine_repo import OperatorMachineRepository
+
+    case = ledger_case
+    case.conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M2','Mill','T1')")
+    case.conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('O2','Operator 2')")
+    case.conn.execute("INSERT INTO OperatorMachine(operator_id,machine_id) VALUES ('O1','M2'),('O2','M1')")
+    second, third = case.op("OP2", seq=2), case.op("OP3", seq=3)
+    case.plan(2, [case.op_id, second, third])
+    batch_calls = []
+    original_list = OperatorMachineRepository.list_simple_rows_for_operators
+
+    def tracked_list(repo, operator_ids):
+        batch_calls.append(list(operator_ids))
+        return original_list(repo, operator_ids)
+
+    def unexpected_exists(repo, operator_id, machine_id):
+        raise AssertionError(f"Unexpected per-pair OperatorMachine.exists({operator_id!r}, {machine_id!r})")
+
+    monkeypatch.setattr(OperatorMachineRepository, "list_simple_rows_for_operators", tracked_list)
+    monkeypatch.setattr(OperatorMachineRepository, "exists", unexpected_exists)
+    m1, m2 = case.ref("machine", "M1"), case.ref("machine", "M2")
+    o1, o2 = case.ref("operator", "O1"), case.ref("operator", "O2")
+    prepared = case.writer.prepare_batch([
+        {"action": "create", "ref": case.task(2, case.op_id), "payload": case.values(1, actual_machine_ref=m1, actual_operator_ref=o1)},
+        {"action": "create", "ref": case.task(2, second), "payload": case.values(1, actual_machine_ref=m2, actual_operator_ref=o1)},
+        {"action": "create", "ref": case.task(2, third), "payload": case.values(1, actual_machine_ref=m1, actual_operator_ref=o2)},
+    ])
+    assert len(prepared.appended) == 3
+    assert batch_calls == [["O1", "O2"]]
+
+    batch_calls.clear()
+    with pytest.raises(ReportBatchRejected) as rejected:
+        case.writer.prepare_batch([
+            {"action": "create", "ref": case.task(2, case.op_id), "payload": case.values(1, actual_machine_ref=m1, actual_operator_ref=o1)},
+            {"action": "create", "ref": case.task(2, second), "payload": case.values(1, actual_machine_ref=m2, actual_operator_ref=o2)},
+        ])
+    assert rejected.value.code == "constraint_conflict" and rejected.value.row_number == 2
+    assert batch_calls == [["O1", "O2"]]

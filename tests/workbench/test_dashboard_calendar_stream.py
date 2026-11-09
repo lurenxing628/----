@@ -194,9 +194,9 @@ def test_point_event_calendar_catches_shift_validation_and_business_errors(dashb
         (profile_status,),
     )
     case.conn.execute(
-        "INSERT INTO WorkbenchShiftPatternDays(profile_id,day_offset,is_rest,shift_start,shift_end) "
-        "VALUES ('SP-POINT',0,?,'08:00','16:00')",
-        (is_rest,),
+        "INSERT INTO WorkbenchShiftPatternDays(profile_id,day_offset,is_rest,periods_json) "
+        "VALUES ('SP-POINT',0,?,?)",
+        (is_rest, "[]" if is_rest else '[{"start":"08:00","end":"16:00","day_offset":0}]'),
     )
     case.conn.execute(
         "INSERT INTO WorkbenchOperatorProfiles(operator_id,shift_profile_id) VALUES ('DO1','SP-POINT')"
@@ -248,7 +248,7 @@ def test_dashboard_capture_consumes_selected_calendar_days_for_earlier_point_bef
             start=selected.start,
             end=selected.end,
             time_scope=selected.time_scope,
-            intervals={point_row["schedule_id"]: (datetime(2026, 9, 9, 10, 0), datetime(2026, 9, 9, 10, 0))},
+            intervals={selected.rows[0]["schedule_id"]: (datetime(2026, 9, 9, 10, 0), datetime(2026, 9, 9, 10, 0))},
         )
 
     monkeypatch.setattr(CalendarFacts, "calendar", record_calendar)

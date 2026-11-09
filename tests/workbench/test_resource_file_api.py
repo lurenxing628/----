@@ -368,6 +368,97 @@ def test_op_type_import_rejects_label_owned_by_another_saved_code_as_row_duplica
         assert (error["field"], error["code"]) == ("label", "duplicate_entry") and label in error["message"], row
 
 
+def test_resource_import_matches_saved_records_by_exact_business_code_and_rejects_padded_new_codes(client):
+    assert command(client, "op_type", new_preview(client, "op_type", "external")).status_code == 200
+    with database(client) as conn:
+        conn.executemany(
+            "INSERT INTO OpTypes(op_type_id,name,category) VALUES (?,?,?)",
+            [
+                (" R1 ", "Spaced Resource 1", "external"),
+                ("OT-PAD", "Trimmed Internal", "internal"),
+                (" OT-PAD ", "Spaced Internal", "internal"),
+            ],
+        )
+        conn.executemany(
+            "INSERT INTO WorkbenchMachineGroups(group_id,name,status) VALUES (?,?,'active')",
+            [("G-PAD", "Trimmed Group"), (" G-PAD ", "Spaced Group")],
+        )
+        conn.executemany(
+            "INSERT INTO Machines(machine_id,name,op_type_id,status) VALUES (?,?,'OT-PAD','active')",
+            [("M1", "Trimmed Machine"), (" M1 ", "Spaced Machine")],
+        )
+        conn.commit()
+
+    # 不存在的带首尾空格新编号必须拒绝，存量带首尾空格编号精确匹配自身而不串改无空格兄弟
+    rejected_new = upload(
+        client,
+        "op_type",
+        [(" R1 ", "Spaced Resource 1 renamed", "外协"), (" R9 ", "Resource 9", "外协")],
+        category="external",
+    )
+    assert rejected_new.status_code == 200, rejected_new.get_json()
+    rejected_data = rejected_new.get_json()["data"]
+    assert rejected_data["can_confirm"] is False
+    assert rejected_data["rows"][0]["business_code"] == " R1 "
+    assert rejected_data["rows"][0]["action"] == "update"
+    assert rejected_data["rows"][0]["errors"] == []
+    assert rejected_data["rows"][1]["business_code"] == " R9 "
+    assert rejected_data["rows"][1]["errors"] == [
+        {"row": 3, "field": "business_code", "code": "invalid_input", "message": "编号不能有首尾空格，请修正后重新导入。"}
+    ]
+
+    valid_update = upload(
+        client,
+        "op_type",
+        [(" R1 ", "Spaced Resource 1 renamed", "外协")],
+        category="external",
+    )
+    assert valid_update.status_code == 200, valid_update.get_json()
+    valid_preview = valid_update.get_json()["data"]
+    assert valid_preview["can_confirm"] is True
+    assert command(client, "op_type", valid_preview, key="resource-spaced-optype-update").status_code == 200
+    with database(client) as conn:
+        names = dict(
+            conn.execute(
+                "SELECT op_type_id, name FROM OpTypes WHERE op_type_id IN ('R1', ' R1 ')"
+            ).fetchall()
+        )
+    assert names == {"R1": "Resource 1", " R1 ": "Spaced Resource 1 renamed"}
+
+    # 关联编号列：存量带空格编号可精确引用，不存在的带空格编号仍报格式错误
+    bad_rel = upload(
+        client,
+        "machine",
+        [(" M1 ", "Spaced Machine", "可用", " G-NONE ", '" OT-PAD "')],
+        headers=("business_code", "label", "status", "group_code", "op_type_codes"),
+    )
+    assert bad_rel.status_code == 200, bad_rel.get_json()
+    bad_rel_row = bad_rel.get_json()["data"]["rows"][0]
+    assert any(err["field"] == "group_code" and "不能填空格" in err["message"] for err in bad_rel_row["errors"])
+
+    good_rel = upload(
+        client,
+        "machine",
+        [(" M1 ", "Spaced Machine Updated", "可用", " G-PAD ", '" OT-PAD "')],
+        headers=("business_code", "label", "status", "group_code", "op_type_codes"),
+    )
+    assert good_rel.status_code == 200, good_rel.get_json()
+    good_rel_preview = good_rel.get_json()["data"]
+    assert good_rel_preview["can_confirm"] is True, good_rel_preview
+    assert good_rel_preview["rows"][0]["after"]["group_code"] == " G-PAD "
+    assert good_rel_preview["rows"][0]["after"]["op_type_codes"] == [" OT-PAD "]
+    assert command(client, "machine", good_rel_preview, key="resource-spaced-machine-update").status_code == 200
+
+    # 存量带空格记录若缺失 identity，仍优先报 500 storage_failure 而不是被新编号空格校验吞掉
+    with database(client) as conn:
+        conn.execute("INSERT INTO OpTypes(op_type_id,name,category) VALUES (' BROKEN ','Broken','external')")
+        conn.execute("DELETE FROM WorkbenchEntityRefs WHERE kind='op_type' AND entity_key=' BROKEN '")
+        conn.commit()
+    broken_resp = upload(client, "op_type", [(" BROKEN ", "Broken", "外协")], category="external")
+    assert broken_resp.status_code == 500
+    assert broken_resp.get_json()["error"]["code"] == "storage_failure"
+
+
 def test_internal_op_type_import_with_merge_mode_is_a_row_conflict(client):
     response = upload(client, "op_type", [("T-INT", "Internal type", "自制", "分别设置")], category="internal",
                       headers=("business_code", "label", "category", "default_merge_mode"))

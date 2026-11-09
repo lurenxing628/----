@@ -9,6 +9,7 @@ const runtime = vm.createContext({console, document, URL, URLSearchParams, Map, 
 runtime.window = runtime; runtime.self = runtime;
 runtime.addEventListener = () => {}; runtime.removeEventListener = () => {};
 runtime.dispatchEvent = () => {}; runtime.CustomEvent = class { constructor(type, options) { this.type = type; this.detail = options.detail; } };
+runtime.matchMedia = query => ({media: String(query), matches: String(query).trim().toLowerCase() === 'screen', addEventListener() {}, removeEventListener() {}});
 runtime.location = {origin: 'http://localhost', href: 'http://localhost/workbench'};
 function load(relative) {
   const absolute = path.resolve(root, relative);

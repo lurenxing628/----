@@ -4,7 +4,7 @@ import csv
 import json
 from datetime import datetime
 from io import BytesIO, StringIO
-from typing import Optional
+from typing import Any, Optional
 
 import pytest
 from openpyxl import load_workbook
@@ -19,7 +19,6 @@ from core.services.workbench.facts.delivery_projection import (
     delivery_batch_delta,
     delivery_summary,
     project_delivery_batch,
-    task_intervals,
 )
 from core.services.workbench.plan.export import HEADERS, write_plan_export
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
@@ -31,13 +30,14 @@ from tests.workbench.run_candidate_support import candidate_case as _candidate_c
 from tests.workbench.run_candidate_support import compute
 
 
-def batch_delivery(due: Optional[str] = "2026-10-13", *, finish="2026-10-13T12:00:00", missing=False,
+def batch_delivery(due: Any = "2026-10-13", *, finish="2026-10-13T12:00:00", missing=False,
                    deferred=False, part_name: Optional[str] = "零件"):
     batch = {"batch_id": "B1", "part_no": "P1", "part_name": part_name, "due_date": due,
              "quantity": 3, "priority": "urgent"}
-    rows = [{"schedule_id": 1, "op_id": 1, "batch_id": "B1", "start_time": "2026-10-13T08:00:00", "end_time": finish}]
+    rows = [{"schedule_id": 1, "op_id": 1, "batch_id": "B1"}]
+    intervals = {1: (datetime(2026, 10, 13, 8, 0), datetime.fromisoformat(finish)) if finish else None}
     operations = [{"op_id": 1}, {"op_id": 2}] if missing else [{"op_id": 1}]
-    return project_delivery_batch(batch, "batch-ref", rows, operations, task_intervals(rows), False, [],
+    return project_delivery_batch(batch, "batch-ref", rows, operations, intervals, False, [],
                                   deferred_operation_ids={2} if deferred else set())
 
 
@@ -46,7 +46,11 @@ def batch_delivery(due: Optional[str] = "2026-10-13", *, finish="2026-10-13T12:0
     ("9999-12-31", "unspecified", "not_applicable", None),
     (None, "invalid", "unknown", "due_date_missing"),
     ("", "invalid", "unknown", "due_date_missing"),
+    ("   ", "invalid", "unknown", "due_date_invalid"),
+    ("2026-10-13 12:30:00", "invalid", "unknown", "due_date_invalid"),
     ("2026-02-30", "invalid", "unknown", "due_date_invalid"),
+    (b"2026-10-13", "invalid", "unknown", "due_date_invalid"),
+    (b"\xff\xfe", "invalid", "unknown", "due_date_invalid"),
 ])
 def test_due_state_is_independent_of_whole_chain_completion(due, state, risk, issue):
     row = batch_delivery(due, part_name=None)
@@ -213,3 +217,29 @@ def test_stage_adoption_keeps_deferred_operation_evidence(candidate_case):
         data, _ = reader.workspace(PlanReadScope(plan["plan_ref"]))
     assert [batch["batch_id"] for batch in data["projections"]["delivery_risks"]["items"]] == ["B1"]
     assert data["projections"]["delivery_risks"]["items"][0]["completion_state"] == "incomplete"
+
+
+def test_plan_workspace_delivery_marks_blob_and_non_utf8_due_dates_invalid(candidate_case):
+    case = candidate_case
+    case.conn.execute("UPDATE Batches SET due_date='2026-10-13',part_name='零件' WHERE batch_id='B1'")
+    case.conn.commit()
+    _, refs = compute(case)
+    adopter = service(case.conn)
+    preview = adopter.preview(refs[0])
+    assert preview["validation"]["can_adopt"]
+    adopted = adopter.adopt(refs[0], preview["write_context"]["write_token"], "delivery-blob-due-adopt", INTENT)
+    plan_ref = adopted["data"]["official_plan"]["plan_ref"]
+    reader = WorkbenchPlanQueryService(case.conn)
+    for raw_due in (b"2026-10-13", b"\xff\xfe", "   ", "2026-10-13 12:30:00"):
+        case.conn.execute("UPDATE Batches SET due_date=? WHERE batch_id='B1'", (raw_due,))
+        case.conn.commit()
+        with reader.read_snapshot():
+            plan, _ = reader.workspace(PlanReadScope(plan_ref))
+        projection = plan["projections"]["delivery_risks"]
+        item = projection["items"][0]
+        assert (item["due_date"], item["due_state"], item["due_issue"], item["risk"], item["is_overdue"]) == (
+            None, "invalid", "due_date_invalid", "unknown", None,
+        )
+        assert "due_date_invalid" in item["issues"]
+        assert projection["state"] == projection["summary"]["state"] == "unavailable"
+        assert projection["summary"]["invalid_due_count"] == 1

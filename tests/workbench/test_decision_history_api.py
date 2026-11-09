@@ -149,7 +149,6 @@ def test_three_saved_sources_preserve_events_and_result_identity_on_two_timeline
 
 def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments_separate(history_case, monkeypatch):
     from core.infrastructure.read_evidence import read_evidence_scope
-    from core.infrastructure.snapshot_connection import ddl_columns
     from core.infrastructure.transaction import TransactionManager
     from core.services.workbench.facts.candidate_facts import GenerationFacts
     from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
@@ -331,18 +330,18 @@ def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments
         assert saved_objective["value"] == {"name": primary, "field_order": saved_selection["objective_field_order"][primary]}
         metadata = deepcopy(packet)
         facts = json.loads(metadata["capture"]["facts_text"])
-        for kind, name, _table, ddl in facts["schema"]:
+        for kind, name, _table, _ddl in facts["schema"]:
             if kind != "table" or name not in ("Batches", "BatchOperations", "SchemaVersion", "ScheduleConfig"):
                 continue
-            columns = ddl_columns(ddl, name)
+            columns = facts["columns"][name]
             for row in facts["tables"][name]:
                 for field in ("created_at", "updated_at"):
                     if field in columns:
                         row[columns.index(field)] = "2026-09-12T23:59:59"
                 if name == "SchemaVersion":
                     row[columns.index("version")] += 1
-                if name == "ScheduleConfig" and row[columns.index("config_key")] == "graph_candidate_weight_count":
-                    row[columns.index("config_value")] = "7"
+                if name == "ScheduleConfig" and row[columns.index("config_key")] == "graph_critical_weight":
+                    row[columns.index("config_value")] = "700"
         metadata["capture"]["facts_text"] = canonical_json(facts)
         metadata["facts"] = GenerationFacts(metadata["capture"])
         metadata.update(ref="7" * 48, entry_ref="run:" + "7" * 48)
@@ -385,6 +384,73 @@ def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments
         quantity = next(row for row in arrivals["rows"] if row["field"] == "quantity")
         assert quantity["before"]["value"] == quantity["after"]["value"] == 0.6
         assert arrivals["state"] == "equal"
+
+        machine_ref = next(ref for (kind, _key), ref in packet["facts"].entity_refs.items() if kind == "machine")
+        operator_ref = next(ref for (kind, _key), ref in packet["facts"].entity_refs.items() if kind == "operator")
+
+        def packet_with_reports(report_specs, suffix):
+            cloned: Dict[str, Any] = {key: value for key, value in deepcopy(packet).items() if key != "facts"}
+            specs = [(0, item) if not isinstance(item, tuple) else item for item in report_specs]
+            completed_total = sum(int(qty) for qty, _hours in specs)
+            target_qty = cloned["capture"]["execution"][0]["target_quantity"]
+            cloned["capture"]["execution"][0].update(
+                execution_state="partial",
+                known_completed_quantity=completed_total,
+                remaining_quantity=target_qty - completed_total,
+                reports=[
+                    {
+                        "actual_start": "2026-09-09T08:00:00",
+                        "actual_end": "2026-09-09T12:00:00",
+                        "actual_machine_ref": machine_ref,
+                        "actual_operator_ref": operator_ref,
+                        "completed_quantity": qty,
+                        "effective_processing_hours": hours,
+                    }
+                    for qty, hours in specs
+                ],
+            )
+            cloned["facts"] = GenerationFacts(cloned["capture"])
+            cloned.update(ref=suffix * 48, entry_ref="run:" + suffix * 48)
+            return cloned
+
+        reordered = compare_conditions(packet_with_reports([1.0, 2.0], "8"), packet_with_reports([2.0, 1.0], "9"), window)
+        assert reordered["conditions"]["state"] == "equal"
+        hour_rows = [row for row in reordered["conditions"]["rows"] if row["field"] == "effective_processing_hours"]
+        assert [(row["state"], row["before"]["value"], row["before"]["source"]["path"], row["after"]["source"]["path"])
+                for row in hour_rows] == [
+            ("equal", 1.0, "capture.execution[0].reports[0].effective_processing_hours",
+             "capture.execution[0].reports[1].effective_processing_hours"),
+            ("equal", 2.0, "capture.execution[0].reports[1].effective_processing_hours",
+             "capture.execution[0].reports[0].effective_processing_hours"),
+        ]
+
+        numeric_equiv = compare_conditions(
+            packet_with_reports([(1, 1.0), (1, 2.0)], "4"),
+            packet_with_reports([(1.0, 2.0), (1, 1.0)], "5"),
+            window,
+        )
+        assert numeric_equiv["conditions"]["state"] == "equal"
+        numeric_equiv_flipped = compare_conditions(
+            packet_with_reports([(1, 1.0), (1, 2.0)], "4"),
+            packet_with_reports([(1, 2.0), (1.0, 1.0)], "6"),
+            window,
+        )
+        assert numeric_equiv_flipped["conditions"]["state"] == "equal"
+
+        changed_hours = compare_conditions(packet_with_reports([1.0, 2.0], "8"), packet_with_reports([1.0, 3.0], "a"), window)
+        assert changed_hours["conditions"]["state"] == "different"
+        diff_rows = [row for row in changed_hours["conditions"]["rows"] if row["state"] == "different"]
+        assert len(diff_rows) == 1 and diff_rows[0]["field"] == "effective_processing_hours"
+        assert diff_rows[0]["before"]["value"] == 2.0 and diff_rows[0]["after"]["value"] == 3.0
+        assert diff_rows[0]["before"]["source"]["path"] == "capture.execution[0].reports[1].effective_processing_hours"
+        assert diff_rows[0]["after"]["source"]["path"] == "capture.execution[0].reports[1].effective_processing_hours"
+
+        changed_multiplicity = compare_conditions(packet_with_reports([1.0, 1.0], "b"), packet_with_reports([1.0], "c"), window)
+        assert changed_multiplicity["conditions"]["state"] == "different"
+        extra_rows = [row for row in changed_multiplicity["conditions"]["rows"] if row["state"] == "different"]
+        assert len(extra_rows) == 6
+        assert all(row["before"]["present"] is True and row["after"]["present"] is False for row in extra_rows)
+        assert all(row["before"]["source"]["path"] == f"capture.execution[0].reports[1].{row['field']}" for row in extra_rows)
 
 
 def test_shared_resource_window_uses_saved_capacity_and_keeps_missing_capacity_unknown(history_case):

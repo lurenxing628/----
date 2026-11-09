@@ -367,3 +367,107 @@ def test_native_entry_uses_single_powershell_and_payload_requires_companion(tmp_
         payload_files(tmp_path)
     shutil.copyfile(str(SCRIPT), str(tmp_path / "aps-launcher.ps1"))
     assert tmp_path / "aps-launcher.ps1" in payload_files(tmp_path)
+
+
+def test_launcher_strict_bounded_integers_across_endpoint_contract_health_and_chrome_pids(tmp_path, health_server, monkeypatch):
+    import io
+    import urllib.request
+
+    from web.bootstrap.launcher_chrome import _parse_chrome_pid_output
+    from web.bootstrap.launcher_contract_result import read_runtime_contract_result
+    from web.bootstrap.launcher_endpoint_result import read_runtime_endpoint_files_result
+    from web.bootstrap.launcher_health import probe_runtime_health_result
+
+    endpoint_dir = tmp_path / "endpoint-state"
+    endpoint_dir.mkdir()
+    (endpoint_dir / "aps_host.txt").write_text("127.0.0.1\n", encoding="utf-8")
+    port_file = endpoint_dir / "aps_port.txt"
+    port_file.write_text("65535\n", encoding="utf-8")
+    valid_ep = read_runtime_endpoint_files_result(str(endpoint_dir))
+    assert (valid_ep.port, valid_ep.port_status, valid_ep.port_error) == (65535, "valid", "")
+
+    for raw_port, expected_reason in (
+        ("８０８０", "port_not_integer"),
+        ("08080", "port_not_integer"),
+        ("-1", "port_not_integer"),
+        ("0", "port_not_positive"),
+        ("000", "port_not_positive"),
+        ("65536", "port_out_of_range"),
+        ("9" * 6000, "port_out_of_range"),
+    ):
+        port_file.write_text(raw_port, encoding="utf-8")
+        bad_ep = read_runtime_endpoint_files_result(str(endpoint_dir))
+        assert (bad_ep.port, bad_ep.port_status, bad_ep.port_error) == (0, "invalid", expected_reason)
+
+    contract_dir = tmp_path / "contract-state"
+    contract_dir.mkdir()
+    contract_file = contract_dir / "aps_runtime.json"
+    base_contract = dict(health_server["contract"])
+
+    max_dword_contract = dict(base_contract, pid=0xFFFFFFFF, port=65535)
+    contract_file.write_text(json.dumps(max_dword_contract), encoding="utf-8")
+    ok_contract = read_runtime_contract_result(str(contract_dir))
+    assert ok_contract.ok and ok_contract.payload is not None
+    assert (ok_contract.payload["pid"], ok_contract.payload["port"]) == (0xFFFFFFFF, 65535)
+
+    for patch, expected_reason in (
+        ({"contract_version": True}, "invalid_contract_version"),
+        ({"contract_version": 1.0}, "invalid_contract_version"),
+        ({"contract_version": 1.9}, "invalid_contract_version"),
+        ({"contract_version": "1"}, "invalid_contract_version"),
+        ({"contract_version": None}, "invalid_contract_version"),
+        ({"contract_version": 2}, "contract_version_mismatch"),
+        ({"pid": True}, "invalid_pid"),
+        ({"pid": 123.0}, "invalid_pid"),
+        ({"pid": "123"}, "invalid_pid"),
+        ({"pid": 0}, "invalid_pid"),
+        ({"pid": 0xFFFFFFFF + 1}, "invalid_pid"),
+        ({"port": True}, "invalid_port"),
+        ({"port": 6322.0}, "invalid_port"),
+        ({"port": "6322"}, "invalid_port"),
+        ({"port": 0}, "invalid_port"),
+        ({"port": 65536}, "invalid_port"),
+    ):
+        contract_file.write_text(json.dumps({**base_contract, **patch}), encoding="utf-8")
+        bad_contract = read_runtime_contract_result(str(contract_dir))
+        assert bad_contract.status == "invalid" and bad_contract.reason == expected_reason
+        assert bad_contract.payload is None
+
+    base_url = f"http://127.0.0.1:{base_contract['port']}"
+    try:
+        for bad_version in (True, 1.9, "1", None):
+            health_server.update(status=200, patch={"contract_version": bad_version})
+            probed = probe_runtime_health_result(base_url, timeout_s=0.75)
+            assert not probed.ok and probed.reason == "invalid_contract_version"
+            assert isinstance(probed.payload, dict)
+        health_server.update(status=200, patch={"contract_version": 2})
+        mismatch = probe_runtime_health_result(base_url, timeout_s=0.75)
+        assert not mismatch.ok and mismatch.reason == "unexpected_health_payload"
+    finally:
+        health_server.update(status=200, patch={})
+
+    class _ArrayResponse(io.BytesIO):
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.close()
+
+    with monkeypatch.context() as patch_http:
+        patch_http.setattr(urllib.request, "urlopen", lambda req, timeout=None: _ArrayResponse(b"[1]"))
+        non_dict = probe_runtime_health_result("http://127.0.0.1:9", timeout_s=0.5)
+    assert not non_dict.ok and non_dict.reason == "invalid_contract_version" and non_dict.payload is None
+
+    chrome_out = (
+        "\ufeff1234\r\n"
+        "ProcessId=4294967295\r\n"
+        "ProcessId=4294967296\r\n"
+        "0\r\n"
+        "0123\r\n"
+        "１２３４\r\n"
+        + ("9" * 6000)
+        + "\r\n1234\r\n\ufeff5678\r\n"
+    )
+    assert _parse_chrome_pid_output(chrome_out) == [1234, 0xFFFFFFFF]

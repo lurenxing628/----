@@ -16,15 +16,16 @@ from tests.workbench.run_candidate_support import candidate_case as _case  # noq
 from tests.workbench.run_candidate_support import compute, connect
 
 
-@pytest.mark.parametrize("efficiency,shift_hours", [(1, 0.0025)])
-def test_fractional_chain_all_candidates_adopt_reopen_and_delivery(candidate_case, efficiency, shift_hours):
+def test_fractional_chain_all_candidates_adopt_reopen_and_delivery(candidate_case):
     case = candidate_case
     case.conn.execute("UPDATE Batches SET part_name='Original part'")
     case.conn.execute("UPDATE BatchOperations SET unit_hours=0.001")
     case.operation(seq=2, unit_hours=0)
     case.operation(seq=3, unit_hours=0.001)
-    case.conn.execute("INSERT INTO WorkCalendar(date,day_type,shift_start,shift_hours,efficiency,allow_normal,allow_urgent) "
-                      "VALUES ('2026-09-09','workday','08:00',?,?,'yes','yes')", (shift_hours, efficiency))
+    case.conn.execute(
+        "INSERT INTO WorkCalendar(date,day_type,efficiency,allow_normal,allow_urgent,periods_json) "
+        "VALUES ('2026-09-09','workday',1,'yes','yes','[{\"start\":\"08:00\",\"end\":\"16:00\",\"day_offset\":0}]')"
+    )
     case.conn.commit()
     run_ref, refs = compute(case)
     assert 1 <= len(refs) <= 3

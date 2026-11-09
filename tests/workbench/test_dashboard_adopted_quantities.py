@@ -51,7 +51,7 @@ def _read_quantities(client, case, plan_ref):
 @pytest.mark.parametrize("adoption", ["candidate", "trial"])
 def test_dashboard_retains_adopted_piece_and_common_quantities_after_live_batch_edit(trial_case, adoption):
     case = trial_case
-    _, _, candidates = piece_candidate(case, common=True)
+    _, _, candidates = piece_candidate(case)
     if adoption == "candidate":
         receipt = adopt_candidate(case, candidates[0])
         quantity_basis = "run_admission"

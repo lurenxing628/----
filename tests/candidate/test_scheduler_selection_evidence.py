@@ -54,6 +54,7 @@ def _candidate(key, *, sequence, overdue=2, weighted=10.0, tardiness=10.0):
         origin={"origin": key},
         first_found_elapsed_ms=0,
         search_evidence_ref={"source_event_id": None},
+        used_params={"dispatch_rule": "slack"},
         objective_name="min_overdue",
     )
 

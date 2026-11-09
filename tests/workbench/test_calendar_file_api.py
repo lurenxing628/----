@@ -25,7 +25,7 @@ def calendar_file_client(db_env):
     assert BASE + "/<kind>/preview" in rules and BASE + "/<kind>/export-preview" in rules
     client = app.test_client()
     # 第一次读库的请求会补写排产配置等默认行。先跑一次只读的预检把这些补完，之后的整库快照才有可比性。
-    preview_ok(client, [(DAY, "工作日", "8", "", "", "", "")])
+    preview_ok(client, [(DAY, "工作日", "08:00", "16:00", "", "", "", "")])
     return client
 
 
@@ -41,12 +41,15 @@ def snapshot(client):
 
 
 def days(client):
+    from core.models.calendar_periods import decode_periods, period_hours
+
     with database(client) as conn:
-        return {row["date"]: (row["day_type"], row["shift_hours"]) for row in conn.execute("SELECT * FROM WorkCalendar")}
+        return {row["date"]: (row["day_type"], period_hours(decode_periods(row["periods_json"])))
+                for row in conn.execute("SELECT * FROM WorkCalendar")}
 
 
-def preview_ok(client, rows, fmt="csv"):
-    fields = {"file": (BytesIO(file_bytes(rows, fmt)), "calendar." + fmt), "format": fmt, "mode": "upsert"}
+def preview_ok(client, rows, fmt="csv", headers=HEADERS):
+    fields = {"file": (BytesIO(file_bytes(rows, fmt, headers=headers)), "calendar." + fmt), "format": fmt, "mode": "upsert"}
     response = client.post(BASE + "/" + KIND + "/preview", data=fields, content_type="multipart/form-data")
     assert response.status_code == 200, response.get_data(as_text=True)
     return response.get_json()["data"]
@@ -59,14 +62,14 @@ def confirm(client, preview, key="calendar-file-request-00001"):
 
 
 def test_preview_does_not_write_and_confirm_commits_once(client, monkeypatch):
-    preview = preview_ok(client, [(DAY, "工作日", "8", "100", "是", "是", "调休"),
-                                  (OTHER, "假期", "0", "", "否", "否", "")])
+    preview = preview_ok(client, [(DAY, "工作日", "08:00", "16:00", "100", "是", "是", "调休"),
+                                  (OTHER, "假期", "", "", "", "否", "否", "")])
     # 只比日历表：应用启动后还会陆续补建与本功能无关的表和触发器，整库快照在首几次请求间本来就会变。
     assert days(client) == {}
     assert preview["operation"] == KIND + ".import" and preview["commit_policy"] == "atomic"
     assert preview["can_confirm"] and preview["mode"] == "upsert"
     assert [row["result"] for row in preview["rows"]] == ["new", "new"]
-    assert [item["label"] for item in preview["columns"]] == list(HEADERS) + ["班次开始", "班次结束"] + PERIOD_HEADERS
+    assert [item["label"] for item in preview["columns"]] == list(HEADERS) + PERIOD_HEADERS + ["可排工时（小时）（只读）"]
     assert "entity_key" not in json.dumps(preview) and "revision" not in json.dumps(preview)
 
     from core.services.scheduler.calendar.admin import CalendarAdmin
@@ -74,8 +77,8 @@ def test_preview_does_not_write_and_confirm_commits_once(client, monkeypatch):
 
     built, build = [], CalendarAdmin._build_work_calendar
 
-    def build_once(self, **kwargs):
-        model = build(self, **kwargs)
+    def build_once(self, *args, **kwargs):
+        model = build(self, *args, **kwargs)
         built.append(model)
         return model
 
@@ -97,24 +100,62 @@ def test_preview_does_not_write_and_confirm_commits_once(client, monkeypatch):
 
 
 def test_zero_hour_workday_preview_notes_the_fact_and_requires_confirmation(client):
-    row, = preview_ok(client, [(OTHER, "工作日", "0", "", "是", "是", "")])["rows"]
+    row, = preview_ok(
+        client,
+        [(OTHER, "工作日", "", "", "", "是", "是", "", "0")],
+        headers=HEADERS + ("工作时段数",),
+    )["rows"]
     assert row["result"] == "new" and row["requires_confirmation"] is True
     assert [note for note in row["notes"] if "可排工时是 0" in note] == [
-        "这一天是工作日，但可排工时是 0，排产时一道工序也排不进来。要上班请填可排工时；要休息请把类型填成「假期」。"]
-    worked, = preview_ok(client, [(OTHER, "工作日", "8", "", "是", "是", "")])["rows"]
+        "这一天是工作日，但可排工时是 0，排产时一道工序也排不进来。要上班请填班次起止或工作时段；要休息请把类型填成「假期」。"]
+    worked, = preview_ok(client, [(OTHER, "工作日", "08:00", "16:00", "", "是", "是", "")])["rows"]
     assert not any("可排工时是 0" in note for note in worked["notes"])
 
 
-def test_legacy_null_shift_start_and_empty_remark_csv_roundtrip_without_false_diff(client):
-    preview = preview_ok(client, [(DAY, "工作日", "8", "100", "是", "是", "初值")])
-    assert confirm(client, preview, key="calendar-file-legacy-setup").status_code == 200
+def test_holiday_turned_workday_must_state_periods_in_global_file(client):
+    preview = preview_ok(client, [(DAY, "假期", "", "", "", "否", "否", "国庆")])
+    assert confirm(client, preview, key="calendar-file-holiday-setup").status_code == 200
+
+    # 只改类型、工作时段留空：这一行不导入，错误落在该填的班次开始列。
+    omitted = preview_ok(client, [(DAY, "工作日", "", "", "", "", "", "")])
+    row, = omitted["rows"]
+    assert omitted["can_confirm"] is False and row["result"] == "rejected"
+    assert [(err["field"], err["message"]) for err in row["errors"]] == [
+        ("shift_start", DAY + " 原来是假期或休息日，改成工作日时请填写工作时段。")]
+
+    # 类型留空仍是假期，不算改回工作日；只改备注照常。
+    kept, = preview_ok(client, [(DAY, "", "", "", "", "", "", "只改备注")])["rows"]
+    assert kept["result"] == "update" and kept["after"]["day_type"] == "假期"
+
+    # 工作时段数填 0 是明确的零工时工作日，放行并提醒确认。
+    zero, = preview_ok(client, [(DAY, "工作日", "", "", "", "", "", "", "0")], headers=HEADERS + ("工作时段数",))["rows"]
+    assert zero["result"] == "update" and zero["after"]["shift_hours"] == "0" and zero["requires_confirmation"] is True
+    assert any("可排工时是 0" in note for note in zero["notes"])
+
+    # 填了班次起止就按所填保存；没存过的日期留空仍取默认时段。
+    filled, = preview_ok(client, [(DAY, "工作日", "09:00", "17:00", "", "是", "是", "")])["rows"]
+    assert filled["result"] == "update" and filled["after"]["shift_hours"] == "8"
+    fresh, = preview_ok(client, [(OTHER, "工作日", "", "", "", "", "", "")])["rows"]
+    assert fresh["result"] == "new" and fresh["after"]["period_count"] == "2"
+
+
+def test_broken_default_periods_reject_on_date_column_not_unfilled_shift_columns(client):
+    # 库里的默认工作时间坏了，只填日期和备注的行取默认时段失败：错误落在日期列，
+    # 不落在这一行没填的班次开始列。
     with database(client) as conn:
-        conn.execute(
-            "UPDATE WorkCalendar SET shift_start=NULL, shift_end=NULL, shift_hours=NULL, efficiency=NULL, "
-            "allow_normal=NULL, allow_urgent=NULL WHERE date=?",
-            (DAY,),
-        )
+        conn.execute("INSERT OR REPLACE INTO WorkbenchCalendarDefaults(singleton,periods_json) VALUES (1,'[]')")
         conn.commit()
+    before = snapshot(client)
+    row, = preview_ok(client, [(OTHER, "", "", "", "", "", "", "只写备注")])["rows"]
+    assert row["result"] == "rejected"
+    assert [(err["field"], err["message"]) for err in row["errors"]] == [
+        ("date", "默认工作时间至少需要一个工作时段，请重新维护。")]
+    assert snapshot(client) == before
+
+
+def test_stored_calendar_csv_roundtrip_without_false_diff(client):
+    preview = preview_ok(client, [(DAY, "工作日", "08:00", "16:00", "100", "是", "是", "初值")])
+    assert confirm(client, preview, key="calendar-file-roundtrip-setup").status_code == 200
 
     export_prev = client.post(
         BASE + "/" + KIND + "/export-preview",
@@ -140,58 +181,39 @@ def test_legacy_null_shift_start_and_empty_remark_csv_roundtrip_without_false_di
     assert roundtrip["can_confirm"] is True
     assert row["before"]["shift_start"] == row["after"]["shift_start"] == "08:00"
 
-    same_defaults = preview_ok(client, [(DAY, "工作日", "8", "100", "是", "是", "带默认同值改备注")])
+    same_defaults = preview_ok(client, [(DAY, "工作日", "08:00", "16:00", "100", "是", "是", "带默认同值改备注")])
     assert same_defaults["can_confirm"] is True
     same_defaults_row, = same_defaults["rows"]
     assert same_defaults_row["errors"] == [] and same_defaults_row["result"] == "update"
     assert same_defaults_row["before"]["shift_start"] == same_defaults_row["after"]["shift_start"] == "08:00"
     assert same_defaults_row["changes"] == {"remark": {"before": "初值", "after": "带默认同值改备注"}}
 
-    remark_only = preview_ok(client, [(DAY, "", "", "", "", "", "只改备注")])
+    remark_only = preview_ok(client, [(DAY, "", "", "", "", "", "", "只改备注")])
     assert remark_only["can_confirm"] is True
     updated_row, = remark_only["rows"]
     assert updated_row["errors"] == [] and updated_row["result"] == "update"
     assert updated_row["before"]["shift_start"] == updated_row["after"]["shift_start"] == "08:00"
     assert updated_row["changes"] == {"remark": {"before": "初值", "after": "只改备注"}}
 
-    hours_and_eff = preview_ok(client, [(DAY, "", "4", "80", "", "", "")])
+    hours_and_eff = preview_ok(client, [(DAY, "", "08:00", "12:00", "80", "", "", "")])
     assert hours_and_eff["can_confirm"] is True
     hours_row, = hours_and_eff["rows"]
     assert hours_row["errors"] == [] and hours_row["result"] == "update"
     assert hours_row["after"]["shift_hours"] == "4" and hours_row["after"]["efficiency"] == "80"
 
     with database(client) as conn:
-        conn.execute("UPDATE WorkCalendar SET remark='' WHERE date=?", (DAY,))
         conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('OP-CSV','张三')")
         conn.execute(
-            "INSERT INTO OperatorCalendar(operator_id,date,day_type,shift_start,shift_end,shift_hours,efficiency,allow_normal,allow_urgent,remark) "
-            "VALUES ('OP-CSV',?,'workday','08:00','16:00',8,1,'yes','yes','')",
+            "INSERT INTO OperatorCalendar(operator_id,date,day_type,efficiency,allow_normal,allow_urgent,remark,periods_json) "
+            "VALUES ('OP-CSV',?,'workday',1,'yes','yes',NULL,'[{\"start\":\"08:00\",\"end\":\"12:00\",\"day_offset\":0}]')",
             (DAY,),
         )
         conn.commit()
+        from core.infrastructure.transaction import TransactionManager
+        from core.services.workbench.resource.operator_calendars import WorkbenchOperatorCalendarService
 
-    empty_remark_prev = client.post(
-        BASE + "/" + KIND + "/export-preview",
-        json={"range": {"start_date": DAY, "end_date": DAY}},
-    )
-    assert empty_remark_prev.status_code == 200
-    empty_remark_csv = client.get(
-        BASE + "/" + KIND + "/export",
-        query_string={"export_ref": empty_remark_prev.get_json()["data"]["export_ref"], "format": "csv"},
-    )
-    assert empty_remark_csv.status_code == 200
-
-    work_csv_reimport = client.post(
-        BASE + "/" + KIND + "/preview",
-        data={"file": (BytesIO(empty_remark_csv.data), "calendar.csv"), "format": "csv", "mode": "upsert"},
-        content_type="multipart/form-data",
-    )
-    assert work_csv_reimport.status_code == 200, work_csv_reimport.get_data(as_text=True)
-    work_reimport_data = work_csv_reimport.get_json()["data"]
-    assert work_reimport_data["can_confirm"] is True
-    assert work_reimport_data["rows"][0]["errors"] == [] and work_reimport_data["rows"][0]["result"] == "unchanged"
-    assert work_reimport_data["rows"][0]["changes"] == {}
-
+        with TransactionManager(conn).transaction():
+            assert WorkbenchOperatorCalendarService(conn, "OP-CSV").month(2026, 10)["stats"]["work_days"] == 1
     op_export_prev = client.post(
         BASE + "/operator_calendar/export-preview",
         json={"range": {"start_date": DAY, "end_date": DAY}},
@@ -209,45 +231,12 @@ def test_legacy_null_shift_start_and_empty_remark_csv_roundtrip_without_false_di
     )
     assert op_roundtrip_resp.status_code == 200, op_roundtrip_resp.get_data(as_text=True)
     op_roundtrip = op_roundtrip_resp.get_json()["data"]
+    op_row, = op_roundtrip["rows"]
     assert op_roundtrip["can_confirm"] is True
-    assert op_roundtrip["rows"][0]["errors"] == [] and op_roundtrip["rows"][0]["result"] == "unchanged"
-    assert op_roundtrip["rows"][0]["changes"] == {}
-
-    with database(client) as conn:
-        conn.execute(
-            "UPDATE OperatorCalendar SET shift_start='08:00', shift_end=NULL, shift_hours=4, "
-            "allow_normal=NULL, allow_urgent=NULL WHERE operator_id='OP-CSV' AND date=?",
-            (DAY,),
-        )
-        conn.commit()
-        from core.infrastructure.transaction import TransactionManager
-        from core.services.workbench.resource.operator_calendars import WorkbenchOperatorCalendarService
-
-        with TransactionManager(conn).transaction():
-            assert WorkbenchOperatorCalendarService(conn, "OP-CSV").month(2026, 10)["stats"]["work_days"] == 1
-    legacy_op_export_prev = client.post(
-        BASE + "/operator_calendar/export-preview",
-        json={"range": {"start_date": DAY, "end_date": DAY}},
-    )
-    assert legacy_op_export_prev.status_code == 200, legacy_op_export_prev.get_data(as_text=True)
-    legacy_op_exported = client.get(
-        BASE + "/operator_calendar/export",
-        query_string={"export_ref": legacy_op_export_prev.get_json()["data"]["export_ref"], "format": "csv"},
-    )
-    assert legacy_op_exported.status_code == 200, legacy_op_exported.get_data(as_text=True)
-    legacy_op_roundtrip_resp = client.post(
-        BASE + "/operator_calendar/preview",
-        data={"file": (BytesIO(legacy_op_exported.data), "operator_calendar.csv"), "format": "csv", "mode": "upsert"},
-        content_type="multipart/form-data",
-    )
-    assert legacy_op_roundtrip_resp.status_code == 200, legacy_op_roundtrip_resp.get_data(as_text=True)
-    legacy_op_roundtrip = legacy_op_roundtrip_resp.get_json()["data"]
-    legacy_op_row, = legacy_op_roundtrip["rows"]
-    assert legacy_op_roundtrip["can_confirm"] is True
-    assert legacy_op_row["errors"] == [] and legacy_op_row["result"] == "unchanged"
-    assert legacy_op_row["changes"] == {} and legacy_op_row["requires_confirmation"] is False
-    assert legacy_op_row["before"]["shift_end"] == legacy_op_row["after"]["shift_end"] == "12:00"
-    legacy_op_remark_resp = client.post(
+    assert op_row["errors"] == [] and op_row["result"] == "unchanged"
+    assert op_row["changes"] == {} and op_row["requires_confirmation"] is False
+    assert op_row["before"]["shift_end"] == op_row["after"]["shift_end"] == "12:00"
+    op_remark_resp = client.post(
         BASE + "/operator_calendar/preview",
         data={
             "file": (BytesIO(file_bytes([("OP-CSV", DAY, "仅改备注")], headers=("工号", "日期", "备注"))), "operator_calendar.csv"),
@@ -256,11 +245,11 @@ def test_legacy_null_shift_start_and_empty_remark_csv_roundtrip_without_false_di
         },
         content_type="multipart/form-data",
     )
-    assert legacy_op_remark_resp.status_code == 200, legacy_op_remark_resp.get_data(as_text=True)
-    legacy_op_remark = legacy_op_remark_resp.get_json()["data"]
-    assert legacy_op_remark["can_confirm"] is True
-    assert legacy_op_remark["rows"][0]["result"] == "update"
-    assert legacy_op_remark["rows"][0]["changes"] == {"remark": {"before": None, "after": "仅改备注"}}
+    assert op_remark_resp.status_code == 200, op_remark_resp.get_data(as_text=True)
+    op_remark = op_remark_resp.get_json()["data"]
+    assert op_remark["can_confirm"] is True
+    assert op_remark["rows"][0]["result"] == "update"
+    assert op_remark["rows"][0]["changes"] == {"remark": {"before": None, "after": "仅改备注"}}
 
 
 def test_operator_zero_hour_workday_roundtrip_and_fullwidth_clock_rejected(client):
@@ -326,10 +315,10 @@ def test_operator_zero_hour_workday_roundtrip_and_fullwidth_clock_rejected(clien
     assert confirmed_remark.status_code == 200, confirmed_remark.get_data(as_text=True)
     with database(client) as conn:
         stored = conn.execute(
-            "SELECT shift_hours, periods_json, remark FROM OperatorCalendar WHERE operator_id='OP-ZERO' AND date=?",
+            "SELECT periods_json, remark FROM OperatorCalendar WHERE operator_id='OP-ZERO' AND date=?",
             (DAY,),
         ).fetchone()
-    assert (stored["shift_hours"], stored["periods_json"], stored["remark"]) == (0.0, "[]", "零工时仅改备注")
+    assert (stored["periods_json"], stored["remark"]) == ("[]", "零工时仅改备注")
 
     export_prev = client.post(
         BASE + "/operator_calendar/export-preview",
@@ -353,43 +342,69 @@ def test_operator_zero_hour_workday_roundtrip_and_fullwidth_clock_rejected(clien
 
     with database(client) as conn:
         conn.execute(
-            "UPDATE OperatorCalendar SET day_type='workday', shift_start='08:00', shift_end=NULL, shift_hours=0.0, "
-            "periods_json=NULL, remark='旧零工时' WHERE operator_id='OP-ZERO' AND date=?",
-            (DAY,),
+            "INSERT INTO OperatorCalendar(operator_id,date,day_type,efficiency,allow_normal,allow_urgent,remark,periods_json) "
+            "VALUES ('OP-ZERO',?,'holiday',1,'no','no',NULL,'[]')",
+            (OTHER,),
         )
         conn.commit()
-    legacy_zero_prev = client.post(
-        BASE + "/operator_calendar/export-preview",
-        json={"range": {"start_date": DAY, "end_date": DAY}},
-    )
-    assert legacy_zero_prev.status_code == 200
-    legacy_zero_csv = client.get(
-        BASE + "/operator_calendar/export",
-        query_string={"export_ref": legacy_zero_prev.get_json()["data"]["export_ref"], "format": "csv"},
-    )
-    assert legacy_zero_csv.status_code == 200
-    legacy_zero_rt = client.post(
+    holiday_to_work_resp = client.post(
         BASE + "/operator_calendar/preview",
-        data={"file": (BytesIO(legacy_zero_csv.data), "operator_calendar.csv"), "format": "csv", "mode": "upsert"},
+        data={
+            "file": (BytesIO(file_bytes([("OP-ZERO", OTHER, "工作日")], headers=("工号", "日期", "类型"))), "operator_calendar.csv"),
+            "format": "csv",
+            "mode": "upsert",
+        },
         content_type="multipart/form-data",
-    ).get_json()["data"]
-    assert legacy_zero_rt["can_confirm"] is True
-    assert legacy_zero_rt["rows"][0]["result"] == "unchanged"
-    assert legacy_zero_rt["rows"][0]["after"]["shift_hours"] == "0"
+    )
+    assert holiday_to_work_resp.status_code == 200, holiday_to_work_resp.get_data(as_text=True)
+    holiday_to_work = holiday_to_work_resp.get_json()["data"]
+    holiday_row, = holiday_to_work["rows"]
+    assert holiday_to_work["can_confirm"] is False and holiday_row["result"] == "rejected"
+    assert [(err["field"], err["message"]) for err in holiday_row["errors"]] == [
+        ("shift_start", OTHER + " 原来是假期或休息日，改成工作日时请填写工作时段。")]
 
-    legacy_remark_bytes = file_bytes(
-        [("OP-ZERO", DAY, "旧零工时改备注")],
-        headers=("工号", "日期", "备注"),
-    )
-    legacy_remark_prev = client.post(
+    # 工作时段数填 0 是明确的零工时工作日；填了时段就按所填保存。
+    explicit_zero_resp = client.post(
         BASE + "/operator_calendar/preview",
-        data={"file": (BytesIO(legacy_remark_bytes), "operator_calendar.csv"), "format": "csv", "mode": "upsert"},
+        data={
+            "file": (BytesIO(file_bytes([("OP-ZERO", OTHER, "工作日", "0")], headers=("工号", "日期", "类型", "工作时段数"))),
+                     "operator_calendar.csv"),
+            "format": "csv",
+            "mode": "upsert",
+        },
         content_type="multipart/form-data",
-    ).get_json()["data"]
-    assert legacy_remark_prev["can_confirm"] is True
-    assert legacy_remark_prev["rows"][0]["result"] == "update"
-    assert legacy_remark_prev["rows"][0]["after"]["shift_hours"] == "0"
-    assert legacy_remark_prev["rows"][0]["changes"] == {"remark": {"before": "旧零工时", "after": "旧零工时改备注"}}
+    )
+    explicit_zero_row, = explicit_zero_resp.get_json()["data"]["rows"]
+    assert explicit_zero_row["result"] == "update" and explicit_zero_row["after"]["shift_hours"] == "0"
+    assert any("可排工时是 0" in note for note in explicit_zero_row["notes"])
+    filled_resp = client.post(
+        BASE + "/operator_calendar/preview",
+        data={
+            "file": (BytesIO(file_bytes([("OP-ZERO", OTHER, "工作日", "09:00", "17:00")],
+                                        headers=("工号", "日期", "类型", "班次开始", "班次结束"))),
+                     "operator_calendar.csv"),
+            "format": "csv",
+            "mode": "upsert",
+        },
+        content_type="multipart/form-data",
+    )
+    filled_row, = filled_resp.get_json()["data"]["rows"]
+    assert filled_row["result"] == "update" and filled_row["after"]["shift_hours"] == "8"
+
+    new_work_without_periods_resp = client.post(
+        BASE + "/operator_calendar/preview",
+        data={
+            "file": (BytesIO(file_bytes([("OP-ZERO", "2026-10-03", "工作日")], headers=("工号", "日期", "类型"))), "operator_calendar.csv"),
+            "format": "csv",
+            "mode": "upsert",
+        },
+        content_type="multipart/form-data",
+    )
+    assert new_work_without_periods_resp.status_code == 200, new_work_without_periods_resp.get_data(as_text=True)
+    new_work_without_periods = new_work_without_periods_resp.get_json()["data"]
+    rejected_row, = new_work_without_periods["rows"]
+    assert new_work_without_periods["can_confirm"] is False and rejected_row["result"] == "rejected"
+    assert [err["field"] for err in rejected_row["errors"]] == ["shift_start"]
 
 
 def test_operator_calendar_identity_binding_readonly_formula_and_xlsx_crlf_roundtrip(client, monkeypatch):
@@ -558,7 +573,7 @@ def test_operator_calendar_identity_binding_readonly_formula_and_xlsx_crlf_round
 
     public_calls.clear()
     with database(client) as conn:
-        conn.execute("UPDATE OperatorCalendar SET shift_hours=6 WHERE operator_id='OP-REF' AND date=?", (DAY,))
+        conn.execute("UPDATE OperatorCalendar SET efficiency=0.5 WHERE operator_id='OP-REF' AND date=?", (DAY,))
         conn.commit()
     stale_xlsx = client.get(
         BASE + "/operator_calendar/export",
@@ -566,3 +581,115 @@ def test_operator_calendar_identity_binding_readonly_formula_and_xlsx_crlf_round
     )
     assert stale_xlsx.status_code == 409 and stale_xlsx.get_json()["error"]["code"] == "snapshot_stale"
     assert public_calls == []
+
+
+def test_operator_calendar_import_batch_shares_period_decoding_across_rows(client, monkeypatch):
+    from core.models import calendar as calendar_model
+    from core.models import calendar_period_columns, calendar_periods
+    from core.services.scheduler.calendar import defaults as defaults_module
+    from core.services.scheduler.calendar import engine as engine_module
+
+    assert not hasattr(calendar_period_columns, "decode_periods") and not hasattr(calendar_model, "decode_periods")
+    with database(client) as conn:
+        conn.executemany(
+            "INSERT INTO Operators(operator_id,name) VALUES (?,?)",
+            [("OP-B1", "甲"), ("OP-B2", "乙")],
+        )
+        conn.commit()
+
+    decoded = []
+    real_decode = calendar_periods.decode_periods
+
+    def counted_decode(raw):
+        decoded.append(raw)
+        return real_decode(raw)
+
+    for module in (
+        calendar_periods,
+        defaults_module,
+        engine_module,
+    ):
+        monkeypatch.setattr(module, "decode_periods", counted_decode)
+
+    shared_json = calendar_periods.encode_periods([{"start": "08:00", "end": "16:00", "day_offset": 0}])
+    batch_bytes = file_bytes(
+        [
+            ("OP-B1", DAY, "工作日", "08:00", "16:00"),
+            ("OP-B1", OTHER, "工作日", "08:00", "16:00"),
+            ("OP-B2", DAY, "工作日", "08:00", "16:00"),
+        ],
+        headers=("工号", "日期", "类型", "班次开始", "班次结束"),
+    )
+    resp = client.post(
+        BASE + "/operator_calendar/preview",
+        data={"file": (BytesIO(batch_bytes), "operator_calendar.csv"), "format": "csv", "mode": "upsert"},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    data = resp.get_json()["data"]
+    assert data["can_confirm"] is True
+    assert [row["result"] for row in data["rows"]] == ["new", "new", "new"]
+    assert all(
+        row["after"]["period_count"] == "1"
+        and row["after"]["shift_start"] == "08:00"
+        and row["after"]["shift_end"] == "16:00"
+        for row in data["rows"]
+    )
+    assert decoded.count(shared_json) == 1
+
+    decoded.clear()
+    global_data = preview_ok(
+        client,
+        [
+            (DAY, "工作日", "08:00", "16:00", "", "", "", ""),
+            (OTHER, "工作日", "08:00", "16:00", "", "", "", ""),
+            ("2026-10-03", "工作日", "08:00", "16:00", "", "", "", ""),
+        ],
+    )
+    assert global_data["can_confirm"] is True
+    assert [row["result"] for row in global_data["rows"]] == ["new", "new", "new"]
+    assert all(
+        row["after"]["period_count"] == "1"
+        and row["after"]["shift_start"] == "08:00"
+        and row["after"]["shift_end"] == "16:00"
+        for row in global_data["rows"]
+    )
+    assert decoded.count(shared_json) == 1
+
+
+def test_overlong_period_count_strings_return_row_errors_instead_of_500(client):
+    expected_error = [("period_count", "分段时间须同时填写工作时段数（0 至 8）；0 表示没有工作时段。")]
+    preview = preview_ok(
+        client,
+        [
+            (DAY, "工作日", "08:00", "16:00", "", "是", "是", "", "9" * 5000),
+            (OTHER, "工作日", "08:00", "16:00", "", "是", "是", "", "0" * 5000 + "9"),
+        ],
+        headers=HEADERS + ("工作时段数",),
+    )
+    assert preview["can_confirm"] is False
+    assert [row["result"] for row in preview["rows"]] == ["rejected", "rejected"]
+    for row in preview["rows"]:
+        assert [(err["field"], err["message"]) for err in row["errors"]] == expected_error
+
+    with database(client) as conn:
+        conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('OP-LONG','丙')")
+        conn.commit()
+    op_bytes = file_bytes(
+        [
+            ("OP-LONG", DAY, "工作日", "08:00", "16:00", "9" * 5000),
+            ("OP-LONG", OTHER, "工作日", "08:00", "16:00", "0" * 5000 + "9"),
+        ],
+        headers=("工号", "日期", "类型", "班次开始", "班次结束", "工作时段数"),
+    )
+    op_resp = client.post(
+        BASE + "/operator_calendar/preview",
+        data={"file": (BytesIO(op_bytes), "operator_calendar.csv"), "format": "csv", "mode": "upsert"},
+        content_type="multipart/form-data",
+    )
+    assert op_resp.status_code == 200, op_resp.get_data(as_text=True)
+    op_preview = op_resp.get_json()["data"]
+    assert op_preview["can_confirm"] is False
+    assert [row["result"] for row in op_preview["rows"]] == ["rejected", "rejected"]
+    for row in op_preview["rows"]:
+        assert [(err["field"], err["message"]) for err in row["errors"]] == expected_error

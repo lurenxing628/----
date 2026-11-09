@@ -254,3 +254,93 @@ def test_lightweight_execution_projection_skips_history_and_caches_parsed_period
     assert exec_projection.actual_period(light) is first_period
     assert exec_projection.actual_period_basis(light) is first_basis
     assert report_validation._constraint_signature(light) is first_sig
+
+
+def test_bounded_report_and_void_reads_skip_sql_sort_and_preserve_sql_order(ledger_case, monkeypatch):
+    from data.repositories import workbench_execution_repo
+
+    case = ledger_case
+    second = case.op("OP2", seq=2)
+    case.plan(2, [case.op_id, second])
+    first_saved = case.command("create", case.task(2, case.op_id), case.values(2))["data"]["rows"][0]
+    first_corrected = case.command(
+        "correct",
+        first_saved["report_ref"],
+        {"original_revision_ref": first_saved["revision_ref"], "completed_quantity": 3, "reason": "Recount"},
+    )["data"]["rows"][0]
+    second_saved = case.command("create", case.task(2, second), case.values(1))["data"]["rows"][0]
+    case.command(
+        "report_void",
+        second_saved["report_ref"],
+        {"original_revision_ref": second_saved["revision_ref"], "reason": "Voided", "declared_operator": "Foreman"},
+    )
+    op_refs = [first_saved["operation_ref"], second_saved["operation_ref"]]
+
+    plans = []
+    original_fetchall = case.ledger.repo.fetchall
+
+    def explain_fetchall(sql, params=()):
+        details = [row[-1] for row in case.conn.execute("EXPLAIN QUERY PLAN " + sql, params)]
+        plans.append(details)
+        return original_fetchall(sql, params)
+
+    monkeypatch.setattr(case.ledger.repo, "fetchall", explain_fetchall)
+    case.ledger.repo.reports(op_refs, 10)
+    case.ledger.repo.report_voids(op_refs, 10)
+    assert len(plans) == 2
+    assert all("USE TEMP B-TREE FOR ORDER BY" not in detail for details in plans for detail in details)
+
+    with monkeypatch.context() as cap_ctx:
+        cap_ctx.setattr(workbench_execution_repo, "_CHUNK_SIZE", 1)
+        cap_ctx.setattr(
+            workbench_execution_repo,
+            "stored_report_values",
+            lambda *_: pytest.fail("Must not parse values_json when report cap is exceeded"),
+        )
+        plans.clear()
+        capped_reports, capped_heads, capped_count = case.ledger.repo.reports(op_refs, 1)
+        assert capped_reports == {} and capped_heads == {} and capped_count == 2
+        assert len(plans) == 1
+
+        plans.clear()
+        capped_voids, capped_void_count = case.ledger.repo.report_voids(
+            [second_saved["operation_ref"], first_saved["operation_ref"]], 0
+        )
+        assert capped_voids == {} and capped_void_count == 1
+        assert len(plans) == 1
+
+    req_key = "corrupt-seq-request-key"
+    case.conn.execute(
+        "INSERT INTO WorkbenchCommandReceipts(request_key, receipt_ref, action, context_ref, input_json, outcome_json) "
+        "VALUES (?, ?, 'execution.report_correct', ?, '{}', '{}')",
+        (req_key, "a" * 32, first_saved["report_ref"]),
+    )
+    case.conn.execute(
+        "INSERT INTO WorkbenchProductionReportRevisions"
+        "(revision_ref, report_ref, sequence, previous_revision_ref, action, values_json, reason, "
+        "local_operator, declared_operator, recorded_at, request_key) "
+        "VALUES (?, ?, 'bad-seq', ?, 'correct', '{}', 'corrupt', 'op', 'op', '2026-09-09T11:00:00', ?)",
+        ("b" * 48, first_saved["report_ref"], first_corrected["revision_ref"], req_key),
+    )
+    reports, heads, count = case.ledger.repo.reports([first_saved["operation_ref"]], 10)
+    assert count == 3
+    assert heads[first_saved["operation_ref"]] == [first_saved["report_ref"]]
+    assert [row["sequence"] for row in reports[first_saved["operation_ref"]][first_saved["report_ref"]]] == [1, 2, "bad-seq"]
+    with pytest.raises(WorkbenchCommandRejected) as bad_seq_err:
+        case.ledger.project_operations([first_saved["operation_ref"]])
+    assert bad_seq_err.value.code == "storage_failure" and bad_seq_err.value.status == 500
+
+    orphan_ref = "0" * 48
+    case.conn.execute(
+        "INSERT INTO WorkbenchProductionReports"
+        "(report_ref, report_no, operation_ref, recorded_against_task_ref, recorded_against_plan_ref, source, recorded_at) "
+        "VALUES (?, 'ORPHAN-001', ?, ?, ?, 'manual', '2026-09-09T11:00:00')",
+        (orphan_ref, second_saved["operation_ref"], case.task(2, second), case.plan_ref(2)),
+    )
+    orphan_reports, orphan_heads, orphan_count = case.ledger.repo.reports([second_saved["operation_ref"]], 10)
+    assert orphan_count == 2
+    assert orphan_heads[second_saved["operation_ref"]] == sorted([orphan_ref, second_saved["report_ref"]])
+    assert list(orphan_reports[second_saved["operation_ref"]]) == [second_saved["report_ref"]]
+    with pytest.raises(WorkbenchCommandRejected) as orphan_err:
+        case.ledger.project_operations([second_saved["operation_ref"]])
+    assert orphan_err.value.code == "storage_failure" and orphan_err.value.status == 500

@@ -235,6 +235,8 @@ def _live_issues(rows, others=(), schedule=(), *, execution_operations=None, ori
             "origin": origin or SimpleNamespace(
                 unarranged={},
                 facts=None,
+                admission_operations={},
+                admission_refs_by_op_id={},
                 admission={"facts": {"tables": {"BatchOperations": [], "WorkbenchPlanSourceRefs": []}}},
             ),
             "preflight_facts": SimpleNamespace(refs={("machine", "M1"): "MR1", ("operator", "O1"): "OR1"},
@@ -429,6 +431,8 @@ def test_retired_external_and_retired_resource_occupancy_contracts():
     origin = SimpleNamespace(
         unarranged={"op-retired": {"operation": {"id": 7, "source": "external"}}},
         facts=None,
+        admission_operations={},
+        admission_refs_by_op_id={},
         admission={"facts": {"tables": {"BatchOperations": [], "WorkbenchPlanSourceRefs": []}}},
     )
     assert _live_issues([row], [("op-retired", 7, 0, ext_report)],
@@ -543,3 +547,25 @@ def test_completed_multi_resource_seed_occupies_each_report_segment(trial_case):
     case.conn.execute("UPDATE Schedule SET machine_id='M2',operator_id='O2' WHERE op_id=?", (outside,))
     case.conn.commit()
     assert {"machine_overlap", "operator_overlap"} <= codes(service(case.conn).get(draft["draft_ref"]))
+
+
+def test_trial_downtime_validation_reuses_downtime_index_and_rejects_inverted_or_unparsed_unknown_rows(trial_case):
+    case = trial_case
+    draft = create(case)
+    case.conn.execute(
+        "INSERT INTO MachineDowntimes(machine_id,start_time,end_time,status) "
+        "VALUES ('M1','2026-09-09T10:00:00','2026-09-09T09:00:00','active')"
+    )
+    case.conn.commit()
+    inverted = service(case.conn).get(draft["draft_ref"])
+    assert "calendar_unproven" in codes(inverted)
+
+    case.conn.execute("DELETE FROM MachineDowntimes")
+    case.conn.execute(
+        "INSERT INTO MachineDowntimes(machine_id,start_time,end_time,status) "
+        "VALUES ('M1','not-a-time','2026-09-09T09:00:00','pending')"
+    )
+    case.conn.commit()
+    unknown_bad_time = service(case.conn).get(draft["draft_ref"])
+    assert "downtime_state_unknown" in codes(unknown_bad_time)
+    assert "calendar_unproven" not in codes(unknown_bad_time)

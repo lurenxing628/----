@@ -8,7 +8,7 @@ from datetime import datetime
 
 import pytest
 
-from core.models.workbench_command import WorkbenchCommandUncertain
+from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
 from core.services.workbench.facts.admission_scope import project_admitted_scope
 from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.decision_read_models import public_job_status
@@ -114,7 +114,6 @@ def test_owned_file_compute_matches_thread_snapshot_types_and_payload(tmp_path, 
 def test_receipt_write_failure_rolls_back_admission(job_case, monkeypatch):
     from collections import Counter
 
-    from core.models.workbench_command import WorkbenchCommandRejected
     from core.services.material.stage_availability import MaterialAvailability
     from core.services.scheduler.calendar.service import CalendarService
     from core.services.scheduler.config import config_snapshot
@@ -226,15 +225,23 @@ def test_result_second_write_and_receipt_failure_are_all_atomic(job_case, monkey
     legacy_row = WorkbenchRunRepository(case.conn).get(accepted["run_ref"])
     assert legacy_row is not None
     legacy_facts = json.loads(legacy_row["facts_json"])
-    legacy_facts["tables"].pop("ScheduleConfig")
+    config_key = legacy_facts["columns"]["ScheduleConfig"].index("config_key")
+    # 存档里有排产配置表、只是没有目标这一行：如实标“没有记下”，不猜默认目标。
+    legacy_facts["tables"]["ScheduleConfig"] = [
+        row for row in legacy_facts["tables"]["ScheduleConfig"] if row[config_key] != "objective"]
     legacy_row["facts_json"] = canonical_json(legacy_facts)
     legacy_input = json.loads(legacy_row["normalized_input_json"])
+    execution = json.loads(legacy_row["execution_json"])
     legacy_scope = project_admitted_scope(
-        legacy_input, GenerationFacts({"facts_text": legacy_row["facts_json"],
-                                       "execution": json.loads(legacy_row["execution_json"])}),
+        legacy_input, GenerationFacts({"facts_text": legacy_row["facts_json"], "execution": execution}),
         summary=scope_summary(legacy_input))
     assert legacy_scope["objective"] is None and legacy_scope["objective_label"] is None
     assert {"field": "objective", "code": "not_recorded", "message": "排产时没有记下这一项。"} in legacy_scope["data_gaps"]
+    # 整张表都不在存档里是损坏，不当作空配置。
+    legacy_facts["tables"].pop("ScheduleConfig")
+    with pytest.raises(WorkbenchCommandRejected) as corrupt:
+        GenerationFacts({"facts_text": canonical_json(legacy_facts), "execution": execution})
+    assert corrupt.value.code == "candidate_artifact_invalid"
     before = ProductionFactsCapture(case.conn).content()
     save = WorkbenchRunResultRepository.save
     compute = WorkbenchRunWorker.compute_owned_snapshot

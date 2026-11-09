@@ -7,6 +7,7 @@ explicit per-operation work.
 
 from datetime import datetime
 
+from core.algorithm_runtime.algo_stats import make_algo_stats
 from core.algorithm_runtime.internal_slot import estimate_internal_slot
 from core.services.scheduler.run.schedule_payload_contract import build_validated_schedule_payload
 from core.services.scheduler.run.schedule_seed_contracts import coerce_seed_results
@@ -20,22 +21,17 @@ from tests.workbench.run_compute_support import prepare_run_input
 START = datetime(2026, 9, 9, 8)
 
 
-def split(case, *, common=True, unit=0.25, quantity=3):
+def split(case):
     """Use explicit split stages, with two stages per piece and common ends."""
+    unit = 0.25
+    quantity = 3
     case.conn.execute("UPDATE Batches SET quantity=? WHERE batch_id='B1'", (quantity,))
     case.conn.execute("UPDATE BatchOperations SET seq=10,unit_hours=? WHERE id=?", (unit, case.op_id))
-    ops = {}
-    if common:
-        ops[None, 10] = case.op_id
-    else:
-        case.conn.execute("UPDATE BatchOperations SET piece_id='item-A',seq=20 WHERE id=?", (case.op_id,))
-        ops["item-A", 20] = case.op_id
-    for piece in ("item-A", "item-B", "item-C")[:quantity]:
+    ops = {(None, 10): case.op_id}
+    for piece in ("item-A", "item-B", "item-C"):
         for seq in (20, 30):
-            if (piece, seq) not in ops:
-                ops[piece, seq] = case.operation(seq=seq, piece_id=piece, op_code=piece + "-" + str(seq), unit_hours=unit)
-    if common:
-        ops[None, 40] = case.operation(seq=40, unit_hours=unit)
+            ops[piece, seq] = case.operation(seq=seq, piece_id=piece, op_code=piece + "-" + str(seq), unit_hours=unit)
+    ops[None, 40] = case.operation(seq=40, unit_hours=unit)
     case.conn.commit()
     return ops
 
@@ -60,7 +56,7 @@ def slot_payload(prepared, *, placements=None):
     placements = placements or {}
     scope = build_piece_adoption_scope(prepared.operations, {key: batch.quantity for key, batch in prepared.batches.items()})
     work = {row.op_id: row for row in scope.operations}
-    result = {row.op_id: row for row in coerce_seed_results(prepared.seed_results, optimizer_algo_stats={})}
+    result = {row.op_id: row for row in coerce_seed_results(prepared.seed_results, optimizer_algo_stats=make_algo_stats())}
     for op in sorted(prepared.algo_ops, key=lambda item: (item.seq, item.id)):
         if op.id in result:
             continue

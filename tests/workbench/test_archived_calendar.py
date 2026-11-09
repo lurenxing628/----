@@ -16,7 +16,7 @@ RESOURCES = [{"kind": "machine", "ref": MACHINE, "saved_id": "M1"},
              {"kind": "operator", "ref": OPERATOR, "saved_id": "O1"}]
 
 
-def archive(version=35):
+def archive(version=45):
     return {"tables": {"SchemaVersion": [{"id": 1, "version": version}],
         "WorkbenchEntityRefs": [{"kind": kind, "ref": ref, "entity_key": key, "active": 1}
                                 for kind, ref, key in (("machine", MACHINE, "M1"), ("operator", OPERATOR, "O1"))],
@@ -24,14 +24,18 @@ def archive(version=35):
         "Operators": [{"operator_id": "O1", "name": "保存的人员", "status": "active"}],
         "WorkCalendar": [], "OperatorCalendar": [], "MachineDowntimes": [],
         "WorkbenchOperatorProfiles": [], "WorkbenchShiftProfiles": [], "WorkbenchShiftPatternDays": [],
-        "WorkbenchShiftDayPeriods": [], "WorkbenchCalendarDefaults": []}}
+        "WorkbenchCalendarDefaults": []}}
 
 
-def day(key, start="08:00", end: object = "16:00", *, hours: object = 8, efficiency: object = 1,
+def day(key, start="08:00", end: object = "16:00", *, efficiency: object = 1,
         normal="yes", urgent="yes", operator=None):
-    row = {"date": key, "day_type": "workday", "shift_start": start, "shift_end": end,
-           "shift_hours": hours, "efficiency": efficiency, "allow_normal": normal, "allow_urgent": urgent,
-           "remark": None, "periods_json": None}
+    periods_json = (
+        f'[{{"start":"{start}","end":"{end}","day_offset":0}}]'
+        if isinstance(start, str) and isinstance(end, str)
+        else None
+    )
+    row = {"date": key, "day_type": "workday", "efficiency": efficiency, "allow_normal": normal, "allow_urgent": urgent,
+           "remark": None, "periods_json": periods_json}
     if operator is not None:
         row["operator_id"] = operator
     return row
@@ -61,7 +65,7 @@ def test_saved_calendar_defaults_and_domain_default_periods():
 def test_night_tail_priority_overlay_and_downtime_use_exact_half_open_window():
     saved = archive()
     saved["tables"]["WorkCalendar"] = [day("2026-10-12", "22:00", "06:00", efficiency=0.5),
-                                        day("2026-10-13", "05:00", "05:30", hours=0.5, normal="no")]
+                                        day("2026-10-13", "05:00", "05:30", normal="no")]
     saved["tables"]["MachineDowntimes"] = [
         {"machine_id": "M1", "start_time": "2026-10-13T04:30:00", "end_time": "2026-10-13T05:15:00", "status": "active"},
         {"machine_id": "M1", "start_time": "2026-10-13T00:00:00", "end_time": "2026-10-14T00:00:00", "status": "cancelled"},
@@ -102,6 +106,19 @@ def test_machine_downtime_history_is_parsed_once_and_bad_states_keep_their_windo
     assert len(parsed) == 200
     assert [row["state"] for row in result["days"]] == ["available", "available", "available", "unavailable"]
     assert result["days"][-1]["issues"][0]["code"] == "downtime_invalid"
+    from core.services.workbench.facts.archived_calendar import DowntimeIndex
+
+    unparsed_unknown = DowntimeIndex([{"machine_id": "M1", "start_time": "bad", "end_time": "bad", "status": "pending"}])
+    assert unparsed_unknown.unknown_status is True and unparsed_unknown.invalid_interval is False
+    empty_active = DowntimeIndex([
+        {"machine_id": "M1", "start_time": "2026-10-15T09:00:00", "end_time": "2026-10-15T09:00:00", "status": "active"}
+    ])
+    assert empty_active.invalid_interval is True and empty_active.unknown_status is False
+    date_only_active = DowntimeIndex([
+        {"machine_id": "M1", "start_time": "2026-10-15", "end_time": "2026-10-16", "status": "active"}
+    ])
+    assert date_only_active.invalid_interval is True
+    assert date_only_active.overlaps(datetime(2026, 10, 15, 8), datetime(2026, 10, 15, 9)) is True
 
 
 def test_microsecond_calendar_and_occupancy_preserve_device_and_person_hours():
@@ -149,13 +166,15 @@ def test_saved_personal_override_and_rotating_rest_keep_operator_capacity():
     tables["WorkbenchOperatorProfiles"] = [{"operator_id": "O1", "shift_profile_id": "NIGHT"}]
     tables["WorkbenchShiftProfiles"] = [{"profile_id": "NIGHT", "anchor_date": "2026-10-12", "cycle_days": 2, "status": "active"}]
     tables["WorkbenchShiftPatternDays"] = [
-        {"profile_id": "NIGHT", "day_offset": 0, "is_rest": 0, "shift_start": "22:00", "shift_end": "06:00"},
-        {"profile_id": "NIGHT", "day_offset": 1, "is_rest": 1, "shift_start": "22:00", "shift_end": "06:00"}]
+        {"profile_id": "NIGHT", "day_offset": 0, "is_rest": 0,
+         "periods_json": '[{"start":"22:00","end":"06:00","day_offset":0}]'},
+        {"profile_id": "NIGHT", "day_offset": 1, "is_rest": 1,
+         "periods_json": "[]"}]
     tail = project(saved, "2026-10-13T00:00:00", "2026-10-13T06:00:00")[OPERATOR]
     assert tail["available_hours"] == 6 and tail["windows"][0]["provenance"] == "domain_default_operator_shift"
     rest = project(saved, "2026-10-13T08:00:00", "2026-10-13T16:00:00")[OPERATOR]
     assert rest["state"] == "available" and rest["windows"] == [] and rest["available_hours"] == 0
-    tables["OperatorCalendar"] = [day("2026-10-13", "09:00", "12:00", hours=3, efficiency=0.25, normal="no", operator="O1")]
+    tables["OperatorCalendar"] = [day("2026-10-13", "09:00", "12:00", efficiency=0.25, normal="no", operator="O1")]
     tables["WorkbenchShiftProfiles"][0]["status"] = "inactive"
     personal = project(saved, "2026-10-13T09:00:00", "2026-10-13T12:00:00")[OPERATOR]
     assert personal["state"] == "available" and personal["available_hours"] == 3
@@ -173,7 +192,7 @@ def test_saved_personal_override_and_rotating_rest_keep_operator_capacity():
 
 def test_broken_policy_days_keep_other_days_known_and_defaults_are_lazy():
     saved = archive()
-    saved["tables"]["WorkCalendar"] = [day("2026-10-13", end=None, hours=None)]
+    saved["tables"]["WorkCalendar"] = [day("2026-10-13", end=None)]
     result = project(saved, "2026-10-12T00:00:00", "2026-10-16T00:00:00")[MACHINE]
     assert result["state"] == "partial" and result["available_hours"] is None and result["windows"] is None
     assert [row["state"] for row in result["days"]] == ["available", "unavailable", "unavailable", "available"]
@@ -234,7 +253,7 @@ def test_streaming_releases_person_groups_and_derived_facts_keeps_shared_shift(m
     tables["WorkbenchOperatorProfiles"] = [{"operator_id": who, "shift_profile_id": "S"} for who in ("O1", "O2")]
     tables["WorkbenchShiftProfiles"] = [{"profile_id": "S", "anchor_date": "2026-10-12", "cycle_days": 1, "status": "active"}]
     tables["WorkbenchShiftPatternDays"] = [{"profile_id": "S", "day_offset": 0, "is_rest": 0,
-                                           "shift_start": "09:00", "shift_end": "17:00"}]
+                                           "periods_json": '[{"start":"09:00","end":"17:00","day_offset":0}]'}]
     factory = ArchivedCalendar(saved)
     engine = factory.engine
     assert engine is not None
@@ -263,4 +282,70 @@ def test_streaming_releases_person_groups_and_derived_facts_keeps_shared_shift(m
     assert not engine._policy_cache
     assert engine._public_policy_cache[global_key] is global_policy
     engine.clear_policy_cache()
-    assert engine._policy_for_date("2026-10-12", "O1").shift_hours == pytest.approx(22 / 3)
+    assert engine._policy_for_date("2026-10-12", "O1").hours == pytest.approx(22 / 3)
+
+
+def test_unavailable_global_and_shift_days_are_projected_once_across_operators(monkeypatch):
+    from core.services.workbench.facts import archived_calendar
+
+    second_ref = "c" * 48
+    operators = [RESOURCES[1], {"kind": "operator", "ref": second_ref, "saved_id": "O2"}]
+
+    def two_operator_archive():
+        saved = archive()
+        saved["tables"]["WorkbenchEntityRefs"].append(
+            {"kind": "operator", "ref": second_ref, "entity_key": "O2", "active": 1}
+        )
+        saved["tables"]["Operators"].append({"operator_id": "O2", "name": "乙", "status": "active"})
+        return saved
+
+    calls = []
+    real_projection = archived_calendar.policy_projection
+
+    def counted_projection(engine, first_day, last_day, start, end, operator_id=None):
+        calls.append((start, end, operator_id))
+        return real_projection(engine, first_day, last_day, start, end, operator_id)
+
+    monkeypatch.setattr(archived_calendar, "policy_projection", counted_projection)
+
+    broken_global = two_operator_archive()
+    broken_global["tables"]["WorkCalendar"] = [day("2026-10-12", end=None)]
+    broken_res = project(broken_global, "2026-10-12T00:00:00", "2026-10-13T00:00:00", resources=operators)
+    assert len(calls) == 1
+    assert broken_res[OPERATOR]["state"] == "unavailable"
+    assert broken_res[OPERATOR]["basis"] == "personal_or_operator_shift_calendar"
+    assert broken_res[OPERATOR]["issues"] == [{"code": "calendar_invalid", "message": broken_res[OPERATOR]["issues"][0]["message"], "policy_date": "2026-10-12"}]
+    assert broken_res[second_ref]["basis"] == broken_res[OPERATOR]["basis"]
+    assert broken_res[second_ref]["issues"] == broken_res[OPERATOR]["issues"]
+
+    calls.clear()
+    missing_global = two_operator_archive()
+    missing_global["tables"]["WorkCalendar"] = None
+    missing_res = project(missing_global, "2026-10-12T00:00:00", "2026-10-13T00:00:00", resources=operators)
+    assert len(calls) == 1
+    assert missing_res[OPERATOR]["state"] == "unavailable"
+    assert missing_res[OPERATOR]["basis"] == "personal_or_operator_shift_calendar"
+    assert missing_res[OPERATOR]["issues"][0]["code"] == "calendar_unavailable"
+    assert missing_res[OPERATOR]["issues"][0]["missing_fact"] == "WorkCalendar"
+    assert missing_res[second_ref]["basis"] == missing_res[OPERATOR]["basis"]
+    assert missing_res[second_ref]["issues"] == missing_res[OPERATOR]["issues"]
+
+    calls.clear()
+    broken_shift = two_operator_archive()
+    broken_shift["tables"]["WorkbenchOperatorProfiles"] = [
+        {"operator_id": who, "shift_profile_id": "S"} for who in ("O1", "O2")
+    ]
+    broken_shift["tables"]["WorkbenchShiftProfiles"] = [
+        {"profile_id": "S", "anchor_date": "2026-10-12", "cycle_days": 1, "status": "inactive"}
+    ]
+    broken_shift["tables"]["WorkbenchShiftPatternDays"] = [
+        {"profile_id": "S", "day_offset": 0, "is_rest": 0,
+         "periods_json": '[{"start":"09:00","end":"17:00","day_offset":0}]'}
+    ]
+    shift_res = project(broken_shift, "2026-10-12T00:00:00", "2026-10-13T00:00:00", resources=operators)
+    assert [who for _, _, who in calls] == ["O1"]
+    assert shift_res[OPERATOR]["state"] == "unavailable"
+    assert shift_res[OPERATOR]["basis"] == "personal_or_operator_shift_calendar"
+    assert shift_res[OPERATOR]["issues"][0]["code"] == "calendar_invalid"
+    assert shift_res[second_ref]["basis"] == shift_res[OPERATOR]["basis"]
+    assert shift_res[second_ref]["issues"] == shift_res[OPERATOR]["issues"]

@@ -133,15 +133,17 @@ def test_shared_process_projection_and_export_keep_actual_objectives_and_one_run
     source.saved_candidate_catalog = lambda ref, fields=None: {key: value for key, value in next(
         row for row in candidates if row["candidate_ref"] == ref).items() if fields is None or key in fields}
     initial_scope = deepcopy(source.scope)
+    first_page = process_details(source, resolve_process_filters(source, normalize_process_filters(process_candidate_ref=viewer_ref)), size=20, page=1)
     details = process_details(source, resolve_process_filters(source, normalize_process_filters(process_candidate_ref=viewer_ref)), size=20, page=2)
     assert details["candidate"]["candidate_ref"] == viewer_ref and details["source_event"] == events[2]
     assert details["selected_objective"]["name"] == details["filters"]["objective"] == "min_overdue"
+    assert "actions" not in first_page and "actions" not in details
+    assert first_page["items"] == actions[:2] and all("rank" not in action and "primary_value" not in action for action in first_page["items"])
     assert details["items"] == [] and details["page"] == {"number": 2, "size": 20, "total": 2, "has_more": False}
-    assert details["actions"] == actions[:2] and all("rank" not in action and "primary_value" not in action for action in details["actions"])
     progress = process_details(source, resolve_process_filters(source, normalize_process_filters(
         objective="min_tardiness", record_kind="progress", sort="primary_value", order="desc")), size=20)
     assert progress["selected_objective"]["unit"] == "小时" and progress["items"][0]["primary_value"] == 5.5
-    assert progress["actions"] == [] and progress["page"]["total"] == 3
+    assert "actions" not in progress and progress["page"]["total"] == 3
     assert source.scope == initial_scope and progress["scope"] == details["scope"]
     for read in (lambda: resolve_process_filters(source, normalize_process_filters(objective="min_weighted_tardiness")),
                  lambda: normalize_process_filters(record_kind="attempts", sort="primary_value")):
@@ -163,7 +165,23 @@ def test_shared_process_projection_and_export_keep_actual_objectives_and_one_run
     assert all_filtered_exports["projected"] == filtered_exports["projected"]
     assert all_filtered_exports["projected"]["candidate"]["candidate_ref"] == viewer_ref
     assert all_filtered_exports["projected"]["selected_objective"]["name"] == "min_tardiness"
-    assert all_filtered_exports["projected"]["scope"] == initial_scope
+    assert all_filtered_exports["projected"]["scopes"] == scopes and "items" not in all_filtered_exports["projected"] and source.scope == initial_scope
+    many_actions = [{**actions[0], "action_id": index, "started_elapsed_ms": index, "finished_elapsed_ms": index + 1, "elapsed_ms": 1}
+                    for index in range(1, 26)] + [{**actions[2], "action_id": 26}]
+    paged_process = {**process, "actions": many_actions,
+                     "budget": {**process["budget"], "objectives": {**goal_budgets,
+                                "min_overdue": {**goal_budgets["min_overdue"], "action_count": 25}}}}
+    paged_source = SimpleNamespace(**{**source.__dict__, "saved_process": paged_process})
+    paged_filters = resolve_process_filters(paged_source, normalize_process_filters(process_candidate_ref=viewer_ref))
+    page_one = process_details(paged_source, paged_filters, page=1, size=20)
+    page_two = process_details(paged_source, paged_filters, page=2, size=20)
+    paged_export = process_export_records(paged_source, paged_filters, include_all_objectives=False)
+    assert "actions" not in page_one and "actions" not in page_two
+    assert [row["action_id"] for row in page_one["items"]] == list(range(1, 21))
+    assert [row["action_id"] for row in page_two["items"]] == list(range(21, 26))
+    assert page_one["page"] == {"number": 1, "size": 20, "total": 25, "has_more": True}
+    assert page_two["page"] == {"number": 2, "size": 20, "total": 25, "has_more": False}
+    assert [row["action_id"] for row in paged_export["projected"]["actions"]] == list(range(1, 26))
 
     data = {"run": {"run_ref": run_ref}, "capture_ref": run_ref,
         "scope": {"selected_candidate_ref": first_ref, "comparison_mode": "candidates", "range_start": None, "range_end": None,
@@ -274,7 +292,7 @@ def test_shared_process_projection_and_export_keep_actual_objectives_and_one_run
     for mismatch in ({"elapsed_ms": 16}, {"score_scope": partial.events[2]["score_scope"]},
                      {"score_scope": partial.events[3]["score_scope"]}):
         inconsistent = SimpleNamespace(archive=partial.archive, events=partial.events, actions=partial.actions,
-            bridges=partial.bridges, evidence_event_ids=partial.evidence_event_ids, selected_entry=partial.selected_entry,
+            bridges=partial.bridges, evidence_event_ids=partial.evidence_event_ids,
             trajectories={name: [{**partial.trajectories[name][1], **mismatch}] for name in targets})
         invalid = build_shared_process(inconsistent, runtime_ms=100, stop_reason="completed", decode_stats={}, budget_stats=process["budget"])
         for target in invalid["targets"].values():

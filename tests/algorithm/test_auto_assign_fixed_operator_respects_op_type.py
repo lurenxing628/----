@@ -81,6 +81,7 @@ def test_auto_assign_keeps_machine_hours_qualification_failure_order(failure):
         AUTO_ASSIGN_REASON_MISSING_MACHINE_POOL,
         AUTO_ASSIGN_REASON_NO_OPERATOR_CANDIDATE,
     )
+    from core.algorithm_runtime.owned_timeline import OwnedTimeline
     from core.algorithm_runtime.resource_quality import MachineTypeState
     from core.algorithms.greedy.auto_assign import auto_assign_internal_resources_attempt
     from core.algorithms.greedy.scheduler import GreedyScheduler, prepare_native_schedule_inputs
@@ -93,18 +94,19 @@ def test_auto_assign_keeps_machine_hours_qualification_failure_order(failure):
     scheduler = GreedyScheduler(calendar_service=_StubCalendarService(), config_service=config_snapshot(auto_assign_enabled="yes"))
     preparation = prepare_native_schedule_inputs({}, scheduler=scheduler, operations=[op], batches={"B1": batch},
                                                  seed_results=[], resource_pool=pool, graph_ready_context=None)
-    preparation.total_hours_by_op_id[op.id] = 2.0
     stats = make_algo_stats()
     attempt = auto_assign_internal_resources_attempt(
         calendar=scheduler.calendar, algo_stats=stats, op=op, batch=batch, batch_progress={},
-        machine_timeline={}, operator_timeline={}, base_time=datetime(2026, 1, 1, 8),
+        machine_timeline=OwnedTimeline(), operator_timeline=OwnedTimeline(), base_time=datetime(2026, 1, 1, 8),
         end_dt_exclusive=None, machine_downtimes=None, resource_pool=pool,
         last_op_type_by_machine=MachineTypeState(), machine_busy_hours={}, operator_busy_hours={},
-        resource_preparation=preparation,
+        resource_preparation=preparation, overlap_reuse=None, score_cache=None,
     )
     expected = (AUTO_ASSIGN_REASON_MISSING_MACHINE_POOL if failure == "machine"
                 else AUTO_ASSIGN_REASON_NO_OPERATOR_CANDIDATE)
     counter = ("auto_assign_missing_machine_pool_count" if failure == "machine"
                else "auto_assign_no_operator_candidate_count")
     assert attempt.reason == expected
+    assert attempt.pair_tie_occurred is False
+    assert attempt.estimate is None
     assert stats["fallback_counts"] == {counter: 1}

@@ -56,8 +56,11 @@ def representative_archive(case, monkeypatch, settings=None, *, count=1, edits=N
 
     real_payloads = compute_module._candidate_payloads
 
-    def payloads_with_edits(conn, schedule_input, comparison, *, selected_payload):
-        payloads = real_payloads(conn, schedule_input, comparison, selected_payload=selected_payload)
+    def payloads_with_edits(conn, schedule_input, comparison, *, selected_payload, validation_context):
+        payloads = real_payloads(
+            conn, schedule_input, comparison,
+            selected_payload=selected_payload, validation_context=validation_context,
+        )
         for index, edit in (edits or {}).items():
             key = comparison.candidates[index].candidate_key
             payload = payloads[key]
@@ -194,15 +197,18 @@ def test_partial_night_window_splits_days_and_preserves_overlap_identity(candida
     second, boundary = case.operation(seq=2), case.operation(seq=3)
     case.conn.commit()
     calendar = CalendarService(case.conn)
+    context = calendar.normalization_context()
+    night_periods = [{"start": "22:00", "end": "06:00", "day_offset": 0}]
     calendar._admin.repo.upsert_many([
         calendar._admin._build_work_calendar(
-            date_value=DAY, shift_start="22:00", shift_end="06:00", efficiency=1, allow_normal="yes", allow_urgent="yes"
+            date_value=DAY, periods=night_periods, efficiency=1, allow_normal="yes", allow_urgent="yes",
+            context=context,
         )
     ])
     calendar._admin.operator_calendar_repo.upsert_many([
         calendar._admin._build_operator_calendar(
-            operator_id="O1", date_value=DAY, shift_start="22:00", shift_end="06:00", efficiency=0.5,
-            allow_normal="yes", allow_urgent="yes"
+            operator_id="O1", date_value=DAY, periods=night_periods, efficiency=0.5,
+            allow_normal="yes", allow_urgent="yes", context=context,
         )
     ])
     case.conn.commit()
@@ -322,25 +328,39 @@ def test_unknown_operator_capacity_and_known_zero_capacity_remain_distinct(candi
     add_pair(case, "M3", "O3")
     case.conn.commit()
     calendar = CalendarService(case.conn)
+    context = calendar.normalization_context()
+    day_periods = [{"start": "08:00", "end": "16:00", "day_offset": 0}]
     calendar._admin.operator_calendar_repo.upsert_many([
-        calendar._admin._build_operator_calendar(
-            operator_id="O1", date_value=DAY, shift_start="08:00", shift_end="16:00", efficiency=1,
-            allow_normal="yes", allow_urgent="yes"
+        *(
+            calendar._admin._build_operator_calendar(
+                operator_id="O1", date_value=override_day, periods=day_periods, efficiency=1,
+                allow_normal="yes", allow_urgent="yes", context=context,
+            )
+            for override_day in ("2026-09-07", "2026-09-08")
         ),
         calendar._admin._build_operator_calendar(
-            operator_id="O2", date_value=DAY, shift_start="08:00", shift_end="16:00", efficiency=1,
-            allow_normal="no", allow_urgent="no"
-        ),
-        calendar._admin._build_operator_calendar(
-            operator_id="O3", date_value=DAY, shift_start="08:00", shift_end="16:00", efficiency=1,
-            allow_normal="yes", allow_urgent="yes"
+            operator_id="O2", date_value=DAY, periods=day_periods, efficiency=1,
+            allow_normal="no", allow_urgent="no", context=context,
         ),
     ])
-    case.conn.execute("UPDATE OperatorCalendar SET efficiency=NULL WHERE operator_id IN ('O1','O3') AND date=?", (DAY,))
+    case.conn.execute(
+        "INSERT INTO WorkbenchShiftProfiles(profile_id,name,anchor_date,cycle_days,status) "
+        "VALUES ('S_INACTIVE','Inactive shift','2026-09-08',1,'inactive')"
+    )
+    case.conn.executemany(
+        "INSERT INTO WorkbenchOperatorProfiles(operator_id,shift_profile_id) VALUES (?,'S_INACTIVE')",
+        [("O1",), ("O3",)],
+    )
     case.conn.commit()
-    run_ref, refs = representative_archive(case, monkeypatch, count=3,
-        edits={-1: lambda row: row.update(machine_id="M2", operator_id="O2"),
-               -2: lambda row: row.update(machine_id="M3", operator_id="O3")})
+    slot = {"start_time": DAY + "T08:00:00", "end_time": DAY + "T08:45:00"}
+    run_ref, refs = representative_archive(
+        case, monkeypatch, case.settings(start_date="2026-09-08"), count=3,
+        edits={
+            0: lambda row: row.update(machine_id="M1", operator_id="O1", **slot),
+            -2: lambda row: row.update(machine_id="M3", operator_id="O3", **slot),
+            -1: lambda row: row.update(machine_id="M2", operator_id="O2", **slot),
+        },
+    )
     client, _ = api(case)
     query = {**WINDOW, "selected_candidate_ref": refs[0], "reference_candidate_ref": refs[0]}
     operators = resource_document(client, run_ref, **dict(query, resource_kind="operator"))

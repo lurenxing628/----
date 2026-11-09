@@ -16,10 +16,9 @@ from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandOutcome
 from core.models.workbench_run_history import RunHistoryScope
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
-from core.services.workbench.facts.schema_compat import project_facts
-from core.services.workbench.run.jobs_facts import production_facts_match
 from data.repositories.batch_operation_repo import BatchOperationRepository
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
+from data.repositories.workbench_process_query_repo import WorkbenchProcessQueryRepository
 from data.repositories.workbench_run_query_repo import WorkbenchRunHistoryQueryRepository
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 
@@ -133,10 +132,11 @@ def test_declared_efficiency_indexes_contract_and_archive_projection(indexed_db)
         conn, schema_version=CURRENT_SCHEMA_VERSION, schema_sql=load_schema_sql()) == []
     indexes = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='index'")}
     assert set(ADDED) <= indexes
+    assert "idx_part_operations_ext_group" in indexes
     assert conn.execute("SELECT facts_json FROM WorkbenchRunJobs WHERE run_ref=?", (ref,)).fetchone()[0] == archived
-    assert production_facts_match(conn, archived_facts)
-    current = ProductionFactsCapture(conn).content()
-    assert project_facts(archived_facts) == project_facts(json.loads(current))
+    assert ProductionFactsCapture(conn).matches_archive(archived_facts)
+    # 写入运行账簿后存档内容逐字不变：运行记录本身不进生产事实存档。
+    assert ProductionFactsCapture(conn).content() == archived
 
     for mutation in (
             "CREATE INDEX idx_undeclared_efficiency_change ON Parts(part_name)",
@@ -146,6 +146,70 @@ def test_declared_efficiency_indexes_contract_and_archive_projection(indexed_db)
         try:
             for sql in mutation.split(";"):
                 conn.execute(sql)
-            assert not production_facts_match(conn, archived_facts)
+            assert not ProductionFactsCapture(conn).matches_archive(archived_facts)
         finally:
             conn.rollback()
+
+
+def test_scoped_process_operations_use_ext_group_index_and_split_identity_triggers(indexed_db):
+    _path, conn = indexed_db
+    conn.executescript(
+        """
+        INSERT INTO Parts(part_no, part_name) VALUES ('P1', 'Part 1'), ('P2', 'Part 2'), ('OTHER', 'Other');
+        INSERT INTO ExternalGroups(group_id, part_no, start_seq, end_seq, merge_mode)
+            VALUES ('G1', 'P1', 2, 2, 'merged');
+        INSERT INTO PartOperations(part_no, seq, op_type_name, source, ext_group_id, status) VALUES
+            ('P1', 1, 'Turning', 'internal', NULL, 'active'),
+            ('P1', 2, 'HeatTreat', 'external', 'G1', 'inactive'),
+            ('P2', 1, 'HeatTreat', 'external', 'G1', 'inactive'),
+            ('OTHER', 1, 'Milling', 'internal', NULL, 'active');
+        """
+    )
+    conn.commit()
+    part_ref = conn.execute(
+        "SELECT ref FROM WorkbenchEntityRefs WHERE kind='part' AND entity_key='P1' AND active=1"
+    ).fetchone()[0]
+
+    statements = []
+    conn.set_trace_callback(statements.append)
+    try:
+        rows = WorkbenchProcessQueryRepository(conn, part_ref=part_ref).operations()
+    finally:
+        conn.set_trace_callback(None)
+    assert [(row["part_no"], row["seq"], row["status"]) for row in rows] == [
+        ("P1", 1, "active"),
+        ("P1", 2, "inactive"),
+        ("P2", 1, "inactive"),
+    ]
+    ops_sql = next(sql for sql in statements if "scoped_ops ON scoped_ops.id=o.id" in sql)
+    plan = [row[3] for row in conn.execute("EXPLAIN QUERY PLAN " + ops_sql)]
+    assert any("idx_part_operations_part" in detail for detail in plan)
+    assert any("idx_part_operations_ext_group" in detail for detail in plan)
+    assert not any(detail.startswith("SCAN PartOperations") or detail.startswith("SCAN o ") for detail in plan)
+
+    # 新实体的编号或别名撞上遗留的有效编号：遗留编号只停用一次（版本只加 1），新实体拿到唯一有效编号。
+    def stale(number, kind, key, alternate):
+        ref = f"{number:048x}"
+        conn.execute("INSERT INTO WorkbenchEntityRefs(ref, kind, entity_key, alternate_key) VALUES (?, ?, ?, ?)",
+                     (ref, kind, key, alternate))
+        return ref
+
+    def deactivated_once(ref, kind, alternate):
+        assert tuple(conn.execute("SELECT active, revision FROM WorkbenchEntityRefs WHERE ref=?", (ref,)).fetchone()) == (0, 2)
+        assert conn.execute("SELECT COUNT(*) FROM WorkbenchEntityRefs WHERE kind=? AND alternate_key=? AND active=1",
+                            (kind, alternate)).fetchone()[0] == 1
+
+    named = (("op_type", "OpTypes", "op_type_id", ""), ("resource_team", "ResourceTeams", "team_id", ""),
+             ("machine_group", "WorkbenchMachineGroups", "group_id", ""),
+             ("shift_profile", "WorkbenchShiftProfiles", "profile_id", ", anchor_date, cycle_days"))
+    for number, (kind, table, key, extra) in enumerate(named, 1):
+        values = ", '2026-01-01', 7" if extra else ""
+        ref = stale(number, kind, "STALE", "dup")
+        conn.execute(f"INSERT INTO {table}({key}, name{extra}) VALUES ('NEW', 'dup'{values})")
+        deactivated_once(ref, kind, "dup")
+        ref = stale(number + 10, kind, "RENAMED", "renamed")  # 编号和别名都撞上同一条遗留编号
+        conn.execute(f"UPDATE {table} SET {key}='RENAMED', name='renamed' WHERE {key}='NEW'")
+        deactivated_once(ref, kind, "renamed")
+    ref = stale(20, "template_operation", "STALE", "P2:9")
+    conn.execute("INSERT INTO PartOperations(part_no, seq, op_type_name, source, status) VALUES ('P2', 9, 'Milling', 'internal', 'active')")
+    deactivated_once(ref, "template_operation", "P2:9")

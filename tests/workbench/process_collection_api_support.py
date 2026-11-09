@@ -41,13 +41,6 @@ class CollectionAPI(StageAPI):
     def listing(self, scope=None, **page):
         return success(self.client.get(LIST, query_string=transport({**(scope or {}), **page})))
 
-    def facet_response(self, column="label", scope=None, *, selection=False, **page):
-        path = TABLE + ("facet-selection/" if selection else "facets/") + column
-        return self.client.get(path, query_string={"scope": json.dumps(scope or {}), **page})
-
-    def facet(self, column="label", scope=None, *, selection=False, **page):
-        return success(self.facet_response(column, scope, selection=selection, **page))
-
     def bound(self, refs, scope=None, size=20):
         scope = {} if scope is None else scope
         listing = self.listing(scope, size=size)
@@ -98,11 +91,9 @@ for (const file of ['resource-contract.js', 'ResourceTableFilterModel.js', 'Reso
                     'ProcessContract.js', 'ProcessActionContract.js'])
   vm.runInContext(fs.readFileSync('frontend/workbench/app/' + file, 'utf8'), context, { filename: file });
 try {
-  const A = context.APSProcessActions, P = context.APSProcessContract, M = context.ResourceTableFilterModel;
+  const A = context.APSProcessActions;
   if (input.mode === 'delete') A.deletePreview(input.raw, input.request);
-  else if (input.mode === 'receipt') A.receipt(input.raw, input.intent, input.refs);
-  else if (input.mode === 'list') P.list(input.raw, input.request);
-  else M[input.mode](input.raw, input.request);
+  else A.receipt(input.raw, input.intent, input.refs);
 } catch (error) { throw new Error(String(error.message) + ' ' + JSON.stringify(error)); }
 """
     result = subprocess.run([node, "-e", script], input=json.dumps({"mode": mode, "raw": raw, "request": request,
