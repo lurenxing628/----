@@ -36,7 +36,7 @@ def build_result_summary(*, ctx: SummaryBuildContext) -> Dict[str, Any]:
         best_metrics=ctx.best_metrics,
     )
     completion_status = _compute_completion_status(ctx.summary)
-    time_cost_ms = int((time.time() - float(ctx.t0)) * 1000)
+    time_cost_ms = max(int((time.monotonic() - float(ctx.t0)) * 1000), 0)
     frozen_batch_ids = _frozen_batch_ids(ctx.operations, frozen_op_ids=ctx.frozen_op_ids)
     warnings = _build_summary_warnings(summary=ctx.summary, runtime_state=runtime_state)
     freeze_state = _freeze_meta_dict(ctx.freeze_meta)

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import logging
-from datetime import date, datetime, timedelta
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
+import math
+import sys
+from datetime import datetime, timedelta
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, cast
 
-from core.algorithm_contracts.date_parsers import due_exclusive, parse_date
+from core.algorithm_contracts.date_parsers import due_exclusive
 from core.algorithm_contracts.priority_constants import PRIORITY_WEIGHT, normalize_priority
 from core.algorithm_contracts.types import OpForScheduleAlgo
 from core.algorithm_contracts.value_domains import EXTERNAL, MERGED
@@ -18,7 +19,6 @@ from core.services.scheduler.run.optimizer.graph_ready_feature_basis import (
 from .v2_capacity import (
     FixedResourceBlockingFacts,
     bottleneck_on,
-    non_negative_float,
     residual_capacity_for_operation,
     residual_capacity_window_end,
     seed_results_by_resource_id,
@@ -29,23 +29,8 @@ if TYPE_CHECKING:
     from core.algorithms.greedy.schedule_preparation import NativeSchedulePreparation
 
 _NO_DUE_DEADLINE_HOURS = 1_000_000_000.0
-_NO_DUE_CRITICAL_RATIO = 1_000_000_000.0
+_NO_DUE_CRITICAL_RATIO = math.inf
 _NO_DUE_SACRIFICE_PENALTY = 2.0
-
-# 真零工时自制工序（total==0：setup=unit=0，或 quantity=0 且 setup=0）在系统口径下合法
-# （见 _operation_hours 注释），但 duration 类特征有两条恒>0 的承重合同：
-# 1) _critical_ratio/_saveability 依赖 remaining_hours>0 做除零安全（见 _critical_ratio 注释）；
-# 2) 下游公式层 optimizer_graph_ready_candidates._required_positive_metric 要求
-#    remaining_due_burden_hours 恒>0（既有合同测试锁死）。
-# 取舍：在「从 duration 聚合剔除」与「按文档化最小 epsilon 计入」里选后者——剔除会让全零批次的
-# remaining_hours==0，既打破除零安全承重合同又被下游 >0 合同拒绝；epsilon 计入则保住
-# remaining_hours >= epsilon > 0 的不变量。除零安全论证：critical_ratio=due_budget/remaining
-# <= due_budget/epsilon，due_budget 为有限墙钟/日历窗口小时数，比值恒为有限 float；
-# 无交期路径走占位常量不做除法。epsilon=1e-6 小时（3.6 毫秒）远低于任何真实工时录入粒度，
-# 不会翻转非零工序间的任何特征排序。计入时按 op 留痕（_duration_by_op_id_with_zero_total_trace）。
-_ZERO_TOTAL_DURATION_EPSILON_HOURS = 1e-6
-
-_LOGGER = logging.getLogger(__name__)
 
 
 def enrich_graph_ready_v2_metrics(
@@ -89,35 +74,39 @@ def enrich_graph_ready_v2_metrics(
 def _prepare_common_features(metrics, *, operations, batches, start_dt, downtime_map,
                              native_preparation: NativeSchedulePreparation):
     op_by_id = {op.id: op for op in operations}
-    batch_by_op_id = {op_id: _batch_for_operation(op_by_id[op_id], batches=batches) for op_id in metrics}
-    durations = _duration_by_op_id_with_zero_total_trace(
-        {op_id: op_by_id[op_id] for op_id in metrics},
-        total_hours_by_op_id=native_preparation.total_hours_by_op_id,
-    )
-    due_exclusive_by_batch: Dict[int, Optional[datetime]] = {}
-    due_hours_by_batch: Dict[int, float] = {}
-    priority_weight_by_batch: Dict[int, float] = {}
-    for batch in batch_by_op_id.values():
-        batch_key = id(batch)
-        if batch_key not in due_exclusive_by_batch:
-            due = _due_exclusive_datetime(batch)
-            due_exclusive_by_batch[batch_key] = due
-            due_hours_by_batch[batch_key] = (
+    batch_by_op_id = {op_id: batches[op_by_id[op_id].batch_id] for op_id in metrics}
+    durations = {
+        op_id: _operation_hours(op_by_id[op_id], total_hours_by_op_id=native_preparation.total_hours_by_op_id)
+        for op_id in metrics
+    }
+    due_dates = native_preparation.parsed_due_dates()
+    ready_starts = native_preparation.parsed_ready_starts()
+    due_exclusive_by_batch: Dict[str, Optional[datetime]] = {}
+    due_hours_by_batch: Dict[str, float] = {}
+    priority_weight_by_batch: Dict[str, float] = {}
+    for op_id, batch in batch_by_op_id.items():
+        batch_id = op_by_id[op_id].batch_id
+        if batch_id not in due_exclusive_by_batch:
+            due_day = due_dates[batch_id]
+            due = None if due_day is None else due_exclusive(due_day)
+            due_exclusive_by_batch[batch_id] = due
+            due_hours_by_batch[batch_id] = (
                 _NO_DUE_DEADLINE_HOURS if due is None else _deadline_hours(start_dt=start_dt, due_exclusive=due)
             )
-            priority_weight_by_batch[batch_key] = PRIORITY_WEIGHT[normalize_priority(batch.priority)]
+            priority_weight_by_batch[batch_id] = PRIORITY_WEIGHT[normalize_priority(batch.priority)]
     family_ids = sorted({op_by_id[op_id].op_type_id for op_id in metrics})
     family_ranks = {type_id: index for index, type_id in enumerate(family_ids)}
     processing_ranks = _processing_time_ranks(durations)
     base_row_by_op_id: Dict[int, Dict[str, Any]] = {}
     for op_id, metric in metrics.items():
         op = op_by_id[op_id]
-        batch_key = id(batch_by_op_id[op_id])
-        priority_weight = priority_weight_by_batch[batch_key]
+        batch_id = op.batch_id
+        priority_weight = priority_weight_by_batch[batch_id]
         base_row = dict(metric)
         base_row.update(
             {
-                "due_deadline_hours": float(due_hours_by_batch[batch_key]),
+                "priority_weight": float(priority_weight),
+                "due_deadline_hours": float(due_hours_by_batch[batch_id]),
                 "weighted_processing_hours": float(durations[op_id] / priority_weight),
                 "changeover_family_rank": family_ranks[op.op_type_id],
                 "processing_time_rank": float(processing_ranks[op_id]),
@@ -131,21 +120,22 @@ def _prepare_common_features(metrics, *, operations, batches, start_dt, downtime
         "durations": durations,
         "batch_by_op_id": batch_by_op_id,
         "priority_weight_by_op_id": {
-            op_id: priority_weight_by_batch[id(batch)]
-            for op_id, batch in batch_by_op_id.items()
+            op_id: priority_weight_by_batch[op_by_id[op_id].batch_id]
+            for op_id in batch_by_op_id
         },
         "bottleneck_score_by_op_id": {
             op_id: float(metric["bottleneck_machine_score"]) for op_id, metric in metrics.items()
         },
         "due_exclusive_by_op_id": {
-            op_id: due_exclusive_by_batch[id(batch)]
-            for op_id, batch in batch_by_op_id.items()
+            op_id: due_exclusive_by_batch[op_by_id[op_id].batch_id]
+            for op_id in batch_by_op_id
         },
         "base_row_by_op_id": base_row_by_op_id,
         "resource_blocking": FixedResourceBlockingFacts(
             downtime_map=downtime_map, seed_results_by_resource_id=resource_seeds),
         "capacity_by_window": {},
         "work_buckets": build_work_buckets(op_by_id, durations),
+        "ready_starts": ready_starts,
     }
 
 
@@ -161,7 +151,8 @@ def _enrich_feature_basis(*, batches, start_dt, calendar_service,
     signals = _workload_signals(
         feature_basis, op_by_id, duration_by_op_id, batches=batches, start_dt=start_dt,
         graph_ready_context=graph_ready_context, seed_results=seed_results, calendar_service=calendar_service,
-        work_buckets=prepared["work_buckets"], deadline=deadline, clock=clock)
+        work_buckets=prepared["work_buckets"], ready_starts=prepared["ready_starts"],
+        deadline=deadline, clock=clock)
     if signals is None:
         return None
     remaining_by_op_id, ready_offset_hours_by_op_id = signals
@@ -186,7 +177,7 @@ def _enrich_feature_basis(*, batches, start_dt, calendar_service,
             batch = prepared["batch_by_op_id"][op_id]
             bottleneck_score = prepared["bottleneck_score_by_op_id"][op_id]
             capacity_start_dt = start_dt + timedelta(hours=float(ready_offset_hours_by_op_id[op_id]))
-            capacity_window_end = residual_capacity_window_end(
+            window_end = residual_capacity_window_end(
                 start_dt=capacity_start_dt,
                 due_exclusive=parsed_due_exclusive,
             )
@@ -197,14 +188,14 @@ def _enrich_feature_basis(*, batches, start_dt, calendar_service,
                 op.op_type_id,
                 batch.priority,
                 capacity_start_dt,
-                capacity_window_end,
+                window_end,
             )
             if window_key not in capacity_by_window:
                 capacity_by_window[window_key] = residual_capacity_for_operation(
                     op,
                     batch=batch,
                     start_dt=capacity_start_dt,
-                    due_exclusive=capacity_window_end,
+                    window_end=window_end,
                     calendar_service=calendar_service,
                     resource_pool=resource_pool,
                     prepared=prepared["resource_blocking"],
@@ -269,82 +260,24 @@ def _workload_signals(
     )
 
 
-def _duration_by_op_id_with_zero_total_trace(
-    op_by_id: Dict[int, Any],
-    *,
-    total_hours_by_op_id: Dict[int, float],
-) -> Dict[int, float]:
-    duration_by_op_id: Dict[int, float] = {}
-    zero_total_op_ids: List[int] = []
-    for op_id, op in op_by_id.items():
-        total = _operation_hours(op, total_hours_by_op_id=total_hours_by_op_id)
-        if total <= 0.0:
-            # 真零工时工序：按文档化 epsilon 计入并留痕，取舍与除零安全论证见
-            # _ZERO_TOTAL_DURATION_EPSILON_HOURS 常量注释。
-            zero_total_op_ids.append(int(op_id))
-            total = _ZERO_TOTAL_DURATION_EPSILON_HOURS
-        duration_by_op_id[op_id] = total
-    if zero_total_op_ids:
-        _LOGGER.warning(
-            "GraphReady v2 特征遇到 %d 个总工时为 0 的自制工序，按最小 epsilon=%.0e 小时计入 duration 特征"
-            "（zero_total_op_ids 样本=%s）。",
-            len(zero_total_op_ids),
-            _ZERO_TOTAL_DURATION_EPSILON_HOURS,
-            sorted(zero_total_op_ids)[:20],
-        )
-    return duration_by_op_id
-
-
 def _operation_hours(op: OpForScheduleAlgo, *, total_hours_by_op_id: Dict[int, float]) -> float:
     if op.source == EXTERNAL:
         return _external_operation_hours(op)
     # 单一真相源：自制工序总工时由本次排产的原生准备（prepare_native_schedule_inputs）按
     # internal_slot.require_internal_hours 为每道未落位自制工序算好一次（分件工序按件数量），
     # 已保证有限且非负——quantity==0 合法（总量=setup）、总工时 0 合法，坏工时在那里按字段报错。
-    # total==0 的处理见 _duration_by_op_id_with_zero_total_trace。
     return total_hours_by_op_id[op.id]
 
 
 def _external_operation_hours(op: OpForScheduleAlgo) -> float:
-    # 排产输入构建保证合并外协组必带组身份。
+    # 排产输入构建已保证外协周期为正有限数，合并外协组必带组身份。
     if op.ext_merge_mode == MERGED:
-        return _positive_float(op.ext_group_total_days, field="operation.ext_group_total_days") * 24.0
-    return _positive_float(op.ext_days, field="operation.ext_days") * 24.0
-
-
-def _batch_for_operation(op: OpForScheduleAlgo, *, batches: Dict[str, Any]) -> Any:
-    if op.batch_id not in batches:
-        raise ValidationError("GraphReady v2 特征找不到工序批次。", field="graph_ready_v2_features")
-    return batches[op.batch_id]
-
-
-def _due_exclusive_datetime(batch: Any) -> Optional[datetime]:
-    due_day = _parse_due_day(batch.due_date)
-    if due_day is None:
-        return None
-    return due_exclusive(due_day)
+        return float(cast(float, op.ext_group_total_days)) * 24.0
+    return float(cast(float, op.ext_days)) * 24.0
 
 
 def _deadline_hours(*, start_dt: datetime, due_exclusive: datetime) -> float:
     return float((due_exclusive - start_dt).total_seconds() / 3600.0)
-
-
-def _parse_due_day(value: Any) -> Optional[date]:
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
-        return value
-    text = str(value or "").strip()
-    if not text:
-        return None
-    parsed = parse_date(text)
-    if parsed is None:
-        raise ValidationError(
-            "GraphReady v2 特征要求批次交期格式必须是 YYYY-MM-DD。",
-            field="graph_ready_v2_features",
-            details={"reason": "graph_ready_v2_bad_due_date"},
-        )
-    return parsed
 
 
 def _deadline_budget_hours(
@@ -373,13 +306,18 @@ def _due_pressure(*, due_hours: float, remaining_hours: float) -> float:
 def _saveability(*, due_hours: float, remaining_hours: float) -> float:
     if due_hours <= 0.0:
         return 0.0
-    return max(0.0, min(1.0, due_hours / remaining_hours))
+    if remaining_hours <= 0.0:
+        return 1.0
+    return min(1.0, due_hours / remaining_hours)
 
 
 def _critical_ratio(*, due_hours: float, remaining_hours: float) -> float:
-    # remaining_hours 由 _duration_by_op_id_with_zero_total_trace 汇总:正常工序 duration>0,
-    # 真零工时工序按 _ZERO_TOTAL_DURATION_EPSILON_HOURS(>0)计入,且每批至少含自身工序,
-    # 故恒为正有限值,无需再防 0。
+    if remaining_hours <= 0.0:
+        if due_hours < 0.0:
+            return -math.inf
+        if due_hours == 0.0:
+            return 0.0
+        return sys.float_info.max
     return due_hours / remaining_hours
 
 
@@ -394,13 +332,6 @@ def _sacrifice_penalty(*, due_hours: float, remaining_hours: float, saveability:
 def _processing_time_ranks(duration_by_op_id: Dict[int, float]) -> Dict[int, int]:
     ordered = sorted(duration_by_op_id.items(), key=lambda item: (item[1], item[0]))
     return {op_id: index for index, (op_id, _hours) in enumerate(ordered)}
-
-
-def _positive_float(value: Any, *, field: str) -> float:
-    number = non_negative_float(value, field=field)
-    if number <= 0.0:
-        raise ValidationError(f"{field} 必须大于 0。", field="graph_ready_v2_features")
-    return number
 
 
 __all__ = ["enrich_graph_ready_v2_metrics"]

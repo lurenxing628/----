@@ -361,7 +361,7 @@ def _can_accept_neighbor(pool: EliteRepairPool, *, candidate: Dict[str, Any],
         return False
     if candidate["summary"].failed_ops or not candidate["summary"].success:
         return False
-    if not score_strictly_better(candidate["score"], (best or {}).get("score")):
+    if not score_strictly_better(candidate["score"], None if best is None else best["score"]):
         return False
     return candidate_is_preferred(
         candidate=candidate, incumbent=best, candidate_origin=GRAPH_READY_V2_REPAIRED_ORIGIN,

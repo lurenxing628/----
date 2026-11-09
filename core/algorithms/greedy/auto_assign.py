@@ -15,13 +15,13 @@ from core.algorithm_runtime.auto_assign_contract import (
     AUTO_ASSIGN_REASON_WINDOW_BLOCKED,
     AutoAssignAttempt,
 )
-from core.algorithm_runtime.internal_slot import estimate_internal_slot
+from core.algorithm_runtime.internal_slot import InternalSlotEstimate, estimate_internal_slot
 from core.algorithm_runtime.resource_quality import MachineTypeState, prefer_resource_pair
-from core.algorithm_runtime.sgs_estimate_reuse import current_sgs_handoff
-from core.algorithm_runtime.slot_overlap_reuse import SlotOverlapReuse, overlap_reuse_for
+from core.algorithm_runtime.slot_overlap_reuse import SlotOverlapReuse
 from core.models.batch import Batch
 
 if TYPE_CHECKING:
+    from .dispatch.sgs_score_cache import SgsScoreCache
     from .schedule_preparation import NativeSchedulePreparation
 
 _EMPTY_RESOURCE_POOL: Dict[str, Any] = {
@@ -86,8 +86,8 @@ def prepare_resource_candidates(op: OpForScheduleAlgo, resource_pool: Any) -> Re
 
 def auto_assign_internal_resources_attempt(
     *,
-    calendar: Any = None,
-    algo_stats: Any = None,
+    calendar: Any,
+    algo_stats: Any,
     op: OpForScheduleAlgo,
     batch: Batch,
     batch_progress: Dict[str, datetime],
@@ -102,6 +102,8 @@ def auto_assign_internal_resources_attempt(
     operator_busy_hours: Dict[str, float],
     probe_only: bool = False,
     resource_preparation: NativeSchedulePreparation,
+    overlap_reuse: Optional[SlotOverlapReuse],
+    score_cache: Optional[SgsScoreCache],
 ) -> AutoAssignAttempt:
     count = (lambda key: None) if probe_only else (lambda key: increment_counter(algo_stats, key))
     candidates = resource_preparation.resource_candidates_for(op)
@@ -136,6 +138,8 @@ def auto_assign_internal_resources_attempt(
         operator_busy_hours=operator_busy_hours,
         count=count,
         static_candidates=candidates,
+        overlap_reuse=overlap_reuse,
+        score_cache=score_cache,
     )
 
 
@@ -230,14 +234,15 @@ def _choose_best_pair(
     operator_busy_hours: Dict[str, float],
     count: Any,
     static_candidates: ResourceCandidates,
+    overlap_reuse: Optional[SlotOverlapReuse],
+    score_cache: Optional[SgsScoreCache],
 ) -> AutoAssignAttempt:
     best: Optional[Tuple[Any, ...]] = None
     best_pair: Optional[Tuple[str, str]] = None
+    best_estimate: Optional[InternalSlotEstimate] = None
     seen_operator = False
     tie_seen = False
     prev_end = batch_progress.get(op.batch_id, base_time)
-    handoff = current_sgs_handoff()
-    overlap_reuse = overlap_reuse_for(machine_timeline)
     for machine_id in machine_candidates:
         operator_candidates = static_candidates.operators_for_machine(machine_id)
         if not operator_candidates:
@@ -247,7 +252,7 @@ def _choose_best_pair(
         m_downtimes = (machine_downtimes.get(machine_id) or []) if machine_downtimes and machine_id else []
         m_busy = machine_busy_hours.get(machine_id, 0.0)
         for operator_id in _sort_operator_candidates(operator_candidates, machine_id=machine_id, pool=pool, operator_busy_hours=operator_busy_hours):
-            score = _pair_score(
+            pair_result = _pair_score(
                 calendar=calendar,
                 op=op,
                 batch=batch,
@@ -263,24 +268,31 @@ def _choose_best_pair(
                 total_hours_base=total_hours_base,
                 pool=pool,
                 abort_after=best[0] if best is not None else None,
-                handoff=handoff,
+                score_cache=score_cache,
                 m_timeline=m_timeline,
                 m_downtimes=m_downtimes,
                 m_busy=m_busy,
                 overlap_reuse=overlap_reuse,
             )
-            if score is not None:
+            if pair_result is not None:
+                score, estimate = pair_result
                 if best is not None and score[:2] == best[:2]:
                     tie_seen = True
                 if best is None or prefer_resource_pair(last_op_type_by_machine, op, score, best):
                     best = score
                     best_pair = (machine_id, operator_id)
+                    best_estimate = estimate
     if best_pair is None:
         return _pair_failure_attempt(
             seen_operator=seen_operator,
             count=count,
         )
-    return AutoAssignAttempt(machine_id=best_pair[0], operator_id=best_pair[1], pair_tie_occurred=tie_seen)
+    return AutoAssignAttempt(
+        machine_id=best_pair[0],
+        operator_id=best_pair[1],
+        pair_tie_occurred=tie_seen,
+        estimate=best_estimate,
+    )
 
 
 def _pair_failure_attempt(
@@ -290,9 +302,9 @@ def _pair_failure_attempt(
 ) -> AutoAssignAttempt:
     if not seen_operator:
         count("auto_assign_no_operator_candidate_count")
-        return AutoAssignAttempt(reason=AUTO_ASSIGN_REASON_NO_OPERATOR_CANDIDATE, pair_tie_occurred=False)
+        return AutoAssignAttempt(reason=AUTO_ASSIGN_REASON_NO_OPERATOR_CANDIDATE)
     count("auto_assign_window_blocked_count")
-    return AutoAssignAttempt(reason=AUTO_ASSIGN_REASON_WINDOW_BLOCKED, pair_tie_occurred=False)
+    return AutoAssignAttempt(reason=AUTO_ASSIGN_REASON_WINDOW_BLOCKED)
 
 
 def _operator_candidates_for_machine(machine_id: str, *, fixed_operator: Optional[str], pool: Dict[str, Any], op_type_id: str) -> List[str]:
@@ -330,13 +342,13 @@ def _pair_score(
     total_hours_base: float,
     pool: Dict[str, Any],
     abort_after: Optional[datetime],
-    handoff: Any,
+    score_cache: Optional[SgsScoreCache],
     m_timeline: List[Tuple[datetime, datetime]],
     m_downtimes: List[Tuple[datetime, datetime]],
     m_busy: float,
     overlap_reuse: Optional[SlotOverlapReuse],
-) -> Optional[Tuple[Any, ...]]:
-    def estimate_pair(abort_at: Optional[datetime]):
+) -> Optional[Tuple[Tuple[Any, ...], InternalSlotEstimate]]:
+    def estimate_pair(abort_at: Optional[datetime]) -> InternalSlotEstimate:
         return estimate_internal_slot(
             calendar=calendar,
             op=op,
@@ -355,12 +367,12 @@ def _pair_score(
             overlap_reuse=overlap_reuse,
         )
 
-    estimate = None
-    if handoff is not None:
+    estimate: Optional[InternalSlotEstimate] = None
+    if score_cache is not None:
         # The SGS witness cache keeps abort-free estimates per pair. An abort-free estimate starting after
         # abort_after is exactly the pair the native early stop would have pruned: the start only grows
         # across avoidance hops, so the native probe aborts iff its final start exceeds abort_after.
-        estimate = handoff.pair_estimate(
+        estimate = score_cache.pair_estimate(
             op=op, machine_id=machine_id, operator_id=operator_id, prev_end=prev_end,
             machine_timeline=machine_timeline, operator_timeline=operator_timeline, compute=lambda: estimate_pair(None),
         )
@@ -369,7 +381,8 @@ def _pair_score(
     if estimate.abort_after_hit or (abort_after is not None and estimate.start_time > abort_after) or estimate.blocked_by_window:
         return None
     load_penalty = m_busy + operator_busy_hours.get(operator_id, 0.0)
-    return (estimate.end_time, estimate.changeover_penalty, load_penalty, _pair_rank(pool, operator_id, machine_id), machine_id, operator_id)
+    score = (estimate.end_time, estimate.changeover_penalty, load_penalty, _pair_rank(pool, operator_id, machine_id), machine_id, operator_id)
+    return score, estimate
 
 
 def _pair_rank(pool: Dict[str, Any], operator_id: str, machine_id: str) -> int:

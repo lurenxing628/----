@@ -193,7 +193,7 @@ class LocalSearchStage(SearchStage):
             self.pending_restart = True
 
     def _best_dispatch_mode(self, local_state: LocalSearchState) -> str:
-        return resolve_current_strategy_state(local_state.best)[2]
+        return str(local_state.best["dispatch_mode"])
 
     def _sync_strategy_and_neighborhoods(self, strategy_state: Tuple[Any, Any, str, str]) -> None:
         if strategy_state[2] != self.strategy_state[2]:

@@ -4,7 +4,6 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.algorithm_runtime.algo_stats import increment_counter
 from core.algorithm_runtime.downtime import occupy_resource
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.errors import ValidationError
@@ -18,8 +17,6 @@ def prepare_run_state(
     *,
     prepared_inputs: NativeSchedulePreparation,
     params: ScheduleParams,
-    warnings: List[str],
-    algo_stats: Dict[str, Any],
     readiness_gate_enabled: bool,
 ) -> ScheduleRunState:
     state = ScheduleRunState(base_time=params.base_time)
@@ -38,9 +35,6 @@ def prepare_run_state(
                     occupy_resource(state.operator_timeline, occ.operator_id, occ.start_time, occ.end_time)
             state.record_seed_result(app.result, occupancies=app.occupancies)
         state.external_group_cache.update(prepared_inputs.seed_external_group_cache)
-        warnings.extend(state.seed_resource_warnings())
-        increment_counter(algo_stats, "seed_missing_machine_id_count", state.missing_seed_machine_count)
-        increment_counter(algo_stats, "seed_missing_operator_id_count", state.missing_seed_operator_count)
     return state
 
 

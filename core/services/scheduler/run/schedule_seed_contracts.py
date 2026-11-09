@@ -98,7 +98,7 @@ def coerce_seed_results(
 
     increment_counter(optimizer_algo_stats, "optimizer_seed_result_invalid_count", invalid_seed_count)
     if invalid_seed_count > 0:
-        optimizer_algo_stats.setdefault("fallback_samples", {})["optimizer_seed_result_invalid_samples"] = invalid_seed_samples
+        optimizer_algo_stats["fallback_samples"]["optimizer_seed_result_invalid_samples"] = invalid_seed_samples
         raise ValidationError(
             "本次排产引用的已有排产记录无效，系统已停止排产，没有写入新结果。请刷新排产数据后重试。",
             field="seed_results",

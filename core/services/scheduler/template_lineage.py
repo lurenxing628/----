@@ -111,7 +111,6 @@ class TemplateLineageWriter:
 
     def prepare_instances(self, rows, *, facts):
         """Capture source identities, contexts and lineage together, before any source write."""
-        self.require_ready()
         rows = list(rows)
         entities = _entity_facts(facts)
         current = _instance_facts(facts, entities)

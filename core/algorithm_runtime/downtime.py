@@ -6,24 +6,19 @@ from datetime import datetime
 from itertools import accumulate, islice
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from .sgs_estimate_reuse import current_sgs_handoff
-
 
 def occupy_resource(
     timeline: Dict[str, List[Tuple[datetime, datetime]]],
     resource_id: str,
     start: datetime,
     end: datetime,
-) -> None:
+) -> bool:
     # A zero-length interval is a point event: it occupies no resource time and never enters a timeline.
     if not resource_id or end <= start:
-        return
+        return False
     segments = timeline.setdefault(resource_id, [])
     bisect.insort(segments, (start, end))
-    handoff = current_sgs_handoff()
-    if handoff is not None:
-        # The SGS pair memo proves memoized estimates current against exactly the segments added since.
-        handoff.observe_occupation(timeline, resource_id, start, end)
+    return True
 
 
 class SegmentOverlapIndex:

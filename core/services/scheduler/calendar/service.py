@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from fractions import Fraction
+from typing import Optional, Tuple
 
 from core.algorithm_runtime.calendar_timing_memo import register_native_timing_calendar
 from core.algorithm_runtime.checkpoint_calendar import register_checkpoint_calendar
 
-from .admin import CalendarAdmin
-from .checkpoint_certificate import calendar_checkpoint_snapshot
+from .admin import CalendarAdmin, CalendarNormalizationContext
+from .checkpoint_certificate import (
+    read_calendar_checkpoint_signature,
+    read_checkpoint_connection_metadata,
+)
 from .day_policy import DayPolicy
 from .engine import CalendarEngine
 
@@ -24,12 +28,13 @@ class CalendarService:
     def __init__(self, conn, logger=None, *, capture=None, captured_global_rows=None):
         self.conn = conn
         self.logger = logger
+        self._decode_checkpoint_cache: Optional[Tuple[Tuple[int, bool, int, int, int, int], Tuple[str, tuple]]] = None
         self._admin = CalendarAdmin(conn, logger=logger)
         self._engine = CalendarEngine(conn, logger=logger, capture=capture, captured_global_rows=captured_global_rows)
 
-    def normalization_operation(self):
-        """One calendar-row normalization operation; workday defaults come from this service's engine."""
-        return self._admin.normalization_operation(self._engine.default_periods)
+    def normalization_context(self) -> CalendarNormalizationContext:
+        """One calendar-row normalization context; workday defaults come from this service's engine."""
+        return CalendarNormalizationContext(self.conn, logger=self.logger, period_reader=self._engine.default_periods)
 
     def policy_for_datetime(self, dt: datetime, operator_id: Optional[str] = None) -> DayPolicy:
         return self._engine.policy_for_datetime(dt, operator_id=operator_id)
@@ -63,12 +68,28 @@ class CalendarService:
     def certified_slot_window(self, dt: datetime, *, priority=None, operator_id=None):
         return self._engine.certified_slot_window(dt, priority=priority, operator_id=operator_id)
 
+    def capacity_fraction_between(
+        self, start: datetime, end: datetime, *, priority=None, operator_id=None,
+    ) -> Fraction:
+        return self._engine.capacity_fraction_between(start, end, priority=priority, operator_id=operator_id)
+
     def capacity_hours_between(self, start: datetime, end: datetime, *, priority=None, operator_id=None) -> float:
         return self._engine.capacity_hours_between(start, end, priority=priority, operator_id=operator_id)
 
-    def certified_decode_checkpoint_snapshot(self):
+    def certified_decode_checkpoint_snapshot(self) -> Tuple[str, tuple]:
         """Business calendar contents, unchanged by ordinary policy-cache population."""
-        return calendar_checkpoint_snapshot(self)
+        metadata, reusable = read_checkpoint_connection_metadata(self.conn)
+        if not reusable:
+            # A later rollback+BEGIN may keep every SQLite counter unchanged.
+            self._decode_checkpoint_cache = None
+        else:
+            cached = self._decode_checkpoint_cache
+            if cached is not None and cached[0] == metadata:
+                return cached[1]
+        signature = read_calendar_checkpoint_signature(self.conn, capture=self._engine.capture)
+        if reusable:
+            self._decode_checkpoint_cache = (metadata, signature)
+        return signature
 
 
 register_native_timing_calendar(CalendarService)

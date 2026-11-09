@@ -8,8 +8,8 @@ start, which holds when every certified work window the walk can touch, from S u
 result's end, reports the same efficiency (shift lengths and non-working gaps never break
 monotonicity; a faster later day would). A single window is the smallest such span; a
 chain of same-efficiency windows extends the proof across days, so saturated resources
-whose slots land days later can still share. Walks that stop early are never shared.
-Operation-specific changeover penalties are always recomputed.
+whose slots land days later can still share. Only non-aborted scoring slot estimates enter
+this cache; operation-specific changeover penalties are always recomputed.
 """
 
 import math
@@ -82,11 +82,10 @@ class SharedSlotEstimateCache:
             if reader is None:
                 return () if type(values) in (tuple, list) and not values else _UNSUPPORTED
             entry = self._owners[id(values)] = (values, reader)
-        certificate = entry[1]()
-        return certificate if certificate is not None else _UNSUPPORTED
+        return entry[1]()
 
     def resolve(self, *, state, calendar, op, priority, machine_id, operator_id, prev_end,
-                total_hours, end_dt_exclusive, compute, read_scan, note_scan):
+                total_hours, end_dt_exclusive, compute):
         key = self._key(state, calendar, priority, machine_id, operator_id, prev_end,
                         total_hours, end_dt_exclusive)
         if key is None:
@@ -97,21 +96,18 @@ class SharedSlotEstimateCache:
         entry = self._entries.get(key)
         if entry is not None and entry[0] <= earliest <= entry[1].start_time:
             self.hits += 1
-            note_scan(*entry[2])  # A conservative superset of the later release's actual scan.
+            # entry[1].scan_span is already a conservative superset of the later release's actual scan.
             return internal_slot.refresh_changeover_penalty(
                 entry[1], op=op, machine_id=machine_id, last_op_type_by_machine=state.last_op_type_by_machine)
         self.misses += 1
         estimate = compute()
-        scan = read_scan()
-        if scan is None or estimate.abort_after_hit:
-            return estimate
         if not earliest <= estimate.start_time < estimate.end_time:
             return estimate
         if constant_efficiency_span(calendar, earliest, estimate.end_time, priority, operator_id):
             if len(self._entries) >= _LIMIT:
                 # Evict the oldest entry of the round instead of dropping every proof at once.
                 del self._entries[next(iter(self._entries))]
-            self._entries[key] = (earliest, estimate, scan)
+            self._entries[key] = (earliest, estimate)
         return estimate
 
     def _key(self, state, calendar, priority, machine_id, operator_id, prev_end, total_hours, end_dt_exclusive):

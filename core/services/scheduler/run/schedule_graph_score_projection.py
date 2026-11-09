@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
+from core.services.scheduler.graph.scoring import graph_score_components
 
 from .schedule_graph_dispatch_context import GRAPH_CYCLE_DISABLED_REASON
 
@@ -27,39 +28,12 @@ def graph_score_requested(score_weights: Dict[str, int]) -> bool:
     )
 
 
-def score_weight_summary(score_weights: Optional[Dict[str, int]]) -> Optional[Dict[str, int]]:
-    if score_weights is None:
-        return None
-    return {
-        "critical_weight": score_weights["critical_weight"],
-        "impact_weight": score_weights["impact_weight"],
-        "downstream_minutes_weight": score_weights["downstream_minutes_weight"],
-    }
-
-
-def score_disabled_public_fields(
-    *,
-    reason: str,
-    score_weights: Optional[Dict[str, int]],
-    metric_status: str = "disabled",
-) -> Dict[str, Any]:
-    fields: Dict[str, Any] = {
-        "score_enabled": False,
-        "score_metric_status": metric_status,
-        "score_disabled_reason": reason,
-    }
-    summary = score_weight_summary(score_weights)
-    if summary is not None:
-        fields["score_weight_summary"] = summary
-    return fields
-
-
 def score_available_public_fields(score_weights: Dict[str, int]) -> Dict[str, Any]:
     return {
         "score_enabled": True,
         "score_metric_status": "available",
         "score_disabled_reason": None,
-        "score_weight_summary": score_weight_summary(score_weights),
+        "score_weight_summary": dict(score_weights),
     }
 
 
@@ -68,11 +42,11 @@ def build_graph_score_projection(
     mode: str,
     is_dag: bool,
     score_requested: bool,
-    score_weights: Optional[Dict[str, int]],
+    score_weights: Dict[str, int],
     nodes: List[Any],
     node_metrics: Dict[str, Dict[str, Any]],
     topological_order: List[str],
-    op_id_sets: Tuple[Set[int], Set[int]],
+    schedulable_op_ids: Set[int],
 ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
     disabled_projection = graph_score_disabled_projection(
         mode=mode,
@@ -82,15 +56,13 @@ def build_graph_score_projection(
     )
     if disabled_projection is not None:
         return disabled_projection
-    if score_weights is None:
-        raise ValueError("图评分权重缺失。")
 
     return build_available_graph_score_projection(
         score_weights=score_weights,
         nodes=nodes,
         node_metrics=node_metrics,
         topological_order=topological_order,
-        op_id_sets=op_id_sets,
+        schedulable_op_ids=schedulable_op_ids,
     )
 
 
@@ -99,7 +71,7 @@ def graph_score_disabled_projection(
     mode: str,
     is_dag: bool,
     score_requested: bool,
-    score_weights: Optional[Dict[str, int]],
+    score_weights: Dict[str, int],
 ) -> Optional[Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]]:
     if mode != "on":
         return {}, {}, {}
@@ -119,14 +91,16 @@ def graph_score_disabled_projection(
 def score_disabled_projection(
     *,
     reason: str,
-    score_weights: Optional[Dict[str, int]],
+    score_weights: Dict[str, int],
 ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
     return (
         {"score_enabled": False, "score_disabled_reason": reason},
-        score_disabled_public_fields(
-            reason=reason,
-            score_weights=score_weights,
-        ),
+        {
+            "score_enabled": False,
+            "score_metric_status": "disabled",
+            "score_disabled_reason": reason,
+            "score_weight_summary": dict(score_weights),
+        },
         {},
     )
 
@@ -137,42 +111,35 @@ def build_available_graph_score_projection(
     nodes: List[Any],
     node_metrics: Dict[str, Dict[str, Any]],
     topological_order: List[str],
-    op_id_sets: Tuple[Set[int], Set[int]],
+    schedulable_op_ids: Set[int],
 ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
-    from core.services.scheduler.graph.scoring import graph_score_components
-
-    schedulable_op_ids, fixed_op_ids = op_id_sets
-    allowed_op_ids = schedulable_op_ids | fixed_op_ids
-    metrics_by_op_id = node_metrics_by_op_id(
-        nodes=nodes,
-        node_metrics=node_metrics,
-        allowed_op_ids=allowed_op_ids,
-        required_op_ids=schedulable_op_ids,
-    )
+    op_id_by_node_id = {node.node_id: node.raw["id"] for node in nodes}
+    metrics_by_op_id = {
+        op_id: node_metrics[node_id]
+        for node_id, op_id in op_id_by_node_id.items()
+        if op_id in schedulable_op_ids
+    }
     ordered_op_ids = ordered_schedulable_op_ids(
-        nodes=nodes,
+        op_id_by_node_id=op_id_by_node_id,
         topological_order=topological_order,
         schedulable_op_ids=schedulable_op_ids,
     )
     graph_priority_key_by_op_id, score_bonus_by_op_id = build_graph_scores_by_op_id(
         metrics_by_op_id=metrics_by_op_id,
-        schedulable_op_ids=schedulable_op_ids,
         score_weights=score_weights,
-        score_components_fn=graph_score_components,
     )
 
     return (
         {
             "score_enabled": True,
             "score_disabled_reason": None,
-            "score_weights": dict(score_weights),
             "graph_priority_key_by_op_id": graph_priority_key_by_op_id,
-            "node_metrics_by_op_id": {op_id: metrics_by_op_id[op_id] for op_id in sorted(schedulable_op_ids)},
+            "node_metrics_by_op_id": metrics_by_op_id,
         },
         score_available_public_fields(score_weights),
         graph_score_sample(
             ordered_op_ids=ordered_op_ids,
-            total_count=len(schedulable_op_ids),
+            total_count=len(metrics_by_op_id),
             score_bonus_by_op_id=score_bonus_by_op_id,
             graph_priority_key_by_op_id=graph_priority_key_by_op_id,
             node_metrics_by_op_id=metrics_by_op_id,
@@ -180,65 +147,34 @@ def build_available_graph_score_projection(
     )
 
 
-def node_metrics_by_op_id(
-    *,
-    nodes: List[Any],
-    node_metrics: Dict[str, Dict[str, Any]],
-    allowed_op_ids: Set[int],
-    required_op_ids: Set[int],
-) -> Dict[int, Dict[str, Any]]:
-    from core.services.scheduler.graph.input_adapter import GraphInputContractError
-
-    result: Dict[int, Dict[str, Any]] = {}
-    for node in nodes:
-        op_id = node.raw["id"]
-        if op_id not in allowed_op_ids:
-            continue
-        if op_id in result:
-            raise GraphInputContractError(f"图评分上下文发现重复 op_id：{op_id}")
-        node_id = str(node.node_id)
-        if node_id not in node_metrics:
-            raise GraphInputContractError(f"图评分缺少工序 {op_id} 的 node_metrics。")
-        result[op_id] = node_metrics[node_id]
-    missing = sorted(required_op_ids.difference(result))
-    if missing:
-        raise GraphInputContractError(f"图评分缺少待排工序指标：{missing}")
-    return result
-
-
 def ordered_schedulable_op_ids(
     *,
-    nodes: List[Any],
+    op_id_by_node_id: Dict[str, int],
     topological_order: List[str],
     schedulable_op_ids: Set[int],
 ) -> List[int]:
     """The first _GRAPH_SCORE_SAMPLE_LIMIT schedulable operations in topological order."""
     if not schedulable_op_ids:
         return []
-    op_id_by_node_id = {str(node.node_id): node.raw["id"] for node in nodes}
     ordered_op_ids: List[int] = []
     for node_id in topological_order:
-        op_id = op_id_by_node_id.get(node_id)
-        if op_id is not None and op_id in schedulable_op_ids:
+        op_id = op_id_by_node_id[node_id]
+        if op_id in schedulable_op_ids:
             ordered_op_ids.append(op_id)
             if len(ordered_op_ids) >= _GRAPH_SCORE_SAMPLE_LIMIT:
-                return ordered_op_ids
-    if ordered_op_ids:
-        return ordered_op_ids
-    return sorted(schedulable_op_ids)[:_GRAPH_SCORE_SAMPLE_LIMIT]
+                break
+    return ordered_op_ids
 
 
 def build_graph_scores_by_op_id(
     *,
     metrics_by_op_id: Dict[int, Dict[str, Any]],
-    schedulable_op_ids: Set[int],
     score_weights: Dict[str, int],
-    score_components_fn: Any,
 ) -> Tuple[Dict[int, Tuple[float, ...]], Dict[int, int]]:
     keys: Dict[int, Tuple[float, ...]] = {}
     bonuses: Dict[int, int] = {}
-    for op_id in sorted(schedulable_op_ids):
-        bonus, key = score_components_fn(metrics_by_op_id[op_id], **score_weights)
+    for op_id, metric in metrics_by_op_id.items():
+        bonus, key = graph_score_components(metric, **score_weights)
         keys[op_id] = key
         bonuses[op_id] = bonus
     return keys, bonuses
@@ -252,8 +188,6 @@ def graph_score_sample(
     graph_priority_key_by_op_id: Dict[int, Tuple[float, ...]],
     node_metrics_by_op_id: Dict[int, Dict[str, Any]],
 ) -> Dict[str, Any]:
-    sample_op_ids = ordered_op_ids[:_GRAPH_SCORE_SAMPLE_LIMIT]
-    count = total_count
     return {
         "graph_score_sample": [
             _graph_score_sample_row(
@@ -262,10 +196,10 @@ def graph_score_sample(
                 graph_priority_key_by_op_id=graph_priority_key_by_op_id,
                 node_metrics_by_op_id=node_metrics_by_op_id,
             )
-            for op_id in sample_op_ids
+            for op_id in ordered_op_ids
         ],
-        "graph_score_sample_count": count,
-        "graph_score_sample_truncated": count > _GRAPH_SCORE_SAMPLE_LIMIT,
+        "graph_score_sample_count": total_count,
+        "graph_score_sample_truncated": total_count > _GRAPH_SCORE_SAMPLE_LIMIT,
     }
 
 
@@ -277,14 +211,12 @@ def _graph_score_sample_row(
     node_metrics_by_op_id: Dict[int, Dict[str, Any]],
 ) -> Dict[str, Any]:
     metric = node_metrics_by_op_id[op_id]
-    row = {
+    return {
         "op_id": int(op_id),
         "bonus": int(score_bonus_by_op_id[op_id]),
         "priority_key": list(graph_priority_key_by_op_id[op_id]),
         "is_on_critical_path": bool(metric["is_on_critical_path"]),
         "impact_count": int(metric["impact_count"]),
         "downstream_critical_minutes": int(metric["downstream_critical_minutes"]),
+        "bottleneck_machine_score": float(metric["bottleneck_machine_score"]),
     }
-    if "bottleneck_machine_score" in metric:
-        row["bottleneck_machine_score"] = float(metric["bottleneck_machine_score"])
-    return row

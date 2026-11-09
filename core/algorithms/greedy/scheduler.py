@@ -11,27 +11,21 @@ from types import MappingProxyType
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.algorithm_contracts.ordering import (
-    build_normalized_batches_map,
     clean_resource_id,
     operation_sort_key,
 )
 from core.algorithm_contracts.sort_strategies import SortStrategy, StrategyFactory
 from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult, ScheduleSummary
 from core.algorithm_runtime.algo_stats import increment_counter, make_algo_stats
-from core.algorithm_runtime.resource_quality import MachineTypeState, initialize_resource_quality
+from core.algorithm_runtime.resource_quality import initialize_resource_quality
 from core.algorithm_runtime.run_state import ScheduleRunState
+from core.algorithm_runtime.slot_overlap_reuse import SlotOverlapReuse
 from core.models.batch import Batch
 from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
 
-from .auto_assign import auto_assign_internal_resources_attempt
 from .dispatch.route import dispatch_run
 from .dispatch.sgs_checkpoint import DecodeCheckpoint, DecodeCheckpointRequest, decode_input_signature
-from .dispatch.sgs_score_cache import (
-    attach_sgs_score_cache,
-    make_sgs_score_cache_factory,
-)
-from .external_groups import schedule_external
-from .internal_operation import schedule_internal_operation
+from .dispatch.sgs_score_cache import SgsScoreCache
 from .run_context import ScheduleRunContext
 from .run_state_setup import prepare_run_state, replay_resumed_demand, resume_run_state
 from .schedule_params import ScheduleParams
@@ -45,9 +39,6 @@ _LOGGER = logging.getLogger(__name__)
 
 class GreedyScheduler:
     """贪心排产算法：服务层注入日历与配置快照，经已准备好的输入解码。"""
-
-    # 只在 schedule_prepared 解码期间存在；派工回调读取本次解码的准备结果。
-    _active_preparation: NativeSchedulePreparation
 
     def __init__(self, calendar_service, config_service: ScheduleConfigSnapshot):
         self.calendar = calendar_service
@@ -66,7 +57,6 @@ class GreedyScheduler:
         self._decode_invocations += 1
         self.last_algo_stats = algo_stats = make_algo_stats()
         t0 = datetime.now()
-        self._active_preparation = prepared_inputs
         for bucket, values in prepared_inputs.algo_stats.items():
             algo_stats[bucket].update(values)
         warnings = list(params.warnings) + list(prepared_inputs.warnings)
@@ -92,20 +82,31 @@ class GreedyScheduler:
             state = prepare_run_state(
                 prepared_inputs=prepared_inputs,
                 params=params,
-                warnings=warnings,
-                algo_stats=algo_stats,
                 readiness_gate_enabled=readiness_gate_enabled,
             )
-        ctx = prepared_inputs.run_context
-        ctx.sgs_score_cache = None
-        ctx.algo_stats = algo_stats
         initialize_resource_quality(state, sorted_ops, resource_pool, preparation=prepared_inputs)
         if decode_resume is not None:
             replay_resumed_demand(state)
         if decode_checkpoints is not None:
             assert checkpoint_signature is not None
             decode_checkpoints.arm(signature=checkpoint_signature, warnings=warnings)
-        attach_sgs_score_cache(ctx, state=state, params=params, resource_pool=resource_pool)
+        score_cache = (
+            SgsScoreCache.for_preparation(
+                prepared_inputs,
+                state=state,
+                auto_assign_enabled=params.auto_assign_enabled,
+                resource_pool=resource_pool,
+            )
+            if params.dispatch_mode_key == "sgs"
+            else None
+        )
+        overlap_reuse = SlotOverlapReuse() if params.dispatch_mode_key == "sgs" else None
+        ctx = ScheduleRunContext(
+            native_preparation=prepared_inputs,
+            algo_stats=algo_stats,
+            sgs_score_cache=score_cache,
+            overlap_reuse=overlap_reuse,
+        )
 
         self._log_start(batches=batches, sorted_ops=sorted_ops, params=params)
         dispatch_run(
@@ -122,97 +123,6 @@ class GreedyScheduler:
         sorter = StrategyFactory.create(params.strategy, **params.used_params)
         extra = f" 派工=sgs({params.dispatch_rule_spec.token})" if params.dispatch_mode_key == "sgs" else ""
         _LOGGER.info(f"排产开始：批次数={len(batches)} 工序数={len(sorted_ops)} 策略={sorter.get_name()}{extra}")
-
-    def _schedule_external(
-        self,
-        op: OpForScheduleAlgo,
-        batch_progress: Dict[str, datetime],
-        external_group_cache: Dict[Tuple[str, ...], Tuple[datetime, datetime]],
-        base_time: datetime,
-        end_dt_exclusive: Optional[datetime],
-    ) -> Tuple[Optional[ScheduleResult], Optional[Dict[str, Any]]]:
-        return schedule_external(
-            calendar=self.calendar,
-            op=op,
-            batch_progress=batch_progress,
-            external_group_cache=external_group_cache,
-            base_time=base_time,
-            end_dt_exclusive=end_dt_exclusive,
-        )
-
-    def _schedule_internal(
-        self,
-        op: OpForScheduleAlgo,
-        batch: Batch,
-        batch_progress: Dict[str, datetime],
-        machine_timeline: Dict[str, List[Tuple[datetime, datetime]]],
-        operator_timeline: Dict[str, List[Tuple[datetime, datetime]]],
-        base_time: datetime,
-        end_dt_exclusive: Optional[datetime],
-        machine_downtimes: Dict[str, List[Tuple[datetime, datetime]]],
-        *,
-        auto_assign_enabled: bool,
-        resource_pool: Optional[Dict[str, Any]],
-        last_op_type_by_machine: MachineTypeState,
-        machine_busy_hours: Dict[str, float],
-        operator_busy_hours: Dict[str, float],
-    ) -> Tuple[Optional[ScheduleResult], Optional[Dict[str, Any]]]:
-        return schedule_internal_operation(
-            calendar=self.calendar,
-            algo_stats=self.last_algo_stats,
-            auto_assign_resources=self._auto_assign_internal_resources_attempt,
-            op=op,
-            batch=batch,
-            batch_progress=batch_progress,
-            machine_timeline=machine_timeline,
-            operator_timeline=operator_timeline,
-            base_time=base_time,
-            end_dt_exclusive=end_dt_exclusive,
-            machine_downtimes=machine_downtimes,
-            auto_assign_enabled=auto_assign_enabled,
-            resource_pool=resource_pool,
-            last_op_type_by_machine=last_op_type_by_machine,
-            machine_busy_hours=machine_busy_hours,
-            operator_busy_hours=operator_busy_hours,
-            total_hours_by_op_id=self._active_preparation.total_hours_by_op_id,
-        )
-
-    def _auto_assign_internal_resources_attempt(
-        self,
-        *,
-        op: OpForScheduleAlgo,
-        batch: Batch,
-        batch_progress: Dict[str, datetime],
-        machine_timeline: Dict[str, List[Tuple[datetime, datetime]]],
-        operator_timeline: Dict[str, List[Tuple[datetime, datetime]]],
-        base_time: datetime,
-        end_dt_exclusive: Optional[datetime],
-        machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
-        resource_pool: Dict[str, Any],
-        last_op_type_by_machine: MachineTypeState,
-        machine_busy_hours: Dict[str, float],
-        operator_busy_hours: Dict[str, float],
-        probe_only: bool = False,
-    ):
-        preparation = self._active_preparation
-        return auto_assign_internal_resources_attempt(
-            calendar=self.calendar,
-            algo_stats=self.last_algo_stats,
-            op=op,
-            batch=batch,
-            batch_progress=batch_progress,
-            machine_timeline=machine_timeline,
-            operator_timeline=operator_timeline,
-            base_time=base_time,
-            end_dt_exclusive=end_dt_exclusive,
-            machine_downtimes=machine_downtimes,
-            resource_pool=resource_pool,
-            last_op_type_by_machine=last_op_type_by_machine,
-            machine_busy_hours=machine_busy_hours,
-            operator_busy_hours=operator_busy_hours,
-            probe_only=probe_only,
-            resource_preparation=preparation,
-        )
 
 
 def _normalize_machine_downtimes(machine_downtimes: Dict[str, List[Tuple[datetime, datetime]]]) -> Dict[str, List[Tuple[datetime, datetime]]]:
@@ -235,7 +145,6 @@ def prepare_native_schedule_inputs(
 
     calendar = scheduler.calendar
     stats: Dict[str, Any] = make_algo_stats()
-    normalized_batches = build_normalized_batches_map(batches)
     normalized_seeds, seed_op_ids, warnings = normalize_seed_results(seed_results=seed_results, algo_stats=stats)
     unseeded = operations
     if seed_op_ids:
@@ -274,10 +183,10 @@ def prepare_native_schedule_inputs(
     )
     # Each decode request brings its own score switch and keys; only the static graph facts are compiled here.
     topology = None if graph_ready_context is None else prepare_graph_ready_topology(graph_ready_context, unseeded)
-    records = list(operations) + list(normalized_batches.values())
+    records = list(operations) + list(batches.values())
     preparation = NativeSchedulePreparation(
         normalized_machine_downtimes=_normalize_machine_downtimes(machine_downtimes), calendar=calendar,
-        operations=operations, records_by_token={id(value): value for value in records}, batches=normalized_batches,
+        operations=operations, records_by_token={id(value): value for value in records}, batches=batches,
         seed_results=normalized_seeds, seed_applications=tuple(seed_applications),
         seed_occupancies_by_op_id=MappingProxyType(seed_occupancies_by_op_id),
         seed_external_group_cache=external_seed_cache, seed_op_ids=seed_op_ids,
@@ -286,11 +195,11 @@ def prepare_native_schedule_inputs(
     )
     grouped_unseeded: Dict[str, List[OpForScheduleAlgo]] = {}
     for op in unseeded:
-        if op.batch_id in normalized_batches:
+        if op.batch_id in batches:
             grouped_unseeded.setdefault(op.batch_id, []).append(op)
     internal_samples: List[float] = []
     for batch_id, batch_ops in grouped_unseeded.items():
-        batch = normalized_batches[batch_id]
+        batch = batches[batch_id]
         for op in sorted(batch_ops, key=lambda item: (item.seq, item.id)):
             if op.source == INTERNAL:
                 hours = require_internal_hours(op, preparation.operation_batch(op, batch))
@@ -298,8 +207,6 @@ def prepare_native_schedule_inputs(
                 internal_samples.append(hours)
     if internal_samples:
         preparation.average_internal_proc_hours = sum(internal_samples) / len(internal_samples)
-    ctx = preparation.run_context = ScheduleRunContext.from_legacy_scheduler(scheduler, preparation)
-    preparation.score_cache_factory = make_sgs_score_cache_factory(ctx, preparation=preparation)
     return preparation
 
 

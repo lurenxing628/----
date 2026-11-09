@@ -15,6 +15,8 @@ if TYPE_CHECKING:
     from core.algorithm_contracts.types import OpForScheduleAlgo
     from core.models.batch import Batch
 
+    from .sgs_scoring import SgsCandidateScore
+
 
 def _dispatch_selected(
     ctx: Any,
@@ -28,21 +30,21 @@ def _dispatch_selected(
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
     auto_assign_enabled: bool,
     resource_pool: Optional[Dict[str, Any]],
+    *,
+    scored: SgsCandidateScore,
     graph_state: Optional[Dict[str, Any]] = None,
 ) -> None:
-    from .sgs import resolve_operation_batch
-
-    batch = resolve_operation_batch(ctx, op, batches[batch_id])
     result, failure = schedule_op(
         ctx,
         op=op,
-        batch=batch,
+        batch=batches[batch_id],
         state=operation_dispatch_state(state, graph_state, op),
         base_time=state.base_time,
         end_dt_exclusive=end_dt_exclusive,
         machine_downtimes=machine_downtimes,
         auto_assign_enabled=auto_assign_enabled,
         resource_pool=resource_pool,
+        scored=scored,
     )
     if result is not None:
         state.record_dispatch_success(result)
@@ -67,7 +69,6 @@ def _dispatch_selected(
         )
     state.record_dispatch_failure(
         batch_id,
-        block=True,
         remaining_failed=len(skipped_ops) + extra_failed_count,
         failed_op=op,
         skipped_ops=skipped_ops,

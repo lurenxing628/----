@@ -92,7 +92,7 @@ def build_shared_process(search: Any, *, runtime_ms: int, stop_reason: str,
                          segment=segment, flags=flags)
             points.append(point)
         improvements = [point["elapsed_ms"] for point in points if "strict_improvement" in point["flags"]]
-        selected_id = search.selected_entry(objective)
+        selected_id = search.archive.selected_entry(objective)
         if selected_id is not None:
             selected = search.archive.entry(selected_id)
             evaluation = selected.evaluations[objective]

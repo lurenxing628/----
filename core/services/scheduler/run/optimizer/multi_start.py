@@ -1,7 +1,6 @@
 """Multi-start construction and evaluation through the shared decode session."""
 from __future__ import annotations
 
-import time
 from datetime import date, datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional, Sequence, Set, Tuple, cast
@@ -146,14 +145,14 @@ class MultiStartStage(SearchStage):
         build_order: Callable[[SortStrategy, Dict[str, Any]], Tuple[str, ...]],
         optimizer_algo_stats: Optional[Dict[str, Any]] = None, readiness_gate_enabled: bool = False,
         graph_ready_context: Optional[Any] = None,
-        clock: Optional[Callable[[], float]] = None,
+        clock: Callable[[], float],
         search_report_state: OptimizationSearchReportState,
         state: OptimizerSearchState,
         decode_session: SharedDecodeSession,
     ) -> None:
         self.state = state
         self.build_order = build_order
-        self.now = clock or time.time
+        self.now = clock
         self.deadline = deadline
         self.search_report_state = search_report_state
         self.decode_session = decode_session

@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
-from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Optional, Sequence, Tuple
 
 from .downtime import SegmentOverlapIndex
-from .owned_timeline import owned_segment_certificate
-from .slot_reuse_timeline import Segment, SlotReuseTimeline
+from .owned_timeline import Segment, owned_segment_certificate
 
 
 class SlotOverlapReuse:
@@ -55,21 +53,3 @@ class SlotOverlapReuse:
         self._certificates[key] = certificate
         index.begin_estimate()
         return index
-
-
-def overlap_reuse_for(timeline: Dict[str, List[Segment]]) -> Optional[SlotOverlapReuse]:
-    return timeline.overlap_reuse if isinstance(timeline, SlotReuseTimeline) else None
-
-
-@contextmanager
-def sgs_overlap_reuse(timeline: Dict[str, List[Segment]]) -> Iterator[None]:
-    # Borrowed legacy dicts stay untouched, including their identity and aliases.
-    if not isinstance(timeline, SlotReuseTimeline):
-        yield
-        return
-    previous = timeline.overlap_reuse
-    timeline.overlap_reuse = SlotOverlapReuse()
-    try:
-        yield
-    finally:
-        timeline.overlap_reuse = previous

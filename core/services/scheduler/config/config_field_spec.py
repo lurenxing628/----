@@ -92,12 +92,6 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
         choice_labels=_YES_NO_LABELS,
     ),
     ConfigFieldSpec(
-        key="prefer_primary_skill",
-        label="优先推荐主操/高技能人员",
-        description="工序补充页：是否优先推荐主操和高技能人员",
-        choice_labels=_YES_NO_LABELS,
-    ),
-    ConfigFieldSpec(
         key="dispatch_mode",
         label="派工方式",
         description="派工方式：按批次顺序排 / 智能派工",
@@ -120,12 +114,6 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
         key="auto_assign_enabled",
         label="未指定设备或人员时，系统自动分配",
         description="自制工序没有填写设备或人员时，是否由系统自动补上",
-        choice_labels=_YES_NO_LABELS,
-    ),
-    ConfigFieldSpec(
-        key="auto_assign_persist",
-        label="保存系统补齐的设备和人员",
-        description="系统帮你补上的设备和人员，是否保存回这道工序，方便下次排产继续用",
         choice_labels=_YES_NO_LABELS,
     ),
     ConfigFieldSpec(
@@ -191,12 +179,6 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
         key="graph_impact_weight",
         label="后续影响权重",
         description="选择“参与排产”且工序关系可用时，会影响更多后续工序的当前工序会更靠前；填 0 表示不按影响范围加分",
-    ),
-    ConfigFieldSpec(
-        key="graph_debug_export",
-        label="导出工序图排查文件",
-        description="是否导出工序先后关系排查文件",
-        choice_labels=_YES_NO_LABELS,
     ),
 )
 

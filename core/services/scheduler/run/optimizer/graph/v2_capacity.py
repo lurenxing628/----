@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import math
 from datetime import datetime, timedelta
+from fractions import Fraction
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from core.algorithm_contracts.operator_eligibility import qualified_operators
 from core.algorithm_contracts.resource_occupancy import PreparedSeedApplication
 from core.algorithm_contracts.value_domains import INTERNAL
-from core.errors import ValidationError
-from core.shared.strict_parse import finite_float, is_non_finite_number
 
 _RESIDUAL_CAPACITY_MAX_WINDOW_DAYS = 30
 
@@ -22,7 +21,7 @@ class FixedResourceBlockingFacts:
         self._seed_results = seed_results_by_resource_id
         self._pairs: Dict[Tuple[str, Optional[str]], List[Tuple[datetime, datetime]]] = {}
         self._window_capacities: Dict[Tuple[str, Optional[str], Any, datetime, datetime], Tuple[float, float, float]] = {}
-        self._calendar_windows: Dict[Tuple[Optional[str], Any, datetime, datetime], float] = {}
+        self._calendar_windows: Dict[Tuple[Optional[str], Any, datetime, datetime], Fraction] = {}
         self._pool_view: Optional[Tuple[Optional[Dict[str, Any]], _ResourcePoolView]] = None
 
     def pool_view(self, resource_pool: Optional[Dict[str, Any]]) -> _ResourcePoolView:
@@ -55,7 +54,7 @@ class FixedResourceBlockingFacts:
         self._window_capacities[key] = value
         return value
 
-    def calendar_window_hours(
+    def calendar_window_fraction(
         self,
         calendar_service: Any,
         start_dt: datetime,
@@ -63,17 +62,21 @@ class FixedResourceBlockingFacts:
         *,
         priority: Any,
         operator_id: Optional[str],
-    ) -> float:
+    ) -> Fraction:
+        if due_exclusive <= start_dt:
+            return Fraction(0)
         key = (operator_id, priority, start_dt, due_exclusive)
-        if key not in self._calendar_windows:
-            self._calendar_windows[key] = _calendar_capacity_hours(
-                calendar_service,
-                start_dt,
-                due_exclusive,
-                priority=priority,
-                operator_id=operator_id,
-            )
-        return self._calendar_windows[key]
+        cached = self._calendar_windows.get(key)
+        if cached is not None:
+            return cached
+        value = calendar_service.capacity_fraction_between(
+            start_dt,
+            due_exclusive,
+            priority=priority,
+            operator_id=operator_id,
+        )
+        self._calendar_windows[key] = value
+        return value
 
 
 def residual_capacity_for_operation(
@@ -81,7 +84,7 @@ def residual_capacity_for_operation(
     *,
     batch: Any,
     start_dt: datetime,
-    due_exclusive: Optional[datetime],
+    window_end: datetime,
     calendar_service: Any,
     resource_pool: Optional[Dict[str, Any]],
     prepared: FixedResourceBlockingFacts,
@@ -98,7 +101,6 @@ def residual_capacity_for_operation(
     pool = prepared.pool_view(resource_pool)
     resource_key = (op.machine_id, op.operator_id, op.op_type_id)
     machine_ids = pool.candidate_machine_ids(op, key=resource_key)
-    window_end = residual_capacity_window_end(start_dt=start_dt, due_exclusive=due_exclusive)
     if not machine_ids or window_end <= start_dt:
         return _capacity_payload(
             0.0,
@@ -209,14 +211,14 @@ def _machine_operator_residual_capacity(
     cached = prepared.window_capacity(cache_key)
     if cached is not None:
         return cached
-    window_hours = prepared.calendar_window_hours(
+    window = prepared.calendar_window_fraction(
         calendar_service,
         start_dt,
         due_exclusive,
         priority=priority,
         operator_id=operator_id,
     )
-    blocked_hours = _blocked_capacity_hours(
+    blocked = _blocked_capacity_fraction(
         calendar_service,
         start_dt,
         due_exclusive,
@@ -225,9 +227,9 @@ def _machine_operator_residual_capacity(
         operator_id=operator_id,
         prepared=prepared,
     )
-    residual_hours = max(0.0, float(window_hours) - float(blocked_hours))
+    residual = window - blocked
     return prepared.remember_window_capacity(
-        cache_key, (float(window_hours), float(blocked_hours), float(residual_hours))
+        cache_key, (float(window), float(blocked), float(residual))
     )
 
 
@@ -360,7 +362,7 @@ def _merge_segments(segments: Iterable[Tuple[datetime, datetime]]) -> List[Tuple
     return merged
 
 
-def _blocked_capacity_hours(
+def _blocked_capacity_fraction(
     calendar_service: Any,
     start_dt: datetime,
     end_dt: datetime,
@@ -369,8 +371,8 @@ def _blocked_capacity_hours(
     priority: Any,
     operator_id: Optional[str],
     prepared: FixedResourceBlockingFacts,
-) -> float:
-    total = 0.0
+) -> Fraction:
+    total = Fraction(0)
     for block_start, block_end in segments:
         if block_start >= end_dt:
             break
@@ -378,46 +380,18 @@ def _blocked_capacity_hours(
         overlap_end = min(end_dt, block_end)
         if overlap_end <= overlap_start:
             continue
-        total += prepared.calendar_window_hours(
+        total += prepared.calendar_window_fraction(
             calendar_service,
             overlap_start,
             overlap_end,
             priority=priority,
             operator_id=operator_id,
         )
-    return float(total)
-
-
-def _calendar_capacity_hours(
-    calendar_service: Any,
-    start_dt: datetime,
-    end_dt: datetime,
-    *,
-    priority: Any,
-    operator_id: Optional[str],
-) -> float:
-    if end_dt <= start_dt:
-        return 0.0
-    return non_negative_float(
-        calendar_service.capacity_hours_between(start_dt, end_dt, priority=priority, operator_id=operator_id),
-        field="calendar_capacity_hours",
-    )
-
-
-def non_negative_float(value: Any, *, field: str) -> float:
-    """GraphReady v2 feature input: a finite, non-negative number (errors name the feature field)."""
-    number = finite_float(value)
-    if number is None:
-        kind = "有限数字" if is_non_finite_number(value) else "数字"
-        raise ValidationError(f"{field} 必须是{kind}。", field="graph_ready_v2_features")
-    if number < 0.0:
-        raise ValidationError(f"{field} 必须是非负数。", field="graph_ready_v2_features")
-    return number
+    return total
 
 
 __all__ = [
     "FixedResourceBlockingFacts",
-    "non_negative_float",
     "residual_capacity_window_end",
     "bottleneck_on",
     "residual_capacity_for_operation",

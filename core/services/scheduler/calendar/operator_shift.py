@@ -9,11 +9,11 @@ or scheduling read snapshot; a subsequent request gets a new engine.
 
 from collections import defaultdict
 from dataclasses import replace
-from datetime import date, datetime
+from datetime import date
 from typing import Any, Dict, NamedTuple, Optional, Tuple
 
 from core.errors import ValidationError
-from core.services.common.datetime_normalize import normalize_hhmm
+from core.shared.stored_dates import stored_day
 from data.repositories.operator_shift_repo import OperatorShiftRepository
 
 
@@ -69,10 +69,9 @@ class OperatorShiftCalendar:
                 self._profiles[operator_id] = None
             else:
                 self._validate_profile(profile)
-                try:
-                    anchor = date.fromisoformat(profile["anchor_date"])
-                except (ValueError, TypeError):
-                    raise ValidationError("人员班次的轮换基准日期无效，不能推测排班。", field="shift_profile") from None
+                anchor = stored_day(profile["anchor_date"])
+                if anchor is None:
+                    raise ValidationError("人员班次的轮换基准日期无效，不能推测排班。", field="shift_profile")
                 self._profiles[operator_id] = profile, anchor
         return self._profiles[operator_id]
 
@@ -92,11 +91,7 @@ class OperatorShiftCalendar:
 
     def _captured_patterns(self, capture):
         if self._captured_index is None:
-            periods = {(row["profile_id"], row["day_offset"]): row["periods_json"]
-                       for row in capture.table("WorkbenchShiftDayPeriods")}
-            self._captured_index = _pattern_index(
-                dict(row, periods_json=periods.get((row["profile_id"], row["day_offset"])))
-                for row in capture.table("WorkbenchShiftPatternDays"))
+            self._captured_index = _pattern_index(capture.table("WorkbenchShiftPatternDays"))
         return self._captured_index
 
     def _read_pattern(self, profile_id, offset):
@@ -117,9 +112,8 @@ class OperatorShiftCalendar:
         key = profile["profile_id"], offset
         if key not in self._patterns:
             self._patterns[key] = self._pattern(profile["profile_id"], offset, prepare_periods)
-        start_time, hours, periods_json, offsets = self._patterns[key]
-        return replace(policy, shift_start=start_time, shift_hours=min(policy.shift_hours, hours),
-                       periods_json=periods_json, _period_offsets=offsets)
+        hours, periods_json, offsets = self._patterns[key]
+        return replace(policy, hours=min(policy.hours, hours), periods_json=periods_json, _period_offsets=offsets)
 
     def _pattern(self, profile_id, offset, prepare_periods):
         day = self._read_pattern(profile_id, offset)
@@ -127,20 +121,9 @@ class OperatorShiftCalendar:
             raise ValidationError("人员班次缺少当天的轮换规则，不能回退到默认班次。", field="shift_profile")
         if type(day["is_rest"]) is not int or day["is_rest"] not in (0, 1):
             raise ValidationError("人员班表里的休息标记不合法。请到工作日历核对人员班表。", field="shift_profile")
-        start = normalize_hhmm(day["shift_start"], field="班次开始")
-        end = normalize_hhmm(day["shift_end"], field="班次结束")
-        if start is None or end is None:
-            raise ValidationError("人员班次缺少开始或结束时间。", field="shift_profile")
-        start_time, end_time = datetime.strptime(start, "%H:%M").time(), datetime.strptime(end, "%H:%M").time()
-        start_min = start_time.hour * 60 + start_time.minute
-        end_min = end_time.hour * 60 + end_time.minute
-        hours = 0.0 if day["is_rest"] else ((end_min - start_min) if end_min > start_min else (1440 - start_min + end_min)) / 60.0
-        periods_json = day.get("periods_json")
-        offsets = None
-        if periods_json is not None:
-            offsets, full_hours = prepare_periods(periods_json)
-            hours = 0.0 if day["is_rest"] else full_hours
-        return start_time, hours, periods_json, offsets
+        periods_json = day["periods_json"]
+        offsets, full_hours = prepare_periods(periods_json)
+        return (0.0 if day["is_rest"] else full_hours), periods_json, offsets
 
     @staticmethod
     def _validate_profile(profile):

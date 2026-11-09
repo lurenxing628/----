@@ -76,39 +76,30 @@ def prepare_evaluation_context(
     )
 
 
-def _due_text(value: Any) -> str:
+def due_display_text(value: Any) -> Optional[str]:
+    """交期的展示文本：None 原样返回，纯日期按年月日写，其余（含坏值与空串）原样转字符串。"""
     if value is None:
-        return ""
+        return None
     if isinstance(value, date) and not isinstance(value, datetime):
         return value.isoformat()
-    if isinstance(value, datetime):
-        return value.date().isoformat()
-    return str(value).strip()
+    return str(value)
+
+
+def _due_text(value: Any) -> str:
+    return due_display_text(value) or ""
 
 
 def _parse_due_date_state(value: Any) -> Tuple[Optional[date], bool]:
+    """None means no due date; any other value must be a day under the stored rule, or it is invalid."""
     if value is None:
         return None, False
-    if isinstance(value, date) and not isinstance(value, datetime):
-        return value, False
-    if isinstance(value, datetime):
-        return value.date(), False
-    s = str(value).strip()
-    if not s:
-        return None, False
-    parsed = parse_date(s)
+    parsed = parse_date(value)
     return parsed, parsed is None
 
 
 def _due_facts(value: Any) -> Tuple[Optional[date], Optional[datetime], str, bool]:
     parsed, invalid = _parse_due_date_state(value)
     return parsed, due_exclusive(parsed) if parsed is not None else None, _due_text(value), invalid
-
-
-def parse_due_exclusive_datetime(value: Any) -> Tuple[Optional[datetime], str, bool]:
-    """交期指标与风险摘要共用的日期、展示文本及坏值口径。"""
-    _parsed, due_datetime, due_text, invalid = _due_facts(value)
-    return due_datetime, due_text, invalid
 
 
 @dataclass(frozen=True)
@@ -147,28 +138,6 @@ class BatchCompletion:
         if self.objective_defined:
             return "original"
         return "completed_batches_only" if self.explained else "unknown_all_components"
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "contract": "expected_operations_complete_only_v1",
-            "objective_defined": self.objective_defined,
-            "objective_score_policy": self.objective_score_policy,
-            "objective_scope": self.objective_scope,
-            "unknown_objective_value": None if self.components_known else UNKNOWN_OBJECTIVE_VALUE,
-            "incomplete_work_weight": float(self.incomplete_work_weight),
-            "due_metrics_scope": "completed_batches_only",
-            "resource_metrics_scope": "scheduled_results_only",
-            "expected_operation_count": self.expected_operation_count,
-            "missing_operation_count": self.missing_operation_count,
-            "unexpected_result_count": self.unexpected_result_count,
-            "complete_batch_count": self.complete_batch_count,
-            "incomplete_batch_count": len(self.incomplete_batch_ids),
-            "partial_batch_count": len(self.partial_batch_ids),
-            "incomplete_batch_ids_sample": list(self.incomplete_batch_ids[:20]),
-            "partial_batch_ids_sample": list(self.partial_batch_ids[:20]),
-            "failure_detail_count": self.failure_detail_count,
-            "failure_batch_ids_sample": list(self.failure_batch_ids[:20]),
-        }
 
     def public_dict(self) -> Dict[str, Any]:
         return {

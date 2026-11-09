@@ -23,7 +23,11 @@ class LocalSearchState:
 
     @classmethod
     def from_best(cls, best: Dict[str, Any], *, due_batches: Tuple[PreparedBatchDue, ...]) -> LocalSearchState:
-        facts = LocalSearchResultFacts(best["results"], due_batches=due_batches)
+        facts = LocalSearchResultFacts(
+            best["results"],
+            due_batches=due_batches,
+            finish_by_batch=best["metrics"]._finish_by_batch,
+        )
         return cls(
             current=best,
             best=best,
@@ -41,11 +45,17 @@ class LocalSearchState:
         self.current_resource_pair_rank = candidate["resource_pair_rank"]
         self.current_order = list(candidate["order"])
         self.current_resource_pool = candidate["resource_pool"]
+        # Facts derive from the results alone (finish_by_batch included), so a restart that reuses
+        # archived results with freshly computed metrics keeps the facts already built for them.
         results = candidate["results"]
         if self.best_facts.results is results:
             self.current_facts = self.best_facts
         elif self.current_facts.results is not results:
-            self.current_facts = LocalSearchResultFacts(results, due_batches=self.due_batches)
+            self.current_facts = LocalSearchResultFacts(
+                results,
+                due_batches=self.due_batches,
+                finish_by_batch=candidate["metrics"]._finish_by_batch,
+            )
 
     def set_best(self, candidate: Dict[str, Any]) -> None:
         self.best = candidate
@@ -53,7 +63,11 @@ class LocalSearchState:
         if self.current_facts.results is results:
             self.best_facts = self.current_facts
         elif self.best_facts.results is not results:
-            self.best_facts = LocalSearchResultFacts(results, due_batches=self.due_batches)
+            self.best_facts = LocalSearchResultFacts(
+                results,
+                due_batches=self.due_batches,
+                finish_by_batch=candidate["metrics"]._finish_by_batch,
+            )
 
     def improve_best(self, candidate: Dict[str, Any]) -> None:
         self.best = candidate

@@ -50,7 +50,7 @@ class ScheduleMetrics:
     _due_by_batch: Dict[str, Optional[date]] = field(default_factory=dict, repr=False, compare=False)
     _finish_by_batch: Dict[str, datetime] = field(default_factory=dict, repr=False, compare=False)
 
-    def _numeric_dict(self) -> Dict[str, Any]:
+    def numeric_dict(self) -> Dict[str, Any]:
         def _round_finite(key: str, v: Any, ndigits: int) -> float:
             fv = float(v)
             if not math.isfinite(fv):
@@ -79,17 +79,8 @@ class ScheduleMetrics:
 
     def public_dict(self) -> Dict[str, Any]:
         return {
-            **self._numeric_dict(),
+            **self.numeric_dict(),
             "completion": self.completion.public_dict(),
-        }
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            **self._numeric_dict(),
-            "util_defined": bool(self.util_defined),
-            "invalid_due_batch_ids_sample": [str(x) for x in self.invalid_due_batch_ids_sample[:10]],
-            "unscheduled_batch_ids_sample": [str(x) for x in self.unscheduled_batch_ids_sample[:20]],
-            "completion": self.completion.to_dict(),
         }
 
 
@@ -152,7 +143,7 @@ def compute_metrics(
     )
     due_state = _compute_due_metrics(context, result_state.finish_by_batch, completion=completion)
     utilization = _build_utilization_metrics(result_state)
-    # Invalid due dates stay absent here: due-risk summaries count a missing key as an invalid due date.
+    # Valid and empty due dates enter this map; invalid ones are omitted so due-risk items skip them.
     due_by_batch: Dict[str, Optional[date]] = {
         batch_due.batch_id: batch_due.due_date
         for batch_due in context.due_batches
@@ -199,10 +190,7 @@ def _collect_result_metric_state(
     state = _ResultMetricState()
     for result in results:
         st, et = result.start_time, result.end_time
-        # 旧种子在存储边界可能缺批次号（空串），这类结果不计入批次完工。
-        bid = result.batch_id.strip() if isinstance(result.batch_id, str) else ""
-        if bid:
-            _record_batch_finish(state, bid=bid, start_time=st, end_time=et)
+        _record_batch_finish(state, bid=result.batch_id, start_time=st, end_time=et)
         if result.source == INTERNAL:
             occupancies = (
                 seed_occupancies_by_op_id[result.op_id]

@@ -8,6 +8,7 @@ from datetime import date, datetime
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Set, Tuple, Union
 
+from core.algorithm_contracts.date_parsers import require_optional_date, require_optional_datetime
 from core.algorithm_contracts.resource_occupancy import PreparedSeedApplication, ResourceOccupancy
 from core.algorithm_contracts.sort_strategies import BatchForSort, SortStrategy, StrategyFactory
 from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
@@ -20,7 +21,6 @@ from core.algorithm_runtime.piece_input import operation_batch
 from core.algorithm_runtime.resource_demand import ResourceClaim
 from core.errors import ValidationError
 from core.models.batch import Batch
-from core.shared.strict_parse import parse_optional_date, parse_optional_datetime
 
 if TYPE_CHECKING:
     from .dispatch.sgs_graph import PreparedGraphReadyTopology
@@ -47,7 +47,6 @@ class NativeSchedulePreparation:
     algo_stats: Dict[str, Any]
     # Compiled once from graph_ready_context; None exactly when the run has no graph input.
     topology: Optional[PreparedGraphReadyTopology]
-    score_cache_factory: Any = None
     resource_candidates: Dict[Any, Any] = field(default_factory=dict)
     resource_claims: Dict[int, Any] = field(default_factory=dict)
     piece_batches: Dict[int, Any] = field(default_factory=dict)
@@ -74,8 +73,6 @@ class NativeSchedulePreparation:
     _certified_external_by_op_id: Dict[int, bool] = field(
         default_factory=dict, init=False, repr=False
     )
-    # The run context points back at this preparation, so prepare_native_schedule_inputs sets it once.
-    run_context: Any = field(init=False, repr=False, compare=False)
     _calendar_signature: Any = field(init=False, repr=False, default=None)
     _checkpoint_parts: Any = field(init=False, repr=False, default=None)
 
@@ -89,20 +86,15 @@ class NativeSchedulePreparation:
         if not self._all_due_dates_parsed:
             for batch_id, batch in self.batches.items():
                 if batch_id not in self._parsed_due_dates:
-                    self._parsed_due_dates[batch_id] = parse_optional_date(batch.due_date, field="due_date")
+                    self._parsed_due_dates[batch_id] = require_optional_date(batch.due_date, field="due_date")
             self._all_due_dates_parsed = True
             self._batch_due_dates_valid = True
         return self._parsed_due_dates
 
-    def due_date_for_batch(self, batch_id: str, batch: Batch) -> Optional[date]:
-        if batch_id in self._parsed_due_dates and (
-            self._all_due_dates_parsed or self.batches.get(batch_id) is batch
-        ):
-            return self._parsed_due_dates[batch_id]
-        parsed = parse_optional_date(batch.due_date, field="due_date")
-        if self.batches.get(batch_id) is batch:
-            self._parsed_due_dates[batch_id] = parsed
-        return parsed
+    def due_date_for_batch(self, batch_id: str) -> Optional[date]:
+        if batch_id not in self._parsed_due_dates:
+            self._parsed_due_dates[batch_id] = require_optional_date(self.batches[batch_id].due_date, field="due_date")
+        return self._parsed_due_dates[batch_id]
 
     def all_batch_due_dates_valid(self) -> bool:
         if self._batch_due_dates_valid is None:
@@ -117,7 +109,7 @@ class NativeSchedulePreparation:
     def parsed_created_at(self) -> Dict[str, Optional[datetime]]:
         if self._parsed_created_at is None:
             self._parsed_created_at = {
-                batch_id: parse_optional_datetime(batch.created_at, field="created_at")
+                batch_id: require_optional_datetime(batch.created_at, field="created_at")
                 for batch_id, batch in self.batches.items()
             }
         return self._parsed_created_at
@@ -126,7 +118,7 @@ class NativeSchedulePreparation:
         if self._parsed_ready_starts is None:
             ready_starts: Dict[str, Optional[datetime]] = {}
             for batch_id, batch in self.batches.items():
-                ready_date = parse_optional_date(batch.ready_date, field="ready_date")
+                ready_date = require_optional_date(batch.ready_date, field="ready_date")
                 ready_starts[batch_id] = (
                     datetime(ready_date.year, ready_date.month, ready_date.day, 0, 0, 0)
                     if ready_date is not None
@@ -138,25 +130,8 @@ class NativeSchedulePreparation:
     def batch_sort_inputs(self, *, strategy: SortStrategy) -> Tuple[BatchForSort, ...]:
         cached = self._batch_sort_inputs.get(strategy)
         if cached is None:
-            created_at: Optional[Dict[str, Optional[datetime]]]
-            if strategy == SortStrategy.FIFO and not self._all_due_dates_parsed and self._parsed_created_at is None:
-                due_dates: Dict[str, Optional[date]] = {}
-                parsed_created: Dict[str, Optional[datetime]] = {}
-                for batch_id, batch in self.batches.items():
-                    due_dates[batch_id] = (
-                        self._parsed_due_dates[batch_id]
-                        if batch_id in self._parsed_due_dates
-                        else parse_optional_date(batch.due_date, field="due_date")
-                    )
-                    parsed_created[batch_id] = parse_optional_datetime(batch.created_at, field="created_at")
-                self._parsed_due_dates.update(due_dates)
-                self._all_due_dates_parsed = True
-                self._batch_due_dates_valid = True
-                self._parsed_created_at = parsed_created
-                created_at = parsed_created
-            else:
-                due_dates = self.parsed_due_dates()
-                created_at = self.parsed_created_at() if strategy == SortStrategy.FIFO else None
+            due_dates = self.parsed_due_dates()
+            created_at = self.parsed_created_at() if strategy == SortStrategy.FIFO else None
             cached = tuple(
                 BatchForSort(
                     batch_id=batch_id,
@@ -237,14 +212,12 @@ class NativeSchedulePreparation:
             return self.resource_claims[token]
         claim = None
         op_id, batch_id, piece = op.id, op.batch_id, op.piece_id
-        source = str(op.source or "internal").strip().lower()
         # A zero-hour operation is a point event and claims no resource time. Only operations whose batch is
         # missing lack prepared hours; dispatch retires them before any placement is compared.
         point_event = self.total_hours_by_op_id.get(op_id) == 0.0
-        if (type(op_id) is int and op_id > 0 and type(batch_id) in (str, int) and batch_id and not point_event
-                and source == "internal" and (piece is None or (type(piece) is str and piece and piece.strip() == piece))):
+        if not point_event and op.source == "internal":
             pairs = frozenset(self.qualified_resource_pairs(op))
-            claim = ResourceClaim(token, op_id, str(batch_id).strip(), (str(batch_id).strip(), piece), pairs,
+            claim = ResourceClaim(token, op_id, batch_id, (batch_id, piece), pairs,
                                   Counter(mid for mid, _ in pairs), Counter(oid for _, oid in pairs))
         if token in self.records_by_token:
             self.resource_claims[token] = claim

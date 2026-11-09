@@ -9,10 +9,6 @@ from core.algorithm_contracts.types import OpForScheduleAlgo
 _WINDOW_SIZE = 64
 
 
-def _text(value: Any) -> str:
-    return str(value).strip() if value else ""
-
-
 @dataclass(frozen=True)
 class ResourceClaim:
     token: int
@@ -84,9 +80,7 @@ class ResourceDemand:
             count -= int(current.blocks_all_pairs(machine_id, operator_id))
         return float(count)
 
-    def complete(self, op_id: Any) -> None:
-        if type(op_id) not in (str, int):
-            return
+    def complete(self, op_id: int) -> None:
         records = self._by_id.pop(op_id, ())
         changed = False
         for record in records:
@@ -101,11 +95,9 @@ class ResourceDemand:
         if changed:
             self.revision += 1
 
-    def block_batch(self, batch_id: Any) -> None:
-        if type(batch_id) not in (str, int):
-            return
+    def block_batch(self, batch_id: str) -> None:
         changed = False
-        for group in self._by_batch.pop(_text(batch_id), ()):
+        for group in self._by_batch.pop(batch_id, ()):
             for record in self._groups.pop(group, ()):
                 changed = self._by_token.pop(record.token, None) is not None or changed
         if changed:

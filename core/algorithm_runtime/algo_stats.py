@@ -4,34 +4,19 @@ from typing import Any, Dict, Mapping, Optional
 
 _COUNTER_BUCKETS = ("fallback_counts",)
 _SAMPLE_BUCKETS = ("fallback_samples",)
-_BUCKETS = _COUNTER_BUCKETS + _SAMPLE_BUCKETS
 
 
 def make_algo_stats() -> Dict[str, Any]:
     return {"fallback_counts": {}, "fallback_samples": {}}
 
 
-def ensure_algo_stats(stats: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    """补齐调用方统计字典的固定分桶；``None`` 表示本次不留存，返回一份新字典。"""
-    if stats is None:
-        return make_algo_stats()
-    for bucket in _BUCKETS:
-        current = stats.get(bucket)
-        if not isinstance(current, dict):
-            stats[bucket] = {}
-    return stats
-
-
 def increment_counter(
-    target: Optional[Dict[str, Any]], key: str, amount: int = 1,
+    target: Dict[str, Any], key: str, amount: int = 1,
 ) -> None:
-    if not key:
-        return
-    stats = ensure_algo_stats(target)
-    current_bucket = stats["fallback_counts"]
     # Counts are the decoder's own integers (len()/counters/event.count); they are summed as given.
     if amount == 0:
         return
+    current_bucket = target["fallback_counts"]
     current_bucket[key] = current_bucket.get(key, 0) + amount
 
 

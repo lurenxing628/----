@@ -2,9 +2,8 @@
 
 全批次循环按 finish 与 due_exclusive 的关系两侧切分（严格互斥、零重叠）：
 finish >= due_exclusive 为超期；落在 [due_exclusive - 临期窗口, due_exclusive) 为临期（卡交期、未超期）；
-更早完工（缓冲 > 临期窗口）则健康、跳过。产出 (overdue_items, meta)，meta 含 near_due_items + 坏交期记账——
-二元返回形状不变（临期走 meta，保 _build_overdue_items 解包契约）。
-由 summary_runtime_state._build_runtime_state 注入 append_summary_warning 后调用，交期统一由算法求值入口解析。
+更早完工（缓冲 > 临期窗口）则健康、跳过。纯函数产出 (overdue_items, near_due_items)，
+交期与坏交期统计统一由算法求值入口单次计算，摘要层不再二次解析或原地追加告警。
 
 排产未完成口径（audit 2026-07-20 A18）：有失败/跳过工序明细且已有部分完工结果的批次，
 finish_by_batch 里的值是被失败截断的部分完工时间，按它做超期/临期分类会把半途失败批次
@@ -15,13 +14,12 @@ finish_by_batch 里的值是被失败截断的部分完工时间，按它做超�
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
 from core.algorithm_contracts.date_parsers import due_exclusive as due_exclusive_from_date
 from core.algorithm_contracts.types import ScheduleResult
-from core.algorithms.evaluation_completion import parse_due_exclusive_datetime
+from core.algorithms.evaluation_completion import due_display_text
 from core.models.batch import Batch
-from core.services.common.normalize import normalize_text
 from core.shared.local_datetime import format_local_datetime as fmt_dt
 
 # 临期窗口：排程完工时间卡在「交期前 NEAR_DUE_WINDOW_DAYS 天内、且未超期」即临期。
@@ -54,7 +52,7 @@ def _scheduled_op_count_by_batch(
 ) -> Dict[str, int]:
     counts: Dict[str, int] = {}
     for result in results:
-        batch_id = result.batch_id.strip()
+        batch_id = result.batch_id
         if batch_id in incomplete_batch_ids:
             counts[batch_id] = counts.get(batch_id, 0) + 1
     return counts
@@ -100,7 +98,7 @@ def build_incomplete_batch_items(
     items: List[Dict[str, Any]] = []
     for batch_id in selected_batch_ids:
         batch = batches.get(batch_id)
-        due_text = normalize_text(batch.due_date) if batch is not None else None
+        due_text = due_display_text(batch.due_date) if batch is not None else None
         finish_time = finish_by_batch.get(batch_id)
         items.append(
             {
@@ -108,7 +106,7 @@ def build_incomplete_batch_items(
                 "reason_code": first_reason_by_batch.get(batch_id),
                 "scheduled_op_count": int(scheduled_count_by_batch.get(batch_id, 0)),
                 "failed_op_count": int(failed_count_by_batch.get(batch_id, 0)),
-                "due_date": due_text or None,
+                "due_date": due_text,
                 "partial_finish_time": fmt_dt(finish_time) if finish_time is not None else None,
             }
         )
@@ -138,54 +136,28 @@ def incomplete_batches_payload(
     return {"count": len(incomplete_batch_ids), "items": items}
 
 
-def _record_invalid_due(*, batch_id: str, invalid_due_ids_sample: List[str]) -> None:
-    if len(invalid_due_ids_sample) < 10:
-        invalid_due_ids_sample.append(str(batch_id))
-
-
 def _build_overdue_items(
     *,
     batches: Dict[str, Any],
     finish_by_batch: Dict[str, datetime],
-    summary: Any,
-    append_summary_warning_fn: Callable[[Any, str], None],
     incomplete_batch_ids: Set[str],
     due_by_batch: Dict[str, Optional[date]],
-) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     overdue_items: List[Dict[str, Any]] = []
     near_due_items: List[Dict[str, Any]] = []
-    invalid_due_count = 0
-    invalid_due_ids_sample: List[str] = []
-    excluded_incomplete = incomplete_batch_ids
 
-    for batch_id, batch in batches.items():
-        batch_key = str(batch_id)
-        if batch_key in due_by_batch:
-            due_day = due_by_batch[batch_key]
-            if due_day is None:
-                continue
-            due_exclusive = due_exclusive_from_date(due_day)
-            due_text = (
-                due_day.isoformat()
-                if isinstance(batch.due_date, (date, datetime))
-                else str(batch.due_date or "").strip()
-            )
-        else:
-            due_exclusive, due_text, due_invalid = parse_due_exclusive_datetime(batch.due_date)
-            if due_invalid:
-                invalid_due_count += 1
-                _record_invalid_due(batch_id=batch_key, invalid_due_ids_sample=invalid_due_ids_sample)
-                continue
-            if due_exclusive is None:
-                continue
-
-        finish_time = finish_by_batch.get(batch_key)
+    for batch_id in batches:
+        due_day = due_by_batch.get(batch_id)
+        if due_day is None:
+            continue
+        finish_time = finish_by_batch.get(batch_id)
         if finish_time is None:
             continue
-        if batch_key in excluded_incomplete:
+        if batch_id in incomplete_batch_ids:
             # 排产未完成批次：finish 是被失败截断的部分完工时间，不参与超期/临期
             # "健康"分类，整体改走"排产未完成"风险清单（audit 2026-07-20 A18）。
             continue
+        due_exclusive = due_exclusive_from_date(due_day)
         # 同一交期口径的两侧（严格互斥、零重叠）：finish >= due_exclusive 为超期；
         # 落在 [due_exclusive - 临期窗口, due_exclusive) 为临期；更早完工则健康、跳过。
         if finish_time >= due_exclusive:
@@ -197,26 +169,16 @@ def _build_overdue_items(
         target.append(
             {
                 "batch_id": batch_id,
-                "due_date": due_text,
+                "due_date": due_day.isoformat(),
                 "finish_time": fmt_dt(finish_time),
             }
         )
 
-    if invalid_due_count > 0:
-        sample_ids = "，".join(invalid_due_ids_sample)
-        message = f"存在 {invalid_due_count} 个批次交期写法不对，已忽略超期与临期判断（示例批次：{sample_ids}）"
-        append_summary_warning_fn(summary, message)
-
-    return overdue_items, {
-        "invalid_due_count": invalid_due_count,
-        "invalid_due_batch_ids_sample": invalid_due_ids_sample,
-        "near_due_items": near_due_items,
-    }
+    return overdue_items, near_due_items
 
 
 __all__ = [
     "_build_overdue_items",
-    "_record_invalid_due",
     "build_incomplete_batch_items",
     "incomplete_batch_ids_from_failure_details",
     "incomplete_batches_payload",

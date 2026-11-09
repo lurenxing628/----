@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from datetime import date, datetime
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, NamedTuple, Optional, Tuple
+from dataclasses import dataclass
+from datetime import datetime
+from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple
 
 from core.algorithm_contracts.dispatch_rules import (
     DispatchInputs,
@@ -9,10 +10,8 @@ from core.algorithm_contracts.dispatch_rules import (
     build_dispatch_key,
 )
 from core.algorithm_runtime.auto_assign_contract import AUTO_ASSIGN_REASON_WINDOW_BLOCKED
-from core.algorithm_runtime.internal_slot import estimate_internal_slot
+from core.algorithm_runtime.internal_slot import InternalSlotEstimate, estimate_internal_slot
 from core.algorithm_runtime.run_state import ScheduleRunState
-from core.algorithm_runtime.sgs_estimate_reuse import current_sgs_handoff, remember_sgs_estimate
-from core.algorithm_runtime.slot_overlap_reuse import overlap_reuse_for
 from core.errors import ValidationError
 
 from .resource_validation import (
@@ -28,11 +27,22 @@ if TYPE_CHECKING:
     from core.models.batch import Batch
 
 
+@dataclass(frozen=True)
+class SgsCandidateScore:
+    key: Tuple[float, ...]
+    resources: Optional[Tuple[str, str]] = None
+    estimate: Optional[InternalSlotEstimate] = None
+    pair_tie_occurred: bool = False
+    auto_assign_reason: Optional[str] = None
+
+
 class _ScoringResources(NamedTuple):
     machine_id: str
     operator_id: str
     reason: str
     auto_assign_reason: str
+    estimate: Optional[InternalSlotEstimate] = None
+    pair_tie_occurred: bool = False
 
 
 def _dispatch_key(
@@ -99,28 +109,30 @@ def _score_external_candidate(
     dispatch_rule: DispatchRuleSpec,
     end_dt_exclusive: Optional[datetime],
     avg_proc_hours: float,
-) -> Tuple[float, ...]:
+) -> SgsCandidateScore:
     meta = _candidate_meta(op=op, batch=batch, batch_id=batch_id, state=state, ctx=ctx)
     window = external_candidate_window(ctx.calendar, state.external_group_cache, op=op, prev_end=meta["prev_end"])
     est_start, est_end = window
     proc_hours = max((est_end - est_start).total_seconds() / 3600.0, 0.0)
     slack_hours, time_left_hours = due_span_inputs(
-        ctx.calendar, due_date=meta["due_date"], est_start=est_start, est_end=est_end,
+        ctx.timing_calendar, due_date=meta["due_date"], est_start=est_start, est_end=est_end,
         priority=meta["priority"], operator_id="", horizon=end_dt_exclusive,
     )
-    return _dispatch_key(
-        dispatch_rule=dispatch_rule,
-        priority=meta["priority"],
-        proc_hours=proc_hours,
-        avg_proc_hours=avg_proc_hours,
-        changeover_penalty=0,
-        batch_order=batch_order,
-        batch_id=batch_id,
-        seq=meta["seq"],
-        op_id=meta["op_id"],
-        score_penalty=(1.0 if end_dt_exclusive is not None and est_end >= end_dt_exclusive else 0.0),
-        slack_hours=slack_hours,
-        time_left_hours=time_left_hours,
+    return SgsCandidateScore(
+        key=_dispatch_key(
+            dispatch_rule=dispatch_rule,
+            priority=meta["priority"],
+            proc_hours=proc_hours,
+            avg_proc_hours=avg_proc_hours,
+            changeover_penalty=0,
+            batch_order=batch_order,
+            batch_id=batch_id,
+            seq=meta["seq"],
+            op_id=meta["op_id"],
+            score_penalty=(1.0 if end_dt_exclusive is not None and est_end >= end_dt_exclusive else 0.0),
+            slack_hours=slack_hours,
+            time_left_hours=time_left_hours,
+        )
     )
 
 
@@ -139,8 +151,7 @@ def _score_internal_candidate(
     resource_pool: Optional[Dict[str, Any]],
     avg_proc_hours: float,
     total_hours_by_op_id: Dict[int, float],
-    attempt_sink: Optional[Callable[[Any], None]] = None,
-) -> Tuple[float, ...]:
+) -> SgsCandidateScore:
     meta = _candidate_meta(op=op, batch=batch, batch_id=batch_id, state=state, ctx=ctx)
     total_hours = total_hours_by_op_id[meta["op_id"]]
     resources = _scoring_resources(
@@ -152,7 +163,6 @@ def _score_internal_candidate(
         machine_downtimes=machine_downtimes,
         auto_assign_enabled=auto_assign_enabled,
         resource_pool=resource_pool,
-        attempt_sink=attempt_sink,
     )
     if not resources.machine_id or not resources.operator_id:
         if resources.auto_assign_reason == AUTO_ASSIGN_REASON_WINDOW_BLOCKED:
@@ -162,22 +172,26 @@ def _score_internal_candidate(
             # （internal_operation._resolve_internal_resources）按 WINDOW_BLOCKED 记单批失败
             # 并留下截止日期文案，其余批次继续。
             slack_hours, time_left_hours = due_span_inputs(
-                ctx.calendar, due_date=meta["due_date"], est_start=meta["prev_end"], est_end=meta["prev_end"],
+                ctx.timing_calendar, due_date=meta["due_date"], est_start=meta["prev_end"], est_end=meta["prev_end"],
                 priority=meta["priority"], operator_id="", horizon=end_dt_exclusive,
             )
-            return _dispatch_key(
-                dispatch_rule=dispatch_rule,
-                priority=meta["priority"],
-                proc_hours=total_hours,
-                avg_proc_hours=avg_proc_hours,
-                changeover_penalty=0,
-                batch_order=batch_order,
-                batch_id=batch_id,
-                seq=meta["seq"],
-                op_id=meta["op_id"],
-                score_penalty=1.0,
-                slack_hours=slack_hours,
-                time_left_hours=time_left_hours,
+            return SgsCandidateScore(
+                key=_dispatch_key(
+                    dispatch_rule=dispatch_rule,
+                    priority=meta["priority"],
+                    proc_hours=total_hours,
+                    avg_proc_hours=avg_proc_hours,
+                    changeover_penalty=0,
+                    batch_order=batch_order,
+                    batch_id=batch_id,
+                    seq=meta["seq"],
+                    op_id=meta["op_id"],
+                    score_penalty=1.0,
+                    slack_hours=slack_hours,
+                    time_left_hours=time_left_hours,
+                ),
+                pair_tie_occurred=resources.pair_tie_occurred,
+                auto_assign_reason=AUTO_ASSIGN_REASON_WINDOW_BLOCKED,
             )
         message, details = internal_resource_validation_message(
             batch=batch,
@@ -187,42 +201,51 @@ def _score_internal_candidate(
             auto_assign_reason=resources.auto_assign_reason,
         )
         raise ValidationError(message, field="resource", details=details)
-    estimate = _estimate_scoring_slot(
-        ctx,
-        state,
-        op,
-        batch,
-        meta,
-        resources.machine_id,
-        resources.operator_id,
-        end_dt_exclusive,
-        machine_downtimes,
-        total_hours,
+    estimate = (
+        resources.estimate
+        if resources.estimate is not None
+        else _estimate_scoring_slot(
+            ctx,
+            state,
+            op,
+            batch,
+            meta,
+            resources.machine_id,
+            resources.operator_id,
+            end_dt_exclusive,
+            machine_downtimes,
+            total_hours,
+        )
     )
     slack_hours, time_left_hours = due_span_inputs(
-        ctx.calendar, due_date=meta["due_date"], est_start=estimate.start_time, est_end=estimate.end_time,
+        ctx.timing_calendar, due_date=meta["due_date"], est_start=estimate.start_time, est_end=estimate.end_time,
         priority=meta["priority"], operator_id=resources.operator_id, horizon=end_dt_exclusive,
     )
-    return _dispatch_key(
-        dispatch_rule=dispatch_rule,
-        priority=meta["priority"],
-        proc_hours=estimate.total_hours,
-        avg_proc_hours=avg_proc_hours,
-        changeover_penalty=estimate.changeover_penalty,
-        batch_order=batch_order,
-        batch_id=batch_id,
-        seq=meta["seq"],
-        op_id=meta["op_id"],
-        score_penalty=(1.0 if estimate.blocked_by_window else 0.0),
-        slack_hours=slack_hours,
-        time_left_hours=time_left_hours,
+    return SgsCandidateScore(
+        key=_dispatch_key(
+            dispatch_rule=dispatch_rule,
+            priority=meta["priority"],
+            proc_hours=estimate.total_hours,
+            avg_proc_hours=avg_proc_hours,
+            changeover_penalty=estimate.changeover_penalty,
+            batch_order=batch_order,
+            batch_id=batch_id,
+            seq=meta["seq"],
+            op_id=meta["op_id"],
+            score_penalty=(1.0 if estimate.blocked_by_window else 0.0),
+            slack_hours=slack_hours,
+            time_left_hours=time_left_hours,
+        ),
+        resources=(resources.machine_id, resources.operator_id),
+        estimate=estimate,
+        pair_tie_occurred=resources.pair_tie_occurred,
     )
 
 
 def _candidate_meta(
     *, op: OpForScheduleAlgo, batch: Batch, batch_id: str, state: ScheduleRunState, ctx: Any,
 ) -> Dict[str, Any]:
-    due_date = ctx.native_preparation.due_date_for_batch(batch_id, batch)
+    due_date = ctx.native_preparation.due_date_for_batch(batch_id)
     return {
         "priority": batch.priority,
         "due_date": due_date,
@@ -243,7 +266,6 @@ def _scoring_resources(
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
     auto_assign_enabled: bool,
     resource_pool: Optional[Dict[str, Any]],
-    attempt_sink: Optional[Callable[[Any], None]] = None,
 ) -> _ScoringResources:
     machine_id, operator_id = op.machine_id, op.operator_id
     if machine_id and operator_id:
@@ -259,11 +281,13 @@ def _scoring_resources(
         machine_downtimes=machine_downtimes,
         resource_pool=resource_pool,
     )
-    if attempt_sink is not None:
-        attempt_sink(attempt)
     if not attempt.machine_id or not attempt.operator_id:
-        return _ScoringResources("", "", RESOURCE_REASON_AUTO_ASSIGN_UNAVAILABLE, attempt.reason)
-    return _ScoringResources(attempt.machine_id, attempt.operator_id, RESOURCE_REASON_FIXED, "")
+        return _ScoringResources(
+            "", "", RESOURCE_REASON_AUTO_ASSIGN_UNAVAILABLE, attempt.reason, None, attempt.pair_tie_occurred,
+        )
+    return _ScoringResources(
+        attempt.machine_id, attempt.operator_id, RESOURCE_REASON_FIXED, "", attempt.estimate, attempt.pair_tie_occurred,
+    )
 
 
 def _auto_assign_attempt_for_scoring(
@@ -274,24 +298,23 @@ def _auto_assign_attempt_for_scoring(
     batch: Batch,
     end_dt_exclusive: Optional[datetime],
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
-    resource_pool: Optional[Dict[str, Any]],
+    resource_pool: Dict[str, Any],
 ):
-    kwargs = {
-        "op": op,
-        "batch": batch,
-        "batch_progress": state.batch_progress,
-        "machine_timeline": state.machine_timeline,
-        "operator_timeline": state.operator_timeline,
-        "base_time": state.base_time,
-        "end_dt_exclusive": end_dt_exclusive,
-        "machine_downtimes": machine_downtimes,
-        "resource_pool": resource_pool,
-        "last_op_type_by_machine": state.last_op_type_by_machine,
-        "machine_busy_hours": state.machine_busy_hours,
-        "operator_busy_hours": state.operator_busy_hours,
-        "probe_only": True,
-    }
-    return ctx.auto_assign_internal_resources_attempt(**kwargs)
+    return ctx.auto_assign_internal_resources_attempt(
+        op=op,
+        batch=batch,
+        batch_progress=state.batch_progress,
+        machine_timeline=state.machine_timeline,
+        operator_timeline=state.operator_timeline,
+        base_time=state.base_time,
+        end_dt_exclusive=end_dt_exclusive,
+        machine_downtimes=machine_downtimes,
+        resource_pool=resource_pool,
+        last_op_type_by_machine=state.last_op_type_by_machine,
+        machine_busy_hours=state.machine_busy_hours,
+        operator_busy_hours=state.operator_busy_hours,
+        probe_only=True,
+    )
 
 
 def _estimate_scoring_slot(
@@ -305,10 +328,12 @@ def _estimate_scoring_slot(
     end_dt_exclusive: Optional[datetime],
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
     total_hours: float,
-):
-    def estimate_selected():
+) -> InternalSlotEstimate:
+    timing_calendar = ctx.timing_calendar
+
+    def estimate_selected() -> InternalSlotEstimate:
         return estimate_internal_slot(
-            calendar=ctx.calendar,
+            calendar=timing_calendar,
             op=op,
             batch=batch,
             machine_id=machine_id,
@@ -322,32 +347,18 @@ def _estimate_scoring_slot(
             last_op_type_by_machine=state.last_op_type_by_machine,
             abort_after=None,
             total_hours_base=total_hours,
-            overlap_reuse=overlap_reuse_for(state.machine_timeline),
+            overlap_reuse=ctx.overlap_reuse,
         )
 
-    handoff = current_sgs_handoff()
-    estimate = None
-    compute = estimate_selected
-    if handoff is not None:
-        if handoff._timing is not None:
-            def shared_selected():
-                return handoff.shared_slot_estimate(
-                    calendar=ctx.calendar, op=op, batch=batch, machine_id=machine_id, operator_id=operator_id,
-                    prev_end=meta["prev_end"], total_hours=total_hours, end_dt_exclusive=end_dt_exclusive,
-                    compute=estimate_selected)
-
-            compute = shared_selected
-        estimate = handoff.pair_estimate(
-            op=op, machine_id=machine_id, operator_id=operator_id, prev_end=meta["prev_end"],
-            machine_timeline=state.machine_timeline, operator_timeline=state.operator_timeline, compute=compute,
-        )
-    if estimate is None:
-        estimate = compute()
-    if estimate.abort_after_hit:
-        raise RuntimeError("SGS 评分不应命中 abort_after 早停")
-    if current_sgs_handoff() is not None:
-        remember_sgs_estimate(
-            estimate, calendar=ctx.calendar, op=op, machine_id=machine_id, operator_id=operator_id,
-            prev_end=meta["prev_end"], end_dt_exclusive=end_dt_exclusive, total_hours_base=total_hours,
-        )
-    return estimate
+    return ctx.sgs_score_cache.scoring_slot_estimate(
+        op=op,
+        batch=batch,
+        machine_id=machine_id,
+        operator_id=operator_id,
+        prev_end=meta["prev_end"],
+        total_hours=total_hours,
+        end_dt_exclusive=end_dt_exclusive,
+        machine_timeline=state.machine_timeline,
+        operator_timeline=state.operator_timeline,
+        compute=estimate_selected,
+    )

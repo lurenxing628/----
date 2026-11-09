@@ -5,7 +5,6 @@ _MESSAGES = {
     "calendar_range_limit": "查询的日期范围太大，班表读不完。请缩小时间范围后重试。",
     "calendar_cell_limit": "设备人员和日期的组合太多，算不完。请缩小时间范围后重试。",
     "calendar_fact_limit": "要读的班表或设备人员记录超过上限。请缩小时间范围后重试。",
-    "calendar_window_limit": "班次时长超过 24 小时，这部分产能算不出来。请到工作日历核对班次。",
     "resource_missing": "这条安排关联的设备或人员记录找不到，产能算不出来。请到资料总览核对。",
     "resource_status_unknown": "设备或人员状态无效，请到资料总览核对。",
     "downtime_invalid": "设备停机时间或状态有误，产能算不出来。请到资料总览核对设备停机。",

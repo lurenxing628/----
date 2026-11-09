@@ -124,8 +124,8 @@ def decoded_batch_order(results: List[ScheduleResult]) -> Tuple[str, ...]:
 def _snapshot_candidate(candidate: Dict[str, Any]) -> Dict[str, Any]:
     # Fixed business seeds and input resource pools remain owned by the run input.
     # All other containers belong to this completed decode, including its decisions. Search attempt
-    # records still hold the stored algo_stats by reference (step_report_hooks, local search), and the
-    # published summary is appended to later (due-risk warnings), so the public copy must not share them.
+    # records still hold the stored algo_stats and summary by reference (step_report_hooks, local search),
+    # so the public copy must not share them.
     out = {key: value if key in ("resource_pool", "seed_results") else deepcopy(value)
            for key, value in candidate.items() if key not in ("results", "summary", "metrics")}
     out["results"] = [replace(result) for result in candidate["results"]]
@@ -195,6 +195,30 @@ class SharedScheduleArchive:
     def partial_groups(self) -> Dict[PartialScopeKey, PartialScheduleGroup]:
         return {key: PartialScheduleGroup(tuple(self._partial_entry_ids[key]), dict(best))
                 for key, best in self._partial.items()}
+
+    def has_complete_best(self) -> bool:
+        return bool(self._best)
+
+    def current_entry(self, objective: str) -> Optional[int]:
+        self._require_objective(objective)
+        return self._current[objective]
+
+    def starting_entries(self, objective: str) -> Tuple[int, ...]:
+        self._require_objective(objective)
+        return self._starts[objective]
+
+    def evidence_origin(self, entry_id: int) -> Dict[str, Any]:
+        return self._entries[entry_id].evidence_origin
+
+    def selected_entry(self, objective: str) -> Optional[int]:
+        self._require_objective(objective)
+        full = self._best.get(objective)
+        if full is not None:
+            return full
+        if not self._partial:
+            return None
+        scope = min(self._partial, key=lambda key: (-len(key[0]), -len(key[1])))
+        return self._partial[scope].get(objective, self._partial_entry_ids[scope][0])
 
     def entry(self, entry_id: int) -> ScheduleArchiveEntry:
         stored = self._entries[entry_id]

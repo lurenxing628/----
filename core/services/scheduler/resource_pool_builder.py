@@ -19,47 +19,43 @@ from core.services.personnel.operator_qualification import (
     require_machine_authorization,
 )
 
+RESOURCE_FACT_TABLES = (
+    "Machines",
+    "MachineOpTypes",
+    "Operators",
+    "OperatorMachine",
+    "WorkbenchOperatorProfiles",
+    "OpTypes",
+    "OperatorSkill",
+)
+
 
 class CapturedResourceFacts:
     """Resources derived from this operation's captured rows, with demand-scoped qualifications."""
 
-    def __init__(self, tables, downtimes):
+    def __init__(self, tables):
+        # 这些编号是库里的主键或 NOT NULL 外键，准入边界已拒绝空值与空白，读取与排产保留存量原值。
         capabilities = defaultdict(list)
-        for row in tables.get("MachineOpTypes", ()):
-            if str(row["machine_id"] or "").strip():
-                capabilities[row["machine_id"]].append(row["op_type_id"])
+        for row in tables["MachineOpTypes"]:
+            capabilities[row["machine_id"]].append(row["op_type_id"])
         self.machines = [
             Machine.from_row(dict(row, op_type_ids=tuple(capabilities[row["machine_id"]])))
-            for row in sorted(
-                (row for row in tables["Machines"] if str(row["machine_id"] or "").strip()),
-                key=lambda row: row["machine_id"],
-            )
+            for row in sorted(tables["Machines"], key=lambda row: row["machine_id"])
             if row["status"] == MachineStatus.ACTIVE.value
         ]
-        self.operators = {
-            row["operator_id"]: row
-            for row in tables["Operators"]
-            if str(row["operator_id"] or "").strip()
-        }
-        self.links = [
-            row
-            for row in tables["OperatorMachine"]
-            if str(row["operator_id"] or "").strip() and str(row["machine_id"] or "").strip()
-        ]
+        self.operators = {row["operator_id"]: row for row in tables["Operators"]}
+        self.links = list(tables["OperatorMachine"])
         self._authorized_pairs = {(row["operator_id"], row["machine_id"]) for row in self.links}
         self._profiles = defaultdict(list)
         self._skills = defaultdict(list)
         for row in tables["WorkbenchOperatorProfiles"]:
-            if str(row["operator_id"] or "").strip():
-                self._profiles[row["operator_id"]].append(row)
+            self._profiles[row["operator_id"]].append(row)
         op_types = {row["op_type_id"]: row for row in tables["OpTypes"]}
         for row in tables["OperatorSkill"]:
-            if str(row["operator_id"] or "").strip():
-                self._skills[row["operator_id"]].append(
-                    dict(row, category=op_types.get(row["op_type_id"], {}).get("category"))
-                )
+            self._skills[row["operator_id"]].append(
+                dict(row, category=op_types.get(row["op_type_id"], {}).get("category"))
+            )
         self._qualifications = {}
-        self.downtimes = downtimes
 
     def qualifications_for(self, operator_ids):
         ids = set(operator_ids)
@@ -103,7 +99,7 @@ class CapturedResourceFacts:
 
 
 def _op_type_ids_for_ops(algo_ops: List[OpForScheduleAlgo]) -> Set[str]:
-    # 排产输入构建已把来源与工种编号规范成非空、无首尾空格的值。
+    # 排产输入构建已核验来源与工种编号非空，保留存量原值。
     return {o.op_type_id for o in algo_ops if o.source == INTERNAL}
 
 

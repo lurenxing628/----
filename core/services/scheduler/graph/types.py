@@ -3,26 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
-from core.shared.strict_parse import is_int
-
-
-def _compact_text_tuple(values: Any) -> Tuple[str, ...]:
-    compact = []
-    for item in values:
-        if item is None:
-            continue
-        text = str(item)
-        if not text.strip():
-            continue
-        compact.append(text)
-    return tuple(compact)
-
-
-def _require_int_value(value: Any, *, field_name: str) -> int:
-    if not is_int(value):
-        raise ValueError(f"OperationGraphNode.{field_name} 必须是整数。")
-    return value
-
 
 @dataclass(frozen=True)
 class OperationGraphNode:
@@ -38,14 +18,6 @@ class OperationGraphNode:
     candidate_machine_ids: Tuple[str, ...] = field(default_factory=tuple)
     external_group_key: Optional[Tuple[str, ...]] = None
     raw: Mapping[str, Any] = field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        _require_int_value(self.seq, field_name="seq")
-        _require_int_value(self.duration_minutes, field_name="duration_minutes")
-        if self.duration_minutes < 0:
-            raise ValueError("OperationGraphNode.duration_minutes 不能为负数。")
-        object.__setattr__(self, "candidate_machine_ids", _compact_text_tuple(self.candidate_machine_ids))
-        object.__setattr__(self, "raw", dict(self.raw))
 
 
 @dataclass(frozen=True)

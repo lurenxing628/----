@@ -64,18 +64,16 @@ def build_candidate_fingerprint(
     )
 
 
-def score_strictly_better(candidate_score: Any, parent_score: Any) -> bool:
-    candidate = _score_tuple(candidate_score)
-    parent = _score_tuple(parent_score)
-    if not candidate or not parent:
-        return False
-    return candidate < parent
+def score_strictly_better(
+    candidate_score: Optional[Tuple[float, ...]], parent_score: Optional[Tuple[float, ...]],
+) -> bool:
+    return candidate_score is not None and parent_score is not None and candidate_score < parent_score
 
 
 def _evaluation_key(candidate: Dict[str, Any], *, objective_name: str) -> Tuple[Any, ...]:
     metrics: ScheduleMetrics = candidate["metrics"]
     metric_signature = tuple(
-        (key, round(float(getattr(metrics, key)), 6)) for key in objective_metric_keys(objective_name)
+        (key, float(getattr(metrics, key))) for key in objective_metric_keys(objective_name)
     )
     summary: ScheduleSummary = candidate["summary"]
     completion = metrics.completion
@@ -86,13 +84,7 @@ def _evaluation_key(candidate: Dict[str, Any], *, objective_name: str) -> Tuple[
     )
     return (candidate["archive_ref"].entry_id, objective_name,
             (summary.success, summary.total_ops, summary.scheduled_ops, summary.failed_ops),
-            completion_summary, metric_signature, _score_tuple(candidate.get("score")))
-
-
-def _score_tuple(score: Any) -> Tuple[float, ...]:
-    if not isinstance(score, (list, tuple)) or not score:
-        return ()
-    return tuple(round(float(item), 6) for item in score)
+            completion_summary, metric_signature, candidate["score"])
 
 
 __all__ = [

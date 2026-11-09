@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import time
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
@@ -9,10 +8,7 @@ from core.algorithms.evaluation import objective_score
 from core.algorithms.ortools_bottleneck import OrtoolsWarmstartError, try_solve_bottleneck_batch_order
 from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
 
-from .optimizer.config import (
-    is_ortools_enabled,
-    weighted_strategy_params,
-)
+from .optimizer.config import weighted_strategy_params
 from .optimizer.shared_decode import decode_and_metrics
 from .optimizer.step_report_hooks import (
     _record_ortools_candidate,
@@ -114,29 +110,13 @@ def _evaluate_ortools_candidate(
     return candidate
 
 
-def _ortools_warmstart_skip_reason(
-    *,
-    algo_mode: str,
-    snapshot: ScheduleConfigSnapshot,
-    deadline: float,
-    now: Callable[[], float],
-) -> Optional[str]:
-    if algo_mode != "improve":
-        return "algo_mode_not_improve"
-    if not is_ortools_enabled(snapshot):
-        return "disabled"
-    if float(deadline - now()) < 1.0:
-        return "time_budget"
-    return None
-
-
 def run_ortools_warmstart(
     *,
-    algo_mode: str,
     cfg: ScheduleConfigSnapshot,
     strategy_enum: SortStrategy,
     objective_name: str,
     deadline: float,
+    clock: Callable[[], float],
     algo_ops_to_schedule: List[Any],
     batches: Dict[str, Any],
     start_dt: datetime,
@@ -148,18 +128,12 @@ def run_ortools_warmstart(
     optimizer_algo_stats: Dict[str, Any],
     readiness_gate_enabled: bool = False,
     graph_ready_context: Optional[Any] = None,
-    clock: Optional[Callable[[], float]] = None,
     search_report_state: OptimizationSearchReportState,
     decode_session: SharedDecodeSession,
 ) -> Optional[Dict[str, Any]]:
-    # 可选：OR-Tools 高质量起点（瓶颈子问题）
-    now = clock or time.time
-
-    skip_reason = _ortools_warmstart_skip_reason(algo_mode=algo_mode, snapshot=cfg, deadline=deadline, now=now)
-    if skip_reason == "time_budget":
-        decode_session.budget.reject(skip_reason)
-    if skip_reason:
-        return best
+    # 可选：OR-Tools 高质量起点（瓶颈子问题）；deadline 与 clock 同属共享预算时钟域。
+    if float(deadline - clock()) < 1.0:
+        decode_session.budget.reject("time_budget")
 
     remaining = decode_session.budget.remaining()
     kind = "sgs_full" if dispatch_mode_cfg == "sgs" else "batch_order_full"
@@ -171,7 +145,7 @@ def run_ortools_warmstart(
     try:
         ort_order = _solve_ortools_order(
             deadline=deadline,
-            now=now,
+            now=clock,
             snapshot=cfg,
             algo_ops_to_schedule=algo_ops_to_schedule,
             batches=batches,
@@ -185,9 +159,8 @@ def run_ortools_warmstart(
 
     if not ort_order:
         return best
-    if now() >= deadline:
+    if clock() >= deadline:
         decode_session.budget.reject("time_budget")
-        return best
 
     cand = _evaluate_ortools_candidate(
         strategy=strategy_enum,

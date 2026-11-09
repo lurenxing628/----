@@ -1,4 +1,4 @@
-"""Dispatch-mode routing with the scheduler's current callback bindings."""
+"""Route one decode to batch-order or SGS dispatch after checking the mode-specific inputs."""
 
 from core.errors import ValidationError
 

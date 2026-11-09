@@ -17,17 +17,13 @@ def effective_graph_analysis_mode(mode: str) -> str:
 
 
 def graph_input_scope(
-    schedule_input: ScheduleRunInput, *, nodes: Optional[List[OperationGraphNode]] = None,
+    schedule_input: ScheduleRunInput, *, nodes: List[OperationGraphNode],
 ) -> Dict[str, Any]:
-    if nodes is None:
-        frozen_node_count = len(schedule_input.frozen_op_ids)
-    else:
-        frozen_node_count = sum(1 for node in nodes if node.is_frozen)
     return {
         "input_scope": _GRAPH_INPUT_SCOPE,
         "total_algo_op_count": len(schedule_input.algo_ops),
         "reschedulable_unfrozen_op_count": len(schedule_input.algo_ops_to_schedule),
-        "frozen_node_count": frozen_node_count,
+        "frozen_node_count": sum(1 for node in nodes if node.is_frozen),
         "seed_result_count": len(schedule_input.seed_results),
     }
 
@@ -43,7 +39,7 @@ def graph_cycle_disabled_public_fields() -> Dict[str, Any]:
 
 
 def graph_dispatch_mode_override(public: Dict[str, Any]) -> Optional[str]:
-    if public.get("effective_mode") == "sgs_without_graph_ready_queue":
+    if public["effective_mode"] == "sgs_without_graph_ready_queue":
         return "sgs"
     return None
 

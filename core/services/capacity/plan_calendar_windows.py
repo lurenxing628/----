@@ -4,7 +4,7 @@ import heapq
 import math
 from collections import defaultdict
 from datetime import datetime, time, timedelta
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from core.errors import ValidationError
 from core.shared.strict_json import clone_json
@@ -76,8 +76,6 @@ def policy_projection(engine, first_day, last_day, start, end, operator_id=None)
         try:
             day_str = day.isoformat()
             policy = engine._policy_for_date(day_str, operator_id)
-            if policy.shift_hours > 24:
-                return unavailable(basis, "calendar_window_limit")
             for low, high in policy.work_windows():
                 low, high = max(low, start), min(high, end)
                 if low < high:
@@ -178,12 +176,16 @@ def available_intervals(projection, priority=None):
     )
 
 
-def apply_resource(base: Dict[str, Any], raw, kind, downtime_rows, start, end) -> Dict[str, Any]:
-    basis = "global_calendar_machine_availability" if kind == "machine" else "personal_or_operator_shift_calendar"
+def resource_record_unavailable(raw, kind, basis) -> Optional[Dict[str, Any]]:
     if raw is None:
         return unavailable(basis, "resource_missing")
     if raw["status"] not in (("active", "inactive", "maintain") if kind == "machine" else ("active", "inactive")):
         return unavailable(basis, "resource_status_unknown")
+    return None
+
+
+def apply_resource(base: Dict[str, Any], raw, kind, downtime_rows, start, end) -> Dict[str, Any]:
+    basis = "global_calendar_machine_availability" if kind == "machine" else "personal_or_operator_shift_calendar"
     result = dict(base, basis=basis, status=raw["status"])
     if result["state"] != "available":
         return result
@@ -241,29 +243,37 @@ def _subtract_windows(windows, downtime):
 
 
 def project_resource_calendars(engine, facts, ids, first, last, start, end, *, global_calendar=None):
-    if global_calendar is None:
-        global_calendar = policy_projection(engine, first, last, start, end)
+    def global_base():
+        nonlocal global_calendar
+        if global_calendar is None:
+            global_calendar = policy_projection(engine, first, last, start, end)
+        return global_calendar
+
     downtime = defaultdict(list)
     for row in facts["downtimes"]:
         downtime[row["machine_id"]].append(row)
     personal_operators = {row["operator_id"] for row in facts["personal"]}
     shift_bases = {}
     for kind in ("machine", "operator"):
+        basis = "global_calendar_machine_availability" if kind == "machine" else "personal_or_operator_shift_calendar"
         records = {row[kind + "_id"]: row for row in facts[kind + "s"]}
         for key in ids.get(kind, ()):
             raw = records.get(key)
+            rejected = resource_record_unavailable(raw, kind, basis)
+            if rejected is not None:
+                yield kind, key, raw, rejected
+                continue
             if kind == "machine":
-                base = global_calendar
+                base = global_base()
             elif key not in personal_operators:
                 profile = engine.shift_profiles.get(key)
                 shift_key = None if profile is None else profile["shift_profile_id"]
-                if shift_key not in shift_bases:
-                    shift_bases[shift_key] = (
-                        global_calendar
-                        if shift_key is None and global_calendar["state"] == "available"
-                        else policy_projection(engine, first, last, start, end, key)
-                    )
-                base = shift_bases[shift_key]
+                if shift_key is None:
+                    base = global_base()
+                else:
+                    if shift_key not in shift_bases:
+                        shift_bases[shift_key] = policy_projection(engine, first, last, start, end, key)
+                    base = shift_bases[shift_key]
             else:
                 # 有个人日历的人逐人投影。
                 base = policy_projection(engine, first, last, start, end, key)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from core.algorithm_contracts.changeover_events import type_transition
 from core.algorithms.evaluation_completion import PreparedBatchDue
@@ -17,22 +17,9 @@ def _latest_result(results: List[Any]) -> Optional[Any]:
     return max(rows, key=lambda row: (row.end_time, row.batch_id, row.seq))
 
 
-def _finish_by_batch(results: List[Any]) -> Dict[str, datetime]:
-    out: Dict[str, datetime] = {}
-    for result in results:
-        bid = result.batch_id
-        end_time = result.end_time
-        if not isinstance(end_time, datetime):
-            continue
-        current = out.get(bid)
-        if current is None or end_time > current:
-            out[bid] = end_time
-    return out
-
-
 def _most_tardy_batch(
     *,
-    finish_by_batch_rows: Dict[str, datetime],
+    finish_by_batch_rows: Mapping[str, datetime],
     due_batches: Tuple[PreparedBatchDue, ...],
 ) -> Optional[str]:
     best: Optional[Tuple[str, float]] = None
@@ -51,7 +38,7 @@ def _most_tardy_batch(
 
 def _earliest_due_pressure_batch(
     *,
-    finish_by_batch_rows: Dict[str, datetime],
+    finish_by_batch_rows: Mapping[str, datetime],
     due_batches: Tuple[PreparedBatchDue, ...],
 ) -> str:
     best: Optional[Tuple[datetime, str]] = None
@@ -115,25 +102,25 @@ class LocalSearchResultFacts:
     """Lazy facts of one decoded result list for ordinary local-search neighbourhood moves.
 
     ``due_batches`` are the run's prepared evaluation due facts (every batch; ``due_exclusive`` is ``None``
-    for no or an invalid due date).
+    for no or an invalid due date), and ``finish_by_batch`` comes from the candidate's evaluation metrics.
     """
 
-    def __init__(self, results: List[Any], *, due_batches: Tuple[PreparedBatchDue, ...]) -> None:
+    def __init__(
+        self,
+        results: List[Any],
+        *,
+        due_batches: Tuple[PreparedBatchDue, ...],
+        finish_by_batch: Mapping[str, datetime],
+    ) -> None:
         self.results = results
         self.due_batches = due_batches
-        self._finish_map: Any = _UNSET
+        self.finish_by_batch = finish_by_batch
         self._latest_row: Any = _UNSET
         self._most_tardy_batch_id: Any = _UNSET
         self._earliest_due_pressure_batch_id: Any = _UNSET
         self._machine_groups: Any = _UNSET
-        self._bottleneck_rows: Any = _UNSET
         self._bottleneck_latest_row: Any = _UNSET
         self._changeover_pair: Any = _UNSET
-
-    def finish_map(self) -> Dict[str, datetime]:
-        if self._finish_map is _UNSET:
-            self._finish_map = _finish_by_batch(self.results)
-        return self._finish_map
 
     def latest_row(self) -> Optional[Any]:
         if self._latest_row is _UNSET:
@@ -143,36 +130,30 @@ class LocalSearchResultFacts:
     def most_tardy_batch_id(self) -> Optional[str]:
         if self._most_tardy_batch_id is _UNSET:
             self._most_tardy_batch_id = _most_tardy_batch(
-                finish_by_batch_rows=self.finish_map(), due_batches=self.due_batches,
+                finish_by_batch_rows=self.finish_by_batch, due_batches=self.due_batches,
             )
         return self._most_tardy_batch_id
 
     def earliest_due_pressure_batch_id(self) -> str:
         if self._earliest_due_pressure_batch_id is _UNSET:
             self._earliest_due_pressure_batch_id = _earliest_due_pressure_batch(
-                finish_by_batch_rows=self.finish_map(), due_batches=self.due_batches,
+                finish_by_batch_rows=self.finish_by_batch, due_batches=self.due_batches,
             )
         return self._earliest_due_pressure_batch_id
 
-    def machine_groups(self) -> Dict[str, List[Any]]:
+    def _grouped_by_machine(self) -> Dict[str, List[Any]]:
         if self._machine_groups is _UNSET:
             self._machine_groups = _group_by_machine(self.results)
         return self._machine_groups
 
-    def bottleneck_rows(self) -> List[Any]:
-        if self._bottleneck_rows is _UNSET:
-            self._bottleneck_rows = _bottleneck_from_groups(self.machine_groups())
-        return self._bottleneck_rows
-
     def bottleneck_latest_row(self) -> Optional[Any]:
         if self._bottleneck_latest_row is _UNSET:
-            rows = self.bottleneck_rows()
-            self._bottleneck_latest_row = _latest_result(rows) if rows else None
+            self._bottleneck_latest_row = _latest_result(_bottleneck_from_groups(self._grouped_by_machine()))
         return self._bottleneck_latest_row
 
     def changeover_pair(self) -> Optional[Tuple[Any, Any]]:
         if self._changeover_pair is _UNSET:
-            self._changeover_pair = _changeover_from_groups(self.machine_groups())
+            self._changeover_pair = _changeover_from_groups(self._grouped_by_machine())
         return self._changeover_pair
 
 

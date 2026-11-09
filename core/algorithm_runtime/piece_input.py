@@ -9,17 +9,24 @@ from core.errors import ValidationError
 from core.models.batch import Batch
 
 
-def operation_batch(op: OpForScheduleAlgo, batch: Batch) -> Batch:
+def operation_quantity(op: OpForScheduleAlgo, batch: Batch) -> int:
     piece = op.piece_id
     if piece is None:
-        return batch
+        return batch.quantity
     if type(piece) is not str or not piece or piece.strip() != piece:
         raise ValidationError("Piece identity must be canonical.", field="piece_id")
     quantity = batch.quantity
     if type(quantity) is not int or not 0 < quantity < (1 << 53):
         raise ValidationError("A piece requires an explicit positive batch quantity.", field="quantity")
+    return 1
+
+
+def operation_batch(op: OpForScheduleAlgo, batch: Batch) -> Batch:
+    qty = operation_quantity(op, batch)
+    if op.piece_id is None:
+        return batch
     work = copy(batch)
-    work.quantity = 1
+    work.quantity = qty
     return work
 
 

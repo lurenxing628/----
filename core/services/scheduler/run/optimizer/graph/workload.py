@@ -9,13 +9,13 @@ from typing import Any, Callable, Dict, List, NoReturn, Optional, Set, Tuple
 from core.algorithm_contracts.value_domains import EXTERNAL, MERGED
 from core.algorithm_runtime.piece_input import external_group_key
 from core.errors import ValidationError
-from core.shared.strict_parse import parse_optional_date
 
 
 def operation_workload_signals(
     operations: Dict[int, Any], *, batches: Dict[str, Any],
     start_dt: datetime, graph_ready_context: Any,
     seed_results: List[Any], calendar_service: Any, work_buckets: Any,
+    ready_starts: Dict[str, Optional[datetime]],
     deadline: float, clock: Callable[[], float],
 ) -> Optional[Tuple[Dict[int, float], Dict[int, float]]]:
     """Count each reachable work bucket once; release follows longest predecessor path.
@@ -28,7 +28,8 @@ def operation_workload_signals(
         return None
     buckets, members, work = work_buckets
     links, release = _bucket_releases(
-        operations, batches, buckets, graph_ready_context["predecessor_op_ids_by_op_id"], start_dt, seed_results,
+        operations, buckets, graph_ready_context["predecessor_op_ids_by_op_id"],
+        start_dt, seed_results, ready_starts,
     )
     if clock() >= deadline:
         return None
@@ -59,7 +60,7 @@ def batch_ordering_workload_signals(operations, durations, *, work_buckets):
         total = sum(work[bucket] for bucket in ordered_buckets)
         elapsed = 0.0
         starts = {}
-        for op_id in sorted(ids, key=lambda key: (int(operations[key].seq or key), key)):
+        for op_id in sorted(ids, key=lambda key: (operations[key].seq, key)):
             bucket = buckets[op_id]
             if bucket not in starts:
                 starts[bucket] = elapsed
@@ -85,19 +86,15 @@ def build_work_buckets(operations, durations):
 
 
 def _bucket_releases(
-    operations: Dict[int, Any], batches: Dict[str, Any], buckets: Dict[int, Tuple[str, ...]],
+    operations: Dict[int, Any], buckets: Dict[int, Tuple[str, ...]],
     predecessors: Dict[int, Set[int]], start_dt: datetime, seed_results: List[Any],
+    ready_starts: Dict[str, Optional[datetime]],
 ) -> Tuple[Dict[Tuple[str, ...], Set[Tuple[str, ...]]], Dict[Tuple[str, ...], datetime]]:
     links: Dict[Tuple[str, ...], Set[Tuple[str, ...]]] = {bucket: set() for bucket in buckets.values()}
     release = {bucket: start_dt for bucket in links}
     seed_ends = {item.op_id: item.end_time for item in seed_results}
-    ready_by_batch: Dict[str, Optional[datetime]] = {}
     for op_id, bucket in buckets.items():
-        batch_id = str(operations[op_id].batch_id)
-        if batch_id not in ready_by_batch:
-            ready = parse_optional_date(batches[batch_id].ready_date, field="ready_date")
-            ready_by_batch[batch_id] = None if ready is None else datetime.combine(ready, datetime.min.time())
-        ready_dt = ready_by_batch[batch_id]
+        ready_dt = ready_starts[operations[op_id].batch_id]
         if ready_dt is not None:
             release[bucket] = max(release[bucket], ready_dt)
         for parent in predecessors[op_id]:
@@ -178,10 +175,7 @@ def _topological_order(links):
 def _gross_finish(op: Any, batch: Any, start: datetime, hours: float, calendar: Any) -> datetime:
     if op.source == EXTERNAL:
         return start + timedelta(hours=hours)
-    finish = calendar.add_working_hours(start, hours, priority=batch.priority, operator_id=op.operator_id)
-    if not isinstance(finish, datetime) or finish < start:
-        _invalid("日历返回无效的工序完成时间。")
-    return finish
+    return calendar.add_effective_hours(start, hours, priority=batch.priority, operator_id=op.operator_id)
 
 
 def _invalid(message: str) -> NoReturn:

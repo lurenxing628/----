@@ -4,15 +4,11 @@ from typing import AbstractSet, Any, Dict, Iterable, List, Mapping, Optional, Tu
 
 from core.algorithm_contracts.types import OpForScheduleAlgo
 from core.algorithm_contracts.value_domains import INTERNAL, MERGED
-from core.algorithm_runtime.piece_input import external_group_key, operation_batch
+from core.algorithm_runtime.piece_input import external_group_key, operation_quantity
 from core.models.batch import Batch
 
 from .id_policy import make_operation_node_id
 from .types import OperationGraphNode
-
-
-class GraphInputContractError(ValueError):
-    pass
 
 
 def build_operation_nodes_from_rows(
@@ -62,14 +58,13 @@ def _build_operation_node(
 ) -> OperationGraphNode:
     # 算法工序由排产输入构建一次给出规范值（编号、文本、来源、工时、外协周期都已校验），批次同样来自读取边界；
     # 这里只做图节点投影，不再逐字段复核。
-    batch = operation_batch(row, batches[row.batch_id])
     return OperationGraphNode(
         node_id=make_operation_node_id(row.id),
         batch_id=row.batch_id,
         piece_id=row.piece_id,
         op_code=row.op_code,
         seq=row.seq,
-        duration_minutes=_operation_duration_minutes(row, batch),
+        duration_minutes=_operation_duration_minutes(row, batches[row.batch_id]),
         source=row.source,
         is_frozen=row.id in frozen_op_ids,
         machine_id=row.machine_id if row.source == INTERNAL else None,
@@ -81,7 +76,8 @@ def _build_operation_node(
 
 def _operation_duration_minutes(row: OpForScheduleAlgo, batch: Batch) -> int:
     if row.source == INTERNAL:
-        return _round_minutes((row.setup_hours + row.unit_hours * batch.quantity) * 60)
+        qty = operation_quantity(row, batch)
+        return _round_minutes((row.setup_hours + row.unit_hours * qty) * 60)
     # 合并外协按整组周期；其余外协按本道周期。两者都由排产输入构建按冻结周期记录给成正数。
     if row.ext_merge_mode == MERGED:
         return _round_minutes(cast(float, row.ext_group_total_days) * 24 * 60)
@@ -110,4 +106,4 @@ def _candidate_machine_ids(row: OpForScheduleAlgo, *, resource_pool: GraphResour
     return candidates
 
 
-__all__ = ["GraphInputContractError", "GraphResourcePreparation", "build_operation_nodes_from_rows"]
+__all__ = ["GraphResourcePreparation", "build_operation_nodes_from_rows"]

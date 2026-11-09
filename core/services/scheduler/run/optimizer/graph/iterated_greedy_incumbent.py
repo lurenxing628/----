@@ -72,7 +72,7 @@ class IGIncumbentTracker:
             return False
         if not feasible_candidate(candidate):
             return False
-        if not score_strictly_better(candidate["score"], (incumbent or {}).get("score")):
+        if not score_strictly_better(candidate["score"], None if incumbent is None else incumbent["score"]):
             return False
         return candidate_is_preferred(
             candidate=candidate, incumbent=incumbent, candidate_origin=GRAPH_READY_V2_ITERATED_GREEDY_ORIGIN,

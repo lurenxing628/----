@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Protocol, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Protocol, Set, Tuple
 
 from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
@@ -20,8 +20,8 @@ class SummaryMetrics(Protocol):
     _due_by_batch: Dict[str, Optional[date]]
     _finish_by_batch: Dict[str, datetime]
 
+    def numeric_dict(self) -> Dict[str, Any]: ...
     def public_dict(self) -> Dict[str, Any]: ...
-    def to_dict(self) -> Dict[str, Any]: ...
 
 
 class ScheduleResultStatus(str, Enum):
@@ -37,7 +37,7 @@ class SummaryBuildContext:
     version: int
     normalized_batch_ids: List[str]
     start_dt: datetime
-    end_date: Optional[Union[date, str]]
+    end_date: Optional[date]
     batches: Dict[str, Batch]
     operations: List[BatchOperation]
     results: List[ScheduleResult]
@@ -54,10 +54,11 @@ class SummaryBuildContext:
     scheduled_op_ids: Set[int]
     freeze_meta: Dict[str, Any]
     missing_internal_resource_op_ids: Set[int]
+    t0: float
     downtime_meta: Dict[str, Any] = field(default_factory=dict)
     resource_pool_meta: Optional[Dict[str, Any]] = None
     readiness_gate_enabled: bool = False
-    algo_stats: Optional[Dict[str, Any]] = None
+    algo_stats: Dict[str, Any] = field(default_factory=dict)
     graph_analysis_public: Optional[Dict[str, Any]] = None
     graph_analysis_diagnostics: Optional[Dict[str, Any]] = None
     candidate_comparison_public: Optional[Dict[str, Any]] = None
@@ -65,7 +66,6 @@ class SummaryBuildContext:
     execution_snapshot_op_ids: List[int] = field(default_factory=list)
     execution_snapshot_op_count: int = 0
     simulate: bool = False
-    t0: float = 0.0
 
 
 @dataclass(frozen=True)

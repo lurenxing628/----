@@ -2,21 +2,17 @@
 
 Only certified large decodes (fixed or statically eligible auto-assign resources) use this path. The head still receives
 the ordinary dynamic score. If it is penalized, score the full ready set, preserving
-the feasibility-first contract. Small, tied and callback-bearing inputs are unchanged.
+the feasibility-first contract. Small or tied inputs keep full ready-set scoring.
 """
 
 from __future__ import annotations
 
 import heapq
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from .sgs_priority_pruning import GraphPriorityPruning
 
 
 class PriorityReadyQueue:
-    def __init__(self, graph, pruning: GraphPriorityPruning):
-        self.graph, self.pruning = graph, pruning
+    def __init__(self, graph):
+        self.graph = graph
         self.keys = graph["graph_priority_key_by_op_id"]
         self.queued = set(graph["ready_op_ids"])
         self.heap = [(self.keys[op_id], op_id) for op_id in self.queued]
@@ -24,8 +20,6 @@ class PriorityReadyQueue:
         self.penalized = False
 
     def head(self, blocked_batches):
-        if not self.pruning.intact():
-            return None
         while self.heap:
             _key, op_id = self.heap[0]
             batch_id, op = self.graph["op_by_id"][op_id]
@@ -52,7 +46,7 @@ def make_priority_queue(graph, pruning):
     keys = graph["graph_priority_key_by_op_id"]
     if len(set(keys.values())) != len(keys):
         return None
-    return PriorityReadyQueue(graph, pruning)
+    return PriorityReadyQueue(graph)
 
 
 def score_next_ready(queue, *, collect, score, blocked_batches, cache):
@@ -64,7 +58,7 @@ def score_next_ready(queue, *, collect, score, blocked_batches, cache):
         return []
     scored = score(candidates)
     if narrowed:
-        if not any(row[0][0] == 0.0 for row in scored):
+        if not any(row.score.key[0] == 0.0 for row in scored):
             queue.pop_penalized()
             return score(collect())
         cache.graph_candidates_pruned += max(len(queue.graph["ready_op_ids"]) - len(candidates), 0)

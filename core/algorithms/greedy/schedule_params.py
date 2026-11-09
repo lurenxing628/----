@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Set
 
-from core.algorithm_contracts.date_parsers import due_exclusive, parse_date
+from core.algorithm_contracts.date_parsers import due_exclusive
 from core.algorithm_contracts.dispatch_rules import DispatchRuleSpec, parse_dispatch_rule_token
 from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.errors import ValidationError
@@ -87,16 +87,14 @@ def _require_yes_no(raw_value: Any, *, field: str) -> str:
     return text
 
 
-def _resolve_end_dt_exclusive(end_date: Any) -> Optional[datetime]:
-    end_d = parse_date(end_date)
-    if end_date is not None and end_d is None and str(end_date).strip():
-        raise ValidationError("“截止日期”写法不对，请填写类似 2026-05-20 的日期。", field="end_date")
-    if not end_d:
+def _resolve_end_dt_exclusive(end_date: Optional[date]) -> Optional[datetime]:
+    """排产截止日已在输入边界按年月日准入（run/input.py 的 local_date），这里不再解析或兜底。"""
+    if end_date is None:
         return None
     # 复用 due_exclusive 的哨兵口径：9999-12-31（date.max 的日期）是 ERP 常见的
     # “无截止”哨兵值，裸 +1 天会溢出 OverflowError；due_exclusive 对该哨兵显式
     # 返回 datetime.max（语义“不设上限”），普通日期仍按当日 0 点 +1 天作排他上界。
-    return due_exclusive(end_d)
+    return due_exclusive(end_date)
 
 
 def _resolve_strategy(strategy: Optional[SortStrategy], *, config: ScheduleConfigSnapshot) -> SortStrategy:
@@ -161,7 +159,7 @@ def resolve_schedule_params(
     strategy: Optional[SortStrategy],
     strategy_params: Optional[Dict[str, Any]],
     start_dt: datetime,
-    end_date: Any,
+    end_date: Optional[date],
     dispatch_mode: Optional[str],
     dispatch_rule: Optional[str],
     resource_pool: Optional[Dict[str, Any]],

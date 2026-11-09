@@ -15,7 +15,6 @@ from .busy_block_skip import advance_busy_block
 from .downtime import SegmentOverlapIndex
 from .operation_effort import internal_requirement_parts
 from .resource_quality import MachineTypeState, slot_changeover_penalty
-from .sgs_estimate_reuse import current_sgs_handoff
 from .slot_overlap_reuse import SlotOverlapReuse
 
 
@@ -29,6 +28,7 @@ class InternalSlotEstimate:
     changeover_penalty: int
     blocked_by_window: bool = False
     abort_after_hit: bool = False
+    scan_span: Optional[Tuple[datetime, datetime]] = None
 
 
 def validate_internal_hours(op: OpForScheduleAlgo, batch: Batch) -> float:
@@ -60,13 +60,6 @@ def _raise_if_invalid_hours_number(field: str, raw_value: Any) -> None:
         raise ValidationError(f"“{label}”必须是有限数字", field=field)
     if parsed < 0:
         raise ValidationError(f"“{label}”必须大于等于 0", field=field)
-
-
-def _resolve_total_base(op: OpForScheduleAlgo, batch: Batch, total_hours_base: Optional[float]) -> float:
-    total_base = validate_internal_hours(op, batch) if total_hours_base is None else float(total_hours_base)
-    if not math.isfinite(total_base) or total_base < 0:
-        raise ValueError(f"工时总量不合法：total_hours_base={total_base!r}")
-    return total_base
 
 
 def _slot_segments(
@@ -109,11 +102,6 @@ def _adjust_slot_start(calendar: Any, start_time: datetime, *, priority: Any, op
     return calendar.adjust_to_working_time(start_time, priority=priority, operator_id=operator_id)
 
 
-def _estimate_attempt(calendar: Any, *, earliest: datetime, total_base: float, priority: Any, operator_id: str) -> datetime:
-    """End of one attempt: every calendar consumes effective hours at its own per-window efficiency."""
-    return calendar.add_effective_hours(earliest, total_base, priority=priority, operator_id=operator_id)
-
-
 def _latest_overlap_shift_end(
     segment_groups: Tuple[SegmentOverlapIndex, ...],
     earliest: datetime,
@@ -133,7 +121,6 @@ def _shifted_start(calendar: Any, *, earliest: datetime, shift_to: datetime, pri
 
 def _walk(
     calendar: Any,
-    handoff: Any,
     *,
     release: datetime,
     total_base: float,
@@ -142,26 +129,24 @@ def _walk(
     operator_id: str,
     segment_groups: Tuple[SegmentOverlapIndex, ...],
     abort_after: Optional[datetime],
-) -> Tuple[datetime, datetime, float, bool]:
-    """(start, end, working hours, aborted) of the first attempt from ``release`` clear of every busy segment.
+) -> Tuple[datetime, datetime, float, Optional[Tuple[datetime, datetime]], bool]:
+    """(start, end, working hours, scan_span, aborted) of the first attempt from ``release`` clear of every busy segment.
 
-    An aborted walk stops at the first start past ``abort_after``: end equals start and hours are 0.
+    An aborted walk stops at the first start past ``abort_after``: end equals start, hours are 0 and scan_span is None.
     """
     max_shifts = _max_shift_count(segment_groups)
     earliest = _adjust_slot_start(calendar, release, priority=priority, operator_id=operator_id)
     if abort_after is not None and earliest > abort_after:
-        return earliest, earliest, 0.0, True
+        return earliest, earliest, 0.0, None, True
     shift_count = 0
     # Busy blocks outside [scan_start, scan_end] never steered this walk; the SGS pair memo relies on that.
     scan_start = scan_end = earliest
     while True:
-        end_time = _estimate_attempt(calendar, earliest=earliest, total_base=total_base, priority=priority, operator_id=operator_id)
+        end_time = calendar.add_effective_hours(earliest, total_base, priority=priority, operator_id=operator_id)
         shift_to = _latest_overlap_shift_end(segment_groups, earliest, end_time)
         if shift_to is None:
-            if handoff is not None:
-                handoff.note_scan(scan_start, max(scan_end, end_time))
             hours = calendar.working_hours_between(earliest, end_time, priority=priority, operator_id=operator_id)
-            return earliest, end_time, float(hours), False
+            return earliest, end_time, float(hours), (scan_start, max(scan_end, end_time)), False
 
         if end_time > earliest:
             shift_to = advance_busy_block(calendar, earliest=earliest, shift_to=shift_to,
@@ -176,7 +161,7 @@ def _walk(
             )
         earliest = _shifted_start(calendar, earliest=earliest, shift_to=shift_to, priority=priority, operator_id=operator_id)
         if abort_after is not None and earliest > abort_after:
-            return earliest, earliest, 0.0, True
+            return earliest, earliest, 0.0, None, True
 
 
 def refresh_changeover_penalty(
@@ -205,16 +190,11 @@ def estimate_internal_slot(
     machine_downtimes: Sequence[Tuple[datetime, datetime]],
     last_op_type_by_machine: Optional[MachineTypeState],
     abort_after: Optional[datetime],
-    total_hours_base: Optional[float] = None,
+    total_hours_base: float,
     overlap_reuse: Optional[SlotOverlapReuse] = None,
 ) -> InternalSlotEstimate:
-    handoff = current_sgs_handoff()
-    if handoff is not None:
-        # Inside one SGS decode the calendar is constant; its certified timing answers are memoized per decode.
-        calendar = handoff.timing_calendar(calendar)
-    total_base = _resolve_total_base(op, batch, total_hours_base)
     priority = batch.priority
-    if total_base == 0.0:
+    if total_hours_base == 0.0:
         # A zero-hour operation is a point event: no busy or downtime segment can steer it.
         segment_groups = _slot_segments(machine_timeline=(), operator_timeline=(), machine_downtimes=())
     else:
@@ -226,8 +206,8 @@ def estimate_internal_slot(
             machine_id=machine_id,
             operator_id=operator_id,
         )
-    start_time, end_time, total_hours, aborted = _walk(
-        calendar, handoff, release=released_start(op, max(prev_end, base_time)), total_base=total_base,
+    start_time, end_time, total_hours, scan_span, aborted = _walk(
+        calendar, release=released_start(op, max(prev_end, base_time)), total_base=total_hours_base,
         priority=priority, machine_id=machine_id, operator_id=operator_id, segment_groups=segment_groups,
         abort_after=abort_after,
     )
@@ -247,6 +227,7 @@ def estimate_internal_slot(
             start=start_time, end=end_time,
         ),
         blocked_by_window=bool(end_dt_exclusive is not None and end_time >= end_dt_exclusive),
+        scan_span=scan_span,
     )
 
 
@@ -256,12 +237,9 @@ def estimate_point_slot(*, calendar: Any, priority: Any, machine_id: str, operat
     A point event occupies no resource time and has no material lower bound or changeover, so only the
     calendar's shift, priority and personal rules decide; a point is valid when both instants equal ``start``.
     """
-    handoff = current_sgs_handoff()
-    if handoff is not None:
-        calendar = handoff.timing_calendar(calendar)
     segment_groups = _slot_segments(machine_timeline=(), operator_timeline=(), machine_downtimes=())
-    start_time, end_time, _hours, _aborted = _walk(
-        calendar, handoff, release=start, total_base=0.0, priority=priority, machine_id=machine_id,
+    start_time, end_time, _hours, _scan_span, _aborted = _walk(
+        calendar, release=start, total_base=0.0, priority=priority, machine_id=machine_id,
         operator_id=operator_id, segment_groups=segment_groups, abort_after=None,
     )
     return start_time, end_time

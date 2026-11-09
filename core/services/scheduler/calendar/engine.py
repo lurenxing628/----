@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
+from fractions import Fraction
 from functools import lru_cache
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -12,7 +13,6 @@ from core.models.calendar_periods import (
     encode_periods,
 )
 from core.models.enums import BatchPriority, CalendarDayType, YesNo
-from core.services.common.datetime_normalize import normalize_hhmm
 from core.shared.strict_parse import finite_float, is_non_finite_number
 from data.repositories import CalendarRepository, OperatorCalendarRepository
 
@@ -28,6 +28,14 @@ from .working_hours import WorkingHoursPrefix
 # 正巨值（如录入笔误 9999999），故与既有 NaN/Inf/负数守卫对称地补一条量级上界。
 MAX_CALENDAR_DAYS = 36500.0
 _NORMAL_PRIORITY = BatchPriority.NORMAL.value
+_ONE_MICROSECOND = timedelta(microseconds=1)
+_MICROSECONDS_PER_HOUR = 3_600_000_000
+
+
+def _round_half_even_div(num: int, den: int) -> int:
+    q, r = divmod(num, den)
+    two_r = r << 1
+    return q + 1 if two_r > den or (two_r == den and (q & 1)) else q
 
 
 @lru_cache(maxsize=4096)
@@ -60,11 +68,10 @@ class CalendarEngine:
         self._captured_personal_rows = (None if capture is None else {
             (row["operator_id"], str(row["date"])): row for row in capture.business_table("OperatorCalendar")})
         # 本引擎拥有一次请求/排产快照的日期与班次事实；维护入口统一清空派生缓存。
-        self._default_periods_json: Optional[str] = None
-        self._default_periods = None
-        self._default_period_hours = 0.0
-        self._period_facts: Dict[Optional[str], tuple] = {}
-        self._decoded_periods: Dict[Optional[str], Optional[List[Dict[str, Any]]]] = {}
+        # 默认工作时段与它的规范化文本一起读入；None 表示本快照还没读。
+        self._default_facts: Optional[Tuple[List[Dict[str, Any]], str]] = None
+        self._period_facts: Dict[str, tuple] = {}
+        self._decoded_periods: Dict[str, List[Dict[str, Any]]] = capture.decoded_periods if capture is not None else {}
         self._public_calendar_rows: Dict[str, Any] = {}
         self._operator_calendar_rows: Dict[str, Dict[str, Any]] = {}
         self._public_policy_cache: Dict[str, DayPolicy] = {}
@@ -81,9 +88,7 @@ class CalendarEngine:
         说明：缓存用于排产过程加速，但当 WorkCalendar/OperatorCalendar 被修改后，
         必须清空缓存以保证“立即生效”（回归用例依赖该语义）。
         """
-        self._default_periods_json = None
-        self._default_periods = None
-        self._default_period_hours = 0.0
+        self._default_facts = None
         self._period_facts.clear()
         self._decoded_periods.clear()
         self._public_calendar_rows.clear()
@@ -117,17 +122,21 @@ class CalendarEngine:
 
     def default_periods(self) -> List[Dict[str, Any]]:
         """The engine owns these parsed defaults; callers consume them read-only."""
-        if self._default_periods is None:
-            periods = read_default_periods(self.conn, capture=self.capture)
-            self._default_periods = periods
-            self._default_periods_json = encode_periods(periods)
-            self._decoded_periods[self._default_periods_json] = periods
-            _, self._default_period_hours = self._period_facts_for_json(self._default_periods_json, periods)
-        return self._default_periods
+        return self.default_period_facts()[0]
 
-    def decoded_periods_for_json(self, periods_json: Optional[str]) -> Optional[List[Dict[str, Any]]]:
-        if periods_json is None:
-            return None
+    def default_period_facts(self) -> Tuple[List[Dict[str, Any]], str]:
+        """默认工作时段及其规范化文本，本快照只读一次、只编码一次。"""
+        if self._default_facts is None:
+            periods = self._read_default_periods()
+            periods_json = encode_periods(periods)
+            self._period_facts_for_json(periods_json, periods)
+            self._default_facts = periods, periods_json
+        return self._default_facts
+
+    def _read_default_periods(self) -> List[Dict[str, Any]]:
+        return read_default_periods(self.conn, capture=self.capture)
+
+    def decoded_periods_for_json(self, periods_json: str) -> List[Dict[str, Any]]:
         if periods_json not in self._decoded_periods:
             self._decoded_periods[periods_json] = decode_periods(periods_json)
         return self._decoded_periods[periods_json]
@@ -135,9 +144,7 @@ class CalendarEngine:
     def _period_facts_for_json(self, periods_json, periods=None):
         if periods_json not in self._period_facts:
             if periods is None:
-                if periods_json not in self._decoded_periods:
-                    self._decoded_periods[periods_json] = decode_periods(periods_json)
-                periods = self._decoded_periods[periods_json]
+                periods = self.decoded_periods_for_json(periods_json)
             else:
                 self._decoded_periods.setdefault(periods_json, periods)
             offsets = period_offsets(periods)
@@ -153,20 +160,18 @@ class CalendarEngine:
             row = WorkCalendar(
                 date=date_str,
                 day_type=CalendarDayType.WEEKEND.value,
-                shift_hours=0.0,
+                periods_json="[]",
                 efficiency=1.0,
                 allow_normal=YesNo.NO.value,
                 allow_urgent=YesNo.NO.value,
                 remark="默认周末（未配置）",
             )
         else:
-            periods = self.default_periods()
+            _, periods_json = self.default_period_facts()
             row = WorkCalendar(
                 date=date_str,
                 day_type=CalendarDayType.WORKDAY.value,
-                shift_start=periods[0]["start"], shift_end=periods[-1]["end"],
-                shift_hours=self._default_period_hours,
-                periods_json=self._default_periods_json,
+                periods_json=periods_json,
                 efficiency=1.0,
                 allow_normal=YesNo.YES.value,
                 allow_urgent=YesNo.YES.value,
@@ -196,25 +201,6 @@ class CalendarEngine:
             self._public_calendar_rows[date_str] = row if row else self._default_for_date(date_str)
         return self._public_calendar_rows[date_str]
 
-    @staticmethod
-    def _parse_shift_start(cal: Any) -> time:
-        ss = normalize_hhmm(cal.shift_start, field="班次开始") or "08:00"
-        return datetime.strptime(ss, "%H:%M").time()
-
-    @staticmethod
-    def _override_shift_hours_by_shift_end(cal: Any, *, date_str: str, shift_start_t: time, shift_hours: float) -> float:
-        se = normalize_hhmm(cal.shift_end, field="班次结束")
-        if not se:
-            return shift_hours
-        se_t = datetime.strptime(se, "%H:%M").time()
-        base_d = date.fromisoformat(cal.date or date_str)
-        st_dt = datetime.combine(base_d, shift_start_t)
-        et_dt = datetime.combine(base_d, se_t)
-        # 跨午夜：shift_end <= shift_start 表示次日结束（含相等：24h）
-        if et_dt <= st_dt:
-            et_dt = et_dt + timedelta(days=1)
-        return (et_dt - st_dt).total_seconds() / 3600.0
-
     def _policy_for_date(self, date_str: str, operator_id: Optional[str] = None) -> DayPolicy:
         """获取某个“日期键”的 DayPolicy（不做跨午夜归属判断）。"""
         op_id = self._normalize_text(operator_id) if operator_id is not None else None
@@ -229,11 +215,11 @@ class CalendarEngine:
         # Resolve personal facts first: an explicit personal day never consumes global data.
         cal = self._resolve_calendar_row(date_str, op_id)
         if isinstance(cal, OperatorCalendar):
-            p = self._policy_from_calendar(date_str, cal)
+            p = self._policy_from_calendar(cal)
         else:
             p = self._public_policy_cache.get(date_str)
             if p is None:
-                p = self._policy_from_calendar(date_str, cal)
+                p = self._policy_from_calendar(cal)
                 self._public_policy_cache[date_str] = p
             if op_id is not None:
                 p = self.operator_shift_calendar.apply_policy(p, op_id, prepare_periods=self._period_facts_for_json)
@@ -242,42 +228,28 @@ class CalendarEngine:
             self._policy_operator_keys.setdefault(op_id, {})[(op_id, date_str)] = None
         return p
 
-    def _policy_from_calendar(self, date_str: str, cal: Any) -> DayPolicy:
+    def _policy_from_calendar(self, cal: Any) -> DayPolicy:
         """Normalize a public date once, or one explicit personal override."""
-        shift_hours = float(cal.shift_hours)
-        efficiency = float(cal.efficiency)
-
-        # shift_start/shift_end：默认 08:00；若提供 shift_end 则优先用其推导 shift_hours
-        ss_t = self._parse_shift_start(cal)
         periods_json = cal.periods_json
-        offsets = None
-        if periods_json is not None:
-            offsets, shift_hours = self._period_facts_for_json(periods_json)
-        else:
-            shift_hours = self._override_shift_hours_by_shift_end(
-                cal, date_str=date_str, shift_start_t=ss_t, shift_hours=shift_hours,
-            )
-
-        p = DayPolicy(
-            date_str=cal.date or date_str,
+        offsets, hours = self._period_facts_for_json(periods_json)
+        return DayPolicy(
+            date_str=cal.date,
             day_type=cal.day_type,
-            shift_hours=shift_hours,
-            efficiency=efficiency,
+            hours=hours,
+            efficiency=cal.efficiency,
             allow_normal=cal.allow_normal,
             allow_urgent=cal.allow_urgent,
-            shift_start=ss_t,
             periods_json=periods_json,
             _period_offsets=offsets,
         )
-        return p
 
     def policy_for_datetime(self, dt: datetime, operator_id: Optional[str] = None) -> DayPolicy:
         """
         获取某时刻所属的 DayPolicy（支持跨午夜班次）。
 
         关键约定：
-        - WorkCalendar/OperatorCalendar 以“shift_start 所在日期”为键；
-        - 当某日班次跨到次日（shift_end <= shift_start / shift_hours 跨日）时，
+        - WorkCalendar/OperatorCalendar 以“首段工作时段开始所在日期”为键；
+        - 当某日工作时段跨到次日（结束不晚于开始，或次日段）时，
           次日凌晨的时间点应归属到“前一天”的工作窗内。
         """
         today = dt.date()
@@ -311,20 +283,32 @@ class CalendarEngine:
             end = datetime.combine(dt.date() + timedelta(days=1), datetime.min.time())
         return start, end
 
-    def capacity_hours_between(self, start: datetime, end: datetime, *, priority=None, operator_id=None) -> float:
-        """Efficiency-weighted capacity over the same disjoint pieces used by scheduling."""
-        day, total = start.date(), 0.0
+    def capacity_fraction_between(
+        self, start: datetime, end: datetime, *, priority=None, operator_id=None,
+    ) -> Fraction:
+        """Efficiency-weighted exact rational capacity over the same disjoint pieces used by scheduling."""
+        day, num, den = start.date(), 0, 1
         if (end.date() - day).days > 4000:
             raise ValidationError("产能计算日期范围过长。", field="calendar")
         while day <= end.date() and start < end:
             for low, high, policy in self._effective_segments(day, operator_id):
                 low, high = max(start, low), min(end, high)
                 if low < high and policy.is_priority_allowed(priority):
-                    total += (high - low).total_seconds() / 3600 * policy.efficiency
+                    en, ed = policy.efficiency.as_integer_ratio()
+                    denominator = max(den, ed)
+                    num = (
+                        num * (denominator // den)
+                        + ((high - low) // _ONE_MICROSECOND) * en * (denominator // ed)
+                    )
+                    den = denominator
             if day == date.max:
                 break
             day += timedelta(days=1)
-        return total
+        return Fraction(num, den * _MICROSECONDS_PER_HOUR)
+
+    def capacity_hours_between(self, start: datetime, end: datetime, *, priority=None, operator_id=None) -> float:
+        """Efficiency-weighted capacity over the same disjoint pieces used by scheduling."""
+        return float(self.capacity_fraction_between(start, end, priority=priority, operator_id=operator_id))
 
     def _effective_segments(self, day: date, operator_id: Optional[str] = None) -> tuple:
         """Disjoint natural-day pieces; today's window overrides yesterday's tail."""
@@ -399,28 +383,25 @@ class CalendarEngine:
             return self.adjust_to_working_time(start, priority=priority, operator_id=operator_id)
 
         cur = self.adjust_to_working_time(start, priority=priority, operator_id=operator_id)
-        remaining = total
-        guard = 0
+        rem_n, rem_d = total.as_integer_ratio()
+        rem_n *= _MICROSECONDS_PER_HOUR
 
-        while remaining > 0:
-            guard += 1
-            if guard > 36600:
-                raise BusinessError(ErrorCode.CALENDAR_ERROR, "工作日历计算异常：循环次数过多，请检查日历配置。")
-
+        for _ in range(36600):
             end_w, policy = next((end, policy) for left, end, policy in self._effective_segments(
                 cur.date(), operator_id) if left <= cur < end and policy.is_priority_allowed(priority))
-            efficiency = policy.efficiency if efficiency_weighted else 1.0
-            available = (end_w - cur).total_seconds() / 3600.0
-            capacity = available * efficiency
-            if remaining <= capacity + 1e-9:
-                return cur + timedelta(hours=min(remaining / efficiency, available))
+            avail_us = (end_w - cur) // _ONE_MICROSECOND
+            en, ed = (policy.efficiency if efficiency_weighted else 1.0).as_integer_ratio()
+            step_us = max(1, _round_half_even_div(rem_n * ed, en * rem_d))
+            if step_us <= avail_us:
+                return cur + timedelta(microseconds=step_us)
 
             # 用完当前工作窗剩余工时：推进到该窗结束，再跳到下一可排产时刻
-            remaining -= capacity
-            cur = end_w
-            cur = self.adjust_to_working_time(cur, priority=priority, operator_id=operator_id)
+            denominator = max(rem_d, ed)
+            rem_n = rem_n * (denominator // rem_d) - avail_us * en * (denominator // ed)
+            rem_d = denominator
+            cur = self.adjust_to_working_time(end_w, priority=priority, operator_id=operator_id)
 
-        return cur
+        raise BusinessError(ErrorCode.CALENDAR_ERROR, "工作日历计算异常：循环次数过多，请检查日历配置。")
 
     def _allowed_segments(self, day: date, *, priority: Optional[str], operator_id: Optional[str]) -> tuple:
         return tuple((start, end) for start, end, policy in self._effective_segments(day, operator_id)

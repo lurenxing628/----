@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 from .candidate_fingerprint import CandidateFingerprint
 
@@ -30,18 +30,6 @@ def candidate_origin_rank(origin: str) -> int:
         return len(CANDIDATE_ORIGIN_ORDER)
 
 
-def candidate_score_tuple(candidate: Optional[Dict[str, Any]]) -> Tuple[float, ...]:
-    if not isinstance(candidate, dict):
-        return ()
-    score = candidate.get("score")
-    if not isinstance(score, (list, tuple)):
-        return ()
-    out = []
-    for item in score:
-        out.append(float(item))
-    return tuple(out)
-
-
 def candidate_runtime_ms(candidate: Dict[str, Any]) -> int:
     # runtime_ms 缺失或为 None 都表示"耗时未知",按最不被偏好处理;
     # 不能用 `or 0` 把 None 折成 0ms,否则未知耗时候选会在同分 tie-break 里被当成最快胜出。
@@ -64,14 +52,10 @@ def candidate_is_preferred(
     if incumbent is None:
         return True
 
-    candidate_score = candidate_score_tuple(candidate)
-    incumbent_score = candidate_score_tuple(incumbent)
-    if candidate_score and incumbent_score and candidate_score != incumbent_score:
+    candidate_score = candidate["score"]
+    incumbent_score = incumbent["score"]
+    if candidate_score != incumbent_score:
         return candidate_score < incumbent_score
-    if candidate_score and not incumbent_score:
-        return True
-    if incumbent_score and not candidate_score:
-        return False
 
     candidate_changed = bool(candidate_fingerprint and candidate_fingerprint.fingerprint_changed)
     if candidate_changed != incumbent_fingerprint_changed:
@@ -90,5 +74,4 @@ __all__ = [
     "candidate_is_preferred",
     "candidate_origin_rank",
     "candidate_runtime_ms",
-    "candidate_score_tuple",
 ]

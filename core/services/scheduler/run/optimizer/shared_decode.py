@@ -120,7 +120,6 @@ class SharedDecodeSession:
             downtime_map, scheduler=scheduler, operations=operations, batches=batches,
             seed_results=seed_results, resource_pool=resource_pool, graph_ready_context=graph_ready_context,
         )
-        self._normalized_batches = self.native_preparation.batches
         self.evaluation_context = (
             evaluation_context
             if evaluation_context is not None
@@ -161,10 +160,10 @@ class SharedDecodeSession:
             dispatch_rule=kwargs["dispatch_rule"], resource_pool=pool,
         )
         readiness = bool(kwargs["readiness_gate_enabled"])
-        override = normalize_batch_order_override(kwargs["batch_order_override"], self._normalized_batches)
-        full_override = bool(override) and len(override) == len(self._normalized_batches)
+        override = normalize_batch_order_override(kwargs["batch_order_override"], self.native_preparation.batches)
+        full_override = bool(override) and len(override) == len(self.native_preparation.batches)
         batch_ranks = build_batch_order(
-            self._normalized_batches,
+            self.native_preparation.batches,
             params,
             batch_order_override=override,
             preparation=self.native_preparation,

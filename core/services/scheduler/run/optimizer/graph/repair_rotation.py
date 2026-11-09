@@ -35,7 +35,7 @@ def _current_improvements(improved: List[Dict[str, Any]], best: Optional[Dict[st
     # Keep the actual event list intact for reporting. A profile/IG improvement may have
     # superseded an earlier repair gain while this generator was suspended.
     return [elite for elite in improved
-            if not score_strictly_better((best or {}).get("score"), elite["candidate"]["score"])]
+            if not score_strictly_better(None if best is None else best["score"], elite["candidate"]["score"])]
 
 
 def _prepare_next_repair_round(

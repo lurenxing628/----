@@ -6,8 +6,7 @@ calendar answers the wall-clock span itself). Working hours are counted only up 
 planning horizon; beyond it a due date is simply far away (ERP sentinels such as 2099-12-31, or
 none at all) and the span continues in wall-clock hours, so the calendar never walks day by day
 towards it.
-Inside an SGS decode the span goes through the handoff's timing memo like every other pure
-calendar call.
+Inside an SGS decode callers pass the context's per-decode timing calendar explicitly.
 """
 from __future__ import annotations
 
@@ -18,7 +17,6 @@ from core.algorithm_contracts.date_parsers import due_exclusive
 from core.algorithm_contracts.material_release import released_start
 from core.algorithm_contracts.value_domains import MERGED
 from core.algorithm_runtime.piece_input import external_group_key
-from core.algorithm_runtime.sgs_estimate_reuse import current_sgs_handoff
 
 if TYPE_CHECKING:
     from core.algorithm_contracts.types import OpForScheduleAlgo
@@ -36,9 +34,6 @@ def _calendar_hours(calendar: Any, start: datetime, end: datetime, *, priority: 
     """Signed working hours on ``calendar``."""
     if start == end:
         return 0.0
-    handoff = current_sgs_handoff()
-    if handoff is not None:
-        calendar = handoff.timing_calendar(calendar)
     return float(calendar.working_hours_between(start, end, priority=priority, operator_id=operator_id))
 
 

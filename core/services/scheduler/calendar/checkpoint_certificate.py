@@ -9,43 +9,29 @@ reusable cache.
 from __future__ import annotations
 
 import sqlite3
+from typing import Tuple
 
 from core.errors import AppError, ValidationError
 from core.infrastructure.connection_guards import connection_snapshot_metadata
 from data.repositories.calendar_checkpoint_repo import CalendarCheckpointRepository
 
 
-def calendar_checkpoint_snapshot(service):
-    fields = vars(service)
-    connection = fields.get("conn")
-    engine = fields.get("_engine")
-    if connection is None or engine is None:
-        return None
+def read_checkpoint_connection_metadata(conn) -> Tuple[Tuple[int, bool, int, int, int, int], bool]:
     try:
-        metadata = _metadata(connection)
-        reusable = not connection.in_transaction or metadata[-1] == 1
-        cached = fields.get("_decode_checkpoint_calendar_cache")
-        if reusable and cached is not None and cached[0] is connection and cached[1] == metadata:
-            return cached[2]
+        v0, v1, v2, v3 = connection_snapshot_metadata(conn)
+        metadata = (conn.total_changes, conn.in_transaction, v0, v1, v2, v3)
+    except sqlite3.Error as exc:
+        raise ValidationError("无法读取断点所需的日历业务证书，请使用全量解码。", field="decode_checkpoint",
+                              details={"reason": "decode_checkpoint_calendar_unavailable"}) from exc
+    return metadata, (not conn.in_transaction or v3 == 1)
+
+
+def read_calendar_checkpoint_signature(conn, *, capture=None) -> Tuple[str, tuple]:
+    try:
         # The fixed business SELECTs already return immutable row tuples in a stable order.
-        rows = CalendarCheckpointRepository(connection).calendar_signature_rows(capture=engine.capture)
-        signature = "calendar-business-v1", rows
-        if reusable:
-            fields["_decode_checkpoint_calendar_cache"] = connection, metadata, signature
-        else:
-            # A later rollback+BEGIN may keep every SQLite counter unchanged.
-            fields.pop("_decode_checkpoint_calendar_cache", None)
-        return signature
+        rows = CalendarCheckpointRepository(conn).calendar_signature_rows(capture=capture)
     except (sqlite3.Error, AppError) as exc:
         # BaseRepository translates sqlite3 errors into AppError (cause kept); both mean the certificate is unreadable.
         raise ValidationError("无法读取断点所需的日历业务证书，请使用全量解码。", field="decode_checkpoint",
                               details={"reason": "decode_checkpoint_calendar_unavailable"}) from exc
-
-
-def _metadata(connection):
-    try:
-        values = connection_snapshot_metadata(connection)
-    except ValueError:
-        raise ValidationError("日历数据库版本证据无效，请使用全量解码。", field="decode_checkpoint",
-                              details={"reason": "decode_checkpoint_calendar_unavailable"}) from None
-    return (connection.total_changes, connection.in_transaction) + values
+    return "calendar-business-v1", rows

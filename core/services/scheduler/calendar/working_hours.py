@@ -2,8 +2,8 @@
 
 Dispatch rules compare a batch's remaining time against processing hours, so both must be
 working hours. The calendar answers "how many allowed working hours lie between ``start``
-and ``end``" through a per-(operator, priority) prefix of daily window hours: after the
-first walk over a span, later spans over the same days cost two dictionary lookups.
+and ``end``" through a per-(operator, priority) prefix of daily window microseconds: after
+the first walk over a span, later spans over the same days cost two dictionary lookups.
 
 The result is signed: ``end`` before ``start`` gives the negated span. Resolvers supply disjoint effective windows clipped to each natural day; night-shift
 tails and overlapping policies are resolved by CalendarEngine before accumulation.
@@ -19,23 +19,25 @@ Window = Tuple[datetime, datetime]
 WindowResolver = Callable[[date], Sequence[Tuple[datetime, datetime]]]
 # Same magnitude bound as add_calendar_days: spans beyond a century are input errors, not schedules.
 MAX_SPAN_DAYS = 36500
+_ONE_MICROSECOND = timedelta(microseconds=1)
+_MICROSECONDS_PER_HOUR = 3_600_000_000.0
 
 
-def clip_window_hours(window: Window, limit: datetime) -> float:
-    """Hours of ``window`` that lie strictly before ``limit``."""
+def _clip_window_microseconds(window: Window, limit: datetime) -> int:
+    """Microseconds of ``window`` that lie strictly before ``limit``."""
     start, end = window
     end = min(end, limit)
     if end <= start:
-        return 0.0
-    return (end - start).total_seconds() / 3600.0
+        return 0
+    return (end - start) // _ONE_MICROSECOND
 
 
 class WorkingHoursPrefix:
-    """Cumulative allowed window hours by date for one (operator, priority) pair.
+    """Cumulative allowed window microseconds by date for one (operator, priority) pair.
 
-    ``cumulative(day)`` is the signed sum of full window hours of all days in
-    ``[anchor, day)`` where ``anchor`` is the first day ever requested; only
-    differences of two cumulative values are ever used, so the anchor cancels.
+    ``cumulative_microseconds(day)`` is the signed sum of full window microseconds of all
+    days in ``[anchor, day)`` where ``anchor`` is the first day ever requested; only
+    differences of two cumulative values are ever used, so the anchor cancels exactly.
     """
 
     __slots__ = ("_resolve", "_anchor", "_forward", "_backward", "_windows")
@@ -43,9 +45,9 @@ class WorkingHoursPrefix:
     def __init__(self, resolve: WindowResolver) -> None:
         self._resolve = resolve
         self._anchor: Optional[date] = None
-        # _forward[i] = hours of days anchor .. anchor+i-1; _backward[i] = hours of days anchor-i .. anchor-1.
-        self._forward: List[float] = [0.0]
-        self._backward: List[float] = [0.0]
+        # _forward[i] = microseconds of days anchor .. anchor+i-1; _backward[i] = microseconds of days anchor-i .. anchor-1.
+        self._forward: List[int] = [0]
+        self._backward: List[int] = [0]
         self._windows: Dict[date, Sequence[Tuple[datetime, datetime]]] = {}
 
     def window(self, day: date) -> Sequence[Tuple[datetime, datetime]]:
@@ -53,29 +55,31 @@ class WorkingHoursPrefix:
             self._windows[day] = self._resolve(day)
         return self._windows[day]
 
-    def _hours(self, day: date) -> float:
+    def _microseconds(self, day: date) -> int:
         window = self.window(day)
-        return sum((end - start).total_seconds() / 3600.0 for start, end in window)
+        return sum((end - start) // _ONE_MICROSECOND for start, end in window)
 
-    def cumulative(self, day: date) -> float:
+    def cumulative_microseconds(self, day: date) -> int:
         if self._anchor is None:
             self._anchor = day
         offset = (day - self._anchor).days
         if offset >= 0:
             while len(self._forward) <= offset:
                 index = len(self._forward) - 1
-                self._forward.append(self._forward[-1] + self._hours(self._anchor + timedelta(days=index)))
+                self._forward.append(self._forward[-1] + self._microseconds(self._anchor + timedelta(days=index)))
             return self._forward[offset]
         distance = -offset
         while len(self._backward) <= distance:
             index = len(self._backward)
-            self._backward.append(self._backward[-1] + self._hours(self._anchor - timedelta(days=index)))
+            self._backward.append(self._backward[-1] + self._microseconds(self._anchor - timedelta(days=index)))
         return -self._backward[distance]
 
-    def hours_until(self, instant: datetime) -> float:
-        """Signed working hours from the anchor up to ``instant``."""
+    def microseconds_until(self, instant: datetime) -> int:
+        """Signed working microseconds from the anchor up to ``instant``."""
         day = instant.date()
-        return self.cumulative(day) + sum(clip_window_hours(window, instant) for window in self.window(day))
+        return self.cumulative_microseconds(day) + sum(
+            _clip_window_microseconds(window, instant) for window in self.window(day)
+        )
 
     def between(self, start: datetime, end: datetime) -> float:
         if type(start) is not datetime or type(end) is not datetime:
@@ -86,7 +90,7 @@ class WorkingHoursPrefix:
             )
         if end == start:
             return 0.0
-        return self.hours_until(end) - self.hours_until(start)
+        return (self.microseconds_until(end) - self.microseconds_until(start)) / _MICROSECONDS_PER_HOUR
 
 
-__all__ = ["MAX_SPAN_DAYS", "Window", "WindowResolver", "WorkingHoursPrefix", "clip_window_hours"]
+__all__ = ["MAX_SPAN_DAYS", "Window", "WindowResolver", "WorkingHoursPrefix"]

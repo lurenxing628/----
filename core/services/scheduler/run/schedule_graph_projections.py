@@ -26,10 +26,11 @@ def build_graph_dispatch_projections(
     edges: List[Any],
     payload: Dict[str, Any],
     score_requested: bool,
-    score_weights: Optional[Dict[str, int]],
+    score_weights: Dict[str, int],
 ) -> GraphDispatchProjections:
     is_dag = bool(payload["is_dag"])
     op_id_sets = schedule_input_op_id_sets(schedule_input)
+    schedulable_op_ids, _fixed_op_ids = op_id_sets
     score, score_public, score_diagnostics = build_graph_score_projection(
         mode=mode,
         is_dag=is_dag,
@@ -38,7 +39,7 @@ def build_graph_dispatch_projections(
         nodes=nodes,
         node_metrics=payload["node_metrics"],
         topological_order=payload["topological_order"],
-        op_id_sets=op_id_sets,
+        schedulable_op_ids=schedulable_op_ids,
     )
     ready = build_graph_ready_context(
         nodes=nodes, edges=edges,

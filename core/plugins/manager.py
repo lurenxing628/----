@@ -16,10 +16,6 @@ from .runtime import bootstrap_vendor_paths
 PluginConfigReader = Callable[[str], Optional[Any]]
 
 
-def _normalize_yes_no(value: Any, default: str = "no") -> str:
-    return normalize_yes_no_wide(value, default=default)
-
-
 @dataclass
 class PluginStatus:
     plugin_id: str
@@ -109,13 +105,13 @@ class PluginManager:
                 plugin_id = str(getattr(mod, "PLUGIN_ID", None) or guessed_id)
                 plugin_name = str(getattr(mod, "PLUGIN_NAME", None) or plugin_id)
                 plugin_ver = getattr(mod, "PLUGIN_VERSION", None)
-                default_enabled = _normalize_yes_no(getattr(mod, "PLUGIN_DEFAULT_ENABLED", None), default="no")
+                default_enabled = normalize_yes_no_wide(getattr(mod, "PLUGIN_DEFAULT_ENABLED", None), default="no")
 
                 enabled = default_enabled
                 if config_reader is not None:
                     raw_enabled = config_reader(plugin_id)
                     if raw_enabled is not None:
-                        enabled = _normalize_yes_no(raw_enabled, default=default_enabled)
+                        enabled = normalize_yes_no_wide(raw_enabled, default=default_enabled)
 
                 loaded = "no"
                 err = None
@@ -178,7 +174,7 @@ class PluginManager:
                 if config_reader is not None:
                     raw_enabled = config_reader(guessed_id)
                     if raw_enabled is not None:
-                        enabled = _normalize_yes_no(raw_enabled, default="no")
+                        enabled = normalize_yes_no_wide(raw_enabled, default="no")
                 statuses.append(
                     PluginStatus(
                         plugin_id=guessed_id,

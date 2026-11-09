@@ -25,21 +25,15 @@ def candidate_score_summary(candidate: CandidatePlan) -> List[Any]:
 
 
 def candidate_metrics_summary(candidate: CandidatePlan) -> Dict[str, Any]:
-    score = candidate.score
-    metrics = candidate.metrics
-    out: Dict[str, Any] = {"failed_ops": int(score[0])}
-    metrics_data = metrics.to_dict()
-    for key in (
-        "overdue_count",
-        "total_tardiness_hours",
-        "weighted_tardiness_hours",
-        "makespan_hours",
-        "changeover_count",
-    ):
-        value = metrics_data.get(key)
-        if value is not None:
-            out[key] = value
-    return out
+    metrics_data = candidate.metrics.numeric_dict()
+    return {
+        "failed_ops": int(candidate.score[0]),
+        "overdue_count": metrics_data["overdue_count"],
+        "total_tardiness_hours": metrics_data["total_tardiness_hours"],
+        "weighted_tardiness_hours": metrics_data["weighted_tardiness_hours"],
+        "makespan_hours": metrics_data["makespan_hours"],
+        "changeover_count": metrics_data["changeover_count"],
+    }
 
 
 def candidate_roles_by_key(selection: BusinessObjectiveSelectionResult) -> Dict[str, List[str]]:
@@ -74,24 +68,11 @@ def _business_candidate_fields(candidate: CandidatePlan) -> Dict[str, Any]:
     }
 
 
-def _candidate_dispatch_rule_fields(candidate: CandidatePlan) -> Dict[str, str]:
-    """公开视图的派工规则字段：实际采用的规则，以及与之不同时的配置规则。"""
-    # The optimizer searches the whole rule pool; say which rule the plan really uses.
-    fields: Dict[str, str] = {}
-    adopted_rule = candidate.adopted_dispatch_rule
-    if adopted_rule:
-        fields["adopted_dispatch_rule"] = adopted_rule
-        configured_rule = candidate.dispatch_rule
-        if configured_rule and configured_rule != adopted_rule:
-            fields["configured_dispatch_rule"] = configured_rule
-    return fields
-
-
 def candidate_public_summary(candidate: CandidatePlan, *, roles: List[str]) -> Dict[str, Any]:
     score = candidate_score_summary(candidate)
     # health / elapsed_ms keep the saved public shape: business candidates have no
     # critical-chain health record and share one run time (see elapsed_seconds below).
-    summary: Dict[str, Any] = {
+    return {
         "label": candidate.label,
         "kind": candidate.kind,
         "status": candidate.status,
@@ -106,9 +87,8 @@ def candidate_public_summary(candidate: CandidatePlan, *, roles: List[str]) -> D
         "detail_saved": ROLE_RECOMMENDED not in roles,
         "roles": roles,
         **_business_candidate_fields(candidate),
+        "adopted_dispatch_rule": candidate.used_params["dispatch_rule"],
     }
-    summary.update(_candidate_dispatch_rule_fields(candidate))
-    return summary
 
 
 def candidate_comparison_public_summary(candidate_comparison: CandidateComparisonOutcome) -> Dict[str, Any]:
@@ -127,7 +107,6 @@ def candidate_comparison_public_summary(candidate_comparison: CandidateCompariso
         "selection_policy_version": selection.selection_policy_version,
         "selection_reason_code": selection.reason_code,
         "selection": selection.to_dict(),
-        "unified_process": candidate_comparison.unified_process,
         "candidates": [candidate_public_summary(candidate, roles=roles_by_key.get(candidate.candidate_key, []))
                        for candidate in candidates],
     }

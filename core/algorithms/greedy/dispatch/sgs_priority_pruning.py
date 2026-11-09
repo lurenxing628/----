@@ -4,12 +4,12 @@ The actual key is (nonnegative feasibility penalty, graph key, dynamic dispatch 
 Admission fixes one graph-key width, so score the entire lowest ready group first. Any penalty-zero
 member dominates every later group. IG/repair's explicit ranks are one such case. All selected operations
 still go through the normal scorer and formal placement. A blocked first rank falls
-back to scoring every other ready operation. Unknown/callback inputs keep full scoring.
+back to scoring every other ready operation. Uncertified inputs keep full scoring.
 
 The dominance holds for automatically assigned operations too: their probe only chooses the
 machine/operator pair and the feasibility penalty, both of which sit behind the graph key.
-Scoring is read-only, so skipping a later group changes no state; it only changes how many
-times the auto-assign attempt counters in ``fallback_counts`` are charged. Static resource
+Scoring always runs with ``probe_only=True``, so skipping a later group mutates neither runtime
+state nor the formal ``fallback_counts``. Static resource
 errors (no eligible machine or operator, assignment disabled) keep the full path so the
 first error stays the same. ``fixed_resources`` tells consumers that need the stricter
 fixed-resource proof (decode tail reuse) whether every operation names its machine and operator.
@@ -21,7 +21,7 @@ from core.algorithm_contracts.value_domains import EXTERNAL
 class GraphPriorityPruning:
     @classmethod
     def for_cache(cls, cache, graph_state):
-        if cache is None or cache._timing is None:
+        if cache.timing is None:
             return None
         # The cache already certified the pool and the native probe; auto-assign operations
         # are admitted only through that same certification.
@@ -81,12 +81,8 @@ class GraphPriorityPruning:
             return None
         return False
 
-    def intact(self):
-        """Both ready-set narrowing paths require the same current input and timing proof."""
-        return self.supported
-
     def frontier(self, candidates, graph):
-        if len(candidates) < 2 or not self.intact():
+        if len(candidates) < 2 or not self.supported:
             return None
         keys = graph["graph_priority_key_by_op_id"]
         selected, rank = [], None

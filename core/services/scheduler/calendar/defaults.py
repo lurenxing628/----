@@ -16,5 +16,5 @@ def default_periods_from_row(row: Any) -> List[Dict[str, Any]]:
 
 def read_default_periods(conn: Any, *, capture: Any = None) -> List[Dict[str, Any]]:
     row = (capture.index("WorkbenchCalendarDefaults", "singleton").get(1) if capture is not None
-           else CalendarDefaultsRepository(conn).get() if conn is not None else None)
+           else CalendarDefaultsRepository(conn).get())
     return default_periods_from_row(row)

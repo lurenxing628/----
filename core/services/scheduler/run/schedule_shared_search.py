@@ -59,7 +59,7 @@ class SharedSearch:
         event = {
             "search_objective": self.search_objective, "phase": self.phase,
             "verified": False, "entry_id": None, "improved_objectives": [],
-            "parent_entry_id": self.archive.current_by_objective[self.search_objective], **fact,
+            "parent_entry_id": self.archive.current_entry(self.search_objective), **fact,
         }
         event["event_id"] = len(self.events) + 1
         event.setdefault("elapsed_ms", max(int((self.clock() - self.started_at) * 1000), 0))
@@ -89,9 +89,9 @@ class SharedSearch:
         retained = entry_id in self.archive
         if retained and verified:
             self.archive.finish_observation(observed, candidate, origin=source)
+        entry = self.archive.entry(entry_id) if retained and entry_id is not None else None
         strict_improvements = (list(observed.improved_objectives)
-                               if retained and entry_id is not None
-                               and self.archive.entry(entry_id).score_scope.is_complete else [])
+                               if entry is not None and entry.score_scope.is_complete else [])
         if receipt is not None and retained:
             self.decode_session.bind_observation(receipt, observed.entry_id, verified, candidate=candidate)
         event_source = {key: value for key, value in source.items() if key != "repair_decision"}
@@ -106,8 +106,7 @@ class SharedSearch:
             event["request_id"] = receipt["request_id"]
         event_id = self.record_event(event)
         event = self.events[-1]
-        if retained and entry_id is not None and verified:
-            entry = self.archive.entry(entry_id)
+        if entry is not None and entry_id is not None and verified:
             event["evaluations"] = {target: {"field_order": list(evaluation.field_order),
                                               "score": list(evaluation.score)}
                                     for target, evaluation in entry.evaluations.items()}
@@ -124,14 +123,14 @@ class SharedSearch:
             if entry.score_scope.is_complete and self.first_complete_elapsed_ms is None:
                 self.first_complete_elapsed_ms = elapsed_ms
             for target in self.archive.target_objectives:
-                selected_id = self.selected_entry(target)
+                selected_id = self.archive.selected_entry(target)
                 if selected_id is None:
                     continue
                 selected_revision = self.revisions.get(selected_id, 0)
                 if self.trajectory_entries.get(target) == (selected_id, selected_revision):
                     continue
                 self.trajectory_entries[target] = (selected_id, selected_revision)
-                selected = self.archive.entry(selected_id)
+                selected = entry if selected_id == entry_id else self.archive.entry(selected_id)
                 evaluation = selected.evaluations[target]
                 self.trajectories[target].append({
                     "elapsed_ms": elapsed_ms, "entry_id": selected_id,
@@ -142,9 +141,9 @@ class SharedSearch:
                 })
             if entry.score_scope.is_complete:
                 for target in self.archive.target_objectives:
-                    if not self.archive.starting_entries_by_objective[target]:
+                    if not self.archive.starting_entries(target):
                         self.archive.set_starting_entries(target, (entry_id,))
-                    if self.archive.current_by_objective[target] is None:
+                    if self.archive.current_entry(target) is None:
                         self.archive.accept_exploration(target, entry_id)
 
     def accept(self, objective: str, *, candidate: Dict[str, Any]) -> None:
@@ -168,19 +167,8 @@ class SharedSearch:
             elapsed_ms=bridge["finished_elapsed_ms"], current_elapsed_ms=bridge["elapsed_ms"]))
         self.bridges.append(bridge)
 
-    def selected_entry(self, objective: str) -> Optional[int]:
-        full = self.archive.best_by_objective.get(objective)
-        if full is not None:
-            return full
-        groups = self.archive.partial_groups
-        if not groups:
-            return None
-        scope = min(groups, key=lambda key: (-len(key[0]), -len(key[1])))
-        group = groups[scope]
-        return group.best_by_objective.get(objective, group.entry_ids[0])
-
     def sync(self, view: GoalView) -> None:
-        entry_id = self.selected_entry(view.objective)
+        entry_id = self.archive.selected_entry(view.objective)
         revision = self.revisions.get(entry_id, 0) if entry_id is not None else -1
         if entry_id is not None and (view.entry_id != entry_id or view.evidence_revision != revision):
             view.candidate = self.archive.view(entry_id, objective=view.objective)
@@ -189,8 +177,7 @@ class SharedSearch:
         candidate = view.candidate
         if candidate is None or entry_id is None:
             return
-        entry = self.archive.entry(entry_id)
-        view.report.sync_best_reference(candidate, origin=str(entry.evidence_origin["origin"]))
+        view.report.sync_best_reference(candidate, origin=str(self.archive.evidence_origin(entry_id)["origin"]))
         view.state.best = candidate
         if view.graph_bundle is not None:
             view.graph_bundle.state.best = candidate

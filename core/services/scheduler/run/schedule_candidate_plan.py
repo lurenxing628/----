@@ -28,11 +28,11 @@ class CandidatePlan:
     origin: Dict[str, Any]
     first_found_elapsed_ms: int
     search_evidence_ref: Dict[str, Any]
+    used_params: Dict[str, Any]
     results: List[ScheduleResult] = field(default_factory=list)
     graph_analysis_public: Optional[Dict[str, Any]] = None
     graph_analysis_diagnostics: Optional[Dict[str, Any]] = None
     used_strategy: Any = None
-    used_params: Dict[str, Any] = field(default_factory=dict)
     best_order: List[str] = field(default_factory=list)
     algo_mode: str = ""
     objective_name: str = ""
@@ -41,10 +41,6 @@ class CandidatePlan:
     sort_strategy: str = ""
     # Dispatch mode the plan really decoded with; a graph tier forces ``sgs`` whatever was configured.
     dispatch_mode: str = ""
-    dispatch_rule: str = ""
-    # Dispatch rule of the plan the optimizer finally adopted; may differ from the configured
-    # ``dispatch_rule`` because the rule pool is an optimizer-internal search dimension.
-    adopted_dispatch_rule: str = ""
     representative_objectives: List[str] = field(default_factory=list)
     evaluations: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 

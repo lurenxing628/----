@@ -4,12 +4,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.algorithm_contracts.ordering import clean_resource_id, normalize_text_id
 from core.algorithm_contracts.resource_occupancy import ResourceOccupancy, project_internal_occupancies
 from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
-from core.algorithm_contracts.value_domains import INTERNAL
 
-from .owned_timeline import OwnedTimeline, clone_timeline
+from .owned_timeline import OwnedTimeline
 from .resource_quality import MachineTypeState
 from .runtime_state import accumulate_busy_hours, update_machine_last_state
 
@@ -19,8 +17,8 @@ class ScheduleRunState:
     base_time: datetime
     batch_progress: Dict[str, datetime] = field(default_factory=dict)
     external_group_cache: Dict[Tuple[str, ...], Tuple[datetime, datetime]] = field(default_factory=dict)
-    machine_timeline: Dict[str, List[Tuple[datetime, datetime]]] = field(default_factory=OwnedTimeline)
-    operator_timeline: Dict[str, List[Tuple[datetime, datetime]]] = field(default_factory=OwnedTimeline)
+    machine_timeline: OwnedTimeline = field(default_factory=OwnedTimeline)
+    operator_timeline: OwnedTimeline = field(default_factory=OwnedTimeline)
     machine_busy_hours: Dict[str, float] = field(default_factory=dict)
     operator_busy_hours: Dict[str, float] = field(default_factory=dict)
     last_op_type_by_machine: MachineTypeState = field(default_factory=MachineTypeState)
@@ -29,10 +27,6 @@ class ScheduleRunState:
     blocked_batches: set = field(default_factory=set)
     failed_count: int = 0
     seed_count: int = 0
-    missing_seed_machine_count: int = 0
-    missing_seed_operator_count: int = 0
-    missing_seed_machine_samples: List[str] = field(default_factory=list)
-    missing_seed_operator_samples: List[str] = field(default_factory=list)
     failure_details: List[Dict[str, Any]] = field(default_factory=list)
     batch_failure_sources: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     readiness_gate_enabled: bool = False
@@ -54,8 +48,8 @@ class ScheduleRunState:
             readiness_gate_enabled=self.readiness_gate_enabled,
             batch_progress=dict(self.batch_progress),
             external_group_cache=dict(self.external_group_cache),
-            machine_timeline=clone_timeline(self.machine_timeline),
-            operator_timeline=clone_timeline(self.operator_timeline),
+            machine_timeline=self.machine_timeline.clone(),
+            operator_timeline=self.operator_timeline.clone(),
             machine_busy_hours=dict(self.machine_busy_hours),
             operator_busy_hours=dict(self.operator_busy_hours),
             last_op_type_by_machine=self.last_op_type_by_machine.clone(),
@@ -64,10 +58,6 @@ class ScheduleRunState:
             blocked_batches=set(self.blocked_batches),
             failed_count=self.failed_count,
             seed_count=self.seed_count,
-            missing_seed_machine_count=self.missing_seed_machine_count,
-            missing_seed_operator_count=self.missing_seed_operator_count,
-            missing_seed_machine_samples=list(self.missing_seed_machine_samples),
-            missing_seed_operator_samples=list(self.missing_seed_operator_samples),
             failure_details=list(self.failure_details),
             batch_failure_sources=dict(self.batch_failure_sources),
         )
@@ -76,21 +66,17 @@ class ScheduleRunState:
         return self.batch_progress.get(batch_id, self.base_time)
 
     def advance_batch(self, batch_id: str, end_time: datetime) -> None:
-        if not batch_id:
-            return
         self.batch_progress[batch_id] = max(self.batch_progress.get(batch_id, self.base_time), end_time)
 
     def record_seed_result(self, result: ScheduleResult, *, occupancies: Tuple[ResourceOccupancy, ...]) -> None:
         self.results.append(result)
         self.seed_count += 1
-        self.advance_batch(normalize_text_id(result.batch_id), result.end_time)
+        self.advance_batch(result.batch_id, result.end_time)
         self._record_internal_usage(result, seed_mode=True, occupancies=occupancies)
-        if result.source == INTERNAL:
-            self._record_missing_seed_resources(result)
 
     def record_dispatch_success(self, result: ScheduleResult) -> None:
         self.results.append(result)
-        self.advance_batch(normalize_text_id(result.batch_id), result.end_time)
+        self.advance_batch(result.batch_id, result.end_time)
         self._record_internal_usage(result, seed_mode=False, occupancies=project_internal_occupancies(result))
         self.last_op_type_by_machine.complete(result.op_id)
 
@@ -98,7 +84,6 @@ class ScheduleRunState:
         self,
         batch_id: str,
         *,
-        block: bool,
         remaining_failed: int = 0,
         failed_op: OpForScheduleAlgo,
         skipped_ops: Optional[List[OpForScheduleAlgo]] = None,
@@ -115,20 +100,18 @@ class ScheduleRunState:
         )
         self.failure_details.append(detail)
         self._retire_resource_demand(detail["op_id"])
-        if batch_id:
-            self.batch_failure_sources[batch_id] = detail
+        self.batch_failure_sources[batch_id] = detail
         for skipped_op in skipped_ops or ():
             self.failure_details.append(
                 self._failure_detail(
                     "skipped_after_batch_failure",
                     skipped_op,
                     batch_id=batch_id,
-                    failed_source=self.batch_failure_sources.get(batch_id),
+                    failed_source=detail,
                 )
             )
-        if block and batch_id:
-            self.blocked_batches.add(batch_id)
-            self.last_op_type_by_machine.block_batch(batch_id)
+        self.blocked_batches.add(batch_id)
+        self.last_op_type_by_machine.block_batch(batch_id)
 
     def record_missing_batch(self, op: OpForScheduleAlgo, batch_id: str) -> None:
         self.failed_count += 1
@@ -176,22 +159,6 @@ class ScheduleRunState:
         if blocked_batch:
             self.last_op_type_by_machine.block_batch(blocked_batch)
 
-    def seed_resource_warnings(self) -> List[str]:
-        warnings: List[str] = []
-        if self.missing_seed_machine_count:
-            sample = ", ".join([x for x in self.missing_seed_machine_samples if x and x != "?"][:5])
-            warnings.append(
-                f"沿用旧排产结果时发现自制工序缺少设备：{self.missing_seed_machine_count} 条"
-                f"{('（示例工序编号：' + sample + '）') if sample else ''}。系统已尽量沿用可确认的时间安排，但这些工序不能锁定设备资源。"
-            )
-        if self.missing_seed_operator_count:
-            sample = ", ".join([x for x in self.missing_seed_operator_samples if x and x != "?"][:5])
-            warnings.append(
-                f"沿用旧排产结果时发现自制工序缺少人员：{self.missing_seed_operator_count} 条"
-                f"{('（示例工序编号：' + sample + '）') if sample else ''}。系统已尽量沿用可确认的时间安排，但这些工序不能锁定人员资源。"
-            )
-        return warnings
-
     def _record_internal_usage(
         self,
         result: ScheduleResult,
@@ -219,18 +186,6 @@ class ScheduleRunState:
                 op_id=occ.op_id,
                 op_type_id=occ.op_type_id,
             )
-
-    def _record_missing_seed_resources(self, result: ScheduleResult) -> None:
-        # normalize_seed_results keeps only seeds with a positive operation id.
-        op_id = str(result.op_id)
-        if not clean_resource_id(result.machine_id):
-            self.missing_seed_machine_count += 1
-            if len(self.missing_seed_machine_samples) < 5:
-                self.missing_seed_machine_samples.append(op_id)
-        if not clean_resource_id(result.operator_id):
-            self.missing_seed_operator_count += 1
-            if len(self.missing_seed_operator_samples) < 5:
-                self.missing_seed_operator_samples.append(op_id)
 
     def _failure_detail(
         self,

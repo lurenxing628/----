@@ -1,9 +1,12 @@
 """Run-owned segment sequences with a complete public mutation protocol."""
 
-from collections.abc import MutableSequence
-from typing import Any
+from __future__ import annotations
 
-from .slot_reuse_timeline import SlotReuseTimeline
+from collections.abc import MutableSequence
+from datetime import datetime
+from typing import Any, Dict, List, Tuple, cast
+
+Segment = Tuple[datetime, datetime]
 
 
 class OwnedSegments(MutableSequence):
@@ -77,23 +80,30 @@ class OwnedTypeEntries(OwnedSegments):
     """The same mutation protocol for actual (start, end, op_id, type) rows."""
 
 
-class OwnedTimeline(SlotReuseTimeline):
-    """A native run copies inserted lists; borrowed legacy maps are never wrapped."""
+class OwnedTimeline(Dict[str, List[Segment]]):
+    """A native run copies inserted lists into owned segment sequences."""
 
-    def __setitem__(self, key, value):
-        # The inherited legacy annotation says List; this private owner accepts
-        # the same mutable-sequence operations without exposing borrowed aliases.
-        owned: Any = OwnedSegments(value) if type(value) is list else value
-        super().__setitem__(key, owned)
+    def __setitem__(self, key: str, value: Any) -> None:
+        # The inherited Dict[str, List[Segment]] annotation keeps timeline callers typed while
+        # wrapping inserted sequences into OwnedSegments so mutations advance the owner certificate.
+        super().__setitem__(key, cast(Any, OwnedSegments(value)))
 
-    def setdefault(self, key, default=None):
+    def setdefault(self, key: str, default: Any) -> Any:
         if key not in self:
             self[key] = default
         return self[key]
 
-    def update(self, *args, **kwargs):
+    def update(self, *args: Any, **kwargs: Any) -> None:
         for key, value in dict(*args, **kwargs).items():
             self[key] = value
+
+    def clone(self) -> OwnedTimeline:
+        """Independent copy with one segment-list allocation per resource and fresh owner identities."""
+        cloned = OwnedTimeline()
+        for key, values in self.items():
+            owned: Any = OwnedSegments(cast(OwnedSegments, values)._values)
+            dict.__setitem__(cloned, key, owned)
+        return cloned
 
 
 def owned_segment_certificate(values):
@@ -108,20 +118,3 @@ def owned_segment_round_reader(values):
     if not isinstance(values, OwnedSegments):
         return None
     return values.certificate
-
-
-def clone_timeline(mapping):
-    """Independent copy of a resource timeline with the same container type.
-
-    Segment rows are immutable tuples and are shared; every list is copied, so
-    later occupations on either side never leak across. Owned containers re-wrap
-    their lists through ``__setitem__`` and therefore start with fresh identities.
-    """
-    if type(mapping) is dict:
-        return {key: list(values) for key, values in mapping.items()}
-    if not isinstance(mapping, SlotReuseTimeline):
-        raise TypeError("clone_timeline only accepts dict, SlotReuseTimeline or OwnedTimeline")
-    clone = type(mapping)()
-    for key, values in mapping.items():
-        clone[key] = list(values)
-    return clone

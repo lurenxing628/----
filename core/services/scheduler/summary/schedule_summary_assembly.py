@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.algorithm_contracts.types import ScheduleSummary
 from core.models.enums import YesNo
@@ -19,7 +18,6 @@ from core.services.scheduler.run.schedule_persistence_errors import missing_inte
 from core.shared.local_datetime import format_local_datetime as fmt_dt
 
 from .due_risk_items import NEAR_DUE_WINDOW_DAYS, incomplete_batches_payload
-from .optimizer_public_candidates import project_candidate_comparison
 from .summary_visible_degradation import (
     apply_summary_diagnostics,
     public_summary_error_state,
@@ -27,15 +25,6 @@ from .summary_visible_degradation import (
     summary_counts,
     warnings_with_graph,
 )
-
-
-def serialize_end_date(end_date: Optional[Union[date, str]]) -> Optional[str]:
-    if end_date is None:
-        return None
-    if isinstance(end_date, str):
-        text = end_date.strip()
-        return text if text else None
-    return end_date.isoformat()
 
 
 def _actionable_missing_internal_resource_op_ids(
@@ -48,10 +37,6 @@ def _actionable_missing_internal_resource_op_ids(
         return set()
     auto_assign_failed_ids = auto_assign_failed_op_ids_from_failure_details(failure_details)
     return missing_ids - ctx.scheduled_op_ids - auto_assign_failed_ids
-
-
-# _build_overdue_items / _record_invalid_due 已拆至 due_risk_items.py（fusion-due-soon-alert 微重构，只搬不改）。
-# 由 summary_runtime_state._build_runtime_state 注入 append_summary_warning 后调用。
 
 
 def _algo_freeze_window_dict(
@@ -134,10 +119,8 @@ def _algo_dict(state: AlgorithmSummaryState) -> Dict[str, Any]:
         graph_analysis = project_public_graph_analysis(ctx.graph_analysis_public)
         if graph_analysis:
             algo["graph_analysis"] = graph_analysis
-    if comparison is not None:
-        projected_comparison = project_candidate_comparison(comparison)
-        if projected_comparison:
-            algo["candidate_comparison"] = projected_comparison
+    if comparison:
+        algo["candidate_comparison"] = comparison
     _apply_optional_algo_fields(algo, state)
     _apply_fallback_algo_fields(algo, state.fallback_state)
     return algo
@@ -242,7 +225,7 @@ def _build_result_summary_obj(
         "algo": public_algo,
         "selected_batch_ids": list(ctx.normalized_batch_ids),
         "start_time": fmt_dt(ctx.start_dt),
-        "end_date": serialize_end_date(ctx.end_date),
+        "end_date": None if ctx.end_date is None else ctx.end_date.isoformat(),
         "invalid_due_count": runtime_state.invalid_due_count,
         "invalid_due_batch_ids_sample": runtime_state.invalid_due_batch_ids_sample,
         "unscheduled_batch_count": runtime_state.unscheduled_batch_count,

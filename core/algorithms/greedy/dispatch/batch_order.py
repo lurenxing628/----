@@ -4,16 +4,17 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from core.algorithm_contracts.value_domains import EXTERNAL
-from core.algorithm_runtime.piece_input import operation_batch
 from core.algorithm_runtime.run_state import ScheduleRunState
 
 if TYPE_CHECKING:
     from core.algorithm_contracts.types import OpForScheduleAlgo
     from core.models.batch import Batch
 
+    from .sgs_scoring import SgsCandidateScore
+
 
 def dispatch_batch_order(
-    context: Any,
+    ctx: Any,
     *,
     sorted_ops: List[OpForScheduleAlgo],
     batches: Dict[str, Batch],
@@ -24,7 +25,6 @@ def dispatch_batch_order(
     auto_assign_enabled: bool,
     resource_pool: Optional[Dict[str, Any]],
 ) -> None:
-    ctx = context
     for op in sorted_ops:
         _dispatch_one(
             ctx,
@@ -57,7 +57,7 @@ def _dispatch_one(
     result, failure = schedule_op(
         ctx,
         op=op,
-        batch=operation_batch(op, batches[batch_id]),
+        batch=batches[batch_id],
         state=state,
         base_time=base_time,
         end_dt_exclusive=end_dt_exclusive,
@@ -70,7 +70,6 @@ def _dispatch_one(
     else:
         state.record_dispatch_failure(
             batch_id,
-            block=True,
             failed_op=op,
             failure=failure,
         )
@@ -97,6 +96,7 @@ def schedule_op(
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
     auto_assign_enabled: bool,
     resource_pool: Optional[Dict[str, Any]],
+    scored: Optional[SgsCandidateScore] = None,
 ):
     if op.source == EXTERNAL:
         return ctx.schedule_external(
@@ -106,9 +106,10 @@ def schedule_op(
             base_time=base_time,
             end_dt_exclusive=end_dt_exclusive,
         )
+    work_batch = ctx.native_preparation.operation_batch(op, batch)
     return ctx.schedule_internal(
         op=op,
-        batch=batch,
+        batch=work_batch,
         batch_progress=state.batch_progress,
         machine_timeline=state.machine_timeline,
         operator_timeline=state.operator_timeline,
@@ -120,4 +121,5 @@ def schedule_op(
         last_op_type_by_machine=state.last_op_type_by_machine,
         machine_busy_hours=state.machine_busy_hours,
         operator_busy_hours=state.operator_busy_hours,
+        scored=scored,
     )

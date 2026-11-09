@@ -38,9 +38,6 @@ from .schedule_graph_score_projection import (
 from .schedule_graph_score_projection import (
     graph_score_weights as _graph_score_weights,
 )
-from .schedule_graph_score_projection import (
-    score_disabled_public_fields as _score_disabled_public_fields,
-)
 from .schedule_input_contracts import ScheduleRunInput
 
 _GRAPH_TOPOLOGICAL_SAMPLE_LIMIT = 20
@@ -59,7 +56,7 @@ class ScheduleGraphDispatchPreparation:
 
 
 def _elapsed_ms(started: float) -> int:
-    return int((time.time() - float(started)) * 1000)
+    return max(int((time.monotonic() - float(started)) * 1000), 0)
 
 
 def prepare_schedule_graph_for_dispatch(
@@ -102,23 +99,23 @@ def _build_schedule_graph_analysis_projection(
 ) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str]]:
     from core.services.scheduler.graph.analysis_service import ScheduleGraphAnalysisService
     from core.services.scheduler.graph.exporter import graph_summary_to_dict
-    from core.services.scheduler.graph.input_adapter import GraphInputContractError, build_operation_nodes_from_rows
+    from core.services.scheduler.graph.input_adapter import build_operation_nodes_from_rows
     from core.services.scheduler.graph.nx_runtime import NetworkXUnavailable
     from core.services.scheduler.graph.precedence_builder import GraphBuildContractError, build_linear_edges_by_batch
 
-    started = time.time()
-    score_weights = _graph_score_weights(schedule_input.cfg) if mode == "on" else None
-    score_requested = bool(score_weights is not None and _graph_score_requested(score_weights))
+    started = time.monotonic()
+    score_weights = _graph_score_weights(schedule_input.cfg)
+    score_requested = mode == "on" and _graph_score_requested(score_weights)
     metrics_mode = "full" if score_requested else "basic"
-    nodes = None
+    nodes = build_operation_nodes_from_rows(
+        schedule_input.algo_ops,
+        batches=schedule_input.batches,
+        resource_pool=schedule_input.resource_pool,
+        frozen_op_ids=schedule_input.frozen_op_ids,
+    )
+    edges = build_linear_edges_by_batch(nodes)
+    scope = _graph_input_scope(schedule_input, nodes=nodes)
     try:
-        nodes = build_operation_nodes_from_rows(
-            schedule_input.algo_ops,
-            batches=schedule_input.batches,
-            resource_pool=schedule_input.resource_pool,
-            frozen_op_ids=schedule_input.frozen_op_ids,
-        )
-        edges = build_linear_edges_by_batch(nodes)
         analyzer = ScheduleGraphAnalysisService()
         summary = analyzer.analyze_precedence(nodes, edges, metrics_mode=metrics_mode)
         payload = graph_summary_to_dict(summary)
@@ -132,23 +129,17 @@ def _build_schedule_graph_analysis_projection(
             payload=payload,
         )
     except NetworkXUnavailable as exc:
-        scope = _graph_input_scope(schedule_input, nodes=nodes)
-        public, diagnostics = _graph_unavailable_projection(mode=mode, exc=exc, elapsed_ms=_elapsed_ms(started), scope=scope)
-        return public, diagnostics, None, None
-    except GraphInputContractError as exc:
-        scope = _graph_input_scope(schedule_input, nodes=nodes)
-        public, diagnostics = _graph_contract_error_projection(
+        public, diagnostics = _graph_error_projection(
             mode=mode,
-            status="input_error",
-            reason="graph_input_contract_error",
+            status="unavailable",
+            reason="networkx_unavailable",
             exc=exc,
             elapsed_ms=_elapsed_ms(started),
             scope=scope,
         )
         return public, diagnostics, None, None
     except GraphBuildContractError as exc:
-        scope = _graph_input_scope(schedule_input, nodes=nodes)
-        public, diagnostics = _graph_contract_error_projection(
+        public, diagnostics = _graph_error_projection(
             mode=mode,
             status="build_error",
             reason="graph_build_contract_error",
@@ -158,7 +149,6 @@ def _build_schedule_graph_analysis_projection(
         )
         return public, diagnostics, None, None
 
-    scope = _graph_input_scope(schedule_input, nodes=nodes)
     public, diagnostics = _project_graph_analysis_payload(
         mode=mode,
         graph_block_on_cycle=graph_block_on_cycle,
@@ -196,48 +186,21 @@ def _enforce_graph_dispatch_policy(
         return
     status = public["status"]
     if status != "available":
-        reason = str(public.get("reason") or "graph_enhancement_unavailable")
-        message = str(public.get("message") or "工序图增强无法启用。")
+        reason = public["reason"]
+        message = public["message"]
         raise ValidationError(
             f"工序图增强无法启用：{message}",
             field=reason,
             details={"reason": reason, "status": status},
         )
-    if bool(public.get("is_dag", False)):
+    if public["is_dag"]:
         return
     if graph_block_on_cycle == "yes":
         # Only unavailable/error projections come without diagnostics, and they were rejected above.
         raise _cycle_error(cast(Dict[str, Any], diagnostics))
 
 
-def _graph_unavailable_projection(
-    *,
-    mode: str,
-    exc: Exception,
-    elapsed_ms: int,
-    scope: Dict[str, Any],
-) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
-    public = {
-            "mode": mode,
-            "effective_mode": _effective_graph_analysis_mode(mode),
-            "status": "unavailable",
-            "reason": "networkx_unavailable",
-            "message": str(exc),
-            "time_cost_ms": int(elapsed_ms),
-            **scope,
-    }
-    if mode == "on":
-        public.update(
-            _score_disabled_public_fields(
-                reason="networkx_unavailable",
-                score_weights=None,
-                metric_status="unavailable",
-            )
-        )
-    return public, None
-
-
-def _graph_contract_error_projection(
+def _graph_error_projection(
     *,
     mode: str,
     status: str,
@@ -245,24 +208,16 @@ def _graph_contract_error_projection(
     exc: Exception,
     elapsed_ms: int,
     scope: Dict[str, Any],
-) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
+) -> Tuple[Dict[str, Any], None]:
     public = {
-            "mode": mode,
-            "effective_mode": _effective_graph_analysis_mode(mode),
-            "status": status,
-            "reason": reason,
-            "message": str(exc),
-            "time_cost_ms": int(elapsed_ms),
-            **scope,
+        "mode": mode,
+        "effective_mode": _effective_graph_analysis_mode(mode),
+        "status": status,
+        "reason": reason,
+        "message": str(exc),
+        "time_cost_ms": int(elapsed_ms),
+        **scope,
     }
-    if mode == "on":
-        public.update(
-            _score_disabled_public_fields(
-                reason=reason,
-                score_weights=None,
-                metric_status="unavailable",
-            )
-        )
     return public, None
 
 

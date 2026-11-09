@@ -31,15 +31,9 @@ class InsertionScreen:
             self.rows[row.op_id] = (batch, row.machine_id, row.operator_id, duration, row.op_type_id or "")
             metric = search.metrics[row.op_id]
             # GraphReady v2 features give every operation a finite due deadline (a placeholder without a due
-            # date) and a positive weighted processing time (graph/v2_features.py).
+            # date) and its batch priority weight (graph/v2_features.py).
             self.due[batch] = metric["due_deadline_hours"]
-            pressure = metric["due_pressure"]
-            if pressure > 0:
-                self.weights[batch] = metric["weighted_due_pressure"] / pressure
-            elif duration > 0:
-                self.weights[batch] = duration / metric["weighted_processing_hours"]
-            else:
-                self.weights[batch] = 1.0
+            self.weights[batch] = float(metric["priority_weight"])
         self.supported = set(self.rows) == set(reference.order)
         features["insertion_screen"] = (self.rows, self.due, self.weights, self.supported)
 

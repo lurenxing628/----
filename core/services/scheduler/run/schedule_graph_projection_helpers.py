@@ -26,8 +26,6 @@ def _project_warning_data_value(value: Any) -> Tuple[Any, bool]:
             "text_length": int(len(value)),
             "text_truncated": True,
         }, True
-    if isinstance(value, tuple):
-        value = list(value)
     if isinstance(value, list):
         projected_items: List[Any] = []
         truncated_any = is_truncated(value, _GRAPH_WARNING_DATA_LIST_SAMPLE_LIMIT)
@@ -48,7 +46,7 @@ def _project_warning_data_value(value: Any) -> Tuple[Any, bool]:
             projected["_field_count"] = int(len(items))
             projected["_fields_truncated"] = True
         return projected, truncated_any
-    return {"unsupported_value_type": type(value).__name__}, True
+    raise TypeError(f"Unsupported graph warning value type: {type(value).__name__}")
 
 
 def _project_warning_message(message: str) -> Tuple[str, bool]:
@@ -57,9 +55,7 @@ def _project_warning_message(message: str) -> Tuple[str, bool]:
     return message[:_GRAPH_WARNING_TEXT_SAMPLE_LIMIT], True
 
 
-def _project_warning_data(raw_data: Any) -> Tuple[Dict[str, Any], bool]:
-    if not isinstance(raw_data, dict):
-        return {"unsupported_data_type": type(raw_data).__name__}, True
+def _project_warning_data(raw_data: Dict[str, Any]) -> Tuple[Dict[str, Any], bool]:
     projected: Dict[str, Any] = {}
     items = list(raw_data.items())
     truncated_any = is_truncated(items, _GRAPH_WARNING_DATA_DICT_FIELD_LIMIT)
@@ -83,7 +79,7 @@ def _project_warning_data(raw_data: Any) -> Tuple[Dict[str, Any], bool]:
 
 
 def project_graph_warning(warning: Dict[str, Any]) -> Dict[str, Any]:
-    data, warning_data_truncated = _project_warning_data(warning.get("data"))
+    data, warning_data_truncated = _project_warning_data(warning["data"])
     # GraphWarning.message is a required str (graph/types.py), exported via asdict.
     raw_message = warning["message"]
     message, message_truncated = _project_warning_message(raw_message)
@@ -103,10 +99,8 @@ def graph_node_metrics_sample(
     topological_order: List[str],
     limit: int,
 ) -> List[Dict[str, Any]]:
-    if topological_order:
-        sample_node_ids = topological_order[: int(limit)]
-    else:
-        sample_node_ids = sorted(node_metrics)[: int(limit)]
+    if not node_metrics:
+        return []
     return [
         {
             "node_id": node_id,
@@ -116,8 +110,7 @@ def graph_node_metrics_sample(
             "generation_index": int(node_metrics[node_id]["generation_index"]),
             "downstream_critical_minutes": int(node_metrics[node_id]["downstream_critical_minutes"]),
         }
-        for node_id in sample_node_ids
-        if node_id in node_metrics
+        for node_id in topological_order[: int(limit)]
     ]
 
 

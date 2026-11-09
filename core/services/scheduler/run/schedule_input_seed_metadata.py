@@ -26,7 +26,7 @@ def _enrich_external_seed(seed: Dict[str, Any], by_id: Dict[int, OpForScheduleAl
     if identity is None:
         return seed
     batch_id, group_id, piece = identity
-    metadata = {"op_id": op_id, "batch_id": batch_id, "ext_group_id": group_id}
+    metadata: Dict[str, Any] = {"batch_id": batch_id, "ext_group_id": group_id}
     if piece is not None:
         metadata["piece_id"] = piece
     return dict(seed, _external_group_metadata=metadata)

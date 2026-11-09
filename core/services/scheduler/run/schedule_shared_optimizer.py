@@ -8,6 +8,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, cast
 
 from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithm_contracts.types import OpForScheduleAlgo
+from core.algorithm_runtime.algo_stats import make_algo_stats
 from core.algorithms.evaluation import prepare_evaluation_context
 from core.errors import ValidationError
 from core.models.batch import Batch
@@ -119,7 +120,7 @@ def optimize_shared_schedule(
     """Construct once, then rotate one action at a time over all target generators."""
     runtime = resolve_runtime(_runtime, search_budget)
     started_at = runtime.clock()
-    algo_stats: Dict[str, Any] = {"fallback_counts": {}}
+    algo_stats = make_algo_stats()
     seeds = coerce_seed_results(seed_results, optimizer_algo_stats=algo_stats)
     scheduler = runtime.scheduler_factory(calendar_service=calendar_service, config_service=cfg)
     config = resolve_optimizer_config(cfg)
@@ -245,7 +246,7 @@ def optimize_shared_schedule(
             def warmstart() -> None:
                 view.state.best = runtime.run_ortools_warmstart(
                     **decode_common, algo_ops_to_schedule=algo_ops_to_schedule, batches=batches,
-                    algo_mode=config.algo_mode, cfg=cfg, strategy_enum=config.strategy_enum, objective_name=view.objective,
+                    cfg=cfg, strategy_enum=config.strategy_enum, objective_name=view.objective,
                     dispatch_mode_cfg=dispatch_mode, dispatch_rule_cfg=config.dispatch_rule,
                     best=view.state.best,
                     graph_ready_context=ordinary_context, search_report_state=view.report)
@@ -284,7 +285,7 @@ def optimize_shared_schedule(
             if reason is not None:
                 stop_reason = reason
                 break
-            candidates = targets if archive.best_by_objective else targets[:1]
+            candidates = targets if archive.has_complete_best() else targets[:1]
             available = []
             for objective in candidates:
                 view = session.views[objective]
@@ -324,7 +325,7 @@ def optimize_shared_schedule(
         "first_complete_elapsed_ms": session.first_complete_elapsed_ms,
         "graph_preparation_calls": graph_preparation_calls, "feature_preparation_calls": feature_preparation_calls,
         "runtime_ms": runtime_ms, "stop_reason": stop_reason,
-        "selected_entries_by_objective": {target: session.selected_entry(target) for target in targets},
+        "selected_entries_by_objective": {target: archive.selected_entry(target) for target in targets},
         "evidence_event_ids_by_entry": dict(session.evidence_event_ids),
     }
     facts["unified_process"] = build_shared_process(session, runtime_ms=runtime_ms, stop_reason=stop_reason,

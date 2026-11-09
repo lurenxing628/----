@@ -69,7 +69,7 @@ def _pressure(search, index, features, op_id):
     objective = search.report["objective_name"]
     if objective == "min_weighted_tardiness":
         weighted = metric["weighted_due_pressure"]
-        factor = weighted / due_pressure if due_pressure > 0 else 1.0
+        factor = float(metric["priority_weight"])
         return -signal * factor, -weighted, -signal, -index.positions[op_id]
     if objective == "min_changeover":
         return -index.switches[op_id], -signal, -due_pressure, -index.positions[op_id]

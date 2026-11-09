@@ -15,40 +15,26 @@ itself. External candidates are cheap and never cached.
 """
 from __future__ import annotations
 
-from functools import partial
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, cast
 
 from core.algorithm_contracts.value_domains import INTERNAL
-from core.algorithm_runtime.auto_assign_contract import AutoAssignAttempt
 from core.algorithm_runtime.calendar_timing_memo import MemoizedTimingCalendar, native_timing_calendar
-from core.algorithm_runtime.internal_slot import refresh_changeover_penalty
+from core.algorithm_runtime.internal_slot import InternalSlotEstimate, refresh_changeover_penalty
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.algorithm_runtime.sgs_shared_slot import SharedSlotEstimateCache
 
 if TYPE_CHECKING:
     from core.algorithm_contracts.types import OpForScheduleAlgo
+    from core.models.batch import Batch
+
+    from ..schedule_preparation import NativeSchedulePreparation
+    from .sgs_scoring import SgsCandidateScore
 
 _FIXED = "fixed"
 _AUTO = "auto"
 _UNCLASSIFIED = object()
 Witness = Tuple[Any, ...]
 EligibleResources = Optional[Tuple[Tuple[str, ...], Tuple[str, ...]]]
-
-
-def make_sgs_score_cache_factory(ctx: Any, *, preparation: Any) -> Any:
-    """Select the native input and calendar adapters at the preparation boundary."""
-    native = native_timing_calendar(ctx.calendar)
-    timing_calendar = ctx.calendar if native else None
-    calendar_days = ctx.calendar.add_calendar_days if native else None
-    return partial(SgsScoreCache, eligible_resources=preparation.eligible_auto_assign_resources,
-                   timing_calendar=timing_calendar, calendar_days=calendar_days, preparation=preparation)
-
-
-def attach_sgs_score_cache(ctx: Any, *, state: ScheduleRunState, params: Any, resource_pool: Any) -> None:
-    if params.dispatch_mode_key == "sgs":
-        ctx.sgs_score_cache = ctx.native_preparation.score_cache_factory(
-            state, auto_assign_enabled=bool(params.auto_assign_enabled), resource_pool=resource_pool,
-        )
 
 
 def _segments_witness(timeline: Any, resource_id: str) -> Optional[Tuple[int, int]]:
@@ -62,43 +48,58 @@ def _type_witness(types: Any, machine_id: str) -> Any:
 
 
 class _Entry:
-    __slots__ = ("witness", "demand_revision", "key", "round", "resources", "estimate")
+    __slots__ = ("witness", "demand_revision", "score")
 
     def __init__(
-        self, witness: Witness, demand_revision: Optional[int], key: Tuple[float, ...], round_no: int,
-        resources: Optional[Tuple[str, str]], estimate: Optional[Tuple[Any, ...]],
+        self, witness: Witness, demand_revision: Optional[int], score: SgsCandidateScore,
     ) -> None:
         self.witness = witness
         self.demand_revision = demand_revision
-        self.key = key
-        # Round in which this entry was last proved current; formal placement only trusts the current round.
-        self.round = round_no
-        self.resources = resources
-        self.estimate = estimate
+        self.score = score
 
 
 class _PairEntry:
-    __slots__ = ("witness", "estimate", "scan", "seq")
+    __slots__ = ("witness", "estimate", "seq")
 
-    def __init__(self, witness: Witness, estimate: Any, scan: Optional[Tuple[Any, Any]], seq: int) -> None:
+    def __init__(self, witness: Witness, estimate: InternalSlotEstimate, seq: int) -> None:
         self.witness = witness
         self.estimate = estimate
-        # [scan_start, scan_end]: the span whose busy blocks steered the estimate's avoidance path.
-        self.scan = scan
         # Occupation sequence number when the estimate was last proved current.
         self.seq = seq
 
 
 class SgsScoreCache:
-    """Per-decode memo of dispatch keys, validated against the live state on every read.
+    """Per-decode memo of candidate scores, validated against the live state on every read.
 
     Entries are keyed by operation identity: the loop scores the very same objects every round.
     """
 
+    @classmethod
+    def for_preparation(
+        cls,
+        preparation: NativeSchedulePreparation,
+        *,
+        state: ScheduleRunState,
+        auto_assign_enabled: bool,
+        resource_pool: Any,
+    ) -> SgsScoreCache:
+        """Bind the native preparation's eligibility and certified calendar adapters for one SGS decode."""
+        calendar = preparation.calendar
+        native = native_timing_calendar(calendar)
+        return cls(
+            state,
+            auto_assign_enabled=auto_assign_enabled,
+            resource_pool=resource_pool,
+            eligible_resources=preparation.eligible_auto_assign_resources,
+            timing_calendar=calendar if native else None,
+            calendar_days=calendar.add_calendar_days if native else None,
+            preparation=preparation,
+        )
+
     def __init__(
         self, state: ScheduleRunState, *, auto_assign_enabled: bool, resource_pool: Any,
         eligible_resources: Callable[[Any], EligibleResources], timing_calendar: Any, calendar_days: Any,
-        preparation: Any = None,
+        preparation: NativeSchedulePreparation,
     ) -> None:
         self.state = state
         self.calendar_days = calendar_days
@@ -111,12 +112,11 @@ class SgsScoreCache:
         self.eligible_resources: Optional[Callable[[Any], EligibleResources]] = (
             eligible_resources if (auto_assign_enabled and isinstance(resource_pool, dict)) else None
         )
-        self._timing = MemoizedTimingCalendar(timing_calendar) if timing_calendar is not None else None
-        self._shared_slots = SharedSlotEstimateCache() if self._timing is not None else None
+        self.timing = MemoizedTimingCalendar(timing_calendar) if timing_calendar is not None else None
+        self._shared_slots = SharedSlotEstimateCache()
         # Every timeline occupation performed inside this decode, per (timeline identity, resource): (seq, start, end).
         self._occupations: Dict[Tuple[int, str], list] = {}
         self._occupation_seq = 0
-        self._last_scan: Optional[Tuple[Any, Any]] = None
         self.pair_revalidated = 0
         self._entries: Dict[int, _Entry] = {}
         # Per operation: False when it can never be cached (external, no native
@@ -127,42 +127,63 @@ class SgsScoreCache:
         self.pair_misses = 0
         # op identity -> (machine, operator) -> abort-free estimate with its witness; one probe pair reads only these cells.
         self._pairs: Dict[int, Dict[Tuple[str, str], _PairEntry]] = {}
-        self._scoring_op: Any = None
-        self._pending_tie: Optional[bool] = None
-        self._pending_resources: Optional[Tuple[str, str]] = None
-        self._pending_estimate: Optional[Tuple[Any, ...]] = None
 
     def stats(self) -> Dict[str, int]:
-        timing = self._timing
+        timing = self.timing
         return {
             "hits": self.hits, "misses": self.misses, "pair_hits": self.pair_hits, "pair_misses": self.pair_misses,
             "pair_revalidated": self.pair_revalidated,
             "calendar_hits": timing.hits if timing is not None else 0, "calendar_misses": timing.misses if timing is not None else 0,
-            "shared_slot_hits": self._shared_slots.hits if self._shared_slots is not None else 0,
-            "shared_slot_misses": self._shared_slots.misses if self._shared_slots is not None else 0,
+            "shared_slot_hits": self._shared_slots.hits,
+            "shared_slot_misses": self._shared_slots.misses,
             "key_cache_disabled": int(not self._reuse_keys), "graph_candidates_pruned": self.graph_candidates_pruned,
         }
 
-    def shared_slot_estimate(self, *, calendar, op, batch, machine_id, operator_id, prev_end, total_hours,
-                             end_dt_exclusive, compute):
-        if self._timing is None or self._shared_slots is None:
-            return compute()
-        return self._shared_slots.resolve(
-            state=self.state, calendar=self.timing_calendar(calendar), op=op, priority=batch.priority,
-            machine_id=machine_id, operator_id=operator_id, prev_end=prev_end, total_hours=total_hours,
-            end_dt_exclusive=end_dt_exclusive, compute=compute,
-            read_scan=lambda: self._last_scan, note_scan=self.note_scan)
+    def scoring_slot_estimate(
+        self,
+        *,
+        op: OpForScheduleAlgo,
+        batch: Batch,
+        machine_id: str,
+        operator_id: str,
+        prev_end: Any,
+        total_hours: float,
+        end_dt_exclusive: Any,
+        machine_timeline: Any,
+        operator_timeline: Any,
+        compute: Callable[[], InternalSlotEstimate],
+    ) -> InternalSlotEstimate:
+        timing = self.timing
+        if timing is not None:
+            raw_compute = compute
 
-    def timing_calendar(self, calendar: Any) -> Any:
-        """The per-decode memo of ``calendar``'s pure timing calls, or ``calendar`` itself when it is not certified."""
-        timing = self._timing
-        if timing is None or timing.calendar is not calendar:
-            return calendar
-        return timing
+            def shared_compute() -> InternalSlotEstimate:
+                return self._shared_slots.resolve(
+                    state=self.state,
+                    calendar=timing,
+                    op=op,
+                    priority=batch.priority,
+                    machine_id=machine_id,
+                    operator_id=operator_id,
+                    prev_end=prev_end,
+                    total_hours=total_hours,
+                    end_dt_exclusive=end_dt_exclusive,
+                    compute=raw_compute,
+                )
 
-    def note_scan(self, scan_start: Any, scan_end: Any) -> None:
-        """Span of busy blocks that steered the estimate just computed inside ``pair_estimate``."""
-        self._last_scan = (scan_start, scan_end)
+            slot_compute: Callable[[], InternalSlotEstimate] = shared_compute
+        else:
+            slot_compute = compute
+        estimate = self.pair_estimate(
+            op=op,
+            machine_id=machine_id,
+            operator_id=operator_id,
+            prev_end=prev_end,
+            machine_timeline=machine_timeline,
+            operator_timeline=operator_timeline,
+            compute=slot_compute,
+        )
+        return slot_compute() if estimate is None else estimate
 
     def observe_occupation(self, timeline: Any, resource_id: str, start: Any, end: Any) -> None:
         """One segment was inserted into ``timeline[resource_id]``; pair memos check new segments against their scan span."""
@@ -177,8 +198,8 @@ class SgsScoreCache:
 
     def pair_estimate(
         self, *, op: OpForScheduleAlgo, machine_id: str, operator_id: str, prev_end: Any, machine_timeline: Any,
-        operator_timeline: Any, compute: Callable[[], Any],
-    ) -> Any:
+        operator_timeline: Any, compute: Callable[[], InternalSlotEstimate],
+    ) -> Optional[InternalSlotEstimate]:
         """Abort-free slot estimate of one probe pair, reused while the pair's cells are unchanged.
 
         Returns None when the memo is not applicable so the caller runs its own estimator; ``compute``
@@ -206,16 +227,15 @@ class SgsScoreCache:
                 self.pair_revalidated += 1
                 entry.witness, entry.estimate, entry.seq = witness, estimate, self._occupation_seq
                 return estimate
-        self._last_scan = None
         estimate = compute()
         self.pair_misses += 1
-        pairs[pair] = _PairEntry(witness, estimate, self._last_scan, self._occupation_seq)
+        pairs[pair] = _PairEntry(witness, estimate, self._occupation_seq)
         return estimate
 
     def _revalidated(
         self, entry: _PairEntry, witness: Witness, op: OpForScheduleAlgo, machine_id: str, operator_id: str, machine_timeline: Any,
         operator_timeline: Any,
-    ) -> Any:
+    ) -> Optional[InternalSlotEstimate]:
         """The memoized estimate brought up to date without a new scan, or None when a new scan is required.
 
         A scan is a deterministic walk steered only by the busy blocks inside its span; new blocks
@@ -223,9 +243,9 @@ class SgsScoreCache:
         changeover penalty reads the machine's type history and is recomputed when that changed.
         """
         old = entry.witness
-        scan = entry.scan
-        if scan is None or old[0] != witness[0]:
+        if old[0] != witness[0]:
             return None
+        scan = cast(Tuple[Any, Any], entry.estimate.scan_span)
         for timeline, resource_id, before, after in (
             (machine_timeline, machine_id, old[1], witness[1]), (operator_timeline, operator_id, old[2], witness[2]),
         ):
@@ -257,87 +277,39 @@ class SgsScoreCache:
         return all(start > scan_end or end <= scan_start for _seq, start, end in recent)
 
     def next_round(self) -> None:
-        """One SGS step: entries proved in earlier rounds no longer qualify for placement handoff."""
+        """One SGS step: saturation may retire key reuse; round-scoped shared slots always reset."""
         self.round += 1
         # Re-scoring remains exact. On a resource shared by every ready operation, repeatedly
         # proving that old keys are stale costs more than recomputing their cheap key suffixes.
-        if self._shared_slots is not None:
+        if self.timing is not None:
             if self.round >= 8 and not self._saw_auto and self.hits == 0 and self._shared_slots.hits >= 256:
                 self._reuse_keys = False
+                self._entries.clear()
                 self._pairs.clear()
             self._shared_slots.clear()
 
-    def record_attempt(self, attempt: AutoAssignAttempt) -> None:
-        """Sink for the probe result of the candidate currently being scored."""
-        self._pending_tie = attempt.pair_tie_occurred
-        machine_id = attempt.machine_id
-        operator_id = attempt.operator_id
-        self._pending_resources = (machine_id, operator_id) if machine_id and operator_id else None
-
-    def remember_estimate(self, estimate: Any, inputs: Dict[str, Any]) -> None:
-        """Scoring estimate of the candidate being scored, kept for same-round formal placement."""
-        if inputs["op"] is not self._scoring_op:
-            return
-        self._pending_estimate = (
-            estimate, inputs["total_hours_base"], inputs["machine_id"], inputs["operator_id"],
-            inputs["prev_end"], inputs["calendar"], inputs["end_dt_exclusive"],
-        )
-
-    def selected_estimate(self, inputs: Dict[str, Any]) -> Optional[Tuple[Any, float]]:
-        """(estimate, total_hours_base) proved current this round for exactly these placement inputs."""
-        entry = self._entries.get(id(inputs["op"]))
-        if entry is None or entry.round != self.round or entry.estimate is None:
-            return None
-        estimate, total_hours_base, machine_id, operator_id, prev_end, calendar, end_dt_exclusive = entry.estimate
-        if (inputs["machine_id"], inputs["operator_id"]) != (machine_id, operator_id):
-            return None
-        if inputs["prev_end"] != prev_end or inputs["calendar"] is not calendar:
-            return None
-        if inputs["end_dt_exclusive"] != end_dt_exclusive:
-            return None
-        return estimate, total_hours_base
-
-    def selected_resources(self, op: OpForScheduleAlgo) -> Optional[Tuple[str, str]]:
-        """Auto-assign pair the scoring probe chose for ``op``, valid only within the same round."""
-        entry = self._entries.get(id(op))
-        if entry is None or entry.round != self.round or entry.witness[0] != _AUTO:
-            return None
-        return entry.resources
-
     def resolve(
         self, op: OpForScheduleAlgo, batch_id: str, graph_state: Optional[Dict[str, Any]],
-        score: Callable[[], Tuple[float, ...]],
-    ) -> Tuple[float, ...]:
-        """Reuse the previous key while every cell the candidate reads is unchanged; otherwise score and remember."""
+        score: Callable[[], SgsCandidateScore],
+    ) -> SgsCandidateScore:
+        """Reuse the previous score while every cell the candidate reads is unchanged; otherwise score and remember."""
         witness = self._witness(op, batch_id, graph_state)
         entry = self._entries.get(id(op)) if witness is not None else None
-        if (self._reuse_keys and entry is not None and witness == entry.witness
+        if (entry is not None and witness == entry.witness
                 and (entry.demand_revision is None or entry.demand_revision == self._demand_revision())):
             self.hits += 1
-            entry.round = self.round
-            return entry.key
-        self._pending_tie = None
-        self._pending_resources = None
-        self._pending_estimate = None
-        self._scoring_op = op
-        try:
-            key = score()
-        finally:
-            self._scoring_op = None
+            return entry.score
+        scored = score()
         self.misses += 1
         if witness is None:
-            return key
-        demand_revision = None
-        resources = None
-        if witness[0] == _AUTO:
-            if self._pending_tie is None:
-                # The probe did not report tie provenance; its result cannot be validated later.
-                return key
-            if self._pending_tie:
-                demand_revision = self._demand_revision()
-            resources = self._pending_resources
-        self._entries[id(op)] = _Entry(witness, demand_revision, key, self.round, resources, self._pending_estimate)
-        return key
+            return scored
+        demand_revision = (
+            self._demand_revision()
+            if witness[0] == _AUTO and scored.pair_tie_occurred
+            else None
+        )
+        self._entries[id(op)] = _Entry(witness, demand_revision, scored)
+        return scored
 
     def _demand_revision(self) -> Optional[int]:
         demand = self.state.last_op_type_by_machine.demand
@@ -369,8 +341,7 @@ class SgsScoreCache:
             self._saw_auto = True
             self._reuse_keys = True
         if not self._reuse_keys:
-            # Retain same-round estimate/resource handoff; never reuse a previous round's key.
-            return (_FIXED,)
+            return None
         state = self.state
         # Piece scope scores against predecessor completion evidence that never changes once the
         # operation is ready; every other scope reads the live batch progress.

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 from core.algorithm_contracts.types import ScheduleSummary
 from core.models.batch import Batch
@@ -38,13 +38,9 @@ def _merge_warning_lists(primary: Any, extra: Any) -> List[str]:
     return merged
 
 
-def _append_summary_warning(summary: ScheduleSummary, message: str) -> None:
-    summary.warnings.append(message)
-
-
-def _counter_dict(value: Any) -> Dict[str, int]:
+def _counter_dict(value: Optional[Mapping[str, int]]) -> Dict[str, int]:
     # 计数桶只经 increment_counter / merge_algo_stats 写入，键非空、值是解码自己的整数计数。
-    if not isinstance(value, dict):
+    if value is None:
         return {}
     return {key: count for key, count in value.items() if count}
 
@@ -62,18 +58,16 @@ def _build_runtime_state(
         summary.failure_details,
         finish_by_batch,
     )
-    overdue_items, overdue_meta = _build_overdue_items_impl(
+    overdue_items, near_due_items = _build_overdue_items_impl(
         batches=batches,
         finish_by_batch=finish_by_batch,
-        summary=summary,
-        append_summary_warning_fn=_append_summary_warning,
         incomplete_batch_ids=incomplete_batch_ids,
         due_by_batch=best_metrics._due_by_batch,
     )
     return RuntimeState(
         finish_by_batch=finish_by_batch,
         overdue_items=overdue_items,
-        near_due_items=overdue_meta["near_due_items"],
+        near_due_items=near_due_items,
         invalid_due_count=best_metrics.invalid_due_count,
         invalid_due_batch_ids_sample=list(best_metrics.invalid_due_batch_ids_sample[:10]),
         unscheduled_batch_count=best_metrics.unscheduled_batch_count,
@@ -88,6 +82,12 @@ def _build_summary_warnings(
     runtime_state: RuntimeState,
 ) -> List[str]:
     all_warnings = _warning_list(summary.warnings)
+    if runtime_state.invalid_due_count > 0:
+        sample_ids = "，".join(runtime_state.invalid_due_batch_ids_sample)
+        all_warnings = _merge_warning_lists(
+            all_warnings,
+            [f"存在 {runtime_state.invalid_due_count} 个批次交期写法不对，已忽略超期与临期判断（示例批次：{sample_ids}）"],
+        )
     if runtime_state.unscheduled_batch_count > 0:
         all_warnings = _merge_warning_lists(
             all_warnings,
@@ -96,9 +96,8 @@ def _build_summary_warnings(
     return all_warnings
 
 
-def _build_fallback_state(algo_stats: Optional[Dict[str, Any]]) -> FallbackState:
-    algo_stats_dict = algo_stats if isinstance(algo_stats, dict) else {}
-    fallback_counts = _counter_dict(algo_stats_dict.get("fallback_counts"))
+def _build_fallback_state(algo_stats: Mapping[str, Any]) -> FallbackState:
+    fallback_counts = _counter_dict(algo_stats.get("fallback_counts"))
     return FallbackState(
         fallback_counts=fallback_counts,
         ortools_warmstart_failed_count=fallback_counts.get("ortools_warmstart_failed_count", 0),

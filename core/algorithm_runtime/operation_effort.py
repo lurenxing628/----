@@ -9,7 +9,7 @@ from core.models.batch import Batch
 from core.models.enums import MergeMode, OperationQuantityBasis, OperationSetupState, SourceType
 from core.shared.strict_parse import finite_float, is_non_finite_number
 
-from .piece_input import operation_batch
+from .piece_input import operation_quantity
 
 
 def _coerce_hours_value(raw_value: Any, *, field: str) -> float:
@@ -23,9 +23,8 @@ def _coerce_hours_value(raw_value: Any, *, field: str) -> float:
     raise ValueError(f"工时字段必须是非负有限数字：{field}={raw_value!r}")
 
 
-def internal_requirement_parts(op: OpForScheduleAlgo, batch: Batch) -> Tuple[float, float, float, float]:
-    """Consume the dispatcher's already operation-local quantity unchanged."""
-    setup_raw, unit_raw, quantity_raw = op.setup_hours, op.unit_hours, batch.quantity
+def _requirement_parts_for_quantity(op: OpForScheduleAlgo, quantity_raw: Any) -> Tuple[float, float, float, float]:
+    setup_raw, unit_raw = op.setup_hours, op.unit_hours
     setup = _coerce_hours_value(setup_raw, field="setup_hours")
     unit = _coerce_hours_value(unit_raw, field="unit_hours")
     quantity = _coerce_hours_value(quantity_raw, field="quantity")
@@ -37,6 +36,11 @@ def internal_requirement_parts(op: OpForScheduleAlgo, batch: Batch) -> Tuple[flo
     return setup, processing, required, quantity
 
 
+def internal_requirement_parts(op: OpForScheduleAlgo, batch: Batch) -> Tuple[float, float, float, float]:
+    """Consume the dispatcher's already operation-local quantity unchanged."""
+    return _requirement_parts_for_quantity(op, batch.quantity)
+
+
 def _quantity_basis(op: OpForScheduleAlgo) -> str:
     return OperationQuantityBasis.BATCH.value if op.piece_id is None else OperationQuantityBasis.PIECE.value
 
@@ -45,7 +49,7 @@ def internal_operation_effort(
     op: OpForScheduleAlgo, batch: Batch, *, remaining_quantity: Optional[int] = None,
 ) -> OperationEffort:
     """Apply the same piece quantity rule used by the actual dispatcher."""
-    setup, processing, required, quantity = internal_requirement_parts(op, operation_batch(op, batch))
+    setup, processing, required, quantity = _requirement_parts_for_quantity(op, operation_quantity(op, batch))
     return OperationEffort(
         op_id=op.id, batch_id=op.batch_id, piece_id=op.piece_id,
         source=SourceType.INTERNAL.value, target_quantity=int(quantity) if quantity.is_integer() else quantity,
@@ -60,7 +64,7 @@ def external_operation_effort(op: OpForScheduleAlgo, batch: Batch, *, remaining_
     mode = op.ext_merge_mode
     return OperationEffort(
         op_id=op.id, batch_id=op.batch_id, piece_id=op.piece_id,
-        source=SourceType.EXTERNAL.value, target_quantity=operation_batch(op, batch).quantity,
+        source=SourceType.EXTERNAL.value, target_quantity=operation_quantity(op, batch),
         remaining_quantity=remaining_quantity,
         setup_standard_hours=0.0, processing_standard_hours=0.0, required_standard_hours=0.0,
         setup_state=OperationSetupState.EXTERNAL.value, quantity_basis=_quantity_basis(op),
