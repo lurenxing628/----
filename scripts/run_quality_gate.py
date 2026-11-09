@@ -22,10 +22,11 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from tools import quality_gate_shared  # noqa: E402
-from tools.long_gate_cache import evaluate_failure_reuse, evaluate_reuse  # noqa: E402
+from tools.long_gate_cache import cache_unavailable_decision, evaluate_failure_reuse, evaluate_reuse  # noqa: E402
+from tools.long_gate_cache import commit_prepared_success_write as commit_prepared_long_gate_success
+from tools.long_gate_cache import prepare_success_write as prepare_long_gate_success_write
 from tools.long_gate_cache import resolve_cache_dir as resolve_long_gate_cache_dir
 from tools.long_gate_cache import write_failure as write_long_gate_failure
-from tools.long_gate_cache import write_success as write_long_gate_success
 from tools.long_gate_collect import (  # noqa: E402
     COLLECT_NODEIDS_REL,
     build_collect_nodeids_payload,
@@ -47,8 +48,15 @@ from tools.long_gate_manifest import (  # noqa: E402
     ENTRY_RUFF_CHECK_FULL,
     build_manifest_from_quality_gate_plan,
     explain_long_gate_impact,
+    normalize_repo_path,
 )
-from tools.long_gate_schema import content_equal, long_gate_cache_metadata, read_file_content  # noqa: E402
+from tools.long_gate_schema import (  # noqa: E402
+    SensitiveSourceError,
+    content_equal,
+    decode_nul_paths,
+    long_gate_cache_metadata,
+    read_file_content,
+)
 from tools.long_gate_summary import (  # noqa: E402
     build_long_gate_summary,
     build_summary_entry,
@@ -399,22 +407,25 @@ def _dirty_worktree_content(status_lines: Sequence[str]) -> Dict[str, Any]:
             continue
         abs_path = os.path.join(REPO_ROOT, rel_path.replace("/", os.sep))
         row: Dict[str, Any] = {"path": rel_path}
-        if os.path.islink(abs_path):
-            row.update(kind="symlink", target=os.readlink(abs_path))
-        elif os.path.isfile(abs_path):
-            row.update(kind="file", content_base64=read_file_content(abs_path))
-        elif os.path.isdir(abs_path):
-            files: List[Dict[str, str]] = []
-            for dirpath, dirnames, filenames in os.walk(abs_path):
-                dirnames.sort()
-                filenames.sort()
-                for filename in filenames:
-                    file_path = os.path.join(dirpath, filename)
-                    files.append({"path": _safe_relpath(file_path, REPO_ROOT),
-                                  "content_base64": read_file_content(file_path)})
-            row.update(kind="directory", files=files)
-        else:
-            row.update(kind="missing")
+        try:
+            if os.path.islink(abs_path):
+                row.update(kind="symlink", target=os.readlink(abs_path))
+            elif os.path.isfile(abs_path):
+                row.update(kind="file", content_base64=read_file_content(abs_path))
+            elif os.path.isdir(abs_path):
+                files: List[Dict[str, str]] = []
+                for dirpath, dirnames, filenames in os.walk(abs_path):
+                    dirnames.sort()
+                    filenames.sort()
+                    for filename in filenames:
+                        file_path = os.path.join(dirpath, filename)
+                        files.append({"path": _safe_relpath(file_path, REPO_ROOT),
+                                      "content_base64": read_file_content(file_path)})
+                row.update(kind="directory", files=files)
+            else:
+                row.update(kind="missing")
+        except SensitiveSourceError as exc:
+            raise QualityGateError(f"脏工作区包含敏感来源内容，未保存来源证明：{exc}") from exc
         rows.append(row)
     return {"status_lines": normalized_lines, "diffs_base64": diffs, "paths": rows}
 
@@ -492,11 +503,6 @@ def _strict_long_gate_fingerprint(entry: Dict[str, Any], *, file_snapshot: Optio
         return fingerprint_entry(entry, REPO_ROOT, strict=True, file_snapshot=file_snapshot)
     except LongGateFingerprintError as exc:
         raise QualityGateError(str(exc)) from exc
-    except ValueError as exc:
-        failure = LongGateFingerprintError(
-            str(exc), details={"failure_kind": "source_content_unavailable"},
-        )
-        raise QualityGateError(str(failure)) from failure
 
 
 def _decide_resume_from_previous_failure(
@@ -1292,7 +1298,7 @@ def _run_quality_gate_command_plan(
             if _decision_cache_unavailable(current_decision):
                 print(
                     f"==> 第 {command_index}/{total} 步：跳过 long-gate success cache 写入，"
-                    "因为 strict fingerprint 失败，该 entry 当前 cache unavailable",
+                    f"该 entry 当前 cache unavailable：{current_decision['reason']}",
                     flush=True,
                 )
             elif not bool(long_gate_cache_write_success):
@@ -1302,39 +1308,51 @@ def _run_quality_gate_command_plan(
                     flush=True,
                 )
             else:
-                if not long_gate_fingerprint:
-                    long_gate_fingerprint = _strict_long_gate_fingerprint(long_gate_entry)
-                if bool(long_gate_entry.get("reuse_allowed")):
-                    long_gate_fingerprint = _fingerprint_for_success_cache(
-                        long_gate_entry,
-                        long_gate_fingerprint,
-                    )
-                output_file_paths = _prepare_long_gate_success_output_files(
-                    long_gate_entry,
-                    result,
-                    cache_dir=long_gate_cache_dir,
-                    run_id=run_id,
-                    command_index=command_index,
-                    command_plan=command_plan,
-                    fingerprint=long_gate_fingerprint,
-                )
-                if bool(long_gate_entry.get("reuse_allowed")):
-                    long_gate_runtime_entry["fingerprint"] = long_gate_fingerprint
-                    decision_for_summary = long_gate_runtime_entry.get("decision")
-                    if isinstance(decision_for_summary, dict):
-                        decision_for_summary["current_fingerprint"] = long_gate_fingerprint
-                    cache_result = dict(result)
-                    cache_result.pop("stdout_log_path", None)
-                    cache_result.pop("stderr_log_path", None)
-                    if pending_long_gate_successes is not None:
-                        pending_long_gate_successes.append(
-                            {
-                                "entry": dict(long_gate_entry),
-                                "fingerprint": long_gate_fingerprint,
-                                "command_result": cache_result,
-                                "output_files": _abs_output_paths(output_file_paths),
-                            }
+                try:
+                    if not long_gate_fingerprint:
+                        long_gate_fingerprint = _strict_long_gate_fingerprint(long_gate_entry)
+                    if bool(long_gate_entry.get("reuse_allowed")):
+                        long_gate_fingerprint = _fingerprint_for_success_cache(
+                            long_gate_entry,
+                            long_gate_fingerprint,
                         )
+                except QualityGateError as exc:
+                    _mark_runtime_entry_cache_unavailable(
+                        long_gate_runtime_entry, failure_kind=_fingerprint_failure_kind(exc), message=str(exc)
+                    )
+                    print(
+                        f"==> 第 {command_index}/{total} 步：跳过 long-gate success cache 写入，"
+                        "因为 strict fingerprint 失败，该 entry 当前 cache unavailable",
+                        flush=True,
+                    )
+                else:
+                    output_file_paths = _prepare_long_gate_success_output_files(
+                        long_gate_entry,
+                        result,
+                        cache_dir=long_gate_cache_dir,
+                        run_id=run_id,
+                        command_index=command_index,
+                        command_plan=command_plan,
+                        fingerprint=long_gate_fingerprint,
+                    )
+                    if bool(long_gate_entry.get("reuse_allowed")):
+                        long_gate_runtime_entry["fingerprint"] = long_gate_fingerprint
+                        decision_for_summary = long_gate_runtime_entry.get("decision")
+                        if isinstance(decision_for_summary, dict):
+                            decision_for_summary["current_fingerprint"] = long_gate_fingerprint
+                        cache_result = dict(result)
+                        cache_result.pop("stdout_log_path", None)
+                        cache_result.pop("stderr_log_path", None)
+                        if pending_long_gate_successes is not None:
+                            pending_long_gate_successes.append(
+                                {
+                                    "entry": dict(long_gate_entry),
+                                    "fingerprint": long_gate_fingerprint,
+                                    "command_result": cache_result,
+                                    "output_files": _abs_output_paths(output_file_paths),
+                                    "runtime_entry": long_gate_runtime_entry,
+                                }
+                            )
             _refresh_summary_entry(
                 long_gate_runtime_entry,
                 result=result,
@@ -1825,7 +1843,7 @@ def _full_test_debt_failure_cache_is_allowed(
 
 
 def _maybe_write_full_test_debt_failure_cache(
-    runtime_entry: Mapping[str, Any],
+    runtime_entry: Dict[str, Any],
     *,
     result: Mapping[str, Any],
     receipt_path: str,
@@ -1841,13 +1859,16 @@ def _maybe_write_full_test_debt_failure_cache(
         return
     cache_result = dict(result)
     cache_result["receipt_path"] = str(receipt_path or "")
-    write_long_gate_failure(
-        dict(runtime_entry.get("entry") or {}),
-        dict(runtime_entry.get("fingerprint") or {}),
-        cache_result,
-        repo_root=REPO_ROOT,
-        cache_dir=cache_dir,
-    )
+    try:
+        write_long_gate_failure(
+            dict(runtime_entry.get("entry") or {}),
+            dict(runtime_entry.get("fingerprint") or {}),
+            cache_result,
+            repo_root=REPO_ROOT,
+            cache_dir=cache_dir,
+        )
+    except SensitiveSourceError as exc:
+        _mark_runtime_entry_cache_unavailable(runtime_entry, failure_kind="cache_write_unavailable", message=str(exc))
 
 
 def _cached_full_test_debt_failure_result(
@@ -2118,6 +2139,13 @@ def _mark_manifest_unbound(manifest: Dict[str, Any]) -> None:
     }
 
 
+def _cli_impact_path(raw_path: str) -> str:
+    path = normalize_repo_path(raw_path)
+    if not path:
+        raise argparse.ArgumentTypeError(f"not a repository-relative path: {raw_path!r}")
+    return path
+
+
 def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="APS quality gate")
     parser.add_argument(
@@ -2159,6 +2187,7 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
         "--long-gate-impact-path",
         action="append",
         default=[],
+        type=_cli_impact_path,
         metavar="PATH",
         help="changed path to explain; may be repeated; defaults to current git changed paths",
     )
@@ -2240,49 +2269,10 @@ def _disabled_long_gate_decision(entry: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _unwrap_fingerprint_error(error: BaseException) -> Optional[LongGateFingerprintError]:
-    if isinstance(error, LongGateFingerprintError):
-        return error
-    cause = getattr(error, "__cause__", None)
-    if isinstance(cause, LongGateFingerprintError):
-        return cause
-    return None
-
-
-def _fingerprint_error_details(error: LongGateFingerprintError) -> Dict[str, Any]:
-    details = getattr(error, "details", {})
-    if isinstance(details, Mapping):
-        return dict(details)
-    return {}
-
-
-def _fingerprint_error_long_gate_decision(entry: Dict[str, Any], error: LongGateFingerprintError) -> Dict[str, Any]:
-    details = _fingerprint_error_details(error)
-    runtime_key = str(details.get("runtime_key") or "")
-    failure_kind = str(details.get("failure_kind") or "")
-    invalidated_by = ["strict fingerprint failed"]
-    if runtime_key:
-        invalidated_by.append("runtime_key=" + runtime_key)
-    if failure_kind:
-        invalidated_by.append("failure_kind=" + failure_kind)
-    fingerprint_error = {
-        "message": str(error),
-        "runtime_key": runtime_key,
-        "failure_kind": failure_kind,
-        "details": details,
-    }
-    return {
-        "entry_id": str(entry.get("entry_id") or ""),
-        "decision": "run",
-        "reuse_allowed": False,
-        "reason": "strict fingerprint failed; cache unavailable; executing command without read/write cache",
-        "invalidated_by": invalidated_by,
-        "previous_completed_at": "",
-        "previous_result_path": "",
-        "current_fingerprint": {},
-        "cache_unavailable": True,
-        "fingerprint_error": fingerprint_error,
-    }
+def _fingerprint_failure_kind(error: QualityGateError) -> str:
+    """_strict_long_gate_fingerprint always chains the LongGateFingerprintError that carries failure_kind."""
+    cause = cast(LongGateFingerprintError, error.__cause__)
+    return str(cause.details.get("failure_kind") or "")
 
 
 def _decision_cache_unavailable(decision: Mapping[str, Any]) -> bool:
@@ -2310,6 +2300,26 @@ def _force_long_gate_decision(entry: Dict[str, Any], decision: Dict[str, Any], *
     }
 
 
+def _mark_runtime_entry_cache_unavailable(
+    runtime_entry: Dict[str, Any],
+    *,
+    failure_kind: str,
+    message: str,
+) -> Dict[str, Any]:
+    entry = dict(runtime_entry["entry"])
+    entry["cache_status"] = "cache_unavailable"
+    decision = cache_unavailable_decision(str(entry.get("entry_id") or ""), failure_kind=failure_kind, message=message)
+    runtime_entry["entry"] = entry
+    runtime_entry["decision"] = decision
+    summary_entry = runtime_entry["summary_entry"]
+    summary_entry["cache_status"] = "cache_unavailable"
+    summary_entry["cache_unavailable"] = True
+    summary_entry["reason"] = decision["reason"]
+    summary_entry["invalidated_by"] = list(decision["invalidated_by"])
+    summary_entry["fingerprint_error"] = dict(decision["fingerprint_error"])
+    return decision
+
+
 def _refresh_full_test_debt_reuse_decision(runtime_entry: Dict[str, Any], *, cache_dir: str) -> None:
     entry = dict(runtime_entry.get("entry") or {})
     if str(entry.get("entry_id") or "") != ENTRY_FULL_TEST_DEBT:
@@ -2317,12 +2327,23 @@ def _refresh_full_test_debt_reuse_decision(runtime_entry: Dict[str, Any], *, cac
     current_decision = dict(runtime_entry.get("decision") or {})
     if not _full_test_debt_decision_can_refresh(current_decision):
         return
-    fingerprint = _strict_long_gate_fingerprint(entry)
-    evaluation = evaluate_reuse(entry, fingerprint, repo_root=REPO_ROOT, cache_dir=cache_dir)
-    runtime_entry["fingerprint"] = dict(fingerprint)
-    runtime_entry["evaluation"] = dict(evaluation)
-    refreshed_decision = dict(cast(Mapping[str, Any], evaluation["decision"]))
-    runtime_entry["decision"] = refreshed_decision
+    try:
+        fingerprint = _strict_long_gate_fingerprint(entry)
+    except QualityGateError as exc:
+        refreshed_decision = _mark_runtime_entry_cache_unavailable(
+            runtime_entry, failure_kind=_fingerprint_failure_kind(exc), message=str(exc)
+        )
+        runtime_entry["fingerprint"] = {}
+        runtime_entry["evaluation"] = {}
+    else:
+        evaluation = evaluate_reuse(entry, fingerprint, repo_root=REPO_ROOT, cache_dir=cache_dir)
+        runtime_entry["fingerprint"] = dict(fingerprint)
+        runtime_entry["evaluation"] = dict(evaluation)
+        refreshed_decision = dict(cast(Mapping[str, Any], evaluation["decision"]))
+        if _decision_cache_unavailable(refreshed_decision):
+            entry["cache_status"] = "cache_unavailable"
+            runtime_entry["entry"] = entry
+        runtime_entry["decision"] = refreshed_decision
     if str(refreshed_decision.get("decision") or "") != "reuse":
         for rel_path in list(entry.get("output_result_files") or []):
             abs_path = os.path.join(REPO_ROOT, str(rel_path).replace("\\", "/").replace("/", os.sep))
@@ -2334,16 +2355,26 @@ def _refresh_required_regressions_reuse_decision(runtime_entry: Dict[str, Any], 
     entry = dict(runtime_entry.get("entry") or {})
     if str(entry.get("entry_id") or "") != ENTRY_REQUIRED_REGRESSIONS:
         return
-    if _decision_cache_unavailable(dict(runtime_entry.get("decision") or {})):
-        return
     current_decision = dict(runtime_entry.get("decision") or {})
     if not _full_test_debt_decision_can_refresh(current_decision):
         return
-    fingerprint = _strict_long_gate_fingerprint(entry)
+    try:
+        fingerprint = _strict_long_gate_fingerprint(entry)
+    except QualityGateError as exc:
+        _mark_runtime_entry_cache_unavailable(
+            runtime_entry, failure_kind=_fingerprint_failure_kind(exc), message=str(exc)
+        )
+        runtime_entry["fingerprint"] = {}
+        runtime_entry["evaluation"] = {}
+        return
     evaluation = evaluate_reuse(entry, fingerprint, repo_root=REPO_ROOT, cache_dir=cache_dir)
     runtime_entry["fingerprint"] = dict(fingerprint)
     runtime_entry["evaluation"] = dict(evaluation)
-    runtime_entry["decision"] = dict(cast(Mapping[str, Any], evaluation["decision"]))
+    refreshed_decision = dict(cast(Mapping[str, Any], evaluation["decision"]))
+    if _decision_cache_unavailable(refreshed_decision):
+        entry["cache_status"] = "cache_unavailable"
+        runtime_entry["entry"] = entry
+    runtime_entry["decision"] = refreshed_decision
 
 
 def _full_test_debt_decision_can_refresh(decision: Dict[str, Any]) -> bool:
@@ -2389,7 +2420,13 @@ def _prepare_long_gate_cache_decisions(
     summary_entries: List[Dict[str, Any]] = []
     runtime_entries: Dict[str, Dict[str, Any]] = {}
     file_snapshot = FingerprintFileSnapshot(REPO_ROOT, strict=True)
-    metadata = long_gate_cache_metadata(REPO_ROOT, cache_dir=resolved_cache_dir) if cache_enabled else None
+    metadata: Optional[Dict[str, Any]] = None
+    metadata_error: Optional[SensitiveSourceError] = None
+    if cache_enabled:
+        try:
+            metadata = long_gate_cache_metadata(REPO_ROOT, cache_dir=resolved_cache_dir)
+        except SensitiveSourceError as exc:
+            metadata_error = exc
     for index, raw_entry in enumerate(list(manifest.get("entries") or []), start=1):
         entry = dict(raw_entry)
         if not bool(entry.get("reuse_allowed")):
@@ -2400,14 +2437,19 @@ def _prepare_long_gate_cache_decisions(
         evaluation: Optional[Dict[str, Any]] = None
         if not cache_enabled:
             decision = _disabled_long_gate_decision(entry)
+        elif metadata_error is not None:
+            decision = cache_unavailable_decision(
+                entry_id, failure_kind="cache_metadata_unavailable", message=str(metadata_error)
+            )
+            evaluation = {}
+            entry["cache_status"] = "cache_unavailable"
         else:
             try:
                 fingerprint = _strict_long_gate_fingerprint(entry, file_snapshot=file_snapshot)
-            except (LongGateFingerprintError, QualityGateError) as exc:
-                fingerprint_error = _unwrap_fingerprint_error(exc)
-                if fingerprint_error is None:
-                    raise
-                decision = _fingerprint_error_long_gate_decision(entry, fingerprint_error)
+            except QualityGateError as exc:
+                decision = cache_unavailable_decision(
+                    entry_id, failure_kind=_fingerprint_failure_kind(exc), message=str(exc)
+                )
                 evaluation = {}
                 entry["cache_status"] = "cache_unavailable"
             else:
@@ -2423,6 +2465,8 @@ def _prepare_long_gate_cache_decisions(
                     evaluation = dict(evaluate_reuse(entry, fingerprint, repo_root=REPO_ROOT,
                                                      cache_dir=resolved_cache_dir, metadata=metadata))
                     decision = dict(evaluation["decision"])
+                if _decision_cache_unavailable(decision):
+                    entry["cache_status"] = "cache_unavailable"
         summary_entry = build_summary_entry(index=index, entry=entry, decision=decision)
         summary_entries.append(summary_entry)
         if cache_enabled:
@@ -2456,16 +2500,10 @@ def _print_long_gate_cache_decisions(entries: Sequence[Dict[str, Any]], *, cache
         print(f"  reason: {entry.get('reason')}", flush=True)
         fingerprint_error = entry.get("fingerprint_error")
         if isinstance(fingerprint_error, Mapping) and fingerprint_error:
-            runtime_key = str(fingerprint_error.get("runtime_key") or "")
             failure_kind = str(fingerprint_error.get("failure_kind") or "")
-            if runtime_key:
-                print(f"  runtime_key: {runtime_key}", flush=True)
             if failure_kind:
                 print(f"  failure_kind: {failure_kind}", flush=True)
             print("  note: cache unavailable for this entry; old success cache will not be reused", flush=True)
-            details = fingerprint_error.get("details")
-            if isinstance(details, Mapping) and str(details.get("stderr_tail") or ""):
-                print(f"  stderr_tail: {details.get('stderr_tail')}", flush=True)
         if entry.get("previous_result_path"):
             print(f"  previous_result: {entry.get('previous_result_path')}", flush=True)
         if entry.get("input_snapshot"):
@@ -2507,18 +2545,11 @@ def _print_fingerprint_diff(entry: Mapping[str, Any]) -> None:
         print(f"    - ... {len(changes) - 20} more", flush=True)
 
 
-def _normalize_impact_path(path: str) -> str:
-    normalized = str(path or "").replace("\\", "/").strip()
-    while normalized.startswith("./"):
-        normalized = normalized[2:]
-    return normalized.strip("/")
-
-
 def _dedupe_impact_paths(paths: Sequence[str]) -> List[str]:
     rows: List[str] = []
     seen = set()
     for raw_path in list(paths or []):
-        path = _normalize_impact_path(raw_path)
+        path = str(raw_path or "")
         if not path or path in seen:
             continue
         seen.add(path)
@@ -2531,23 +2562,22 @@ def _git_impact_paths(args: Sequence[str]) -> List[str]:
         ["git", *list(args)],
         cwd=REPO_ROOT,
         capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
         check=False,
     )
     if int(completed.returncode) != 0:
-        detail = str(completed.stderr or completed.stdout or "git command failed").strip()
+        stderr = bytes(completed.stderr or b"").decode("utf-8", errors="replace").strip()
+        stdout = bytes(completed.stdout or b"").decode("utf-8", errors="replace").strip()
+        detail = stderr or stdout or "git command failed"
         raise QualityGateError("long-gate impact explain 无法读取 git 变更路径：git " + " ".join(args) + "：" + detail)
-    return _dedupe_impact_paths(str(completed.stdout or "").splitlines())
+    return _dedupe_impact_paths(decode_nul_paths(bytes(completed.stdout or b"")))
 
 
 def _current_impact_paths() -> List[str]:
     paths: List[str] = []
     for args in (
-        ["diff", "--name-only"],
-        ["diff", "--cached", "--name-only"],
-        ["ls-files", "--others", "--exclude-standard"],
+        ["diff", "--name-only", "-z"],
+        ["diff", "--cached", "--name-only", "-z"],
+        ["ls-files", "--others", "--exclude-standard", "-z"],
     ):
         paths.extend(_git_impact_paths(args))
     return _dedupe_impact_paths(paths)
@@ -2630,16 +2660,32 @@ def _write_and_print_long_gate_summary(
     return summary
 
 
-def _write_pending_long_gate_successes(pending_successes: Sequence[Dict[str, Any]], *, cache_dir: str) -> None:
-    for pending in list(pending_successes or []):
-        write_long_gate_success(
-            dict(pending.get("entry") or {}),
-            dict(pending.get("fingerprint") or {}),
-            dict(pending.get("command_result") or {}),
-            [str(path) for path in list(pending.get("output_files") or [])],
-            repo_root=REPO_ROOT,
-            cache_dir=cache_dir,
-        )
+def _prepare_pending_long_gate_successes(
+    pending_successes: Sequence[Dict[str, Any]], *, cache_dir: str
+) -> List[Dict[str, Any]]:
+    prepared_writes: List[Dict[str, Any]] = []
+    for pending in pending_successes:
+        try:
+            prepared_writes.append(
+                prepare_long_gate_success_write(
+                    pending["entry"],
+                    pending["fingerprint"],
+                    pending["command_result"],
+                    pending["output_files"],
+                    repo_root=REPO_ROOT,
+                    cache_dir=cache_dir,
+                )
+            )
+        except SensitiveSourceError as exc:
+            _mark_runtime_entry_cache_unavailable(
+                pending["runtime_entry"], failure_kind="cache_write_unavailable", message=str(exc)
+            )
+    return prepared_writes
+
+
+def _commit_prepared_long_gate_successes(prepared_writes: Sequence[Mapping[str, Any]]) -> None:
+    for prepared in prepared_writes:
+        commit_prepared_long_gate_success(prepared)
 
 
 def _print_long_gate_failure(failure: Dict[str, Any]) -> None:
@@ -2710,8 +2756,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     require_import_cycle_proofs = False
     if bool(args.long_gate_impact_explain):
         impact_paths = (
-            _dedupe_impact_paths(list(args.long_gate_impact_path or []))
-            if list(args.long_gate_impact_path or [])
+            _dedupe_impact_paths(args.long_gate_impact_path)
+            if args.long_gate_impact_path
             else _current_impact_paths()
         )
         _print_long_gate_impact_explain(command_plan, impact_paths)
@@ -2888,6 +2934,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             raise QualityGateError("dirty worktree: clean proof requires an empty worktree after the gate runs")
 
         if long_gate_cache_enabled:
+            prepared_long_gate_successes = _prepare_pending_long_gate_successes(
+                pending_long_gate_successes, cache_dir=resolved_long_gate_cache_dir
+            )
             _write_and_print_long_gate_summary(
                 run_id=run_id,
                 head_sha=head_sha,
@@ -2897,7 +2946,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 failure=long_gate_failure or None,
                 cache_dir=resolved_long_gate_cache_dir,
             )
-            _write_pending_long_gate_successes(pending_long_gate_successes, cache_dir=resolved_long_gate_cache_dir)
+            _commit_prepared_long_gate_successes(prepared_long_gate_successes)
 
         success_by_clean_contract = {
             True: ("passed", "质量门禁通过", 0),

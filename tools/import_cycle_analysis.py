@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import ast
-from typing import Dict, List, Optional, Sequence, Set, Tuple
+from typing import Dict, List, Optional, Sequence, Set, Tuple, Union
 
 from tools import import_cycle_graph as _graph
-
-tarjan = _graph.tarjan
 
 
 def classify(tree: ast.AST) -> List[Tuple[ast.AST, str]]:
@@ -73,8 +71,8 @@ def _classify_try(statement: ast.Try, context: str, out: List[Tuple[ast.AST, str
     _classify_body(statement.finalbody, context, out)
 
 
-ResolvedDynamicImport = Tuple[str, Optional[str], str, int]
-UnresolvedDynamicImport = Tuple[str, int, str]
+ResolvedDynamicImport = Union[_graph.ResolvedFileImport, _graph.ResolvedNameImport]
+UnresolvedDynamicImport = _graph.UnresolvedDynamicImport
 LoaderCandidates = Dict[str, Set[str]]
 
 
@@ -125,7 +123,7 @@ def _dynamic_argument_text(node: ast.AST) -> str:
     if isinstance(node, ast.Name):
         return node.id
     if isinstance(node, ast.Constant):
-        return repr(node.value)
+        return ascii(node.value)
     if isinstance(node, ast.Attribute):
         return f"{_dynamic_argument_text(node.value)}.{node.attr}"
     if isinstance(node, ast.BinOp):
@@ -151,8 +149,13 @@ class _DynamicImportVisitor(ast.NodeVisitor):
         self.file_to_mod = file_to_mod or {}
         self.scope_assignments: Dict[str, ast.AST] = {}
         self.class_outer_values: Dict[str, _graph.StaticValue] = {}
+        self.scope_parts: Tuple[str, ...] = ()
         self.resolved: List[ResolvedDynamicImport] = []
         self.unresolved: List[UnresolvedDynamicImport] = []
+
+    @property
+    def current_scope(self) -> str:
+        return ".".join(self.scope_parts) if self.scope_parts else "<module>"
 
     def _visit_in_context(self, nodes: Sequence[ast.AST], context: str, *, isolate: bool = False) -> None:
         previous_context = self.context
@@ -189,6 +192,7 @@ class _DynamicImportVisitor(ast.NodeVisitor):
             self.values,
             self.scope_assignments,
             self.class_outer_values,
+            self.scope_parts,
         )
         bindings = _graph.import_scope(scope)
         aliases = {} if bindings.wildcard else dict(inherited_aliases)
@@ -201,6 +205,10 @@ class _DynamicImportVisitor(ast.NodeVisitor):
             candidates.setdefault(name, set()).update(kinds)
         self.aliases, self.candidates, self.scope_safe, self.scope_kind = aliases, candidates, bindings.aliases, kind
         self.values, self.scope_assignments = values, bindings.assignments
+        if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            self.scope_parts = (*self.scope_parts, scope.name)
+        elif isinstance(scope, ast.Lambda):
+            self.scope_parts = (*self.scope_parts, "<lambda>")
         if kind == "class":
             self.class_outer_aliases = dict(inherited_aliases)
             self.class_outer_candidates = {
@@ -220,6 +228,7 @@ class _DynamicImportVisitor(ast.NodeVisitor):
                 self.values,
                 self.scope_assignments,
                 self.class_outer_values,
+                self.scope_parts,
             ) = previous
 
     def _nested_scope_sources(self) -> Tuple[Dict[str, str], LoaderCandidates, Dict[str, _graph.StaticValue]]:
@@ -251,35 +260,35 @@ class _DynamicImportVisitor(ast.NodeVisitor):
             if value is not None:
                 self.values[target.id] = value
 
-    def _visit_function_header(self, node: ast.AST) -> None:
-        args = node.args  # type: ignore[attr-defined]
-        for decorator in list(getattr(node, "decorator_list", [])):
+    def _visit_function_header(self, node: Union[ast.FunctionDef, ast.AsyncFunctionDef]) -> None:
+        args = node.args
+        for decorator in node.decorator_list:
             self.visit(decorator)
-        for default in list(args.defaults) + [value for value in args.kw_defaults if value is not None]:
+        for default in args.defaults + [value for value in args.kw_defaults if value is not None]:
             self.visit(default)
-        for arg in list(getattr(args, "posonlyargs", [])) + list(args.args) + list(args.kwonlyargs):
+        parameters = args.posonlyargs + args.args + args.kwonlyargs
+        for arg in parameters + [arg for arg in (args.vararg, args.kwarg) if arg is not None]:
             if arg.annotation is not None:
                 self.visit(arg.annotation)
-        returns = getattr(node, "returns", None)
-        if returns is not None:
-            self.visit(returns)
+        if node.returns is not None:
+            self.visit(node.returns)
 
-    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+    def visit_FunctionDef(self, node: Union[ast.FunctionDef, ast.AsyncFunctionDef]) -> None:
         self._visit_function_header(node)
         body_context = "typeonly" if self.context == "typeonly" else "lazy"
         self._visit_scope(node, node.body, body_context, "function", *self._nested_scope_sources())
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-        self.visit_FunctionDef(node)  # type: ignore[arg-type]
+        self.visit_FunctionDef(node)
 
     def visit_Lambda(self, node: ast.Lambda) -> None:
-        for default in list(node.args.defaults) + [value for value in node.args.kw_defaults if value is not None]:
+        for default in node.args.defaults + [value for value in node.args.kw_defaults if value is not None]:
             self.visit(default)
         body_context = "typeonly" if self.context == "typeonly" else "lazy"
         self._visit_scope(node, [node.body], body_context, "function", *self._nested_scope_sources())
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
-        for expression in list(node.decorator_list) + list(node.bases):
+        for expression in node.decorator_list + node.bases:
             self.visit(expression)
         for keyword in node.keywords:
             self.visit(keyword.value)
@@ -340,7 +349,12 @@ class _DynamicImportVisitor(ast.NodeVisitor):
         first_arg = _call_argument(node, 0, "name")
         if loader_kind:
             if first_arg is None:
-                self.unresolved.append((self.context, node.lineno, f"{loader_kind}(<missing name>)"))
+                self.unresolved.append(
+                    _graph.UnresolvedDynamicImport(
+                        self.context, node.lineno, self.current_scope, loader_kind,
+                        f"{loader_kind}(<missing name>)", _graph.canonical_call_ast(node),
+                    )
+                )
             elif loader_kind == "spec_from_file_location":
                 self._record_file_import(node, first_arg)
             else:
@@ -348,23 +362,37 @@ class _DynamicImportVisitor(ast.NodeVisitor):
         elif _is_unproven_dynamic_loader(node.func, self.candidates):
             argument = "<missing name>" if first_arg is None else _dynamic_argument_text(first_arg)
             expression = f"unproven loader binding: {_dynamic_argument_text(node.func)}({argument})"
-            self.unresolved.append((self.context, node.lineno, expression))
+            self.unresolved.append(
+                _graph.UnresolvedDynamicImport(
+                    self.context, node.lineno, self.current_scope, "unproven",
+                    expression, _graph.canonical_call_ast(node),
+                )
+            )
         self.generic_visit(node)
 
     def _record_name_import(self, node: ast.Call, first_arg: ast.AST, loader_kind: str) -> None:
+        call_ast = _graph.canonical_call_ast(node)
         target = _graph.static_import_value(first_arg, self.values, self.aliases)
         if isinstance(target, str):
             package_arg = _call_argument(node, 1, "package")
             package = _graph.static_import_value(package_arg, self.values, self.aliases) if package_arg else None
             package = package if target.startswith(".") and isinstance(package, str) else None
             if not target.startswith(".") or package is not None:
-                self.resolved.append((target, package, self.context, node.lineno))
+                self.resolved.append(
+                    _graph.ResolvedNameImport(
+                        target, package, self.context, node.lineno, self.current_scope, loader_kind, call_ast
+                    )
+                )
                 return
-            expression = f"relative target {target!r} with unresolved package"
+            expression = f"relative target {target!a} with unresolved package"
         else:
             argument = _dynamic_argument_text(first_arg)
             expression = argument if loader_kind == "import_module" else f"{loader_kind}({argument})"
-        self.unresolved.append((self.context, node.lineno, expression))
+        self.unresolved.append(
+            _graph.UnresolvedDynamicImport(
+                self.context, node.lineno, self.current_scope, loader_kind, expression, call_ast
+            )
+        )
 
     def _record_file_import(self, node: ast.Call, first_arg: ast.AST) -> None:
         location = _call_argument(node, 1, "location")
@@ -376,7 +404,12 @@ class _DynamicImportVisitor(ast.NodeVisitor):
             self.resolved.append(_graph.ResolvedFileImport(target, None, self.context, node.lineno))
         else:
             expression = f"spec_from_file_location({_dynamic_argument_text(first_arg)})"
-            self.unresolved.append((self.context, node.lineno, expression))
+            self.unresolved.append(
+                _graph.UnresolvedDynamicImport(
+                    self.context, node.lineno, self.current_scope, "spec_from_file_location",
+                    expression, _graph.canonical_call_ast(node),
+                )
+            )
 
 
 def _call_argument(call: ast.Call, position: int, *keyword_names: str) -> Optional[ast.AST]:

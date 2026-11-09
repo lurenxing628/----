@@ -62,7 +62,7 @@ hook 字段与返回协议见 [OpenAI Hooks 文档](https://learn.chatgpt.com/do
 
 只要跑了 `ruff check`，紧接着依次跑三个边界棘轮扫描器：`tools.scan_sql_boundary --rule all`（服务层不写 SQL、数据策略）、`tools.scan_private_imports`（禁跨模块导入私有符号）、`tools.scan_dead_path_literals`（失效仓库路径字面量），都带 `--fail-on-new --quiet-when-clean`。它们扫全仓、与 `.codestable/checkup/` 下各自的基线比较：出现新增或计数增加就失败；某条债务清掉后基线条目失效也会失败，这时用对应扫描器的 `--refresh` 收紧基线（基线只减不增，增长必须人工核对后加 `--allow-growth`）。这几份基线文件必须随提交跟踪，pre-push 的临时 worktree 里缺基线会直接报错。
 
-所有选中的测试和尚未覆盖的冒烟节点合并为一次单进程 pytest。已经选中冒烟文件时直接复用该文件的执行，不重复跑节点，也不启动 xdist worker。日常入口由这一次 pytest 收集实际选中的目标；全仓收集证明仍由完整门禁负责。旧 `--workbench-ui-evidence` 浏览器证据入口已退役，保留的 UI Node 契约进入普通 pytest。
+所有选中的测试和尚未覆盖的冒烟节点合并为一次单进程 pytest。已经选中冒烟文件时直接复用该文件的执行，不重复跑节点，也不启动 xdist worker。日常入口由这一次 pytest 收集实际选中的目标；全仓收集证明仍由完整门禁负责。保留的工作台 UI Node 契约进入普通 pytest。
 
 pre-push 从 Git 原始输入识别待推送提交，在对应的临时 worktree 执行快门禁；成功缓存绑定目标 refs、影响范围、工具内容和环境。当前 checkout 的无关 README 修改或提交不触发同一目标重测。手工运行且未指定目标 refs 时，缓存仍要求当前工作区干净。
 
@@ -92,7 +92,7 @@ pre-push 从 Git 原始输入识别待推送提交，在对应的临时 worktree
 4. 跑 `radon` 导入检查、`ruff check`、主链 `pyright` 和工具脚本 `pyright`。
 5. 从上述完整 pytest 的实际结果验证 required 覆盖，跑治理台账检查与系统速查表一致性检查。启动链回归已纳入统一 required 清单，不再单独重跑；旧架构适应度 pytest 专项已退役。
 
-完整 pytest 直接运行 `tests` 中的全部保留用例，不再用 `-m "not perf"` 排除测试。旧重浏览器、性能基准及门禁元测试已实际删除；纯 Node UI 契约与 API/事务回归一起执行。旧浏览器工作台入口脚本仅保留退役提示，不再提供测试执行或成功报告。
+完整 pytest 直接运行 `tests` 中的全部保留用例，不再用 `-m "not perf"` 排除测试。旧重浏览器、性能基准、门禁元测试及旧浏览器工作台入口脚本均已删除；纯 Node UI 契约与 API/事务回归一起执行。
 
 full-test-debt proof 证明当前没有未登记的 full pytest 失败，并且已登记测试债务仍受台账约束；它不代表历史测试债务已经全部修完。
 

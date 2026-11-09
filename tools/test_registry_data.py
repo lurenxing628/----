@@ -158,7 +158,7 @@ _DATA_IO_TESTS = (
 
 _DOMAIN_TESTS = (
     'tests/material/test_material_finite_quantity_contract.py',
-    'tests/migration_db/test_efficiency_indexes_v44.py',
+    'tests/migration_db/test_efficiency_indexes.py',
     'tests/migration_db/test_schema_parity.py',
     'tests/migration_db/test_single_pass_v43.py',
     'tests/migration_db/test_transaction_savepoint_nested.py',
@@ -298,8 +298,6 @@ REQUIRED_REGRESSION_COMMON_SCOPES = {
     "config_file_scopes": (
         "pyproject.toml", "pytest.ini", "setup.cfg", "tox.ini", ".gitignore",
         "pyrightconfig*.json", ".pre-commit-config.yaml", ".github/workflows/*.yml",
-        ".codestable/checkup/import_cycles_production_baseline.json",
-        ".codestable/checkup/import_cycles_with_tests_baseline.json",
     ),
     "tool_file_scopes": ("tools/**/*.py", "scripts/**/*.py", ".codestable/tools/**/*.py"),
     "dependency_file_scopes": ("requirements*.txt", "poetry.lock", "uv.lock", "Pipfile.lock"),

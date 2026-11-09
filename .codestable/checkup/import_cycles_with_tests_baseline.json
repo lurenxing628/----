@@ -1,6 +1,6 @@
 {
- "note": "循环依赖硬加载期环基线。正式门禁同时锁定 scope/roots/文件加载语义，检查圈成员、圈内规范化有向模块边和含行号的未解析动态导入；删边、消圈或 SCC 缩小允许，新增债务阻断。",
- "schema_version": 2,
+ "note": "循环依赖硬加载期环基线。正式门禁同时锁定 scope/roots/文件加载语义，检查圈成员、圈内规范化有向模块边和按 file/scope/context/loader_kind/expression/call_ast 稳定语义身份与 count 锁定的未解析动态导入（物理行号仅用于定位展示，同名/匿名作用域按名称路径合并计数）；删边、消圈或 SCC 缩小允许，新增债务阻断。",
+ "schema_version": 3,
  "scope": "production-and-tests",
  "scan_roots": [
   "core",
@@ -17,9 +17,50 @@
  "hard_dir_cycles": [],
  "hard_file_cycles": [],
  "unresolved_dynamic_imports": [
-  "core/plugins/manager.py|103|lazy|spec_from_file_location(module_name)",
-  "data/repositories/__init__.py|107|lazy|module_name",
-  "tests/gate_meta/check_quickref_vs_routes.py|58|lazy|spec_from_file_location(module_name)",
-  "tests/web_pages/test_system_health_route.py|36|lazy|name"
+  {
+   "file": "core/plugins/manager.py",
+   "scope": "PluginManager.load_from_base_dir",
+   "context": "lazy",
+   "loader_kind": "spec_from_file_location",
+   "expression": "spec_from_file_location(module_name)",
+   "call_ast": "Call(func=Attribute(value=Attribute(value=Name(id='importlib'), attr='util'), attr='spec_from_file_location'), args=[Name(id='module_name'), Name(id='path')], keywords=[])",
+   "count": 1
+  },
+  {
+   "file": "data/repositories/__init__.py",
+   "scope": "__getattr__",
+   "context": "lazy",
+   "loader_kind": "import_module",
+   "expression": "module_name",
+   "call_ast": "Call(func=Name(id='import_module'), args=[Name(id='module_name'), Name(id='__name__')], keywords=[])",
+   "count": 1
+  },
+  {
+   "file": "tests/gate_meta/check_quickref_vs_routes.py",
+   "scope": "_load_app_for_scan",
+   "context": "lazy",
+   "loader_kind": "spec_from_file_location",
+   "expression": "spec_from_file_location(module_name)",
+   "call_ast": "Call(func=Attribute(value=Attribute(value=Name(id='importlib'), attr='util'), attr='spec_from_file_location'), args=[Name(id='module_name'), Name(id='app_path')], keywords=[])",
+   "count": 1
+  },
+  {
+   "file": "tests/web_pages/test_system_health_route.py",
+   "scope": "_load_module",
+   "context": "lazy",
+   "loader_kind": "import_module",
+   "expression": "name",
+   "call_ast": "Call(func=Attribute(value=Name(id='importlib'), attr='import_module'), args=[Name(id='name')], keywords=[])",
+   "count": 1
+  },
+  {
+   "file": "tools/host_tests/test_start_and_rerun_route_script.py",
+   "scope": "_load_route_script_module",
+   "context": "lazy",
+   "loader_kind": "spec_from_file_location",
+   "expression": "spec_from_file_location('run_start_and_rerun_route_test_mod')",
+   "call_ast": "Call(func=Attribute(value=Attribute(value=Name(id='importlib'), attr='util'), attr='spec_from_file_location'), args=[Constant(value='run_start_and_rerun_route_test_mod'), Name(id='_SCRIPT_PATH')], keywords=[])",
+   "count": 1
+  }
  ]
 }

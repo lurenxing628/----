@@ -18,6 +18,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from tools import git_hook_cache  # noqa: E402
 from tools.git_hook_blocked_paths import BLOCKED_PATH_RULES, GENERIC_COMMIT_SUBJECTS  # noqa: E402
+from tools.long_gate_schema import decode_nul_paths  # noqa: E402
 
 ZERO_SHA = "0" * 40
 _GIT_REPOSITORY_LOCAL_ENV_KEYS: Tuple[str, ...] = (
@@ -39,28 +40,23 @@ _GIT_REPOSITORY_LOCAL_ENV_KEYS: Tuple[str, ...] = (
 )
 
 
-def _run_git(args: Sequence[str]) -> str:
+def _run_git_bytes(args: Sequence[str]) -> bytes:
     result = subprocess.run(
         ["git", *args],
         cwd=str(REPO_ROOT),
         capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
         check=False,
     )
     if result.returncode != 0:
-        raise SystemExit(result.stderr.strip() or "git command failed")
-    return result.stdout
+        stderr = bytes(result.stderr or b"").decode("utf-8", errors="replace").strip()
+        raise SystemExit(stderr or "git command failed")
+    return bytes(result.stdout or b"")
 
 
 def _staged_paths() -> List[str]:
-    output = _run_git(["diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z"])
-    return [item for item in output.split("\0") if item]
-
-
-def _normalize_path(path: str) -> str:
-    return git_hook_cache.normalize_repo_path(path)
+    return decode_nul_paths(
+        _run_git_bytes(["diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z"])
+    )
 
 
 def _path_matches_rule(path: str, pattern: str) -> bool:
@@ -79,10 +75,7 @@ def _path_matches_rule(path: str, pattern: str) -> bool:
 
 def _blocked_paths(paths: Iterable[str]) -> List[Tuple[str, str]]:
     blocked: List[Tuple[str, str]] = []
-    for raw_path in paths:
-        path = _normalize_path(raw_path)
-        if not path:
-            continue
+    for path in paths:
         for pattern, reason in BLOCKED_PATH_RULES:
             if _path_matches_rule(path, pattern):
                 blocked.append((path, reason))
@@ -272,7 +265,7 @@ def _run_target_daily_gate(executable: str, refs: Sequence[PrePushRef], *, remot
         scope_file.write_text(
             json.dumps(_daily_scope_for_refs(refs, remote_name=remote_name), ensure_ascii=False), encoding="utf-8",
         )
-        _run_git(["worktree", "add", "--detach", str(worktree), local_sha])
+        _run_git_bytes(["worktree", "add", "--detach", str(worktree), local_sha])
         try:
             print(f"[git-hook] daily gate target: {targets} ({local_sha})", flush=True)
             returncode = int(subprocess.call(
@@ -283,7 +276,7 @@ def _run_target_daily_gate(executable: str, refs: Sequence[PrePushRef], *, remot
                 print(f"[git-hook] daily gate failed: {targets} ({local_sha}), exit={returncode}", file=sys.stderr)
             return returncode
         finally:
-            _run_git(["worktree", "remove", "--force", str(worktree)])
+            _run_git_bytes(["worktree", "remove", "--force", str(worktree)])
 
 
 def run_quality_gate(args: argparse.Namespace) -> int:
@@ -324,6 +317,7 @@ def run_quality_gate(args: argparse.Namespace) -> int:
             return 0
     except git_hook_cache.HookCacheError as exc:
         print(f"[git-hook-cache] pre-push daily gate cache unavailable: {exc}", flush=True)
+        daily_cache_key = None
 
     if refs:
         refs_by_sha: Dict[str, List[PrePushRef]] = {}
@@ -365,11 +359,6 @@ def run_final_quality_gate(_args: argparse.Namespace) -> int:
         "--long-gate-cache",
     ]
     return subprocess.call(command, cwd=str(REPO_ROOT), env=_quality_gate_env())
-
-
-def run_final_quality_gate_if_needed(_args: argparse.Namespace) -> int:
-    """保留旧入口，复用判断统一交给 long-gate runner。"""
-    return run_final_quality_gate(_args)
 
 
 def run_fast_static_precheck(_args: argparse.Namespace) -> int:
@@ -446,7 +435,7 @@ def build_parser() -> argparse.ArgumentParser:
     final_quality_gate.set_defaults(func=run_final_quality_gate)
 
     final_quality_gate_if_needed = subparsers.add_parser("run-final-quality-gate-if-needed")
-    final_quality_gate_if_needed.set_defaults(func=run_final_quality_gate_if_needed)
+    final_quality_gate_if_needed.set_defaults(func=run_final_quality_gate)
 
     fast_precheck = subparsers.add_parser("run-fast-static-precheck")
     fast_precheck.set_defaults(func=run_fast_static_precheck)

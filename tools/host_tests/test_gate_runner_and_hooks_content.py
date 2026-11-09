@@ -15,9 +15,11 @@ import pytest
 
 from scripts import run_daily_quality_gate as daily
 from scripts import run_quality_gate as runner
+from tools import fast_static_precheck as precheck
 from tools import git_hook_cache as hooks
 from tools import git_hook_checks as checks
-from tools.long_gate_schema import content_equal
+from tools import quality_gate_shared as shared
+from tools.long_gate_schema import SensitiveSourceError, content_equal
 
 
 def test_runner_binds_dirty_source_and_resume_receipt_to_original_content(tmp_path, monkeypatch):
@@ -196,12 +198,135 @@ def test_daily_gate_cache_key_tracks_symlink_venv_pytest_plugin_versions(tmp_pat
 
 def test_daily_gate_runs_boundary_scanners_after_ruff_only_when_ruff_runs():
     scanners = ["sql boundary check", "private imports check", "dead path literals check"]
-    for plan in (daily.RuffPlan(["app.py"], False, "changed"), daily.RuffPlan([], True, "full")):
+    for plan in (
+        daily.RuffPlan(["app.py"], False, "changed", daily.ALL_BOUNDARY_SCANNER_LABELS),
+        daily.RuffPlan([], True, "full", daily.ALL_BOUNDARY_SCANNER_LABELS),
+    ):
         commands = daily._commands([], plan)
         assert [label for label, _command in commands][2:5] == scanners
         assert all(command[-2:] == ["--fail-on-new", "--quiet-when-clean"] for _label, command in commands[2:5])
     skipped = daily._commands([], daily.RuffPlan([], False, "docs only"))
     assert not set(scanners) & {label for label, _command in skipped}
+
+
+def test_daily_gate_routes_boundary_baselines_to_matching_scanners_without_full_pytest(monkeypatch):
+    monkeypatch.setattr(daily, "_git_name_only", lambda _args: [])
+    expected_map = {
+        ".codestable/checkup/sql_boundary_baseline.json": (
+            "sql boundary check",
+            [sys.executable, "-m", "tools.scan_sql_boundary", "--rule", "all", "--fail-on-new", "--quiet-when-clean"],
+        ),
+        ".codestable/checkup/data_policy_baseline.json": (
+            "sql boundary check",
+            [sys.executable, "-m", "tools.scan_sql_boundary", "--rule", "all", "--fail-on-new", "--quiet-when-clean"],
+        ),
+        ".codestable/checkup/private_import_baseline.json": (
+            "private imports check",
+            [sys.executable, "-m", "tools.scan_private_imports", "--fail-on-new", "--quiet-when-clean"],
+        ),
+        ".codestable/checkup/dead_path_literal_baseline.json": (
+            "dead path literals check",
+            [sys.executable, "-m", "tools.scan_dead_path_literals", "--fail-on-new", "--quiet-when-clean"],
+        ),
+        ".codestable/checkup/import_cycles_production_baseline.json": (
+            "import cycles check",
+            [sys.executable, "-m", "tools.scan_import_cycles", "--fail-on-new-cycle", "--quiet-when-clean"],
+        ),
+        ".codestable/checkup/import_cycles_with_tests_baseline.json": (
+            "import cycles with tests check",
+            [
+                sys.executable,
+                "-m",
+                "tools.scan_import_cycles",
+                "--include-tests",
+                "--fail-on-new-cycle",
+                "--quiet-when-clean",
+            ],
+        ),
+    }
+    for baseline_path, (expected_scanner, expected_cmd) in expected_map.items():
+        assert not daily._is_docs_only_path(baseline_path)
+        scope = daily.build_daily_gate_scope(
+            pre_push_changed_paths=[baseline_path],
+            pre_push_scope_known=True,
+        )
+        assert scope.impact_plan.target_paths == []
+        assert scope.impact_plan.selected_group_ids == []
+        assert not scope.impact_plan.all_required_groups
+        assert scope.impact_plan.reason == "boundary baseline changed (static check only)"
+        assert scope.ruff_plan.target_paths == []
+        assert not scope.ruff_plan.all_files
+        assert scope.ruff_plan.boundary_scanners == (expected_scanner,)
+        payload = daily.daily_gate_scope_payload(scope)
+        assert payload["ruff"]["boundary_scanners"] == [expected_scanner]
+        commands = daily._commands(scope.impact_plan.target_paths, scope.ruff_plan)
+        assert [label for label, _cmd in commands] == [
+            "block staged runtime artifacts",
+            expected_scanner,
+            "focused pytest",
+        ]
+        assert commands[1] == (expected_scanner, expected_cmd)
+
+    # 多份基线 + 普通文档混合：去重保序触发对应边界扫描器，仍不升级全量 pytest
+    combo_scope = daily.build_daily_gate_scope(
+        pre_push_changed_paths=[
+            ".codestable/checkup/import_cycles_with_tests_baseline.json",
+            ".codestable/checkup/dead_path_literal_baseline.json",
+            ".codestable/checkup/sql_boundary_baseline.json",
+            ".codestable/checkup/data_policy_baseline.json",
+            ".codestable/checkup/import_cycles_production_baseline.json",
+            "README.md",
+            ".codestable/attention.md",
+        ],
+        pre_push_scope_known=True,
+    )
+    assert combo_scope.impact_plan.target_paths == []
+    assert not combo_scope.impact_plan.all_required_groups
+    assert combo_scope.ruff_plan.boundary_scanners == (
+        "sql boundary check",
+        "dead path literals check",
+        "import cycles check",
+        "import cycles with tests check",
+    )
+    assert [label for label, _cmd in daily._commands(combo_scope.impact_plan.target_paths, combo_scope.ruff_plan)] == [
+        "block staged runtime artifacts",
+        "sql boundary check",
+        "dead path literals check",
+        "import cycles check",
+        "import cycles with tests check",
+        "focused pytest",
+    ]
+
+    # Python 文件 + 循环依赖基线混合改动：同时跑 3 个快速边界扫描器与命中的循环依赖扫描器
+    py_and_cycle_scope = daily.build_daily_gate_scope(
+        pre_push_changed_paths=[
+            "core/models/machine.py",
+            ".codestable/checkup/import_cycles_with_tests_baseline.json",
+        ],
+        pre_push_scope_known=True,
+    )
+    assert py_and_cycle_scope.ruff_plan.target_paths == ["core/models/machine.py"]
+    assert py_and_cycle_scope.ruff_plan.boundary_scanners == (
+        *daily.ALL_BOUNDARY_SCANNER_LABELS,
+        "import cycles with tests check",
+    )
+    py_and_cycle_cmds = daily._commands(py_and_cycle_scope.impact_plan.target_paths, py_and_cycle_scope.ruff_plan)
+    assert [label for label, _cmd in py_and_cycle_cmds][2:6] == [
+        *daily.ALL_BOUNDARY_SCANNER_LABELS,
+        "import cycles with tests check",
+    ]
+
+    # 普通文档单改仍走轻量通道
+    doc_scope = daily.build_daily_gate_scope(
+        pre_push_changed_paths=["README.md", ".codestable/attention.md"],
+        pre_push_scope_known=True,
+    )
+    assert doc_scope.impact_plan.reason == "documentation-only changed paths"
+    assert doc_scope.ruff_plan.boundary_scanners == ()
+    assert [label for label, _cmd in daily._commands(doc_scope.impact_plan.target_paths, doc_scope.ruff_plan)] == [
+        "block staged runtime artifacts",
+        "focused pytest",
+    ]
 
 
 def test_git_hook_cli_help_imports_from_outside_repository(tmp_path):
@@ -466,3 +591,504 @@ def test_pre_push_input_requires_original_remote_context_and_keeps_manual_entry(
     parsed = checks._pre_push_input_for_hook(io.StringIO(""))
     assert parsed.saw_push_input and len(parsed.refs) == 1
     assert parsed.refs[0].local_sha == local_sha
+
+
+def test_optional_caches_degrade_when_secret_key_present_while_mandatory_proofs_reject(tmp_path, monkeypatch):
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    monkeypatch.setattr(runner, "REPO_ROOT", str(tmp_path))
+    monkeypatch.setattr(hooks, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(checks, "REPO_ROOT", tmp_path)
+    secret = "secret-in-memory-do-not-persist"
+    monkeypatch.setenv("SECRET_KEY", secret)
+    monkeypatch.setenv("TOKENIZERS_PARALLELISM", "false")
+
+    # Mandatory proofs must still reject sources or diffs containing SECRET_KEY.
+    leaked_src = tmp_path / "pyproject.toml"
+    leaked_src.write_text(f'token = "false"\nsecret = "{secret}"\n', encoding="utf-8")
+    monkeypatch.setattr(shared, "QUALITY_GATE_SOURCE_FILES", ["pyproject.toml"])
+    with pytest.raises(shared.QualityGateError, match="SECRET_KEY") as source_exc:
+        shared.build_quality_gate_source_proof(tmp_path)
+    assert secret not in str(source_exc.value)
+    monkeypatch.setattr(runner, "_run_git_bytes", lambda _args: b"")
+    with pytest.raises(runner.QualityGateError, match="SECRET_KEY") as dirty_file_exc:
+        runner._dirty_worktree_content(["?? pyproject.toml"])
+    assert secret not in str(dirty_file_exc.value)
+    monkeypatch.setattr(runner, "_run_git_bytes", lambda _args: f"+{secret}\n".encode())
+    with pytest.raises(runner.QualityGateError, match="敏感环境值"):
+        runner._dirty_worktree_content([" M pyproject.toml"])
+
+    # Optional long-gate cache boundaries (metadata / refresh / execution / write) degrade to cache_unavailable.
+    runner_script = tmp_path / "scripts" / "run_quality_gate.py"
+    runner_script.parent.mkdir(parents=True, exist_ok=True)
+    runner_script.write_text(f"# {secret}\n", encoding="utf-8")
+    plan = [
+        {
+            "display": "python tools/check_full_test_debt.py --sharded --shard-count 3",
+            "args": ["python", "tools/check_full_test_debt.py", "--sharded", "--shard-count", "3"],
+            "capture_output": True,
+            "output_policy": "exact",
+        }
+    ]
+    summary_entries, runtime_entries = runner._prepare_long_gate_cache_decisions(
+        plan, cache_enabled=True, cache_dir="evidence/QualityGate/long_gate"
+    )
+    assert summary_entries[0]["cache_unavailable"] is True
+    assert summary_entries[0]["cache_status"] == "cache_unavailable"
+    # Cache is unavailable, but the command is still executed for real.
+    assert summary_entries[0]["decision"] == "run"
+    assert summary_entries[0]["reason"].startswith("cache metadata unavailable;")
+    assert summary_entries[0]["fingerprint_error"]["failure_kind"] == "cache_metadata_unavailable"
+    rt_entry = runtime_entries[plan[0]["display"]]
+
+    # Refresh and write boundaries also catch sensitive sources and mark cache_unavailable without crashing.
+    rt_entry["decision"] = {"decision": "run", "reason": "no previous success cache", "cache_unavailable": False}
+    runner._refresh_full_test_debt_reuse_decision(rt_entry, cache_dir="evidence/QualityGate/long_gate")
+    assert rt_entry["decision"]["cache_unavailable"] is True
+    assert rt_entry["decision"]["decision"] == "run"
+    assert rt_entry["decision"]["reason"].startswith("strict fingerprint failed;")
+    assert rt_entry["decision"]["fingerprint_error"]["failure_kind"] == "source_content_unavailable"
+    assert rt_entry["entry"]["cache_status"] == "cache_unavailable"
+
+    valid_fp = {
+        "schema_version": 2,
+        "components": {"command": shared.normalize_quality_gate_command(rt_entry["entry"])},
+    }
+    rt_entry["decision"] = {"decision": "run", "reason": "no previous success cache", "cache_unavailable": False}
+    rt_entry["entry"]["cache_status"] = "reusable"
+    pending = [
+        {
+            "entry": rt_entry["entry"],
+            "fingerprint": valid_fp,
+            "command_result": {"returncode": 0, "stdout": "ok\n", "stderr": ""},
+            "output_files": [str(leaked_src)],
+            "runtime_entry": rt_entry,
+        }
+    ]
+    prepared_writes = runner._prepare_pending_long_gate_successes(pending, cache_dir="evidence/QualityGate/long_gate")
+    assert prepared_writes == []
+    assert rt_entry["decision"]["cache_unavailable"] is True
+    assert rt_entry["decision"]["reason"].startswith("cache write failed;")
+    assert rt_entry["decision"]["fingerprint_error"]["failure_kind"] == "cache_write_unavailable"
+    assert rt_entry["entry"]["cache_status"] == "cache_unavailable"
+    assert rt_entry["summary_entry"]["cache_status"] == "cache_unavailable"
+    assert rt_entry["summary_entry"]["cache_unavailable"] is True
+    assert "SECRET_KEY" in rt_entry["decision"]["fingerprint_error"]["message"]
+    assert not (tmp_path / "evidence/QualityGate/long_gate/logs").exists()
+    assert not (tmp_path / "evidence/QualityGate/long_gate/results").exists()
+
+    rt_entry["decision"] = {"decision": "run", "reason": "no previous success cache", "cache_unavailable": False}
+    rt_entry["entry"]["cache_status"] = "reusable"
+    rt_entry["fingerprint"] = valid_fp
+    runner._maybe_write_full_test_debt_failure_cache(
+        rt_entry,
+        result={"returncode": 1, "stdout": "", "stderr": "fail", "execution_mode": "executed"},
+        receipt_path="evidence/QualityGate/v4/receipts/01.json",
+        cache_dir="evidence/QualityGate/long_gate",
+        long_gate_cache_write_success=True,
+    )
+    assert rt_entry["decision"]["cache_unavailable"] is True
+    assert rt_entry["entry"]["cache_status"] == "cache_unavailable"
+    assert "SECRET_KEY" in rt_entry["decision"]["fingerprint_error"]["message"]
+    assert not (tmp_path / "evidence/QualityGate/long_gate/results").exists()
+
+    # Hook cache: SECRET_KEY disables pre-push daily cache; staged ruff executes without writing cache.
+    scope = daily.DailyGateScope(
+        daily.ChangedPathSet(["core/errors.py"], True, "actual paths"),
+        daily.ImpactPlan(["tests/conftest.py"], ["domain"], False, "actual targets"),
+        daily.RuffPlan(["core/errors.py"], False, "actual ruff targets"),
+    )
+    scope_payload = daily.daily_gate_scope_payload(scope)
+    ref_contexts = [{"local_ref": "refs/heads/main", "local_sha": "a" * 40, "remote_ref": "refs/heads/main", "remote_sha": "b" * 40}]
+    for raw_secret in (secret, f"  {secret}  "):
+        monkeypatch.setenv("SECRET_KEY", raw_secret)
+        with pytest.raises(hooks.HookCacheError, match="SECRET_KEY"):
+            hooks.daily_gate_cache_key(sys.executable, scope_payload=scope_payload, ref_contexts=ref_contexts)
+    monkeypatch.setenv("SECRET_KEY", "   ")
+    assert hooks.daily_gate_cache_key(sys.executable, scope_payload=scope_payload, ref_contexts=ref_contexts)
+    monkeypatch.setenv("SECRET_KEY", secret)
+
+    monkeypatch.setattr(hooks, "staged_python_paths", lambda: ("app.py",))
+    monkeypatch.setattr(hooks, "staged_tree_hash", lambda: "tree123")
+    monkeypatch.setattr(hooks, "cache_path", lambda name: tmp_path / name)
+    monkeypatch.setattr(hooks, "_export_index_to_temp", lambda prefix: (prefix / "app.py").write_text("x = 1\n", encoding="utf-8"))
+    ruff_calls = []
+    monkeypatch.setattr(
+        hooks.subprocess,
+        "call",
+        lambda cmd, **kw: (ruff_calls.append((cmd, kw["cwd"])) or 0),
+    )
+    assert hooks.run_staged_ruff(sys.executable) == 0
+    assert len(ruff_calls) == 1
+    assert not (tmp_path / hooks.STAGED_RUFF_CACHE_NAME).exists()
+
+
+def test_cache_boundaries_only_degrade_sensitive_sources_and_raise_other_value_errors(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner, "REPO_ROOT", str(tmp_path))
+    monkeypatch.setattr(hooks, "REPO_ROOT", tmp_path)
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+    defect = ValueError("internal cache defect")
+
+    def raise_defect(*_args, **_kwargs):
+        raise defect
+
+    # Long-gate metadata: a non-sensitive ValueError is an internal defect, not "cache unavailable".
+    plan = [
+        {
+            "display": "python tools/check_full_test_debt.py --sharded --shard-count 3",
+            "args": ["python", "tools/check_full_test_debt.py", "--sharded", "--shard-count", "3"],
+            "capture_output": True,
+            "output_policy": "exact",
+        }
+    ]
+    monkeypatch.setattr(runner, "long_gate_cache_metadata", raise_defect)
+    with pytest.raises(ValueError, match="internal cache defect"):
+        runner._prepare_long_gate_cache_decisions(plan, cache_enabled=True, cache_dir="evidence/QualityGate/long_gate")
+    monkeypatch.setattr(runner, "fingerprint_entry", raise_defect)
+    with pytest.raises(ValueError, match="internal cache defect"):
+        runner._strict_long_gate_fingerprint({"entry_id": "full_test_debt"})
+
+    # Long-gate writes: command content mismatch must surface instead of being recorded as cache unavailable.
+    entry = {**plan[0], "entry_id": "full_test_debt"}
+    mismatched_fp = {"schema_version": 2, "components": {"command": {"display": "other"}}}
+    runtime_entry = {
+        "entry": dict(entry),
+        "decision": {"decision": "run", "reason": "no previous success cache", "cache_unavailable": False},
+        "summary_entry": {},
+        "fingerprint": mismatched_fp,
+    }
+    with pytest.raises(ValueError, match="matching command content"):
+        runner._prepare_pending_long_gate_successes(
+            [
+                {
+                    "entry": entry,
+                    "fingerprint": mismatched_fp,
+                    "command_result": {"returncode": 0, "stdout": "ok\n", "stderr": ""},
+                    "output_files": [],
+                    "runtime_entry": runtime_entry,
+                }
+            ],
+            cache_dir="evidence/QualityGate/long_gate",
+        )
+    with pytest.raises(ValueError, match="matching command content"):
+        runner._maybe_write_full_test_debt_failure_cache(
+            runtime_entry,
+            result={"returncode": 1, "stdout": "", "stderr": "fail", "execution_mode": "executed"},
+            receipt_path="evidence/QualityGate/v4/receipts/01.json",
+            cache_dir="evidence/QualityGate/long_gate",
+            long_gate_cache_write_success=True,
+        )
+    assert runtime_entry["decision"]["cache_unavailable"] is False
+
+    # Hook caches: only SensitiveSourceError becomes HookCacheError; other ValueErrors propagate.
+    watched = tmp_path / "pyproject.toml"
+    watched.write_text("x = 1\n", encoding="utf-8")
+    monkeypatch.setattr(hooks, "read_file_content", raise_defect)
+    with pytest.raises(ValueError, match="internal cache defect"):
+        hooks._file_contents(["pyproject.toml"])
+
+    def raise_sensitive(_path):
+        raise SensitiveSourceError("source contains sensitive environment value for SECRET_KEY")
+
+    monkeypatch.setattr(hooks, "read_file_content", raise_sensitive)
+    with pytest.raises(hooks.HookCacheError, match="SECRET_KEY"):
+        hooks._file_contents(["pyproject.toml"])
+    monkeypatch.setattr(hooks, "staged_python_paths", lambda: ("app.py",))
+    monkeypatch.setattr(hooks, "staged_tree_hash", lambda: "tree123")
+    monkeypatch.setattr(hooks, "_cache_key_payload", raise_defect)
+    with pytest.raises(ValueError, match="internal cache defect"):
+        hooks.run_staged_ruff(sys.executable)
+
+    # The daily env key set is classified once at import; an unclassified registry key fails loudly.
+    monkeypatch.setattr(hooks, "REQUIRED_REGRESSION_GROUPS", [{"env_keys": ("UNCLASSIFIED_KEY",)}])
+    with pytest.raises(RuntimeError, match="UNCLASSIFIED_KEY"):
+        hooks._daily_gate_env_keys()
+
+
+def test_git_nul_path_decoding_classifies_non_ascii_docs_and_code_with_quotepath_true(tmp_path, monkeypatch):
+    assert hooks.decode_nul_paths(
+        b"\xe5\xbc\x80\xe5\x8f\x91\xe6\x96\x87\xe6\xa1\xa3/\xe5\xbc\x80\xe5\x8f\x91\xe6\x96\x87\xe6\xa1\xa3.md\0core/errors.py\0"
+    ) == ["开发文档/开发文档.md", "core/errors.py"]
+    assert hooks.decode_nul_paths(b"core/line\rname.py\0tools/back\\slash.py\0") == [
+        "core/line\rname.py",
+        "tools/back\\slash.py",
+    ]
+
+    repo = tmp_path / "quotepath-repo"
+    repo.mkdir()
+    env = checks._quality_gate_env()
+
+    def git(*args):
+        res = subprocess.run(["git", *args], cwd=repo, env=env, capture_output=True, text=True, encoding="utf-8")
+        assert res.returncode == 0, res.stderr
+        return res.stdout.strip()
+
+    git("init")
+    git("config", "core.quotepath", "true")
+    git("config", "user.email", "test@example.invalid")
+    git("config", "user.name", "QuotePath Tester")
+
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    git("add", "README.md")
+    git("commit", "-m", "Initial commit")
+    base_sha = git("rev-parse", "HEAD")
+    git("branch", "base", base_sha)
+    git("branch", "--set-upstream-to=base")
+
+    doc_file = repo / "开发文档" / "开发文档.md"
+    doc_file.parent.mkdir(parents=True, exist_ok=True)
+    doc_file.write_text("# 中文说明\n", encoding="utf-8")
+    git("add", "开发文档/开发文档.md")
+
+    monkeypatch.setattr(daily, "REPO_ROOT", str(repo))
+    monkeypatch.setattr(runner, "REPO_ROOT", str(repo))
+    monkeypatch.setattr(hooks, "REPO_ROOT", repo)
+    monkeypatch.setattr(checks, "REPO_ROOT", repo)
+
+    assert hooks.staged_paths() == ["开发文档/开发文档.md"]
+    assert checks._staged_paths() == ["开发文档/开发文档.md"]
+    assert runner._current_impact_paths() == ["开发文档/开发文档.md"]
+    doc_impact = runner.explain_long_gate_impact(
+        shared.build_quality_gate_command_plan(),
+        runner._current_impact_paths(),
+        repo_root=str(repo),
+    )
+    assert doc_impact["changed_paths"] == ["开发文档/开发文档.md"]
+    doc_entries = {row["entry_id"]: row for row in doc_impact["entries"]}
+    assert doc_entries["debt_ledger_sync"]["affected"] is True
+    assert doc_entries["ruff_check_full"]["affected"] is False
+
+    staged_scope = daily.build_daily_gate_scope()
+    assert staged_scope.changed.paths == ["开发文档/开发文档.md"]
+    assert staged_scope.impact_plan.target_paths == []
+    assert staged_scope.impact_plan.reason == "documentation-only changed paths"
+    assert staged_scope.ruff_plan.target_paths == []
+    assert not staged_scope.ruff_plan.all_files
+
+    git("commit", "-m", "Add Chinese doc")
+    doc_sha = git("rev-parse", "HEAD")
+    pre_push_doc_scope = daily.build_daily_gate_scope(
+        pre_push_from_ref=base_sha,
+        pre_push_to_ref=doc_sha,
+        pre_push_remote_name="origin",
+    )
+    assert pre_push_doc_scope.changed.paths == ["开发文档/开发文档.md"]
+    assert pre_push_doc_scope.impact_plan.target_paths == []
+    assert pre_push_doc_scope.impact_plan.reason == "documentation-only changed paths"
+
+    code_file = repo / "core" / "algorithms" / "greedy" / "scheduler.py"
+    code_file.parent.mkdir(parents=True, exist_ok=True)
+    code_file.write_text("VALUE = 1\n", encoding="utf-8")
+    git("add", "core/algorithms/greedy/scheduler.py")
+    assert precheck.collect_changed_python_files(str(repo)).paths == ("core/algorithms/greedy/scheduler.py",)
+    assert runner._current_impact_paths() == ["core/algorithms/greedy/scheduler.py"]
+    code_impact = runner.explain_long_gate_impact(
+        shared.build_quality_gate_command_plan(),
+        runner._current_impact_paths(),
+        repo_root=str(repo),
+    )
+    assert code_impact["changed_paths"] == ["core/algorithms/greedy/scheduler.py"]
+    code_entries = {row["entry_id"]: row for row in code_impact["entries"]}
+    assert code_entries["ruff_check_full"]["affected"] is True
+    assert code_entries["pyright_gate_full"]["affected"] is True
+    git("commit", "-m", "Modify scheduler code")
+    code_sha = git("rev-parse", "HEAD")
+
+    pre_push_code_scope = daily.build_daily_gate_scope(
+        pre_push_from_ref=doc_sha,
+        pre_push_to_ref=code_sha,
+        pre_push_remote_name="origin",
+    )
+    assert pre_push_code_scope.changed.paths == ["core/algorithms/greedy/scheduler.py"]
+    assert pre_push_code_scope.impact_plan.selected_group_ids == ["scheduler"]
+    assert not pre_push_code_scope.impact_plan.all_required_groups
+    assert pre_push_code_scope.ruff_plan.target_paths == ["core/algorithms/greedy/scheduler.py"]
+    assert not pre_push_code_scope.ruff_plan.all_files
+
+    if os.name != "nt":
+        special_rel = "core/with\\slash\rand_cr.py"
+        special_file = repo / "core" / "with\\slash\rand_cr.py"
+        special_file.write_text("SPECIAL = 1\n", encoding="utf-8")
+        git("add", "--", special_rel)
+        assert hooks.staged_paths() == [special_rel]
+        assert checks._staged_paths() == [special_rel]
+        assert runner._current_impact_paths() == [special_rel]
+        special_impact = runner.explain_long_gate_impact(
+            shared.build_quality_gate_command_plan(),
+            runner._current_impact_paths(),
+            repo_root=str(repo),
+        )
+        assert special_impact["changed_paths"] == [special_rel]
+        assert {row["entry_id"]: row for row in special_impact["entries"]}["ruff_check_full"]["affected"] is True
+
+
+def test_cli_impact_paths_normalize_only_at_argument_boundary(capsys):
+    canonical = "tools/long_gate_cache.py"
+    args = runner._parse_args([
+        "--long-gate-impact-explain",
+        "--long-gate-impact-path", "./tools/long_gate_cache.py",
+        "--long-gate-impact-path", "tools\\long_gate_cache.py",
+        "--long-gate-impact-path", " /tools/long_gate_cache.py/ ",
+    ])
+    assert args.long_gate_impact_path == [canonical, canonical, canonical]
+    plan = shared.build_quality_gate_command_plan()
+
+    def affected(paths):
+        impact = runner.explain_long_gate_impact(plan, paths, repo_root=runner.REPO_ROOT)
+        return sorted(row["entry_id"] for row in impact["entries"] if row["affected"])
+
+    expected = affected([canonical])
+    assert expected
+    assert affected(runner._dedupe_impact_paths(args.long_gate_impact_path)) == expected
+    assert affected(["tools\\long_gate_cache.py"]) != expected
+    with pytest.raises(SystemExit):
+        runner._parse_args(["--long-gate-impact-explain", "--long-gate-impact-path", "./"])
+    assert "not a repository-relative path" in capsys.readouterr().err
+
+
+def test_dirty_sensitive_worktree_cli_exits_2_and_failed_cleanup_finalizes_manifest(tmp_path, monkeypatch):
+    source_root = Path(__file__).resolve().parents[2]
+    repo = tmp_path / "gate_repo"
+    (repo / "scripts").mkdir(parents=True)
+    shutil.copyfile(source_root / "scripts" / "run_quality_gate.py", repo / "scripts" / "run_quality_gate.py")
+    (repo / ".gitignore").write_text("evidence/\n__pycache__/\n", encoding="utf-8")
+
+    def git(*args):
+        completed = subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, check=False)
+        assert completed.returncode == 0, completed.stderr
+
+    git("init")
+    git("config", "user.email", "gate@example.invalid")
+    git("config", "user.name", "Gate Fixture")
+    git("add", ".")
+    git("commit", "-m", "init fixture repo")
+
+    secret = "cli-dirty-secret-do-not-persist"
+    leaked_file = repo / "untracked_secret.env"
+    leaked_file.write_text(f"SECRET={secret}\n", encoding="utf-8")
+    cli_env = {
+        **os.environ,
+        "PYTHONPATH": str(source_root),
+        "SECRET_KEY": secret,
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
+    manifest_file = repo / shared.QUALITY_GATE_MANIFEST_REL
+    for mode_flag in ("--require-clean-worktree", "--allow-dirty-worktree"):
+        completed = subprocess.run(
+            [sys.executable, str(repo / "scripts" / "run_quality_gate.py"), mode_flag, "--no-long-gate-cache"],
+            cwd=repo,
+            env=cli_env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert completed.returncode == 2, completed.stderr
+        assert "脏工作区包含敏感来源内容" in completed.stderr
+        assert "SECRET_KEY" in completed.stderr
+        assert "Traceback" not in completed.stderr
+        assert secret not in (completed.stdout + completed.stderr)
+        assert not manifest_file.exists()
+
+    leaked_file.unlink()
+    monkeypatch.setenv("SECRET_KEY", secret)
+    monkeypatch.setattr(runner, "REPO_ROOT", str(repo))
+    monkeypatch.setattr(runner, "REQUIRED_TEST_ARGS", [])
+    monkeypatch.setattr(shared, "QUALITY_GATE_SOURCE_FILES", ())
+    failing_plan = [
+        {
+            "display": "python step-leaks-sensitive-file-and-fails",
+            "args": [
+                "python",
+                "-c",
+                "import os, pathlib, sys; "
+                "pathlib.Path('after_step_secret.env').write_text(os.environ['SECRET_KEY'], encoding='utf-8'); "
+                "sys.exit(1)",
+            ],
+            "capture_output": True,
+            "output_policy": "exact",
+        }
+    ]
+    monkeypatch.setattr(runner, "build_quality_gate_command_plan", lambda: failing_plan)
+
+    with pytest.raises(runner.QualityGateError, match="质量门禁第 1/1 步失败"):
+        runner.main(["--require-clean-worktree", "--no-long-gate-cache"])
+
+    assert manifest_file.is_file()
+    saved_manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+    assert saved_manifest["status"] == "failed"
+    assert saved_manifest["finished_at"]
+    assert "worktree_fingerprint:" in saved_manifest["worktree_proof_error"]
+    assert "SECRET_KEY" in saved_manifest["worktree_proof_error"]
+    assert secret not in json.dumps(saved_manifest, ensure_ascii=False)
+
+
+def test_long_gate_summary_write_failure_does_not_persist_new_success_cache(tmp_path, monkeypatch):
+    repo = tmp_path / "summary_order_repo"
+    repo.mkdir()
+    (repo / ".gitignore").write_text("evidence/\n__pycache__/\n", encoding="utf-8")
+    (repo / "tests").mkdir()
+    (repo / "tests" / "test_sample.py").write_text("def test_ok():\n    assert True\n", encoding="utf-8")
+
+    def git(*args):
+        completed = subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, check=False)
+        assert completed.returncode == 0, completed.stderr
+
+    git("init")
+    git("config", "user.email", "gate@example.invalid")
+    git("config", "user.name", "Gate Fixture")
+    git("add", ".")
+    git("commit", "-m", "init summary order repo")
+
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+    monkeypatch.setattr(runner, "REPO_ROOT", str(repo))
+    monkeypatch.setattr(runner, "REQUIRED_TEST_ARGS", [])
+    monkeypatch.setattr(shared, "QUALITY_GATE_SOURCE_FILES", ())
+    minimal_plan = [
+        {
+            "display": "python -m ruff --version",
+            "args": ["python", "-m", "ruff", "--version"],
+            "capture_output": True,
+            "output_policy": "exact",
+        },
+        {
+            "display": "python -m pyright --version",
+            "args": ["python", "-m", "pyright", "--version"],
+            "capture_output": True,
+            "output_policy": "exact",
+        },
+        {
+            "display": "python -m pytest --collect-only -q tests",
+            "args": ["python", "-m", "pytest", "--collect-only", "-q", "tests"],
+            "capture_output": True,
+            "output_policy": "exact",
+        },
+    ]
+    outputs_by_display = {
+        "python -m ruff --version": "ruff 0.15.0\n",
+        "python -m pyright --version": "pyright 1.1.406\n",
+        "python -m pytest --collect-only -q tests": "tests/test_sample.py::test_ok\n\n1 test collected in 0.01s\n",
+    }
+    monkeypatch.setattr(runner, "build_quality_gate_command_plan", lambda: minimal_plan)
+    monkeypatch.setattr(
+        runner,
+        "_run_command",
+        lambda display, _args, **_kw: {"returncode": 0, "stdout": outputs_by_display[display], "stderr": ""},
+    )
+
+    real_write_summary = runner.write_long_gate_summary
+
+    def fail_summary_write(_summary, _repo_root=None):
+        raise OSError("summary disk full")
+
+    monkeypatch.setattr(runner, "write_long_gate_summary", fail_summary_write)
+    with pytest.raises(OSError, match="summary disk full"):
+        runner.main(["--require-clean-worktree", "--long-gate-cache"])
+
+    assert not (repo / "evidence/QualityGate/long_gate/results").exists()
+    assert not (repo / "evidence/QualityGate/long_gate/logs").exists()
+    failed_manifest = json.loads((repo / shared.QUALITY_GATE_MANIFEST_REL).read_text(encoding="utf-8"))
+    assert failed_manifest["status"] == "failed"
+
+    monkeypatch.setattr(runner, "write_long_gate_summary", real_write_summary)
+    assert runner.main(["--require-clean-worktree", "--long-gate-cache"]) == 0
+    assert (repo / "evidence/QualityGate/long_gate/results/pytest_collect_all.v2.success.json").is_file()
+    assert (repo / "evidence/QualityGate/long_gate/logs/pytest_collect_all.v2.stdout.log").is_file()

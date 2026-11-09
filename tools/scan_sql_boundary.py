@@ -24,20 +24,9 @@ import json
 import os
 import re
 import sys
-from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
-from tools.boundary_baseline import (
-    BoundaryBaselineError,
-    EntryKey,
-    compare_counts,
-    default_baseline_path,
-    entries_to_counts,
-    load_baseline,
-    refresh_growth_error,
-    render_comparison,
-    total_count,
-    write_baseline,
-)
+from tools.boundary_baseline import evaluate_ratchet_rule
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 
@@ -221,7 +210,7 @@ def _read(repo_root: str, rel_path: str) -> str:
         return handle.read()
 
 
-def scan(rule: str, repo_root: str = REPO_ROOT) -> Dict[str, object]:
+def scan(rule: str, repo_root: str = REPO_ROOT) -> Dict[str, Any]:
     if rule == RULE_SQL_BOUNDARY:
         files = _iter_python_files(repo_root, SQL_BOUNDARY_ROOTS, SQL_BOUNDARY_EXCLUDED_PREFIXES)
         scanner = scan_sql_boundary_file
@@ -249,8 +238,8 @@ def scan(rule: str, repo_root: str = REPO_ROOT) -> Dict[str, object]:
     }
 
 
-def render_text(result: Dict[str, object]) -> str:
-    entries = list(result.get("entries") or [])
+def render_text(result: Dict[str, Any]) -> str:
+    entries = result["entries"]
     lines = [
         f"[{result['rule']}] 扫描 {result['file_count']} 个文件，命中 {result['total']} 处，涉及 "
         f"{len({str(entry['path']) for entry in entries})} 个文件"
@@ -281,63 +270,44 @@ def _error(message: str) -> None:
     print(f"[sql-boundary] {message}", file=sys.stderr, flush=True)
 
 
-def run_rule(rule: str, args: argparse.Namespace) -> int:
-    try:
-        result = scan(rule, args.repo_root)
-    except SyntaxError as exc:
-        _error(f"源码解析失败，门禁已阻断：{exc}")
-        return 2
-    current = entries_to_counts(list(result["entries"]))  # type: ignore[arg-type]
-    baseline_path = default_baseline_path(args.repo_root, rule)
-    if args.refresh:
-        try:
-            previous = load_baseline(baseline_path, expected_rule=rule)
-        except BoundaryBaselineError as exc:
-            _error(str(exc))
-            return 2
-        if not args.allow_growth:
-            growth_error = refresh_growth_error(rule, current, previous)
-            if growth_error is not None:
-                _error(growth_error)
-                return 1
-        write_baseline(
-            baseline_path,
-            rule=rule,
-            scan_roots=list(result["scan_roots"]),  # type: ignore[arg-type]
-            note=BASELINE_NOTES[rule],
-            counts=current,
-        )
-        print(f"[{rule}] 基线已写入 {os.path.relpath(baseline_path, args.repo_root)}：{len(current)} 条目 / {total_count(current)} 处")
-        return 0
-    if args.json:
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-        return 0
-    if not args.fail_on_new:
-        print(render_text(result), flush=True)
-        return 0
-    try:
-        baseline = load_baseline(baseline_path, expected_rule=rule)
-    except BoundaryBaselineError as exc:
-        _error(str(exc))
-        return 2
-    comparison = compare_counts(current, baseline)
-    if comparison.baseline_missing:
-        _error(f"{rule} 基线缺失：{baseline_path}；请先查看扫描结果并受控执行 --refresh")
-        return 2
-    if comparison.clean and args.quiet_when_clean:
-        return 0
-    for line in render_comparison(rule, comparison):
-        print(line, flush=True)
-    return 1 if comparison.has_debt else 0
-
-
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = _parse_args(argv)
     rules = list(RULES) if args.rule == "all" else [args.rule]
     exit_code = 0
+    results: Dict[str, Dict[str, Any]] = {}
+    text_lines: List[str] = []
     for rule in rules:
-        code = run_rule(rule, args)
+        try:
+            result = scan(rule, args.repo_root)
+        except SyntaxError as exc:
+            _error(f"源码解析失败，门禁已阻断：{exc}")
+            return 2
+        results[rule] = result
+        code, lines = evaluate_ratchet_rule(
+            args,
+            rule=rule,
+            result=result,
+            note=BASELINE_NOTES[rule],
+            render_text=render_text,
+            error_fn=_error,
+        )
         exit_code = max(exit_code, code)
+        text_lines.extend(lines)
+    if args.json:
+        payload: Dict[str, Any] = (
+            results[rules[0]]
+            if len(rules) == 1
+            else {
+                "rule": "all",
+                "rules": results,
+                "entries": [entry for item in results.values() for entry in item["entries"]],
+                "total": sum(item["total"] for item in results.values()),
+            }
+        )
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        for line in text_lines:
+            print(line, flush=True)
     return exit_code
 
 

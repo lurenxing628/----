@@ -70,18 +70,28 @@ def test_schema4_binds_original_source_and_receipt_content(tmp_path, monkeypatch
 
 def test_receipt_output_policy_sanitizes_and_checks_actual_logs(tmp_path, monkeypatch):
     secret = "private-runtime-value-for-contract"
-    monkeypatch.setenv("SECRET_KEY", secret)
+    monkeypatch.setenv("SECRET_KEY", f"  {secret}  ")
+    monkeypatch.setenv("TOKENIZERS_PARALLELISM", "false")
+    monkeypatch.setenv("CUSTOM_TOKEN", "false")
+    assert shared.sanitize_quality_gate_output(f"leaked={secret}\n") == "leaked=[REDACTED]\n"
     command = _command("normalized")
-    stdout = "1 passed in 1.20s\r\n" + secret + "\r\n"
+    stdout = "1 passed in 1.20s (token=false)\r\n" + secret + "\r\n"
     receipt, entry = _receipt_files(tmp_path, command, stdout)
-    assert receipt["stdout_content"] == "1 passed in <seconds>s\n[REDACTED]\n"
+    assert receipt["stdout_content"] == "1 passed in <seconds>s (token=false)\n[REDACTED]\n"
     assert secret not in canonical_content(entry)
     assert secret not in (tmp_path / receipt["stdout_log_path"]).read_text(encoding="utf-8")
+    monkeypatch.setenv("SECRET_KEY", "   ")
+    assert shared.sanitize_quality_gate_output("a b c\n") == "a b c\n"
+    monkeypatch.setenv("SECRET_KEY", secret)
     with pytest.raises(shared.QualityGateError) as error:
         shared.normalize_quality_gate_command({**command, "env_overlay": {"SECRET_KEY": secret}})
     assert "SECRET_KEY" in str(error.value) and secret not in str(error.value)
+    with pytest.raises(shared.QualityGateError, match="SECRET_KEY"):
+        shared.normalize_quality_gate_command({**command, "env_overlay": {"SECRET_KEY": ""}})
+    with pytest.raises(shared.QualityGateError, match="allowlist"):
+        shared.normalize_quality_gate_command({**command, "env_overlay": {"TOKENIZERS_PARALLELISM": "false"}})
 
-    result = {1: {"returncode": 0, "stdout": "1 passed in 7.90s\n" + secret + "\n", "stderr": ""}}
+    result = {1: {"returncode": 0, "stdout": "1 passed in 7.90s (token=false)\n" + secret + "\n", "stderr": ""}}
     assert shared.replay_quality_gate_command_plan(
         tmp_path, [command], receipt_entries=[entry], run_id="run-content", reusable_results=result,
     ) is None
@@ -223,3 +233,114 @@ def test_direct_script_entries_bootstrap_outside_repo_root(analysis_repo, tmp_pa
         completed = subprocess.run(command, cwd=str(tmp_path), env=env, capture_output=True, text=True, check=False)
         assert completed.returncode == 0, completed.stderr
         assert expected in completed.stdout
+
+
+def test_verify_manifest_and_reusable_results_handle_sensitive_sources_and_propagate_defects(tmp_path, monkeypatch):
+    from tools import long_gate_fingerprint, long_gate_schema
+
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    secret = "shared-gate-secret-do-not-leak"
+    monkeypatch.setenv("SECRET_KEY", secret)
+
+    command = _command()
+    monkeypatch.setattr(shared, "QUALITY_GATE_SOURCE_FILES", ("source.py",))
+    monkeypatch.setattr(
+        shared,
+        "iter_quality_gate_required_tests",
+        lambda: ["tests/workbench/test_content_encoding.py"],
+    )
+    monkeypatch.setattr(shared, "build_quality_gate_command_plan", lambda: [command])
+    monkeypatch.setattr(
+        shared,
+        "collect_current_pytest_nodeids",
+        lambda _root: (
+            True,
+            ["tests/workbench/test_content_encoding.py::test_ok"],
+            "tests/workbench/test_content_encoding.py::test_ok\n",
+            "",
+            "",
+        ),
+    )
+
+    source_file = tmp_path / "source.py"
+    source_file.write_text("CLEAN = 1\n", encoding="utf-8")
+    (tmp_path / ".gitignore").write_text("evidence/\n", encoding="utf-8")
+    subprocess.run(["git", "config", "user.email", "gate@example.invalid"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Gate Fixture"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(["git", "add", ".gitignore", "source.py"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=tmp_path, check=True, capture_output=True)
+    receipt, entry = _receipt_files(tmp_path, command, run_id="head-1:run")
+    identity = shared.repo_identity(tmp_path)
+    manifest = shared.apply_quality_gate_manifest_proof_fields(
+        {
+            **identity,
+            "status": "passed",
+            "run_id": "head-1:run",
+            "head_sha": "head-1",
+            "git_status_short_before": [],
+            "git_status_short_after": [],
+            "is_dirty_before": False,
+            "is_dirty_after": False,
+            "tracked_drift_detected": False,
+            "required_tests": ["tests/workbench/test_content_encoding.py"],
+            "commands": [command],
+            "command_receipts": [entry],
+            "collection_proof": shared.build_quality_gate_collection_proof(
+                ["tests/workbench/test_content_encoding.py::test_ok"],
+                required_tests=["tests/workbench/test_content_encoding.py"],
+            ),
+            "gate_sources": shared.build_quality_gate_source_proof(tmp_path),
+        },
+        repo_root=tmp_path,
+    )
+    assert shared.verify_quality_gate_manifest(
+        repo_root=tmp_path, manifest=manifest, head_sha="head-1", git_status_lines=[], replay_commands=True
+    ) == (True, "BOUND")
+
+    source_file.write_text(f'LEAK = "{secret}"\n', encoding="utf-8")
+    direct_note = shared._verify_manifest_gate_sources(tmp_path, manifest)
+    assert direct_note is not None
+    assert direct_note.startswith("UNBOUND: current quality gate sources cannot be verified (")
+    assert "SECRET_KEY" in direct_note and secret not in direct_note
+    bound, verify_note = shared.verify_quality_gate_manifest(
+        repo_root=tmp_path, manifest=manifest, head_sha="head-1", git_status_lines=[], replay_commands=True
+    )
+    assert bound is False
+    assert verify_note == direct_note
+
+    ruff_cmd = {
+        "display": "python -m ruff check",
+        "args": ["python", "-m", "ruff", "check"],
+        "capture_output": False,
+        "output_policy": "normalized",
+    }
+    ruff_receipt, _ruff_entry = _receipt_files(tmp_path, ruff_cmd, stdout="", run_id="head-1:run")
+    receipts = {1: ruff_receipt}
+    assert shared._reusable_quality_gate_results(
+        tmp_path, {"long_gate_cache_dir": "../outside"}, [ruff_cmd], receipts
+    ) == {}
+
+    runner_script = tmp_path / "scripts" / "run_quality_gate.py"
+    runner_script.parent.mkdir(parents=True, exist_ok=True)
+    runner_script.write_text(f"# {secret}\n", encoding="utf-8")
+    cache_manifest = {"long_gate_cache_dir": "evidence/QualityGate/long_gate"}
+    assert shared._reusable_quality_gate_results(tmp_path, cache_manifest, [ruff_cmd], receipts) == {}
+
+    runner_script.write_text("# clean runner\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text(f'secret = "{secret}"\n', encoding="utf-8")
+    assert shared._reusable_quality_gate_results(tmp_path, cache_manifest, [ruff_cmd], receipts) == {}
+
+    (tmp_path / "pyproject.toml").write_text("clean = true\n", encoding="utf-8")
+
+    def raise_internal_defect(*_args, **_kwargs):
+        raise ValueError("internal reuse defect")
+
+    with monkeypatch.context() as ctx:
+        ctx.setattr(long_gate_fingerprint, "fingerprint_entry", raise_internal_defect)
+        with pytest.raises(ValueError, match="internal reuse defect"):
+            shared._reusable_quality_gate_results(tmp_path, cache_manifest, [ruff_cmd], receipts)
+
+    with monkeypatch.context() as ctx:
+        ctx.setattr(long_gate_schema, "long_gate_cache_metadata", raise_internal_defect)
+        with pytest.raises(ValueError, match="internal reuse defect"):
+            shared._reusable_quality_gate_results(tmp_path, cache_manifest, [ruff_cmd], receipts)

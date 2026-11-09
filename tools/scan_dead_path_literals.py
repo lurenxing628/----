@@ -27,23 +27,12 @@ from __future__ import annotations
 
 import argparse
 import ast
-import json
 import os
 import re
 import sys
-from typing import Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
-from tools.boundary_baseline import (
-    BoundaryBaselineError,
-    compare_counts,
-    default_baseline_path,
-    entries_to_counts,
-    load_baseline,
-    refresh_growth_error,
-    render_comparison,
-    total_count,
-    write_baseline,
-)
+from tools.boundary_baseline import run_ratchet_cli
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 RULE = "dead_path_literal"
@@ -137,8 +126,8 @@ def scan(repo_root: str = REPO_ROOT) -> Dict[str, object]:
             "total": sum(int(entry["count"]) for entry in entries)}
 
 
-def render_text(result: Dict[str, object]) -> str:
-    entries = list(result.get("entries") or [])
+def render_text(result: Dict[str, Any]) -> str:
+    entries = result["entries"]
     by_file: Dict[str, int] = {}
     for entry in entries:
         path = str(entry["path"])
@@ -172,42 +161,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     except SyntaxError as exc:
         _error(f"源码解析失败，门禁已阻断：{exc}")
         return 2
-    current = entries_to_counts(list(result["entries"]))  # type: ignore[arg-type]
-    baseline_path = default_baseline_path(args.repo_root, RULE)
-    if args.refresh:
-        try:
-            previous = load_baseline(baseline_path, expected_rule=RULE)
-        except BoundaryBaselineError as exc:
-            _error(str(exc))
-            return 2
-        if not args.allow_growth:
-            growth_error = refresh_growth_error(RULE, current, previous)
-            if growth_error is not None:
-                _error(growth_error)
-                return 1
-        write_baseline(baseline_path, rule=RULE, scan_roots=list(SCAN_ROOTS), note=BASELINE_NOTE, counts=current)
-        print(f"[{RULE}] 基线已写入 {os.path.relpath(baseline_path, args.repo_root)}：{len(current)} 条目 / {total_count(current)} 处")
-        return 0
-    if args.json:
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-        return 0
-    if not args.fail_on_new:
-        print(render_text(result), flush=True)
-        return 0
-    try:
-        baseline = load_baseline(baseline_path, expected_rule=RULE)
-    except BoundaryBaselineError as exc:
-        _error(str(exc))
-        return 2
-    comparison = compare_counts(current, baseline)
-    if comparison.baseline_missing:
-        _error(f"基线缺失：{baseline_path}；请先查看扫描结果并受控执行 --refresh")
-        return 2
-    if comparison.clean and args.quiet_when_clean:
-        return 0
-    for line in render_comparison(RULE, comparison):
-        print(line, flush=True)
-    return 1 if comparison.has_debt else 0
+    return run_ratchet_cli(
+        args,
+        rule=RULE,
+        result=result,
+        note=BASELINE_NOTE,
+        render_text=render_text,
+        error_fn=_error,
+    )
 
 
 if __name__ == "__main__":

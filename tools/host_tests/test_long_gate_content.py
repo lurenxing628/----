@@ -15,7 +15,15 @@ from tools import long_gate_cache as cache
 from tools import long_gate_fingerprint as fingerprint
 from tools.long_gate_collect import COLLECT_NODEIDS_REL, build_collect_nodeids_payload, write_collect_nodeids
 from tools.long_gate_manifest import build_manifest_from_quality_gate_plan
-from tools.long_gate_schema import canonical_content, content_equal, read_file_content
+from tools.long_gate_schema import (
+    PRIVATE_ENVIRONMENT_KEYS,
+    PUBLIC_ENVIRONMENT_KEYS,
+    SensitiveSourceError,
+    canonical_content,
+    content_equal,
+    long_gate_cache_metadata,
+    read_file_content,
+)
 from tools.long_gate_summary import build_long_gate_summary, build_summary_entry, write_long_gate_summary
 from tools.quality_gate_shared import (
     FORMAL_FULL_TEST_PYTEST_ARGS,
@@ -82,7 +90,8 @@ class LongGateContentTests(unittest.TestCase):
                 cache.evaluate_failure_reuse(self.entry, before, repo_root=str(self.root))["decision"]["cache_unavailable"]
             )
             with self.assertRaises(ValueError):
-                cache.write_success(self.entry, before, self.result, ["result.bin"], repo_root=str(self.root))
+                cache.prepare_success_write(self.entry, before, self.result, ["result.bin"], repo_root=str(self.root))
+            self.assertFalse((self.root / "evidence" / "QualityGate" / "long_gate" / "logs").exists())
             with self.assertRaises(ValueError):
                 cache.write_failure(self.entry, before, {**self.result, "returncode": 1}, repo_root=str(self.root))
             self.source.write_bytes(b"value=2\n\x00\xff")
@@ -111,10 +120,67 @@ class LongGateContentTests(unittest.TestCase):
                 fingerprint.fingerprint_environment(["API_TOKEN"], environment={"API_TOKEN": "private"})
         credential_source = self.root / "config.env"
         credential_source.write_bytes(b"value=private-only-in-memory")
+        for raw_secret in ("private-only-in-memory", "  private-only-in-memory  \n"):
+            with patch.dict(os.environ, {"SECRET_KEY": raw_secret}, clear=True):
+                with self.assertRaises(ValueError) as rejected:
+                    read_file_content(str(credential_source))
+                self.assertNotIn("private-only-in-memory", str(rejected.exception))
+        with patch.dict(os.environ, {"SECRET_KEY": "   \t\n  ", "APS_ENV": "host"}, clear=True):
+            blank_fp = self.current()
+            self.assertEqual(blank_fp["components"]["environment"]["values"]["SECRET_KEY"], {"present": False})
+            self.assertEqual(blank_fp["components"]["environment"]["non_reusable_env_keys"], [])
+            self.assertFalse(cache.evaluate_reuse(self.entry, blank_fp, repo_root=str(self.root))["decision"].get("cache_unavailable"))
+        if os.name != "nt":
+            backslash_rel = "tools/name\\part.py"
+            backslash_file = self.root / "tools" / "name\\part.py"
+            backslash_file.parent.mkdir(parents=True, exist_ok=True)
+            backslash_file.write_bytes(b"x = 1\n")
+            backslash_entry = {
+                **self.entry,
+                "input_file_scopes": ["tools/**/*.py"],
+                "env_keys": ["APS_ENV"],
+                "output_result_files": [],
+            }
+            with patch.object(
+                fingerprint, "_git_path_sources", return_value=({backslash_rel}, set(), "available")
+            ), patch.dict(os.environ, {"APS_ENV": "host"}, clear=True):
+                bs_before = self.current(backslash_entry)
+                bs_files = bs_before["components"]["files"]["files"]
+                self.assertEqual([row["path"] for row in bs_files], [backslash_rel])
+                self.assertEqual(bs_files[0]["kind"], "file")
+                self.assertEqual(bs_files[0]["source"], "tracked")
+                backslash_file.write_bytes(b"x = 2\n")
+                bs_after = self.current(backslash_entry)
+                self.assertTrue(fingerprint.diff_fingerprints(bs_before, bs_after)["changed"])
+            backslash_file.unlink()
+        repo_pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
+        token_cfg = self.root / "pyproject.toml"
+        token_cfg.write_bytes(repo_pyproject.read_bytes() + b'\ncustom_token = "false"\n')
+        runner_script = self.root / "scripts" / "run_quality_gate.py"
+        runner_script.parent.mkdir(parents=True, exist_ok=True)
+        runner_script.write_bytes(b"RUNNER_FLAG = 'false'\n")
+        with patch.dict(
+            os.environ,
+            {"TOKENIZERS_PARALLELISM": "false", "CUSTOM_TOKEN": "false"},
+            clear=True,
+        ):
+            self.assertEqual(base64.b64decode(read_file_content(str(token_cfg))), token_cfg.read_bytes())
+            meta = long_gate_cache_metadata(str(self.root))
+            self.assertEqual(meta["runner_version_content"][0]["path"], "scripts/run_quality_gate.py")
+        runner_script.write_bytes(b"LEAKED = 'private-only-in-memory'\n")
+        static_entry = {**self.entry, "env_keys": ["APS_ENV"], "output_result_files": []}
         with patch.dict(os.environ, {"SECRET_KEY": "private-only-in-memory"}, clear=True):
-            with self.assertRaises(ValueError) as rejected:
-                read_file_content(str(credential_source))
-            self.assertNotIn("private-only-in-memory", str(rejected.exception))
+            static_fp = self.current(static_entry)
+            meta_reuse = cache.evaluate_reuse(static_entry, static_fp, repo_root=str(self.root))["decision"]
+            self.assertEqual(meta_reuse["decision"], "run")
+            self.assertTrue(meta_reuse["cache_unavailable"])
+            self.assertIn("metadata unavailable", meta_reuse["reason"])
+            meta_fail = cache.evaluate_failure_reuse(static_entry, static_fp, repo_root=str(self.root))["decision"]
+            self.assertEqual(meta_fail["decision"], "run")
+            self.assertTrue(meta_fail["cache_unavailable"])
+        runner_script.unlink()
+        self.assertEqual(PRIVATE_ENVIRONMENT_KEYS, frozenset({"SECRET_KEY"}))
+        self.assertIn("PYTHONHASHSEED", PUBLIC_ENVIRONMENT_KEYS)
         runtime_file = self.root / "aps_runtime.json"
         runtime_file.write_bytes(b'{"shutdown_token":"fixture-value"}')
         with self.assertRaises(ValueError):
@@ -128,7 +194,9 @@ class LongGateContentTests(unittest.TestCase):
         current = self.current()
         with patch.dict(os.environ, {"SECRET_KEY": "redact-this-value"}):
             result = {**self.result, "stdout": "redact-this-value\r\nall passed\n"}
-            cache.write_success(self.entry, current, result, ["result.bin"], repo_root=str(self.root))
+            cache.commit_prepared_success_write(
+                cache.prepare_success_write(self.entry, current, result, ["result.bin"], repo_root=str(self.root))
+            )
         path, saved = self.saved()
         self.assertEqual(saved["stdout_content"], "[REDACTED]\r\nall passed\n")
         self.assertEqual(base64.b64decode(saved["output_files"][0]["content_base64"]), self.output.read_bytes())
@@ -191,7 +259,11 @@ class LongGateContentTests(unittest.TestCase):
 
     def test_missing_unreadable_or_mistyped_cache_reruns_with_original_reason(self):
         failure_entry = {**self.entry, "output_result_files": []}
-        cache.write_success(self.entry, self.current(), self.result, ["result.bin"], repo_root=str(self.root))
+        cache.commit_prepared_success_write(
+            cache.prepare_success_write(
+                self.entry, self.current(), self.result, ["result.bin"], repo_root=str(self.root)
+            )
+        )
         cache.write_failure(failure_entry, self.current(failure_entry), {**self.result, "returncode": 2}, repo_root=str(self.root))
         for kind, entry, evaluate in (
             ("success", self.entry, cache.evaluate_reuse),
@@ -299,8 +371,11 @@ class LongGateContentTests(unittest.TestCase):
         ):
             for entry in (full, collect):
                 result = {**self.result, "stdout": payload["collect_stdout_content"] if entry is collect else "1 passed\n"}
-                cache.write_success(entry, self.current(entry), result, entry["output_result_files"],
-                                    repo_root=str(self.root))
+                cache.commit_prepared_success_write(
+                    cache.prepare_success_write(
+                        entry, self.current(entry), result, entry["output_result_files"], repo_root=str(self.root)
+                    )
+                )
                 self.assertEqual(cache.evaluate_reuse(entry, self.current(entry), repo_root=str(self.root))["decision"]["decision"],
                                  "reuse")
             for entry, sources in ((full, execution_sources), (collect, collect_sources)):
@@ -338,7 +413,9 @@ class LongGateContentTests(unittest.TestCase):
         self.assertEqual(decision["decision"], "run")
         self.assertEqual(decision["previous_result_path"], str(legacy.relative_to(self.root)))
         self.assertIn("legacy", decision["reason"])
-        cache.write_success(self.entry, current, self.result, ["result.bin"], repo_root=str(self.root))
+        cache.commit_prepared_success_write(
+            cache.prepare_success_write(self.entry, current, self.result, ["result.bin"], repo_root=str(self.root))
+        )
         self.assertEqual(legacy.read_bytes(), original)
         self.assertEqual(old_log.read_bytes(), b"historical output\n")
         self.assertEqual(json.loads(legacy.read_text())["completed_at"], "historical")
@@ -534,6 +611,42 @@ class LongGateContentTests(unittest.TestCase):
                 for row in order_diff["components"]
             )
         )
+
+    def test_fingerprint_translates_sensitive_sources_to_domain_error(self):
+        secret = "fingerprint-secret-do-not-persist"
+        self.source.write_text(f'LEAK = "{secret}"\n', encoding="utf-8")
+        with patch.dict(os.environ, {"SECRET_KEY": secret, "APS_ENV": "host"}, clear=True):
+            with self.assertRaises(fingerprint.LongGateFingerprintError) as file_err:
+                self.current()
+            self.assertEqual(file_err.exception.details, {"failure_kind": "source_content_unavailable"})
+            self.assertIsInstance(file_err.exception.__cause__, SensitiveSourceError)
+            self.assertIn("SECRET_KEY", str(file_err.exception))
+            self.assertNotIn(secret, str(file_err.exception))
+
+            if os.name != "nt":
+                link_path = self.root / "linked_source.py"
+                link_path.symlink_to(self.source)
+                with patch.object(
+                    fingerprint, "_git_path_sources", return_value=({"linked_source.py"}, set(), "available")
+                ):
+                    with self.assertRaises(fingerprint.LongGateFingerprintError) as link_err:
+                        fingerprint.fingerprint_files(["linked_source.py"], str(self.root), strict=True)
+                self.assertEqual(link_err.exception.details, {"failure_kind": "source_content_unavailable"})
+                self.assertIsInstance(link_err.exception.__cause__, SensitiveSourceError)
+                self.assertNotIn(secret, str(link_err.exception))
+
+            scanner_file = self.root / "tools" / "architecture_scan_cache.py"
+            scanner_file.parent.mkdir(parents=True, exist_ok=True)
+            scanner_file.write_text(f'LEAK = "{secret}"\n', encoding="utf-8")
+            with self.assertRaises(fingerprint.LongGateFingerprintError) as env_err:
+                fingerprint.fingerprint_environment(
+                    ["architecture_scan_cache_metadata"],
+                    strict=True,
+                    repo_root=str(self.root),
+                )
+            self.assertEqual(env_err.exception.details, {"failure_kind": "source_content_unavailable"})
+            self.assertIsInstance(env_err.exception.__cause__, SensitiveSourceError)
+            self.assertNotIn(secret, str(env_err.exception))
 
 
 if __name__ == "__main__":

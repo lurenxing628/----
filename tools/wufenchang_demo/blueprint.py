@@ -103,10 +103,9 @@ def _calendar(scenario, start):
     for offset in range(scenario["calendar_days"]):
         day = start + timedelta(days=offset)
         rest = day.weekday() >= 5
-        days.append({"date": day.isoformat(), "fields": {"type": "rest" if rest else "work", "hours": 0 if rest else 8,
+        days.append({"date": day.isoformat(), "fields": {"type": "rest" if rest else "work",
             "eff": 100, "allowNormal": "no" if rest else "yes", "allowUrgent": "no" if rest else "yes",
-            "periods": [] if rest else scenario["shift_periods"], "shiftStart": "00:00" if rest else "08:00",
-            "shiftEnd": "00:00" if rest else "17:00", "note": None}})
+            "periods": [] if rest else scenario["shift_periods"], "note": None}})
     return days
 
 
@@ -127,7 +126,7 @@ def demo_blueprint(start_date=None):
     for index, operator in enumerate(("QG-01", "XG-01", "SS-01")):
         leave.append({"operator_code": operator, "date": workday(start, 6 + index).isoformat(),
                       "fields": {"type": "rest", "eff": 100, "allowNormal": "no", "allowUrgent": "no",
-                                 "periods": [], "shiftStart": "08:00", "note": "技能培训"}})
+                                 "periods": [], "note": "技能培训"}})
     return {"parts": parts, "batches": batches, "resources": resources,
             "calendar_days": _calendar(scenario, start), "operator_calendar_days": leave,
             "machine_downtimes": downtime, "operator_machine_permissions": operator_permissions(resources),

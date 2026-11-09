@@ -611,7 +611,6 @@ def _scopes_for_entry(
             [
                 "tests/**/*.py",
                 "tests/**/*.cjs",
-                "tests/**/fixtures/*.sql",
                 "tests/**/fixtures/*.json",
                 "tests/**/conftest.py",
                 "conftest.py",
@@ -822,7 +821,8 @@ def build_manifest_from_quality_gate_plan(
     return manifest
 
 
-def _normalize_repo_path(path: str) -> str:
+def normalize_repo_path(path: str) -> str:
+    """Normalize declared scopes and user-typed paths; Git output never passes through here."""
     normalized = str(path or "").replace("\\", "/").strip()
     while normalized.startswith("./"):
         normalized = normalized[2:]
@@ -830,23 +830,18 @@ def _normalize_repo_path(path: str) -> str:
 
 
 def _scope_matches_path(path: str, scope: str) -> bool:
-    normalized_path = _normalize_repo_path(path)
-    normalized_scope = _normalize_repo_path(scope)
-    if not normalized_path or not normalized_scope:
-        return False
-    if normalized_scope.endswith("/"):
-        return normalized_path.startswith(normalized_scope)
-    if fnmatch.fnmatch(normalized_path, normalized_scope):
+    if fnmatch.fnmatch(path, scope):
         return True
-    if "**/" in normalized_scope and fnmatch.fnmatch(normalized_path, normalized_scope.replace("**/", "")):
+    if "**/" in scope and fnmatch.fnmatch(path, scope.replace("**/", "")):
         return True
     return False
 
 
 def _matches_for_scopes(paths: Sequence[str], scopes: Sequence[str]) -> List[Dict[str, str]]:
     matches: List[Dict[str, str]] = []
-    for path in _dedupe([_normalize_repo_path(item) for item in paths]):
-        for scope in _dedupe([_normalize_repo_path(item) for item in scopes]):
+    normalized_scopes = _dedupe([normalize_repo_path(item) for item in scopes])
+    for path in _dedupe(paths):
+        for scope in normalized_scopes:
             if _scope_matches_path(path, scope):
                 matches.append({"path": path, "scope": scope})
     return matches
@@ -869,7 +864,7 @@ def explain_long_gate_impact(
     repo_root: Optional[str] = None,
 ) -> Dict[str, Any]:
     root = os.path.abspath(repo_root or quality_gate_shared.REPO_ROOT)
-    normalized_paths = _dedupe([_normalize_repo_path(path) for path in changed_paths])
+    normalized_paths = _dedupe(changed_paths)
     manifest = build_manifest_from_quality_gate_plan(command_plan, repo_root=root)
     global_scopes = list(LONG_GATE_RUNNER_VERSION_PATHS) + list(LONG_GATE_TOOLING_VERSION_PATHS)
     global_matches = _matches_for_scopes(normalized_paths, global_scopes)

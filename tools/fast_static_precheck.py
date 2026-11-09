@@ -17,6 +17,10 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Tuple
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
+from tools.long_gate_schema import decode_nul_paths  # noqa: E402
 
 FAST_STATIC_PRECHECK_BANNER = "FAST STATIC PRECHECK ONLY: not final ruff/pyright/full quality gate proof"
 NO_TARGETS_MESSAGE = "没有本次改动的 Python 文件需要快速静态预检"
@@ -60,36 +64,6 @@ class ChangedPythonFiles:
     sources: Dict[str, Tuple[str, ...]]
 
 
-def normalize_repo_path(path: str, repo_root: str = REPO_ROOT) -> str:
-    text = str(path or "").replace("\\", "/").strip()
-    if not text:
-        return ""
-    if text.startswith("./"):
-        text = text[2:]
-    if os.path.isabs(text):
-        try:
-            text = os.path.relpath(os.path.realpath(text), os.path.realpath(repo_root))
-        except ValueError:
-            return ""
-    normalized = os.path.normpath(text).replace("\\", "/")
-    if normalized in {"", "."}:
-        return ""
-    if normalized == ".." or normalized.startswith("../") or os.path.isabs(normalized):
-        return ""
-    if normalized.startswith("./"):
-        normalized = normalized[2:]
-    return normalized
-
-
-def _decode_nul_paths(output: bytes) -> List[str]:
-    paths: List[str] = []
-    for raw in bytes(output or b"").split(b"\0"):
-        if not raw:
-            continue
-        paths.append(raw.decode("utf-8", errors="replace"))
-    return paths
-
-
 def _run_git_paths(args: Sequence[str], repo_root: str = REPO_ROOT) -> List[str]:
     command = ["git", *list(args)]
     result = subprocess.run(
@@ -103,7 +77,7 @@ def _run_git_paths(args: Sequence[str], repo_root: str = REPO_ROOT) -> List[str]
         stdout = bytes(result.stdout or b"").decode("utf-8", errors="replace").strip()
         detail = stderr or stdout or f"returncode={result.returncode}"
         raise FastStaticPrecheckError(f"无法收集本次改动文件：{' '.join(command)}: {detail}")
-    return _decode_nul_paths(bytes(result.stdout or b""))
+    return decode_nul_paths(bytes(result.stdout or b""))
 
 
 def collect_staged_paths(repo_root: str = REPO_ROOT) -> List[str]:
@@ -147,14 +121,11 @@ def _is_repo_local_file(rel_path: str, repo_root: str) -> bool:
 
 
 def _should_skip_path(rel_path: str) -> bool:
-    normalized = normalize_repo_path(rel_path)
-    if not normalized:
-        return True
-    parts = [part for part in normalized.split("/") if part]
+    parts = [part for part in rel_path.split("/") if part]
     if any(part in SKIP_DIR_NAMES for part in parts):
         return True
     for pattern in SKIP_PATH_PATTERNS:
-        if fnmatch.fnmatch(normalized, pattern):
+        if fnmatch.fnmatch(rel_path, pattern):
             return True
     return False
 
@@ -162,8 +133,7 @@ def _should_skip_path(rel_path: str) -> bool:
 def filter_python_targets(paths: Sequence[str], repo_root: str = REPO_ROOT) -> Tuple[str, ...]:
     targets = []
     seen = set()
-    for raw_path in list(paths or []):
-        rel_path = normalize_repo_path(str(raw_path), repo_root=repo_root)
+    for rel_path in paths:
         if not rel_path or rel_path in seen:
             continue
         seen.add(rel_path)

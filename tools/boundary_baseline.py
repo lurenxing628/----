@@ -9,11 +9,12 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import tempfile
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 SCHEMA_VERSION = 1
 EntryKey = Tuple[str, str]
@@ -48,14 +49,11 @@ def default_baseline_path(repo_root: str, rule: str) -> str:
     return os.path.join(repo_root, ".codestable", "checkup", f"{rule}_baseline.json")
 
 
-def entries_to_counts(entries: Iterable[Dict[str, object]]) -> Dict[EntryKey, int]:
+def entries_to_counts(entries: Iterable[Dict[str, Any]]) -> Dict[EntryKey, int]:
     counts: Dict[EntryKey, int] = {}
     for entry in entries:
-        path = str(entry.get("path") or "").replace("\\", "/").strip()
-        kind = str(entry.get("kind") or "").strip()
-        if not path or not kind:
-            raise BoundaryBaselineError("条目缺少 path/kind，不能生成可信基线")
-        counts[(path, kind)] = counts.get((path, kind), 0) + int(entry.get("count") or 0)
+        key = (entry["path"], entry["kind"])
+        counts[key] = counts.get(key, 0) + entry["count"]
     return counts
 
 
@@ -69,14 +67,34 @@ def load_baseline(path: str, *, expected_rule: str) -> Optional[Dict[EntryKey, i
         raise BoundaryBaselineError(f"基线 {path} 无法读取：{exc}") from exc
     if not isinstance(payload, dict):
         raise BoundaryBaselineError(f"基线 {path} 不是对象")
-    if int(payload.get("schema_version") or 0) != SCHEMA_VERSION:
+    schema_version = payload.get("schema_version")
+    if type(schema_version) is not int or schema_version != SCHEMA_VERSION:
         raise BoundaryBaselineError(f"基线 {path} 的 schema_version 不受支持，请人工核对后受控重建")
-    if str(payload.get("rule") or "") != expected_rule:
+    if payload.get("rule") != expected_rule:
         raise BoundaryBaselineError(f"基线 {path} 的 rule={payload.get('rule')!r} 与期望 {expected_rule!r} 不符")
     entries = payload.get("entries")
     if not isinstance(entries, list):
         raise BoundaryBaselineError(f"基线 {path} 的 entries 必须是数组")
-    return entries_to_counts(entries)
+    counts: Dict[EntryKey, int] = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise BoundaryBaselineError(f"基线 {path} 的条目必须是对象")
+        raw_path = entry.get("path")
+        raw_kind = entry.get("kind")
+        if not isinstance(raw_path, str) or not isinstance(raw_kind, str):
+            raise BoundaryBaselineError(f"基线 {path} 的条目缺少 path/kind，不能生成可信基线")
+        entry_path = raw_path.replace("\\", "/").strip()
+        kind = raw_kind.strip()
+        if not entry_path or not kind:
+            raise BoundaryBaselineError(f"基线 {path} 的条目缺少 path/kind，不能生成可信基线")
+        count = entry.get("count")
+        if type(count) is not int or count <= 0:
+            raise BoundaryBaselineError(f"基线 {path} 的条目 count 必须为正整数：{count!r}")
+        key = (entry_path, kind)
+        if key in counts:
+            raise BoundaryBaselineError(f"基线 {path} 存在重复条目：{entry_path} kind={kind}")
+        counts[key] = count
+    return counts
 
 
 def write_baseline(
@@ -93,7 +111,7 @@ def write_baseline(
         "scan_roots": list(scan_roots),
         "note": note,
         "entries": [
-            {"path": key[0], "kind": key[1], "count": int(value)}
+            {"path": key[0], "kind": key[1], "count": value}
             for key, value in sorted(counts.items())
         ],
     }
@@ -148,7 +166,7 @@ def render_comparison(rule: str, comparison: BaselineComparison) -> List[str]:
 
 
 def total_count(counts: Dict[EntryKey, int]) -> int:
-    return sum(int(value) for value in counts.values())
+    return sum(counts.values())
 
 
 def refresh_growth_error(
@@ -171,3 +189,88 @@ def refresh_growth_error(
         f"{rule} 刷新被拒绝：存在新增或计数增加的条目（总命中数 {total_count(previous)} -> {total_count(current)}）；"
         "请先消除新增债务，或人工核对后加 --allow-growth\n" + "\n".join(details)
     )
+
+
+def evaluate_ratchet_rule(
+    args: argparse.Namespace,
+    *,
+    rule: str,
+    result: Dict[str, Any],
+    note: str,
+    render_text: Callable[[Dict[str, Any]], str],
+    error_fn: Callable[[str], None],
+) -> Tuple[int, List[str]]:
+    if not args.refresh and not args.fail_on_new:
+        return 0, ([] if args.json else [render_text(result)])
+
+    current = entries_to_counts(result["entries"])
+    baseline_path = default_baseline_path(args.repo_root, rule)
+    if args.refresh:
+        try:
+            previous = load_baseline(baseline_path, expected_rule=rule)
+        except BoundaryBaselineError as exc:
+            error_fn(str(exc))
+            return 2, []
+        if not args.allow_growth:
+            growth_error = refresh_growth_error(rule, current, previous)
+            if growth_error is not None:
+                error_fn(growth_error)
+                return 1, []
+        write_baseline(
+            baseline_path,
+            rule=rule,
+            scan_roots=result["scan_roots"],
+            note=note,
+            counts=current,
+        )
+        if args.json:
+            return 0, []
+        return 0, [
+            f"[{rule}] 基线已写入 {os.path.relpath(baseline_path, args.repo_root)}："
+            f"{len(current)} 条目 / {total_count(current)} 处"
+        ]
+
+    exit_code = 0
+    comparison: Optional[BaselineComparison] = None
+    try:
+        baseline = load_baseline(baseline_path, expected_rule=rule)
+    except BoundaryBaselineError as exc:
+        error_fn(str(exc))
+        exit_code = 2
+    else:
+        comparison = compare_counts(current, baseline)
+        if comparison.baseline_missing:
+            error_fn(f"{rule} 基线缺失：{baseline_path}；请先查看扫描结果并受控执行 --refresh")
+            exit_code = 2
+        elif comparison.has_debt:
+            exit_code = 1
+    if args.json or comparison is None or comparison.baseline_missing:
+        return exit_code, []
+    if comparison.clean and args.quiet_when_clean:
+        return 0, []
+    return exit_code, render_comparison(rule, comparison)
+
+
+def run_ratchet_cli(
+    args: argparse.Namespace,
+    *,
+    rule: str,
+    result: Dict[str, Any],
+    note: str,
+    render_text: Callable[[Dict[str, Any]], str],
+    error_fn: Callable[[str], None],
+) -> int:
+    exit_code, lines = evaluate_ratchet_rule(
+        args,
+        rule=rule,
+        result=result,
+        note=note,
+        render_text=render_text,
+        error_fn=error_fn,
+    )
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        for line in lines:
+            print(line, flush=True)
+    return exit_code

@@ -278,6 +278,157 @@ def test_refresh_rejects_offsetting_new_debt_with_removed_old_debt(tmp_path, cap
     assert "刷新被拒绝" in capsys.readouterr().err
 
 
+def test_load_baseline_strictly_validates_external_json_and_all_scanners_preserve_json_exit_codes(tmp_path, capsys):
+    import pytest
+
+    from tools import (
+        boundary_baseline,
+        scan_dead_path_literals,
+        scan_private_imports,
+        scan_sql_boundary,
+    )
+    from tools.boundary_baseline import BoundaryBaselineError, load_baseline
+
+    baseline_file = tmp_path / "strict_baseline.json"
+    sample_path = _p("core", "sample.py")
+
+    def _write_raw(payload):
+        baseline_file.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    valid_entry = {"path": sample_path, "kind": "private_symbol", "count": 2}
+    _write_raw({"schema_version": 1, "rule": "private_import", "entries": [valid_entry]})
+    assert load_baseline(str(baseline_file), expected_rule="private_import") == {(sample_path, "private_symbol"): 2}
+
+    for bad_version in (True, False, 1.0, "1", 0, 2, None):
+        _write_raw({"schema_version": bad_version, "rule": "private_import", "entries": []})
+        with pytest.raises(BoundaryBaselineError, match="schema_version"):
+            load_baseline(str(baseline_file), expected_rule="private_import")
+
+    for bad_count in (True, False, 1.5, 1.0, 0, -1, "1", None):
+        _write_raw({
+            "schema_version": 1,
+            "rule": "private_import",
+            "entries": [{"path": sample_path, "kind": "private_symbol", "count": bad_count}],
+        })
+        with pytest.raises(BoundaryBaselineError, match="正整数"):
+            load_baseline(str(baseline_file), expected_rule="private_import")
+
+    for bad_entry in (
+        "not-a-dict",
+        {"path": 123, "kind": "private_symbol", "count": 1},
+        {"path": sample_path, "kind": None, "count": 1},
+        {"path": "   ", "kind": "private_symbol", "count": 1},
+        {"path": sample_path, "kind": "   ", "count": 1},
+    ):
+        _write_raw({"schema_version": 1, "rule": "private_import", "entries": [bad_entry]})
+        with pytest.raises(BoundaryBaselineError):
+            load_baseline(str(baseline_file), expected_rule="private_import")
+
+    _write_raw({
+        "schema_version": 1,
+        "rule": "private_import",
+        "entries": [valid_entry, {"path": sample_path.replace("/", "\\"), "kind": " private_symbol ", "count": 1}],
+    })
+    with pytest.raises(BoundaryBaselineError, match="重复条目"):
+        load_baseline(str(baseline_file), expected_rule="private_import")
+
+    # 验证 4 个扫描器在 --json --fail-on-new 下的退出码（0 / 1 / 2）且 stdout 始终为合法 JSON
+    repo = tmp_path / "ratchet_repo"
+    _mini_repo(repo)
+    _write(repo, _p("core", "priv_mod.py"), "_hidden = 1\n")
+    _write(repo, _p("core", "priv_use.py"), "from core.priv_mod import _hidden\n")
+    _write(repo, _p("core", "sql_use.py"), 'def run_q(conn):\n    conn.execute("SELECT 1")\n')
+    _write(repo, _p("core", "dead_ref.py"), f'DEAD = "{_p("core", "vanished.py")}"\n')
+
+    scanner_cases = [
+        ("over_defense", scanner.main, ["--repo-root", str(repo)]),
+        ("sql_boundary", scan_sql_boundary.main, ["--repo-root", str(repo), "--rule", "sql_boundary"]),
+        ("private_import", scan_private_imports.main, ["--repo-root", str(repo)]),
+        ("dead_path_literal", scan_dead_path_literals.main, ["--repo-root", str(repo)]),
+    ]
+
+    for rule_name, main_fn, base_args in scanner_cases:
+        # 1) 缺基线：rc == 2，stdout 仍是合法 JSON，错误在 stderr
+        assert main_fn(base_args + ["--json", "--fail-on-new"]) == 2
+        captured = capsys.readouterr()
+        assert json.loads(captured.out)["rule"] == rule_name
+        assert "基线缺失" in captured.err
+
+        # 2) --refresh --json：rc == 0，stdout 为合法 JSON
+        assert main_fn(base_args + ["--refresh", "--json"]) == 0
+        captured = capsys.readouterr()
+        assert json.loads(captured.out)["rule"] == rule_name
+        assert captured.err == ""
+
+        # 3) 干净通过（含 --quiet-when-clean）：rc == 0，--json 仍输出合法 JSON
+        assert main_fn(base_args + ["--json", "--fail-on-new", "--quiet-when-clean"]) == 0
+        captured = capsys.readouterr()
+        assert json.loads(captured.out)["rule"] == rule_name
+        assert captured.err == ""
+
+    # 4) 各扫描器新增债务：rc == 1，stdout 仍是合法 JSON（不混入比较文本）
+    _write(repo, _p("core", "extra_od.py"), 'def f_od(obj):\n    return getattr(obj, "x")\n\n__all__ = ["f_od"]\n')
+    _write(repo, _p("core", "sql_use2.py"), 'def run_q2(conn):\n    conn.execute("SELECT 2")\n')
+    _write(repo, _p("core", "priv_use2.py"), "from core.priv_mod import _hidden\n")
+    _write(repo, _p("core", "dead_ref2.py"), f'DEAD2 = "{_p("core", "vanished_2.py")}"\n')
+
+    for rule_name, main_fn, base_args in scanner_cases:
+        assert main_fn(base_args + ["--json", "--fail-on-new"]) == 1
+        captured = capsys.readouterr()
+        parsed = json.loads(captured.out)
+        assert parsed["rule"] == rule_name
+        assert parsed["total"] >= 2
+        assert captured.err == ""
+
+    # 5) 坏基线（count=0）：rc == 2，stdout 仍是合法 JSON，stderr 报正整数错误
+    for rule_name, main_fn, base_args in scanner_cases:
+        bpath = boundary_baseline.default_baseline_path(str(repo), rule_name)
+        with open(bpath, "w", encoding="utf-8") as handle:
+            json.dump(
+                {"schema_version": 1, "rule": rule_name, "entries": [{"path": sample_path, "kind": "k", "count": 0}]},
+                handle,
+            )
+        assert main_fn(base_args + ["--json", "--fail-on-new"]) == 2
+        captured = capsys.readouterr()
+        assert json.loads(captured.out)["rule"] == rule_name
+        assert "正整数" in captured.err
+
+    # 6) scan_sql_boundary 默认 --rule all --json：信息模式、--refresh、--fail-on-new 均输出单个合法 JSON 对象
+    _write(repo, _p("data", "policy_use.py"), "from core.errors import reject\n")
+    assert scan_sql_boundary.main(["--repo-root", str(repo), "--json"]) == 0
+    captured = capsys.readouterr()
+    parsed_all = json.loads(captured.out)
+    assert parsed_all["rule"] == "all"
+    assert set(parsed_all["rules"]) == {"sql_boundary", "data_policy"}
+    assert parsed_all["total"] == (
+        parsed_all["rules"]["sql_boundary"]["total"] + parsed_all["rules"]["data_policy"]["total"]
+    )
+    assert len(parsed_all["entries"]) == (
+        len(parsed_all["rules"]["sql_boundary"]["entries"]) + len(parsed_all["rules"]["data_policy"]["entries"])
+    )
+    assert captured.err == ""
+
+    # 清理步骤 5 留下的坏基线，验证默认 --rule all 下 --refresh --json 与 --fail-on-new --json
+    (repo / ".codestable" / "checkup" / "sql_boundary_baseline.json").unlink()
+    assert scan_sql_boundary.main(["--repo-root", str(repo), "--refresh", "--json"]) == 0
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)["rule"] == "all"
+    assert captured.err == ""
+
+    assert scan_sql_boundary.main(["--repo-root", str(repo), "--fail-on-new", "--json"]) == 0
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)["rule"] == "all"
+    assert captured.err == ""
+
+    _write(repo, _p("data", "policy_use.py"), "from core.errors import reject, fail\n")
+    assert scan_sql_boundary.main(["--repo-root", str(repo), "--fail-on-new", "--json"]) == 1
+    captured = capsys.readouterr()
+    parsed_debt = json.loads(captured.out)
+    assert parsed_debt["rule"] == "all"
+    assert parsed_debt["rules"]["data_policy"]["total"] == 2
+    assert captured.err == ""
+
+
 def test_full_test_debt_verifies_shard_nodeids_and_terminal_reports(tmp_path):
     import pytest
 

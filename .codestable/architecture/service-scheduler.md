@@ -29,7 +29,7 @@ implements: []
 | `run/`、`summary/`、`contracts/`、`graph/`、`config/`、`gantt/` | 纯计算编排、摘要组装、公开投影合同、工序图分析、配置解析与甘特构建 |
 | 根包支撑模块 | `resource_pool_builder.py`、`schedule_lock.py`、`template_lineage*.py`、`workbench_plan_catalog.py` 各司其职 |
 
-批次主数据位于 `core/services/batch/`，现场报工与批次工序维护已归入 `core/services/workbench/execution/` 与 `core/services/workbench/batch/`。原 `ScheduleService`、`OperationExecutionFeedbackService`、输入 collector 的生产采集链和 `schedule_persistence.py` 均已退役；`schedule_input_contracts.py` 保留共同输入合同，输入领域校验、资源事实和实际错误类型仍由当前消费者使用。排产配置通过 `core/models/schedule_config_runtime*` 的共同字段、Snapshot 和解析规则进入计算；旧配置服务装配及页面保存入口已经退出。
+批次主数据与批次工序维护归入 `core/services/workbench/batch/`，现场报工归入 `core/services/workbench/execution/`。原 `ScheduleService`、`OperationExecutionFeedbackService`、输入 collector 的生产采集链和 `schedule_persistence.py` 均已退役；`schedule_input_contracts.py` 保留共同输入合同，输入领域校验、资源事实和实际错误类型仍由当前消费者使用。排产配置通过 `core/models/schedule_config_runtime*` 的共同字段、Snapshot 和解析规则进入计算；旧配置服务装配及页面保存入口已经退出。
 
 ## 2. 当前分层
 
@@ -77,7 +77,7 @@ implements: []
 
 摘要对象在计算内交接，持久化文本在实际保存边界生成并直接落库。Web 的 `json_response` 对最终信封编码 UTF-8，并发送同一份字节；大小限制也针对实际产物。内部 `execution_workspace` 的 HTTP 大小预演已删除。归档读取消费保存证据，公式与内容确认由原落档、采用和迁移边界负责。
 
-当前 Schema 为 44：v41/v42 的保存读模型和原生业务目标候选继续保留，v43/v44 增加 `WorkbenchSourceRevisions` 与单遍效率索引。`schema_compat.py` 接纳明确的 v39—v44 表示差异，业务行和未声明结构变化继续参与事实比较。普通启动检查结构，低版本非空库拒绝启动、不执行历史增量升级迁移；新库与恢复边界执行完整数据合同。
+当前 Schema 为 45：v41/v42 的保存读模型和原生业务目标候选继续保留，v43/v44 增加 `WorkbenchSourceRevisions` 与单遍效率索引，v45 把日历时间事实统一为非空工作时段列 `periods_json`（已删除 `shift_start/shift_end/shift_hours`，开始、结束、工时一律现算；零工时日包络窗口固定为当天零点）、补齐 `PartOperations(ext_group_id)` 索引并收敛永久身份触发器。归档事实严格按当前 `schema / columns / tables / revisions` 契约核验，历史兼容投影已删除。普通启动检查结构，低版本非空库拒绝启动、不执行历史增量升级迁移；新库与恢复边界执行完整数据合同。
 
 ## 6. 相关入口与历史演进
 

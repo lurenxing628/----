@@ -293,7 +293,7 @@ def _seed(database):
                            setup_hours=0.75, unit_hours=0.2 + (7 - index) * 0.025)
             if index in (1, 3, 5):
                 case.operation(code, seq=3, op_type_name="精车", setup_hours=0.25, unit_hours=0.1)
-        case.config(algo_mode="greedy", graph_candidate_weight_count=3, time_budget_seconds=60,
+        case.config(algo_mode="greedy", time_budget_seconds=60,
                     ortools_enabled="no", freeze_window_enabled="no")
         return case.settings(*(str(row[0]) for row in conn.execute("SELECT batch_id FROM Batches ORDER BY batch_id")),
                              start_date="2026-10-13", end_date="2026-10-30")
@@ -382,7 +382,7 @@ def _preparation_fixture_plan():
         "held_batch_id": "DC-05", "held_operation_code": "DC-05-1",
         "settings": {"start_date": "2026-10-13", "end_date": "2026-10-16", "material_strategy": "stage",
                      "hold_window": {"start": "2026-10-13T09:00", "end": "2026-10-13T09:01"}},
-        "runtime_config": {"graph_candidate_weight_count": 3, "dispatch_mode": "sgs", "sort_strategy": "priority_first"}}
+        "runtime_config": {"dispatch_mode": "sgs", "sort_strategy": "priority_first"}}
 
 
 def _seed_preparation_case(conn, plan):
@@ -503,7 +503,7 @@ def preparation_fixtures(args):
             "WorkbenchProductionReports")
         old_sources = {name: {tuple(row) for row in conn.execute("SELECT * FROM " + name)} for name in source_tables}
         keys = tuple(plan["runtime_config"])
-        config = dict(conn.execute("SELECT config_key,config_value FROM ScheduleConfig WHERE config_key IN (?,?,?)", keys))
+        config = dict(conn.execute("SELECT config_key,config_value FROM ScheduleConfig WHERE config_key IN (?,?)", keys))
         if manifest is None:
             _save(evidence / ("runtime-before" + suffix + ".json"),
                 {"base_url": identity["base_url"], "pid": identity["pid"],
@@ -617,7 +617,7 @@ def preparation_fixtures(args):
             raise RuntimeError("新增准备夹具改变了原运行、正式历史或已保存候选。")
         if any(not rows.issubset({tuple(row) for row in conn.execute("SELECT * FROM " + name)}) for name, rows in old_sources.items()):
             raise RuntimeError("新增准备夹具改变了原资料、日历、报工或执行事实。")
-        if dict(conn.execute("SELECT config_key,config_value FROM ScheduleConfig WHERE config_key IN (?,?,?)", keys)) != config:
+        if dict(conn.execute("SELECT config_key,config_value FROM ScheduleConfig WHERE config_key IN (?,?)", keys)) != config:
             raise RuntimeError("准备验收生成参数没有恢复。")
         manifest.update(state="generated", base_url=identity["base_url"], pid=identity["pid"],
             old_sources_retained=True, actual_candidates=actual,
@@ -887,13 +887,12 @@ def _seed_resource_case(conn):
                       {"start": "00:30", "end": "06:00", "day_offset": 1}]
     global_dates = ("2026-11-02", "2026-11-03", "2026-11-04")
     for day in global_dates:
-        insert_row(conn, "WorkCalendar", dict(date=day, day_type="workday", shift_start="22:00", shift_end="06:00",
-            shift_hours=7.5, efficiency=1, allow_normal="yes", allow_urgent="yes",
+        insert_row(conn, "WorkCalendar", dict(date=day, day_type="workday", efficiency=1, allow_normal="yes", allow_urgent="yes",
             periods_json=json.dumps(global_periods), remark="资源验收夜班；午夜休息半小时"))
     personal_periods = [{"start": "23:00", "end": "02:00", "day_offset": 0},
                         {"start": "02:30", "end": "07:00", "day_offset": 1}]
     insert_row(conn, "OperatorCalendar", dict(operator_id=operators[0], date=global_dates[0], day_type="workday",
-        shift_start="23:00", shift_end="07:00", shift_hours=7.5, efficiency=0.5,
+        efficiency=0.5,
         allow_normal="yes", allow_urgent="yes", periods_json=json.dumps(personal_periods),
         remark="资源验收个人夜班；效率0.5"))
     profile = "DR-ROTATION"
@@ -910,14 +909,11 @@ def _seed_resource_case(conn):
     }
     for offset, periods in rotation_periods.items():
         insert_row(conn, "WorkbenchShiftPatternDays", dict(profile_id=profile, day_offset=offset,
-            is_rest=int(not periods), shift_start="22:00" if periods else "00:00",
-            shift_end="06:00" if periods else "00:00"))
-        insert_row(conn, "WorkbenchShiftDayPeriods", dict(profile_id=profile, day_offset=offset,
-            periods_json=json.dumps(periods)))
+            is_rest=int(not periods), periods_json=json.dumps(periods)))
     override_periods = [{"start": "23:30", "end": "01:00", "day_offset": 0},
                         {"start": "01:30", "end": "05:30", "day_offset": 1}]
     insert_row(conn, "OperatorCalendar", dict(operator_id=operators[1], date=global_dates[1], day_type="workday",
-        shift_start="23:30", shift_end="05:30", shift_hours=5.5, efficiency=1,
+        efficiency=1,
         allow_normal="yes", allow_urgent="yes", periods_json=json.dumps(override_periods),
         remark="资源验收个人日期覆盖轮班休息日"))
     insert_row(conn, "MachineDowntimes", dict(machine_id="DR-M01", scope_type="machine", scope_value="DR-M01",
@@ -971,10 +967,10 @@ def resource_fixtures(args):
         retained = _retained_rows(conn)
         source_tables = ("Machines", "Operators", "OperatorMachine", "OpTypes", "WorkCalendar", "OperatorCalendar",
                          "WorkbenchShiftProfiles", "WorkbenchOperatorProfiles", "WorkbenchShiftPatternDays",
-                         "WorkbenchShiftDayPeriods", "MachineDowntimes", "WorkbenchCalendarDefaults")
+                         "MachineDowntimes", "WorkbenchCalendarDefaults")
         old_sources = {name: {tuple(row) for row in conn.execute("SELECT * FROM " + name)} for name in source_tables}
-        keys = ("graph_candidate_weight_count", "dispatch_mode", "sort_strategy")
-        config = dict(conn.execute("SELECT config_key,config_value FROM ScheduleConfig WHERE config_key IN (?,?,?)", keys))
+        keys = ("dispatch_mode", "sort_strategy")
+        config = dict(conn.execute("SELECT config_key,config_value FROM ScheduleConfig WHERE config_key IN (?,?)", keys))
         if manifest is None:
             settings, entities = _seed_resource_case(conn)
             manifest = dict(entities, settings=settings, database_path=str(database), state="seeded",
@@ -984,7 +980,7 @@ def resource_fixtures(args):
             run_ref, refs = manifest["run_ref"], manifest["candidate_refs"]
         else:
             try:
-                RunCase(conn).config(graph_candidate_weight_count=3, dispatch_mode="sgs", sort_strategy="priority_first")
+                RunCase(conn).config(dispatch_mode="sgs", sort_strategy="priority_first")
                 run_ref, refs = _start_run(client, manifest["settings"], evidence / "calendar_resources", allow_partial=True)
                 manifest.update(run_ref=run_ref, candidate_refs=refs, state="computed")
                 _save(manifest_path, manifest)
@@ -1017,7 +1013,7 @@ def resource_fixtures(args):
         if any(not rows.issubset({tuple(row) for row in conn.execute("SELECT * FROM " + name)})
                for name, rows in old_sources.items()):
             raise RuntimeError("新增资源夹具改变了旧日期、旧资源字段或原日历资料。")
-        restored = dict(conn.execute("SELECT config_key,config_value FROM ScheduleConfig WHERE config_key IN (?,?,?)", keys))
+        restored = dict(conn.execute("SELECT config_key,config_value FROM ScheduleConfig WHERE config_key IN (?,?)", keys))
         if restored != config:
             raise RuntimeError("资源夹具生成后配置没有恢复原值。")
         manifest.update(state="generated", base_url=identity["base_url"], pid=identity["pid"],
@@ -1204,8 +1200,8 @@ def delivery_fixtures(args):
     conn = get_connection(str(database))
     try:
         retained = _retained_rows(conn)
-        keys = ("graph_candidate_weight_count", "dispatch_mode", "sort_strategy")
-        config = dict(conn.execute("SELECT config_key,config_value FROM ScheduleConfig WHERE config_key IN (?,?,?)", keys))
+        keys = ("dispatch_mode", "sort_strategy")
+        config = dict(conn.execute("SELECT config_key,config_value FROM ScheduleConfig WHERE config_key IN (?,?)", keys))
         try:
             for name in args.scenario:
                 fixture = manifest["fixtures"].get(name)
@@ -1217,7 +1213,7 @@ def delivery_fixtures(args):
                     manifest["fixtures"][name] = fixture
                     _save(manifest_path, manifest)
                 case = RunCase(conn)
-                case.config(graph_candidate_weight_count=3, dispatch_mode="sgs",
+                case.config(dispatch_mode="sgs",
                             sort_strategy="priority_first" if name == "ordinary_partial" else config["sort_strategy"])
                 run_ref, refs = _start_run(client, fixture["settings"], evidence / name, allow_partial=True)
                 fixture.update(run_ref=run_ref, candidate_refs=refs)
@@ -1229,7 +1225,7 @@ def delivery_fixtures(args):
         after = _retained_rows(conn)
         if any(not rows.issubset(after[table]) for table, rows in retained.items()):
             raise RuntimeError("新增交付验收夹具时改变了原批次、工序、正式历史或候选归档。")
-        restored = dict(conn.execute("SELECT config_key,config_value FROM ScheduleConfig WHERE config_key IN (?,?,?)", keys))
+        restored = dict(conn.execute("SELECT config_key,config_value FROM ScheduleConfig WHERE config_key IN (?,?)", keys))
         if restored != config:
             raise RuntimeError("交付验收夹具完成后配置没有恢复原值。")
         complete = all(manifest["fixtures"].get(name, {}).get("run_ref") for name in
@@ -1285,8 +1281,8 @@ def serve(args):
                                                  deps=deps, runtime_lock=payload)
         lock_state["contract"] = publication["payload"]
         lock_state["contract_cleanup_dir"] = str(Path(publication["path"]).parent)
-        thread = threading.Thread(target=deps.serve_runtime_app, args=(app, "127.0.0.1", server.server_port),
-                                  kwargs={"server": server}, name="decision-acceptance-http")
+        thread = threading.Thread(target=deps.serve_runtime_app, kwargs={"server": server},
+                                  name="decision-acceptance-http")
         thread.start()
         url = "http://127.0.0.1:" + str(server.server_port)
         client = SampleClient(url, request_prefix="decision-acceptance-")
@@ -1722,8 +1718,6 @@ def _check_resource_export_table(documents, rows, headers, fmt, cell_types):
 def _resource_archive_labels(identity, run_ref):
     import sqlite3
 
-    from core.infrastructure.snapshot_connection import ddl_columns
-
     connection = sqlite3.connect(Path(identity["database_path"]).as_uri() + "?mode=ro", uri=True)
     try:
         connection.execute("PRAGMA query_only=ON")
@@ -1733,9 +1727,10 @@ def _resource_archive_labels(identity, run_ref):
         facts = json.loads(row[0])
     finally:
         connection.close()
-    schema = {entry[1]: entry[3] for entry in facts["schema"] if entry[0] == "table"}
-    tables = {name: [dict(zip(ddl_columns(schema[name], name), row)) for row in facts["tables"][name]]
-              for name in ("BatchOperations", "Batches", "WorkbenchPlanSourceRefs", "WorkbenchEntityRefs")}
+    tables = {
+        name: [dict(zip(facts["columns"][name], row)) for row in facts["tables"][name]]
+        for name in ("BatchOperations", "Batches", "WorkbenchPlanSourceRefs", "WorkbenchEntityRefs")
+    }
     operations = {row["id"]: row for row in tables["BatchOperations"]}
     batches = {row["batch_id"]: row for row in tables["Batches"]}
     batch_refs = {row["entity_key"]: row["ref"] for row in tables["WorkbenchEntityRefs"]
@@ -3102,11 +3097,18 @@ def _process_public_pages(client, path, query, target, kind):
         _save(target / (kind + "-pages-" + str(size) + ".json"), current)
     if combined[20] != combined[50] or len(combined[20]) != first["data"]["page"]["total"]:
         raise RuntimeError("计算过程20/50全页原始对象或顺序不同。")
+    if "actions" in first["data"]:
+        raise RuntimeError("计算过程分页响应不应包含未分页完整搜索动作数组。")
     raw_points = first["data"]["progress"]["points"]
     if kind == "progress" and sorted(combined[20], key=lambda row: json.dumps(row, sort_keys=True)) != sorted(raw_points, key=lambda row: json.dumps(row, sort_keys=True)):
         raise RuntimeError("计算过程分页遗漏或增加了公开完整进步事件。")
-    raw_actions = first["data"]["actions"]
-    if kind == "attempts" and sorted(combined[20], key=lambda row: json.dumps(row, sort_keys=True)) != sorted(raw_actions, key=lambda row: json.dumps(row, sort_keys=True)):
+    selected_objective = first["data"]["selected_objective"]["name"]
+    action_count = first["data"]["budget"]["objectives"][selected_objective]["action_count"]
+    if kind == "attempts" and (
+        len(combined[20]) != action_count
+        or len({row["action_id"] for row in combined[20]}) != len(combined[20])
+        or any(row["search_objective"] != selected_objective for row in combined[20])
+    ):
         raise RuntimeError("计算过程分页遗漏或增加了公开完整搜索动作。")
     result = dict(pages[50][0])
     result["data"] = dict(result["data"], items=combined[50])
@@ -3149,7 +3151,8 @@ def process_export_candidate_documents(client, fixture, query, overview, target,
         raise RuntimeError("计算过程的锚点、查看方案、基准或共同窗口不同。")
     if attempts["process_version"] != UNIFIED_PROCESS_VERSION:
         raise RuntimeError("计算过程公共版本与本轮验收契约不同。")
-    if (len(attempts["items"]) != len(attempts["actions"])
+    active_objective = attempts["selected_objective"]["name"]
+    if (len(attempts["items"]) != attempts["budget"]["objectives"][active_objective]["action_count"]
             or len(progress["items"]) != progress["progress"]["sampling"]["retained_point_count"]):
         raise RuntimeError("计算过程全部保存条数与采样记录不同。")
     if len(progress["items"]) > 200:
@@ -3159,7 +3162,6 @@ def process_export_candidate_documents(client, fixture, query, overview, target,
     if basis_objectives and basis_objectives != target_objectives:
         raise RuntimeError("计算过程目标方向目录与推荐依据不一致。")
     primary_objective = overview["data"]["selection_basis"].get("primary_objective") or target_objectives[0]
-    active_objective = attempts["selected_objective"]["name"]
     export_objectives = target_objectives if include_all_objectives else [active_objective]
     by_objective = {
         active_objective: {
@@ -3188,15 +3190,18 @@ def process_export_candidate_documents(client, fixture, query, overview, target,
                     "scopes", "candidate", "candidates", "source_event", "scope", "baseline"):
             if obj_attempts[key] != attempts[key]:
                 raise RuntimeError("不同优化方向的共同计算过程事实不同：" + key)
-        if len(obj_progress["progress"]["points"]) > 200:
+        if (len(obj_attempts["items"]) != obj_attempts["budget"]["objectives"][obj_name]["action_count"]
+                or len(obj_progress["items"]) != obj_progress["progress"]["sampling"]["retained_point_count"]):
+            raise RuntimeError("计算过程全部保存条数与采样记录不同。")
+        if len(obj_progress["items"]) > 200:
             raise RuntimeError("计算过程超过本轮保留上限。")
         by_objective[obj_name] = {
             "selected_objective": obj_attempts["selected_objective"],
             "summary": obj_attempts["summary"],
             "budget": obj_attempts["budget"]["objectives"][obj_name],
             "stages": obj_attempts["stages"],
-            "actions": obj_attempts["actions"],
-            "progress": dict(obj_progress["progress"], points=obj_progress["progress"]["points"]),
+            "actions": obj_attempts["items"],
+            "progress": dict(obj_progress["progress"], points=obj_progress["items"]),
         }
     record = {
         "process_version": attempts["process_version"],

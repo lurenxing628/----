@@ -4,8 +4,7 @@ import base64
 import json
 import math
 import os
-import re
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List, Mapping, Sequence
 
 from tools.long_gate_paths import LONG_GATE_CACHE_DIR_REL, real_repo_root
 
@@ -33,19 +32,66 @@ def canonical_content(payload: Any) -> str:
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
 
+PUBLIC_ENVIRONMENT_KEYS = frozenset(
+    {
+        "APS_ENV",
+        "APS_DB_PATH",
+        "APS_LOG_DIR",
+        "APS_BACKUP_DIR",
+        "APS_EXCEL_TEMPLATE_DIR",
+        "APS_HOST",
+        "APS_PORT",
+        "APS_SHARED_DATA_ROOT",
+        "APS_STATIC_VERSION",
+        "APS_TEST_POWERSHELL",
+        "WERKZEUG_RUN_MAIN",
+        "WORKBENCH_NODE",
+        "NODE_PATH",
+        "NODE_OPTIONS",
+        "PATH",
+        "VIRTUAL_ENV",
+        "PYTHONHOME",
+        "PYTHONPATH",
+        "PYTHONDONTWRITEBYTECODE",
+        "PYTHONHASHSEED",
+        "PYTHONUTF8",
+        "PYTHONIOENCODING",
+        "PYTEST_ADDOPTS",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD",
+        "PYTEST_PLUGINS",
+        "LANG",
+        "LC_ALL",
+        "CI",
+        "APS_FULL_TEST_DEBT_SHARDED",
+        "APS_FULL_TEST_DEBT_SHARD_COUNT",
+    }
+)
+PRIVATE_ENVIRONMENT_KEYS = frozenset({"SECRET_KEY"})
 SENSITIVE_SOURCE_BASENAMES = frozenset({"aps_secret_key.txt", "aps_runtime.json"})
-_SENSITIVE_ENV_KEY = re.compile(r"SECRET|TOKEN|PASSWORD|BEARER|AUTHORIZATION", re.IGNORECASE)
+
+
+def private_environment_value(source: Mapping[str, str], key: str) -> str:
+    return str(source.get(key) or "").strip()
+
+
+def decode_nul_paths(output: bytes) -> List[str]:
+    return [raw.decode("utf-8", errors="replace") for raw in bytes(output or b"").split(b"\0") if raw]
+
+
+class SensitiveSourceError(ValueError):
+    """A source holds credentials, so its content must not enter cache or proof payloads."""
 
 
 def read_file_content(path: str) -> str:
     """Return original bytes reversibly; credentials stay in their existing owner."""
     if os.path.basename(os.path.realpath(path)).lower() in SENSITIVE_SOURCE_BASENAMES:
-        raise ValueError(f"source is a credential-bearing runtime file: {path}")
+        raise SensitiveSourceError(f"source is a credential-bearing runtime file: {path}")
     with open(path, "rb") as handle:
         data = handle.read()
-    for key, value in os.environ.items():
-        if value and _SENSITIVE_ENV_KEY.search(key) and os.fsencode(value) in data:
-            raise ValueError(f"source contains sensitive environment value for {key}: {path}")
+    for key in sorted(PRIVATE_ENVIRONMENT_KEYS):
+        value = private_environment_value(os.environ, key)
+        if value and os.fsencode(value) in data:
+            raise SensitiveSourceError(f"source contains sensitive environment value for {key}: {path}")
     return base64.b64encode(data).decode("ascii")
 
 

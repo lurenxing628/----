@@ -43,7 +43,7 @@ from collections import defaultdict
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from tools import import_cycle_graph as _graph
-from tools.import_cycle_analysis import classify, dyn_imports, expand_parent_packages, resolve_targets, tarjan
+from tools.import_cycle_analysis import classify, dyn_imports, expand_parent_packages, resolve_targets
 from tools.import_cycle_baseline import (
     CycleBaselineComparison,
     CycleBaselineError,
@@ -206,7 +206,8 @@ def _collect_module_edges(
                 )
     resolved_dynamic, unresolved_dynamic = dyn_imports(tree, source_path=ab, file_to_mod=file_to_mod)
     for dynamic_import in resolved_dynamic:
-        raw_target, package, kind, line = dynamic_import
+        raw_target, package = dynamic_import.target, dynamic_import.package
+        kind, line = dynamic_import.context, dynamic_import.line
         target_mod = _resolved_dynamic_target(raw_target, package, pkg, mod)
         dynamic_targets = _dynamic_targets(dynamic_import, target_mod, mod_to_file)
         for dynamic_target in dynamic_targets:
@@ -230,27 +231,17 @@ def _collect_module_edges(
                 explicit_edges_file[kind][(mod, dynamic_target)].append((rel, line))
             if parent_init:
                 parent_package_init_edges.append(
-                    {
-                        "source": mod,
-                        "target": dynamic_target,
-                        "file": rel,
-                        "line": line,
-                        "context": kind,
-                    }
+                    {"source": mod, "target": dynamic_target, "file": rel, "line": line, "context": kind}
                 )
-        if target_mod not in mod_to_file and raw_target.startswith("."):
+        if isinstance(dynamic_import, _graph.ResolvedNameImport) and target_mod not in mod_to_file and raw_target.startswith("."):
+            expr = f"relative target {raw_target!a} could not resolve in package {package!a}"
             unresolved_dynamic_imports.append(
-                {
-                    "file": rel,
-                    "line": line,
-                    "context": kind,
-                    "expression": f"relative target {raw_target!r} could not resolve in package {package!r}",
-                }
+                _graph.UnresolvedDynamicImport(
+                    kind, line, dynamic_import.scope, dynamic_import.loader_kind, expr, dynamic_import.call_ast
+                ).to_record(rel)
             )
-    for kind, line, expression in unresolved_dynamic:
-        unresolved_dynamic_imports.append(
-            {"file": rel, "line": line, "context": kind, "expression": expression}
-        )
+    for item in unresolved_dynamic:
+        unresolved_dynamic_imports.append(item.to_record(rel))
 
 
 def _dynamic_targets(dynamic_import: tuple, target_mod: Optional[str], mod_to_file: Dict[str, str]) -> List[str]:
@@ -302,12 +293,12 @@ def scan(roots: Sequence[str], repo_root: str = REPO_ROOT) -> dict:
         explicit_edges_file["lazy"],
     )
 
-    hard_dir_sccs = tarjan(_adj(hard_dir))
-    hard_file_sccs = tarjan(_adj(hard_file))
-    explicit_hard_file_sccs = tarjan(_adj(explicit_hard_file))
-    rt_dir_sccs = tarjan(_adj(rt_dir))
-    rt_file_sccs = tarjan(_adj(rt_file))
-    explicit_rt_file_sccs = tarjan(_adj(explicit_rt_file))
+    hard_dir_sccs = _graph.tarjan(_adj(hard_dir))
+    hard_file_sccs = _graph.tarjan(_adj(hard_file))
+    explicit_hard_file_sccs = _graph.tarjan(_adj(explicit_hard_file))
+    rt_dir_sccs = _graph.tarjan(_adj(rt_dir))
+    rt_file_sccs = _graph.tarjan(_adj(rt_file))
+    explicit_rt_file_sccs = _graph.tarjan(_adj(explicit_rt_file))
 
     return {
         "module_count": len(file_to_mod),
@@ -346,7 +337,7 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     parser.add_argument(
         "--fail-on-new-cycle",
         action="store_true",
-        help="按 scope 匹配的 v2 基线阻断新增硬环或同成员圈内新增边；基线/解析异常 fail closed",
+        help="按 scope 匹配的 v3 基线阻断新增硬环或同成员圈内新增边；基线/解析异常 fail closed",
     )
     parser.add_argument(
         "--update-baseline",
@@ -383,10 +374,10 @@ def _load_scan_result(args: argparse.Namespace) -> Tuple[Optional[dict], int]:
 
 
 def _print_parse_errors(result: dict) -> None:
-    errors = list(result.get("parse_errors") or [])
+    errors = result["parse_errors"]
     _error(f"源码解析失败 {len(errors)} 个，正式循环门禁已阻断；请先修复下列文件：")
     for row in errors[:20]:
-        _error(f"  - {row.get('file')}: {row.get('error')}")
+        _error(f"  - {row['file']}: {row['error']}")
     if len(errors) > 20:
         _error(f"  - 另有 {len(errors) - 20} 个解析失败")
 
@@ -447,7 +438,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.update_baseline:
         try:
             write_baseline(args.baseline, result, scope=scope)
-        except (CycleBaselineError, OSError) as exc:
+        except OSError as exc:
             _error(f"无法写入循环依赖基线 {args.baseline}：{exc}")
             return 2
         rel = os.path.relpath(args.baseline, REPO_ROOT)

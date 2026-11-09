@@ -116,6 +116,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .limcode/skills/aps-package-
 - `validate_dist_exe.py` 核对实际数据库路径、运行时身份、HTTP 页面与静态载荷；绿色版应生成 `user-data/logs/` 和 `user-data/db/aps.db`。
 - 浏览器最小冒烟只证明 APS 专用浏览器可以拉起并短时存活；不能代替目标机完整使用验收。
 - Win7 / PowerShell 5.1 现场还须验证：中文＋空格目录解压、双击启动、再次启动、正常退出、备份恢复、关闭后整目录搬迁、存在旧安装记录及切换账户后的路径隔离。
+- 监听端口改由运行时预绑定后发布实际端口，Win7 上尚未复测：须验证默认端口被占用时自动换端口、运行契约与实际监听一致、`launcher.log` 能读懂原因；完整条件及 Windows 专属自动化用例见 `开发文档/技术债务治理台账.md` 的 `risk:launcher-bind-host-port-win7`。未执行前不算通过。
 - 启动失败先看 `user-data/logs/launcher.log`，再看同目录 `aps_launch_error.txt`；不要通过删除运行锁来强行开启第二个实例。
 - macOS 上的路径、打包合同、静态编码测试不等于 Windows EXE 或 PowerShell 5.1 真机通过。
 

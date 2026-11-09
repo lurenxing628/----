@@ -5,7 +5,7 @@ import os
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, NamedTuple, Optional, Set, Tuple, Union
+from typing import Dict, List, NamedTuple, Optional, Sequence, Set, Tuple, Union
 
 LoaderCandidates = Dict[str, Set[str]]
 StaticValue = Union[str, Path]
@@ -16,6 +16,55 @@ class ResolvedFileImport(NamedTuple):
     package: Optional[str]
     context: str
     line: int
+
+
+class ResolvedNameImport(NamedTuple):
+    target: str
+    package: Optional[str]
+    context: str
+    line: int
+    scope: str
+    loader_kind: str
+    call_ast: str
+
+
+class UnresolvedDynamicImport(NamedTuple):
+    context: str
+    line: int
+    scope: str
+    loader_kind: str
+    expression: str
+    call_ast: str
+
+    def to_record(self, file_rel: str) -> Dict[str, Union[str, int]]:
+        return {
+            "file": file_rel,
+            "line": self.line,
+            "scope": self.scope,
+            "context": self.context,
+            "loader_kind": self.loader_kind,
+            "expression": self.expression,
+            "call_ast": self.call_ast,
+        }
+
+
+def canonical_call_ast(node: object) -> str:
+    if isinstance(node, ast.Index):
+        return canonical_call_ast(next(ast.iter_child_nodes(node)))
+    if isinstance(node, ast.ExtSlice):
+        return f"Tuple(elts=[{', '.join(canonical_call_ast(item) for item in ast.iter_child_nodes(node))}])"
+    if isinstance(node, ast.Constant):
+        return f"Constant(value={node.value!a})"
+    if isinstance(node, ast.AST):
+        fields = [
+            f"{name}={canonical_call_ast(value)}"
+            for name, value in ast.iter_fields(node)
+            if name != "ctx"
+        ]
+        return f"{node.__class__.__name__}({', '.join(fields)})"
+    if isinstance(node, list):
+        return f"[{', '.join(canonical_call_ast(item) for item in node)}]"
+    return ascii(node)
 
 
 def loader_import_bindings(node: ast.AST) -> List[Tuple[str, Optional[str]]]:
@@ -46,7 +95,7 @@ def _import_kind(alias: ast.alias) -> Optional[str]:
 
 
 def _scope_nodes(scope: ast.AST) -> List[ast.AST]:
-    roots: List[ast.AST] = [scope.body] if isinstance(scope, ast.Lambda) else list(getattr(scope, "body", []))
+    roots: Sequence[ast.AST] = [scope.body] if isinstance(scope, ast.Lambda) else scope.body  # type: ignore[attr-defined]
     pending = list(reversed(roots))
     nodes: List[ast.AST] = []
     while pending:
@@ -78,8 +127,7 @@ def _parameter_names(scope: ast.AST) -> Set[str]:
     if not isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
         return set()
     args = scope.args
-    parameters = list(args.posonlyargs) + list(args.args) + list(args.kwonlyargs)
-    parameters += [arg for arg in (args.vararg, args.kwarg) if arg is not None]
+    parameters = args.posonlyargs + args.args + args.kwonlyargs + [arg for arg in (args.vararg, args.kwarg) if arg is not None]
     return {arg.arg for arg in parameters}
 
 
@@ -176,7 +224,7 @@ def _static_parent(node: ast.Subscript, values: Dict[str, StaticValue], aliases:
     if not isinstance(node.value, ast.Attribute) or node.value.attr != "parents":
         return None
     base = static_import_value(node.value.value, values, aliases)
-    index = next(ast.iter_child_nodes(node.slice), None) if isinstance(node.slice, ast.Index) else node.slice
+    index = next(ast.iter_child_nodes(node.slice)) if isinstance(node.slice, ast.Index) else node.slice
     if not isinstance(base, Path) or not isinstance(index, ast.Constant) or type(index.value) is not int:
         return None
     return base.parents[index.value] if 0 <= index.value < len(base.parents) else None

@@ -1,0 +1,45 @@
+roadmap: aps-architecture-consolidation
+created: 2026-11-09
+items:
+  - slug: ownership-contracts
+    description: A0 冻结全域职责、目标契约签名、零存储格式变更边界与逐文件消费者迁移清单
+    depends_on: []
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 实施前必先对当前工作树（500+项既有改动）建立可恢复Git快照；对齐.limcode/rules/修订草案与四份专题目标接口
+  - slug: scheduler-use-case
+    description: A1 收口PreparedBusinessInput、统一安排约束验证与单一无连接CalendarEngine，并完成宿主单入口化
+    depends_on: [ownership-contracts]
+    status: planned
+    feature: null
+    minimal_loop: true
+    notes: 最小开发闭环（不单独发布）：分离预检公开投影与内部评估行并删preflight_result.py:76原地pop，受理仅增量补齐未选工序投影；统一候选发布/普通与分件采用/试调保存与采用的安排验证，消除试调采用同事务双跑验证器，退役schedule_execution_persistence_guard.py、schedule_orchestrator.py及两处8行采用持久化转发壳；落地CalendarEngine(CalendarInputs)（区分None与()、按日惰性解析、checkpoint证书、跨夜尾巴纯函数，退役CalendarService转发与快照子类）；彻底退役app_new_ui.py、start_new_ui.bat与ui_mode，消除app.py:52导入副作用并修复wufenchang_demo/builder.py:33
+  - slug: frontend-modules
+    description: A3 完成全量前端ESM模块化、esbuild与vm.Context测试沙箱、拔除prototype/依赖并剥离受控DTO重复重验
+    depends_on: [ownership-contracts]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 保持现有HTTP协议不变先于A2实施：落地宿主固定版本esbuild生产构建与Node vm.Context测试沙箱打包；彻底拔除prototype/生产依赖，正式Table保留列宽拖拽并原生渲染caption/scope，删除ReportEvidence.jsx:45扫DOM补丁；剥离25个Contract/API对本机受控DTO的Reflect.ownKeys键数白名单、分页算术、主线程2万行diff与SQL排序重验，将PlanContract.js:209紧凑引用展开归位PlanGanttModel；统一前端底层命令结算与订阅会话
+  - slug: data-command-boundaries
+    description: A2 同包切换前后端7条命令回执查询协议，收口工作台业务域显式事实作用域与按用途关系闭包取数
+    depends_on: [ownership-contracts, scheduler-use-case, frontend-modules]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 持久存储与Schema(v45)零变更，无需离线数据转换器或离线对账脚本；各业务域统一为先验轻量修订指纹、按用途取完整关系闭包（batch列表/选择/导出跳过无消费workflow_snapshot，单批次详情与工艺同步按目标零件及外协组闭包加载）、显式事实作用域单向供数，删除self._snapshot临时属性偷渡与_RawProcessFacts(dict)偷跑SQL，领域层收口capabilities/blocked_reasons；抽离materials.py通用命令路由，同包同步切换后端7条回执链路（5类数据库命令共享WorkbenchCommandService四字段信封，排产受理与系统维护外部日志各保其职）、全部前端回执消费者、错误回执expect与契约fixture，删除校准采用404特判
+  - slug: tooling-definition
+    description: A4 保留quality_gate_shared.py公共底座，落地单一GateCheckSpec，删除0调用死代码孤岛与重复pyright并退役临时扫描器
+    depends_on: [ownership-contracts]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 不拆4个碎片新文件；以单一GateCheckSpec消除long_gate_manifest.py:91与run_quality_gate.py:1028两处字符串分类；按调用闭包删除quality_gate_shared.py中0生产调用的manifest/replay验证死代码孤岛（:529-551、:579-673、:986-999、:1068-1095、:1126-1457，完整保留:1460-1502活底座与回执/resume原语）消除反向导入并下沉repo_identity；删除run_quality_gate.py:955-987及:994第二次重复pyright子进程（保留:940配置检查）；保持FingerprintFileSnapshot评估阶段单次缓存；将完整生产文件集required scope检查并入test_registry，退役scan_anti_regression_gate.py、scan_aps_three_gap_py38_scope.py与d4589d77硬编码
+  - slug: integrated-cutover
+    description: A5 全工作树合流、同步规则与文档，完成完整门禁、实际浏览器与Win7原生验收后一次性停写切换激活
+    depends_on: [scheduler-use-case, data-command-boundaries, frontend-modules, tooling-definition]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 唯一交付节点，零持久存储格式转换；使用A4新门禁完成完整门禁、浏览器主流程与Win7目标机20个Windows专属节点实测；切换前后未决命令由现有启动恢复与在线统一回执查询接口按原request_key结算，同步更新.limcode/rules/与架构开发文档

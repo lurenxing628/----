@@ -3,17 +3,28 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence, Set, Tuple
+from typing import Dict, List, NamedTuple, Optional, Sequence, Set, Tuple
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 SCOPE_PRODUCTION = "production"
 SCOPE_WITH_TESTS = "production-and-tests"
 BASELINE_NOTE = (
     "循环依赖硬加载期环基线。正式门禁同时锁定 scope/roots/文件加载语义，检查圈成员、"
-    "圈内规范化有向模块边和含行号的未解析动态导入；删边、消圈或 SCC 缩小允许，新增债务阻断。"
+    "圈内规范化有向模块边和按 file/scope/context/loader_kind/expression/call_ast 稳定语义身份与 count 锁定的未解析动态导入"
+    "（物理行号仅用于定位展示，同名/匿名作用域按名称路径合并计数）；删边、消圈或 SCC 缩小允许，新增债务阻断。"
 )
+UNRESOLVED_IDENTITY_FIELDS = ("file", "scope", "context", "loader_kind", "expression", "call_ast")
 CycleMap = Dict[str, Set[str]]
 CycleEdge = Tuple[str, str]
+
+
+class UnresolvedDynamicKey(NamedTuple):
+    file: str
+    scope: str
+    context: str
+    loader_kind: str
+    expression: str
+    call_ast: str
 
 
 class CycleBaselineError(ValueError):
@@ -27,7 +38,7 @@ class CycleBaseline:
     file_cycle_semantics: str
     dir_cycles: CycleMap
     file_cycles: CycleMap
-    unresolved_dynamic_imports: Set[str]
+    unresolved_dynamic_imports: Dict[UnresolvedDynamicKey, int]
 
 
 @dataclass
@@ -64,44 +75,26 @@ def default_baseline_path(repo_root: str, include_tests: bool = False) -> str:
 
 
 def cycle_signature(members: Sequence[str]) -> str:
-    return "|".join(sorted(str(member) for member in members))
+    return "|".join(sorted(members))
 
 
 def edge_signature(source: str, target: str) -> str:
     return f"{source} -> {target}"
 
 
-def _module_from_source_path(path: str) -> str:
-    normalized = str(path).replace("\\", "/")
-    if normalized.endswith(".py"):
-        normalized = normalized[:-3]
-    if normalized.endswith("/__init__"):
-        normalized = normalized[: -len("/__init__")]
-    return normalized.replace("/", ".")
-
-
-def _edge_from_record(record: dict) -> str:
-    source = str(record.get("source") or _module_from_source_path(str(record.get("src") or ""))).strip()
-    target = str(record.get("target") or "").strip()
-    if not source or not target:
-        raise CycleBaselineError("扫描结果中的循环边缺少 source/target，不能生成可信基线")
-    return edge_signature(source, target)
-
-
 def _cycle_map(records: Sequence[dict]) -> CycleMap:
-    cycles: CycleMap = {}
-    for record in records:
-        signature = cycle_signature(record.get("members") or [])
-        if not signature:
-            raise CycleBaselineError("扫描结果中的循环缺少 members，不能生成可信基线")
-        cycles[signature] = {_edge_from_record(edge) for edge in list(record.get("edges") or [])}
-    return cycles
+    return {
+        cycle_signature(record["members"]): {
+            edge_signature(edge["source"], edge["target"]) for edge in record["edges"]
+        }
+        for record in records
+    }
 
 
 def current_cycle_maps(result: dict) -> Tuple[CycleMap, CycleMap]:
     return (
-        _cycle_map(result.get("hard_dir_cycles") or []),
-        _cycle_map(result.get("hard_file_cycle_records") or []),
+        _cycle_map(result["hard_dir_cycles"]),
+        _cycle_map(result["hard_file_cycle_records"]),
     )
 
 
@@ -110,18 +103,50 @@ def current_signatures(result: dict) -> Tuple[Set[str], Set[str]]:
     return set(dir_cycles), set(file_cycles)
 
 
-def unresolved_dynamic_signatures(result: dict) -> Set[str]:
-    return {
-        "|".join(
-            (
-                str(row.get("file") or ""),
-                str(int(row.get("line") or 0)),
-                str(row.get("context") or ""),
-                str(row.get("expression") or ""),
-            )
-        )
-        for row in list(result.get("unresolved_dynamic_imports") or [])
-    }
+def _unresolved_key(row: dict, *, error_prefix: str) -> UnresolvedDynamicKey:
+    values: List[str] = []
+    for field in UNRESOLVED_IDENTITY_FIELDS:
+        val = row.get(field)
+        if not isinstance(val, str) or not val.strip():
+            raise CycleBaselineError(f"{error_prefix}.{field} 非法")
+        values.append(val)
+    return UnresolvedDynamicKey(*values)
+
+
+def _row_key(row: dict) -> UnresolvedDynamicKey:
+    return UnresolvedDynamicKey(
+        row["file"],
+        row["scope"],
+        row["context"],
+        row["loader_kind"],
+        row["expression"],
+        row["call_ast"],
+    )
+
+
+def unresolved_dynamic_counts(result: dict) -> Dict[UnresolvedDynamicKey, int]:
+    counts: Dict[UnresolvedDynamicKey, int] = {}
+    for row in result["unresolved_dynamic_imports"]:
+        key = _row_key(row)
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def _load_unresolved_rows(value: object, *, path: str) -> Dict[UnresolvedDynamicKey, int]:
+    if not isinstance(value, list):
+        raise CycleBaselineError(f"循环依赖基线 {path} 的 unresolved_dynamic_imports 非法")
+    counts: Dict[UnresolvedDynamicKey, int] = {}
+    for index, row in enumerate(value):
+        if not isinstance(row, dict):
+            raise CycleBaselineError(f"循环依赖基线 {path} 的 unresolved_dynamic_imports[{index}] 必须是对象")
+        key = _unresolved_key(row, error_prefix=f"循环依赖基线 {path} 的 unresolved_dynamic_imports[{index}]")
+        count = row.get("count")
+        if type(count) is not int or count <= 0:
+            raise CycleBaselineError(f"循环依赖基线 {path} 的 unresolved_dynamic_imports[{index}].count 非法")
+        if key in counts:
+            raise CycleBaselineError(f"循环依赖基线 {path} 的 unresolved_dynamic_imports 存在重复身份键：{key}")
+        counts[key] = count
+    return counts
 
 
 def _load_cycle_rows(value: object, *, field: str, path: str) -> CycleMap:
@@ -171,16 +196,14 @@ def load_baseline(path: str, *, expected_scope: str) -> Optional[CycleBaseline]:
     file_cycle_semantics = str(data.get("file_cycle_semantics") or "").strip()
     if not file_cycle_semantics:
         raise CycleBaselineError(f"循环依赖基线 {path} 缺少 file_cycle_semantics")
-    unresolved = data.get("unresolved_dynamic_imports")
-    if not isinstance(unresolved, list) or not all(isinstance(item, str) and item for item in unresolved):
-        raise CycleBaselineError(f"循环依赖基线 {path} 的 unresolved_dynamic_imports 非法")
+    unresolved = _load_unresolved_rows(data.get("unresolved_dynamic_imports"), path=path)
     return CycleBaseline(
         scope=scope,
         scan_roots=tuple(scan_roots),
         file_cycle_semantics=file_cycle_semantics,
         dir_cycles=_load_cycle_rows(data.get("hard_dir_cycles"), field="hard_dir_cycles", path=path),
         file_cycles=_load_cycle_rows(data.get("hard_file_cycles"), field="hard_file_cycles", path=path),
-        unresolved_dynamic_imports=set(unresolved),
+        unresolved_dynamic_imports=unresolved,
     )
 
 
@@ -191,25 +214,34 @@ def _payload_rows(cycles: CycleMap) -> List[dict]:
     ]
 
 
+def _unresolved_payload_rows(counts: Dict[UnresolvedDynamicKey, int]) -> List[dict]:
+    return [
+        {
+            "file": key.file,
+            "scope": key.scope,
+            "context": key.context,
+            "loader_kind": key.loader_kind,
+            "expression": key.expression,
+            "call_ast": key.call_ast,
+            "count": count,
+        }
+        for key, count in sorted(counts.items())
+    ]
+
+
 def write_baseline(path: str, result: dict, *, scope: str) -> None:
     dir_cycles, file_cycles = current_cycle_maps(result)
-    scan_roots = list(result.get("scan_roots") or [])
-    file_cycle_semantics = str(result.get("file_cycle_semantics") or "").strip()
-    if not scan_roots or not all(isinstance(root, str) and root for root in scan_roots):
-        raise CycleBaselineError("扫描结果缺少合法 scan_roots，拒绝写入不完整基线")
-    if not file_cycle_semantics:
-        raise CycleBaselineError("扫描结果缺少 file_cycle_semantics，拒绝写入不完整基线")
     payload = {
         "note": BASELINE_NOTE,
         "schema_version": SCHEMA_VERSION,
         "scope": scope,
-        "scan_roots": scan_roots,
-        "file_cycle_semantics": file_cycle_semantics,
+        "scan_roots": result["scan_roots"],
+        "file_cycle_semantics": result["file_cycle_semantics"],
         "hard_dir_cycles": _payload_rows(dir_cycles),
         "hard_file_cycles": _payload_rows(file_cycles),
-        "unresolved_dynamic_imports": sorted(unresolved_dynamic_signatures(result)),
+        "unresolved_dynamic_imports": _unresolved_payload_rows(unresolved_dynamic_counts(result)),
     }
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with open(path, "w", encoding="utf-8", newline="\n") as handle:
         json.dump(payload, handle, ensure_ascii=False, indent=1)
         handle.write("\n")
@@ -243,18 +275,39 @@ def _new_edges(current: CycleMap, baseline: CycleMap) -> Set[CycleEdge]:
     return out
 
 
+def _new_unresolved_dynamic_imports(
+    result: dict,
+    baseline_counts: Dict[UnresolvedDynamicKey, int],
+) -> Set[str]:
+    current_counts: Dict[UnresolvedDynamicKey, int] = {}
+    lines_by_key: Dict[UnresolvedDynamicKey, List[int]] = {}
+    for row in result["unresolved_dynamic_imports"]:
+        key = _row_key(row)
+        current_counts[key] = current_counts.get(key, 0) + 1
+        lines_by_key.setdefault(key, []).append(row["line"])
+    out: Set[str] = set()
+    for key, current_count in current_counts.items():
+        baseline_count = baseline_counts.get(key, 0)
+        if current_count > baseline_count:
+            lines = ",".join(str(line) for line in lines_by_key[key])
+            out.add(
+                f"{key.file}:{lines} [{key.context}] scope={key.scope} loader={key.loader_kind} "
+                f"{key.expression} ast={key.call_ast} (count {baseline_count} -> {current_count})"
+            )
+    return out
+
+
 def compare_with_baseline(path: str, result: dict, *, expected_scope: str) -> CycleBaselineComparison:
     baseline = load_baseline(path, expected_scope=expected_scope)
     if baseline is None:
         return CycleBaselineComparison(True, set(), set(), set(), set(), set())
-    current_roots = tuple(str(root) for root in list(result.get("scan_roots") or []))
+    current_roots = tuple(result["scan_roots"])
     if current_roots != baseline.scan_roots:
         raise CycleBaselineError(
             f"循环依赖基线 {path} 的 scan_roots={list(baseline.scan_roots)!r}，"
             f"当前扫描 roots={list(current_roots)!r}；扫描范围变化必须人工核对后受控重建基线"
         )
-    current_semantics = str(result.get("file_cycle_semantics") or "").strip()
-    if current_semantics != baseline.file_cycle_semantics:
+    if result["file_cycle_semantics"] != baseline.file_cycle_semantics:
         raise CycleBaselineError(
             f"循环依赖基线 {path} 的 file_cycle_semantics 与当前扫描器不一致；请人工核对后受控重建基线"
         )
@@ -265,8 +318,8 @@ def compare_with_baseline(path: str, result: dict, *, expected_scope: str) -> Cy
         new_file=_new_cycle_signatures(current_file, baseline.file_cycles),
         new_dir_edges=_new_edges(current_dir, baseline.dir_cycles),
         new_file_edges=_new_edges(current_file, baseline.file_cycles),
-        new_unresolved_dynamic_imports=(
-            unresolved_dynamic_signatures(result) - baseline.unresolved_dynamic_imports
+        new_unresolved_dynamic_imports=_new_unresolved_dynamic_imports(
+            result, baseline.unresolved_dynamic_imports
         ),
     )
 
@@ -281,10 +334,9 @@ def print_new_cycles(result: dict, comparison: CycleBaselineComparison) -> None:
     )
     by_sig = {cycle_signature(c["members"]): c for c in result["hard_dir_cycles"]}
     for signature in sorted(comparison.new_dir):
-        record = by_sig.get(signature)
-        members = record["members"] if record else signature.split("|")
-        print(f"  + [目录环] {' ⇄ '.join(members)}", flush=True)
-        for edge in list((record or {}).get("edges") or [])[:4]:
+        record = by_sig[signature]
+        print(f"  + [目录环] {' ⇄ '.join(record['members'])}", flush=True)
+        for edge in record["edges"][:4]:
             print(f"        {edge['src']}:{edge['line']} -> {edge['target']}", flush=True)
     for signature in sorted(comparison.new_file):
         print(f"  + [文件环] {' ⇄ '.join(signature.split('|'))}", flush=True)

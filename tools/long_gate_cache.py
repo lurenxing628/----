@@ -19,6 +19,8 @@ from tools.long_gate_paths import (
 from tools.long_gate_schema import (
     LONG_GATE_CACHE_SCHEMA_VERSION,
     LONG_GATE_FINGERPRINT_SCHEMA_VERSION,
+    PRIVATE_ENVIRONMENT_KEYS,
+    SensitiveSourceError,
     content_equal,
     long_gate_cache_metadata,
     read_file_content,
@@ -79,7 +81,7 @@ def _write_text_if_needed(repo_root: str, rel_path: str, text: str) -> None:
     abs_path = _abs_from_rel(repo_root, rel_path)
     os.makedirs(os.path.dirname(abs_path), exist_ok=True)
     with open(abs_path, "w", encoding="utf-8", newline="") as handle:
-        handle.write(str(text or ""))
+        handle.write(text)
 
 
 def _success_rel_path(entry_id: str, *, cache_dir: str = LONG_GATE_CACHE_DIR_REL) -> str:
@@ -286,12 +288,10 @@ def _non_reusable_environment_keys(fingerprint: Mapping[str, Any]) -> List[str]:
     keys = [str(key) for key in list(environment.get("non_reusable_env_keys") or [])]
     values = environment.get("values")
     # Presence is descriptive only; a cached caller cannot bind the secret value.
-    if (
-        isinstance(values, dict)
-        and isinstance(values.get("SECRET_KEY"), dict)
-        and bool(values["SECRET_KEY"].get("present"))
-    ):
-        keys.append("SECRET_KEY")
+    if isinstance(values, dict):
+        for key in PRIVATE_ENVIRONMENT_KEYS:
+            if isinstance(values.get(key), dict) and bool(values[key].get("present")):
+                keys.append(key)
     return sorted(set(keys))
 
 
@@ -309,6 +309,39 @@ def _non_reusable_environment_decision(entry_id: str, fingerprint: Mapping[str, 
         ),
         "cache_unavailable": True,
         "non_reusable_env_keys": keys,
+    }
+
+
+CACHE_UNAVAILABLE_CAUSES: Dict[str, str] = {
+    "": "strict fingerprint failed",
+    "source_content_unavailable": "strict fingerprint failed",
+    "cache_metadata_unavailable": "cache metadata unavailable",
+    "cache_write_unavailable": "cache write failed",
+}
+
+
+def cache_unavailable_decision(
+    entry_id: str,
+    *,
+    failure_kind: str,
+    message: str,
+    current_fingerprint: Optional[Mapping[str, Any]] = None,
+) -> Dict[str, Any]:
+    """The only cache-unavailable decision shape; the reason is derived from failure_kind."""
+    cause = CACHE_UNAVAILABLE_CAUSES[failure_kind]
+    invalidated_by = [cause]
+    if failure_kind:
+        invalidated_by.append("failure_kind=" + failure_kind)
+    return {
+        **_decision(
+            entry_id,
+            "run",
+            cause + "; cache unavailable; executing command without read/write cache",
+            invalidated_by=invalidated_by,
+            current_fingerprint=current_fingerprint,
+        ),
+        "cache_unavailable": True,
+        "fingerprint_error": {"message": message, "failure_kind": failure_kind},
     }
 
 
@@ -555,6 +588,19 @@ def evaluate_reuse(
         return _reuse_evaluation(
             _decision(entry_id, "run", "reuse is disabled for this entry", current_fingerprint=current_content)
         )
+    try:
+        expected_metadata = (
+            metadata if metadata is not None else long_gate_cache_metadata(root, cache_dir=resolved_cache_dir)
+        )
+    except SensitiveSourceError as exc:
+        return _reuse_evaluation(
+            cache_unavailable_decision(
+                entry_id,
+                failure_kind="cache_metadata_unavailable",
+                message=str(exc),
+                current_fingerprint=current_content,
+            )
+        )
     result_rel = _success_rel_path(entry_id, cache_dir=resolved_cache_dir)
     previous, load_error = _load_json_object(_abs_from_rel(root, result_rel))
     if load_error == "missing":
@@ -599,9 +645,6 @@ def evaluate_reuse(
                 current_fingerprint=current_content,
             )
         )
-    expected_metadata = (
-        metadata if metadata is not None else long_gate_cache_metadata(root, cache_dir=resolved_cache_dir)
-    )
     for untrusted_field, reason in (
         ("runner_version_untrusted_paths", "runner version contains untrusted path"),
         ("tooling_version_untrusted_paths", "tooling version contains untrusted path"),
@@ -784,6 +827,17 @@ def evaluate_failure_reuse(
         return _failure_reuse_evaluation(
             _decision(entry_id, "run", "reuse is disabled for this entry", current_fingerprint=current_content)
         )
+    try:
+        expected_metadata = long_gate_cache_metadata(root, cache_dir=resolved_cache_dir)
+    except SensitiveSourceError as exc:
+        return _failure_reuse_evaluation(
+            cache_unavailable_decision(
+                entry_id,
+                failure_kind="cache_metadata_unavailable",
+                message=str(exc),
+                current_fingerprint=current_content,
+            )
+        )
     result_rel = _failure_rel_path(entry_id, cache_dir=resolved_cache_dir)
     previous, load_error = _load_json_object(_abs_from_rel(root, result_rel))
     if load_error == "missing":
@@ -829,7 +883,6 @@ def evaluate_failure_reuse(
                 current_fingerprint=current_content,
             )
         )
-    expected_metadata = long_gate_cache_metadata(root, cache_dir=resolved_cache_dir)
     for untrusted_field, reason in (
         ("runner_version_untrusted_paths", "runner version contains untrusted path"),
         ("tooling_version_untrusted_paths", "tooling version contains untrusted path"),
@@ -1053,7 +1106,7 @@ def _assert_cache_fingerprint(fingerprint: Mapping[str, Any], cache_kind: str) -
         raise ValueError(f"long gate {cache_kind} cache is unavailable for environment keys: " + ", ".join(keys))
 
 
-def write_success(
+def prepare_success_write(
     entry: Mapping[str, Any],
     fingerprint: Mapping[str, Any],
     command_result: Mapping[str, Any],
@@ -1061,19 +1114,15 @@ def write_success(
     *,
     repo_root: Optional[str] = None,
     cache_dir: Optional[str] = None,
-) -> None:
+) -> Dict[str, Any]:
     root = _repo_root(repo_root)
     resolved_cache_dir = resolve_cache_dir(root, cache_dir)
-    command_result = {
-        **command_result,
-        "stdout": sanitize_quality_gate_output(str(command_result.get("stdout") or "")),
-        "stderr": sanitize_quality_gate_output(str(command_result.get("stderr") or "")),
-    }
+    stdout_text = sanitize_quality_gate_output(str(command_result.get("stdout") or ""))
+    stderr_text = sanitize_quality_gate_output(str(command_result.get("stderr") or ""))
     _assert_command_result(command_result, "success")
     _assert_cache_fingerprint(fingerprint, "success")
-    if not content_equal(
-        fingerprint["components"].get("command"), normalize_quality_gate_command(entry.get("command") or entry)
-    ):
+    normalized_command = normalize_quality_gate_command(entry.get("command") or entry)
+    if not content_equal(fingerprint["components"].get("command"), normalized_command):
         raise ValueError("long gate success cache requires matching command content")
     entry_id = _safe_entry_id(str(entry.get("entry_id") or ""))
     collect_nodeids_reason = _fingerprint_invalid_collect_nodeids_reason(fingerprint)
@@ -1086,8 +1135,6 @@ def write_success(
         entry_id,
         cache_dir=resolved_cache_dir,
     )
-    _write_text_if_needed(root, stdout_log_path, str(command_result.get("stdout") or ""))
-    _write_text_if_needed(root, stderr_log_path, str(command_result.get("stderr") or ""))
     output_file_rows = _read_output_files(root, output_files)
     _assert_output_files_cover_declared_paths(root, entry, output_file_rows)
     payload = {
@@ -1099,11 +1146,11 @@ def write_success(
         "duration_s": float(command_result.get("duration_s") or 0.0),
         "display": str(entry.get("display") or ""),
         "args": [str(arg) for arg in list(entry.get("args") or [])],
-        "command": normalize_quality_gate_command(entry.get("command") or entry),
+        "command": normalized_command,
         "fingerprint": dict(fingerprint),
         "returncode": int(command_result.get("returncode") or 0),
-        "stdout_content": str(command_result.get("stdout") or ""),
-        "stderr_content": str(command_result.get("stderr") or ""),
+        "stdout_content": stdout_text,
+        "stderr_content": stderr_text,
         "stdout_log_path": stdout_log_path,
         "stderr_log_path": stderr_log_path,
         "output_files": output_file_rows,
@@ -1116,9 +1163,25 @@ def write_success(
     }
     rel_path = _success_rel_path(entry_id, cache_dir=resolved_cache_dir)
     abs_path = _abs_from_rel(root, rel_path)
+    return {
+        "root": root,
+        "stdout_log_path": stdout_log_path,
+        "stderr_log_path": stderr_log_path,
+        "stdout_text": stdout_text,
+        "stderr_text": stderr_text,
+        "abs_path": abs_path,
+        "payload": payload,
+    }
+
+
+def commit_prepared_success_write(prepared: Mapping[str, Any]) -> None:
+    root = prepared["root"]
+    _write_text_if_needed(root, prepared["stdout_log_path"], prepared["stdout_text"])
+    _write_text_if_needed(root, prepared["stderr_log_path"], prepared["stderr_text"])
+    abs_path = prepared["abs_path"]
     os.makedirs(os.path.dirname(abs_path), exist_ok=True)
     with open(abs_path, "w", encoding="utf-8") as handle:
-        json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
+        json.dump(prepared["payload"], handle, ensure_ascii=False, indent=2, sort_keys=True)
 
 
 def write_failure(
@@ -1131,24 +1194,18 @@ def write_failure(
 ) -> None:
     root = _repo_root(repo_root)
     resolved_cache_dir = resolve_cache_dir(root, cache_dir)
-    command_result = {
-        **command_result,
-        "stdout": sanitize_quality_gate_output(str(command_result.get("stdout") or "")),
-        "stderr": sanitize_quality_gate_output(str(command_result.get("stderr") or "")),
-    }
+    stdout_text = sanitize_quality_gate_output(str(command_result.get("stdout") or ""))
+    stderr_text = sanitize_quality_gate_output(str(command_result.get("stderr") or ""))
     _assert_command_result(command_result, "failure")
     _assert_cache_fingerprint(fingerprint, "failure")
-    if not content_equal(
-        fingerprint["components"].get("command"), normalize_quality_gate_command(entry.get("command") or entry)
-    ):
+    normalized_command = normalize_quality_gate_command(entry.get("command") or entry)
+    if not content_equal(fingerprint["components"].get("command"), normalized_command):
         raise ValueError("long gate failure cache requires matching command content")
     entry_id = _safe_entry_id(str(entry.get("entry_id") or ""))
     stdout_log_path, stderr_log_path = _log_paths_for_result(
         entry_id,
         cache_dir=resolved_cache_dir,
     )
-    _write_text_if_needed(root, stdout_log_path, str(command_result.get("stdout") or ""))
-    _write_text_if_needed(root, stderr_log_path, str(command_result.get("stderr") or ""))
     returncode = int(command_result.get("returncode") or 0)
     payload = {
         "schema_version": LONG_GATE_CACHE_SCHEMA_VERSION,
@@ -1159,11 +1216,11 @@ def write_failure(
         "duration_s": float(command_result.get("duration_s") or 0.0),
         "display": str(entry.get("display") or ""),
         "args": [str(arg) for arg in list(entry.get("args") or [])],
-        "command": normalize_quality_gate_command(entry.get("command") or entry),
+        "command": normalized_command,
         "fingerprint": dict(fingerprint),
         "returncode": returncode,
-        "stdout_content": str(command_result.get("stdout") or ""),
-        "stderr_content": str(command_result.get("stderr") or ""),
+        "stdout_content": stdout_text,
+        "stderr_content": stderr_text,
         "stdout_log_path": stdout_log_path,
         "stderr_log_path": stderr_log_path,
         "output_files": [],
@@ -1175,6 +1232,8 @@ def write_failure(
         "run_id": str(command_result.get("run_id") or ""),
         "command_index": command_result.get("command_index"),
     }
+    _write_text_if_needed(root, stdout_log_path, stdout_text)
+    _write_text_if_needed(root, stderr_log_path, stderr_text)
     rel_path = _failure_rel_path(entry_id, cache_dir=resolved_cache_dir)
     abs_path = _abs_from_rel(root, rel_path)
     os.makedirs(os.path.dirname(abs_path), exist_ok=True)

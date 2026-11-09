@@ -13,7 +13,16 @@ import sys
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple, cast
 
 from tools.long_gate_paths import is_within_repo, real_repo_root
-from tools.long_gate_schema import LONG_GATE_FINGERPRINT_SCHEMA_VERSION, content_equal, read_file_content
+from tools.long_gate_schema import (
+    LONG_GATE_FINGERPRINT_SCHEMA_VERSION,
+    PRIVATE_ENVIRONMENT_KEYS,
+    PUBLIC_ENVIRONMENT_KEYS,
+    SensitiveSourceError,
+    content_equal,
+    decode_nul_paths,
+    private_environment_value,
+    read_file_content,
+)
 from tools.quality_gate_shared import (
     QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL,
     normalize_quality_gate_command,
@@ -86,11 +95,7 @@ def _run_git_paths(repo_root: str, args: Sequence[str], *, strict: bool) -> List
                 f"git command failed while building long gate fingerprint: git {' '.join(args)}: {detail}"
             )
         return []
-    return [
-        raw.decode("utf-8", errors="replace").replace("\\", "/")
-        for raw in bytes(proc.stdout or b"").split(b"\0")
-        if raw
-    ]
+    return decode_nul_paths(bytes(proc.stdout or b""))
 
 
 def _git_path_sources(repo_root: str, *, strict: bool) -> Tuple[Set[str], Set[str], str]:
@@ -115,8 +120,8 @@ def _has_glob_chars(value: str) -> bool:
 
 
 def _normalize_scope_path(path: str) -> str:
-    normalized = str(path or "").replace("\\", "/")
-    if normalized.startswith("./"):
+    normalized = str(path or "")
+    while normalized.startswith("./"):
         normalized = normalized[2:]
     return normalized
 
@@ -125,7 +130,8 @@ def _abs_for_scope_path(path: str, repo_root: str) -> str:
     normalized = _normalize_scope_path(path)
     if os.path.isabs(normalized):
         return normalized
-    return os.path.join(real_repo_root(repo_root), normalized.replace("/", os.sep))
+    rel = normalized.replace("/", os.sep) if os.sep != "/" else normalized
+    return os.path.join(real_repo_root(repo_root), rel)
 
 
 def _candidate_paths_for_scope(scope: str, repo_root: str, tracked: Set[str], untracked: Set[str]) -> Set[str]:
@@ -143,7 +149,10 @@ def _candidate_paths_for_scope(scope: str, repo_root: str, tracked: Set[str], un
     filesystem_matches = glob.glob(glob_pattern, recursive=True)
     for abs_path in filesystem_matches:
         if os.path.isfile(abs_path) or os.path.isdir(abs_path) or os.path.islink(abs_path):
-            candidates.add(os.path.relpath(abs_path, root).replace("\\", "/"))
+            rel = os.path.relpath(abs_path, root)
+            if os.sep != "/":
+                rel = rel.replace(os.sep, "/")
+            candidates.add(rel)
     return candidates
 
 
@@ -186,28 +195,34 @@ def _fingerprint_one_file(rel_path: str, repo_root: str, tracked: Set[str], untr
     if not exists:
         return {"path": normalized, "exists": False, "kind": "missing", "size": 0, "mode": "", "source": source}
     content: Dict[str, Any] = {}
-    if os.path.islink(abs_path):
-        link_target = os.readlink(abs_path)
-        link_realpath = os.path.realpath(abs_path)
-        inside = is_within_repo(link_realpath, repo_root)
-        kind = "symlink" if inside else "symlink_outside_repo"
-        content = {
-            "target": link_target,
-            "target_realpath": link_realpath,
-            "target_inside_repo": inside,
-            "target_content_base64": read_file_content(link_realpath)
-            if inside and os.path.isfile(link_realpath)
-            else "",
-        }
-        size = len(os.fsencode(link_target))
-    elif os.path.isfile(abs_path):
-        kind = "file"
-        content = {"content_base64": read_file_content(abs_path)}
-        size = os.path.getsize(abs_path)
-    elif os.path.isdir(abs_path):
-        kind, size = "directory", 0
-    else:
-        kind, size = "other", 0
+    try:
+        if os.path.islink(abs_path):
+            link_target = os.readlink(abs_path)
+            link_realpath = os.path.realpath(abs_path)
+            inside = is_within_repo(link_realpath, repo_root)
+            kind = "symlink" if inside else "symlink_outside_repo"
+            content = {
+                "target": link_target,
+                "target_realpath": link_realpath,
+                "target_inside_repo": inside,
+                "target_content_base64": read_file_content(link_realpath)
+                if inside and os.path.isfile(link_realpath)
+                else "",
+            }
+            size = len(os.fsencode(link_target))
+        elif os.path.isfile(abs_path):
+            kind = "file"
+            content = {"content_base64": read_file_content(abs_path)}
+            size = os.path.getsize(abs_path)
+        elif os.path.isdir(abs_path):
+            kind, size = "directory", 0
+        else:
+            kind, size = "other", 0
+    except SensitiveSourceError as exc:
+        raise LongGateFingerprintError(
+            str(exc),
+            details={"failure_kind": "source_content_unavailable"},
+        ) from exc
     return {
         "path": normalized,
         "exists": True,
@@ -278,15 +293,6 @@ def fingerprint_files(
         "paths": path_rows,
         "files": files,
     }
-
-
-def fingerprint_command(command: Mapping[str, Any]) -> Dict[str, Any]:
-    normalized = normalize_quality_gate_command(command)
-    if "SECRET_KEY" in normalized["env_overlay"]:
-        raise LongGateFingerprintError(
-            "SECRET_KEY must remain in the process environment, not the persisted command overlay"
-        )
-    return normalized
 
 
 def pytest_distribution_version(*, strict: bool = False) -> str:
@@ -549,47 +555,17 @@ def _runtime_fingerprint_value(
     if key == "architecture_scan_cache_metadata":
         from tools import architecture_scan_cache
 
-        return architecture_scan_cache.architecture_scan_cache_metadata(repo_root)
+        try:
+            return architecture_scan_cache.architecture_scan_cache_metadata(repo_root)
+        except SensitiveSourceError as exc:
+            raise LongGateFingerprintError(
+                str(exc),
+                details={"failure_kind": "source_content_unavailable"},
+            ) from exc
     source = environment if environment is not None else os.environ
-    value = source.get(str(key))
-    if key == "SECRET_KEY":
-        return {"present": value is not None}
-    return value
-
-
-PUBLIC_ENVIRONMENT_KEYS = frozenset(
-    {
-        "APS_ENV",
-        "APS_DB_PATH",
-        "APS_LOG_DIR",
-        "APS_BACKUP_DIR",
-        "APS_EXCEL_TEMPLATE_DIR",
-        "APS_HOST",
-        "APS_PORT",
-        "APS_SHARED_DATA_ROOT",
-        "APS_STATIC_VERSION",
-        "APS_TEST_POWERSHELL",
-        "WERKZEUG_RUN_MAIN",
-        "WORKBENCH_NODE",
-        "NODE_PATH",
-        "NODE_OPTIONS",
-        "PATH",
-        "VIRTUAL_ENV",
-        "PYTHONHOME",
-        "PYTHONPATH",
-        "PYTHONDONTWRITEBYTECODE",
-        "PYTHONUTF8",
-        "PYTHONIOENCODING",
-        "PYTEST_ADDOPTS",
-        "PYTEST_DISABLE_PLUGIN_AUTOLOAD",
-        "PYTEST_PLUGINS",
-        "LANG",
-        "LC_ALL",
-        "CI",
-        "APS_FULL_TEST_DEBT_SHARDED",
-        "APS_FULL_TEST_DEBT_SHARD_COUNT",
-    }
-)
+    if key in PRIVATE_ENVIRONMENT_KEYS:
+        return {"present": bool(private_environment_value(source, str(key)))}
+    return source.get(str(key))
 
 
 def fingerprint_environment(
@@ -600,7 +576,7 @@ def fingerprint_environment(
     repo_root: Optional[str] = None,
 ) -> Dict[str, Any]:
     unsupported = sorted(
-        {str(key) for key in keys} - RUNTIME_FINGERPRINT_KEYS - PUBLIC_ENVIRONMENT_KEYS - {"SECRET_KEY"}
+        {str(key) for key in keys} - RUNTIME_FINGERPRINT_KEYS - PUBLIC_ENVIRONMENT_KEYS - PRIVATE_ENVIRONMENT_KEYS
     )
     if unsupported:
         raise LongGateFingerprintError("environment keys require a public allowlist entry: " + ", ".join(unsupported))
@@ -627,7 +603,7 @@ def fingerprint_environment(
         "schema_version": ENVIRONMENT_FINGERPRINT_SCHEMA_VERSION,
         "keys": key_list,
         "values": values,
-        "non_reusable_env_keys": [key for key in values if key == "SECRET_KEY" and values[key]["present"]],
+        "non_reusable_env_keys": [key for key in values if key in PRIVATE_ENVIRONMENT_KEYS and values[key]["present"]],
     }
 
 
@@ -758,7 +734,7 @@ def fingerprint_entry(
     strict: bool = False,
     file_snapshot: Optional[FingerprintFileSnapshot] = None,
 ) -> Dict[str, Any]:
-    command_payload = fingerprint_command(entry)
+    command_payload = normalize_quality_gate_command(entry)
     env_overlay = command_payload["env_overlay"]
     effective_environment = {str(key): str(value) for key, value in os.environ.items()}
     effective_environment.update(env_overlay)

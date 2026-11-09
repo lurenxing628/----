@@ -26,7 +26,15 @@ from tools.long_gate_fingerprint import (
     _powershell_version,
     _resolve_node_executable,
 )
-from tools.long_gate_schema import content_equal, read_file_content
+from tools.long_gate_schema import (
+    PRIVATE_ENVIRONMENT_KEYS,
+    PUBLIC_ENVIRONMENT_KEYS,
+    SensitiveSourceError,
+    content_equal,
+    decode_nul_paths,
+    private_environment_value,
+    read_file_content,
+)
 from tools.test_registry_data import REQUIRED_REGRESSION_COMMON_SCOPES, REQUIRED_REGRESSION_GROUPS
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -73,21 +81,32 @@ _DAILY_RUNTIME_PROBE_KEYS = frozenset(
         "powershell_version",
     }
 )
-DAILY_GATE_ENV_KEYS: Tuple[str, ...] = tuple(
-    dict.fromkeys(
-        key
-        for key in (
-            *REQUIRED_REGRESSION_COMMON_SCOPES.get("env_keys", ()),
-            *(
-                item
-                for group in REQUIRED_REGRESSION_GROUPS
-                for item in group.get("env_keys", ())
-            ),
-            "PYTHONHASHSEED",
+
+
+def _daily_gate_env_keys() -> Tuple[str, ...]:
+    """Classify every registry env key once; an unclassified key is a registry defect."""
+    configured = tuple(
+        dict.fromkeys(
+            (
+                *REQUIRED_REGRESSION_COMMON_SCOPES.get("env_keys", ()),
+                *(item for group in REQUIRED_REGRESSION_GROUPS for item in group.get("env_keys", ())),
+                "PYTHONHASHSEED",
+            )
         )
-        if key not in _DAILY_PYTHON_IDENT_KEYS and key not in _DAILY_RUNTIME_PROBE_KEYS
     )
-)
+    unsupported = sorted(
+        set(configured)
+        - _DAILY_PYTHON_IDENT_KEYS
+        - _DAILY_RUNTIME_PROBE_KEYS
+        - PUBLIC_ENVIRONMENT_KEYS
+        - PRIVATE_ENVIRONMENT_KEYS
+    )
+    if unsupported:
+        raise RuntimeError("environment keys require a public allowlist entry: " + ", ".join(unsupported))
+    return tuple(key for key in configured if key in PUBLIC_ENVIRONMENT_KEYS)
+
+
+DAILY_GATE_ENV_KEYS: Tuple[str, ...] = _daily_gate_env_keys()
 _PYTEST_PLUGIN_VERSIONS_CACHE: Dict[Tuple[str, str, str], List[Dict[str, Any]]] = {}
 _PYTEST_PLUGIN_PROBE_CODE = (
     "import importlib.metadata as m, json\n"
@@ -106,36 +125,23 @@ class HookCacheError(RuntimeError):
     pass
 
 
-def _run_git(args: Sequence[str]) -> str:
+def _run_git_bytes(args: Sequence[str]) -> bytes:
     completed = subprocess.run(
         ["git", *list(args)],
         cwd=str(REPO_ROOT),
         capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
         check=False,
     )
     if completed.returncode != 0:
-        detail = str(completed.stderr or completed.stdout or "git command failed").strip()
+        stderr = bytes(completed.stderr or b"").decode("utf-8", errors="replace").strip()
+        stdout = bytes(completed.stdout or b"").decode("utf-8", errors="replace").strip()
+        detail = stderr or stdout or "git command failed"
         raise HookCacheError(f"git {' '.join(args)} 失败：{detail}")
-    return str(completed.stdout or "")
+    return bytes(completed.stdout or b"")
 
 
-def _decode_nul_paths(output: str) -> List[str]:
-    return [item for item in str(output or "").split("\0") if item]
-
-
-def normalize_repo_path(path: str) -> str:
-    text = str(path or "").replace("\\", "/").strip()
-    if text.startswith("./"):
-        text = text[2:]
-    normalized = os.path.normpath(text).replace("\\", "/")
-    if normalized in {"", "."}:
-        return ""
-    if normalized == ".." or normalized.startswith("../") or os.path.isabs(normalized):
-        return ""
-    return normalized
+def _run_git(args: Sequence[str]) -> str:
+    return _run_git_bytes(args).decode("utf-8", errors="replace")
 
 
 def _git_common_dir() -> Path:
@@ -182,12 +188,13 @@ def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
 
 def _file_contents(paths: Iterable[str]) -> Dict[str, Optional[str]]:
     rows: Dict[str, Optional[str]] = {}
-    for rel_path in sorted({normalize_repo_path(path) for path in paths}):
-        if not rel_path:
-            continue
+    for rel_path in sorted({str(path) for path in paths if path}):
         abs_path = REPO_ROOT / rel_path
         if abs_path.is_file():
-            rows[rel_path] = read_file_content(str(abs_path))
+            try:
+                rows[rel_path] = read_file_content(str(abs_path))
+            except SensitiveSourceError as exc:
+                raise HookCacheError(str(exc)) from exc
         else:
             rows[rel_path] = None
     return rows
@@ -229,8 +236,7 @@ def _tool_version(executable: str, module: str) -> str:
 
 
 def staged_paths() -> List[str]:
-    output = _run_git(["diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z"])
-    return [normalize_repo_path(path) for path in _decode_nul_paths(output) if normalize_repo_path(path)]
+    return decode_nul_paths(_run_git_bytes(["diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z"]))
 
 
 def staged_python_paths() -> Tuple[str, ...]:
@@ -316,20 +322,27 @@ def run_staged_ruff(executable: str) -> int:
         print("[git-hook-cache] staged ruff: no staged Python files, skipped", flush=True)
         return 0
 
-    tree_hash = staged_tree_hash()
-    key_payload = _cache_key_payload(
-        kind="staged-ruff",
-        executable=executable,
-        watched_paths=HOOK_CACHE_TOOL_PATHS,
-        extra={
-            "staged_tree": tree_hash,
-            "staged_python_paths": list(targets),
-        },
-    )
-    path = cache_path(STAGED_RUFF_CACHE_NAME)
-    if _cache_matches(path, key_payload):
-        print("[git-hook-cache] staged ruff: reuse passed cache for unchanged staged tree", flush=True)
-        return 0
+    tree_hash = ""
+    path: Optional[Path] = None
+    key_payload: Optional[Dict[str, Any]] = None
+    try:
+        tree_hash = staged_tree_hash()
+        key_payload = _cache_key_payload(
+            kind="staged-ruff",
+            executable=executable,
+            watched_paths=HOOK_CACHE_TOOL_PATHS,
+            extra={
+                "staged_tree": tree_hash,
+                "staged_python_paths": list(targets),
+            },
+        )
+        path = cache_path(STAGED_RUFF_CACHE_NAME)
+        if _cache_matches(path, key_payload):
+            print("[git-hook-cache] staged ruff: reuse passed cache for unchanged staged tree", flush=True)
+            return 0
+    except HookCacheError as exc:
+        print(f"[git-hook-cache] staged ruff cache unavailable: {exc}", flush=True)
+        key_payload = None
 
     temp_dir = tempfile.mkdtemp(prefix="aps-staged-ruff-")
     try:
@@ -338,7 +351,7 @@ def run_staged_ruff(executable: str) -> int:
         command = [executable, "-m", "ruff", "check", "--force-exclude", "--", *list(targets)]
         print("[git-hook-cache] staged ruff:", " ".join(command), flush=True)
         returncode = subprocess.call(command, cwd=str(temp_root), env=_hook_env())
-        if int(returncode) == 0:
+        if int(returncode) == 0 and key_payload is not None and path is not None:
             _write_pass_cache(
                 path,
                 key_payload=key_payload,
@@ -449,10 +462,12 @@ def _pytest_plugin_versions(executable: str, env: Optional[Mapping[str, str]] = 
 
 def _daily_pytest_environment(env: Optional[Mapping[str, str]] = None) -> Dict[str, Any]:
     effective_env = _hook_env() if env is None else env
-    values: Dict[str, Any] = {}
-    for key in DAILY_GATE_ENV_KEYS:
-        raw = effective_env.get(key)
-        values[key] = {"present": raw is not None} if key == "SECRET_KEY" else raw
+    private_keys = sorted(key for key in PRIVATE_ENVIRONMENT_KEYS if private_environment_value(effective_env, key))
+    if private_keys:
+        raise HookCacheError(
+            "private environment values remain in memory; hook cache unavailable: " + ", ".join(private_keys)
+        )
+    values: Dict[str, Any] = {key: effective_env.get(key) for key in DAILY_GATE_ENV_KEYS}
     values["platform"] = platform.platform()
     values["git_executable_realpath"] = _git_executable_realpath(environment=effective_env)
     values["git_version"] = _git_version(strict=False, environment=effective_env)

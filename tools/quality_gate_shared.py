@@ -10,7 +10,15 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Union, cast
 
-from tools.long_gate_schema import canonical_content, content_equal, read_file_content
+from tools.long_gate_schema import (
+    PRIVATE_ENVIRONMENT_KEYS,
+    PUBLIC_ENVIRONMENT_KEYS,
+    SensitiveSourceError,
+    canonical_content,
+    content_equal,
+    private_environment_value,
+    read_file_content,
+)
 from tools.test_registry import (
     QUALITY_GATE_REQUIRED_TESTS,
     QUALITY_GATE_STARTUP_REGRESSION_ARGS,
@@ -395,20 +403,23 @@ def _normalize_env_overlay(value: Any) -> Dict[str, str]:
         if not key_text:
             continue
         text = str(value.get(key) or "")
-        if text and _sensitive_env_key(key_text):
+        if key_text in PRIVATE_ENVIRONMENT_KEYS:
             raise QualityGateError(f"Sensitive environment overlay key is not allowed: {key_text}")
+        if key_text not in PUBLIC_ENVIRONMENT_KEYS:
+            raise QualityGateError(f"Environment overlay keys require a public allowlist entry: {key_text}")
         normalized[key_text] = text
     return normalized
-
-
-def _sensitive_env_key(key: str) -> bool:
-    return bool(re.search(r"SECRET|TOKEN|PASSWORD|BEARER|AUTHORIZATION", key, re.IGNORECASE))
 
 
 def sanitize_quality_gate_output(text: str) -> str:
     """Remove current-process credential values before logs or receipts are persisted."""
     output = str(text or "")
-    values = {str(value) for key, value in os.environ.items() if value and _sensitive_env_key(key)}
+    values = {
+        value
+        for key in PRIVATE_ENVIRONMENT_KEYS
+        for value in (private_environment_value(os.environ, key),)
+        if value
+    }
     for value in sorted(values, key=len, reverse=True):
         output = output.replace(value, "[REDACTED]")
     return output
@@ -901,11 +912,15 @@ def build_quality_gate_source_proof(repo_root: Optional[Union[os.PathLike, str]]
     for rel_path in QUALITY_GATE_SOURCE_FILES:
         abs_path = os.path.join(root, rel_path.replace("/", os.sep))
         exists = os.path.isfile(abs_path)
+        try:
+            content_base64 = read_file_content(abs_path) if exists else ""
+        except SensitiveSourceError as exc:
+            raise QualityGateError(f"门禁来源文件包含敏感内容（{rel_path}）：{exc}") from exc
         rows.append(
             {
                 "path": str(rel_path).replace("\\", "/"),
                 "exists": bool(exists),
-                "content_base64": read_file_content(abs_path) if exists else "",
+                "content_base64": content_base64,
             }
         )
     return _normalize_source_rows(rows)
@@ -1281,9 +1296,12 @@ def _verify_manifest_collection_and_receipts(
 
 def _verify_manifest_gate_sources(repo_root: Union[os.PathLike, str], manifest: Dict[str, Any]) -> Optional[str]:
     gate_sources = _normalize_source_rows(manifest.get("gate_sources") or [])
-    expected_gate_sources = build_quality_gate_source_proof(repo_root)
     if any(not isinstance(row.get("content_base64"), str) for row in gate_sources):
         return "UNBOUND: legacy quality gate source content unavailable; execute a new run"
+    try:
+        expected_gate_sources = build_quality_gate_source_proof(repo_root)
+    except (QualityGateError, OSError) as exc:
+        return f"UNBOUND: current quality gate sources cannot be verified ({exc})"
     if not content_equal(gate_sources, expected_gate_sources):
         return "UNBOUND: quality gate gate sources mismatch"
     if not all(bool(row.get("exists")) for row in gate_sources):
@@ -1316,14 +1334,24 @@ def _reusable_quality_gate_results(repo_root, manifest, commands, receipts, *, c
             continue
         try:
             if "snapshot" not in state:
-                resolved_cache_dir = resolve_cache_dir(os.fspath(repo_root), str(cache_dir))
-                state.update(cache_dir=resolved_cache_dir,
-                             metadata=long_gate_cache_metadata(os.fspath(repo_root), cache_dir=resolved_cache_dir),
-                             snapshot=FingerprintFileSnapshot(os.fspath(repo_root), strict=True))
+                try:
+                    resolved_cache_dir = resolve_cache_dir(os.fspath(repo_root), str(cache_dir))
+                except (OSError, ValueError):
+                    return {}
+                state.update(
+                    cache_dir=resolved_cache_dir,
+                    metadata=long_gate_cache_metadata(os.fspath(repo_root), cache_dir=resolved_cache_dir),
+                    snapshot=FingerprintFileSnapshot(os.fspath(repo_root), strict=True),
+                )
             fingerprint = fingerprint_entry(entry, os.fspath(repo_root), strict=True, file_snapshot=state["snapshot"])
-            evaluation = evaluate_reuse(entry, fingerprint, repo_root=os.fspath(repo_root),
-                                        cache_dir=state["cache_dir"], metadata=state["metadata"])
-        except (LongGateFingerprintError, OSError, ValueError):
+            evaluation = evaluate_reuse(
+                entry,
+                fingerprint,
+                repo_root=os.fspath(repo_root),
+                cache_dir=state["cache_dir"],
+                metadata=state["metadata"],
+            )
+        except (LongGateFingerprintError, SensitiveSourceError, QualityGateError, OSError):
             continue
         if evaluation["decision"]["decision"] != "reuse":
             continue

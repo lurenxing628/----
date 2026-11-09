@@ -57,7 +57,7 @@ def resource_blueprint(evidence, scenario, start, external_types):
     pattern = []
     for offset in range(7):
         rest = (start + timedelta(days=offset)).weekday() >= 5
-        pattern.append({"day_offset": offset, "is_rest": rest, "shift_start": "08:00", "shift_end": "17:00",
+        pattern.append({"day_offset": offset, "is_rest": rest,
                         "periods": [] if rest else scenario["shift_periods"]})
     shift = {"business_code": "DAY-01", "label": "日班", "fields": {"status": "active", "remark": None,
              "anchor_date": start.isoformat(), "cycle_days": 7, "pattern": pattern}, "relationships": {}}
